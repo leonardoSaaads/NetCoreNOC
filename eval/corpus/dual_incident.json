@@ -1,0 +1,358 @@
+{
+  "name": "dual_incident",
+  "description": "Two unrelated incidents overlap in time on disjoint NEs; must stay separate.",
+  "events": [
+    {
+      "delay": 0.3,
+      "source": "203.0.113.1",
+      "trap_oid": "1.3.6.1.4.1.1271.2.1.1",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.1271.2.1.9",
+          "kind": "str",
+          "value": "port-1/1"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_A",
+        "entity_key": "203.0.113.1",
+        "is_root": true
+      }
+    },
+    {
+      "delay": 0.6,
+      "source": "203.0.113.2",
+      "trap_oid": "1.3.6.1.4.1.1271.2.1.1",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.1271.2.1.9",
+          "kind": "str",
+          "value": "port-1/1"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_A",
+        "entity_key": "203.0.113.2",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 0.9,
+      "source": "203.0.113.51",
+      "trap_oid": "1.3.6.1.4.1.2636.4.5.1",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.2636.4.5.9",
+          "kind": "str",
+          "value": "fpc-0"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_B",
+        "entity_key": "203.0.113.51",
+        "is_root": true
+      }
+    },
+    {
+      "delay": 1.2,
+      "source": "203.0.113.52",
+      "trap_oid": "1.3.6.1.4.1.2636.4.5.1",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.2636.4.5.9",
+          "kind": "str",
+          "value": "fpc-0"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_B",
+        "entity_key": "203.0.113.52",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1.5,
+      "source": "203.0.113.1",
+      "trap_oid": "1.3.6.1.4.1.1271.2.1.2",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.1271.2.1.9",
+          "kind": "str",
+          "value": "port-1/1"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_A",
+        "entity_key": "203.0.113.1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1.8,
+      "source": "203.0.113.2",
+      "trap_oid": "1.3.6.1.4.1.1271.2.1.2",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.1271.2.1.9",
+          "kind": "str",
+          "value": "port-1/1"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_A",
+        "entity_key": "203.0.113.2",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 2.1,
+      "source": "203.0.113.51",
+      "trap_oid": "1.3.6.1.4.1.2636.4.5.2",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.2636.4.5.9",
+          "kind": "str",
+          "value": "fpc-0"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_B",
+        "entity_key": "203.0.113.51",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 2.4,
+      "source": "203.0.113.52",
+      "trap_oid": "1.3.6.1.4.1.2636.4.5.2",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.2636.4.5.9",
+          "kind": "str",
+          "value": "fpc-0"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_B",
+        "entity_key": "203.0.113.52",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 2.7,
+      "source": "203.0.113.1",
+      "trap_oid": "1.3.6.1.4.1.1271.2.1.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.1271.2.1.9",
+          "kind": "str",
+          "value": "port-1/1"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_A",
+        "entity_key": "203.0.113.1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 3.0,
+      "source": "203.0.113.2",
+      "trap_oid": "1.3.6.1.4.1.1271.2.1.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.1271.2.1.9",
+          "kind": "str",
+          "value": "port-1/1"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_A",
+        "entity_key": "203.0.113.2",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 3.3,
+      "source": "203.0.113.51",
+      "trap_oid": "1.3.6.1.4.1.2636.4.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.2636.4.5.9",
+          "kind": "str",
+          "value": "fpc-0"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_B",
+        "entity_key": "203.0.113.51",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 3.6,
+      "source": "203.0.113.52",
+      "trap_oid": "1.3.6.1.4.1.2636.4.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.2636.4.5.9",
+          "kind": "str",
+          "value": "fpc-0"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_B",
+        "entity_key": "203.0.113.52",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 3.9,
+      "source": "203.0.113.1",
+      "trap_oid": "1.3.6.1.4.1.1271.2.1.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.1271.2.1.9",
+          "kind": "str",
+          "value": "port-1/1"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_A",
+        "entity_key": "203.0.113.1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 4.2,
+      "source": "203.0.113.2",
+      "trap_oid": "1.3.6.1.4.1.1271.2.1.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.1271.2.1.9",
+          "kind": "str",
+          "value": "port-1/1"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_A",
+        "entity_key": "203.0.113.2",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 4.5,
+      "source": "203.0.113.51",
+      "trap_oid": "1.3.6.1.4.1.2636.4.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.2636.4.5.9",
+          "kind": "str",
+          "value": "fpc-0"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_B",
+        "entity_key": "203.0.113.51",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 4.8,
+      "source": "203.0.113.52",
+      "trap_oid": "1.3.6.1.4.1.2636.4.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.2636.4.5.9",
+          "kind": "str",
+          "value": "fpc-0"
+        }
+      ],
+      "truth": {
+        "situation_key": "incident_B",
+        "entity_key": "203.0.113.52",
+        "is_root": false
+      }
+    }
+  ]
+}

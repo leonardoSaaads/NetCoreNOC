@@ -1,0 +1,139 @@
+{
+  "aggregate": {
+    "ari": 0.999928,
+    "dedup_ratio": 0.710593,
+    "distinct_alarms": 1952,
+    "entity_accuracy": 0.032275,
+    "over_merge_rate": 0.03125,
+    "p95_ingest_latency_s": 0.0003,
+    "pairwise_f1": 0.999955,
+    "peak_tracked_objects": 2102,
+    "quarantined": 400,
+    "root_top1": 1.0,
+    "traps_ingested": 2747,
+    "under_merge_rate": 0.0
+  },
+  "harness_version": 1,
+  "scenarios": {
+    "background_noise": {
+      "ari": 1.0,
+      "dedup_ratio": 1.0,
+      "distinct_alarms": 24,
+      "entity_accuracy": 1.0,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 0,
+      "root_top1": 0.0,
+      "traps_ingested": 24,
+      "under_merge_rate": 0.0
+    },
+    "camera_nvr": {
+      "ari": 1.0,
+      "dedup_ratio": 0.0,
+      "distinct_alarms": 0,
+      "entity_accuracy": 1.0,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 400,
+      "root_top1": 0.0,
+      "traps_ingested": 0,
+      "under_merge_rate": 0.0
+    },
+    "chassis_card_fail": {
+      "ari": 1.0,
+      "dedup_ratio": 0.340206,
+      "distinct_alarms": 99,
+      "entity_accuracy": 0.020202,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 0,
+      "root_top1": 1.0,
+      "traps_ingested": 291,
+      "under_merge_rate": 0.0
+    },
+    "decoy_varbinds": {
+      "ari": 1.0,
+      "dedup_ratio": 1.0,
+      "distinct_alarms": 240,
+      "entity_accuracy": 0.025,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 0,
+      "root_top1": 0.0,
+      "traps_ingested": 240,
+      "under_merge_rate": 0.0
+    },
+    "dual_incident": {
+      "ari": 0.0,
+      "dedup_ratio": 1.0,
+      "distinct_alarms": 16,
+      "entity_accuracy": 1.0,
+      "over_merge_rate": 1.0,
+      "pairwise_f1": 0.636364,
+      "quarantined": 0,
+      "root_top1": 1.0,
+      "traps_ingested": 16,
+      "under_merge_rate": 0.0
+    },
+    "fiber_cut": {
+      "ari": 1.0,
+      "dedup_ratio": 1.0,
+      "distinct_alarms": 8,
+      "entity_accuracy": 1.0,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 0,
+      "root_top1": 1.0,
+      "traps_ingested": 8,
+      "under_merge_rate": 0.0
+    },
+    "flapping_noise": {
+      "ari": 1.0,
+      "dedup_ratio": 0.083333,
+      "distinct_alarms": 1,
+      "entity_accuracy": 1.0,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 0,
+      "root_top1": 0.0,
+      "traps_ingested": 12,
+      "under_merge_rate": 0.0
+    },
+    "olt_storm": {
+      "ari": 1.0,
+      "dedup_ratio": 1.0,
+      "distinct_alarms": 501,
+      "entity_accuracy": 0.001996,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 0,
+      "root_top1": 1.0,
+      "traps_ingested": 501,
+      "under_merge_rate": 0.0
+    },
+    "pon_dying_gasp": {
+      "ari": 1.0,
+      "dedup_ratio": 1.0,
+      "distinct_alarms": 1051,
+      "entity_accuracy": 0.002854,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 0,
+      "root_top1": 1.0,
+      "traps_ingested": 1051,
+      "under_merge_rate": 0.0
+    },
+    "pon_pon_port_down": {
+      "ari": 1.0,
+      "dedup_ratio": 0.019868,
+      "distinct_alarms": 12,
+      "entity_accuracy": 0.166667,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
+      "quarantined": 0,
+      "root_top1": 1.0,
+      "traps_ingested": 604,
+      "under_merge_rate": 0.0
+    }
+  }
+}

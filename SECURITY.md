@@ -1,0 +1,107 @@
+# OptiCorr Security & Operations Guide
+
+OptiCorr v0.2.0 adds identity, role-based authorization, and a tamper-evident audit log.
+This guide is for the operator deploying and running it.
+
+## Reporting a vulnerability
+
+Please open a private security advisory on the repository rather than a public issue.
+Include the version, a description, and reproduction steps.
+
+## Recommended deployment
+
+1. **Bind the trap listener to the management interface** and **set an allowlist**:
+   ```sh
+   OPTICORR_ALLOWLIST=10.20.0.0/16,192.0.2.10 \
+   OPTICORR_TRAP_HOST=10.20.0.5 OPTICORR_HTTP_HOST=10.20.0.5 \
+   python -m opticorr.main
+   ```
+   With no allowlist every source is accepted (zero-config default) and OptiCorr shows a
+   persistent banner to admins until you set one.
+2. **Terminate TLS.** Either give OptiCorr a certificate directly, or front it with a
+   reverse proxy (below). Without TLS on a non-loopback bind, OptiCorr warns admins.
+3. **Complete the bootstrap.** On first start OptiCorr prints a one-time `admin` password
+   to the console inside a banner. Sign in, change it immediately (you are forced to), and
+   create per-operator accounts with the least role each needs.
+4. **Issue service tokens, not shared secrets.** For scripts and integrations, create a
+   named service token (admin → Tokens) with the minimum role. The value is shown once.
+
+### Roles
+
+| Role | Can do |
+|------|--------|
+| **viewer** | Read situations, graph, timeline, stats, classes; receive the live stream |
+| **editor** | viewer + confirm/split feedback, rename devices/classes, close/ack situations |
+| **admin** | editor + manage users/tokens, change runtime config, read quarantine, read/export/prune the audit log |
+
+Authorization is deny-by-default and enforced from a single map (`opticorr/rbac.py`);
+viewers never see mutating controls in the UI.
+
+## TLS options
+
+**Built-in** (simplest):
+```sh
+OPTICORR_TLS_CERT=/etc/opticorr/tls.crt OPTICORR_TLS_KEY=/etc/opticorr/tls.key \
+python -m opticorr.main
+```
+The session cookie automatically gains the `Secure` flag when TLS is enabled.
+
+**Reverse proxy** (e.g. nginx/Caddy terminating TLS): proxy `/` to OptiCorr's HTTP port on
+loopback. Because the cookie is `SameSite=Strict` and CSRF also checks `Origin`/`Host`,
+make sure the proxy preserves the `Host` header and forwards the browser `Origin`. If the
+proxy terminates TLS, OptiCorr's own listener may stay plain HTTP on loopback (no warning
+is shown for a loopback bind).
+
+## Sessions, passwords, throttling
+
+- Passwords are `scrypt` (n=2¹⁷) hashes; policy is length-only (12–128 chars, no
+  composition rules, no forced expiry) per NIST SP 800-63B.
+- Sessions are server-side; the cookie holds a random id whose **SHA-256 is stored**, so a
+  stolen database yields no live session. Idle timeout is 30 min (sliding); absolute is
+  12 h. Logout, password change, and role change revoke sessions.
+- Login is throttled per username **and** per source IP with exponential backoff after 5
+  failures (to a 15-minute cap). Unknown-user and wrong-password are indistinguishable.
+
+## The audit log
+
+Every mutating action and every sensitive read (including denied attempts) writes one
+append-only, hash-chained `audit_log` row. History is immutable even to the application
+(SQLite `BEFORE UPDATE`/`BEFORE DELETE` triggers).
+
+- **Verify integrity** (run this periodically, e.g. from cron):
+  ```sh
+  python -m opticorr audit verify      # or: make audit-verify
+  ```
+  It walks the chain and reports the first broken link, if any.
+- **Back up / export**:
+  ```sh
+  python -m opticorr audit export > audit-$(date +%F).ndjson
+  ```
+  Emits one JSON row per line plus the final chain hash on stderr. Keep exports off-box so
+  the audit trail survives loss of the node.
+- **Retention**: audit rows are excluded from the ordinary prune and kept for
+  `OPTICORR_AUDIT_RETENTION_DAYS` (default 365). Only an explicit admin action removes old
+  rows, and that prune is itself audited. Pruning removes only the oldest rows, so the
+  surviving suffix stays verifiable against an archived boundary hash.
+
+## What the banners mean
+
+The admin UI shows a persistent warning when a deployment default is risky:
+
+- **"Trap allowlist is empty"** — every source IP is accepted. Set `OPTICORR_ALLOWLIST`
+  (or configure it under admin → Config) to the CIDRs your equipment sends from.
+- **"HTTP is not using TLS on a non-loopback bind"** — credentials could travel cleartext.
+  Enable built-in TLS or a TLS reverse proxy.
+
+## Legacy token deprecation
+
+`OPTICORR_API_TOKEN` is still accepted in v0.2.0 as a synthetic admin identity
+`legacy-token`, with a startup deprecation warning and a one-time audit event. **It is
+removed in v0.3.0** — migrate every client to a named service token. See `MIGRATION.md`.
+
+## Data at rest
+
+`opticorr.db` contains scrypt password hashes, SHA-256 session/token digests, the audit
+log, learned state, and quarantined packet metadata (community strings are never stored).
+Protect the file with filesystem permissions and back it up alongside your audit exports.
+Run the process as a non-root user (the bundled Dockerfile already does).

@@ -1,0 +1,390 @@
+{
+  "name": "flapping_noise",
+  "description": "One flapping link, demoted to noise.",
+  "events": [
+    {
+      "delay": 0.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 6.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 12.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 18.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 24.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 30.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 36.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 42.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 48.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 54.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 60.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 66.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 72.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 78.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 84.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 90.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 96.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 102.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 108.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 114.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 120.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 126.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 132.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    },
+    {
+      "delay": 138.0,
+      "source": "127.0.0.30",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.2.2.1.1.7",
+          "kind": "int",
+          "value": "7"
+        }
+      ],
+      "truth": {
+        "situation_key": "flap-127.0.0.30-if7",
+        "entity_key": "127.0.0.30"
+      }
+    }
+  ]
+}

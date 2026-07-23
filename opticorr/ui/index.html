@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OptiCorr</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- Login overlay (shown until a session resolves). No token box; sessions are cookies. -->
+<div id="login" class="hidden">
+  <form class="login-card" id="loginForm" autocomplete="off">
+    <h1>Opti<span>Corr</span></h1>
+    <p>Sign in to the correlator.</p>
+    <label for="lu">Username</label>
+    <input id="lu" name="username" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <label for="lp">Password</label>
+    <input id="lp" name="password" type="password" autocomplete="current-password">
+    <div id="pwChange" class="hidden">
+      <label for="lp2">New password (12–128 chars)</label>
+      <input id="lp2" name="new_password" type="password" autocomplete="new-password">
+    </div>
+    <button type="submit" id="loginBtn">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <div id="banner"></div>
+  <div id="gapbanner"></div>
+  <header>
+    <h1>Opti<span>Corr</span></h1>
+    <div class="chips" id="chips"></div>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="who" id="who"></div>
+    <div id="dot" title="update status"></div>
+  </header>
+
+  <main>
+    <div id="graphwrap">
+      <svg id="graph"></svg>
+      <div class="legend">
+        <span><i class="alarm"></i>alarming device</span>
+        <span><i class="ok"></i>quiet device</span>
+        <span><i class="edge"></i>learned edge (opacity = affinity)</span>
+      </div>
+    </div>
+
+    <div id="sidebar">
+      <!-- Situations panel -->
+      <section class="panel active" id="panel-situations" data-panel="situations">
+        <h2>Situations</h2>
+        <div class="hint">Click a card to expand. Dotted names are renameable (editor+).
+          Every link shows its three score terms: t = temporal, A = class, E = device.</div>
+        <div class="termlegend">
+          <span><i class="t"></i>t temporal</span>
+          <span><i class="a"></i>A class affinity</span>
+          <span><i class="e"></i>E device affinity</span>
+        </div>
+        <div class="filters" id="sitFilters">
+          <input id="fltText" placeholder="search device / class">
+          <select id="fltStatus">
+            <option value="open">open</option>
+            <option value="closed">closed</option>
+            <option value="merged">merged</option>
+            <option value="">any status</option>
+          </select>
+        </div>
+        <div id="sits"></div>
+      </section>
+
+      <!-- Timeline panel -->
+      <section class="panel" id="panel-timeline" data-panel="timeline">
+        <h2>Timeline</h2>
+        <div class="hint">Alarms over time; raise marks in red, clear marks in green.</div>
+        <svg id="timeline"></svg>
+        <div id="tlList"></div>
+      </section>
+
+      <!-- Admin: users -->
+      <section class="panel" id="panel-users" data-panel="users">
+        <h2>Users</h2>
+        <div id="usersView"></div>
+      </section>
+
+      <!-- Admin: service tokens -->
+      <section class="panel" id="panel-tokens" data-panel="tokens">
+        <h2>Service tokens</h2>
+        <div id="tokensView"></div>
+      </section>
+
+      <!-- Admin: config -->
+      <section class="panel" id="panel-config" data-panel="config">
+        <h2>Runtime configuration</h2>
+        <div id="configView"></div>
+      </section>
+
+      <!-- Admin: quarantine -->
+      <section class="panel" id="panel-quarantine" data-panel="quarantine">
+        <h2>Quarantine</h2>
+        <div class="hint">Reading this list is audited.</div>
+        <div id="quarantineView"></div>
+      </section>
+
+      <!-- Entities: learned identity, severity and state (viewer+) -->
+      <section class="panel" id="panel-entities" data-panel="entities">
+        <h2>Entities</h2>
+        <div class="hint">Learned per network element: the entity tree, why each discriminator
+          was chosen (R/X/D and score), and the learned state-clear fields. Every decision is
+          inspectable; admins can reset a poisoned one.</div>
+        <div id="entitiesView"></div>
+      </section>
+
+      <!-- Admin: audit -->
+      <section class="panel" id="panel-audit" data-panel="audit">
+        <h2>Audit log</h2>
+        <div id="auditView"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script src="/vendor/d3.v7.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
