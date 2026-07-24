@@ -550,3 +550,92 @@ conservative (later-promoting) value; security-relevant ambiguity toward the str
     forgetting, restart durability, evidence wipe); the entity/severity/state read endpoints are
     covered by `test_api`/`test_rbac`, and the F1 XSS harness already drives hostile strings
     through the entity/severity/profiler surface.
+
+---
+
+# v0.4.0 — "trustworthy by construction" (hardening + rebrand)
+
+## 34. Rebrand NewProjectNetworj/OptiCorr → NetCoreNOC (Phase 1, gated rename)
+
+- **Context**: the repository moved to `github.com/leonardoSaaads/NetCoreNOC`. The whole
+  codebase still called itself *OptiCorr* (import package `opticorr`, env prefix `OPTICORR_*`,
+  cookie `opticorr_session`, CSRF header `X-OptiCorr-Client`, UI wordmark, logger name).
+- **Options**: (a) a big-bang rename touching wire identifiers with no compatibility, breaking
+  live deployments; (b) a mechanical, fully test-covered rename that treats the wire identifiers
+  like the v0.2.0 legacy-token deprecation — a one-version compatibility window for what would
+  otherwise break a running install.
+- **Choice**: (b). Import package `opticorr` → `netcorenoc`; all project metadata, CI, flake,
+  Dockerfile, Makefile updated. Env prefix `OPTICORR_*` → `NETCORENOC_*`, with the legacy names
+  accepted for **one version** (removed in v0.5.0) and a single startup deprecation warning per
+  variable — naming the variable, never its value. Cookie `opticorr_session` →
+  `netcorenoc_session` (invalidates live sessions once; operators re-login — documented). CSRF
+  header `X-OptiCorr-Client` → `X-NetCoreNOC-Client`, changed in UI and server in the same commit
+  with **no** compatibility window (it is not a persisted credential).
+- **Reason**: the rename changes names, never behaviour. The rename gate proves it: `make qa`
+  green, all 226 tests pass under the new package name, and `make eval` produces a
+  byte-identical delta table against the frozen `v0.2.0` baseline (`pairwise_f1=1.0000`,
+  `ari=0.9999`, `entity_accuracy=0.4480`, `root_top1=1.0000`; only the printed header brand
+  changed). *Legacy `OPTICORR_*` acceptance is regression-tested* (`test_settings_legacy_*`,
+  `test_settings_new_env_takes_precedence_over_legacy`, and the CLI export test drives
+  `OPTICORR_DB`). `OPTICORR_API_TOKEN` survives verbatim only as a historical name in the
+  removed-token error and docs — both prefixes are rejected at startup.
+
+## 35. Re-defer the `device_id` → `entity_id`/`ne_id` cutover to v0.5.0 (§A.2)
+
+- **Context**: `learn.py::device_affinity` is the retained v0.2.0 compatibility shim and the
+  `alarm.device_id` column removal was tentatively promised for v0.4.0. The shim and the column
+  are woven through the core scoring path (`correlate.py` `entity_id` defaulting, `rootcause.py`
+  precedence, `store.py` joins) and several tests (`test_learn`, `test_scenarios`).
+- **Options**: (a) complete the cutover now — remove the shim, migrate the API/UI, add a
+  forward-only `0005_*.sql`, and re-run parity; (b) re-defer to v0.5.0 with this entry.
+- **Choice**: (b). This is a security- and reliability-hardening release; the cutover is
+  behaviour-adjacent churn on the hottest path with no safety benefit. The brief's explicit
+  guidance is "if in doubt, re-defer." It is not left silently half-done: `docs/ROADMAP.md`
+  carries the v0.5.0 line and `docs/SCOPE-0.4.md` lists it as deferred.
+- **Reason**: Prime directive 3 (no metric regression) and directive 4 (safety over churn) both
+  point away from touching the scoring path this release.
+
+## 36. Re-defer typed relations and device-archetype clustering to v0.5.0
+
+- **Context**: SCOPE-0.3 tentatively tagged typed relations (physical adjacency / containment /
+  common-cause-of-site) and device-archetype clustering (by emitted-class vector) for v0.4.0.
+- **Options**: (a) build them now; (b) re-defer to v0.5.0.
+- **Choice**: (b). v0.4.0 is explicitly a hardening release that adds **no new inference
+  capability**; both are new inference. Recorded in SCOPE-0.4 (deferred list) and ROADMAP.
+- **Reason**: Prime directive — no feature outside the hardening scope; keep the release focused.
+
+## 37. New fault/abuse scenarios are engine-driven tests, not scored eval-corpus additions
+
+- **Context**: C.2/C.3 ask for a broad labelled scenario set. The eval harness computes its gated
+  aggregate (`pairwise_f1`, `ari`, `entity_accuracy`, `root_top1`) by **pooling every scored alarm
+  across all `eval/corpus/*.json`** and comparing to the frozen `eval/baselines/v0.2.0.json`.
+- **Options**: (a) add the new scenarios to the scored corpus; (b) drive them through the real
+  ingest path in `tests/` and assert their grouping/containment/situation-count directly.
+- **Choice**: (b). Adding scored scenarios shifts the pooled aggregate (denominators change) and
+  would move the gated metrics off the frozen baseline — a Prime-Directive-3 build failure — with
+  no offsetting benefit, since a scenario's *correctness* is exactly what a targeted assertion
+  checks. The declarative DSL (`eval/scenario_dsl.py`, C.1) is the authoring path for these tests;
+  `tools/trap_sim.py` can also replay them over real UDP. The scored corpus stays frozen.
+- **Reason**: honours the non-regression directive with certainty while still delivering the
+  security-event-correlation (C.3, P0) and network-fault-breadth (C.2, P1) coverage. Phase-4
+  "new scenarios scored" is met as "the engine scores them and the test asserts the outcome".
+
+## 38. Role-aware UI (S9): admin screens pruned from the DOM; gating verified statically
+
+- **Context**: §A.4 requires that a viewer sees no mutating controls and that admin-only screens
+  are *absent from a non-admin DOM*. The v0.3.0 UI gated the tab *buttons* by role but left the
+  admin `<section>` panels present-but-hidden in every DOM.
+- **Options**: (a) keep panels hidden; (b) remove non-permitted panels from the DOM on login;
+  and, for testing, (c) a headless-browser (Playwright) render test vs (d) static discipline tests.
+- **Choice**: (b) + (d). `prunePanels()` removes every panel whose role the caller lacks, called
+  in `enterApp()`; `logout()` does a full reload so a later higher-role login rebuilds a fresh DOM.
+  Role gating is verified by static-analysis tests (TABS role map ⇒ admin panels admin-gated;
+  prunePanels present and called; mutating controls created only under `canEdit()`/`isAdmin()`;
+  the UI stays exactly four files; CSP unchanged).
+- **Reason**: adding Playwright would be a heavy new test dependency outside the dev whitelist for
+  a P1 concern; the security-relevant properties (CSP, F1 escaping, role-gated DOM) are asserted
+  without it. The aesthetic refresh (expanded design tokens, a `prefers-color-scheme` light
+  variant, visible `:focus-visible` states, AA-contrast nudges, responsive stacking) is
+  hand-written CSS only — no framework, no inline styles, CSP intact. The "why did it decide
+  that?" surface already exists (entity R/X/D + evidence counts; link t/A/E terms), so no new view
+  was needed. UI is P1 and simplified here per this entry; its security properties are not.

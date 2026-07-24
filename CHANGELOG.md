@@ -4,6 +4,56 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-23 — "trustworthy by construction"
+
+Security- and reliability-hardening release under a new identity. **No new inference features.**
+One process, one SQLite file, zero new runtime dependencies. 283 tests, 95 % coverage, eval delta
+byte-identical against the frozen baseline.
+
+### Changed
+
+- **Project renamed** from *OptiCorr* / *NewProjectNetworj* to **NetCoreNOC**
+  (`github.com/leonardoSaaads/NetCoreNOC`). Import package `netcorenoc`, env prefix `NETCORENOC_*`,
+  session cookie `netcorenoc_session`, CSRF header `X-NetCoreNOC-Client`. Legacy `OPTICORR_*`
+  environment names are honoured for this one version with a deprecation warning (removed in
+  v0.5.0); the cookie rename forces a one-time re-login. (DECISIONS #34)
+- `GET /api/config` now requires a dedicated least-privilege `config.read` capability instead of
+  the write capability. (F9)
+- Response bodies are shaped by role: viewers receive coarsened device IPs (/24, /48) and never
+  `source_ip` or `community_tag` — deny-by-default extended from routes to fields. (F7)
+- Admin screens are pruned from a non-admin DOM (absent, not merely hidden); the UI gained a
+  design-token refresh (light variant, focus states, AA contrast, responsive) — still four files.
+
+### Added
+
+- **Reliability**: supervised background tasks with backoff-restart and operator warnings (F10);
+  startup `PRAGMA integrity_check`/`foreign_key_check` (F11); `/readyz` readiness endpoint (DB
+  reachable + migrations applied + queue headroom, ok/not-ok only); graceful queue drain on SIGTERM.
+- **Supply chain**: the vendored d3 is SHA-256-pinned (`ui/vendor/CHECKSUMS.txt`) with a CI job;
+  the container is documented with a hardened run recipe and base-image digest pinning.
+- **Standards**: `docs/SECURITY-REVIEW-0.4.md` — OWASP ASVS 4.0.3 L2 / NIST SP 800-63B / RFC /
+  CIS compliance mapping.
+- **Corpus/tooling**: a declarative scenario DSL (`eval/scenario_dsl.py`) + trap simulator
+  (`tools/trap_sim.py`, `make sim`); security-event correlation and network-fault-breadth
+  scenarios as engine-driven tests; a consolidated abuse suite.
+- CI gains a dead-code gate (`vulture` + committed allowlist) and a d3-checksum job.
+
+### Fixed
+
+- **A built wheel shipped only `index.html`**, so `pip install .` (the Dockerfile path) served a
+  UI whose `app.js`, `style.css`, and vendored d3 all 404'd. The whole UI now ships. (F12)
+- The orphaned second audited-denied table (`rbac.AUDITED_DENIED_PERMISSIONS` vs
+  `api.DENIED_ACTION`) is collapsed to one source with a divergence test. (F8)
+- Removed confirmed dead code (`auth.ROLES`, `auth.now_s`, `store.set_user_disabled`,
+  `VarbindProfiler.role_of`).
+
+### Security
+
+- CSRF enforcement now has regression tests (missing/renamed `X-NetCoreNOC-Client`, origin/host
+  mismatch → 403); the rename could otherwise have silently broken it. (F14)
+- All abuse-suite properties (CSP + headers on new routes, shaped-viewer injection inert,
+  entity-key-forgery bound, append-only audit) confirmed to hold.
+
 ## [0.3.0] - 2026-07-23
 
 Entity identity — learning *what* is alarmed, not merely *who* reported it. A network element

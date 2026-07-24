@@ -5,8 +5,8 @@ import asyncio
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from opticorr.events import QuarantinedPacket, TrapEvent
-from opticorr.receiver import (
+from netcorenoc.events import QuarantinedPacket, TrapEvent
+from netcorenoc.receiver import (
     QueueItem,
     TrapParseError,
     TrapReceiver,

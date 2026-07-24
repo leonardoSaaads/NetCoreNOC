@@ -1,15 +1,23 @@
-# OptiCorr build targets. Override PYTHON to use another interpreter, e.g. in CI:
+# NetCoreNOC build targets. Override PYTHON to use another interpreter, e.g. in CI:
 #   make qa PYTHON=python
 PYTHON ?= .venv/bin/python
 
-.PHONY: qa lint typecheck test security run replay loadtest burst fmt migrate audit-verify \
-	eval eval-baseline corpus
+.PHONY: qa lint typecheck test security deadcode run replay loadtest burst fmt migrate \
+	audit-verify eval eval-baseline corpus sim
 
-qa: lint typecheck test eval
+qa: lint typecheck deadcode test eval
 
 security:
-	$(PYTHON) -m bandit -q -c pyproject.toml -r opticorr tools
+	$(PYTHON) -m bandit -q -c pyproject.toml -r netcorenoc tools
 	$(PYTHON) -m pip_audit
+
+# Dead-code gate (§7): vulture over the runtime package with a committed allowlist.
+deadcode:
+	$(PYTHON) -m vulture netcorenoc vulture_allowlist.py
+
+# Vendored third-party asset integrity (§A.6): fail if d3's bytes drift from the pinned SHA-256.
+checksums:
+	$(PYTHON) -m pytest -q tests/test_supply_chain.py
 
 lint:
 	$(PYTHON) -m ruff check .
@@ -19,30 +27,30 @@ typecheck:
 	$(PYTHON) -m mypy
 
 test:
-	$(PYTHON) -m pytest --cov=opticorr --cov-report=term-missing
+	$(PYTHON) -m pytest --cov=netcorenoc --cov-report=term-missing
 
 fmt:
 	$(PYTHON) -m ruff format .
 	$(PYTHON) -m ruff check --fix .
 
 run:
-	$(PYTHON) -m opticorr.main
+	$(PYTHON) -m netcorenoc.main
 
-# Replay the fiber-cut fixture against a locally running OptiCorr (port 1162 by default
-# so it works without privileges; export OPTICORR_TRAP_PORT=1162 for the server too).
+# Replay the fiber-cut fixture against a locally running NetCoreNOC (port 1162 by default
+# so it works without privileges; export NETCORENOC_TRAP_PORT=1162 for the server too).
 replay:
-	$(PYTHON) tools/trap_replay.py tests/fixtures/fiber_cut.json --port $${OPTICORR_TRAP_PORT:-1162}
+	$(PYTHON) tools/trap_replay.py tests/fixtures/fiber_cut.json --port $${NETCORENOC_TRAP_PORT:-1162}
 
-# 1000 traps/s for 60 s against a locally running OptiCorr.
+# 1000 traps/s for 60 s against a locally running NetCoreNOC.
 loadtest:
 	$(PYTHON) tools/trap_replay.py --synthetic 20 --classes 10 --rate 1000 --duration 60 \
-		--port $${OPTICORR_TRAP_PORT:-1162}
+		--port $${NETCORENOC_TRAP_PORT:-1162}
 
-# A 100 000-trap burst against a locally running OptiCorr (the v0.3.0 window/backpressure
+# A 100 000-trap burst against a locally running NetCoreNOC (the v0.3.0 window/backpressure
 # guard; the pass/fail assertion lives in tests/test_perf.py::burst).
 burst:
 	$(PYTHON) tools/trap_replay.py --synthetic 50 --classes 20 --rate 100000 --duration 1 \
-		--port $${OPTICORR_TRAP_PORT:-1162}
+		--port $${NETCORENOC_TRAP_PORT:-1162}
 
 # Replay the labelled corpus offline and print the delta against the frozen baseline.
 # Exits non-zero on a gated regression (pairwise_f1, ari, entity_accuracy).
@@ -57,12 +65,18 @@ eval-baseline:
 corpus:
 	$(PYTHON) eval/corpus_gen.py
 
-# Apply pending schema migrations to OPTICORR_DB (idempotent; runs at startup too).
+# Run a declarative DSL scenario (trap simulator) against a locally running NetCoreNOC over UDP.
+# SCENARIO defaults to login_burst; list options with `python tools/trap_sim.py --list`.
+sim:
+	$(PYTHON) tools/trap_sim.py $${SCENARIO:-login_burst} --send \
+		--port $${NETCORENOC_TRAP_PORT:-1162}
+
+# Apply pending schema migrations to NETCORENOC_DB (idempotent; runs at startup too).
 migrate:
-	$(PYTHON) -c "import asyncio, os; from opticorr.store import Store; \
-		s=Store(os.environ.get('OPTICORR_DB','opticorr.db')); \
+	$(PYTHON) -c "import asyncio, os; from netcorenoc.store import Store; \
+		s=Store(os.environ.get('NETCORENOC_DB','netcorenoc.db')); \
 		asyncio.run(s.open()); asyncio.run(s.close()); print('migrations applied')"
 
 # Walk the audit hash chain and report the first broken link.
 audit-verify:
-	$(PYTHON) -m opticorr audit verify
+	$(PYTHON) -m netcorenoc audit verify

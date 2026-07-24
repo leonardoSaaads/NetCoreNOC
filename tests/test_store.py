@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from opticorr.events import QuarantinedPacket
-from opticorr.store import EdgeRow, Store
+from netcorenoc.events import QuarantinedPacket
+from netcorenoc.store import EdgeRow, Store
 
 import util
 

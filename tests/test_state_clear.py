@@ -8,11 +8,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from opticorr import known_oids
-from opticorr.events import TrapEvent, Varbind
-from opticorr.learn import StateClearLearner
-from opticorr.main import Engine
-from opticorr.store import Store
+from netcorenoc import known_oids
+from netcorenoc.events import TrapEvent, Varbind
+from netcorenoc.learn import StateClearLearner
+from netcorenoc.main import Engine
+from netcorenoc.store import Store
 
 import authutil
 

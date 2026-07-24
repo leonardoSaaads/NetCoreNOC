@@ -8,10 +8,10 @@ import hmac as _hmac
 import logging
 
 import pytest
-from opticorr import main, receiver
-from opticorr.logsetup import RedactionFilter, configure_logging
-from opticorr.main import Engine
-from opticorr.store import Store
+from netcorenoc import main, receiver
+from netcorenoc.logsetup import RedactionFilter, configure_logging
+from netcorenoc.main import Engine
+from netcorenoc.store import Store
 
 import authutil
 import trap_replay
@@ -29,7 +29,7 @@ def test_redaction_filter_masks_secrets() -> None:
         ("Authorization: Bearer abcdef1234567890", "abcdef1234567890"),
         ("logging in with password=hunter2xyz now", "hunter2xyz"),
         ("token: s3cr3t-value-here-9", "s3cr3t-value-here-9"),
-        ("Cookie: opticorr_session=deadbeefcafef00d", "deadbeefcafef00d"),
+        ("Cookie: netcorenoc_session=deadbeefcafef00d", "deadbeefcafef00d"),
         ("community=publicsecret123", "publicsecret123"),
     ]:
         redacted = f._redact(text)
@@ -41,7 +41,7 @@ def test_configure_logging_installs_redaction(caplog: pytest.LogCaptureFixture) 
     configure_logging(json_mode=False)
     try:
         with caplog.at_level(logging.INFO):
-            logging.getLogger("opticorr").info("leak Authorization: Bearer topsecrettoken99")
+            logging.getLogger("netcorenoc").info("leak Authorization: Bearer topsecrettoken99")
         assert not any("topsecrettoken99" in r.getMessage() for r in caplog.records)
     finally:
         logging.getLogger().handlers.clear()  # restore pytest's capture
@@ -56,7 +56,7 @@ async def test_f3_secret_leak_scan_over_login_and_token_flows(
     secrets_used: list[str] = [authutil.PW]
     admin = await authutil.client_as(app, "admin")
     try:
-        secrets_used.append(admin.cookies["opticorr_session"])  # session id
+        secrets_used.append(admin.cookies["netcorenoc_session"])  # session id
         created = await admin.post("/api/tokens", json={"name": "svc", "role": "viewer"})
         secrets_used.append(created.json()["token"])  # service-token value
         await admin.post(
@@ -172,9 +172,10 @@ async def test_f6_warnings_surface_in_stats(store: Store) -> None:
 
 
 async def test_legacy_api_token_is_removed_and_errors_at_startup(tmp_path: object) -> None:
-    """OPTICORR_API_TOKEN was removed in v0.3.0: setting it is a hard startup error that
-    names the migration path to service tokens (DECISIONS v0.3 #29)."""
-    from opticorr.main import LegacyTokenRemovedError, Settings, run
+    """The shared API token (NETCORENOC_API_TOKEN / legacy OPTICORR_API_TOKEN) was removed in
+    v0.3.0: setting it is a hard startup error that names the migration path to service tokens
+    (DECISIONS v0.3 #29)."""
+    from netcorenoc.main import LegacyTokenRemovedError, Settings, run
 
     settings = Settings(db_path=str(tmp_path) + "/x.db", api_token="LEGACY-SHARED-TOKEN")
     with pytest.raises(LegacyTokenRemovedError, match="was removed"):
@@ -184,7 +185,7 @@ async def test_legacy_api_token_is_removed_and_errors_at_startup(tmp_path: objec
 async def test_service_token_acts_as_its_role(store: Store) -> None:
     """The replacement for the legacy shared token: a named, revocable service token bound
     to a role, sent as a Bearer credential."""
-    from opticorr import auth
+    from netcorenoc import auth
 
     _engine, _queue, app = await authutil.make_env(store)
     async with store.lock:

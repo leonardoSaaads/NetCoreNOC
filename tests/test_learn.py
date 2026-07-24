@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from opticorr.learn import (
+from netcorenoc.learn import (
     MIN_EDGE_N,
     SPLIT_PENALTY,
     STORM_DAMPING,
@@ -8,7 +8,7 @@ from opticorr.learn import (
     Learner,
     Matrix,
 )
-from opticorr.store import Store
+from netcorenoc.store import Store
 
 import util
 
@@ -107,7 +107,7 @@ def test_device_affinity_gating_and_same_device() -> None:
 
 
 def test_entity_affinity_three_branches() -> None:
-    from opticorr.learn import SAME_NE_AFFINITY
+    from netcorenoc.learn import SAME_NE_AFFINITY
 
     learner = Learner()
     # same entity -> 1.0 (regardless of NE)

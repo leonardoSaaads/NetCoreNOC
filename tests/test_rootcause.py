@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from opticorr.rootcause import Member, Precedence
-from opticorr.store import Store
+from netcorenoc.rootcause import Member, Precedence
+from netcorenoc.store import Store
 
 
 def member(alarm_id: int, class_id: int, device_id: int, ts: float) -> Member:

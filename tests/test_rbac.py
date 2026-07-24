@@ -11,8 +11,8 @@ from __future__ import annotations
 import asyncio
 
 import httpx
-from opticorr import rbac
-from opticorr.store import Store
+from netcorenoc import api, audit, rbac
+from netcorenoc.store import Store
 
 import authutil
 
@@ -96,6 +96,25 @@ async def test_every_api_route_is_in_the_permission_map(store: Store) -> None:
 def test_permission_map_only_references_known_permissions() -> None:
     for _route, permission in rbac.ROUTE_PERMISSIONS.items():
         assert permission in rbac.PERMISSIONS, permission
+
+
+def test_f8_audited_denied_single_source() -> None:
+    """F8: the audited-denied set has ONE source of truth (`rbac`); `api.DENIED_ACTION` is only
+    its presentation mapping and may never diverge. Each mapped catalog action must be real."""
+    assert set(api.DENIED_ACTION) == set(rbac.AUDITED_DENIED_PERMISSIONS)
+    for permission, action in api.DENIED_ACTION.items():
+        assert permission in rbac.PERMISSIONS, permission
+        assert action in audit.ACTIONS, action
+
+
+def test_f9_config_read_is_its_own_least_privilege_capability() -> None:
+    """F9: reading runtime config is gated by `config.read`, not the write capability, and a
+    denied read is still audited (the allowlist reveals network-security posture)."""
+    assert rbac.permission_for("GET", "/api/config") == "config.read"
+    assert rbac.permission_for("POST", "/api/config") == "config.write"
+    assert rbac.PERMISSIONS["config.read"] == "admin"  # still least-privilege: admin only
+    assert not rbac.role_allows("editor", "config.read")
+    assert "config.read" in rbac.AUDITED_DENIED_PERMISSIONS
 
 
 async def test_403_precedes_404_no_existence_oracle(store: Store) -> None:

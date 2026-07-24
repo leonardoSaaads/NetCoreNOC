@@ -1,5 +1,5 @@
 {
-  description = "OptiCorr — zero-configuration SNMP trap correlator";
+  description = "NetCoreNOC — zero-configuration SNMP trap correlator";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
@@ -11,8 +11,8 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         python = pkgs.python312;
-        opticorr = python.pkgs.buildPythonApplication {
-          pname = "opticorr";
+        netcorenoc = python.pkgs.buildPythonApplication {
+          pname = "netcorenoc";
           version = "0.1.0";
           pyproject = true;
           src = ./.;
@@ -29,10 +29,10 @@
         };
       in
       {
-        packages.default = opticorr;
+        packages.default = netcorenoc;
         apps.default = {
           type = "app";
-          program = "${opticorr}/bin/python -m opticorr.main";
+          program = "${netcorenoc}/bin/python -m netcorenoc.main";
         };
         devShells.default = pkgs.mkShell {
           packages = [ python pkgs.gnumake ];

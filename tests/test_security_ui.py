@@ -15,11 +15,11 @@ from pathlib import Path
 
 import httpx
 import pytest
-from opticorr.api import CSP, UI_DIR, create_app
-from opticorr.events import Varbind
-from opticorr.main import Engine
-from opticorr.receiver import QueueItem
-from opticorr.store import Store
+from netcorenoc.api import CSP, UI_DIR, create_app
+from netcorenoc.events import Varbind
+from netcorenoc.main import Engine
+from netcorenoc.receiver import QueueItem
+from netcorenoc.store import Store
 
 import util
 
@@ -39,7 +39,7 @@ async def engine_env(store: Store) -> tuple[Engine, asyncio.Queue[QueueItem]]:
 async def client(
     engine_env: tuple[Engine, asyncio.Queue[QueueItem]],
 ) -> AsyncIterator[httpx.AsyncClient]:
-    from opticorr import auth
+    from netcorenoc import auth
 
     store = engine_env[0].store
     async with store.lock:
@@ -49,7 +49,7 @@ async def client(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
-        base_url="http://opticorr.test",
+        base_url="http://netcorenoc.test",
         headers={"Authorization": f"Bearer {TOKEN}"},
     ) as c:
         yield c
@@ -130,3 +130,75 @@ def test_ui_source_has_no_f1_antipatterns() -> None:
 def test_d3_is_vendored_and_pinned() -> None:
     d3 = (Path(UI_DIR) / "vendor" / "d3.v7.min.js").read_text()
     assert "v7.9.0" in d3.splitlines()[0]  # pinned version banner
+
+
+# -- S9 / A.4 role-gated UI + design-token refresh ----------------------------------
+
+import re  # noqa: E402 - grouped with the S9 tests it supports
+
+ADMIN_PANELS = {"users", "tokens", "config", "quarantine", "audit"}
+
+
+def _tab_roles() -> dict[str, str]:
+    """Parse the TABS role map out of app.js: {panel_id: required_role}."""
+    app_js = (UI_DIR / "app.js").read_text()
+    block = app_js.split("const TABS", 1)[1].split("];", 1)[0]
+    return dict(re.findall(r'id:\s*"(\w+)".*?role:\s*"(\w+)"', block))
+
+
+def test_admin_panels_are_gated_to_admin() -> None:
+    """A.4: every admin screen requires the admin role in the single TABS role map."""
+    roles = _tab_roles()
+    for panel in ADMIN_PANELS:
+        assert roles.get(panel) == "admin", f"{panel} is not admin-gated"
+
+
+def test_non_admin_panels_are_pruned_from_the_dom() -> None:
+    """A.4: admin screens are *absent* from a non-admin DOM, not merely hidden. app.js removes
+    each panel whose role the caller lacks, and does so on entry."""
+    app_js = (UI_DIR / "app.js").read_text()
+    assert "function prunePanels(" in app_js
+    assert ".panel[data-panel=" in app_js and ".remove()" in app_js
+    # prunePanels runs in enterApp (before the app is shown).
+    enter = app_js.split("function enterApp(", 1)[1].split("\n}", 1)[0]
+    assert "prunePanels()" in enter
+    # index.html declares the admin panels statically; the pruning is what makes them absent.
+    index = (UI_DIR / "index.html").read_text()
+    for panel in ADMIN_PANELS:
+        assert f'data-panel="{panel}"' in index
+
+
+def test_mutating_controls_are_behind_role_guards() -> None:
+    """Feedback/close/rename affordances are created only under canEdit(); entity/profile reset
+    only under isAdmin() — a viewer never gets a mutating control rendered."""
+    app_js = (UI_DIR / "app.js").read_text()
+    detail = app_js.split("async function renderDetail(", 1)[1].split("\nfunction ", 1)[0]
+    # the feedback/close block is guarded by canEdit()
+    assert "if (canEdit())" in detail
+    assert detail.index("if (canEdit())") < detail.index('feedback(sid, "confirm")')
+    ent = app_js.split("async function renderEntityDetail(", 1)[1].split("\nfunction ", 1)[0]
+    assert "if (isAdmin())" in ent
+    assert ent.index("if (isAdmin())") < ent.index("/reset")
+
+
+def test_style_uses_design_tokens_light_variant_and_focus_states() -> None:
+    css = (UI_DIR / "style.css").read_text()
+    for token in ("--space-1:", "--radius-1:", "--shadow-1:", "--fs-md:"):
+        assert token in css, token
+    assert "@media (prefers-color-scheme: light)" in css  # light palette
+    assert ":focus-visible" in css  # visible keyboard focus (accessibility)
+    assert "@media (max-width: 760px)" in css  # responsive to a narrow viewport
+    # still CSP-clean: no external origins, no @import of a remote sheet.
+    assert "http://" not in css and "https://" not in css
+    assert "@import" not in css
+
+
+def test_ui_stays_four_files() -> None:
+    """Hard constraint: the UI is exactly index.html, app.js, style.css, and vendor/."""
+    entries = {p.name for p in UI_DIR.iterdir()}
+    assert entries == {"index.html", "app.js", "style.css", "vendor"}
+
+
+def test_csp_is_unchanged_and_forbids_inline() -> None:
+    assert "style-src 'self'" in CSP and "script-src 'self'" in CSP
+    assert "'unsafe-inline'" not in CSP and "default-src 'none'" in CSP

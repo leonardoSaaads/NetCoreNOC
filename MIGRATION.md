@@ -1,15 +1,52 @@
-# Upgrading OptiCorr
+# Upgrading NetCoreNOC
+
+## v0.3.0 → v0.4.0 (the rebrand)
+
+v0.4.0 renames the project from *OptiCorr* to **NetCoreNOC** and hardens security and
+reliability. **No schema change is required by the rebrand itself** (the audit chain, learned
+matrices, promoted entities, sessions, and tokens all survive untouched), and it is still one
+Python process over one SQLite file.
+
+### What the rename changes for you
+
+- **Environment variables** move from `OPTICORR_*` to `NETCORENOC_*`. The legacy `OPTICORR_*`
+  names are still honoured **for this one version** and emit a single startup deprecation
+  warning each (naming the variable, never its value). They are **removed in v0.5.0** — rename
+  them at your convenience before then. `NETCORENOC_*` wins if both are set.
+- **The session cookie** is renamed `opticorr_session` → `netcorenoc_session`. This invalidates
+  live sessions exactly once: **every operator re-logs-in after the upgrade.** No data is lost.
+- **The CSRF header** (browser UI only) changed `X-OptiCorr-Client` → `X-NetCoreNOC-Client`. The
+  bundled UI already sends the new header; a *custom* browser client that forged the old header
+  must update it. Service-token API clients (`Authorization: Bearer …`) are unaffected.
+- **The import package** is `netcorenoc` and the module entry points are `python -m netcorenoc`
+  (audit CLI) and `python -m netcorenoc.main` (the server).
+
+### The upgrade
+
+1. Back up the database (copy the file; WAL is checkpointed on clean shutdown, or use
+   `sqlite3 netcorenoc.db ".backup backup.db"`).
+2. Install v0.4.0 into the same environment (`pip install .`), pointing `NETCORENOC_DB`
+   (or the still-honoured `OPTICORR_DB`) at the existing database.
+3. Start the process. No migration is required for the rebrand; if you also adopt any optional
+   v0.4.0 schema change it applies forward-only and idempotently at startup. Learned state
+   survives and `python -m netcorenoc audit verify` still reports the chain OK across the upgrade.
+4. Tell operators to sign in again (the cookie rename logged them out once).
+
+### Rollback
+
+Restore the pre-upgrade backup and reinstall v0.3.0. Nothing in the rebrand writes an
+incompatible on-disk format.
 
 ## v0.2.0 → v0.3.0
 
-v0.3.0 adds the **learned entity model**: OptiCorr now learns *what* is alarmed (the ONU, the
+v0.3.0 adds the **learned entity model**: NetCoreNOC now learns *what* is alarmed (the ONU, the
 port, the camera) from the trap varbinds, not just *who* reported it. The upgrade is **in
 place and forward-only**: migrations `0003_entity.sql` and `0004_state_clear.sql` add tables
 and columns without touching your data, and it is still one Python process over one SQLite file.
 
 ### Before you upgrade
 
-- Back up `opticorr.db` (copy the file; WAL is checkpointed on clean shutdown).
+- Back up `netcorenoc.db` (copy the file; WAL is checkpointed on clean shutdown).
 - **Remove `OPTICORR_API_TOKEN` from the environment.** It was deprecated in v0.2.0 and is
   removed in v0.3.0: starting v0.3.0 with it still set is a **hard startup error** that names
   the migration path. Move every API client to a named **service token** (admin → Tokens in
@@ -46,7 +83,7 @@ and columns without touching your data, and it is still one Python process over 
 
 ### Rollback
 
-Restore the pre-upgrade `opticorr.db` backup. The v0.3.0 tables and columns are additive and
+Restore the pre-upgrade `netcorenoc.db` backup. The v0.3.0 tables and columns are additive and
 harmless to a v0.2.0 binary, but the clean path is the backup.
 
 ## v0.1.0 → v0.2.0
@@ -59,7 +96,7 @@ touching v0.1.0 data, and the process is still one Python process over one SQLit
 
 - Stop the v0.1.0 process (or upgrade during a maintenance window; the trap listener is
   briefly down while the process restarts).
-- Back up `opticorr.db` (copy the file; WAL is checkpointed on clean shutdown).
+- Back up `netcorenoc.db` (copy the file; WAL is checkpointed on clean shutdown).
 
 ### The upgrade
 
@@ -67,7 +104,7 @@ touching v0.1.0 data, and the process is still one Python process over one SQLit
    the existing database file.
 2. Start the process. On first start the schema migrates automatically
    (`PRAGMA user_version` 1 → 2; migration `0002_auth_audit.sql`), all v0.1.0 rows intact.
-3. **Bootstrap admin.** Because the `user` table is empty, OptiCorr creates an `admin`
+3. **Bootstrap admin.** Because the `user` table is empty, NetCoreNOC creates an `admin`
    account and prints a random 20-character password **once** to the console inside a
    banner. Copy it now — it is never printed again.
 4. Open the UI, log in as `admin`, and set a new password when prompted (the account
@@ -86,7 +123,7 @@ touching v0.1.0 data, and the process is still one Python process over one SQLit
 ### Legacy token deprecation timeline
 
 `OPTICORR_API_TOKEN` still works in v0.2.0 for backward compatibility: it is accepted as a
-synthetic admin identity `legacy-token`. On startup OptiCorr logs a deprecation warning
+synthetic admin identity `legacy-token`. On startup NetCoreNOC logs a deprecation warning
 naming the variable (never its value) and writes one `legacy_token.used` audit event the
 first time it is used. **`OPTICORR_API_TOKEN` is removed in v0.3.0** — migrate every
 client to a named service token before upgrading past v0.2.x.
@@ -99,15 +136,15 @@ documented alternative — see `SECURITY.md`.
 
 ### Rollback
 
-If you must roll back to v0.1.0, restore the pre-upgrade `opticorr.db` backup. The v0.2.0
+If you must roll back to v0.1.0, restore the pre-upgrade `netcorenoc.db` backup. The v0.2.0
 tables are additive and harmless to a v0.1.0 binary (which ignores them), but v0.1.0
 cannot read audit history, so restoring the backup is the clean path.
 
 ### Audit log operations
 
-- Verify integrity: `python -m opticorr audit verify` (walks the hash chain, reports the
+- Verify integrity: `python -m netcorenoc audit verify` (walks the hash chain, reports the
   first broken link).
-- Export: `python -m opticorr audit export > audit-YYYYMMDD.ndjson` (NDJSON + final chain
+- Export: `python -m netcorenoc audit export > audit-YYYYMMDD.ndjson` (NDJSON + final chain
   hash on stderr).
 - Retention: audit rows are kept for `OPTICORR_AUDIT_RETENTION_DAYS` (default 365) and are
   never touched by the ordinary prune; only an explicit, audited admin action removes

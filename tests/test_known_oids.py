@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from opticorr import known_oids
+from netcorenoc import known_oids
 
 
 def test_vendor_of_known_enterprises() -> None:

@@ -11,11 +11,11 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from opticorr.events import TrapEvent
-from opticorr.learn import MIN_EDGE_N
-from opticorr.main import IDLE_CLOSE_S, Engine
-from opticorr.receiver import QueueItem
-from opticorr.store import Store
+from netcorenoc.events import TrapEvent
+from netcorenoc.learn import MIN_EDGE_N
+from netcorenoc.main import IDLE_CLOSE_S, Engine
+from netcorenoc.receiver import QueueItem
+from netcorenoc.store import Store
 
 import util
 

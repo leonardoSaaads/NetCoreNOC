@@ -3,13 +3,13 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "opticorr"
-version = "0.3.0"
+name = "netcorenoc"
+version = "0.4.0"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
-authors = [{ name = "OptiCorr contributors" }]
+authors = [{ name = "NetCoreNOC contributors" }]
 keywords = ["snmp", "trap", "alarm-correlation", "noc", "root-cause"]
 dependencies = [
     "pysnmp>=7.1",
@@ -30,21 +30,34 @@ dev = [
     "mypy>=1.11",
     "bandit[toml]>=1.7",
     "pip-audit>=2.7",
+    "vulture>=2.11",
 ]
 
 [project.urls]
-Homepage = "https://github.com/leonardoSaaads/NewProjectNetworj"
+Homepage = "https://github.com/leonardoSaaads/NetCoreNOC"
 
 [tool.setuptools.packages.find]
-include = ["opticorr*"]
+include = ["netcorenoc*"]
 
 [tool.setuptools.package-data]
-opticorr = ["migrations/*.sql", "ui/*.html", "py.typed"]
+# Ship the whole static UI (F12): index.html alone left a built wheel serving a UI whose
+# app.js / style.css / vendored d3 all 404 — the Dockerfile does `pip install .`, so the
+# container UI was broken. Keep the CHECKSUMS.txt supply-chain pin alongside the vendored asset.
+netcorenoc = [
+    "migrations/*.sql",
+    "ui/*.html",
+    "ui/*.js",
+    "ui/*.css",
+    "ui/vendor/*",
+    "py.typed",
+]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["opticorr", "tools", "tests", "eval"]
+src = ["netcorenoc", "tools", "tests", "eval"]
+# The vulture dead-code allowlist is intentionally a list of bare names (not real code).
+extend-exclude = ["vulture_allowlist.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "T20", "SIM", "RUF"]
@@ -53,12 +66,12 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "T20", "SIM", "RUF"]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
-"opticorr/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
+"netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
 
 [tool.mypy]
 strict = true
 python_version = "3.12"
-files = ["opticorr", "tools", "tests", "eval"]
+files = ["netcorenoc", "tools", "tests", "eval"]
 mypy_path = ["eval", "tools"]
 
 [[tool.mypy.overrides]]
@@ -67,7 +80,7 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # These modules call into pysnmp/pyasn1, which ship no type information.
-module = ["opticorr.receiver", "trap_replay", "harness"]
+module = ["netcorenoc.receiver", "trap_replay", "harness"]
 disallow_untyped_calls = false
 
 [tool.bandit]
@@ -81,7 +94,7 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["opticorr"]
+source = ["netcorenoc"]
 branch = true
 
 [tool.coverage.report]

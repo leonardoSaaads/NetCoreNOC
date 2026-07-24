@@ -5,15 +5,15 @@ from __future__ import annotations
 import asyncio
 
 import httpx
-from opticorr import auth
-from opticorr.api import create_app
-from opticorr.main import Engine
-from opticorr.receiver import QueueItem
-from opticorr.store import Store
+from netcorenoc import auth
+from netcorenoc.api import create_app
+from netcorenoc.main import Engine
+from netcorenoc.receiver import QueueItem
+from netcorenoc.store import Store
 
 PW = "correct horse battery staple"  # 28 chars, satisfies the 12-char policy
 ROLE_USER = {"viewer": "vwr", "editor": "edt", "admin": "adm"}
-ORIGIN = "http://opticorr.test"
+ORIGIN = "http://netcorenoc.test"
 
 
 async def make_users(store: Store) -> None:
@@ -41,7 +41,7 @@ def new_client(app: object) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=transport,
         base_url=ORIGIN,
-        headers={"X-OptiCorr-Client": "ui", "Origin": ORIGIN},
+        headers={"X-NetCoreNOC-Client": "ui", "Origin": ORIGIN},
     )
 
 

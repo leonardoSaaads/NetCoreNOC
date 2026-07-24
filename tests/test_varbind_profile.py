@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import asyncio
 
-from opticorr.store import Store
-from opticorr.varbind_profile import (
+from netcorenoc.store import Store
+from netcorenoc.varbind_profile import (
     ENTITY_PROMOTE_OBS,
     MAX_TRACKED_VALUES,
     MAX_TRACKED_VARBINDS_PER_CLASS,

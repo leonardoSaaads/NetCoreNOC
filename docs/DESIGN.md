@@ -1,13 +1,13 @@
 # Design
 
-OptiCorr v0.1.0 is the explainable baseline of current alarm-correlation practice: one
+NetCoreNOC v0.1.0 is the explainable baseline of current alarm-correlation practice: one
 Python process, one SQLite file, one web UI. This document records what was built, the
 state of the art it builds on, and the explicit non-goals.
 
 ## Position in the state of the art
 
 - **Pairwise relatedness.** Modern correlators (e.g. OpenNMS ALEC) reduce grouping to the
-  question "are these two alarms related?". OptiCorr answers it with a three-term
+  question "are these two alarms related?". NetCoreNOC answers it with a three-term
   explainable score — temporal decay + learned class affinity + learned device
   affinity — and forms situations as connected components of the link graph. ML
   classifiers over the same pairwise question are a documented future upgrade, not part
@@ -101,8 +101,8 @@ Requests are processed in a fixed order so each layer can rely on the ones befor
 
 ```
 1. security headers      always set (CSP, nosniff, frame-deny, referrer, no-store on /api)
-2. origin / CSRF         cookie-auth mutations: Origin host == Host, X-OptiCorr-Client: ui
-3. identity resolution   Bearer token -> api_token/legacy;  else opticorr_session cookie
+2. origin / CSRF         cookie-auth mutations: Origin host == Host, X-NetCoreNOC-Client: ui
+3. identity resolution   Bearer token -> api_token/legacy;  else netcorenoc_session cookie
 4. bootstrap gate        must_change_password locks all but login/password-change/healthz
 5. RBAC                  route's required permission looked up in rbac.py -> 401/403
 6. rate / throttle       token-bucket per client (retained); login throttle per user+ip
@@ -119,7 +119,7 @@ the handler, after RBAC passed — so 403 never leaks whether an object exists.
   per source ip; 5 strikes then 1→2→4…→900 s) → look up user → scrypt verify with
   `hmac.compare_digest`; a **dummy** scrypt verify runs when the user is absent so timing
   and the error message are identical (no enumeration). On success: mint
-  `secrets.token_urlsafe(32)`, store only its SHA-256, set the `opticorr_session` cookie
+  `secrets.token_urlsafe(32)`, store only its SHA-256, set the `netcorenoc_session` cookie
   (`HttpOnly; SameSite=Strict; Path=/`, `+Secure` when TLS on). A **new id is always
   minted** (fixation defence). `login.ok` / `login.fail` / `login.lockout` audited.
 - **Session resolution**: hash the cookie, look up the row, reject if idle
@@ -146,7 +146,7 @@ hash matches the stored id. `details` is redacted at the call site and again at 
 (`audit.redact_details`). `BEFORE UPDATE`/`BEFORE DELETE` triggers make the table
 append-only even to the app; the sole sanctioned deleter is the admin audit-retention
 prune, which drops and recreates the triggers inside one locked, audited transaction
-(DECISIONS v0.2 #3). Tooling: `python -m opticorr audit verify|export`.
+(DECISIONS v0.2 #3). Tooling: `python -m netcorenoc audit verify|export`.
 
 ### F4 community tagging (the one datagram-path change)
 
@@ -300,3 +300,83 @@ source is the NE, the v1 agent-address is exposed as a varbind, DECISIONS v0.3 #
 - Entity affinity is NE-level; intra-NE structure is the fixed `SAME_NE_AFFINITY`, not a
   learned entity×entity statistic (deliberate, above).
 - `alarm.device_id` is redundant with `ne_id` for one version; its removal is a v0.4.0 line.
+
+## v0.4.0 — hardening under the NetCoreNOC identity (no new inference)
+
+v0.4.0 adds security and reliability, not intelligence. The design additions are all on the
+HTTP/maintenance side; the ingest path (`datagram_received` → queue → engine) is frozen
+(Invariant 2). **No schema migration is required.** The chosen work — response shaping,
+task supervision, readiness, integrity checks, graceful shutdown, container hardening, the
+corpus/simulator — is presentation-, control-, or tooling-side and touches no table or column.
+The `device_id` cutover, the one change that *would* need a `0005_*.sql`, is re-deferred to
+v0.5.0 (DECISIONS #35), so this release ships **zero** migrations.
+
+### Response-shaping serializer (`netcorenoc/shaping.py`) and its role model
+
+A single, small module owns field-level authorization so it is *one* decision point, never
+scattered `if role ==` checks (the same discipline `rbac.py` applies to routes). The model:
+
+- **Roles are ordered** viewer < editor < admin (reusing `rbac.ROLE_RANK`); a field is declared
+  with the *minimum role* that may see it in full. A caller below that role gets the field
+  **redacted** (dropped) or **coarsened** (e.g. a source IP → its `/24` network, a `community_tag`
+  → absent) — never the raw value.
+- **Deny-by-default for fields**: a serializer takes the store's row dicts and a role and returns
+  a role-appropriate projection. Endpoints call it in one place; adding a field without a rule
+  means it is not emitted to lower roles until a rule is written (fail-closed).
+- **What is shaped** (from the §A.3 audit): `quarantine.source` and quarantine internals (admin
+  full, editor coarsened, viewer counts-only via stats), session `source_ip` (never to non-admin),
+  `community_tag` (admin/editor only), raw device IPs in situation/graph/timeline (viewers get the
+  label or a coarsened form where a label is absent). The shaping is presentation-only: the engine
+  and the audit log keep full fidelity.
+
+### Task supervision
+
+`main.run` replaces the bare `asyncio.gather(*tasks)` with a `supervise(name, coro_factory)`
+wrapper per long-lived task (receiver-drain via the engine, maintenance loop, SSE is per-request
+so it is guarded differently). A supervised task that raises is: logged through the redaction
+filter, counted, restarted with capped exponential backoff where restart is safe (engine,
+maintenance), and surfaced through `operator_warnings()` as a persistent banner. A task that is
+*cancelled* (shutdown) is not restarted. The supervisor never touches the trap datagram path.
+
+### Readiness signal
+
+`/healthz` stays a pure liveness probe (process up). A new **`/readyz`** is the orchestrator
+readiness signal: it returns `200 {"status":"ready"}` only when the DB is reachable, migrations are
+applied (`PRAGMA user_version` == latest), and the queue is below a saturation threshold; otherwise
+`503 {"status":"not ready"}`. It is unauthenticated (orchestrators cannot present a session) and so
+**leaks no detail** beyond ok/not-ok — the reasons live behind authenticated `/api/stats`.
+
+### Store integrity and fault handling
+
+`Store.open` runs `PRAGMA integrity_check` and `PRAGMA foreign_key_check` once and, on a damaged
+result, records an `operator_warning` rather than crashing (a NOC trap sink must keep ingesting
+even with a partly-damaged history DB). WAL checkpointing cadence is documented and left to
+SQLite's automatic checkpointer plus the clean-shutdown commit. `sqlite3.OperationalError`
+(locked/busy/disk-full) raised inside a batch is caught at the engine boundary, logged, folded
+into an `ingest_gap`-style operator signal, and the batch is retried/abandoned without breaking the
+audit chain (the chain only advances on a successful commit).
+
+### Graceful shutdown
+
+On SIGTERM the process stops the transport (no new datagrams), drains the queue into a final
+bounded set of batches, flushes the profiler, runs a last maintenance pass, and commits — all
+within a deadline. Because the audit chain only advances on commit, an interrupted drain leaves a
+consistent chain (verified by `test_graceful_shutdown_*`).
+
+### UI design-token system and role-gated rendering
+
+`style.css` gains a `:root` design-token layer (colour, spacing, type scale, elevation, radii) with
+a dark default and a `prefers-color-scheme: light` variant — **all in the stylesheet**, since the
+strict CSP forbids injected/inline styles. Role gating stays where it is (the `TABS`/`canEdit`/
+`isAdmin` gate in `app.js`) and is strengthened so a lower role's DOM contains *none* of the
+higher-role control ids (hidden, not disabled). Every externally-sourced string still reaches the
+DOM only through `text()`/`el(...,{text})`/`esc()` (F1). The UI stays exactly four files.
+
+### Where the trap simulator lives (and why it never touches the runtime)
+
+The declarative scenario format + simulator live under `eval/` and `tools/` only
+(`eval/scenario_dsl.py`, `tools/trap_sim.py`), reusing `tools/trap_replay.py` for the real-UDP
+path. They are **never imported by `netcorenoc/`** and add no runtime dependency. Realistic vendor
+OIDs live exclusively in these scenarios and the corpus — the engine still learns them blind. This
+is the structural guarantee behind the zero-config identity: vendor semantics are test data, not
+runtime knowledge.

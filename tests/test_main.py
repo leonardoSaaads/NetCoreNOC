@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from opticorr.events import QuarantinedPacket
-from opticorr.main import GAP_CLOSE_S, Engine, FlapDetector, GapTracker, Settings
-from opticorr.receiver import QueueItem
-from opticorr.store import Store
+from netcorenoc.events import QuarantinedPacket
+from netcorenoc.main import GAP_CLOSE_S, Engine, FlapDetector, GapTracker, Settings
+from netcorenoc.receiver import QueueItem
+from netcorenoc.store import Store
 
 import util
 from util import run_engine_until
@@ -19,11 +19,40 @@ def test_settings_from_env_defaults() -> None:
 
 
 def test_settings_from_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPTICORR_TRAP_PORT", "1162")
-    monkeypatch.setenv("OPTICORR_ALLOWLIST", "10.0.0.0/8")
+    monkeypatch.setenv("NETCORENOC_TRAP_PORT", "1162")
+    monkeypatch.setenv("NETCORENOC_ALLOWLIST", "10.0.0.0/8")
     settings = Settings.from_env()
     assert settings.trap_port == 1162
     assert settings.allowlist == "10.0.0.0/8"
+
+
+def test_settings_legacy_env_alias_still_works(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Rebrand (v0.4.0, DECISIONS #34): legacy OPTICORR_* env names are honoured for one
+    version and emit a single deprecation warning per variable, naming the variable only."""
+    import netcorenoc.main as main_mod
+
+    main_mod._warned_legacy_env.clear()
+    monkeypatch.delenv("NETCORENOC_TRAP_PORT", raising=False)
+    monkeypatch.setenv("OPTICORR_TRAP_PORT", "1162")
+    with caplog.at_level("WARNING", logger="netcorenoc"):
+        settings = Settings.from_env()
+        Settings.from_env()  # a second read must NOT warn again
+    assert settings.trap_port == 1162
+    warnings = [r for r in caplog.records if "OPTICORR_TRAP_PORT" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "NETCORENOC_TRAP_PORT" in warnings[0].getMessage()  # points at the new name
+    assert "1162" not in warnings[0].getMessage()  # never the value
+
+
+def test_settings_new_env_takes_precedence_over_legacy(monkeypatch: pytest.MonkeyPatch) -> None:
+    import netcorenoc.main as main_mod
+
+    main_mod._warned_legacy_env.clear()
+    monkeypatch.setenv("NETCORENOC_TRAP_PORT", "5000")
+    monkeypatch.setenv("OPTICORR_TRAP_PORT", "1162")
+    assert Settings.from_env().trap_port == 5000
 
 
 async def test_gap_tracker_opens_persists_and_audits(store: Store) -> None:

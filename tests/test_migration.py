@@ -7,8 +7,8 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from opticorr import audit, auth
-from opticorr.store import MIGRATIONS_DIR, Store
+from netcorenoc import audit, auth
+from netcorenoc.store import MIGRATIONS_DIR, Store
 
 
 def _build_v010_db(path: str) -> None:

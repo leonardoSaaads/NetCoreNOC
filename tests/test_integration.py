@@ -7,9 +7,9 @@ import asyncio
 import contextlib
 from pathlib import Path
 
-from opticorr.main import Engine
-from opticorr.receiver import QueueItem, start_receiver
-from opticorr.store import Store
+from netcorenoc.main import Engine
+from netcorenoc.receiver import QueueItem, start_receiver
+from netcorenoc.store import Store
 
 import trap_replay
 import util

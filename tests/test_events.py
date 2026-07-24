@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from opticorr.events import TrapEvent, Varbind
+from netcorenoc.events import TrapEvent, Varbind
 from pydantic import ValidationError
 
 

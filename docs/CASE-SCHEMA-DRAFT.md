@@ -1,7 +1,7 @@
 # CASE schema — draft (specification only, not implemented in v0.3.0)
 
 This document defines the versioned JSON contract that will eventually cross the boundary
-from OptiCorr (correlation and inference) to the downstream systems that consume it — first
+from NetCoreNOC (correlation and inference) to the downstream systems that consume it — first
 automated testing, later ticket creation. **It is not implemented in v0.3.0.** It is written
 now because it defines what v0.4.0 and v0.5.0 must *produce*; specifying it last would
 guarantee rework in all three versions.

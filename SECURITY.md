@@ -1,6 +1,6 @@
-# OptiCorr Security & Operations Guide
+# NetCoreNOC Security & Operations Guide
 
-OptiCorr v0.2.0 adds identity, role-based authorization, and a tamper-evident audit log.
+NetCoreNOC v0.2.0 adds identity, role-based authorization, and a tamper-evident audit log.
 This guide is for the operator deploying and running it.
 
 ## Reporting a vulnerability
@@ -12,15 +12,15 @@ Include the version, a description, and reproduction steps.
 
 1. **Bind the trap listener to the management interface** and **set an allowlist**:
    ```sh
-   OPTICORR_ALLOWLIST=10.20.0.0/16,192.0.2.10 \
-   OPTICORR_TRAP_HOST=10.20.0.5 OPTICORR_HTTP_HOST=10.20.0.5 \
-   python -m opticorr.main
+   NETCORENOC_ALLOWLIST=10.20.0.0/16,192.0.2.10 \
+   NETCORENOC_TRAP_HOST=10.20.0.5 NETCORENOC_HTTP_HOST=10.20.0.5 \
+   python -m netcorenoc.main
    ```
-   With no allowlist every source is accepted (zero-config default) and OptiCorr shows a
+   With no allowlist every source is accepted (zero-config default) and NetCoreNOC shows a
    persistent banner to admins until you set one.
-2. **Terminate TLS.** Either give OptiCorr a certificate directly, or front it with a
-   reverse proxy (below). Without TLS on a non-loopback bind, OptiCorr warns admins.
-3. **Complete the bootstrap.** On first start OptiCorr prints a one-time `admin` password
+2. **Terminate TLS.** Either give NetCoreNOC a certificate directly, or front it with a
+   reverse proxy (below). Without TLS on a non-loopback bind, NetCoreNOC warns admins.
+3. **Complete the bootstrap.** On first start NetCoreNOC prints a one-time `admin` password
    to the console inside a banner. Sign in, change it immediately (you are forced to), and
    create per-operator accounts with the least role each needs.
 4. **Issue service tokens, not shared secrets.** For scripts and integrations, create a
@@ -34,22 +34,22 @@ Include the version, a description, and reproduction steps.
 | **editor** | viewer + confirm/split feedback, rename devices/classes, close/ack situations |
 | **admin** | editor + manage users/tokens, change runtime config, read quarantine, read/export/prune the audit log |
 
-Authorization is deny-by-default and enforced from a single map (`opticorr/rbac.py`);
+Authorization is deny-by-default and enforced from a single map (`netcorenoc/rbac.py`);
 viewers never see mutating controls in the UI.
 
 ## TLS options
 
 **Built-in** (simplest):
 ```sh
-OPTICORR_TLS_CERT=/etc/opticorr/tls.crt OPTICORR_TLS_KEY=/etc/opticorr/tls.key \
-python -m opticorr.main
+NETCORENOC_TLS_CERT=/etc/netcorenoc/tls.crt NETCORENOC_TLS_KEY=/etc/netcorenoc/tls.key \
+python -m netcorenoc.main
 ```
 The session cookie automatically gains the `Secure` flag when TLS is enabled.
 
-**Reverse proxy** (e.g. nginx/Caddy terminating TLS): proxy `/` to OptiCorr's HTTP port on
+**Reverse proxy** (e.g. nginx/Caddy terminating TLS): proxy `/` to NetCoreNOC's HTTP port on
 loopback. Because the cookie is `SameSite=Strict` and CSRF also checks `Origin`/`Host`,
 make sure the proxy preserves the `Host` header and forwards the browser `Origin`. If the
-proxy terminates TLS, OptiCorr's own listener may stay plain HTTP on loopback (no warning
+proxy terminates TLS, NetCoreNOC's own listener may stay plain HTTP on loopback (no warning
 is shown for a loopback bind).
 
 ## Sessions, passwords, throttling
@@ -70,17 +70,17 @@ append-only, hash-chained `audit_log` row. History is immutable even to the appl
 
 - **Verify integrity** (run this periodically, e.g. from cron):
   ```sh
-  python -m opticorr audit verify      # or: make audit-verify
+  python -m netcorenoc audit verify      # or: make audit-verify
   ```
   It walks the chain and reports the first broken link, if any.
 - **Back up / export**:
   ```sh
-  python -m opticorr audit export > audit-$(date +%F).ndjson
+  python -m netcorenoc audit export > audit-$(date +%F).ndjson
   ```
   Emits one JSON row per line plus the final chain hash on stderr. Keep exports off-box so
   the audit trail survives loss of the node.
 - **Retention**: audit rows are excluded from the ordinary prune and kept for
-  `OPTICORR_AUDIT_RETENTION_DAYS` (default 365). Only an explicit admin action removes old
+  `NETCORENOC_AUDIT_RETENTION_DAYS` (default 365). Only an explicit admin action removes old
   rows, and that prune is itself audited. Pruning removes only the oldest rows, so the
   surviving suffix stays verifiable against an archived boundary hash.
 
@@ -88,7 +88,7 @@ append-only, hash-chained `audit_log` row. History is immutable even to the appl
 
 The admin UI shows a persistent warning when a deployment default is risky:
 
-- **"Trap allowlist is empty"** — every source IP is accepted. Set `OPTICORR_ALLOWLIST`
+- **"Trap allowlist is empty"** — every source IP is accepted. Set `NETCORENOC_ALLOWLIST`
   (or configure it under admin → Config) to the CIDRs your equipment sends from.
 - **"HTTP is not using TLS on a non-loopback bind"** — credentials could travel cleartext.
   Enable built-in TLS or a TLS reverse proxy.
@@ -101,7 +101,28 @@ removed in v0.3.0** — migrate every client to a named service token. See `MIGR
 
 ## Data at rest
 
-`opticorr.db` contains scrypt password hashes, SHA-256 session/token digests, the audit
+`netcorenoc.db` contains scrypt password hashes, SHA-256 session/token digests, the audit
 log, learned state, and quarantined packet metadata (community strings are never stored).
 Protect the file with filesystem permissions and back it up alongside your audit exports.
 Run the process as a non-root user (the bundled Dockerfile already does).
+
+## Container deployment (CIS-style hardening, v0.4.0)
+
+The image is multi-stage (no build tools in the final layer) and runs as a non-root user
+(`netcorenoc`, uid 10001). The only path it writes is the SQLite database, so it runs fine with a
+read-only root filesystem. Recommended hardened run:
+
+```
+docker run --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --tmpfs /tmp -v netcorenoc-data:/home/netcorenoc \
+  -p 162:162/udp -p 8080:8080 netcorenoc
+```
+
+- **Pin the base image by digest** for a reproducible, tamper-evident build. The `Dockerfile`
+  pins a specific patch tag (`python:3.12.8-slim`); to pin the digest, run
+  `docker inspect --format='{{index .RepoDigests 0}}' python:3.12.8-slim` and substitute
+  `python@sha256:<digest>`.
+- **Vendored assets** (d3) are integrity-pinned in `netcorenoc/ui/vendor/CHECKSUMS.txt` and
+  checked by CI (`make checksums`); a tampered swap fails the build.
+- **Back up** the database with a copy-with-WAL or `sqlite3 netcorenoc.db ".backup out.db"`, and
+  run `netcorenoc audit verify` periodically to confirm the audit chain is intact.

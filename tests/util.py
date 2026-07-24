@@ -9,9 +9,9 @@ import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from opticorr.events import TrapEvent, Varbind
-from opticorr.main import Engine
-from opticorr.receiver import QueueItem, parse_trap
+from netcorenoc.events import TrapEvent, Varbind
+from netcorenoc.main import Engine
+from netcorenoc.receiver import QueueItem, parse_trap
 
 import trap_replay
 

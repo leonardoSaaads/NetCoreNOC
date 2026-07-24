@@ -1,4 +1,4 @@
-"""CLI (`python -m opticorr audit ...`), runtime config, and JSON logging coverage."""
+"""CLI (`python -m netcorenoc audit ...`), runtime config, and JSON logging coverage."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from opticorr import __main__ as cli
-from opticorr import audit
-from opticorr.logsetup import JsonFormatter
-from opticorr.runtime import RuntimeConfig
-from opticorr.store import Store
+from netcorenoc import __main__ as cli
+from netcorenoc import audit
+from netcorenoc.logsetup import JsonFormatter
+from netcorenoc.runtime import RuntimeConfig
+from netcorenoc.store import Store
 
 
 async def _seed(db: str, actions: list[str]) -> None:
@@ -37,7 +37,7 @@ def test_audit_verify_cli_empty(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     db = str(tmp_path / "a.db")
-    monkeypatch.setenv("OPTICORR_DB", db)
+    monkeypatch.setenv("NETCORENOC_DB", db)
     asyncio.run(_seed(db, []))
     rc = cli.main(["audit", "verify"])
     assert rc == 0
@@ -48,7 +48,7 @@ def test_audit_verify_cli_detects_tamper(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     db = str(tmp_path / "b.db")
-    monkeypatch.setenv("OPTICORR_DB", db)
+    monkeypatch.setenv("NETCORENOC_DB", db)
     asyncio.run(_seed(db, ["login.ok", "feedback", "logout"]))
     raw = sqlite3.connect(db)
     raw.execute("DROP TRIGGER audit_log_no_update")
@@ -64,6 +64,9 @@ def test_audit_export_cli(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     db = str(tmp_path / "c.db")
+    # Deliberately exercise the legacy alias: the CLI honours OPTICORR_DB for one version and
+    # warns once on stderr (rebrand, DECISIONS #34).
+    monkeypatch.delenv("NETCORENOC_DB", raising=False)
     monkeypatch.setenv("OPTICORR_DB", db)
     asyncio.run(_seed(db, ["login.ok", "logout"]))
     rc = cli.main(["audit", "export"])
@@ -71,6 +74,7 @@ def test_audit_export_cli(
     assert rc == 0
     assert captured.out.count("\n") == 2  # one NDJSON line per row
     assert "final_chain_hash" in captured.err
+    assert "OPTICORR_DB is deprecated" in captured.err
 
 
 def test_cli_requires_subcommand() -> None:
@@ -105,6 +109,6 @@ def test_json_formatter_emits_json() -> None:
     import json
     import logging
 
-    record = logging.LogRecord("opticorr", logging.INFO, __file__, 1, "hello", None, None)
+    record = logging.LogRecord("netcorenoc", logging.INFO, __file__, 1, "hello", None, None)
     payload = json.loads(JsonFormatter().format(record))
     assert payload["message"] == "hello" and payload["level"] == "INFO"

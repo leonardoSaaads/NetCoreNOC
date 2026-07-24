@@ -5,8 +5,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-from opticorr import auth
-from opticorr.store import Store
+from netcorenoc import auth
+from netcorenoc.store import Store
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 

@@ -6,10 +6,10 @@ import sqlite3
 
 import httpx
 import pytest
-from opticorr import audit
-from opticorr.api import create_app
-from opticorr.main import Engine
-from opticorr.store import Store
+from netcorenoc import audit
+from netcorenoc.api import create_app
+from netcorenoc.main import Engine
+from netcorenoc.store import Store
 
 import authutil
 import util
@@ -32,7 +32,7 @@ async def _drive_every_action(store: Store) -> tuple[Engine, httpx.AsyncClient]:
     await util.drive(engine, engine.queue, util.fixture_events("fiber_cut.json", BASE))
     # Also quarantine one malformed packet so the quarantine viewer has content.
     async with store.lock:
-        from opticorr.receiver import quarantine_packet
+        from netcorenoc.receiver import quarantine_packet
 
         await store.quarantine_packet(quarantine_packet("10.0.0.9", b"\x30\x05bad", "ber", BASE))
         await store.commit()

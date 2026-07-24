@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from opticorr import auth
-from opticorr.store import Store
+from netcorenoc import auth
+from netcorenoc.store import Store
 
 import authutil
 
@@ -144,8 +144,8 @@ async def test_session_idle_slides_on_activity(store: Store) -> None:
 async def test_session_fixation_new_id_each_login(store: Store) -> None:
     _engine, _queue, app = await authutil.make_env(store)
     async with authutil.new_client(app) as c:
-        first = (await authutil.login(c, "viewer")).cookies["opticorr_session"]
-        second = (await authutil.login(c, "viewer")).cookies["opticorr_session"]
+        first = (await authutil.login(c, "viewer")).cookies["netcorenoc_session"]
+        second = (await authutil.login(c, "viewer")).cookies["netcorenoc_session"]
     assert first != second  # a fresh id is minted on every login
 
 
@@ -227,8 +227,8 @@ async def test_bootstrap_admin_created_once(store: Store) -> None:
 async def test_bootstrap_login_requires_password_change_then_grants_access(store: Store) -> None:
     import asyncio
 
-    from opticorr.api import create_app
-    from opticorr.main import Engine
+    from netcorenoc.api import create_app
+    from netcorenoc.main import Engine
 
     engine = Engine(store, asyncio.Queue())
     await engine.start()

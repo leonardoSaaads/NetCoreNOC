@@ -11,10 +11,10 @@ from pathlib import Path
 
 import httpx
 import pytest
-from opticorr.api import create_app
-from opticorr.main import Engine, Settings, run
-from opticorr.receiver import QueueItem
-from opticorr.store import Store
+from netcorenoc.api import create_app
+from netcorenoc.main import Engine, Settings, run
+from netcorenoc.receiver import QueueItem
+from netcorenoc.store import Store
 
 import trap_replay
 import util
@@ -34,7 +34,7 @@ async def engine_env(store: Store) -> tuple[Engine, asyncio.Queue[QueueItem]]:
 async def _seed_admin_token(store: Store, value: str = TOKEN) -> None:
     """The legacy shared token is gone (§5.8); the v0.2.0 API tests now authenticate with a
     real admin service token bound to the Bearer value."""
-    from opticorr import auth
+    from netcorenoc import auth
 
     async with store.lock:
         await store.create_token(auth.hash_token(value), "test", "admin", "adm", 0.0)
@@ -50,7 +50,7 @@ async def client(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
-        base_url="http://opticorr.test",
+        base_url="http://netcorenoc.test",
         headers={"Authorization": f"Bearer {TOKEN}"},
     ) as c:
         yield c
@@ -71,7 +71,7 @@ async def test_index_serves_the_single_file_ui(client: httpx.AsyncClient) -> Non
     response = await client.get("/", headers={"Authorization": ""})
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "d3" in response.text and "OptiCorr" in response.text
+    assert "d3" in response.text and "NetCoreNOC" in response.text
 
 
 async def test_api_requires_token(client: httpx.AsyncClient) -> None:
@@ -198,7 +198,7 @@ async def test_rate_limit_returns_429(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
-        base_url="http://opticorr.test",
+        base_url="http://netcorenoc.test",
         headers={"Authorization": f"Bearer {TOKEN}"},
     ) as client:
         statuses = [(await client.get("/api/stats")).status_code for _ in range(8)]
@@ -210,7 +210,7 @@ async def test_end_to_end_udp_replay_to_http(
     client: httpx.AsyncClient, engine_env: tuple[Engine, asyncio.Queue[QueueItem]]
 ) -> None:
     """The demo path: real trap PDUs over UDP, verified through the HTTP API."""
-    from opticorr.receiver import start_receiver
+    from netcorenoc.receiver import start_receiver
 
     engine, queue = engine_env
     transport, _receiver = await start_receiver(queue, "127.0.0.1", 0)
@@ -280,7 +280,7 @@ def free_port() -> int:
 
 async def test_main_run_serves_real_sockets(tmp_path: Path) -> None:
     """Smoke test of the single-process wiring: UDP trap in, HTTP API out."""
-    from opticorr import auth
+    from netcorenoc import auth
 
     db = str(tmp_path / "run.db")
     settings = Settings(
@@ -322,7 +322,7 @@ async def test_main_run_serves_real_sockets(tmp_path: Path) -> None:
 
             await util.eventually(ingested, timeout=10.0)
             page = await client.get(f"{base}/")
-            assert "OptiCorr" in page.text
+            assert "NetCoreNOC" in page.text
     finally:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

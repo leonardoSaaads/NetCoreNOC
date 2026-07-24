@@ -1,4 +1,4 @@
-# OptiCorr v0.2.0 — Threat Model
+# NetCoreNOC v0.2.0 — Threat Model
 
 Lightweight STRIDE over the v0.2.0 attack surface. This document has the same authority
 as `docs/SCOPE-0.2.md` once written: on any security-relevant ambiguity, the stricter
@@ -39,7 +39,7 @@ HTTP side is the security perimeter and is where all v0.2.0 controls live.
   management, config, quarantine, or audit.
 - **A4 — stolen cookie.** Possesses a session cookie lifted from a browser or the wire.
   Goal: ride the session, cross-site, or outlive its window.
-- **A5 — stolen DB file.** Has a copy of `opticorr.db`. Goal: recover live sessions,
+- **A5 — stolen DB file.** Has a copy of `netcorenoc.db`. Goal: recover live sessions,
   passwords, tokens, or the community string; or forge audit history.
 
 ## STRIDE by component
@@ -106,7 +106,7 @@ HTTP side is the security perimeter and is where all v0.2.0 controls live.
   `test_session_idle_expiry`, `test_session_absolute_expiry`, `test_logout_revokes`,
   `test_password_change_revokes_sessions`, `test_role_change_revokes_sessions`.
 - **Tampering — CSRF on cookie auth (A4).** *Control:* for cookie-authenticated mutating
-  requests, `Origin`/`Referer` host must match `Host` and header `X-OptiCorr-Client: ui`
+  requests, `Origin`/`Referer` host must match `Host` and header `X-NetCoreNOC-Client: ui`
   must be present; `SameSite=Strict` is the third layer. Bearer-token requests are exempt.
   *Test:* `test_csrf_origin_mismatch_rejected`, `test_csrf_header_required`.
 - **Information disclosure — credentials on the wire / in storage (F5, A4, A5).**
@@ -124,7 +124,7 @@ HTTP side is the security perimeter and is where all v0.2.0 controls live.
   strings); a root-logger redaction filter and a CI secret-leak scan back it up. *Test:*
   `test_audit_details_redacted`, `test_f3_secret_leak_scan`.
 - **Availability — audit growth / accidental prune.** *Control:* audit rows are excluded
-  from the general prune; a dedicated `OPTICORR_AUDIT_RETENTION_DAYS` (default 365)
+  from the general prune; a dedicated `NETCORENOC_AUDIT_RETENTION_DAYS` (default 365)
   archive+prune is admin-only and itself audited. *Test:* `test_audit_excluded_from_prune`,
   `test_audit_manual_prune_audited`.
 
@@ -233,7 +233,7 @@ test, never grown) the moment a third distinct value appears. *Test:* `test_prof
 A hostile trap stream trains a wrong entity discriminator, severity, or state field.
 *Control:* the promotion thresholds (score, evidence, cardinality) and the 1.25× margin over
 the runner-up make a single burst insufficient; an admin-only, audited reset
-(`entity.reset` / `profile.reset`) recovers. *Residual risk (accepted, documented):* OptiCorr
+(`entity.reset` / `profile.reset`) recovers. *Residual risk (accepted, documented):* NetCoreNOC
 trusts its trap sources; the source allowlist is the network control. A source already
 trusted to report can bias learning within the thresholds; the reset and the inspectable
 `key_source`/`confidence` are the operator's recourse. *Test:*
@@ -276,3 +276,102 @@ fail-closed `test_every_api_route_has_permission`.
 Entity-key XSS, entity-cardinality DoS, profiler memory DoS, learning poisoning, and silent
 misattribution each appear above with a control and a named Phase-4 test. Gate 1 requires
 this table to be complete.
+
+---
+
+# v0.4.0 extension — hardening under the NetCoreNOC identity
+
+Same authority as the v0.2.0/v0.3.0 model. This release adds **no inference surface**; the new
+and changed surfaces are the response-shaping serializer, the role-gated UI views, the task
+supervision / readiness / shutdown machinery, and the container. STRIDE below; each threat maps to
+a control and a named Phase-4 test. The rebrand itself (env aliases, cookie/CSRF-header rename) is
+a naming change with one behavioural consequence — a forced re-login when the cookie name changes —
+and no new trust boundary.
+
+## Changed asset — response bodies as a disclosure channel
+
+Read endpoints are viewer-readable, but a viewer must not receive operational secrets or sensitive
+network detail merely because the *route* is viewer-readable. Over-disclosed fields (raw source
+IPs, `community_tag`, quarantine metadata surfaced via stats, session `source_ip`, internal ids)
+are a real **Information Disclosure** surface distinct from route authorization.
+
+## STRIDE — new/changed surface
+
+### Response shaping (A1, A2) — over-disclosure to lower roles — **F-review seed**
+- **I**: a viewer reading a viewer-gated endpoint receives fields intended for editors/admins
+  (source IPs, community-grouping tags, quarantine internals).
+- **Control**: a single role-keyed serializer (`netcorenoc/shaping.py`) redacts/coarsens per role;
+  deny-by-default extends to fields. *Test:* role × endpoint field-visibility (`test_shaping_*`,
+  and abuse-suite over-disclosure assertions). **F7.**
+
+### RBAC single source (A2) — a second, drifting authorization table — **F-review seed**
+- **T/E**: `AUDITED_DENIED_PERMISSIONS` (rbac) and `DENIED_ACTION` (api) encode the same fact
+  twice; a future edit to one silently diverges, so a denied sensitive read stops being audited.
+- **Control**: derive the audited-denied set from the single `rbac.py` source; a divergence test
+  fails CI if they ever disagree. **F8.** Related dead code (`auth.ROLES`, `auth.now_s`) removed to
+  shrink the surface.
+
+### Config read authorization (A2) — read behind a write capability — **F-review seed**
+- **E**: `GET /api/config` requires `config.write` (admin) — a read authorised through a write
+  capability, an odd least-privilege posture that also blocks a future read-only operator role.
+- **Control**: decide deliberately — introduce a least-privilege `config.read` at the correct role
+  or document the admin-only read in DECISIONS — and make the authorization-matrix test reflect the
+  choice. **F9.**
+
+### Background tasks (A5) — silent death of the engine/receiver/maintenance/SSE
+- **D**: an unhandled exception in a supervised task kills it; ingestion or correlation silently
+  stops with no operator signal.
+- **Control**: a supervisor logs the (redacted) crash, restarts with backoff where safe, and
+  surfaces it through `operator_warnings()`. *Test:* kill a task, assert recovery + warning
+  (`test_supervision_*`). **F10.**
+
+### Store under fault (A5) — DB locked/busy/disk-full or a damaged file
+- **D/T**: a `sqlite3` operational error crashes the process mid-write, or a corrupted DB is
+  loaded silently, risking a broken audit chain.
+- **Control**: operational errors are caught and surfaced without crashing or corrupting the chain;
+  a startup `PRAGMA integrity_check` / `foreign_key_check` warns (never crashes) on a damaged DB.
+  *Test:* DB-locked mid-write and integrity-warn (`test_store_fault_*`). **F11.**
+
+### Readiness endpoint (A2, A6) — detail leak to the unauthenticated caller
+- **I**: a readiness probe that returns rich internal state (queue depth, migration versions, DB
+  paths) to an unauthenticated caller is a recon surface.
+- **Control**: `/readyz` returns only ok/not-ok (503 when not ready) to the unauthenticated caller;
+  detail stays behind authenticated `/api/stats`. *Test:* `test_readiness_*` asserts no detail leak.
+
+### Graceful shutdown (A5) — chain break or data loss on SIGTERM
+- **D/T**: an abrupt shutdown loses queued traps or writes a half-batch, breaking the audit chain.
+- **Control**: drain the queue and flush the profiler within a bounded deadline; the final
+  maintenance commit is atomic. *Test:* shutdown mid-stream, assert chain still verifies
+  (`test_graceful_shutdown_*`).
+
+### Container / supply chain (A6) — tampered asset or over-privileged runtime
+- **T**: the vendored `d3.v7.min.js` is swapped for a hostile build; the container runs as root
+  with a writable root filesystem and build tools present.
+- **Control**: `d3` SHA-256 pinned in `vendor/CHECKSUMS.txt`, asserted by a test and a CI job; base
+  image pinned by digest; non-root, read-only rootfs where feasible, dropped capabilities, no build
+  tools in the final image. *Test:* `test_vendor_checksum_*` + CI checksum job.
+
+### UI affordances (A2, A4) — offering actions the caller cannot perform
+- **E**: a viewer's DOM contains mutating controls or admin surfaces, implying access the server
+  will deny (confusing at best; a probing aid at worst).
+- **Control**: role-gated rendering hides (not disables) every control the role lacks; the server
+  still enforces. *Test:* viewer-session DOM contains none of the mutating control ids
+  (`test_ui_role_gated_*`), and the F1 XSS discipline is re-asserted on every new view.
+
+## New findings placeholders (F7…)
+
+| # | Severity | Area | Status |
+|---|----------|------|--------|
+| F7  | (tbd) | Response over-disclosure to lower roles | planned |
+| F8  | (tbd) | RBAC audited-denied duplication / drift | planned |
+| F9  | (tbd) | `GET /api/config` behind a write capability | planned |
+| F10 | (tbd) | Unsupervised background task death | planned |
+| F11 | (tbd) | Unhandled sqlite operational error / damaged DB | planned |
+| F12+ | (tbd) | Reserved for findings surfaced by the C.4 abuse suite | planned |
+
+## v0.4.0 coverage check
+
+Every threat above names a control and a Phase-4 test; every F7… row is tracked in
+`docs/SECURITY-REVIEW-0.4.md` (finding → fix → test). Gate 1 requires this table complete;
+Gate 4 requires every planned test green and every finding closed or explicitly deferred with a
+ROADMAP line.

@@ -6,10 +6,10 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from opticorr import varbind_profile
-from opticorr.events import TrapEvent, Varbind
-from opticorr.main import Engine
-from opticorr.store import Store
+from netcorenoc import varbind_profile
+from netcorenoc.events import TrapEvent, Varbind
+from netcorenoc.main import Engine
+from netcorenoc.store import Store
 
 import authutil
 
@@ -98,7 +98,7 @@ async def test_max_entities_per_ne_caps_warns_and_audits_without_failing_ingest(
 ) -> None:
     engine, _queue, _app = await authutil.make_env(store)
     # Promote first (small legitimate set), then flood with unique ids past a tiny cap.
-    monkeypatch.setattr("opticorr.main.MAX_ENTITIES_PER_NE", 5)
+    monkeypatch.setattr("netcorenoc.main.MAX_ENTITIES_PER_NE", 5)
     train = [
         _onu_event(cls, f"onu-{n}", BASE + i * 0.01)
         for i, (n, cls) in enumerate((n, c) for n in range(130) for c in (CLASS_A, CLASS_B))

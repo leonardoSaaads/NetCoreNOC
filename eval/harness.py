@@ -1,7 +1,7 @@
 """Deterministic offline replay of the labelled corpus into a metrics JSON.
 
 The harness reproduces the real ingestion path — it BER-encodes each corpus event to a
-genuine trap datagram, runs it through :func:`opticorr.receiver.parse_trap` (v1 traps that
+genuine trap datagram, runs it through :func:`netcorenoc.receiver.parse_trap` (v1 traps that
 the running version cannot decode are quarantined exactly as they would be on the wire),
 and drives the resulting item through the engine. It then aligns every predicted alarm to
 ground truth and computes the metrics in :mod:`metrics`.
@@ -34,15 +34,15 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent / "tools"))
 sys.path.insert(0, str(HERE))
 
-from opticorr.events import QuarantinedPacket, TrapEvent  # noqa: E402
-from opticorr.main import Engine  # noqa: E402
-from opticorr.receiver import (  # noqa: E402
+from netcorenoc.events import QuarantinedPacket, TrapEvent  # noqa: E402
+from netcorenoc.main import Engine  # noqa: E402
+from netcorenoc.receiver import (  # noqa: E402
     QueueItem,
     TrapParseError,
     parse_trap,
     quarantine_packet,
 )
-from opticorr.store import Store  # noqa: E402
+from netcorenoc.store import Store  # noqa: E402
 
 import metrics  # noqa: E402
 import trap_replay  # noqa: E402  (v2c encoder, shared with the replay tool)
@@ -365,7 +365,7 @@ def _fmt(v: Any) -> str:
 def _delta_table(current: dict[str, Any], baseline: dict[str, Any]) -> str:
     lines = [
         "",
-        "OptiCorr evaluation — aggregate metrics vs baseline",
+        "NetCoreNOC evaluation — aggregate metrics vs baseline",
         "=" * 62,
         f"{'metric':<26}{'baseline':>12}{'current':>12}{'delta':>12}",
     ]

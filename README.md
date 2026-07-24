@@ -1,7 +1,7 @@
-# OptiCorr
+# NetCoreNOC
 
 **Zero-configuration alarm correlation for network operations.** Point your equipment at
-OptiCorr as an SNMP trap destination — that's the whole setup. From the raw trap stream
+NetCoreNOC as an SNMP trap destination — that's the whole setup. From the raw trap stream
 alone (no MIBs, no mappings, no inventory, no topology files) it discovers devices,
 learns a living topology graph from alarm co-occurrence, groups related alarms into
 situations, and hints at the probable root cause. As of v0.3.0 it also learns *what* is
@@ -11,19 +11,19 @@ continuously from its own stream and from one-click operator feedback.
 
 One Python process. One SQLite file. One web UI.
 
-![CI](https://github.com/leonardoSaaads/NewProjectNetworj/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml/badge.svg)
 
 ## Quickstart (5 minutes)
 
 ### Docker
 
 ```sh
-docker build -t opticorr .
-docker run -d --name opticorr \
+docker build -t netcorenoc .
+docker run -d --name netcorenoc \
   -p 162:162/udp -p 8080:8080 \
-  -v opticorr-data:/home/opticorr \
-  opticorr
-docker logs opticorr   # shows the one-time bootstrap admin password
+  -v netcorenoc-data:/home/netcorenoc \
+  netcorenoc
+docker logs netcorenoc   # shows the one-time bootstrap admin password
 ```
 
 Point your devices' SNMP trap destination (v2c) at the host's IP, open
@@ -35,27 +35,27 @@ arrive. Create per-operator accounts (viewer / editor / admin) under **Users**, 
 ### Nix
 
 ```sh
-nix run github:leonardoSaaads/NewProjectNetworj
+nix run github:leonardoSaaads/NetCoreNOC
 # or, in a clone:  nix run .
 ```
 
-Binding UDP 162 needs privileges; unprivileged, run with `OPTICORR_TRAP_PORT=1162` and
+Binding UDP 162 needs privileges; unprivileged, run with `NETCORENOC_TRAP_PORT=1162` and
 point devices at port 1162.
 
 ### Plain Python (3.12+)
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install .
-.venv/bin/python -m opticorr.main
+.venv/bin/python -m netcorenoc.main
 ```
 
 ### No hardware handy?
 
-Start OptiCorr on an unprivileged port and replay the bundled fiber-cut scenario with
+Start NetCoreNOC on an unprivileged port and replay the bundled fiber-cut scenario with
 real SNMP PDUs over UDP:
 
 ```sh
-OPTICORR_TRAP_PORT=1162 .venv/bin/python -m opticorr.main &
+NETCORENOC_TRAP_PORT=1162 .venv/bin/python -m netcorenoc.main &
 make replay
 ```
 
@@ -63,15 +63,20 @@ make replay
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `OPTICORR_DB` | `opticorr.db` | SQLite file (WAL mode) |
-| `OPTICORR_TRAP_HOST` / `OPTICORR_TRAP_PORT` | `0.0.0.0` / `162` | Trap listener (UDP, SNMPv2c and, since v0.3.0, SNMPv1 via RFC 3584) |
-| `OPTICORR_HTTP_HOST` / `OPTICORR_HTTP_PORT` | `0.0.0.0` / `8080` | Web UI and API |
-| `OPTICORR_ALLOWLIST` | *(allow all)* | Comma-separated source CIDRs; set it to enforce |
-| `OPTICORR_API_TOKEN` | *(unset)* | **Removed in v0.3.0**: setting it is now a hard startup error naming the migration path — use service tokens |
-| `OPTICORR_RETENTION_DAYS` | `7` | Pruning horizon for cleared/closed history |
-| `OPTICORR_AUDIT_RETENTION_DAYS` | `365` | Retention for the audit log (admin-triggered prune only) |
-| `OPTICORR_TLS_CERT` / `OPTICORR_TLS_KEY` | *(unset)* | Enable built-in TLS; the session cookie then gains `Secure` |
-| `OPTICORR_LOG_JSON` | *(off)* | Structured JSON logging when set |
+| `NETCORENOC_DB` | `netcorenoc.db` | SQLite file (WAL mode) |
+| `NETCORENOC_TRAP_HOST` / `NETCORENOC_TRAP_PORT` | `0.0.0.0` / `162` | Trap listener (UDP, SNMPv2c and, since v0.3.0, SNMPv1 via RFC 3584) |
+| `NETCORENOC_HTTP_HOST` / `NETCORENOC_HTTP_PORT` | `0.0.0.0` / `8080` | Web UI and API |
+| `NETCORENOC_ALLOWLIST` | *(allow all)* | Comma-separated source CIDRs; set it to enforce |
+| `NETCORENOC_API_TOKEN` | *(unset)* | **Removed in v0.3.0**: setting it (or the legacy `OPTICORR_API_TOKEN`) is a hard startup error naming the migration path — use service tokens |
+| `NETCORENOC_RETENTION_DAYS` | `7` | Pruning horizon for cleared/closed history |
+| `NETCORENOC_AUDIT_RETENTION_DAYS` | `365` | Retention for the audit log (admin-triggered prune only) |
+| `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY` | *(unset)* | Enable built-in TLS; the session cookie then gains `Secure` |
+| `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging when set |
+
+> **Rebrand (v0.4.0):** the project was renamed from *OptiCorr* to **NetCoreNOC**. The legacy
+> `OPTICORR_*` variable names are still honoured for this one version and emit a single startup
+> deprecation warning each (naming the variable, never its value); they are removed in v0.5.0.
+> See `MIGRATION.md`.
 
 ## How it works — three numbers per decision
 
@@ -107,7 +112,7 @@ Cold start is honest: with nothing learned the class affinity `A` is zero and th
 affinity `E` is 1 only within a network element, so the temporal term alone must clear the
 threshold — two alarms group only when they are on the **same NE and within ≈ 21 s** of each
 other (Δt < 30·ln 2). Everything beyond that — cross-device correlation, raise/clear pairs,
-which varbind names the alarmed entity — is learned. Run OptiCorr in parallel with your
+which varbind names the alarmed entity — is learned. Run NetCoreNOC in parallel with your
 existing NMS from day one (it only needs a copy of the traps) and let it learn.
 
 ## Security (v0.2.0)
@@ -121,7 +126,7 @@ service tokens; optional built-in TLS with an auto-`Secure` cookie. The UI runs 
 strict CSP with locally vendored d3 (no CDN); externally sourced strings never touch
 `innerHTML`. The SNMPv2c community string is never persisted or logged (kept only as an
 HMAC grouping tag). An append-only, hash-chained audit log records every mutating action
-and sensitive read — verify it with `python -m opticorr audit verify`. Source-IP
+and sensitive read — verify it with `python -m netcorenoc audit verify`. Source-IP
 allowlist (enforced when set), per-client rate limiting, defensive parsing with
 quarantine, non-root container, no secrets in logs. `bandit`, `pip-audit`, and a
 secret-leak scan run in CI. See [`SECURITY.md`](SECURITY.md) and

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from hypothesis import given
 from hypothesis import strategies as st
-from opticorr.correlate import (
+from netcorenoc.correlate import (
     LINK_THRESHOLD,
     W_A,
     W_E,
@@ -10,7 +10,7 @@ from opticorr.correlate import (
     Correlator,
     WindowAlarm,
 )
-from opticorr.learn import MIN_EDGE_N, Learner
+from netcorenoc.learn import MIN_EDGE_N, Learner
 
 
 def wa(alarm_id: int, class_id: int, device_id: int, ts: float) -> WindowAlarm:
