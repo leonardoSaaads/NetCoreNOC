@@ -15,6 +15,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+
 from netcorenoc.api import CSP, UI_DIR, create_app
 from netcorenoc.events import Varbind
 from netcorenoc.main import Engine
@@ -194,9 +195,14 @@ def test_style_uses_design_tokens_light_variant_and_focus_states() -> None:
 
 
 def test_ui_stays_four_files() -> None:
-    """Hard constraint: the UI is exactly index.html, app.js, style.css, and vendor/."""
+    """Hard constraint (DECISIONS #38): the UI *code* is exactly index.html, app.js, style.css,
+    and vendor/. The standardized ``.well-known/`` served-metadata directory (RFC 9116
+    security.txt, added v0.5.0) is the only permitted non-code addition and holds no UI code."""
     entries = {p.name for p in UI_DIR.iterdir()}
-    assert entries == {"index.html", "app.js", "style.css", "vendor"}
+    assert entries - {".well-known"} == {"index.html", "app.js", "style.css", "vendor"}
+    well_known = UI_DIR / ".well-known"
+    if well_known.exists():
+        assert {p.name for p in well_known.iterdir()} == {"security.txt"}
 
 
 def test_csp_is_unchanged_and_forbids_inline() -> None:

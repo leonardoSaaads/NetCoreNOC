@@ -1,0 +1,76 @@
+# NetCoreNOC documentation
+
+The map of everything under `docs/`. NetCoreNOC is a zero-configuration SNMP trap correlator —
+one Python 3.12 asyncio process, one SQLite (WAL) file, one static web UI. Start with the
+project [`README.md`](../README.md) for what it is and how to run it; come here for design
+rationale, decisions, security, scope, and release history.
+
+New to the codebase? Read [`architecture/repo-map.md`](architecture/repo-map.md) first — a
+one-screen tour of the tree.
+
+## Areas
+
+| Area | What it is | Who it's for |
+|---|---|---|
+| [`architecture/`](architecture/) | How the system is built and where it's going | contributors, reviewers |
+| [`adr/`](adr/) | The append-only decision log (every ambiguity call, numbered) | contributors, maintainers |
+| [`security/`](security/) | Threat model, security reviews, operator hardening guide | operators, security reviewers |
+| [`scope/`](scope/) | Per-version product scope (what each release does and does not do) | maintainers, reviewers |
+| [`releases/`](releases/) | Per-version build reports (what changed, quality numbers, caveats) | anyone auditing a release |
+| [`gates/`](gates/) | Phase-gate evidence for each build (proof each phase's bar was met) | maintainers |
+| [`ROADMAP.md`](ROADMAP.md) | Post-MVP, ordered — everything out of the current scope lands here as one line | everyone |
+
+## Architecture
+
+- [`architecture/DESIGN.md`](architecture/DESIGN.md) — the design rationale, per version:
+  the queue→engine→store flow, learning, auth/audit, the learned entity model, and the v0.4.0
+  hardening.
+- [`architecture/repo-map.md`](architecture/repo-map.md) — a newcomer's one-screen tour of the
+  repository tree.
+- [`architecture/CASE-SCHEMA-DRAFT.md`](architecture/CASE-SCHEMA-DRAFT.md) — the versioned
+  `Case` JSON contract, specified ahead of implementation (spec only).
+- [`architecture/EXTENSIBILITY-0.6-DRAFT.md`](architecture/EXTENSIBILITY-0.6-DRAFT.md) — the
+  v0.6.0 configurability specification (admin RBAC, visibility scoping, pluggable match formula),
+  spec only, marked `v0.6.0: planned`.
+
+## Decisions
+
+- [`adr/DECISIONS.md`](adr/DECISIONS.md) — one append-only, numbered log of every
+  scope-ambiguity resolution and notable engineering choice (context → options → choice →
+  reason). See [`adr/README.md`](adr/README.md) for the format and rules.
+
+## Security
+
+- [`security/threat-model.md`](security/threat-model.md) — lightweight STRIDE over the attack
+  surface, extended per version. Holds the same authority as the scope docs: on any
+  security-relevant ambiguity, the stricter option wins.
+- [`security/SECURITY-REVIEW-0.2.md`](security/SECURITY-REVIEW-0.2.md),
+  [`security/SECURITY-REVIEW-0.4.md`](security/SECURITY-REVIEW-0.4.md),
+  [`security/SECURITY-REVIEW-0.5.md`](security/SECURITY-REVIEW-0.5.md) — the numbered
+  finding → fix → test reviews and standards-compliance mappings.
+- [`security/operations.md`](security/operations.md) — the **operator** security & operations
+  guide (deployment, TLS, roles, audit-log operations, container hardening). The root
+  [`../SECURITY.md`](../SECURITY.md) is the coordinated **vulnerability disclosure policy** (how
+  to report a vulnerability privately, response times, embargo, scope, safe harbour).
+
+## Scope
+
+- [`scope/SCOPE.md`](scope/SCOPE.md), [`scope/SCOPE-0.2.md`](scope/SCOPE-0.2.md),
+  [`scope/SCOPE-0.3.md`](scope/SCOPE-0.3.md), [`scope/SCOPE-0.4.md`](scope/SCOPE-0.4.md),
+  [`scope/SCOPE-0.5.md`](scope/SCOPE-0.5.md) — per-version product scope. Later documents state
+  only what changed; earlier invariants still hold.
+
+## Releases
+
+- [`releases/BUILD-REPORT.md`](releases/BUILD-REPORT.md) and the per-version
+  `BUILD-REPORT-0.x.md` — the build narrative, quality/perf numbers, decisions, and honest
+  caveats for each release.
+
+## Conventions
+
+- **Authority order.** On scope, the scope document for the version wins; on process and
+  quality, the build document wins; on security posture, the threat model wins.
+- **History is append-only.** The decision log is never renumbered; build reports and gate
+  evidence are point-in-time records and are not rewritten.
+- **Moves preserve history** (`git mv`) and every internal cross-link is checked
+  (`tests/test_structure.py::test_no_broken_relative_markdown_links`).

@@ -8,7 +8,7 @@
 FROM python:3.12.8-slim AS build
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
-COPY netcorenoc ./netcorenoc
+COPY src ./src
 RUN pip install --no-cache-dir --prefix=/install .
 
 FROM python:3.12.8-slim

@@ -2,22 +2,27 @@
 #   make qa PYTHON=python
 PYTHON ?= .venv/bin/python
 
-.PHONY: qa lint typecheck test security deadcode run replay loadtest burst fmt migrate \
-	audit-verify eval eval-baseline corpus sim
+.PHONY: qa lint typecheck test security deadcode checksums linkcheck run replay loadtest burst \
+	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim
 
 qa: lint typecheck deadcode test eval
 
 security:
-	$(PYTHON) -m bandit -q -c pyproject.toml -r netcorenoc tools
+	$(PYTHON) -m bandit -q -c pyproject.toml -r src/netcorenoc tools
 	$(PYTHON) -m pip_audit
 
 # Dead-code gate (§7): vulture over the runtime package with a committed allowlist.
 deadcode:
-	$(PYTHON) -m vulture netcorenoc vulture_allowlist.py
+	$(PYTHON) -m vulture src/netcorenoc vulture_allowlist.py
 
 # Vendored third-party asset integrity (§A.6): fail if d3's bytes drift from the pinned SHA-256.
 checksums:
 	$(PYTHON) -m pytest -q tests/test_supply_chain.py
+
+# Structure guard + documentation link check (v0.5.0): src/ layout, import resolution, and no
+# broken relative Markdown links. Also runs as part of `make test`.
+linkcheck:
+	$(PYTHON) -m pytest -q tests/test_structure.py
 
 lint:
 	$(PYTHON) -m ruff check .
@@ -80,3 +85,16 @@ migrate:
 # Walk the audit hash chain and report the first broken link.
 audit-verify:
 	$(PYTHON) -m netcorenoc audit verify
+
+# Local release-artifact build (no pipeline needed): sdist + wheel into ./dist.
+dist:
+	$(PYTHON) -m build
+	@echo "built sdist + wheel in ./dist"
+
+# Optional: also build the local Docker image (requires a running Docker daemon).
+dist-image:
+	docker build -t netcorenoc:local .
+
+# Verify the version agrees across pyproject.toml, the package, and the CHANGELOG before tagging.
+release-check:
+	$(PYTHON) tools/release_check.py

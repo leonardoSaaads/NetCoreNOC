@@ -1,5 +1,39 @@
 # Upgrading NetCoreNOC
 
+## v0.4.0 → v0.5.0 (organization/structure — no behaviour change)
+
+v0.5.0 makes the project legible, installable, and contributable. **Nothing in the running
+correlator changes** — not ingestion, learning, the API contract, the schema, or the UI
+behaviour. It is still one Python process over one SQLite file.
+
+### What changes for you
+
+- **Nothing operationally.** No schema migration, no config change, no data change. A live v0.4.0
+  database is read as-is; the audit chain still verifies across the upgrade
+  (`python -m netcorenoc audit verify`).
+- **The import path is unchanged** (`netcorenoc`), even though the source now lives under `src/`
+  (the PyPA layout). `pip install .` / `pip install netcorenoc-0.5.0-*.whl` and
+  `python -m netcorenoc.main` work exactly as before.
+- **Environment variables are unchanged.** All `NETCORENOC_*` names, and the legacy `OPTICORR_*`
+  aliases, still work. The alias removal that v0.4.0 scheduled for v0.5.0 has been **extended one
+  version to v0.6.0** (DECISIONS #39) — you have another release to rename them; they still emit a
+  one-time deprecation warning each.
+- **The easiest way to run it is now `docker compose up`.** The bundled `docker-compose.yml`
+  expresses the hardened run declaratively; copy `.env.example` to `.env` for any configuration.
+
+### The upgrade
+
+1. Back up the database (copy the file, or `sqlite3 netcorenoc.db ".backup backup.db"`).
+2. Install v0.5.0 into the same environment (`pip install .`), or `docker compose up --build`,
+   pointing `NETCORENOC_DB` at the existing database.
+3. Start the process. No migration runs (there is no schema change); learned state, sessions,
+   tokens, and the audit chain are untouched.
+
+### Rollback
+
+Reinstall v0.4.0 and restore the backup if you wish — but nothing in v0.5.0 writes an
+incompatible on-disk format, so a v0.4.0 binary reads a v0.5.0-touched database unchanged.
+
 ## v0.3.0 → v0.4.0 (the rebrand)
 
 v0.4.0 renames the project from *OptiCorr* to **NetCoreNOC** and hardens security and
@@ -10,9 +44,11 @@ Python process over one SQLite file.
 ### What the rename changes for you
 
 - **Environment variables** move from `OPTICORR_*` to `NETCORENOC_*`. The legacy `OPTICORR_*`
-  names are still honoured **for this one version** and emit a single startup deprecation
-  warning each (naming the variable, never its value). They are **removed in v0.5.0** — rename
-  them at your convenience before then. `NETCORENOC_*` wins if both are set.
+  names are still honoured and emit a single startup deprecation warning each (naming the
+  variable, never its value). The v0.4.0 removal target was **extended by one version**: they are
+  now **removed in v0.6.0** (DECISIONS #39 — v0.5.0 is an organization/structure release and
+  removing them here would be an unrelated breaking change) — rename them at your convenience
+  before then. `NETCORENOC_*` wins if both are set.
 - **The session cookie** is renamed `opticorr_session` → `netcorenoc_session`. This invalidates
   live sessions exactly once: **every operator re-logs-in after the upgrade.** No data is lost.
 - **The CSRF header** (browser UI only) changed `X-OptiCorr-Client` → `X-NetCoreNOC-Client`. The

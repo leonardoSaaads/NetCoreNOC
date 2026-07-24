@@ -1,6 +1,0 @@
-# SHA-256 checksums of vendored, self-hosted third-party assets (§A.6 supply-chain integrity).
-# The strict CSP forbids any CDN, so d3 is vendored; this file pins its exact bytes. A test
-# (tests/test_supply_chain.py) and a CI job fail if the file ever changes without this pin
-# being updated deliberately. Regenerate intentionally with:
-#   sha256sum netcorenoc/ui/vendor/d3.v7.min.js
-f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539  d3.v7.min.js

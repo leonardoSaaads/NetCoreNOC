@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from netcorenoc.events import TrapEvent
 from netcorenoc.learn import MIN_EDGE_N
 from netcorenoc.main import IDLE_CLOSE_S, Engine

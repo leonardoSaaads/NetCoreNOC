@@ -1,0 +1,24 @@
+# Source distribution contents. The sdist must build the wheel and nothing more: the package
+# (with its UI, migrations, licence, and py.typed), plus the project metadata. Dev-only trees
+# (tests, eval, tools, docs, deploy, CI) and any local secret/DB never enter the sdist.
+
+# Ship the whole package tree (ui/, ui/.well-known/, ui/vendor/, migrations/, py.typed).
+graft src
+
+# Project metadata kept at the repo root.
+include README.md LICENSE NOTICE pyproject.toml
+
+# Exclude dev/CI trees and non-build files.
+prune tests
+prune eval
+prune tools
+prune docs
+prune deploy
+prune .github
+exclude docker-compose.yml .env.example .dockerignore .editorconfig .gitignore flake.nix
+exclude vulture_allowlist.py MANIFEST.in
+exclude CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md MIGRATION.md CHANGELOG.md Makefile Dockerfile
+
+# Never ship secrets, databases, or caches.
+global-exclude .env .env.* *.db *.db-wal *.db-shm *.pyc
+global-exclude __pycache__ .DS_Store

@@ -8,6 +8,7 @@ import hmac as _hmac
 import logging
 
 import pytest
+
 from netcorenoc import main, receiver
 from netcorenoc.logsetup import RedactionFilter, configure_logging
 from netcorenoc.main import Engine

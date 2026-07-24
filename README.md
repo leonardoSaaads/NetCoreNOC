@@ -11,26 +11,40 @@ continuously from its own stream and from one-click operator feedback.
 
 One Python process. One SQLite file. One web UI.
 
-![CI](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/leonardoSaaads/NetCoreNOC?sort=semver)](https://github.com/leonardoSaaads/NetCoreNOC/releases)
 
 ## Quickstart (5 minutes)
 
-### Docker
+### Docker Compose (one command)
 
 ```sh
-docker build -t netcorenoc .
-docker run -d --name netcorenoc \
-  -p 162:162/udp -p 8080:8080 \
-  -v netcorenoc-data:/home/netcorenoc \
-  netcorenoc
-docker logs netcorenoc   # shows the one-time bootstrap admin password
+docker compose up --build
+# shows the one-time bootstrap admin password on first start
 ```
+
+That's it — a hardened run (read-only root filesystem, all capabilities dropped except the one
+needed to bind UDP 162, no privilege escalation, the SQLite DB on a named volume). Optional
+configuration lives in `.env` (copy `.env.example` and edit; it's git-ignored). See
+[`docker-compose.yml`](docker-compose.yml) and the operator guide,
+[`docs/security/operations.md`](docs/security/operations.md).
 
 Point your devices' SNMP trap destination (v2c) at the host's IP, open
 `http://<host>:8080/`, and sign in as `admin` with the bootstrap password from the logs
 (you'll be asked to change it on first login). Watch the network assemble itself as traps
 arrive. Create per-operator accounts (viewer / editor / admin) under **Users**, and issue
-**service tokens** for API clients — see [`SECURITY.md`](SECURITY.md).
+**service tokens** for API clients.
+
+### Docker (without Compose)
+
+```sh
+docker build -t netcorenoc .
+docker run -d --name netcorenoc --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --tmpfs /tmp --cap-add CAP_NET_BIND_SERVICE \
+  -p 162:162/udp -p 8080:8080 -v netcorenoc-data:/home/netcorenoc netcorenoc
+docker logs netcorenoc   # shows the one-time bootstrap admin password
+```
 
 ### Nix
 
@@ -74,9 +88,9 @@ make replay
 | `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging when set |
 
 > **Rebrand (v0.4.0):** the project was renamed from *OptiCorr* to **NetCoreNOC**. The legacy
-> `OPTICORR_*` variable names are still honoured for this one version and emit a single startup
-> deprecation warning each (naming the variable, never its value); they are removed in v0.5.0.
-> See `MIGRATION.md`.
+> `OPTICORR_*` variable names are still honoured and emit a single startup deprecation warning
+> each (naming the variable, never its value); the removal target was extended by one version and
+> they are now removed in v0.6.0 (DECISIONS #39). See `MIGRATION.md`.
 
 ## How it works — three numbers per decision
 
@@ -106,7 +120,7 @@ one that names the alarmed entity (the ONU, the port) only when the evidence cle
 conservative floors and beats the runner-up. Containment (card → port, port → ONU) is recovered
 by a functional-dependency test. Promotion is forward-only and every decision is inspectable in
 the **Entities** tab (`key_source`, `confidence`, and the score breakdown); an admin can reset a
-poisoned one. See [`docs/DESIGN.md`](docs/DESIGN.md).
+poisoned one. See [`docs/architecture/DESIGN.md`](docs/architecture/DESIGN.md).
 
 Cold start is honest: with nothing learned the class affinity `A` is zero and the entity
 affinity `E` is 1 only within a network element, so the temporal term alone must clear the
@@ -130,7 +144,7 @@ and sensitive read — verify it with `python -m netcorenoc audit verify`. Sourc
 allowlist (enforced when set), per-client rate limiting, defensive parsing with
 quarantine, non-root container, no secrets in logs. `bandit`, `pip-audit`, and a
 secret-leak scan run in CI. See [`SECURITY.md`](SECURITY.md) and
-[`docs/SECURITY-REVIEW-0.2.md`](docs/SECURITY-REVIEW-0.2.md).
+[`docs/security/SECURITY-REVIEW-0.2.md`](docs/security/SECURITY-REVIEW-0.2.md).
 
 ## Development
 
@@ -141,8 +155,19 @@ make security  # bandit + pip-audit
 make loadtest  # 1000 traps/s for 60 s against a running instance
 ```
 
-Design rationale in `docs/DESIGN.md`, scope in `docs/SCOPE.md`, every ambiguity call in
-`docs/DECISIONS.md`, phase gate evidence in `docs/gates/`.
+Start at the documentation index [`docs/README.md`](docs/README.md): design rationale in
+`docs/architecture/`, scope in `docs/scope/`, every ambiguity call in
+`docs/adr/DECISIONS.md`, phase gate evidence in `docs/gates/`. A newcomer's one-screen tour of
+the tree is [`docs/architecture/repo-map.md`](docs/architecture/repo-map.md).
+
+## Community
+
+- **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, the quality bar, and the
+  hard constraints (zero new runtime deps, one process/file/UI).
+- **Code of conduct:** [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) (Contributor Covenant v2.1).
+- **Security:** report vulnerabilities privately per [`SECURITY.md`](SECURITY.md); operators see
+  [`docs/security/operations.md`](docs/security/operations.md).
+- **Roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Philosophy
 

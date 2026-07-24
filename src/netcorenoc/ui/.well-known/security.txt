@@ -1,0 +1,9 @@
+# NetCoreNOC security contact information — RFC 9116.
+# Served by the app at /.well-known/security.txt and committed in the repository.
+# Maintainer: refresh `Expires` before it lapses (keep it under a year out) and edit the
+# contact/policy URLs in place if the repository or preferred channels change.
+Contact: https://github.com/leonardoSaaads/NetCoreNOC/security/advisories/new
+Contact: https://github.com/leonardoSaaads
+Expires: 2027-07-24T00:00:00.000Z
+Preferred-Languages: en
+Policy: https://github.com/leonardoSaaads/NetCoreNOC/blob/main/SECURITY.md

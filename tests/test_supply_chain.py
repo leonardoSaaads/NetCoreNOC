@@ -15,7 +15,8 @@ import netcorenoc
 
 UI = Path(netcorenoc.__file__).parent / "ui"
 VENDOR = UI / "vendor"
-REPO_ROOT = Path(netcorenoc.__file__).parent.parent
+# src/ layout: netcorenoc/__init__.py -> src/netcorenoc -> src -> repo root.
+REPO_ROOT = Path(netcorenoc.__file__).parent.parent.parent
 
 
 def test_vendored_assets_match_pinned_checksums() -> None:
@@ -34,6 +35,15 @@ def test_vendored_assets_match_pinned_checksums() -> None:
 def test_d3_is_pinned() -> None:
     assert (VENDOR / "d3.v7.min.js").exists()
     assert "d3.v7.min.js" in (VENDOR / "CHECKSUMS.txt").read_text()
+
+
+def test_vendored_license_shipped_beside_asset() -> None:
+    """Third-party licence compliance: the upstream d3 licence ships next to the vendored asset
+    (and is covered by the ``ui/vendor/*`` package-data glob, so a wheel carries it too)."""
+    lic = VENDOR / "d3.LICENSE"
+    assert lic.exists(), "d3.LICENSE must ship beside src/netcorenoc/ui/vendor/d3.v7.min.js"
+    text = lic.read_text()
+    assert "Mike Bostock" in text and "d3" in text
 
 
 def test_all_ui_assets_are_covered_by_package_data_globs() -> None:

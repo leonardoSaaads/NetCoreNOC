@@ -20,8 +20,10 @@ Ideas noted during the build (one line each, per the anti-overengineering rules)
 
 From v0.4.0 (deferred here to keep the hardening release focused):
 
-- **Remove the legacy `OPTICORR_*` environment aliases** (accepted for one version in v0.4.0
-  with a deprecation warning; removed in v0.5.0). DECISIONS #34.
+- **Remove the legacy `OPTICORR_*` environment aliases** (accepted with a deprecation warning
+  since v0.4.0). The removal target was extended from v0.5.0 to **v0.6.0** — v0.5.0 is an
+  organization/structure release and removing them there would be an unrelated breaking change.
+  DECISIONS #34, #39.
 - **Complete the `device_id` → `entity_id`/`ne_id` cutover** — remove the `learn.device_affinity`
   shim and the `alarm.device_id` column with a forward-only migration and a parity re-run.
   DECISIONS #35.

@@ -4,6 +4,64 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-24 — "legible, installable, contributable"
+
+An organization/structure release: it makes the project legible, installable, and contributable,
+and prepares the ground for v0.6.0 — **without changing the running correlator at all.** No engine,
+schema, API, or UI-behaviour change; the `make eval` metrics are byte-identical to v0.4.0. One
+process, one SQLite file, one static UI, **zero new runtime dependencies**. 320 tests, 95 %
+coverage.
+
+### Changed
+
+- **Repository adopts the PyPA `src/` layout** (`netcorenoc/` → `src/netcorenoc/`, history
+  preserved). The import path stays `netcorenoc` — no public change. Tests now run against the
+  installed package, the standing guard against the F12 class of bug. All packaging/tooling paths
+  updated (`pyproject`, `Dockerfile`, `Makefile`).
+- **Documentation reorganised into a navigable tree** with an index (`docs/README.md`):
+  `architecture/`, `adr/`, `security/`, `scope/`, `releases/`, `gates/`, plus a newcomer
+  `architecture/repo-map.md`. The decision log stays one append-only file under `adr/`.
+- **`SECURITY.md` restructured** so a coordinated **vulnerability disclosure policy** is what a
+  reporter finds first; the operator hardening guide moved to `docs/security/operations.md`.
+- **Quickstart is now `docker compose up`.**
+- The legacy `OPTICORR_*` environment-alias deprecation window was **extended one version to
+  v0.6.0** (DECISIONS #39) — the only behaviour-adjacent change, and a non-removal.
+
+### Added
+
+- **Self-contained deployment**: a hardened `docker-compose.yml` (read-only rootfs, `cap_drop:
+  [ALL]` + `CAP_NET_BIND_SERVICE`, `no-new-privileges`, `tmpfs /tmp`, named DB volume, `/healthz`
+  healthcheck) with a committed `.env.example`; a hardened example `deploy/netcorenoc.service`
+  systemd unit; `.dockerignore`/`MANIFEST.in`; `make dist`/`make release-check` and
+  `tools/release_check.py`.
+- **Open-source scaffolding**: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant
+  v2.1), GitHub issue/PR templates (security → private advisories), `NOTICE` and
+  `ui/vendor/d3.LICENSE`, `.editorconfig`, README badges.
+- **`/.well-known/security.txt`** (RFC 9116), shipped in the package and served by the app from
+  the static allowlist under the existing CSP/security headers.
+- **v0.6.0 specification** (spec only): `docs/architecture/EXTENSIBILITY-0.6-DRAFT.md` — admin
+  RBAC, per-role/per-principal visibility scoping, and a configurable/pluggable match formula,
+  each with its security framing; every element `v0.6.0: planned`, implemented none.
+- **Dormant, opt-in CI**: a SHA-pinned least-privilege `release.yml` (built-in token only;
+  publish/sign steps commented) and `dependabot.yml`; `ci.yml` actions SHA-pinned.
+- **New guard tests**: structure + documentation link check (`test_structure.py`), GitHub-Actions
+  SHA-pin lint (`test_workflows.py`), deployment-hardening assertions (`test_deploy.py`), and the
+  RFC 9116 `security.txt` tests (`test_security_txt.py`).
+
+### Security
+
+- **`docs/security/SECURITY-REVIEW-0.5.md`** — findings F15–F19 (compose/systemd hardening,
+  `security.txt`/disclosure policy, packaging integrity, SHA-pinned least-privilege workflows),
+  each with an assertion test, plus an honest critical-analysis of residual risk. No exploitable
+  runtime weakness was found; the runtime attack surface gains only the static `security.txt`
+  path. Threat model extended with a v0.5.0 note.
+
+### Migration
+
+- No schema change; a live v0.4.0 database upgrades in place. The `netcorenoc` import path and all
+  `NETCORENOC_*`/legacy `OPTICORR_*` env names are unchanged (the alias removal is now v0.6.0).
+  See `MIGRATION.md`.
+
 ## [0.4.0] - 2026-07-23 — "trustworthy by construction"
 
 Security- and reliability-hardening release under a new identity. **No new inference features.**

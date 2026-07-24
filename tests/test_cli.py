@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+
 from netcorenoc import __main__ as cli
 from netcorenoc import audit
 from netcorenoc.logsetup import JsonFormatter

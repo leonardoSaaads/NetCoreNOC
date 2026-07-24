@@ -1,0 +1,18 @@
+NetCoreNOC
+Copyright 2026 NetCoreNOC contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product bundles the following third-party software, whose own licences
+apply to their respective files:
+
+  - d3 (v7.9.0), Copyright 2010-2023 Mike Bostock, licensed under the ISC
+    licence. Vendored (self-hosted, no CDN) at
+    src/netcorenoc/ui/vendor/d3.v7.min.js; the upstream licence text is shipped
+    beside it at src/netcorenoc/ui/vendor/d3.LICENSE, and its exact bytes are
+    pinned in src/netcorenoc/ui/vendor/CHECKSUMS.txt.
+
+No other third-party code is bundled. The runtime Python dependencies
+(pysnmp, aiosqlite, fastapi, uvicorn, pydantic) are declared in pyproject.toml
+and installed from their own distributions under their own licences; they are
+not redistributed in this repository.

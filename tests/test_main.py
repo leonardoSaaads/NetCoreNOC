@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from netcorenoc.events import QuarantinedPacket
 from netcorenoc.main import GAP_CLOSE_S, Engine, FlapDetector, GapTracker, Settings
 from netcorenoc.receiver import QueueItem

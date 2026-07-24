@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+
 from netcorenoc.events import QuarantinedPacket, TrapEvent
 from netcorenoc.receiver import (
     QueueItem,

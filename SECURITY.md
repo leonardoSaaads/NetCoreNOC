@@ -1,128 +1,99 @@
-# NetCoreNOC Security & Operations Guide
+# Security Policy
 
-NetCoreNOC v0.2.0 adds identity, role-based authorization, and a tamper-evident audit log.
-This guide is for the operator deploying and running it.
+NetCoreNOC takes security seriously. This document is the **coordinated vulnerability disclosure
+policy** — how to report a vulnerability and what to expect. If instead you are deploying or
+operating NetCoreNOC, see the [operator security & operations guide](docs/security/operations.md).
 
 ## Reporting a vulnerability
 
-Please open a private security advisory on the repository rather than a public issue.
-Include the version, a description, and reproduction steps.
+**Please report privately. Do not open a public issue, pull request, or discussion for a
+security vulnerability.** A public report tells attackers before operators can patch.
 
-## Recommended deployment
+Report through **either** private channel:
 
-1. **Bind the trap listener to the management interface** and **set an allowlist**:
-   ```sh
-   NETCORENOC_ALLOWLIST=10.20.0.0/16,192.0.2.10 \
-   NETCORENOC_TRAP_HOST=10.20.0.5 NETCORENOC_HTTP_HOST=10.20.0.5 \
-   python -m netcorenoc.main
-   ```
-   With no allowlist every source is accepted (zero-config default) and NetCoreNOC shows a
-   persistent banner to admins until you set one.
-2. **Terminate TLS.** Either give NetCoreNOC a certificate directly, or front it with a
-   reverse proxy (below). Without TLS on a non-loopback bind, NetCoreNOC warns admins.
-3. **Complete the bootstrap.** On first start NetCoreNOC prints a one-time `admin` password
-   to the console inside a banner. Sign in, change it immediately (you are forced to), and
-   create per-operator accounts with the least role each needs.
-4. **Issue service tokens, not shared secrets.** For scripts and integrations, create a
-   named service token (admin → Tokens) with the minimum role. The value is shown once.
+1. **GitHub private vulnerability reporting** (preferred): open a draft advisory at
+   <https://github.com/leonardoSaaads/NetCoreNOC/security/advisories/new>. This is private
+   between you and the maintainers and needs no additional setup.
+2. **The maintainer's GitHub profile**: <https://github.com/leonardoSaaads> — contact the
+   maintainer privately if you cannot use advisories.
 
-### Roles
+Please include, as far as you can:
 
-| Role | Can do |
-|------|--------|
-| **viewer** | Read situations, graph, timeline, stats, classes; receive the live stream |
-| **editor** | viewer + confirm/split feedback, rename devices/classes, close/ack situations |
-| **admin** | editor + manage users/tokens, change runtime config, read quarantine, read/export/prune the audit log |
+- the version or commit, and how NetCoreNOC was deployed (container, systemd, plain Python);
+- a description of the issue and its impact;
+- steps to reproduce, a proof of concept, or a failing test;
+- any suggested remediation.
 
-Authorization is deny-by-default and enforced from a single map (`netcorenoc/rbac.py`);
-viewers never see mutating controls in the UI.
+## Our commitment (response times)
 
-## TLS options
+- **Acknowledgement within 3 business days** of your report.
+- **An initial assessment (validity + rough severity) within 10 business days.**
+- **Regular updates** at least every 10 business days until the issue is resolved.
+- A fix targeted **as soon as practical**, prioritised by severity. NetCoreNOC is a small,
+  volunteer-maintained project — these are good-faith targets, not contractual SLAs.
 
-**Built-in** (simplest):
-```sh
-NETCORENOC_TLS_CERT=/etc/netcorenoc/tls.crt NETCORENOC_TLS_KEY=/etc/netcorenoc/tls.key \
-python -m netcorenoc.main
-```
-The session cookie automatically gains the `Secure` flag when TLS is enabled.
+## Coordinated disclosure and embargo
 
-**Reverse proxy** (e.g. nginx/Caddy terminating TLS): proxy `/` to NetCoreNOC's HTTP port on
-loopback. Because the cookie is `SameSite=Strict` and CSRF also checks `Origin`/`Host`,
-make sure the proxy preserves the `Host` header and forwards the browser `Origin`. If the
-proxy terminates TLS, NetCoreNOC's own listener may stay plain HTTP on loopback (no warning
-is shown for a loopback bind).
+- We practise **coordinated disclosure**: please give us a reasonable chance to fix the issue
+  before any public disclosure. A **90-day** embargo from acknowledgement is the default; we are
+  happy to agree a different window with you, and to disclose sooner once a fix is released.
+- We will credit you in the advisory and release notes unless you prefer to remain anonymous.
+- If an issue is being actively exploited, we may accelerate the timeline.
 
-## Sessions, passwords, throttling
+## Scope
 
-- Passwords are `scrypt` (n=2¹⁷) hashes; policy is length-only (12–128 chars, no
-  composition rules, no forced expiry) per NIST SP 800-63B.
-- Sessions are server-side; the cookie holds a random id whose **SHA-256 is stored**, so a
-  stolen database yields no live session. Idle timeout is 30 min (sliding); absolute is
-  12 h. Logout, password change, and role change revoke sessions.
-- Login is throttled per username **and** per source IP with exponential backoff after 5
-  failures (to a 15-minute cap). Unknown-user and wrong-password are indistinguishable.
+**In scope** — the NetCoreNOC codebase in this repository, including:
 
-## The audit log
+- the trap receiver and packet parsing (`src/netcorenoc/receiver.py`);
+- the HTTP API, authentication, sessions, RBAC, and response shaping (`src/netcorenoc/api.py`,
+  `auth.py`, `rbac.py`, `shaping.py`);
+- the audit log and its integrity guarantees (`src/netcorenoc/audit.py`);
+- the SQLite storage layer and migrations (`src/netcorenoc/store.py`, `migrations/`);
+- the static UI and its CSP/security-header posture (`src/netcorenoc/ui/`);
+- the shipped container image and the committed deployment artifacts
+  (`Dockerfile`, `docker-compose.yml`, `deploy/`).
 
-Every mutating action and every sensitive read (including denied attempts) writes one
-append-only, hash-chained `audit_log` row. History is immutable even to the application
-(SQLite `BEFORE UPDATE`/`BEFORE DELETE` triggers).
+**Out of scope**:
 
-- **Verify integrity** (run this periodically, e.g. from cron):
-  ```sh
-  python -m netcorenoc audit verify      # or: make audit-verify
-  ```
-  It walks the chain and reports the first broken link, if any.
-- **Back up / export**:
-  ```sh
-  python -m netcorenoc audit export > audit-$(date +%F).ndjson
-  ```
-  Emits one JSON row per line plus the final chain hash on stderr. Keep exports off-box so
-  the audit trail survives loss of the node.
-- **Retention**: audit rows are excluded from the ordinary prune and kept for
-  `NETCORENOC_AUDIT_RETENTION_DAYS` (default 365). Only an explicit admin action removes old
-  rows, and that prune is itself audited. Pruning removes only the oldest rows, so the
-  surviving suffix stays verifiable against an archived boundary hash.
+- Vulnerabilities in third-party dependencies themselves — report those upstream (we do track
+  them via `pip-audit` and will update our pins).
+- Findings that require an already-compromised host, physical access, or a malicious operator
+  account acting within its granted role (RBAC is enforced; abuse of a legitimately granted admin
+  role is not a vulnerability).
+- The unauthenticated nature of SNMPv2c/v1 trap intake itself — this is a protocol property
+  handled by the source allowlist and documented as accepted residual risk in
+  [`docs/security/threat-model.md`](docs/security/threat-model.md). A way to *bypass* the
+  allowlist, or to inject content past the defensive parser, **is** in scope.
+- Reports from automated scanners with no demonstrated impact, best-practice suggestions without
+  a concrete vulnerability, and denial of service that merely requires flooding a trap listener
+  the operator chose to expose (the bounded queue + `ingest_gap` accounting is the designed
+  behaviour).
 
-## What the banners mean
+## Safe harbour
 
-The admin UI shows a persistent warning when a deployment default is risky:
+We support good-faith security research. If you make a good-faith effort to comply with this
+policy, we will consider your research **authorised**, will not pursue or support legal action
+against you for it, and will work with you to understand and resolve the issue. Good faith means:
 
-- **"Trap allowlist is empty"** — every source IP is accepted. Set `NETCORENOC_ALLOWLIST`
-  (or configure it under admin → Config) to the CIDRs your equipment sends from.
-- **"HTTP is not using TLS on a non-loopback bind"** — credentials could travel cleartext.
-  Enable built-in TLS or a TLS reverse proxy.
+- you only test against **your own** deployment (never a third party's), and never access, modify,
+  or destroy data that is not yours;
+- you avoid privacy violations, service degradation, and disruption to others;
+- you give us a reasonable time to remediate before public disclosure (see the embargo above);
+- you do not exploit the issue beyond the minimum needed to demonstrate it.
 
-## Legacy token deprecation
+This is not an invitation to test infrastructure you do not own or operate.
 
-`OPTICORR_API_TOKEN` is still accepted in v0.2.0 as a synthetic admin identity
-`legacy-token`, with a startup deprecation warning and a one-time audit event. **It is
-removed in v0.3.0** — migrate every client to a named service token. See `MIGRATION.md`.
+## No bug bounty
 
-## Data at rest
+NetCoreNOC does **not** operate a paid bug-bounty program and makes no offer of monetary reward.
+We gratefully credit reporters in advisories and release notes.
 
-`netcorenoc.db` contains scrypt password hashes, SHA-256 session/token digests, the audit
-log, learned state, and quarantined packet metadata (community strings are never stored).
-Protect the file with filesystem permissions and back it up alongside your audit exports.
-Run the process as a non-root user (the bundled Dockerfile already does).
+## Where the security work is documented
 
-## Container deployment (CIS-style hardening, v0.4.0)
-
-The image is multi-stage (no build tools in the final layer) and runs as a non-root user
-(`netcorenoc`, uid 10001). The only path it writes is the SQLite database, so it runs fine with a
-read-only root filesystem. Recommended hardened run:
-
-```
-docker run --read-only --cap-drop ALL --security-opt no-new-privileges \
-  --tmpfs /tmp -v netcorenoc-data:/home/netcorenoc \
-  -p 162:162/udp -p 8080:8080 netcorenoc
-```
-
-- **Pin the base image by digest** for a reproducible, tamper-evident build. The `Dockerfile`
-  pins a specific patch tag (`python:3.12.8-slim`); to pin the digest, run
-  `docker inspect --format='{{index .RepoDigests 0}}' python:3.12.8-slim` and substitute
-  `python@sha256:<digest>`.
-- **Vendored assets** (d3) are integrity-pinned in `netcorenoc/ui/vendor/CHECKSUMS.txt` and
-  checked by CI (`make checksums`); a tampered swap fails the build.
-- **Back up** the database with a copy-with-WAL or `sqlite3 netcorenoc.db ".backup out.db"`, and
-  run `netcorenoc audit verify` periodically to confirm the audit chain is intact.
+- Threat model (STRIDE, per version): [`docs/security/threat-model.md`](docs/security/threat-model.md)
+- Security reviews (finding → fix → test, standards mapping):
+  [`docs/security/`](docs/security/) — `SECURITY-REVIEW-0.2.md`, `SECURITY-REVIEW-0.4.md`,
+  `SECURITY-REVIEW-0.5.md`.
+- Machine-readable contact (RFC 9116): served by the running app at `/.well-known/security.txt`;
+  the committed source is
+  [`src/netcorenoc/ui/.well-known/security.txt`](src/netcorenoc/ui/.well-known/security.txt).

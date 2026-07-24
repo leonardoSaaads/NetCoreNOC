@@ -1,0 +1,70 @@
+# Example hardened systemd unit for NetCoreNOC (a non-container host).
+#
+# This is a DOCUMENTED EXAMPLE, not auto-installed. Review it, adjust the paths/limits for your
+# host, then install:
+#
+#   sudo cp deploy/netcorenoc.service /etc/systemd/system/netcorenoc.service
+#   sudo mkdir -p /var/lib/netcorenoc            # the DB directory (the only writable path)
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now netcorenoc
+#
+# It assumes NetCoreNOC is installed into a venv at /opt/netcorenoc/.venv (adjust ExecStart).
+# Configuration is via environment; drop-in overrides go in
+# /etc/systemd/system/netcorenoc.service.d/*.conf or an EnvironmentFile (chmod 600, root-owned).
+
+[Unit]
+Description=NetCoreNOC — zero-configuration SNMP trap correlator
+Documentation=https://github.com/leonardoSaaads/NetCoreNOC
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+# Run as an unprivileged, system-allocated user with no home and no shell. DynamicUser gives a
+# fresh uid/gid per start and, with StateDirectory, an owned /var/lib/netcorenoc.
+DynamicUser=true
+StateDirectory=netcorenoc
+Environment=NETCORENOC_DB=/var/lib/netcorenoc/netcorenoc.db
+# Example config (uncomment/edit, or use an EnvironmentFile for anything sensitive):
+# Environment=NETCORENOC_ALLOWLIST=10.20.0.0/16
+# Environment=NETCORENOC_TLS_CERT=/etc/netcorenoc/tls.crt
+# Environment=NETCORENOC_TLS_KEY=/etc/netcorenoc/tls.key
+# EnvironmentFile=-/etc/netcorenoc/netcorenoc.env
+
+ExecStart=/opt/netcorenoc/.venv/bin/python -m netcorenoc.main
+Restart=on-failure
+RestartSec=2s
+
+# --- Capabilities ---------------------------------------------------------------------------
+# Only needed to bind the privileged trap port (UDP 162). If you set NETCORENOC_TRAP_PORT to a
+# high port (>=1024), delete both lines below.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# --- Filesystem -----------------------------------------------------------------------------
+ProtectSystem=strict
+ProtectHome=true
+# The DB directory is the ONLY writable path (StateDirectory already grants this; be explicit):
+ReadWritePaths=/var/lib/netcorenoc
+PrivateTmp=true
+
+# --- Kernel / process isolation -------------------------------------------------------------
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

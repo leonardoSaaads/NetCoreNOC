@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from netcorenoc import auth
 from netcorenoc.store import Store
 

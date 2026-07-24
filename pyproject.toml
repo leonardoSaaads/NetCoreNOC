@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.4.0"
+version = "0.5.0"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -31,12 +31,14 @@ dev = [
     "bandit[toml]>=1.7",
     "pip-audit>=2.7",
     "vulture>=2.11",
+    "build>=1.2",
 ]
 
 [project.urls]
 Homepage = "https://github.com/leonardoSaaads/NetCoreNOC"
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["netcorenoc*"]
 
 [tool.setuptools.package-data]
@@ -49,13 +51,14 @@ netcorenoc = [
     "ui/*.js",
     "ui/*.css",
     "ui/vendor/*",
+    "ui/.well-known/*",  # RFC 9116 security.txt, served by the app
     "py.typed",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["netcorenoc", "tools", "tests", "eval"]
+src = ["src", "tools", "tests", "eval"]
 # The vulture dead-code allowlist is intentionally a list of bare names (not real code).
 extend-exclude = ["vulture_allowlist.py"]
 
@@ -64,15 +67,24 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "T20", "SIM", "RUF"]
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency-injection idiom puts Depends()/Query() in argument defaults.
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+[tool.ruff.lint.isort]
+# src/ layout makes `netcorenoc` the (only) first-party package. The eval/tools dev helpers
+# (imported by tests and the harness) are local dev/test modules, not the distributed package —
+# classifying them as local-folder keeps them in their own trailing import group, exactly as
+# before the move, so the reorg touches no test/eval import block.
+known-local-folder = [
+    "metrics", "trap_replay", "harness", "corpus_gen", "scenario_dsl", "trap_sim",
+    "util", "authutil",
+]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
-"netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
+"src/netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
 
 [tool.mypy]
 strict = true
 python_version = "3.12"
-files = ["netcorenoc", "tools", "tests", "eval"]
-mypy_path = ["eval", "tools"]
+files = ["src", "tools", "tests", "eval"]
+mypy_path = ["src", "eval", "tools"]
 
 [[tool.mypy.overrides]]
 module = ["pysnmp.*", "pyasn1.*"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hypothesis import given
 from hypothesis import strategies as st
+
 from netcorenoc.correlate import (
     LINK_THRESHOLD,
     W_A,

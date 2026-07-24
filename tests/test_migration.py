@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+
 from netcorenoc import audit, auth
 from netcorenoc.store import MIGRATIONS_DIR, Store
 

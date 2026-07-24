@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from netcorenoc import varbind_profile
 from netcorenoc.events import TrapEvent, Varbind
 from netcorenoc.main import Engine

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import pytest
-from netcorenoc.events import TrapEvent, Varbind
 from pydantic import ValidationError
+
+from netcorenoc.events import TrapEvent, Varbind
 
 
 def test_fingerprint_is_device_class_instance() -> None:

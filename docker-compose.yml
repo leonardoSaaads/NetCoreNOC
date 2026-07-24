@@ -1,0 +1,82 @@
+# Self-contained NetCoreNOC — one command, no external services:
+#
+#     docker compose up --build
+#
+# This wraps the SAME single process the Dockerfile builds (one asyncio process, one SQLite
+# file, one static UI). It changes nothing about the runtime; it only expresses the hardened
+# `docker run` recipe (read-only rootfs, all capabilities dropped, no privilege escalation,
+# tmpfs /tmp, DB on a named volume) declaratively.
+#
+# Configuration is optional. Copy .env.example to .env and edit it to set an allowlist, TLS,
+# retention, etc. `.env` is git-ignored and is the ONLY place secrets belong — never the image
+# or this file. With no .env, NetCoreNOC starts with its zero-config defaults (and warns admins
+# in the UI about the empty allowlist / missing TLS).
+
+services:
+  netcorenoc:
+    build: .
+    image: netcorenoc:local
+    container_name: netcorenoc
+    restart: unless-stopped
+
+    # UDP 162 = SNMP trap listener; 8080 = web UI + API. To avoid binding a privileged port
+    # (and the CAP_NET_BIND_SERVICE below), map a high host port to 162 instead, e.g.
+    # "1162:1162/udp" together with NETCORENOC_TRAP_PORT=1162 in .env — then drop the cap_add.
+    ports:
+      - "162:162/udp"
+      - "8080:8080"
+
+    # --- hardening (mirrors the SECURITY.md / Dockerfile `docker run` recipe) ---------------
+    read_only: true                       # root filesystem is immutable...
+    tmpfs:
+      - /tmp                              # ...with a writable tmpfs for scratch...
+    volumes:
+      - netcorenoc-data:/home/netcorenoc  # ...and the SQLite DB (+ WAL) on a named volume.
+    cap_drop:
+      - ALL
+    cap_add:
+      # Needed ONLY to bind the privileged trap port (UDP 162) as the non-root container user
+      # (uid 10001). Remove this line if you map a high port instead (see the ports note above).
+      - CAP_NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+
+    environment:
+      # Defaults keep `docker compose up` working with no .env. Override in .env.
+      NETCORENOC_DB: /home/netcorenoc/netcorenoc.db
+      NETCORENOC_ALLOWLIST: ${NETCORENOC_ALLOWLIST:-}
+      NETCORENOC_RETENTION_DAYS: ${NETCORENOC_RETENTION_DAYS:-7}
+      NETCORENOC_AUDIT_RETENTION_DAYS: ${NETCORENOC_AUDIT_RETENTION_DAYS:-365}
+      NETCORENOC_LOG_JSON: ${NETCORENOC_LOG_JSON:-}
+      # TLS is opt-in — see the commented profile below.
+      NETCORENOC_TLS_CERT: ${NETCORENOC_TLS_CERT:-}
+      NETCORENOC_TLS_KEY: ${NETCORENOC_TLS_KEY:-}
+
+    healthcheck:
+      # Uses the interpreter already in the image (slim images have no curl/wget). /healthz is
+      # unauthenticated and returns ok + version.
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # --- TLS + allowlist profile (commented; uncomment and set values in .env) --------------
+    # NetCoreNOC can terminate TLS itself. Mount the cert/key read-only and point the env at
+    # them; the session cookie then automatically gains the Secure flag. Set a real allowlist.
+    #
+    #   environment:
+    #     NETCORENOC_ALLOWLIST: "10.20.0.0/16,192.0.2.10"
+    #     NETCORENOC_TLS_CERT: /run/tls/tls.crt
+    #     NETCORENOC_TLS_KEY: /run/tls/tls.key
+    #   volumes:
+    #     - netcorenoc-data:/home/netcorenoc
+    #     - ./tls/tls.crt:/run/tls/tls.crt:ro
+    #     - ./tls/tls.key:/run/tls/tls.key:ro
+    #
+    # (Alternatively, front NetCoreNOC with a TLS reverse proxy and keep this listener plain
+    #  HTTP on an internal network — see docs/security/operations.md.)
+
+volumes:
+  netcorenoc-data:
