@@ -55,7 +55,13 @@ async function api(path, opts = {}) {
     body: opts.json !== undefined ? JSON.stringify(opts.json) : opts.body,
   });
   if (res.status === 401) { showLogin(); throw new Error("unauthenticated"); }
-  if (!res.ok) throw new Error(String(res.status));
+  if (!res.ok) {
+    // Surface the server's precise reason (e.g. why a scoring parameter set was rejected)
+    // instead of a bare status code. It only ever reaches the DOM via textContent (F1).
+    let detail = "";
+    try { detail = (await res.json()).detail || ""; } catch { /* not JSON */ }
+    throw new Error(detail ? `${res.status}: ${detail}` : String(res.status));
+  }
   const ct = res.headers.get("content-type") || "";
   return ct.includes("application/json") ? res.json() : res.text();
 }
@@ -111,6 +117,7 @@ const TABS = [
   { id: "users", label: "Users", role: "admin" },
   { id: "tokens", label: "Tokens", role: "admin" },
   { id: "config", label: "Config", role: "admin" },
+  { id: "scorer", label: "Scorer", role: "admin" },
   { id: "quarantine", label: "Quarantine", role: "admin" },
   { id: "audit", label: "Audit", role: "admin" },
 ];
@@ -141,6 +148,7 @@ function renderPanel(id) {
   else if (id === "users") loadUsers();
   else if (id === "tokens") loadTokens();
   else if (id === "config") loadConfig();
+  else if (id === "scorer") loadScorer();
   else if (id === "quarantine") loadQuarantine();
   else if (id === "audit") loadAudit();
 }
@@ -311,12 +319,26 @@ async function closeSituation(sid) {
 function alarmName(a) { return a.class_label || a.class_name || a.class_oid; }
 function deviceName(a) { return a.device_label || a.device_ip; }
 
+// v0.6.0: the explanation comes from the scorer's own named term list. `term_t/term_a/term_e`
+// remain as the same three numbers under their legacy names for any older client.
+const TERM_CLASS = { temporal: "t", class_affinity: "a", entity_affinity: "e" };
+const TERM_SHORT = { temporal: "t", class_affinity: "A", entity_affinity: "E" };
+function linkTerms(l) {
+  if (Array.isArray(l.terms) && l.terms.length) return l.terms;
+  return [
+    { name: "temporal", contribution: l.term_t },
+    { name: "class_affinity", contribution: l.term_a },
+    { name: "entity_affinity", contribution: l.term_e },
+  ];
+}
 function termBar(l) {
   const part = (x) => Math.max(1, Math.round(120 * (x / 0.95)));
-  const bar = el("span", { class: "bar", title: `t=${l.term_t.toFixed(2)} A=${l.term_a.toFixed(2)} E=${l.term_e.toFixed(2)}` });
-  for (const [cls, val] of [["t", l.term_t], ["a", l.term_a], ["e", l.term_e]]) {
-    const fill = el("i", { class: cls });
-    fill.style.width = part(val) + "px";           // CSSOM (allowed by CSP), not inline attr
+  const terms = linkTerms(l);
+  const title = terms.map((t) => `${TERM_SHORT[t.name] || t.name}=${t.contribution.toFixed(2)}`).join(" ");
+  const bar = el("span", { class: "bar", title });
+  for (const t of terms) {
+    const fill = el("i", { class: TERM_CLASS[t.name] || "t" });
+    fill.style.width = part(t.contribution) + "px";  // CSSOM (allowed by CSP), not inline attr
     bar.append(fill);
   }
   return bar;
@@ -569,6 +591,113 @@ async function loadConfig() {
   });
   view.append(form);
 }
+/* ---------- admin: the link scorer (v0.6.0) ----------
+ * Read is viewer+ on the API (the parameters EXPLAIN grouping), but the panel is admin-gated
+ * because everything it offers beyond reading — preview, apply, rollback — is admin-only and
+ * is pruned from a non-admin DOM entirely (prunePanels, A.4).
+ * Every value below reaches the DOM through el({text})/text(), never innerHTML (F1). */
+const SCORER_FIELDS = [
+  ["w_t", "w_t — temporal weight"],
+  ["w_a", "w_a — class-affinity weight"],
+  ["w_e", "w_e — entity-affinity weight"],
+  ["tau_s", "tau (s) — temporal decay constant"],
+  ["threshold", "threshold — link when score exceeds this"],
+];
+async function loadScorer() {
+  const view = $("scorerView"); clear(view);
+  let cfg; try { cfg = await api("/api/scorer"); } catch { return; }
+
+  const active = el("div", { class: "scorer-active" },
+    el("div", null, text("active: "), el("b", { text: cfg.scorer_id }),
+      text(` (contract ${cfg.contract_version}, config #${cfg.config_id ?? "—"})`)),
+    el("div", { class: "mono", text: SCORER_FIELDS.map(([k]) => `${k}=${cfg.params[k]}`).join("  ") }));
+  if (cfg.degraded) {
+    active.append(el("div", { class: "warn",
+      text: `Degraded: ${cfg.degraded_reason} — running on the built-in defaults.` }));
+  }
+  view.append(active);
+
+  const form = el("form");
+  const inputs = {};
+  for (const [key, label] of SCORER_FIELDS) {
+    inputs[key] = el("input", { value: cfg.params[key], type: "number", step: "0.01" });
+    form.append(el("label", { text: label }), inputs[key]);
+  }
+  const note = el("input", { placeholder: "why are you changing this? (recorded in the audit log)" });
+  form.append(el("label", { text: "Note" }), note);
+  const bounds = cfg.bounds;
+  form.append(el("div", { class: "hint", text:
+    `Bounds: weights and threshold in [0, 1]; tau in [${bounds.min_tau_s}, ${bounds.max_tau_s}] s; ` +
+    `weights must sum to at least ${bounds.min_weight_sum}; the threshold must stay at least ` +
+    `${bounds.threshold_margin} below the weight sum. Values outside these are rejected — they ` +
+    `would merge every alarm into one situation or stop grouping entirely.` }));
+
+  const out = el("div", { class: "scorer-preview" });
+  const read = () => {
+    const body = { note: note.value };
+    for (const [key] of SCORER_FIELDS) body[key] = parseFloat(inputs[key].value);
+    return body;
+  };
+  const previewBtn = el("button", { type: "button", text: "Preview effect", onclick: async () => {
+    clear(out);
+    out.append(el("div", { class: "hint", text: "Running…" }));
+    let delta;
+    try { delta = await api("/api/scorer/preview", { method: "POST", json: read() }); }
+    catch (err) { clear(out); out.append(el("div", { class: "warn", text: `Preview failed: ${err.message}` })); return; }
+    renderPreview(out, delta);
+  } });
+  const applyBtn = el("button", { text: "Apply" });
+  form.append(el("div", { class: "fb" }, previewBtn, applyBtn));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!confirm("Apply these scoring parameters? Grouping will change at the next engine reload.")) return;
+    try { await api("/api/scorer", { method: "POST", json: read() }); }
+    catch (err) { alert(`Rejected: ${err.message}`); return; }
+    loadScorer();
+  });
+  view.append(form);
+  view.append(out);
+
+  const history = cfg.history || [];
+  view.append(el("h3", { text: "History" }));
+  view.append(el("div", { class: "hint", text:
+    "Immutable and append-only: nothing here is ever edited or deleted. Rolling back moves the " +
+    "active pointer to an earlier row." }));
+  view.append(tableFrom(["#", "params", "by", "when", "note", ""],
+    history.map((h) => [
+      h.active ? el("b", { text: `${h.id} (active)` }) : String(h.id),
+      el("span", { class: "mono", text: `${h.w_t}/${h.w_a}/${h.w_e} tau=${h.tau_s} thr=${h.threshold}` }),
+      h.created_by || "—",
+      h.created_at ? new Date(h.created_at * 1000).toLocaleString() : "—",
+      h.note || "—",
+      h.active ? "" : el("button", { text: "Roll back", onclick: async () => {
+        if (!confirm(`Roll back to configuration #${h.id}?`)) return;
+        await api("/api/scorer/rollback", { method: "POST", json: { config_id: h.id } });
+        loadScorer();
+      } }),
+    ])));
+}
+function renderPreview(out, d) {
+  clear(out);
+  out.append(el("h3", { text: "Preview" }));
+  // The caveat is a control, not decoration (SECURITY-REVIEW-0.6 §4): a preview that looked
+  // authoritative would be worse than none.
+  out.append(el("div", { class: "hint", text: d.caveat }));
+  out.append(tableFrom(["", "situations", "links"], [
+    ["now", String(d.situations_before), String(d.links_before)],
+    ["with these parameters", el("b", { text: String(d.situations_after) }), String(d.links_after)],
+  ]));
+  const merged = d.merged || [], split = d.split || [];
+  out.append(el("div", { class: "hint", text:
+    `${merged.length} group(s) would merge, ${split.length} would split, ` +
+    `${d.unchanged_groups} unchanged, over ${d.alarms_considered} recent alarm(s) ` +
+    `(cap ${d.alarms_cap}).` }));
+  for (const m of merged.slice(0, 10))
+    out.append(el("div", { class: "mono", text: `merge: ${m.from_groups.length} groups -> ${m.size} alarms` }));
+  for (const s of split.slice(0, 10))
+    out.append(el("div", { class: "mono", text: `split: ${s.size} alarms -> sizes ${s.into_sizes.join(", ")}` }));
+}
+
 async function loadQuarantine() {
   const view = $("quarantineView"); clear(view);
   let rows; try { rows = await api("/api/quarantine?limit=100"); } catch { return; }

@@ -415,3 +415,152 @@ set, the served bytes equal the shipped file, and an `/api` route with no creden
 
 The one new served path names a control and a test above; findings F15–F19 are tracked in
 `SECURITY-REVIEW-0.5.md` (property → fix → test). Gate 5 requires every F15+ test green.
+
+---
+
+# v0.6.0 extension — the scoring seam (engine surface; HTTP perimeter unchanged in shape)
+
+Same authority as the prior model. v0.6.0 makes the correlation formula the default
+implementation of a versioned `LinkScorer` interface and lets an **admin only** retune its five
+parameters, preview the effect read-only, apply with an audit trail, and roll back instantly.
+Every v0.2.0–v0.5.0 threat and control above holds unchanged: the receiver, auth, sessions, the
+audit chain, `shaping.py`'s field rules, and the 401/403/404 semantics are untouched. The review
+of the new surfaces is `SECURITY-REVIEW-0.6.md` (findings F20–F26).
+
+**What is genuinely new**: a stored input that changes *grouping logic* (`scorer_config`), a
+compute-bearing admin endpoint (`POST /api/scorer/preview`), and one new provenance column
+(`situation.scorer_config_id`). **What is deliberately absent**: any outbound call, any dynamic
+code loading, any new runtime dependency, and any change to `receiver.datagram_received`.
+
+## New asset
+
+7. **The scoring configuration** — the five parameters that decide which alarms group. It is not
+   a secret (it *explains* grouping, and `scorer.read` is viewer+), but its **integrity** is an
+   asset: a bad value silently degrades the product itself.
+
+## STRIDE — new surface
+
+### Scoring configuration (A3 malicious editor, A2 malicious viewer, compromised admin)
+
+- **Tampering — parameter poisoning / the footgun.** *Threat:* a parameter set that collapses
+  every alarm into one situation (`threshold → 0`) or shatters every incident
+  (`threshold ≥ w_t+w_a+w_e`) destroys correlation without touching a single alarm row.
+  *Control (defence in depth, five layers):* (1) **bounds and degeneracy validation** in one
+  place — weights and threshold in `[0,1]`, `1.0 ≤ τ ≤ 3600 s`, a minimum weight sum, and a
+  reachability/headroom rule that keeps the threshold strictly inside the achievable score range
+  (DECISIONS #46) — an invalid set is a 4xx and is **never stored**; (2) **preview before apply**,
+  showing the structural partition delta on the operator's own recent data; (3) **audit** of every
+  change with before/after; (4) **immutable, append-only history** plus a one-row active pointer,
+  so **rollback is one action**; (5) the coded defaults remain the **fail-safe fallback**.
+  *Tests:* `test_f20_*` (degenerate sets rejected at every boundary and unstorable),
+  `test_scorer_bounds_*`, `test_scorer_rollback_restores_previous_partition`.
+- **Elevation of privilege — an editor retunes the formula.** *Threat:* the loose "optionally
+  editor, if the admin delegates" phrasing of `EXTENSIBILITY-0.6-DRAFT.md` would make a
+  system-wide logic change reachable from an editor session. *Control:* deliberately **not**
+  implemented. `scorer.preview` and `scorer.write` are **admin-only with no delegation** in the
+  single `rbac.py` map; `scorer.read` is viewer+ because the parameters are an explanation, not a
+  secret. Deny-by-default and the generated authorization matrix cover every new route × role ×
+  method; 401/403/404 semantics preserved. *Tests:* `test_f21_*`, the extended
+  `test_authorization_matrix`, `test_every_api_route_is_in_the_permission_map`.
+- **Elevation of privilege — a config change escalating a live session.** *Threat:* a stored
+  change taking effect mid-request or mid-batch. *Control:* parameters are read at the documented
+  **engine configuration reload point**, never per packet and never mid-batch; a scoring-config
+  change grants no capability to anyone (it is not an authorization input at all). *Test:*
+  `test_f21_config_change_grants_no_capability`.
+
+### Preview endpoint (A1 resource exhaustion, A2/A3 disclosure)
+
+- **Denial of service — unbounded compute on demand.** *Threat:* an admin (or an attacker holding
+  an admin credential) hammering a what-if that re-partitions the whole alarm history.
+  *Control:* bounded by `MAX_PREVIEW_ALARMS = 5000` **and** a hard `PREVIEW_TIMEOUT_S` wall-clock
+  budget **and** the existing per-client token-bucket rate limiter **and** admin-only
+  authorization; the work is O(alarms × candidates) with both factors capped, runs on the HTTP
+  side, and **never touches the ingest path**. *Tests:* `test_f22_preview_is_bounded_*`,
+  `test_f24_ingest_unaffected_by_preview`.
+- **Information disclosure — preview as an exfiltration channel.** *Threat:* a compute endpoint
+  returning richer data than the caller could otherwise read. *Control:* preview returns only
+  **aggregate structural deltas** (situation counts, merge/split groups by situation id, link
+  counts gained/lost) — no alarm payloads, no varbinds, no device IPs, no field beyond what the
+  caller could already read under `shaping.py`; and it is admin-only, the role that could read all
+  of it anyway. *Test:* `test_f22_preview_response_discloses_no_new_fields`.
+- **Tampering — preview mutating state.** *Threat:* a "read-only" analysis that writes a link, a
+  situation, learned state, or a config row. *Control:* preview reads alarms and re-partitions
+  **in memory only**; it constructs a throwaway `Correlator`, holds the learned matrices fixed as
+  an input, and issues no write. *Test:* `test_f22_preview_mutates_nothing` (full-database
+  snapshot compared before/after, including `sqlite_sequence`), plus
+  `test_preview_is_deterministic_across_two_runs`.
+
+### Provenance and reproducibility (A5 stolen/altered DB, post-incident review)
+
+- **Tampering — rewriting the parameter history behind a past grouping.** *Threat:* editing or
+  deleting a `scorer_config` row to make a historical situation look like it was scored
+  differently. *Control:* `scorer_config` is **append-only at the storage layer**
+  (`BEFORE UPDATE` / `BEFORE DELETE` triggers that `RAISE(ABORT)`), exactly like `audit_log`;
+  rollback moves a pointer and never mutates a row; every change is also in the hash-chained audit
+  log, so tampering must defeat both. Unlike `audit_log` there is **no sanctioned deleter** — the
+  retention prune does not touch `scorer_config`. *Tests:* `test_f23_scorer_config_is_append_only`,
+  `test_f23_prune_does_not_touch_scorer_config`.
+- **Repudiation — "we cannot say how this situation was scored".** *Threat:* a regulated NOC
+  post-incident review that cannot recover the decision rule. *Control:* every situation carries
+  `scorer_config_id`; the referenced row is immutable and carries the five parameters, the
+  `scorer_id`, the `contract_version`, and a `params_hash`. Existing situations are backfilled to
+  the seed row, which *is* the coded defaults that in fact formed them. *Test:*
+  `test_f23_situation_provenance_recovers_exact_parameters`.
+
+### Engine (A5 availability) — the scorer itself as a failure mode
+
+- **Denial of service — a scorer that raises, hangs, or returns nonsense.** *Threat:* the engine
+  stalls or crashes because scoring failed. *Control:* every scoring call goes through a fail-safe
+  wrapper: on any exception, timeout, or malformed `LinkScore` the engine **falls back to the
+  coded-default `AdditiveScorer`** for the remainder of the process, records
+  `scorer.fallback` (system actor) once, and surfaces a persistent operator warning. The engine
+  may never run without a valid scorer. Fail-safe, never fail-open, never fail-stop. *Tests:*
+  `test_f25_raising_scorer_falls_back_and_audits`, `test_f25_engine_never_runs_scorerless`.
+
+### Startup configuration (A6 operator error) — the `OPTICORR_*` removal
+
+- **Security misconfiguration — a removed knob silently ignored.** *Threat:* an operator upgrading
+  with `OPTICORR_ALLOWLIST` still set would believe trap sources are filtered while **every source
+  is accepted** — a security regression dressed as a compatibility one. *Control:* setting any
+  `OPTICORR_*` variable is a **hard startup error** naming each variable, its `NETCORENOC_*`
+  replacement, and `MIGRATION.md`; the error text names variables, never values, and prints no
+  secret. *Tests:* `test_f26_legacy_env_prefix_is_a_startup_error`,
+  `test_f26_legacy_env_error_names_no_value`.
+
+## Rejected by design (stronger than a control)
+
+`EXTENSIBILITY-0.6-DRAFT.md` §3 Tier B specified an admin-enabled **external API supplying the
+linking criterion**, with SSRF, DoS-via-stall, and untrusted-response-injection threats each
+carrying a control. v0.6.0 **rejects the design** (DECISIONS #44) rather than mitigating it:
+
+- **SSRF via the criterion API** — *disposition:* no socket exists. `LinkScorer.score` is
+  specified pure, deterministic, side-effect-free and inference-only; no outbound call decides a
+  link, now or later. Any future external signal is advisory/offline only.
+- **DoS / stall via the criterion API** — *disposition:* unreachable for the same reason. The
+  scorer runs in-process, engine-side, under the existing batch lock.
+- **Untrusted response injection** — *disposition:* unreachable; there is no response to parse.
+
+Removing the hazard is not the same as controlling it, and this model records which one happened.
+
+## v0.6.0 residual risk (accepted, documented)
+
+- **A determined admin can still detune correlation.** The control is preview + audit + immutable
+  history + one-action rollback + validated bounds — *not* prevention. An admin is trusted to
+  change system logic by definition; the design makes the change visible, reversible, and
+  attributable, and refuses only the shapes that cannot be correct.
+- **Preview is directional, not exhaustive.** It reflects a bounded *recent* window (≤ 5000
+  alarms), re-partitions with the learned matrices held fixed, and therefore predicts the
+  immediate effect, not the long-run effect after the matrices adapt. The UI says so in the panel
+  copy; a preview that looked authoritative would be worse than none.
+- **Provenance grows one row per parameter change.** Bounded (a handful of rows per year),
+  immutable, and never pruned — a deliberate trade against reproducibility being lost to
+  retention.
+- **`scorer_config` has no sanctioned deleter.** That is the point, and it means an operator
+  cannot excise a parameter change from history; they can only append and roll back.
+
+## v0.6.0 coverage check
+
+Every threat above names a control and a test. Findings F20–F26 are tracked in
+`SECURITY-REVIEW-0.6.md` (property → fix → test); Gate 5 requires every F-numbered test green,
+`make eval` byte-identical at default parameters, and the authorization matrix clean over the
+three new capabilities.

@@ -9,13 +9,28 @@ import pytest
 
 from netcorenoc import audit
 from netcorenoc.api import create_app
+from netcorenoc.correlate import Correlator, WindowAlarm
 from netcorenoc.main import Engine
+from netcorenoc.scoring import LinkFeatures, LinkScore
 from netcorenoc.store import Store
 
 import authutil
 import util
 
 BASE = 2_000_000.0
+
+
+class _FailingScorer:
+    """Test-only: proves the fail-safe path emits its catalog action (see test_scoring.py)."""
+
+    scorer_id = "test-failing"
+    contract_version = "1.0"
+
+    def score(self, features: LinkFeatures) -> LinkScore:
+        raise RuntimeError("deliberate failure")
+
+    def params_fingerprint(self) -> str:
+        return "failing"
 
 
 async def _actions(store: Store) -> list[tuple[str, str]]:
@@ -60,6 +75,26 @@ async def _drive_every_action(store: Store) -> tuple[Engine, httpx.AsyncClient]:
     await admin.get("/api/audit")  # audit.read
     await admin.get("/api/audit/export")  # audit.export
     await admin.post("/api/audit/prune")  # prune.manual
+
+    # v0.6.0 — the scoring seam. All three new actions are driven here, exactly like the rest.
+    await admin.post(  # scorer.preview
+        "/api/scorer/preview",
+        json={"w_t": 0.4, "w_a": 0.3, "w_e": 0.3, "tau_s": 45.0, "threshold": 0.55},
+    )
+    await admin.post(  # scorer.config.update (apply)
+        "/api/scorer",
+        json={"w_t": 0.4, "w_a": 0.3, "w_e": 0.3, "tau_s": 45.0, "threshold": 0.55, "note": "x"},
+    )
+    await admin.post("/api/scorer/rollback", json={"config_id": 1})  # scorer.config.update
+    # scorer.fallback: a scorer that raises degrades the engine to the coded defaults, and the
+    # maintenance pass records it once with the system actor.
+    engine.correlator.set_scorer(_FailingScorer())
+    engine.correlator.scorer.score(
+        Correlator.features(
+            WindowAlarm(1, 1, 1, ts=BASE), WindowAlarm(2, 2, 1, ts=BASE + 1), engine.learner
+        )
+    )
+    await engine.maintenance(BASE + 20, retention_days=365.0)
 
     # password.change: a throwaway user changes its own password.
     await admin.post(
@@ -106,6 +141,9 @@ EXPECTED_ACTIONS = {
     "quarantine.read",
     "audit.read",
     "audit.export",
+    "scorer.preview",
+    "scorer.config.update",
+    "scorer.fallback",
 }
 
 

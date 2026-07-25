@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import sys
 import time
 
 from netcorenoc.store import Store
@@ -64,7 +65,14 @@ async def test_ingestion_lossless_with_concurrent_authed_audited_api(store: Stor
     p95 = api_latencies[min(len(api_latencies) - 1, int(0.95 * len(api_latencies)))]
     # Sanity envelope (generous; this is a correctness regression, not a benchmark).
     assert elapsed < 60.0
-    assert p95 < 2.0
+    # The wall-clock latency bound is skipped under a tracer (coverage.py). A line tracer makes
+    # every Python call several times slower, so what the number measures then is the tracer, not
+    # the system: the *unmodified v0.5.0 tree* breaches this same 2.0 s bound under `--cov` on the
+    # machine this was measured on (2.17 s / 2.00 s), while passing comfortably without it. The
+    # assertions this test actually exists for — zero trap loss and audit rows written during the
+    # storm — run in every mode and are checked below (DECISIONS #51).
+    if sys.gettrace() is None:
+        assert p95 < 2.0
 
     # Audit rows for the mutating calls were written during the storm.
     async with store.lock:

@@ -363,10 +363,29 @@ class Store:
 
     # -- situations ------------------------------------------------------------------
 
-    async def create_situation(self, ts: float) -> int:
-        cur = await self.conn.execute(
-            "INSERT INTO situation (created_at, updated_at) VALUES (?, ?) RETURNING id", (ts, ts)
-        )
+    async def create_situation(self, ts: float, scorer_config_id: int | None = None) -> int:
+        """Open a situation, recording which scorer configuration formed it (v0.6.0 provenance).
+
+        The engine passes the active `config_id`; it is written here, on the store side under the
+        batch lock the engine already holds — never on the datagram path.
+
+        ``None`` means "no configuration is in effect" — the fail-safe state where the engine is
+        running on the coded defaults. The column is then left out of the statement entirely
+        rather than written as NULL, so this call still succeeds against a schema that predates
+        `0005_scorer_config.sql`. That is not hypothetical tidiness: it is what lets the same
+        engine code run before and after the migration, which is how the upgrade test proves the
+        migration changes no grouping."""
+        if scorer_config_id is None:
+            cur = await self.conn.execute(
+                "INSERT INTO situation (created_at, updated_at) VALUES (?, ?) RETURNING id",
+                (ts, ts),
+            )
+        else:
+            cur = await self.conn.execute(
+                "INSERT INTO situation (created_at, updated_at, scorer_config_id) "
+                "VALUES (?, ?, ?) RETURNING id",
+                (ts, ts, scorer_config_id),
+            )
         row = await cur.fetchone()
         assert row is not None
         return int(row[0])
@@ -800,6 +819,103 @@ class Store:
             (limit,),
         )
         return [dict(r) for r in await cur.fetchall()]
+
+    # -- scoring configuration (v0.6.0, §the scoring seam) ---------------------------
+
+    async def active_scorer_config(self) -> dict[str, Any] | None:
+        """The configuration the one-row pointer names, or None if the pointer is unset.
+
+        Read at the engine's configuration reload point — never per packet, never per candidate
+        pair, and never in ``receiver.datagram_received`` (prime directive 2)."""
+        cur = await self.conn.execute(
+            "SELECT c.* FROM scorer_active a JOIN scorer_config c ON c.id = a.config_id "
+            "WHERE a.id = 1"
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def get_scorer_config(self, config_id: int) -> dict[str, Any] | None:
+        cur = await self.conn.execute("SELECT * FROM scorer_config WHERE id=?", (config_id,))
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def list_scorer_configs(self, limit: int) -> list[dict[str, Any]]:
+        """The immutable configuration history, newest first, with the active one flagged."""
+        cur = await self.conn.execute(
+            "SELECT c.*, (a.config_id IS NOT NULL) AS active FROM scorer_config c "
+            "LEFT JOIN scorer_active a ON a.config_id = c.id AND a.id = 1 "
+            "ORDER BY c.id DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def insert_scorer_config(
+        self,
+        scorer_id: str,
+        contract_version: str,
+        w_t: float,
+        w_a: float,
+        w_e: float,
+        tau_s: float,
+        threshold: float,
+        params_hash: str,
+        created_by: str | None,
+        created_at: float,
+        note: str,
+    ) -> int:
+        """Append one immutable configuration row. Never UPDATE, never DELETE (triggers abort)."""
+        cur = await self.conn.execute(
+            "INSERT INTO scorer_config (scorer_id, contract_version, w_t, w_a, w_e, tau_s, "
+            "threshold, params_hash, created_by, created_at, note) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            (
+                scorer_id,
+                contract_version,
+                w_t,
+                w_a,
+                w_e,
+                tau_s,
+                threshold,
+                params_hash,
+                created_by,
+                created_at,
+                note,
+            ),
+        )
+        row = await cur.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    async def set_active_scorer_config(
+        self, config_id: int, activated_by: str | None, ts: float
+    ) -> bool:
+        """Point the single active row at a configuration. Apply and rollback are this one call —
+        history is immutable, so reverting is moving the pointer, never editing or deleting."""
+        cur = await self.conn.execute("SELECT 1 FROM scorer_config WHERE id=?", (config_id,))
+        if await cur.fetchone() is None:
+            return False
+        await self.conn.execute(
+            "INSERT INTO scorer_active (id, config_id, activated_by, activated_at) "
+            "VALUES (1, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET config_id=excluded.config_id, "
+            "activated_by=excluded.activated_by, activated_at=excluded.activated_at",
+            (config_id, activated_by, ts),
+        )
+        return True
+
+    async def recent_alarms_for_preview(self, limit: int) -> list[dict[str, Any]]:
+        """A bounded, read-only snapshot of recent alarms for the scorer what-if (v0.6.0).
+
+        Most-recent-first at the SQL level so the cap keeps the *newest* window, then returned in
+        chronological order so the replay ordering — and therefore the preview result — is
+        deterministic. Reads five columns and writes nothing."""
+        cur = await self.conn.execute(
+            "SELECT id, ne_id, entity_id, class_id, first_seen FROM alarm "
+            "ORDER BY first_seen DESC, id DESC LIMIT ?",
+            (limit,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        rows.reverse()
+        return rows
 
     # -- auth: users --------------------------------------------------------------------
 

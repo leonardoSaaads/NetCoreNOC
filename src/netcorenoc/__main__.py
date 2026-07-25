@@ -16,21 +16,21 @@ import os
 import sys
 
 from netcorenoc import audit
+from netcorenoc.main import legacy_env_error, legacy_env_names
 from netcorenoc.store import Store
 
 
 def _db_path() -> str:
-    new = os.environ.get("NETCORENOC_DB")
-    if new is not None:
-        return new
-    legacy = os.environ.get("OPTICORR_DB")
-    if legacy is not None:
-        print(
-            "warning: OPTICORR_DB is deprecated and will be removed in v0.6.0; use NETCORENOC_DB",
-            file=sys.stderr,
-        )
-        return legacy
-    return "netcorenoc.db"
+    """NETCORENOC_DB, or the default file. The OPTICORR_DB alias was removed in v0.6.0.
+
+    The CLI refuses rather than silently reading the wrong database: pointing `audit verify` at
+    the default file while the operator believes it is checking their real one would produce a
+    confidently wrong answer about the integrity of the audit chain."""
+    legacy = legacy_env_names()
+    if legacy:
+        print(str(legacy_env_error(tuple(legacy))), file=sys.stderr)
+        raise SystemExit(2)
+    return os.environ.get("NETCORENOC_DB", "netcorenoc.db")
 
 
 async def _verify(db_path: str) -> int:

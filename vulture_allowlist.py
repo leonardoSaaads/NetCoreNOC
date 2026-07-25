@@ -52,3 +52,25 @@ _.row_factory  # unused attribute (netcorenoc/store.py:80)
 _.entity_count_for_ne  # unused method (netcorenoc/store.py:627)
 _.set_must_change_password  # unused method (netcorenoc/store.py:852)
 _.best_promotable  # unused method (netcorenoc/varbind_profile.py:345)
+
+# v0.6.0 — the scoring seam. FastAPI route handlers (registered by decorator, never called by
+# name) and the reserved/read-by-scorer LinkFeatures fields. The reserved slots are deliberately
+# unread in v0.6.0: they exist so v0.7/v0.8 features are a minor contract bump rather than a
+# breaking change (DECISIONS #49), and `tests/test_scoring.py` asserts they stay None and are
+# ignored. `class_i`/`class_j`/`ne_i`/`ne_j` are carried for future scorers and for provenance;
+# the built-in AdditiveScorer scores on the affinities already resolved from them.
+get_scorer  # unused function (netcorenoc/api.py:890)
+preview_scorer  # unused function (netcorenoc/api.py:930)
+set_scorer  # unused function (netcorenoc/api.py:1003)
+rollback_scorer  # unused function (netcorenoc/api.py:1062)
+class_i  # unused variable (netcorenoc/scoring.py:78)
+class_j  # unused variable (netcorenoc/scoring.py:79)
+ne_i  # unused variable (netcorenoc/scoring.py:81)
+ne_j  # unused variable (netcorenoc/scoring.py:82)
+severity_i  # unused variable (netcorenoc/scoring.py:86)
+severity_j  # unused variable (netcorenoc/scoring.py:87)
+topo_distance  # unused variable (netcorenoc/scoring.py:88)
+probable_cause_i  # unused variable (netcorenoc/scoring.py:89)
+probable_cause_j  # unused variable (netcorenoc/scoring.py:90)
+event_type_i  # unused variable (netcorenoc/scoring.py:91)
+event_type_j  # unused variable (netcorenoc/scoring.py:92)

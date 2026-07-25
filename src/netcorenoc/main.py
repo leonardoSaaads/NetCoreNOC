@@ -19,13 +19,13 @@ import sqlite3
 import statistics
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import uvicorn
 
-from netcorenoc import audit, auth, known_oids, severity
+from netcorenoc import audit, auth, known_oids, scoring, severity
 from netcorenoc.api import QuietServer, create_app
 from netcorenoc.correlate import Correlator, ScoredLink, WindowAlarm
 from netcorenoc.events import Fingerprint, QuarantinedPacket, TrapEvent
@@ -103,36 +103,25 @@ class GapTracker:
 
 
 # Rebrand (v0.4.0): the canonical environment prefix is NETCORENOC_*. The legacy OPTICORR_*
-# names are accepted with a single startup deprecation warning per variable, naming the variable
-# and never its value. The v0.4.0 removal target (v0.5.0) was extended by one version — removing
-# them in an organization release would be an unrelated breaking change (DECISIONS #39, removal in
-# v0.6.0 — see docs/ROADMAP.md and MIGRATION.md). This mirrors the v0.2.0 legacy-token discipline.
+# aliases were accepted with a once-per-variable deprecation warning through v0.5.0 and are
+# **removed in v0.6.0** as promised (DECISIONS #34, #39, #45). Setting one is now a hard startup
+# error naming the replacement — never a silent no-op: an operator who still set
+# OPTICORR_ALLOWLIST would believe traps were filtered while every source was accepted, which is
+# a security regression dressed as a compatibility one. This mirrors how v0.3.0 removed
+# OPTICORR_API_TOKEN (DECISIONS #29).
 ENV_PREFIX = "NETCORENOC_"
 LEGACY_ENV_PREFIX = "OPTICORR_"
-_warned_legacy_env: set[str] = set()
-
-
-def _warn_legacy_env(legacy_name: str, new_name: str) -> None:
-    if legacy_name in _warned_legacy_env:
-        return
-    _warned_legacy_env.add(legacy_name)
-    log.warning(
-        "environment variable %s is deprecated and will be removed in v0.6.0; use %s instead",
-        legacy_name,
-        new_name,
-    )
 
 
 def read_env(suffix: str, default: str | None = None) -> str | None:
-    """Read NETCORENOC_<suffix>, falling back to the deprecated OPTICORR_<suffix> (warned once)."""
-    value = os.environ.get(ENV_PREFIX + suffix)
-    if value is not None:
-        return value
-    legacy = os.environ.get(LEGACY_ENV_PREFIX + suffix)
-    if legacy is not None:
-        _warn_legacy_env(LEGACY_ENV_PREFIX + suffix, ENV_PREFIX + suffix)
-        return legacy
-    return default
+    """Read NETCORENOC_<suffix>. The legacy OPTICORR_<suffix> alias was removed in v0.6.0."""
+    return os.environ.get(ENV_PREFIX + suffix, default)
+
+
+def legacy_env_names(environ: Mapping[str, str] | None = None) -> list[str]:
+    """Every removed OPTICORR_* variable present in the environment, sorted. Names only."""
+    source = os.environ if environ is None else environ
+    return sorted(name for name in source if name.startswith(LEGACY_ENV_PREFIX))
 
 
 @dataclass(frozen=True)
@@ -151,6 +140,9 @@ class Settings:
     tls_cert: str = ""
     tls_key: str = ""
     log_json: bool = False
+    # Removed OPTICORR_* variables found in the environment (names only, never values). Captured
+    # here so `run()` can fail loud with the exact replacement for each (v0.6.0, DECISIONS #45).
+    legacy_env: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -165,17 +157,15 @@ class Settings:
             http_host=s("HTTP_HOST", cls.http_host),
             http_port=int(s("HTTP_PORT", str(cls.http_port))),
             allowlist=s("ALLOWLIST", cls.allowlist),
-            # The shared API token was removed in v0.3.0; either prefix setting it is a hard
-            # error at startup (run()). Read both names so the removal is enforced, not evaded.
-            api_token=os.environ.get(
-                ENV_PREFIX + "API_TOKEN",
-                os.environ.get(LEGACY_ENV_PREFIX + "API_TOKEN", cls.api_token),
-            ),
+            # The shared API token was removed in v0.3.0; setting it is a hard error at startup
+            # (run()). The legacy-prefixed name is caught by the v0.6.0 alias check instead.
+            api_token=os.environ.get(ENV_PREFIX + "API_TOKEN", cls.api_token),
             retention_days=float(s("RETENTION_DAYS", str(cls.retention_days))),
             audit_retention_days=float(s("AUDIT_RETENTION_DAYS", str(cls.audit_retention_days))),
             tls_cert=s("TLS_CERT", cls.tls_cert),
             tls_key=s("TLS_KEY", cls.tls_key),
             log_json=s("LOG_JSON", "") not in ("", "0", "false", "False"),
+            legacy_env=tuple(legacy_env_names()),
         )
 
     @property
@@ -244,14 +234,115 @@ class Engine:
         # Learned severity (S8): the confirmed severity varbind OID per NE. A trap's value on
         # that OID is normalised to (severity, rank); an absent NE keeps severity unknown.
         self.ne_severity: dict[int, str] = {}
+        # Scoring configuration (v0.6.0). `scorer_config_id` is the provenance recorded on every
+        # situation this engine opens; None until the store has been read (fresh in-memory DBs in
+        # tests may have no pointer). Loaded at the documented reload point only — never per
+        # packet, never in receiver.datagram_received.
+        self.scorer_config_id: int | None = None
+        self.scorer_warnings: list[str] = []
+        # (config id, params hash) of the configuration currently instantiated. A reload that
+        # finds the same key is a no-op, which is what keeps a fail-safe degradation sticky.
+        self._loaded_key: tuple[int, str] | None = None
 
     def forget_situation(self, sid: int) -> None:
         """Drop in-memory membership after an operator manually closes a situation."""
         for member in self.members.pop(sid, []):
             self.sit_of.pop(member.alarm_id, None)
 
+    async def load_scorer_config(self) -> None:
+        """Load the active scoring configuration — **the reload point** (§DESIGN v0.6.0).
+
+        Called at :meth:`start` and at the top of each :meth:`maintenance` pass, so an admin's
+        apply or rollback takes effect within one maintenance interval and *never* mid-batch: a
+        batch is always scored by exactly one configuration, which is what makes the `config_id`
+        recorded on a situation the one that actually scored it.
+
+        Fail-safe: an unreachable store, a dangling pointer, an unsupported contract version, or
+        an out-of-bounds stored row leaves the **coded defaults** in place and raises an operator
+        warning. The engine can never run with an unvalidated formula, and never refuses to run
+        for want of one.
+        """
+        try:
+            row = await self.store.active_scorer_config()
+        except Exception as exc:  # a config read must never stop correlation
+            self._loaded_key = None  # retry on the next pass; the DB may come back
+            self._use_default_scorer(f"scoring configuration unreadable ({type(exc).__name__})")
+            return
+        key = None if row is None else (int(row["id"]), str(row["params_hash"]))
+        if key == self._loaded_key:
+            # Unchanged since the last reload: leave the live scorer alone. This is what makes a
+            # degradation *sticky* — re-instantiating the same configuration every maintenance
+            # pass would silently un-degrade a scorer that has already proven it fails.
+            return
+        self._loaded_key = key
+        if row is None:
+            # No pointer yet (a store older than the seed, or a bare test fixture): coded
+            # defaults, silently — this is the documented zero-config state, not a failure.
+            self.correlator.set_scorer(scoring.default_scorer())
+            self.scorer_config_id = None
+            self.scorer_warnings = []
+            return
+        try:
+            scoring.check_contract_version(str(row["contract_version"]))
+            scoring.validate_params(
+                float(row["w_t"]),
+                float(row["w_a"]),
+                float(row["w_e"]),
+                float(row["tau_s"]),
+                float(row["threshold"]),
+            )
+        except (scoring.ScorerParamsError, scoring.ContractVersionError) as exc:
+            self._use_default_scorer(f"stored scoring configuration rejected: {exc}")
+            return
+        self.correlator.set_scorer(
+            scoring.AdditiveScorer(
+                w_t=float(row["w_t"]),
+                w_a=float(row["w_a"]),
+                w_e=float(row["w_e"]),
+                tau_s=float(row["tau_s"]),
+                threshold=float(row["threshold"]),
+                scorer_id=str(row["scorer_id"]),
+                contract_version=str(row["contract_version"]),
+            )
+        )
+        self.scorer_config_id = int(row["id"])
+        self.scorer_warnings = []
+
+    def _use_default_scorer(self, reason: str) -> None:
+        """Fall back to the coded defaults and tell the operator why (never silently)."""
+        warning = f"{reason}. Correlation is running on the built-in default parameters."
+        if self.scorer_warnings != [warning]:
+            log.warning("%s; using the built-in default scoring parameters", reason)
+        self.correlator.set_scorer(scoring.default_scorer())
+        self.scorer_config_id = None
+        self.scorer_warnings = [warning]
+
+    def scorer_warning_list(self) -> list[str]:
+        """Operator warnings from the scoring path: a rejected config, or a degraded scorer."""
+        return [*self.scorer_warnings, *self.correlator.scorer.warnings()]
+
+    async def _audit_scorer_fallback(self, now: float) -> None:
+        """Record `scorer.fallback` once when the active scorer degrades to the defaults."""
+        safe = self.correlator.scorer
+        if not safe.degraded or safe.audited:
+            return
+        safe.audited = True
+        await audit.write_event(
+            self.store,
+            ts=now,
+            actor="system",
+            role=None,
+            source_ip=None,
+            action="scorer.fallback",
+            outcome="error",
+            object_type="scorer_config",
+            object_id=str(self.scorer_config_id) if self.scorer_config_id else None,
+            details={"reason": safe.last_error, "failures": safe.failures},
+        )
+
     async def start(self) -> None:
         """Reload learned state and open-situation membership after a restart."""
+        await self.load_scorer_config()
         await self.learner.load(self.store)
         await self.precedence.load(self.store)
         for row in await self.store.load_varbind_profiles():
@@ -626,7 +717,9 @@ class Engine:
         if own is not None:
             sids.add(own)
         if not sids:
-            sid = await self.store.create_situation(entry.ts)
+            # Provenance (v0.6.0): the situation records the scoring configuration that formed
+            # it. Written here — engine side, under the batch lock — never on the datagram path.
+            sid = await self.store.create_situation(entry.ts, self.scorer_config_id)
             self.members[sid] = []
         else:
             sid = min(sids)
@@ -677,6 +770,12 @@ class Engine:
     async def maintenance(self, now: float, retention_days: float, tick: int = 0) -> None:
         """Close idle situations, persist learned state, record ingest gaps, and prune."""
         async with self.store.lock:
+            # Record a degradation *before* reloading, so a fallback that happened under the
+            # current configuration is never lost to the swap that an admin's fix would cause.
+            await self._audit_scorer_fallback(now)
+            # The documented scoring-configuration reload point: an admin's apply or rollback
+            # takes effect here, between batches, never inside one.
+            await self.load_scorer_config()
             for sid in await self.store.idle_open_situations(now - IDLE_CLOSE_S):
                 await self._close_situation(sid, now)
             await self._promotion_sweep(now)
@@ -823,7 +922,26 @@ class LegacyTokenRemovedError(RuntimeError):
     """The shared API token was removed in v0.3.0 (§5.8); setting it is now a hard error."""
 
 
+class LegacyEnvRemovedError(RuntimeError):
+    """An `OPTICORR_*` environment alias was removed in v0.6.0; setting one is a hard error."""
+
+
+def legacy_env_error(names: tuple[str, ...]) -> LegacyEnvRemovedError:
+    """The startup error for removed aliases: every variable named, no value ever printed."""
+    mapping = "\n".join(
+        f"  {name} -> {ENV_PREFIX}{name[len(LEGACY_ENV_PREFIX) :]}" for name in names
+    )
+    return LegacyEnvRemovedError(
+        f"the legacy {LEGACY_ENV_PREFIX}* environment aliases were removed in v0.6.0 "
+        f"(deprecated since v0.4.0). Rename and unset:\n{mapping}\n"
+        "See MIGRATION.md. Refusing to start rather than ignoring them, because a silently "
+        "ignored setting (an allowlist, a TLS path) is a security regression, not a nuisance."
+    )
+
+
 async def run(settings: Settings) -> None:
+    if settings.legacy_env:
+        raise legacy_env_error(settings.legacy_env)
     if settings.api_token:
         # §5.8: the deprecated shared token is removed in v0.3.0. Fail fast, naming the path.
         raise LegacyTokenRemovedError(
@@ -874,6 +992,7 @@ async def run(settings: Settings) -> None:
             operator_warnings(runtime.allowlist, settings.tls_enabled, settings.http_host)
             + engine.entity_cap_warnings()
             + engine.db_error_warnings()
+            + engine.scorer_warning_list()
             + list(store.integrity_warnings)
             + supervisor.warnings()
         ),

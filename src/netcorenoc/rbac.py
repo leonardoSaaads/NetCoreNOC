@@ -23,6 +23,9 @@ PERMISSIONS: dict[str, str] = {
     "timeline.read": "viewer",
     "events.stream": "viewer",
     "entities.read": "viewer",  # v0.3.0: entity tree + varbind profiler (inspectable)
+    # v0.6.0: the active scorer id, its parameters, and the per-term contributions EXPLAIN
+    # grouping — they are not a secret, so every authenticated role may read them.
+    "scorer.read": "viewer",
     # operate (editor+)
     "feedback.write": "editor",
     "label.write": "editor",
@@ -38,6 +41,11 @@ PERMISSIONS: dict[str, str] = {
     "audit.read": "admin",
     "audit.export": "admin",
     "audit.prune": "admin",
+    # v0.6.0: retuning the link formula is a system-wide logic change, not an operational one.
+    # Admin only, with NO editor delegation — deliberately stricter than the "optionally editor"
+    # phrasing of the v0.5.0 extensibility draft (SCOPE-0.6 §2, DECISIONS #43).
+    "scorer.preview": "admin",  # bounded, read-only what-if over recent alarms
+    "scorer.write": "admin",  # append a config, move the active pointer, roll back
 }
 
 # Route (METHOD, templated path) -> required capability. THE authorization map.
@@ -69,6 +77,10 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("DELETE", "/api/tokens/{tid}"): "tokens.manage",
     ("GET", "/api/config"): "config.read",
     ("POST", "/api/config"): "config.write",
+    ("GET", "/api/scorer"): "scorer.read",
+    ("POST", "/api/scorer/preview"): "scorer.preview",
+    ("POST", "/api/scorer"): "scorer.write",
+    ("POST", "/api/scorer/rollback"): "scorer.write",
     ("GET", "/api/quarantine"): "quarantine.read",
     ("GET", "/api/audit"): "audit.read",
     ("GET", "/api/audit/export"): "audit.export",
@@ -92,6 +104,11 @@ AUDITED_DENIED_PERMISSIONS: frozenset[str] = frozenset(
         "tokens.manage",
         "config.read",  # reading the allowlist reveals network-security posture (F9)
         "config.write",
+        # v0.6.0 (F21): a denied attempt to retune or preview the correlation formula is an
+        # attempted system-wide logic change — worth a row even though it failed. `scorer.read`
+        # is deliberately NOT here: it is viewer+, so a denial only means "unauthenticated".
+        "scorer.preview",
+        "scorer.write",
     }
 )
 

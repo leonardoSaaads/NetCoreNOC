@@ -24,7 +24,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from netcorenoc import __version__, audit, auth, rbac, shaping
+from netcorenoc import __version__, audit, auth, preview, rbac, scoring, shaping
 from netcorenoc.learn import MIN_EDGE_N
 
 if TYPE_CHECKING:
@@ -35,7 +35,14 @@ UI_DIR = Path(__file__).parent / "ui"
 UI_FILE = UI_DIR / "index.html"
 RATE_CAPACITY = 30.0
 RATE_REFILL = 10.0
+# Preview re-partitions up to MAX_PREVIEW_ALARMS alarms, so it is the one endpoint whose cost is
+# worth more than a share of the general bucket: its own, much tighter bucket (3 burst, then one
+# roughly every 10 s) bounds it independently of the per-client limiter (F22).
+PREVIEW_RATE_CAPACITY = 3.0
+PREVIEW_RATE_REFILL = 0.1
 MAX_LABEL_CHARS = 120
+MAX_NOTE_CHARS = 500
+MAX_SCORER_HISTORY = 50
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 SSE_HEARTBEAT_S = 15.0
 SSE_UPDATE_S = 2.0
@@ -78,6 +85,10 @@ DENIED_ACTION = {
     "tokens.manage": "token.create",
     "config.read": "config.change",  # a denied config *access* is logged under the config action
     "config.write": "config.change",
+    # v0.6.0 (F21): a denied attempt to retune or preview the correlation formula is an attempted
+    # system-wide logic change and is recorded under the action it tried to perform.
+    "scorer.preview": "scorer.preview",
+    "scorer.write": "scorer.config.update",
 }
 # Fail fast at import if the presentation mapping drifts from the authorization source of truth.
 assert set(DENIED_ACTION) == set(rbac.AUDITED_DENIED_PERMISSIONS), (
@@ -146,6 +157,23 @@ class ConfigIn(BaseModel):
     retention_days: float = Field(gt=0, le=3650)
 
 
+class ScorerParamsIn(BaseModel):
+    """A candidate parameter set. Pydantic bounds the *shape*; `scoring.validate_params` is the
+    single semantic authority (it also rejects the degenerate combinations a range check misses),
+    so both run and the precise reason always comes from the one validator."""
+
+    w_t: float = Field(ge=0.0, le=1.0)
+    w_a: float = Field(ge=0.0, le=1.0)
+    w_e: float = Field(ge=0.0, le=1.0)
+    tau_s: float = Field(gt=0.0, le=scoring.MAX_TAU_S)
+    threshold: float = Field(ge=0.0, le=1.0)
+    note: str = Field(default="", max_length=MAX_NOTE_CHARS)
+
+
+class ScorerRollbackIn(BaseModel):
+    config_id: int = Field(ge=1)
+
+
 class QuietServer(uvicorn.Server):
     """Uvicorn server that leaves signal handling to the NetCoreNOC process."""
 
@@ -163,6 +191,20 @@ def _route_path(request: Request) -> str:
     return getattr(route, "path", request.url.path)
 
 
+def _params_of(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The five parameters of a stored scorer config, for a before/after audit detail."""
+    if row is None:
+        return None
+    return {
+        "config_id": int(row["id"]),
+        "w_t": row["w_t"],
+        "w_a": row["w_a"],
+        "w_e": row["w_e"],
+        "tau_s": row["tau_s"],
+        "threshold": row["threshold"],
+    }
+
+
 def create_app(
     engine: Engine,
     extra_stats: Callable[[], dict[str, Any]] | None = None,
@@ -172,9 +214,12 @@ def create_app(
     tls_enabled: bool = False,
     runtime: RuntimeConfig | None = None,
     warnings: Callable[[], list[str]] | None = None,
+    preview_rate_capacity: float = PREVIEW_RATE_CAPACITY,
+    preview_rate_refill: float = PREVIEW_RATE_REFILL,
 ) -> FastAPI:
     app = FastAPI(title="NetCoreNOC", version=__version__, docs_url=None, redoc_url=None)
     limiter = RateLimiter(rate_capacity, rate_refill)
+    preview_limiter = RateLimiter(preview_rate_capacity, preview_rate_refill)
     throttle = throttle or auth.LoginThrottle()
     store = engine.store
 
@@ -491,6 +536,15 @@ def create_app(
             detail = await store.situation_detail(sid)
         if detail is None:
             raise HTTPException(status_code=404, detail="no such situation")
+        # v0.6.0: every link carries its explanation as a typed, *named* term list — the same
+        # three numbers, from one source (`LinkScore.terms`) rather than three ad-hoc columns.
+        # The columns stay for compatibility and remain byte-identical (DECISIONS #50).
+        for link in detail.get("links", []):
+            link["terms"] = [
+                {"name": "temporal", "contribution": link["term_t"]},
+                {"name": "class_affinity", "contribution": link["term_a"]},
+                {"name": "entity_affinity", "contribution": link["term_e"]},
+            ]
         return shaping.shape(detail, principal.role)  # coarsen alarm device IPs below editor
 
     @app.get("/api/timeline")
@@ -807,6 +861,232 @@ def create_app(
             runtime.apply_allowlist(body.allowlist)
             runtime.retention_days = body.retention_days
         return {"status": "saved"}
+
+    # -- the scoring seam (v0.6.0) -----------------------------------------------------
+
+    def _active_scorer() -> scoring.AdditiveScorer:
+        """The parameters the engine is scoring with right now (post-fallback, if degraded)."""
+        active = engine.correlator.scorer.active
+        return active if isinstance(active, scoring.AdditiveScorer) else scoring.default_scorer()
+
+    def _scorer_row(row: dict[str, Any]) -> dict[str, Any]:
+        """One history row, projected. No secrets here — a parameter set explains grouping."""
+        return {
+            "id": int(row["id"]),
+            "scorer_id": row["scorer_id"],
+            "contract_version": row["contract_version"],
+            "w_t": row["w_t"],
+            "w_a": row["w_a"],
+            "w_e": row["w_e"],
+            "tau_s": row["tau_s"],
+            "threshold": row["threshold"],
+            "params_hash": row["params_hash"],
+            "created_by": row["created_by"],
+            "created_at": row["created_at"],
+            "note": row["note"],
+            "active": bool(row.get("active")),
+        }
+
+    @app.get("/api/scorer", dependencies=guarded)
+    async def get_scorer() -> dict[str, Any]:
+        """The active scorer, its parameters, the validation bounds, and the config history.
+
+        Viewer+ by design: these numbers *explain* every grouping decision and are not a secret
+        (SCOPE-0.6 §2). Writing them is a separate, admin-only capability."""
+        async with store.lock:
+            history = await store.list_scorer_configs(MAX_SCORER_HISTORY)
+        active = _active_scorer()
+        safe = engine.correlator.scorer
+        return {
+            "scorer_id": active.scorer_id,
+            "contract_version": active.contract_version,
+            "supported_contract_version": scoring.CONTRACT_VERSION,
+            "params": active.params(),
+            "params_hash": active.params_fingerprint(),
+            "config_id": engine.scorer_config_id,
+            "degraded": safe.degraded,
+            "degraded_reason": safe.last_error,
+            "bounds": {
+                "min_tau_s": scoring.MIN_TAU_S,
+                "max_tau_s": scoring.MAX_TAU_S,
+                "min_weight_sum": scoring.MIN_WEIGHT_SUM,
+                "min_threshold": scoring.MIN_THRESHOLD,
+                "threshold_margin": scoring.THRESHOLD_MARGIN,
+            },
+            "preview_limits": {
+                "max_alarms": preview.MAX_PREVIEW_ALARMS,
+                "timeout_s": preview.PREVIEW_TIMEOUT_S,
+            },
+            "history": [_scorer_row(row) for row in history],
+        }
+
+    def _validated(body: ScorerParamsIn) -> None:
+        """Semantic validation — bounds *and* degeneracy. A rejected set is never stored."""
+        try:
+            scoring.validate_params(body.w_t, body.w_a, body.w_e, body.tau_s, body.threshold)
+        except scoring.ScorerParamsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/scorer/preview")
+    async def preview_scorer(
+        body: ScorerParamsIn, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Read-only what-if: how would these parameters regroup my recent alarms?
+
+        Bounded (alarm cap + hard wall-clock budget), rate-limited by its own tight bucket,
+        admin-only, deterministic, and it writes nothing but its own audit row (F22). It runs
+        entirely on the HTTP side and never touches the ingest path."""
+        if not preview_limiter.allow(_client_ip(request), time.monotonic()):
+            raise HTTPException(status_code=429, detail="preview rate limit exceeded")
+        _validated(body)
+        candidate = scoring.AdditiveScorer(
+            w_t=body.w_t, w_a=body.w_a, w_e=body.w_e, tau_s=body.tau_s, threshold=body.threshold
+        )
+        async with store.lock:
+            rows = await store.recent_alarms_for_preview(preview.MAX_PREVIEW_ALARMS)
+        alarms = [
+            preview.PreviewAlarm(
+                alarm_id=int(r["id"]),
+                class_id=int(r["class_id"]),
+                ne_id=int(r["ne_id"]) if r["ne_id"] is not None else 0,
+                entity_id=int(r["entity_id"]) if r["entity_id"] is not None else 0,
+                ts=float(r["first_seen"]),
+            )
+            for r in rows
+        ]
+        active = _active_scorer()
+        deadline = time.monotonic() + preview.PREVIEW_TIMEOUT_S
+        try:
+            before, links_before = preview.partition(
+                alarms, active, engine.learner, deadline=deadline
+            )
+            after, links_after = preview.partition(
+                alarms, candidate, engine.learner, deadline=deadline
+            )
+        except preview.PreviewTimeoutError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="preview exceeded its time budget and was abandoned; no change was made",
+            ) from exc
+        delta = preview.diff_partitions(before, after)
+        async with store.lock:
+            await audit_row(
+                request,
+                principal,
+                "scorer.preview",
+                "ok",
+                object_type="scorer_config",
+                details={
+                    "alarms": len(alarms),
+                    "candidate_hash": candidate.params_fingerprint(),
+                    "situations_before": delta["situations_before"],
+                    "situations_after": delta["situations_after"],
+                },
+            )
+            await store.commit()
+        return {
+            **delta,
+            "alarms_considered": len(alarms),
+            "alarms_cap": preview.MAX_PREVIEW_ALARMS,
+            "links_before": links_before,
+            "links_after": links_after,
+            "active_params": active.params(),
+            "candidate_params": candidate.params(),
+            # Stated here, not only in the UI: an operator reading the raw API must see the limit.
+            "caveat": (
+                "Directional, not exhaustive: computed over the most recent "
+                f"{len(alarms)} alarm(s) with the learned matrices held fixed, so it shows the "
+                "immediate effect of the change, not where the system settles afterwards."
+            ),
+        }
+
+    @app.post("/api/scorer")
+    async def set_scorer(
+        body: ScorerParamsIn, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Append an immutable configuration and make it active. Audited; reversible in one call.
+
+        Takes effect at the engine's next configuration reload point (the next maintenance pass),
+        never mid-batch."""
+        _validated(body)
+        now = time.time()
+        params_hash = scoring.params_hash(
+            scoring.DEFAULT_SCORER_ID,
+            scoring.CONTRACT_VERSION,
+            body.w_t,
+            body.w_a,
+            body.w_e,
+            body.tau_s,
+            body.threshold,
+        )
+        async with store.lock:
+            previous = await store.active_scorer_config()
+            config_id = await store.insert_scorer_config(
+                scoring.DEFAULT_SCORER_ID,
+                scoring.CONTRACT_VERSION,
+                body.w_t,
+                body.w_a,
+                body.w_e,
+                body.tau_s,
+                body.threshold,
+                params_hash,
+                principal.actor,
+                now,
+                body.note,
+            )
+            await store.set_active_scorer_config(config_id, principal.actor, now)
+            await audit_row(
+                request,
+                principal,
+                "scorer.config.update",
+                "ok",
+                object_type="scorer_config",
+                object_id=str(config_id),
+                details={
+                    "action": "apply",
+                    "before": _params_of(previous),
+                    "after": {
+                        "w_t": body.w_t,
+                        "w_a": body.w_a,
+                        "w_e": body.w_e,
+                        "tau_s": body.tau_s,
+                        "threshold": body.threshold,
+                    },
+                    "params_hash": params_hash,
+                    "note_len": len(body.note),
+                },
+            )
+            await store.commit()
+        return {"status": "applied", "config_id": config_id, "params_hash": params_hash}
+
+    @app.post("/api/scorer/rollback")
+    async def rollback_scorer(
+        body: ScorerRollbackIn, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Point the active configuration at an earlier, immutable row. One call, no data lost."""
+        now = time.time()
+        async with store.lock:
+            target = await store.get_scorer_config(body.config_id)
+            if target is None:
+                raise HTTPException(status_code=404, detail="no such scorer configuration")
+            previous = await store.active_scorer_config()
+            await store.set_active_scorer_config(body.config_id, principal.actor, now)
+            await audit_row(
+                request,
+                principal,
+                "scorer.config.update",
+                "ok",
+                object_type="scorer_config",
+                object_id=str(body.config_id),
+                details={
+                    "action": "rollback",
+                    "before": _params_of(previous),
+                    "after": _params_of(target),
+                    "params_hash": target["params_hash"],
+                },
+            )
+            await store.commit()
+        return {"status": "rolled back", "config_id": body.config_id}
 
     # -- admin: quarantine (the read itself is audited) --------------------------------
 

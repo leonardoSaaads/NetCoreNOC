@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from pathlib import Path
 
 import pytest
 
@@ -27,33 +29,57 @@ def test_settings_from_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.allowlist == "10.0.0.0/8"
 
 
-def test_settings_legacy_env_alias_still_works(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+async def test_f26_legacy_env_prefix_is_a_startup_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Rebrand (v0.4.0, DECISIONS #34): legacy OPTICORR_* env names are honoured for one
-    version and emit a single deprecation warning per variable, naming the variable only."""
-    import netcorenoc.main as main_mod
+    """F26 / DECISIONS #45: the OPTICORR_* aliases were removed in v0.6.0. Setting one is a hard
+    startup error naming every offending variable and its NETCORENOC_* replacement — never a
+    silent no-op, because an ignored OPTICORR_ALLOWLIST means every trap source is accepted."""
+    from netcorenoc.main import LegacyEnvRemovedError, run
 
-    main_mod._warned_legacy_env.clear()
     monkeypatch.delenv("NETCORENOC_TRAP_PORT", raising=False)
     monkeypatch.setenv("OPTICORR_TRAP_PORT", "1162")
-    with caplog.at_level("WARNING", logger="netcorenoc"):
-        settings = Settings.from_env()
-        Settings.from_env()  # a second read must NOT warn again
-    assert settings.trap_port == 1162
-    warnings = [r for r in caplog.records if "OPTICORR_TRAP_PORT" in r.getMessage()]
-    assert len(warnings) == 1
-    assert "NETCORENOC_TRAP_PORT" in warnings[0].getMessage()  # points at the new name
-    assert "1162" not in warnings[0].getMessage()  # never the value
+    monkeypatch.setenv("OPTICORR_ALLOWLIST", "10.0.0.0/8")
+    settings = Settings.from_env()
+    assert settings.legacy_env == ("OPTICORR_ALLOWLIST", "OPTICORR_TRAP_PORT")
+    assert settings.trap_port == 162  # the alias is NOT honoured: the coded default stands
+
+    with pytest.raises(LegacyEnvRemovedError) as caught:
+        await run(Settings(db_path=str(tmp_path / "x.db"), legacy_env=settings.legacy_env))
+    message = str(caught.value)
+    for name in (
+        "OPTICORR_TRAP_PORT",
+        "NETCORENOC_TRAP_PORT",
+        "OPTICORR_ALLOWLIST",
+        "NETCORENOC_ALLOWLIST",
+        "MIGRATION.md",
+    ):
+        assert name in message, message
 
 
-def test_settings_new_env_takes_precedence_over_legacy(monkeypatch: pytest.MonkeyPatch) -> None:
-    import netcorenoc.main as main_mod
+async def test_f26_legacy_env_error_names_no_value(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """F26: the error names variables, never their values — an allowlist or a TLS path is
+    deployment detail that must not be echoed to a console or a log."""
+    from netcorenoc.main import LegacyEnvRemovedError, run
 
-    main_mod._warned_legacy_env.clear()
-    monkeypatch.setenv("NETCORENOC_TRAP_PORT", "5000")
-    monkeypatch.setenv("OPTICORR_TRAP_PORT", "1162")
-    assert Settings.from_env().trap_port == 5000
+    monkeypatch.setenv("OPTICORR_ALLOWLIST", "10.9.9.0/24")
+    monkeypatch.setenv("OPTICORR_TLS_KEY", "/secret/path/server.key")
+    with pytest.raises(LegacyEnvRemovedError) as caught:
+        await run(
+            Settings(db_path=str(tmp_path / "x.db"), legacy_env=Settings.from_env().legacy_env)
+        )
+    message = str(caught.value)
+    assert "10.9.9.0/24" not in message
+    assert "/secret/path/server.key" not in message
+
+
+def test_no_legacy_env_names_when_none_are_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in list(os.environ):
+        if name.startswith("OPTICORR_"):
+            monkeypatch.delenv(name, raising=False)
+    assert Settings.from_env().legacy_env == ()
 
 
 async def test_gap_tracker_opens_persists_and_audits(store: Store) -> None:

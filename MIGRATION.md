@@ -1,5 +1,74 @@
 # Upgrading NetCoreNOC
 
+## v0.5.0 → v0.6.0 (the scoring seam — one migration, one removal)
+
+v0.6.0 makes the correlation formula configurable, explainable, reproducible, and reversible.
+**Grouping does not change**: at the default parameters v0.6.0 produces byte-identical output to
+v0.5.0, and the migration seeds exactly those defaults. It is still one Python process over one
+SQLite file, with zero new runtime dependencies.
+
+### ⚠ One breaking change: the legacy `OPTICORR_*` environment aliases are removed
+
+Deprecated since v0.4.0, warned once per variable through v0.5.0, and **removed now** as promised
+(DECISIONS #34, #39, #45). Setting **any** `OPTICORR_*` variable is a **hard startup error** that
+names each offending variable and its replacement.
+
+**One-time action, before you upgrade:** rename every `OPTICORR_*` variable to `NETCORENOC_*` and
+unset the old one. The mapping is mechanical — the prefix, nothing else:
+
+| Removed | Use |
+|---|---|
+| `OPTICORR_DB` | `NETCORENOC_DB` |
+| `OPTICORR_TRAP_HOST` / `OPTICORR_TRAP_PORT` | `NETCORENOC_TRAP_HOST` / `NETCORENOC_TRAP_PORT` |
+| `OPTICORR_HTTP_HOST` / `OPTICORR_HTTP_PORT` | `NETCORENOC_HTTP_HOST` / `NETCORENOC_HTTP_PORT` |
+| `OPTICORR_ALLOWLIST` | `NETCORENOC_ALLOWLIST` |
+| `OPTICORR_RETENTION_DAYS` | `NETCORENOC_RETENTION_DAYS` |
+| `OPTICORR_AUDIT_RETENTION_DAYS` | `NETCORENOC_AUDIT_RETENTION_DAYS` |
+| `OPTICORR_TLS_CERT` / `OPTICORR_TLS_KEY` | `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY` |
+| `OPTICORR_LOG_JSON` | `NETCORENOC_LOG_JSON` |
+| `OPTICORR_API_TOKEN` | *(nothing — the shared token was removed in v0.3.0; issue a service token)* |
+
+Check with `env | grep OPTICORR_`. The `netcorenoc` audit CLI refuses for the same reason: reading
+the wrong database would give a confidently wrong answer about the audit chain's integrity.
+
+**Why an error rather than silently ignoring them.** A removed knob that quietly no-ops is a
+*security* regression, not a nuisance: an operator still setting `OPTICORR_ALLOWLIST` would
+believe trap sources were filtered while **every source was being accepted**. Failing at startup,
+naming the replacement, turns that into a five-second fix.
+
+### What else changes for you
+
+- **One schema migration, `0005_scorer_config.sql` (`user_version` 4 → 5)**, applied
+  automatically at startup, forward-only and additive. It adds the immutable `scorer_config`
+  history table, a one-row `scorer_active` pointer, and a nullable `situation.scorer_config_id`
+  provenance column. It **seeds the coded defaults and marks them active**, and backfills every
+  existing situation to that row — a truthful record, because those situations really were formed
+  by those parameters. Your data, learned state, sessions, tokens, and audit chain are untouched.
+- **Nothing else changes by default.** The defaults are unchanged, the API responses are
+  unchanged (the `link` objects gain an additive `terms` list alongside the existing
+  `term_t`/`term_a`/`term_e`), and the UI gains one admin-only **Scorer** tab that most operators
+  will never open.
+- **New capabilities**: `scorer.read` (viewer+), `scorer.preview` and `scorer.write` (admin only,
+  no editor delegation). New audit actions: `scorer.config.update`, `scorer.preview`,
+  `scorer.fallback`.
+
+### The upgrade
+
+1. Back up the database (copy the file, or `sqlite3 netcorenoc.db ".backup backup.db"`).
+2. **Rename any `OPTICORR_*` variables** (table above) and unset the old names.
+3. Install v0.6.0 into the same environment (`pip install .`), or `docker compose up --build`,
+   pointing `NETCORENOC_DB` at the existing database.
+4. Start the process. Migration `0005` applies automatically. Verify with
+   `python -m netcorenoc audit verify` — the chain still verifies across the upgrade.
+
+### Rollback
+
+Restore the pre-upgrade backup and reinstall v0.5.0. A v0.5.0 binary will not read a
+`user_version=5` database's new tables, but it ignores them; the safe path is the backup.
+
+*Rolling back a **scoring configuration** is a different, much cheaper thing: it is one click in
+the Scorer tab (or `POST /api/scorer/rollback`), it moves a pointer, and it never edits history.*
+
 ## v0.4.0 → v0.5.0 (organization/structure — no behaviour change)
 
 v0.5.0 makes the project legible, installable, and contributable. **Nothing in the running
@@ -17,7 +86,8 @@ behaviour. It is still one Python process over one SQLite file.
 - **Environment variables are unchanged.** All `NETCORENOC_*` names, and the legacy `OPTICORR_*`
   aliases, still work. The alias removal that v0.4.0 scheduled for v0.5.0 has been **extended one
   version to v0.6.0** (DECISIONS #39) — you have another release to rename them; they still emit a
-  one-time deprecation warning each.
+  one-time deprecation warning each. *(That removal has since happened — if you are upgrading past
+  v0.5.0, read the v0.5.0 → v0.6.0 section above first.)*
 - **The easiest way to run it is now `docker compose up`.** The bundled `docker-compose.yml`
   expresses the hardened run declaratively; copy `.env.example` to `.env` for any configuration.
 

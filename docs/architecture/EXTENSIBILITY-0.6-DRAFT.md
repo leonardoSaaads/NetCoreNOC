@@ -1,5 +1,35 @@
 # Extensibility — v0.6.0 draft (specification only, not implemented in v0.5.0)
 
+> ## ⚠ Superseded in place by v0.6.0 — read this box first
+>
+> This document was written in v0.5.0 and specified **three** surfaces for v0.6.0. v0.6.0 built
+> **one** of them and resequenced the other two (**DECISIONS #43**). The text below is preserved
+> unchanged as the historical record; where it conflicts with the disposition table, the table
+> wins.
+>
+> | § | Surface | Disposition |
+> |---|---|---|
+> | 1 | Admin-configurable RBAC | **→ v0.7.0.** Specified in [`GOVERNANCE-0.7-DRAFT.md`](GOVERNANCE-0.7-DRAFT.md) |
+> | 2 | Per-role / per-principal visibility scoping | **→ v0.7.0.** Same spec, which additionally states the mandatory limit: scoping is a *presentation* control and **not** tenant isolation |
+> | 3 Tier A | Configurable scoring parameters | **BUILT IN v0.6.0** — see [`DESIGN.md`](DESIGN.md) "v0.6.0 — the scoring seam" and [`../scope/SCOPE-0.6.md`](../scope/SCOPE-0.6.md) |
+> | 3 Tier B | External API supplying the linking criterion | **REJECTED** on the correlation hot path (**DECISIONS #44**). Never authoritative in `score()`; a ROADMAP line and a threat-model note, not a plan |
+> | — | Customer-supplied models (ONNX / Python plugins) | **→ v0.8.0.** Specified in [`SCORER-PLUGINS-0.8-DRAFT.md`](SCORER-PLUGINS-0.8-DRAFT.md) |
+>
+> Three corrections the reader should carry into the text below:
+>
+> 1. **§3 Tier A says parameters are "editable by admin (optionally editor, if the admin
+>    delegates)". v0.6.0 deliberately did not do that.** `scorer.preview` and `scorer.write` are
+>    **admin-only with no editor delegation**: retuning the formula is a system-wide logic change,
+>    and security-relevant ambiguity resolves toward the stricter option. `scorer.read` is
+>    viewer+, because the active parameters *explain* grouping and are not a secret.
+> 2. **The "P2 tidy" (moving `W_T`/`W_A`/`W_E` into the dataclass) was indeed the first step of
+>    v0.6.0** — confirmed not-applied in `../gates/v0.6-phase-0.md` §5, then completed as part of
+>    extracting `src/netcorenoc/scoring.py`, proven byte-identical.
+> 3. **v0.6.0 went further than "make the parameters configurable"**: the formula became the
+>    default implementation of a versioned `LinkScorer` interface, with contractual per-term
+>    explainability, persisted decision provenance, read-only preview, and one-click rollback.
+>    That interface is what v0.8.0's customer models plug into.
+
 This document specifies what **v0.6.0** will make configurable, and confirms that the ground is
 already clean for it. **It implements nothing.** It is written now, in v0.5.0 (the
 organization/structure release), following the project's proven "spec-now-implement-later"
@@ -205,3 +235,34 @@ explicitly the riskiest element of the v0.6.0 roadmap and gets treated as such.
   audited, 404-not-403), and the configurable formula (validated parameters off the hot path;
   the external criterion API opt-in, allowlisted, hard-timeout, fail-safe, off the datagram path,
   fully audited), and adds the threat-model entries listed under each section.
+
+---
+
+## What actually happened (added in v0.6.0 — supersedes the summary above)
+
+The summary above is the v0.5.0 *plan*. The v0.6.0 *outcome*, per DECISIONS #43 and #44:
+
+- v0.6.0 built **the scoring surface only**, and built more of it than this draft asked for: the
+  formula became the default implementation of a versioned `LinkScorer` **interface**
+  (`src/netcorenoc/scoring.py`) with contractual per-term explainability, a stable
+  `params_fingerprint`, persisted decision provenance (`situation.scorer_config_id` into an
+  append-only `scorer_config` table), an admin-only read-only **preview** with a structural
+  partition diff, instant **rollback** by moving a one-row active pointer, and a fail-safe
+  fallback to the coded defaults audited as `scorer.fallback`. At the default parameters the
+  output is byte-identical to v0.5.0 — that parity is the gate the whole release rests on.
+- v0.6.0 also removed the legacy `OPTICORR_*` environment aliases (DECISIONS #45), the removal
+  promised two versions earlier.
+- **Admin-configurable RBAC and visibility scoping did not ship**; they are v0.7.0 and are fully
+  specified in [`GOVERNANCE-0.7-DRAFT.md`](GOVERNANCE-0.7-DRAFT.md), which also names the limit
+  this draft did not: scoping is a presentation control, **not** tenant isolation.
+- **The Tier B external criterion API was rejected outright** (DECISIONS #44) rather than
+  deferred. `LinkScorer.score` is specified pure, deterministic, side-effect-free and
+  inference-only, which forecloses an outbound call at the type level. Customer-supplied models
+  reach the same goal without a socket and are specified for v0.8.0 in
+  [`SCORER-PLUGINS-0.8-DRAFT.md`](SCORER-PLUGINS-0.8-DRAFT.md).
+
+The threat-model entries this draft listed for §1 and §2 move with them to v0.7.0. The §3 Tier A
+entry ("silent logic change via parameters") was added to
+[`../security/threat-model.md`](../security/threat-model.md) in v0.6.0; the Tier B entries (SSRF,
+DoS via the external criterion, untrusted response injection) are recorded there as
+**rejected-by-design**, which is a stronger statement than a control.

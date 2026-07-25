@@ -81,16 +81,18 @@ make replay
 | `NETCORENOC_TRAP_HOST` / `NETCORENOC_TRAP_PORT` | `0.0.0.0` / `162` | Trap listener (UDP, SNMPv2c and, since v0.3.0, SNMPv1 via RFC 3584) |
 | `NETCORENOC_HTTP_HOST` / `NETCORENOC_HTTP_PORT` | `0.0.0.0` / `8080` | Web UI and API |
 | `NETCORENOC_ALLOWLIST` | *(allow all)* | Comma-separated source CIDRs; set it to enforce |
-| `NETCORENOC_API_TOKEN` | *(unset)* | **Removed in v0.3.0**: setting it (or the legacy `OPTICORR_API_TOKEN`) is a hard startup error naming the migration path — use service tokens |
+| `NETCORENOC_API_TOKEN` | *(unset)* | **Removed in v0.3.0**: setting it is a hard startup error naming the migration path — use service tokens |
 | `NETCORENOC_RETENTION_DAYS` | `7` | Pruning horizon for cleared/closed history |
 | `NETCORENOC_AUDIT_RETENTION_DAYS` | `365` | Retention for the audit log (admin-triggered prune only) |
 | `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY` | *(unset)* | Enable built-in TLS; the session cookie then gains `Secure` |
 | `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging when set |
 
-> **Rebrand (v0.4.0):** the project was renamed from *OptiCorr* to **NetCoreNOC**. The legacy
-> `OPTICORR_*` variable names are still honoured and emit a single startup deprecation warning
-> each (naming the variable, never its value); the removal target was extended by one version and
-> they are now removed in v0.6.0 (DECISIONS #39). See `MIGRATION.md`.
+> **Rebrand (v0.4.0), aliases removed (v0.6.0):** the project was renamed from *OptiCorr* to
+> **NetCoreNOC**. The legacy `OPTICORR_*` variable names were honoured with a deprecation warning
+> through v0.5.0 and are **removed in v0.6.0** (DECISIONS #45). Setting any of them is now a hard
+> startup error naming each variable and its `NETCORENOC_*` replacement — never a silent no-op,
+> because an ignored `OPTICORR_ALLOWLIST` would mean every trap source is accepted. See
+> [`MIGRATION.md`](MIGRATION.md).
 
 ## How it works — three numbers per decision
 
@@ -121,6 +123,29 @@ conservative floors and beats the runner-up. Containment (card → port, port �
 by a functional-dependency test. Promotion is forward-only and every decision is inspectable in
 the **Entities** tab (`key_source`, `confidence`, and the score breakdown); an admin can reset a
 poisoned one. See [`docs/architecture/DESIGN.md`](docs/architecture/DESIGN.md).
+
+**The formula is a seam, not a constant (v0.6.0).** The three-term score above is the *default
+implementation of an interface* (`LinkScorer` in `src/netcorenoc/scoring.py`), not a hard-coded
+expression. Nothing about the zero-configuration experience changes: the defaults are what you
+get, they are what every number on this page describes, and **most operators never open the
+scorer panel**. What changed is that the numbers are now reachable when you need them —
+
+- an **admin** (and only an admin — there is no editor delegation) can retune `w_t`, `w_a`,
+  `w_e`, `τ` and the threshold from the **Scorer** tab;
+- **preview before you apply**: a read-only what-if re-partitions your own recent alarms under
+  the candidate parameters and shows what would merge and what would split, before anything is
+  committed. It is directional, not exhaustive — it uses a bounded recent window and holds the
+  learned matrices fixed, and it says so;
+- values that would collapse or shatter every incident are **rejected**, not merely warned about;
+- every change is **audited**, the configuration history is **immutable and append-only**, and
+  **rollback is one click** — it moves a pointer, it never edits history;
+- every situation records **which configuration formed it**, so a grouping stays explainable
+  months later;
+- if a scorer ever fails, the engine **falls back to the built-in defaults** and says so, rather
+  than stalling or grouping wrongly in silence.
+
+At the default parameters v0.6.0 produces byte-identical grouping to v0.5.0 — that parity is a
+release gate, not a claim.
 
 Cold start is honest: with nothing learned the class affinity `A` is zero and the entity
 affinity `E` is 1 only within a network element, so the temporal term alone must clear the

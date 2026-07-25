@@ -742,3 +742,225 @@ security-relevant ambiguity toward the stricter option.
     commented opt-in. A stdlib pytest lint (`tests/test_workflows.py`) fails CI on any floating
     tag, missing `permissions:`, or an active publishing step — so a dormant workflow cannot
     become a live risk by accident.
+
+---
+
+# v0.6.0 — "the scoring seam" (a versioned, swappable, explainable LinkScorer)
+
+Continues the numbering; never renumbers history. This release makes the correlation formula
+configurable, explainable, reproducible, and reversible without adding a runtime dependency, a
+byte of hot-path work, or a black box. Ambiguity resolves toward the simplest option consistent
+with zero-config and the threat model; security-relevant ambiguity toward the stricter option;
+**ambiguity about a parameter bound resolves toward the bound that better prevents degenerate
+grouping**.
+
+## 43. Resequence the three v0.6.0 configurability surfaces across three releases
+
+- **Context**: `docs/architecture/EXTENSIBILITY-0.6-DRAFT.md` (written in v0.5.0) specified three
+  surfaces for "v0.6.0": admin-configurable RBAC, per-role/per-principal visibility scoping, and a
+  configurable/pluggable match formula. Building all three in one release means shipping an engine
+  change, an HTTP-security-perimeter change, and a new trust surface together.
+- **Options**: (a) build all three as the draft implies; (b) build the scoring surface now and
+  resequence the other two, specifying them in full; (c) build the RBAC/scoping surfaces first and
+  defer scoring.
+- **Choice**: (b). v0.6.0 builds **only** the scoring seam (`LinkScorer` + Tier A parameters,
+  preview, provenance, rollback). Admin-configurable RBAC and visibility scoping are resequenced
+  to **v0.7.0** (`docs/architecture/GOVERNANCE-0.7-DRAFT.md`); customer-supplied models — the
+  blessed ONNX adapter and the Python entry-point escape hatch — are resequenced to **v0.8.0**
+  (`docs/architecture/SCORER-PLUGINS-0.8-DRAFT.md`). The old draft is annotated in place, never
+  rewritten.
+- **Reason**: the three have three different risk profiles and must not share a release. Scoring
+  changes the *engine* and is gated by exact parity against a frozen baseline — a gate that only
+  means something when nothing else in the release can move a number. RBAC/scoping change the
+  *HTTP security perimeter*, where the failure mode is silent privilege escalation or an existence
+  oracle, and they need their own authorization-matrix and 404-not-403 evidence. Customer models
+  introduce a *new runtime dependency and a new trust surface* (`onnxruntime`, operator-supplied
+  code) whose review is about sandboxing and determinism, not about weights. Reviewing them
+  separately is the only way each review can be honest.
+
+## 44. Reject the external-API scoring criterion on the correlation hot path
+
+- **Context**: the draft's Tier B specified an admin-enabled external API that supplies (or
+  overrides) the linking criterion, with allowlisting, timeouts, and a fail-safe fallback.
+- **Options**: (a) build Tier B behind the specified controls; (b) reject it as an authoritative
+  scoring input and record the rejection; (c) defer it silently.
+- **Choice**: (b). No outbound call ever decides a link. If an external signal is ever wanted it
+  is **advisory/offline only** — never authoritative inside `score()`. Recorded as a ROADMAP line
+  and a threat-model note, not as a plan; `LinkScorer.score` is specified as pure, deterministic,
+  side-effect-free and inference-only, which forecloses it at the type level.
+- **Reason**: the controls that would make Tier B survivable (allowlist, timeout, bounded
+  contract, fallback, caching) are all mitigations for a hazard the design does not have to
+  accept. A per-decision network call at trap rate is a self-inflicted DoS and an SSRF surface on
+  the one path the project treats as sacred; the correct answer to "the formula is too rigid" is a
+  swappable local scorer, which costs nothing and adds no destination to reach. Security-relevant
+  ambiguity resolves toward the stricter option, and the strictest option here is *not having the
+  socket*.
+
+## 45. Remove the legacy `OPTICORR_*` environment aliases (the promised removal)
+
+- **Context**: DECISIONS #34 renamed the env prefix and accepted the legacy `OPTICORR_*` names
+  with a once-per-variable deprecation warning; #39 extended that window one version, with removal
+  promised **in v0.6.0**. `docs/ROADMAP.md` and `MIGRATION.md` carry the promise.
+- **Options**: (a) remove them now, as promised, with a hard startup error; (b) remove them
+  silently (ignore the variable); (c) extend the window again.
+- **Choice**: (a). The alias-acceptance path and the per-variable warning are deleted.
+  `Settings.from_env` collects any `OPTICORR_*` variable present in the environment and `run()`
+  raises `LegacyEnvRemovedError`, naming each variable, its `NETCORENOC_*` replacement, and
+  `MIGRATION.md`. This mirrors exactly how v0.3.0 removed `OPTICORR_API_TOKEN` (DECISIONS #29).
+- **Reason**: a removed knob that silently no-ops is the worst outcome — an operator who still
+  sets `OPTICORR_ALLOWLIST` would believe traps are filtered while every source is accepted, which
+  is a *security* regression dressed as a compatibility one. Failing loud at startup, naming the
+  replacement, converts a silent misconfiguration into a five-second fix. Extending the window a
+  second time would make the deprecation meaningless.
+
+## 46. Parameter bounds: reject the degenerate, not merely the out-of-range
+
+- **Context**: Tier A lets an admin set `w_t, w_a, w_e, tau_s, threshold`. Range checks alone
+  (`0 ≤ w ≤ 1`, `τ > 0`) still admit sets that destroy correlation: `threshold = 0` links every
+  candidate pair into one giant situation; `threshold ≥ w_t + w_a + w_e` links nothing, ever.
+- **Options**: (a) range checks only, and trust preview to catch the rest; (b) range checks plus
+  explicit degenerate-combination rejection; (c) narrow ranges so tightly that degeneracy is
+  unreachable.
+- **Choice**: (b), with the ranges themselves resolved toward the tighter bound. Named constants
+  with a one-line rationale each: weights and threshold in `[0, 1]`; `MIN_TAU_S = 1.0` and
+  `MAX_TAU_S = 3600.0`; `MIN_WEIGHT_SUM = 0.10`; `MIN_THRESHOLD = 0.01`; and a
+  **reachability/headroom** rule — the threshold must sit strictly inside the achievable score
+  range, at least `THRESHOLD_MARGIN = 0.01` below the maximum achievable score `w_t + w_a + w_e`
+  and strictly above zero. `tau_s` is additionally required not to exceed the correlation window
+  (`WINDOW_S`, 120 s) by more than a factor the temporal term can still discriminate over.
+  Validation lives in one function, is unit-tested at every boundary, and an invalid set is a 4xx
+  with a precise reason that is **never stored**.
+- **Reason**: the decision protocol says a parameter-bound ambiguity resolves toward the bound
+  that better prevents degenerate grouping — a slightly-too-tight bound costs a little tuning
+  range, a too-loose bound lets an admin shatter or collapse every incident on a production NOC.
+  Preview is a *warning* control, not a *prevention* control: it is directional, based on a recent
+  window, and an admin may skip it. The store must refuse the shape that cannot be right.
+
+## 47. Provenance by reference: `situation.scorer_config_id`, not a copy of the parameters
+
+- **Context**: "given a situation months later, recover exactly how it was scored" needs the
+  parameters that formed it. Two shapes were available: denormalise the five parameters (and the
+  contract version) onto every situation, or record a foreign key into an immutable config table.
+- **Options**: (a) copy the parameters onto each situation; (b) a nullable
+  `situation.scorer_config_id` referencing an append-only `scorer_config`; (c) reconstruct from
+  the audit log.
+- **Choice**: (b). `scorer_config` rows are immutable (append-only triggers, like `audit_log`);
+  the active row is named by a one-row `scorer_active` pointer; each situation stores the
+  `config_id` in effect when it was created. Rollback re-points `scorer_active` at an earlier row
+  and never mutates history. The migration backfills existing situations to the seed row, which is
+  the coded defaults — the value that was in fact in effect.
+- **Reason**: (a) writes five floats per situation forever to record a value that changes maybe
+  twice a year, and creates a second source of truth that can disagree with the config table. (c)
+  is not reconstruction, it is archaeology: the audit log is a *record of changes*, and deriving
+  "what was active at time T" from it is exactly the kind of inference a post-incident review
+  cannot afford to get wrong. A foreign key into an immutable, append-only table is one row per
+  change, tamper-evident alongside the existing audit chain, and answers the question by lookup.
+
+## 48. Preview is a bounded in-memory re-partition of recent alarms, not an `eval/` run
+
+- **Context**: "show me what these parameters would do" is exactly what `eval/harness.py` does —
+  but the harness replays a *labelled corpus* through the real receiver and engine, and lives in
+  the dev/CI tree.
+- **Options**: (a) import and reuse `eval/harness.py` from the API; (b) re-ingest recent traps
+  through a throwaway `Engine` against an in-memory store; (c) read recent alarms out of the DB
+  and re-run only the scoring + connected-components step in memory.
+- **Choice**: (c). `POST /api/scorer/preview` reads at most `MAX_PREVIEW_ALARMS = 5000` recent
+  alarms (most-recent-first, then replayed in chronological order), runs the *candidate* and the
+  *active* scorer over the same candidate pairs using the engine's own `Correlator` in a
+  read-only mode, computes connected components for each, and returns the structural diff. It
+  imports nothing from `eval/`, writes nothing, and is bounded by both the alarm cap and a hard
+  `PREVIEW_TIMEOUT_S` wall-clock budget.
+- **Reason**: (a) would make a dev/CI harness a runtime dependency of the HTTP surface and would
+  answer the wrong question (corpus behaviour, not *this operator's* behaviour) — and the corpus
+  harness must stay the gate, not become a feature. (b) re-runs learning and would mutate state,
+  or need a whole shadow engine, for a read-only question. (c) reuses the one piece that actually
+  differs between two parameter sets (the score and the partition), holds the learned matrices
+  fixed (they are an input, not an output, of a what-if), and is trivially provable to mutate
+  nothing. The cost is honest and stated in the UI: preview reflects a *recent window*, so it is
+  directional, not exhaustive.
+
+## 49. `LinkFeatures` reserves optional slots now so v0.7/v0.8 features are a minor bump
+
+- **Context**: `contract_version` is meaningless unless the contract can grow. Two known growth
+  paths exist: X.733 / 3GPP TS 32.111 fields (`perceivedSeverity`, `probableCause`, `eventType`,
+  deferred behind MIB enrichment) and richer scorers (ONNX / entry-point, v0.8.0).
+- **Options**: (a) ship the minimal feature set and bump the major version when fields are added;
+  (b) reserve optional, `None`-valued slots now and define "adding an optional field" as a minor
+  bump; (c) make `LinkFeatures` an open dict.
+- **Choice**: (b). `LinkFeatures` carries `severity_i/j`, `topo_distance`, `probable_cause_i/j`,
+  `event_type_i/j` as `| None` fields that are `None` throughout v0.6.0 and ignored by
+  `AdditiveScorer`. The versioning rule is written down: **adding an optional field is a minor
+  bump; changing or removing an existing field is a major bump**; a configuration whose declared
+  major version the running code does not support is refused at activation.
+- **Reason**: (a) guarantees a breaking change on the first real extension, which would strand
+  exactly the customer-supplied scorers the seam exists to enable. (c) throws away the type
+  checking that `mypy --strict` gives for free and makes "what can a scorer rely on?" unanswerable.
+  Reserving named, typed, optional slots costs nothing at runtime (they are `None`), documents the
+  intended growth, and lets v0.8.0 adapters declare `"1.x"` compatibility honestly.
+
+## 50. Explainability becomes contractual: `LinkScore.terms`, not three fixed columns
+
+- **Context**: today the explanation is three named columns (`term_t`, `term_a`, `term_e`) in the
+  `link` table and three hard-coded bars in the UI. A pluggable scorer may have a different number
+  of terms — a neural scorer has feature attributions, not three weights.
+- **Options**: (a) keep the three columns as *the* explanation and require every scorer to map
+  onto them; (b) require every scorer to emit a variable-length `terms` list and keep the three
+  columns as the default scorer's persisted projection; (c) drop per-term persistence.
+- **Choice**: (b). `LinkScore.terms` is `list[TermContribution]` with
+  `{name, weight, value, contribution}`; the default emits exactly `temporal`, `class_affinity`,
+  `entity_affinity` with today's numbers. `store.add_link` keeps writing `term_t/term_a/term_e` in
+  v0.6.0 — they are the default scorer's three contributions, unchanged, which is what keeps the
+  schema, the API response, the UI, and the existing tests byte-identical.
+- **Reason**: (a) would force a future scorer to lie (fabricating a "class affinity" it does not
+  compute) or to lose its explanation, and the project's whole claim is that a grouping decision
+  is auditable by inspection. (c) is unthinkable. (b) makes the *requirement* general and the
+  *storage* specific, which is the only combination that both preserves today's bytes and leaves
+  room for a scorer with five terms. Generalising the persisted columns is a v0.8.0 concern and is
+  named as such in `SCORER-PLUGINS-0.8-DRAFT.md`; doing it here would move a number in a
+  parity-gated release for no benefit to any shipped scorer.
+
+## 51. The ingest-latency envelope is skipped under a tracer, not widened (Phase 3)
+
+- **Context**: `tests/test_perf.py` drives 6 000 traps through the engine while hammering
+  authenticated, audited API endpoints, then asserts zero trap loss, that the audit rows were
+  written, and — as an explicitly-labelled "generous sanity envelope" — that API p95 latency stays
+  under 2.0 s. Under `pytest --cov` (i.e. `make qa`) that last assertion began failing at ~2.1 s.
+- **Investigation**: the **unmodified v0.5.0 tree** was re-run under `--cov` on the same machine
+  and breached the same bound (2.17 s, 2.00 s), while passing comfortably without coverage. The
+  breach is a property of running a wall-clock latency bound under a line tracer, not a v0.6.0
+  regression.
+- **Options**: (a) widen the bound to fit the observed number; (b) skip the *latency* assertion
+  when `sys.gettrace()` is set, keeping every other assertion in every mode; (c) leave it failing.
+- **Choice**: (b), with the measurement and its v0.5.0 reproduction written into the test.
+- **Reason**: (a) is the dishonest option — it moves a threshold to match a number rather than
+  because the system changed, and it silently weakens the bound for the *untraced* runs where it
+  actually measures something. Under a tracer every Python call costs several times more, so the
+  number measures the tracer; asserting on it is measuring the wrong thing, not measuring it
+  loosely. The assertions the test exists for — `engine.processed == EVENTS` (zero trap loss) and
+  the audit rows written during the storm — are unconditional and unchanged.
+
+## 52. The scoring contract types are `NamedTuple`s, not frozen dataclasses (Phase 3)
+
+- **Context**: the engine builds one `LinkFeatures` **per candidate pair** — up to 100 per
+  activated alarm — and each `score()` returns a `LinkScore` plus three `TermContribution`s. The
+  first implementation used frozen dataclasses. A micro-benchmark put the extracted seam at
+  **8.4× the cost** of the v0.5.0 inlined expression (0.86 µs → 7.23 µs per scored pair), almost
+  all of it frozen-dataclass `__init__` (`object.__setattr__` per field, ~2 µs for the 14-field
+  `LinkFeatures` alone).
+- **Options**: (a) accept it; (b) `slots=True` (measured: ~4 % better — the cost is `frozen`, not
+  attribute storage); (c) drop `frozen` and lose immutability; (d) `NamedTuple`.
+- **Choice**: (d) for `LinkFeatures`, `LinkScore` and `TermContribution`; `LinkScore.terms`
+  becomes a `tuple`. Measured result: **4.7×** the inlined expression (4.20 µs per pair), and
+  **+3.5 % end-to-end** on a full `make eval` corpus replay (10.45 s → 10.81 s over three runs
+  each) — because scoring was never the bottleneck; BER decode and SQLite are.
+- **Reason**: this is the rare case where the faster option is also the *stricter* one. A
+  `NamedTuple` is genuinely immutable (it is a tuple) rather than a dataclass that raises on
+  `__setattr__`, which is exactly the guarantee the "pure, deterministic, side-effect-free"
+  contract wants, and returning a `tuple` of terms means a scorer hands out its explanation rather
+  than lending a mutable list a caller could edit under it. Typing, defaults, and named access are
+  unchanged, so `mypy --strict` and every call site are unaffected, and adding an optional field
+  remains a minor contract bump (#49). The residual ~3.3 µs per pair is the honest price of the
+  seam and is recorded in `docs/gates/v0.6-phase-4.md` rather than hidden; it is engine-side, the
+  datagram path is untouched, and a further "trust the built-in scorer, skip the guard" fast path
+  was **rejected** — complicating the fail-safe wrapper, the most security-relevant code in the
+  release, to recover a fraction of 3.5 % is a bad trade.

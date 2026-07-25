@@ -55,6 +55,7 @@ SUBMODULES = [
     "receiver",
     "rootcause",
     "runtime",
+    "scoring",
     "severity",
     "shaping",
     "store",

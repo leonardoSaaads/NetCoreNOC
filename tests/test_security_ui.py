@@ -137,7 +137,7 @@ def test_d3_is_vendored_and_pinned() -> None:
 
 import re  # noqa: E402 - grouped with the S9 tests it supports
 
-ADMIN_PANELS = {"users", "tokens", "config", "quarantine", "audit"}
+ADMIN_PANELS = {"users", "tokens", "config", "scorer", "quarantine", "audit"}
 
 
 def _tab_roles() -> dict[str, str]:
@@ -208,3 +208,66 @@ def test_ui_stays_four_files() -> None:
 def test_csp_is_unchanged_and_forbids_inline() -> None:
     assert "style-src 'self'" in CSP and "script-src 'self'" in CSP
     assert "'unsafe-inline'" not in CSP and "default-src 'none'" in CSP
+
+
+# -- v0.6.0: the link-scorer panel -------------------------------------------------------
+
+
+def _scorer_panel_source() -> str:
+    """The body of loadScorer(), where every new admin control lives."""
+    app_js = (UI_DIR / "app.js").read_text()
+    return app_js.split("async function loadScorer(", 1)[1].split("\nasync function loadQuar", 1)[0]
+
+
+def test_scorer_panel_is_admin_gated_and_prunable() -> None:
+    """The panel offers preview/apply/rollback, all admin-only on the API, so it is admin-gated
+    in the single TABS map and removed from a non-admin DOM by prunePanels (A.4)."""
+    assert _tab_roles().get("scorer") == "admin"
+    assert 'data-panel="scorer"' in (UI_DIR / "index.html").read_text()
+
+
+def test_scorer_panel_renders_every_value_as_text_not_markup() -> None:
+    """F1 discipline on the new panel: no innerHTML anywhere, and every server-supplied string
+    (the degraded reason, the note, the caveat, created_by) goes through el({text})/text()."""
+    app_js = (UI_DIR / "app.js").read_text()
+    panel = app_js.split("async function loadScorer(", 1)[1].split(
+        "\nasync function loadQuarantine", 1
+    )[0]
+    assert ".innerHTML" not in panel
+    assert "insertAdjacentHTML" not in panel and "outerHTML" not in panel
+    for supplied in ("cfg.degraded_reason", "h.created_by", "h.note", "d.caveat"):
+        assert supplied in panel, supplied
+    # The only style manipulation in the UI stays CSSOM (CSP forbids inline style attributes).
+    assert " style=" not in panel
+
+
+def test_scorer_panel_states_the_preview_caveat() -> None:
+    """SECURITY-REVIEW-0.6 §4 treats the wording as a control: a preview that presented itself
+    as authoritative would be worse than none. The API supplies the sentence; the panel shows it
+    and says so."""
+    app_js = (UI_DIR / "app.js").read_text()
+    assert "d.caveat" in app_js
+    from netcorenoc import api
+
+    source = __import__("inspect").getsource(api.create_app)
+    assert "Directional, not exhaustive" in source
+    assert "learned matrices held fixed" in source
+
+
+def test_scorer_panel_confirms_before_applying_or_rolling_back() -> None:
+    """Both actions change system-wide correlation logic; neither happens on a stray click."""
+    app_js = (UI_DIR / "app.js").read_text()
+    panel = app_js.split("async function loadScorer(", 1)[1].split(
+        "\nasync function loadQuarantine", 1
+    )[0]
+    assert panel.count("confirm(") >= 2
+
+
+def test_link_terms_come_from_the_named_term_list() -> None:
+    """S2: the UI reads the scorer's named terms, falling back to the legacy three columns for
+    an older response. Same numbers, one typed source."""
+    app_js = (UI_DIR / "app.js").read_text()
+    assert "function linkTerms(" in app_js
+    bar = app_js.split("function termBar(", 1)[1].split("\n}", 1)[0]
+    assert "linkTerms(l)" in bar
+    assert "t.contribution" in bar

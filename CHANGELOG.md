@@ -4,6 +4,84 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-07-25 — "the scoring seam"
+
+The correlation formula stops being a hard-coded expression and becomes the **default
+implementation of a versioned, swappable, explainable interface** — plus admin-tunable
+parameters with safe preview and one-click rollback. **Grouping behaviour does not change**: at
+the default parameters v0.6.0 produces byte-identical output to v0.5.0 on every fixture and a
+byte-identical `make eval` delta table. One process, one SQLite file, one static UI, **zero new
+runtime dependencies**, and not one byte of new work on the ingest path.
+
+### Added
+
+- **The `LinkScorer` seam** (`src/netcorenoc/scoring.py`): a `Protocol` with `scorer_id`,
+  `contract_version`, `score(LinkFeatures) -> LinkScore` (pure, deterministic, side-effect-free,
+  inference-only) and `params_fingerprint()`. `LinkFeatures` carries exactly what the current
+  computation uses plus **reserved optional slots** (`severity_i/j`, `topo_distance`,
+  `probable_cause_i/j`, `event_type_i/j`, all `None` in 0.6) so X.733/3GPP features and future
+  scorers are a *minor* contract bump, never a breaking one. `LinkScore.terms` makes a per-term
+  breakdown **contractual**, so "why did it decide that?" can never regress.
+- **`AdditiveScorer`** — the built-in three-term score as the default and the always-available
+  safe fallback, with the five parameters as dataclass fields (completing the v0.5.0 P2 tidy).
+- **Tier A: admin-configurable scoring parameters.** `GET /api/scorer` (viewer+),
+  `POST /api/scorer` and `POST /api/scorer/rollback` (admin), backed by an **append-only,
+  immutable** `scorer_config` table and a one-row active pointer — apply and rollback are the
+  same operation, and history is never edited or deleted.
+- **Read-only preview** (`POST /api/scorer/preview`, admin): re-partitions a bounded snapshot of
+  recent alarms under the candidate parameters and returns the structural delta (what merges,
+  what splits, links gained/lost). Deterministic, bounded by an alarm cap *and* a hard timeout,
+  rate-limited by its own tight bucket, writes nothing, off the ingest path, and imports nothing
+  from `eval/`. It says plainly that it is directional, not exhaustive.
+- **Validation that rejects the degenerate, not merely the out-of-range** — a threshold at zero
+  merges every alarm into one situation; a threshold at the weight sum links nothing, ever.
+  Neither can be stored.
+- **Decision provenance**: every situation records the `scorer_config_id` in effect when it was
+  opened, so a historical grouping stays explainable months later.
+- **Fail-safe execution**: any scorer exception, contract violation, or budget overrun degrades
+  to the coded defaults, audits `scorer.fallback`, and raises an operator warning. The engine can
+  never run scorer-less.
+- **UI**: an admin-only **Scorer** panel (active parameters, preview with its caveat, immutable
+  history with one-click rollback), pruned from a non-admin DOM entirely.
+- New capabilities `scorer.read` (viewer+), `scorer.preview` / `scorer.write` (**admin only, no
+  editor delegation**); new audit actions `scorer.config.update`, `scorer.preview`,
+  `scorer.fallback`.
+- **v0.7.0 and v0.8.0 specifications** (spec only, built later):
+  `docs/architecture/GOVERNANCE-0.7-DRAFT.md` (admin RBAC + visibility scoping, stating
+  explicitly that scoping is **not** tenant isolation) and
+  `docs/architecture/SCORER-PLUGINS-0.8-DRAFT.md` (blessed ONNX adapter + Python entry-point
+  escape hatch under this release's contract).
+
+### Removed
+
+- **The legacy `OPTICORR_*` environment aliases**, as promised in v0.4.0 and v0.5.0
+  (DECISIONS #34, #39, #45). Setting any of them is now a **hard startup error** naming each
+  variable and its `NETCORENOC_*` replacement — never a silent no-op, because an ignored
+  `OPTICORR_ALLOWLIST` would mean every trap source is accepted. See `MIGRATION.md`.
+
+### Changed
+
+- `correlate.py` selects candidates and applies the verdict; it no longer inlines the arithmetic.
+  `link` objects in `GET /api/situations/{sid}` gain an additive `terms` list alongside the
+  unchanged `term_t`/`term_a`/`term_e`.
+- The external-criterion API specified in `EXTENSIBILITY-0.6-DRAFT.md` was **rejected**, not
+  deferred (DECISIONS #44): `score()` is typed pure and inference-only, so no outbound call can
+  decide a link. That draft is superseded in place with a disposition table.
+
+### Security
+
+- **`docs/security/SECURITY-REVIEW-0.6.md`** — findings F20–F26 (parameter poisoning, privilege
+  boundary, preview as a DoS/exfiltration surface, provenance integrity, hot-path surface,
+  fail-safe execution, removed-knob misconfiguration), each with a control and a regression test,
+  plus an honest critical analysis of residual risk. Threat model extended.
+
+### Migration
+
+- One forward-only migration, `0005_scorer_config.sql` (`user_version` 4 → 5), applying to a
+  populated v0.5.0 database: additive tables, a nullable provenance column, a seed equal to the
+  coded defaults, and a backfill. Grouping is unchanged, the audit chain still verifies.
+  **One-time action required:** rename any `OPTICORR_*` environment variables. See `MIGRATION.md`.
+
 ## [0.5.0] - 2026-07-24 — "legible, installable, contributable"
 
 An organization/structure release: it makes the project legible, installable, and contributable,

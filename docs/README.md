@@ -30,8 +30,15 @@ one-screen tour of the tree.
 - [`architecture/CASE-SCHEMA-DRAFT.md`](architecture/CASE-SCHEMA-DRAFT.md) — the versioned
   `Case` JSON contract, specified ahead of implementation (spec only).
 - [`architecture/EXTENSIBILITY-0.6-DRAFT.md`](architecture/EXTENSIBILITY-0.6-DRAFT.md) — the
-  v0.6.0 configurability specification (admin RBAC, visibility scoping, pluggable match formula),
-  spec only, marked `v0.6.0: planned`.
+  v0.5.0-era configurability specification, **superseded in place by v0.6.0**: the scoring surface
+  was built, the other two were resequenced, and the external-criterion API was rejected. Read the
+  box at the top for the disposition table.
+- [`architecture/GOVERNANCE-0.7-DRAFT.md`](architecture/GOVERNANCE-0.7-DRAFT.md) — admin-configurable
+  RBAC and per-role/per-principal visibility scoping, spec only, `v0.7.0: planned`. States the
+  mandatory limit: **visibility scoping is a presentation control, not tenant isolation.**
+- [`architecture/SCORER-PLUGINS-0.8-DRAFT.md`](architecture/SCORER-PLUGINS-0.8-DRAFT.md) —
+  customer-supplied models (blessed ONNX adapter, Python entry-point escape hatch) under the
+  v0.6.0 `LinkScorer` contract, spec only, `v0.8.0: planned`.
 
 ## Decisions
 
@@ -46,7 +53,8 @@ one-screen tour of the tree.
   security-relevant ambiguity, the stricter option wins.
 - [`security/SECURITY-REVIEW-0.2.md`](security/SECURITY-REVIEW-0.2.md),
   [`security/SECURITY-REVIEW-0.4.md`](security/SECURITY-REVIEW-0.4.md),
-  [`security/SECURITY-REVIEW-0.5.md`](security/SECURITY-REVIEW-0.5.md) — the numbered
+  [`security/SECURITY-REVIEW-0.5.md`](security/SECURITY-REVIEW-0.5.md),
+  [`security/SECURITY-REVIEW-0.6.md`](security/SECURITY-REVIEW-0.6.md) — the numbered
   finding → fix → test reviews and standards-compliance mappings.
 - [`security/operations.md`](security/operations.md) — the **operator** security & operations
   guide (deployment, TLS, roles, audit-log operations, container hardening). The root
@@ -57,8 +65,9 @@ one-screen tour of the tree.
 
 - [`scope/SCOPE.md`](scope/SCOPE.md), [`scope/SCOPE-0.2.md`](scope/SCOPE-0.2.md),
   [`scope/SCOPE-0.3.md`](scope/SCOPE-0.3.md), [`scope/SCOPE-0.4.md`](scope/SCOPE-0.4.md),
-  [`scope/SCOPE-0.5.md`](scope/SCOPE-0.5.md) — per-version product scope. Later documents state
-  only what changed; earlier invariants still hold.
+  [`scope/SCOPE-0.5.md`](scope/SCOPE-0.5.md), [`scope/SCOPE-0.6.md`](scope/SCOPE-0.6.md) —
+  per-version product scope. Later documents state only what changed; earlier invariants still
+  hold.
 
 ## Releases
 

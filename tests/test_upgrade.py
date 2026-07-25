@@ -70,3 +70,100 @@ async def test_populated_db_learned_state_and_audit_chain_survive_reopen(tmp_pat
     assert engine2.learner.device_affinity(device_a, device_b) > 0  # matrix reloaded into memory
     assert (await audit.verify_chain(store2)).ok  # the chain still verifies across the upgrade
     await store2.close()
+
+
+async def test_v060_upgrade_preserves_grouping_and_seeds_provenance(tmp_path: Path) -> None:
+    """Phase 5 gate: a live v0.5.0-shaped database upgrades in place with **identical grouping**.
+
+    The same fixture is replayed twice: once against a database whose schema is frozen at v4 (a
+    v0.5.0 install), once against the same file after migration 0005 has been applied. The
+    resulting situation partitions must match member-for-member — the seeded configuration is the
+    coded defaults, so v0.6.0 scores exactly as v0.5.0 did. Provenance is seeded and backfilled,
+    learned state and the audit chain survive, and the schema advances by exactly one.
+    """
+    import netcorenoc.store as store_mod
+    from netcorenoc.scoring import AdditiveScorer
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV4:
+        """The migration directory as a v0.5.0 install saw it: 0005 does not exist yet."""
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if not p.name.startswith("0005")]
+
+    async def partition_of(store: Store) -> set[frozenset[int]]:
+        cur = await store.conn.execute("SELECT situation_id, alarm_id FROM situation_alarm")
+        groups: dict[int, set[int]] = {}
+        for row in await cur.fetchall():
+            groups.setdefault(int(row[0]), set()).add(int(row[1]))
+        return {frozenset(members) for members in groups.values()}
+
+    db = str(tmp_path / "v050-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV4()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 4  # a genuine v0.5.0 database
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        assert engine_old.scorer_config_id is None  # no scorer_config table yet
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        async with old.lock:
+            await audit.write_event(
+                old,
+                ts=BASE,
+                actor="admin",
+                role="admin",
+                source_ip="-",
+                action="login.ok",
+                outcome="ok",
+            )
+            await old.commit()
+        before_partition = await partition_of(old)
+        before_edges = (await old.graph_snapshot(min_edge_n=0))["edges"]
+        before_alarms = (await old.stats())["active_alarms"]
+        assert before_partition and before_edges
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    # The upgrade: same file, migration 0005 now present.
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == 5
+        assert new.integrity_warnings == []
+        engine_new = Engine(new, asyncio.Queue())
+        await engine_new.start()
+
+        # Learned state, grouping and the audit chain all survive.
+        assert await partition_of(new) == before_partition
+        assert (await new.graph_snapshot(min_edge_n=0))["edges"] == before_edges
+        assert (await new.stats())["active_alarms"] == before_alarms
+        assert (await audit.verify_chain(new)).ok
+
+        # Provenance is seeded, active, and backfilled onto the pre-existing situations.
+        assert engine_new.scorer_config_id == 1
+        active = engine_new.correlator.scorer.active
+        assert active.params_fingerprint() == AdditiveScorer().params_fingerprint()
+        cur = await new.conn.execute(
+            "SELECT COUNT(*) FROM situation WHERE scorer_config_id IS NULL"
+        )
+        row = await cur.fetchone()
+        assert row is not None and row[0] == 0
+
+        # And the upgraded engine keeps grouping the same way: replaying the same fixture into a
+        # fresh v0.6.0 database reproduces the v0.5.0 partition exactly.
+        fresh = Store(str(tmp_path / "fresh-v060.db"))
+        await fresh.open()
+        engine_fresh = Engine(fresh, asyncio.Queue())
+        await engine_fresh.start()
+        await util.drive(
+            engine_fresh, engine_fresh.queue, util.fixture_events("fiber_cut.json", BASE)
+        )
+        assert await partition_of(fresh) == before_partition
+        await fresh.close()
+    finally:
+        await new.close()

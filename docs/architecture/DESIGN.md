@@ -380,3 +380,231 @@ path. They are **never imported by `netcorenoc/`** and add no runtime dependency
 OIDs live exclusively in these scenarios and the corpus — the engine still learns them blind. This
 is the structural guarantee behind the zero-config identity: vendor semantics are test data, not
 runtime knowledge.
+
+## v0.6.0 — the scoring seam (a versioned, swappable, explainable `LinkScorer`)
+
+v0.6.0 stops treating the correlation formula as a fixed expression. The three-term score becomes
+the **default implementation of an interface**, and an admin — only an admin — may retune its five
+parameters, preview the effect on live data, apply with an audit trail, and roll back instantly.
+
+**Nothing about cold-start behaviour changes.** At the default parameters the extracted scorer is
+byte-identical to v0.5.0 on every fixture and produces a byte-identical `make eval` delta table.
+The seam is a refactor before it is a feature; extracting the formula moved no number. The ingest
+path is untouched: `receiver.datagram_received` gains no lock, no I/O, and no config read
+(prime directive 2), and preview never touches it at all.
+
+### The contract (`src/netcorenoc/scoring.py`)
+
+```
+LinkScorer (Protocol)
+  scorer_id: str                              # "additive" is the built-in default
+  contract_version: str                       # semver of the feature/output SCHEMA — "1.0" here
+  score(features: LinkFeatures) -> LinkScore  # pure, deterministic, side-effect-free, inference-only
+  params_fingerprint() -> str                 # stable hash of the active parameters, for provenance
+```
+
+`score()` being **pure, deterministic, side-effect-free and inference-only** is not documentation —
+it is the type-level statement that no scorer reaches the network, the disk, or the clock. It is
+what forecloses the rejected external-criterion design (DECISIONS #44) rather than merely
+discouraging it.
+
+**`LinkFeatures`** is an immutable dataclass the engine builds **once per candidate pair**. It
+carries exactly what the current computation uses:
+
+```
+delta_t_s, class_i, class_j, class_affinity (A), ne_i, ne_j, entity_affinity (E)
+```
+
+plus reserved optional slots that are `None` throughout v0.6.0 and ignored by the default scorer:
+
+```
+severity_i/j, topo_distance, probable_cause_i/j, event_type_i/j
+```
+
+Those exist so §3.5's X.733 / 3GPP TS 32.111 features and v0.8.0's richer scorers are **additive**.
+The versioning rule (DECISIONS #49) is written down and enforced: **adding an optional field is a
+minor bump; changing or removing an existing field is a major bump.** A configuration whose
+declared *major* contract version the running code does not support is **refused at activation** —
+not coerced, not ignored.
+
+**`LinkScore`** is the required, explainable output:
+
+```
+linked: bool, score: float, threshold: float, terms: list[TermContribution]
+TermContribution = {name, weight, value, contribution}    with contribution = weight · value
+```
+
+Emitting a per-term breakdown is **contractual** (DECISIONS #50). The default emits exactly three —
+`temporal`, `class_affinity`, `entity_affinity` — with the same numbers the API and UI show today.
+The requirement is general so a future scorer with five terms can satisfy it honestly; the
+*storage* stays specific (`link.term_t/term_a/term_e` are the default scorer's three
+contributions), which is exactly why the schema, the API response, the UI, and the pre-existing
+tests are byte-identical. Generalising persisted attribution is a named v0.8.0 task.
+
+**`AdditiveScorer`** is the default: a frozen dataclass with `w_t, w_a, w_e, tau_s, threshold`
+defaulting to the coded constants `(0.30, 0.35, 0.35, 30.0, 0.50)`, computing
+
+```
+s = w_t·e^(−Δt/τ) + w_a·A + w_e·E,      linked ⟺ s > threshold
+```
+
+`correlate.py` constructs one and delegates every scoring call to `self.scorer.score(features)`;
+it no longer inlines the arithmetic. The module-level `W_T`/`W_A`/`W_E` become the dataclass
+defaults — the v0.5.0 P2 tidy, completed here — and are re-exported from `correlate` so no caller
+or test breaks.
+
+#### The parity argument
+
+Three properties make the extraction provably non-moving:
+
+1. **Same operations, same order.** `AdditiveScorer.score` computes `term_t`, `term_a`, `term_e`
+   and sums them in the identical order the inlined expression did. Floating-point addition is not
+   associative, so *order* is the thing that had to be preserved, and it was.
+2. **Same inputs.** `LinkFeatures` is populated by `Correlator.score` from the same
+   `learner.class_affinity` / `learner.entity_affinity` calls with the same arguments; the reserved
+   slots are `None` and are never read by the default scorer.
+3. **Same comparison.** Acceptance stays the strict `score > threshold` on the same float.
+
+The gate is mechanical, not argumentative: `make eval` in both modes must reproduce the sha256
+recorded in `../gates/v0.6-phase-0.md` §2, and `tests/test_eval.py::test_cold_mode_reproduces_the_v020_baseline`
+still compares per-scenario dicts with `==`.
+
+### Where parameters are read — and the engine reload point
+
+The active parameters are loaded **exactly where `tau` and `threshold` are loaded today**: at
+`Engine` configuration load, on the engine/maintenance side. They are **not** read per packet,
+**not** read per candidate pair, and **not** read in `receiver.datagram_received`.
+
+The **reload point** is explicit: a parameter change takes effect when the engine reloads its
+scorer configuration, which happens (a) at `Engine.start()`, and (b) at the start of the next
+`Engine.maintenance()` pass after an apply or rollback — i.e. within one `MAINT_INTERVAL_S` (5 s).
+It never takes effect mid-batch, so a batch is always scored by one configuration, and the
+`config_id` recorded on a situation is always the one that actually scored it.
+
+If the store is unreachable, the pointer dangles, or a stored row fails validation, the engine uses
+the **coded defaults** and raises a persistent operator warning. The engine can never run with an
+unvalidated formula, and it can never refuse to run for want of one.
+
+### Fail-safe execution
+
+Every scoring call goes through a wrapper. On any exception, timeout, or malformed `LinkScore`, the
+engine falls back to the coded-default `AdditiveScorer` for the rest of the process, writes one
+`scorer.fallback` audit row (system actor), and surfaces an operator warning. **Fail-safe, never
+fail-open, never fail-stop** — a broken scorer degrades correlation to the shipped default rather
+than stalling ingestion or silently linking everything. A test-only raising scorer under `tests/`
+proves both the fallback and that the `Protocol` accepts a second implementation; **no second
+scorer ships in `src/netcorenoc/`.**
+
+### The `scorer_config` store (migration `0005_scorer_config.sql`, `user_version` 4 → 5)
+
+Forward-only and additive, applying onto a populated v0.5.0 database:
+
+- **`scorer_config`** — append-only, immutable rows (`id`, `scorer_id`, `contract_version`, the
+  five parameters, `params_hash`, `created_by`, `created_at`, `note`), guarded by
+  `BEFORE UPDATE`/`BEFORE DELETE` triggers that `RAISE(ABORT)`, exactly like `audit_log`. Unlike
+  `audit_log` there is **no sanctioned deleter**: the retention prune does not touch it, because a
+  situation's provenance must outlive the alarms that formed it.
+- **`scorer_active`** — a one-row pointer (`CHECK (id = 1)`). Apply and rollback are the *same*
+  operation: an UPDATE of this single row. History is never mutated, so rollback is one action and
+  loses nothing.
+- **`situation.scorer_config_id`** — nullable FK, backfilled to the seed. Provenance **by
+  reference, not duplication** (DECISIONS #47): one row per parameter change rather than five
+  floats per situation forever, and no second source of truth to disagree with the config table.
+- **The seed** — one row equal to the coded defaults, marked active, with a `params_hash` a test
+  asserts equals `AdditiveScorer().params_fingerprint()`. This is what makes a migrated database
+  byte-identical *and* makes the backfill truthful: every pre-v0.6.0 situation genuinely was
+  formed by the coded defaults.
+
+Provenance is written where situations are already written — `Engine._assign_situation`, under the
+batch lock — never in `datagram_received`.
+
+**Honest limit**: `scorer_config_id` records the configuration a situation was *opened* under. A
+long-lived situation that keeps absorbing alarms across a parameter change carries its original
+id while later links were scored under the newer configuration. Per-link provenance is a ROADMAP
+line, not a shipped claim.
+
+### Validation and bounds (the footgun guard)
+
+One function validates every parameter set, and an invalid set is a 4xx with a precise reason that
+is **never stored**. Range checks alone are insufficient — a syntactically valid set can destroy
+correlation — so the rules cover degeneracy too (DECISIONS #46):
+
+| Rule | Constant | Why |
+|---|---|---|
+| `0 ≤ w_t, w_a, w_e ≤ 1` | — | a weight is a share of the score, not a gain |
+| `0 ≤ threshold ≤ 1` | — | the score is bounded by the weight sum, itself ≤ 3 |
+| `1.0 s ≤ tau_s ≤ 3600 s` | `MIN_TAU_S`, `MAX_TAU_S` | below 1 s the temporal term is a step function inside one batch; above the 120 s window it stops discriminating at all |
+| `w_t + w_a + w_e ≥ 0.10` | `MIN_WEIGHT_SUM` | a vanishing weight sum makes every threshold unreachable — grouping stops silently |
+| `threshold ≥ 0.01` | `MIN_THRESHOLD` | `threshold ≤ 0` links every candidate pair: one giant situation |
+| `threshold ≤ (w_t+w_a+w_e) − 0.01` | `THRESHOLD_MARGIN` | `threshold ≥ max achievable score` links nothing, ever: every alarm is a singleton |
+
+Every ambiguity resolved toward the tighter bound: a slightly-too-tight bound costs a little tuning
+range, a too-loose one lets an admin shatter or collapse every incident on a production NOC.
+Preview is a *warning* control, not a *prevention* control — it is directional and an admin may
+skip it — so the store refuses the shapes that cannot be correct.
+
+### Preview (read-only what-if)
+
+`POST /api/scorer/preview` answers "what would these parameters do to *my* data?" without
+committing anything (DECISIONS #48):
+
+1. Read at most `MAX_PREVIEW_ALARMS` (5000) recent alarms from the DB, most-recent-first, then
+   replay them in chronological order for a stable candidate ordering.
+2. Run the **candidate** and the **active** scorer over the same candidate pairs, using the
+   engine's own `Correlator` in a read-only mode, with the learned matrices held **fixed** — they
+   are an input to a what-if, not an output of it.
+3. Compute connected components for each and diff the two partitions.
+4. Return the structural delta: situations before/after, which groups **merge**, which **split**,
+   and links gained/lost.
+
+It is **deterministic** (fixed ordering, no wall clock in the scored path), **bounded** (the alarm
+cap *and* a hard `PREVIEW_TIMEOUT_S`), **admin-only**, **rate-limited** by the existing token
+bucket, **read-only** (no link, situation, learned-state, or config write), and **off the ingest
+path**. It imports nothing from `eval/` — the corpus harness stays the dev/CI gate and never
+becomes a runtime dependency, and it would answer the wrong question anyway (corpus behaviour, not
+this operator's).
+
+**Its honest limit, stated in the UI**: preview reflects a bounded *recent* window and holds the
+learned matrices fixed, so it predicts the **immediate** effect, not the long-run effect after `A`
+and `E` adapt to the new grouping. It is directional, not exhaustive.
+
+### RBAC and audit
+
+Three capabilities in the single `rbac.py` map:
+
+| Capability | viewer | editor | admin |
+|---|:--:|:--:|:--:|
+| `scorer.read` — active scorer id, parameters, per-term contributions | ✔ | ✔ | ✔ |
+| `scorer.preview` — run a read-only what-if | — | — | ✔ |
+| `scorer.write` — append a config, move the active pointer, roll back | — | — | ✔ |
+
+Reading is viewer+ because the parameters *explain* grouping and are not a secret. Preview and
+write are **admin-only with no editor delegation**, deliberately departing from the v0.5.0 draft's
+"optionally editor": retuning the formula is a system-wide logic change, and security-relevant
+ambiguity resolves toward the stricter option.
+
+Three audit actions join the frozen catalog: `scorer.config.update` (admin; before/after in
+`details`), `scorer.preview` (admin), and `scorer.fallback` (system actor). All three are covered
+by the catalog-completeness test exactly as existing actions are.
+
+### The `OPTICORR_*` removal
+
+The alias-acceptance path and its once-per-variable deprecation warning are gone. Any `OPTICORR_*`
+variable in the environment is a **hard startup error** naming each variable, its `NETCORENOC_*`
+replacement, and `MIGRATION.md` — mirroring how v0.3.0 removed `OPTICORR_API_TOKEN`. The message
+names variables, never values. A removed knob that silently no-ops is a *security* regression: an
+operator still setting `OPTICORR_ALLOWLIST` would believe traps are filtered while every source is
+accepted.
+
+## Known limits (v0.6.0, by design)
+
+- Provenance is per-situation, not per-link (above). ROADMAP.
+- Preview is directional, based on a recent window with the matrices held fixed (above).
+- The eval gate proves **parity at the defaults**, not the quality of a retuned configuration.
+  Nothing here tells an operator their new weights are *better* — only what they would do to
+  recent grouping. The corpus is not the operator's network.
+- `scorer_config` cannot be pruned. Immutability is the tamper-evidence argument; the growth is a
+  handful of rows per year.
+- A determined admin can still detune correlation. The control is bounds + preview + audit +
+  immutable history + one-action rollback + the coded-default fallback — visibility and
+  reversibility, not prevention.

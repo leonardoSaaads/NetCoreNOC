@@ -95,14 +95,37 @@ The admin UI shows a persistent warning when a deployment default is risky:
 - **"HTTP is not using TLS on a non-loopback bind"** — credentials could travel cleartext.
   Enable built-in TLS or a TLS reverse proxy.
 
-## Legacy token deprecation
+## Removed configuration knobs (both now fail loudly)
 
-The shared `NETCORENOC_API_TOKEN` (and legacy `OPTICORR_API_TOKEN`) was **removed in v0.3.0**:
-setting either is a hard startup error naming the migration path. Migrate every client to a
-named service token. Separately, the legacy `OPTICORR_*` environment-variable **names** are still
-honoured with a one-time deprecation warning each and are **removed in v0.6.0** (the v0.4.0→v0.5.0
-window was extended by one version; see [`../adr/DECISIONS.md`](../adr/DECISIONS.md) #39 and
-[`../../MIGRATION.md`](../../MIGRATION.md)).
+- The shared `NETCORENOC_API_TOKEN` was **removed in v0.3.0**: setting it is a hard startup error
+  naming the migration path. Migrate every client to a named service token.
+- The legacy `OPTICORR_*` environment-variable **names** were **removed in v0.6.0** as promised
+  (see [`../adr/DECISIONS.md`](../adr/DECISIONS.md) #39 and #45). Setting any of them is a hard
+  startup error naming each variable and its `NETCORENOC_*` replacement; the mapping table is in
+  [`../../MIGRATION.md`](../../MIGRATION.md). Check with `env | grep OPTICORR_` before upgrading.
+
+Both fail at startup rather than being ignored, and that is a security decision, not a style one:
+a removed knob that silently no-ops is how an operator ends up believing `OPTICORR_ALLOWLIST` is
+filtering their trap sources while every source is in fact accepted.
+
+## Retuning the correlation formula (v0.6.0)
+
+The link-score parameters are admin-configurable from the **Scorer** tab (or the `/api/scorer`
+routes). Operationally:
+
+- **You do not need to touch this.** The defaults are the documented behaviour and are what the
+  evaluation corpus is scored against.
+- **`scorer.read` is viewer+** (the parameters explain grouping and are not a secret);
+  **`scorer.preview` and `scorer.write` are admin only**, with no delegation to editors.
+- **Preview before applying.** The what-if is read-only and shows what would merge and split on
+  your own recent alarms. It is directional — a bounded recent window with the learned matrices
+  held fixed — not a prediction of the steady state.
+- **A change takes effect at the next engine maintenance pass** (≤ 5 s), never mid-batch.
+- **Every change is audited, history is immutable, and rollback is one click.** The configuration
+  table is append-only and is never pruned, because a situation's provenance must outlive the
+  alarms that formed it.
+- **If a scorer ever fails**, the engine falls back to the built-in defaults, writes a
+  `scorer.fallback` audit row, and raises a persistent operator warning in `/api/stats`.
 
 ## Data at rest
 

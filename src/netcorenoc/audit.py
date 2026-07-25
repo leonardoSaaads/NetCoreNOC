@@ -71,6 +71,11 @@ ACTIONS: frozenset[str] = frozenset(
         "profile.reset",  # admin: reset an NE's varbind profiler state
         "severity.confirm",  # system actor: a varbind confirmed as an NE's severity field
         "ingest.gap",  # system actor: a durable record of dropped traps
+        # v0.6.0 — the scoring seam. Retuning the link formula is a system-wide logic change,
+        # so it is admin-only and every apply, rollback, preview, and degradation is recorded.
+        "scorer.config.update",  # admin: appended a config and/or moved the active pointer
+        "scorer.preview",  # admin: ran a read-only what-if over recent alarms
+        "scorer.fallback",  # system actor: the active scorer failed; engine fell back to defaults
     }
 )
 

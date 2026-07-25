@@ -1,4 +1,5 @@
-"""Upgrading a populated database: v0.1.0 -> v0.2.0 -> v0.3.0 (forward-only, data intact)."""
+"""Upgrading a populated database: v0.1.0 -> v0.2.0 -> v0.3.0 -> v0.6.0 (forward-only,
+data intact)."""
 
 from __future__ import annotations
 
@@ -44,9 +45,9 @@ async def test_migrate_populated_v010_database(tmp_path: Path) -> None:
         return row[0]
 
     store = Store(db)
-    await store.open()  # applies 0002, 0003 and 0004 forward-only
+    await store.open()  # applies 0002-0005 forward-only
     try:
-        assert await scalar("PRAGMA user_version") == 4
+        assert await scalar("PRAGMA user_version") == Store.latest_schema_version()
 
         # v0.1.0 data intact.
         stats = await store.stats()
@@ -196,7 +197,7 @@ async def test_migrate_populated_v020_database_with_audit_chain(tmp_path: Path) 
     store = Store(db)
     await store.open()
     try:
-        assert await scalar(store, "PRAGMA user_version") == 4
+        assert await scalar(store, "PRAGMA user_version") == Store.latest_schema_version()
 
         # v0.2.0 data intact.
         stats = await store.stats()
@@ -238,3 +239,135 @@ async def test_migrate_populated_v020_database_with_audit_chain(tmp_path: Path) 
         assert result.ok and result.checked == 2
     finally:
         await store.close()
+
+
+def _build_v050_db(path: str) -> None:
+    """A real v0.5.0 database: migrations 0001-0004 applied, some data, user_version=4."""
+    conn = sqlite3.connect(path)
+    for migration in (
+        "0001_init.sql",
+        "0002_auth_audit.sql",
+        "0003_entity.sql",
+        "0004_state_clear.sql",
+    ):
+        conn.executescript((MIGRATIONS_DIR / migration).read_text())
+    conn.execute("PRAGMA user_version=4")
+    conn.execute(
+        "INSERT INTO device (ip,vendor,first_seen,last_seen) VALUES ('10.0.0.1','Ciena',1,2)"
+    )
+    conn.execute("INSERT INTO ne (ip,vendor,first_seen,last_seen) VALUES ('10.0.0.1','Ciena',1,2)")
+    conn.execute(
+        "INSERT INTO entity (ne_id,parent_id,level,key,key_source,confidence,first_seen,last_seen)"
+        " VALUES (1,NULL,0,'10.0.0.1','self',1.0,1,2)"
+    )
+    conn.execute(
+        "INSERT INTO alarm_class (oid,vendor,name,first_seen,last_seen) "
+        "VALUES ('1.3.6.1.4.1.1271.1','Ciena',NULL,1,2)"
+    )
+    for instance in ("port-1", "port-2"):
+        conn.execute(
+            "INSERT INTO alarm (device_id,ne_id,entity_id,class_id,instance,first_seen,last_seen) "
+            "VALUES (1,1,1,1,?,1,2)",
+            (instance,),
+        )
+    conn.execute("INSERT INTO situation (created_at,updated_at) VALUES (1,2)")
+    conn.execute("INSERT INTO situation (created_at,updated_at) VALUES (3,4)")
+    conn.execute("INSERT INTO situation_alarm (situation_id,alarm_id) VALUES (1,1)")
+    conn.execute("INSERT INTO situation_alarm (situation_id,alarm_id) VALUES (2,2)")
+    conn.execute(
+        "INSERT INTO link (situation_id,alarm_a,alarm_b,score,term_t,term_a,term_e,created_at) "
+        "VALUES (1,1,2,0.7,0.3,0.2,0.2,2)"
+    )
+    conn.commit()
+    conn.close()
+
+
+async def test_migrate_populated_v050_database_seeds_the_scorer_config(tmp_path: Path) -> None:
+    """Gate 2/4: a populated v0.5.0 DB upgrades to v0.6.0 with data intact, the audit chain still
+    verifying, the append-only triggers live on both tables, the seeded configuration equal to
+    the coded defaults, and every existing situation truthfully backfilled to it — because those
+    situations *were* formed by those parameters. The seed is what makes the upgrade
+    grouping-neutral."""
+    from netcorenoc.scoring import AdditiveScorer
+
+    db = str(tmp_path / "v050.db")
+    _build_v050_db(db)
+
+    seed = Store(db)
+    await seed.open()
+    async with seed.lock:
+        for ts, action in ((1.0, "login.ok"), (2.0, "config.change")):
+            await audit.write_event(
+                seed, ts=ts, actor="admin", role="admin", source_ip="-", action=action, outcome="ok"
+            )
+        await seed.commit()
+    await seed.close()
+
+    store = Store(db)
+    await store.open()
+    try:
+
+        async def scalar(sql: str) -> object:
+            cur = await store.conn.execute(sql)
+            row = await cur.fetchone()
+            assert row is not None
+            return row[0]
+
+        assert await scalar("PRAGMA user_version") == 5
+        assert store.integrity_warnings == []
+
+        # v0.5.0 data intact.
+        stats = await store.stats()
+        assert stats["devices"] == 1 and stats["active_alarms"] == 2
+        assert await scalar("SELECT COUNT(*) FROM situation") == 2
+        assert await scalar("SELECT COUNT(*) FROM link") == 1
+        assert await scalar("SELECT score FROM link WHERE id=1") == 0.7
+
+        # The seed is exactly the coded defaults, and it is active.
+        config = await store.active_scorer_config()
+        assert config is not None
+        assert int(config["id"]) == 1 and config["scorer_id"] == "additive"
+        assert config["contract_version"] == "1.0"
+        assert (
+            config["w_t"],
+            config["w_a"],
+            config["w_e"],
+            config["tau_s"],
+            config["threshold"],
+        ) == (0.3, 0.35, 0.35, 30.0, 0.5)
+        assert config["params_hash"] == AdditiveScorer().params_fingerprint()
+
+        # Every pre-existing situation is backfilled to it — a truthful provenance, not a guess.
+        assert await scalar("SELECT COUNT(*) FROM situation WHERE scorer_config_id IS NULL") == 0
+        assert await scalar("SELECT COUNT(*) FROM situation WHERE scorer_config_id=1") == 2
+
+        async with store.lock:
+            for sql in (
+                "UPDATE scorer_config SET w_t=0.9 WHERE id=1",
+                "DELETE FROM scorer_config WHERE id=1",
+                "DELETE FROM audit_log WHERE id=1",
+            ):
+                with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+                    await store.conn.execute(sql)
+                await store.conn.rollback()
+            # The pointer table holds exactly one row, by CHECK.
+            with pytest.raises(sqlite3.IntegrityError):
+                await store.conn.execute(
+                    "INSERT INTO scorer_active (id,config_id,activated_at) VALUES (2,1,0.0)"
+                )
+            await store.conn.rollback()
+
+        result = await audit.verify_chain(store)
+        assert result.ok and result.checked == 2
+    finally:
+        await store.close()
+
+    # Idempotent: reopening neither re-runs the migration nor duplicates the seed.
+    again = Store(db)
+    await again.open()
+    try:
+        cur = await again.conn.execute("SELECT COUNT(*) FROM scorer_config")
+        row = await cur.fetchone()
+        assert row is not None and row[0] == 1
+    finally:
+        await again.close()

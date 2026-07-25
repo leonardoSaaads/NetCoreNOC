@@ -65,17 +65,27 @@ def test_audit_export_cli(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     db = str(tmp_path / "c.db")
-    # Deliberately exercise the legacy alias: the CLI honours OPTICORR_DB for one version and
-    # warns once on stderr (rebrand, DECISIONS #34).
-    monkeypatch.delenv("NETCORENOC_DB", raising=False)
-    monkeypatch.setenv("OPTICORR_DB", db)
+    monkeypatch.setenv("NETCORENOC_DB", db)
     asyncio.run(_seed(db, ["login.ok", "logout"]))
     rc = cli.main(["audit", "export"])
     captured = capsys.readouterr()
     assert rc == 0
     assert captured.out.count("\n") == 2  # one NDJSON line per row
     assert "final_chain_hash" in captured.err
-    assert "OPTICORR_DB is deprecated" in captured.err
+
+
+def test_f26_cli_refuses_a_removed_legacy_env_alias(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F26: the audit CLI refuses rather than silently reading the default database — pointing
+    `audit verify` at the wrong file would give a confidently wrong integrity answer."""
+    monkeypatch.delenv("NETCORENOC_DB", raising=False)
+    monkeypatch.setenv("OPTICORR_DB", str(tmp_path / "c.db"))
+    with pytest.raises(SystemExit) as caught:
+        cli.main(["audit", "verify"])
+    assert caught.value.code == 2
+    err = capsys.readouterr().err
+    assert "OPTICORR_DB" in err and "NETCORENOC_DB" in err and "MIGRATION.md" in err
 
 
 def test_cli_requires_subcommand() -> None:
