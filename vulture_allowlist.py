@@ -74,3 +74,20 @@ probable_cause_i  # unused variable (netcorenoc/scoring.py:89)
 probable_cause_j  # unused variable (netcorenoc/scoring.py:90)
 event_type_i  # unused variable (netcorenoc/scoring.py:91)
 event_type_j  # unused variable (netcorenoc/scoring.py:92)
+
+# v0.7.0 — governance. FastAPI route handlers (registered by decorator, never called by name),
+# plus `role_allows`, which is deliberately no longer called from `src/`.
+#
+# `role_allows` answers "may this role EVER hold this capability?" — the *ceiling* question. Since
+# v0.7.0 the authorization path asks the different question "does this principal hold it right
+# now?" and calls `resolve_capabilities` instead, so nothing in the runtime package calls
+# `role_allows` any more. It is kept, exported, and documented because it is the oracle the
+# generated authorization matrix and the governance-parity test compare the resolver against
+# (`tests/test_rbac.py::test_authorization_matrix`,
+# `tests/test_governance.py::test_empty_policy_resolves_exactly_to_the_v060_behaviour`): deleting
+# it would leave the parity gate with nothing independent to check `ceiling ∩ ∅` against.
+get_rbac_policy  # unused function (netcorenoc/api.py)
+set_rbac_policy  # unused function (netcorenoc/api.py)
+get_scope_policy  # unused function (netcorenoc/api.py)
+set_scope_policy  # unused function (netcorenoc/api.py)
+role_allows  # unused function (netcorenoc/rbac.py) - the ceiling oracle for the parity gate

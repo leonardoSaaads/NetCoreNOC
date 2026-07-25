@@ -4,6 +4,101 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-25 — "governance"
+
+An admin can define what each role and principal may **do** and may **see**. Both are stored,
+audited policy read through the **existing** single decision points — no new authorization
+mechanism, no second decision site, no new runtime dependency, and nothing whatsoever on the ingest
+path.
+
+**With no stored policy, v0.7.0 is byte-identical to v0.6.0.** The compiled permission map and full
+visibility are simultaneously the *default* and the *ceiling*. Migration `0006` seeds **no** rows,
+so a fresh install and an upgraded one behave exactly as v0.6.0 did, and most operators never open
+the Governance panel. That parity is a release gate, not a claim.
+
+### Added
+
+- **Admin-configurable RBAC.** A stored policy narrows what a role — or an individual principal —
+  holds. The resolved set is `ceiling(role) ∩ granted(role) ∩ granted(principal)`, computed by one
+  function (`rbac.resolve_capabilities`) that every caller reads. **Escalation is structurally
+  impossible, not merely forbidden**: an intersection cannot exceed its first operand, so a policy
+  naming a capability above a role's ceiling is *inert* — however the row arrived, including a
+  direct `sqlite3` write to a stolen or restored database. Proven property-based over generated and
+  adversarial policies (DECISIONS #53).
+- **Per-role / per-principal visibility scoping.** Which NEs a viewer or editor may see, by NE id,
+  exact address, CIDR, or name glob, resolved against the live inventory on every request — so an
+  NE discovered after the policy was written is covered by a CIDR that plainly matches it
+  (DECISIONS #57). One filter at every NE-bearing read; a graph edge survives only when **both**
+  ends are in scope.
+- **404, not 403, for an out-of-scope resource**, produced by the projection returning nothing so
+  the handler's *existing* not-found branch fires. "Not yours" and "does not exist" are one code
+  path — same status, same body, same timing — rather than two that happen to agree (DECISIONS #60).
+- **Honest redaction.** A situation is listed if any member is in scope; out-of-scope members become
+  a **count and their alarm classes** — never an id, address, entity key, or varbind — and links to
+  them are withheld. Silent omission was rejected: an operator shown "3 alarms" for a 40-alarm
+  cross-boundary fibre cut would be *confidently wrong* (DECISIONS #59).
+- **Four capabilities** — `rbac.read`, `rbac.write`, `scope.read`, `scope.write` — admin-only,
+  `config`-class, no delegation, all four audited when denied. **Two audit actions**
+  (`rbac.policy.update`, `scope.policy.update`) with before/after, plus `governance.fallback` for a
+  policy that will not parse.
+- **Migration `0006_governance.sql`** (`user_version` 5 → 6): an append-only `governance_policy`
+  history with `RAISE(ABORT)` triggers and no sanctioned deleter, plus a per-kind `governance_active`
+  pointer. Apply, roll back, and **clear** are one call each; clearing removes the pointer, never
+  the history.
+- **A Governance panel** in the UI, and tabs/affordances now gated on the **resolved capability set**
+  from `/api/me` rather than on role rank — a UI deriving permissions from rank would be a second
+  decision site that silently disagrees with the server once a policy exists.
+
+### Changed
+
+- **One candidate-selection rule for the engine and preview** (the v0.6.0 close-out).
+  `preview.partition()` was a second implementation of the engine's windowing with its own copies of
+  the window length and the cap; a change to `correlate.WINDOW_S` alone would have left the what-if
+  replaying a different window from the engine it claims to predict. `correlate.select_candidates()`
+  is now the single implementation and preview's bounds are **aliases** of the engine's constants.
+  A test asserts preview reproduces the engine's *actual situation partition*, member for member;
+  another asserts the two callers cannot drift again (DECISIONS #61).
+- `rbac.role_allows` is reimplemented on top of the new `rbac.ceiling` and is no longer called from
+  `src/` — it answers the *ceiling* question and is kept as the independent oracle the parity gate
+  compares the resolver against.
+- `auth.Principal` gains `token_id` and a `ref` property (`user:<id>` / `token:<id>`), so a
+  per-principal policy keys on row identity rather than on a display name that is not unique across
+  users and tokens (DECISIONS #62).
+- SSE re-resolves capability **and** scope on **every event**, not at connection time, and ends the
+  stream if `events.stream` is revoked mid-connection.
+
+### Security
+
+- **F27–F33** in [`docs/security/SECURITY-REVIEW-0.7.md`](docs/security/SECURITY-REVIEW-0.7.md),
+  each with a passing regression test: escalation via a stored policy, a second decision site,
+  fail-safe and lockout, session staleness, provenance integrity, scope bypass and existence
+  disclosure, and the hot-path surface.
+- **Fail-safe in both directions, deliberately asymmetric.** A malformed *capability* policy falls
+  back to the compiled ceiling (the shipped v0.6.0 baseline — nobody gains anything); a malformed
+  *scope* policy denies viewer and editor (nobody sees anything new). Both raise an operator warning
+  and write an audit row. The asymmetry is safe **only because admins are never scoped**
+  (DECISIONS #55, #58).
+- **An admin can never be locked out.** A *well-formed* policy could otherwise remove `rbac.write`
+  from the admin role, leaving no authenticated path to repair the perimeter. A small compiled
+  recovery set is unioned back inside the resolver; it is a subset of the admin ceiling, so the
+  escalation invariant is untouched (DECISIONS #64).
+
+### ⚠ Visibility scoping is a presentation control and is **not tenant isolation**
+
+Correlation still learns across **all** network elements, and a situation may still *form* across a
+boundary a principal cannot see — its members are hidden from them, not prevented from correlating.
+A scoped operator therefore sees a partial picture, which is exactly why the redacted count is
+shown rather than the members silently dropped. True multi-tenant isolation is a separate, larger
+feature on [`docs/ROADMAP.md`](docs/ROADMAP.md); v0.7.0 does not provide it, and says so in the
+docs, in the API responses, and in the UI, with a documentation test asserting the statement cannot
+be quietly dropped.
+
+### Quality
+
+426 → **499 tests**; coverage **95.43 %** (up from 95.24 %); `make eval` **byte-identical**;
+`ruff`, `ruff format`, `mypy --strict`, `vulture`, `bandit`, `pip-audit`, structure guard, link
+check, SHA-pin lint and the d3 checksum all clean. Runtime dependencies unchanged at **five**.
+
 ## [0.6.0] - 2026-07-25 — "the scoring seam"
 
 The correlation formula stops being a hard-coded expression and becomes the **default

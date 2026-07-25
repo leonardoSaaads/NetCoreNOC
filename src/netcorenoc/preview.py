@@ -20,12 +20,18 @@ import time
 from dataclasses import dataclass
 from typing import Protocol
 
+from netcorenoc.correlate import MAX_CANDIDATES, WINDOW_S, select_candidates
 from netcorenoc.scoring import LinkFeatures, LinkScorer
 
 MAX_PREVIEW_ALARMS = 5000  # bounded work: the newest N alarms, never the whole history
 PREVIEW_TIMEOUT_S = 5.0  # hard wall-clock budget; a partial answer is refused, not truncated
-PREVIEW_WINDOW_S = 120.0  # the correlation window preview replays over (matches WINDOW_S)
-PREVIEW_MAX_CANDIDATES = 100  # matches the engine's per-event candidate cap
+# v0.7.0: **aliases**, not copies. These were independent literals in v0.6.0 that happened to equal
+# the engine's; retuning `correlate.WINDOW_S` alone would then have left the what-if replaying a
+# different window from the engine it claims to predict — a preview that lies is worse than none.
+# The equality is now structural, and `select_candidates` makes the *rule* shared too
+# (DECISIONS #61).
+PREVIEW_WINDOW_S = WINDOW_S  # the correlation window preview replays over
+PREVIEW_MAX_CANDIDATES = MAX_CANDIDATES  # the engine's per-event candidate cap
 
 
 class PreviewTimeoutError(RuntimeError):
@@ -60,10 +66,18 @@ def partition(
 ) -> tuple[dict[int, int], int]:
     """Re-partition ``alarms`` under ``scorer``: (alarm_id -> component id, link count).
 
-    A faithful, read-only reproduction of what the engine does with the same alarms: a sliding
-    window of ``PREVIEW_WINDOW_S`` capped at ``PREVIEW_MAX_CANDIDATES``, one score per candidate
-    pair, and union-find over the accepted links. Component ids are the smallest member alarm id,
-    so the labelling is stable and two runs over the same input are identical.
+    A faithful, read-only reproduction of what the engine does with the same alarms — and since
+    v0.7.0 that fidelity is **structural**, not a coincidence: candidate selection is
+    :func:`netcorenoc.correlate.select_candidates`, the same function the engine calls, over the
+    same window length and the same cap (DECISIONS #61). What remains here is preview's own part:
+    one score per candidate pair and union-find over the accepted links. Component ids are the
+    smallest member alarm id, so the labelling is stable and two runs over the same input are
+    identical.
+
+    ``live`` is not passed: a preview snapshot is immutable and every entry in it is a candidate,
+    whereas the engine's deque carries tombstones. That difference is the reason the helper takes
+    a liveness set at all, and it is why this reproduces the engine's partition exactly on a
+    tombstone-free snapshot — which is what ``store.recent_alarms_for_preview()`` returns.
 
     Deterministic by construction: the alarm order is fixed by the caller, no wall clock enters
     the scored path, and ``deadline`` (monotonic) only aborts — it never changes an answer.
@@ -86,8 +100,13 @@ def partition(
     for i, new in enumerate(alarms):
         if deadline is not None and i % 64 == 0 and time.monotonic() > deadline:
             raise PreviewTimeoutError("preview exceeded its time budget")
-        window = [w for w in window if new.ts - w.ts <= PREVIEW_WINDOW_S]
-        for old in window[-PREVIEW_MAX_CANDIDATES:]:
+        candidates = select_candidates(
+            window,
+            now=new.ts,
+            window_s=PREVIEW_WINDOW_S,
+            max_candidates=PREVIEW_MAX_CANDIDATES,
+        )
+        for old in candidates:
             result = scorer.score(
                 LinkFeatures(
                     delta_t_s=abs(new.ts - old.ts),

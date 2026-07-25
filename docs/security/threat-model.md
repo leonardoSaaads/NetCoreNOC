@@ -564,3 +564,180 @@ Every threat above names a control and a test. Findings F20–F26 are tracked in
 `SECURITY-REVIEW-0.6.md` (property → fix → test); Gate 5 requires every F-numbered test green,
 `make eval` byte-identical at default parameters, and the authorization matrix clean over the
 three new capabilities.
+
+---
+
+# v0.7.0 — governance: stored capability policy and visibility scoping
+
+v0.7.0 makes two perimeter decisions **data-driven**: which capabilities a role or principal holds,
+and which network elements a viewer or editor is shown. Every v0.2.0–v0.6.0 threat and control
+above holds unchanged: the receiver, auth, sessions, the audit chain, `shaping.py`'s field rules,
+and the 401/403/404 semantics are untouched. The review of the new surfaces is
+`SECURITY-REVIEW-0.7.md` (findings **F27–F33**).
+
+**What is genuinely new**: two stored policies that are read *on the authorization path*
+(`rbac_policy`, `scope_policy`), and a resource-level projection applied to every NE-bearing read.
+**What is deliberately absent**: any new runtime dependency, any change to `datagram_received`, the
+engine, the learning, or the scoring seam, and any per-tenant partition of learned state.
+
+The failure mode of this release is different from v0.6.0's and the model must say so plainly.
+v0.6.0's worst case was *degraded grouping* — visible, previewable, reversible. v0.7.0's worst case
+is **silent privilege escalation** or an **existence oracle**: an attacker gains a capability the
+code reserves, or infers which network elements exist. Both are silent by nature, which is why the
+controls below are structural (an intersection, a filtered query) rather than procedural (a
+validation check, a guard clause).
+
+## New assets
+
+8. **The capability policy** — the stored subset of each role's/principal's compiled ceiling. Its
+   **integrity** is the asset: a policy that could widen would be an escalation primitive.
+9. **The scope policy** — which NEs a viewer/editor is shown. Its integrity protects *disclosure*;
+   its availability protects the operator's ability to do their job.
+10. **The existence of a network element** — v0.7.0 is the first release in which "does NE X exist?"
+    is a question some authenticated principals must not be able to answer.
+
+## STRIDE — new surface
+
+### Capability policy (A2 malicious viewer, A3 malicious editor, A5 stolen DB, compromised admin)
+
+- **Elevation of privilege — a stored policy grants above the ceiling.** *Threat:* a policy row,
+  written through the API, through a future second write path, through a bad migration, or by
+  direct `sqlite3` access to a stolen/restored DB file, naming a capability the role's compiled
+  ceiling does not contain. *Control:* the resolved set is
+  `ceiling(role) ∩ granted(role) ∩ granted(principal)` and the compiled `PERMISSIONS` map is the
+  **first operand** (DECISIONS #53). An intersection cannot exceed its first operand, so an
+  above-ceiling row is **inert**, not merely rejected — the guarantee does not depend on the write
+  path having been reached. A write-time 400 exists only so an admin learns immediately; it is not
+  the security control. *Tests:* `test_f27_*` — property-based over generated policies (including
+  rows inserted directly into the table, bypassing the API) asserting `resolved ⊆ ceiling` for
+  every role; `test_f27_policy_written_directly_to_the_db_cannot_escalate`.
+- **Elevation of privilege — a second decision site.** *Threat:* a handler, the UI-affordance
+  endpoint, or a test computing capabilities its own way and drifting from enforcement.
+  *Control:* one resolver, `rbac.resolve_capabilities()`, called from the `api.py` security
+  dependency, from `/api/me`, and from the generated authorization matrix. A static assertion over
+  `api.py`'s source forbids a role comparison outside the resolver. *Tests:*
+  `test_f28_single_decision_site_no_role_comparison_outside_rbac`,
+  `test_authorization_matrix` (regenerated with policies active).
+- **Elevation of privilege — writing the policy is itself the escalation.** *Threat:* a
+  non-admin reaching `rbac.write` and granting themselves capabilities. *Control:* `rbac.read` and
+  `rbac.write` are **admin-only, `config`-class, no delegation**, in the single map and in
+  `AUDITED_DENIED_PERMISSIONS`; and even a successful write cannot exceed the ceiling. *Tests:*
+  `test_f27_rbac_write_is_admin_only`, `…_denied_attempts_are_audited`.
+- **Denial of service — a malformed policy locks the admin out.** *Threat:* a corrupt or
+  unparseable capability policy denying everything, including the `rbac.write` needed to repair it.
+  *Control:* a malformed capability policy **falls back to the compiled ceiling** — the shipped
+  v0.6.0 behaviour — with an `operator_warnings()` entry and an audit row (DECISIONS #55). Never a
+  fallback that grants above ceiling; never a hard lock. *Tests:*
+  `test_f29_malformed_capability_policy_falls_back_to_the_ceiling`,
+  `…_warns_and_audits`, `…_admin_can_always_reach_rbac_write`.
+- **Repudiation — an untraceable perimeter change.** *Control:* `rbac.policy.update` (admin actor,
+  before/after in `details`) in the frozen catalog and the completeness test; the policy table is
+  append-only at the storage layer with a one-row active pointer, so history is tamper-evident
+  alongside the hash chain — tampering must defeat both. *Tests:*
+  `test_f31_policy_history_is_append_only`, `test_audit_catalog_completeness`.
+- **Elevation — a policy change riding an open session.** *Threat:* a principal whose capability
+  was revoked continuing to use it on an already-authenticated session. *Control:* the resolved set
+  is computed **per request** from live policy; nothing is cached on the session. *Tests:*
+  `test_f30_revoked_capability_does_not_survive_an_open_session`.
+
+### Scope policy and the read paths (A2, A3, A5)
+
+- **Information disclosure — existence oracle via a scoped resource.** *Threat:* `GET
+  /api/situations/{sid}` or `/api/entities/{ne_id}` distinguishing "out of your scope" from "does
+  not exist", giving an authenticated viewer an enumeration primitive over the network inventory.
+  *Control:* **404, not 403**, past authorization — and produced by *filtering the lookup itself*,
+  so the handler's existing not-found branch fires unchanged and the two cases are
+  indistinguishable by construction rather than by a matching pair of code paths (DECISIONS #60).
+  *Tests:* `test_f32_out_of_scope_detail_is_indistinguishable_from_nonexistent` (status, body, and
+  headers compared), across detail, graph, timeline, and SSE.
+- **Information disclosure — leakage through aggregates.** *Threat:* `/api/stats` counters
+  (`devices`, `active_alarms`, `open_situations`) letting a scoped viewer infer out-of-scope volume
+  or the arrival of a new NE. *Control:* every enumerating counter is computed **over the in-scope
+  set only**; a scoped principal's `devices` count is the size of their own scope. *Tests:*
+  `test_f32_aggregates_are_computed_over_the_in_scope_set`,
+  `…_out_of_scope_activity_does_not_move_a_scoped_viewers_counters`.
+- **Information disclosure — leakage through a mixed-membership situation.** *Threat:* a situation
+  spanning the boundary disclosing out-of-scope NE ids, IPs, entity keys, or varbinds through its
+  member list, its links, or its root-cause hint. *Control:* out-of-scope members are **redacted to
+  a coarse count and type** — no identifier of any kind — and links referencing a redacted member
+  are withheld; the root hint is suppressed when the root is out of scope (DECISIONS #59). *Tests:*
+  `test_f32_redacted_members_disclose_no_identifier` (asserts the response body contains no
+  out-of-scope IP, NE id, or entity key anywhere at any depth).
+- **Information disclosure — the live stream forgetting the policy.** *Threat:* an SSE connection
+  opened before a scope was written continuing to stream unfiltered snapshots. *Control:* the
+  scope is resolved **per event**, not at connection time; the same resolver, the same filter.
+  *Tests:* `test_f30_sse_reevaluates_scope_on_every_event`.
+- **Denial of service / fail-open — a malformed scope policy.** *Threat (both directions):* a
+  corrupt selector silently resolving to "everything" (disclosure), or hiding everything from the
+  admin who must repair it (lockout). *Control:* a malformed scope policy **denies for viewer and
+  editor** — never fails open — with a warning and an audit row; and **admin is never scoped**
+  (DECISIONS #58), so the repair path is structurally exempt. *Tests:*
+  `test_f29_malformed_scope_policy_denies_viewer_and_editor`, `…_admin_is_never_scoped`.
+- **Elevation — scope confused with authorization.** *Threat:* treating "in scope" as "authorized",
+  so a scope grant becomes a capability grant. *Control:* the two resolvers are independent and
+  composed in one order — authorization first (401/403), then scope (filter/404). A scope policy is
+  not an input to `resolve_capabilities()` at all. *Tests:* `test_f28_scope_grants_no_capability`.
+
+### Hot path (A1) — governance must not reach ingestion
+
+- **Availability / prime-directive violation — a policy read on the trap path.** *Threat:* a
+  capability or scope lookup creeping into `datagram_received`, the queue, or the engine batch,
+  adding a lock or an I/O to the path that must stay lossless. *Control:* both policies are read
+  **HTTP-side, per request**, and nowhere else; `receiver.py` imports neither `rbac` nor `shaping`.
+  The v0.6.0 F24 source-level assertions over `datagram_received` remain in force and are extended
+  with the governance identifiers. *Tests:* `test_f33_datagram_received_gained_nothing`,
+  `…_receiver_does_not_import_the_governance_modules`,
+  `…_engine_and_learning_are_untouched_by_governance`, unchanged `test_perf.py`.
+
+### Migration (A5, A6)
+
+- **Tampering / misconfiguration — a migration that changes behaviour.** *Threat:* `0006` seeding a
+  policy row, and an upgrade therefore silently altering who may do or see what. *Control:* `0006`
+  is additive and forward-only and seeds **zero** governance rows; "no rows" resolves to the
+  ceiling and to full visibility, which is byte-identically v0.6.0 (DECISIONS #54). *Tests:*
+  `test_migrate_populated_v060_database_seeds_no_governance_rows`,
+  `test_upgrade.py::test_v070_upgrade_changes_no_behaviour`, plus the built wheel/sdist check (F12).
+
+## Rejected by design (stronger than a control)
+
+- **Tenant isolation via scoping** — *disposition:* **not built, and not claimed.** Visibility
+  scoping is a presentation control and is **not tenant isolation**; it is a projection over reads. It does not partition the learned matrices, does not prevent
+  a situation from forming across a boundary, and does not segment retention or audit. Claiming
+  otherwise would be an over-claim that a customer would discover during an incident. The limit is
+  stated in `SCOPE-0.7.md`, `DESIGN.md`, `README.md`, `MIGRATION.md`, and the UI, and a
+  documentation test asserts the statement is present so it cannot be quietly dropped
+  (`test_f32_scoping_is_not_tenant_isolation_is_documented`).
+- **Dynamic roles** — *disposition:* not built (DECISIONS #56). A runtime-defined role has no
+  compiled ceiling, so the first operand of the escalation-proof intersection would become stored
+  data and the guarantee would collapse back into a validation check.
+- **Write-time ceiling validation as *the* control** — *disposition:* demoted to a usability
+  affordance. A check protects only the write paths it is on; the intersection protects every path
+  that will ever exist.
+
+## v0.7.0 residual risk (accepted, documented)
+
+- **Scoping is presentation, not isolation.** A scoped operator shares global learned state,
+  global situation ids, and global timing with everyone else. A determined observer can still infer
+  *that* activity exists beyond their boundary from correlated behaviour in aggregate — the
+  redaction count says so out loud rather than hiding it. Only true isolation would close this, and
+  that is a later, larger feature.
+- **A scoped operator sees a partial picture.** An incident spanning the boundary is, to them,
+  smaller than it is. This is a real operational hazard, and the design's answer is honesty: the
+  redacted member count and type are shown precisely so the operator knows the edge of their own
+  picture rather than confidently mis-sizing an incident. It is a trade, not a solved problem.
+- **Cardinality is information.** The redaction discloses *how many* members are out of scope. That
+  is strictly less than the situation id and `updated_at` a viewer already sees, and is the minimum
+  needed to keep the operator honest — but it is not zero.
+- **A compromised admin can rewrite the perimeter.** As with the v0.6.0 scoring config, the control
+  is not prevention — an admin is trusted to govern by definition. It is that every change is
+  bounded by the compiled ceiling, append-only, attributable, reversible by pointer, and audited.
+- **Policy history grows one versioned row per change.** Bounded (a handful per year), immutable,
+  never pruned — the same deliberate trade as `scorer_config`.
+
+## v0.7.0 coverage check
+
+Every threat above names a control and a test. Findings **F27–F33** are tracked in
+`SECURITY-REVIEW-0.7.md` (property → fix → test); Gate 5 requires every F-numbered test green,
+`make eval` byte-identical, the governance-parity test green at empty policy, the property-based
+ceiling-invariant test green over generated and adversarial policies, and the authorization matrix
+clean over the four new capabilities.

@@ -79,7 +79,7 @@ def test_remove_drops_cleared_alarm() -> None:
     correlator.remove(1)
     correlator.remove(1)  # idempotent
     assert len(correlator.index) == 0  # no live alarms
-    assert correlator._recent_live() == []  # tombstone is not offered as a candidate
+    assert correlator._recent_live(100.0) == []  # tombstone is not offered as a candidate
 
 
 def test_reactivation_replaces_window_entry() -> None:
@@ -158,3 +158,145 @@ def test_score_decays_monotonically_with_time(dt_near: float, gap: float) -> Non
     near = wa(1, 1, 10, ts=1000.0 + dt_near)
     far = wa(1, 1, 10, ts=1000.0 + dt_near + gap)
     assert correlator.score(near, old, learner)[0] >= correlator.score(far, old, learner)[0]
+
+
+# --- v0.7.0 S0: the preview/engine candidate-selection close-out -------------------------
+#
+# v0.6.0 shipped the windowing/candidate-selection rule twice — once in `Correlator._recent_live`
+# and once inside `preview.partition` — with its own copies of the window length and the cap. The
+# two agreed, but nothing held them together, so a change to `WINDOW_S` alone would have left the
+# what-if replaying a different window from the engine it claims to predict. These tests pin the
+# unification (DECISIONS #61) at both levels: the *rule* is one function, and the *result* is the
+# engine's actual situation partition.
+
+
+def _engine_partition(alarms: list[WindowAlarm], learner: Learner) -> set[frozenset[int]]:
+    """Drive a real `Correlator` over `alarms` and return its connected components.
+
+    This is the engine's own grouping logic — `process()` per alarm, union-find over the accepted
+    links — reproduced here rather than mocked, so what preview is compared against is what the
+    engine in fact does with these alarms.
+    """
+    correlator = Correlator()
+    parent = {a.alarm_id: a.alarm_id for a in alarms}
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for alarm in alarms:
+        result = correlator.process(alarm, learner)
+        for link in result.links:
+            ra, rb = find(alarm.alarm_id), find(link.other.alarm_id)
+            if ra != rb:
+                parent[max(ra, rb)] = min(ra, rb)
+
+    groups: dict[int, set[int]] = {}
+    for alarm_id in parent:
+        groups.setdefault(find(alarm_id), set()).add(alarm_id)
+    return {frozenset(members) for members in groups.values()}
+
+
+def _preview_partition(alarms: list[WindowAlarm], learner: Learner) -> set[frozenset[int]]:
+    from netcorenoc import preview
+    from netcorenoc.scoring import default_scorer
+
+    snapshot = [
+        preview.PreviewAlarm(a.alarm_id, a.class_id, a.device_id, a.entity_id, a.ts) for a in alarms
+    ]
+    labels, _links = preview.partition(snapshot, default_scorer(), learner)
+    groups: dict[int, set[int]] = {}
+    for alarm_id, component in labels.items():
+        groups.setdefault(component, set()).add(alarm_id)
+    return {frozenset(members) for members in groups.values()}
+
+
+def test_preview_reproduces_the_engine_partition() -> None:
+    """THE close-out gate: preview's partition **is** the engine's partition on the same alarms.
+
+    Not "the same windowing" — the same *situations*, member for member. The alarms straddle both
+    edges that matter: pairs inside the ~21 s cold-start link radius, pairs beyond it, and a gap
+    wider than the 120 s window so the partition has more than one component to get wrong.
+    """
+    learner = trained_learner()
+    alarms = [
+        wa(1, 1, 10, ts=1000.0),
+        wa(2, 2, 10, ts=1002.0),  # same NE, 2 s  -> links
+        wa(3, 1, 11, ts=1004.0),  # trained cross-NE pair -> links
+        wa(4, 3, 12, ts=1050.0),  # unrelated NE, 46 s later -> its own situation
+        wa(5, 4, 13, ts=1400.0),  # beyond the window entirely -> its own situation
+        wa(6, 4, 13, ts=1401.0),  # same NE, 1 s -> links to 5
+    ]
+    engine = _engine_partition(alarms, learner)
+    assert engine == _preview_partition(alarms, learner)
+    assert len(engine) > 1, "a single component would make this assertion vacuous"
+
+
+@given(
+    gaps=st.lists(st.sampled_from([0.0, 1.0, 5.0, 25.0, 130.0]), min_size=2, max_size=40),
+    devices=st.lists(st.sampled_from([10, 11, 12]), min_size=2, max_size=40),
+)
+def test_preview_reproduces_the_engine_partition_over_generated_streams(
+    gaps: list[float], devices: list[int]
+) -> None:
+    """The same equality over generated streams: inter-arrival gaps drawn to straddle the link
+    radius and the window edge, on a mix of NEs including a trained cross-NE pair."""
+    learner = trained_learner()
+    n = min(len(gaps), len(devices))
+    ts = 1000.0
+    alarms: list[WindowAlarm] = []
+    for i in range(n):
+        ts += gaps[i]
+        alarms.append(wa(i + 1, (i % 3) + 1, devices[i], ts=ts))
+    assert _engine_partition(alarms, learner) == _preview_partition(alarms, learner)
+
+
+def test_preview_and_engine_share_one_selection_implementation() -> None:
+    """Structural, not behavioural: there must be exactly one candidate-selection rule.
+
+    A parity test alone is what v0.6.0 could have had — it proves agreement *today*. This asserts
+    the two callers cannot drift: both go through `correlate.select_candidates`, and preview's
+    bounds are the engine's constants rather than copies of their values.
+    """
+    import inspect
+
+    from netcorenoc import correlate, preview
+
+    assert preview.PREVIEW_WINDOW_S is correlate.WINDOW_S
+    assert preview.PREVIEW_MAX_CANDIDATES is correlate.MAX_CANDIDATES
+
+    for func in (correlate.Correlator._recent_live, preview.partition):
+        assert "select_candidates" in inspect.getsource(func), (
+            f"{func.__qualname__} must select candidates through correlate.select_candidates"
+        )
+
+
+def test_select_candidates_skips_tombstones_and_honours_the_window_and_cap() -> None:
+    """The helper's own contract, including the one difference between its two callers."""
+    from netcorenoc.correlate import select_candidates
+
+    window = [wa(i, 1, 10, ts=1000.0 + i) for i in range(1, 11)]
+
+    # No liveness set (preview's case): every entry qualifies, newest-first, capped, chronological.
+    assert [a.alarm_id for a in select_candidates(window, now=1010.0, max_candidates=3)] == [
+        8,
+        9,
+        10,
+    ]
+    # A liveness set (the engine's case): tombstones are skipped, and the cap counts live entries.
+    live = {1, 2, 3, 10}
+    assert [
+        a.alarm_id for a in select_candidates(window, now=1010.0, max_candidates=3, live=live)
+    ] == [2, 3, 10]
+    # The window boundary keeps `now - ts <= window_s` and drops past it — the v0.6.0 predicate
+    # exactly, byte for byte: inclusive at the edge, exclusive one tick beyond.
+    assert [a.alarm_id for a in select_candidates(window, now=1010.0, window_s=3.0)] == [
+        7,
+        8,
+        9,
+        10,
+    ]  # ts 1007 is exactly 3.0 s old -> kept
+    assert [a.alarm_id for a in select_candidates(window, now=1010.0, window_s=2.9)] == [8, 9, 10]
+    assert select_candidates(window, now=2000.0, window_s=10.0) == []

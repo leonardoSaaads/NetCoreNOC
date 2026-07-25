@@ -964,3 +964,229 @@ grouping**.
   datagram path is untouched, and a further "trust the built-in scorer, skip the guard" fast path
   was **rejected** — complicating the fail-safe wrapper, the most security-relevant code in the
   release, to recover a fraction of 3.5 % is a bad trade.
+
+## 53. The stored capability policy is an **intersection** with the ceiling, not a grant table (Phase 1)
+
+- **Context**: `GOVERNANCE-0.7-DRAFT.md` §1 describes an `rbac_grant` table whose rows *assign* a
+  capability to a role, guarded by "a grant that tried to give `viewer` an admin-ceiling capability
+  is **rejected at write time**". That is a validation check: it is correct only while the check is
+  present, reachable, and applied to every write path (including a future one, a migration, or a
+  hand-edited DB).
+- **Options**: (a) implement the draft literally — a grant table plus write-time ceiling validation;
+  (b) resolve capabilities as `ceiling(role) ∩ granted(role) ∩ granted(principal)`, where the
+  compiled `PERMISSIONS` map is the first operand; (c) both — intersection *and* write-time
+  rejection.
+- **Choice**: (b), with (c)'s write-time rejection kept only as a *usability* affordance (a 400 with
+  a precise reason, so an admin learns immediately that a capability is above a role's ceiling) and
+  never as the security control.
+- **Reason**: an intersection cannot exceed its first operand. Under (b) a policy row that names an
+  above-ceiling capability is not "rejected" — it is **inert**, because the intersection drops it
+  regardless of how it got into the table: a bypassed endpoint, a direct `sqlite3` write, a bad
+  migration, a future second write path. That is the difference between "escalation is forbidden"
+  and "escalation is impossible", and the build prompt's prime directive 2 asks for the latter in
+  those words. It also makes the property **testable as a property**: a generated-policy test can
+  assert `resolved ⊆ ceiling` over arbitrary and hostile inputs, which a write-time check can only
+  assert over the inputs the test happens to send. The draft's stricter clauses survive unchanged —
+  an undelegable capability is one whose ceiling is `admin`, so no policy can move it down.
+
+## 54. An unset policy means "the whole ceiling"; a set-but-empty policy means "nothing" (Phase 1)
+
+- **Context**: `resolved = ceiling ∩ granted` needs a defined `granted` when no policy exists.
+  Reading "no rows" as "the empty set" would make an un-migrated appliance deny everything on the
+  first request after upgrade — a total outage on a schema change that is supposed to be invisible.
+- **Options**: (a) absent policy ⇒ empty set (deny all); (b) absent policy ⇒ the ceiling (parity);
+  (c) absent policy ⇒ the ceiling, **and** a policy that exists but lists nothing ⇒ empty set.
+- **Choice**: (c). "No policy configured" and "a policy configured to allow nothing" are different
+  statements and are stored differently: the former is the absence of a subject row, the latter is a
+  subject row whose capability set is empty.
+- **Reason**: (b)/(c) are what make empty-policy parity a *structural* property rather than a
+  special case sprinkled through the resolver. (a) is unshippable. The distinction in (c) matters
+  because the same distinction is load-bearing for scoping (#57): an admin who deliberately grants a
+  principal nothing must get nothing, not everything, and the two cases must not collapse into one
+  another. This mirrors the governance draft's "a referenced-but-empty scope yields an empty set,
+  not the full set" verbatim, and generalises it to capabilities.
+
+## 55. A malformed **capability** policy falls back to the ceiling; a malformed **scope** policy denies (Phase 1)
+
+- **Context**: both policies can be unreadable (corrupt row, unparseable selector, a subject naming
+  a role that does not exist). Fail-closed is the standing rule, but "closed" means opposite things
+  here: for capabilities, closing means *denying the admin the ability to fix it*; for scope,
+  closing means *showing a viewer less*.
+- **Options**: (a) both fall back to permissive; (b) both fail closed; (c) capabilities fall back to
+  the compiled ceiling, scope fails closed for viewer/editor.
+- **Choice**: (c), with an `operator_warnings()` entry and an audit row in **both** directions.
+- **Reason**: (b) applied to capabilities is a self-inflicted denial of service with no recovery
+  path — the admin cannot reach `rbac.write` to repair the very policy that locked them out. (a)
+  applied to scope is a disclosure bug: a corrupt selector would silently reveal every NE. (c) is
+  safe in both directions **only because admin is never scoped** (#58): the fail-closed branch can
+  hide everything from viewer/editor precisely because the person who must repair it is structurally
+  exempt. The capability fallback is not "permissive" — it is the *shipped compiled baseline*, the
+  exact behaviour of v0.6.0, which is the strictest state that is also recoverable.
+
+## 56. The three roles stay compiled in; only their *restriction* is data-driven (Phase 1)
+
+- **Context**: once capabilities are stored policy, "let an admin define a fourth role" is one small
+  table away, and operators will ask for it.
+- **Options**: (a) admin-defined role names with admin-assigned capability sets; (b) keep
+  viewer/editor/admin compiled in, make only the restriction of each configurable.
+- **Choice**: (b). Custom roles are a ROADMAP line.
+- **Reason**: the ceiling model in #53 draws its entire strength from `PERMISSIONS` being *code*
+  reviewed as code. A role invented at runtime has no compiled ceiling, so its ceiling would have to
+  be computed from another stored row — and the first operand of the intersection would become
+  attacker-influenced data, collapsing the guarantee back into a validation check. `ROLE_RANK`'s
+  total order (`viewer < editor < admin`) is also assumed by `shaping.py`, by the UI's affordance
+  gate, and by the authorization-matrix test; a dynamic role set turns that into a lattice and
+  quietly changes four other things. Out of scope, and out of scope for a *reason*, not for time.
+
+## 57. Scope selectors resolve to NE ids at read time, and the scope is a union of two restrictions (Phase 1)
+
+- **Context**: a scope must be writable in operator terms (a CIDR, a hostname pattern) but enforced
+  in database terms (which rows). Resolution can happen at write time (materialise the NE id set) or
+  at read time (evaluate selectors against the current NE table).
+- **Options**: (a) materialise at write time into an id list; (b) resolve at read time from stored
+  selectors; (c) materialise with a background refresh.
+- **Choice**: (b): store selectors, resolve to a set of NE ids (and their IPs) on each request.
+- **Reason**: NetCoreNOC *discovers* NEs continuously — that is the product. Under (a) an NE that
+  first reports after the policy was written would be invisible to a scope whose CIDR plainly covers
+  it, and the operator would have to re-save the policy to see their own network; worse, the failure
+  is silent and looks like a correlation bug. (c) buys nothing over (b) at this scale (an NE table
+  of thousands, resolved with set operations, per request, on the HTTP side only) and adds a staleness
+  window that is itself a disclosure question. The two layers **union** rather than intersect because
+  each is independently a *restriction* on the full set, and a principal-level scope is meant to
+  *add* a named exception for one operator, not to require that operator's grant to also appear in
+  their role's — which would make the common case ("this contractor additionally sees the lab
+  range") impossible to express.
+
+## 58. Admin is never scoped (Phase 1)
+
+- **Context**: a uniform rule ("scoping applies to everyone") is simpler to describe and to test.
+- **Options**: (a) scope every role including admin; (b) exempt admin structurally.
+- **Choice**: (b) — the exemption is in the resolver, not in each call site, and it is checked
+  before any policy is read.
+- **Reason**: this one rule is what makes every fail-closed branch in the release safe. If a
+  malformed scope policy hides NEs from admin, then the admin cannot see the NEs, cannot diagnose
+  why, and — since `scope.write` is itself reached through the same perimeter — is one bad row away
+  from an unrecoverable appliance whose only fix is `sqlite3` on the host. Under (b) the worst case
+  of a malformed scope policy is "viewers and editors see nothing until an admin fixes it", which is
+  a visible, recoverable, audited outage rather than a brick. It also matches what the role *means*:
+  an admin already holds `users.manage`, `audit.read`, and `config.write`, so scoping their *view*
+  while leaving their *authority* intact would protect nothing.
+
+## 59. An out-of-scope situation member is redacted to a count and a type, never omitted silently (Phase 1)
+
+- **Context**: a situation is a connected component computed before scoping. A scoped viewer looking
+  at a situation with mixed membership can be shown (i) only their members, as if the others did not
+  exist; (ii) their members plus an honest marker that N others exist; (iii) nothing at all.
+- **Options**: (a) silent omission; (b) coarse redaction — a count and a member type, no NE id, no
+  IP, no entity key, no varbind; (c) hide the whole situation unless fully in scope.
+- **Choice**: (b), and a situation is listed iff **at least one** member is in scope.
+- **Reason**: (a) is the option that turns a presentation control into a lie. A NOC operator reading
+  "3 alarms, root cause on NE-7" would size and triage an incident that actually spans 40 alarms
+  across a boundary they cannot see, and would be *confidently wrong* — the exact failure mode
+  `SCOPE-0.6` §preview calls out for the what-if and refuses to ship. (c) fails the other way: a
+  cross-boundary fibre cut is precisely the incident a scoped operator most needs to know is
+  happening. (b) discloses **cardinality and type only**, which is strictly less than the situation
+  id and `updated_at` the viewer can already see, while keeping the operator honest about the edge of
+  their own picture. The residual — cardinality is itself information — is recorded in
+  `SECURITY-REVIEW-0.7.md` §critical analysis rather than pretended away, and is the honest price of
+  not lying to an operator during an incident.
+
+## 60. Out-of-scope resources return **404**, and the 404 is produced by the same lookup that would (Phase 1)
+
+- **Context**: past authorization, a request for a resource outside the caller's scope could return
+  403 ("you may not see this") or 404 ("no such thing").
+- **Options**: (a) 403; (b) 404 emitted from a scope check placed before the resource lookup;
+  (c) 404 produced by *filtering the lookup itself*, so the handler's existing "not found" branch
+  fires unchanged.
+- **Choice**: (c).
+- **Reason**: 403 is an existence oracle — it distinguishes "exists but is not yours" from "does not
+  exist", which is exactly the enumeration primitive the v0.2.0 threat model forbids and
+  `test_403_precedes_404_no_existence_oracle` guards. Between (b) and (c): a separate pre-check is a
+  **second decision site** that can drift from the query it guards, and the drift is silent and
+  one-directional (the pre-check says no, the query would have said yes, or worse the reverse). Under
+  (c) the scope is a predicate *inside* the read, so "out of scope" and "absent" are indistinguishable
+  by construction rather than by a matching pair of code paths — and the timing is the same too,
+  because it is the same query.
+
+## 61. One shared candidate-selection helper, and preview keeps its own bounds as *arguments* (Phase 1)
+
+- **Context**: the v0.6.0 close-out requires `Correlator._recent_live()` and `preview.partition()`
+  to stop being two implementations. They differ in one real respect: the engine's window carries
+  **tombstones** (cleared or re-activated alarms removed from `index` but still in the deque), and
+  preview's snapshot cannot.
+- **Options**: (a) make preview build a `Correlator` and drive it — one implementation, no helper;
+  (b) extract a helper parameterised by the window, the cut-off, the cap, and an optional liveness
+  set; (c) leave them separate and add only a parity test.
+- **Choice**: (b), with `preview.PREVIEW_WINDOW_S` / `PREVIEW_MAX_CANDIDATES` becoming aliases of
+  `correlate.WINDOW_S` / `MAX_CANDIDATES` rather than independent literals.
+- **Reason**: (c) is what v0.6.0 already shipped and is the debt being closed — a test proves
+  agreement *today* and nothing prevents divergence tomorrow. (a) drags the engine's mutable window,
+  eviction, overflow accounting and storm detection into a read-only what-if, which is more coupling
+  than the problem needs and puts engine state on an HTTP path. (b) makes the *selection rule* one
+  function while leaving each caller its own bookkeeping, so a future change to the window semantics
+  is a one-line change that both callers get, and the alias removes the second copy of the numbers —
+  which was the actual drift risk, not the loop.
+
+## 62. Per-principal policy is keyed on the principal's identity, not its display name (Phase 1)
+
+- **Context**: per-principal restriction (P1) needs a stable key. `Principal` carries `actor` (a
+  username or a token *name*), `role`, `kind`, and `user_id` — but no token id, and `actor` is not
+  unique across the two kinds: a user and a service token may both be called `backup`.
+- **Options**: (a) key on `actor`; (b) key on `(kind, actor)`; (c) key on the row identity —
+  `user:<user_id>` / `token:<token_id>` — adding `token_id` to `Principal`.
+- **Choice**: (c).
+- **Reason**: (a) silently applies one operator's restriction to an unrelated service token that
+  happens to share a name — a cross-principal authorization bug that only appears once someone picks
+  a colliding name. (b) fixes the collision but keys authorization on a mutable display string, so
+  the policy's meaning depends on a field that management endpoints treat as cosmetic. (c) keys on
+  the primary key that already exists, which is the same identity `revoke_user_sessions` and the
+  audit log's `object_id` use, so a policy row, an audit row, and a session revocation all name the
+  same thing. `token_id` is an additive optional field on a frozen dataclass; nothing else changes.
+
+## 63. An **unset** scope layer expresses no opinion; the visible set is the union of the layers that do (Phase 2)
+
+- **Context**: the scope model is `role_scope ∪ principal_scope`, with "unset ⇒ all NEs" for parity.
+  Read literally, an unset role scope contributes *all NEs* to the union, so a principal-level scope
+  can never restrict anything unless the role is also scoped — which would make workstream 2's
+  per-principal layer (S5) a no-op in the common case, and would mean the *stricter* of two
+  configurations sometimes shows more.
+- **Options**: (a) the literal union — an unset layer contributes the full set; (b) intersect the
+  layers instead; (c) an unset layer contributes **nothing to the union**, and the "all NEs" default
+  applies only when **no** layer is set.
+- **Choice**: (c). Generalising #54: **unset** means "this layer expresses no opinion"; **set**
+  (even to the empty list) means "this layer says: exactly these". Visible = union over the layers
+  that express an opinion; if none do, all NEs.
+- **Reason**: (c) satisfies every clause of the specification simultaneously — both unset ⇒ all
+  (parity); role set, principal unset ⇒ the role's set ("only these", fail-closed); both set ⇒ the
+  union (the "this contractor *additionally* sees the lab range" case that motivated union over
+  intersection in #57) — and it adds the one case (a) gets wrong: role unset, principal set ⇒ the
+  principal's set, so a per-principal restriction actually restricts. It is also the strictly
+  *stricter* reading, which is how the decision protocol says to resolve a security-relevant
+  ambiguity. (b) would break the additive case: a principal grant absent from the role's scope would
+  intersect to nothing, so the one operational reason to have a per-principal layer would be
+  unexpressible. The unset/set distinction is already load-bearing for capabilities (#54), so this
+  reuses a rule the reader has already met rather than inventing a second one.
+
+## 64. The admin's recovery capabilities are unremovable — structurally, not by validation (Phase 2)
+
+- **Context**: `resolved = ceiling ∩ granted` lets a policy remove **any** capability from **any**
+  role, admin included. An admin who removes `rbac.write` from the `admin` role — by accident, by a
+  bad script, or maliciously — produces an appliance whose perimeter cannot be repaired through any
+  authenticated path. That is precisely the hard lockout prime directive 4 forbids, and it is
+  reachable from a *well-formed* policy, so the malformed-policy fallback (#55) never fires.
+- **Options**: (a) reject such a write at the API (a validation check, bypassable by any other write
+  path, and no help at all to a database that already contains the row); (b) special-case the
+  recovery routes in `api.py` to skip the capability check for admins; (c) union a small, compiled
+  `RECOVERY_CAPABILITIES` set back into the admin's resolved set, inside the one resolver.
+- **Choice**: (c). `RECOVERY_CAPABILITIES = {self.read, rbac.read, rbac.write, scope.read,
+  scope.write}`, re-added for the `admin` role only, inside `resolve_capabilities()`.
+- **Reason**: (c) preserves the release's central invariant *exactly*, because
+  `RECOVERY_CAPABILITIES ⊆ ceiling("admin")` — a union with a subset of the ceiling cannot leave the
+  ceiling, so `resolved ⊆ ceiling(role)` still holds and the property-based test is unweakened. It
+  is structural: no stored policy, however written and by whatever path, can produce an appliance an
+  admin cannot repair. (a) is the same mistake #53 rejected — a check that guards only the paths it
+  sits on. (b) is worse: it puts an authorization decision in `api.py`, creating the second decision
+  site F28 exists to forbid, and it would be invisible to the generated authorization matrix. The
+  set is deliberately tiny and is the *recovery* surface only: an admin can still be denied
+  `users.manage`, `audit.read`, `config.write` or `scorer.write` by policy — governance can restrict
+  an admin's day-to-day authority, it just cannot brick the appliance.

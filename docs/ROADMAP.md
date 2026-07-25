@@ -60,3 +60,38 @@ From v0.6.0 (the scoring seam — deferred to keep the release to the scoring su
   Harmless while the only scorer is five floating-point operations; a **prerequisite** for v0.8.0's
   customer-supplied code, where `SCORER-PLUGINS-0.8-DRAFT.md` specifies a worker process with
   `resource.setrlimit`.
+
+From v0.7.0 (governance — deferred to keep the release to the authorization perimeter only):
+
+- **Customer-supplied models → v0.8.0** — unchanged in substance from the v0.6.0 line above, with
+  one addition recorded during v0.7.0: the **worker-process preemption harness**
+  (`resource.setrlimit` + a real wall-clock kill, batch-oriented IPC) is a **blocking
+  prerequisite**, not a nice-to-have. `SafeScorer` degrades the *next* call, which cannot fire on a
+  plugin that never returns. See `SCORER-PLUGINS-0.8-DRAFT.md` §R2 and SECURITY-REVIEW-0.6 F25.
+- **True multi-tenant isolation** — per-tenant learning, per-tenant situation boundaries, per-tenant
+  retention and audit segmentation, and the cardinality/quota accounting that goes with it. This is
+  the thing v0.7.0 visibility scoping is explicitly **not**: scoping is a presentation projection
+  over reads and does not partition the learned matrices or prevent a situation forming across a
+  boundary. A distinct, larger feature that would change the engine, the schema, and the eval
+  methodology. DECISIONS #59, SCOPE-0.7 §out-of-scope.
+- **Custom roles** — admin-defined role names beyond viewer/editor/admin, and a role-authoring UI.
+  Deliberately out (DECISIONS #56): a runtime-defined role has no compiled ceiling, so the first
+  operand of v0.7.0's escalation-proof intersection would become stored data and the guarantee
+  would collapse into a validation check. `ROLE_RANK`'s total order is also assumed by `shaping.py`
+  and the UI affordance gate.
+- **Per-field scoping policies** — an admin choosing which *fields* (not which NEs) a role sees.
+  Field shaping stays the compiled `shaping.py` policy; v0.7.0 scoping restricts *which resources*
+  are visible. DECISIONS #59.
+- **External identity providers / SSO / SCIM / MFA / group-based provisioning.** Principals remain
+  locally managed; a stored policy references existing local principals and the three fixed roles.
+- **Scope-aware situation notifications** — if outbound emission is ever built, "who may be told
+  about this situation" is a scoping question distinct from "who may read it", and the redaction
+  rule (DECISIONS #59) would need an equivalent for pushed payloads.
+- **Materialised scope resolution with invalidation** — v0.7.0 resolves selectors to NE ids on
+  every request (DECISIONS #57), which is correct for a continuously-discovering inventory and
+  cheap at this scale. If an NE table ever grows past what a per-request set operation should
+  touch, a cached resolution with explicit invalidation on NE creation is the next step.
+- **Per-principal scope for service tokens by token id** — implemented in v0.7.0 keyed on
+  `token:<token_id>` (DECISIONS #62); a token *rotation* currently starts from an unset policy
+  because the new token is a new row. Carrying a policy across a deliberate rotation would need an
+  explicit "replace token, keep policy" operation.

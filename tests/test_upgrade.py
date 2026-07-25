@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from netcorenoc import audit
+from netcorenoc import audit, shaping
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
@@ -87,10 +87,13 @@ async def test_v060_upgrade_preserves_grouping_and_seeds_provenance(tmp_path: Pa
     real_dir = store_mod.MIGRATIONS_DIR
 
     class _FrozenAtV4:
-        """The migration directory as a v0.5.0 install saw it: 0005 does not exist yet."""
+        """The migration directory as a v0.5.0 install saw it: nothing past 0004 exists yet.
+
+        Filtered by migration *number*, not by name, so a later release adding 0006/0007 does not
+        silently un-freeze this fixture and turn "a genuine v0.5.0 database" into a current one."""
 
         def glob(self, pattern: str) -> list[Path]:
-            return [p for p in real_dir.glob(pattern) if not p.name.startswith("0005")]
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 4]
 
     async def partition_of(store: Store) -> set[frozenset[int]]:
         cur = await store.conn.execute("SELECT situation_id, alarm_id FROM situation_alarm")
@@ -133,7 +136,7 @@ async def test_v060_upgrade_preserves_grouping_and_seeds_provenance(tmp_path: Pa
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == 5
+        assert await new.schema_version() == Store.latest_schema_version()
         assert new.integrity_warnings == []
         engine_new = Engine(new, asyncio.Queue())
         await engine_new.start()
@@ -165,5 +168,92 @@ async def test_v060_upgrade_preserves_grouping_and_seeds_provenance(tmp_path: Pa
         )
         assert await partition_of(fresh) == before_partition
         await fresh.close()
+    finally:
+        await new.close()
+
+
+async def test_v070_upgrade_changes_no_behaviour(tmp_path: Path) -> None:
+    """Phase 5 gate: a live v0.6.0 database upgrades in place and **nothing changes**.
+
+    The same fixture is replayed against a database whose schema is frozen at v5 (a v0.6.0
+    install), then the file is reopened with migration 0006 present. Grouping, learned state,
+    scorer provenance and the audit chain must all survive, and — the point of this release — the
+    upgraded appliance must carry **no governance policy**, so every route answers exactly as it
+    did before. Governance changes nothing until an admin writes a policy.
+    """
+    import netcorenoc.store as store_mod
+    from netcorenoc import rbac
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV5:
+        """The migration directory as a v0.6.0 install saw it: nothing past 0005 exists yet."""
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 5]
+
+    async def partition_of(store: Store) -> set[frozenset[int]]:
+        cur = await store.conn.execute("SELECT situation_id, alarm_id FROM situation_alarm")
+        groups: dict[int, set[int]] = {}
+        for row in await cur.fetchall():
+            groups.setdefault(int(row[0]), set()).add(int(row[1]))
+        return {frozenset(members) for members in groups.values()}
+
+    db = str(tmp_path / "v060-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV5()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 5  # a genuine v0.6.0 database
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        assert engine_old.scorer_config_id == 1  # v0.6.0 seeded its scorer config
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        async with old.lock:
+            await audit.write_event(
+                old,
+                ts=BASE,
+                actor="admin",
+                role="admin",
+                source_ip="-",
+                action="login.ok",
+                outcome="ok",
+            )
+            await old.commit()
+        before_partition = await partition_of(old)
+        before_edges = (await old.graph_snapshot(min_edge_n=0))["edges"]
+        before_stats = await old.stats()
+        assert before_partition and before_edges
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    # The upgrade: same file, migration 0006 now present.
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == Store.latest_schema_version()
+        assert new.integrity_warnings == []
+        engine_new = Engine(new, asyncio.Queue())
+        await engine_new.start()
+
+        # Learned state, grouping, provenance and the audit chain all survive untouched.
+        assert await partition_of(new) == before_partition
+        assert (await new.graph_snapshot(min_edge_n=0))["edges"] == before_edges
+        assert await new.stats() == before_stats
+        assert engine_new.scorer_config_id == 1
+        assert (await audit.verify_chain(new)).ok
+
+        # THE v0.7.0 gate: no governance policy exists, so the perimeter is byte-identically
+        # v0.6.0 — the resolver returns each role's compiled ceiling for every capability.
+        async with new.lock:
+            assert await new.active_governance_ids() == {}
+        for role in rbac.ROLE_RANK:
+            resolved = rbac.resolve_capabilities(role, None, None)
+            for capability in rbac.PERMISSIONS:
+                assert (capability in resolved) == rbac.role_allows(role, capability)
+        # And scoping is inactive, so every principal still sees every NE.
+        assert shaping.visible_nes("viewer", "user:1", None, []).unrestricted
     finally:
         await new.close()

@@ -86,6 +86,19 @@ async def _drive_every_action(store: Store) -> tuple[Engine, httpx.AsyncClient]:
         json={"w_t": 0.4, "w_a": 0.3, "w_e": 0.3, "tau_s": 45.0, "threshold": 0.55, "note": "x"},
     )
     await admin.post("/api/scorer/rollback", json={"config_id": 1})  # scorer.config.update
+
+    # v0.7.0 — governance. Both policy actions are driven here, exactly like the rest, and both
+    # are then cleared so the rest of this flow runs against the shipped baseline.
+    await admin.post(  # rbac.policy.update (apply)
+        "/api/rbac",
+        json={"document": {"version": 1, "roles": {"viewer": ["self.read"]}}, "note": "x"},
+    )
+    await admin.post("/api/rbac", json={"clear": True})  # rbac.policy.update (clear)
+    await admin.post(  # scope.policy.update (apply)
+        "/api/scope",
+        json={"document": {"version": 1, "roles": {"viewer": ["10.0.0.0/8"]}}, "note": "x"},
+    )
+    await admin.post("/api/scope", json={"clear": True})  # scope.policy.update (clear)
     # scorer.fallback: a scorer that raises degrades the engine to the coded defaults, and the
     # maintenance pass records it once with the system actor.
     engine.correlator.set_scorer(_FailingScorer())
@@ -144,6 +157,12 @@ EXPECTED_ACTIONS = {
     "scorer.preview",
     "scorer.config.update",
     "scorer.fallback",
+    # v0.7.0 — governance. `governance.fallback` is a *system* action emitted only when a stored
+    # policy will not parse; it is driven and asserted in
+    # test_governance.py::test_f29_malformed_capability_policy_falls_back_to_the_ceiling rather
+    # than here, because this flow deliberately stores only well-formed policies.
+    "rbac.policy.update",
+    "scope.policy.update",
 }
 
 

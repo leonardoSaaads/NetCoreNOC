@@ -105,6 +105,19 @@
         <div id="scorerView"></div>
       </section>
 
+      <!-- Admin: governance — capabilities and visibility scope (v0.7.0) -->
+      <section class="panel" id="panel-governance" data-panel="governance">
+        <h2>Governance</h2>
+        <div class="hint">Who may <em>do</em> what, and who may <em>see</em> which network
+          elements. With no policy stored the appliance behaves exactly as it did before —
+          the built-in role permissions are both the default and the ceiling, and a stored
+          policy can only take capabilities away, never add them.
+          <strong>Visibility scoping is a presentation control and is NOT tenant
+          isolation:</strong> correlation still learns across every network element, and a
+          situation may still form across a boundary a principal cannot see.</div>
+        <div id="governanceView"></div>
+      </section>
+
       <!-- Admin: quarantine -->
       <section class="panel" id="panel-quarantine" data-panel="quarantine">
         <h2>Quarantine</h2>

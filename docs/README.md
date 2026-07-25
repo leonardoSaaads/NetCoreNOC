@@ -34,11 +34,14 @@ one-screen tour of the tree.
   was built, the other two were resequenced, and the external-criterion API was rejected. Read the
   box at the top for the disposition table.
 - [`architecture/GOVERNANCE-0.7-DRAFT.md`](architecture/GOVERNANCE-0.7-DRAFT.md) — admin-configurable
-  RBAC and per-role/per-principal visibility scoping, spec only, `v0.7.0: planned`. States the
-  mandatory limit: **visibility scoping is a presentation control, not tenant isolation.**
+  RBAC and per-role/per-principal visibility scoping, the specification **v0.7.0 implements**. States
+  the mandatory limit: **visibility scoping is a presentation control, not tenant isolation.** Where
+  v0.7.0 departed from it — the stored policy resolves as an *intersection* with the compiled
+  ceiling rather than as a grant table validated at write time — the reason is DECISIONS #53.
 - [`architecture/SCORER-PLUGINS-0.8-DRAFT.md`](architecture/SCORER-PLUGINS-0.8-DRAFT.md) —
   customer-supplied models (blessed ONNX adapter, Python entry-point escape hatch) under the
-  v0.6.0 `LinkScorer` contract, spec only, `v0.8.0: planned`.
+  v0.6.0 `LinkScorer` contract, spec only, `v0.8.0: planned`. Refined during v0.7.0 (§R1–R5): the
+  worker-process preemption harness is recorded as a **blocking prerequisite**.
 
 ## Decisions
 
@@ -54,8 +57,10 @@ one-screen tour of the tree.
 - [`security/SECURITY-REVIEW-0.2.md`](security/SECURITY-REVIEW-0.2.md),
   [`security/SECURITY-REVIEW-0.4.md`](security/SECURITY-REVIEW-0.4.md),
   [`security/SECURITY-REVIEW-0.5.md`](security/SECURITY-REVIEW-0.5.md),
-  [`security/SECURITY-REVIEW-0.6.md`](security/SECURITY-REVIEW-0.6.md) — the numbered
-  finding → fix → test reviews and standards-compliance mappings.
+  [`security/SECURITY-REVIEW-0.6.md`](security/SECURITY-REVIEW-0.6.md),
+  [`security/SECURITY-REVIEW-0.7.md`](security/SECURITY-REVIEW-0.7.md) — the numbered
+  finding → fix → test reviews and standards-compliance mappings. The finding series is continuous
+  and never renumbered: F1–F14 (v0.1–v0.4), F15–F19 (v0.5.0), F20–F26 (v0.6.0), F27–F33 (v0.7.0).
 - [`security/operations.md`](security/operations.md) — the **operator** security & operations
   guide (deployment, TLS, roles, audit-log operations, container hardening). The root
   [`../SECURITY.md`](../SECURITY.md) is the coordinated **vulnerability disclosure policy** (how
@@ -65,9 +70,9 @@ one-screen tour of the tree.
 
 - [`scope/SCOPE.md`](scope/SCOPE.md), [`scope/SCOPE-0.2.md`](scope/SCOPE-0.2.md),
   [`scope/SCOPE-0.3.md`](scope/SCOPE-0.3.md), [`scope/SCOPE-0.4.md`](scope/SCOPE-0.4.md),
-  [`scope/SCOPE-0.5.md`](scope/SCOPE-0.5.md), [`scope/SCOPE-0.6.md`](scope/SCOPE-0.6.md) —
-  per-version product scope. Later documents state only what changed; earlier invariants still
-  hold.
+  [`scope/SCOPE-0.5.md`](scope/SCOPE-0.5.md), [`scope/SCOPE-0.6.md`](scope/SCOPE-0.6.md),
+  [`scope/SCOPE-0.7.md`](scope/SCOPE-0.7.md) — per-version product scope. Later documents state
+  only what changed; earlier invariants still hold.
 
 ## Releases
 

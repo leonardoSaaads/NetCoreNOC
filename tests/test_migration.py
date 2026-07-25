@@ -313,7 +313,7 @@ async def test_migrate_populated_v050_database_seeds_the_scorer_config(tmp_path:
             assert row is not None
             return row[0]
 
-        assert await scalar("PRAGMA user_version") == 5
+        assert await scalar("PRAGMA user_version") == Store.latest_schema_version()
         assert store.integrity_warnings == []
 
         # v0.5.0 data intact.
@@ -369,5 +369,138 @@ async def test_migrate_populated_v050_database_seeds_the_scorer_config(tmp_path:
         cur = await again.conn.execute("SELECT COUNT(*) FROM scorer_config")
         row = await cur.fetchone()
         assert row is not None and row[0] == 1
+    finally:
+        await again.close()
+
+
+def _build_v060_db(path: str) -> None:
+    """A real v0.6.0 database: migrations 0001-0005 applied, some data, user_version=5."""
+    conn = sqlite3.connect(path)
+    for migration in (
+        "0001_init.sql",
+        "0002_auth_audit.sql",
+        "0003_entity.sql",
+        "0004_state_clear.sql",
+        "0005_scorer_config.sql",
+    ):
+        conn.executescript((MIGRATIONS_DIR / migration).read_text())
+    conn.execute("PRAGMA user_version=5")
+    for ip in ("10.0.0.1", "10.0.0.2"):
+        conn.execute(
+            "INSERT INTO device (ip,vendor,first_seen,last_seen) VALUES (?,'Ciena',1,2)", (ip,)
+        )
+        conn.execute(
+            "INSERT INTO ne (ip,vendor,first_seen,last_seen) VALUES (?,'Ciena',1,2)", (ip,)
+        )
+    for ne_id, ip in ((1, "10.0.0.1"), (2, "10.0.0.2")):
+        conn.execute(
+            "INSERT INTO entity (ne_id,parent_id,level,key,key_source,confidence,first_seen,"
+            "last_seen) VALUES (?,NULL,0,?,'self',1.0,1,2)",
+            (ne_id, ip),
+        )
+    conn.execute(
+        "INSERT INTO alarm_class (oid,vendor,name,first_seen,last_seen) "
+        "VALUES ('1.3.6.1.4.1.1271.1','Ciena',NULL,1,2)"
+    )
+    for device_id, instance in ((1, "port-1"), (1, "port-2"), (2, "port-1")):
+        conn.execute(
+            "INSERT INTO alarm (device_id,ne_id,entity_id,class_id,instance,first_seen,last_seen) "
+            "VALUES (?,?,?,1,?,1,2)",
+            (device_id, device_id, device_id, instance),
+        )
+    conn.execute("INSERT INTO situation (created_at,updated_at,scorer_config_id) VALUES (1,2,1)")
+    conn.execute("INSERT INTO situation_alarm (situation_id,alarm_id) VALUES (1,1)")
+    conn.execute("INSERT INTO situation_alarm (situation_id,alarm_id) VALUES (1,2)")
+    conn.execute(
+        "INSERT INTO link (situation_id,alarm_a,alarm_b,score,term_t,term_a,term_e,created_at) "
+        "VALUES (1,1,2,0.7,0.3,0.2,0.2,2)"
+    )
+    conn.commit()
+    conn.close()
+
+
+async def test_migrate_populated_v060_database_seeds_no_governance_rows(tmp_path: Path) -> None:
+    """Gate 2 (v0.7.0): a populated v0.6.0 DB upgrades to v0.7.0 with data intact, the audit chain
+    still verifying, the append-only triggers live on the new table — and **no governance rows**.
+
+    The absence of a seed is the point and is the release gate. `0005` had to seed a parameter row
+    because the engine needs parameters; governance has a compiled default (`PERMISSIONS` and full
+    visibility), so seeding would be the only way to make an upgrade change behaviour. No rows
+    means no policy means the ceiling and full visibility means byte-identically v0.6.0
+    (DECISIONS #54)."""
+    db = str(tmp_path / "v060.db")
+    _build_v060_db(db)
+
+    seed = Store(db)
+    await seed.open()
+    async with seed.lock:
+        for ts, action in ((1.0, "login.ok"), (2.0, "scorer.config.update")):
+            await audit.write_event(
+                seed, ts=ts, actor="admin", role="admin", source_ip="-", action=action, outcome="ok"
+            )
+        await seed.commit()
+    await seed.close()
+
+    store = Store(db)
+    await store.open()
+    try:
+
+        async def scalar(sql: str) -> object:
+            cur = await store.conn.execute(sql)
+            row = await cur.fetchone()
+            assert row is not None
+            return row[0]
+
+        assert await scalar("PRAGMA user_version") == Store.latest_schema_version()
+        assert store.integrity_warnings == []
+
+        # v0.6.0 data intact, including the scoring provenance the previous migration wrote.
+        stats = await store.stats()
+        assert stats["devices"] == 2 and stats["active_alarms"] == 3
+        assert await scalar("SELECT COUNT(*) FROM situation") == 1
+        assert await scalar("SELECT score FROM link WHERE id=1") == 0.7
+        assert await scalar("SELECT COUNT(*) FROM situation WHERE scorer_config_id=1") == 1
+        config = await store.active_scorer_config()
+        assert config is not None and int(config["id"]) == 1
+
+        # THE gate: the migration seeded nothing, so there is no policy and nothing changes.
+        assert await scalar("SELECT COUNT(*) FROM governance_policy") == 0
+        assert await scalar("SELECT COUNT(*) FROM governance_active") == 0
+
+        async with store.lock:
+            # The new history table is append-only at the storage layer, like audit_log and
+            # scorer_config. Insert one row first so UPDATE/DELETE have a target.
+            await store.conn.execute(
+                "INSERT INTO governance_policy (kind,document,doc_hash,created_by,created_at,note)"
+                " VALUES ('rbac','{}','h','admin',1.0,'')"
+            )
+            for sql in (
+                "UPDATE governance_policy SET document='{\"x\":1}' WHERE id=1",
+                "DELETE FROM governance_policy WHERE id=1",
+                "DELETE FROM audit_log WHERE id=1",
+            ):
+                with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+                    await store.conn.execute(sql)
+                    await store.conn.commit()
+            # `kind` is constrained to the two governed axes.
+            with pytest.raises(sqlite3.IntegrityError):
+                await store.conn.execute(
+                    "INSERT INTO governance_policy (kind,document,doc_hash,created_at) "
+                    "VALUES ('other','{}','h',1.0)"
+                )
+            await store.conn.rollback()
+
+        result = await audit.verify_chain(store)
+        assert result.ok and result.checked == 2
+    finally:
+        await store.close()
+
+    # Idempotent: reopening neither re-runs the migration nor invents a policy.
+    again = Store(db)
+    await again.open()
+    try:
+        cur = await again.conn.execute("SELECT COUNT(*) FROM governance_active")
+        row = await cur.fetchone()
+        assert row is not None and row[0] == 0
     finally:
         await again.close()

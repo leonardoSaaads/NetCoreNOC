@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
@@ -43,6 +44,7 @@ PREVIEW_RATE_REFILL = 0.1
 MAX_LABEL_CHARS = 120
 MAX_NOTE_CHARS = 500
 MAX_SCORER_HISTORY = 50
+MAX_POLICY_HISTORY = 50
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 SSE_HEARTBEAT_S = 15.0
 SSE_UPDATE_S = 2.0
@@ -89,11 +91,101 @@ DENIED_ACTION = {
     # system-wide logic change and is recorded under the action it tried to perform.
     "scorer.preview": "scorer.preview",
     "scorer.write": "scorer.config.update",
+    # v0.7.0 (F27): a denied attempt to read or rewrite the perimeter is an attempted privilege
+    # change, recorded under the policy action it tried to perform.
+    "rbac.read": "rbac.policy.update",
+    "rbac.write": "rbac.policy.update",
+    "scope.read": "scope.policy.update",
+    "scope.write": "scope.policy.update",
 }
 # Fail fast at import if the presentation mapping drifts from the authorization source of truth.
 assert set(DENIED_ACTION) == set(rbac.AUDITED_DENIED_PERMISSIONS), (
     "DENIED_ACTION keys must equal rbac.AUDITED_DENIED_PERMISSIONS (single source of truth)"
 )
+
+
+class GovernancePolicies:
+    """Loads the two stored governance policies for the request path, with change invalidation.
+
+    Both policies are read **per request** so a change lands on the very next request with no
+    restart. Only the two-row `governance_active` pointer table is read every time; a document is
+    re-parsed only when its id differs from the one already held, so the parse cost is paid once
+    per policy version rather than once per request.
+
+    When nothing is configured — the default, and the state of every upgraded appliance — both
+    accessors return ``None`` and the resolvers fall through to the compiled ceiling and to full
+    visibility. That is v0.6.0 exactly, and it costs one query over an empty table.
+
+    A document that will not parse is **not** an error here. It is recorded as malformed, surfaced
+    through :meth:`warnings`, queued once for a ``governance.fallback`` audit row, and handed to the
+    resolver, which applies the fail-safe for its kind — the ceiling for capabilities, deny for
+    scope (DECISIONS #55). Raising on the authorization path would turn a bad row into an outage.
+    """
+
+    def __init__(self, store: Any) -> None:
+        self._store = store
+        self._capability_id: int | None = None
+        self._capability: rbac.CapabilityPolicy | None = None
+        self._scope_id: int | None = None
+        self._scope: shaping.ScopePolicy | None = None
+        # (kind, reason) pairs awaiting a `governance.fallback` audit row. Queued when a *new*
+        # malformed policy version is first parsed, so a persistent bad policy is recorded once,
+        # not once per request.
+        self.pending_fallbacks: list[tuple[str, str]] = []
+
+    async def load(self) -> None:
+        """Refresh both policies. Caller holds ``store.lock``."""
+        active = await self._store.active_governance_ids()
+        await self._load_kind("rbac", active.get("rbac"))
+        await self._load_kind("scope", active.get("scope"))
+
+    async def _load_kind(self, kind: str, policy_id: int | None) -> None:
+        current = self._capability_id if kind == "rbac" else self._scope_id
+        if policy_id == current:
+            return  # unchanged since the last parse
+        document = ""
+        if policy_id is not None:
+            row = await self._store.get_governance_policy(policy_id)
+            # A pointer to a missing row cannot happen through the FK, but treat it as malformed
+            # rather than as "no policy": silently widening on a broken pointer would be fail-open.
+            document = str(row["document"]) if row is not None else "<missing>"
+        if kind == "rbac":
+            self._capability_id = policy_id
+            self._capability = rbac.parse_capability_policy(document) if policy_id else None
+            malformed = self._capability is not None and self._capability.malformed
+            reason = self._capability.reason if self._capability is not None else ""
+        else:
+            self._scope_id = policy_id
+            self._scope = shaping.parse_scope_policy(document) if policy_id else None
+            malformed = self._scope is not None and self._scope.malformed
+            reason = self._scope.reason if self._scope is not None else ""
+        if malformed:
+            self.pending_fallbacks.append((kind, reason))
+
+    @property
+    def capability(self) -> rbac.CapabilityPolicy | None:
+        return self._capability
+
+    @property
+    def scope(self) -> shaping.ScopePolicy | None:
+        return self._scope
+
+    def warnings(self) -> list[str]:
+        """Persistent operator warnings for a policy that is not doing what its author intended."""
+        out: list[str] = []
+        if self._capability is not None and self._capability.malformed:
+            out.append(
+                f"The stored capability policy could not be read ({self._capability.reason}); "
+                "authorization has fallen back to the built-in role permissions. Fix or clear it "
+                "under Governance — no principal has gained anything."
+            )
+        if self._scope is not None and self._scope.malformed:
+            out.append(
+                f"The stored visibility scope could not be read ({self._scope.reason}); viewers "
+                "and editors are seeing nothing until it is fixed or cleared under Governance. "
+                "Admins are never scoped, so this is repairable."
+            )
+        return out
 
 
 class RateLimiter:
@@ -171,7 +263,24 @@ class ScorerParamsIn(BaseModel):
 
 
 class ScorerRollbackIn(BaseModel):
+    """A candidate parameter set. Pydantic bounds the *shape* only."""
+
     config_id: int = Field(ge=1)
+
+
+class PolicyIn(BaseModel):
+    """One governance write: apply a new document, roll back to a version, or clear the policy.
+
+    Exactly one of the three is meaningful per call, checked in the handler so the error names the
+    actual problem. `clear` is the recovery path back to the shipped baseline — the compiled
+    ceiling and full visibility — and it removes only the pointer: the history rows are immutable
+    and survive, so what was once active stays answerable.
+    """
+
+    document: dict[str, Any] | None = None
+    policy_id: int | None = Field(default=None, ge=1)
+    clear: bool = False
+    note: str = Field(default="", max_length=MAX_NOTE_CHARS)
 
 
 class QuietServer(uvicorn.Server):
@@ -222,6 +331,11 @@ def create_app(
     preview_limiter = RateLimiter(preview_rate_capacity, preview_rate_refill)
     throttle = throttle or auth.LoginThrottle()
     store = engine.store
+    governance = GovernancePolicies(store)
+
+    def all_warnings() -> list[str]:
+        """Operator warnings from the process plus any from an unreadable governance policy."""
+        return [*(warnings() if warnings else []), *governance.warnings()]
 
     @app.middleware("http")
     async def security_headers(
@@ -287,6 +401,24 @@ def create_app(
             return False
         return request.headers.get("x-netcorenoc-client") == "ui"
 
+    async def flush_governance_fallbacks(request: Request) -> None:
+        """Audit each newly-detected malformed policy once. Caller must not hold ``store.lock``."""
+        while governance.pending_fallbacks:
+            kind, reason = governance.pending_fallbacks.pop(0)
+            async with store.lock:
+                await audit_row(
+                    request,
+                    None,
+                    "governance.fallback",
+                    "error",
+                    actor="system",
+                    role=None,
+                    object_type="governance_policy",
+                    object_id=kind,
+                    details={"kind": kind, "reason": reason},
+                )
+                await store.commit()
+
     async def security(request: Request) -> auth.Principal:
         method, path = request.method, _route_path(request)
         # (1) CSRF — cookie-authenticated mutations only.
@@ -304,9 +436,21 @@ def create_app(
         # (3) bootstrap gate
         if principal.must_change_password and (method, path) not in BOOTSTRAP_ALLOWED:
             raise HTTPException(status_code=403, detail="password change required")
-        # (4) RBAC (single source of truth)
+        # (4) RBAC (single source of truth). v0.7.0: the capability set is resolved per request as
+        # `ceiling(role) ∩ stored policy` — the compiled map is the first operand, so no stored
+        # policy can put a capability here that `PERMISSIONS` does not already grant this role
+        # (DECISIONS #53). This is the ONLY authorization decision in the file; `role_allows` is
+        # deliberately not called here any more, because it answers the ceiling question rather
+        # than the "does this principal hold it right now?" question.
+        async with store.lock:
+            await governance.load()
+        await flush_governance_fallbacks(request)
+        capabilities = rbac.resolve_capabilities(
+            principal.role, principal.ref, governance.capability
+        )
+        request.state.capabilities = capabilities
         permission = rbac.permission_for(method, path)
-        if permission is None or not rbac.role_allows(principal.role, permission):
+        if permission is None or permission not in capabilities:
             # "Should this denial be audited?" is decided by the single rbac source.
             if permission in rbac.AUDITED_DENIED_PERMISSIONS:
                 async with store.lock:
@@ -452,12 +596,42 @@ def create_app(
         response.delete_cookie(auth.COOKIE_NAME, path="/")
         return {"status": "logged out"}
 
+    async def scope_for(principal: auth.Principal) -> shaping.Scope:
+        """Resolve this principal's visible-NE set. **The** scope decision site.
+
+        Short-circuits before touching the database for an admin (never scoped) and for an
+        appliance with no scope policy (parity), which is why an un-configured install pays nothing
+        for this feature and every read path below runs its unmodified v0.6.0 query.
+        """
+        if not shaping.is_scopable(principal.role) or governance.scope is None:
+            return shaping.UNRESTRICTED
+        if governance.scope.malformed:
+            return shaping.DENY_ALL  # fail closed; the admin who must fix it is never scoped
+        async with store.lock:
+            nes = await store.list_ne_for_scope()
+        return shaping.visible_nes(principal.role, principal.ref, governance.scope, nes)
+
     @app.get("/api/me")
-    async def me(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+    async def me(request: Request, principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+        """Who am I, and — since v0.7.0 — what may I actually do and see?
+
+        `capabilities` is the resolved set from the one resolver, not a role-rank lookup, so the
+        UI gates its affordances on the same answer the server enforces (F28). `scope` is a summary
+        only: whether this principal is scoped and how many NEs they can see, never which ones — a
+        count is what the UI needs to explain a partial picture, and an id list would be an
+        inventory the caller has not otherwise been given.
+        """
+        capabilities: frozenset[str] = request.state.capabilities
+        scope = await scope_for(principal)
         return {
             "user": principal.actor,
             "role": principal.role,
             "must_change_password": principal.must_change_password,
+            "capabilities": sorted(capabilities),
+            "scope": {
+                "scoped": not scope.unrestricted,
+                "ne_count": None if scope.unrestricted else len(scope.ne_ids),
+            },
         }
 
     @app.post("/api/password")
@@ -499,41 +673,83 @@ def create_app(
 
     # -- read endpoints (viewer+) ------------------------------------------------------
 
-    @app.get("/api/stats", dependencies=guarded)
-    async def stats() -> dict[str, Any]:
+    @app.get("/api/stats")
+    async def stats(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+        scope = await scope_for(principal)
         async with store.lock:
-            out: dict[str, Any] = dict(await store.stats())
+            # Every enumerating counter is computed over the in-scope set, so out-of-scope activity
+            # cannot move a scoped viewer's numbers and become a volume oracle (F32).
+            out: dict[str, Any] = dict(
+                await store.stats()
+                if scope.unrestricted
+                else await store.scoped_stats(scope.ne_ids, scope.ips)
+            )
             out["ingest_gaps"] = await store.list_ingest_gaps(20)
         out["open_ingest_gaps"] = engine.gap.snapshot()
         out["latency_p95_s"] = round(engine.latency_p95(), 4)
         out["queue_depth"] = engine.queue.qsize()
-        out["warnings"] = warnings() if warnings else []
+        out["warnings"] = all_warnings()
         if extra_stats is not None:
             out.update(extra_stats())
         return out
 
     @app.get("/api/graph")
     async def graph(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+        scope = await scope_for(principal)
         async with store.lock:
             snapshot = await store.graph_snapshot(min_edge_n=MIN_EDGE_N)
-        return shaping.shape(snapshot, principal.role)  # coarsen device IPs below editor
+        projected = shaping.project_graph(snapshot, scope)  # in-scope nodes; edges need both ends
+        return shaping.shape(projected, principal.role)  # coarsen device IPs below editor
 
     @app.get("/api/classes", dependencies=guarded)
     async def classes() -> list[dict[str, Any]]:
+        """The alarm-class catalogue: trap OIDs and their labels.
+
+        Not scoped, and deliberately so — a class is a *kind* of trap, not a network element, and
+        the table carries no NE reference. The count that *would* leak ("a device you cannot see
+        just emitted a new trap type") is `stats.classes`, and that one is scoped.
+        """
         async with store.lock:
             return await store.list_classes()
 
-    @app.get("/api/situations", dependencies=guarded)
+    @app.get("/api/situations")
     async def situations(
-        status: Literal["open", "closed", "merged"] | None = None, limit: int = 100
+        principal: auth.Principal = Depends(security),
+        status: Literal["open", "closed", "merged"] | None = None,
+        limit: int = 100,
     ) -> list[dict[str, Any]]:
+        """Situations with at least one in-scope member; counts are of visible members only.
+
+        `alarm_count` is the number this reader can actually see, with `redacted_count` naming how
+        many they cannot — the same honest split as the detail view (DECISIONS #59). Reporting the
+        global count here would leak out-of-scope volume across every listed situation at once.
+        """
+        scope = await scope_for(principal)
         async with store.lock:
-            return await store.list_situations(status, min(max(limit, 1), 500))
+            rows = await store.list_situations(status, min(max(limit, 1), 500))
+            if scope.unrestricted:
+                return rows
+            members = await store.situation_member_nes([int(r["id"]) for r in rows])
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            member_nes = members.get(int(row["id"]), [])
+            shown = sum(1 for ne_id in member_nes if scope.allows_ne(ne_id))
+            if not shown:
+                continue  # nothing of this situation is yours: it is not listed at all
+            out.append({**row, "alarm_count": shown, "redacted_count": len(member_nes) - shown})
+        return out
 
     @app.get("/api/situations/{sid}")
     async def situation(sid: int, principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+        scope = await scope_for(principal)
         async with store.lock:
             detail = await store.situation_detail(sid)
+            member_ne = await store.situation_member_ne(sid) if detail is not None else {}
+        if detail is not None:
+            # Out-of-scope members are redacted to a count and their classes; a situation with no
+            # visible member projects to None, which falls into the SAME not-found branch below —
+            # so "not yours" and "does not exist" are one code path (DECISIONS #60).
+            detail = shaping.project_situation_detail(detail, scope, member_ne_ids=member_ne)
         if detail is None:
             raise HTTPException(status_code=404, detail="no such situation")
         # v0.6.0: every link carries its explanation as a typed, *named* term list — the same
@@ -551,16 +767,19 @@ def create_app(
     async def timeline(
         limit: int = 300, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
+        scope = await scope_for(principal)
         async with store.lock:
             marks = await store.timeline_marks(min(max(limit, 1), 1000))
+        marks = shaping.project_timeline(marks, scope)
         return {"marks": shaping.shape(marks, principal.role)}  # coarsen device IPs below editor
 
     # -- entity tree + varbind profiler (viewer+, inspectable) -------------------------
 
     @app.get("/api/entities")
     async def entities(principal: auth.Principal = Depends(security)) -> list[dict[str, Any]]:
+        scope = await scope_for(principal)
         async with store.lock:
-            nes = await store.list_ne()
+            nes = shaping.filter_rows(await store.list_ne(), scope, ne_key="id")
             out: list[dict[str, Any]] = []
             for ne in nes:
                 ents = await store.entities_for_ne(int(ne["id"]))
@@ -571,11 +790,14 @@ def create_app(
     async def entity_detail(
         ne_id: int, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
+        scope = await scope_for(principal)
         async with store.lock:
             ne = next((n for n in await store.list_ne() if int(n["id"]) == ne_id), None)
             entities_rows = await store.entities_for_ne(ne_id) if ne else []
             profiles = await store.varbind_profiles_for_ne(ne_id) if ne else []
-        if ne is None:
+        # An out-of-scope NE takes the SAME branch as a nonexistent one — same status, same body,
+        # same timing. Existence is not disclosed (DECISIONS #60).
+        if ne is None or not scope.allows_ne(ne_id):
             raise HTTPException(status_code=404, detail="no such NE")
         # Live profiler judgement (fresher than the flushed rows), fully broken down so the
         # operator can see why a varbind is (or is not) the entity discriminator.
@@ -1088,6 +1310,190 @@ def create_app(
             await store.commit()
         return {"status": "rolled back", "config_id": body.config_id}
 
+    # -- admin: governance (v0.7.0) ----------------------------------------------------
+    #
+    # Two kinds, one shape. Each GET returns the active document, the resolved effect, and the
+    # immutable history; each POST does exactly one of apply / rollback / clear, and every one of
+    # the three is audited with before and after.
+
+    def _policy_row(row: dict[str, Any]) -> dict[str, Any]:
+        """One history row, projected. A policy is not a secret — it *is* the perimeter."""
+        return {
+            "id": int(row["id"]),
+            "kind": row["kind"],
+            "document": row["document"],
+            "doc_hash": row["doc_hash"],
+            "created_by": row["created_by"],
+            "created_at": row["created_at"],
+            "note": row["note"],
+            "active": bool(row.get("active")),
+        }
+
+    async def _active_policy(kind: str) -> dict[str, Any] | None:
+        active = await store.active_governance_ids()
+        policy_id = active.get(kind)
+        if policy_id is None:
+            return None
+        return await store.get_governance_policy(policy_id)
+
+    def _canonical(document: dict[str, Any]) -> tuple[str, str]:
+        """Canonical JSON plus its sha256 — the exact bytes `doc_hash` commits to."""
+        text = json.dumps(document, sort_keys=True, separators=(",", ":"))
+        return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    async def _write_policy(
+        kind: str,
+        body: PolicyIn,
+        request: Request,
+        principal: auth.Principal,
+        action: str,
+        problems: Callable[[str], list[str]],
+    ) -> dict[str, Any]:
+        """Apply, roll back, or clear one policy kind. The single write path for both kinds."""
+        now = time.time()
+        async with store.lock:
+            before = await _active_policy(kind)
+            before_summary = (
+                {"policy_id": int(before["id"]), "doc_hash": before["doc_hash"]} if before else None
+            )
+            if body.clear:
+                await store.clear_active_governance_policy(kind)
+                after_summary: dict[str, Any] | None = None
+                outcome = "cleared"
+                policy_id = None
+            elif body.policy_id is not None:
+                target = await store.get_governance_policy(body.policy_id)
+                if target is None or target["kind"] != kind:
+                    raise HTTPException(status_code=404, detail="no such policy version")
+                await store.set_active_governance_policy(kind, body.policy_id, principal.actor, now)
+                after_summary = {"policy_id": body.policy_id, "doc_hash": target["doc_hash"]}
+                outcome = "rolled back"
+                policy_id = body.policy_id
+            else:
+                if body.document is None:
+                    raise HTTPException(
+                        status_code=400, detail="provide `document`, `policy_id`, or `clear`"
+                    )
+                text, doc_hash = _canonical(body.document)
+                # Usability, NOT the security control: the resolver's intersection already makes
+                # an above-ceiling entry inert. Rejecting here only means an admin finds out
+                # immediately that a line will do nothing (DECISIONS #53).
+                found = problems(text)
+                if found:
+                    raise HTTPException(status_code=400, detail="; ".join(found))
+                policy_id = await store.insert_governance_policy(
+                    kind, text, doc_hash, principal.actor, now, body.note
+                )
+                await store.set_active_governance_policy(kind, policy_id, principal.actor, now)
+                after_summary = {"policy_id": policy_id, "doc_hash": doc_hash}
+                outcome = "applied"
+            await audit_row(
+                request,
+                principal,
+                action,
+                "ok",
+                object_type="governance_policy",
+                object_id=str(policy_id) if policy_id is not None else None,
+                details={
+                    "kind": kind,
+                    "action": outcome,
+                    "before": before_summary,
+                    "after": after_summary,
+                    "note_len": len(body.note),
+                },
+            )
+            await store.commit()
+        return {"status": outcome, "policy_id": policy_id}
+
+    def _capability_problems(text: str) -> list[str]:
+        return rbac.capability_policy_errors(rbac.parse_capability_policy(text))
+
+    def _scope_problems(text: str) -> list[str]:
+        return shaping.scope_policy_errors(shaping.parse_scope_policy(text))
+
+    @app.get("/api/rbac", dependencies=guarded)
+    async def get_rbac_policy() -> dict[str, Any]:
+        """The capability policy, what it resolves to per role, and the immutable history.
+
+        `ceiling` is shipped alongside `resolved` so an admin can see the wall as well as where
+        they are standing: a capability in `ceiling` but not in `resolved` was taken away by
+        policy, and one absent from `ceiling` can never be granted at all.
+        """
+        async with store.lock:
+            await governance.load()
+            history = await store.list_governance_policies("rbac", MAX_POLICY_HISTORY)
+            active = await _active_policy("rbac")
+        policy = governance.capability
+        return {
+            "kind": "rbac",
+            "active": _policy_row(active) if active else None,
+            "configured": active is not None,
+            "malformed": bool(policy is not None and policy.malformed),
+            "malformed_reason": policy.reason if policy is not None and policy.malformed else "",
+            "ceiling": {role: sorted(rbac.ceiling(role)) for role in rbac.ROLE_RANK},
+            "resolved": {
+                role: sorted(rbac.resolve_capabilities(role, None, policy))
+                for role in rbac.ROLE_RANK
+            },
+            "recovery_capabilities": sorted(rbac.RECOVERY_CAPABILITIES),
+            "all_capabilities": sorted(rbac.PERMISSIONS),
+            "history": [_policy_row(row) for row in history],
+        }
+
+    @app.post("/api/rbac")
+    async def set_rbac_policy(
+        body: PolicyIn, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Apply, roll back, or clear the capability policy. Audited; reversible in one call.
+
+        Nothing written here can escalate: the resolver intersects with the compiled ceiling, so
+        the worst a hostile document achieves is taking capabilities away — and never the admin's
+        recovery set (DECISIONS #64), so this endpoint stays reachable to undo it.
+        """
+        return await _write_policy(
+            "rbac", body, request, principal, "rbac.policy.update", _capability_problems
+        )
+
+    @app.get("/api/scope", dependencies=guarded)
+    async def get_scope_policy() -> dict[str, Any]:
+        async with store.lock:
+            await governance.load()
+            history = await store.list_governance_policies("scope", MAX_POLICY_HISTORY)
+            active = await _active_policy("scope")
+            nes = await store.list_ne_for_scope()
+        policy = governance.scope
+        resolved = {
+            role: sorted(shaping.visible_nes(role, None, policy, nes).ne_ids)
+            for role in rbac.ROLE_RANK
+            if role != "admin"
+        }
+        return {
+            "kind": "scope",
+            "active": _policy_row(active) if active else None,
+            "configured": active is not None,
+            "malformed": bool(policy is not None and policy.malformed),
+            "malformed_reason": policy.reason if policy is not None and policy.malformed else "",
+            "ne_count": len(nes),
+            "resolved_ne_ids": resolved,
+            "admin_is_never_scoped": True,
+            "not_tenant_isolation": (
+                "Visibility scoping is a presentation control, NOT tenant isolation. Correlation "
+                "still learns across every network element, and a situation may still form across "
+                "a boundary a principal cannot see — its members are then hidden from them, not "
+                "prevented from correlating."
+            ),
+            "history": [_policy_row(row) for row in history],
+        }
+
+    @app.post("/api/scope")
+    async def set_scope_policy(
+        body: PolicyIn, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Apply, roll back, or clear the visibility scope. Audited; reversible in one call."""
+        return await _write_policy(
+            "scope", body, request, principal, "scope.policy.update", _scope_problems
+        )
+
     # -- admin: quarantine (the read itself is audited) --------------------------------
 
     @app.get("/api/quarantine")
@@ -1160,16 +1566,53 @@ def create_app(
 
     @app.get("/api/events")
     async def events(principal: auth.Principal = Depends(security)) -> StreamingResponse:
-        async def snapshot() -> str:
+        """The live stream, re-authorized and re-scoped on **every event**.
+
+        A long-lived stream is the one place a perimeter change could go unnoticed: the security
+        dependency runs once, at connect time, so a connection opened before a policy was written
+        would otherwise keep pushing unfiltered snapshots for as long as it stayed open. Each
+        snapshot therefore re-reads the live policy, re-resolves both the capability set and the
+        scope, and **ends the stream** if `events.stream` has since been revoked (F30).
+        """
+
+        async def snapshot() -> str | None:
             async with store.lock:
-                stats_out: dict[str, Any] = dict(await store.stats())
+                await governance.load()
+            capabilities = rbac.resolve_capabilities(
+                principal.role, principal.ref, governance.capability
+            )
+            if "events.stream" not in capabilities:
+                return None  # revoked mid-stream: stop sending, rather than serve a stale grant
+            scope = await scope_for(principal)
+            async with store.lock:
+                stats_out: dict[str, Any] = dict(
+                    await store.stats()
+                    if scope.unrestricted
+                    else await store.scoped_stats(scope.ne_ids, scope.ips)
+                )
                 graph_out = await store.graph_snapshot(min_edge_n=MIN_EDGE_N)
                 sits = await store.list_situations("open", 50)
+                members = (
+                    {}
+                    if scope.unrestricted
+                    else await store.situation_member_nes([int(s["id"]) for s in sits])
+                )
             stats_out["latency_p95_s"] = round(engine.latency_p95(), 4)
             stats_out["queue_depth"] = engine.queue.qsize()
-            stats_out["warnings"] = warnings() if warnings else []
+            stats_out["warnings"] = all_warnings()
             if extra_stats is not None:
                 stats_out.update(extra_stats())
+            if not scope.unrestricted:
+                graph_out = shaping.project_graph(graph_out, scope)
+                scoped_sits = []
+                for row in sits:
+                    member_nes = members.get(int(row["id"]), [])
+                    shown = sum(1 for ne_id in member_nes if scope.allows_ne(ne_id))
+                    if shown:
+                        scoped_sits.append(
+                            {**row, "alarm_count": shown, "redacted_count": len(member_nes) - shown}
+                        )
+                sits = scoped_sits
             # Shape the live stream by the subscriber's role, exactly like the polled endpoints.
             payload = {
                 "stats": stats_out,
@@ -1180,11 +1623,17 @@ def create_app(
 
         async def gen() -> AsyncIterator[str]:
             yield ": connected\n\n"
-            yield await snapshot()
+            first = await snapshot()
+            if first is None:
+                return
+            yield first
             last_beat = time.monotonic()
             while True:
                 await asyncio.sleep(SSE_UPDATE_S)
-                yield await snapshot()
+                event = await snapshot()
+                if event is None:
+                    return
+                yield event
                 now = time.monotonic()
                 if now - last_beat >= SSE_HEARTBEAT_S:
                     last_beat = now

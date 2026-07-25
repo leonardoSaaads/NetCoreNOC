@@ -17,9 +17,10 @@ lives in the engine.
 
 from __future__ import annotations
 
-import itertools
 from collections import deque
+from collections.abc import Container, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from netcorenoc.learn import STORM_ALARMS, Learner
 from netcorenoc.scoring import (
@@ -51,12 +52,70 @@ __all__ = [
     "Correlator",
     "ScoredLink",
     "WindowAlarm",
+    "select_candidates",
 ]
 
 WINDOW_S = 120.0
 MAX_CANDIDATES = 100  # bounded work per event, storms chain-link through recency
 MAX_LINKS_PER_ALARM = 5  # strongest links kept; components need one, audits need few
 MAX_WINDOW_ALARMS = 20_000  # absolute window cap; oldest-first eviction records a gap (§5.6)
+
+
+class WindowEntry(Protocol):
+    """What candidate selection needs to know about one windowed alarm: who it is, and when.
+
+    Satisfied structurally by both :class:`WindowAlarm` (the engine) and
+    :class:`netcorenoc.preview.PreviewAlarm` (the what-if), which is what lets one helper serve
+    both without either importing the other's type.
+    """
+
+    @property
+    def alarm_id(self) -> int: ...
+
+    @property
+    def ts(self) -> float: ...
+
+
+def select_candidates[T: WindowEntry](
+    window: Sequence[T],
+    *,
+    now: float,
+    window_s: float = WINDOW_S,
+    max_candidates: int = MAX_CANDIDATES,
+    live: Container[int] | None = None,
+) -> list[T]:
+    """THE candidate-selection rule: the newest ``max_candidates`` live alarms within the window.
+
+    v0.6.0 shipped this rule **twice** — here and, separately, inside ``preview.partition()`` —
+    with its own copies of the window length and the cap. The two happened to agree, but nothing
+    tied them together, so changing ``WINDOW_S`` alone would have made the what-if quietly lie
+    about what the engine does. This is the one implementation both now call (DECISIONS #61).
+
+    ``window`` is in chronological order, oldest first. Iteration runs **newest-first** and stops
+    at the first entry outside the window — sound because the sequence is ordered, and it is what
+    keeps the engine's per-event work bounded by ``max_candidates`` rather than by the window
+    length. The result is reversed back to chronological order, which is the order the scorer and
+    the union-find both expect.
+
+    ``live`` is the one genuine difference between the two callers. The engine's deque carries
+    **tombstones** — alarms cleared or re-activated, dropped from its ``index`` in O(1) but still
+    physically present — so it passes that index as the liveness set. Preview replays an immutable
+    snapshot in which every entry is live, so it passes ``None`` and every entry qualifies.
+
+    Pure: it reads no clock (``now`` is supplied) and mutates nothing, so the same window and the
+    same ``now`` always yield the same candidates.
+    """
+    recent: list[T] = []
+    for entry in reversed(window):
+        if now - entry.ts > window_s:
+            break  # ordered oldest-first: everything earlier is outside the window too
+        if live is not None and entry.alarm_id not in live:
+            continue  # a tombstone: still in the deque, no longer a candidate
+        recent.append(entry)
+        if len(recent) >= max_candidates:
+            break
+    recent.reverse()
+    return recent
 
 
 @dataclass(frozen=True)
@@ -174,17 +233,22 @@ class Correlator:
         dropped, self._overflow_dropped = self._overflow_dropped, 0
         return dropped
 
-    def _recent_live(self) -> list[WindowAlarm]:
-        """The last ``max_candidates`` live alarms, chronological — v0.2.0 semantics without
-        the full-deque copy: iterate the tail newest-first, skip tombstones, stop at the cap."""
-        recent: list[WindowAlarm] = []
-        for wa in itertools.islice(reversed(self.window), None):
-            if wa.alarm_id in self.index:
-                recent.append(wa)
-                if len(recent) >= self.max_candidates:
-                    break
-        recent.reverse()
-        return recent
+    def _recent_live(self, now: float) -> list[WindowAlarm]:
+        """The last ``max_candidates`` live alarms, chronological — v0.2.0 semantics without the
+        full-deque copy. Delegates to :func:`select_candidates`, the one implementation of the
+        rule, passing ``self.index`` as the liveness set so tombstones are skipped.
+
+        ``_evict(now)`` has already dropped everything outside the window, so the helper's
+        time predicate is a no-op here — which is precisely the equivalence that makes preview's
+        selection and the engine's selection the same function rather than two that agree.
+        """
+        return select_candidates(
+            self.window,
+            now=now,
+            window_s=self.window_s,
+            max_candidates=self.max_candidates,
+            live=self.index,
+        )
 
     @staticmethod
     def features(new: WindowAlarm, old: WindowAlarm, learner: Learner) -> LinkFeatures:
@@ -221,7 +285,7 @@ class Correlator:
         """Score a newly activated alarm against the window, then admit it."""
         self._evict(new.ts)
         self.remove(new.alarm_id)
-        candidates = self._recent_live()
+        candidates = self._recent_live(new.ts)
         storm = len(self.index) >= STORM_ALARMS
         links = []
         for old in candidates:

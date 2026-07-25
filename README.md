@@ -147,6 +147,33 @@ scorer panel**. What changed is that the numbers are now reachable when you need
 At the default parameters v0.6.0 produces byte-identical grouping to v0.5.0 — that parity is a
 release gate, not a claim.
 
+**Governance is optional, and off by default (v0.7.0).** An admin can restrict what each role — or
+an individual operator — may **do** and may **see**. As with the scorer, nothing about the
+zero-configuration experience changes: **with no policy stored the appliance behaves exactly as it
+did before**, the built-in role permissions and full visibility are what you get, and most
+operators never open the Governance panel. When you do need it —
+
+- **capabilities** can be taken away from a role or a single principal. The built-in permission map
+  is a **ceiling**, not a starting point: the resolved set is `ceiling ∩ policy`, so a policy can
+  only ever *narrow*. There is no configuration that gives a viewer an admin capability, and an
+  admin can never be locked out of repairing the policy;
+- **visibility scoping** limits which network elements a viewer or editor sees, by NE id, address,
+  CIDR, or name glob. Out-of-scope elements are absent from every list, and a directly-requested
+  one returns **404, not 403** — existence is not disclosed. **Admins are never scoped;**
+- every change is **audited** with before and after, the policy history is **immutable and
+  append-only**, and **rollback and clearing are one click**;
+- if a policy ever becomes unreadable, capabilities fall back to the built-in permissions (nobody
+  gains anything) and scoping shows nothing to viewers and editors (nobody sees anything new) —
+  with a warning and an audit row, never a silent change.
+
+> **⚠ Visibility scoping is a presentation control and is _not tenant isolation_.** Correlation
+> still learns across every network element, and a situation may still *form* across a boundary a
+> principal cannot see — its members are then shown to them as a redacted count and alarm class,
+> never as identifiers. A scoped operator sees a partial picture, which is precisely why the
+> redacted count is shown rather than the members being silently dropped. True multi-tenant
+> isolation is a larger, separate feature on the [roadmap](docs/ROADMAP.md); NetCoreNOC does not
+> claim it today. See [`MIGRATION.md`](MIGRATION.md).
+
 Cold start is honest: with nothing learned the class affinity `A` is zero and the entity
 affinity `E` is 1 only within a network element, so the temporal term alone must clear the
 threshold — two alarms group only when they are on the **same NE and within ≈ 21 s** of each

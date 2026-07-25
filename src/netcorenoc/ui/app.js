@@ -38,10 +38,14 @@ function el(tag, attrs, ...children) {
 function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 function $(id) { return document.getElementById(id); }
 
-/* ---------- session / roles ---------- */
+/* ---------- session / roles / capabilities ---------- */
+// v0.7.0: affordances are gated on the RESOLVED capability set from /api/me, not on role rank.
+// An admin may have narrowed what a role holds, and a UI that still offered the control would be
+// promising something the server will refuse. `can()` is the single question every gate asks.
 const ROLES = { viewer: 0, editor: 1, admin: 2 };
-let session = null;                       // { user, role }
-const canEdit = () => session && ROLES[session.role] >= ROLES.editor;
+let session = null;                       // { user, role, capabilities: Set, scope }
+const can = (cap) => !!(session && session.capabilities.has(cap));
+const canEdit = () => can("feedback.write") || can("label.write") || can("situation.close");
 const isAdmin = () => session && ROLES[session.role] >= ROLES.admin;
 
 /* ---------- API helper (cookie session; CSRF header on mutations) ---------- */
@@ -76,7 +80,11 @@ function showLogin() {
 async function tryResume() {
   try {
     const me = await api("/api/me");
-    session = { user: me.user, role: me.role };
+    session = {
+      user: me.user, role: me.role,
+      capabilities: new Set(me.capabilities || []),
+      scope: me.scope || { scoped: false, ne_count: null },
+    };
     if (me.must_change_password) { showLogin(); $("pwChange").classList.remove("hidden"); return; }
     enterApp();
   } catch { showLogin(); }
@@ -94,7 +102,14 @@ $("loginForm").addEventListener("submit", async (e) => {
       errBox.textContent = "Set a new password to continue.";
       return;
     }
-    session = { user: out.user, role: out.role };
+    // The login response predates the capability resolution, so ask /api/me for the resolved set
+    // rather than assuming role rank implies it.
+    const me = await api("/api/me");
+    session = {
+      user: out.user, role: out.role,
+      capabilities: new Set(me.capabilities || []),
+      scope: me.scope || { scoped: false, ne_count: null },
+    };
     $("login").classList.add("hidden");
     $("pwChange").classList.add("hidden");
     $("lp").value = ""; $("lp2").value = "";
@@ -111,22 +126,23 @@ async function logout() {
 
 /* ---------- role-aware navigation ---------- */
 const TABS = [
-  { id: "situations", label: "Situations", role: "viewer" },
-  { id: "timeline", label: "Timeline", role: "viewer" },
-  { id: "entities", label: "Entities", role: "viewer" },
-  { id: "users", label: "Users", role: "admin" },
-  { id: "tokens", label: "Tokens", role: "admin" },
-  { id: "config", label: "Config", role: "admin" },
-  { id: "scorer", label: "Scorer", role: "admin" },
-  { id: "quarantine", label: "Quarantine", role: "admin" },
-  { id: "audit", label: "Audit", role: "admin" },
+  { id: "situations", label: "Situations", cap: "situations.read" },
+  { id: "timeline", label: "Timeline", cap: "timeline.read" },
+  { id: "entities", label: "Entities", cap: "entities.read" },
+  { id: "users", label: "Users", cap: "users.manage" },
+  { id: "tokens", label: "Tokens", cap: "tokens.manage" },
+  { id: "config", label: "Config", cap: "config.read" },
+  { id: "scorer", label: "Scorer", cap: "scorer.write" },
+  { id: "governance", label: "Governance", cap: "rbac.read" },
+  { id: "quarantine", label: "Quarantine", cap: "quarantine.read" },
+  { id: "audit", label: "Audit", cap: "audit.read" },
 ];
 let activePanel = "situations";
 function buildTabs() {
   const nav = $("tabs");
   clear(nav);
   for (const tab of TABS) {
-    if (ROLES[session.role] < ROLES[tab.role]) continue;
+    if (!can(tab.cap)) continue;
     const btn = el("button", {
       class: "tab" + (tab.id === activePanel ? " active" : ""),
       text: tab.label, onclick: () => selectPanel(tab.id),
@@ -149,6 +165,7 @@ function renderPanel(id) {
   else if (id === "tokens") loadTokens();
   else if (id === "config") loadConfig();
   else if (id === "scorer") loadScorer();
+  else if (id === "governance") loadGovernance();
   else if (id === "quarantine") loadQuarantine();
   else if (id === "audit") loadAudit();
 }
@@ -158,7 +175,7 @@ function renderPanel(id) {
 // full reload, so a later higher-role login on the same page rebuilds the pruned panels.)
 function prunePanels() {
   for (const tab of TABS) {
-    if (ROLES[session.role] < ROLES[tab.role]) {
+    if (!can(tab.cap)) {
       const panel = document.querySelector(`.panel[data-panel="${tab.id}"]`);
       if (panel) panel.remove();
     }
@@ -177,6 +194,17 @@ function enterApp() {
     el("b", { text: session.user }),
     el("button", { text: "Sign out", onclick: logout }),
   );
+  // A scoped operator must know their picture is partial, and why. Silence here is what turns a
+  // presentation control into a lie during an incident.
+  if (session.scope && session.scope.scoped) {
+    who.prepend(el("span", {
+      class: "scope-tag",
+      title: "An administrator has limited which network elements you can see. Situations may "
+           + "include members outside your scope; those are shown as a redacted count. Scoping "
+           + "hides them from you — it does not stop them correlating.",
+      text: `scoped: ${session.scope.ne_count} NE`,
+    }));
+  }
   selectPanel(activePanel === "situations" ? "situations" : "situations");
   startStream();
   poll();
@@ -357,6 +385,19 @@ async function renderDetail(container, sid) {
       d.root_confidence != null ? text(`  (confidence ${(d.root_confidence * 100).toFixed(0)}%)`) : null));
   }
 
+  // The honest signal that this situation extends past the reader's visibility scope. It carries
+  // a count and the alarm classes involved — never an NE id, address, entity key, or varbind.
+  if (d.redacted_members) {
+    container.append(el("div", { class: "warnbox" },
+      el("b", { text: `${d.redacted_members.count} member(s) outside your visibility scope` }),
+      text(d.redacted_members.classes.length
+        ? "  classes: " + d.redacted_members.classes.join(", ")
+        : ""),
+      el("div", { class: "hint", text:
+        "Scoping hides these members from you; it does not stop them correlating. This situation "
+        + "is larger than what is shown here." })));
+  }
+
   const table = el("table");
   table.append(el("tr", null,
     el("th", { text: "device" }), el("th", { text: "class" }), el("th", { text: "instance" }),
@@ -410,6 +451,16 @@ function renderSituations(list) {
       el("span", { class: "badge " + (s.status === "open" ? "alarm" : ""), text: s.status }),
       el("span", { class: "badge", text: `${s.alarm_count} alarm${s.alarm_count === 1 ? "" : "s"}` }),
       el("span", { class: "age", text: age(s.updated_at) }));
+    // A scoped viewer must be told when a situation is bigger than what they are being shown.
+    // Omitting this silently would let them size an incident wrongly during the incident.
+    if (s.redacted_count) {
+      head.insertBefore(el("span", {
+        class: "badge redacted",
+        title: "Members of this situation are outside your visibility scope and are not shown. "
+             + "Scoping hides them from you; it does not stop them correlating.",
+        text: `+${s.redacted_count} outside your scope`,
+      }), head.lastChild);
+    }
     head.addEventListener("click", async () => {
       if (expanded.has(s.id)) { expanded.delete(s.id); detail.style.display = "none"; return; }
       expanded.add(s.id); detail.style.display = "block"; await renderDetail(detail, s.id);
@@ -696,6 +747,143 @@ function renderPreview(out, d) {
     out.append(el("div", { class: "mono", text: `merge: ${m.from_groups.length} groups -> ${m.size} alarms` }));
   for (const s of split.slice(0, 10))
     out.append(el("div", { class: "mono", text: `split: ${s.size} alarms -> sizes ${s.into_sizes.join(", ")}` }));
+}
+
+/* ---------- admin: governance (v0.7.0) ----------
+ * Two stored policies, one screen. Both are edited as JSON because a policy is a small,
+ * reviewable document and a form would hide its shape; both show what the policy actually
+ * RESOLVES to, because "what did I just do?" is the question an admin needs answered.
+ *
+ * Every string that reaches the DOM goes through textContent (F1) — a policy is operator-supplied
+ * text and is never trusted markup.
+ */
+async function loadGovernance() {
+  const view = $("governanceView"); clear(view);
+  let caps, scope;
+  try {
+    caps = await api("/api/rbac");
+    scope = await api("/api/scope");
+  } catch { return; }
+
+  view.append(el("div", { class: "hint", text:
+    "Restrict what each role or principal may DO (capabilities) and SEE (network elements). "
+    + "With no policy stored, NetCoreNOC behaves exactly as it does today — most operators never "
+    + "need this screen." }));
+
+  /* --- capabilities --- */
+  const capBox = el("div", { class: "govbox" });
+  capBox.append(el("h3", { text: "Capabilities" }));
+  capBox.append(el("div", { class: "hint", text:
+    "A policy can only take capabilities away, never add them: each role's compiled ceiling is "
+    + "the maximum it may ever hold, so an entry above the ceiling has no effect. An admin always "
+    + "keeps the capabilities needed to repair this screen." }));
+  if (caps.malformed) {
+    capBox.append(el("div", { class: "err", text:
+      "The stored capability policy could not be read (" + caps.malformed_reason + "). "
+      + "Authorization has fallen back to the built-in role permissions — nobody has gained "
+      + "anything. Fix or clear it below." }));
+  }
+  for (const role of ["viewer", "editor", "admin"]) {
+    const resolved = caps.resolved[role] || [];
+    const ceiling = caps.ceiling[role] || [];
+    const removed = ceiling.filter((c) => !resolved.includes(c));
+    capBox.append(el("div", { class: "govrole" },
+      el("b", { text: role }),
+      el("span", { class: "mono", text: ` ${resolved.length}/${ceiling.length} capabilities` }),
+      removed.length
+        ? el("span", { class: "muted", text: "  removed: " + removed.join(", ") })
+        : el("span", { class: "muted", text: "  (full ceiling)" }),
+    ));
+  }
+  const capText = el("textarea", { class: "govjson", rows: "8" });
+  capText.value = caps.active ? caps.active.document
+    : JSON.stringify({ version: 1, roles: {}, principals: {} }, null, 2);
+  capBox.append(capText);
+  const capErr = el("div", { class: "err" });
+  capBox.append(el("div", { class: "govactions" },
+    el("button", { text: "Apply", onclick: () => writePolicy("rbac", capText, capErr) }),
+    el("button", { text: "Clear policy", onclick: () => clearPolicy("rbac", capErr) }),
+  ), capErr);
+  capBox.append(historyTable(caps.history, "rbac"));
+  view.append(capBox);
+
+  /* --- visibility scope --- */
+  const scopeBox = el("div", { class: "govbox" });
+  scopeBox.append(el("h3", { text: "Visibility scope" }));
+  scopeBox.append(el("div", { class: "hint", text:
+    "Which network elements a viewer or editor may see. Selectors: ne:<id>, an exact address, a "
+    + "CIDR, or a name glob. Admins are never scoped, so a mistake here is always repairable." }));
+  scopeBox.append(el("div", { class: "warnbox", text:
+    "Visibility scoping is a presentation control and is NOT tenant isolation. Correlation still "
+    + "learns across every network element, and a situation may still form across a boundary a "
+    + "principal cannot see — its members are then hidden from them, shown as a redacted count, "
+    + "not prevented from correlating." }));
+  if (scope.malformed) {
+    scopeBox.append(el("div", { class: "err", text:
+      "The stored scope could not be read (" + scope.malformed_reason + "). Viewers and editors "
+      + "are seeing nothing until it is fixed or cleared." }));
+  }
+  for (const role of ["viewer", "editor"]) {
+    const ids = (scope.resolved_ne_ids || {})[role] || [];
+    scopeBox.append(el("div", { class: "govrole" },
+      el("b", { text: role }),
+      el("span", { class: "mono", text: scope.configured
+        ? ` sees ${ids.length} of ${scope.ne_count} NE`
+        : ` sees all ${scope.ne_count} NE (no policy)` }),
+    ));
+  }
+  const scopeText = el("textarea", { class: "govjson", rows: "8" });
+  scopeText.value = scope.active ? scope.active.document
+    : JSON.stringify({ version: 1, roles: {}, principals: {} }, null, 2);
+  scopeBox.append(scopeText);
+  const scopeErr = el("div", { class: "err" });
+  scopeBox.append(el("div", { class: "govactions" },
+    el("button", { text: "Apply", onclick: () => writePolicy("scope", scopeText, scopeErr) }),
+    el("button", { text: "Clear policy", onclick: () => clearPolicy("scope", scopeErr) }),
+  ), scopeErr);
+  scopeBox.append(historyTable(scope.history, "scope"));
+  view.append(scopeBox);
+}
+
+function historyTable(history, kind) {
+  const wrap = el("div", { class: "govhistory" });
+  wrap.append(el("div", { class: "hint", text:
+    "History is append-only: rolling back moves a pointer and never edits or deletes a version." }));
+  wrap.append(tableFrom(["version", "by", "when", "note", ""],
+    (history || []).map((h) => [
+      el("span", { class: "mono", text: String(h.id) + (h.active ? " (active)" : "") }),
+      h.created_by || "—",
+      new Date(h.created_at * 1000).toLocaleString(),
+      h.note || "",
+      h.active ? "" : el("button", { text: "Roll back", onclick: () => rollbackPolicy(kind, h.id) }),
+    ])));
+  return wrap;
+}
+
+async function writePolicy(kind, textarea, errBox) {
+  errBox.textContent = "";
+  let document_;
+  try { document_ = JSON.parse(textarea.value); }
+  catch (e) { errBox.textContent = "Not valid JSON: " + e.message; return; }
+  try {
+    await api("/api/" + kind, { method: "POST", json: { document: document_, note: "" } });
+    loadGovernance();
+  } catch (e) { errBox.textContent = e.message; }
+}
+
+async function clearPolicy(kind, errBox) {
+  errBox.textContent = "";
+  try {
+    await api("/api/" + kind, { method: "POST", json: { clear: true } });
+    loadGovernance();
+  } catch (e) { errBox.textContent = e.message; }
+}
+
+async function rollbackPolicy(kind, policyId) {
+  try {
+    await api("/api/" + kind, { method: "POST", json: { policy_id: policyId } });
+    loadGovernance();
+  } catch { /* surfaced by the panel reload */ }
 }
 
 async function loadQuarantine() {

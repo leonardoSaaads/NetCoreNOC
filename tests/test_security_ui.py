@@ -137,21 +137,72 @@ def test_d3_is_vendored_and_pinned() -> None:
 
 import re  # noqa: E402 - grouped with the S9 tests it supports
 
-ADMIN_PANELS = {"users", "tokens", "config", "scorer", "quarantine", "audit"}
+ADMIN_PANELS = {
+    "users",
+    "tokens",
+    "config",
+    "scorer",
+    "governance",  # v0.7.0
+    "quarantine",
+    "audit",
+}
 
 
-def _tab_roles() -> dict[str, str]:
-    """Parse the TABS role map out of app.js: {panel_id: required_role}."""
+def _tab_caps() -> dict[str, str]:
+    """Parse the TABS capability map out of app.js: {panel_id: required_capability}.
+
+    v0.7.0 gates tabs on the **resolved capability** from `/api/me` rather than on role rank: an
+    admin may have narrowed what a role holds, and a UI still offering the control would promise
+    something the server refuses.
+    """
     app_js = (UI_DIR / "app.js").read_text()
     block = app_js.split("const TABS", 1)[1].split("];", 1)[0]
-    return dict(re.findall(r'id:\s*"(\w+)".*?role:\s*"(\w+)"', block))
+    return dict(re.findall(r'id:\s*"(\w+)".*?cap:\s*"([\w.]+)"', block))
 
 
 def test_admin_panels_are_gated_to_admin() -> None:
-    """A.4: every admin screen requires the admin role in the single TABS role map."""
-    roles = _tab_roles()
+    """A.4, v0.7.0 form: every admin screen is gated on an **admin-ceiling** capability.
+
+    Stronger than the old "role: admin" string check, because the required capability is now
+    resolved against `rbac.PERMISSIONS` — the same source the server enforces from — so a panel
+    gated on a capability that was quietly lowered to editor would fail here.
+    """
+    from netcorenoc import rbac
+
+    caps = _tab_caps()
     for panel in ADMIN_PANELS:
-        assert roles.get(panel) == "admin", f"{panel} is not admin-gated"
+        capability = caps.get(panel)
+        assert capability is not None, f"{panel} has no capability gate"
+        assert rbac.PERMISSIONS[capability] == "admin", (
+            f"{panel} is gated on {capability!r}, which is not admin-only"
+        )
+
+
+def test_every_tab_is_gated_on_a_real_capability() -> None:
+    """No tab may be gated on a capability the authorization map does not know."""
+    from netcorenoc import rbac
+
+    caps = _tab_caps()
+    assert caps, "TABS capability map did not parse"
+    for panel, capability in caps.items():
+        assert capability in rbac.PERMISSIONS, f"{panel} gated on unknown capability {capability!r}"
+
+
+def test_ui_gates_affordances_on_resolved_capabilities_not_role_rank() -> None:
+    """F28 at the UI layer: the affordance gate reads the server's resolved set.
+
+    `/api/me` returns `capabilities`; `can()` is the single question every gate asks. A UI that
+    re-derived permissions from role rank would be a second decision site that silently disagrees
+    with the server once a policy is stored.
+    """
+    app_js = (UI_DIR / "app.js").read_text()
+    assert "session.capabilities.has(cap)" in app_js
+    assert "me.capabilities" in app_js
+    # Tab gating and DOM pruning both go through can(), not through a rank comparison.
+    for block_name in ("function buildTabs(", "function prunePanels("):
+        block = app_js.split(block_name, 1)[1].split("\n}", 1)[0]
+        assert "can(tab.cap)" in block, block_name
+        assert "ROLES[" not in block, f"{block_name} still compares role rank"
 
 
 def test_non_admin_panels_are_pruned_from_the_dom() -> None:
@@ -222,7 +273,7 @@ def _scorer_panel_source() -> str:
 def test_scorer_panel_is_admin_gated_and_prunable() -> None:
     """The panel offers preview/apply/rollback, all admin-only on the API, so it is admin-gated
     in the single TABS map and removed from a non-admin DOM by prunePanels (A.4)."""
-    assert _tab_roles().get("scorer") == "admin"
+    assert _tab_caps().get("scorer") == "scorer.write"
     assert 'data-panel="scorer"' in (UI_DIR / "index.html").read_text()
 
 

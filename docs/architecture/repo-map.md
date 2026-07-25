@@ -22,8 +22,8 @@ NetCoreNOC/
 │   ├── api.py               FastAPI app: identity, RBAC, audit, SSE, security headers, static UI
 │   ├── auth.py              scrypt passwords, sessions, service tokens, login throttle
 │   ├── audit.py             append-only hash-chained audit log + verify/export
-│   ├── rbac.py              THE authorization map (capability → role, route → capability)
-│   ├── shaping.py           role-keyed response serializer (field coarsen/drop)
+│   ├── rbac.py              THE authorization map + the ceiling∩policy resolver
+│   ├── shaping.py           response serializer: role→fields, and NE scope→rows
 │   ├── runtime.py           in-memory runtime config (allowlist, retention)
 │   ├── logsetup.py          logging + secret-redaction filter
 │   ├── known_oids.py        tiny public-standard OID table (no vendor MIB semantics)
@@ -63,9 +63,14 @@ mutating action / sensitive read written to the hash-chained audit log (`audit.p
   `AdditiveScorer` (the five parameters live there, not in `correlate.py`); `preview.py` is the
   read-only what-if; the stored configuration is `scorer_config` + the one-row `scorer_active`
   pointer (migration `0005`). See [`DESIGN.md`](DESIGN.md) § "v0.6.0 — the scoring seam".
-- **RBAC and visibility scoping — v0.7.0, specified not built.** `rbac.py` (the permission map)
-  and `shaping.py` (the visibility serializer); see
-  [`GOVERNANCE-0.7-DRAFT.md`](GOVERNANCE-0.7-DRAFT.md).
+- **Governance — built in v0.7.0.** `rbac.py` holds the compiled `PERMISSIONS` **ceiling** and the
+  one capability resolver (`resolve_capabilities`, an intersection, so escalation is structurally
+  impossible); `shaping.py` gained a second axis beside field shaping — `visible_nes` and the scope
+  projections, deciding *which rows* a principal sees rather than *which fields*. The stored policy
+  is `governance_policy` (append-only) + the per-kind `governance_active` pointer (migration
+  `0006`). See [`DESIGN.md`](DESIGN.md) § "v0.7.0 — governance" and
+  [`GOVERNANCE-0.7-DRAFT.md`](GOVERNANCE-0.7-DRAFT.md). **Visibility scoping is a presentation
+  control and is not tenant isolation.**
 - **Customer-supplied models — v0.8.0, specified not built.** They plug into the v0.6.0
   contract; see [`SCORER-PLUGINS-0.8-DRAFT.md`](SCORER-PLUGINS-0.8-DRAFT.md).
 

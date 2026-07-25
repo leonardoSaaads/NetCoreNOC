@@ -179,3 +179,145 @@ migration is additive and forward-only — the same discipline as `0003_entity.s
   install and the default image; `pip-audit` in `make qa` covers it when installed; *test*: the
   base install has no new runtime dependency and the adapter reports unavailable rather than
   raising.
+
+---
+
+# Refinement — recorded during v0.7.0 (still `v0.8.0: planned`, still implements nothing)
+
+v0.6.0 shipped the `LinkScorer` seam; v0.7.0 shipped governance. Both are now real code rather than
+a plan, so this section re-checks the specification above against what actually exists and records
+three things it could not record before: a **blocking prerequisite**, a **governance
+reconciliation**, and a **re-confirmation** that the shipped contract needs no breaking change.
+
+Nothing here is implemented. Every element remains **`v0.8.0: planned`**.
+
+## R1. The contract, re-confirmed against the shipped code
+
+Re-read against `src/netcorenoc/scoring.py` as shipped in v0.6.0 (not against the v0.6.0 draft):
+
+| Shipped element | Verified state | Verdict for v0.8.0 |
+|---|---|---|
+| `LinkScorer` | a `Protocol` with `scorer_id`, `contract_version`, `score()`, `params_fingerprint()` — structurally satisfied, no registry, no base class | **fits unchanged.** v0.6.0 already proves plurality with test-only alternate scorers. |
+| `LinkFeatures` | a `NamedTuple` (DECISIONS #52), not a frozen dataclass, with the reserved optional slots present and `None` | **fits unchanged** — and better than specified: a `NamedTuple` is genuinely immutable, so an adapter cannot mutate the features it was handed. Adding a field keeps defaults and remains a **minor** bump (#49). |
+| `LinkScore.terms` | a `tuple[TermContribution, ...]`, variable length, **contractual** | **fits unchanged.** A five-attribution model emits five terms; a scorer returning an empty `terms` is already a contract violation that triggers fallback. |
+| `SafeScorer` | wraps the active scorer; on exception, contract violation, or over-budget it falls back to the coded defaults, audits `scorer.fallback` once, raises a persistent operator warning | **fits, with one gap — see R2.** |
+| `scorer_config` + `scorer_active` | append-only rows, one-row pointer, rollback by pointer, `params_hash` + `contract_version` per row, provenance by reference on `situation` | **fits unchanged.** An ONNX or entry-point activation is one more immutable row. |
+| `contract_version` gating | persisted per config; an unsupported **major** is refused | **fits unchanged.** |
+
+**Conclusion: no breaking change to the v0.6.0 contract is required for either v0.8.0 path.** The
+one schema change v0.8.0 still needs is the generalised per-link attribution store already named
+above (`link.term_t/term_a/term_e` are the *default* scorer's projection, DECISIONS #50).
+
+## R2. The worker-process preemption harness is a **blocking prerequisite** ⛔
+
+This is the finding this refinement exists to record.
+
+`SafeScorer` as shipped is a **post-hoc** guard. It measures each call *after the call returns* and
+degrades the **next** one. Against the only scorer that exists today — five floating-point
+operations — that is exactly right, and SECURITY-REVIEW-0.6 **F25** records it as **partial** with
+the gap stated in the code, in `DESIGN.md`, and on the ROADMAP.
+
+Against **untrusted operator code it is not sufficient**, and the difference is categorical, not a
+matter of degree:
+
+- A synchronous in-process call that **never returns** — `while True: pass`, a blocking socket
+  read, a `time.sleep(1e9)` — is **not interruptible from the wrapper**. There is no next call to
+  degrade. The engine batch loop is blocked, the queue backs up, and the ingest path — the one
+  thing this project promises is lossless — starts dropping traps. A `signal.alarm`-based timeout
+  does not fix this: it only fires on the main thread, does not interrupt a call blocked in a C
+  extension (which `onnxruntime` is), and leaves the interpreter in a state the engine must not
+  trust afterwards.
+- The same call can exhaust **address space** before it exhausts time. `resource.setrlimit`
+  applied in the engine's own process would bound the *whole appliance*, not the plugin.
+
+Therefore, for v0.8.0:
+
+> **A customer-supplied scorer — ONNX artifact or entry-point class — MUST execute in a separate
+> worker process, under `resource.setrlimit` (`RLIMIT_AS`, `RLIMIT_CPU`) applied in the child after
+> `fork`/`spawn` and before the scorer is imported, with a real wall-clock kill (`SIGKILL` after a
+> grace `SIGTERM`) enforced by the parent. This harness is a BLOCKING PREREQUISITE: neither
+> customer-scorer path may be merged before it exists and is tested.**
+
+Design constraints the harness must satisfy, so it does not become its own hazard:
+
+- **Batch-oriented, not per-pair.** The engine builds up to `MAX_CANDIDATES` (100) `LinkFeatures`
+  per activated alarm. One IPC round trip per *batch*, never per pair — otherwise the seam's
+  measured ~4.2 µs per pair (DECISIONS #52) is replaced by a context switch and the release trades
+  a security property for an availability one.
+- **The parent never blocks unboundedly.** The parent waits with a deadline; a breach kills the
+  child and falls back to the coded-default `AdditiveScorer` **in-process**, audits
+  `scorer.fallback`, and raises the persistent operator warning — the v0.6.0 discipline, reused
+  verbatim, now with a fallback that actually *can* fire on a hang.
+- **A dead worker is a fallback, not a stall.** Crash, OOM-kill, `RLIMIT_CPU` `SIGXCPU`, or a
+  malformed response are all the same event: fall back, audit once, warn persistently.
+- **Restart is bounded.** A worker that dies repeatedly must not be respawned in a hot loop; after
+  a bounded number of failures the scorer stays degraded until an admin re-activates it.
+- **Determinism is unaffected.** The worker is inference-only; the harness adds a process boundary,
+  not a source of variation. The recorded reference vector (§1) is checked **in the worker**, on
+  the host that will actually run it.
+- **The ingest path still gains nothing.** The harness lives on the engine side, under the batch
+  lock the engine already holds. `receiver.datagram_received` is untouched — F24's assertions
+  remain in force and must be extended to name the harness.
+
+**It still is not a sandbox, and the documentation must keep saying so.** `setrlimit` plus a kill
+bounds *resource* misbehaviour. A hostile plugin in a child process can still read the database
+file, the environment, and the network exactly as the parent can, unless the deployment adds
+OS-level confinement (a dedicated uid, seccomp, a container boundary) that NetCoreNOC does not
+provide and will not claim. **A plugin is as trusted as the operator who installed it.** This is
+why the ONNX path is the blessed one: data is a smaller thing to trust than code.
+
+## R3. Reconciliation with v0.7.0 governance
+
+v0.7.0 makes capabilities and visibility admin-configurable. Applied to customer scorers:
+
+- **Activating a customer scorer is `scorer.write` — admin-only, unchanged by v0.7.0.** It stays
+  admin-ceiling, so no stored capability policy can move it down to editor or viewer: under the
+  `ceiling ∩ policy` model (DECISIONS #53) a policy can only *remove* capabilities, never grant
+  one the compiled map reserves for admin. The v0.6.0 decision that there is **no editor
+  delegation** for the scoring seam (DECISIONS #43, F21) therefore survives governance
+  structurally, not by convention.
+- **A customer scorer is never scoped and never delegated.** Visibility scoping restricts *which
+  resources a principal is shown*; a scorer is a **system-wide logic change** affecting how every
+  alarm groups for everybody. There is no coherent "this scorer applies to my NEs only" — that
+  would be per-tenant correlation, which is the tenant isolation v0.7.0 explicitly does not build.
+  v0.8.0 must not introduce a per-scope scorer binding.
+- **A scorer is not an authorization input.** As with the v0.6.0 parameter set (F21's
+  `test_f21_config_change_grants_no_capability`), activating a model grants no capability to
+  anyone. v0.8.0 must carry the analogous assertion for the plugin path.
+- **The plugin runs engine-side, under the same fail-safe discipline as the built-in scorer, and is
+  advisory of nothing on the datagram path.** DECISIONS #44 still binds: no scorer of any kind
+  makes an outbound call to decide a link.
+- **Governance audit actions do not extend to scorers.** `rbac.policy.update` and
+  `scope.policy.update` cover the perimeter; a scorer activation stays `scorer.config.update`. Two
+  catalogs would be a second source of truth.
+
+## R4. `onnxruntime` stays an optional extra — re-confirmed
+
+The base install is unchanged, and this is now a checked property rather than an intention: the
+runtime dependency list has been **five** (`pysnmp`, `aiosqlite`, `fastapi`, `uvicorn`, `pydantic`)
+since v0.2.0, and v0.6.0 and v0.7.0 each ended with the same five. v0.8.0 must not change the base
+list.
+
+```toml
+[project.optional-dependencies]
+onnx = ["onnxruntime>=1.18"]
+```
+
+Absent the extra, the ONNX adapter is **not importable** and the admin surface reports it
+unavailable — it does not crash, does not degrade the built-in scorer, and does not attempt an
+install. The zero-configuration identity is that the default just works; an operator who wants a
+neural scorer opts into one package, and the eval gate continues to run against the built-in
+`AdditiveScorer`, never against a customer model.
+
+## R5. Sequencing for v0.8.0
+
+1. **The preemption harness first**, with its own tests (a hanging scorer, a memory-bomb scorer, a
+   crashing scorer, a scorer that returns malformed output), proving ingestion stays lossless
+   throughout. Nothing else may be merged before it.
+2. The generalised per-link attribution store (additive, forward-only migration).
+3. The **ONNX adapter** — the blessed path — with artifact hashing, opset pinning, and the recorded
+   reference vector re-checked at load **in the worker**.
+4. The **entry-point escape hatch** last, documented as the last resort it is.
+
+Its security review opens at the next unused finding number after v0.7.0's series (**F34**), and
+must be honest that the trust model for path 4 is "operator-trusted, not sandboxed".

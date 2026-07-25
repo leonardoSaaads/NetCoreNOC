@@ -76,6 +76,14 @@ ACTIONS: frozenset[str] = frozenset(
         "scorer.config.update",  # admin: appended a config and/or moved the active pointer
         "scorer.preview",  # admin: ran a read-only what-if over recent alarms
         "scorer.fallback",  # system actor: the active scorer failed; engine fell back to defaults
+        # v0.7.0 — governance. A change to who may *do* what, or see *which* NEs, is a change to
+        # the perimeter itself: admin-only, before/after captured, and one row per change.
+        "rbac.policy.update",  # admin: set, rolled back, or cleared the capability policy
+        "scope.policy.update",  # admin: set, rolled back, or cleared the scoping policy
+        # system actor: a stored policy could not be parsed and the fail-safe engaged (the ceiling
+        # for capabilities, deny-for-viewer/editor for scope). Recorded once per policy version, so
+        # a silent degradation is impossible (DECISIONS #55).
+        "governance.fallback",
     }
 )
 

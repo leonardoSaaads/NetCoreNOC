@@ -177,6 +177,23 @@ class Principal:
     kind: str  # "session" | "token"
     user_id: int | None = None
     must_change_password: bool = False
+    token_id: int | None = None  # v0.7.0: the service-token row id, for per-principal policy
+
+    @property
+    def ref(self) -> str | None:
+        """The stable key a per-principal governance policy is written against (DECISIONS #62).
+
+        ``user:<user_id>`` or ``token:<token_id>`` — the row identity, not ``actor``. ``actor`` is
+        a username *or* a token name, so it is not unique across the two kinds (a user and a token
+        may both be called ``backup``) and it is a display string that management endpoints treat
+        as cosmetic. Keying authorization on the primary key means a policy row, an audit row's
+        ``object_id``, and a session revocation all name the same thing.
+        """
+        if self.user_id is not None:
+            return f"user:{self.user_id}"
+        if self.token_id is not None:
+            return f"token:{self.token_id}"
+        return None
 
 
 def hash_token(token: str) -> str:
@@ -227,7 +244,7 @@ async def resolve_bearer(store: Store, token: str, now: float) -> Principal | No
     row = await store.get_token(hash_token(token))
     if row is not None and not row["revoked"]:
         await store.touch_token_used(row["token_hash"], now)
-        return Principal(actor=row["name"], role=row["role"], kind="token")
+        return Principal(actor=row["name"], role=row["role"], kind="token", token_id=int(row["id"]))
     return None
 
 

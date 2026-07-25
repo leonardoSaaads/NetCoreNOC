@@ -608,3 +608,252 @@ accepted.
 - A determined admin can still detune correlation. The control is bounds + preview + audit +
   immutable history + one-action rollback + the coded-default fallback — visibility and
   reversibility, not prevention.
+
+## v0.7.0 — governance: a stored capability policy and visibility scoping
+
+v0.6.0 made the *link formula* configurable. v0.7.0 makes the *perimeter* configurable — which
+capabilities a role or principal holds, and which network elements a viewer or editor is shown —
+without adding an authorization mechanism, a second decision site, or a runtime dependency. Both
+are stored policy read **through** the existing single decision points.
+
+The governing property, and the release gate:
+
+> With **no** stored governance policy, v0.7.0 is byte-identical to v0.6.0. The compiled
+> `PERMISSIONS` map and full visibility are simultaneously the **default** and the **ceiling**.
+
+### The capability resolver — `ceiling ∩ policy`, one decision site
+
+`rbac.ceiling(role)` expresses today's behaviour as a set:
+
+```
+ceiling(role) = { c ∈ PERMISSIONS : ROLE_RANK[role] >= ROLE_RANK[PERMISSIONS[c]] }
+```
+
+`rbac.resolve_capabilities(role, principal_ref, policy)` is the **only** function in the tree that
+computes a capability set:
+
+```
+caps = ceiling(role)                       # the compiled map is the FIRST operand
+if policy is None or policy.malformed:     # unset, unreadable, or unparseable
+    caps = caps                            #   -> the shipped safe baseline (DECISIONS #55)
+else:
+    if policy.roles.has(role):      caps &= policy.roles[role]
+    if policy.principals.has(ref):  caps &= policy.principals[ref]
+if role == "admin":
+    caps |= RECOVERY_CAPABILITIES          # ⊆ ceiling("admin"), so the bound is preserved
+```
+
+**Why this is the escalation-impossibility proof, and not a check** (DECISIONS #53). An
+intersection cannot exceed its first operand. A policy row naming a capability above a role's
+ceiling is therefore **inert** — not "rejected", *inert* — regardless of how it entered the table:
+through the API, through a future second write path, through a bad migration, or through
+`sqlite3` on a stolen or restored database file. The API does return `400` for such a write, but
+that is a usability affordance so an admin learns immediately; it is not the control. The property
+`resolve_capabilities(...) ⊆ ceiling(role)` is asserted **property-based** over generated and
+adversarial policies, which is only possible because it is a property rather than a code path.
+
+**Unset vs. set-but-empty** (DECISIONS #54). An absent key means "this layer expresses no
+opinion" ⇒ no intersection ⇒ the ceiling ⇒ parity. A key present with an empty list means "allow
+nothing" ⇒ intersect with ∅ ⇒ nothing. The two are different statements, stored differently, and
+the distinction is what lets an upgrade be invisible while still letting an admin deliberately
+grant nothing.
+
+**The admin can never be bricked** (DECISIONS #64). A *well-formed* policy could otherwise remove
+`rbac.write` from `admin`, leaving no authenticated path to repair the perimeter — a lockout the
+malformed-policy fallback would never catch. `RECOVERY_CAPABILITIES = {self.read, rbac.read,
+rbac.write, scope.read, scope.write}` is unioned back for the admin role inside the resolver. Since
+that set is a subset of `ceiling("admin")`, the union stays inside the ceiling and the invariant
+above is untouched. Governance may still restrict an admin's `users.manage`, `audit.read`,
+`config.write` or `scorer.write` — it simply cannot make the appliance unrepairable.
+
+**Where it is called.** Exactly three places, all reading the one answer: the `api.py` `security`
+dependency (replacing `rbac.role_allows(...)` **at that same line** — no new site), `GET /api/me`
+(so the UI gates affordances on resolved capabilities rather than on role rank), and the generated
+authorization-matrix test. A source-level assertion forbids a role comparison anywhere else in
+`api.py` (F28).
+
+**Per-request evaluation.** Nothing is cached on the session or the `Principal`. The resolved set
+is computed on every request from the live policy, so a change takes effect on the next request
+with no restart — a property the code already had, because authorization was never cached.
+`ROUTE_PERMISSIONS` and the 401/403/404 semantics are unchanged; only *which capabilities a
+principal holds* becomes policy-driven, so a route the resolved set does not cover is denied and
+audited exactly as before.
+
+### The scope resolver and filter
+
+**The model.** A scope is a set of **selectors**, resolved to a set of NE ids on each request
+(DECISIONS #57 — NetCoreNOC discovers NEs continuously, so a write-time snapshot would silently
+hide an NE whose address a CIDR plainly covers):
+
+| Selector | Form | Matches |
+|---|---|---|
+| NE id | `ne:7` | the NE with that id |
+| Exact IP | `10.0.0.5` | the NE with that address |
+| CIDR | `10.0.0.0/24`, `2001:db8::/48` | every NE whose address is in the network |
+| Host glob | `core-*`, `*-lab` | the NE's operator label if it has one, else its address |
+
+**Layer composition** (DECISIONS #63, generalising #54): an **unset** layer expresses no opinion; a
+**set** layer — even set to the empty list — says "exactly these". The visible set is the **union
+of the layers that express an opinion**; if neither does, it is **all NEs**. So: both unset ⇒ all
+(parity); role set only ⇒ the role's set; principal set only ⇒ the principal's set (a per-principal
+restriction genuinely restricts); both set ⇒ the union (the "this contractor *additionally* sees
+the lab range" case).
+
+**Admin is never scoped** (DECISIONS #58). The exemption is the first line of the resolver, before
+any policy is read. This single rule is what makes every fail-closed branch in the release
+recoverable rather than terminal.
+
+**Fail-closed, and never fail-open.** A malformed or unreadable scope policy resolves to the
+**empty** scope for viewer and editor — they see nothing new — with an `operator_warnings()` entry
+and an audit row. It is safe precisely because the admin who must repair it is exempt.
+
+**Enforcement — one filter, applied at every NE-bearing read.** `shaping.visible_nes(...)` returns
+a `Scope` carrying the in-scope NE id set *and* the corresponding IP set (the graph is a `device`
+projection joined to `ne` by address, not by id — id equality is a migration artefact, not a
+declared invariant). Composition at each read path is: **authorize → read → scope-project → field
+shape**. Concretely:
+
+- **Lists** (`/api/situations`, `/api/graph`, `/api/entities`, `/api/timeline`, `/api/classes`
+  where it enumerates NEs) return only in-scope NEs, entities, alarms, nodes, and edges. An edge is
+  returned only when **both** endpoints are in scope, so the graph never implies a neighbour the
+  caller cannot see.
+- **A situation is listed iff at least one member is in scope.** Its out-of-scope members are
+  **redacted to a coarse count and type** — no NE id, no IP, no entity key, no varbind (DECISIONS
+  #59). Links referencing a redacted member are withheld; the root-cause hint is suppressed when
+  the root is out of scope. Silent omission is rejected: an operator shown "3 alarms" for a
+  40-alarm cross-boundary fibre cut would be *confidently wrong*, which is the failure mode
+  v0.6.0's preview refuses to ship. The redaction count is the honest signal that the operator is
+  looking at the edge of their own picture.
+- **A directly-requested resource entirely out of scope returns 404, not 403** (DECISIONS #60),
+  past authorization — and the 404 is produced by *the projection returning nothing*, so the
+  handler's existing `if detail is None: raise 404` branch fires unchanged. "Out of scope" and
+  "does not exist" are therefore indistinguishable **by construction** — same branch, same body,
+  same headers, same timing — rather than by two code paths that happen to agree today.
+- **Aggregates** that would let a scoped principal infer out-of-scope volume (`/api/stats`
+  `devices`, `active_alarms`, `open_situations`) are computed over the in-scope set only, so
+  out-of-scope activity cannot move a scoped viewer's counters.
+- **SSE** (`/api/events`) re-resolves capability **and** scope on **every event**, not at
+  connection time — a stream opened before a policy was written must not keep streaming
+  unfiltered snapshots.
+
+**Cost, and why parity is free.** When no scope policy is active — the default, and the state of
+every upgraded appliance — the resolver short-circuits before touching the database and the read
+paths run the unmodified v0.6.0 queries. The extra NE listing needed to resolve selectors happens
+only when a policy exists and only for viewer/editor.
+
+### Where policy is read, and how a change invalidates
+
+Both policies live in `governance_policy` (append-only history) with a `governance_active` pointer
+per kind. On each request the API reads the two-row pointer table and re-parses a document **only
+when its id differs from the parsed one it is holding**. So: correctness is per-request (a change
+is visible on the very next request, with no restart and no pointer to invalidate by hand), while
+the parse cost is paid once per policy version. Clearing a policy deletes its pointer row; the
+history rows survive, and the appliance returns to the shipped baseline.
+
+**Nothing here is on the trap path.** `receiver.datagram_received` is unchanged and imports neither
+`rbac` nor `shaping`; the engine, `learn.py`, `rootcause.py`, `severity.py` and `scoring.py` are
+untouched. The v0.6.0 F24 source-level assertions remain in force, extended to name the governance
+identifiers (F33).
+
+### Schema (migration `0006_governance.sql`, `user_version` 5 → 6)
+
+Additive, forward-only, and it **seeds nothing** — the one structural difference from `0005`, which
+had to seed a parameter row because the engine needs parameters. Governance has a compiled default,
+so seeding would be the only way to make an upgrade change behaviour, and not seeding is what makes
+the upgrade invisible.
+
+- `governance_policy` — `(id, kind ∈ {rbac, scope}, document, doc_hash, created_by, created_at,
+  note)`, append-only via `BEFORE UPDATE`/`BEFORE DELETE` → `RAISE(ABORT)`, exactly like
+  `audit_log` and `scorer_config`, and with no sanctioned deleter (the retention prune does not
+  touch it). `document` is the **whole** policy for its kind as canonical JSON, not one row per
+  grant: a policy is read and applied as a unit on every request, so storing it as a unit makes
+  "which policy was active" a single id and makes rollback a pointer move rather than a replay.
+- `governance_active` — at most one row per kind, an UPSERT to apply or roll back, a DELETE to
+  clear. A pointer, not history, so deliberately not append-only (as `scorer_active`).
+
+Validation deliberately lives in code, not in a `CHECK` constraint: a corrupt document must remain
+*readable* so the resolver can recognise it as malformed and degrade safely. A constraint that made
+the row unreadable would make it unrepairable.
+
+### The unified candidate selection (the v0.6.0 close-out)
+
+v0.6.0 shipped `preview.partition()` as a second implementation of the engine's windowing and
+candidate selection, with its own copies of the window length and the candidate cap. Nothing tied
+them together, so changing `correlate.WINDOW_S` alone would have made the what-if quietly lie.
+
+`correlate.select_candidates()` is now the single implementation, used by both
+`Correlator._recent_live()` and `preview.partition()`, and `preview`'s bounds are **aliases** of
+the engine's constants rather than independent literals (DECISIONS #61). The helper takes the
+window, the cut-off time, the cap, and an **optional liveness set** — which is the one genuine
+difference between the callers: the engine's deque carries tombstones (cleared or re-activated
+alarms removed from `index` but still in the deque), and preview's snapshot cannot. Each caller
+keeps its own bookkeeping; only the *selection rule* is shared.
+
+`tests/test_correlate.py::test_preview_reproduces_the_engine_partition` asserts that
+`preview.partition()` reproduces the engine's **actual situation partition** over the same alarms —
+so the what-if is pinned to the engine by a test, not by a coincidence. This lands **before** the
+scoping read-filter, because layering a disclosure control on two implementations that may disagree
+is how an existence oracle gets built by accident.
+
+### RBAC and audit additions
+
+| Capability | viewer | editor | admin | Audited when denied |
+|---|:--:|:--:|:--:|:--:|
+| `rbac.read` — the capability policy and each role's/principal's resolved set | — | — | ✔ | ✔ |
+| `rbac.write` — set, roll back, or clear the capability policy | — | — | ✔ | ✔ |
+| `scope.read` — the scoping policy and a principal's resolved NE set | — | — | ✔ | ✔ |
+| `scope.write` — set, roll back, or clear the scoping policy | — | — | ✔ | ✔ |
+
+All four are admin-only, `config`-class, with no delegation — and under `ceiling ∩ policy` that is
+structural: no policy can move an admin-ceiling capability down to editor or viewer.
+
+New audit actions, in the frozen catalog and the completeness test: **`rbac.policy.update`** and
+**`scope.policy.update`** (admin actor, before/after summary in `details`, never a raw document
+larger than its hash and shape).
+
+### ⚠ Visibility scoping is a presentation control and is **NOT** tenant isolation
+
+Scoping decides **what a principal is shown**. It does **not** partition what NetCoreNOC learns,
+correlates, or groups:
+
+- **Correlation still learns across all NEs.** The class×class `A` and NE×NE `E` matrices are
+  global. A storm on NEs one operator cannot see still shapes the matrices that decide how the
+  alarms they *can* see group, and a `confirm`/`split` from any operator still moves them.
+- **Situations may span scope boundaries.** A situation is a connected component of a link graph
+  computed *before* any scoping is applied. Scoping hides members after the fact; it does not
+  prevent the situation from forming.
+- **Side channels remain by construction.** Situation ids are global and monotonic, timing is
+  shared, learned edge weights are global. Scoping is not designed to defeat inference from them.
+
+**True multi-tenant isolation** — per-tenant learning, per-tenant situation boundaries, per-tenant
+retention and audit segmentation — is a separate, larger, later feature that would change the
+engine, the schema, and the eval methodology. It is explicitly **not** what v0.7.0 delivers, it is
+a `docs/ROADMAP.md` line, and a documentation test asserts this statement is present in the shipped
+docs and the shipped UI so it cannot be quietly dropped.
+
+### A clarification carried forward from v0.6.0
+
+`situation.scorer_config_id` records the scorer configuration that **created** the situation — the
+one in effect when it was opened — and not necessarily the configuration under which every later
+link was scored. A long-lived situation spanning a parameter change keeps its original id. Per-link
+provenance would answer the finer question and is a ROADMAP line.
+
+## Known limits (v0.7.0, by design)
+
+- **Scoping is presentation, not isolation** (above). The global learned state, global situation
+  ids and shared timing mean a determined observer can still infer *that* activity exists beyond
+  their boundary from aggregate correlated behaviour.
+- **A scoped operator sees a partial picture** and can mis-size an incident that spans the
+  boundary. The redacted member count and type are the mitigation, and they are honest rather than
+  complete.
+- **Cardinality is information.** The redaction discloses *how many* members are out of scope —
+  less than the situation id and `updated_at` a viewer already sees, but not zero.
+- **The three roles stay compiled in** (DECISIONS #56). Only their restriction is data-driven;
+  custom roles would put the first operand of the escalation-proof intersection into stored data.
+- **Field shaping is not configurable.** `shaping.py`'s `FIELD_RULES` remain compiled policy;
+  scoping restricts *which resources* are visible, not *which fields*. ROADMAP.
+- **Policy history cannot be pruned.** Immutability is the tamper-evidence argument; growth is one
+  row per change.
+- **A compromised admin can rewrite the perimeter.** Bounded by the compiled ceiling, append-only,
+  attributable, reversible by pointer, and audited — but not prevented, because an admin governs by
+  definition.

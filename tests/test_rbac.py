@@ -131,3 +131,83 @@ async def test_403_precedes_404_no_existence_oracle(store: Store) -> None:
     finally:
         await editor.aclose()
         await admin.aclose()
+
+
+# --- v0.7.0: the same matrix, with a governance policy active ---------------------------
+
+
+async def _activate_capability_policy(store: Store, document: dict[str, object]) -> None:
+    import json
+
+    text = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    async with store.lock:
+        policy_id = await store.insert_governance_policy("rbac", text, "h" * 64, None, 0.0, "")
+        await store.set_active_governance_policy("rbac", policy_id, None, 0.0)
+        await store.commit()
+
+
+async def test_authorization_matrix_with_a_policy_active(store: Store) -> None:
+    """The generated matrix again, but with a stored policy narrowing every role.
+
+    The expectation is regenerated from the **resolver** rather than from `role_allows`, so this
+    checks what v0.7.0 actually enforces. The policy takes `situations.read` and `timeline.read`
+    away from viewer and editor and strips admin to a small set; every route must follow the
+    resolved answer, and no route may become reachable that the ceiling did not already allow.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    policy_doc: dict[str, object] = {
+        "version": 1,
+        "roles": {
+            "viewer": ["self.read", "stats.read", "graph.read", "events.stream"],
+            "editor": ["self.read", "stats.read", "situations.read", "feedback.write"],
+            "admin": ["self.read", "users.manage", "audit.read", "rbac.read", "rbac.write"],
+        },
+    }
+    await _activate_capability_policy(store, policy_doc)
+    policy = rbac.parse_capability_policy(
+        __import__("json").dumps(policy_doc, sort_keys=True, separators=(",", ":"))
+    )
+
+    failures: list[str] = []
+    for (method, path), permission in rbac.ROUTE_PERMISSIONS.items():
+        key = (method, path)
+        for role in ("viewer", "editor", "admin"):
+            resolved = rbac.resolve_capabilities(role, None, policy)
+            # The ceiling is never exceeded, whatever the policy said.
+            assert resolved <= rbac.ceiling(role)
+            client = await authutil.client_as(app, role)
+            try:
+                status = await _status(client, method, path, key)
+            finally:
+                await client.aclose()
+            if permission in resolved:
+                ok, want = status not in (401, 403), "not 401/403"
+            else:
+                ok, want = status == 403, "403"
+            if not ok:
+                failures.append(f"{method} {path} as {role}: got {status}, want {want}")
+    assert not failures, "authorization mismatches under policy:\n" + "\n".join(failures)
+
+
+async def test_a_policy_never_makes_a_route_reachable_that_the_ceiling_forbids(
+    store: Store,
+) -> None:
+    """The inverse sweep: grant every role every capability and nothing new opens up."""
+    _engine, _queue, app = await authutil.make_env(store)
+    await _activate_capability_policy(
+        store,
+        {"version": 1, "roles": {role: sorted(rbac.PERMISSIONS) for role in rbac.ROLE_RANK}},
+    )
+    failures: list[str] = []
+    for (method, path), permission in rbac.ROUTE_PERMISSIONS.items():
+        for role in ("viewer", "editor"):
+            if rbac.role_allows(role, permission):
+                continue  # already allowed by the ceiling; nothing to prove here
+            client = await authutil.client_as(app, role)
+            try:
+                status = await _status(client, method, path, (method, path))
+            finally:
+                await client.aclose()
+            if status != 403:
+                failures.append(f"{method} {path} as {role}: got {status}, want 403")
+    assert not failures, "a policy opened a route above the ceiling:\n" + "\n".join(failures)

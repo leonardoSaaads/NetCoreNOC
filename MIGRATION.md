@@ -1,5 +1,63 @@
 # Upgrading NetCoreNOC
 
+## v0.6.0 → v0.7.0 (governance — one migration, and nothing changes until you ask it to)
+
+v0.7.0 lets an admin restrict what each role and principal may **do** (capabilities) and may
+**see** (network elements). Both are stored, audited policy read through the existing single
+decision points.
+
+**Nothing changes on upgrade.** Migration `0006_governance.sql` adds two tables and **seeds no
+rows**. With no policy stored, the compiled role permissions and full visibility are what you get
+— byte-identically v0.6.0. Every route, status code, and shaped field is unchanged, `make eval` is
+unchanged, and most operators never open the Governance panel. There is **no breaking change and
+no action required**.
+
+### What the migration does
+
+| | |
+|---|---|
+| Schema | `user_version` 5 → 6, forward-only and additive |
+| Adds | `governance_policy` (append-only history, `RAISE(ABORT)` on UPDATE/DELETE) and `governance_active` (a per-kind pointer) |
+| Seeds | **nothing** — that is what makes the upgrade invisible |
+| Removes | nothing |
+| Runtime dependencies | unchanged (still five) |
+
+Apply it the way you always do — it runs at startup, or `make migrate`. Back up
+`netcorenoc.db` first, as with any upgrade.
+
+### If you do choose to write a policy
+
+- **A capability policy can only take capabilities away.** The compiled permission map is the
+  *ceiling*: the resolved set is `ceiling(role) ∩ policy`, so an entry naming a capability above a
+  role's ceiling has **no effect** rather than granting it. There is no way to give a viewer an
+  admin capability through configuration.
+- **An admin can never be locked out.** The capabilities needed to read and repair the governance
+  policy stay with the admin role no matter what a policy says, and **admins are never scoped**.
+- **Clearing is one click** and returns the appliance to the shipped baseline. Policy history is
+  append-only, so a clear removes the pointer, not the record.
+- **If a policy becomes unreadable**, capabilities fall back to the built-in permissions (nobody
+  gains anything) and scoping denies viewers and editors (nobody sees anything new). Both raise an
+  operator warning and write an audit row; the admin repairs it from the Governance panel.
+
+### ⚠ Visibility scoping is a presentation control and is **not tenant isolation**
+
+Read this before you use scoping to separate customers or teams.
+
+Scoping decides **what a principal is shown**. It does **not** partition what NetCoreNOC learns,
+correlates, or groups:
+
+- correlation still learns across **all** network elements — the class and NE affinity matrices are
+  global, and feedback from any operator still moves them;
+- a situation may still **form across** a scope boundary; its out-of-scope members are then shown
+  to a scoped reader as a redacted count and their alarm classes, never as identifiers;
+- situation ids, timing, and learned edge weights are global by construction.
+
+A scoped operator therefore sees a **partial picture** and could mis-size an incident that spans
+the boundary — which is exactly why the redacted count is shown rather than the members being
+silently omitted. True multi-tenant isolation (per-tenant learning, per-tenant situation
+boundaries, per-tenant retention and audit segmentation) is a separate, larger feature on
+[`docs/ROADMAP.md`](docs/ROADMAP.md), and v0.7.0 does not provide it.
+
 ## v0.5.0 → v0.6.0 (the scoring seam — one migration, one removal)
 
 v0.6.0 makes the correlation formula configurable, explainable, reproducible, and reversible.
