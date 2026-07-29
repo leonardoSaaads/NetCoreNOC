@@ -95,3 +95,19 @@ From v0.7.0 (governance — deferred to keep the release to the authorization pe
   `token:<token_id>` (DECISIONS #62); a token *rotation* currently starts from an unset policy
   because the new token is a new row. Carrying a policy across a deliberate rotation would need an
   explicit "replace token, keep policy" operation.
+
+From v0.7.1 (the write perimeter — deferred, each with the version that owns it):
+
+- **Extract the perimeter into `src/netcorenoc/perimeter.py` — the theme of v0.7.2.** The security
+  dependency, `GovernancePolicies`, `resolve_identity`, `csrf_ok`, `scope_for`, `audit_row`,
+  `RateLimiter`, `DENIED_ACTION` and `write_txn` move to one flat module, leaving every route
+  handler in `api.py` textually unchanged so the move is provable. Four of v0.7.1's six findings
+  lived in `api.py` and were hard to find because that file is 1 700+ lines. DECISIONS #74.
+- **A foreign key on `label`.** SQLite needs a table rebuild to add one, which is disproportionate
+  to a patch release; the application-level existence check plus the `0007` orphan cleanup close the
+  write primitive in the meantime. DECISIONS #71.
+- **Split `store.py` by domain and `api.py` by route group.** Larger, weaker arguments than the
+  perimeter extraction; they stay lines here rather than becoming a version theme.
+- **The v0.8.0 feedback dataset** — schema, capture, and bias reporting. v0.7.1 made the *existing*
+  feedback path trustworthy (idempotent, bounded, attributed); it deliberately built no part of the
+  dataset.

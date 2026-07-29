@@ -741,3 +741,149 @@ Every threat above names a control and a test. Findings **F27–F33** are tracke
 `make eval` byte-identical, the governance-parity test green at empty policy, the property-based
 ceiling-invariant test green over generated and adversarial policies, and the authorization matrix
 clean over the four new capabilities.
+
+---
+
+# v0.7.1 extension — the write perimeter
+
+**Nothing new is added to the system.** This extension records a *defect class* found in a release
+whose review declared it closed, and the controls that close it. v0.7.0 built the visibility scope
+as a **read projection** and described it as a perimeter. A perimeter enforced on one side is not a
+perimeter, and the six findings F34–F39 are what that cost.
+
+The one sentence this extension adds to the model:
+
+> **Authorization never reads data the constrained party can write, and a write is inside the
+> perimeter or it is a defect.**
+
+## Changed asset — the write path as an escalation and disclosure channel
+
+v0.4.0 recognised response bodies as a disclosure channel and v0.7.0 recognised NE visibility as
+one. What neither recognised is that a **write** is both: its *status code* discloses existence,
+its *effect* reaches global state, and — the case that defines this release — its *payload* can
+become an input to the authorization decision that is supposed to constrain it.
+
+## STRIDE — the surface that was already there and was not modelled
+
+### Scope enforcement (A2) — the write routes outside the read perimeter — **F34**
+
+- **Spoofing/Elevation**: a scoped `editor` writes feedback on, closes, and labels NEs they cannot
+  see. The learned-state effect reaches NEs outside their scope, which is elevation in the only
+  currency the correlator has.
+- **Information disclosure**: 200-vs-404 on writes is an existence oracle over exactly the resources
+  the read path is careful to make indistinguishable.
+- *Control*: the three `editor` routes resolve scope through the **same** `scope_for` the reads use
+  and deny through their **existing** 404 branch — same status, same body, same timing (DECISIONS
+  #65). The denial is audited.
+- *Check*: `test_f34_scope_is_enforced_on_the_editor_write_routes`,
+  `test_f34_an_in_scope_editor_can_still_write`, and the **generated**
+  `test_f34_every_mutating_route_below_admin_resolves_scope`, which walks `ROUTE_PERMISSIONS` so a
+  route added in any future release fails CI until it is inside the perimeter.
+
+### Scope resolution (A2) — an authorization input the constrained role can write — **F35**
+
+- **Elevation of privilege**: the scope resolver read the **operator label**, and the operator label
+  is written by `POST /api/labels`, an `editor` route. A scoped editor widened their own visibility
+  by labelling an out-of-scope device to match an in-scope glob. A second variant needed no glob:
+  the timeline filtered on the rendered `COALESCE(label, ip)` display string, and labels are not
+  unique, so a colliding label leaked an out-of-scope NE's alarm timing and classes.
+- *Control*: scope selectors resolve against **NE identity and NE address only** — structurally, so
+  a future second write path to `label` cannot reopen it (DECISIONS #66). The timeline filters on
+  `ne_id`, never on a display string (DECISIONS #67). `Scope.labels` and the label column of
+  `list_ne_for_scope()` are deleted, and the dead-code gate keeps them gone.
+- *Check*: `test_f35_an_editor_cannot_widen_their_own_scope_with_a_label`,
+  `test_f35_a_colliding_label_does_not_leak_an_out_of_scope_timeline`,
+  `test_f35_scope_selectors_never_read_operator_writable_data`, and the invariant test
+  `test_f35_no_resolver_input_is_writable_by_a_scopable_role`.
+
+### Learned state (A1, A2) — unbounded, non-idempotent operator feedback — **F36**
+
+- **Tampering/DoS**: `learn_epoch` advanced the **global** forgetting epoch on every feedback post
+  and `add_feedback` had no idempotence and no bound. 60 confirms plus 20 splits took one pair's mass
+  from 1.000000 to 1.824e-05; ~600 epochs a minute drives every learned mass to ~1e-14. The role that
+  can do it is `editor`, and under F34 it need not even see the situation.
+- **Repudiation**: `feedback` recorded no author, so "who degraded the matrices?" was unanswerable —
+  the audit chain recorded the API call but not the effect.
+- *Control*: idempotence per `(situation, verdict)` bounds a situation's total influence at two
+  applications whatever anyone posts (DECISIONS #68); the epoch tick belongs to a **closed
+  situation** only (DECISIONS #69); `principal_ref` and `role` attribute every row.
+- *Check*: `test_f36_repeated_feedback_is_idempotent_and_bounded`,
+  `test_f36_a_changed_verdict_still_applies_once`,
+  `test_f36_closing_a_situation_still_ticks_the_epoch`, `test_f36_feedback_records_its_author`.
+
+### Store (A1) — an unbounded, never-reclaimed write primitive — **F37**
+
+- **DoS/Tampering**: `set_label` was an unconditional UPSERT into a table with no foreign key, and
+  `prune()` never touched it. Every `editor` held an unbounded write primitive against the database
+  file, and its rows were never reclaimed.
+- *Control*: the target must exist, and the failure is **the same 404 the out-of-scope case
+  produces**, so the fix for F37 cannot re-introduce the oracle F34 closes (DECISIONS #70). Migration
+  `0007` removes existing orphans. No foreign key in a patch release, deliberately (DECISIONS #71).
+- *Check*: `test_f37_a_label_write_to_a_nonexistent_target_is_rejected`,
+  `test_f37_label_writes_to_real_targets_still_work`, and the migration's orphan-cleanup gate.
+
+### Scoped reads (A2) — truncation before filtering as a volume oracle — **F38**
+
+- **Information disclosure**: `LIMIT` was applied over the global ordering and the scope filter ran
+  afterwards, so a scoped principal's returned count varied with out-of-scope volume — the aggregate
+  oracle F32 claims is closed.
+- **Availability (operational)**: worse than the disclosure in a NOC — a scoped viewer's own open
+  incidents vanished from their list while a noisy neighbour was busy.
+- *Control*: the scope predicate is bound into the query so `LIMIT` applies to the filtered set,
+  with the unrestricted path on the **unmodified v0.7.0 SQL** (DECISIONS #72).
+- *Check*: `test_f38_truncation_is_applied_after_the_scope_filter`,
+  `test_f38_the_unrestricted_result_set_is_unchanged`.
+
+### Audit and transaction integrity (A3, A5) — an orphan write surviving a failed request — **F39**
+
+- **Repudiation/Tampering**: one `aiosqlite` connection is shared by the engine and the API;
+  `main.py` rolled back and `api.py` did not. A handler that mutated and then raised left the
+  statement pending, and the next `commit()` from **any other caller** adopted it. Measured: a forced
+  audit failure inside `POST /api/users/{uid}/role` returned 500 and the role change persisted **with
+  no audit row**, contradicting F31's "every change is attributable".
+- *Control*: one async context manager — acquire the lock, run the body, commit on success,
+  `rollback()` on any exception, re-raise — used by every mutating handler, implemented once
+  (DECISIONS #73). `Engine.apply_feedback`'s internal commit is removed so the API owns the boundary
+  and the order is mutate → audit → commit on every write path.
+- *Check*: `test_f39_a_failed_write_leaves_nothing_to_commit`,
+  `test_f39_feedback_commits_exactly_once`.
+
+## Corrections to the v0.7.0 model
+
+- The v0.7.0 entry "**Existence oracle via a scoped resource**" was scoped to *reads*. It is
+  superseded: the oracle existed on **writes** for the whole of v0.7.0. See F34.
+- The v0.7.0 entry "**Leakage through aggregates**" claimed enumerating aggregates are computed over
+  the in-scope set. True for `/api/stats`; **false** for the truncated list endpoints. See F38.
+- "Scope is never an authorization input" (F28) was stated of *capabilities* and was correct. What
+  was missed is the converse: an authorization input may not be **operator-writable data**. That
+  sentence is new to the model as of this release, and it is the generalisation the review method
+  now carries forward.
+
+## v0.7.1 residual risk (accepted, documented)
+
+- **Label globs in scope selectors are gone**, and some operators will miss them: a labelled estate
+  now has to be scoped by address, `ne:<id>`, or CIDR. The trade is that authorization no longer
+  reads operator-writable data, and it is not negotiable at any label-uniqueness guarantee an
+  operator could offer.
+- **Idempotence per `(situation, verdict)` is a real usability loss.** An operator who genuinely
+  wants to reinforce the same verdict twice cannot. The second identical verdict carries no new
+  information, so this is the correct trade — but it is a change an operator can notice.
+- **The redaction cardinality disclosure of v0.7.0 is unchanged and still real.** Nothing here
+  narrows it.
+- **Scoping is still presentation, not isolation.** Every v0.7.0 residual-risk item above remains
+  true and is re-stated, not re-litigated.
+- **NE addresses are still created by whoever has network position to send a trap.** That is the
+  pre-existing A1 attacker, unchanged by this release, but it is worth naming next to the new
+  resolver-input invariant: the invariant says no *authenticated scopable role* can write a resolver
+  input, and address creation sits outside that boundary by design.
+- **The deepest one: a defect class was found in a release whose review declared it closed.** The
+  review method has been changed rather than the claim quietly corrected — see
+  `SECURITY-REVIEW-0.7.1.md` §"What changed in the review method".
+
+## v0.7.1 coverage check
+
+Every threat above names a control and a check. Findings **F34–F39** are tracked in
+`SECURITY-REVIEW-0.7.1.md` (property → fix → test). Gate 5 requires every F-numbered test green,
+`make eval` byte-identical, empty-policy parity except the three documented behaviour changes, the
+generated write-perimeter test green over `ROUTE_PERMISSIONS`, and the resolver-input invariant test
+green.

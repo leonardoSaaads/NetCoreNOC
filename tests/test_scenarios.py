@@ -222,7 +222,7 @@ async def test_split_feedback_measurably_reduces_affinity(
     device_b = await store.device_id("127.0.0.3", BASE)
     mass_before = engine.learner.E.pair_mass(device_a, device_b)
     affinity_before = engine.learner.device_affinity(device_a, device_b)
-    assert await engine.apply_feedback(sid, "split", BASE + 11 * ROUND)
+    assert (await engine.apply_feedback(sid, "split", BASE + 11 * ROUND)).exists
     assert engine.learner.E.pair_mass(device_a, device_b) == mass_before * 0.5
     assert engine.learner.device_affinity(device_a, device_b) <= affinity_before
     cur = await store.conn.execute("SELECT verdict FROM feedback WHERE situation_id=?", (sid,))
@@ -241,6 +241,7 @@ async def test_confirm_feedback_reinforces(
     device_b = await store.device_id("127.0.0.3", BASE)
     mass_before = engine.learner.E.pair_mass(device_a, device_b)
     for row in listed:
-        assert await engine.apply_feedback(row["id"], "confirm", BASE + 11 * ROUND)
+        # v0.7.1 (F36): the result is (exists, inserted); `.exists` is the 404 question.
+        assert (await engine.apply_feedback(row["id"], "confirm", BASE + 11 * ROUND)).exists
     assert engine.learner.E.pair_mass(device_a, device_b) > mass_before * 0.9
-    assert not await engine.apply_feedback(999_999, "confirm", BASE)
+    assert not (await engine.apply_feedback(999_999, "confirm", BASE)).exists

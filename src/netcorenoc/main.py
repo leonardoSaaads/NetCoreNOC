@@ -34,7 +34,7 @@ from netcorenoc.logsetup import configure_logging
 from netcorenoc.receiver import MAX_INSTANCE_CHARS, QueueItem, start_receiver
 from netcorenoc.rootcause import Member, Precedence
 from netcorenoc.runtime import RuntimeConfig
-from netcorenoc.store import Store
+from netcorenoc.store import FeedbackResult, Store
 from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler
 
 log = logging.getLogger("netcorenoc")
@@ -750,10 +750,34 @@ class Engine:
         if root is not None:
             await self.store.set_root(sid, root)
 
-    async def apply_feedback(self, sid: int, verdict: str, ts: float) -> bool:
-        """Operator feedback: ``confirm`` reinforces the grouping, ``split`` penalizes."""
-        if not await self.store.add_feedback(sid, verdict, ts):
-            return False
+    async def apply_feedback(
+        self,
+        sid: int,
+        verdict: str,
+        ts: float,
+        *,
+        principal_ref: str | None = None,
+        role: str | None = None,
+    ) -> FeedbackResult:
+        """Operator feedback: ``confirm`` reinforces the grouping, ``split`` penalizes.
+
+        **v0.7.1 (F36): the learning effect applies only on a genuine insert.** v0.7.0 applied it on
+        every post with no idempotence and no bound, so 80 posts drove 80 effects — and, through
+        `learn_epoch`, 80 advances of the *global* forgetting epoch, taking one pair's mass from
+        1.000000 to 1.824e-05. A situation has two possible verdicts, so its total influence on the
+        learned state is now bounded at two applications however many times anyone posts. A
+        *changed* verdict is a legitimate correction and still applies once (DECISIONS #68).
+
+        **v0.7.1 (F39): this no longer commits.** The API owns the transaction boundary, so a
+        feedback write is one transaction in the order mutate → audit → commit, like every other
+        write path — rather than the one route where the mutation was durable before it was
+        attributable (DECISIONS #73).
+        """
+        recorded = await self.store.add_feedback(
+            sid, verdict, ts, principal_ref=principal_ref, role=role
+        )
+        if not recorded.exists or not recorded.inserted:
+            return recorded
         members = self.members.get(sid)
         if members is not None:
             items = [(m.class_id, m.device_id) for m in members]
@@ -761,11 +785,13 @@ class Engine:
             rows = await self.store.situation_members(sid)
             items = [(int(r["class_id"]), int(r["device_id"])) for r in rows]
         if verdict == "confirm":
-            self.learner.learn_epoch(items)
+            # advance_epoch=False: an epoch is a *closed situation*, which is what learn.py has
+            # said since v0.1.0. Operator feedback is an opinion about one grouping and must not
+            # age the whole appliance's learned state (DECISIONS #69).
+            self.learner.learn_epoch(items, advance_epoch=False)
         else:
             self.learner.penalize(items)
-        await self.store.commit()
-        return True
+        return recorded
 
     async def maintenance(self, now: float, retention_days: float, tick: int = 0) -> None:
         """Close idle situations, persist learned state, record ingest gaps, and prune."""

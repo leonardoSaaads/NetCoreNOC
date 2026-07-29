@@ -158,8 +158,10 @@ operators never open the Governance panel. When you do need it —
   only ever *narrow*. There is no configuration that gives a viewer an admin capability, and an
   admin can never be locked out of repairing the policy;
 - **visibility scoping** limits which network elements a viewer or editor sees, by NE id, address,
-  CIDR, or name glob. Out-of-scope elements are absent from every list, and a directly-requested
-  one returns **404, not 403** — existence is not disclosed. **Admins are never scoped;**
+  CIDR, or address glob. Out-of-scope elements are absent from every list, a directly-requested one
+  returns **404, not 403** — existence is not disclosed — and a **write** to one returns the same
+  404. A selector never resolves against the operator label, because the label is written by the
+  very role being scoped (v0.7.1, F35). **Admins are never scoped;**
 - every change is **audited** with before and after, the policy history is **immutable and
   append-only**, and **rollback and clearing are one click**;
 - if a policy ever becomes unreadable, capabilities fall back to the built-in permissions (nobody

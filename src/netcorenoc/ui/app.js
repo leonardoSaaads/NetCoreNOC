@@ -330,18 +330,29 @@ function age(ts) {
   if (s < 5400) return Math.round(s / 60) + "m";
   return (s / 3600).toFixed(1) + "h";
 }
+// v0.7.1: the three operator writes can now legitimately fail with a 404 — the target no longer
+// exists, or it lies outside the caller's visibility scope, which are deliberately the same answer
+// (F34/F37). Report it rather than swallowing the rejection: an operator who clicks Close and sees
+// nothing happen would reasonably assume it worked. `err.message` is the server's own detail and
+// reaches the DOM only through alert/textContent (F1).
 async function rename(kind, id, current) {
   const label = prompt(`Rename ${kind} (cosmetic label):`, current);
   if (label === null || !label.trim()) return;
-  await api("/api/labels", { method: "POST", json: { kind, id, label: label.trim() } });
+  try {
+    await api("/api/labels", { method: "POST", json: { kind, id, label: label.trim() } });
+  } catch (err) { alert(`Rename failed — ${err.message}`); }
   poll();
 }
 async function feedback(sid, verdict) {
-  await api(`/api/situations/${sid}/feedback`, { method: "POST", json: { verdict } });
+  try {
+    await api(`/api/situations/${sid}/feedback`, { method: "POST", json: { verdict } });
+  } catch (err) { alert(`Feedback failed — ${err.message}`); }
   poll();
 }
 async function closeSituation(sid) {
-  await api(`/api/situations/${sid}/close`, { method: "POST", json: {} });
+  try {
+    await api(`/api/situations/${sid}/close`, { method: "POST", json: {} });
+  } catch (err) { alert(`Close failed — ${err.message}`); }
   poll();
 }
 function alarmName(a) { return a.class_label || a.class_name || a.class_oid; }
@@ -812,7 +823,8 @@ async function loadGovernance() {
   scopeBox.append(el("h3", { text: "Visibility scope" }));
   scopeBox.append(el("div", { class: "hint", text:
     "Which network elements a viewer or editor may see. Selectors: ne:<id>, an exact address, a "
-    + "CIDR, or a name glob. Admins are never scoped, so a mistake here is always repairable." }));
+    + "CIDR, or an address glob (10.0.*). A selector never matches the operator label, which the "
+    + "scoped role can itself write. Admins are never scoped, so a mistake here is repairable." }));
   scopeBox.append(el("div", { class: "warnbox", text:
     "Visibility scoping is a presentation control and is NOT tenant isolation. Correlation still "
     + "learns across every network element, and a situation may still form across a boundary a "

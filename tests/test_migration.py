@@ -504,3 +504,164 @@ async def test_migrate_populated_v060_database_seeds_no_governance_rows(tmp_path
         assert row is not None and row[0] == 0
     finally:
         await again.close()
+
+
+def _build_v070_db(path: str) -> None:
+    """A populated v0.7.0 database (schema 6), carrying exactly the states v0.7.1 must clean up.
+
+    Built by running migrations `0001`…`0006` only, so it is genuinely a pre-`0007` database
+    rather than a current one with rows deleted: duplicate feedback (what v0.7.0's unbounded
+    `add_feedback` wrote, F36) and orphan labels (what its missing existence check allowed, F37).
+    """
+    conn = sqlite3.connect(path)
+    for migration in (
+        "0001_init.sql",
+        "0002_auth_audit.sql",
+        "0003_entity.sql",
+        "0004_state_clear.sql",
+        "0005_scorer_config.sql",
+        "0006_governance.sql",
+    ):
+        conn.executescript((MIGRATIONS_DIR / migration).read_text())
+    conn.execute("PRAGMA user_version=6")
+    for ip in ("10.0.0.1", "10.0.0.2"):
+        conn.execute(
+            "INSERT INTO device (ip,vendor,first_seen,last_seen) VALUES (?,'Ciena',1,2)", (ip,)
+        )
+        conn.execute(
+            "INSERT INTO ne (ip,vendor,first_seen,last_seen) VALUES (?,'Ciena',1,2)", (ip,)
+        )
+    for ne_id, ip in ((1, "10.0.0.1"), (2, "10.0.0.2")):
+        conn.execute(
+            "INSERT INTO entity (ne_id,parent_id,level,key,key_source,confidence,first_seen,"
+            "last_seen) VALUES (?,NULL,0,?,'self',1.0,1,2)",
+            (ne_id, ip),
+        )
+    conn.execute(
+        "INSERT INTO alarm_class (oid,vendor,name,first_seen,last_seen) "
+        "VALUES ('1.3.6.1.4.1.1271.1','Ciena',NULL,1,2)"
+    )
+    for device_id, instance in ((1, "port-1"), (2, "port-1")):
+        conn.execute(
+            "INSERT INTO alarm (device_id,ne_id,entity_id,class_id,instance,first_seen,last_seen) "
+            "VALUES (?,?,?,1,?,1,2)",
+            (device_id, device_id, device_id, instance),
+        )
+    conn.execute("INSERT INTO situation (created_at,updated_at) VALUES (1,2)")
+    conn.execute("INSERT INTO situation_alarm (situation_id,alarm_id) VALUES (1,1)")
+    conn.execute("INSERT INTO situation_alarm (situation_id,alarm_id) VALUES (1,2)")
+    # F36: v0.7.0 recorded one row per post with no uniqueness at all. Out of order on purpose,
+    # so "keep the EARLIEST by created_at" is actually tested rather than "keep the lowest id".
+    for created_at, verdict in (
+        (300.0, "confirm"),
+        (100.0, "confirm"),  # the earliest confirm — this one must survive
+        (200.0, "confirm"),
+        (500.0, "split"),
+        (400.0, "split"),  # the earliest split — this one must survive
+    ):
+        conn.execute(
+            "INSERT INTO feedback (situation_id,verdict,created_at) VALUES (1,?,?)",
+            (verdict, created_at),
+        )
+    # F37: labels naming targets that do not exist, plus two real ones that must survive.
+    for kind, target_id, label in (
+        ("device", 1, "core-1"),  # real
+        ("class", 1, "LOS"),  # real
+        ("device", 900001, "ghost"),
+        ("device", 900002, "ghost"),
+        ("class", 900003, "ghost"),
+    ):
+        conn.execute(
+            "INSERT INTO label (kind,target_id,label,updated_at) VALUES (?,?,?,1)",
+            (kind, target_id, label),
+        )
+    conn.commit()
+    conn.close()
+
+
+async def test_migrate_populated_v070_database_dedupes_feedback_and_reaps_orphan_labels(
+    tmp_path: Path,
+) -> None:
+    """Gate 2 (v0.7.1): a populated v0.7.0 DB upgrades with data intact and the audit chain
+    verifying, the F36 duplicates de-duplicated to the **earliest** row per (situation, verdict),
+    and the F37 orphan labels gone — while every real row survives.
+
+    `0007` seeds nothing and changes no behaviour by itself; the three deliberate behaviour changes
+    are application-side and enumerated in `docs/scope/SCOPE-0.7.1.md` §2.
+    """
+    db = str(tmp_path / "v070.db")
+    _build_v070_db(db)
+
+    seed = Store(db)
+    await seed.open()  # note: this already applies 0007
+    async with seed.lock:
+        for ts, action in ((1.0, "login.ok"), (2.0, "label.set"), (3.0, "feedback")):
+            await audit.write_event(
+                seed, ts=ts, actor="admin", role="admin", source_ip="-", action=action, outcome="ok"
+            )
+        await seed.commit()
+    await seed.close()
+
+    store = Store(db)
+    await store.open()
+    try:
+
+        async def scalar(sql: str) -> object:
+            cur = await store.conn.execute(sql)
+            row = await cur.fetchone()
+            assert row is not None
+            return row[0]
+
+        assert await scalar("PRAGMA user_version") == Store.latest_schema_version()
+        assert store.integrity_warnings == []
+
+        # v0.7.0 data intact.
+        stats = await store.stats()
+        assert stats["devices"] == 2 and stats["active_alarms"] == 2
+        assert await scalar("SELECT COUNT(*) FROM situation") == 1
+        assert await scalar("SELECT COUNT(*) FROM situation_alarm") == 2
+
+        # F36: 6 rows collapse to 2 — one per (situation, verdict), the EARLIEST of each.
+        assert await scalar("SELECT COUNT(*) FROM feedback") == 2
+        cur = await store.conn.execute("SELECT verdict, created_at FROM feedback ORDER BY verdict")
+        assert [(r[0], r[1]) for r in await cur.fetchall()] == [
+            ("confirm", 100.0),
+            ("split", 400.0),
+        ]
+        # …and the constraint that keeps it that way is live.
+        async with store.lock:
+            with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+                await store.conn.execute(
+                    "INSERT INTO feedback (situation_id,verdict,created_at) VALUES (1,'confirm',9)"
+                )
+            await store.conn.rollback()
+
+        # F36: the attribution columns exist, are nullable, and are NULL for pre-0007 rows —
+        # deliberately not backfilled, because the author is unknown and a guess is not an audit.
+        cur = await store.conn.execute("SELECT principal_ref, role FROM feedback")
+        assert all(r[0] is None and r[1] is None for r in await cur.fetchall())
+
+        # F37: the three orphans are gone; both real labels survive.
+        cur = await store.conn.execute("SELECT kind, target_id FROM label ORDER BY kind, target_id")
+        assert [(r[0], r[1]) for r in await cur.fetchall()] == [("class", 1), ("device", 1)]
+
+        cur = await store.conn.execute("PRAGMA foreign_key_check")
+        assert list(await cur.fetchall()) == []
+        # No seed of any kind: the migration cannot change behaviour on its own.
+        assert await scalar("SELECT COUNT(*) FROM governance_policy") == 0
+        assert await scalar("SELECT COUNT(*) FROM governance_active") == 0
+
+        result = await audit.verify_chain(store)
+        assert result.ok and result.checked == 3
+    finally:
+        await store.close()
+
+    # Idempotent: reopening neither re-runs the cleanup nor loses a row.
+    again = Store(db)
+    await again.open()
+    try:
+        cur = await again.conn.execute("SELECT COUNT(*) FROM feedback")
+        row = await cur.fetchone()
+        assert row is not None and row[0] == 2
+    finally:
+        await again.close()

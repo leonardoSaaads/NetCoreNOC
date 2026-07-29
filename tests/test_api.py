@@ -328,3 +328,260 @@ async def test_main_run_serves_real_sockets(tmp_path: Path) -> None:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+# --- v0.7.1: the write perimeter ------------------------------------------------------------
+#
+# F36, F37 and F39 of `docs/security/SECURITY-REVIEW-0.7.1.md` — the write-discipline half of the
+# release. F34/F35/F38 (scope and authorization) live in `tests/test_governance.py`.
+
+
+@pytest.fixture
+async def burst_client(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]],
+) -> AsyncIterator[httpx.AsyncClient]:
+    """Like `client`, but with the per-IP limiter effectively disabled.
+
+    F36 is about what the *learning* path does under repetition, not about what the limiter does.
+    The limiter (30 burst, 10/s) only paces the attack — ~600 posts a minute still reaches every
+    learned mass — so a test that stopped at the 429 would be testing the wrong control.
+    """
+    await _seed_admin_token(engine_env[0].store)
+    app = create_app(engine_env[0], rate_capacity=100000.0)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://netcorenoc.test",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as c:
+        yield c
+
+
+async def test_f36_repeated_feedback_is_idempotent_and_bounded(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]], burst_client: httpx.AsyncClient
+) -> None:
+    """Operator feedback must not be an unbounded lever on global learned state.
+
+    `learn_epoch` ticks the global forgetting epoch on **both** matrices, every mass decays by
+    `(1-LAMBDA)` per epoch, and `add_feedback` has no uniqueness, no dedupe and no bound. So N
+    identical posts drive N epochs: at LAMBDA=0.05, ~600 epochs a minute takes every learned mass
+    to ~1e-14. `split` compounds it by halving each pair mass as well. The role that can do it is
+    `editor`, the least-privileged role that can write at all.
+    """
+    engine, _queue = engine_env
+    await replay_fiber(engine_env)
+    sid = (await burst_client.get("/api/situations")).json()[0]["id"]
+    learner = engine.learner
+    epoch_before = (learner.A.epoch, learner.E.epoch)
+    pair = next(iter(learner.A.pairs), None)
+    assert pair is not None, "the fixture must have taught the class matrix something"
+    mass_before = learner.A.pair_mass(*pair)
+
+    for _ in range(60):
+        resp = await burst_client.post(
+            f"/api/situations/{sid}/feedback", json={"verdict": "confirm"}
+        )
+        assert resp.status_code == 200, resp.text
+    for _ in range(20):
+        assert (
+            await burst_client.post(f"/api/situations/{sid}/feedback", json={"verdict": "split"})
+        ).status_code == 200
+
+    assert (learner.A.epoch, learner.E.epoch) == epoch_before, (
+        "operator feedback advanced the global forgetting epoch: "
+        f"{epoch_before} -> {(learner.A.epoch, learner.E.epoch)}. An epoch is a closed situation."
+    )
+    mass_after = learner.A.pair_mass(*pair)
+    assert mass_after > mass_before * 0.1, (
+        f"80 posts drove pair {pair} from {mass_before:.6f} to {mass_after:.3e} — the effect of "
+        "repeated feedback is unbounded"
+    )
+    async with engine.store.lock:
+        cur = await engine.store.conn.execute("SELECT COUNT(*) FROM feedback")
+        rows = int((await cur.fetchone())[0])  # type: ignore[index]
+    assert rows == 2, f"80 posts of 2 distinct verdicts recorded {rows} feedback rows, not 2"
+
+
+async def test_f36_a_changed_verdict_still_applies_once(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]], client: httpx.AsyncClient
+) -> None:
+    """Idempotence is per `(situation, verdict)`: a *correction* is legitimate and must land."""
+    engine, _queue = engine_env
+    await replay_fiber(engine_env)
+    sid = (await client.get("/api/situations")).json()[0]["id"]
+    learner = engine.learner
+    pair = next(iter(learner.A.pairs), None)
+    assert pair is not None
+    before = learner.A.pair_mass(*pair)
+    assert (
+        await client.post(f"/api/situations/{sid}/feedback", json={"verdict": "split"})
+    ).status_code == 200
+    after_split = learner.A.pair_mass(*pair)
+    assert after_split < before, "a split must actually penalize"
+    # The same verdict again is a no-op…
+    await client.post(f"/api/situations/{sid}/feedback", json={"verdict": "split"})
+    assert learner.A.pair_mass(*pair) == after_split
+    # …but the operator changing their mind is a correction and applies once.
+    assert (
+        await client.post(f"/api/situations/{sid}/feedback", json={"verdict": "confirm"})
+    ).status_code == 200
+    assert learner.A.pair_mass(*pair) > after_split
+
+
+async def test_f36_closing_a_situation_still_ticks_the_epoch(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]], client: httpx.AsyncClient
+) -> None:
+    """The epoch belongs to a **closed situation** — which is what `learn.py` already says it is.
+
+    Moving the tick off the feedback path must not remove it from the path that owns it.
+    """
+    engine, _queue = engine_env
+    await replay_fiber(engine_env)
+    sid = next(
+        s["id"] for s in (await client.get("/api/situations")).json() if s["status"] == "open"
+    )
+    before = engine.learner.A.epoch
+    async with engine.store.lock:
+        await engine._close_situation(sid, BASE + 5000.0)
+        await engine.store.commit()
+    assert engine.learner.A.epoch == before + 1, (
+        f"closing a situation must advance the epoch exactly once: {before} -> "
+        f"{engine.learner.A.epoch}"
+    )
+
+
+async def test_f36_feedback_records_its_author(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]], client: httpx.AsyncClient
+) -> None:
+    """Without an author, "who degraded the matrices?" is unanswerable: the v0.7.0 audit chain
+    records the API call but not the effect."""
+    engine, _queue = engine_env
+    await replay_fiber(engine_env)
+    sid = (await client.get("/api/situations")).json()[0]["id"]
+    assert (
+        await client.post(f"/api/situations/{sid}/feedback", json={"verdict": "confirm"})
+    ).status_code == 200
+    async with engine.store.lock:
+        cur = await engine.store.conn.execute(
+            "SELECT principal_ref, role FROM feedback WHERE situation_id=?", (sid,)
+        )
+        row = await cur.fetchone()
+    assert row is not None
+    assert row["principal_ref"] == "token:1" and row["role"] == "admin", dict(row)
+
+
+async def test_f37_a_label_write_to_a_nonexistent_target_is_rejected(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]], client: httpx.AsyncClient
+) -> None:
+    """`store.set_label` is an unconditional UPSERT into a table with no foreign key, and
+    `store.prune()` never touches it — so any editor holds an unbounded, never-reclaimed write
+    primitive against the database file."""
+    await replay_fiber(engine_env)
+    store = engine_env[0].store
+    for target in range(900000, 900005):
+        resp = await client.post(
+            "/api/labels", json={"kind": "device", "id": target, "label": "ghost"}
+        )
+        assert resp.status_code == 404, (
+            f"a label was written to nonexistent device {target}: {resp.status_code} {resp.text}"
+        )
+    missing_class = await client.post(
+        "/api/labels", json={"kind": "class", "id": 900000, "label": "ghost"}
+    )
+    assert missing_class.status_code == 404, missing_class.text
+    async with store.lock:
+        cur = await store.conn.execute("SELECT COUNT(*) FROM label WHERE target_id >= 900000")
+        assert int((await cur.fetchone())[0]) == 0  # type: ignore[index]
+
+
+async def test_f37_label_writes_to_real_targets_still_work(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]], client: httpx.AsyncClient
+) -> None:
+    """The existence check must not break the feature it guards."""
+    await replay_fiber(engine_env)
+    device_id = (await client.get("/api/graph")).json()["nodes"][0]["id"]
+    class_id = (await client.get("/api/classes")).json()[0]["id"]
+    assert (
+        await client.post("/api/labels", json={"kind": "device", "id": device_id, "label": "core"})
+    ).status_code == 200
+    assert (
+        await client.post("/api/labels", json={"kind": "class", "id": class_id, "label": "LOS"})
+    ).status_code == 200
+
+
+async def test_f39_a_failed_write_leaves_nothing_to_commit(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]],
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One `aiosqlite` connection is shared by the engine and the API. `main.py` rolls back;
+    `api.py` does not. A handler that mutates and then raises leaves the statement pending on
+    that shared connection, and the **next commit from any other caller adopts it** — so the
+    mutation lands, with no audit row, committed by someone else entirely.
+    """
+    from netcorenoc import audit as audit_module
+
+    engine, _queue = engine_env
+    store = engine.store
+    async with store.lock:
+        uid = await store.create_user("victim", "x", "viewer", False, BASE)
+        await store.commit()
+
+    real_write_event = audit_module.write_event
+
+    async def exploding_write_event(*args: object, **kwargs: object) -> None:
+        if kwargs.get("action") == "role.change":
+            raise RuntimeError("audit backend down")
+        await real_write_event(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(audit_module, "write_event", exploding_write_event)
+    with contextlib.suppress(Exception):
+        await client.post(f"/api/users/{uid}/role", json={"role": "admin"})
+    monkeypatch.setattr(audit_module, "write_event", real_write_event)
+
+    # Any other caller's commit must not adopt the abandoned mutation.
+    async with store.lock:
+        await store.commit()
+        user = await store.get_user(uid)
+    assert user is not None and user["role"] == "viewer", (
+        "an uncommitted, unaudited role change survived a failed request and was committed by an "
+        f"unrelated caller: role is now {user['role'] if user else None!r}"
+    )
+
+
+async def test_f39_feedback_commits_exactly_once(
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]], client: httpx.AsyncClient
+) -> None:
+    """`Engine.apply_feedback` commits internally, then the handler commits again — one route,
+    two transactions, mutation durable *before* it is attributable. The API owns the boundary.
+
+    Counted as a **delta over a read**, because every authenticated request also commits once in
+    `resolve_identity` (the session touch). The quantity under test is the commits the *write path*
+    adds on top of that, and it must be exactly one: mutate → audit → commit.
+    """
+    engine, _queue = engine_env
+    await replay_fiber(engine_env)
+    sid = (await client.get("/api/situations")).json()[0]["id"]
+    store = engine.store
+    commits = 0
+    real_commit = store.commit
+
+    async def counting_commit() -> None:
+        nonlocal commits
+        commits += 1
+        await real_commit()
+
+    store.commit = counting_commit  # type: ignore[method-assign]
+    try:
+        await client.get("/api/situations")
+        baseline = commits  # identity resolution only
+        commits = 0
+        resp = await client.post(f"/api/situations/{sid}/feedback", json={"verdict": "confirm"})
+        assert resp.status_code == 200, resp.text
+        write_commits = commits - baseline
+    finally:
+        store.commit = real_commit  # type: ignore[method-assign]
+    assert write_commits == 1, (
+        f"POST /feedback committed {write_commits} time(s) beyond identity resolution, not 1 — "
+        "the mutation is durable before its audit row"
+    )

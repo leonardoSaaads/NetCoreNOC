@@ -25,6 +25,14 @@ async def test_ingestion_lossless_with_concurrent_authed_audited_api(store: Stor
     engine, queue, app = await authutil.make_env(store)
     admin = await authutil.client_as(app, "admin")
 
+    # Device id 1 must exist before the hammering loop starts: v0.7.1 (F37) rejects a label write
+    # to a target that does not exist, and whether the engine has created it yet is a race against
+    # the loop below. Seeding it makes the latency measurement deterministic without weakening the
+    # `200` assertion, which is about API latency under ingest load, not label semantics.
+    async with store.lock:
+        assert await store.device_id("10.2.0.0", 3_000_000.0) == 1
+        await store.commit()
+
     events = [
         util.event(
             device=f"10.2.0.{i % 40}",

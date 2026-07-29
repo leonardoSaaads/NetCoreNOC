@@ -40,6 +40,19 @@ async def _login_admin(client: httpx.AsyncClient) -> None:
 LABEL = {"kind": "device", "id": 1, "label": "x"}
 
 
+async def _seed_label_target(store: Store) -> None:
+    """Create device id 1 so a label write has a real target.
+
+    v0.7.1 (F37) rejects a label write to a target that does not exist, and `make_env` drives no
+    traps, so device 1 did not exist. The two CSRF tests below assert **200** because they are
+    about the CSRF gate, not about label semantics — so they are given a real device rather than
+    having their assertion weakened (DECISIONS #70).
+    """
+    async with store.lock:
+        assert await store.device_id("10.0.0.1", BASE) == LABEL["id"]
+        await store.commit()
+
+
 async def test_csrf_cookie_mutation_without_client_header_is_rejected(store: Store) -> None:
     _e, _q, app = await authutil.make_env(store)
     async with _raw_client(app) as client:
@@ -72,6 +85,7 @@ async def test_csrf_missing_origin_is_rejected(store: Store) -> None:
 
 async def test_csrf_valid_cookie_mutation_succeeds(store: Store) -> None:
     _e, _q, app = await authutil.make_env(store)
+    await _seed_label_target(store)
     async with _raw_client(app) as client:
         await _login_admin(client)
         resp = await client.post(
@@ -85,6 +99,7 @@ async def test_bearer_token_mutation_needs_no_csrf_header(store: Store) -> None:
     from netcorenoc import auth
 
     _e, _q, app = await authutil.make_env(store)
+    await _seed_label_target(store)
     async with store.lock:
         await store.create_token(auth.hash_token("svc"), "svc", "editor", "adm", 0.0)
         await store.commit()

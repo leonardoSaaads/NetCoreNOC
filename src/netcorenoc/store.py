@@ -13,7 +13,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import aiosqlite
 
@@ -48,6 +48,29 @@ class EdgeRow:
 
 
 TOUCH_INTERVAL_S = 5.0  # cadence for cosmetic last_seen updates on cached rows
+
+# v0.7.1 (F38): the scoped read paths bind one parameter per in-scope NE, exactly as
+# :meth:`Store.scoped_stats` has since v0.7.0. SQLite's ``SQLITE_MAX_VARIABLE_NUMBER`` is 32 766 on
+# every build Python 3.12 ships with, so this cap sits comfortably below it while leaving room for
+# the query's own bound values. Above the cap the scoped branch does not truncate the id list —
+# that would silently answer the wrong question — it fetches unbounded and filters in Python, which
+# is slower but still correct. An estate with more than this many NEs inside a single scope is far
+# outside the design point of a one-file SQLite appliance.
+MAX_SCOPE_PARAMS = 30_000
+
+
+class FeedbackResult(NamedTuple):
+    """Outcome of recording one feedback verdict (v0.7.1, F36).
+
+    Two separate facts the caller must not conflate: whether the situation **exists** (a 404 if it
+    does not) and whether this ``(situation, verdict)`` pair was **newly inserted**. Only a genuine
+    insert may apply a learning effect — a repeat is a no-op that still answers 200, because the
+    operator's statement is already on record and re-stating it carries no new information
+    (DECISIONS #68).
+    """
+
+    exists: bool
+    inserted: bool
 
 
 class Store:
@@ -486,15 +509,51 @@ class Store:
 
     # -- feedback and labels ---------------------------------------------------------
 
-    async def add_feedback(self, situation_id: int, verdict: str, ts: float) -> bool:
+    async def add_feedback(
+        self,
+        situation_id: int,
+        verdict: str,
+        ts: float,
+        *,
+        principal_ref: str | None = None,
+        role: str | None = None,
+    ) -> FeedbackResult:
+        """Record one verdict, **at most once per (situation, verdict)** (v0.7.1, F36).
+
+        v0.7.0 inserted unconditionally, so N identical posts wrote N rows and drove N learning
+        effects — each of which advanced the global forgetting epoch. The `UNIQUE` index added by
+        migration `0007` makes the repeat a no-op at the storage layer, and the returned
+        :class:`FeedbackResult` is what lets `Engine.apply_feedback` apply the learning effect
+        **only** on a genuine insert. A situation has two possible verdicts, so its total influence
+        on the learned state is bounded at two applications however many times anyone posts.
+
+        `principal_ref` / `role` attribute the row. They are nullable because rows written before
+        `0007` have no author and inventing one would be worse than admitting none.
+        """
         cur = await self.conn.execute("SELECT 1 FROM situation WHERE id=?", (situation_id,))
         if await cur.fetchone() is None:
-            return False
-        await self.conn.execute(
-            "INSERT INTO feedback (situation_id, verdict, created_at) VALUES (?, ?, ?)",
-            (situation_id, verdict, ts),
+            return FeedbackResult(exists=False, inserted=False)
+        cur = await self.conn.execute(
+            "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, role) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (situation_id, verdict) DO NOTHING RETURNING id",
+            (situation_id, verdict, ts, principal_ref, role),
         )
-        return True
+        return FeedbackResult(exists=True, inserted=await cur.fetchone() is not None)
+
+    async def label_target_exists(self, kind: str, target_id: int) -> bool:
+        """Does the thing this label would name actually exist? (v0.7.1, F37)
+
+        `label` has no foreign key and `prune()` never touched it, so v0.7.0's unconditional UPSERT
+        was an unbounded, never-reclaimed write primitive: a POST naming any integer created a row.
+        The caller turns a False here into the **same 404** an out-of-scope target produces, so the
+        fix for F37 cannot re-introduce the existence oracle F34 closes.
+        """
+        table = {"device": "device", "class": "alarm_class"}.get(kind)
+        if table is None:
+            return False
+        # nosec B608 - `table` comes from the fixed literal mapping directly above, never from input
+        cur = await self.conn.execute(f"SELECT 1 FROM {table} WHERE id=?", (target_id,))  # nosec B608
+        return await cur.fetchone() is not None
 
     async def set_label(self, kind: str, target_id: int, label: str, ts: float) -> None:
         await self.conn.execute(
@@ -521,15 +580,55 @@ class Store:
             out[name] = int(row[0])
         return out
 
-    async def list_situations(self, status: str | None, limit: int) -> list[dict[str, Any]]:
+    async def list_situations(
+        self, status: str | None, limit: int, ne_ids: frozenset[int] | None = None
+    ) -> list[dict[str, Any]]:
+        """Recent situations, newest first.
+
+        **v0.7.1 (F38): `LIMIT` bounds the *filtered* set, not the global one.** v0.7.0 truncated
+        over the global ordering and let the caller filter afterwards, so a scoped principal's own
+        open incidents disappeared from their list whenever a noisy neighbour they cannot see was
+        busy — and the returned count varied with out-of-scope volume, which is the aggregate oracle
+        F32 claims is closed.
+
+        `ne_ids=None` is the unrestricted case and runs the **unmodified v0.7.0 SQL**, so parity is
+        by construction rather than by inspection. `ne_ids` empty means "exactly nothing" and is
+        answered without a query. See :data:`MAX_SCOPE_PARAMS` for the bound on the scoped branch.
+        """
         where, args = ("WHERE s.status=?", [status]) if status else ("", [])
+        if ne_ids is None:
+            cur = await self.conn.execute(
+                "SELECT s.id, s.status, s.created_at, s.updated_at, s.root_alarm_id, "
+                "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
+                "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
+                # nosec B608 - `where` is a fixed literal, values are bound parameters
+                f"{where} GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?",
+                (*args, limit),
+            )
+            return [dict(r) for r in await cur.fetchall()]
+        if not ne_ids:
+            return []
+        if len(ne_ids) > MAX_SCOPE_PARAMS:
+            # Too many ids to bind. Fetch unbounded and filter here rather than truncating the id
+            # list, which would silently answer a different question than the one asked.
+            rows = await self.list_situations(status, -1)
+            members = await self.situation_member_nes([int(r["id"]) for r in rows])
+            keep = [r for r in rows if any(n in ne_ids for n in members.get(int(r["id"]), []))]
+            return keep[:limit]
+        marks = ",".join("?" * len(ne_ids))
+        scoped = f"{where} AND " if where else "WHERE "
         cur = await self.conn.execute(
             "SELECT s.id, s.status, s.created_at, s.updated_at, s.root_alarm_id, "
             "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
             "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
-            # nosec B608 - `where` is a fixed literal, values are bound parameters
-            f"{where} GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?",
-            (*args, limit),
+            # A situation is listed when **at least one** member is in scope — the same predicate
+            # `project_situation_detail` uses, so the list and the detail can never disagree.
+            # nosec B608 - `scoped` is a fixed literal; `marks` is only "?" placeholders
+            f"{scoped}EXISTS (SELECT 1 FROM situation_alarm sa2 "  # nosec B608
+            f"JOIN alarm a2 ON a2.id=sa2.alarm_id "  # nosec B608
+            f"WHERE sa2.situation_id=s.id AND a2.ne_id IN ({marks})) "  # nosec B608
+            "GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?",
+            (*args, *sorted(ne_ids), limit),
         )
         return [dict(r) for r in await cur.fetchall()]
 
@@ -581,19 +680,51 @@ class Store:
         )
         return [dict(r) for r in await cur.fetchall()]
 
-    async def timeline_marks(self, limit: int) -> list[dict[str, Any]]:
-        """Recent alarms as raise/clear marks over time (for the UI timeline view)."""
-        cur = await self.conn.execute(
-            "SELECT a.first_seen, a.cleared_at, COALESCE(dl.label, d.ip) AS device, "
+    async def timeline_marks(
+        self, limit: int, ne_ids: frozenset[int] | None = None
+    ) -> list[dict[str, Any]]:
+        """Recent alarms as raise/clear marks over time (for the UI timeline view).
+
+        **v0.7.1 (F35 + F38): the scope filter is on `ne_id`, in SQL.** v0.7.0 truncated
+        globally and then filtered in Python by comparing the rendered ``device`` string —
+        ``COALESCE(label, ip)`` — against the scope's address and label sets. That was wrong twice
+        over. Labels are **not unique**, so an editor who copied an in-scope NE's label onto an
+        out-of-scope one inherited its alarm timing and classes (F35); and truncating first made a
+        scoped principal's marks a function of traffic they cannot see (F38). **A display string is
+        never an authorization key.**
+
+        `ne_id` is selected for the filter only and never reaches a mark, so the rendered response
+        is byte-identical to v0.7.0. `ne_ids=None` runs the unmodified v0.7.0 SQL.
+        """
+        select = (
+            "SELECT a.first_seen, a.cleared_at, a.ne_id, COALESCE(dl.label, d.ip) AS device, "
             "COALESCE(cl.label, c.name, c.oid) AS class FROM alarm a "
             "JOIN device d ON d.id=a.device_id JOIN alarm_class c ON c.id=a.class_id "
             "LEFT JOIN label dl ON dl.kind='device' AND dl.target_id=d.id "
             "LEFT JOIN label cl ON cl.kind='class' AND cl.target_id=c.id "
-            "ORDER BY a.last_seen DESC LIMIT ?",
-            (limit,),
         )
+        rows: list[Any]
+        if ne_ids is None:
+            cur = await self.conn.execute(
+                f"{select}ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - literal + bound values
+                (limit,),
+            )
+            rows = list(await cur.fetchall())
+        elif not ne_ids:
+            rows = []
+        elif len(ne_ids) > MAX_SCOPE_PARAMS:
+            # See MAX_SCOPE_PARAMS: filter here rather than truncate the bound id list.
+            cur = await self.conn.execute(f"{select}ORDER BY a.last_seen DESC")  # nosec B608
+            rows = [r for r in await cur.fetchall() if r["ne_id"] in ne_ids][:limit]
+        else:
+            marks_sql = ",".join("?" * len(ne_ids))
+            cur = await self.conn.execute(
+                f"{select}WHERE a.ne_id IN ({marks_sql}) ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - placeholders only
+                (*sorted(ne_ids), limit),
+            )
+            rows = list(await cur.fetchall())
         marks: list[dict[str, Any]] = []
-        for r in await cur.fetchall():
+        for r in rows:
             marks.append(
                 {"ts": r["first_seen"], "device": r["device"], "class": r["class"], "kind": "raise"}
             )
@@ -1088,23 +1219,20 @@ class Store:
         }
 
     async def list_ne_for_scope(self) -> list[dict[str, Any]]:
-        """Every NE as ``(id, ip, label)`` — the input to resolving scope selectors to NE ids.
+        """Every NE as ``(id, ip)`` — the input to resolving scope selectors to NE ids.
 
-        The label comes from the `device` row with the same address, because labels are stored
-        against `device` while scoping is expressed over `ne`. The join is on **ip**, not on id:
-        the two tables' ids coincide only because migration 0003 seeded `ne` from `device`, which
-        is an artefact rather than a declared invariant (and the device_id → ne_id cutover is an
-        open ROADMAP line).
+        **v0.7.1 (F35): the operator label is deliberately NOT selected here.** v0.7.0 joined it in
+        so a glob selector could match a labelled estate, which made `POST /api/labels` — an
+        `editor` route — a write path into the authorization decision that constrains editors. The
+        column is gone rather than guarded, because a guard protects only the write paths it sits
+        on and this one must survive the next one (DECISIONS #66). Everything this query returns is
+        engine-written: `ne.id` and `ne.ip` are created from the trap stream and are not writable
+        through any API route.
 
         Called only when a scope policy is active and the caller is not an admin, so an
         un-configured appliance runs the v0.6.0 read paths untouched.
         """
-        cur = await self.conn.execute(
-            "SELECT n.id, n.ip, l.label FROM ne n "
-            "LEFT JOIN device d ON d.ip = n.ip "
-            "LEFT JOIN label l ON l.kind='device' AND l.target_id = d.id "
-            "ORDER BY n.id"
-        )
+        cur = await self.conn.execute("SELECT n.id, n.ip FROM ne n ORDER BY n.id")
         return [dict(r) for r in await cur.fetchall()]
 
     # -- auth: users --------------------------------------------------------------------

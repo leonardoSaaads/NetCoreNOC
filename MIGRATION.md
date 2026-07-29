@@ -1,5 +1,78 @@
 # Upgrading NetCoreNOC
 
+## v0.7.0 → v0.7.1 (the write perimeter — a security patch)
+
+v0.7.1 fixes six defects (F34–F39) in which a v0.7.0 guarantee was enforced on reads and not on
+writes. It adds no feature, no route, and no configuration.
+
+**Migration `0007_write_perimeter.sql` is transparent.** It adds two nullable columns, one unique
+index, and two clean-ups, and it **seeds nothing**. Apply it the way you always do — it runs at
+startup, or `make migrate`. Back up the database file first, as always.
+
+### What the migration does
+
+| | |
+|---|---|
+| Schema | `user_version` 6 → 7, forward-only and additive |
+| Adds | `feedback.principal_ref` and `feedback.role` (both nullable, **not** backfilled); a `UNIQUE (situation_id, verdict)` index on `feedback` |
+| Removes | duplicate `feedback` rows (keeping the **earliest** of each `(situation, verdict)` by `created_at`), and `label` rows naming a device or alarm class that does not exist |
+| Seeds | **nothing** |
+| Runtime dependencies | unchanged (still five) |
+
+The de-duplication and the orphan cleanup only remove rows that v0.7.0's missing constraints let in.
+Your alarms, situations, links, learned edges, scorer configuration, governance policy, provenance
+and audit chain are untouched, and the audit chain's head hash is byte-identical across the upgrade.
+
+### Action required: review any scope policy that uses a label glob
+
+**This is the one breaking change, and it affects one configuration only.**
+
+v0.7.0 resolved a glob scope selector against the **operator label** when a network element had
+one, so `{"editor": ["core-*"]}` selected everything labelled `core-…`. But the operator label is
+written by `POST /api/labels`, an **editor**-level route — so the role being scoped could widen its
+own scope simply by relabelling a device it was not allowed to see (F35). That is a privilege
+escalation, and closing it properly means the label cannot be an input to the decision at all.
+
+**Since v0.7.1 a selector resolves against network-element identity and address only.** A selector
+that can never match an address is now rejected when you write the policy, with a message saying
+so.
+
+| Selector | v0.7.0 | v0.7.1 |
+|---|---|---|
+| `ne:12` | NE id 12 | unchanged |
+| `10.0.0.1` | that address | unchanged |
+| `10.0.0.0/24` | that range | unchanged |
+| `10.0.*` | address glob | unchanged |
+| `core-*` | matched the **label** | **matches nothing** — rejected at write time |
+| `POP-SUL` | matched that label | **matches nothing** — rejected at write time |
+
+**What to do.** Open **Governance → Visibility scope** and look at each selector. If any is a name
+rather than an address, replace it with the addresses, CIDRs, or `ne:<id>` values of the elements
+you meant. Until you do, that line selects nothing — which is fail-closed: a viewer or editor sees
+*less* than intended, never more. Admins are never scoped, so you can always get in to fix it.
+
+If you have no scope policy stored — the default, and most installations — **there is nothing to
+do.**
+
+### Two other behaviour changes you may notice
+
+Both are defect fixes, and both are deliberate:
+
+- **A label write to a target that does not exist now returns 404** (was 200, and the row
+  persisted). If you have automation that labels devices by id, it will now get an honest error for
+  an id that is not there. This is the same 404 an out-of-scope target returns, deliberately, so the
+  two are indistinguishable.
+- **Posting the same feedback verdict on the same situation twice is now a no-op.** The second call
+  still answers 200, but it records nothing and changes no learned state. Changing your mind
+  (`confirm` after `split`, or the reverse) is a correction and still applies. Previously each
+  repeat applied again *and* aged the whole appliance's learned state, so a loop could drive every
+  learned mass to near zero.
+
+Everything else is byte-identical to v0.7.0: every route, every status code, every shaped field,
+and `make eval`.
+
+---
+
 ## v0.6.0 → v0.7.0 (governance — one migration, and nothing changes until you ask it to)
 
 v0.7.0 lets an admin restrict what each role and principal may **do** (capabilities) and may

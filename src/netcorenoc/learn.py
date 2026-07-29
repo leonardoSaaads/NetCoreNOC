@@ -339,11 +339,19 @@ class Learner:
         query paths that reason about the learned NE-by-NE matrix directly."""
         return self.entity_affinity(a, a, b, b)
 
-    def learn_epoch(self, members: list[Item]) -> None:
-        """A closed (or confirmed) situation reinforces each distinct pair once and
-        ages the matrices by one epoch."""
-        self.A.tick()
-        self.E.tick()
+    def learn_epoch(self, members: list[Item], advance_epoch: bool = True) -> None:
+        """A closed situation reinforces each distinct pair once and ages the matrices by one epoch.
+
+        `advance_epoch=False` reinforces **without** ticking, for operator feedback (v0.7.1, F36).
+        The epoch is the global forgetting clock — every stored mass decays lazily by
+        `(1-LAMBDA)^Δepoch` against it — and it belongs to the *correlation lifecycle*, not to an
+        operator's opinion about one grouping. v0.7.0 ticked on every `confirm`, so a `POST
+        /feedback` loop aged the whole appliance's learned state, for every NE, including NEs the
+        caller could not see (DECISIONS #69).
+        """
+        if advance_epoch:
+            self.A.tick()
+            self.E.tick()
         sample = members[:EPOCH_PAIR_CAP]
         weight = STORM_DAMPING if len(members) >= STORM_ALARMS else 1.0
         class_pairs = {_pair(a[0], b[0]) for i, a in enumerate(sample) for b in sample[i + 1 :]}

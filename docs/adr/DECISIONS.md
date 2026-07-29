@@ -1190,3 +1190,217 @@ grouping**.
   set is deliberately tiny and is the *recovery* surface only: an admin can still be denied
   `users.manage`, `audit.read`, `config.write` or `scorer.write` by policy — governance can restrict
   an admin's day-to-day authority, it just cannot brick the appliance.
+
+## 65. A write is inside the perimeter or it is a defect — and it denies through the *existing* 404 (v0.7.1, F34)
+
+- **Context**: v0.7.0 called `scope_for()` on every NE-bearing **read** and on none of the three
+  `editor` write routes. A scoped editor could write feedback on, close, and label network elements
+  they cannot see — mutating global learned state, and getting a 200-vs-404 split that is an
+  existence oracle on exactly the resources F32 claims are indistinguishable.
+- **Options**: (a) add an `if ne in scope` guard in each of the three handlers; (b) a new
+  `scope.write`-class capability so the perimeter is expressed in `PERMISSIONS`; (c) resolve scope
+  in each handler through the **same** `scope_for` the reads use, and deny by routing into the
+  handler's **existing** not-found branch.
+- **Choice**: (c). For `feedback` and `close`, "in scope" is the predicate
+  `project_situation_detail` already uses — at least one member alarm's NE is in scope — reused
+  rather than restated. For `labels` with `kind="device"` it is `scope.allows_ne`; `kind="class"` is
+  not NE-bearing and is not scoped, for the same reason `/api/classes` is not.
+- **Reason**: (c) keeps **one** scope decision site (F28's rule), and reusing the listing predicate
+  makes it impossible for the read and the write to disagree about what "yours" means — a second
+  copy would drift one-directionally and silently. Denying through the existing 404 branch gives
+  "out of scope" and "no such thing" the same status, the same body and the same timing *by
+  construction* rather than by two branches that happen to agree, which is DECISIONS #60 applied to
+  writes. (a) is the scattered second decision site F28 exists to forbid. (b) is forbidden outright
+  by the release's freeze on `PERMISSIONS`, and it is the wrong shape anyway: scope is not a
+  capability, and conflating them is the confusion F28 was written to prevent.
+
+## 66. Scope selectors resolve against NE identity and address only — never operator-writable data (v0.7.1, F35)
+
+- **Context**: `shaping._matches()` resolved a glob selector against the **operator label** when an
+  NE had one, and the label is written by `POST /api/labels`, an `editor` route. The scoped role
+  therefore controlled an input to its own scope decision: with a policy of `{"editor": ["core-*"]}`,
+  labelling an out-of-scope device `core-pwned` widened the editor's own visibility from 1 NE to 2.
+- **Options**: (a) make `label.write` admin-only; (b) keep the glob and scope-check the label write
+  (F34) so an editor can only relabel what they already see; (c) remove the label from `_matches()`
+  entirely — a glob matches the **address**.
+- **Choice**: (c), with (b) also implemented because F34 requires it independently.
+- **Reason**: only (c) is **structural**. (a) and (b) both leave editor-writable data inside the
+  authorization decision and merely guard the one write path that reaches it today; a future second
+  write path to `label` — a bulk import, a discovery integration, a migration — silently reopens the
+  escalation, and neither option would fail a test when it did. (c) makes the escalation
+  unexpressible: there is no input to the decision that a scoped role can write. (a) additionally
+  removes a genuinely operational affordance (labelling is how a NOC names its estate) to fix an
+  authorization bug, which is the wrong instrument. The cost is real and is stated rather than
+  hidden: a label glob in an existing policy now matches by address or not at all, and
+  `MIGRATION.md` says so in plain language.
+- **Follow-on, decided during Phase 3.** The migration aid was specified as "warn on a selector that
+  currently matches **zero** NEs". Built that way it rejected `203.0.113.0/24` on an appliance that
+  has not yet discovered a device in that range — which contradicts DECISIONS #57, where selectors
+  are resolved against the live inventory on every request *precisely because* NetCoreNOC discovers
+  NEs continuously. A forward-looking CIDR is a legitimate policy, and `scope_policy_errors()`
+  results become a 400, so a zero-match rule would block it. The check is therefore **static**:
+  `_can_never_match()` reports a selector whose literal characters cannot appear in an address
+  (`core-*`, `POP-SUL`), which can match nothing now or ever — exactly the dead label glob. It has
+  no false positives on forward-looking CIDRs or on address globs like `10.0.*`, and it needs no
+  inventory read, so `scope_policy_errors()` keeps its v0.7.0 signature.
+
+## 67. The timeline filters on NE identity, not on a rendered display string (v0.7.1, F35)
+
+- **Context**: `store.timeline_marks()` projects a device as `COALESCE(label, ip)` and
+  `shaping._mark_visible()` decided visibility by **string equality** against `Scope.labels`. Labels
+  are not unique, so an editor who copied an in-scope NE's label onto an out-of-scope NE inherited
+  that NE's alarm timing and classes — the F35 escalation without needing a glob in the policy.
+- **Options**: (a) enforce label uniqueness with a constraint; (b) stop projecting the label into
+  the timeline and render addresses; (c) add `ne_id` to the projection and filter on it, leaving the
+  rendered `device` field exactly as it is.
+- **Choice**: (c).
+- **Reason**: **a display string must never be an authorization key**, and (c) is the only option
+  that says so. (a) treats a symptom: uniqueness is a data-quality property an operator can be
+  talked out of, it does not survive a restore or an import, and it would still leave the
+  authorization decision keyed on a mutable string. (b) fixes the leak by removing the feature — the
+  labelled estate is the whole point of the timeline view — and would be a visible UI regression in a
+  patch release. (c) costs one extra column in a query whose result the UI already renders
+  identically, and it is the same principle as #66 applied to the second path.
+
+## 68. Feedback is idempotent per `(situation, verdict)` (v0.7.1, F36)
+
+- **Context**: `store.add_feedback` checked only that the situation existed — no uniqueness, no
+  dedupe, no bound. Each post ran a learning effect, and `split` compounded by halving each pair
+  mass. Measured: 60 confirms then 20 splits took one pair's mass from 1.000000 to 1.824e-05, with
+  80 rows in `feedback`. The role that can do it is `editor`, the least privileged role that can
+  write anything.
+- **Options**: (a) a per-principal rate limit on the feedback route; (b) a cap on the total effect
+  per situation; (c) a `UNIQUE (situation_id, verdict)` constraint, `INSERT … ON CONFLICT DO
+  NOTHING`, and apply the learning effect **only** on a genuine insert.
+- **Choice**: (c). A *changed* verdict (confirm after split, or the reverse) is a legitimate
+  correction and applies once.
+- **Reason**: (c) makes the effect bounded by the **shape of the data** rather than by a policy
+  someone can tune wrong: a situation has two possible verdicts, so its total influence on the
+  learned state is bounded at two applications, whatever anyone posts. (a) is a redesign of the
+  limiter this release explicitly refuses, and a limiter only paces an attack — 30 burst plus 10/s
+  still reaches every mass in minutes. (b) needs a new stored counter, which is state this release
+  has no reason to add. The cost is a real usability loss and is stated in the review: an operator
+  who genuinely wants to reinforce the same verdict twice cannot. That is the correct trade — the
+  second identical verdict carries no new information, and treating it as if it did is exactly the
+  defect.
+
+## 69. The learning epoch belongs to a closed situation, not to feedback (v0.7.1, F36)
+
+- **Context**: `learn.learn_epoch` calls `Matrix.tick()` on both matrices, advancing the **global**
+  forgetting epoch against which every stored mass decays lazily by `(1-λ)^Δepoch` with λ = 0.05.
+  It has two callers: `_close_situation` and `apply_feedback`. So operator feedback aged the whole
+  learned state of the appliance, for every NE, including NEs the operator cannot see.
+- **Options**: (a) leave the tick and rely on #68's idempotence to bound it; (b) a separate,
+  smaller decay for the feedback path; (c) separate the epoch tick from the reinforcement — the
+  close path ticks, the confirm path reinforces without ticking.
+- **Choice**: (c), expressed as a parameter on `learn_epoch` so the close path's call site and
+  behaviour are untouched.
+- **Reason**: (c) restores what `learn.py`'s own module docstring has said since v0.1.0 — "an epoch
+  is a closed situation". Global forgetting is a property of the correlation lifecycle, not of an
+  operator's opinion about one grouping, and letting a write route drive it is the category error
+  behind the finding. (a) would bound the abuse at two ticks per situation but keeps the wrong
+  model, so the number of epochs would still scale with the number of situations an operator
+  reviews rather than with the number that close. (b) invents a second decay constant, which is a
+  tuning knob this release has no mandate to add. `_close_situation` is the only remaining caller
+  that ticks, and a test asserts it still ticks exactly once.
+
+## 70. A label write to a nonexistent target is a 404 — and the affected tests are repaired, not weakened (v0.7.1, F37)
+
+- **Context**: `store.set_label` is an unconditional UPSERT into a table with no foreign key, and
+  `store.prune()` never touches it. Five writes to device ids 900000–900004, none of which exist,
+  all returned 200 and all persisted: an unbounded, never-reclaimed write primitive held by every
+  editor. Three existing tests assert `200` for a label write to device id 1 in an environment where
+  no traps have been driven, so device 1 does not exist.
+- **Options**: (a) accept the write and let the row be orphaned; (b) return 400 "no such target";
+  (c) verify the target exists and return **the same 404 the out-of-scope case produces**.
+- **Choice**: (c), plus an orphan cleanup in migration `0007`. The affected tests
+  (`test_abuse.py::test_csrf_valid_cookie_mutation_succeeds`,
+  `…::test_bearer_token_mutation_needs_no_csrf_header`, `test_perf.py`) are repaired by **giving
+  them a real device**, never by weakening the new check.
+- **Reason**: (c) is the only status that keeps "does not exist" and "not yours" indistinguishable,
+  which F34 and DECISIONS #60 require; a 400 would be a distinguishable body and therefore an
+  existence oracle re-introduced by the fix for a different finding. The project rule is "the change
+  is the path only; never an assertion" — this is an explicit, justified exception, recorded here
+  because it is a *test* change in a security patch and must not pass unremarked. Their intent
+  (`test_csrf_*` proves the CSRF gate; `test_perf` proves latency under ingest load) is preserved
+  exactly: each still asserts `200`, now against a device that exists.
+
+## 71. No foreign key on `label` in a patch release (v0.7.1, F37)
+
+- **Context**: the real fix for an orphanable table is a foreign key. `label` has none, and SQLite
+  cannot add one in place.
+- **Options**: (a) rebuild `label` in migration `0007` with the FK (create-new, copy, drop, rename);
+  (b) an `AFTER DELETE` trigger on `device`/`alarm_class` that reaps labels; (c) the application-level
+  existence check (#70) plus a one-time orphan cleanup, and the FK on the ROADMAP.
+- **Choice**: (c).
+- **Reason**: a table rebuild inside a **security patch** is a data-integrity risk disproportionate
+  to the defect it closes: it runs against every operator's populated database, it is the one class
+  of migration that can lose rows, and it would make the release's diff unreviewable in exactly the
+  way §8 of the build prompt forbids for module moves. (b) adds a schema behaviour that the
+  application does not otherwise rely on, and triggers are the mechanism this project reserves for
+  the audit/append-only guarantees. (c) closes the write primitive today, removes the existing
+  orphans, and leaves the durable structural fix to a release that can carry a rebuild properly.
+
+## 72. Truncation applies to the filtered set: the scope predicate moves into the SQL (v0.7.1, F38)
+
+- **Context**: `store.list_situations` and `store.timeline_marks` applied `LIMIT` over the **global**
+  ordering, and the scope filter ran in Python afterwards. A scoped viewer's own open incidents
+  disappeared from their list when a noisy neighbour was busy, and the returned count varied with
+  out-of-scope volume — the aggregate oracle F32 claims is closed.
+- **Options**: (a) over-fetch by a factor and filter in Python; (b) fetch everything and filter;
+  (c) bind the in-scope NE ids as parameters in the query so `LIMIT` applies to the filtered set,
+  keeping the **unmodified v0.7.0 SQL** on the unrestricted path.
+- **Choice**: (c), binding `ne_ids` exactly as `store.scoped_stats` already does, with the parameter
+  count bounded and the bound documented.
+- **Reason**: (c) is correct rather than probabilistic. (a) makes the defect rarer and therefore
+  harder to find — the count still depends on out-of-scope volume, just further out, which is the
+  worst property a disclosure control can have. (b) is unbounded work on a request path. (c) also
+  gives parity **by construction**: the unrestricted branch runs byte-identical v0.7.0 SQL, so an
+  appliance with no policy cannot observe the change, and a test asserts the unrestricted result set
+  is unchanged. `scoped_stats` already proved the pattern in v0.7.0, so this is layering on what
+  exists rather than inventing a mechanism.
+
+## 73. One transaction discipline, implemented once (v0.7.1, F39)
+
+- **Context**: `Store` holds one `aiosqlite` connection shared by the engine and the API. `main.py`
+  calls `rollback()`; `api.py` calls it nowhere. A handler that mutated and then raised left the
+  statement pending on the shared connection, and the next `commit()` from any other caller adopted
+  it. Measured: with `audit.write_event` forced to raise inside `POST /api/users/{uid}/role`, the
+  request returned 500 and the role change nevertheless persisted — **with no audit row**, which
+  contradicts F31's "every change is attributable".
+- **Options**: (a) add `try/except: rollback` to each of the twenty mutating handlers; (b) an
+  exception middleware that rolls back; (c) one async context manager — acquire `store.lock`, run
+  the body, commit on success, `rollback()` on any exception, re-raise — used by every mutating
+  handler.
+- **Choice**: (c), placed **next to the existing perimeter closures** inside `create_app` (see #74),
+  with the internal `commit()` removed from `Engine.apply_feedback` so the API owns the boundary.
+- **Reason**: (c) is a discipline rather than a checklist: twenty copies of (a) is twenty chances to
+  forget, and the one that is forgotten is invisible until it is exploited. (b) cannot work here —
+  by the time middleware sees the exception the lock has been released and another caller may
+  already have committed, so the adoption window the finding describes is still open. Removing the
+  engine's internal commit is what makes `POST /feedback` a single transaction in the order
+  mutate → audit → commit, matching every other write path in the file instead of being the one
+  route where the mutation is durable before it is attributable.
+
+## 74. The perimeter extraction is v0.7.2's theme; its shape is recorded now and built none of it here (v0.7.1)
+
+- **Context**: `api.py` is 1 644 lines against a project standard of "~20 modules, each under ~300
+  lines" (SCOPE-0.5 §6), and **four of this release's six findings live in it**. They were hard to
+  find precisely because the security dependency, the governance cache, `scope_for`, `audit_row` and
+  forty route handlers share one file. That is a real argument for extraction.
+- **Options**: (a) extract now, while the findings are fresh; (b) defer with only a ROADMAP line;
+  (c) defer to v0.7.2 as its stated theme, and record the agreed **shape** now so v0.7.2 inherits it
+  rather than re-deciding it.
+- **Choice**: (c). The shape: extract the perimeter — the security dependency,
+  `GovernancePolicies`, `resolve_identity`, `csrf_ok`, `scope_for`, `audit_row`, `RateLimiter`,
+  `DENIED_ACTION`, and this release's new transaction helper — into a **single new flat module**
+  `src/netcorenoc/perimeter.py`, leaving every route handler in `api.py` **textually unchanged**.
+- **Reason**: a security patch's value is a **reviewable diff**. Moving the files the fixes touch
+  makes every fix hunk look like a move, and a maintainer auditing this release could not tell the
+  two apart — which defeats the purpose of the release. One theme per version, and the risky thing
+  *after* the safety net. Two consequences bind Phase 3 of *this* release: every new perimeter-class
+  helper goes next to the existing perimeter closures inside `create_app`, so v0.7.2 lifts that
+  block as a unit; and no existing perimeter closure is renamed or re-signed, because v0.7.2's
+  parity gate is that the extracted block is the *same text* and a drive-by rename here would cost
+  that proof. A `store.py` split by domain and an `api.py` split by route group are larger, weaker
+  arguments and stay ROADMAP lines.

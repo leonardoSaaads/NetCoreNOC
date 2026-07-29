@@ -4,6 +4,89 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-07-29 — "the write perimeter" (security patch)
+
+**A security patch, not a feature release.** Six confirmed defects (F34–F39) in which a v0.7.0
+guarantee was enforced on reads and not on writes. No new capability, no new route, no new
+configurability, no restructuring. `PERMISSIONS`, `ROUTE_PERMISSIONS`, `PUBLIC_ROUTES`,
+`AUDITED_DENIED_PERMISSIONS` and the audit action catalog are unchanged; runtime dependencies stay
+at **five**; `make eval` is **byte-identical** to v0.7.0.
+
+v0.7.0's review declared, under F32, that scoping is enforced by "one filter applied to every
+NE-bearing read". That sentence is true, and it is the defect: the perimeter was designed as a
+*read* projection and the three editor-level write routes were never brought inside it. Worse, one
+of the resolver's own inputs — the operator label — was writable by the very role the scope
+constrains. This release closes the class, not the six instances.
+
+> **Authorization never reads data the constrained party can write, and a write is inside the
+> perimeter or it is a defect.**
+
+### Security
+
+- **F34 (High) — scope is now enforced on the three `editor` write routes.** `POST
+  /api/situations/{sid}/feedback`, `POST /api/situations/{sid}/close` and `POST /api/labels`
+  resolve scope through the **same** `scope_for` the reads use, and deny through each handler's
+  **existing** 404 branch, so out-of-scope and nonexistent stay indistinguishable in status, body
+  and timing. Denials are audited. *Impact: a scoped editor could previously mutate global learned
+  state for network elements they cannot see, and the 200-vs-404 split was an existence oracle.*
+- **F35 (Critical) — an editor can no longer widen their own scope by writing a label.** Scope
+  selectors resolve against **NE identity and address only**; the operator label is gone from the
+  resolver, and the timeline filters on `ne_id` rather than on a rendered display string. *Impact:
+  with a policy of `{"editor": ["core-*"]}`, labelling an out-of-scope device `core-pwned` used to
+  add it to the editor's own visible set; a colliding label leaked an out-of-scope element's alarm
+  timing and classes.*
+- **F36 (High) — operator feedback is idempotent and bounded, and no longer ages global state.**
+  At most one effect per `(situation, verdict)`, and the forgetting epoch advances only when a
+  situation **closes**. Feedback rows now record `principal_ref` and `role`. *Impact: 60 confirms
+  and 20 splits previously drove one pair's learned mass from 1.000000 to 1.824e-05, and the author
+  was unrecorded.*
+- **F37 (Medium) — a label write to a target that does not exist now returns 404.** Migration
+  `0007` removes existing orphans. *Impact: every editor previously held an unbounded,
+  never-reclaimed write primitive against the database file.*
+- **F38 (Medium) — list endpoints apply their `LIMIT` after scope filtering.** *Impact: a scoped
+  viewer's own open incidents used to vanish from their list when a noisy neighbour they cannot see
+  was busy, and the returned count varied with out-of-scope volume.*
+- **F39 (Medium) — every API write is one transaction: mutate → audit → commit, or nothing.** A
+  single `write_txn()` helper rolls back on any exception. *Impact: a handler that raised after
+  mutating previously left the statement pending on the shared connection, and the next commit from
+  an unrelated caller adopted it — the change landing with no audit row.*
+
+### Changed
+
+Three deliberate behaviour changes at empty policy, and no others (`docs/scope/SCOPE-0.7.1.md` §2):
+
+1. a label write to a target that does not exist returns **404** (was 200) — F37;
+2. a repeated **identical** feedback verdict is a **no-op** (was applied and recorded each time) —
+   F36;
+3. list endpoints truncate after filtering — invisible at empty policy, and the unrestricted result
+   set is asserted byte-identical — F38.
+
+**Breaking for one configuration only:** a scope selector that relied on matching an operator
+**label** (`core-*`) now matches by address or not at all, and is rejected at write time with a
+message pointing at `MIGRATION.md`. Review any stored scope policy that uses one. Selectors by NE
+id, exact address, CIDR and **address** glob (`10.0.*`) are unchanged.
+
+### Added
+
+- Migration `0007_write_perimeter.sql` — two nullable attribution columns on `feedback`, a
+  `UNIQUE (situation_id, verdict)` index with prior de-duplication (earliest row by `created_at`
+  kept), and the F37 orphan cleanup. **Seeds nothing; changes no behaviour by itself.**
+- A **generated** write-perimeter test over `ROUTE_PERMISSIONS`: every mutating route below `admin`
+  must resolve scope, so a route added in any future release fails CI until it is inside the
+  perimeter.
+- A **resolver-input invariant** test: no input to the scope decision may be writable by a scopable
+  role.
+- A transaction-discipline test and a feedback-boundedness test.
+- `docs/security/SECURITY-REVIEW-0.7.1.md`, `docs/scope/SCOPE-0.7.1.md`, decisions **#65–#74**, and
+  a `v0.7.1` threat-model extension. `SECURITY-REVIEW-0.7.md`'s F32 row is **superseded in place**
+  with a dated note pointing to F34 and F38 — the published claim is left intact rather than
+  rewritten.
+
+### Fixed
+
+- The UI now surfaces a failed feedback, close, or rename instead of silently swallowing the
+  rejection.
+
 ## [0.7.0] - 2026-07-25 — "governance"
 
 An admin can define what each role and principal may **do** and may **see**. Both are stored,

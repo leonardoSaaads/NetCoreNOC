@@ -657,8 +657,12 @@ NES = [
         ("10.0.0.1", {1}),
         ("10.0.0.0/16", {1, 2}),
         ("192.168.0.0/16", {3}),
-        ("core-*", {1}),
-        ("lab-*", {3}),
+        # v0.7.1 (F35, DECISIONS #66): a glob resolves against the **address**, never the operator
+        # label — the label is written by `POST /api/labels`, an `editor` route, so reading it here
+        # made the scoped role an author of its own scope. A label glob now selects nothing.
+        ("core-*", set()),
+        ("lab-*", set()),
+        ("10.0.*", {1, 2}),  # an address glob still works, and is the supported form
         ("*", {1, 2, 3}),
         ("nonsense", set()),
         ("10.0.0.0/99", set()),  # an unparseable CIDR hides NEs rather than revealing them
@@ -952,3 +956,523 @@ async def test_f30_sse_ends_when_the_streaming_capability_is_revoked(store: Stor
         assert len(updates) == 1, "the stream kept emitting after the capability was revoked"
     finally:
         await admin.aclose()
+
+
+# --- v0.7.1 --------------------------------------------------------------------------------
+#
+# F34, F35 and F38 of `docs/security/SECURITY-REVIEW-0.7.1.md`. v0.7.0 built the scope filter as a
+# *read* projection and called it a perimeter; these three prove the three ways that was wrong:
+# the write routes were never brought inside it (F34), one of the resolver's own inputs is
+# writable by the role it constrains (F35), and truncation runs before the filter so a scoped
+# principal's result set is a function of traffic they cannot see (F38).
+
+
+async def _two_device_estate(store: Store) -> dict[str, int]:
+    """Two NEs on different /24s, each with a device row, so labels and scope have real targets.
+
+    Returns ``{ip: device_id}``. The `ne` and `device` ids coincide here for the same reason they
+    do in production — both tables are seeded from the same address — which is exactly the
+    artefact `list_ne_for_scope()` joins on `ip` to avoid depending on.
+    """
+    out: dict[str, int] = {}
+    async with store.lock:
+        for ip in ("10.0.0.1", "192.168.50.1"):
+            out[ip] = await store.device_id(ip, BASE)
+            ne_id = await store.ne_id(ip, BASE)
+            await store.entity_level0(ne_id, ip, BASE)
+        await store.commit()
+    return out
+
+
+async def test_f34_scope_is_enforced_on_the_editor_write_routes(store: Store) -> None:
+    """The three `editor` write routes must be inside the perimeter their reads already are.
+
+    Reproduces the v0.7.0 observation exactly: `GET /api/situations/{sid}` is a correct 404 for a
+    scoped editor while `POST …/feedback`, `POST …/close` and `POST /api/labels` all return 200 on
+    the very same out-of-scope resources. Three consequences — a scoped editor mutates global
+    learned state for NEs they cannot see, the 200-vs-404 split is an existence oracle on exactly
+    the resources F32 claims are indistinguishable, and `close` reaches into engine state for a
+    situation invisible to the caller.
+    """
+    engine, queue, app = await authutil.make_env(store)
+    await util.drive(engine, queue, util.fixture_events("fiber_cut.json", BASE))
+    admin = await authutil.client_as(app, "admin")
+    editor = await authutil.client_as(app, "editor")
+    try:
+        sid = (await admin.get("/api/situations")).json()[0]["id"]
+        device_id = (await admin.get("/api/graph")).json()["nodes"][0]["id"]
+        # Scope the editor to a range that matches nothing in the fixture.
+        resp = await _write_policy(
+            admin, "scope", {"version": 1, "roles": {"editor": ["203.0.113.0/24"]}}
+        )
+        assert resp.status_code == 200, resp.text
+
+        # The read is already correct, and is the control for the three writes below.
+        assert (await editor.get(f"/api/situations/{sid}")).status_code == 404
+        missing = await editor.post("/api/situations/999999/feedback", json={"verdict": "confirm"})
+        assert missing.status_code == 404
+
+        feedback = await editor.post(f"/api/situations/{sid}/feedback", json={"verdict": "split"})
+        assert feedback.status_code == 404, (
+            "a scoped editor wrote feedback on an out-of-scope situation and moved the global "
+            f"learned state: {feedback.status_code} {feedback.text}"
+        )
+        # Out-of-scope and nonexistent must be one code path: same status, same body.
+        assert feedback.json() == missing.json()
+
+        label = await editor.post(
+            "/api/labels", json={"kind": "device", "id": device_id, "label": "x"}
+        )
+        assert label.status_code == 404, (
+            f"a scoped editor labelled an out-of-scope device: {label.status_code} {label.text}"
+        )
+
+        close = await editor.post(f"/api/situations/{sid}/close")
+        assert close.status_code == 404, (
+            "a scoped editor closed an out-of-scope situation and evicted it from engine state: "
+            f"{close.status_code} {close.text}"
+        )
+    finally:
+        await admin.aclose()
+        await editor.aclose()
+
+
+async def test_f34_an_in_scope_editor_can_still_write(store: Store) -> None:
+    """The perimeter must not become a lockout: in-scope writes keep working exactly as before."""
+    engine, queue, app = await authutil.make_env(store)
+    await util.drive(engine, queue, util.fixture_events("fiber_cut.json", BASE))
+    admin = await authutil.client_as(app, "admin")
+    editor = await authutil.client_as(app, "editor")
+    try:
+        detail_ips = {
+            alarm["device_ip"]
+            for s in (await admin.get("/api/situations")).json()
+            for alarm in (await admin.get(f"/api/situations/{s['id']}")).json()["alarms"]
+        }
+        assert detail_ips
+        # Scope the editor to every address in the fixture: a restricted scope that still covers
+        # everything must behave exactly like no scope at all for writes.
+        await _write_policy(admin, "scope", {"version": 1, "roles": {"editor": sorted(detail_ips)}})
+        sid = (await admin.get("/api/situations")).json()[0]["id"]
+        device_id = (await admin.get("/api/graph")).json()["nodes"][0]["id"]
+        assert (
+            await editor.post(f"/api/situations/{sid}/feedback", json={"verdict": "confirm"})
+        ).status_code == 200
+        assert (
+            await editor.post("/api/labels", json={"kind": "device", "id": device_id, "label": "y"})
+        ).status_code == 200
+        assert (await editor.post(f"/api/situations/{sid}/close")).status_code == 200
+    finally:
+        await admin.aclose()
+        await editor.aclose()
+
+
+async def test_f35_an_editor_cannot_widen_their_own_scope_with_a_label(store: Store) -> None:
+    """**The release.** Authorization must never read data the constrained party can write.
+
+    `shaping._matches()` resolves a glob selector against the operator label, and the operator
+    label is written by `POST /api/labels`, an `editor` route. So the scoped role controls an input
+    to the scope decision — a presentation control turned into self-service escalation.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    devices = await _two_device_estate(store)
+    admin = await authutil.client_as(app, "admin")
+    editor = await authutil.client_as(app, "editor")
+    try:
+        assert (
+            await admin.post(
+                "/api/labels",
+                json={"kind": "device", "id": devices["10.0.0.1"], "label": "core-1"},
+            )
+        ).status_code == 200
+        # Stored **directly**, because since v0.7.1 the API rejects a label glob at write time
+        # (it can never match an address). This is therefore the exact upgrade case: a policy
+        # written under v0.7.0, already in the database, being resolved by v0.7.1.
+        await _store_policy_directly(
+            store, "scope", {"version": 1, "roles": {"editor": ["core-*"]}}
+        )
+
+        before = (await editor.get("/api/me")).json()["scope"]
+
+        # The escalation: label the NE the editor may NOT see so it matches the in-scope glob.
+        await editor.post(
+            "/api/labels",
+            json={"kind": "device", "id": devices["192.168.50.1"], "label": "core-pwned"},
+        )
+
+        after = (await editor.get("/api/me")).json()["scope"]
+        assert after == before, (
+            f"an editor changed their own visibility scope by writing a label: {before} -> {after}"
+        )
+        nodes = {n["ip"] for n in (await editor.get("/api/graph")).json()["nodes"]}
+        assert "192.168.50.0/24" not in nodes and "192.168.50.1" not in nodes, nodes
+        # And the behaviour change itself: a label glob now selects nothing at all, rather than
+        # selecting whatever the constrained role most recently chose to call itself.
+        assert after == {"scoped": True, "ne_count": 0}, after
+    finally:
+        await admin.aclose()
+        await editor.aclose()
+
+
+async def test_f35_a_label_glob_selector_is_rejected_at_write_time(store: Store) -> None:
+    """The migration aid: an admin writing a v0.7.0-style label glob is told at write time.
+
+    The check is **static** — a selector whose literal characters cannot appear in an address can
+    match nothing now or ever. A forward-looking CIDR covering a range with no devices yet is
+    explicitly *not* an error, because selectors resolve against the live inventory on every
+    request precisely so that a later-discovered NE is covered (DECISIONS #57, #66).
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    await _two_device_estate(store)
+    admin = await authutil.client_as(app, "admin")
+    try:
+        for dead in ("core-*", "POP-SUL", "site-a-?"):
+            resp = await _write_policy(admin, "scope", {"version": 1, "roles": {"editor": [dead]}})
+            assert resp.status_code == 400, (dead, resp.status_code)
+            assert "can never match" in resp.text and "MIGRATION.md" in resp.text
+        # Still-valid forms, including a CIDR and a glob matching nothing *yet*.
+        for live in ("203.0.113.0/24", "10.0.0.1", "ne:1", "10.0.*", "172.16.*"):
+            resp = await _write_policy(admin, "scope", {"version": 1, "roles": {"editor": [live]}})
+            assert resp.status_code == 200, (live, resp.status_code, resp.text)
+    finally:
+        await admin.aclose()
+
+
+async def test_f35_a_colliding_label_does_not_leak_an_out_of_scope_timeline(store: Store) -> None:
+    """The cheaper variant, needing no glob: labels are not unique and the timeline filters on
+    the rendered display string (`COALESCE(label, ip)`) rather than on NE identity.
+
+    An editor who copies an in-scope NE's label onto an out-of-scope NE inherits that NE's alarm
+    timing and classes. A display string must never be an authorization key.
+    """
+    engine, queue, app = await authutil.make_env(store)
+    devices = await _two_device_estate(store)
+    await util.drive(
+        engine,
+        queue,
+        [util.event(device=ip, ts=BASE + i) for i, ip in enumerate(sorted(devices), start=1)],
+    )
+    admin = await authutil.client_as(app, "admin")
+    editor = await authutil.client_as(app, "editor")
+    try:
+        await admin.post(
+            "/api/labels", json={"kind": "device", "id": devices["10.0.0.1"], "label": "POP-SUL"}
+        )
+        await _write_policy(admin, "scope", {"version": 1, "roles": {"editor": ["10.0.0.0/24"]}})
+        before = len((await editor.get("/api/timeline")).json()["marks"])
+        assert before >= 1, "need at least one in-scope mark for this to mean anything"
+
+        # Collide: give the out-of-scope NE the in-scope NE's display string.
+        await editor.post(
+            "/api/labels",
+            json={"kind": "device", "id": devices["192.168.50.1"], "label": "POP-SUL"},
+        )
+
+        after = len((await editor.get("/api/timeline")).json()["marks"])
+        assert after == before, (
+            f"a colliding label leaked an out-of-scope NE's timeline: {before} -> {after} marks"
+        )
+    finally:
+        await admin.aclose()
+        await editor.aclose()
+
+
+async def test_f35_scope_selectors_never_read_operator_writable_data(store: Store) -> None:
+    """The invariant, asserted over the resolver itself rather than through the API.
+
+    `visible_nes()` may resolve a selector against NE **identity** and NE **address** only. The
+    operator label is writable by `editor` — the very role scoping constrains — so it may not be
+    an input. This is the structural statement that survives a future second write path to
+    `label`, which is why it is asserted here and not only at the HTTP layer.
+    """
+    policy = shaping.parse_scope_policy(json.dumps({"version": 1, "roles": {"editor": ["core-*"]}}))
+    nes = [
+        {"id": 1, "ip": "10.0.0.1", "label": "core-1"},
+        {"id": 2, "ip": "192.168.50.1", "label": "core-pwned"},
+    ]
+    scope = shaping.visible_nes("editor", "user:2", policy, nes)
+    assert scope.ne_ids == frozenset(), (
+        "a label-matching glob selected NEs: the label is editor-writable and must not reach the "
+        f"scope decision (selected {sorted(scope.ne_ids)})"
+    )
+    # And the same inventory with the labels stripped must resolve identically — proof that the
+    # label contributes nothing at all, rather than merely not mattering for this one selector.
+    unlabelled = [{**ne, "label": None} for ne in nes]
+    assert shaping.visible_nes("editor", "user:2", policy, unlabelled).ne_ids == scope.ne_ids
+    # The forms that survive are identity and address.
+    for selector, expected in (
+        ("ne:2", {2}),
+        ("10.0.0.1", {1}),
+        ("192.168.50.0/24", {2}),
+        ("10.0.*", {1}),
+    ):
+        doc = shaping.parse_scope_policy(
+            json.dumps({"version": 1, "roles": {"editor": [selector]}})
+        )
+        got = shaping.visible_nes("editor", "user:2", doc, nes).ne_ids
+        assert got == frozenset(expected), f"selector {selector!r} -> {sorted(got)}"
+
+
+async def test_f38_truncation_is_applied_after_the_scope_filter(store: Store) -> None:
+    """`LIMIT` must bound the **filtered** set, never the global one.
+
+    Two defects in one. Operationally, a scoped viewer's own open incidents vanish from their list
+    when a noisy neighbour they cannot see is busy — in a NOC that is worse than a disclosure.
+    For security, the returned count varies with out-of-scope volume, which is precisely the
+    aggregate oracle F32 claims is closed.
+    """
+    engine, queue, app = await authutil.make_env(store)
+    await _two_device_estate(store)
+    admin = await authutil.client_as(app, "admin")
+    viewer = await authutil.client_as(app, "viewer")
+    try:
+        await _write_policy(admin, "scope", {"version": 1, "roles": {"viewer": ["10.0.0.0/24"]}})
+        # One in-scope situation, raised first so it sorts oldest by `updated_at`.
+        await util.drive(engine, queue, [util.event(device="10.0.0.1", ts=BASE + 1)])
+        own = len((await viewer.get("/api/situations?limit=2")).json())
+        assert own >= 1, "the viewer must be able to see their own situation to begin with"
+
+        # Now out-of-scope traffic the viewer writes nothing to and cannot see.
+        await util.drive(
+            engine,
+            queue,
+            [
+                util.event(device="192.168.50.1", trap_oid=oid, ts=BASE + 100 + i)
+                for i, oid in enumerate((util.CIENA_TRAP, util.HUAWEI_TRAP), start=1)
+            ],
+        )
+        after = (await viewer.get("/api/situations?limit=2")).json()
+        assert len(after) == own, (
+            f"out-of-scope volume changed a scoped viewer's own result set: {own} -> {len(after)} "
+            "situations at limit=2 (global truncation ran before the scope filter)"
+        )
+
+        marks_admin = (await admin.get("/api/timeline?limit=2")).json()["marks"]
+        marks_viewer = (await viewer.get("/api/timeline?limit=2")).json()["marks"]
+        assert marks_admin, "the admin must see the estate's marks"
+        assert marks_viewer, (
+            "a scoped viewer received zero timeline marks because the global LIMIT consumed them "
+            "all before the scope filter ran"
+        )
+    finally:
+        await admin.aclose()
+        await viewer.aclose()
+
+
+async def test_f38_the_unrestricted_result_set_is_unchanged(store: Store) -> None:
+    """The parity half of F38: filtering moves into SQL, so the unscoped path must be untouched."""
+    engine, queue, app = await authutil.make_env(store)
+    await util.drive(engine, queue, util.fixture_events("fiber_cut.json", BASE))
+    admin = await authutil.client_as(app, "admin")
+    try:
+        async with store.lock:
+            direct = await store.list_situations(None, 500)
+            open_only = await store.list_situations("open", 500)
+            marks = await store.timeline_marks(1000)
+        assert direct == (await admin.get("/api/situations?limit=500")).json()
+        assert [r["id"] for r in open_only] == [
+            r["id"] for r in (await admin.get("/api/situations?status=open&limit=500")).json()
+        ]
+        assert marks == (await admin.get("/api/timeline?limit=1000")).json()["marks"]
+    finally:
+        await admin.aclose()
+
+
+# --- v0.7.1: the perimeter tests that fail for the NEXT route, not just these three ---------
+#
+# These two are the point of the release. The three handler fixes protect three routes; these
+# protect every route that will ever be added, and every input the resolver will ever read.
+
+
+def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
+    """**Generated from `ROUTE_PERMISSIONS`**, so it cannot drift from the map it checks.
+
+    Every route whose method is not `GET` and whose capability is below `admin` must resolve scope,
+    because such a route can be called by a principal the scope policy constrains. Admin-only
+    routes are exempt for one reason and one reason only: **admin is never scoped** (DECISIONS
+    #58) — so if that ever changes, this test's premise changes with it.
+
+    The exemption list is deliberately tiny, explicit and justified: a route acting on the caller's
+    **own session or account** references no network element, so there is nothing to scope. A route
+    added in a future release is NOT on this list, so it fails here until it is inside the
+    perimeter or is consciously added with a reason.
+    """
+    import inspect
+
+    source = inspect.getsource(api)
+    # `POST /api/logout` and `POST /api/password` act on the caller's own session and account.
+    # Neither carries an NE reference, and neither can name another principal's resource.
+    session_only = {("POST", "/api/logout"), ("POST", "/api/password")}
+    handlers = {
+        ("POST", "/api/situations/{sid}/feedback"): "async def feedback(",
+        ("POST", "/api/labels"): "async def set_label(",
+        ("POST", "/api/situations/{sid}/close"): "async def close_situation(",
+    }
+    unprotected: list[str] = []
+    for (method, path), capability in sorted(rbac.ROUTE_PERMISSIONS.items()):
+        if method == "GET" or rbac.PERMISSIONS[capability] == "admin":
+            continue
+        if (method, path) in session_only:
+            continue
+        anchor = handlers.get((method, path))
+        if anchor is None:
+            unprotected.append(
+                f"{method} {path} ({capability}) is a mutating route below admin with no entry in "
+                "this test: add it to `handlers` with its scope check, or to `session_only` with a "
+                "reason why it references no network element"
+            )
+            continue
+        start = source.index(anchor)
+        body = source[start : source.index("\n    @app.", start + 1)]
+        if "scope_for(principal)" not in body:
+            unprotected.append(f"{method} {path} ({capability}) does not call scope_for()")
+    assert not unprotected, "routes outside the write perimeter:\n" + "\n".join(unprotected)
+
+
+def test_f35_no_resolver_input_is_writable_by_a_scopable_role() -> None:
+    """The release's central invariant, asserted over the resolver's **signature and inputs**.
+
+    `visible_nes()` may read only values that a scopable role (viewer, editor) cannot write. The
+    NE inventory it consumes comes from `store.list_ne_for_scope()`, so that query's projection is
+    the thing under test: every column it selects must be engine-written.
+
+    v0.7.0 selected `label`, which `POST /api/labels` writes at `editor` level — that was F35. A
+    future change that re-adds it, or adds any other operator-writable column, fails here.
+    """
+    import inspect
+
+    projection = inspect.getsource(Store.list_ne_for_scope)
+    forbidden = ("label", "note", "comment", "tag", "description")
+    offending = [
+        word for word in forbidden if f"l.{word}" in projection or f" {word}," in projection
+    ]
+    assert not offending, (
+        f"list_ne_for_scope() selects operator-writable column(s) {offending}: the scope decision "
+        "must read NE identity and address only (F35, DECISIONS #66)"
+    )
+    assert "FROM ne n" in projection and "JOIN label" not in projection
+
+    # And the resolver itself: no label, however supplied, may change the answer.
+    policy = shaping.parse_scope_policy(
+        json.dumps({"version": 1, "roles": {"editor": ["core-*", "10.0.0.0/24", "ne:3"]}})
+    )
+    hostile = [
+        {"id": 1, "ip": "10.0.0.1", "label": "core-1"},
+        {"id": 2, "ip": "192.168.50.1", "label": "core-pwned"},
+        {"id": 3, "ip": "172.16.0.1", "label": "core-anything"},
+    ]
+    stripped = [{k: (None if k == "label" else v) for k, v in ne.items()} for ne in hostile]
+    with_labels = shaping.visible_nes("editor", "user:2", policy, hostile)
+    without_labels = shaping.visible_nes("editor", "user:2", policy, stripped)
+    assert with_labels == without_labels, (
+        "the operator label changed the resolved scope: "
+        f"{sorted(with_labels.ne_ids)} with labels vs {sorted(without_labels.ne_ids)} without"
+    )
+    # Only the address CIDR and the explicit id selected anything.
+    assert with_labels.ne_ids == frozenset({1, 3}), sorted(with_labels.ne_ids)
+
+
+def test_f35_the_scopable_roles_are_exactly_viewer_and_editor() -> None:
+    """The premise of the two tests above, pinned so a new role cannot silently escape them."""
+    scopable = {role for role in rbac.ROLE_RANK if shaping.is_scopable(role)}
+    assert scopable == {"viewer", "editor"}, scopable
+
+
+def test_f39_every_mutating_handler_uses_the_transaction_helper() -> None:
+    """No mutating handler may take `store.lock` directly and commit by hand (F39).
+
+    The discipline is only a discipline if it is the *only* way to write. A handler that reverts to
+    `async with store.lock: … await store.commit()` is one that will not roll back when it raises,
+    which is exactly the defect. `resolve_identity`, the security dependency's denial audit, the
+    governance-fallback flush, and the deliberate commit-before-raise branches of `login` and
+    `change_password` are the named exceptions — each commits an audit row that must survive a
+    failed request.
+    """
+    import inspect
+
+    source = inspect.getsource(api)
+    assert "async def write_txn(" in source, "the transaction helper is gone"
+    assert "await store.rollback()" in source, "api.py must roll back on a failed write"
+    # Every handler decorated as a mutation must reach write_txn().
+    for decorator in ('@app.post("', '@app.delete("'):
+        for start in _all_indices(source, decorator):
+            head = source[start : start + 400]
+            route = head.split('"')[1]
+            if route in ("/api/login",):
+                continue  # multi-branch: commits each audited outcome explicitly, then raises
+            body = source[start : source.index("\n    @app.", start + 1)]
+            # `/api/rbac` and `/api/scope` delegate to `_write_policy`, the single write path for
+            # both policy kinds, which takes the helper once on their behalf.
+            reaches = "write_txn()" in body or "await _write_policy(" in body
+            assert reaches, f"{route} mutates without the transaction helper"
+    assert "async def _write_policy(" in source
+    delegated = source[source.index("async def _write_policy(") :][:2000]
+    assert "write_txn()" in delegated, "the shared policy write path lost the transaction helper"
+
+
+def _all_indices(text: str, needle: str) -> list[int]:
+    out: list[int] = []
+    i = text.find(needle)
+    while i != -1:
+        out.append(i)
+        i = text.find(needle, i + 1)
+    return out
+
+
+async def test_f38_the_large_scope_fallback_agrees_with_the_bound_path(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Above `MAX_SCOPE_PARAMS` the scoped reads filter in Python instead of binding ids.
+
+    That branch exists so a very large in-scope estate degrades in *speed* rather than in
+    *correctness* — truncating the bound id list would silently answer a different question. It is
+    therefore only defensible if it returns exactly what the bound path returns, which is what this
+    asserts, with the cap lowered so the branch is reachable in a test.
+    """
+    engine, queue, _app = await authutil.make_env(store)
+    devices = await _two_device_estate(store)
+    await util.drive(
+        engine,
+        queue,
+        [
+            util.event(device=ip, trap_oid=oid, ts=BASE + i)
+            for i, (ip, oid) in enumerate(
+                [
+                    ("10.0.0.1", util.CIENA_TRAP),
+                    ("192.168.50.1", util.CIENA_TRAP),
+                    ("10.0.0.1", util.HUAWEI_TRAP),
+                ],
+                start=1,
+            )
+        ],
+    )
+    assert len(devices) == 2
+    scope_ids = frozenset({1})
+    async with store.lock:
+        bound_sits = await store.list_situations(None, 50, scope_ids)
+        bound_open = await store.list_situations("open", 50, scope_ids)
+        bound_marks = await store.timeline_marks(50, scope_ids)
+        monkeypatch.setattr("netcorenoc.store.MAX_SCOPE_PARAMS", 0)
+        fallback_sits = await store.list_situations(None, 50, scope_ids)
+        fallback_open = await store.list_situations("open", 50, scope_ids)
+        fallback_marks = await store.timeline_marks(50, scope_ids)
+    assert bound_marks, "the fixture must produce in-scope marks for this to mean anything"
+    assert fallback_sits == bound_sits
+    assert fallback_open == bound_open
+    assert fallback_marks == bound_marks
+    # And the fallback still honours the limit over the *filtered* set, which is the F38 property.
+    async with store.lock:
+        assert len(await store.list_situations(None, 1, scope_ids)) <= 1
+
+
+async def test_f38_an_empty_scope_reads_nothing_without_a_query(store: Store) -> None:
+    """`ne_ids` empty means "exactly nothing" (DECISIONS #63) and is answered without a query."""
+    engine, queue, _app = await authutil.make_env(store)
+    await _two_device_estate(store)
+    await util.drive(engine, queue, [util.event(device="10.0.0.1", ts=BASE + 1)])
+    async with store.lock:
+        assert await store.list_situations(None, 50, frozenset()) == []
+        assert await store.timeline_marks(50, frozenset()) == []
+        # …and the unrestricted path still sees them, so this is a filter and not an empty table.
+        assert await store.list_situations(None, 50) != []
+        assert await store.timeline_marks(50) != []

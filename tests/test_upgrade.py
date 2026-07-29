@@ -12,9 +12,11 @@ import asyncio
 from pathlib import Path
 
 from netcorenoc import audit, shaping
+from netcorenoc.api import create_app
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
+import authutil
 import util
 
 BASE = 1_700_000_000.0
@@ -255,5 +257,151 @@ async def test_v070_upgrade_changes_no_behaviour(tmp_path: Path) -> None:
                 assert (capability in resolved) == rbac.role_allows(role, capability)
         # And scoping is inactive, so every principal still sees every NE.
         assert shaping.visible_nes("viewer", "user:1", None, []).unrestricted
+    finally:
+        await new.close()
+
+
+async def test_v071_upgrade_changes_no_behaviour_except_the_three_documented_changes(
+    tmp_path: Path,
+) -> None:
+    """Gate 4.2 (v0.7.1): a live v0.7.0 database upgrades in place and, with **no governance
+    policy**, every route answers exactly as it did — with three documented exceptions.
+
+    The exceptions are each a defect fix, each has a `DECISIONS.md` entry, and each is asserted
+    explicitly below rather than described:
+
+    1. a label write to a target that does not exist now returns **404** (F37, DECISIONS #70);
+    2. a repeated **identical** feedback verdict is now a **no-op** (F36, DECISIONS #68);
+    3. a list endpoint applies its `LIMIT` after filtering (F38, DECISIONS #72) — invisible here,
+       because an unrestricted scope filters nothing, so the unrestricted result set is asserted
+       byte-identical to the v0.7.0 query.
+
+    Any fourth difference at empty policy is a defect in this release's work.
+    """
+    import netcorenoc.store as store_mod
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV6:
+        """The migration directory as a v0.7.0 install saw it: nothing past 0006 exists yet."""
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 6]
+
+    async def partition_of(store: Store) -> set[frozenset[int]]:
+        cur = await store.conn.execute("SELECT situation_id, alarm_id FROM situation_alarm")
+        groups: dict[int, set[int]] = {}
+        for row in await cur.fetchall():
+            groups.setdefault(int(row[0]), set()).add(int(row[1]))
+        return {frozenset(members) for members in groups.values()}
+
+    db = str(tmp_path / "v070-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV6()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 6  # a genuine v0.7.0 database
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        async with old.lock:
+            await audit.write_event(
+                old,
+                ts=BASE,
+                actor="admin",
+                role="admin",
+                source_ip="-",
+                action="login.ok",
+                outcome="ok",
+            )
+            await old.commit()
+        before_partition = await partition_of(old)
+        before_edges = (await old.graph_snapshot(min_edge_n=0))["edges"]
+        before_stats = await old.stats()
+        before_situations = await old.list_situations(None, 500)
+        before_open = await old.list_situations("open", 500)
+        before_marks = await old.timeline_marks(1000)
+        before_epoch = (engine_old.learner.A.epoch, engine_old.learner.E.epoch)
+        assert before_partition and before_edges and before_marks
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    # The upgrade: same file, migration 0007 now present.
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == Store.latest_schema_version()
+        assert new.integrity_warnings == []
+        engine_new = Engine(new, asyncio.Queue())
+        await engine_new.start()
+
+        # Learned state, grouping, provenance and the audit chain all survive.
+        assert await partition_of(new) == before_partition
+        assert (await new.graph_snapshot(min_edge_n=0))["edges"] == before_edges
+        assert await new.stats() == before_stats
+        assert (engine_new.learner.A.epoch, engine_new.learner.E.epoch) == before_epoch
+        assert (await audit.verify_chain(new)).ok
+        assert await new.active_scorer_config() is not None
+        assert await new.active_governance_ids() == {}  # still no policy: nothing is scoped
+
+        # Change 3 (F38): the SQL changed, so the UNRESTRICTED result set is asserted unchanged.
+        assert await new.list_situations(None, 500) == before_situations
+        assert await new.list_situations("open", 500) == before_open
+        assert await new.timeline_marks(1000) == before_marks
+        # …and `ne_id` is used for filtering only; it never reaches a rendered mark.
+        assert all(
+            set(m) == {"ts", "device", "class", "kind"} for m in await new.timeline_marks(50)
+        )
+
+        await authutil.make_users(new)
+        app = create_app(engine_new, rate_capacity=100000.0)
+        admin = await authutil.client_as(app, "admin")
+        try:
+            sid = (await admin.get("/api/situations")).json()[0]["id"]
+            device_id = (await admin.get("/api/graph")).json()["nodes"][0]["id"]
+
+            # Change 1 (F37): a nonexistent target is now 404; a real one is unchanged at 200.
+            assert (
+                await admin.post("/api/labels", json={"kind": "device", "id": 900001, "label": "x"})
+            ).status_code == 404
+            assert (
+                await admin.post(
+                    "/api/labels", json={"kind": "device", "id": device_id, "label": "core-1"}
+                )
+            ).status_code == 200
+
+            # Change 2 (F36): the repeat still answers 200 but records and applies nothing.
+            pair = next(iter(engine_new.learner.A.pairs), None)
+            assert pair is not None
+            first = await admin.post(f"/api/situations/{sid}/feedback", json={"verdict": "confirm"})
+            assert first.status_code == 200
+            after_first = engine_new.learner.A.pair_mass(*pair)
+            repeat = await admin.post(
+                f"/api/situations/{sid}/feedback", json={"verdict": "confirm"}
+            )
+            assert repeat.status_code == 200 and repeat.json() == first.json()
+            assert engine_new.learner.A.pair_mass(*pair) == after_first
+            cur = await new.conn.execute("SELECT COUNT(*) FROM feedback")
+            row = await cur.fetchone()
+            assert row is not None and row[0] == 1
+
+            # And the epoch did not move: an epoch is a closed situation (F36, DECISIONS #69).
+            assert (engine_new.learner.A.epoch, engine_new.learner.E.epoch) == before_epoch
+
+            # Everything else at empty policy is untouched: nothing is scoped, no route 403s.
+            me = (await admin.get("/api/me")).json()
+            assert me["scope"] == {"scoped": False, "ne_count": None}
+            for path in (
+                "/api/stats",
+                "/api/graph",
+                "/api/timeline",
+                "/api/entities",
+                "/api/scope",
+            ):
+                assert (await admin.get(path)).status_code == 200, path
+        finally:
+            await admin.aclose()
     finally:
         await new.close()

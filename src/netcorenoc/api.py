@@ -375,6 +375,38 @@ def create_app(
             details=details,
         )
 
+    # -- transaction discipline (v0.7.1, F39) -------------------------------------------
+
+    @contextlib.asynccontextmanager
+    async def write_txn() -> AsyncIterator[None]:
+        """**THE** write boundary: one mutation, one transaction, one audit row.
+
+        `Store` holds a single `aiosqlite` connection shared by the engine task and every API
+        request, so a `commit()` from *any* caller commits everything pending on it, whoever issued
+        it. v0.7.0's `main.py` rolled back on its batch path and `api.py` rolled back nowhere: a
+        handler that mutated and then raised left the statement pending, and the **next commit from
+        an unrelated caller adopted it**. The mutation landed with no audit row, which contradicts
+        F31's "every change is attributable".
+
+        Used by every mutating handler, so the discipline is implemented once rather than repeated
+        as a `try/except` in twenty places — twenty copies is twenty chances to forget, and the one
+        that is forgotten is invisible until it is exploited (DECISIONS #73).
+
+        A handler that must make an audit row durable *even though the request fails* — a denied
+        login, a rejected password change — still commits explicitly before raising. The rollback
+        below then has nothing left to undo, so the two compose without an exemption.
+
+        Note for v0.7.2 (DECISIONS #74): this belongs to the perimeter block and moves to
+        `perimeter.py` with `scope_for`, `audit_row`, and the security dependency.
+        """
+        async with store.lock:
+            try:
+                yield
+            except BaseException:
+                await store.rollback()
+                raise
+            await store.commit()
+
     # -- identity resolution (under the store lock; sessions/tokens touch the DB) -------
 
     async def resolve_identity(request: Request) -> auth.Principal | None:
@@ -517,7 +549,7 @@ def create_app(
     @app.post("/api/login")
     async def login(body: LoginIn, request: Request, response: Response) -> dict[str, Any]:
         source_ip = _client_ip(request)
-        async with store.lock:
+        async with write_txn():
             outcome = await auth.perform_login(
                 store,
                 throttle,
@@ -575,7 +607,6 @@ def create_app(
                 object_type="user",
                 object_id=str(outcome.principal.user_id),
             )
-            await store.commit()
         response.set_cookie(auth.COOKIE_NAME, outcome.session_token, **_cookie_kwargs())
         return {
             "user": outcome.principal.actor,
@@ -588,11 +619,10 @@ def create_app(
         request: Request, response: Response, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
         cookie = request.cookies.get(auth.COOKIE_NAME)
-        async with store.lock:
+        async with write_txn():
             if cookie:
                 await store.delete_session(auth.hash_token(cookie))
             await audit_row(request, principal, "logout", "ok")
-            await store.commit()
         response.delete_cookie(auth.COOKIE_NAME, path="/")
         return {"status": "logged out"}
 
@@ -643,7 +673,7 @@ def create_app(
         policy = auth.validate_password(body.new_password)
         if policy is not None:
             raise HTTPException(status_code=400, detail=policy)
-        async with store.lock:
+        async with write_txn():
             user = await store.get_user(principal.user_id)
             if user is None or not auth.verify_password(body.old_password, user["password_hash"]):
                 await audit_row(
@@ -668,7 +698,6 @@ def create_app(
                 object_type="user",
                 object_id=str(principal.user_id),
             )
-            await store.commit()
         return {"status": "password changed; sign in again"}
 
     # -- read endpoints (viewer+) ------------------------------------------------------
@@ -723,10 +752,19 @@ def create_app(
         `alarm_count` is the number this reader can actually see, with `redacted_count` naming how
         many they cannot — the same honest split as the detail view (DECISIONS #59). Reporting the
         global count here would leak out-of-scope volume across every listed situation at once.
+
+        **v0.7.1 (F38):** the scope predicate is bound into the query, so `LIMIT` bounds the
+        *filtered* set. v0.7.0 truncated globally and filtered afterwards, so a scoped viewer's own
+        open incidents vanished from their list whenever a noisy neighbour they cannot see was
+        busy — and the returned count varied with out-of-scope volume (DECISIONS #72).
         """
         scope = await scope_for(principal)
         async with store.lock:
-            rows = await store.list_situations(status, min(max(limit, 1), 500))
+            rows = await store.list_situations(
+                status,
+                min(max(limit, 1), 500),
+                None if scope.unrestricted else scope.ne_ids,
+            )
             if scope.unrestricted:
                 return rows
             members = await store.situation_member_nes([int(r["id"]) for r in rows])
@@ -767,10 +805,18 @@ def create_app(
     async def timeline(
         limit: int = 300, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
+        """Recent raise/clear marks.
+
+        **v0.7.1 (F35 + F38):** the scope filter lives in the query and is keyed on `ne_id`. v0.7.0
+        truncated globally and then compared the *rendered* `device` string — `COALESCE(label, ip)`
+        — against the scope's address and label sets, which made a non-unique display string an
+        authorization key (DECISIONS #67, #72).
+        """
         scope = await scope_for(principal)
         async with store.lock:
-            marks = await store.timeline_marks(min(max(limit, 1), 1000))
-        marks = shaping.project_timeline(marks, scope)
+            marks = await store.timeline_marks(
+                min(max(limit, 1), 1000), None if scope.unrestricted else scope.ne_ids
+            )
         return {"marks": shaping.shape(marks, principal.role)}  # coarsen device IPs below editor
 
     # -- entity tree + varbind profiler (viewer+, inspectable) -------------------------
@@ -835,14 +881,13 @@ def create_app(
     ) -> dict[str, str]:
         """Admin recourse for a poisoned identity: forget the NE's learned entity/severity
         decision (history untouched). The next sweep re-decides from current evidence."""
-        async with store.lock:
+        async with write_txn():
             if not any(int(n["id"]) == ne_id for n in await store.list_ne()):
                 raise HTTPException(status_code=404, detail="no such NE")
             await engine.reset_entity(ne_id, time.time())
             await audit_row(
                 request, principal, "entity.reset", "ok", object_type="ne", object_id=str(ne_id)
             )
-            await store.commit()
         return {"status": "entity decision reset"}
 
     @app.post("/api/profiles/{ne_id}/reset")
@@ -851,25 +896,81 @@ def create_app(
     ) -> dict[str, str]:
         """Wipe the NE's profiler evidence as well, so identity and severity re-measure from
         scratch — the recovery when the accumulated evidence itself is poisoned."""
-        async with store.lock:
+        async with write_txn():
             if not any(int(n["id"]) == ne_id for n in await store.list_ne()):
                 raise HTTPException(status_code=404, detail="no such NE")
             await engine.reset_profile(ne_id, time.time())
             await audit_row(
                 request, principal, "profile.reset", "ok", object_type="ne", object_id=str(ne_id)
             )
-            await store.commit()
         return {"status": "profiler evidence reset"}
 
     # -- operate (editor+) -------------------------------------------------------------
+
+    # v0.7.1 (F34): the three routes below are the write perimeter — the only mutating routes
+    # whose capability is below `admin` and which name a network element. Every other mutating
+    # route is admin-only, and admin is never scoped (DECISIONS #58). Each resolves scope through
+    # the SAME `scope_for` the reads use, and each denies by falling into the not-found branch it
+    # already had, so "out of your scope" and "no such thing" are one code path — the same status,
+    # the same body, the same timing (DECISIONS #60, #65). `scope_for` is awaited *before*
+    # `write_txn()`, because it takes `store.lock` itself and the lock is not reentrant.
+
+    async def situation_in_scope(sid: int, scope: shaping.Scope) -> bool:
+        """Is any member alarm of this situation in scope? The write-side membership test.
+
+        Deliberately the **same predicate** `project_situation_detail` uses to decide whether a
+        situation is visible at all, reused rather than restated, so a read and a write can never
+        disagree about what "yours" means. A second copy would drift one-directionally and silently.
+
+        Returns before touching the database when the scope is unrestricted, so an appliance with
+        no policy pays nothing for the perimeter — and so this stays the one place the question is
+        answered, rather than every caller re-deciding when to ask it.
+        """
+        if scope.unrestricted:
+            return True
+        async with store.lock:
+            members = await store.situation_member_ne(sid)
+        return any(scope.allows_ne(ne_id) for ne_id in members.values())
+
+    async def audit_scope_denial(
+        request: Request, principal: auth.Principal, action: str, object_type: str, object_id: str
+    ) -> None:
+        """Record a scope-denied write. The caller still receives the indistinguishable 404.
+
+        The denial is audited under the action the caller attempted, so a scoped principal probing
+        the write surface leaves a trail even though the response tells them nothing.
+        """
+        async with write_txn():
+            await audit_row(
+                request,
+                principal,
+                action,
+                "denied",
+                object_type=object_type,
+                object_id=object_id,
+                details={"reason": "out of visibility scope"},
+            )
 
     @app.post("/api/situations/{sid}/feedback")
     async def feedback(
         sid: int, body: FeedbackIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
-        async with store.lock:
-            recorded = await engine.apply_feedback(sid, body.verdict, time.time())
-            if recorded:
+        scope = await scope_for(principal)
+        if not await situation_in_scope(sid, scope):
+            await audit_scope_denial(request, principal, "feedback", "situation", str(sid))
+            raise HTTPException(status_code=404, detail="no such situation")
+        async with write_txn():
+            # F36: `recorded.exists` is the 404 question; `recorded.inserted` is whether this
+            # verdict was new. A repeat is a no-op that still answers 200 — the operator's
+            # statement is already on record (DECISIONS #68).
+            recorded = await engine.apply_feedback(
+                sid,
+                body.verdict,
+                time.time(),
+                principal_ref=principal.ref,
+                role=principal.role,
+            )
+            if recorded.exists and recorded.inserted:
                 await audit_row(
                     request,
                     principal,
@@ -879,8 +980,7 @@ def create_app(
                     object_id=str(sid),
                     details={"verdict": body.verdict},
                 )
-                await store.commit()
-        if not recorded:
+        if not recorded.exists:
             raise HTTPException(status_code=404, detail="no such situation")
         return {"status": "recorded", "verdict": body.verdict}
 
@@ -888,7 +988,23 @@ def create_app(
     async def set_label(
         body: LabelIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
-        async with store.lock:
+        """Name a device or an alarm class.
+
+        A **class** is deliberately not scoped: it is a *kind of trap*, not a network element, and
+        the table carries no NE reference — the same reasoning as `GET /api/classes`. A **device**
+        is scoped (F34), and the nonexistent-target case (F37) leaves through the very same 404, so
+        neither discloses whether the other applied.
+        """
+        scope = await scope_for(principal)
+        if body.kind == "device" and not scope.allows_ne(body.id):
+            await audit_scope_denial(request, principal, "label.set", body.kind, str(body.id))
+            raise HTTPException(status_code=404, detail="no such label target")
+        async with write_txn():
+            # F37: `label` has no foreign key and `prune()` never touched it, so v0.7.0's
+            # unconditional UPSERT was an unbounded, never-reclaimed write primitive against the
+            # database file — a POST naming any integer created a row.
+            if not await store.label_target_exists(body.kind, body.id):
+                raise HTTPException(status_code=404, detail="no such label target")
             await store.set_label(body.kind, body.id, body.label, time.time())
             await audit_row(
                 request,
@@ -899,14 +1015,17 @@ def create_app(
                 object_id=str(body.id),
                 details={"label_len": len(body.label)},
             )
-            await store.commit()
         return {"status": "labelled"}
 
     @app.post("/api/situations/{sid}/close")
     async def close_situation(
         sid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
-        async with store.lock:
+        scope = await scope_for(principal)
+        if not await situation_in_scope(sid, scope):
+            await audit_scope_denial(request, principal, "situation.close", "situation", str(sid))
+            raise HTTPException(status_code=404, detail="no such open situation")
+        async with write_txn():
             closed = await store.manual_close_situation(sid, time.time())
             if closed:
                 await audit_row(
@@ -917,7 +1036,6 @@ def create_app(
                     object_type="situation",
                     object_id=str(sid),
                 )
-                await store.commit()
         if not closed:
             raise HTTPException(status_code=404, detail="no such open situation")
         engine.forget_situation(sid)
@@ -937,7 +1055,7 @@ def create_app(
         policy = auth.validate_password(body.password)
         if policy is not None:
             raise HTTPException(status_code=400, detail=policy)
-        async with store.lock:
+        async with write_txn():
             if await store.get_user_by_name(body.username) is not None:
                 raise HTTPException(status_code=409, detail="username already exists")
             uid = await store.create_user(
@@ -952,14 +1070,13 @@ def create_app(
                 object_id=str(uid),
                 details={"username": body.username, "role": body.role},
             )
-            await store.commit()
         return {"id": uid, "username": body.username, "role": body.role}
 
     @app.post("/api/users/{uid}/role")
     async def change_role(
         uid: int, body: RoleIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
-        async with store.lock:
+        async with write_txn():
             if await store.get_user(uid) is None:
                 raise HTTPException(status_code=404, detail="no such user")
             await store.set_user_role(uid, body.role, time.time())
@@ -973,7 +1090,6 @@ def create_app(
                 object_id=str(uid),
                 details={"role": body.role},
             )
-            await store.commit()
         return {"status": "role changed"}
 
     @app.delete("/api/users/{uid}")
@@ -982,7 +1098,7 @@ def create_app(
     ) -> dict[str, str]:
         if principal.user_id == uid:
             raise HTTPException(status_code=400, detail="cannot delete your own account")
-        async with store.lock:
+        async with write_txn():
             if await store.get_user(uid) is None:
                 raise HTTPException(status_code=404, detail="no such user")
             await store.revoke_user_sessions(uid)
@@ -990,7 +1106,6 @@ def create_app(
             await audit_row(
                 request, principal, "user.delete", "ok", object_type="user", object_id=str(uid)
             )
-            await store.commit()
         return {"status": "deleted"}
 
     # -- admin: service tokens ---------------------------------------------------------
@@ -1005,7 +1120,7 @@ def create_app(
         body: TokenIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         token_value = auth.new_session_token()
-        async with store.lock:
+        async with write_txn():
             if await store.get_token(auth.hash_token(token_value)) is not None:
                 raise HTTPException(status_code=500, detail="token collision")  # pragma: no cover
             try:
@@ -1023,14 +1138,13 @@ def create_app(
                 object_id=str(tid),
                 details={"name": body.name, "role": body.role},
             )
-            await store.commit()
         return {"id": tid, "name": body.name, "role": body.role, "token": token_value}
 
     @app.delete("/api/tokens/{tid}")
     async def revoke_token(
         tid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
-        async with store.lock:
+        async with write_txn():
             revoked = await store.revoke_token(tid, time.time())
             if revoked is None:
                 raise HTTPException(status_code=404, detail="no such active token")
@@ -1043,7 +1157,6 @@ def create_app(
                 object_id=str(tid),
                 details={"name": revoked["name"]},
             )
-            await store.commit()
         return {"status": "revoked"}
 
     # -- admin: config -----------------------------------------------------------------
@@ -1064,7 +1177,7 @@ def create_app(
     async def set_config(
         body: ConfigIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
-        async with store.lock:
+        async with write_txn():
             await store.set_meta("config.allowlist", body.allowlist)
             await store.set_meta("config.retention_days", str(body.retention_days))
             await audit_row(
@@ -1078,7 +1191,6 @@ def create_app(
                     "allowlist_entries": len([x for x in body.allowlist.split(",") if x.strip()]),
                 },
             )
-            await store.commit()
         if runtime is not None:
             runtime.apply_allowlist(body.allowlist)
             runtime.retention_days = body.retention_days
@@ -1191,7 +1303,7 @@ def create_app(
                 detail="preview exceeded its time budget and was abandoned; no change was made",
             ) from exc
         delta = preview.diff_partitions(before, after)
-        async with store.lock:
+        async with write_txn():
             await audit_row(
                 request,
                 principal,
@@ -1205,7 +1317,6 @@ def create_app(
                     "situations_after": delta["situations_after"],
                 },
             )
-            await store.commit()
         return {
             **delta,
             "alarms_considered": len(alarms),
@@ -1241,7 +1352,7 @@ def create_app(
             body.tau_s,
             body.threshold,
         )
-        async with store.lock:
+        async with write_txn():
             previous = await store.active_scorer_config()
             config_id = await store.insert_scorer_config(
                 scoring.DEFAULT_SCORER_ID,
@@ -1278,7 +1389,6 @@ def create_app(
                     "note_len": len(body.note),
                 },
             )
-            await store.commit()
         return {"status": "applied", "config_id": config_id, "params_hash": params_hash}
 
     @app.post("/api/scorer/rollback")
@@ -1287,7 +1397,7 @@ def create_app(
     ) -> dict[str, Any]:
         """Point the active configuration at an earlier, immutable row. One call, no data lost."""
         now = time.time()
-        async with store.lock:
+        async with write_txn():
             target = await store.get_scorer_config(body.config_id)
             if target is None:
                 raise HTTPException(status_code=404, detail="no such scorer configuration")
@@ -1307,7 +1417,6 @@ def create_app(
                     "params_hash": target["params_hash"],
                 },
             )
-            await store.commit()
         return {"status": "rolled back", "config_id": body.config_id}
 
     # -- admin: governance (v0.7.0) ----------------------------------------------------
@@ -1351,7 +1460,7 @@ def create_app(
     ) -> dict[str, Any]:
         """Apply, roll back, or clear one policy kind. The single write path for both kinds."""
         now = time.time()
-        async with store.lock:
+        async with write_txn():
             before = await _active_policy(kind)
             before_summary = (
                 {"policy_id": int(before["id"]), "doc_hash": before["doc_hash"]} if before else None
@@ -1402,7 +1511,6 @@ def create_app(
                     "note_len": len(body.note),
                 },
             )
-            await store.commit()
         return {"status": outcome, "policy_id": policy_id}
 
     def _capability_problems(text: str) -> list[str]:
@@ -1500,7 +1608,7 @@ def create_app(
     async def read_quarantine(
         request: Request, limit: int = 100, principal: auth.Principal = Depends(security)
     ) -> list[dict[str, Any]]:
-        async with store.lock:
+        async with write_txn():
             rows = await store.list_quarantine(min(max(limit, 1), 500))
             await audit_row(
                 request,
@@ -1510,7 +1618,6 @@ def create_app(
                 object_type="quarantine",
                 details={"count": len(rows)},
             )
-            await store.commit()
         return rows
 
     # -- admin: audit ------------------------------------------------------------------
@@ -1519,22 +1626,20 @@ def create_app(
     async def read_audit(
         request: Request, limit: int = 200, principal: auth.Principal = Depends(security)
     ) -> list[dict[str, Any]]:
-        async with store.lock:
+        async with write_txn():
             rows = await store.list_audit(min(max(limit, 1), 1000))
             await audit_row(request, principal, "audit.read", "ok", details={"count": len(rows)})
-            await store.commit()
         return rows
 
     @app.get("/api/audit/export")
     async def export_audit(
         request: Request, principal: auth.Principal = Depends(security)
     ) -> Response:
-        async with store.lock:
+        async with write_txn():
             lines, final_hash = await audit.export_ndjson(store)
             await audit_row(
                 request, principal, "audit.export", "ok", details={"final_hash": final_hash}
             )
-            await store.commit()
         body = "\n".join(lines) + ("\n" if lines else "")
         return Response(
             content=body,
@@ -1546,7 +1651,7 @@ def create_app(
     async def prune_audit(
         request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        async with store.lock:
+        async with write_txn():
             retention_days = float(
                 await store.get_meta("config.audit_retention_days") or engine.audit_retention_days
             )
@@ -1559,7 +1664,6 @@ def create_app(
                 object_type="audit_log",
                 details={"removed": removed},
             )
-            await store.commit()
         return {"status": "pruned", "removed": removed}
 
     # -- SSE: primary live-update path -------------------------------------------------
@@ -1591,7 +1695,11 @@ def create_app(
                     else await store.scoped_stats(scope.ne_ids, scope.ips)
                 )
                 graph_out = await store.graph_snapshot(min_edge_n=MIN_EDGE_N)
-                sits = await store.list_situations("open", 50)
+                # F38 applies to the stream too: truncating globally would make a scoped
+                # subscriber's live list a function of traffic they cannot see.
+                sits = await store.list_situations(
+                    "open", 50, None if scope.unrestricted else scope.ne_ids
+                )
                 members = (
                     {}
                     if scope.unrestricted

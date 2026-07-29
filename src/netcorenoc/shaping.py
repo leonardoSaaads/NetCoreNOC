@@ -146,9 +146,6 @@ class Scope:
     unrestricted: bool
     ne_ids: frozenset[int] = frozenset()
     ips: frozenset[str] = frozenset()
-    # Operator labels of the in-scope NEs. Needed because the timeline projects a device as
-    # ``COALESCE(label, ip)``, so a labelled NE never appears in a response under its address.
-    labels: frozenset[str] = frozenset()
 
     def allows_ne(self, ne_id: int | None) -> bool:
         if self.unrestricted:
@@ -222,13 +219,24 @@ def parse_scope_policy(document: str) -> ScopePolicy:
     return ScopePolicy(roles, principals)
 
 
-def _matches(selector: str, ne_id: int, ip: str | None, label: str | None) -> bool:
-    """Does one selector name this NE?
+def _matches(selector: str, ne_id: int, ip: str | None) -> bool:
+    """Does one selector name this NE? **Identity and address only** (v0.7.1, F35).
 
-    Four forms, tried in order of specificity: ``ne:<id>``, an exact address, a CIDR, and a glob.
-    The glob is matched against the operator label when the NE has one and against the address
-    otherwise, so ``core-*`` works for a labelled estate and ``10.0.*`` for an unlabelled one.
-    An unparseable selector matches nothing — a typo hides NEs rather than revealing them.
+    Four forms, tried in order of specificity: ``ne:<id>``, an exact address, a CIDR, and a glob
+    over the address (``10.0.*``). An unparseable selector matches nothing — a typo hides NEs
+    rather than revealing them.
+
+    v0.7.0 also matched the glob against the **operator label**, and the operator label is written
+    by ``POST /api/labels``, an `editor` route. That made the scoped role an author of its own
+    scope: labelling an out-of-scope device ``core-pwned`` under a policy of ``{"editor":
+    ["core-*"]}`` widened the editor's own visibility. **Authorization must never read data the
+    constrained party can write** — so the label is not read here, and not merely guarded at the
+    one write path that reaches it today (DECISIONS #66). Every value this function sees is
+    engine-written: `ne.id` and `ne.ip` come from the trap stream and no API route can set them.
+
+    The cost is deliberate and stated: a label glob in an existing policy now matches by address or
+    not at all. :func:`scope_policy_errors` warns on a selector matching zero NEs so an admin finds
+    out at write time, and `MIGRATION.md` says so in plain language.
     """
     if selector.startswith("ne:"):
         return selector[3:].strip() == str(ne_id)
@@ -247,7 +255,7 @@ def _matches(selector: str, ne_id: int, ip: str | None, label: str | None) -> bo
                 return address == ipaddress.ip_address(selector)
             except ValueError:
                 pass  # not an address literal — fall through to the glob
-    return fnmatch.fnmatchcase(label or ip or "", selector)
+    return fnmatch.fnmatchcase(ip or "", selector)
 
 
 def _layers(policy: ScopePolicy, role: str, principal_ref: str | None) -> list[tuple[str, ...]]:
@@ -271,10 +279,17 @@ def visible_nes(
 ) -> Scope:
     """**THE** scope decision: which NEs this principal may see.
 
-    ``nes`` is the inventory as ``[{id, ip, label}, ...]``; selectors are resolved against it on
-    every request rather than materialised at write time, because NetCoreNOC discovers NEs
-    continuously and a stale snapshot would silently hide an NE whose address a CIDR plainly
-    covers (DECISIONS #57).
+    ``nes`` is the inventory as ``[{id, ip}, ...]``; selectors are resolved against it on every
+    request rather than materialised at write time, because NetCoreNOC discovers NEs continuously
+    and a stale snapshot would silently hide an NE whose address a CIDR plainly covers
+    (DECISIONS #57).
+
+    **Every input to this function is admin-written or engine-written, and that is a release
+    invariant, not an accident** (v0.7.1, F35). `role` and `principal_ref` come from identities only
+    an admin can create; `policy` is `scope.write`, admin-only with no delegation; `nes` is `id` and
+    `ip` from the trap stream. v0.7.0 also passed the operator **label**, which `editor` writes —
+    that was the escalation. Anything added to this signature in future must satisfy the same test:
+    `test_f35_no_resolver_input_is_writable_by_a_scopable_role`.
 
     Order matters and is deliberate:
 
@@ -296,23 +311,38 @@ def visible_nes(
     selectors = {selector for layer in layers for selector in layer}
     ne_ids: set[int] = set()
     ips: set[str] = set()
-    labels: set[str] = set()
     for ne in nes:
         ne_id = int(ne["id"])
         ip = ne.get("ip")
-        label = ne.get("label")
-        if any(_matches(selector, ne_id, ip, label) for selector in selectors):
+        if any(_matches(selector, ne_id, ip) for selector in selectors):
             ne_ids.add(ne_id)
             if ip:
                 ips.add(str(ip))
-            if label:
-                labels.add(str(label))
-    return Scope(
-        unrestricted=False,
-        ne_ids=frozenset(ne_ids),
-        ips=frozenset(ips),
-        labels=frozenset(labels),
-    )
+    return Scope(unrestricted=False, ne_ids=frozenset(ne_ids), ips=frozenset(ips))
+
+
+# Characters that can appear in a textual IP address: hex digits, the IPv4 dot, the IPv6 colon,
+# and the CIDR slash. A glob whose literal parts contain anything else can never match an address.
+_ADDRESS_CHARS = frozenset("0123456789abcdefABCDEF.:/")
+_GLOB_CHARS = frozenset("*?[]!-")
+
+
+def _can_never_match(selector: str) -> bool:
+    """True if this selector cannot match **any** address, now or ever (v0.7.1, F35).
+
+    A *static* property of the selector, deliberately **not** "matches nothing right now". Scope
+    selectors are resolved against the live inventory on every request precisely because NetCoreNOC
+    discovers NEs continuously (DECISIONS #57), so a CIDR covering a range that is empty today is a
+    perfectly good forward-looking policy and must not be rejected. What *is* always wrong is a
+    selector made of characters an address never contains — ``core-*``, ``POP-SUL`` — which is
+    exactly the label glob that v0.7.0 resolved against the operator label and v0.7.1 does not.
+    Reporting it at write time is how an admin upgrading from v0.7.0 finds out (see `MIGRATION.md`)
+    rather than discovering it from behaviour.
+    """
+    if selector.startswith("ne:"):
+        return False
+    literal = "".join(c for c in selector if c not in _GLOB_CHARS)
+    return bool(literal) and not set(literal) <= _ADDRESS_CHARS
 
 
 def scope_policy_errors(policy: ScopePolicy) -> list[str]:
@@ -324,6 +354,15 @@ def scope_policy_errors(policy: ScopePolicy) -> list[str]:
     if policy.malformed:
         return [policy.reason or "policy is malformed"]
     problems: list[str] = []
+    for subject, selectors in (*policy.roles.items(), *policy.principals.items()):
+        for selector in selectors:
+            if _can_never_match(selector):
+                problems.append(
+                    f"selector {selector!r} for {subject!r} can never match a network element. "
+                    "Since v0.7.1 a selector resolves against NE id and address only — never the "
+                    "operator label, which the role being scoped can write (F35) — so a label glob "
+                    "selects nothing. Use an address, a CIDR, or 'ne:<id>' (see MIGRATION.md)."
+                )
     for role in policy.roles:
         if role not in ROLE_RANK:
             problems.append(f"unknown role {role!r}")
@@ -374,22 +413,13 @@ def project_graph(snapshot: dict[str, Any], scope: Scope) -> dict[str, Any]:
     return {**snapshot, "nodes": nodes, "edges": edges}
 
 
-def project_timeline(marks: list[dict[str, Any]], scope: Scope) -> list[dict[str, Any]]:
-    """Timeline marks for in-scope NEs only.
-
-    A mark's ``device`` is ``COALESCE(label, ip)``, so it matches either the in-scope address set
-    or an in-scope label. A mark that matches neither belongs to an NE the caller cannot see.
-    """
-    if scope.unrestricted:
-        return marks
-    return [mark for mark in marks if _mark_visible(mark, scope)]
-
-
-def _mark_visible(mark: dict[str, Any], scope: Scope) -> bool:
-    device = mark.get("device")
-    if not isinstance(device, str):
-        return False
-    return device in scope.ips or device in scope.labels
+# v0.7.1 (F35 + F38): there is deliberately **no** `project_timeline` here any more. v0.7.0
+# filtered timeline marks in Python by comparing the rendered ``device`` string —
+# ``COALESCE(label, ip)`` — against the scope's address and label sets. Labels are not unique, so
+# an editor who copied an in-scope NE's label onto an out-of-scope one inherited its alarm timing
+# and classes: a display string had become an authorization key. The filter now lives in
+# `store.timeline_marks()`, keyed on `ne_id`, which fixes the identity defect and the
+# truncate-before-filter defect in the same move (DECISIONS #67, #72).
 
 
 def project_situation_detail(

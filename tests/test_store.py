@@ -106,8 +106,12 @@ async def test_idle_open_situations(store: Store) -> None:
 
 async def test_feedback_requires_existing_situation(store: Store) -> None:
     s1 = await store.create_situation(ts=1.0)
-    assert await store.add_feedback(s1, "confirm", ts=2.0)
-    assert not await store.add_feedback(999, "split", ts=2.0)
+    # v0.7.1 (F36): `add_feedback` returns (exists, inserted) rather than a bare bool — a repeat of
+    # the same verdict exists but does not insert, which is what bounds its effect on learned state.
+    assert await store.add_feedback(s1, "confirm", ts=2.0) == (True, True)
+    assert await store.add_feedback(s1, "confirm", ts=3.0) == (True, False)  # idempotent
+    assert await store.add_feedback(s1, "split", ts=4.0) == (True, True)  # a correction applies
+    assert await store.add_feedback(999, "split", ts=2.0) == (False, False)
 
 
 async def test_labels_and_read_models(store: Store) -> None:

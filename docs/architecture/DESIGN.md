@@ -857,3 +857,166 @@ provenance would answer the finer question and is a ROADMAP line.
 - **A compromised admin can rewrite the perimeter.** Bounded by the compiled ceiling, append-only,
   attributable, reversible by pointer, and audited — but not prevented, because an admin governs by
   definition.
+
+## v0.7.1 — the write perimeter (a security patch: no new capability, no new surface)
+
+v0.7.0 built the visibility scope as a **read projection** and described it as a perimeter. Its
+review said so in as many words — scoping is enforced by "one filter applied to every NE-bearing
+read". That sentence is true, and it is the defect: a perimeter enforced on one side is not a
+perimeter. Six findings (F34–F39) follow from it, and this release closes the class rather than
+the six instances.
+
+Two sentences govern the design, and everything below is an application of one of them:
+
+> **Authorization never reads data the constrained party can write.**
+>
+> **A write is inside the perimeter or it is a defect.**
+
+### The write perimeter: which routes resolve scope, and how the 404 is produced
+
+Of the 19 non-`GET` routes in `ROUTE_PERMISSIONS`, five require a capability below `admin`. Two of
+them (`POST /api/logout`, `POST /api/password`, both `self.read`) act on the caller's own session
+and account and reference no network element. The other three are the perimeter:
+
+| Route | "In scope" means | Denies with |
+|---|---|---|
+| `POST /api/situations/{sid}/feedback` | at least one member alarm's NE is in scope | the handler's existing `404 no such situation` |
+| `POST /api/situations/{sid}/close` | at least one member alarm's NE is in scope | the handler's existing `404 no such open situation` |
+| `POST /api/labels` (`kind="device"`) | `scope.allows_ne(target)` | the F37 existence branch's `404 no such device` |
+| `POST /api/labels` (`kind="class"`) | *not scoped* — an alarm class is a kind of trap, not a network element, and the table carries no NE reference. The same reasoning as `GET /api/classes`. | — |
+
+Every other mutating route is admin-only, and **admin is never scoped** (DECISIONS #58), so the
+perimeter is complete at three routes.
+
+Three properties make this a perimeter rather than three checks:
+
+1. **One decision site.** All three call the same `scope_for()` the read paths call. There is no
+   second resolver and no `if ne in …` anywhere in a handler (DECISIONS #65).
+2. **One membership predicate.** "At least one member in scope" is the predicate
+   `project_situation_detail` already uses to decide whether a situation is listed at all. The write
+   reuses it rather than restating it, so the read and the write cannot disagree about what "yours"
+   means.
+3. **One not-found branch.** A scope denial does not add a branch; it routes into the branch the
+   handler already has for a nonexistent target. Out-of-scope and absent are therefore the same
+   status, the same body and the same timing **by construction** — DECISIONS #60, applied to writes.
+
+The denial is audited under the action the caller attempted, so a scoped principal probing the
+write surface leaves a trail.
+
+### The resolver-input invariant
+
+`shaping.visible_nes()` resolves selectors against **NE identity and NE address only**. It reads
+four inputs and every one of them is admin-written or engine-written:
+
+| Input | Lowest role that can write it |
+|---|---|
+| `role`, `principal_ref` | admin (`users.manage` / `tokens.manage`) |
+| the scope policy | admin (`scope.write`, no delegation) |
+| `ne.id`, `ne.ip` | not writable through any API route |
+
+The operator **label** used to be a fifth, and it is written by `POST /api/labels` — an `editor`
+route. That made the scoped role an author of its own scope. The fix is structural rather than
+guarded: the label leaves `_matches()` entirely, so a glob matches the address, and `Scope.labels`
+plus the label column of `list_ne_for_scope()` are deleted (DECISIONS #66). Scope-checking the label
+write would have closed today's path and left the next one open; removing the input closes every
+path that will ever exist, which is the same argument that made `ceiling ∩ policy` the control in
+v0.7.0 rather than a write-time validator.
+
+The second path to the same escalation was the timeline. `store.timeline_marks()` renders a device
+as `COALESCE(label, ip)`, and `_mark_visible()` compared that **display string** to the scope. Labels
+are not unique, so copying an in-scope NE's label onto an out-of-scope one leaked its alarm timing
+and classes. The projection now carries `ne_id` and the filter uses it; the rendered `device` field
+is unchanged, so the UI is untouched (DECISIONS #67). **A display string is never an authorization
+key.**
+
+A test asserts the invariant over the resolver's inputs, and a comment at the resolver says why —
+the comment alone would not fail CI when someone adds a fifth input.
+
+### Transaction discipline: one mutation, one transaction, one audit row
+
+`Store` holds **one** `aiosqlite` connection shared by the engine and the API, serialised by
+`store.lock`. `commit()` on it commits everything pending, whoever issued it. v0.7.0's `main.py`
+called `rollback()`; `api.py` called it nowhere, so a handler that mutated and then raised left the
+statement pending and the **next commit from any other caller adopted it** — the mutation landing
+with no audit row, which contradicts F31's "every change is attributable".
+
+The fix is one async context manager, `write_txn()`, living beside `audit_row` inside `create_app`:
+
+```
+async with write_txn():          # acquires store.lock
+    ... mutate ...
+    await audit_row(...)         # same transaction
+# commit on success; rollback() on any exception, then re-raise
+```
+
+Every mutating handler is converted mechanically. `Engine.apply_feedback`'s internal `commit()` is
+removed so the API owns the boundary, which makes `POST /feedback` a single transaction in the order
+**mutate → audit → commit**, matching every other write path instead of being the one route where
+the mutation was durable before it was attributable (DECISIONS #73).
+
+An `HTTPException` raised *before* any mutation (a 404 for an out-of-scope or absent target) still
+unwinds through the rollback path. That is harmless — there is nothing to roll back — and it is
+deliberately not special-cased: a discipline with an exemption is a discipline someone will get
+wrong.
+
+### Feedback: idempotence, and what an epoch is
+
+Two independent defects met on this path. `store.add_feedback` had no uniqueness, no dedupe and no
+bound; and `learn_epoch` advanced the **global** forgetting epoch, against which every stored mass
+decays lazily by `(1-λ)^Δepoch`. Measured on the unmodified tree: 60 confirms then 20 splits moved
+one pair's mass from 1.000000 to 1.824e-05 and wrote 80 rows.
+
+- **Idempotence is per `(situation, verdict)`.** A `UNIQUE` index (migration `0007`) plus
+  `INSERT … ON CONFLICT DO NOTHING`; the learning effect applies **only** on a genuine insert. A
+  situation has two possible verdicts, so its total influence on learned state is bounded at two
+  applications whatever anyone posts — bounded by the shape of the data rather than by a limiter
+  someone can tune wrong (DECISIONS #68). A *changed* verdict is a legitimate correction and applies
+  once.
+- **An epoch is a closed situation** — which is what `learn.py`'s module docstring has said since
+  v0.1.0. The tick is separated from the reinforcement: `_close_situation` ticks, the confirm path
+  reinforces without ticking (DECISIONS #69). Global forgetting is a property of the correlation
+  lifecycle, not of an operator's opinion about one grouping.
+- **Attribution.** `feedback.principal_ref` and `feedback.role`, written from the calling principal,
+  nullable and NULL for pre-existing rows. The audit chain recorded the API *call*; it did not
+  record who caused the *effect*, and `Engine.apply_feedback` sits between the two.
+
+### Filter before truncate
+
+`list_situations` and `timeline_marks` applied `LIMIT` over the **global** ordering with the scope
+filter running in Python afterwards, so a scoped principal's result set was a function of traffic
+they could not see. Operationally that is worse than the disclosure — a scoped viewer's own open
+incidents vanished from their list while a noisy neighbour was busy.
+
+The scope predicate moves into the query, binding `ne_ids` as `IN (…)` placeholders exactly as
+`store.scoped_stats` already did in v0.7.0. Two properties are deliberate:
+
+- **The unrestricted path runs the unmodified v0.7.0 SQL.** Parity is by construction, not by
+  inspection, and a test asserts the unrestricted result set is unchanged.
+- **The parameter count is bounded.** SQLite's default `SQLITE_MAX_VARIABLE_NUMBER` is 32 766 on
+  modern builds (999 on very old ones); the scoped branch caps the bound id list and falls back to
+  post-filtering above the cap, so a very large in-scope estate degrades to v0.7.0 behaviour rather
+  than erroring. The cap is a named constant next to the query.
+
+### What did not change
+
+The receiver, the queue, `datagram_received`, the engine loop, the window, candidate selection, the
+scorer, `LinkFeatures`, and `LinkScore` gained nothing — `make eval` is byte-identical. The only
+engine-side change is `Engine.apply_feedback` and its transaction boundary, a **feedback** path and
+not a **correlation** path. `PERMISSIONS`, `ROUTE_PERMISSIONS`, `PUBLIC_ROUTES`,
+`AUDITED_DENIED_PERMISSIONS` and `audit.ACTIONS` are frozen at 28 / 39 / 1 / 14 / 30. Runtime
+dependencies stay at five.
+
+## Known limits (v0.7.1, by design)
+
+- **Scoping is still presentation, not isolation.** Every limit recorded under v0.7.0 remains true.
+  This release makes the perimeter symmetric; it does not make it a boundary.
+- **Label globs no longer work in scope selectors.** A labelled estate is scoped by address,
+  `ne:<id>`, or CIDR. `scope_policy_errors()` warns at write time on a selector that currently
+  matches zero NEs, so an admin learns immediately rather than from behaviour.
+- **Idempotence per `(situation, verdict)` costs a real affordance**: an operator who wants to
+  reinforce the same verdict twice cannot.
+- **`label` still has no foreign key.** The existence check and the `0007` cleanup close the write
+  primitive; the structural fix needs a table rebuild and is a ROADMAP line (DECISIONS #71).
+- **`api.py` is still 1 600+ lines**, and four of six findings lived there because of it. The
+  `perimeter.py` extraction is v0.7.2's theme, with its shape already agreed (DECISIONS #74) — a
+  security patch is not the place to move the files its own fixes touch.
