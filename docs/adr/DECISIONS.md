@@ -1404,3 +1404,191 @@ grouping**.
   parity gate is that the extracted block is the *same text* and a drive-by rename here would cost
   that proof. A `store.py` split by domain and an `api.py` split by route group are larger, weaker
   arguments and stay ROADMAP lines.
+
+## 75. The layer model and the placement rule are decided once, for the whole project (v0.7.2)
+
+- **Context**: `api.py` is 1 752 lines, `store.py` 1 512, `main.py` 1 079, against a project
+  standard of "~20 modules, each under ~300 lines" (SCOPE-0.5). The project is pre-alpha; this is
+  the last cheap moment to decide where code goes, and v0.7.3 is already scheduled to move the
+  data/engine layer.
+- **Options**: (a) decide only the HTTP layer now and the rest when it is touched; (b) write a
+  vision document with no enforcement; (c) decide the target map for the **whole** project now —
+  including the modules v0.7.2 does not touch — with a placement rule a contributor can apply and a
+  CI guard behind it.
+- **Choice**: (c). `docs/architecture/MODULE-ARCHITECTURE.md`: five layers
+  (`http` → `engine` → `data` → `ingest`, plus cross-cutting), the rule *a layer may import
+  downward and may import cross-cutting, never upward*, and the placement rule *a module owns one
+  noun or one decision; over ~250 lines is a smell, over ~400 is debt with a named owner*.
+- **Reason**: (a) guarantees v0.7.3 re-argues the same question with less context and a bigger
+  diff. (b) is a document nobody reads twice. (c) turns placement into something a reviewer can
+  check rather than something a reviewer can have an opinion about — and the guard means the answer
+  survives the release that wrote it. Two current import violations (`main.py` → `api.py`;
+  `runtime.py` → `receiver.py`) are **named in the document and recorded on the ROADMAP, not
+  fixed**: a fix hidden inside a structural release is invisible to review.
+
+## 76. The perimeter boundary is "may this request proceed?", not "which file is it in?" (v0.7.2)
+
+- **Context**: ADR #74 promised the extraction and listed its members. Executing it needs a
+  *criterion*, because three v0.7.1 helpers (`write_txn`, `situation_in_scope`,
+  `audit_scope_denial`) sit among the route handlers rather than in the perimeter block, and two
+  module-level helpers (`_client_ip`, `_route_path`) are called from both sides.
+- **Options**: (a) move exactly the block ADR #74 enumerated and leave the rest; (b) move by
+  proximity — whatever sits in the perimeter region of the file; (c) move by the question each
+  symbol answers: everything that decides *whether a request may proceed*, as opposed to *what it
+  returns*.
+- **Choice**: (c). `situation_in_scope` is a **scope decision** and `audit_scope_denial` combines
+  the transaction boundary with the audit write, so both are perimeter despite living 400 lines
+  away from it; `_params_of` sits next to them in the file and is *not* perimeter, so it goes to
+  `routes_scorer.py`.
+- **Reason**: (b) would have split the write-side scope check from the read-side one, which is the
+  precise mistake F34 was. (a) is (b) with a citation. (c) is the only criterion under which
+  directive 4 — *authorization, scope and the transaction boundary keep exactly one
+  implementation* — is checkable: a route module that needed to re-implement one would be visibly
+  reaching for something the perimeter did not give it.
+
+## 77. `Perimeter` is a class, because the alternative would edit the handlers (v0.7.2)
+
+- **Context**: the eleven perimeter closures capture `store`, `governance`, `limiter` and
+  `warnings` from `create_app`'s scope. Extracting them to module level means those four values
+  have to arrive some other way.
+- **Options**: (a) free functions, each growing a parameter for what it captured; (b) a factory
+  returning a namespace of closures — the current shape, relocated; (c) one class holding `store`,
+  its `GovernancePolicies`, its `RateLimiter` and the process `warnings` callable, with each
+  closure becoming a method whose body is the closure body character for character.
+- **Choice**: (c), with `store` → `self._store`, `governance` → `self.governance`,
+  `limiter` → `self._limiter`, `warnings` → `self._warnings` as the **only** permitted edit.
+- **Reason**: (a) changes every call site — `audit_row(request, …)` becomes
+  `audit_row(store, request, …)` — which touches all forty handlers and forfeits the parity proof
+  that is this release's most valuable artefact. (b) relocates the file without making anything
+  legible: a reviewer still cannot see what the perimeter holds. (c) makes the state explicit and
+  the substitution mechanical, so the diff of a 380-line security-critical move is readable line by
+  line. The cost is named honestly in SECURITY-REVIEW-0.7.2: `Perimeter` is now constructible
+  outside `create_app`.
+
+## 78. `AppContext` plus a mandatory local-rebinding block, so handler text never changes (v0.7.2)
+
+- **Context**: nine route modules need between two and eight of the perimeter's bound helpers, the
+  engine, the store, and four `create_app` parameters. Every way of delivering them is a way of
+  rewriting forty handler bodies.
+- **Options**: (a) pass what each module needs as `register()` parameters — nine different
+  signatures; (b) one frozen `AppContext` and let handlers call `ctx.audit_row(...)`; (c) one
+  frozen `AppContext`, with each `register()` **rebinding the fields it uses to local names as its
+  first statement**, so every handler body below is textually identical to v0.7.1.
+- **Choice**: (c), and the rebinding block is **mandatory**, not stylistic. Fifteen fields,
+  confirmed empirically from the Phase 0 closure dependency graph rather than adopted on trust.
+- **Reason**: (b) is the tidier code and the wrong trade: it edits all forty handlers, so the
+  hash table proves nothing and the release's central claim — *behaviour did not move* — becomes an
+  assertion instead of a measurement. (a) multiplies the wiring surface by nine for no gain. Under
+  (c) the diff of a 1 752-line split is *entirely* moves, and `ruff` catches a name bound but
+  unused, so the block cannot rot. Keep the **names**, and the handlers keep their **text**.
+
+## 79. The package is `api/`, one level deep — SCOPE-0.5's "prefer flat" is superseded for this subtree only (v0.7.2)
+
+- **Context**: SCOPE-0.5's hard constraints say "prefer the flat module set inside
+  `src/netcorenoc/`; a shallow grouping is **optional and must earn itself**". ADR #74 further
+  proposed a single flat `src/netcorenoc/perimeter.py`. One file of 1 752 lines, holding the
+  security boundary and forty handlers, is what that preference has produced.
+- **Options**: (a) keep flat, add `perimeter.py` beside `api.py` per ADR #74; (b) a package named
+  `http/`; (c) a package named `api/`, one level deep, with `perimeter.py` inside it.
+- **Choice**: (c). Recorded as an **explicit supersession** of SCOPE-0.5's preference and of ADR
+  #74's flat placement, for this subtree and no other — the rest of the package stays flat until it
+  earns otherwise, and `MODULE-ARCHITECTURE.md` forbids a second level of nesting anywhere.
+- **Reason**: the subtree has earned it: fourteen cohesive modules, none over 400 lines, is exactly
+  the "demonstrably lowers cognitive load" test SCOPE-0.5 set. (a) leaves a 1 370-line `api.py`
+  behind, which is the problem restated. (b) shadows `http` in a reader's mind — a stdlib package
+  and a Python-wide convention — and every existing import, test and document already says `api`.
+  Superseding a standing preference quietly is how a project's rules stop meaning anything, so it is
+  written down here rather than inferred from the tree.
+
+## 80. `ROUTE_SCOPE` is descriptive in v0.7.2 and enforcing later (v0.7.2)
+
+- **Context**: F34 existed because a route's **scope posture** is expressed nowhere at all — three
+  write routes simply did not have one, and nothing could notice. The fix is a declaration; the
+  temptation is to make the perimeter act on it immediately.
+- **Options**: (a) declare and inject — the perimeter applies the scope check automatically from
+  the table; (b) declare nothing, keep relying on the per-route test; (c) declare the posture, prove
+  by test that every declaration matches the route's **observed behaviour**, and defer injection.
+- **Choice**: (c). One entry per non-public route, `"scoped" | "unscoped" | "admin_only"`, with a
+  one-line justification on every `"unscoped"`, and `"admin_only"` asserted at import against
+  `PERMISSIONS` so it is a derived claim rather than a second authority.
+- **Reason**: (a) changes control flow, and control flow is behaviour — in a release whose entire
+  value is that behaviour did not change, that single decision would make every other gate
+  unfalsifiable. (b) is the status quo that produced F34. Under (c) the declaration is a *fact
+  about the code*, checked against the code, so v0.7.3+ can make it load-bearing knowing the table
+  is already true. Declare now, prove the declaration, enforce later.
+
+## 81. The module-size guard ships with a shrink-only debt allowlist, installed before the move (v0.7.2)
+
+- **Context**: four modules exceed 400 lines (`api.py` 1 752, `store.py` 1 512, `main.py` 1 079,
+  `shaping.py` 476, `varbind_profile.py` 417). A rule with no enforcement is a comment; a rule that
+  fails CI on day one is a rule that gets deleted.
+- **Options**: (a) document the limit and rely on review; (b) enforce it and split everything now;
+  (c) enforce it with an explicit `DEBT_ALLOWLIST` mapping each offender to its line count and the
+  release that owns it, where the allowlist may only shrink and an allowlisted module may not grow.
+- **Choice**: (c), and the guard is added in **Phase 2, against the unmodified tree**, before
+  anything moves.
+- **Reason**: (b) is five large moves in one autonomous run with no clean stopping point. (a) is
+  what the project already had. (c) puts the debt in CI instead of in a code review two years from
+  now, and the "may not grow" clause is what stops an allowlisted module absorbing new code because
+  it is already exempt. Installing it *first* matters as much as its content: every later step of
+  this release is then measured by a rule that predates it, so the guard cannot have been shaped to
+  fit the outcome.
+
+## 82. Route-path normalisation is deferred, with the specific inconsistencies named (v0.7.2)
+
+- **Context**: the estate is inconsistent. `/api/labels` carries a `kind` discriminator in the body
+  rather than being two resources; `POST /api/situations/{sid}/close` and `POST /api/scorer/rollback`
+  are RPC verbs in a REST estate; `POST /api/users/{uid}/role` is a sub-resource where a `PATCH`
+  would do. Reading forty handlers closely makes all three obvious.
+- **Options**: (a) normalise now, while the paths are in hand; (b) defer with a vague "tidy the API"
+  note; (c) defer with each inconsistency named, so the work is already scoped when someone picks it
+  up.
+- **Choice**: (c).
+- **Reason**: a rename is a **public contract change** touching `ROUTE_PERMISSIONS`, the generated
+  authorization matrix, `ui/app.js` and every test — in the same release that moves forty handlers
+  between files. If the matrix then broke, nothing would say which change did it, and the release's
+  one claim would be unprovable. By the time someone picks this up, the declarative registry makes
+  each rename a one-line change with the matrix proving the rest, so deferring makes the work
+  smaller rather than larger.
+
+## 83. `store.py` and `main.py` are specified here and built in v0.7.3 (v0.7.2)
+
+- **Context**: the same argument that justifies splitting `api.py` applies to `store.py` (1 512
+  lines) and `main.py` (1 079). All three could move in one release.
+- **Options**: (a) split all three now; (b) defer both with a ROADMAP line; (c) specify both in
+  `MODULE-ARCHITECTURE.md` — the section-by-section target, the invariants, the candidate
+  mechanisms and the gates — and build them in v0.7.3.
+- **Choice**: (c), following the project's established "spec now, implement later" pattern
+  (v0.6.0's scoring seam, v0.7.0's governance). The specification deliberately **does not choose**
+  between mixins and free-functions-plus-façade for `Store`: it names both, states the
+  `mypy --strict` cost of each, and leaves the choice to v0.7.3's Phase 1 after measuring.
+- **Reason**: (a) is five large moves in one autonomous run — the realistic failure is a half-moved
+  tree with no clean stopping point, and the data/engine layer is independent of the HTTP layer and
+  independently gateable. (b) loses the analysis done while reading the code. (c) keeps one theme
+  per version. The specification pins the thing that actually matters: **one `Store` class, one
+  connection, one `store.lock`** — F39 exists because that connection is shared, so splitting it
+  would be a behaviour change whose failure mode is corruption under concurrency — and, for
+  `main.py`, that the batch lock and everything reasoning about it must **not** leave `Engine`,
+  because "ingestion is sacred" is only auditable if the ingest path reads in one place.
+
+## 84. The four source-reading tests get a new source, not new assertions (v0.7.2)
+
+- **Context**: four tests read `api.py`'s **text** rather than its behaviour —
+  `test_f28_no_role_comparison_outside_rbac`, `test_f34_every_mutating_route_below_admin_resolves_scope`,
+  `test_f39_every_mutating_handler_uses_the_transaction_helper`, and
+  `test_scorer_panel_states_the_preview_caveat`. `inspect.getsource()` on a **package** returns only
+  `__init__.py`, so all four would silently pass against almost no source — the worst possible
+  failure for a guard.
+- **Options**: (a) delete or weaken them, since the structure they scan no longer exists; (b) keep
+  `getsource(api)` working by concentrating code in `__init__.py`; (c) add one test-side helper,
+  `tests/apisource.py::api_source()`, that concatenates every module under `netcorenoc/api/`, and
+  change **only each test's source-acquisition line**.
+- **Choice**: (c). Two scanned tokens also change spelling — `'@app.post("'` → `'@route.post("'` and
+  the `"\n    @app."` body delimiter — because that is the literal name of the decorator object
+  after the split.
+- **Reason**: (a) trades away three of v0.7.1's regression guards to make a refactor look cleaner,
+  which is the trade this release exists to refuse. (b) defeats the entire split. Under (c) every
+  assertion keeps its exact meaning and the scanned corpus keeps its exact extent; the token renames
+  are mechanical and are called out in the Phase 5 evidence rather than buried in a large test diff.
+  A silently-vacuous guard is worse than a deleted one, so the helper asserts it found all fourteen
+  modules and a non-trivial amount of text.
