@@ -19,9 +19,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from netcorenoc import __version__, audit, auth, preview, rbac, scoring, shaping
+from netcorenoc.api import routes_static
+from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import (
     ConfigIn,
@@ -125,44 +127,29 @@ def create_app(
     route = DeclaredRoutes(app)
     guarded = [Depends(security)]
 
-    # -- public routes -----------------------------------------------------------------
+    # Everything the route modules need, resolved once. Each `register()` rebinds the fields it
+    # uses to local names as its first statement, which is what lets every handler body below stay
+    # textually identical to v0.7.1 (DECISIONS #78).
+    ctx = AppContext(
+        engine=engine,
+        store=store,
+        perimeter=perimeter,
+        security=security,
+        guarded=guarded,
+        scope_for=scope_for,
+        all_warnings=all_warnings,
+        write_txn=write_txn,
+        governance=governance,
+        preview_limiter=preview_limiter,
+        throttle=throttle,
+        extra_stats=extra_stats,
+        runtime=runtime,
+        tls_enabled=tls_enabled,
+    )
 
-    @route.get("/healthz")
-    async def healthz() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
-
-    @route.get("/readyz")
-    async def readyz(response: Response) -> dict[str, str]:
-        """Orchestrator readiness (§A.5): 200 only when the DB is reachable, migrations are
-        applied, and the queue has headroom; 503 otherwise. Unauthenticated by design and so
-        leaks no detail beyond ok/not-ok — the reasons live behind authenticated /api/stats."""
-        ready = True
-        try:
-            async with store.lock:
-                applied = await store.schema_version() == store.latest_schema_version()
-            ready = applied
-        except Exception:  # DB unreachable => not ready, never a 500
-            ready = False
-        queue = engine.queue
-        if queue.maxsize and queue.qsize() >= queue.maxsize * QUEUE_SATURATION:
-            ready = False  # saturated: cannot accept the load it is being sent
-        if not ready:
-            response.status_code = 503
-            return {"status": "not ready"}
-        return {"status": "ready"}
-
-    @route.get("/", include_in_schema=False)
-    async def index() -> FileResponse:
-        return FileResponse(UI_FILE, media_type="text/html")
-
-    def _asset_route(asset: str, media_type: str) -> None:
-        async def serve() -> FileResponse:
-            return FileResponse(UI_DIR / asset, media_type=media_type)
-
-        app.add_api_route(f"/{asset}", serve, include_in_schema=False)
-
-    for _asset, _media in STATIC_ASSETS.items():
-        _asset_route(_asset, _media)
+    # Registered in the order the routes were declared at v0.7.1, which is what fixes FastAPI's
+    # path-matching precedence (tests/test_architecture.py::test_route_table_order_is_unchanged).
+    routes_static.register(app, ctx)
 
     def _cookie_kwargs() -> dict[str, Any]:
         return {"httponly": True, "samesite": "strict", "path": "/", "secure": tls_enabled}
