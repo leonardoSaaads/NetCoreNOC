@@ -338,3 +338,98 @@ Non-negotiable, in the same form v0.7.2 used them:
 * **Async/DI frameworks, service layers, repository patterns.** Not present, not planned. The
   project has five runtime dependencies and intends to keep them.
 * **A second level of nesting** anywhere under `src/netcorenoc/`. One level, where earned.
+
+---
+
+## 10. The v0.7.4 targets (**v0.7.4: planned**)
+
+**Implement none of this in v0.7.3.** Specified here so v0.7.4 *executes* rather than rediscovers,
+which is the same service §6 and §7 performed for v0.7.3.
+
+### 10.1 The declaration gate has two holes — **v0.7.4: planned**
+
+Found by adversarial probing of `api/declare.py` while reviewing v0.7.2, and **confirmed by
+execution**, not by reading. Neither is exploited today — the current surface has no `PUT`, no
+`PATCH`, one `add_api_route` caller, and no authenticated non-`/api` route — but both are latent
+holes in a guard whose entire value is completeness.
+
+They were **not** fixed in v0.7.3 because fixing a security-adjacent guard inside a move release
+forfeits the parity story for a latent, unexploited gap, and a fix buried in a 2 600-line diff is a
+fix nobody can review. That is the same reasoning that kept v0.7.2 from fixing what it found.
+
+**Gap 1 — the gate covers three verbs and only the decorator form.**
+
+```
+DeclaredRoutes methods: ['delete', 'get', 'post']
+  has .put():   False
+  has .patch(): False
+
+app.add_api_route("/api/undeclared-bypass", handler, methods=["GET"])
+  registration raised:            False
+  route now in the table:         [(['GET'], '/api/undeclared-bypass')]
+  declared in ROUTE_PERMISSIONS:  False
+  declared in ROUTE_SCOPE:        False
+  (control) the decorator form:   refused, as designed
+```
+
+`tests/test_declaration.py::test_the_gate_is_the_only_registration_path` greps for `@app.<verb>`
+decorators, so it cannot see the non-decorator form; and
+`test_add_api_route_is_confined_to_the_static_asset_allowlist` asserts there is exactly **one**
+caller today, which is true and does not prevent a second.
+
+**The fix, specified: assert *after* `create_app` returns that every `/api` route on the built app
+is declared.** Wrapping the remaining verbs and gating `add_api_route` would work, but only by
+enumeration — it closes the paths that exist today and stays silent about the next one. A post-hoc
+assertion over `app.routes` is **complete by construction**: it catches any registration path,
+including ones nobody has written yet, because it inspects the *result* rather than the route in.
+Prefer it. Keep the decorator-time refusal as well, because failing at the point of registration
+gives a much better error than failing at the end of `create_app`.
+
+**Gap 2 — the exemption is by path prefix, not by absence of capability.**
+
+```python
+def require_declaration(method: str, path: str) -> None:
+    if not path.startswith("/api"):
+        return  # static / health surface: no identity, no capability, nothing to declare
+```
+
+True of today's surface — `/healthz`, `/readyz`, `/`, the four static assets — and **accidentally**
+true of anything else that ever sits outside `/api`. `require_declaration("GET", "/metrics")`
+returns without raising, and `/metrics` is already on the ROADMAP.
+
+**The fix, specified:** replace the prefix test with an explicit allowlist of unauthenticated paths,
+so adding an authenticated non-`/api` route fails the gate instead of slipping past it. The
+allowlist should be derived from, or asserted against, `STATIC_ASSETS` plus the health surface, so
+it cannot drift from what is actually served.
+
+### 10.2 Three oversized modules — **v0.7.4: planned**
+
+The `DEBT_ALLOWLIST` v0.7.3 leaves behind, with the seams §5 already names:
+
+| Module | Lines | Seam |
+|---|--:|---|
+| `shaping.py` | 476 | two axes in one file: **field** shaping by role, and **NE scoping** by policy |
+| `rbac.py` | 436 | the route/capability **tables** on one side, the capability-policy parser and resolver on the other |
+| `varbind_profile.py` | 417 | one extraction — the accumulator — **not** a package |
+
+All three are small enough that the v0.7.3 mechanism (mixins over a thin annotated base) is
+probably overkill; `varbind_profile.py` in particular wants a single class moved out, not a package.
+Take the measurement before choosing, as §6 required of v0.7.3.
+
+### 10.3 Also recorded
+
+* **Four redundant `# nosec B608` markers**, now at `store/retention.py:23,27,31,35`. `bandit`
+  reports "nosec encountered, but no failed test". Untouched in v0.7.3 because changing a `# nosec`
+  on a SQL string is a change to SQL handling, and that release changed no SQL.
+* **`receiver.py`'s coverage is timing-dependent** (87–91 % across runs of identical code, including
+  at the v0.7.2 baseline). Harmless in itself, but it puts noise in the one gate that detects a test
+  going quiet.
+* **`engine.py` is `COHESION_EXEMPT`, permanently.** v0.7.4 must not "finish the job" by splitting
+  it. There is no job to finish: the entry has no owner and no date because the invariant it cites
+  has no expiry.
+
+### 10.4 And after that
+
+**v0.8.0 is the next feature release** — the operator-feedback dataset. The v0.7.x series is not
+open-ended: v0.7.3 was the last structural release, and once §10.2 lands the project has no module
+over the size guard except `engine.py`, which is large by documented design.

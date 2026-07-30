@@ -45,10 +45,11 @@ Please include, as far as you can:
 **In scope** — the NetCoreNOC codebase in this repository, including:
 
 - the trap receiver and packet parsing (`src/netcorenoc/receiver.py`);
-- the HTTP API, authentication, sessions, RBAC, and response shaping (`src/netcorenoc/api.py`,
+- the HTTP API, authentication, sessions, RBAC, and response shaping (`src/netcorenoc/api/` —
+  **start at `api/perimeter.py`, which is the whole security boundary in one file** — plus
   `auth.py`, `rbac.py`, `shaping.py`);
 - the audit log and its integrity guarantees (`src/netcorenoc/audit.py`);
-- the SQLite storage layer and migrations (`src/netcorenoc/store.py`, `migrations/`);
+- the SQLite storage layer and migrations (`src/netcorenoc/store/`, `migrations/`);
 - the static UI and its CSP/security-header posture (`src/netcorenoc/ui/`);
 - the shipped container image and the committed deployment artifacts
   (`Dockerfile`, `docker-compose.yml`, `deploy/`).

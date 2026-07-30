@@ -57,8 +57,8 @@ you never need CI to know whether your change passes.
 ### If you touch a scored path, attach the `make eval` delta
 
 Any change to the ingestion/learning/correlation path (`receiver.py`, `correlate.py`,
-`learn.py`, `rootcause.py`, `severity.py`, `varbind_profile.py`, `store.py` ingest, `main.py`
-engine) can move the evaluation metrics. **Run `make eval` and paste the delta table in your
+`learn.py`, `rootcause.py`, `severity.py`, `varbind_profile.py`, `store/alarms.py` and
+`store/situations.py` ingest, `engine.py`) can move the evaluation metrics. **Run `make eval` and paste the delta table in your
 PR.** A change that intends no behavioural change must show a byte-identical delta; a change that
 intends to improve a metric must show it and explain why it is correct, not metric-gaming.
 
@@ -69,16 +69,29 @@ intends to improve a metric must show it and explain why it is correct, not metr
   and is justified with a `docs/adr/DECISIONS.md` entry.
 - **Same runtime identity.** One process, one SQLite file, one static UI, environment variables
   only, no UI build step, no npm.
-- **Ingestion is sacred.** `receiver.datagram_received` gains no lock, no I/O, no `await`.
+- **Ingestion is sacred.** `receiver.datagram_received` gains no lock, no I/O, no `await` — and
+  the engine-side ingest path stays readable in one file. `engine.py` holds the batch lock and
+  every decision that reasons about it, deliberately and permanently; do not "tidy" it into
+  modules. The invariant is only auditable if that path can be read without following imports.
+- **Imports go downward or sideways, never up.** `http` → `engine` → `data` → `ingest`, plus
+  cross-cutting from anywhere. `tests/test_layers.py` enforces it and its exemption list is empty.
+  The `Engine` may not import `netcorenoc.api`; the process runner may, which is what `runner.py`
+  is for.
+- **One `Store`, one connection, one `store.lock`.** The whole write discipline rests on it (F39).
+  `store.lock` is taken by *callers* — never inside a `Store` method — and a new store method must
+  assume its caller holds it. `tests/test_store_concurrency.py` is the control.
 - **Bounded memory everywhere.** Every accumulator keeps its cap and eviction, with a test.
 - **UI security discipline.** The UI is four files under a strict CSP; new DOM values go through
   `textContent`/`esc()`, never `innerHTML`; no inline script/style, no CDN.
 - **Modules stay small and shallow.** A module owns one noun or one decision; over ~250 lines is a
   smell and over **400 fails CI** (`tests/test_architecture.py`), with a shrink-only
-  `DEBT_ALLOWLIST` naming the release that owns each current offender. One level of nesting where
-  it has been earned — today that is `src/netcorenoc/api/` alone — and never two. No frameworks,
-  plugin systems, or dynamic loading. The layer map, the placement rule and the planned targets for
-  `store.py` and `main.py` are in [`docs/architecture/MODULE-ARCHITECTURE.md`](docs/architecture/MODULE-ARCHITECTURE.md).
+  `DEBT_ALLOWLIST` naming the release that owns each current offender — and, since v0.7.3, a
+  separate `COHESION_EXEMPT` for a module that is large because an **invariant** forbids splitting
+  it. The two are not interchangeable: debt carries an owner and a date, a cohesion exemption
+  carries neither, because there is no fix. `engine.py` is its only entry. One level of nesting
+  where it has been earned — today `src/netcorenoc/api/` and `src/netcorenoc/store/` — and never
+  two. No frameworks, plugin systems, or dynamic loading. The layer map, the placement rule and the
+  v0.7.4 targets are in [`docs/architecture/MODULE-ARCHITECTURE.md`](docs/architecture/MODULE-ARCHITECTURE.md).
 - **A new route declares itself, or the process does not start.** Add its capability to
   `rbac.ROUTE_PERMISSIONS` **and** its visibility posture to `rbac.ROUTE_SCOPE` (with a one-line
   reason if it is `"unscoped"`), then register it through `DeclaredRoutes` like every other route.

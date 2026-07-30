@@ -106,8 +106,11 @@ From v0.7.1 (the write perimeter — deferred, each with the version that owns i
 - **A foreign key on `label`.** SQLite needs a table rebuild to add one, which is disproportionate
   to a patch release; the application-level existence check plus the `0007` orphan cleanup close the
   write primitive in the meantime. DECISIONS #71.
-- **Split `store.py` by domain and `api.py` by route group.** Larger, weaker arguments than the
-  perimeter extraction; they stay lines here rather than becoming a version theme.
+- ~~**Split `store.py` by domain and `api.py` by route group.**~~ **Both done.** `api.py` became
+  the package `api/` in v0.7.2; `store.py` became `store/` in v0.7.3. Written here as "larger,
+  weaker arguments than the perimeter extraction" — which was right at the time, and each
+  eventually earned a version theme of its own once the perimeter work proved the parity
+  discipline scaled.
 - **The v0.8.0 feedback dataset** — schema, capture, and bias reporting. v0.7.1 made the *existing*
   feedback path trustworthy (idempotent, bounded, attributed); it deliberately built no part of the
   dataset.
@@ -125,10 +128,11 @@ From v0.7.2 (the HTTP package — deferred, each with the reason it is not in th
   `ROUTE_PERMISSIONS`, the generated authorization matrix, `ui/app.js` and every test. The v0.7.2
   declarative registry makes each rename a one-line change with the matrix proving the rest.
   DECISIONS #82.
-- **Split `store.py` and `main.py` → v0.7.3.** Fully specified in
-  `docs/architecture/MODULE-ARCHITECTURE.md` §6–§8, including the invariants (one `Store` class, one
-  connection, one `store.lock`; the batch lock never leaves `Engine`), the two candidate mechanisms
-  for `Store` with the `mypy --strict` cost of each, and the gates v0.7.3 inherits. DECISIONS #83.
+- ~~**Split `store.py` and `main.py` → v0.7.3.**~~ **Done in v0.7.3.** `store/` is eighteen
+  modules (largest 213 lines); `main.py` is 79 lines and the `Engine` lives in `engine.py`. One
+  `Store`, one connection, one `store.lock` preserved and guarded by
+  `tests/test_store_concurrency.py`; all 141 method bodies proved unchanged by hash.
+  DECISIONS #83, #88–#92.
 - **Split `rbac.py` (436) → v0.7.4.** v0.7.2 pushed it past the module-size guard by adding
   `ROUTE_SCOPE`, the declaration whose absence was F34. It is on the `DEBT_ALLOWLIST` with a
   named owner and a named seam: the route/capability **tables** on one side, the
@@ -136,11 +140,14 @@ From v0.7.2 (the HTTP package — deferred, each with the reason it is not in th
 - **Split `shaping.py` (476) and `varbind_profile.py` (417) → v0.7.4.** On the module-size guard's
   `DEBT_ALLOWLIST` with a named owner. `shaping.py` holds two axes in one file — field shaping by
   role, and NE scoping by policy — and the split is along that seam. DECISIONS #81.
-- **Two layer-rule violations, named not fixed.** `main.py` imports `netcorenoc.api`
-  (engine → http, the one genuine upward import; resolved naturally by v0.7.3's separation of the
-  process runner from `Engine`), and `runtime.py` imports `receiver.Network`/`parse_allowlist`
-  (cross-cutting → ingest). `MODULE-ARCHITECTURE.md` §1. A violation found while writing an
-  architecture document is a line here, not a fix in the release that found it.
+- **One layer-rule violation left.** `runtime.py` imports `receiver.Network`/`parse_allowlist`
+  (cross-cutting → ingest): `RuntimeConfig` holds parsed allowlist networks, so it reaches into the
+  ingest layer for the parser. The fix is either moving the parser to cross-cutting, or having
+  `RuntimeConfig` hold strings and letting the receiver parse. `MODULE-ARCHITECTURE.md` §1.
+  ~~`main.py` → `netcorenoc.api`~~ was **resolved in v0.7.3** by separating `runner.py` from
+  `engine.py`, and the rule is now enforced by `tests/test_layers.py` with an empty exemption list
+  — it had a paragraph and no test for a whole release, which is why it went unfixed that long.
+  DECISIONS #92.
 - **`api/models.py` per route group.** Deliberately *not* done: all eleven pydantic request models
   stay in one file because fragmenting them across nine modules would make the request surface
   harder to audit, not easier. Recorded as a rejection, not a plan.
@@ -156,3 +163,27 @@ From v0.7.2 (the HTTP package — deferred, each with the reason it is not in th
   changing a `# nosec` on a SQL string is a change to SQL handling, and this release changed no SQL
   (SCOPE-0.7.3 §2.4). The split at least made them easy to find — four lines in a 48-line module
   instead of four lines in a 1 512-line one.
+
+## v0.7.4 — specified in v0.7.3, built there
+
+- **Close the two declaration-gate holes.** Found by adversarial probing of `api/declare.py` and
+  **confirmed by execution**; neither is exploited today. (1) `DeclaredRoutes` wraps `get`, `post`
+  and `delete` only, and only the decorator form — `app.add_api_route("/api/x", handler,
+  methods=["GET"])` registers successfully without ever calling `require_declaration`, and the
+  route appears in the table. (2) The exemption is by path *prefix*, so a future authenticated
+  non-`/api` route — `/metrics` is already on this list — would be exempt by accident. Specified in
+  `MODULE-ARCHITECTURE.md` §10.1, including **why the post-hoc assertion over the built app is the
+  right fix**: it is complete by construction rather than by enumeration. Deferred from v0.7.3
+  because fixing a security-adjacent guard inside a move release forfeits the parity story for a
+  latent gap.
+- **Split `shaping.py` (476), `rbac.py` (436) and `varbind_profile.py` (417).** The whole remaining
+  `DEBT_ALLOWLIST`, with the seams already named in `MODULE-ARCHITECTURE.md` §5 and §10.2. All three
+  are small enough that v0.7.3's mixin mechanism is probably overkill — measure before choosing.
+- **Four redundant `# nosec B608` markers** at `store/retention.py:23,27,31,35`. `bandit` reports
+  "nosec encountered, but no failed test". Untouched in v0.7.3 because changing a `# nosec` on a
+  SQL string is a change to SQL handling, and that release changed no SQL.
+- **`engine.py` stays `COHESION_EXEMPT`, permanently.** Not a task. Recorded here so nobody reads
+  the empty debt allowlist as an invitation to "finish the job" — the entry has no owner and no
+  date because the invariant it cites ("ingestion is sacred") has no expiry.
+- **v0.8.0 is the next feature release** — the operator-feedback dataset. The v0.7.x series is not
+  open-ended: v0.7.3 was the last structural release.

@@ -1,5 +1,44 @@
 # Upgrading NetCoreNOC
 
+## v0.7.2 → v0.7.3 (the data and engine layers — internal structure only)
+
+**There is nothing to do. Stop reading.**
+
+No migration runs. No configuration changes. No API changes. Replace the code and restart.
+
+| | |
+|---|---|
+| Schema | **unchanged** — `user_version` stays **7**; no migration file added |
+| Data | untouched — learned state, scorer configuration, governance policy, provenance, labels, feedback and the audit chain all carry over byte for byte |
+| Routes | **unchanged** — every path, method, status code and response field is identical, in the same order |
+| Capabilities | **unchanged** — `PERMISSIONS`, `ROUTE_PERMISSIONS`, `ROUTE_SCOPE`, `PUBLIC_ROUTES` and the audit action catalog are all the same |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| How you run it | **unchanged** — `python -m netcorenoc.main` and `python -m netcorenoc audit verify`, exactly as before |
+| Downgrade | safe — v0.7.2 reads a v0.7.3 database, because it is the same database |
+
+v0.7.3 splits `src/netcorenoc/store.py` into the package `src/netcorenoc/store/` and
+`src/netcorenoc/main.py` into `engine.py`, `runner.py` and four smaller modules. Both are internal.
+`netcorenoc.store` and `netcorenoc.main` keep their names and every symbol that was reachable
+through them, so anything importing either keeps working unchanged — **including
+`python -m netcorenoc.main`, which is why `main.py` stayed a module and did not become a package.**
+
+**Verified, not assumed.** A database written by the **real v0.7.2 code** — 120 traps through the
+real engine, a maintenance pass, a scorer configuration, an active governance policy, a bootstrap
+admin and a hash-chained audit log — was opened by v0.7.3: no migration ran, twenty snapshot keys
+compared identical, and the audit chain verified with the same final hash. Separately, all 141
+method bodies in `Store` and `Engine` were proved unchanged by a `sha256` table taken before the
+move and recomputed after it. See `docs/gates/v0.7.3-phase-5.md` §1 and §8.
+
+If you have written code against the internals — importing `netcorenoc.store` or `netcorenoc.main`
+in a script of your own — everything in the public surface still resolves. The one thing that does
+**not** carry over is monkeypatching a module-level constant: `netcorenoc.store.MAX_SCOPE_PARAMS`
+and `netcorenoc.main.MAX_ENTITIES_PER_NE` must now be patched on the module that *reads* them
+(`netcorenoc.store.read_models` and `netcorenoc.engine`). That is a test-harness concern, not a
+runtime one, and no supported configuration is affected.
+
+---
+
 ## v0.7.1 → v0.7.2 (the HTTP package — internal structure only)
 
 **There is nothing to do. Stop reading.**
