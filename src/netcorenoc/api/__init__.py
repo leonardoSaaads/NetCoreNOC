@@ -24,8 +24,6 @@ from netcorenoc.api.app import (
     BOOTSTRAP_ALLOWED,
     CSP,
     DENIED_ACTION,
-    MAX_LABEL_CHARS,
-    MAX_NOTE_CHARS,
     MAX_POLICY_HISTORY,
     MAX_SCORER_HISTORY,
     MUTATING,
@@ -40,21 +38,25 @@ from netcorenoc.api.app import (
     STATIC_ASSETS,
     UI_DIR,
     UI_FILE,
+    GovernancePolicies,
+    RateLimiter,
+    create_app,
+)
+from netcorenoc.api.models import (
+    MAX_LABEL_CHARS,
+    MAX_NOTE_CHARS,
     ConfigIn,
     FeedbackIn,
-    GovernancePolicies,
     LabelIn,
     LoginIn,
     PasswordIn,
     PolicyIn,
     QuietServer,
-    RateLimiter,
     RoleIn,
     ScorerParamsIn,
     ScorerRollbackIn,
     TokenIn,
     UserIn,
-    create_app,
 )
 
 __all__ = [

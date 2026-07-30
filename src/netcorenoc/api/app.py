@@ -15,17 +15,28 @@ import contextlib
 import hashlib
 import json
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlsplit
 
-import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, Field
 
 from netcorenoc import __version__, audit, auth, preview, rbac, scoring, shaping
+from netcorenoc.api.models import (
+    ConfigIn,
+    FeedbackIn,
+    LabelIn,
+    LoginIn,
+    PasswordIn,
+    PolicyIn,
+    RoleIn,
+    ScorerParamsIn,
+    ScorerRollbackIn,
+    TokenIn,
+    UserIn,
+)
 from netcorenoc.learn import MIN_EDGE_N
 
 if TYPE_CHECKING:
@@ -45,8 +56,6 @@ RATE_REFILL = 10.0
 # roughly every 10 s) bounds it independently of the per-client limiter (F22).
 PREVIEW_RATE_CAPACITY = 3.0
 PREVIEW_RATE_REFILL = 0.1
-MAX_LABEL_CHARS = 120
-MAX_NOTE_CHARS = 500
 MAX_SCORER_HISTORY = 50
 MAX_POLICY_HISTORY = 50
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -210,89 +219,6 @@ class RateLimiter:
             return False
         self.buckets[key] = (tokens - 1.0, now)
         return True
-
-
-class FeedbackIn(BaseModel):
-    verdict: Literal["confirm", "split"]
-
-
-class LabelIn(BaseModel):
-    kind: Literal["device", "class"]
-    id: int
-    label: str = Field(min_length=1, max_length=MAX_LABEL_CHARS)
-
-
-class LoginIn(BaseModel):
-    username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=auth.MAX_PASSWORD)
-    new_password: str | None = Field(default=None, max_length=auth.MAX_PASSWORD)
-
-
-class PasswordIn(BaseModel):
-    old_password: str = Field(min_length=1, max_length=auth.MAX_PASSWORD)
-    new_password: str = Field(min_length=1, max_length=auth.MAX_PASSWORD)
-
-
-class UserIn(BaseModel):
-    username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=auth.MAX_PASSWORD)
-    role: Literal["viewer", "editor", "admin"]
-
-
-class RoleIn(BaseModel):
-    role: Literal["viewer", "editor", "admin"]
-
-
-class TokenIn(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
-    role: Literal["viewer", "editor", "admin"]
-
-
-class ConfigIn(BaseModel):
-    allowlist: str = Field(max_length=1024)
-    retention_days: float = Field(gt=0, le=3650)
-
-
-class ScorerParamsIn(BaseModel):
-    """A candidate parameter set. Pydantic bounds the *shape*; `scoring.validate_params` is the
-    single semantic authority (it also rejects the degenerate combinations a range check misses),
-    so both run and the precise reason always comes from the one validator."""
-
-    w_t: float = Field(ge=0.0, le=1.0)
-    w_a: float = Field(ge=0.0, le=1.0)
-    w_e: float = Field(ge=0.0, le=1.0)
-    tau_s: float = Field(gt=0.0, le=scoring.MAX_TAU_S)
-    threshold: float = Field(ge=0.0, le=1.0)
-    note: str = Field(default="", max_length=MAX_NOTE_CHARS)
-
-
-class ScorerRollbackIn(BaseModel):
-    """A candidate parameter set. Pydantic bounds the *shape* only."""
-
-    config_id: int = Field(ge=1)
-
-
-class PolicyIn(BaseModel):
-    """One governance write: apply a new document, roll back to a version, or clear the policy.
-
-    Exactly one of the three is meaningful per call, checked in the handler so the error names the
-    actual problem. `clear` is the recovery path back to the shipped baseline — the compiled
-    ceiling and full visibility — and it removes only the pointer: the history rows are immutable
-    and survive, so what was once active stays answerable.
-    """
-
-    document: dict[str, Any] | None = None
-    policy_id: int | None = Field(default=None, ge=1)
-    clear: bool = False
-    note: str = Field(default="", max_length=MAX_NOTE_CHARS)
-
-
-class QuietServer(uvicorn.Server):
-    """Uvicorn server that leaves signal handling to the NetCoreNOC process."""
-
-    @contextlib.contextmanager
-    def capture_signals(self) -> Iterator[None]:
-        yield
 
 
 def _client_ip(request: Request) -> str:

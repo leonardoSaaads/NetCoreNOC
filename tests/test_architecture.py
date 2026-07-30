@@ -37,7 +37,7 @@ MAX_MODULE_LINES = 400
 #
 # Adding an entry here is therefore a visible, arguable diff, which is the entire point.
 DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
-    "api/app.py": (1756, "v0.7.2 — shrinks module by module; leaves this list in Phase 4"),
+    "api/app.py": (1682, "v0.7.2 — shrinks module by module; leaves this list in Phase 4"),
     "store.py": (1512, "v0.7.3 — split by domain along its own section comments"),
     "main.py": (1079, "v0.7.3 — the maintenance loop, gap tracker and process runner leave Engine"),
     "shaping.py": (476, "v0.7.4 — two axes in one file: field shaping and NE scoping"),
