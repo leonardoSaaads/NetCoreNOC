@@ -4,6 +4,80 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-07-30 — "the data and engine layers" (internal structure only)
+
+**Internal structure only. No behaviour change of any kind.** Not one route path, method, status
+code, response field, database row or number moves. Runtime dependencies stay at **five**; **zero**
+new migrations (still `0001`–`0007`); **zero** new routes, capabilities or audit actions;
+`make eval` is **byte-identical** to v0.7.2. **An operator upgrading from v0.7.2 has nothing to do**
+— see [MIGRATION.md](MIGRATION.md).
+
+This is the **last structural release**. v0.8.0 resumes the feature line.
+
+### Changed — `store.py` is now the `store/` package
+
+`src/netcorenoc/store.py` (1 512 lines, 109 methods on one class) becomes eighteen modules split
+along its own section comments, largest **213** lines, one level deep. `from netcorenoc.store
+import Store, EdgeRow, FeedbackResult, MIGRATIONS_DIR` keeps working verbatim.
+
+The mechanism is mixins over a thin annotated `StoreBase` that declares the ten attributes and the
+`conn` accessor and holds no behaviour (DECISIONS #88). **All 109 method bodies are unchanged
+text** — the enclosing class header is the only edit — proved by a `sha256` table taken before the
+move and recomputed after it, through `inspect.getsource` on the live attribute resolved via
+`Store.__mro__`.
+
+**The invariant this protects: one `Store`, one connection, one `store.lock`.** The single
+connection and the single lock are load-bearing — F39 exists precisely because one connection is
+shared by the engine task and every API request, and v0.7.1's `write_txn` discipline is built on
+`store.lock` being the one mutual exclusion. `tests/test_store_concurrency.py` is the control, and
+it was written and mutation-tested against the pre-split tree.
+
+### Changed — `main.py` is now the engine, the runner, and five siblings
+
+`main.py` (1 079 lines) becomes `engine.py` (542), `runner.py` (227), `maintenance.py` (113),
+`scorer_lifecycle.py` (112), `settings.py` (106), `gaps.py` (94), `engine_base.py` (61) — and
+`main.py` itself at **79** lines: `main()`, the `__main__` guard, and the re-exports.
+**`python -m netcorenoc.main` is unchanged**, which is why `main.py` stays a module and not a
+package (DECISIONS #89).
+
+The ingest path does not fragment. `run`, `_commit_batch`, `_process`, `drain`,
+`_assign_situation`, `_handle_clear`, `_handle_state_clear`, `_close_situation`, `_resolve_entity`,
+`_resolve_severity`, `_seed_clear_pair`, `_is_flapping`, `apply_feedback` and `FlapDetector` stay
+together, because "ingestion is sacred" is only auditable if a reviewer can confirm — without
+following imports — that nothing on that path takes a lock, does I/O, or awaits where it must not.
+`maintenance()` and `maintenance_loop()` stayed with them, against both module tables, because
+`maintenance` takes `store.lock` and calls `_close_situation` (DECISIONS #90).
+
+### Fixed — the project's one recorded layer violation
+
+`main.py` → `netcorenoc.api` (engine → http), recorded in `MODULE-ARCHITECTURE.md` §1 since v0.7.2,
+is **resolved**: `runner.py` and `main.py` are the process entry point and may reach up into
+`http`; `engine.py` may not, and does not.
+
+### Added — three guards, and one hole closed in an old one
+
+* **`tests/test_layers.py`** — the dependency rule has had a paragraph since v0.7.2 and **no test**,
+  which is why its one violation went unfixed for a release. It now parses every module's imports
+  and fails on any upward edge. Exemption list **empty** (DECISIONS #92).
+* **`tests/test_store_concurrency.py`** — one connection, one lock, concurrent writes from three
+  domain modules, the audit chain under 24 concurrent appends, and `write_txn`'s rollback contract.
+* **`COHESION_EXEMPT`** — for a module that is large because an **invariant** forbids splitting it,
+  as distinct from debt. `engine.py` is its one entry, citing "ingestion is sacred", with **no owner
+  and no fix date** — that absence is the semantic difference and a test asserts it (DECISIONS #91).
+* **`test_no_module_may_join_the_allowlist`** — "the debt allowlist may only shrink" was asserted in
+  one direction only: a *stale* entry failed, but a **newly added** module would have passed green.
+
+`DEBT_ALLOWLIST` is down from five entries to **three** (`rbac.py`, `shaping.py`,
+`varbind_profile.py`, all owned by v0.7.4). `store.py` and `main.py` are gone from it.
+
+### Security
+
+`docs/security/SECURITY-REVIEW-0.7.3.md` — **zero findings**. The series stays at F39; F40 is
+unused. The review states plainly that this release does **not** make the data layer more correct,
+and names the cost it does carry: a mixin split makes it easier for a future contributor to add a
+method that forgets the lock, because the neighbouring methods that would have shown the pattern
+now live in another file.
+
 ## [0.7.2] - 2026-07-30 — "the HTTP package" (internal structure only)
 
 **Internal structure only. No behaviour change of any kind.** Not one route path, method, status

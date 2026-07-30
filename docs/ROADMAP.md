@@ -144,3 +144,15 @@ From v0.7.2 (the HTTP package — deferred, each with the reason it is not in th
 - **`api/models.py` per route group.** Deliberately *not* done: all eleven pydantic request models
   stay in one file because fragmenting them across nine modules would make the request surface
   harder to audit, not easier. Recorded as a rejection, not a plan.
+- **`receiver.py`'s coverage is timing-dependent (87–91 % across runs) → v0.7.4.** Noticed in
+  v0.7.3's Gate 5 while comparing coverage between two runs of identical code: the only per-module
+  line that differs is `receiver.py`. Its socket-error and backpressure branches depend on datagram
+  timing, so the number moves run to run — including at the v0.7.2 baseline, before this release
+  changed anything. Harmless today, but it puts noise in the one gate that is supposed to detect a
+  test going quiet, which is exactly the signal Gate 3 §4.3 relied on. Make those branches
+  deterministically exercised.
+- **Four redundant `# nosec B608` markers in `store/retention.py` → v0.7.4.** `bandit` reports
+  "nosec encountered, but no failed test" for lines 23, 27, 31 and 35. Not touched in v0.7.3:
+  changing a `# nosec` on a SQL string is a change to SQL handling, and this release changed no SQL
+  (SCOPE-0.7.3 §2.4). The split at least made them easy to find — four lines in a 48-line module
+  instead of four lines in a 1 512-line one.
