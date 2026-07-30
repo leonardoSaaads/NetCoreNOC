@@ -1,5 +1,12 @@
 # NetCoreNOC v0.2.0 — Threat Model
 
+
+> **v0.7.2 (file references only).** The HTTP layer became the package `src/netcorenoc/api/`. No
+> trust boundary, asset, adversary or control in this document changed — see
+> `docs/security/SECURITY-REVIEW-0.7.2.md` §6. The file to read when auditing the HTTP boundary is
+> now [`api/perimeter.py`](../architecture/MODULE-ARCHITECTURE.md); the four file references below
+> were updated to point at it, and nothing else in this document was touched.
+
 Lightweight STRIDE over the v0.2.0 attack surface. This document has the same authority
 as `docs/SCOPE-0.2.md` once written: on any security-relevant ambiguity, the stricter
 option wins (decision protocol §9). Every threat below names a **control** and the
@@ -393,7 +400,7 @@ shaping, and UI code are unchanged). The review of the new *organization* artifa
 The RFC 9116 contact file is committed in the package and served at `/.well-known/security.txt`.
 *Threat:* a new served route could be a dynamic surface (logic, DB, injection) or escape the
 security-header posture. *Control:* it is **static and public** — a fixed entry in the
-`STATIC_ASSETS` allowlist (`api.py`), served by the same `FileResponse` path as `app.js`/
+`STATIC_ASSETS` allowlist (`api/routes_static.py`), served by the same `FileResponse` path as `app.js`/
 `style.css`, under the **same CSP and `SECURITY_HEADERS` middleware** as every route; it reads no
 input, touches no DB, and runs no dynamic code, so it adds no injection, SSRF, or auth surface.
 Being unauthenticated is by design (a contact file), consistent with `/`, `/healthz`, `/readyz`,
@@ -613,9 +620,9 @@ validation check, a guard clause).
   every role; `test_f27_policy_written_directly_to_the_db_cannot_escalate`.
 - **Elevation of privilege — a second decision site.** *Threat:* a handler, the UI-affordance
   endpoint, or a test computing capabilities its own way and drifting from enforcement.
-  *Control:* one resolver, `rbac.resolve_capabilities()`, called from the `api.py` security
+  *Control:* one resolver, `rbac.resolve_capabilities()`, called from the `api/perimeter.py` security
   dependency, from `/api/me`, and from the generated authorization matrix. A static assertion over
-  `api.py`'s source forbids a role comparison outside the resolver. *Tests:*
+  the `api/` package's source forbids a role comparison outside the resolver. *Tests:*
   `test_f28_single_decision_site_no_role_comparison_outside_rbac`,
   `test_authorization_matrix` (regenerated with policies active).
 - **Elevation of privilege — writing the policy is itself the escalation.** *Threat:* a
@@ -837,7 +844,7 @@ become an input to the authorization decision that is supposed to constrain it.
 ### Audit and transaction integrity (A3, A5) — an orphan write surviving a failed request — **F39**
 
 - **Repudiation/Tampering**: one `aiosqlite` connection is shared by the engine and the API;
-  `main.py` rolled back and `api.py` did not. A handler that mutated and then raised left the
+  `main.py` rolled back and the HTTP layer did not. A handler that mutated and then raised left the
   statement pending, and the next `commit()` from **any other caller** adopted it. Measured: a forced
   audit failure inside `POST /api/users/{uid}/role` returned 500 and the role change persisted **with
   no audit row**, contradicting F31's "every change is attributable".

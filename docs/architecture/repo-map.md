@@ -19,7 +19,16 @@ NetCoreNOC/
 │   ├── severity.py          learned severity field (shape + ordinality), honest unknown
 │   ├── varbind_profile.py   the entity/identity profiler (R/X/D score, FD containment)
 │   ├── store.py             the SQLite layer (one connection under an asyncio lock)
-│   ├── api.py               FastAPI app: identity, RBAC, audit, SSE, security headers, static UI
+│   ├── api/                 the HTTP layer (v0.7.2). **Read api/perimeter.py first if you are
+│   │                        reviewing security** — it is the whole boundary in one file.
+│   │   ├── perimeter.py     CSRF → identity → bootstrap gate → RBAC → rate limit; audit row,
+│   │   │                    write transaction, scope resolution, security-headers middleware
+│   │   ├── declare.py       the registration gate: an undeclared route cannot be registered
+│   │   ├── app.py           create_app: build the perimeter, build the context, register
+│   │   ├── context.py       AppContext — what every route module receives
+│   │   ├── models.py        every pydantic request model, in one file
+│   │   ├── governance_cache.py  the per-request cache of the two stored policies
+│   │   └── routes_*.py      nine route groups, each one register(app, ctx) function
 │   ├── auth.py              scrypt passwords, sessions, service tokens, login throttle
 │   ├── audit.py             append-only hash-chained audit log + verify/export
 │   ├── rbac.py              THE authorization map + the ceiling∩policy resolver
@@ -53,9 +62,12 @@ UDP 162 ─▶ receiver.datagram_received ─▶ asyncio.Queue ─▶ Engine.run
             sacred", invariant 2)
 ```
 
-The HTTP side (`api.py`) is the security perimeter: security headers → CSRF → identity → RBAC
-(`rbac.py`) → rate limit → handler, with response bodies shaped by role (`shaping.py`) and every
-mutating action / sensitive read written to the hash-chained audit log (`audit.py`).
+The HTTP side is the security perimeter, and since v0.7.2 it is **one file you can read end to
+end**: `api/perimeter.py` — security headers → CSRF → identity → bootstrap gate → RBAC
+(`rbac.py`, the single source) → rate limit → handler, plus the audit-row helper, the write
+transaction boundary and scope resolution. Response bodies are shaped by role (`shaping.py`) and
+every mutating action / sensitive read is written to the hash-chained audit log (`audit.py`). The
+route modules receive the perimeter's bound helpers; none of them implements one.
 
 ## Where the configurability surfaces live
 
@@ -63,6 +75,11 @@ mutating action / sensitive read written to the hash-chained audit log (`audit.p
   `AdditiveScorer` (the five parameters live there, not in `correlate.py`); `preview.py` is the
   read-only what-if; the stored configuration is `scorer_config` + the one-row `scorer_active`
   pointer (migration `0005`). See [`DESIGN.md`](DESIGN.md) § "v0.6.0 — the scoring seam".
+- **The HTTP layer — restructured in v0.7.2.** `api.py` became the package `api/`: the security
+  boundary is `api/perimeter.py`, the registration gate is `api/declare.py`, and nine `routes_*`
+  modules hold the handlers. **No behaviour changed** — every handler body is byte-identical and
+  the route table is identical in order. See [`DESIGN.md`](DESIGN.md) § "v0.7.2 — the perimeter as
+  a named component" and [`MODULE-ARCHITECTURE.md`](MODULE-ARCHITECTURE.md).
 - **Governance — built in v0.7.0.** `rbac.py` holds the compiled `PERMISSIONS` **ceiling** and the
   one capability resolver (`resolve_capabilities`, an intersection, so escalation is structurally
   impossible); `shaping.py` gained a second axis beside field shaping — `visible_nes` and the scope
@@ -81,8 +98,15 @@ is superseded in place with a disposition table at the top.
 
 - **Zero new runtime dependencies.** The shipped app imports only `pysnmp`, `aiosqlite`,
   `fastapi`, `uvicorn`, `pydantic`. Dev/CI tooling lives in the `dev` extra.
-- **Modules stay small** (≈300 lines) and **flat** inside `src/netcorenoc/` — no deep
-  subpackages, no plugin systems.
+- **Modules stay small and shallow.** A module owns one noun or one decision; over ~250 lines is a
+  smell and over **400** fails CI, with an explicit shrink-only debt allowlist naming the release
+  that will fix each current offender. One level of nesting where it has been earned — today that
+  is `api/` alone — and never two. The rule, the layer map and the v0.7.3 targets for `store.py`
+  and `main.py` are in [`MODULE-ARCHITECTURE.md`](MODULE-ARCHITECTURE.md); the guard is
+  `tests/test_architecture.py`.
+- **A new route declares itself or the process does not start.** `rbac.py` holds both the
+  capability (`ROUTE_PERMISSIONS`) and the visibility posture (`ROUTE_SCOPE`); registration goes
+  through `api/declare.py`, which refuses anything it has not been told about.
 - **The UI is four files, no build step.** New DOM values go through `textContent`/`esc()` —
   never `innerHTML` — under the strict CSP.
 - **A change to a scored path ships its `make eval` delta.** See `CONTRIBUTING.md` at the repo
