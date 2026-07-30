@@ -4,6 +4,82 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-07-30 — "the HTTP package" (internal structure only)
+
+**Internal structure only. No behaviour change of any kind.** Not one route path, method, status
+code, response field or capability moves. `PERMISSIONS`, `ROUTE_PERMISSIONS`, `PUBLIC_ROUTES`,
+`AUDITED_DENIED_PERMISSIONS` and the audit action catalog are unchanged; runtime dependencies stay
+at **five**; **zero** new migrations; `make eval` is **byte-identical** to v0.7.1. An operator
+upgrading from v0.7.1 has nothing to do — see [`MIGRATION.md`](MIGRATION.md).
+
+v0.7.1 closed six findings; four of them lived in `api.py`, and they hid for one structural reason:
+a single 1 752-line file held the CSRF gate, identity resolution, the governance policy cache,
+capability resolution, scope resolution, the audit helper, the rate limiter, the transaction
+discipline **and** forty route handlers. This release splits that file into a package, and replaces
+the string-joined route/permission convention with a declaration that fails before the process can
+serve — so the class of defect F34 belongs to becomes structurally impossible rather than merely
+tested for.
+
+> **Declare now, prove the declaration is true now, enforce mechanically later — and move the code
+> without moving a single decision.**
+
+### Changed — internal structure
+
+- **`src/netcorenoc/api.py` is now the package `src/netcorenoc/api/`** — sixteen modules, largest
+  361 lines, one level deep (DECISIONS #79, #85). `api/__init__.py` re-exports every symbol
+  previously reachable as `netcorenoc.api.X`, so `import netcorenoc.api` and
+  `from netcorenoc.api import create_app` behave exactly as before and `create_app`'s signature is
+  unchanged. **Read `api/perimeter.py` first if you are reviewing security.**
+- **The HTTP security boundary is one file.** `api/perimeter.py` holds everything that decides
+  *whether a request may proceed* — CSRF, identity resolution, the bootstrap gate, capability
+  resolution, scope resolution, the rate limit, the audit-row helper, the write-transaction
+  boundary, the write-side scope check and its denial audit, `DENIED_ACTION` **with its import-time
+  assert against `rbac.AUDITED_DENIED_PERMISSIONS`**, and the security-headers middleware. It owns
+  no handler logic and no response shaping (DECISIONS #76, #77).
+- **Every handler body is textually unchanged**, proved hash by hash: all 43 decorator-registered
+  handlers hash identically to v0.7.1 from their `def` line down, and all 43 decorators differ by
+  exactly `@app.` → `@route.` and nothing else. The mechanism is a mandatory local-rebinding block
+  at the top of each route module's `register()` (DECISIONS #78).
+- **The route table is identical, in order.** FastAPI resolves the first matching route, so the
+  48-entry ordering is behaviour; a test pins it against the v0.7.1 baseline.
+
+### Added — the declaration discipline
+
+- **`rbac.ROUTE_SCOPE`** — one entry per non-public route, `scoped` | `unscoped` | `admin_only`,
+  with a written justification on every `unscoped` (asserted by test). `admin_only` is *derived*
+  from `PERMISSIONS` at import in both directions, so the two tables cannot disagree. It is
+  **descriptive** this release: nothing reads it at request time, because injection would change
+  control flow and control flow is behaviour (DECISIONS #80).
+- **`api/declare.py`** — the registration gate. A route absent from `ROUTE_PERMISSIONS` or
+  `ROUTE_SCOPE` raises while the application is being built, so an appliance carrying an undeclared
+  route does not start. `PUBLIC_ROUTES` and non-`/api` paths are exempt **by explicit
+  consultation**, never by omission. A test asserts no raw `@app.<verb>` decorator survives anywhere
+  in the package.
+- **`docs/architecture/MODULE-ARCHITECTURE.md`** — the target module map for the whole project,
+  including `store.py` and `main.py`, which this release does not touch. Five layers, the
+  dependency rule, the placement rule, and the v0.7.3 specification.
+- **A module-size guard with a shrink-only debt allowlist** (`tests/test_architecture.py`): no
+  module over 400 lines, an allowlisted module may not grow, and an entry that drops within the
+  limit must be deleted. Installed in Phase 2 against the *unmodified* tree, so every step of the
+  split was measured by a rule that predated it.
+
+### Known debt, added by this release
+
+- **`rbac.py` grew from 348 to 436 lines** and joins the debt allowlist with **v0.7.4** as its
+  owner. `ROUTE_SCOPE` — the declaration whose absence *was* F34 — belongs in the single source of
+  authority, and every `unscoped` justification is required by test, so neither the table nor the
+  prose could be traded away for a line count. Split seam recorded: the route/capability tables on
+  one side, the capability-policy parser and resolver on the other (DECISIONS #87).
+
+### Security
+
+**No findings.** A move-only release should produce none, and this one did.
+`docs/security/SECURITY-REVIEW-0.7.2.md` says so plainly, and says equally plainly that this
+release does **not** make the perimeter more correct: the same code in different files has the same
+behaviour, and every caveat in SECURITY-REVIEW-0.7.1 §4 stands unchanged. What it buys is a
+perimeter a reviewer can read in one sitting and a registration discipline under which F34's class
+cannot recur silently.
+
 ## [0.7.1] - 2026-07-29 — "the write perimeter" (security patch)
 
 **A security patch, not a feature release.** Six confirmed defects (F34–F39) in which a v0.7.0
