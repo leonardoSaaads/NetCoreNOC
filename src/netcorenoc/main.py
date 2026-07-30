@@ -25,15 +25,19 @@ from typing import Any
 
 import uvicorn
 
-from netcorenoc import audit, auth, known_oids, scoring, severity
+from netcorenoc import auth, known_oids, severity
 from netcorenoc.api import QuietServer, create_app
 from netcorenoc.correlate import Correlator, ScoredLink, WindowAlarm
+from netcorenoc.engine_base import EngineBase
 from netcorenoc.events import Fingerprint, QuarantinedPacket, TrapEvent
+from netcorenoc.gaps import GAP_CLOSE_S, GapMixin, GapTracker
 from netcorenoc.learn import STORM_ALARMS, STORM_DAMPING, Learner
 from netcorenoc.logsetup import configure_logging
+from netcorenoc.maintenance import MaintenanceMixin
 from netcorenoc.receiver import MAX_INSTANCE_CHARS, QueueItem, start_receiver
 from netcorenoc.rootcause import Member, Precedence
 from netcorenoc.runtime import RuntimeConfig
+from netcorenoc.scorer_lifecycle import ScorerLifecycleMixin
 from netcorenoc.settings import (
     ENV_PREFIX,
     LEGACY_ENV_PREFIX,
@@ -81,60 +85,8 @@ LEARN_CAP = 20  # window members observed per activation (bounded work per event
 IDLE_CLOSE_S = 3600.0  # open situations idle this long are closed by maintenance
 MAINT_INTERVAL_S = 5.0
 PRUNE_EVERY_TICKS = 12  # prune once a minute
-GAP_CLOSE_S = 10.0  # an ingest gap closes after this long with no further drops (§5.6)
 PROFILE_STALE_S = 7 * 86400.0  # profiler accumulators untouched this long are pruned (§6)
 SHUTDOWN_DRAIN_S = 5.0  # bounded deadline to drain queued traps on graceful shutdown (§A.5)
-
-
-@dataclass
-class _OpenGap:
-    started_at: float
-    last_drop_at: float
-    dropped: int
-
-
-@dataclass
-class GapTracker:
-    """Turns drop counters into durable ``ingest_gap`` records (§5.6).
-
-    A gap opens on the first drop for a reason and closes after ``GAP_CLOSE_S`` with no
-    further drops; the closed row is written to the store and audited. In-memory open gaps
-    are surfaced live in ``/api/stats``. Purely maintenance-side — the trap path is untouched.
-    """
-
-    open_gaps: dict[str, _OpenGap] = field(default_factory=dict)
-
-    def observe(self, reason: str, count: int, now: float) -> None:
-        if count <= 0:
-            return
-        gap = self.open_gaps.get(reason)
-        if gap is None:
-            self.open_gaps[reason] = _OpenGap(now, now, count)
-        else:
-            gap.dropped += count
-            gap.last_drop_at = now
-
-    async def flush(self, store: Store, now: float) -> list[tuple[str, _OpenGap]]:
-        """Close and persist any gap idle for ``GAP_CLOSE_S``; return the closed gaps."""
-        closed: list[tuple[str, _OpenGap]] = []
-        for reason, gap in list(self.open_gaps.items()):
-            if now - gap.last_drop_at >= GAP_CLOSE_S:
-                await store.record_ingest_gap(gap.started_at, gap.last_drop_at, gap.dropped, reason)
-                closed.append((reason, gap))
-                del self.open_gaps[reason]
-        return closed
-
-    def snapshot(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "reason": reason,
-                "started_at": gap.started_at,
-                "last_drop_at": gap.last_drop_at,
-                "dropped": gap.dropped,
-                "open": True,
-            }
-            for reason, gap in self.open_gaps.items()
-        ]
 
 
 @dataclass
@@ -162,7 +114,7 @@ class FlapDetector:
         return mean <= self.max_mean_interval and cv <= self.max_cv
 
 
-class Engine:
+class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
     """Consumes the queue in batches; one SQLite transaction per batch."""
 
     def __init__(self, store: Store, queue: asyncio.Queue[QueueItem]) -> None:
@@ -212,97 +164,6 @@ class Engine:
         """Drop in-memory membership after an operator manually closes a situation."""
         for member in self.members.pop(sid, []):
             self.sit_of.pop(member.alarm_id, None)
-
-    async def load_scorer_config(self) -> None:
-        """Load the active scoring configuration — **the reload point** (§DESIGN v0.6.0).
-
-        Called at :meth:`start` and at the top of each :meth:`maintenance` pass, so an admin's
-        apply or rollback takes effect within one maintenance interval and *never* mid-batch: a
-        batch is always scored by exactly one configuration, which is what makes the `config_id`
-        recorded on a situation the one that actually scored it.
-
-        Fail-safe: an unreachable store, a dangling pointer, an unsupported contract version, or
-        an out-of-bounds stored row leaves the **coded defaults** in place and raises an operator
-        warning. The engine can never run with an unvalidated formula, and never refuses to run
-        for want of one.
-        """
-        try:
-            row = await self.store.active_scorer_config()
-        except Exception as exc:  # a config read must never stop correlation
-            self._loaded_key = None  # retry on the next pass; the DB may come back
-            self._use_default_scorer(f"scoring configuration unreadable ({type(exc).__name__})")
-            return
-        key = None if row is None else (int(row["id"]), str(row["params_hash"]))
-        if key == self._loaded_key:
-            # Unchanged since the last reload: leave the live scorer alone. This is what makes a
-            # degradation *sticky* — re-instantiating the same configuration every maintenance
-            # pass would silently un-degrade a scorer that has already proven it fails.
-            return
-        self._loaded_key = key
-        if row is None:
-            # No pointer yet (a store older than the seed, or a bare test fixture): coded
-            # defaults, silently — this is the documented zero-config state, not a failure.
-            self.correlator.set_scorer(scoring.default_scorer())
-            self.scorer_config_id = None
-            self.scorer_warnings = []
-            return
-        try:
-            scoring.check_contract_version(str(row["contract_version"]))
-            scoring.validate_params(
-                float(row["w_t"]),
-                float(row["w_a"]),
-                float(row["w_e"]),
-                float(row["tau_s"]),
-                float(row["threshold"]),
-            )
-        except (scoring.ScorerParamsError, scoring.ContractVersionError) as exc:
-            self._use_default_scorer(f"stored scoring configuration rejected: {exc}")
-            return
-        self.correlator.set_scorer(
-            scoring.AdditiveScorer(
-                w_t=float(row["w_t"]),
-                w_a=float(row["w_a"]),
-                w_e=float(row["w_e"]),
-                tau_s=float(row["tau_s"]),
-                threshold=float(row["threshold"]),
-                scorer_id=str(row["scorer_id"]),
-                contract_version=str(row["contract_version"]),
-            )
-        )
-        self.scorer_config_id = int(row["id"])
-        self.scorer_warnings = []
-
-    def _use_default_scorer(self, reason: str) -> None:
-        """Fall back to the coded defaults and tell the operator why (never silently)."""
-        warning = f"{reason}. Correlation is running on the built-in default parameters."
-        if self.scorer_warnings != [warning]:
-            log.warning("%s; using the built-in default scoring parameters", reason)
-        self.correlator.set_scorer(scoring.default_scorer())
-        self.scorer_config_id = None
-        self.scorer_warnings = [warning]
-
-    def scorer_warning_list(self) -> list[str]:
-        """Operator warnings from the scoring path: a rejected config, or a degraded scorer."""
-        return [*self.scorer_warnings, *self.correlator.scorer.warnings()]
-
-    async def _audit_scorer_fallback(self, now: float) -> None:
-        """Record `scorer.fallback` once when the active scorer degrades to the defaults."""
-        safe = self.correlator.scorer
-        if not safe.degraded or safe.audited:
-            return
-        safe.audited = True
-        await audit.write_event(
-            self.store,
-            ts=now,
-            actor="system",
-            role=None,
-            source_ip=None,
-            action="scorer.fallback",
-            outcome="error",
-            object_type="scorer_config",
-            object_id=str(self.scorer_config_id) if self.scorer_config_id else None,
-            details={"reason": safe.last_error, "failures": safe.failures},
-        )
 
     async def start(self) -> None:
         """Reload learned state and open-situation membership after a restart."""
@@ -498,95 +359,6 @@ class Engine:
             instance = value  # the finest value becomes the dedup instance
         return entity_id, instance
 
-    async def _promotion_sweep(self, now: float) -> None:
-        """Once per maintenance pass, try to subdivide NEs that saw traffic and have no
-        discriminator yet, confirm a severity field for those without one, and audit any that
-        just breached the entity cap."""
-        active = sorted(self._active_nes)
-        self._active_nes.clear()
-        for ne_id in active:
-            if ne_id not in self.ne_discriminator:
-                await self._maybe_promote(ne_id, now)
-            if ne_id not in self.ne_severity:
-                await self._maybe_confirm_severity(ne_id, now)
-        for ne_id in sorted(self._entity_cap_hit - self._cap_audited):
-            self._cap_audited.add(ne_id)
-            await audit.write_event(
-                self.store,
-                ts=now,
-                actor="system",
-                role=None,
-                source_ip=None,
-                action="entity.promote",
-                outcome="denied",
-                object_type="ne",
-                object_id=str(ne_id),
-                details={"reason": "max_entities_per_ne", "cap": MAX_ENTITIES_PER_NE},
-            )
-
-    async def _maybe_promote(self, ne_id: int, now: float) -> None:
-        # promotion_chain returns the coarsest->finest FD chain to promote, deferring while a
-        # finer child is still emerging or an unrelated candidate is within the margin (S6).
-        chain = self.profiler.promotion_chain(ne_id)
-        if not chain:
-            return
-        self.ne_discriminator[ne_id] = [(c.varbind_oid, c.score) for c in chain]
-        for candidate in chain:
-            self.profiler.set_role(ne_id, candidate.varbind_oid, "entity")
-        self._ne_entity_keys[ne_id] = set(await self.store.entity_keys_for_ne(ne_id))
-        await self.store.del_meta(f"entity_reset:{ne_id}")  # a fresh decision clears the reset
-        await audit.write_event(
-            self.store,
-            ts=now,
-            actor="system",
-            role=None,
-            source_ip=None,
-            action="entity.promote",
-            outcome="ok",
-            object_type="ne",
-            object_id=str(ne_id),
-            details={
-                "chain": [c.varbind_oid for c in chain],
-                "score": round(chain[-1].score, 4),
-                "n_obs": chain[-1].n_obs,
-                "n_distinct": chain[-1].n_distinct,
-                "levels": len(chain),
-            },
-        )
-
-    async def _maybe_confirm_severity(self, ne_id: int, now: float) -> None:
-        """Confirm a severity varbind when it is both severity-shaped (the profiler: a small
-        ordinal cross-class field, not the identifier) and ordinal against observed alarm
-        lifetimes (the store). Forward-only: new alarms gain a severity, history is untouched;
-        a field that cannot be validated stays unknown (S8, §5.3)."""
-        entity_oids = {oid for oid, _ in self.ne_discriminator.get(ne_id, [])}
-        cand = severity.severity_candidate(self.profiler, ne_id, entity_oids)
-        if cand is None:
-            return
-        samples = await self.store.closed_alarm_varbind_lifetimes(ne_id, cand.varbind_oid)
-        if not severity.confirm_ordinality(cand, samples):
-            return
-        self.ne_severity[ne_id] = cand.varbind_oid
-        self.profiler.set_role(ne_id, cand.varbind_oid, "severity")
-        await audit.write_event(
-            self.store,
-            ts=now,
-            actor="system",
-            role=None,
-            source_ip=None,
-            action="severity.confirm",
-            outcome="ok",
-            object_type="ne",
-            object_id=str(ne_id),
-            details={
-                "varbind_oid": cand.varbind_oid,
-                "kind": cand.kind,
-                "values": sorted(cand.ranks),
-                "n_obs": cand.n_obs,
-                "n_classes": cand.n_classes,
-            },
-        )
-
     def _resolve_severity(self, ne_id: int, event: TrapEvent) -> tuple[str | None, int | None]:
         """(severity, rank) for a trap on an NE with a confirmed severity field, else
         (None, None) — an honest unknown, never a default (S8)."""
@@ -779,35 +551,6 @@ class Engine:
                 self.profiler.prune_stale(now - PROFILE_STALE_S)
                 await self.store.delete_stale_varbind_profiles(now - PROFILE_STALE_S)
             await self.store.commit()
-
-    async def _flush_profiler(self, now: float) -> None:
-        rows = self.profiler.flush_rows(now)
-        if rows:
-            await self.store.upsert_varbind_profiles(rows)
-
-    async def _record_ingest_gaps(self, now: float) -> None:
-        """Fold receiver queue-full drops and window-overflow drops into durable gap rows."""
-        total_dropped = self.dropped_provider()
-        self.gap.observe("queue_full", total_dropped - self._dropped_baseline, now)
-        self._dropped_baseline = total_dropped
-        self.gap.observe("window_overflow", self.correlator.take_overflow(), now)
-        for reason, closed in await self.gap.flush(self.store, now):
-            await audit.write_event(
-                self.store,
-                ts=now,
-                actor="system",
-                role=None,
-                source_ip=None,
-                action="ingest.gap",
-                outcome="ok",
-                object_type="ingest_gap",
-                details={
-                    "reason": reason,
-                    "dropped": closed.dropped,
-                    "started_at": closed.started_at,
-                    "ended_at": closed.last_drop_at,
-                },
-            )
 
     async def maintenance_loop(self, retention_provider: Callable[[], float]) -> None:
         tick = 0

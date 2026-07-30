@@ -45,6 +45,7 @@ LAYER_OF: dict[str, str] = {
     # engine — the domain
     "main": "engine",
     "engine": "engine",
+    "engine_base": "engine",
     "runner": "http",  # the process entry point: it BUILDS the HTTP server, so it lives at http
     "maintenance": "engine",
     "gaps": "engine",
@@ -105,9 +106,6 @@ EXEMPTIONS: dict[tuple[str, str], str] = {
 PLANNED_THIS_RELEASE: set[str] = {
     "engine",
     "runner",
-    "maintenance",
-    "gaps",
-    "scorer_lifecycle",
 }
 
 # Type-only imports (`if TYPE_CHECKING:`) create no runtime edge and no import cycle.

@@ -24,8 +24,9 @@ Five layers. The first four are a stack; the fifth is available to all of them.
 │                 the delivery layer: HTTP semantics, the security boundary,   │
 │                 request/response shape. Owns no domain rule.                 │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│  engine         main, correlate, learn, scoring, rootcause, severity,        │
-│                 varbind_profile, preview                                     │
+│  engine         main, engine, engine_base, maintenance, gaps,                │
+│                 scorer_lifecycle, correlate, learn, scoring, rootcause,       │
+│                 severity, varbind_profile, preview   (runner -> http)         │
 │                 the domain: what a situation is, what links two alarms, what │
 │                 an entity is, what the root cause is.                        │
 ├──────────────────────────────────────────────────────────────────────────────┤
