@@ -1590,5 +1590,7 @@ grouping**.
   which is the trade this release exists to refuse. (b) defeats the entire split. Under (c) every
   assertion keeps its exact meaning and the scanned corpus keeps its exact extent; the token renames
   are mechanical and are called out in the Phase 5 evidence rather than buried in a large test diff.
-  A silently-vacuous guard is worse than a deleted one, so the helper asserts it found all fourteen
-  modules and a non-trivial amount of text.
+  A silently-vacuous guard is worse than a deleted one, so the helper carries two guards of its own:
+  it **refuses a module it has not been told where to place** (a new file under `api/` fails the
+  scanning tests until someone puts it in the registration order) and it asserts a floor on the
+  concatenated length.

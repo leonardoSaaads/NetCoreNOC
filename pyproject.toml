@@ -74,7 +74,7 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 # before the move, so the reorg touches no test/eval import block.
 known-local-folder = [
     "metrics", "trap_replay", "harness", "corpus_gen", "scenario_dsl", "trap_sim",
-    "util", "authutil",
+    "util", "authutil", "apisource",
 ]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout

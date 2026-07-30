@@ -32,7 +32,11 @@ if TYPE_CHECKING:
     from netcorenoc.main import Engine
     from netcorenoc.runtime import RuntimeConfig
 
-UI_DIR = Path(__file__).parent / "ui"
+# v0.7.2: `api` is a package one level below `netcorenoc`, so the UI lives one directory further
+# up than it did when this was `netcorenoc/api.py`. The extra `.parent` is a consequence of the
+# move, not a change to what is served: the resolved path is byte-identical to v0.7.1's, and
+# `tests/test_security_txt.py` / `tests/test_deploy.py` assert the served files from it.
+UI_DIR = Path(__file__).parent.parent / "ui"
 UI_FILE = UI_DIR / "index.html"
 RATE_CAPACITY = 30.0
 RATE_REFILL = 10.0
