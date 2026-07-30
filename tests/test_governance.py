@@ -1447,7 +1447,7 @@ async def test_f38_the_large_scope_fallback_agrees_with_the_bound_path(
         bound_sits = await store.list_situations(None, 50, scope_ids)
         bound_open = await store.list_situations("open", 50, scope_ids)
         bound_marks = await store.timeline_marks(50, scope_ids)
-        monkeypatch.setattr("netcorenoc.store.MAX_SCOPE_PARAMS", 0)
+        monkeypatch.setattr("netcorenoc.store._all.MAX_SCOPE_PARAMS", 0)
         fallback_sits = await store.list_situations(None, 50, scope_ids)
         fallback_open = await store.list_situations("open", 50, scope_ids)
         fallback_marks = await store.timeline_marks(50, scope_ids)

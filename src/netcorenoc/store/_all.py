@@ -1,9 +1,6 @@
-"""SQLite (WAL) persistence behind one small interface.
+"""Transitional holder for the `Store` methods not yet moved into their domain module.
 
-One connection, hand-written SQL, plain-SQL migrations applied at startup via
-``PRAGMA user_version``. The engine batches writes and calls :meth:`Store.commit`
-per batch; interleaved API writes simply join the current transaction — a throughput
-choice, not an atomicity contract.
+Deleted at the end of Phase 3, when the last section leaves and `Store` moves to `__init__.py`.
 """
 
 from __future__ import annotations
@@ -11,69 +8,24 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 import aiosqlite
 
 from netcorenoc import known_oids
 from netcorenoc.events import QuarantinedPacket, TrapEvent
-
-MIGRATIONS_DIR = Path(__file__).parent / "migrations"
-
-
-@dataclass(frozen=True)
-class IngestResult:
-    """Outcome of deduplicating one trap into the alarm table."""
-
-    alarm_id: int
-    device_id: int
-    class_id: int
-    activated: bool  # newly active (first ever, or re-raise after clear)
-    count: int
-    entity_id: int = 0  # the alarmed entity (§5.5); 0 falls back to the device at scoring
+from netcorenoc.store.base import StoreBase
+from netcorenoc.store.lifecycle import LifecycleMixin
+from netcorenoc.store.types import (
+    MAX_SCOPE_PARAMS,
+    TOUCH_INTERVAL_S,
+    EdgeRow,
+    FeedbackResult,
+    IngestResult,
+)
 
 
-@dataclass(frozen=True)
-class EdgeRow:
-    """One learned pairwise statistic (affinity, precedence, or clear pair)."""
-
-    kind: str
-    a_id: int
-    b_id: int
-    weight: float
-    n: float
-    g: int
-
-
-TOUCH_INTERVAL_S = 5.0  # cadence for cosmetic last_seen updates on cached rows
-
-# v0.7.1 (F38): the scoped read paths bind one parameter per in-scope NE, exactly as
-# :meth:`Store.scoped_stats` has since v0.7.0. SQLite's ``SQLITE_MAX_VARIABLE_NUMBER`` is 32 766 on
-# every build Python 3.12 ships with, so this cap sits comfortably below it while leaving room for
-# the query's own bound values. Above the cap the scoped branch does not truncate the id list —
-# that would silently answer the wrong question — it fetches unbounded and filters in Python, which
-# is slower but still correct. An estate with more than this many NEs inside a single scope is far
-# outside the design point of a one-file SQLite appliance.
-MAX_SCOPE_PARAMS = 30_000
-
-
-class FeedbackResult(NamedTuple):
-    """Outcome of recording one feedback verdict (v0.7.1, F36).
-
-    Two separate facts the caller must not conflate: whether the situation **exists** (a 404 if it
-    does not) and whether this ``(situation, verdict)`` pair was **newly inserted**. Only a genuine
-    insert may apply a learning effect — a repeat is a no-op that still answers 200, because the
-    operator's statement is already on record and re-stating it carries no new information
-    (DECISIONS #68).
-    """
-
-    exists: bool
-    inserted: bool
-
-
-class Store:
+class Store(LifecycleMixin, StoreBase):
     def __init__(self, path: str) -> None:
         self._path = path
         self._conn: aiosqlite.Connection | None = None
@@ -92,73 +44,6 @@ class Store:
         # (sqlite refuses to commit while statements are in progress). The engine takes
         # it per batch; API handlers take it per request.
         self.lock = asyncio.Lock()
-
-    @property
-    def conn(self) -> aiosqlite.Connection:
-        assert self._conn is not None, "Store.open() not called"
-        return self._conn
-
-    async def open(self) -> None:
-        self._conn = await aiosqlite.connect(self._path)
-        self._conn.row_factory = aiosqlite.Row
-        await self._conn.execute("PRAGMA journal_mode=WAL")
-        await self._conn.execute("PRAGMA synchronous=NORMAL")
-        await self._conn.execute("PRAGMA foreign_keys=ON")
-        await self._conn.execute("PRAGMA busy_timeout=5000")
-        await self._migrate()
-        await self._check_integrity()
-
-    async def _migrate(self) -> None:
-        cur = await self.conn.execute("PRAGMA user_version")
-        row = await cur.fetchone()
-        current = int(row[0]) if row else 0
-        for script in sorted(MIGRATIONS_DIR.glob("*.sql")):
-            version = int(script.name.split("_", 1)[0])
-            if version > current:
-                await self.conn.executescript(script.read_text())
-                await self.conn.execute(f"PRAGMA user_version={version}")
-        await self.conn.commit()
-
-    async def _check_integrity(self) -> None:
-        """Startup integrity/FK check (F11). Records a warning on damage; never crashes."""
-        cur = await self.conn.execute("PRAGMA integrity_check")
-        row = await cur.fetchone()
-        if row is not None and str(row[0]).lower() != "ok":
-            self.integrity_warnings.append(
-                "Database integrity_check reported damage. Restore from a backup and run "
-                "`netcorenoc audit verify`; new traps are still being ingested."
-            )
-        cur = await self.conn.execute("PRAGMA foreign_key_check")
-        orphans = list(await cur.fetchall())
-        if orphans:
-            self.integrity_warnings.append(
-                f"Database foreign_key_check found {len(orphans)} orphaned row(s); "
-                "history may be inconsistent. A backup/restore is recommended."
-            )
-
-    @staticmethod
-    def latest_schema_version() -> int:
-        """The highest migration number on disk (the schema version a healthy DB reaches)."""
-        return max((int(p.name.split("_", 1)[0]) for p in MIGRATIONS_DIR.glob("*.sql")), default=0)
-
-    async def schema_version(self) -> int:
-        cur = await self.conn.execute("PRAGMA user_version")
-        row = await cur.fetchone()
-        return int(row[0]) if row else 0
-
-    async def close(self) -> None:
-        if self._conn is not None:
-            await self._conn.commit()
-            await self._conn.close()
-            self._conn = None
-
-    async def commit(self) -> None:
-        await self.conn.commit()
-
-    async def rollback(self) -> None:
-        """Abandon the current transaction (F11). The audit chain only advances on commit, so a
-        rolled-back batch never breaks it — the dropped traps are recorded as an ingest loss."""
-        await self.conn.rollback()
 
     # -- devices and classes ---------------------------------------------------------
 

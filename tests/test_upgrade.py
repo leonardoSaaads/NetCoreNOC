@@ -83,7 +83,7 @@ async def test_v060_upgrade_preserves_grouping_and_seeds_provenance(tmp_path: Pa
     coded defaults, so v0.6.0 scores exactly as v0.5.0 did. Provenance is seeded and backfilled,
     learned state and the audit chain survive, and the schema advances by exactly one.
     """
-    import netcorenoc.store as store_mod
+    import netcorenoc.store.lifecycle as store_mod
     from netcorenoc.scoring import AdditiveScorer
 
     real_dir = store_mod.MIGRATIONS_DIR
@@ -183,7 +183,7 @@ async def test_v070_upgrade_changes_no_behaviour(tmp_path: Path) -> None:
     upgraded appliance must carry **no governance policy**, so every route answers exactly as it
     did before. Governance changes nothing until an admin writes a policy.
     """
-    import netcorenoc.store as store_mod
+    import netcorenoc.store.lifecycle as store_mod
     from netcorenoc import rbac
 
     real_dir = store_mod.MIGRATIONS_DIR
@@ -278,7 +278,7 @@ async def test_v071_upgrade_changes_no_behaviour_except_the_three_documented_cha
 
     Any fourth difference at empty policy is a defect in this release's work.
     """
-    import netcorenoc.store as store_mod
+    import netcorenoc.store.lifecycle as store_mod
 
     real_dir = store_mod.MIGRATIONS_DIR
 

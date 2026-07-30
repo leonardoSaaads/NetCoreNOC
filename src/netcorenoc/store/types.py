@@ -1,0 +1,66 @@
+"""Value types and module constants shared across the store package.
+
+These sat at module level in v0.7.2's `store.py`. They live here so every mixin can import them
+without reaching back into the package's ``__init__``, which would be a cycle.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import NamedTuple
+
+# `store.py` computed this as `Path(__file__).parent / "migrations"`. The file moved one level
+# down into the package, so the expression gains one `.parent` to resolve to the same directory.
+# This is the only module-level text this split changes, and it is verified in the Phase 3 gate
+# evidence by comparing the resolved path against the pre-split value.
+MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+
+TOUCH_INTERVAL_S = 5.0  # cadence for cosmetic last_seen updates on cached rows
+
+# v0.7.1 (F38): the scoped read paths bind one parameter per in-scope NE, exactly as
+# :meth:`Store.scoped_stats` has since v0.7.0. SQLite's ``SQLITE_MAX_VARIABLE_NUMBER`` is 32 766 on
+# every build Python 3.12 ships with, so this cap sits comfortably below it while leaving room for
+# the query's own bound values. Above the cap the scoped branch does not truncate the id list —
+# that would silently answer the wrong question — it fetches unbounded and filters in Python, which
+# is slower but still correct. An estate with more than this many NEs inside a single scope is far
+# outside the design point of a one-file SQLite appliance.
+MAX_SCOPE_PARAMS = 30_000
+
+
+@dataclass(frozen=True)
+class IngestResult:
+    """Outcome of deduplicating one trap into the alarm table."""
+
+    alarm_id: int
+    device_id: int
+    class_id: int
+    activated: bool  # newly active (first ever, or re-raise after clear)
+    count: int
+    entity_id: int = 0  # the alarmed entity (§5.5); 0 falls back to the device at scoring
+
+
+@dataclass(frozen=True)
+class EdgeRow:
+    """One learned pairwise statistic (affinity, precedence, or clear pair)."""
+
+    kind: str
+    a_id: int
+    b_id: int
+    weight: float
+    n: float
+    g: int
+
+
+class FeedbackResult(NamedTuple):
+    """Outcome of recording one feedback verdict (v0.7.1, F36).
+
+    Two separate facts the caller must not conflate: whether the situation **exists** (a 404 if it
+    does not) and whether this ``(situation, verdict)`` pair was **newly inserted**. Only a genuine
+    insert may apply a learning effect — a repeat is a no-op that still answers 200, because the
+    operator's statement is already on record and re-stating it carries no new information
+    (DECISIONS #68).
+    """
+
+    exists: bool
+    inserted: bool
