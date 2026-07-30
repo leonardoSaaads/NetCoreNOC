@@ -12,20 +12,18 @@ from typing import Any
 
 import aiosqlite
 
-from netcorenoc import known_oids
-from netcorenoc.events import QuarantinedPacket, TrapEvent
+from netcorenoc.store.alarms import AlarmMixin
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.devices import DeviceMixin
+from netcorenoc.store.learned import LearnedMixin
 from netcorenoc.store.lifecycle import LifecycleMixin
 from netcorenoc.store.types import (
     MAX_SCOPE_PARAMS,
-    TOUCH_INTERVAL_S,
-    EdgeRow,
     FeedbackResult,
-    IngestResult,
 )
 
 
-class Store(LifecycleMixin, StoreBase):
+class Store(LearnedMixin, AlarmMixin, DeviceMixin, LifecycleMixin, StoreBase):
     def __init__(self, path: str) -> None:
         self._path = path
         self._conn: aiosqlite.Connection | None = None
@@ -47,227 +45,9 @@ class Store(LifecycleMixin, StoreBase):
 
     # -- devices and classes ---------------------------------------------------------
 
-    def _should_touch(self, kind: str, row_id: int, ts: float) -> bool:
-        """last_seen on device/class rows is cosmetic; throttle it under load."""
-        key = (kind, row_id)
-        if ts - self._touched.get(key, 0.0) < TOUCH_INTERVAL_S:
-            return False
-        self._touched[key] = ts
-        return True
-
-    async def device_id(self, ip: str, ts: float) -> int:
-        cached = self._device_ids.get(ip)
-        if cached is not None:
-            if self._should_touch("d", cached, ts):
-                await self.conn.execute("UPDATE device SET last_seen=? WHERE id=?", (ts, cached))
-            return cached
-        cur = await self.conn.execute(
-            "INSERT INTO device (ip, vendor, first_seen, last_seen) VALUES (?, NULL, ?, ?) "
-            "ON CONFLICT (ip) DO UPDATE SET last_seen=excluded.last_seen RETURNING id",
-            (ip, ts, ts),
-        )
-        row = await cur.fetchone()
-        assert row is not None
-        self._device_ids[ip] = int(row[0])
-        return self._device_ids[ip]
-
-    async def ne_id(self, ip: str, ts: float) -> int:
-        """The reporting element for a source IP. Parallel to :meth:`device_id` (one NE per
-        device, 1:1); device_id is retained and kept in sync for one version (§5.2)."""
-        cached = self._ne_ids.get(ip)
-        if cached is not None:
-            if self._should_touch("n", cached, ts):
-                await self.conn.execute("UPDATE ne SET last_seen=? WHERE id=?", (ts, cached))
-            return cached
-        cur = await self.conn.execute(
-            "INSERT INTO ne (ip, vendor, first_seen, last_seen) VALUES (?, NULL, ?, ?) "
-            "ON CONFLICT (ip) DO UPDATE SET last_seen=excluded.last_seen RETURNING id",
-            (ip, ts, ts),
-        )
-        row = await cur.fetchone()
-        assert row is not None
-        self._ne_ids[ip] = int(row[0])
-        return self._ne_ids[ip]
-
-    async def entity_level0(self, ne_id: int, ip: str, ts: float) -> int:
-        """The level-0 entity (the NE itself). Insert-or-get; the store lock serialises this,
-        and the UNIQUE (ne_id, parent_id, key) index does not fire on a NULL parent, so a
-        SELECT-then-INSERT under the lock is the correct idempotent path."""
-        cached = self._entity0_ids.get(ne_id)
-        if cached is not None:
-            return cached
-        cur = await self.conn.execute(
-            "SELECT id FROM entity WHERE ne_id=? AND level=0 AND parent_id IS NULL", (ne_id,)
-        )
-        row = await cur.fetchone()
-        if row is None:
-            cur = await self.conn.execute(
-                "INSERT INTO entity (ne_id, parent_id, level, key, key_source, confidence, "
-                "first_seen, last_seen) VALUES (?, NULL, 0, ?, 'self', 1.0, ?, ?) RETURNING id",
-                (ne_id, ip, ts, ts),
-            )
-            row = await cur.fetchone()
-        assert row is not None
-        self._entity0_ids[ne_id] = int(row[0])
-        return self._entity0_ids[ne_id]
-
-    async def class_id(self, oid: str, ts: float) -> int:
-        cached = self._class_ids.get(oid)
-        if cached is not None:
-            if self._should_touch("c", cached, ts):
-                await self.conn.execute(
-                    "UPDATE alarm_class SET last_seen=? WHERE id=?", (ts, cached)
-                )
-            return cached
-        vendor = known_oids.vendor_of(oid)
-        name = known_oids.trap_name(oid)
-        cur = await self.conn.execute(
-            "INSERT INTO alarm_class (oid, vendor, name, first_seen, last_seen) "
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT (oid) DO UPDATE SET last_seen=excluded.last_seen RETURNING id",
-            (oid, vendor, name, ts, ts),
-        )
-        row = await cur.fetchone()
-        assert row is not None
-        self._class_ids[oid] = int(row[0])
-        return self._class_ids[oid]
-
     # -- alarms ----------------------------------------------------------------------
 
-    async def ingest(
-        self,
-        event: TrapEvent,
-        entity_id: int | None = None,
-        instance: str | None = None,
-        severity: str | None = None,
-        severity_rank: int | None = None,
-    ) -> IngestResult:
-        """Dedup by fingerprint: a repeat bumps count/last_seen; a re-raise re-activates.
-
-        The dedup key stays (device_id, class_id, instance) — at level 0 this is exactly
-        the entity fingerprint (one entity per NE), which is what preserves cold-start parity
-        (§5.2). ne_id and entity_id are recorded on every alarm so the entity model is
-        populated from day one; the profiler (S4/S5) only ever adds deeper entities.
-        """
-        device_id = await self.device_id(event.device, event.ts)
-        class_id = await self.class_id(event.trap_oid, event.ts)
-        ne_id = await self.ne_id(event.device, event.ts)
-        # The engine resolves the entity and dedup instance (promotion-aware, S5). Defaults —
-        # the level-0 entity and the heuristic instance — reproduce v0.2.0 exactly (parity).
-        if entity_id is None:
-            entity_id = await self.entity_level0(ne_id, event.device, event.ts)
-        inst = event.instance if instance is None else instance
-        cur = await self.conn.execute(
-            "SELECT id, status, entity_id FROM alarm "
-            "WHERE device_id=? AND class_id=? AND instance=?",
-            (device_id, class_id, inst),
-        )
-        existing = await cur.fetchone()
-        varbinds = json.dumps([v.model_dump() for v in event.varbinds])
-        if existing is None:
-            cur = await self.conn.execute(
-                "INSERT INTO alarm (device_id, ne_id, entity_id, class_id, instance, first_seen, "
-                "last_seen, varbinds, community_tag, severity, severity_rank) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
-                (
-                    device_id,
-                    ne_id,
-                    entity_id,
-                    class_id,
-                    inst,
-                    event.ts,
-                    event.ts,
-                    varbinds,
-                    event.community_tag or None,
-                    severity,
-                    severity_rank,
-                ),
-            )
-            row = await cur.fetchone()
-            assert row is not None
-            return IngestResult(int(row[0]), device_id, class_id, True, 1, entity_id)
-        # A learned severity refreshes the active alarm's current severity; COALESCE keeps the
-        # last known value when a later trap omits the field (never silently downgrades to NULL).
-        cur = await self.conn.execute(
-            "UPDATE alarm SET count=count+1, last_seen=?, varbinds=?, status='active', "
-            "cleared_at=NULL, severity=COALESCE(?, severity), "
-            "severity_rank=COALESCE(?, severity_rank) WHERE id=? RETURNING count",
-            (event.ts, varbinds, severity, severity_rank, int(existing["id"])),
-        )
-        row = await cur.fetchone()
-        assert row is not None
-        activated = str(existing["status"]) != "active"
-        # A re-raise keeps its original entity (forward-only): use the stored entity_id.
-        kept = int(existing["entity_id"]) if existing["entity_id"] is not None else entity_id
-        return IngestResult(int(existing["id"]), device_id, class_id, activated, int(row[0]), kept)
-
-    async def clear_alarm(
-        self, device_id: int, raise_class_id: int, instance: str, ts: float
-    ) -> int | None:
-        """Mark the matching active alarm cleared; returns its id, or None if absent."""
-        cur = await self.conn.execute(
-            "UPDATE alarm SET status='cleared', cleared_at=?, last_seen=? "
-            "WHERE device_id=? AND class_id=? AND instance=? AND status='active' RETURNING id",
-            (ts, ts, device_id, raise_class_id, instance),
-        )
-        row = await cur.fetchone()
-        return int(row[0]) if row else None
-
-    async def set_flapping(self, alarm_id: int, flapping: bool) -> None:
-        await self.conn.execute(
-            "UPDATE alarm SET is_flapping=? WHERE id=?", (int(flapping), alarm_id)
-        )
-
-    async def quarantine_packet(self, pkt: QuarantinedPacket) -> None:
-        await self.conn.execute(
-            "INSERT INTO quarantine (source, raw, reason, received_at, sha256, length, first8, "
-            "sanitized) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                pkt.source,
-                pkt.raw,
-                pkt.reason,
-                pkt.ts,
-                pkt.sha256,
-                pkt.length,
-                pkt.first8,
-                int(pkt.sanitized),
-            ),
-        )
-
     # -- learned state ---------------------------------------------------------------
-
-    async def load_edges(self, kind: str) -> list[EdgeRow]:
-        cur = await self.conn.execute(
-            "SELECT kind, a_id, b_id, weight, n, g FROM edge WHERE kind=?", (kind,)
-        )
-        return [
-            EdgeRow(r["kind"], r["a_id"], r["b_id"], r["weight"], r["n"], r["g"])
-            for r in await cur.fetchall()
-        ]
-
-    async def upsert_edges(self, rows: list[EdgeRow], ts: float) -> None:
-        await self.conn.executemany(
-            "INSERT INTO edge (kind, a_id, b_id, weight, n, g, version, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 1, ?) ON CONFLICT (kind, a_id, b_id) DO UPDATE SET "
-            "weight=excluded.weight, n=excluded.n, g=excluded.g, version=version+1, "
-            "updated_at=excluded.updated_at",
-            [(r.kind, r.a_id, r.b_id, r.weight, r.n, r.g, ts) for r in rows],
-        )
-
-    async def get_meta(self, key: str) -> str | None:
-        cur = await self.conn.execute("SELECT value FROM meta WHERE key=?", (key,))
-        row = await cur.fetchone()
-        return str(row[0]) if row else None
-
-    async def set_meta(self, key: str, value: str) -> None:
-        await self.conn.execute(
-            "INSERT INTO meta (key, value) VALUES (?, ?) "
-            "ON CONFLICT (key) DO UPDATE SET value=excluded.value",
-            (key, value),
-        )
-
-    async def del_meta(self, key: str) -> None:
-        await self.conn.execute("DELETE FROM meta WHERE key=?", (key,))
 
     # -- situations ------------------------------------------------------------------
 
