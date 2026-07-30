@@ -41,8 +41,26 @@ TOP_LEVEL_REQUIRED = [
 DOCS_TAXONOMY = ["architecture", "adr", "security", "scope", "releases", "gates"]
 
 # Every runtime submodule must resolve from the installed package under its unchanged name.
+# v0.7.2: `api` became a package (DECISIONS #79). It keeps its name and its whole re-export
+# surface, and every module inside it must resolve from the **installed** package too — the same
+# F12 guarantee the src/ layout bought, extended one level down.
 SUBMODULES = [
     "api",
+    "api.app",
+    "api.context",
+    "api.declare",
+    "api.governance_cache",
+    "api.models",
+    "api.perimeter",
+    "api.routes_admin",
+    "api.routes_audit",
+    "api.routes_auth",
+    "api.routes_events",
+    "api.routes_governance",
+    "api.routes_operate",
+    "api.routes_read",
+    "api.routes_scorer",
+    "api.routes_static",
     "audit",
     "auth",
     "correlate",
@@ -148,3 +166,18 @@ def test_no_broken_relative_markdown_links() -> None:
             if not resolved.exists():
                 broken.append(f"{md.relative_to(REPO_ROOT)} -> {target}")
     assert not broken, "broken relative Markdown links:\n  " + "\n  ".join(broken)
+
+
+def test_the_api_package_holds_exactly_the_expected_modules() -> None:
+    """The v0.7.2 package is a decided shape, not an accident (MODULE-ARCHITECTURE.md §3).
+
+    A new module here must be added to `SUBMODULES` (so it is proved to resolve from the installed
+    package) and to `apisource.MODULE_ORDER` (so the source-scanning guards keep covering it).
+    Failing here is the reminder.
+    """
+    import netcorenoc.api
+
+    pkg = Path(netcorenoc.api.__file__).resolve().parent
+    found = sorted(p.stem for p in pkg.glob("*.py") if p.stem != "__init__")
+    expected = sorted(m.split(".", 1)[1] for m in SUBMODULES if m.startswith("api."))
+    assert found == expected, f"api package contents changed: {found}"

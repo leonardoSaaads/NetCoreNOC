@@ -20,18 +20,9 @@ Where things live — and `MODULE-ARCHITECTURE.md` §3 is the authority:
 
 from __future__ import annotations
 
-from netcorenoc.api.app import (
-    MAX_POLICY_HISTORY,
-    MAX_SCORER_HISTORY,
-    QUEUE_SATURATION,
-    SSE_HEARTBEAT_S,
-    SSE_UPDATE_S,
-    STATIC_ASSETS,
-    UI_DIR,
-    UI_FILE,
-    create_app,
-)
+from netcorenoc.api.app import create_app
 from netcorenoc.api.context import AppContext
+from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError
 from netcorenoc.api.governance_cache import GovernancePolicies
 from netcorenoc.api.models import (
     MAX_LABEL_CHARS,
@@ -62,6 +53,10 @@ from netcorenoc.api.perimeter import (
     Perimeter,
     RateLimiter,
 )
+from netcorenoc.api.routes_events import SSE_HEARTBEAT_S, SSE_UPDATE_S
+from netcorenoc.api.routes_governance import MAX_POLICY_HISTORY
+from netcorenoc.api.routes_scorer import MAX_SCORER_HISTORY
+from netcorenoc.api.routes_static import QUEUE_SATURATION, STATIC_ASSETS, UI_DIR, UI_FILE
 
 __all__ = [
     "BOOTSTRAP_ALLOWED",
@@ -85,6 +80,7 @@ __all__ = [
     "UI_FILE",
     "AppContext",
     "ConfigIn",
+    "DeclaredRoutes",
     "FeedbackIn",
     "GovernancePolicies",
     "LabelIn",
@@ -98,6 +94,7 @@ __all__ = [
     "ScorerParamsIn",
     "ScorerRollbackIn",
     "TokenIn",
+    "UndeclaredRouteError",
     "UserIn",
     "create_app",
 ]
