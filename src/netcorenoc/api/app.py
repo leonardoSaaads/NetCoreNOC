@@ -17,12 +17,13 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI
 from fastapi.responses import StreamingResponse
 
-from netcorenoc import __version__, audit, auth, rbac, shaping
+from netcorenoc import __version__, auth, rbac, shaping
 from netcorenoc.api import (
     routes_admin,
+    routes_audit,
     routes_auth,
     routes_governance,
     routes_operate,
@@ -107,7 +108,6 @@ def create_app(
     )
     governance = perimeter.governance
     all_warnings = perimeter.all_warnings
-    audit_row = perimeter.audit_row
     write_txn = perimeter.write_txn
     security = perimeter.security
     scope_for = perimeter.scope_for
@@ -149,70 +149,7 @@ def create_app(
     routes_admin.register(app, ctx)
     routes_scorer.register(app, ctx)
     routes_governance.register(app, ctx)
-    # -- admin: quarantine (the read itself is audited) --------------------------------
-
-    @route.get("/api/quarantine")
-    async def read_quarantine(
-        request: Request, limit: int = 100, principal: auth.Principal = Depends(security)
-    ) -> list[dict[str, Any]]:
-        async with write_txn():
-            rows = await store.list_quarantine(min(max(limit, 1), 500))
-            await audit_row(
-                request,
-                principal,
-                "quarantine.read",
-                "ok",
-                object_type="quarantine",
-                details={"count": len(rows)},
-            )
-        return rows
-
-    # -- admin: audit ------------------------------------------------------------------
-
-    @route.get("/api/audit")
-    async def read_audit(
-        request: Request, limit: int = 200, principal: auth.Principal = Depends(security)
-    ) -> list[dict[str, Any]]:
-        async with write_txn():
-            rows = await store.list_audit(min(max(limit, 1), 1000))
-            await audit_row(request, principal, "audit.read", "ok", details={"count": len(rows)})
-        return rows
-
-    @route.get("/api/audit/export")
-    async def export_audit(
-        request: Request, principal: auth.Principal = Depends(security)
-    ) -> Response:
-        async with write_txn():
-            lines, final_hash = await audit.export_ndjson(store)
-            await audit_row(
-                request, principal, "audit.export", "ok", details={"final_hash": final_hash}
-            )
-        body = "\n".join(lines) + ("\n" if lines else "")
-        return Response(
-            content=body,
-            media_type="application/x-ndjson",
-            headers={"X-Audit-Final-Hash": final_hash},
-        )
-
-    @route.post("/api/audit/prune")
-    async def prune_audit(
-        request: Request, principal: auth.Principal = Depends(security)
-    ) -> dict[str, Any]:
-        async with write_txn():
-            retention_days = float(
-                await store.get_meta("config.audit_retention_days") or engine.audit_retention_days
-            )
-            removed = await store.prune_audit(time.time() - retention_days * 86400.0)
-            await audit_row(
-                request,
-                principal,
-                "prune.manual",
-                "ok",
-                object_type="audit_log",
-                details={"removed": removed},
-            )
-        return {"status": "pruned", "removed": removed}
-
+    routes_audit.register(app, ctx)
     # -- SSE: primary live-update path -------------------------------------------------
 
     @route.get("/api/events")
