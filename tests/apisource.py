@@ -65,11 +65,19 @@ def modules() -> list[Path]:
     return [PKG_DIR / name for name in MODULE_ORDER if name in present]
 
 
+# The scanning guards slice a handler body as "from this decorator to the next one". The last
+# handler in the corpus has no next one, so the concatenation ends with a decorator-shaped
+# terminator: the final slice then runs to the end of the real source, which is exactly the same
+# tight body every other slice gets. Without it the guard raises ValueError on whichever module
+# happens to sort last — a guard that breaks on a reordering it should not care about.
+TERMINATOR = "\n    @route.__end_of_package__\n"
+
+
 def api_source() -> str:
-    """The concatenated source of the `netcorenoc.api` package."""
+    """The concatenated source of the `netcorenoc.api` package, terminator included."""
     text = "\n".join(path.read_text(encoding="utf-8") for path in modules())
     assert len(text) >= MIN_SOURCE_CHARS, (
         f"the api package source is only {len(text)} characters — a scanning guard running "
         "against this would be vacuous"
     )
-    return text
+    return text + TERMINATOR
