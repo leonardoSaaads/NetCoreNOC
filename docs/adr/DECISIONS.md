@@ -1656,3 +1656,104 @@ grouping**.
   argued entry with an owner. Debt that is written down and dated is not the same failure as debt
   that is invisible; pretending otherwise is how a guard gets quietly weakened the first time it
   says something inconvenient.
+
+## 88. Mixins over a thin **annotated** base — with sibling inheritance where a mixin calls a sibling (v0.7.3)
+
+- **Context**: `MODULE-ARCHITECTURE.md` §6 named two mechanisms for splitting `store.py` and left
+  the choice to this release's Phase 1, to be settled by measuring the `mypy --strict` cost on two
+  real sections. The build prompt named a third — mixins over a base that only *declares* the ten
+  attributes — and asked for the measurement to be reproduced rather than taken on trust.
+- **Options**: (a) mixins over a `Protocol` base; (b) free functions taking `conn`, with `Store` as
+  a façade; (d) mixins over a thin annotated `StoreBase`.
+- **Choice**: (d), with one measured amendment — where a mixin calls a method that lands in a
+  *sibling* mixin, that mixin **inherits the sibling** rather than the sibling's signature being
+  restated on `StoreBase`. Measured on `devices` + `alarms` (the pair with a real cross-mixin call):
+  `mypy --strict` **0 errors**, `Store.__mro__` = `[Store, AlarmMixin, DeviceMixin, StoreBase,
+  object]`, and all nine moved method bodies hash **identically** to `store.py`.
+- **Reason**: (b) rewrites all 109 bodies as free functions plus 109 delegating one-liners, which
+  makes the method-hash parity proof — the thing that makes a 1 512-line split provable — impossible
+  to state. (a) restates `Store`'s shape in a second place, which §6 rejected and was right to.
+  Under (d) the enclosing class header is the *only* edit, so the hash proof works directly. The
+  amendment is forced by measurement, not preference: `StoreBase` holding **only** the ten
+  annotations and the `conn` accessor produced exactly **4** `mypy --strict` errors, all of the form
+  `"AlarmMixin" has no attribute "device_id"`. Only **6** methods are ever called across a mixin
+  boundary — `conn` (already on `StoreBase`), the four `devices` methods `alarms.ingest` calls, and
+  `governance.situation_member_nes` that `read_models.list_situations` calls — so the amendment costs
+  exactly **two** inheritance edges. The alternative, declaring those five signatures on
+  `StoreBase`, needs stub bodies (`...` alone fails `mypy` with `empty-body`), which would put
+  *behaviour* on the base that §4.2 says must hold none — and a stub that silently resolves instead
+  of the real method is a defect whose failure mode is a no-op write.
+
+## 89. `main.py` stays a module; the `Engine` gets the same mechanism (v0.7.3)
+
+- **Context**: `main.py` must shed the runner, the maintenance helpers, the gap tracker and the
+  scorer lifecycle. The obvious symmetry with `store/` would be a `main/` package.
+- **Options**: (a) `main/` package with `main/__main__.py`; (b) `main.py` stays a module and the
+  extractions become flat siblings beside it.
+- **Choice**: (b). `EngineBase` declares the fifteen attributes the may-leave mixins touch;
+  `Engine.__init__` initialises them; nobody duplicates. Measured: `mypy --strict` **0 errors** on
+  `EngineBase` + `ScorerLifecycleMixin` + `GapMixin` built from the real bodies, and **no** method
+  declaration is needed on `EngineBase` at all.
+- **Reason**: `python -m netcorenoc.main` is the documented way to run the correlator — `README.md`,
+  `Makefile`, `Dockerfile`, `docker-compose.yml` and `MIGRATION.md` all print it — and `main.py`
+  carries the `if __name__ == "__main__"` guard. A package would need `main/__main__.py` and would
+  change the semantics of the one command every operator types, which is a behaviour change wearing
+  a structural hat. `Engine`'s mixins need no sibling inheritance because, once #90 keeps
+  `maintenance` in `engine.py`, there are **zero** mixin→mixin and **zero** mixin→`Engine` calls.
+
+## 90. `maintenance()` does not leave `Engine`, against both documents' module tables (v0.7.3)
+
+- **Context**: `MODULE-ARCHITECTURE.md` §7 and the build prompt's §5.1 table both list
+  `maintenance()` and `maintenance_loop()` as may-leave, bound for `maintenance.py`.
+- **Options**: (a) follow the tables and move them, declaring `_close_situation` on `EngineBase`;
+  (b) apply §5.2's escape hatch and keep both in `engine.py`.
+- **Choice**: (b). `maintenance` and `maintenance_loop` stay; `_promotion_sweep`, `_maybe_promote`,
+  `_maybe_confirm_severity` and `_flush_profiler` still leave. Cost: 28 lines on `engine.py`
+  (397 → 425 must-stay method lines).
+- **Reason**: §5.2 says a may-leave method that touches the batch lock or the ingest path does not
+  leave, and that directive 4 outranks the module table. Both triggers fire on `maintenance` and on
+  nothing else: it is the only candidate that does `async with self.store.lock:` — the *same*
+  `asyncio.Lock` object `_commit_batch` takes, because there is only one — and the only one that
+  calls a directive-4 must-stay method (`_close_situation`). A reviewer asking "what closes a
+  situation, and under which lock?" must not have to follow an import. `maintenance_loop` is six
+  lines whose entire body calls `maintenance`; separating a loop from the one thing it loops over
+  would be fragmentation for its own sake. The structural payoff is real: keeping it removes the
+  **only** call that would have pointed from a mixin back into `Engine`, which is what lets
+  `EngineBase` stay a pure declaration site (#89).
+
+## 91. `COHESION_EXEMPT` — "cohesive by design" is not "unfinished" (v0.7.3)
+
+- **Context**: `engine.py`'s must-stay content measures **425 method lines** before blank
+  separators, the class header, `FlapDetector`, `EngineBase`, imports, the docstring and the
+  constants. It cannot come in under the 400-line guard, and directive 4 forbids splitting it ever.
+- **Options**: (a) put `engine.py` on `DEBT_ALLOWLIST`; (b) split it anyway; (c) raise the guard;
+  (d) a second, narrower mechanism with its own constraints.
+- **Choice**: (d) — `COHESION_EXEMPT: dict[str, str]`, module → the invariant that forbids splitting
+  it, with five constraints each enforced by its own test: the reason must cite an invariant **by
+  name** from `MODULE-ARCHITECTURE.md` §1; a module may be in one list or the other, never both;
+  entries carry **no owner and no fix date**; the exempt module may not grow past its recorded
+  count; and at most **two** entries may exist.
+- **Reason**: `DEBT_ALLOWLIST` means *"too big, will be fixed by release N"*. `engine.py` will never
+  be fixed, because there is nothing to fix — "ingestion is sacred" requires the ingest path be
+  readable in one place. Filing it as debt would put a promise in CI that nobody intends to keep,
+  and the first time a reviewer noticed the date slip, the honest response would be to move the
+  date — which is exactly how a ratchet becomes a comment. (b) makes the project's oldest invariant
+  unauditable to satisfy a number. (c) weakens the guard for every module to accommodate one. The
+  absence of an owner is the semantic difference and a test asserts it; the cap of two is what keeps
+  the escape hatch from becoming the default.
+
+## 92. The layer rule gets a test, seven releases after it got a paragraph (v0.7.3)
+
+- **Context**: `MODULE-ARCHITECTURE.md` §1 states "a layer may import downward and may import
+  cross-cutting, never upward" and records `main.py` → `netcorenoc.api` as the one genuine
+  violation. Confirmed in Phase 0: **no test enforces the rule**. The existing guards assert module
+  size, nesting depth, route order and import *resolution* — never import *direction*.
+- **Options**: (a) rely on review; (b) a test that parses every module's imports and asserts the §1
+  table, with an exemption list.
+- **Choice**: (b), with the exemption list **empty** at the end of this release, because the split
+  resolves the one violation it would otherwise have had to hold.
+- **Reason**: a rule with no test is a rule that gets noticed two releases late — which is precisely
+  what happened here, since the violation was recorded in v0.7.2 and is only being resolved now. The
+  exemption list exists so a future upward import is a *visible, arguable diff* rather than a silent
+  regression, exactly as `DEBT_ALLOWLIST` is for size. It is empty on arrival, which is the only
+  state that makes the guard mean what it says.

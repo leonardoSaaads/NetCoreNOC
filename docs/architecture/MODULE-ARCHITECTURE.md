@@ -246,6 +246,22 @@ transcription error, and it makes the method-hash parity proof (below) less dire
 prevent — in reverse. v0.7.3's Phase 1 picks one, having measured the `mypy --strict` cost of each
 on two real sections, and records the choice as an ADR.
 
+> **Superseded 2026-07-30 (v0.7.3) — see [`DECISIONS.md` #88](../adr/DECISIONS.md).** The paragraph
+> above is left as written; it was right that the choice needed a measurement, and the measurement
+> was taken. A **third** mechanism was chosen, which this section did not consider: **mixins over a
+> thin base that only *declares* the ten attributes and the `conn` accessor** — neither a `Protocol`
+> restating `Store`'s shape nor duplicated annotations, but one declaration site. Option (b) was
+> rejected on a ground this section understated: rewriting all 109 bodies as free functions changes
+> all 109 hashes, so the method-hash parity proof §8.3 requires becomes impossible to state.
+>
+> One amendment came out of the measurement rather than the plan. `StoreBase` holding *only* the
+> annotations and the accessor produced **4** `mypy --strict` errors, because exactly **6** methods
+> are called across a mixin boundary. Where that happens the calling mixin **inherits the sibling
+> mixin** — two edges in total, `AlarmMixin(DeviceMixin)` and
+> `ReadModelsMixin(GovernanceMixin)` — rather than the five signatures being restated on the base.
+> The MRO stays linear and `StoreBase` stays free of behaviour. Evidence:
+> [`docs/gates/v0.7.3-phase-1.md`](../gates/v0.7.3-phase-1.md).
+
 ---
 
 ## 7. `main.py` — the target (**v0.7.3: planned**)
@@ -279,6 +295,17 @@ on two real sections, and records the choice as an ADR.
 be read in one place: a reviewer must be able to confirm, without following imports, that nothing
 on that path takes a lock, does I/O, or awaits where it must not. Fragmenting it would make the
 project's oldest invariant unauditable, which is the exact opposite of this document's purpose.
+
+> **Amended 2026-07-30 (v0.7.3) — see [`DECISIONS.md` #90](../adr/DECISIONS.md).** The may-leave
+> list above is left as written, and all of it left **except `maintenance()` and
+> `maintenance_loop()`**, which stayed. Measurement: `maintenance` is the only may-leave candidate
+> that does `async with self.store.lock:` — the same `asyncio.Lock` object `_commit_batch` takes,
+> because there is only one — and the only one that calls a must-stay method (`_close_situation`).
+> The v0.7.3 build prompt §5.2 rules that such a method does not leave and that directive 4 outranks
+> the module table. `maintenance_loop` is six lines whose whole body calls `maintenance`.
+> `_promotion_sweep()`, `_maybe_promote()`, `_maybe_confirm_severity()` and `_flush_profiler()` left
+> as planned. Keeping the pair also removed the only mixin→`Engine` call, which is what lets
+> `EngineBase` be a pure declaration site.
 
 ## 8. The gates v0.7.3 inherits
 
