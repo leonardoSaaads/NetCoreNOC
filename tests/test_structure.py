@@ -76,7 +76,27 @@ SUBMODULES = [
     "scoring",
     "severity",
     "shaping",
+    # v0.7.3: `store` became a package (DECISIONS #88), on the same terms `api` did in v0.7.2 — it
+    # keeps its name and its whole re-export surface, and every module inside it must resolve from
+    # the **installed** package too, which is the F12 guarantee extended one level down.
     "store",
+    "store.alarms",
+    "store.audit_log",
+    "store.auth",
+    "store.base",
+    "store.devices",
+    "store.entities",
+    "store.feedback",
+    "store.governance",
+    "store.ingest_gaps",
+    "store.learned",
+    "store.lifecycle",
+    "store.read_models",
+    "store.retention",
+    "store.scoring_config",
+    "store.situations",
+    "store.state_clears",
+    "store.types",
     "varbind_profile",
 ]
 
@@ -181,3 +201,20 @@ def test_the_api_package_holds_exactly_the_expected_modules() -> None:
     found = sorted(p.stem for p in pkg.glob("*.py") if p.stem != "__init__")
     expected = sorted(m.split(".", 1)[1] for m in SUBMODULES if m.startswith("api."))
     assert found == expected, f"api package contents changed: {found}"
+
+
+def test_the_store_package_holds_exactly_the_expected_modules() -> None:
+    """The v0.7.3 package is a decided shape too (MODULE-ARCHITECTURE.md §6).
+
+    The sibling of the `api` check above, and it exists for the same reason: a module added here
+    must also be added to `SUBMODULES`, so it is proved to resolve from the **installed** package
+    rather than only from the source tree. `_all.py`, the transitional holder the split moved
+    through, must not survive — its presence would mean a section never left it.
+    """
+    import netcorenoc.store
+
+    pkg = Path(netcorenoc.store.__file__).resolve().parent
+    found = sorted(p.stem for p in pkg.glob("*.py") if p.stem != "__init__")
+    expected = sorted(m.split(".", 1)[1] for m in SUBMODULES if m.startswith("store."))
+    assert found == expected, f"store package contents changed: {found}"
+    assert "_all" not in found, "the transitional store/_all.py must be deleted, not shipped"

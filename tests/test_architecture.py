@@ -45,11 +45,6 @@ DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
     # route/capability *tables* on one side, the capability-policy parser and resolver on the
     # other. See MODULE-ARCHITECTURE.md §5.
     "rbac.py": (436, "v0.7.4 — split the declaration tables from the policy resolver"),
-    # `store/_all.py` **is** `store.py`, renamed by `git mv` so history follows the bulk of the
-    # file. It is the shrinking remainder during the v0.7.3 split and is deleted when the last
-    # section leaves, at which point this entry goes with it. The recorded count is unchanged from
-    # `store.py`'s, so the ceiling still bites: the remainder may only get smaller.
-    "store/_all.py": (1512, "v0.7.3 — split by domain along its own section comments"),
     "main.py": (1079, "v0.7.3 — the maintenance loop, gap tracker and process runner leave Engine"),
     "shaping.py": (476, "v0.7.4 — two axes in one file: field shaping and NE scoping"),
     "varbind_profile.py": (417, "v0.7.4 — one extraction (the accumulator), not a package"),
@@ -60,12 +55,10 @@ DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
 # before v0.7.3: the original pair of tests caught a *stale* entry but would have let a **new** one
 # through green. This set shrinks when a module is fixed and never grows.
 #
-# `store/_all.py` sits here alongside `store.py` only for the duration of the v0.7.3 split: it is
-# the same file under its `git mv` name, not a new debt, and both names are gone by the end of
-# Phase 3. That is a rename of an existing entry, which is why it is spelled out here rather than
-# quietly added.
+# v0.7.3 removed `store.py` (and the transitional `store/_all.py` it was `git mv`-d to) when the
+# store package landed. The set may only ever get smaller from here.
 ALLOWLIST_MEMBERSHIP_CEILING: frozenset[str] = frozenset(
-    {"rbac.py", "store.py", "store/_all.py", "main.py", "shaping.py", "varbind_profile.py"}
+    {"rbac.py", "main.py", "shaping.py", "varbind_profile.py"}
 )
 
 

@@ -18,8 +18,26 @@ current transaction — a throughput choice, not an atomicity contract.
 
 from __future__ import annotations
 
-from netcorenoc.store._all import Store
+import asyncio
+
+import aiosqlite
+
+from netcorenoc.store.alarms import AlarmMixin
+from netcorenoc.store.audit_log import AuditLogMixin
+from netcorenoc.store.auth import AuthMixin
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.devices import DeviceMixin
+from netcorenoc.store.entities import EntityMixin
+from netcorenoc.store.feedback import FeedbackMixin
+from netcorenoc.store.governance import GovernanceMixin
+from netcorenoc.store.ingest_gaps import IngestGapMixin
+from netcorenoc.store.learned import LearnedMixin
+from netcorenoc.store.lifecycle import LifecycleMixin
+from netcorenoc.store.read_models import ReadModelsMixin
+from netcorenoc.store.retention import RetentionMixin
+from netcorenoc.store.scoring_config import ScoringConfigMixin
+from netcorenoc.store.situations import SituationMixin
+from netcorenoc.store.state_clears import StateClearMixin
 from netcorenoc.store.types import (
     MAX_SCOPE_PARAMS,
     MIGRATIONS_DIR,
@@ -39,3 +57,41 @@ __all__ = [
     "Store",
     "StoreBase",
 ]
+
+
+class Store(
+    RetentionMixin,
+    AuditLogMixin,
+    AuthMixin,
+    ScoringConfigMixin,
+    IngestGapMixin,
+    StateClearMixin,
+    EntityMixin,
+    ReadModelsMixin,
+    GovernanceMixin,
+    FeedbackMixin,
+    SituationMixin,
+    LearnedMixin,
+    AlarmMixin,
+    DeviceMixin,
+    LifecycleMixin,
+    StoreBase,
+):
+    def __init__(self, path: str) -> None:
+        self._path = path
+        self._conn: aiosqlite.Connection | None = None
+        self._device_ids: dict[str, int] = {}
+        self._ne_ids: dict[str, int] = {}
+        self._entity0_ids: dict[int, int] = {}  # ne id -> its level-0 entity id
+        self._entity_ids: dict[tuple[int, str], int] = {}  # (ne id, key) -> promoted entity id
+        self._class_ids: dict[str, int] = {}
+        self._touched: dict[tuple[str, int], float] = {}
+        # Non-fatal integrity findings from the startup PRAGMA checks (F11): surfaced through
+        # operator_warnings(), never a crash — a NOC trap sink must keep ingesting even with a
+        # partly-damaged history DB.
+        self.integrity_warnings: list[str] = []
+        # One connection, many tasks: holders of this lock get a consistent view and,
+        # critically, commits can never interleave with another task's open cursor
+        # (sqlite refuses to commit while statements are in progress). The engine takes
+        # it per batch; API handlers take it per request.
+        self.lock = asyncio.Lock()
