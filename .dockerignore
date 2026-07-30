@@ -1,0 +1,48 @@
+# Keep the Docker build context minimal and secret-free. The Dockerfile only COPYs
+# pyproject.toml, README.md, LICENSE, and src/ — everything else is excluded here so it never
+# reaches the daemon or an image layer.
+
+# VCS and CI
+.git
+.github
+
+# Local environments / secrets — MUST never enter the build context
+.env
+.env.*
+!.env.example
+tls/
+*.pem
+*.key
+*.crt
+
+# Databases and their WAL sidecars
+*.db
+*.db-wal
+*.db-shm
+
+# Python / tooling caches and build artifacts
+.venv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+result
+
+# Dev-only trees not needed to build/run the image
+tests/
+eval/
+tools/
+docs/
+deploy/
+vulture_allowlist.py
+docker-compose.yml
+flake.nix
+.editorconfig

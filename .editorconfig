@@ -1,0 +1,32 @@
+# EditorConfig — https://editorconfig.org
+# Consistent whitespace across editors. Matches the existing tree (ruff line-length 100,
+# 4-space Python, LF, final newline).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.{js,css,html}]
+indent_size = 2
+
+[*.{json,yml,yaml,toml}]
+indent_size = 2
+
+[*.md]
+indent_size = 2
+# Markdown uses trailing spaces for hard line breaks.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
+
+[*.sql]
+indent_size = 2

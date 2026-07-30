@@ -1,0 +1,48 @@
+name: ✨ Feature request
+description: Suggest an enhancement — within NetCoreNOC's zero-config, small-surface philosophy.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        NetCoreNOC is deliberately small: one process, one SQLite file, one static UI, zero new
+        runtime dependencies, and no configuration beyond environment variables. The best
+        requests fit that shape. Larger ideas may become a one-line entry in `docs/ROADMAP.md`
+        rather than immediate work.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues, `docs/ROADMAP.md`, and the scope docs (`docs/scope/`).
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do, and why is it hard today? Describe the operational need.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like NetCoreNOC to do?
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Fit with the philosophy
+      description: >-
+        How does this stay within zero-config, zero new runtime dependencies, bounded memory, one
+        process/file/UI, and explainability? If it needs a new dependency or configuration, say so.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches, workarounds, or why existing behaviour is insufficient.
+    validations:
+      required: false

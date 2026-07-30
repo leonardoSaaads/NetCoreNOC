@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.db
+*.db-wal
+*.db-shm
+result
+# Local environment / secrets for docker compose (only .env.example is committed).
+.env
+# Local TLS material referenced by the commented compose profile.
+/tls/

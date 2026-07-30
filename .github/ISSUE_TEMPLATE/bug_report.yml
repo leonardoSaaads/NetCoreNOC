@@ -1,0 +1,75 @@
+name: 🐛 Bug report
+description: Something in NetCoreNOC behaves incorrectly (not a security vulnerability).
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting a bug. **Do not report security vulnerabilities here** — use the
+        private advisory link on the "New issue" chooser (see `SECURITY.md`).
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: This is not a security vulnerability (those go through private disclosure).
+          required: true
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `python -m netcorenoc audit verify` version banner, a release tag, or a commit SHA.
+      placeholder: "0.4.0 (or commit abc1234)"
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How is it deployed?
+      options:
+        - Docker / docker compose
+        - systemd (deploy/netcorenoc.service)
+        - Plain Python (python -m netcorenoc.main)
+        - Nix
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you observe, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        Ideally a minimal reproduction. If it involves specific traps, the redacted trap OIDs /
+        varbinds or a `tools/trap_sim.py` scenario are ideal. Never paste secrets, community
+        strings, passwords, or tokens.
+      placeholder: |
+        1. Start with NETCORENOC_...
+        2. Send trap ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste relevant log lines. Redact any sensitive values first.
+      render: text
+    validations:
+      required: false
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version, and anything else relevant.
+      placeholder: "Ubuntu 24.04, Python 3.12.8"
+    validations:
+      required: false

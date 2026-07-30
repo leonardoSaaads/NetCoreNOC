@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability (private)
+    url: https://github.com/leonardoSaaads/NetCoreNOC/security/advisories/new
+    about: >-
+      Do NOT open a public issue for a vulnerability. Report it privately via GitHub Security
+      Advisories. See SECURITY.md for the coordinated disclosure policy.
+  - name: 💬 Questions and usage help
+    url: https://github.com/leonardoSaaads/NetCoreNOC/discussions
+    about: >-
+      For questions, deployment help, and general discussion. Please search first. Bug reports
+      and feature requests belong in the issue forms.
