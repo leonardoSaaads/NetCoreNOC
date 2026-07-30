@@ -45,7 +45,6 @@ DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
     # route/capability *tables* on one side, the capability-policy parser and resolver on the
     # other. See MODULE-ARCHITECTURE.md §5.
     "rbac.py": (436, "v0.7.4 — split the declaration tables from the policy resolver"),
-    "main.py": (1079, "v0.7.3 — the maintenance loop, gap tracker and process runner leave Engine"),
     "shaping.py": (476, "v0.7.4 — two axes in one file: field shaping and NE scoping"),
     "varbind_profile.py": (417, "v0.7.4 — one extraction (the accumulator), not a package"),
 }
@@ -55,10 +54,10 @@ DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
 # before v0.7.3: the original pair of tests caught a *stale* entry but would have let a **new** one
 # through green. This set shrinks when a module is fixed and never grows.
 #
-# v0.7.3 removed `store.py` (and the transitional `store/_all.py` it was `git mv`-d to) when the
-# store package landed. The set may only ever get smaller from here.
+# v0.7.3 removed `store.py` (and the transitional `store/_all.py` it was `git mv`-d to) and
+# `main.py`. The set may only ever get smaller from here.
 ALLOWLIST_MEMBERSHIP_CEILING: frozenset[str] = frozenset(
-    {"rbac.py", "main.py", "shaping.py", "varbind_profile.py"}
+    {"rbac.py", "shaping.py", "varbind_profile.py"}
 )
 
 
@@ -82,11 +81,21 @@ ALLOWLIST_MEMBERSHIP_CEILING: frozenset[str] = frozenset(
 # MAX_COHESION_EXEMPT entries may exist, so the escape hatch cannot become the default.
 MAX_COHESION_EXEMPT = 2
 
-COHESION_EXEMPT: dict[str, str] = {}
+COHESION_EXEMPT: dict[str, str] = {
+    # Note what is NOT here: an owner, a release, a date. `engine.py` is 542 lines because the
+    # whole ingest path has to be readable in one place — a reviewer must be able to confirm,
+    # without following imports, that nothing on it takes a lock, does I/O, or awaits where it must
+    # not. There is no release in which that stops being true, so there is nothing to schedule.
+    "engine.py": (
+        "ingestion is sacred (MODULE-ARCHITECTURE.md §1): the batch lock and every decision that "
+        "reasons about it stay in one file, because the invariant is only auditable if the ingest "
+        "path can be read without following imports"
+    ),
+}
 
 # The recorded line count of each cohesion-exempt module. Separate from the reason string so the
 # reason stays a sentence about an invariant and never acquires a number that looks like a target.
-COHESION_EXEMPT_CEILING: dict[str, int] = {}
+COHESION_EXEMPT_CEILING: dict[str, int] = {"engine.py": 542}
 
 # The invariant names a COHESION_EXEMPT reason may cite, taken from MODULE-ARCHITECTURE.md §1.
 # A reason that cites nothing in this set is an assertion nobody has had to defend.

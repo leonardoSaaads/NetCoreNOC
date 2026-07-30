@@ -40,13 +40,14 @@ STACK: list[str] = ["http", "engine", "data", "ingest"]
 CROSS_CUTTING = "cross-cutting"
 
 LAYER_OF: dict[str, str] = {
-    # http — the delivery layer
+    # http — the delivery layer, plus the process entry point (see the note below)
     "api": "http",
+    "main": "http",
+    "runner": "http",
+    "__main__": "http",
     # engine — the domain
-    "main": "engine",
     "engine": "engine",
     "engine_base": "engine",
-    "runner": "http",  # the process entry point: it BUILDS the HTTP server, so it lives at http
     "maintenance": "engine",
     "gaps": "engine",
     "scorer_lifecycle": "engine",
@@ -71,18 +72,20 @@ LAYER_OF: dict[str, str] = {
     "audit": "cross-cutting",
     "runtime": "cross-cutting",
     "logsetup": "cross-cutting",
-    # the package entry points
     "__init__": "cross-cutting",
-    "__main__": "http",
 }
 
-# Why `runner.py` and `__main__.py` are classified `http` rather than exempted: MODULE-ARCHITECTURE
-# §1 records that the process entry point may legitimately reach up into `http` to build the server
-# while the `Engine` may not — which is the whole point of the v0.7.3 separation. An entry point
-# that builds an HTTP server *is* a delivery concern, so it belongs at that layer; calling it an
-# exemption would say the rule was bent, when in fact the module was misplaced.
-# `engine.py` stays at `engine`, and the assertion that it does not import `netcorenoc.api` is
-# stated separately below, because that specific edge is the one this release resolves.
+# Why `main.py`, `runner.py` and `__main__.py` are classified `http` rather than exempted:
+# MODULE-ARCHITECTURE §1 records that the process entry point may legitimately reach up into
+# `http` to build the server, while the `Engine` may not. An entry point that builds an HTTP
+# server *is* a delivery concern, so it belongs at that layer; calling it an exemption would say
+# the rule was bent, when in fact the module was misplaced.
+#
+# `main.py` sat at `engine` before v0.7.3 because it *was* the `Engine` as well as the entry point
+# — which is exactly the confusion §1 recorded as the project's one genuine layer violation. Now
+# that `engine.py` holds the domain and `main.py` holds only `main()` and the re-exports, `main.py`
+# is an entry point and nothing else, and its layer says so. `engine.py` stays at `engine`, and the
+# assertion that it does not import `netcorenoc.api` is stated separately below.
 
 # Upward imports that are tolerated, each with the reason.
 #
@@ -94,19 +97,11 @@ LAYER_OF: dict[str, str] = {
 # reason to import `netcorenoc.api` and this entry is deleted.
 #
 # After that, an entry here is a visible, arguable diff — exactly as DEBT_ALLOWLIST is for size.
-EXEMPTIONS: dict[tuple[str, str], str] = {
-    ("main", "api"): (
-        "v0.7.2's one recorded violation: main.py is the Engine (domain) AND the process entry "
-        "point that builds the HTTP server. Resolved by the v0.7.3 split — deleted in Phase 4."
-    ),
-}
+EXEMPTIONS: dict[tuple[str, str], str] = {}
 
 # Modules this release creates, which `LAYER_OF` names before they exist. Emptied in Phase 4, so
 # the dead-entry check below goes back to being absolute.
-PLANNED_THIS_RELEASE: set[str] = {
-    "engine",
-    "runner",
-}
+PLANNED_THIS_RELEASE: set[str] = set()
 
 # Type-only imports (`if TYPE_CHECKING:`) create no runtime edge and no import cycle.
 # MODULE-ARCHITECTURE.md §1 records `audit.py`/`auth.py` -> `store.Store` as tolerated on exactly
@@ -243,20 +238,18 @@ def test_no_module_imports_upward() -> None:
     )
 
 
-def test_the_exemption_list_holds_nothing_new() -> None:
-    """The ratchet. Only the one violation v0.7.2 already recorded may be waived, and only until
-    Phase 4 resolves it.
+def test_the_exemption_list_is_empty() -> None:
+    """The ratchet. v0.7.3 resolved the one recorded violation, so nothing needs waiving.
 
-    Build prompt §5.4 requires the list be empty by the end of this release; `test_layers.py`'s
-    final state asserts exactly that. Until then this is the guard on the guard: a *new* exemption
-    fails here, so the list cannot grow while it is briefly non-empty.
+    This started the release holding `("main", "api")` — the guard was installed against the
+    unmodified tree, so it had to — and Phase 4 deleted it when `runner.py` took over the process
+    entry point. An exemption added later fails here until someone deletes this assertion, which
+    is a visible, arguable diff, and the entire point.
     """
-    allowed = {("main", "api")}
-    added = sorted(set(EXEMPTIONS) - allowed)
-    assert not added, (
-        f"new layer-rule exemption(s): {added}. The only tolerated entry is the one "
-        "MODULE-ARCHITECTURE.md §1 already records, and Phase 4 removes it. Every other upward "
-        "import is a violation to fix, not to waive."
+    assert EXEMPTIONS == {}, (
+        f"the layer-rule exemption list is not empty: {sorted(EXEMPTIONS)}. It arrived empty at "
+        "the end of v0.7.3, and every entry is a violation of MODULE-ARCHITECTURE.md §1 that "
+        "someone chose to tolerate rather than fix."
     )
 
 

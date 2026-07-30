@@ -99,7 +99,7 @@ async def test_max_entities_per_ne_caps_warns_and_audits_without_failing_ingest(
 ) -> None:
     engine, _queue, _app = await authutil.make_env(store)
     # Promote first (small legitimate set), then flood with unique ids past a tiny cap.
-    monkeypatch.setattr("netcorenoc.main.MAX_ENTITIES_PER_NE", 5)
+    monkeypatch.setattr("netcorenoc.engine.MAX_ENTITIES_PER_NE", 5)
     # The cap is enforced in `_resolve_entity` (engine side) and reported in `_promotion_sweep`'s
     # audit detail (maintenance side). Both bindings are patched so the fixture cap is the one
     # every reader sees — a single patch would leave the audit row claiming the real cap.
