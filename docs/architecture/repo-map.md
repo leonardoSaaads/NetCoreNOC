@@ -8,7 +8,15 @@ NetCoreNOC/
 ├── src/netcorenoc/          the import package (PyPA src/ layout; import path stays `netcorenoc`)
 │   ├── __init__.py          version string
 │   ├── __main__.py          `python -m netcorenoc audit verify|export` (audit CLI)
-│   ├── main.py              the process: Settings, Engine (queue→batch→store), Supervisor, run()
+│   ├── main.py              `python -m netcorenoc.main` — main(), the __main__ guard, re-exports
+│   ├── runner.py            run(): open the store, start receiver + engine + HTTP; Supervisor
+│   ├── engine.py            Engine: queue→batch→store under ONE lock, plus FlapDetector.
+│   │                        **The ingest path, deliberately in one file** — "ingestion is sacred"
+│   │                        is only auditable if it can be read without following imports.
+│   ├── maintenance.py       periodic, off the ingest path: promotion sweep, severity, profiler
+│   ├── gaps.py              GapTracker: drop counters → durable ingest_gap rows
+│   ├── scorer_lifecycle.py  the v0.6.0 seam's lifecycle: load, fail safe, warn, audit
+│   ├── settings.py          Settings from the environment; the removed-alias startup errors
 │   ├── receiver.py          UDP trap listener; parse (v2c + v1/RFC 3584); allowlist; quarantine
 │   ├── events.py            TrapEvent / Varbind / Fingerprint / QuarantinedPacket models
 │   ├── correlate.py         the sliding window: candidate selection, verdict, bookkeeping
@@ -18,7 +26,14 @@ NetCoreNOC/
 │   ├── rootcause.py         precedence learning; situation root pick
 │   ├── severity.py          learned severity field (shape + ordinality), honest unknown
 │   ├── varbind_profile.py   the entity/identity profiler (R/X/D score, FD containment)
-│   ├── store.py             the SQLite layer (one connection under an asyncio lock)
+│   ├── store/               the SQLite layer (v0.7.3). **One Store, ONE connection, ONE lock** —
+│   │                        the whole write discipline rests on it (F39). Sixteen domain modules.
+│   │   ├── base.py          StoreBase: the ten attribute annotations + the `conn` accessor
+│   │   ├── types.py         IngestResult, EdgeRow, FeedbackResult, MIGRATIONS_DIR, the constants
+│   │   ├── lifecycle.py     open/close/commit/rollback, migrations, integrity checks
+│   │   └── *.py             one mixin per domain: devices, alarms, learned, situations,
+│   │                        feedback, read_models, entities, state_clears, ingest_gaps,
+│   │                        scoring_config, governance, auth, audit_log, retention
 │   ├── api/                 the HTTP layer (v0.7.2). **Read api/perimeter.py first if you are
 │   │                        reviewing security** — it is the whole boundary in one file.
 │   │   ├── perimeter.py     CSRF → identity → bootstrap gate → RBAC → rate limit; audit row,
@@ -100,10 +115,16 @@ is superseded in place with a disposition table at the top.
   `fastapi`, `uvicorn`, `pydantic`. Dev/CI tooling lives in the `dev` extra.
 - **Modules stay small and shallow.** A module owns one noun or one decision; over ~250 lines is a
   smell and over **400** fails CI, with an explicit shrink-only debt allowlist naming the release
-  that will fix each current offender. One level of nesting where it has been earned — today that
-  is `api/` alone — and never two. The rule, the layer map and the v0.7.3 targets for `store.py`
-  and `main.py` are in [`MODULE-ARCHITECTURE.md`](MODULE-ARCHITECTURE.md); the guard is
-  `tests/test_architecture.py`.
+  that will fix each current offender — and, since v0.7.3, a separate `COHESION_EXEMPT` for the one
+  module that is large because an **invariant** forbids splitting it. The two are not
+  interchangeable: debt carries an owner and a date, a cohesion exemption carries neither, because
+  there is no fix. One level of nesting where it has been earned — today `api/` and `store/` — and
+  never two. The rule and the layer map are in
+  [`MODULE-ARCHITECTURE.md`](MODULE-ARCHITECTURE.md); the guards are `tests/test_architecture.py`.
+- **Imports go downward or sideways, never up.** `http` → `engine` → `data` → `ingest`, plus
+  cross-cutting from anywhere. Enforced since v0.7.3 by `tests/test_layers.py`, whose exemption list
+  is empty. The `Engine` may not import `netcorenoc.api`; the process runner may, and that is what
+  `runner.py` is for.
 - **A new route declares itself or the process does not start.** `rbac.py` holds both the
   capability (`ROUTE_PERMISSIONS`) and the visibility posture (`ROUTE_SCOPE`); registration goes
   through `api/declare.py`, which refuses anything it has not been told about.

@@ -1155,3 +1155,140 @@ thing this release leaves behind (DECISIONS #78).
 - **`rbac.py` crossed the module-size guard** (348 → 436 lines) because `ROUTE_SCOPE` belongs in the
   single source of authority. It is on the debt allowlist with v0.7.4 as its owner and a named split
   seam: the declaration tables on one side, the capability-policy parser and resolver on the other.
+
+---
+
+## v0.7.3 — the data and engine layers become legible (internal structure only, no behaviour change)
+
+v0.7.2 rebuilt the HTTP layer as a package and proved, hash by hash, that behaviour did not move.
+It deliberately left the two largest files alone. This release does the same for them, under the
+same rules and with a stronger proof, and it is the **last structural release**.
+
+Nothing here changes what the appliance does. Not one status code, not one path, not one field, not
+one row, not one number. `make eval` is byte-identical; all 109 `Store` method bodies and every
+moved `Engine` method body are unchanged **text**, proved by a hash table taken before the move and
+recomputed after it.
+
+### The `store/` package, and the invariant it is built around
+
+`store.py` (1 512 lines, 109 methods on one class) becomes `store/` — sixteen modules split along
+`store.py`'s own section comments, which already marked the seams. One level deep, no module over
+400 lines.
+
+The mechanism is **mixins over a thin annotated base** (DECISIONS #88). `store/base.py` holds
+`StoreBase`: the ten attribute annotations and the `conn` accessor, and nothing else — no queries,
+no state, no behaviour. Every domain mixin inherits it; `Store` inherits every mixin;
+`Store.__init__` stays in `store/__init__.py` and remains the **only** place those ten attributes
+are assigned. The base *declares*, `__init__` *initialises*, and nobody duplicates.
+
+Two mixins additionally inherit a sibling, because they call one: `AlarmMixin(DeviceMixin)` and
+`ReadModelsMixin(GovernanceMixin)`. That is the whole of it — measured, not guessed. Exactly six
+methods are called across a mixin boundary in the entire class, and five of them are those two
+edges (the sixth is `conn`, already on the base). The alternative, restating those signatures on
+`StoreBase`, needs stub bodies, which would put behaviour on the base and create a defect whose
+failure mode is a silent no-op write.
+
+**What this design is protecting:**
+
+> **One `Store` class, one `aiosqlite` connection, one `store.lock`.**
+
+This is not a style preference, and it is the reason the package is one object rather than sixteen.
+The measurement that makes it concrete: **103 of the 109 methods, across 15 of the 16 modules, read
+`self.conn`.** The connection *is* the cross-domain coupling. And `store.lock` is stranger still —
+**no `Store` method acquires it**. It is taken entirely by callers: `Engine._commit_batch`,
+`Engine.maintenance`, and `Perimeter.write_txn`. The lock is therefore a **public contract of the
+`Store` object**, which is exactly why splitting `Store` into several objects would be invisible to
+the data layer's own tests and catastrophic in production: every write path would silently stop
+being mutually exclusive, and F39's failure mode — a mutation committed by an unrelated caller —
+would come back with no test anywhere to notice.
+
+`tests/test_store_concurrency.py` is the control. It counts the distinct connection and lock
+identities reachable from the store, drives concurrent writes from three different domain modules
+through `asyncio.gather`, asserts the audit chain survives 24 concurrent appends (the sharpest probe
+available for a fragmented lock: two appenders that are not mutually excluded read the same
+predecessor and fork the chain), and asserts `write_txn` still rolls back into nothing. It was
+written and mutation-tested **against the pre-split tree**, so it measures the split by a rule that
+predates it.
+
+### The `Engine` and the runner, separated
+
+`main.py` (1 079 lines) sheds four things and **stays a module** (DECISIONS #89), because
+`python -m netcorenoc.main` is the documented way to run the correlator and `main.py` carries the
+`if __name__ == "__main__"` guard. A package would need `main/__main__.py` and would change the
+semantics of the one command every operator types.
+
+| Module | Owns |
+|---|---|
+| `engine.py` | `Engine` — the batch lock and everything that reasons about it — plus `FlapDetector` and `EngineBase` |
+| `maintenance.py` | the promotion sweep, severity confirmation, the profiler flush |
+| `gaps.py` | `GapTracker`, `_OpenGap`, `_record_ingest_gaps`, `GAP_CLOSE_S` |
+| `scorer_lifecycle.py` | the v0.6.0 seam's *lifecycle*: load, fall back, warn, audit |
+| `settings.py` | `Settings`, `read_env`, the legacy-env errors |
+| `runner.py` | `run()`, `Supervisor`, `operator_warnings`, the bootstrap banner |
+| `main.py` | `main()`, the `if __name__` guard, and the re-exports |
+
+**The ingest path does not fragment.** `run`, `_commit_batch`, `_process`, `drain`,
+`_assign_situation`, `_handle_clear`, `_handle_state_clear`, `_close_situation`, `_resolve_entity`,
+`_resolve_severity`, `_seed_clear_pair`, `_is_flapping`, `apply_feedback` and `FlapDetector` stay
+together in one file. "Ingestion is sacred" (invariant 2, since v0.1.0) is only auditable if a
+reviewer can confirm — **without following imports** — that nothing on that path takes a lock, does
+I/O, or awaits where it must not. Fragmenting it would make the project's oldest invariant
+unauditable, which is the opposite of what a structural release is for.
+
+`maintenance()` and `maintenance_loop()` stayed too, against both the architecture document's and
+the build plan's module tables (DECISIONS #90). `maintenance` is the only extraction candidate that
+does `async with self.store.lock:` — the same `asyncio.Lock` object `_commit_batch` takes, because
+there is only one — and the only one that calls a must-stay method (`_close_situation`). A reviewer
+asking "what closes a situation, and under which lock?" must not have to follow an import to answer.
+
+### The layer violation, resolved — and a rule that finally has a test
+
+`MODULE-ARCHITECTURE.md` §1 has stated the dependency rule since v0.7.2 — *a layer may import
+downward and may import cross-cutting, never upward* — and recorded one genuine violation:
+`main.py` → `netcorenoc.api`, because `main.py` was the `Engine` (domain) **and** the process entry
+point that builds the HTTP server, in one module.
+
+Separating them resolves it structurally rather than by exemption: `runner.py` and `main.py` are the
+entry point and may reach up into `http`; **`engine.py` may not**, and
+`tests/test_layers.py::test_the_engine_does_not_import_the_http_layer` says so on its own.
+
+Until this release **no test enforced the rule at all** — the existing guards asserted module size,
+nesting depth, route order and import *resolution*, never import *direction*. That gap is why the
+violation sat recorded-but-unfixed for a release. `tests/test_layers.py` (DECISIONS #92) parses
+every module's imports, mirrors §1's layer table, and fails on any upward edge. Its exemption list
+is **empty**.
+
+### `COHESION_EXEMPT` — "large by design" is not "unfinished"
+
+`engine.py`'s must-stay content measures 425 method lines before any scaffolding, so it cannot come
+in under the 400-line guard — and directive 4 forbids splitting it *ever*. Filing it as debt would
+be dishonest: `DEBT_ALLOWLIST` means "too big, will be fixed by release N", and there is no release
+N here.
+
+So the guard grows a second, narrower mechanism (DECISIONS #91): `COHESION_EXEMPT`, mapping a module
+to **the invariant that forbids splitting it**, with five constraints each enforced by its own test —
+the reason must cite an invariant by name from §1; a module may be in one list or the other, never
+both; entries carry **no owner and no fix date** (that absence is the semantic difference, and it is
+asserted); the exempt module may not grow past its recorded count; and at most **two** entries may
+exist, so the escape hatch cannot become the default.
+
+The same release also closes a hole in the older guard: "the allowlist may only shrink" was asserted
+in one direction only — a *stale* entry failed, but a **newly added** module would have passed green.
+`test_no_module_may_join_the_allowlist` fixes that.
+
+## Known limits (v0.7.3, by design)
+
+- **This release does not make the data layer more correct.** The same 109 methods in sixteen files
+  have the same behaviour, and every residual risk in `SECURITY-REVIEW-0.7.1.md` §4 stands
+  unchanged. What it buys is that `store.lock`'s single ownership and the ingest path's cohesion are
+  visible in the file layout instead of being facts a reviewer reconstructs from 1 512 lines.
+- **A mixin split makes it *easier* to forget the lock.** The neighbouring methods that would have
+  shown a contributor the pattern now live in another file. The controls are
+  `tests/test_store_concurrency.py` and v0.7.1's `write_txn` discipline — **not** the layout. This
+  is a real cost of the release and it is stated rather than argued away.
+- **`engine.py` is over the size guard and always will be.** That is the point of
+  `COHESION_EXEMPT`, and the ceiling on it is real: it may not grow.
+- **The declaration gate still covers three verbs and only the decorator form.** Two latent gaps
+  found while reviewing v0.7.2 are specified in `MODULE-ARCHITECTURE.md` §10 and deferred to v0.7.4,
+  because fixing a security-adjacent guard inside a move release forfeits the parity story for a
+  latent, unexploited gap.

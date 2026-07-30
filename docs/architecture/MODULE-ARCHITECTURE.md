@@ -57,6 +57,12 @@ The rule exists because an upward import is what turns a stack into a knot: it m
 layer untestable without the higher one, and it makes "where is this decided?" unanswerable — the
 exact property that let F34–F39 hide.
 
+**Enforced since v0.7.3** by `tests/test_layers.py` (DECISIONS #92), which parses every module's
+imports and mirrors the table above. Between v0.7.2 and v0.7.3 the rule had a paragraph and no
+test, which is exactly why the violation below sat recorded-but-unfixed for a release. Type-only
+imports (`if TYPE_CHECKING:`) are excluded — no runtime edge, no cycle — and the exemption list is
+**empty**.
+
 ### Current violations — named, not fixed
 
 A violation found while writing an architecture document is a `docs/ROADMAP.md` line, not a fix in
@@ -64,7 +70,7 @@ the release that found it (v0.7.2 build prompt, directive 3). Both are recorded 
 
 | Import | Layers | Why it is a violation | Disposition |
 |---|---|---|---|
-| `main.py` → `netcorenoc.api` (`QuietServer`, `create_app`) | engine → **http** | The one genuine upward import. `main.py` is two things wearing one hat: the `Engine` (domain) **and** the process entry point that builds the HTTP server. The entry point may legitimately reach up; the `Engine` may not, and today they share a module. | ROADMAP; resolved naturally by the v0.7.3 `main.py` split, which separates the process runner from the `Engine`. |
+| ~~`main.py` → `netcorenoc.api` (`QuietServer`, `create_app`)~~ | engine → **http** | The one genuine upward import. `main.py` was two things wearing one hat: the `Engine` (domain) **and** the process entry point that builds the HTTP server. The entry point may legitimately reach up; the `Engine` may not, and they shared a module. | **RESOLVED in v0.7.3.** `runner.py` and `main.py` are the entry point and may reach up; `engine.py` may not and does not. Enforced by `tests/test_layers.py`, whose exemption list is empty. |
 | `runtime.py` → `receiver.py` (`Network`, `parse_allowlist`) | cross-cutting → ingest | `RuntimeConfig` holds parsed allowlist networks, so it reaches into the ingest layer for the parser. Small, real, and a cycle risk if `receiver` ever needs runtime config. | ROADMAP; the parser is a candidate for cross-cutting, or `RuntimeConfig` could hold strings and let the receiver parse. |
 | `audit.py`, `auth.py` → `store.Store` under `if TYPE_CHECKING` | cross-cutting → data | **Tolerated.** Type-only: no runtime edge, no import cycle, and the alternative is a `Protocol` that would restate `Store`'s surface in a second place. Recorded so it is a decision rather than an oversight. | Keep. |
 
