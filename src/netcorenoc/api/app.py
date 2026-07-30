@@ -22,6 +22,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 
 from netcorenoc import __version__, audit, auth, preview, rbac, scoring, shaping
+from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import (
     ConfigIn,
     FeedbackIn,
@@ -119,15 +120,18 @@ def create_app(
     audit_scope_denial = perimeter.audit_scope_denial
     app.middleware("http")(perimeter.security_headers)
 
+    # THE registration path: refuses a route rbac.py has not been told about, while the
+    # application is being built rather than per request (DECISIONS #80).
+    route = DeclaredRoutes(app)
     guarded = [Depends(security)]
 
     # -- public routes -----------------------------------------------------------------
 
-    @app.get("/healthz")
+    @route.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
-    @app.get("/readyz")
+    @route.get("/readyz")
     async def readyz(response: Response) -> dict[str, str]:
         """Orchestrator readiness (§A.5): 200 only when the DB is reachable, migrations are
         applied, and the queue has headroom; 503 otherwise. Unauthenticated by design and so
@@ -147,7 +151,7 @@ def create_app(
             return {"status": "not ready"}
         return {"status": "ready"}
 
-    @app.get("/", include_in_schema=False)
+    @route.get("/", include_in_schema=False)
     async def index() -> FileResponse:
         return FileResponse(UI_FILE, media_type="text/html")
 
@@ -163,7 +167,7 @@ def create_app(
     def _cookie_kwargs() -> dict[str, Any]:
         return {"httponly": True, "samesite": "strict", "path": "/", "secure": tls_enabled}
 
-    @app.post("/api/login")
+    @route.post("/api/login")
     async def login(body: LoginIn, request: Request, response: Response) -> dict[str, Any]:
         source_ip = _client_ip(request)
         async with write_txn():
@@ -231,7 +235,7 @@ def create_app(
             "must_change_password": False,  # nosec B105 - response flag, not a secret
         }
 
-    @app.post("/api/logout")
+    @route.post("/api/logout")
     async def logout(
         request: Request, response: Response, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -243,7 +247,7 @@ def create_app(
         response.delete_cookie(auth.COOKIE_NAME, path="/")
         return {"status": "logged out"}
 
-    @app.get("/api/me")
+    @route.get("/api/me")
     async def me(request: Request, principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         """Who am I, and — since v0.7.0 — what may I actually do and see?
 
@@ -266,7 +270,7 @@ def create_app(
             },
         }
 
-    @app.post("/api/password")
+    @route.post("/api/password")
     async def change_password(
         body: PasswordIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -304,7 +308,7 @@ def create_app(
 
     # -- read endpoints (viewer+) ------------------------------------------------------
 
-    @app.get("/api/stats")
+    @route.get("/api/stats")
     async def stats(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         scope = await scope_for(principal)
         async with store.lock:
@@ -324,7 +328,7 @@ def create_app(
             out.update(extra_stats())
         return out
 
-    @app.get("/api/graph")
+    @route.get("/api/graph")
     async def graph(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         scope = await scope_for(principal)
         async with store.lock:
@@ -332,7 +336,7 @@ def create_app(
         projected = shaping.project_graph(snapshot, scope)  # in-scope nodes; edges need both ends
         return shaping.shape(projected, principal.role)  # coarsen device IPs below editor
 
-    @app.get("/api/classes", dependencies=guarded)
+    @route.get("/api/classes", dependencies=guarded)
     async def classes() -> list[dict[str, Any]]:
         """The alarm-class catalogue: trap OIDs and their labels.
 
@@ -343,7 +347,7 @@ def create_app(
         async with store.lock:
             return await store.list_classes()
 
-    @app.get("/api/situations")
+    @route.get("/api/situations")
     async def situations(
         principal: auth.Principal = Depends(security),
         status: Literal["open", "closed", "merged"] | None = None,
@@ -379,7 +383,7 @@ def create_app(
             out.append({**row, "alarm_count": shown, "redacted_count": len(member_nes) - shown})
         return out
 
-    @app.get("/api/situations/{sid}")
+    @route.get("/api/situations/{sid}")
     async def situation(sid: int, principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         scope = await scope_for(principal)
         async with store.lock:
@@ -403,7 +407,7 @@ def create_app(
             ]
         return shaping.shape(detail, principal.role)  # coarsen alarm device IPs below editor
 
-    @app.get("/api/timeline")
+    @route.get("/api/timeline")
     async def timeline(
         limit: int = 300, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -423,7 +427,7 @@ def create_app(
 
     # -- entity tree + varbind profiler (viewer+, inspectable) -------------------------
 
-    @app.get("/api/entities")
+    @route.get("/api/entities")
     async def entities(principal: auth.Principal = Depends(security)) -> list[dict[str, Any]]:
         scope = await scope_for(principal)
         async with store.lock:
@@ -434,7 +438,7 @@ def create_app(
                 out.append({**ne, "entity_count": len(ents), "entities": ents})
         return shaping.shape(out, principal.role)  # coarsen NE IPs below editor
 
-    @app.get("/api/entities/{ne_id}")
+    @route.get("/api/entities/{ne_id}")
     async def entity_detail(
         ne_id: int, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -470,14 +474,14 @@ def create_app(
         }
         return shaping.shape(detail, principal.role)  # coarsen NE ip below editor
 
-    @app.get("/api/state-clears", dependencies=guarded)
+    @route.get("/api/state-clears", dependencies=guarded)
     async def state_clears() -> list[dict[str, Any]]:
         """Learned state fields (S9): which class, which varbind OID, and the raise/clear
         values — the state analogue of the entity/severity inspectability surface."""
         async with store.lock:
             return await store.list_state_clears()
 
-    @app.post("/api/entities/{ne_id}/reset")
+    @route.post("/api/entities/{ne_id}/reset")
     async def reset_entity(
         ne_id: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -492,7 +496,7 @@ def create_app(
             )
         return {"status": "entity decision reset"}
 
-    @app.post("/api/profiles/{ne_id}/reset")
+    @route.post("/api/profiles/{ne_id}/reset")
     async def reset_profile(
         ne_id: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -517,7 +521,7 @@ def create_app(
     # the same body, the same timing (DECISIONS #60, #65). `scope_for` is awaited *before*
     # `write_txn()`, because it takes `store.lock` itself and the lock is not reentrant.
 
-    @app.post("/api/situations/{sid}/feedback")
+    @route.post("/api/situations/{sid}/feedback")
     async def feedback(
         sid: int, body: FeedbackIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -550,7 +554,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="no such situation")
         return {"status": "recorded", "verdict": body.verdict}
 
-    @app.post("/api/labels")
+    @route.post("/api/labels")
     async def set_label(
         body: LabelIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -583,7 +587,7 @@ def create_app(
             )
         return {"status": "labelled"}
 
-    @app.post("/api/situations/{sid}/close")
+    @route.post("/api/situations/{sid}/close")
     async def close_situation(
         sid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -609,12 +613,12 @@ def create_app(
 
     # -- admin: users ------------------------------------------------------------------
 
-    @app.get("/api/users", dependencies=guarded)
+    @route.get("/api/users", dependencies=guarded)
     async def list_users() -> list[dict[str, Any]]:
         async with store.lock:
             return await store.list_users()
 
-    @app.post("/api/users")
+    @route.post("/api/users")
     async def create_user(
         body: UserIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -638,7 +642,7 @@ def create_app(
             )
         return {"id": uid, "username": body.username, "role": body.role}
 
-    @app.post("/api/users/{uid}/role")
+    @route.post("/api/users/{uid}/role")
     async def change_role(
         uid: int, body: RoleIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -658,7 +662,7 @@ def create_app(
             )
         return {"status": "role changed"}
 
-    @app.delete("/api/users/{uid}")
+    @route.delete("/api/users/{uid}")
     async def delete_user(
         uid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -676,12 +680,12 @@ def create_app(
 
     # -- admin: service tokens ---------------------------------------------------------
 
-    @app.get("/api/tokens", dependencies=guarded)
+    @route.get("/api/tokens", dependencies=guarded)
     async def list_tokens() -> list[dict[str, Any]]:
         async with store.lock:
             return await store.list_tokens()
 
-    @app.post("/api/tokens")
+    @route.post("/api/tokens")
     async def create_token(
         body: TokenIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -706,7 +710,7 @@ def create_app(
             )
         return {"id": tid, "name": body.name, "role": body.role, "token": token_value}
 
-    @app.delete("/api/tokens/{tid}")
+    @route.delete("/api/tokens/{tid}")
     async def revoke_token(
         tid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -727,7 +731,7 @@ def create_app(
 
     # -- admin: config -----------------------------------------------------------------
 
-    @app.get("/api/config", dependencies=guarded)
+    @route.get("/api/config", dependencies=guarded)
     async def get_config() -> dict[str, Any]:
         allowlist = runtime.allowlist if runtime else ""
         retention = runtime.retention_days if runtime else 0.0
@@ -739,7 +743,7 @@ def create_app(
             "retention_days": float(saved_ret) if saved_ret is not None else retention,
         }
 
-    @app.post("/api/config")
+    @route.post("/api/config")
     async def set_config(
         body: ConfigIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
@@ -787,7 +791,7 @@ def create_app(
             "active": bool(row.get("active")),
         }
 
-    @app.get("/api/scorer", dependencies=guarded)
+    @route.get("/api/scorer", dependencies=guarded)
     async def get_scorer() -> dict[str, Any]:
         """The active scorer, its parameters, the validation bounds, and the config history.
 
@@ -827,7 +831,7 @@ def create_app(
         except scoring.ScorerParamsError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.post("/api/scorer/preview")
+    @route.post("/api/scorer/preview")
     async def preview_scorer(
         body: ScorerParamsIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -899,7 +903,7 @@ def create_app(
             ),
         }
 
-    @app.post("/api/scorer")
+    @route.post("/api/scorer")
     async def set_scorer(
         body: ScorerParamsIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -957,7 +961,7 @@ def create_app(
             )
         return {"status": "applied", "config_id": config_id, "params_hash": params_hash}
 
-    @app.post("/api/scorer/rollback")
+    @route.post("/api/scorer/rollback")
     async def rollback_scorer(
         body: ScorerRollbackIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -1085,7 +1089,7 @@ def create_app(
     def _scope_problems(text: str) -> list[str]:
         return shaping.scope_policy_errors(shaping.parse_scope_policy(text))
 
-    @app.get("/api/rbac", dependencies=guarded)
+    @route.get("/api/rbac", dependencies=guarded)
     async def get_rbac_policy() -> dict[str, Any]:
         """The capability policy, what it resolves to per role, and the immutable history.
 
@@ -1114,7 +1118,7 @@ def create_app(
             "history": [_policy_row(row) for row in history],
         }
 
-    @app.post("/api/rbac")
+    @route.post("/api/rbac")
     async def set_rbac_policy(
         body: PolicyIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -1128,7 +1132,7 @@ def create_app(
             "rbac", body, request, principal, "rbac.policy.update", _capability_problems
         )
 
-    @app.get("/api/scope", dependencies=guarded)
+    @route.get("/api/scope", dependencies=guarded)
     async def get_scope_policy() -> dict[str, Any]:
         async with store.lock:
             await governance.load()
@@ -1159,7 +1163,7 @@ def create_app(
             "history": [_policy_row(row) for row in history],
         }
 
-    @app.post("/api/scope")
+    @route.post("/api/scope")
     async def set_scope_policy(
         body: PolicyIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -1170,7 +1174,7 @@ def create_app(
 
     # -- admin: quarantine (the read itself is audited) --------------------------------
 
-    @app.get("/api/quarantine")
+    @route.get("/api/quarantine")
     async def read_quarantine(
         request: Request, limit: int = 100, principal: auth.Principal = Depends(security)
     ) -> list[dict[str, Any]]:
@@ -1188,7 +1192,7 @@ def create_app(
 
     # -- admin: audit ------------------------------------------------------------------
 
-    @app.get("/api/audit")
+    @route.get("/api/audit")
     async def read_audit(
         request: Request, limit: int = 200, principal: auth.Principal = Depends(security)
     ) -> list[dict[str, Any]]:
@@ -1197,7 +1201,7 @@ def create_app(
             await audit_row(request, principal, "audit.read", "ok", details={"count": len(rows)})
         return rows
 
-    @app.get("/api/audit/export")
+    @route.get("/api/audit/export")
     async def export_audit(
         request: Request, principal: auth.Principal = Depends(security)
     ) -> Response:
@@ -1213,7 +1217,7 @@ def create_app(
             headers={"X-Audit-Final-Hash": final_hash},
         )
 
-    @app.post("/api/audit/prune")
+    @route.post("/api/audit/prune")
     async def prune_audit(
         request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
@@ -1234,7 +1238,7 @@ def create_app(
 
     # -- SSE: primary live-update path -------------------------------------------------
 
-    @app.get("/api/events")
+    @route.get("/api/events")
     async def events(principal: auth.Principal = Depends(security)) -> StreamingResponse:
         """The live stream, re-authorized and re-scoped on **every event**.
 

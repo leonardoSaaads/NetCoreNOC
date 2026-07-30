@@ -1594,3 +1594,65 @@ grouping**.
   it **refuses a module it has not been told where to place** (a new file under `api/` fails the
   scanning tests until someone puts it in the registration order) and it asserts a floor on the
   concatenated length.
+
+## 85. Sixteen modules, not fourteen: the 400-line guard outranks the planned module list (v0.7.2)
+
+- **Context**: the release plan sketched a fourteen-module package with `api/perimeter.py` at
+  roughly 380 lines. Measured against the real tree it comes to 444 before the registration gate is
+  written and about 510 after — because the estimate predates v0.7.1, which added `write_txn`,
+  `situation_in_scope` and `audit_scope_denial` (67 lines) to the perimeter block. The plan's own
+  hard constraint is "no module under `src/netcorenoc/api/` over ~400 lines", and the Phase 2 guard
+  enforces 400 exactly.
+- **Options**: (a) keep fourteen modules and raise the guard to fit; (b) keep fourteen and cut
+  documentation until the file fits; (c) two further extractions, each justified by the placement
+  rule rather than by arithmetic.
+- **Choice**: (c). `api/governance_cache.py` takes `GovernancePolicies` — one noun, *the policy the
+  perimeter reads*, and not itself a decision, since capability resolution is
+  `rbac.resolve_capabilities` and scope resolution is `shaping.visible_nes`. `api/declare.py` takes
+  the registration gate — one decision, *is this route declared?*, distinct from the request gate.
+  `perimeter.py` lands at 361 lines.
+- **Reason**: (a) would gut the flagship artefact of the release in the release that installs it —
+  a guard whose threshold moves to accommodate the author is not a guard. (b) trades documentation
+  for a number, which the placement rule explicitly warns against. Under (c) each new module is
+  defensible on the rule rather than on the count, and `perimeter.py` keeps headroom, which matters:
+  a file six lines under its limit is a file where the next legitimate comment fails CI. The module
+  table in the plan is explicitly indicative ("confirm the real ones in Phase 0"); the 400-line
+  constraint is not.
+
+## 86. `audit_row` is reached through `ctx.perimeter`, to keep `mypy --strict` checking it (v0.7.2)
+
+- **Context**: `AppContext` was to carry fifteen fields, `audit_row` among them. `audit_row` takes
+  four positional and **five keyword-only** parameters, and a keyword-only parameter cannot be
+  spelled in a `Callable[...]`. A field would therefore have to be typed
+  `Callable[..., Awaitable[None]]`.
+- **Options**: (a) type the field `Callable[..., Awaitable[None]]`; (b) declare a `Protocol` that
+  restates the signature; (c) carry `perimeter` (already a field) and let each route module bind
+  `audit_row = ctx.perimeter.audit_row`, which gives mypy the exact bound-method type.
+- **Choice**: (c), and the same for `situation_in_scope` and `audit_scope_denial`. The other
+  fourteen names are carried as fields and typed exactly.
+- **Reason**: (a) silently stops `mypy --strict` checking the arguments at all twenty-five audit
+  call sites — in the one helper where a wrong keyword is least acceptable, since it writes the
+  attribution trail F31 depends on. A release that claims to change nothing must not quietly delete
+  type coverage. (b) restates a signature in a second place that can drift, which is the class of
+  defect this release exists to remove. (c) costs one extra token per binding, keeps every handler
+  body identical, and keeps the checking. The handlers still call `audit_row(...)`; only where the
+  name is bound changes.
+
+## 87. `rbac.py` joins the debt allowlist rather than losing the table or the prose (v0.7.2)
+
+- **Context**: adding `ROUTE_SCOPE` — the declaration whose absence *was* F34 — takes `rbac.py`
+  from 348 to 436 lines, past the guard this release installs. The build scope is explicit that
+  `rbac.py` remains the single source of authority and that the table goes there.
+- **Options**: (a) put `ROUTE_SCOPE` somewhere else; (b) trim the posture definitions and the
+  per-entry justifications until the file fits; (c) split `rbac.py` now; (d) allowlist it with a
+  named owner and record the split seam.
+- **Choice**: (d) — `rbac.py` at 436 lines, owner v0.7.4, seam recorded: the route/capability
+  **tables** on one side, the capability-policy parser and resolver on the other.
+- **Reason**: (a) breaks the single-source guarantee to satisfy a line count, which is the worst
+  possible trade. (b) deletes exactly the prose a contributor adding a route needs at the point of
+  the table — and the per-entry justification on every `"unscoped"` is a *requirement*, asserted by
+  a test. (c) is a second structural change to the authorization authority inside a release that
+  ships no behaviour. Under (d) the guard did its job — it noticed — and the response is a visible,
+  argued entry with an owner. Debt that is written down and dated is not the same failure as debt
+  that is invisible; pretending otherwise is how a guard gets quietly weakened the first time it
+  says something inconvenient.

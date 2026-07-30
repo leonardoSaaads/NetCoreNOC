@@ -95,14 +95,19 @@ Three clarifications a contributor will need:
 
 ## 3. The `http` layer as built in v0.7.2
 
-`src/netcorenoc/api/` is a package, one level deep and no deeper. Fourteen modules.
+`src/netcorenoc/api/` is a package, one level deep and no deeper. Sixteen modules — two more
+than the release plan sketched, because `perimeter.py` measured 444 lines before the
+registration gate was written and the 400-line guard outranks a planned module list
+(DECISIONS #85). Each extraction is justified by the placement rule above, not by arithmetic.
 
 | Module | Owns | May import |
 |---|---|---|
 | `__init__.py` | the compatibility surface: everything previously reachable as `netcorenoc.api.X` | the siblings |
 | `app.py` | **wiring only** — build `Perimeter`, build `AppContext`, register the middleware, call each `register()` in order | all siblings |
-| `perimeter.py` | **the security boundary** (§4) and the route-declaration decorator | `rbac`, `shaping`, `auth`, `audit` (cross-cutting) |
-| `context.py` | `AppContext`, the frozen record every route module receives | `perimeter` |
+| `perimeter.py` | **the security boundary** (§4) | `rbac`, `shaping`, `auth`, `audit` (cross-cutting) |
+| `governance_cache.py` | `GovernancePolicies` — the per-request cache of the two stored policy documents. One noun, and not a decision: the decisions are `rbac.resolve_capabilities` and `shaping.visible_nes` | `rbac`, `shaping` |
+| `declare.py` | the route-declaration gate: `DeclaredRoutes`, the only registration path | `rbac` |
+| `context.py` | `AppContext`, the frozen record every route module receives | `perimeter`, `governance_cache` |
 | `models.py` | every pydantic request model, `QuietServer`, the `MAX_*` limits they use | `auth`, `scoring` |
 | `routes_static.py` | `/healthz`, `/readyz`, `/`, the static asset allowlist | — |
 | `routes_auth.py` | login, logout, `/api/me`, password change | `auth` |
@@ -131,8 +136,9 @@ classes, no plugin registry.
    `register()` **rebinds its fields to local names as its first statement**, so every handler body
    is textually identical to v0.7.1. This rebinding block is mandatory; rewriting call sites to
    `ctx.audit_row(...)` would touch every handler and destroy the proof that nothing moved.
-3. **The registration decorator** — `Perimeter.declare(app)` returns the object every route module
-   registers through. It fails when a route is not declared, before the process can serve.
+3. **The registration gate** — `declare.DeclaredRoutes` is the object every route module
+   registers through. It refuses a route `rbac.py` has not been told about, while the application
+   is being built, so an appliance carrying an undeclared route does not start.
 
 ---
 
@@ -175,6 +181,7 @@ State at v0.7.2:
 | `store.py` | 1 512 | **v0.7.3** | specified in §6 below |
 | `main.py` | 1 079 | **v0.7.3** | specified in §7 below |
 | `shaping.py` | 476 | v0.7.4 | two axes in one file (field shaping, NE scoping); the split is along that seam |
+| `rbac.py` | 436 | v0.7.4 | **added by v0.7.2**: `ROUTE_SCOPE` — the declaration whose absence was F34 — took it from 348 past the guard. The table belongs here (single source of authority) and every `"unscoped"` entry must carry a written justification, so neither the table nor the prose could be traded away. Seam: the route/capability **tables** on one side, the capability-policy parser and resolver on the other. DECISIONS #87 |
 | `varbind_profile.py` | 417 | v0.7.4 | just over; likely one extraction (the accumulator) rather than a package |
 
 This is the single most valuable thing v0.7.2 leaves behind: the debt is in CI instead of in a code

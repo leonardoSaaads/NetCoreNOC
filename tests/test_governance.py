@@ -1320,7 +1320,7 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
             )
             continue
         start = source.index(anchor)
-        body = source[start : source.index("\n    @app.", start + 1)]
+        body = source[start : source.index("\n    @route.", start + 1)]
         if "scope_for(principal)" not in body:
             unprotected.append(f"{method} {path} ({capability}) does not call scope_for()")
     assert not unprotected, "routes outside the write perimeter:\n" + "\n".join(unprotected)
@@ -1389,13 +1389,13 @@ def test_f39_every_mutating_handler_uses_the_transaction_helper() -> None:
     assert "async def write_txn(" in source, "the transaction helper is gone"
     assert "await self._store.rollback()" in source, "api.py must roll back on a failed write"
     # Every handler decorated as a mutation must reach write_txn().
-    for decorator in ('@app.post("', '@app.delete("'):
+    for decorator in ('@route.post("', '@route.delete("'):
         for start in _all_indices(source, decorator):
             head = source[start : start + 400]
             route = head.split('"')[1]
             if route in ("/api/login",):
                 continue  # multi-branch: commits each audited outcome explicitly, then raises
-            body = source[start : source.index("\n    @app.", start + 1)]
+            body = source[start : source.index("\n    @route.", start + 1)]
             # `/api/rbac` and `/api/scope` delegate to `_write_policy`, the single write path for
             # both policy kinds, which takes the helper once on their behalf.
             reaches = "write_txn()" in body or "await _write_policy(" in body

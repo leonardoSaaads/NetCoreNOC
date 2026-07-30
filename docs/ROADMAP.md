@@ -129,6 +129,10 @@ From v0.7.2 (the HTTP package — deferred, each with the reason it is not in th
   `docs/architecture/MODULE-ARCHITECTURE.md` §6–§8, including the invariants (one `Store` class, one
   connection, one `store.lock`; the batch lock never leaves `Engine`), the two candidate mechanisms
   for `Store` with the `mypy --strict` cost of each, and the gates v0.7.3 inherits. DECISIONS #83.
+- **Split `rbac.py` (436) → v0.7.4.** v0.7.2 pushed it past the module-size guard by adding
+  `ROUTE_SCOPE`, the declaration whose absence was F34. It is on the `DEBT_ALLOWLIST` with a
+  named owner and a named seam: the route/capability **tables** on one side, the
+  capability-policy parser and resolver on the other. DECISIONS #87.
 - **Split `shaping.py` (476) and `varbind_profile.py` (417) → v0.7.4.** On the module-size guard's
   `DEBT_ALLOWLIST` with a named owner. `shaping.py` holds two axes in one file — field shaping by
   role, and NE scoping by policy — and the split is along that seam. DECISIONS #81.
