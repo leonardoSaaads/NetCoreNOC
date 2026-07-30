@@ -111,3 +111,36 @@ From v0.7.1 (the write perimeter — deferred, each with the version that owns i
 - **The v0.8.0 feedback dataset** — schema, capture, and bias reporting. v0.7.1 made the *existing*
   feedback path trustworthy (idempotent, bounded, attributed); it deliberately built no part of the
   dataset.
+
+From v0.7.2 (the HTTP package — deferred, each with the reason it is not in that release):
+
+- **Make `ROUTE_SCOPE` enforcing** — have the perimeter *inject* the scope check from the declared
+  posture rather than each handler calling `scope_for` itself. v0.7.2 declares the posture and
+  proves every declaration matches observed behaviour; injection changes control flow, and control
+  flow is behaviour, which v0.7.2 ships none of. DECISIONS #80.
+- **Normalise the route paths.** Three named inconsistencies: `/api/labels` carries a `kind`
+  discriminator in the body instead of being two resources; `POST /api/situations/{sid}/close` and
+  `POST /api/scorer/rollback` are RPC verbs in a REST estate; `POST /api/users/{uid}/role` is a
+  sub-resource where a `PATCH` on the user would do. Each is a public contract change touching
+  `ROUTE_PERMISSIONS`, the generated authorization matrix, `ui/app.js` and every test. The v0.7.2
+  declarative registry makes each rename a one-line change with the matrix proving the rest.
+  DECISIONS #82.
+- **Split `store.py` and `main.py` → v0.7.3.** Fully specified in
+  `docs/architecture/MODULE-ARCHITECTURE.md` §6–§8, including the invariants (one `Store` class, one
+  connection, one `store.lock`; the batch lock never leaves `Engine`), the two candidate mechanisms
+  for `Store` with the `mypy --strict` cost of each, and the gates v0.7.3 inherits. DECISIONS #83.
+- **Split `rbac.py` (436) → v0.7.4.** v0.7.2 pushed it past the module-size guard by adding
+  `ROUTE_SCOPE`, the declaration whose absence was F34. It is on the `DEBT_ALLOWLIST` with a
+  named owner and a named seam: the route/capability **tables** on one side, the
+  capability-policy parser and resolver on the other. DECISIONS #87.
+- **Split `shaping.py` (476) and `varbind_profile.py` (417) → v0.7.4.** On the module-size guard's
+  `DEBT_ALLOWLIST` with a named owner. `shaping.py` holds two axes in one file — field shaping by
+  role, and NE scoping by policy — and the split is along that seam. DECISIONS #81.
+- **Two layer-rule violations, named not fixed.** `main.py` imports `netcorenoc.api`
+  (engine → http, the one genuine upward import; resolved naturally by v0.7.3's separation of the
+  process runner from `Engine`), and `runtime.py` imports `receiver.Network`/`parse_allowlist`
+  (cross-cutting → ingest). `MODULE-ARCHITECTURE.md` §1. A violation found while writing an
+  architecture document is a line here, not a fix in the release that found it.
+- **`api/models.py` per route group.** Deliberately *not* done: all eleven pydantic request models
+  stay in one file because fragmenting them across nine modules would make the request surface
+  harder to audit, not easier. Recorded as a rejection, not a plan.

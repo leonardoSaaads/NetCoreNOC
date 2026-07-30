@@ -1,0 +1,468 @@
+"""The route-declaration discipline (v0.7.2, Workstream 3).
+
+F34 existed because a route's **scope posture** was expressed nowhere at all: three editor write
+routes simply did not have one, and no table, no test and no reviewer could notice the omission.
+`rbac.ROUTE_SCOPE` is that missing declaration, and these tests are what make it worth having:
+
+* an undeclared route cannot be registered — the failure happens while the application is being
+  built, so an appliance carrying one does not start;
+* the gate is the **only** registration path, so it cannot be bypassed by a contributor in a hurry;
+* both declaration tables are complete against the **live app object**, so they cannot drift;
+* and every declared posture is checked against the route's **observed behaviour**, which is what
+  makes the table a fact about the code rather than a comment on it (DECISIONS #80).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+from fastapi import FastAPI
+
+from netcorenoc import auth, rbac
+from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError
+from netcorenoc.store import Store
+
+import authutil
+
+PKG = Path(__file__).resolve().parent.parent / "src" / "netcorenoc" / "api"
+_RAW_DECORATORS = ("@app.get(", "@app.post(", "@app.delete(", "@app.put(", "@app.patch(")
+BASE = 1_700_000_000.0
+
+
+# --- the gate itself ---------------------------------------------------------------------
+
+
+def test_an_undeclared_api_route_cannot_be_registered() -> None:
+    """The headline guarantee: registration raises, so the process never starts with it."""
+    route = DeclaredRoutes(FastAPI())
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+
+        @route.get("/api/undeclared")
+        async def _handler() -> dict[str, str]:  # pragma: no cover - never registered
+            return {}
+
+    message = str(excinfo.value)
+    assert "GET /api/undeclared" in message
+    assert "rbac.ROUTE_PERMISSIONS" in message and "rbac.ROUTE_SCOPE" in message
+
+
+def test_a_route_declared_only_in_route_permissions_is_still_refused() -> None:
+    """Half a declaration is not a declaration. The message names the table that is missing."""
+    route = DeclaredRoutes(FastAPI())
+    key = ("GET", "/api/half-declared")
+    rbac.ROUTE_PERMISSIONS[key] = "stats.read"
+    try:
+        with pytest.raises(UndeclaredRouteError) as excinfo:
+
+            @route.get("/api/half-declared")
+            async def _handler() -> dict[str, str]:  # pragma: no cover - never registered
+                return {}
+
+        assert "rbac.ROUTE_SCOPE" in str(excinfo.value)
+        assert "rbac.ROUTE_PERMISSIONS" not in str(excinfo.value)
+    finally:
+        del rbac.ROUTE_PERMISSIONS[key]
+
+
+def test_public_and_non_api_routes_are_exempt_by_consultation() -> None:
+    """`POST /api/login` is exempt because `PUBLIC_ROUTES` says so, not because both tables
+    happen to omit it — and `/healthz`-class paths are exempt because they carry no identity."""
+    assert ("POST", "/api/login") in rbac.PUBLIC_ROUTES
+    assert ("POST", "/api/login") not in rbac.ROUTE_PERMISSIONS
+    assert ("POST", "/api/login") not in rbac.ROUTE_SCOPE
+    route = DeclaredRoutes(FastAPI())
+
+    @route.post("/api/login")
+    async def _login() -> dict[str, str]:  # pragma: no cover - not called
+        return {}
+
+    @route.get("/healthz")
+    async def _healthz() -> dict[str, str]:  # pragma: no cover - not called
+        return {}
+
+
+def test_the_gate_is_the_only_registration_path() -> None:
+    """No raw `@app.<verb>` decorator anywhere under `netcorenoc/api/`.
+
+    The discipline is only a discipline if there is no way round it. `add_api_route` is the one
+    remaining non-decorator registration and it is confined to `routes_static.py`, where it serves
+    a compile-time allowlist of non-`/api` files — see the test below.
+    """
+    offenders = [
+        f"{path.name}:{n}: {line.strip()}"
+        for path in sorted(PKG.rglob("*.py"))
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if line.lstrip().startswith(_RAW_DECORATORS)
+    ]
+    assert not offenders, (
+        "routes must be registered through DeclaredRoutes, never on the FastAPI app directly:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_add_api_route_is_confined_to_the_static_asset_allowlist() -> None:
+    """The one registration that is not a decorator, named rather than left to be found.
+
+    `_asset_route` registers the four entries of `STATIC_ASSETS` — a compile-time allowlist of
+    non-`/api` files served with no identity and no capability. It is outside the declaration gate
+    by design (there is nothing for a static file to declare), and it must stay the only one.
+    """
+    sources = {path.name: path.read_text(encoding="utf-8") for path in PKG.rglob("*.py")}
+    users = sorted(name for name, text in sources.items() if "add_api_route" in text)
+    assert len(users) == 1, f"add_api_route must have exactly one caller, found {users}"
+    assert "STATIC_ASSETS" in sources[users[0]], (
+        f"add_api_route lives in {users[0]}, which does not own the static-asset allowlist"
+    )
+
+
+# --- completeness, driven from the live app so it cannot drift ---------------------------
+
+
+def _live_api_routes(app: object) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for route in app.routes:  # type: ignore[attr-defined]
+        path = getattr(route, "path", "")
+        if not path.startswith("/api"):
+            continue
+        for method in getattr(route, "methods", set()) or set():
+            if method not in ("HEAD", "OPTIONS"):
+                out.append((method, path))
+    return out
+
+
+async def test_every_api_route_declares_a_scope_posture(store: Store) -> None:
+    """The sibling of `test_rbac.py::test_every_api_route_is_in_the_permission_map`.
+
+    Extended, not replaced: `ROUTE_PERMISSIONS` keeps its own completeness test and its own
+    authority. This one asks the second question F34 showed nobody was asking.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    undeclared = [
+        f"{method} {path}"
+        for method, path in _live_api_routes(app)
+        if (method, path) not in rbac.PUBLIC_ROUTES and (method, path) not in rbac.ROUTE_SCOPE
+    ]
+    assert not undeclared, f"/api routes with no declared scope posture: {undeclared}"
+
+
+async def test_no_scope_declaration_is_dead(store: Store) -> None:
+    """A posture for a route that no longer exists would quietly stop meaning anything."""
+    _engine, _queue, app = await authutil.make_env(store)
+    live = set(_live_api_routes(app))
+    dead = [f"{method} {path}" for method, path in rbac.ROUTE_SCOPE if (method, path) not in live]
+    assert not dead, f"ROUTE_SCOPE declares routes that are not registered: {dead}"
+
+
+def test_admin_only_is_derived_from_permissions_in_both_directions() -> None:
+    """`admin_only` is a claim about `PERMISSIONS`, re-derived here as well as at import.
+
+    A second authority would be a second thing to keep true. This is the same assertion `rbac.py`
+    makes when it is imported, restated where a reader looking for tests will find it.
+    """
+    for route, posture in rbac.ROUTE_SCOPE.items():
+        admin_capability = rbac.PERMISSIONS[rbac.ROUTE_PERMISSIONS[route]] == "admin"
+        assert (posture == "admin_only") == admin_capability, (route, posture)
+
+
+def test_every_unscoped_declaration_carries_a_written_justification() -> None:
+    """`"unscoped"` is the posture that can hide a defect, so each one must state why.
+
+    A comment is not a proof — the behavioural test below is — but an `"unscoped"` entry with no
+    stated reason is an assertion nobody has had to defend, which is how F34 happened.
+    """
+    source = (Path(rbac.__file__)).read_text(encoding="utf-8")
+    table = source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0]
+    lines = table.splitlines()
+    entries = [i for i, line in enumerate(lines) if line.strip().endswith(': "unscoped",')]
+    assert len(entries) == 5, entries
+    unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
+    assert not unjustified, (
+        "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
+        + "\n  ".join(unjustified)
+    )
+
+
+# --- the postures, checked against observed behaviour ------------------------------------
+
+_CONCRETE = {"{sid}": "1", "{ne_id}": "1", "{uid}": "1", "{tid}": "1"}
+
+
+def _concrete(path: str) -> str:
+    for template, value in _CONCRETE.items():
+        path = path.replace(template, value)
+    return path
+
+
+async def _seed(store: Store) -> None:
+    """Two NEs on different /24s, so a scope policy can include one and exclude the other."""
+    async with store.lock:
+        for ip in ("10.0.0.1", "192.168.50.1"):
+            await store.device_id(ip, BASE)
+            ne_id = await store.ne_id(ip, BASE)
+            await store.entity_level0(ne_id, ip, BASE)
+        await store.commit()
+
+
+async def _activate_scope(store: Store, document: dict[str, Any] | None) -> None:
+    """Install (or clear) a scope policy directly, bypassing the API."""
+    async with store.lock:
+        if document is None:
+            await store.clear_active_governance_policy("scope")
+        else:
+            text = json.dumps(document, sort_keys=True, separators=(",", ":"))
+            policy_id = await store.insert_governance_policy(
+                "scope", text, "z" * 64, None, BASE, ""
+            )
+            await store.set_active_governance_policy("scope", policy_id, None, BASE)
+        await store.commit()
+
+
+# Viewer and editor see only 10.0.0.0/8 — so 192.168.50.1 and everything on it is invisible.
+NARROW = {"version": 1, "roles": {"viewer": ["10.0.0.0/8"], "editor": ["10.0.0.0/8"]}}
+
+ADMIN_ONLY = sorted(r for r, p in rbac.ROUTE_SCOPE.items() if p == "admin_only")
+UNSCOPED = sorted(r for r, p in rbac.ROUTE_SCOPE.items() if p == "unscoped")
+SCOPED = sorted(r for r, p in rbac.ROUTE_SCOPE.items() if p == "scoped")
+
+
+def test_the_three_postures_are_all_populated() -> None:
+    """Guard the guard: a posture with no routes would make its behavioural test vacuous."""
+    assert len(ADMIN_ONLY) == 22, len(ADMIN_ONLY)
+    assert len(UNSCOPED) == 5, UNSCOPED
+    assert len(SCOPED) == 12, SCOPED
+    assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
+
+
+async def _status(client: httpx.AsyncClient, method: str, path: str) -> int:
+    if path == "/api/events":
+        # The SSE stream never ends; the security dependency raises before streaming, so a
+        # timeout means "authorization passed" — the same convention test_rbac.py uses.
+        try:
+            resp = await asyncio.wait_for(client.get(_concrete(path)), timeout=0.6)
+            return resp.status_code
+        except (TimeoutError, httpx.ReadError):
+            return 200
+    async with client.stream(method, _concrete(path), json=_BODIES.get((method, path))) as resp:
+        return resp.status_code
+
+
+_BODIES: dict[tuple[str, str], dict[str, Any]] = {
+    ("POST", "/api/situations/{sid}/feedback"): {"verdict": "confirm"},
+    ("POST", "/api/labels"): {"kind": "device", "id": 1, "label": "x"},
+    ("POST", "/api/users"): {"username": "x", "password": "x" * 14, "role": "viewer"},
+    ("POST", "/api/users/{uid}/role"): {"role": "viewer"},
+    ("POST", "/api/tokens"): {"name": "t", "role": "viewer"},
+    ("POST", "/api/config"): {"allowlist": "", "retention_days": 7},
+    ("POST", "/api/scorer"): {"w_t": 0.5, "w_a": 0.3, "w_e": 0.2, "tau_s": 60, "threshold": 0.5},
+    ("POST", "/api/scorer/preview"): {
+        "w_t": 0.5,
+        "w_a": 0.3,
+        "w_e": 0.2,
+        "tau_s": 60,
+        "threshold": 0.5,
+    },
+    ("POST", "/api/scorer/rollback"): {"config_id": 1},
+    ("POST", "/api/rbac"): {"clear": True},
+    ("POST", "/api/scope"): {"clear": True},
+}
+
+
+@pytest.mark.parametrize("route", ADMIN_ONLY, ids=lambda r: f"{r[0]} {r[1]}")
+async def test_admin_only_routes_are_403_for_viewer_and_editor(
+    store: Store, route: tuple[str, str]
+) -> None:
+    """`admin_only` claims the question does not arise because only admins get here."""
+    _engine, _queue, app = await authutil.make_env(store)
+    method, path = route
+    for role in ("viewer", "editor"):
+        client = await authutil.client_as(app, role)
+        try:
+            assert await _status(client, method, path) == 403, (role, method, path)
+        finally:
+            await client.aclose()
+
+
+@pytest.mark.parametrize("route", UNSCOPED, ids=lambda r: f"{r[0]} {r[1]}")
+async def test_unscoped_routes_answer_a_scoped_caller_identically(
+    store: Store, route: tuple[str, str]
+) -> None:
+    """`unscoped` claims the caller's scope does not reach the response. So: run the request
+    twice as the same role, once under a policy that hides half the estate and once under none,
+    and require the same status and the same body."""
+    _engine, _queue, app = await authutil.make_env(store)
+    await _seed(store)
+    method, path = route
+    seen: list[tuple[int, bytes]] = []
+    for document in (NARROW, None):
+        await _activate_scope(store, document)
+        client = await authutil.client_as(app, "editor")
+        try:
+            resp = await client.request(method, _concrete(path), json=_BODIES.get(route))
+            seen.append((resp.status_code, resp.content))
+        finally:
+            await client.aclose()
+    assert seen[0] == seen[1], f"{method} {path} is declared unscoped but the scope reached it"
+
+
+SCOPED_TARGETED = [
+    ("GET", "/api/situations/{sid}"),
+    ("GET", "/api/entities/{ne_id}"),
+    ("POST", "/api/situations/{sid}/feedback"),
+    ("POST", "/api/labels"),
+    ("POST", "/api/situations/{sid}/close"),
+]
+SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
+
+
+def test_the_scoped_split_covers_every_scoped_route() -> None:
+    assert sorted(SCOPED_TARGETED + SCOPED_COLLECTION) == SCOPED
+
+
+@pytest.mark.parametrize("route", SCOPED_TARGETED, ids=lambda r: f"{r[0]} {r[1]}")
+async def test_scoped_routes_404_an_out_of_scope_target(
+    store: Store, route: tuple[str, str]
+) -> None:
+    """`scoped`, targeted form: naming a resource the caller cannot see is indistinguishable
+    from naming one that does not exist — same status, same body (DECISIONS #60, #65)."""
+    engine, queue, app = await authutil.make_env(store)
+    await _seed(store)
+    out_of_scope_ne = await _out_of_scope_ids(store, engine, queue)
+    await _activate_scope(store, NARROW)
+    method, path = route
+    body = dict(_BODIES.get(route) or {})
+    if path == "/api/labels":
+        body = {"kind": "device", "id": out_of_scope_ne["device"], "label": "x"}
+    concrete = path.replace("{sid}", str(out_of_scope_ne["situation"])).replace(
+        "{ne_id}", str(out_of_scope_ne["ne"])
+    )
+    client = await authutil.client_as(app, "editor")
+    try:
+        resp = await client.request(method, concrete, json=body or None)
+        assert resp.status_code == 404, (method, concrete, resp.status_code, resp.text)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.parametrize("route", SCOPED_COLLECTION, ids=lambda r: f"{r[0]} {r[1]}")
+async def test_scoped_collection_routes_answer_differently_under_a_policy(
+    store: Store, route: tuple[str, str]
+) -> None:
+    """`scoped`, collection form: the response is a function of the caller's visible set, so a
+    policy that hides half the estate must change what comes back."""
+    engine, queue, app = await authutil.make_env(store)
+    await _out_of_scope_ids(store, engine, queue)
+    method, path = route
+    seen: list[bytes] = []
+    for document in (None, NARROW):
+        await _activate_scope(store, document)
+        client = await authutil.client_as(app, "editor")
+        try:
+            seen.append(await _first_payload(app, client, method, path))
+        finally:
+            await client.aclose()
+    assert seen[0] != seen[1], f"{method} {path} is declared scoped but the policy changed nothing"
+
+
+async def _first_payload(app: object, client: httpx.AsyncClient, method: str, path: str) -> bytes:
+    """The response body, or — for the SSE stream — its first `data:` frame."""
+    if path != "/api/events":
+        resp = await client.request(method, _concrete(path))
+        assert resp.status_code == 200, (path, resp.status_code, resp.text)
+        return resp.content
+    cookie = client.cookies.get(auth.COOKIE_NAME)
+    assert cookie is not None
+    return await _first_sse_update(app, cookie)
+
+
+class _StopSSEError(Exception):
+    """Break out of the infinite SSE generator once the first update is captured."""
+
+
+async def _first_sse_update(app: object, cookie: str) -> bytes:
+    """The stream's first `data:` payload, driving the ASGI app directly.
+
+    httpx's ASGITransport cannot deliver partial bodies of an infinite response, so the app is
+    driven by hand — the same technique `test_governance.py::_sse_updates` and
+    `test_shaping.py::test_sse_stream_graph_is_shaped_for_viewer` already use.
+    """
+    scope_env: dict[str, Any] = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "path": "/api/events",
+        "raw_path": b"/api/events",
+        "query_string": b"",
+        "headers": [
+            (b"cookie", f"{auth.COOKIE_NAME}={cookie}".encode()),
+            (b"host", b"testserver"),
+        ],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+        "scheme": "http",
+    }
+    captured: list[bytes] = []
+    buffer = b""
+    sent_request = False
+    never = asyncio.Event()
+
+    async def receive() -> dict[str, Any]:
+        nonlocal sent_request
+        if not sent_request:
+            sent_request = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await never.wait()  # a real client keeps the connection open
+        return {"type": "http.disconnect"}  # pragma: no cover
+
+    async def send(message: dict[str, Any]) -> None:
+        nonlocal buffer
+        if message["type"] != "http.response.body":
+            return
+        buffer += message.get("body", b"")
+        while b"\n\n" in buffer:
+            block, buffer = buffer.split(b"\n\n", 1)
+            for line in block.decode().splitlines():
+                if line.startswith("data: "):
+                    captured.append(line[6:].encode())
+                    raise _StopSSEError
+
+    with contextlib.suppress(_StopSSEError, TimeoutError):
+        await asyncio.wait_for(app(scope_env, receive, send), timeout=15.0)  # type: ignore[operator]
+    assert captured, "no SSE update frame arrived"
+    return captured[0]
+
+
+async def _out_of_scope_ids(store: Store, engine: Any, queue: Any) -> dict[str, int]:
+    """An estate with a situation whose only member sits on the out-of-scope 192.168.50.0/24."""
+    import util
+
+    await util.drive(
+        engine,
+        queue,
+        [
+            util.event(device="192.168.50.1", trap_oid=util.CIENA_TRAP, ts=BASE + 1),
+            util.event(device="192.168.50.1", trap_oid=util.HUAWEI_TRAP, ts=BASE + 2),
+            util.event(device="10.0.0.1", trap_oid=util.CIENA_TRAP, ts=BASE + 3),
+        ],
+    )
+    async with store.lock:
+        nes = {str(row["ip"]): int(row["id"]) for row in await store.list_ne()}
+        situations = await store.list_situations(None, 100, None)
+        members = await store.situation_member_nes([int(s["id"]) for s in situations])
+        devices = {str(row["ip"]): int(row["id"]) for row in await store.list_ne_for_scope()}
+    hidden_ne = nes["192.168.50.1"]
+    hidden_situation = next(
+        int(s["id"])
+        for s in situations
+        if members.get(int(s["id"])) and set(members[int(s["id"])]) == {hidden_ne}
+    )
+    return {
+        "ne": hidden_ne,
+        "situation": hidden_situation,
+        "device": devices.get("192.168.50.1", hidden_ne),
+    }

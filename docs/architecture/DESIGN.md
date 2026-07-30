@@ -1020,3 +1020,138 @@ dependencies stay at five.
 - **`api.py` is still 1 600+ lines**, and four of six findings lived there because of it. The
   `perimeter.py` extraction is v0.7.2's theme, with its shape already agreed (DECISIONS #74) — a
   security patch is not the place to move the files its own fixes touch.
+
+## v0.7.2 — the perimeter as a named component (internal structure only, no behaviour change)
+
+v0.7.2 changed no behaviour. Not one route path, method, status code, response field or capability
+moved; every handler body is byte-identical to v0.7.1 and the route table is identical **in order**.
+What changed is that the HTTP security boundary stopped being a property of a 1 752-line file and
+became a component with a name, a file, and a stated contract.
+
+`src/netcorenoc/api.py` is now the package `src/netcorenoc/api/` — sixteen modules, largest 361
+lines, one level deep. The module map and the rules that bind future releases are in
+[`MODULE-ARCHITECTURE.md`](MODULE-ARCHITECTURE.md).
+
+### The perimeter
+
+**`src/netcorenoc/api/perimeter.py`. Read this file first if you are reviewing security.**
+
+Everything in it decides *whether a request may proceed*. Nothing in it decides *what a request
+returns*. That is the whole criterion, and it is why the write-side scope check sits beside the
+read-side one even though the two lived four hundred lines apart in v0.7.1.
+
+**What it owns**
+
+| Concern | Member |
+|---|---|
+| Security headers on every response | `security_headers` (middleware body; `create_app` registers it) |
+| Origin/CSRF for cookie-authenticated mutations | `csrf_ok`, `MUTATING` |
+| Identity resolution (session cookie or bearer token) | `resolve_identity` |
+| The forced-password-change gate | `BOOTSTRAP_ALLOWED` |
+| Capability resolution | `security` → `rbac.resolve_capabilities` (called, never reimplemented) |
+| Which denials are audited | `DENIED_ACTION` + its import-time assert against `rbac.AUDITED_DENIED_PERMISSIONS` |
+| Per-client rate limit | `RateLimiter`, `RATE_CAPACITY`, `RATE_REFILL` |
+| Visibility scope resolution | `scope_for` → `shaping.visible_nes` (called, never reimplemented) |
+| The write-side scope check and its denial audit | `situation_in_scope`, `audit_scope_denial` |
+| The write transaction boundary | `write_txn` |
+| The audit-row helper | `audit_row` |
+| Operator warnings, including an unreadable policy | `all_warnings` |
+
+**What it does not own:** any handler logic, any response shaping, any SQL, any domain rule. The
+policy *cache* it reads is a separate module (`api/governance_cache.py`) because a cache is not a
+decision; the *decisions* are `rbac.resolve_capabilities` and `shaping.visible_nes`, both of which
+live where they always have.
+
+### The order the steps run
+
+This paragraph used to sit at the top of `api.py`. It lives here now, and `api/app.py`'s docstring
+points at it, so there is one description to keep true rather than two.
+
+```
+request
+  │
+  ├─ security_headers middleware  ─────────────── (a real ASGI middleware, runs on every response:
+  │                                                 CSP, nosniff, DENY, no-referrer; no-store on /api)
+  │
+  └─ the `security` dependency, on every protected /api route:
+       (1) CSRF        cookie-authenticated mutations only — origin/referer host must match the
+                       Host header AND X-NetCoreNOC-Client: ui   → 403 otherwise
+       (2) identity    bearer token, else session cookie        → 401 if neither resolves
+       (3) bootstrap   an account owing a forced password change reaches only
+                       POST /api/logout, GET /api/me, POST /api/password → 403 otherwise
+       (4) RBAC        resolved per request as ceiling(role) ∩ granted(role) ∩ granted(principal);
+                       the compiled map is the FIRST operand, so no stored policy can grant what
+                       PERMISSIONS does not. THE authorization decision. A denial of a capability in
+                       AUDITED_DENIED_PERMISSIONS is itself audited → 403
+       (5) rate limit  token bucket per client address           → 429
+       │
+       └─ handler      audits every mutating action and every sensitive read, inside write_txn()
+```
+
+Steps (1)–(5) are unchanged from v0.2.0 through v0.7.1; only their location changed.
+
+### The registration discipline
+
+Before v0.7.2 a route was registered with `@app.get("/api/x")` and its capability lived in a dict in
+`rbac.py`, joined by a path string. The join was invisible at the point of registration — which is
+why the project needed a runtime fail-closed **and** a CI completeness test to catch what the code
+could not express. F34 was the same shape one level down: a route's *scope posture* was expressed
+nowhere at all, so three write routes simply did not have one.
+
+`rbac.py` remains the single source of authority and now carries **two** declarations per route:
+
+* `ROUTE_PERMISSIONS[(method, path)]` — the capability required. Unchanged.
+* `ROUTE_SCOPE[(method, path)]` — `"scoped"`, `"unscoped"` or `"admin_only"`. New. Every
+  `"unscoped"` carries a written justification (required by test), and `"admin_only"` is *derived*
+  from `PERMISSIONS` at import in both directions, so the two tables cannot disagree.
+
+Registration goes through `api/declare.py::DeclaredRoutes`, which refuses a route absent from either
+table **while the application is being built** — so an appliance carrying an undeclared route does
+not start. `PUBLIC_ROUTES` and non-`/api` paths are exempt by explicit consultation, never by
+omission. A test asserts no raw `@app.<verb>` decorator survives anywhere in the package.
+
+`ROUTE_SCOPE` is **descriptive in v0.7.2**: nothing reads it at request time, and a test checks
+every declaration against the route's observed behaviour. Having the perimeter *inject* the scope
+check from the table would change control flow, and control flow is behaviour — so that is a
+ROADMAP line, not this release (DECISIONS #80).
+
+### How forty handlers moved without changing
+
+`api/context.py::AppContext` is a frozen dataclass carrying what the route modules need. Each route
+module is one `register(app, ctx)` function whose **first statement** rebinds the fields it uses to
+the local names the handlers already call them by:
+
+```python
+def register(app: FastAPI, ctx: AppContext) -> None:
+    store, engine, security, guarded = ctx.store, ctx.engine, ctx.security, ctx.guarded
+    scope_for, audit_row = ctx.scope_for, ctx.perimeter.audit_row
+    route = DeclaredRoutes(app)
+
+    @route.get("/api/stats")
+    async def stats(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+        # ... body identical to v0.7.1, character for character
+        scope = await scope_for(principal)
+        async with store.lock:
+            out: dict[str, Any] = dict(await store.stats())
+        return out
+```
+
+That block is mandatory, not stylistic. Rewriting the call sites to `ctx.audit_row(...)` would touch
+every handler and forfeit the hash-by-hash proof that nothing moved — which is the most valuable
+thing this release leaves behind (DECISIONS #78).
+
+## Known limits (v0.7.2, by design)
+
+- **This release does not make the perimeter more correct.** The same code in different files has
+  the same behaviour. Every caveat in `SECURITY-REVIEW-0.7.1.md` §4 stands unchanged. What v0.7.2
+  buys is a boundary a reviewer can read in one sitting and a discipline under which F34's class
+  cannot recur silently — not a fix.
+- **`ROUTE_SCOPE` is declared and tested, not enforced.** A contributor could declare `"scoped"` and
+  write a handler that never resolves scope; the posture test catches that, but a test is what F34
+  already had. The step from "tested" to "structural" is a later release's.
+- **`Perimeter` is constructible outside `create_app`.** Convenient for tests, and a second way to
+  instantiate the authorization machinery. Harmless — it holds no state a caller could not reach
+  through `store` — and named in `SECURITY-REVIEW-0.7.2.md` §5.3 rather than left to be discovered.
+- **`rbac.py` crossed the module-size guard** (348 → 436 lines) because `ROUTE_SCOPE` belongs in the
+  single source of authority. It is on the debt allowlist with v0.7.4 as its owner and a named split
+  seam: the declaration tables on one side, the capability-policy parser and resolver on the other.

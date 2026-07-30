@@ -23,9 +23,10 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from netcorenoc import api, audit, auth, rbac, shaping
+from netcorenoc import audit, auth, rbac, shaping
 from netcorenoc.store import Store
 
+import apisource
 import authutil
 import util
 
@@ -202,9 +203,7 @@ def test_f28_no_role_comparison_outside_rbac() -> None:
     authorization one) and checks `role == "admin"` for the never-scoped exemption, so it is
     excluded; `api.py` is the file that must never grow a second decision.
     """
-    import inspect
-
-    source = inspect.getsource(api)
+    source = apisource.api_source()
     for forbidden in ('role == "admin"', "role == 'admin'", "ROLE_RANK[", "role_allows("):
         assert forbidden not in source, (
             f"api.py contains {forbidden!r}: authorization must go through "
@@ -1297,9 +1296,7 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
     added in a future release is NOT on this list, so it fails here until it is inside the
     perimeter or is consciously added with a reason.
     """
-    import inspect
-
-    source = inspect.getsource(api)
+    source = apisource.api_source()
     # `POST /api/logout` and `POST /api/password` act on the caller's own session and account.
     # Neither carries an NE reference, and neither can name another principal's resource.
     session_only = {("POST", "/api/logout"), ("POST", "/api/password")}
@@ -1323,7 +1320,7 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
             )
             continue
         start = source.index(anchor)
-        body = source[start : source.index("\n    @app.", start + 1)]
+        body = source[start : source.index("\n    @route.", start + 1)]
         if "scope_for(principal)" not in body:
             unprotected.append(f"{method} {path} ({capability}) does not call scope_for()")
     assert not unprotected, "routes outside the write perimeter:\n" + "\n".join(unprotected)
@@ -1388,19 +1385,17 @@ def test_f39_every_mutating_handler_uses_the_transaction_helper() -> None:
     `change_password` are the named exceptions — each commits an audit row that must survive a
     failed request.
     """
-    import inspect
-
-    source = inspect.getsource(api)
+    source = apisource.api_source()
     assert "async def write_txn(" in source, "the transaction helper is gone"
-    assert "await store.rollback()" in source, "api.py must roll back on a failed write"
+    assert "await self._store.rollback()" in source, "api.py must roll back on a failed write"
     # Every handler decorated as a mutation must reach write_txn().
-    for decorator in ('@app.post("', '@app.delete("'):
+    for decorator in ('@route.post("', '@route.delete("'):
         for start in _all_indices(source, decorator):
             head = source[start : start + 400]
             route = head.split('"')[1]
             if route in ("/api/login",):
                 continue  # multi-branch: commits each audited outcome explicitly, then raises
-            body = source[start : source.index("\n    @app.", start + 1)]
+            body = source[start : source.index("\n    @route.", start + 1)]
             # `/api/rbac` and `/api/scope` delegate to `_write_policy`, the single write path for
             # both policy kinds, which takes the helper once on their behalf.
             reaches = "write_txn()" in body or "await _write_policy(" in body

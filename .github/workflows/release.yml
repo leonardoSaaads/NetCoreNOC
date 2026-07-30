@@ -1,0 +1,59 @@
+# Optional, opt-in release workflow. DORMANT by default: it only runs when a maintainer pushes a
+# version tag (v*), and even then it only builds the sdist + wheel and attaches them to a GitHub
+# Release using the built-in GITHUB_TOKEN. Publishing to PyPI / a container registry and any
+# artifact signing / SBOM step are left COMMENTED and opt-in (see the bottom of this file) — a
+# future decision, requiring no setup now. The release is fully valid with this workflow absent
+# or dormant; nothing here can publish anywhere by accident.
+#
+# Every action is pinned by commit SHA (the `# vX.Y.Z` comment is the human-readable tag).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Least privilege: only the permission needed to create a Release and upload its assets.
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Install build tooling
+        run: pip install build
+      - name: Verify version agreement (pyproject / package / CHANGELOG)
+        run: python tools/release_check.py
+      - name: Build sdist + wheel
+        run: python -m build
+      - name: Attach artifacts to the GitHub Release
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+        with:
+          files: dist/*
+          generate_release_notes: true
+        # Uses the automatically-provided GITHUB_TOKEN; no secret is referenced or printed.
+
+      # --- OPT-IN publishing / signing (all disabled) -----------------------------------------
+      # Enabling any of the following is a deliberate, future decision. They are intentionally
+      # left commented so they cannot run by accident and require no account/secret today.
+      #
+      # Publish to PyPI (needs Trusted Publishing or a PYPI_API_TOKEN secret; add
+      #   `id-token: write` to permissions for Trusted Publishing):
+      # - name: Publish to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1   # pin by SHA before enabling
+      #
+      # Publish a container image (needs registry login + `packages: write`):
+      # - name: Log in to GHCR
+      #   uses: docker/login-action@<sha>   # pin by SHA before enabling
+      # - name: Build and push image
+      #   uses: docker/build-push-action@<sha>   # pin by SHA before enabling
+      #
+      # Sign artifacts / generate an SBOM (e.g. sigstore/cosign, anchore/sbom-action):
+      # - name: Sign artifacts
+      #   uses: sigstore/gh-action-sigstore-python@<sha>   # pin by SHA before enabling

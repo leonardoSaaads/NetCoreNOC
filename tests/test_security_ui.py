@@ -22,6 +22,7 @@ from netcorenoc.main import Engine
 from netcorenoc.receiver import QueueItem
 from netcorenoc.store import Store
 
+import apisource
 import util
 
 TOKEN = "test-token-123"
@@ -298,9 +299,7 @@ def test_scorer_panel_states_the_preview_caveat() -> None:
     and says so."""
     app_js = (UI_DIR / "app.js").read_text()
     assert "d.caveat" in app_js
-    from netcorenoc import api
-
-    source = __import__("inspect").getsource(api.create_app)
+    source = apisource.api_source()
     assert "Directional, not exhaustive" in source
     assert "learned matrices held fixed" in source
 

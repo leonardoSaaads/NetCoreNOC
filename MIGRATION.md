@@ -1,5 +1,35 @@
 # Upgrading NetCoreNOC
 
+## v0.7.1 → v0.7.2 (the HTTP package — internal structure only)
+
+**There is nothing to do. Stop reading.**
+
+No migration runs. No configuration changes. No API changes. Replace the code and restart.
+
+| | |
+|---|---|
+| Schema | **unchanged** — `user_version` stays **7**; no migration file added |
+| Data | untouched — learned state, scorer configuration, governance policy, provenance, labels, feedback and the audit chain all carry over byte for byte |
+| Routes | **unchanged** — every path, method, status code and response field is identical, in the same order |
+| Capabilities | **unchanged** — `PERMISSIONS`, `ROUTE_PERMISSIONS`, `PUBLIC_ROUTES`, `AUDITED_DENIED_PERMISSIONS` and the audit action catalog are all the same |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| Downgrade | safe — v0.7.1 reads a v0.7.2 database, because it is the same database |
+
+v0.7.2 splits `src/netcorenoc/api.py` into the package `src/netcorenoc/api/` and adds a
+route-declaration table. Both are internal: `netcorenoc.api.create_app` keeps its name, its
+signature and every symbol that was reachable as `netcorenoc.api.X`, so anything importing the
+package keeps working unchanged.
+
+**Verified, not assumed.** A database written by the real v0.7.1 code — 40 traps through the engine,
+users, service tokens, four scorer configurations, both governance policy kinds with history,
+labels, feedback and a hash-chained audit log — was opened by v0.7.2: no migration ran, the whole
+store snapshot compared identical, the audit chain verified with the same final hash, and all 46
+routes returned byte-identical responses under both versions. See
+`docs/gates/v0.7.2-phase-5.md` §5.
+
+---
+
 ## v0.7.0 → v0.7.1 (the write perimeter — a security patch)
 
 v0.7.1 fixes six defects (F34–F39) in which a v0.7.0 guarantee was enforced on reads and not on

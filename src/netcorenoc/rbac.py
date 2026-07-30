@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 ROLE_RANK: dict[str, int] = {"viewer": 0, "editor": 1, "admin": 2}
 
@@ -122,6 +122,94 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
 
 # The only /api routes reachable without a resolved identity.
 PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset({("POST", "/api/login")})
+
+# Route (METHOD, templated path) -> its **visibility-scope posture**. v0.7.2.
+#
+# F34 existed because a route's scope posture was expressed *nowhere at all*: three editor write
+# routes simply did not have one, and no table, test or reviewer could notice the omission. This
+# is that missing declaration. It is **descriptive** in v0.7.2 — it records what each route already
+# does after v0.7.1 — and `tests/test_declaration.py` asserts every entry against the route's
+# observed behaviour. Making the perimeter *inject* the check from this table is a ROADMAP line,
+# because injection changes control flow and control flow is behaviour (DECISIONS #80).
+#
+#   "scoped"      the response depends on the caller's resolved visibility scope: the route
+#                 resolves scope and either filters what it returns or denies an out-of-scope
+#                 target through the same 404 a nonexistent one would take (DECISIONS #60).
+#   "unscoped"    the response does NOT depend on the caller's scope: a scoped and an unscoped
+#                 caller of the same role receive the same body. Every entry carries its reason.
+#   "admin_only"  the capability's minimum role is `admin`, and **admin is never scoped**
+#                 (DECISIONS #58), so the question does not arise. This is a *derived* claim, not
+#                 a second authority: the assertion below re-derives it from `PERMISSIONS` in both
+#                 directions at import, so the two tables cannot disagree.
+#
+# `PUBLIC_ROUTES` is exempt from this table exactly as it is from `ROUTE_PERMISSIONS`, and the
+# registration gate says so by consulting it rather than by finding nothing here.
+ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] = {
+    # Acts on the caller's own session; references no network element.
+    ("POST", "/api/logout"): "unscoped",
+    # Reports the caller's own scope summary (scoped?, ne_count), so the body follows the policy.
+    ("GET", "/api/me"): "scoped",
+    # Acts on the caller's own password; references no network element.
+    ("POST", "/api/password"): "unscoped",
+    ("GET", "/api/stats"): "scoped",
+    ("GET", "/api/graph"): "scoped",
+    # An alarm class is a *kind of trap*, not a network element, and the table carries no NE
+    # reference. The count that would leak — "a device you cannot see just emitted a new trap
+    # type" — is `stats.classes`, and that one is scoped.
+    ("GET", "/api/classes"): "unscoped",
+    ("GET", "/api/situations"): "scoped",
+    ("GET", "/api/situations/{sid}"): "scoped",
+    ("GET", "/api/timeline"): "scoped",
+    ("GET", "/api/events"): "scoped",
+    ("GET", "/api/entities"): "scoped",
+    ("GET", "/api/entities/{ne_id}"): "scoped",
+    # Learned state fields are keyed on (class, varbind OID) — a property of a trap type, not of
+    # any NE. Same reasoning as `/api/classes`.
+    ("GET", "/api/state-clears"): "unscoped",
+    ("POST", "/api/entities/{ne_id}/reset"): "admin_only",
+    ("POST", "/api/profiles/{ne_id}/reset"): "admin_only",
+    ("POST", "/api/situations/{sid}/feedback"): "scoped",
+    ("POST", "/api/labels"): "scoped",
+    ("POST", "/api/situations/{sid}/close"): "scoped",
+    ("GET", "/api/users"): "admin_only",
+    ("POST", "/api/users"): "admin_only",
+    ("DELETE", "/api/users/{uid}"): "admin_only",
+    ("POST", "/api/users/{uid}/role"): "admin_only",
+    ("GET", "/api/tokens"): "admin_only",
+    ("POST", "/api/tokens"): "admin_only",
+    ("DELETE", "/api/tokens/{tid}"): "admin_only",
+    ("GET", "/api/config"): "admin_only",
+    ("POST", "/api/config"): "admin_only",
+    # The five parameters of the active scorer and its immutable history. They *explain* every
+    # grouping decision and name no network element, so every authenticated role reads the same
+    # numbers (SCOPE-0.6 §2).
+    ("GET", "/api/scorer"): "unscoped",
+    ("POST", "/api/scorer/preview"): "admin_only",
+    ("POST", "/api/scorer"): "admin_only",
+    ("POST", "/api/scorer/rollback"): "admin_only",
+    ("GET", "/api/rbac"): "admin_only",
+    ("POST", "/api/rbac"): "admin_only",
+    ("GET", "/api/scope"): "admin_only",
+    ("POST", "/api/scope"): "admin_only",
+    ("GET", "/api/quarantine"): "admin_only",
+    ("GET", "/api/audit"): "admin_only",
+    ("GET", "/api/audit/export"): "admin_only",
+    ("POST", "/api/audit/prune"): "admin_only",
+}
+
+assert set(ROUTE_SCOPE) == set(ROUTE_PERMISSIONS), (
+    "ROUTE_SCOPE and ROUTE_PERMISSIONS must declare exactly the same routes: "
+    f"only in ROUTE_SCOPE {sorted(set(ROUTE_SCOPE) - set(ROUTE_PERMISSIONS))}, "
+    f"only in ROUTE_PERMISSIONS {sorted(set(ROUTE_PERMISSIONS) - set(ROUTE_SCOPE))}"
+)
+assert not [
+    route
+    for route, posture in ROUTE_SCOPE.items()
+    if (posture == "admin_only") != (PERMISSIONS[ROUTE_PERMISSIONS[route]] == "admin")
+], (
+    "an `admin_only` posture is derived from PERMISSIONS, never asserted independently: a route "
+    "is `admin_only` if and only if its capability's minimum role is `admin` (DECISIONS #58, #80)"
+)
 
 # Sensitive capabilities whose *denied* (403) attempts are still audited. THIS is the single
 # source of truth for the audited-denied set: ``api.py`` derives its "should this denial be
