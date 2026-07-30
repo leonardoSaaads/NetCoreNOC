@@ -11,14 +11,12 @@ UI and its assets are served statically with no build step.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
 import json
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
@@ -37,6 +35,15 @@ from netcorenoc.api.models import (
     TokenIn,
     UserIn,
 )
+from netcorenoc.api.perimeter import (
+    PREVIEW_RATE_CAPACITY,
+    PREVIEW_RATE_REFILL,
+    RATE_CAPACITY,
+    RATE_REFILL,
+    Perimeter,
+    RateLimiter,
+    _client_ip,
+)
 from netcorenoc.learn import MIN_EDGE_N
 
 if TYPE_CHECKING:
@@ -49,30 +56,11 @@ if TYPE_CHECKING:
 # `tests/test_security_txt.py` / `tests/test_deploy.py` assert the served files from it.
 UI_DIR = Path(__file__).parent.parent / "ui"
 UI_FILE = UI_DIR / "index.html"
-RATE_CAPACITY = 30.0
-RATE_REFILL = 10.0
-# Preview re-partitions up to MAX_PREVIEW_ALARMS alarms, so it is the one endpoint whose cost is
-# worth more than a share of the general bucket: its own, much tighter bucket (3 burst, then one
-# roughly every 10 s) bounds it independently of the per-client limiter (F22).
-PREVIEW_RATE_CAPACITY = 3.0
-PREVIEW_RATE_REFILL = 0.1
 MAX_SCORER_HISTORY = 50
 MAX_POLICY_HISTORY = 50
-MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 SSE_HEARTBEAT_S = 15.0
 SSE_UPDATE_S = 2.0
 QUEUE_SATURATION = 0.9  # /readyz reports not-ready once the ingest queue passes this fraction
-
-CSP = (
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
-    "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
-)
-SECURITY_HEADERS = {
-    "Content-Security-Policy": CSP,
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-}
 STATIC_ASSETS = {
     "app.js": "application/javascript",
     "style.css": "text/css",
@@ -82,154 +70,9 @@ STATIC_ASSETS = {
     # middleware and shipped in the package (ui/.well-known/security.txt).
     ".well-known/security.txt": "text/plain; charset=utf-8",
 }
+
+
 # Endpoints reachable while an account still owes a forced password change.
-BOOTSTRAP_ALLOWED = frozenset(
-    {("POST", "/api/logout"), ("GET", "/api/me"), ("POST", "/api/password")}
-)
-# Presentation layer for the audited-denied set: each capability in
-# ``rbac.AUDITED_DENIED_PERMISSIONS`` (the single source) maps to the representative catalog
-# action logged on a denied (403) attempt. The keys must exactly equal that set — asserted at
-# import (below) and by ``tests/test_rbac.py::test_f8_audited_denied_single_source`` so the two
-# tables can never drift (F8).
-DENIED_ACTION = {
-    "quarantine.read": "quarantine.read",
-    "audit.read": "audit.read",
-    "audit.export": "audit.export",
-    "audit.prune": "prune.manual",
-    "users.manage": "user.update",
-    "tokens.manage": "token.create",
-    "config.read": "config.change",  # a denied config *access* is logged under the config action
-    "config.write": "config.change",
-    # v0.6.0 (F21): a denied attempt to retune or preview the correlation formula is an attempted
-    # system-wide logic change and is recorded under the action it tried to perform.
-    "scorer.preview": "scorer.preview",
-    "scorer.write": "scorer.config.update",
-    # v0.7.0 (F27): a denied attempt to read or rewrite the perimeter is an attempted privilege
-    # change, recorded under the policy action it tried to perform.
-    "rbac.read": "rbac.policy.update",
-    "rbac.write": "rbac.policy.update",
-    "scope.read": "scope.policy.update",
-    "scope.write": "scope.policy.update",
-}
-# Fail fast at import if the presentation mapping drifts from the authorization source of truth.
-assert set(DENIED_ACTION) == set(rbac.AUDITED_DENIED_PERMISSIONS), (
-    "DENIED_ACTION keys must equal rbac.AUDITED_DENIED_PERMISSIONS (single source of truth)"
-)
-
-
-class GovernancePolicies:
-    """Loads the two stored governance policies for the request path, with change invalidation.
-
-    Both policies are read **per request** so a change lands on the very next request with no
-    restart. Only the two-row `governance_active` pointer table is read every time; a document is
-    re-parsed only when its id differs from the one already held, so the parse cost is paid once
-    per policy version rather than once per request.
-
-    When nothing is configured — the default, and the state of every upgraded appliance — both
-    accessors return ``None`` and the resolvers fall through to the compiled ceiling and to full
-    visibility. That is v0.6.0 exactly, and it costs one query over an empty table.
-
-    A document that will not parse is **not** an error here. It is recorded as malformed, surfaced
-    through :meth:`warnings`, queued once for a ``governance.fallback`` audit row, and handed to the
-    resolver, which applies the fail-safe for its kind — the ceiling for capabilities, deny for
-    scope (DECISIONS #55). Raising on the authorization path would turn a bad row into an outage.
-    """
-
-    def __init__(self, store: Any) -> None:
-        self._store = store
-        self._capability_id: int | None = None
-        self._capability: rbac.CapabilityPolicy | None = None
-        self._scope_id: int | None = None
-        self._scope: shaping.ScopePolicy | None = None
-        # (kind, reason) pairs awaiting a `governance.fallback` audit row. Queued when a *new*
-        # malformed policy version is first parsed, so a persistent bad policy is recorded once,
-        # not once per request.
-        self.pending_fallbacks: list[tuple[str, str]] = []
-
-    async def load(self) -> None:
-        """Refresh both policies. Caller holds ``store.lock``."""
-        active = await self._store.active_governance_ids()
-        await self._load_kind("rbac", active.get("rbac"))
-        await self._load_kind("scope", active.get("scope"))
-
-    async def _load_kind(self, kind: str, policy_id: int | None) -> None:
-        current = self._capability_id if kind == "rbac" else self._scope_id
-        if policy_id == current:
-            return  # unchanged since the last parse
-        document = ""
-        if policy_id is not None:
-            row = await self._store.get_governance_policy(policy_id)
-            # A pointer to a missing row cannot happen through the FK, but treat it as malformed
-            # rather than as "no policy": silently widening on a broken pointer would be fail-open.
-            document = str(row["document"]) if row is not None else "<missing>"
-        if kind == "rbac":
-            self._capability_id = policy_id
-            self._capability = rbac.parse_capability_policy(document) if policy_id else None
-            malformed = self._capability is not None and self._capability.malformed
-            reason = self._capability.reason if self._capability is not None else ""
-        else:
-            self._scope_id = policy_id
-            self._scope = shaping.parse_scope_policy(document) if policy_id else None
-            malformed = self._scope is not None and self._scope.malformed
-            reason = self._scope.reason if self._scope is not None else ""
-        if malformed:
-            self.pending_fallbacks.append((kind, reason))
-
-    @property
-    def capability(self) -> rbac.CapabilityPolicy | None:
-        return self._capability
-
-    @property
-    def scope(self) -> shaping.ScopePolicy | None:
-        return self._scope
-
-    def warnings(self) -> list[str]:
-        """Persistent operator warnings for a policy that is not doing what its author intended."""
-        out: list[str] = []
-        if self._capability is not None and self._capability.malformed:
-            out.append(
-                f"The stored capability policy could not be read ({self._capability.reason}); "
-                "authorization has fallen back to the built-in role permissions. Fix or clear it "
-                "under Governance — no principal has gained anything."
-            )
-        if self._scope is not None and self._scope.malformed:
-            out.append(
-                f"The stored visibility scope could not be read ({self._scope.reason}); viewers "
-                "and editors are seeing nothing until it is fixed or cleared under Governance. "
-                "Admins are never scoped, so this is repairable."
-            )
-        return out
-
-
-class RateLimiter:
-    """Token bucket per client address; deliberately small and in-memory."""
-
-    def __init__(self, capacity: float, refill: float) -> None:
-        self.capacity = capacity
-        self.refill = refill
-        self.buckets: dict[str, tuple[float, float]] = {}
-
-    def allow(self, key: str, now: float) -> bool:
-        tokens, last = self.buckets.get(key, (self.capacity, now))
-        tokens = min(self.capacity, tokens + (now - last) * self.refill)
-        if len(self.buckets) > 4096:
-            self.buckets.clear()
-        if tokens < 1.0:
-            self.buckets[key] = (tokens, now)
-            return False
-        self.buckets[key] = (tokens - 1.0, now)
-        return True
-
-
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
-
-
-def _route_path(request: Request) -> str:
-    route = request.scope.get("route")
-    return getattr(route, "path", request.url.path)
-
-
 def _params_of(row: dict[str, Any] | None) -> dict[str, Any] | None:
     """The five parameters of a stored scorer config, for a before/after audit detail."""
     if row is None:
@@ -257,180 +100,24 @@ def create_app(
     preview_rate_refill: float = PREVIEW_RATE_REFILL,
 ) -> FastAPI:
     app = FastAPI(title="NetCoreNOC", version=__version__, docs_url=None, redoc_url=None)
-    limiter = RateLimiter(rate_capacity, rate_refill)
     preview_limiter = RateLimiter(preview_rate_capacity, preview_rate_refill)
     throttle = throttle or auth.LoginThrottle()
     store = engine.store
-    governance = GovernancePolicies(store)
 
-    def all_warnings() -> list[str]:
-        """Operator warnings from the process plus any from an unreadable governance policy."""
-        return [*(warnings() if warnings else []), *governance.warnings()]
-
-    @app.middleware("http")
-    async def security_headers(
-        request: Request, call_next: Callable[..., Awaitable[Response]]
-    ) -> Response:
-        response = await call_next(request)
-        for header, value in SECURITY_HEADERS.items():
-            response.headers.setdefault(header, value)
-        if request.url.path.startswith("/api"):
-            response.headers["Cache-Control"] = "no-store"
-        return response
-
-    # -- audit helpers (all called while the caller holds store.lock) ------------------
-
-    async def audit_row(
-        request: Request,
-        principal: auth.Principal | None,
-        action: str,
-        outcome: str,
-        *,
-        actor: str | None = None,
-        role: str | None = None,
-        object_type: str | None = None,
-        object_id: str | None = None,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        await audit.write_event(
-            store,
-            ts=time.time(),
-            actor=actor if actor is not None else (principal.actor if principal else "-"),
-            role=role if role is not None else (principal.role if principal else None),
-            source_ip=_client_ip(request),
-            action=action,
-            outcome=outcome,
-            object_type=object_type,
-            object_id=object_id,
-            details=details,
-        )
-
-    # -- transaction discipline (v0.7.1, F39) -------------------------------------------
-
-    @contextlib.asynccontextmanager
-    async def write_txn() -> AsyncIterator[None]:
-        """**THE** write boundary: one mutation, one transaction, one audit row.
-
-        `Store` holds a single `aiosqlite` connection shared by the engine task and every API
-        request, so a `commit()` from *any* caller commits everything pending on it, whoever issued
-        it. v0.7.0's `main.py` rolled back on its batch path and `api.py` rolled back nowhere: a
-        handler that mutated and then raised left the statement pending, and the **next commit from
-        an unrelated caller adopted it**. The mutation landed with no audit row, which contradicts
-        F31's "every change is attributable".
-
-        Used by every mutating handler, so the discipline is implemented once rather than repeated
-        as a `try/except` in twenty places — twenty copies is twenty chances to forget, and the one
-        that is forgotten is invisible until it is exploited (DECISIONS #73).
-
-        A handler that must make an audit row durable *even though the request fails* — a denied
-        login, a rejected password change — still commits explicitly before raising. The rollback
-        below then has nothing left to undo, so the two compose without an exemption.
-
-        Note for v0.7.2 (DECISIONS #74): this belongs to the perimeter block and moves to
-        `perimeter.py` with `scope_for`, `audit_row`, and the security dependency.
-        """
-        async with store.lock:
-            try:
-                yield
-            except BaseException:
-                await store.rollback()
-                raise
-            await store.commit()
-
-    # -- identity resolution (under the store lock; sessions/tokens touch the DB) -------
-
-    async def resolve_identity(request: Request) -> auth.Principal | None:
-        now = time.time()
-        header = request.headers.get("authorization", "")
-        bearer = header.removeprefix("Bearer ").strip() if header.startswith("Bearer ") else ""
-        async with store.lock:
-            if bearer:
-                principal = await auth.resolve_bearer(store, bearer, now)
-                await store.commit()
-                return principal
-            cookie = request.cookies.get(auth.COOKIE_NAME)
-            if cookie:
-                principal = await auth.resolve_session(store, cookie, now)
-                await store.commit()
-                return principal
-        return None
-
-    def csrf_ok(request: Request) -> bool:
-        origin = request.headers.get("origin") or request.headers.get("referer")
-        if not origin:
-            return False
-        if urlsplit(origin).netloc != request.headers.get("host"):
-            return False
-        return request.headers.get("x-netcorenoc-client") == "ui"
-
-    async def flush_governance_fallbacks(request: Request) -> None:
-        """Audit each newly-detected malformed policy once. Caller must not hold ``store.lock``."""
-        while governance.pending_fallbacks:
-            kind, reason = governance.pending_fallbacks.pop(0)
-            async with store.lock:
-                await audit_row(
-                    request,
-                    None,
-                    "governance.fallback",
-                    "error",
-                    actor="system",
-                    role=None,
-                    object_type="governance_policy",
-                    object_id=kind,
-                    details={"kind": kind, "reason": reason},
-                )
-                await store.commit()
-
-    async def security(request: Request) -> auth.Principal:
-        method, path = request.method, _route_path(request)
-        # (1) CSRF — cookie-authenticated mutations only.
-        cookie_mutation = (
-            method in MUTATING
-            and bool(request.cookies.get(auth.COOKIE_NAME))
-            and "authorization" not in request.headers
-        )
-        if cookie_mutation and not csrf_ok(request):
-            raise HTTPException(status_code=403, detail="CSRF check failed")
-        # (2) identity
-        principal = await resolve_identity(request)
-        if principal is None:
-            raise HTTPException(status_code=401, detail="authentication required")
-        # (3) bootstrap gate
-        if principal.must_change_password and (method, path) not in BOOTSTRAP_ALLOWED:
-            raise HTTPException(status_code=403, detail="password change required")
-        # (4) RBAC (single source of truth). v0.7.0: the capability set is resolved per request as
-        # `ceiling(role) ∩ stored policy` — the compiled map is the first operand, so no stored
-        # policy can put a capability here that `PERMISSIONS` does not already grant this role
-        # (DECISIONS #53). This is the ONLY authorization decision in the file; `role_allows` is
-        # deliberately not called here any more, because it answers the ceiling question rather
-        # than the "does this principal hold it right now?" question.
-        async with store.lock:
-            await governance.load()
-        await flush_governance_fallbacks(request)
-        capabilities = rbac.resolve_capabilities(
-            principal.role, principal.ref, governance.capability
-        )
-        request.state.capabilities = capabilities
-        permission = rbac.permission_for(method, path)
-        if permission is None or permission not in capabilities:
-            # "Should this denial be audited?" is decided by the single rbac source.
-            if permission in rbac.AUDITED_DENIED_PERMISSIONS:
-                async with store.lock:
-                    await audit_row(
-                        request,
-                        principal,
-                        DENIED_ACTION[permission],
-                        "denied",
-                        object_type="route",
-                        object_id=f"{method} {path}",
-                    )
-                    await store.commit()
-            raise HTTPException(status_code=403, detail="insufficient role")
-        # (5) rate limit
-        if not limiter.allow(_client_ip(request), time.monotonic()):
-            raise HTTPException(status_code=429, detail="rate limit exceeded")
-        request.state.principal = principal
-        return principal
+    # The whole HTTP security boundary, built once. Its methods are aliased to the names the
+    # handlers below already call them by, so no handler body changes (DECISIONS #77, #78).
+    perimeter = Perimeter(
+        store, rate_capacity=rate_capacity, rate_refill=rate_refill, warnings=warnings
+    )
+    governance = perimeter.governance
+    all_warnings = perimeter.all_warnings
+    audit_row = perimeter.audit_row
+    write_txn = perimeter.write_txn
+    security = perimeter.security
+    scope_for = perimeter.scope_for
+    situation_in_scope = perimeter.situation_in_scope
+    audit_scope_denial = perimeter.audit_scope_denial
+    app.middleware("http")(perimeter.security_headers)
 
     guarded = [Depends(security)]
 
@@ -555,21 +242,6 @@ def create_app(
             await audit_row(request, principal, "logout", "ok")
         response.delete_cookie(auth.COOKIE_NAME, path="/")
         return {"status": "logged out"}
-
-    async def scope_for(principal: auth.Principal) -> shaping.Scope:
-        """Resolve this principal's visible-NE set. **The** scope decision site.
-
-        Short-circuits before touching the database for an admin (never scoped) and for an
-        appliance with no scope policy (parity), which is why an un-configured install pays nothing
-        for this feature and every read path below runs its unmodified v0.6.0 query.
-        """
-        if not shaping.is_scopable(principal.role) or governance.scope is None:
-            return shaping.UNRESTRICTED
-        if governance.scope.malformed:
-            return shaping.DENY_ALL  # fail closed; the admin who must fix it is never scoped
-        async with store.lock:
-            nes = await store.list_ne_for_scope()
-        return shaping.visible_nes(principal.role, principal.ref, governance.scope, nes)
 
     @app.get("/api/me")
     async def me(request: Request, principal: auth.Principal = Depends(security)) -> dict[str, Any]:
@@ -844,42 +516,6 @@ def create_app(
     # already had, so "out of your scope" and "no such thing" are one code path — the same status,
     # the same body, the same timing (DECISIONS #60, #65). `scope_for` is awaited *before*
     # `write_txn()`, because it takes `store.lock` itself and the lock is not reentrant.
-
-    async def situation_in_scope(sid: int, scope: shaping.Scope) -> bool:
-        """Is any member alarm of this situation in scope? The write-side membership test.
-
-        Deliberately the **same predicate** `project_situation_detail` uses to decide whether a
-        situation is visible at all, reused rather than restated, so a read and a write can never
-        disagree about what "yours" means. A second copy would drift one-directionally and silently.
-
-        Returns before touching the database when the scope is unrestricted, so an appliance with
-        no policy pays nothing for the perimeter — and so this stays the one place the question is
-        answered, rather than every caller re-deciding when to ask it.
-        """
-        if scope.unrestricted:
-            return True
-        async with store.lock:
-            members = await store.situation_member_ne(sid)
-        return any(scope.allows_ne(ne_id) for ne_id in members.values())
-
-    async def audit_scope_denial(
-        request: Request, principal: auth.Principal, action: str, object_type: str, object_id: str
-    ) -> None:
-        """Record a scope-denied write. The caller still receives the indistinguishable 404.
-
-        The denial is audited under the action the caller attempted, so a scoped principal probing
-        the write surface leaves a trail even though the response tells them nothing.
-        """
-        async with write_txn():
-            await audit_row(
-                request,
-                principal,
-                action,
-                "denied",
-                object_type=object_type,
-                object_id=object_id,
-                details={"reason": "out of visibility scope"},
-            )
 
     @app.post("/api/situations/{sid}/feedback")
     async def feedback(

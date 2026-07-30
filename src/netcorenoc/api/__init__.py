@@ -21,27 +21,18 @@ Where things live — and `MODULE-ARCHITECTURE.md` §3 is the authority:
 from __future__ import annotations
 
 from netcorenoc.api.app import (
-    BOOTSTRAP_ALLOWED,
-    CSP,
-    DENIED_ACTION,
     MAX_POLICY_HISTORY,
     MAX_SCORER_HISTORY,
-    MUTATING,
-    PREVIEW_RATE_CAPACITY,
-    PREVIEW_RATE_REFILL,
     QUEUE_SATURATION,
-    RATE_CAPACITY,
-    RATE_REFILL,
-    SECURITY_HEADERS,
     SSE_HEARTBEAT_S,
     SSE_UPDATE_S,
     STATIC_ASSETS,
     UI_DIR,
     UI_FILE,
-    GovernancePolicies,
-    RateLimiter,
     create_app,
 )
+from netcorenoc.api.context import AppContext
+from netcorenoc.api.governance_cache import GovernancePolicies
 from netcorenoc.api.models import (
     MAX_LABEL_CHARS,
     MAX_NOTE_CHARS,
@@ -57,6 +48,19 @@ from netcorenoc.api.models import (
     ScorerRollbackIn,
     TokenIn,
     UserIn,
+)
+from netcorenoc.api.perimeter import (
+    BOOTSTRAP_ALLOWED,
+    CSP,
+    DENIED_ACTION,
+    MUTATING,
+    PREVIEW_RATE_CAPACITY,
+    PREVIEW_RATE_REFILL,
+    RATE_CAPACITY,
+    RATE_REFILL,
+    SECURITY_HEADERS,
+    Perimeter,
+    RateLimiter,
 )
 
 __all__ = [
@@ -79,12 +83,14 @@ __all__ = [
     "STATIC_ASSETS",
     "UI_DIR",
     "UI_FILE",
+    "AppContext",
     "ConfigIn",
     "FeedbackIn",
     "GovernancePolicies",
     "LabelIn",
     "LoginIn",
     "PasswordIn",
+    "Perimeter",
     "PolicyIn",
     "QuietServer",
     "RateLimiter",

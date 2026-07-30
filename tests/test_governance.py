@@ -1387,7 +1387,7 @@ def test_f39_every_mutating_handler_uses_the_transaction_helper() -> None:
     """
     source = apisource.api_source()
     assert "async def write_txn(" in source, "the transaction helper is gone"
-    assert "await store.rollback()" in source, "api.py must roll back on a failed write"
+    assert "await self._store.rollback()" in source, "api.py must roll back on a failed write"
     # Every handler decorated as a mutation must reach write_txn().
     for decorator in ('@app.post("', '@app.delete("'):
         for start in _all_indices(source, decorator):
