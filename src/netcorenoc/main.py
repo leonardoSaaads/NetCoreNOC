@@ -19,7 +19,7 @@ import sqlite3
 import statistics
 import time
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -34,10 +34,45 @@ from netcorenoc.logsetup import configure_logging
 from netcorenoc.receiver import MAX_INSTANCE_CHARS, QueueItem, start_receiver
 from netcorenoc.rootcause import Member, Precedence
 from netcorenoc.runtime import RuntimeConfig
+from netcorenoc.settings import (
+    ENV_PREFIX,
+    LEGACY_ENV_PREFIX,
+    LegacyEnvRemovedError,
+    LegacyTokenRemovedError,
+    Settings,
+    legacy_env_error,
+    legacy_env_names,
+    read_env,
+)
 from netcorenoc.store import FeedbackResult, Store
 from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler
 
 log = logging.getLogger("netcorenoc")
+
+# The re-export surface. `netcorenoc.main` stays the import path every caller has used since
+# v0.1.0 — `from netcorenoc.main import Engine` and `python -m netcorenoc.main` both keep working
+# (DECISIONS #89) — so the v0.7.3 split is invisible from outside. `mypy --strict` forbids implicit
+# re-export, which is a feature here: the surface has to be written down rather than inherited by
+# accident, and anything not listed is internal.
+__all__ = [
+    "ENV_PREFIX",
+    "GAP_CLOSE_S",
+    "IDLE_CLOSE_S",
+    "LEGACY_ENV_PREFIX",
+    "Engine",
+    "FlapDetector",
+    "GapTracker",
+    "LegacyEnvRemovedError",
+    "LegacyTokenRemovedError",
+    "Settings",
+    "Supervisor",
+    "legacy_env_error",
+    "legacy_env_names",
+    "main",
+    "operator_warnings",
+    "read_env",
+    "run",
+]
 
 QUEUE_SIZE = 100_000
 BATCH_SIZE = 500
@@ -100,77 +135,6 @@ class GapTracker:
             }
             for reason, gap in self.open_gaps.items()
         ]
-
-
-# Rebrand (v0.4.0): the canonical environment prefix is NETCORENOC_*. The legacy OPTICORR_*
-# aliases were accepted with a once-per-variable deprecation warning through v0.5.0 and are
-# **removed in v0.6.0** as promised (DECISIONS #34, #39, #45). Setting one is now a hard startup
-# error naming the replacement — never a silent no-op: an operator who still set
-# OPTICORR_ALLOWLIST would believe traps were filtered while every source was accepted, which is
-# a security regression dressed as a compatibility one. This mirrors how v0.3.0 removed
-# OPTICORR_API_TOKEN (DECISIONS #29).
-ENV_PREFIX = "NETCORENOC_"
-LEGACY_ENV_PREFIX = "OPTICORR_"
-
-
-def read_env(suffix: str, default: str | None = None) -> str | None:
-    """Read NETCORENOC_<suffix>. The legacy OPTICORR_<suffix> alias was removed in v0.6.0."""
-    return os.environ.get(ENV_PREFIX + suffix, default)
-
-
-def legacy_env_names(environ: Mapping[str, str] | None = None) -> list[str]:
-    """Every removed OPTICORR_* variable present in the environment, sorted. Names only."""
-    source = os.environ if environ is None else environ
-    return sorted(name for name in source if name.startswith(LEGACY_ENV_PREFIX))
-
-
-@dataclass(frozen=True)
-class Settings:
-    """All configuration is environment variables with sane defaults — nothing else."""
-
-    db_path: str = "netcorenoc.db"
-    trap_host: str = "0.0.0.0"  # nosec B104 - a trap destination must listen externally
-    trap_port: int = 162
-    http_host: str = "0.0.0.0"  # nosec B104 - the UI/API serve the operator LAN
-    http_port: int = 8080
-    allowlist: str = ""
-    api_token: str = ""
-    retention_days: float = 7.0
-    audit_retention_days: float = 365.0
-    tls_cert: str = ""
-    tls_key: str = ""
-    log_json: bool = False
-    # Removed OPTICORR_* variables found in the environment (names only, never values). Captured
-    # here so `run()` can fail loud with the exact replacement for each (v0.6.0, DECISIONS #45).
-    legacy_env: tuple[str, ...] = ()
-
-    @classmethod
-    def from_env(cls) -> Settings:
-        def s(suffix: str, default: str) -> str:
-            got = read_env(suffix, default)
-            return got if got is not None else default
-
-        return cls(
-            db_path=s("DB", cls.db_path),
-            trap_host=s("TRAP_HOST", cls.trap_host),
-            trap_port=int(s("TRAP_PORT", str(cls.trap_port))),
-            http_host=s("HTTP_HOST", cls.http_host),
-            http_port=int(s("HTTP_PORT", str(cls.http_port))),
-            allowlist=s("ALLOWLIST", cls.allowlist),
-            # The shared API token was removed in v0.3.0; setting it is a hard error at startup
-            # (run()). The legacy-prefixed name is caught by the v0.6.0 alias check instead.
-            api_token=os.environ.get(ENV_PREFIX + "API_TOKEN", cls.api_token),
-            retention_days=float(s("RETENTION_DAYS", str(cls.retention_days))),
-            audit_retention_days=float(s("AUDIT_RETENTION_DAYS", str(cls.audit_retention_days))),
-            tls_cert=s("TLS_CERT", cls.tls_cert),
-            tls_key=s("TLS_KEY", cls.tls_key),
-            log_json=s("LOG_JSON", "") not in ("", "0", "false", "False"),
-            legacy_env=tuple(legacy_env_names()),
-        )
-
-    @property
-    def tls_enabled(self) -> bool:
-        return bool(self.tls_cert and self.tls_key)
 
 
 @dataclass
@@ -942,27 +906,6 @@ def _print_bootstrap_banner(password: str) -> None:
     print(f"      password: {password}", flush=True)  # noqa: T201
     print("  Sign in and change this password immediately. It is shown ONCE.", flush=True)  # noqa: T201
     print(f"{line}\n", flush=True)  # noqa: T201
-
-
-class LegacyTokenRemovedError(RuntimeError):
-    """The shared API token was removed in v0.3.0 (§5.8); setting it is now a hard error."""
-
-
-class LegacyEnvRemovedError(RuntimeError):
-    """An `OPTICORR_*` environment alias was removed in v0.6.0; setting one is a hard error."""
-
-
-def legacy_env_error(names: tuple[str, ...]) -> LegacyEnvRemovedError:
-    """The startup error for removed aliases: every variable named, no value ever printed."""
-    mapping = "\n".join(
-        f"  {name} -> {ENV_PREFIX}{name[len(LEGACY_ENV_PREFIX) :]}" for name in names
-    )
-    return LegacyEnvRemovedError(
-        f"the legacy {LEGACY_ENV_PREFIX}* environment aliases were removed in v0.6.0 "
-        f"(deprecated since v0.4.0). Rename and unset:\n{mapping}\n"
-        "See MIGRATION.md. Refusing to start rather than ignoring them, because a silently "
-        "ignored setting (an allowlist, a TLS path) is a security regression, not a nuisance."
-    )
 
 
 async def run(settings: Settings) -> None:

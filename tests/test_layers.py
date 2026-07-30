@@ -108,7 +108,6 @@ PLANNED_THIS_RELEASE: set[str] = {
     "maintenance",
     "gaps",
     "scorer_lifecycle",
-    "settings",
 }
 
 # Type-only imports (`if TYPE_CHECKING:`) create no runtime edge and no import cycle.
