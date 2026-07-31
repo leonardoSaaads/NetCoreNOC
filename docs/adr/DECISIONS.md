@@ -1917,3 +1917,106 @@ grouping**.
   move with the classes whose semantics they define, and importing them back also preserves
   `varbind_profile.MAX_DISPLAY_CHARS` for `severity.py` and `varbind_profile.ENTITY_PROMOTE_SCORE`
   for `tests/test_promotion.py`, both of which Phase 0's inventory found.
+
+## 98. The declaration gate refuses unknown route shapes; it does not learn to walk them (v0.7.5)
+
+- **Context**: F42. `assert_every_route_is_declared` fails open twice — `if path is None: continue`,
+  and an inner loop over a `methods` set that is empty for every shape carrying no verbs. Five
+  shapes evade it, and the `include_router` case evades it **only on newer FastAPI**: reproduced in
+  `docs/gates/v0.7.5-phase-0.md` §2.4, the gate refuses on `fastapi==0.115.0` and skips on
+  `0.141.1`. The gate's completeness is a property of whatever pip resolved that morning.
+- **Options**: (a) teach the traversal to recurse into each container — read
+  `_IncludedRouter.include_context` / `effective_route_contexts`, walk `Mount.app.routes`, handle
+  `APIWebSocketRoute` specially; (b) an explicit allowlist of route classes the gate knows how to
+  check, refusing anything outside it; (c) patch only the `path is None` branch, which is what the
+  finding's brief described.
+- **Choice**: (b). `KNOWN_ROUTE_SHAPES = (APIRoute, Route)`, matched on **exact type**, with any
+  other object on `app.routes` raising `UndeclaredRouteError` naming its module and class.
+- **Reason**: (a) rebuilds the defect one level down — every attribute it would need is an
+  undocumented FastAPI internal (`dir()` in Phase 0 §2.5 lists them; most are underscore-prefixed),
+  so the guard's correctness would again depend on a dependency's private representation, which is
+  exactly what regressed. (c) closes one shape out of five, because Phase 0 showed the `Mount` and
+  websocket shapes take the *empty-methods* branch and not the missing-`.path` branch — the brief
+  was wrong about the mechanism, and a fix written to the brief would have left four shapes open.
+  (b) needs to know nothing about what a `_IncludedRouter` *is* in order to refuse it, so a future
+  FastAPI that invents a sixth shape is caught on the day it arrives rather than silently admitted.
+  Exact-type rather than `isinstance` matching because `APIRoute` subclasses `Route`: `isinstance`
+  would admit any future subclass unexamined, and the decision protocol resolves ambiguity about
+  whether to skip or refuse a shape toward **refuse**.
+- **Cost, accepted**: a contributor can no longer reach for `include_router` without noticing. That
+  is the correct price — `DeclaredRoutes` is *the* registration path by design, and a router that
+  carries declarations is a deliberate extension, not a convenience.
+
+## 99. The UI changes are verified by source inspection plus a written manual protocol (v0.7.5)
+
+- **Context**: `FEEDBACK-PATH-0.7.5-DRAFT.md` §5 asks for tests that "drive `applyUpdate` twice and
+  assert the same DOM node is still in the document". There is no DOM. Phase 0 §5 confirmed that
+  this repository declares no JavaScript runtime anywhere — `pyproject.toml`, `Makefile`,
+  `flake.nix`, `.github/workflows/` — and that all 15 existing `app.js` assertions are
+  `read_text()` plus substring matching.
+- **Options**: (a) add a JS test harness (jsdom, playwright, or an embedded engine) as a dev
+  dependency and write the behavioural tests the draft asks for; (b) source-inspection tests only;
+  (c) source inspection, each test carrying a comment saying what it does **not** prove, plus a
+  written manual protocol the maintainer executes, plus the unedited contract tests as evidence.
+- **Choice**: (c).
+- **Reason**: (a) is out of scope by SCOPE-0.7.5 §3.4 and would be the largest dependency decision
+  the project has made since v0.2.0 — taken inside a patch release, to test three lines. There is
+  also a second, independent reason recorded in Phase 0 §5.2: this build container happens to carry
+  `node` and `bun` on `PATH` while CI, `flake.nix` and a maintainer's machine do not, so a test
+  written against them would be green only on the machine it ran on — worse than no test.
+  (b) alone is what the build prompt calls converting an open question into false confidence: a
+  green tick on a source scan reads, to a later maintainer, exactly like a green tick on the
+  behavioural assertion the draft asked for. (c) is the only option that keeps the claim and the
+  evidence the same size. Honesty about what a test proves outranks a green suite.
+- **Consequence**: `docs/ROADMAP.md` records that the planned UI rebuild is the point at which
+  testability should be a **design input** — the honest place to reopen this, and not before.
+
+## 100. The documentation guard's inline-code strip is dropped, not narrowed (v0.7.5)
+
+- **Context**: `tests/test_documentation.py::source_of` blanks fenced code blocks **and** inline
+  code spans, while `_ELEMENT_TAG` matches `vX.Y.Z: planned` — which the project's convention, in a
+  comment four lines above, writes *inside* backticks. Measured in Phase 0 §3.1: 15 of 48 tags
+  visible, 31%. Five of the eight documents carrying tags are entirely invisible, including the
+  v0.8.0 specification and the half-finished supersession the guard's own docstring names as its
+  motivating example.
+- **Options**: (a) drop the inline-code strip, keeping the fenced-block strip; (b) keep the strip
+  and match the tag with backticks included in the pattern; (c) strip inline code only outside
+  headings.
+- **Choice**: (a). One regex removed.
+- **Reason**: (b) and (c) both keep a rule whose stated justification is false. The docstring claims
+  the strip is what makes "the convention" work — that marked forms are reserved for live
+  assertions and a historical mention written in backticks does not register. The convention is the
+  **opposite**: `docs/README.md` specifies the backticked form as *the* way to tag an element, so
+  the strip does not filter historical mentions, it filters live ones. (b) would additionally
+  couple the guard to one rendering of the tag; (a) leaves the tag pattern alone and removes the
+  thing that was wrong. The fenced-block strip stays, because a fenced block is a worked example —
+  the `test_structure.py::_strip_code` precedent for links is unchanged and still applies.
+- **Verified, not assumed**: dropping the strip makes three *real* element tags in `docs/README.md`
+  visible (lines 48/51/54, the draft index) alongside the two fenced examples that stay excluded.
+  `docs/README.md` still makes **zero** governed release claims, so it stays skipped by
+  `test_a_documents_element_tags_match_its_own_release_claim`, which examines only documents making
+  exactly one. The conclusion the build prompt reached is right; the reason it gave was incomplete,
+  and Phase 0 §3.3 records the difference.
+- **Not a security finding**: no `F` number. It is a defect in a test.
+
+## 101. FastAPI is not pinned to an upper bound; the representation change is detected instead (v0.7.5)
+
+- **Context**: F42's `include_router` shape regressed between `fastapi==0.115.0` and `0.141.1` with
+  no commit and no failing test. `pyproject.toml` says `fastapi>=0.115`, there is no lockfile and no
+  constraints file, and CI runs a bare `pip install -e .[dev]`.
+- **Options**: (a) add an upper bound (`fastapi>=0.115,<0.142`); (b) add a lockfile or constraints
+  file for CI; (c) add a test asserting the route-class set a real `create_app` produces is exactly
+  the known set, and pin nothing.
+- **Choice**: (c) for this release. (a) and (b) are recorded on `docs/ROADMAP.md` as open, with this
+  reasoning, rather than decided here.
+- **Reason**: a pin freezes a representation; the test **notices** when it changes. Those are not
+  the same guarantee, and the second is the one that was missing — a pinned project upgrading a
+  year later would meet the identical silent widening at the moment it lifted the pin, with the
+  same absence of a signal. (c) also fails on the day of the upgrade, naming the new class, which
+  is when the information is worth most. The honest limit, recorded in the security review: (c)
+  detects a change in the *shapes `create_app` produces*; it does not detect a change in what an
+  existing shape *means* — if a future `APIRoute` carried its methods somewhere other than
+  `.methods`, the shape set would be unchanged and the gate would quietly check nothing. That is
+  the residual, and no test in this release closes it.
+- **Not decided here**: whether to also pin is a supply-chain policy question affecting five runtime
+  dependencies, not one, and the decision protocol forbids resolving ambiguity by adding scope.

@@ -238,3 +238,35 @@ From v0.7.4 (the last loose ends — deferred, each with the reason):
   declaration gate is now complete for *registration*, but completeness of a guard is not
   correctness of what it guards. Every `ROUTE_SCOPE` entry remains a human judgement checked against
   observed behaviour rather than a check the perimeter injects.
+
+## v0.7.5 — specified in v0.7.4, built there
+
+Everything the release itself deferred, each with the reason it is not in it:
+
+- **Testability as a design input for the UI rebuild.** v0.7.5 changed three things in `ui/app.js`
+  and could prove none of them automatically: there is no JavaScript runtime in this repository and
+  every UI assertion is a source-inspection test (DECISIONS #99). The behavioural claims rest on
+  `docs/gates/v0.7.5-manual-verification.md`, executed by hand.
+  Adding a JS harness *now* would be the largest dependency decision since v0.2.0, taken inside a
+  patch release, to test three lines. **The planned UI rebuild is the point at which testability
+  should be a design input** — decide the runtime and the reconciliation model together, so the
+  tests come from the architecture rather than being retrofitted to it. That is the honest place to
+  reopen this, and not before.
+- **Whether to also pin FastAPI to an upper bound**, or to carry a lockfile / constraints file in
+  CI. F42 regressed between `fastapi==0.115.0` and `0.141.1` with no commit and no failing test.
+  v0.7.5 added a guard that *notices* a route-representation change on the day of the upgrade,
+  naming the new class, which is strictly better than a pin that freezes one — but the two are not
+  the same guarantee and the project currently has neither a pin nor a lockfile for any of its five
+  runtime dependencies. A supply-chain policy question, not a route-gate one. DECISIONS #101.
+- **The route-shape allowlist detects a new shape, not a changed meaning.** If a future `APIRoute`
+  carried its verbs somewhere other than `.methods`, the shape set would be unchanged and the gate
+  would quietly check nothing. No test in v0.7.5 closes this; it is the residual recorded in
+  SECURITY-REVIEW-0.7.5 §critical analysis.
+- **The documentation guard's forbidden-phrase half remains enumeration**, and remains
+  spelling-sensitive (`->` versus `→`). v0.7.5 took its element-tag half from 31% visibility to
+  near-complete; the phrase half is correct by design as the specific-case belt and is *not* a
+  general guarantee. Restated so nobody mistakes the new figure for one.
+- **`ROUTE_SCOPE` is still descriptive, not enforcing**; `/openapi.json` is still served
+  unauthenticated; `test_add_api_route_is_confined_to_the_static_asset_allowlist` still counts
+  mentions rather than calls. All three carried forward from v0.7.4 unchanged — v0.7.5's scope was
+  five workstreams and none of them was these.

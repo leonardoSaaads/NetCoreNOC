@@ -1,11 +1,17 @@
-# The operator-feedback dataset — v0.8.0 draft (specification only, not implemented in v0.7.4)
+# The operator-feedback dataset — v0.8.0 draft (specification only, not implemented in v0.7.5)
 
 <!-- release-claim: v0.8.0 = operator-feedback-dataset -->
 
-**Implement none of this in v0.7.4.** Every element below is tagged **`v0.8.0: planned`**. This
+**Implement none of this in v0.7.5.** Every element below is tagged **`v0.8.0: planned`**. This
 document *refines* a specification the project already had in outline
 ([`../ROADMAP.md`](../ROADMAP.md), v0.7.1's deferred list); it does not re-derive one. Every
-constraint below is traced to the v0.7.3 code that causes it.
+constraint below is traced to the code that causes it.
+
+> **Refined 2026-07-31 (v0.7.5).** Every constraint in §3 was re-verified against the **v0.7.5**
+> tree, file and line, and the two references that had moved are corrected in place — the shaping
+> package split (§5) and the `alarm` uniqueness mechanism (§3.4). **No constraint changed in
+> substance**, which is the answer to the question §8 of the v0.7.5 build prompt asks: a changed
+> constraint would have been a finding, not an edit. What v0.7.5 adds to this document is §0.
 
 **v0.8.0 is the scoreboard**: capture the operator feedback as a durable dataset and measure its
 bias. **It trains nothing.** The chain it opens, and why the order cannot be permuted, is
@@ -14,6 +20,38 @@ bias. **It trains nothing.** The chain it opens, and why the order cannot be per
 Its prerequisite is [`FEEDBACK-PATH-0.7.5-DRAFT.md`](FEEDBACK-PATH-0.7.5-DRAFT.md): the acquisition
 path is fixed first, because a click the operator did not mean produces a label nothing downstream
 can detect as wrong.
+
+---
+
+## 0. What v0.7.5 hands this release, and what it does not (`v0.8.0: planned`)
+
+**v0.7.5 hands v0.8.0 a click the operator meant.** The acquisition path is repaired: an expanded
+situation card is no longer destroyed and rebuilt underneath the operator every two seconds, the
+detail container is never displayed empty, and a card held open carries a marker saying it is
+stale. The click therefore lands on the card the operator was looking at, and the operator knows
+the view is frozen while they decide.
+
+**That is a precondition for this dataset, and it is not a substitute for the membership
+fingerprint of §2.2.** The two solve different halves and only one of them is done:
+
+| | v0.7.5 | v0.8.0 |
+|---|---|---|
+| The operator's click reaches the card they were reading | **fixed** | — |
+| The operator is told the card is held | **fixed** | — |
+| The record says **which membership** the verdict was about | not addressed | **§2.2, the fingerprint** |
+
+A label recorded at v0.7.5 is still a judgement about a membership nothing preserved. The operator
+meant it, and no later reader can recover what *it* was. Nobody should read v0.7.5 as having solved
+label provenance — it closed the path by which a label could be recorded that the operator never
+formed at all, which is the strictly worse failure because it is undetectable at every layer
+downstream.
+
+One consequence for the bias report (§6) that is easy to miss: labels written **before** v0.7.5
+were acquired over the defective path and a fraction of them — unknowable, because nothing recorded
+it — are clicks the operator did not mean. If any pre-v0.7.5 `feedback` rows are carried into the
+dataset, the report must **say so and count them separately**. They are not interchangeable with
+rows acquired afterwards, and averaging the two hides the one population whose noise is known to be
+non-random.
 
 ---
 
@@ -76,7 +114,20 @@ principle for its own columns; it applies unchanged here.)
 
 ## 3. Four constraints the schema must answer (`v0.8.0: planned`)
 
-Each is confirmed from the v0.7.3 code, with the location.
+Each is confirmed from the code, with the location. **Re-verified against the v0.7.5 tree**
+(2026-07-31); every line below was read, not carried forward. The verification table:
+
+| Constraint | Cited location | v0.7.5 status |
+|---|---|---|
+| §3.1 no negatives | `correlate.py:298`, `:295`, `:60`, `:59` | **unmoved**, all four |
+| §3.2 contributions not features | `scoring.py:257`, `:266`, `migrations/0001_init.sql:80` | **unmoved**, all three |
+| §3.3 per-situation label | `learn.py:366–376` | **unmoved** (`penalize` at 366, the pair expansion at 369) |
+| §3.4 capture at decision time | `learn.py:65–86`, `migrations/0003_entity.sql:94` | **unmoved**; mechanism description corrected below |
+| §5 scoped reads | `shaping.project_situation_detail` | **moved** → `shaping/project.py:59` (v0.7.4 package split) |
+
+**No constraint changed in substance.** v0.7.5 touches `api/declare.py`, `ui/app.js` and
+`tests/test_documentation.py` and nothing else, so the engine, store, correlation and scoring seam
+that cause these constraints are byte-identical to v0.7.4 — which `make eval` proves independently.
 
 ### 3.1 There are no negatives — the dataset is censored on both ends
 
@@ -149,9 +200,14 @@ impossible after the fact, which is the one mistake this release cannot undo.
 ### 3.4 Capture at the moment of decision
 
 `A` and `E` decay lazily against the learning epoch (`learn.py:65–86`, `_decayed`), and `alarm` is
-deduplicated by `UNIQUE (entity_id, class_id, instance)`
-(`migrations/0003_entity.sql:94`) and **mutated on re-fire** — `count` and `last_seen` advance in
-place.
+deduplicated on `(entity_id, class_id, instance)` and **mutated on re-fire** — `count` and
+`last_seen` advance in place.
+
+> **Corrected 2026-07-31 (v0.7.5).** The uniqueness is a **unique index**, not a table constraint:
+> `migrations/0003_entity.sql:94` reads
+> `CREATE UNIQUE INDEX ux_alarm_entity ON alarm (entity_id, class_id, instance);`. The line number
+> is right and the consequence is unchanged — the row is deduplicated and mutated either way — but
+> a v0.8.0 build looking for a `UNIQUE (...)` clause in the table definition would not find one.
 
 So the state that produced a decision is **not recoverable afterwards**. An offline job over history
 would reconstruct features that were never the ones the scorer saw, and would do it silently.
@@ -191,17 +247,25 @@ because there is one row per alarm observation, not one per pair.
 ## 5. The scoping consequence (`v0.8.0: planned`)
 
 From v0.7.1: a **scoped editor** sees a situation whose out-of-scope members are redacted to a count
-and a class list (`shaping.project_situation_detail`, DECISIONS #59). Their label is a judgement
-about a **partial view** — and they cannot tell you which part, because the redaction deliberately
-carries no NE id, address or entity key.
+and a class list (`shaping/project.py:59`, `project_situation_detail`, DECISIONS #59). Their label
+is a judgement about a **partial view** — and they cannot tell you which part, because the
+redaction deliberately carries no NE id, address or entity key.
+
+> **Corrected 2026-07-31 (v0.7.5).** This section cited `shaping.project_situation_detail` when
+> `shaping.py` was one module. v0.7.4 split it into the `shaping/` package (DECISIONS #95) and the
+> function now lives in `shaping/project.py:59`. The import path `from netcorenoc.shaping import
+> project_situation_detail` still resolves — the package re-exports it — so this is a placement
+> correction, not a behaviour one.
 
 A label made over four visible members of a nine-member situation, recorded as though it were about
 all nine, is wrong in a way that **correlates with the scope policy** — which means it is
 **systematic noise, not random noise**. Random noise averages out with more data. Systematic noise
 does not: it teaches the model the shape of the scope policy.
 
-`feedback` already carries `principal_ref` and `role` (migration `0007`). **The scope fingerprint is
-what is still missing**: the resolved visibility scope in effect at label time — the active scope
+`feedback` already carries `principal_ref` and `role` — **reconfirmed against the v0.7.5 tree**:
+`migrations/0007_write_perimeter.sql:35–36` are
+`ALTER TABLE feedback ADD COLUMN principal_ref TEXT;` and `... ADD COLUMN role TEXT;`, unchanged
+since v0.7.1. **The scope fingerprint is what is still missing**: the resolved visibility scope in effect at label time — the active scope
 policy's identity, and whether the situation was redacted for this principal and by how many
 members. Without it the label is uninterpretable; with it, v0.9.0 can weight, stratify, or exclude,
 and the bias report below can *measure* the effect instead of guessing at it.
@@ -229,6 +293,61 @@ At minimum:
   and one given after ten minutes of investigation are not the same evidence.
 * **Coverage**: what fraction of situations, and of evaluated pairs, ever receive a label at all.
   The answer will be small, and v0.9.0 needs to know how small before it believes anything.
+
+## 6a. Where the columns live — **a question for v0.8.0's Phase 0, not settled here** (`v0.8.0: planned`)
+
+Added 2026-07-31 (v0.7.5). The dataset needs columns in two clearly different populations, and one
+group that is genuinely undecided. Recording the split — and recording that the third group is
+**open** — is the deliverable; deciding it from outside the release that has to build it would be
+guessing with someone else's constraints.
+
+**Group A — must extend the `feedback` write path.** One row already exists per operator verdict and
+these are facts about *that* row:
+
+* the **membership fingerprint** (§2.2) — the ordered member alarm ids and a digest over them, plus
+  the situation's `updated_at` at render time;
+* the **scope fingerprint** (§5) — the active scope policy's identity, whether the situation was
+  redacted for this principal, and by how many members;
+* **label latency** (§6) — enough to compute time between situation open and verdict.
+
+These are one-to-one with a verdict, they are useless if written anywhere else, and `feedback`
+already carries `principal_ref` and `role` for exactly the same reason.
+
+**Group B — must be a new table, or new tables.** These have a different cardinality from `feedback`
+entirely and cannot be columns on it:
+
+* **one row per evaluated pair** — linked *and* considered-but-rejected — carrying the
+  `LinkFeatures` **values** and `scorer_config_id` (§3.1, §3.2);
+* **one row per alarm observation**, immutable, carrying the raw material that `alarm` overwrites on
+  re-fire (§3.4, §4).
+
+Most evaluated pairs never receive a label at all — §6's coverage metric exists to measure how few
+do — so these rows are not a widening of `feedback`, they are a different sink with a different
+lifetime and a different retention question.
+
+**Group C — genuinely open, and v0.8.0's Phase 0 must answer it.** The questions, stated so that
+release can execute rather than rediscover:
+
+1. **Does the pair-row sink write synchronously on the correlation path, or through a queue?** §4
+   rejects per-pair varbind duplication because it is I/O amplification inside the batch lock —
+   but the same argument applies with less force to a narrow pair row, and "less force" is not a
+   measurement. Take one.
+2. **Is the alarm-observation row written per trap, or per activation?** §3.4 requires the state at
+   decision time; whether every re-fire is a new observation or only the ones that triggered a
+   correlation changes the row count by roughly the dedup ratio, which `make eval` reports as
+   ~0.71.
+3. **Does the membership fingerprint go on `feedback` as columns, or into a child table keyed by
+   feedback id?** Group A assumes columns. A situation with hundreds of members makes the digest
+   cheap and the ordered id list not; if the list is stored rather than only its digest, it is a
+   child table and Group A shrinks by one row.
+4. **What retention applies to each sink?** `retention_days` today governs operational data. A
+   training dataset whose oldest rows are deleted on the operational schedule is a dataset that
+   silently re-censors itself — and §3.1 exists because censoring is the thing this schema is
+   built to avoid.
+
+**Ambiguity about a v0.8.0 design decision resolves to "the v0.8.0 build decides."** Each of these
+depends on a measurement that release will take in its own Phase 0, and a specification that
+pre-empts a measurement is a specification that will be wrong in a way nobody re-checks.
 
 ## 7. Explicitly not in v0.8.0
 
