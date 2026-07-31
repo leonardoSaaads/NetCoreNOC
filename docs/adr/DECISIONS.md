@@ -1757,3 +1757,163 @@ grouping**.
   exemption list exists so a future upward import is a *visible, arguable diff* rather than a silent
   regression, exactly as `DEBT_ALLOWLIST` is for size. It is empty on arrival, which is the only
   state that makes the guard mean what it says.
+
+## 93. v0.8.0 is the operator-feedback dataset; customer models move to v0.13.0 (v0.7.4)
+
+- **Context**: the repository states both answers. `ROADMAP.md:38` and `:66` say *customer-supplied
+  models → v0.8.0*, and the whole of `SCORER-PLUGINS-0.8-DRAFT.md` is tagged `v0.8.0: planned`;
+  `ROADMAP.md:114`, `:188` and `MODULE-ARCHITECTURE.md` §10.4 say *v0.8.0 is the operator-feedback
+  dataset*. The full enumeration is `docs/gates/v0.7.4-phase-0.md` §6. The resequencing that settles
+  it was decided during the v0.7.x series and acted on — v0.7.1 hardened the feedback path, v0.7.3
+  named the feedback dataset as what comes next — but **was never written down**. A repository that
+  cannot say what its next release is cannot brief the build that writes it.
+- **Options**: (a) v0.8.0 is customer models, feedback later; (b) v0.8.0 is the feedback dataset,
+  models at some unnamed later release; (c) v0.8.0 is the feedback dataset and customer models get a
+  **named** release with the prerequisite that gates them; (d) leave both claims and let each build
+  decide.
+- **Choice**: (c). **v0.8.0 is the operator-feedback dataset.** Customer-supplied models move to
+  **v0.13.0**, behind the champion/challenger framework they plug into. The intervening chain is
+  written down as the project's own document, `ROADMAP-0.8-TO-0.13.md`, and a documentation-
+  consistency guard (#94) makes the contradiction unrepeatable.
+- **Reason**: the feedback click is the only source of human labels in the system, and every later
+  ML step consumes it. Nothing downstream can be built — or even honestly evaluated — before the
+  labels exist and their bias is measured, so any ordering that puts a model surface first is
+  building the consumer before the supply. Customer models are also the *riskiest* element in the
+  chain: a new runtime dependency and a new trust surface. Shipping them before the
+  champion/challenger framework that receives them would invert how this project has sequenced every
+  release since v0.2.0, which has always been to build the thing that proves a capability before the
+  thing that extends it. (a) does that inversion. (b) is what the repository already effectively
+  says and is how the contradiction survived a release: an unnamed "later" is not a decision. (d) is
+  the status quo, and the status quo is the defect.
+- **Subtlety — the Python entry-point escape hatch is REJECTED, not deferred.** `SCORER-PLUGINS`
+  §2 specifies two plugin paths. Only ONNX survives the resequencing. ONNX is *data executed by a
+  pinned runtime*; an entry-point scorer is *arbitrary code running as the process*, with the
+  process's file descriptors, its database handle and its network. Every modern framework exports to
+  ONNX, so the entry point buys reach the project does not need at a trust cost it should not pay.
+  Recorded as a rejection rather than a deferral precisely so nobody reintroduces it later as an
+  obvious convenience — the same treatment DECISIONS #44 gave the external-criterion API.
+- **Subtlety — the worker-process preemption harness stays a blocking prerequisite for v0.13.0.**
+  v0.6.0's `SafeScorer` is post-hoc: it measures a call after it returns and degrades the *next*
+  one. For five floating-point operations that is the right economics. For a C extension that never
+  returns there is no next call to degrade, and the ingest path is what stalls. `SCORER-PLUGINS`
+  §R2 already specifies the harness, including that the worker→parent channel must not use `pickle`:
+  a compromised worker returning a malicious pickle is remote code execution in the parent by the
+  back door, which would make the sandbox a delivery mechanism.
+
+## 94. The documentation-consistency guard: a claim form, and a line between live docs and records (v0.7.4)
+
+- **Context**: #93 settles what v0.8.0 is, but a decision recorded once is a decision that drifts.
+  The contradiction it resolves survived a whole release inside `docs/ROADMAP.md` — two answers, four
+  lines apart, in ordinary prose. The existing documentation guards check that links resolve and
+  that one specific sentence is present; neither can notice two documents answering the same
+  question differently.
+- **Options**: (a) a prose scan for release names — a regex over `v0.8.0` matches every incidental
+  mention and cannot tell "v0.8.0 will consume this" from "v0.8.0 is customer models"; (b) an
+  explicit, parseable **claim form** checked against one machine-readable table; (c) enumerate the
+  known-bad strings and forbid them; (d) review.
+- **Choice**: (b) as the mechanism, **with (c) as a named, narrow supplement**.
+  `ROADMAP-0.8-TO-0.13.md`'s release table is the single source of truth. A document asserting what
+  a release *is* carries `<!-- release-claim: vX.Y.Z = key -->`; a document tagging a spec *element*
+  keeps the existing `vX.Y.Z: planned` convention, and a document that makes a claim may only tag
+  elements for its own release. Both forms are documented in `docs/README.md`.
+- **Reason**: (a) is the guard everyone writes and nobody trusts — it fires on prose and misses
+  claims, so it gets deleted. (b) is checkable without reading English, and putting the truth in one
+  table means a disagreement is arithmetic rather than interpretation. (c) alone would prevent only
+  the contradiction that already happened, which is why it is kept as the *belt* and labelled as
+  such in the test: the specific failure here was in untagged prose, which no claim-form check can
+  see retroactively. Both halves are needed and the test says which is which, so nobody later
+  mistakes the narrow half for the complete guarantee.
+- **Subtlety — the guard reads live documents and not records, and that exclusion is the risk.**
+  `SCOPE-0.6.md` says v0.8.0 is customer models; `DECISIONS.md` is append-only by charter. Rewriting
+  either to agree with today would falsify a record — the opposite of the supersede-in-place rule
+  this release follows for the drafts. So `scope/`, `adr/`, `gates/`, `releases/` and the
+  per-release security reviews are excluded. Widened far enough that exclusion would make the guard
+  check nothing, so the excluded set is itself asserted by
+  `test_the_historical_exclusion_is_exactly_the_record_taxonomy`, which also pins that
+  `architecture/` — where the drafts live — can never join it.
+- **Subtlety — the guard matches normalised text, and the first version was wrong.** Written to scan
+  raw lines, it caught 11 occurrences in 5 files and **missed 7 of the 11 enumerated phrasings**,
+  including two that wrap across a line break and one bolded mid-phrase. A guard that catches less
+  than the Phase 0 enumeration is not yet the guard, so it now strips emphasis and collapses
+  whitespace before matching — the same normalisation
+  `test_f32_scoping_is_not_tenant_isolation_is_documented` has used since v0.7.0, and for the same
+  reason. Both outputs are in `docs/gates/v0.7.4-phase-1.md` §3.
+
+## 95. `shaping.py` is three parts, not two — MODULE-ARCHITECTURE §10.2 corrected in place (v0.7.4)
+
+- **Context**: `MODULE-ARCHITECTURE.md` §5 and §10.2 record `shaping.py`'s seam as *"two axes in one
+  file: field shaping by role, and NE scoping by policy"*. Phase 0 classified every top-level symbol
+  from the AST before accepting that, and found **three** blocks: field shaping (50–108), scope
+  resolution (114–377), and **projections** (383–476) — `filter_rows`, `_as_int`, `project_graph`,
+  `project_situation_detail`.
+- **Options**: (a) honour §10.2 and force the projections into `scope.py`; (b) force them into
+  `fields.py`; (c) three modules; (d) leave `shaping.py` whole and take the debt entry forward.
+- **Choice**: (c) — `shaping/fields.py`, `shaping/scope.py`, `shaping/project.py`, with §10.2
+  superseded **in place** by a dated note rather than rewritten.
+- **Reason**: the projections are not a third *axis*; they are the **consumer** of the other two.
+  Each takes a `Scope` — produced by the scope axis — and returns a response body, which is the
+  field axis's subject. (a) would put response-body construction inside the module that owns the
+  scope decision; (b) would put `Scope` handling inside the module that owns field rules. Both are
+  arbitrary, and §10.2's two-way framing is precisely what makes one of them look necessary. (d)
+  fails the release's purpose. The correction is recorded rather than quietly implemented, because
+  a binding document that turns out to be wrong is worth more corrected than obeyed.
+- **Subtlety**: the F35 invariant travels with `scope.py`. `visible_nes`'s comment block — *every
+  input to this function is admin-written or engine-written, and that is a release invariant, not an
+  accident* — and `_matches`'s explanation of why the operator label is not read move verbatim with
+  the code that depends on them. `test_f35_no_resolver_input_is_writable_by_a_scopable_role` passes
+  unedited.
+
+## 96. `rbac/` re-exports by identity, not by equality (v0.7.4)
+
+- **Context**: splitting the authorization authority is the highest structural risk in this release.
+  A `rbac/__init__.py` that *copies* — `PERMISSIONS = dict(tables.PERMISSIONS)` — leaves every
+  existing test green, because equality holds at import. It also creates a **second source of
+  truth**, and the two objects diverge the first time anything mutates or shadows one.
+  `tests/test_declaration.py` already mutates `rbac.ROUTE_PERMISSIONS` in a fixture, so this is not
+  hypothetical.
+- **Options**: (a) `from .tables import *`; (b) explicit `from .tables import PERMISSIONS, …`;
+  (c) copy into new containers; (d) keep the tables in `__init__.py` and move only the resolver.
+- **Choice**: (b), plus **new tests asserting object identity** — `rbac.PERMISSIONS is
+  rbac.tables.PERMISSIONS` and the same for `ROLE_RANK`, `ROUTE_PERMISSIONS`, `PUBLIC_ROUTES`,
+  `ROUTE_SCOPE`, `AUDITED_DENIED_PERMISSIONS`, `RECOVERY_CAPABILITIES` and `_CEILINGS` — and a
+  second test that **no module under `rbac/` other than `tables.py` binds any of those names at
+  module level**.
+- **Reason**: equality is not the property that matters; *identity* is. Only one object can be the
+  authority, and only an identity assertion says so. (c) is the defect being guarded against. (a)
+  hides the surface from a reader and from `mypy`. (d) would leave `__init__.py` over the guard,
+  which is the debt this release exists to clear. Both new tests were **shown to fail against a
+  deliberately-copying `__init__.py`** before being accepted — a guard installed green has not been
+  shown to work (the same discipline as #94's red-before-green).
+- **Subtlety — the three module-level asserts travel with the tables.** `rbac.py` carries three
+  import-time `assert` statements: `ROUTE_SCOPE` and `ROUTE_PERMISSIONS` declare the same routes;
+  `admin_only` is derived from `PERMISSIONS` in both directions; and `RECOVERY_CAPABILITIES` is a
+  subset of the admin ceiling. Build-prompt §5.2's line ranges do not mention them. Each is an
+  assertion *about the tables* and each moves into `tables.py`, or it stops running at the point the
+  table it guards is defined — converting three structural guarantees into nothing while every test
+  stayed green.
+
+## 97. `varbind_accum.py` is `engine` layer, and the shared constants move with the classes (v0.7.4)
+
+- **Context**: build-prompt §5.4 says the modules this release creates are "all of them
+  cross-cutting". Two questions it does not settle: which layer `varbind_accum.py` belongs to, and
+  where four constants used by *both* the extracted classes and `VarbindProfiler` should live.
+- **Options (layer)**: (a) cross-cutting, as the prompt says; (b) `engine`, following its parent.
+- **Choice (layer)**: (b). `varbind_profile` is classified `engine` in `MODULE-ARCHITECTURE.md` §1
+  and `tests/test_layers.py`, and an extraction from an `engine` module is `engine`. The prompt's
+  statement is true of `rbac/*` and `shaping/*` — and for those two **no `LAYER_OF` entry is needed
+  at all**, because `tests/test_layers.py::_module_files` keys a packaged module by its package
+  name, which is already in the table.
+- **Reason (layer)**: cross-cutting means "no layer's private concern; every layer's concern". An
+  accumulator for varbind statistics is a domain concept with one consumer. Classifying it
+  cross-cutting would also fail `test_cross_cutting_imports_only_cross_cutting`, since it depends on
+  `known_oids` (ingest) through `_SKIP_OIDS`'s siblings — the guard would have caught the
+  misclassification, which is what the guard is for.
+- **Choice (constants)**: `ENTITY_MIN_DISTINCT`, `ENTITY_MAX_CARD_RATIO`, `FD_MIN_PAIRS` and
+  `value_hash` move to `varbind_accum.py` and `varbind_profile.py` imports them back.
+- **Reason (constants)**: the decision protocol says ambiguity about which module a symbol belongs
+  to resolves toward leaving it where it is — but leaving these four would make `varbind_accum.py`
+  import from `varbind_profile.py` while `varbind_profile.py` imports `Accumulator` from
+  `varbind_accum.py`. That is a circular import, so the import graph decides rather than taste. They
+  move with the classes whose semantics they define, and importing them back also preserves
+  `varbind_profile.MAX_DISPLAY_CHARS` for `severity.py` and `varbind_profile.ENTITY_PROMOTE_SCORE`
+  for `tests/test_promotion.py`, both of which Phase 0's inventory found.

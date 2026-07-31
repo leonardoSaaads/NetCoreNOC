@@ -13,7 +13,13 @@
 > | 2 | Per-role / per-principal visibility scoping | **→ v0.7.0.** Same spec, which additionally states the mandatory limit: scoping is a *presentation* control and **not** tenant isolation |
 > | 3 Tier A | Configurable scoring parameters | **BUILT IN v0.6.0** — see [`DESIGN.md`](DESIGN.md) "v0.6.0 — the scoring seam" and [`../scope/SCOPE-0.6.md`](../scope/SCOPE-0.6.md) |
 > | 3 Tier B | External API supplying the linking criterion | **REJECTED** on the correlation hot path (**DECISIONS #44**). Never authoritative in `score()`; a ROADMAP line and a threat-model note, not a plan |
-> | — | Customer-supplied models (ONNX / Python plugins) | **→ v0.8.0.** Specified in [`SCORER-PLUGINS-0.8-DRAFT.md`](SCORER-PLUGINS-0.8-DRAFT.md) |
+> | — | Customer-supplied models (ONNX only; the Python plugin path was later **rejected**) | **→ v0.13.0.** Specified in [`SCORER-PLUGINS-0.13-DRAFT.md`](SCORER-PLUGINS-0.13-DRAFT.md) |
+>
+> **Amended 2026-07-31 (v0.7.4) — DECISIONS #93.** The models row above read *"→ v0.8.0"* when this
+> box was written in v0.6.0. v0.7.4 resequenced it to **v0.13.0** (v0.8.0 is the operator-feedback
+> dataset) and **rejected** the Python entry-point half of it rather than deferring it. The chain is
+> [`ROADMAP-0.8-TO-0.13.md`](ROADMAP-0.8-TO-0.13.md). Only the release and that rejection changed;
+> the specification's technical content is untouched.
 >
 > Three corrections the reader should carry into the text below:
 >
@@ -28,7 +34,8 @@
 > 3. **v0.6.0 went further than "make the parameters configurable"**: the formula became the
 >    default implementation of a versioned `LinkScorer` interface, with contractual per-term
 >    explainability, persisted decision provenance, read-only preview, and one-click rollback.
->    That interface is what v0.8.0's customer models plug into.
+>    That interface is what the customer models of **v0.13.0** plug into (v0.6.0 wrote v0.8.0 here;
+>    resequenced by DECISIONS #93).
 
 This document specifies what **v0.6.0** will make configurable, and confirms that the ground is
 already clean for it. **It implements nothing.** It is written now, in v0.5.0 (the
@@ -258,8 +265,9 @@ The summary above is the v0.5.0 *plan*. The v0.6.0 *outcome*, per DECISIONS #43 
 - **The Tier B external criterion API was rejected outright** (DECISIONS #44) rather than
   deferred. `LinkScorer.score` is specified pure, deterministic, side-effect-free and
   inference-only, which forecloses an outbound call at the type level. Customer-supplied models
-  reach the same goal without a socket and are specified for v0.8.0 in
-  [`SCORER-PLUGINS-0.8-DRAFT.md`](SCORER-PLUGINS-0.8-DRAFT.md).
+  reach the same goal without a socket and are specified for **v0.13.0** in
+  [`SCORER-PLUGINS-0.13-DRAFT.md`](SCORER-PLUGINS-0.13-DRAFT.md) (v0.8.0 when this was written;
+  resequenced by DECISIONS #93).
 
 The threat-model entries this draft listed for §1 and §2 move with them to v0.7.0. The §3 Tier A
 entry ("silent logic change via parameters") was added to

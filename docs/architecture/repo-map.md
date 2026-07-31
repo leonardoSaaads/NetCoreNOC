@@ -103,8 +103,10 @@ route modules receive the perimeter's bound helpers; none of them implements one
   `0006`). See [`DESIGN.md`](DESIGN.md) § "v0.7.0 — governance" and
   [`GOVERNANCE-0.7-DRAFT.md`](GOVERNANCE-0.7-DRAFT.md). **Visibility scoping is a presentation
   control and is not tenant isolation.**
-- **Customer-supplied models — v0.8.0, specified not built.** They plug into the v0.6.0
-  contract; see [`SCORER-PLUGINS-0.8-DRAFT.md`](SCORER-PLUGINS-0.8-DRAFT.md).
+- **Customer-supplied models — v0.13.0, specified not built.** They plug into the v0.6.0
+  contract; see [`SCORER-PLUGINS-0.13-DRAFT.md`](SCORER-PLUGINS-0.13-DRAFT.md). Resequenced from
+  v0.8.0 by DECISIONS #93 — the chain from **v0.8.0 (the operator-feedback dataset)** to v0.13.0 is
+  [`ROADMAP-0.8-TO-0.13.md`](ROADMAP-0.8-TO-0.13.md).
 
 The original three-surface specification, [`EXTENSIBILITY-0.6-DRAFT.md`](EXTENSIBILITY-0.6-DRAFT.md),
 is superseded in place with a disposition table at the top.

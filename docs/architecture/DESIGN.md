@@ -421,7 +421,7 @@ plus reserved optional slots that are `None` throughout v0.6.0 and ignored by th
 severity_i/j, topo_distance, probable_cause_i/j, event_type_i/j
 ```
 
-Those exist so §3.5's X.733 / 3GPP TS 32.111 features and v0.8.0's richer scorers are **additive**.
+Those exist so §3.5's X.733 / 3GPP TS 32.111 features and v0.13.0's richer scorers are **additive**.
 The versioning rule (DECISIONS #49) is written down and enforced: **adding an optional field is a
 minor bump; changing or removing an existing field is a major bump.** A configuration whose
 declared *major* contract version the running code does not support is **refused at activation** —
@@ -439,7 +439,7 @@ Emitting a per-term breakdown is **contractual** (DECISIONS #50). The default em
 The requirement is general so a future scorer with five terms can satisfy it honestly; the
 *storage* stays specific (`link.term_t/term_a/term_e` are the default scorer's three
 contributions), which is exactly why the schema, the API response, the UI, and the pre-existing
-tests are byte-identical. Generalising persisted attribution is a named v0.8.0 task.
+tests are byte-identical. Generalising persisted attribution is a named v0.13.0 task.
 
 **`AdditiveScorer`** is the default: a frozen dataclass with `w_t, w_a, w_e, tau_s, threshold`
 defaulting to the coded constants `(0.30, 0.35, 0.35, 30.0, 0.50)`, computing
