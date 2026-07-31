@@ -26,6 +26,7 @@ NetCoreNOC/
 │   ├── rootcause.py         precedence learning; situation root pick
 │   ├── severity.py          learned severity field (shape + ordinality), honest unknown
 │   ├── varbind_profile.py   the entity/identity profiler (R/X/D score, FD containment)
+│   ├── varbind_accum.py     its bounded accumulators: Accumulator, Candidate, FD evidence
 │   ├── store/               the SQLite layer (v0.7.3). **One Store, ONE connection, ONE lock** —
 │   │                        the whole write discipline rests on it (F39). Sixteen domain modules.
 │   │   ├── base.py          StoreBase: the ten attribute annotations + the `conn` accessor
@@ -46,8 +47,14 @@ NetCoreNOC/
 │   │   └── routes_*.py      nine route groups, each one register(app, ctx) function
 │   ├── auth.py              scrypt passwords, sessions, service tokens, login throttle
 │   ├── audit.py             append-only hash-chained audit log + verify/export
-│   ├── rbac.py              THE authorization map + the ceiling∩policy resolver
-│   ├── shaping.py           response serializer: role→fields, and NE scope→rows
+│   ├── rbac/                THE authorization authority (v0.7.4). Re-exported by IDENTITY,
+│   │                        never by copy — one source of truth or it is a defect.
+│   │   ├── tables.py        the compiled tables, all of their prose, and the import-time asserts
+│   │   └── policy.py        ceiling, role_allows, permission_for, the ceiling∩policy resolver
+│   ├── shaping/             response shaping (v0.7.4) — three parts, not two
+│   │   ├── fields.py        which FIELDS a role may see (coarsen / drop)
+│   │   ├── scope.py         which ROWS a principal may see; visible_nes and the F35 invariant
+│   │   └── project.py       applying a resolved scope to a body — the consumer of the other two
 │   ├── runtime.py           in-memory runtime config (allowlist, retention)
 │   ├── logsetup.py          logging + secret-redaction filter
 │   ├── known_oids.py        tiny public-standard OID table (no vendor MIB semantics)
@@ -79,8 +86,8 @@ UDP 162 ─▶ receiver.datagram_received ─▶ asyncio.Queue ─▶ Engine.run
 
 The HTTP side is the security perimeter, and since v0.7.2 it is **one file you can read end to
 end**: `api/perimeter.py` — security headers → CSRF → identity → bootstrap gate → RBAC
-(`rbac.py`, the single source) → rate limit → handler, plus the audit-row helper, the write
-transaction boundary and scope resolution. Response bodies are shaped by role (`shaping.py`) and
+(`rbac/`, the single source) → rate limit → handler, plus the audit-row helper, the write
+transaction boundary and scope resolution. Response bodies are shaped by role (`shaping/fields.py`)
 every mutating action / sensitive read is written to the hash-chained audit log (`audit.py`). The
 route modules receive the perimeter's bound helpers; none of them implements one.
 
@@ -95,16 +102,18 @@ route modules receive the perimeter's bound helpers; none of them implements one
   modules hold the handlers. **No behaviour changed** — every handler body is byte-identical and
   the route table is identical in order. See [`DESIGN.md`](DESIGN.md) § "v0.7.2 — the perimeter as
   a named component" and [`MODULE-ARCHITECTURE.md`](MODULE-ARCHITECTURE.md).
-- **Governance — built in v0.7.0.** `rbac.py` holds the compiled `PERMISSIONS` **ceiling** and the
+- **Governance — built in v0.7.0.** `rbac/tables.py` holds the compiled `PERMISSIONS` **ceiling** and the
   one capability resolver (`resolve_capabilities`, an intersection, so escalation is structurally
-  impossible); `shaping.py` gained a second axis beside field shaping — `visible_nes` and the scope
+  impossible); `shaping/scope.py` holds the second axis beside field shaping — `visible_nes` and the scope
   projections, deciding *which rows* a principal sees rather than *which fields*. The stored policy
   is `governance_policy` (append-only) + the per-kind `governance_active` pointer (migration
   `0006`). See [`DESIGN.md`](DESIGN.md) § "v0.7.0 — governance" and
   [`GOVERNANCE-0.7-DRAFT.md`](GOVERNANCE-0.7-DRAFT.md). **Visibility scoping is a presentation
   control and is not tenant isolation.**
-- **Customer-supplied models — v0.8.0, specified not built.** They plug into the v0.6.0
-  contract; see [`SCORER-PLUGINS-0.8-DRAFT.md`](SCORER-PLUGINS-0.8-DRAFT.md).
+- **Customer-supplied models — v0.13.0, specified not built.** They plug into the v0.6.0
+  contract; see [`SCORER-PLUGINS-0.13-DRAFT.md`](SCORER-PLUGINS-0.13-DRAFT.md). Resequenced from
+  v0.8.0 by DECISIONS #93 — the chain from **v0.8.0 (the operator-feedback dataset)** to v0.13.0 is
+  [`ROADMAP-0.8-TO-0.13.md`](ROADMAP-0.8-TO-0.13.md).
 
 The original three-surface specification, [`EXTENSIBILITY-0.6-DRAFT.md`](EXTENSIBILITY-0.6-DRAFT.md),
 is superseded in place with a disposition table at the top.
@@ -125,7 +134,7 @@ is superseded in place with a disposition table at the top.
   cross-cutting from anywhere. Enforced since v0.7.3 by `tests/test_layers.py`, whose exemption list
   is empty. The `Engine` may not import `netcorenoc.api`; the process runner may, and that is what
   `runner.py` is for.
-- **A new route declares itself or the process does not start.** `rbac.py` holds both the
+- **A new route declares itself or the process does not start.** `rbac/tables.py` holds both the
   capability (`ROUTE_PERMISSIONS`) and the visibility posture (`ROUTE_SCOPE`); registration goes
   through `api/declare.py`, which refuses anything it has not been told about.
 - **The UI is four files, no build step.** New DOM values go through `textContent`/`esc()` —

@@ -894,3 +894,128 @@ Every threat above names a control and a check. Findings **F34–F39** are track
 `make eval` byte-identical, empty-policy parity except the three documented behaviour changes, the
 generated write-perimeter test green over `ROUTE_PERMISSIONS`, and the resolver-input invariant test
 green.
+
+---
+
+# v0.7.4 — the declaration gate, completed
+
+Two findings, **F40** and **F41**, both in `api/declare.py`, both found by adversarial probing of
+v0.7.2's registration gate and **reproduced by execution** before either was fixed. Neither was
+exploited on the v0.7.3 surface. Full analysis: [`SECURITY-REVIEW-0.7.4.md`](SECURITY-REVIEW-0.7.4.md).
+
+**No new asset, no new surface.** No route, capability, audit action, migration, runtime dependency
+or served path is added. The counts of §"v0.7.0 coverage check" are unchanged: 39 routes, 1 public
+route, 39 scope postures, 28 capabilities, 14 audited-denied, 30 audit actions, 7 migrations.
+
+## Changed control — the gate stops enumerating and starts asserting
+
+The registration gate v0.7.2 introduced was a **list of cases**: three verbs, one registration
+style, one path prefix. Each entry was true of the surface in front of it and silent about the next
+thing anyone would write. A guard whose whole value is *"nothing gets past this"* is worth exactly
+its least-covered path, and both findings below are that observation at two levels.
+
+### Registration paths outside the gate (A3, A6) — **F40**
+
+**Threat.** A route reaches a running appliance without declaring the capability it requires or its
+visibility-scope posture, and is therefore outside the authorization map. The runtime fail-closed
+still denies it *if* it is under `/api`, but the appliance is already serving, and the route-map
+completeness tests run in CI rather than at startup.
+
+**Observed** (untouched v0.7.3 tree): a route registered directly on the FastAPI application, rather
+than through `DeclaredRoutes`, raised nothing, took the route count 4 → 5, and appeared in neither
+`ROUTE_PERMISSIONS` nor `ROUTE_SCOPE`. `DeclaredRoutes` also exposes no `put`/`patch`, so those verbs
+had no gated path at all. Neither existing guard can see it: one greps for `@app.<verb>` decorators,
+the other asserts there is exactly one direct-registration caller **today**.
+
+**Control.** `declare.assert_every_route_is_declared(app)` puts **every route on the built
+application** back through `require_declaration`, and `create_app` calls it as its last statement
+before returning — so a mis-declared route **stops the process** rather than failing only under
+test. It is complete *by construction*: the function names no verb and no registration mechanism, so
+a mechanism nobody has written yet still produces a route and is still caught. The decorator-time
+refusal is kept alongside it, because failing where the route is written gives the better error.
+
+**Check.** `test_f40_*` (5 tests), each proven to fail on the unmodified tree.
+`test_f40_the_assertion_runs_before_create_app_returns` parses `create_app`'s source, so the
+assertion cannot later be demoted into a test helper.
+
+### Exemption by path prefix rather than by absence of capability (A2, A3) — **F41**
+
+**Threat.** An authenticated non-`/api` route is exempt from the gate **by accident** — declaring
+neither a capability nor a scope posture, and invisible to the route-map completeness tests, which
+enumerate `/api` only. `/metrics` is already on `docs/ROADMAP.md` and is the concrete case.
+
+**Observed:** `require_declaration("GET", "/metrics")` and `("GET", "/admin/debug")` both returned
+without raising, while `("GET", "/api/undeclared")` raised.
+
+**Control.** `declare.UNAUTHENTICATED_PATHS`, an explicit frozenset of the paths served with no
+identity. Membership is a **reviewable claim** — "no capability is required to fetch this" — rather
+than a consequence of four characters. It is asserted against what is actually served from two
+independent directions: against `routes_static.STATIC_ASSETS` plus the health surface, and against
+the non-`/api` routes of a **built application** (which is how `/openapi.json`, registered by
+FastAPI itself, is covered at all).
+
+**Check.** `test_f41_*` (14 tests). Four refusal cases and the two allowlist-derivation tests fail on
+the unmodified tree; the eight "every currently-served public path is still accepted" cases pass on
+**both** trees, which is what proves the gate did not become narrower.
+
+### Authorization authority under a package split (A3, A5)
+
+**Threat.** `rbac.py` became `rbac/`. A re-export that copies rather than references creates a second
+source of authorization truth that diverges on first mutation — and the test suite already mutates
+`rbac.ROUTE_PERMISSIONS` in a fixture.
+
+**Control.** Re-export by **identity**, with eight identity assertions and an AST check that no
+module under `rbac/` except `tables.py` binds any table at module level. The three import-time
+asserts moved into `tables.py` with the tables they constrain, so they still run as part of building
+them.
+
+**Check.** Both new tests were shown to fail against a deliberately-copying `__init__.py`, and the
+second additionally against a `policy.py`-local fallback. Under that sabotage **218 pre-existing
+tests pass green**, which is the measurement that justifies the new tests existing at all.
+
+## Added to the model — information disclosure, not fixed
+
+**`/openapi.json` is served without authentication.** FastAPI registers the schema route itself with
+no security dependency, so the full API surface — every path, method and request model — is readable
+by anyone who can reach the port. `docs_url` and `redoc_url` are disabled; `openapi_url` is not.
+
+This is **pre-existing** (identical in v0.7.2 and v0.7.3) and deliberately **not changed** in a
+release whose parity story forbids altering a served path. It is listed in `UNAUTHENTICATED_PATHS`
+because that set records what *is* served, not what should be.
+
+**Severity: low, and not nothing.** It discloses no data and no credential, and every route it names
+is enforced by the authorization matrix, so it is not an access-control bypass. Its value to an
+attacker is reconnaissance: the exact shape of the write surface without a single guess. On the
+trusted management network the deployment guidance assumes, that is a small increment; on a more
+exposed deployment it is the first thing read. Recorded on `docs/ROADMAP.md` for a release that may
+change a served path.
+
+## v0.7.4 residual risk (accepted, documented)
+
+- **The gate is complete for *registration*, which is not correctness of what is registered.** A
+  route can no longer be *undeclared*; it can still be *wrongly* declared. Every `ROUTE_SCOPE` entry
+  is a human judgement, and the gate checks that one is present, not that it is true.
+- **`ROUTE_SCOPE` is still descriptive, not injected.** The perimeter does not enforce the declared
+  posture; each handler calls `scope_for` itself. Each declaration is checked against the route's
+  *observed behaviour* by `tests/test_declaration.py`, which is much stronger than a comment and
+  weaker than a structure. Unchanged since v0.7.2 (DECISIONS #80) and still a ROADMAP line, because
+  injection changes control flow and control flow is behaviour.
+- **An empty `DEBT_ALLOWLIST` is not a claim of good factoring.** It means no module exceeds a line
+  count, which is a proxy. `SECURITY-REVIEW-0.7.4.md` §4.2 names what a reviewer would look at next
+  and why, as an opinion.
+- **A text-scanning guard in the suite counts mentions, not calls.**
+  `test_add_api_route_is_confined_to_the_static_asset_allowlist` greps for an identifier; documenting
+  the F40 fix in a docstring tripped it. Reworded rather than fixed (a defect found during a move
+  release is a ROADMAP line), but a guard that cannot tell a call from a comment will eventually
+  either fire wrongly or be silenced.
+- **This was not a full re-review of the attack surface.** F1–F39's controls were re-checked only to
+  the extent CI asserts them on every commit. The last full pass was v0.7.1's.
+
+## v0.7.4 coverage check
+
+Every threat above names a control and a check. Findings **F40** and **F41** are tracked in
+`SECURITY-REVIEW-0.7.4.md` (property → fix → test). Gate 5 requires every F-numbered test green,
+`make eval` byte-identical, the route-order and authorization-matrix tests green **and unedited**,
+the F35 resolver-input invariant green and unedited, both authorization single-sourcing tests green,
+and an upgrade from a real v0.7.3 database with no migration, an identical store snapshot and the
+same audit final hash.

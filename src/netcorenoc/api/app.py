@@ -25,6 +25,7 @@ from fastapi import Depends, FastAPI
 
 from netcorenoc import __version__, auth
 from netcorenoc.api import (
+    declare,
     routes_admin,
     routes_audit,
     routes_auth,
@@ -104,4 +105,11 @@ def create_app(
     routes_governance.register(app, ctx)
     routes_audit.register(app, ctx)
     routes_events.register(app, ctx)
+
+    # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the
+    # better error; this re-checks the *result*, so a route registered by any other path — an
+    # unwrapped verb, a direct registration on the app, something not yet written — cannot reach a
+    # running process undeclared. Before returning, deliberately: a mis-declared route must stop
+    # startup, not fail only under test.
+    declare.assert_every_route_is_declared(app)
     return app

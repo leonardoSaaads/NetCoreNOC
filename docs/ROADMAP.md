@@ -35,9 +35,11 @@ From v0.6.0 (the scoring seam — deferred to keep the release to the scoring su
 - **Admin-configurable RBAC and per-role/per-principal visibility scoping → v0.7.0.** Specified in
   `docs/architecture/GOVERNANCE-0.7-DRAFT.md`. Scoping is a *presentation* control and **not**
   tenant isolation. DECISIONS #43.
-- **Customer-supplied models → v0.8.0** — a blessed ONNX adapter and a Python entry-point escape
-  hatch under the v0.6.0 `LinkScorer` contract; `onnxruntime` an optional extra, never a base
-  dependency. Specified in `docs/architecture/SCORER-PLUGINS-0.8-DRAFT.md`. DECISIONS #43.
+- **Customer-supplied models → v0.13.0** — a blessed ONNX adapter under the v0.6.0 `LinkScorer`
+  contract; `onnxruntime` an optional extra, never a base dependency. Specified in
+  `docs/architecture/SCORER-PLUGINS-0.13-DRAFT.md`. DECISIONS #43, **resequenced from v0.8.0 by
+  DECISIONS #93**; the Python entry-point escape hatch that line originally carried is **rejected,
+  not deferred**. Chain: `docs/architecture/ROADMAP-0.8-TO-0.13.md`.
 - **External-API / sidecar scoring criterion — rejected on the correlation hot path**
   (DECISIONS #44). If it ever exists it is advisory/offline only, never authoritative in
   `score()`. Recorded here as a rejection, not a plan.
@@ -49,7 +51,8 @@ From v0.6.0 (the scoring seam — deferred to keep the release to the scoring su
   not a breaking change (DECISIONS #49); populating them depends on MIB enrichment.
 - **Generalised per-link attribution storage** — `link.term_t/term_a/term_e` are the *default*
   scorer's three contributions (DECISIONS #50); a scorer with a different term set needs a
-  `link_term` child table or a JSON column. Additive, forward-only, and a v0.8.0 prerequisite.
+  `link_term` child table or a JSON column. Additive, forward-only, and a prerequisite for the
+  customer-model release (**v0.13.0**, DECISIONS #93).
 - **Per-link scorer provenance.** `situation.scorer_config_id` records the configuration a
   situation was *opened* under; a long-lived situation spanning a parameter change carries its
   original id. Per-link provenance would answer the finer question.
@@ -57,17 +60,19 @@ From v0.6.0 (the scoring seam — deferred to keep the release to the scoring su
   after-the-fact companion to the before-the-fact preview.
 - **Real scorer preemption** — `SafeScorer` degrades on an *over-budget* call but cannot interrupt
   a synchronous in-process call that never returns (SECURITY-REVIEW-0.6 F25, listed **partial**).
-  Harmless while the only scorer is five floating-point operations; a **prerequisite** for v0.8.0's
-  customer-supplied code, where `SCORER-PLUGINS-0.8-DRAFT.md` specifies a worker process with
-  `resource.setrlimit`.
+  Harmless while the only scorer is five floating-point operations; a **blocking prerequisite** for
+  the customer-supplied code of **v0.13.0**, where `SCORER-PLUGINS-0.13-DRAFT.md` §R2 specifies a
+  worker process with `resource.setrlimit` — and requires that its worker→parent channel not use
+  `pickle`. DECISIONS #93.
 
 From v0.7.0 (governance — deferred to keep the release to the authorization perimeter only):
 
-- **Customer-supplied models → v0.8.0** — unchanged in substance from the v0.6.0 line above, with
+- **Customer-supplied models → v0.13.0** — unchanged in substance from the v0.6.0 line above, with
   one addition recorded during v0.7.0: the **worker-process preemption harness**
   (`resource.setrlimit` + a real wall-clock kill, batch-oriented IPC) is a **blocking
   prerequisite**, not a nice-to-have. `SafeScorer` degrades the *next* call, which cannot fire on a
-  plugin that never returns. See `SCORER-PLUGINS-0.8-DRAFT.md` §R2 and SECURITY-REVIEW-0.6 F25.
+  plugin that never returns. See `SCORER-PLUGINS-0.13-DRAFT.md` §R2 and SECURITY-REVIEW-0.6 F25.
+  Resequenced from v0.8.0 by DECISIONS #93.
 - **True multi-tenant isolation** — per-tenant learning, per-tenant situation boundaries, per-tenant
   retention and audit segmentation, and the cardinality/quota accounting that goes with it. This is
   the thing v0.7.0 visibility scoping is explicitly **not**: scoping is a presentation projection
@@ -113,7 +118,7 @@ From v0.7.1 (the write perimeter — deferred, each with the version that owns i
   discipline scaled.
 - **The v0.8.0 feedback dataset** — schema, capture, and bias reporting. v0.7.1 made the *existing*
   feedback path trustworthy (idempotent, bounded, attributed); it deliberately built no part of the
-  dataset.
+  dataset. Specified in `docs/architecture/FEEDBACK-DATASET-0.8-DRAFT.md`.
 
 From v0.7.2 (the HTTP package — deferred, each with the reason it is not in that release):
 
@@ -187,3 +192,49 @@ From v0.7.2 (the HTTP package — deferred, each with the reason it is not in th
   date because the invariant it cites ("ingestion is sacred") has no expiry.
 - **v0.8.0 is the next feature release** — the operator-feedback dataset. The v0.7.x series is not
   open-ended: v0.7.3 was the last structural release.
+
+## v0.7.5 — specified in v0.7.4, built there
+
+- **Fix the operator-feedback acquisition path.** The SSE update rebuilds every situation card every
+  two seconds, including the one the operator has expanded, and the rebuilt detail is filled only
+  after a network round trip — so there is a window in which the card is visibly empty and a click
+  lands on a detached node. The failure that matters is not the flicker: a click can be recorded
+  against a membership the operator never evaluated, which is a **silently wrong label**, and
+  nothing downstream can detect one. Specified in
+  `docs/architecture/FEEDBACK-PATH-0.7.5-DRAFT.md`. It is a prerequisite for v0.8.0, because the
+  feedback click is the only source of training labels.
+
+## v0.8.0 onward — the chain
+
+<!-- release-claim: v0.8.0 = operator-feedback-dataset -->
+
+**v0.8.0 is the operator-feedback dataset** — capture the feedback as a durable dataset and measure
+its bias; it trains nothing. The releases after it, and **why the order cannot be permuted**, are
+written down once in [`architecture/ROADMAP-0.8-TO-0.13.md`](architecture/ROADMAP-0.8-TO-0.13.md),
+which is the single source of truth for what each release from v0.8.0 to v0.13.0 is:
+v0.9.0 shadow mode → v0.10.0 the honest judge → v0.11.0 champion/challenger →
+v0.12.0 archetypes (*likely, review before committing*) → **v0.13.0 the external cartridge**
+(ONNX, resequenced here from v0.8.0 by DECISIONS #93).
+
+Until v0.7.4 this file said **both** that v0.8.0 was customer-supplied models (twice) and that it
+was the operator-feedback dataset (twice). DECISIONS #93 records the resequencing that settles it,
+and `tests/test_documentation.py` now fails if the repository ever again gives two answers to
+"what is release X".
+
+From v0.7.4 (the last loose ends — deferred, each with the reason):
+
+- **`/openapi.json` is served unauthenticated.** Noticed while building F41's allowlist: the schema
+  route is registered by FastAPI itself and carries no security dependency, so the full API surface
+  is readable without an identity. Listed in `declare.UNAUTHENTICATED_PATHS` because that set states
+  what *is* served, not what should be. Whether to authenticate it, or disable `openapi_url` as
+  `docs_url` and `redoc_url` already are, is a public-contract question and not a placement one —
+  and v0.7.4's parity story forbids changing a served path. SECURITY-REVIEW-0.7.4 §critical analysis.
+- **`test_add_api_route_is_confined_to_the_static_asset_allowlist` counts mentions, not calls.** It
+  greps the text of every module under `api/` for the identifier and asserts exactly one file
+  contains it, so naming the function in a docstring makes the count wrong. Writing the v0.7.4 gate
+  fix tripped it and the prose was reworded rather than the test. An AST-based caller count would be
+  a few lines and would say what the test means.
+- **`ROUTE_SCOPE` is still descriptive, not enforcing.** Unchanged from v0.7.2 (DECISIONS #80): the
+  declaration gate is now complete for *registration*, but completeness of a guard is not
+  correctness of what it guards. Every `ROUTE_SCOPE` entry remains a human judgement checked against
+  observed behaviour rather than a check the perimeter injects.

@@ -1,5 +1,52 @@
 # Upgrading NetCoreNOC
 
+## v0.7.3 → v0.7.4 (the last loose ends — structure, plus two gate fixes)
+
+**There is nothing to do. Stop reading.**
+
+No migration runs. No configuration changes. No API changes. Replace the code and restart.
+
+| | |
+|---|---|
+| Schema | **unchanged** — `user_version` stays **7**; no migration file added |
+| Data | untouched — learned state, scorer configuration, governance policy, provenance, labels, feedback and the audit chain all carry over byte for byte |
+| Routes | **unchanged** — every path, method, status code and response field is identical, in the same order |
+| Capabilities | **unchanged** — `PERMISSIONS`, `ROUTE_PERMISSIONS`, `ROUTE_SCOPE`, `PUBLIC_ROUTES` and the audit action catalog are all the same |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| How you run it | **unchanged** — `python -m netcorenoc.main` and `python -m netcorenoc audit verify`, exactly as before |
+| Downgrade | safe — v0.7.3 reads a v0.7.4 database, because it is the same database |
+
+v0.7.4 splits `src/netcorenoc/shaping.py` into the package `src/netcorenoc/shaping/`,
+`src/netcorenoc/rbac.py` into `src/netcorenoc/rbac/`, and extracts
+`src/netcorenoc/varbind_accum.py` from `varbind_profile.py`. All three are internal:
+`netcorenoc.shaping`, `netcorenoc.rbac` and `netcorenoc.varbind_profile` keep their names and every
+symbol reachable through them, so anything importing them keeps working unchanged.
+
+It also closes two holes in the **route-declaration gate** (F40, F41). Both are import-time or
+startup-time checks on the application's own routes; **neither is on the request path**, and neither
+can change how an existing request is answered. They matter to you only if you have added a route to
+a fork: an `/api` route registered by any means must now declare its capability and scope posture in
+`rbac/tables.py`, and a non-`/api` route must be listed in `declare.UNAUTHENTICATED_PATHS` or live
+under `/api`. On an unmodified NetCoreNOC there is nothing to change.
+
+**Verified, not assumed.** A database written by the **real v0.7.3 code** — users, devices driven
+through the real engine from real traps, situations, operator feedback and a hash-chained audit log —
+was opened by the v0.7.4 wheel in a clean virtualenv: no migration ran, the store snapshot was
+byte-identical (`sha256 28f636fd…2e96`) and the audit chain verified with the same final hash
+(`3d1bdf8a…79d9`). Separately, all **56** function bodies moved by the three splits were proved
+unchanged by a `sha256` table taken before the move and recomputed after it, and `make eval` is
+byte-identical. See `docs/gates/v0.7.4-phase-5.md` §1 and §10.
+
+If you have written code against the internals, every name still resolves from its original module
+path — including the private helpers. The v0.7.3 caveat about monkeypatching a module-level constant
+applies here too: patch it on the module that *reads* it. `netcorenoc.varbind_profile`'s constants
+are now defined in `netcorenoc.varbind_accum` and re-exported, so patch the former only if the reader
+is `varbind_profile` itself. That is a test-harness concern, not a runtime one, and no supported
+configuration is affected.
+
+---
+
 ## v0.7.2 → v0.7.3 (the data and engine layers — internal structure only)
 
 **There is nothing to do. Stop reading.**

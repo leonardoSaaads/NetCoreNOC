@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
 
 from netcorenoc import api, audit, rbac
 from netcorenoc.store import Store
@@ -211,3 +212,79 @@ async def test_a_policy_never_makes_a_route_reachable_that_the_ceiling_forbids(
             if status != 403:
                 failures.append(f"{method} {path} as {role}: got {status}, want 403")
     assert not failures, "a policy opened a route above the ceiling:\n" + "\n".join(failures)
+
+
+# --- v0.7.4: the split must not create a second source of authority ----------------------
+
+# The eight tables `rbac/tables.py` owns. Re-exporting any of them by **copy** rather than by
+# reference would leave every test above green and create exactly the second source of truth this
+# package exists to prevent — the two objects diverge the first time anything mutates or shadows
+# one, and `tests/test_declaration.py` already mutates `rbac.ROUTE_PERMISSIONS` in a fixture.
+AUTHORITY_TABLES = (
+    "ROLE_RANK",
+    "PERMISSIONS",
+    "ROUTE_PERMISSIONS",
+    "PUBLIC_ROUTES",
+    "ROUTE_SCOPE",
+    "AUDITED_DENIED_PERMISSIONS",
+    "RECOVERY_CAPABILITIES",
+    "_CEILINGS",
+)
+
+
+@pytest.mark.parametrize("name", AUTHORITY_TABLES)
+def test_the_tables_are_re_exported_by_identity_not_by_copy(name: str) -> None:
+    """**Equality is not enough; require identity** (v0.7.4, DECISIONS #96).
+
+    `rbac.PERMISSIONS == rbac.tables.PERMISSIONS` would hold for a copy too, at import, forever
+    green and quietly wrong. Only one object can be the authority, and `is` is the only operator
+    that says so.
+
+    Shown to fail against a deliberately-copying `__init__.py` before being accepted — see
+    `docs/gates/v0.7.4-phase-4.md` §2.
+    """
+    from netcorenoc.rbac import tables
+
+    exported = getattr(rbac, name)
+    owned = getattr(tables, name)
+    assert exported is owned, (
+        f"rbac.{name} is not rbac.tables.{name} — it is a copy. A copy is a second source of "
+        "authority: the two drift the moment either is mutated or shadowed. Re-export the name, "
+        "do not rebuild the container."
+    )
+
+
+def test_no_module_but_tables_binds_an_authorization_table() -> None:
+    """The same defect wearing a different shape: a local fallback or a shadowing definition.
+
+    Identity holds against whatever `__init__.py` happens to import. It would still hold if
+    `policy.py` defined its own `PERMISSIONS` and used that internally — the tables would agree at
+    import and the resolver would read the wrong one. So: **no module under `rbac/` other than
+    `tables.py` may bind any of these names at module level.**
+
+    Parsed from the AST rather than grepped, so an assignment inside a function body (a genuine
+    local) does not trip it and a module-level one cannot hide behind formatting.
+    """
+    import ast
+    from pathlib import Path
+
+    pkg = Path(rbac.__file__).resolve().parent
+    offenders: list[str] = []
+    for path in sorted(pkg.glob("*.py")):
+        if path.name == "tables.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:  # module level only — nested scopes are not bindings of the table
+            targets: list[str] = []
+            if isinstance(node, ast.Assign):
+                targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                targets = [node.target.id]
+            for name in targets:
+                if name in AUTHORITY_TABLES:
+                    offenders.append(f"{path.name}:{node.lineno} binds {name}")
+    assert not offenders, (
+        "module(s) under rbac/ binding an authorization table outside tables.py:\n  "
+        + "\n  ".join(offenders)
+        + "\n\ntables.py is the single source of authority. Import the name; never rebind it."
+    )

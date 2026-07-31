@@ -194,6 +194,19 @@ State at v0.7.2:
 This is the single most valuable thing v0.7.2 leaves behind: the debt is in CI instead of in a code
 review two years from now.
 
+> **Updated 2026-07-31 (v0.7.4).** The table above records the state **at v0.7.2** and is left as
+> written. `DEBT_ALLOWLIST` is now **empty**: `store.py` and `main.py` left in v0.7.3, and
+> `shaping.py`, `rbac.py` and `varbind_profile.py` left in v0.7.4. `ALLOWLIST_MEMBERSHIP_CEILING` was
+> emptied with it, so **any** module added to the allowlist now fails immediately — an empty
+> allowlist that nothing defends is a coincidence, not a guarantee, and the "may only shrink" and
+> "no module may join" tests are both kept for that reason.
+>
+> **No module under `src/netcorenoc/` exceeds 400 lines except `engine.py` (542)**, which is
+> `COHESION_EXEMPT` permanently. That is not a claim that the codebase is well factored — it is a
+> claim that no module exceeds a line count, which is a proxy, and §2 says so. See
+> [`../security/SECURITY-REVIEW-0.7.4.md`](../security/SECURITY-REVIEW-0.7.4.md) §4.2 for what a
+> reviewer would look at next, offered as an opinion rather than a commitment.
+
 ---
 
 ## 6. `store.py` — the target (**v0.7.3: planned**)
@@ -416,6 +429,34 @@ All three are small enough that the v0.7.3 mechanism (mixins over a thin annotat
 probably overkill; `varbind_profile.py` in particular wants a single class moved out, not a package.
 Take the measurement before choosing, as §6 required of v0.7.3.
 
+> **Superseded 2026-07-31 (v0.7.4) — see [`DECISIONS.md` #95](../adr/DECISIONS.md).** The table
+> above is left as written. It was right that the measurement had to be taken before choosing, and
+> right about `rbac.py` and `varbind_profile.py`. It was **wrong about `shaping.py`**: the seam is
+> not two axes but **three parts**, confirmed from the AST in
+> [`../gates/v0.7.4-phase-0.md`](../gates/v0.7.4-phase-0.md) §4.1 before the correction was
+> accepted.
+>
+> | Part | Lines (v0.7.3) | Target |
+> |---|--:|---|
+> | field shaping | 50–108 | `shaping/fields.py` |
+> | scope resolution | 114–377 | `shaping/scope.py` |
+> | **projections** | 383–476 | `shaping/project.py` |
+>
+> The projections — `filter_rows`, `_as_int`, `project_graph`, `project_situation_detail` — are not
+> a third *axis*. They are the **consumer** of the other two: each takes a `Scope` produced by the
+> scope axis and returns a response body, which is the field axis's subject. Forcing them into
+> either side would be arbitrary, and this section's two-way framing is exactly what makes one of
+> those choices look necessary.
+>
+> Two further corrections from the same measurement:
+>
+> * **`rbac.py`'s three module-level `assert` statements** (lines 200–212 and 271–274) travel into
+>   `rbac/tables.py` with the tables they assert. An assertion about a table that no longer runs
+>   where the table is defined is a structural guarantee silently deleted (DECISIONS #96).
+> * **`varbind_accum.py` is `engine` layer**, following `varbind_profile.py`, not cross-cutting
+>   (DECISIONS #97). `rbac/` and `shaping/` need no `LAYER_OF` entries at all: `tests/test_layers.py`
+>   keys a packaged module by its package name, which the table already carries.
+
 ### 10.3 Also recorded
 
 * **Four redundant `# nosec B608` markers**, now at `store/retention.py:23,27,31,35`. `bandit`
@@ -430,6 +471,20 @@ Take the measurement before choosing, as §6 required of v0.7.3.
 
 ### 10.4 And after that
 
+<!-- release-claim: v0.8.0 = operator-feedback-dataset -->
+
 **v0.8.0 is the next feature release** — the operator-feedback dataset. The v0.7.x series is not
 open-ended: v0.7.3 was the last structural release, and once §10.2 lands the project has no module
 over the size guard except `engine.py`, which is large by documented design.
+
+> **Amended 2026-07-31 (v0.7.4) — see [`DECISIONS.md` #93](../adr/DECISIONS.md).** The paragraph
+> above was right and is now the *only* answer the repository gives. When it was written,
+> `docs/ROADMAP.md` and the draft then named SCORER-PLUGINS-0.8-DRAFT simultaneously said v0.8.0 was
+> customer-supplied models — this section was one of two camps, not the settled position, and
+> nothing recorded which was which. v0.7.4 records the resequencing (models → **v0.13.0**, ONNX
+> only, the Python entry-point hatch **rejected**), writes the whole chain down in
+> [`ROADMAP-0.8-TO-0.13.md`](ROADMAP-0.8-TO-0.13.md), and installs
+> `tests/test_documentation.py` so a second answer fails CI.
+>
+> One correction to §10.2 also came out of v0.7.4's Phase 0 and is recorded in **DECISIONS #95**:
+> `shaping.py` is **three** parts, not two. See the note in §10.2.

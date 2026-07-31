@@ -95,7 +95,7 @@ intends to improve a metric must show it and explain why it is correct, not metr
 - **A new route declares itself, or the process does not start.** Add its capability to
   `rbac.ROUTE_PERMISSIONS` **and** its visibility posture to `rbac.ROUTE_SCOPE` (with a one-line
   reason if it is `"unscoped"`), then register it through `DeclaredRoutes` like every other route.
-  `api/declare.py` refuses anything `rbac.py` has not been told about, while the application is
+  `api/declare.py` refuses anything `rbac/` has not been told about, while the application is
   being built. If you are changing the HTTP security boundary, the file to read is
   `src/netcorenoc/api/perimeter.py` — all of it, and nothing else.
 

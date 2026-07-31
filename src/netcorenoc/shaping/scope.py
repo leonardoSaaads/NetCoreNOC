@@ -1,24 +1,9 @@
-"""Field-level authorization: one role-keyed serializer for response shaping (F7, §A.3).
+"""Resource scoping: which network elements a principal may see (v0.7.0).
 
-Route authorization (`rbac.py`) decides *which endpoints* a role may call. This module decides
-*which fields within a response* a role may see — deny-by-default extended from routes to fields.
-It is the single place that shapes response bodies by role, never scattered ``if role ==`` checks.
-
-A viewer running the read-only operations view does not need the raw source IP of every monitored
-element, the community-grouping tag, or the source IP a session connected from; those are sensitive
-network detail that a lower role should not receive merely because the endpoint is viewer-readable.
-Following the stricter-wins rule, such fields are **coarsened** (an IP → its network) or **dropped**
-for roles below a declared minimum. The engine, the store, and the audit log always keep full
-fidelity — shaping is presentation-only.
-
-New endpoints that return any protected field MUST pass their body through :func:`shape` (or a
-helper here); a field with no rule is emitted unchanged, so add a rule when you add such a field.
-
-**v0.7.0 — resource scoping, a second axis in the same module.** `shape()` decides *which fields*
-of a row a role may see. :func:`visible_nes` decides *which rows* a principal may see at all: a
-stored, admin-managed policy naming the network elements a viewer or editor is shown. The two are
-composed at every read as **authorize → read → scope-project → field-shape**, and each axis has
-exactly one decision site.
+`fields.py` decides *which fields* of a row a role may see. This module decides **which rows** a
+principal may see at all: a stored, admin-managed policy naming the network elements a viewer or
+editor is shown. The two axes are composed at every read as
+**authorize → read → scope-project → field-shape**, and each has exactly one decision site.
 
 Three rules govern the whole of it:
 
@@ -32,6 +17,12 @@ Three rules govern the whole of it:
 ⚠ **Scoping is a presentation control and is NOT tenant isolation.** Correlation still learns
 across every NE, and a situation may still form across a boundary a principal cannot see — it is
 then redacted, not prevented. See `docs/architecture/DESIGN.md` (v0.7.0) and `SCOPE-0.7.md`.
+
+**The F35 invariant lives here, with the code that depends on it** (v0.7.4, DECISIONS #95): no
+input to :func:`visible_nes` may be writable by a scopable role. The comment blocks on
+:func:`visible_nes` and :func:`_matches` that say why moved with the functions, unedited, because a
+justification separated from the code it justifies is a justification nobody re-reads.
+`tests/test_governance.py::test_f35_no_resolver_input_is_writable_by_a_scopable_role` asserts it.
 """
 
 from __future__ import annotations
@@ -40,75 +31,9 @@ import fnmatch
 import ipaddress
 import json
 from dataclasses import dataclass
-from typing import Any, overload
+from typing import Any
 
 from netcorenoc.rbac import ROLE_RANK
-
-# Minimum role that may see each protected field in full; below it the field is coarsened
-# (transform) or dropped (transform is None). Keys are matched by field name anywhere in a
-# (possibly nested) response body.
-_COARSEN = "coarsen"
-_DROP = "drop"
-FIELD_RULES: dict[str, tuple[str, str]] = {
-    "ip": ("editor", _COARSEN),  # device / NE address on graph + entity views
-    "device_ip": ("editor", _COARSEN),  # alarm rows in a situation detail
-    "device": ("editor", _COARSEN),  # timeline marks (label-or-ip; a label passes through)
-    "source_ip": ("admin", _DROP),  # who connected from where (audit / session detail)
-    "community_tag": ("editor", _DROP),  # SNMP community grouping tag (F4)
-}
-
-
-def _rank(role: str | None) -> int:
-    return ROLE_RANK.get(role or "", -1)
-
-
-def _allowed(role: str | None, min_role: str) -> bool:
-    return _rank(role) >= ROLE_RANK[min_role]
-
-
-def coarsen_ip(value: Any) -> Any:
-    """An IP → its /24 (v4) or /48 (v6) network; a non-IP string (a label) is returned as-is."""
-    if not isinstance(value, str) or not value:
-        return value
-    try:
-        ip = ipaddress.ip_address(value)
-    except ValueError:
-        return value  # already a hostname/label, or empty — nothing to coarsen
-    prefix = 24 if isinstance(ip, ipaddress.IPv4Address) else 48
-    return str(ipaddress.ip_network(f"{value}/{prefix}", strict=False))
-
-
-@overload
-def shape(obj: dict[str, Any], role: str | None) -> dict[str, Any]: ...
-@overload
-def shape(obj: list[Any], role: str | None) -> list[Any]: ...
-@overload
-def shape[T](obj: T, role: str | None) -> T: ...
-def shape(obj: Any, role: str | None) -> Any:
-    """Return a copy of ``obj`` projected for ``role``: protected fields coarsened or dropped.
-
-    Recurses through lists and dicts; scalars pass through. Field rules match by key name at any
-    depth, so the same rule shapes ``ip`` on a graph node and ``device_ip`` on an alarm row.
-    """
-    if isinstance(obj, list):
-        return [shape(item, role) for item in obj]
-    if not isinstance(obj, dict):
-        return obj
-    out: dict[str, Any] = {}
-    for key, value in obj.items():
-        rule = FIELD_RULES.get(key)
-        if rule is not None:
-            min_role, action = rule
-            if not _allowed(role, min_role):
-                if action == _DROP:
-                    continue  # omit the field entirely for this role
-                out[key] = coarsen_ip(value)
-                continue
-        out[key] = shape(value, role) if isinstance(value, (dict, list)) else value
-    return out
-
-
-# -- resource scoping: which NEs a principal may see (v0.7.0) ------------------------------
 
 
 @dataclass(frozen=True)
@@ -375,102 +300,3 @@ def scope_policy_errors(policy: ScopePolicy) -> list[str]:
         if not subject.startswith(("user:", "token:")):
             problems.append(f"principal {subject!r} must be 'user:<id>' or 'token:<id>'")
     return problems
-
-
-# -- projections: applying a resolved scope to a response body -----------------------------
-
-
-def filter_rows(rows: list[dict[str, Any]], scope: Scope, *, ne_key: str) -> list[dict[str, Any]]:
-    """Keep only the rows whose NE is in scope. ``ne_key`` names the id column on the row."""
-    if scope.unrestricted:
-        return rows
-    return [row for row in rows if scope.allows_ne(_as_int(row.get(ne_key)))]
-
-
-def _as_int(value: Any) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def project_graph(snapshot: dict[str, Any], scope: Scope) -> dict[str, Any]:
-    """Graph nodes restricted to in-scope devices; an edge survives only if **both** ends do.
-
-    Keeping a half-visible edge would disclose the existence of a neighbour the caller may not see
-    — the graph would draw a line to nothing — so an edge with one end out of scope is dropped
-    entirely rather than truncated.
-    """
-    if scope.unrestricted:
-        return snapshot
-    nodes = [node for node in snapshot.get("nodes", []) if scope.allows_ip(node.get("ip"))]
-    visible_ids = {_as_int(node.get("id")) for node in nodes}
-    edges = [
-        edge
-        for edge in snapshot.get("edges", [])
-        if _as_int(edge.get("a_id")) in visible_ids and _as_int(edge.get("b_id")) in visible_ids
-    ]
-    return {**snapshot, "nodes": nodes, "edges": edges}
-
-
-# v0.7.1 (F35 + F38): there is deliberately **no** `project_timeline` here any more. v0.7.0
-# filtered timeline marks in Python by comparing the rendered ``device`` string —
-# ``COALESCE(label, ip)`` — against the scope's address and label sets. Labels are not unique, so
-# an editor who copied an in-scope NE's label onto an out-of-scope one inherited its alarm timing
-# and classes: a display string had become an authorization key. The filter now lives in
-# `store.timeline_marks()`, keyed on `ne_id`, which fixes the identity defect and the
-# truncate-before-filter defect in the same move (DECISIONS #67, #72).
-
-
-def project_situation_detail(
-    detail: dict[str, Any], scope: Scope, *, member_ne_ids: dict[int, int | None]
-) -> dict[str, Any] | None:
-    """Project one situation for a scoped reader, or **None** if none of it is visible.
-
-    Returning ``None`` is how the 404 happens: the caller hands it to the handler's existing
-    ``if detail is None: raise HTTPException(404)`` branch, so "out of your scope" and "no such
-    situation" are the same code path, the same body, and the same timing — indistinguishable by
-    construction rather than by two branches that happen to agree (DECISIONS #60).
-
-    A situation survives if **at least one** member is in scope. Out-of-scope members are not
-    deleted but **redacted to a count and a type** (DECISIONS #59): silently showing "3 alarms" for
-    a 40-alarm cross-boundary incident would leave an operator confidently wrong about what they
-    are looking at, which is the failure mode this project refuses elsewhere too. The redaction
-    carries no NE id, address, entity key, or varbind — only how many members lie outside, and
-    which alarm classes they belong to, which is strictly less than the situation id and
-    ``updated_at`` the reader can already see.
-    """
-    if scope.unrestricted:
-        return detail
-    alarms = detail.get("alarms", [])
-    visible: list[dict[str, Any]] = []
-    hidden: list[dict[str, Any]] = []
-    for alarm in alarms:
-        ne_id = member_ne_ids.get(_as_int(alarm.get("id")) or -1)
-        (visible if scope.allows_ne(ne_id) else hidden).append(alarm)
-    if not visible:
-        return None  # nothing of this situation is yours: indistinguishable from "no such id"
-    visible_ids = {_as_int(alarm.get("id")) for alarm in visible}
-    links = [
-        link
-        for link in detail.get("links", [])
-        if _as_int(link.get("alarm_a")) in visible_ids
-        and _as_int(link.get("alarm_b")) in visible_ids
-    ]
-    out = {**detail, "alarms": visible, "links": links}
-    # The root hint names an alarm; suppress it when that alarm is one the reader may not see.
-    if _as_int(out.get("root_alarm_id")) not in visible_ids:
-        out["root_alarm_id"] = None
-    if hidden:
-        out["redacted_members"] = {
-            "count": len(hidden),
-            "classes": sorted(
-                {str(a.get("class_name") or a.get("class_oid") or "") for a in hidden}
-            ),
-            "note": (
-                f"{len(hidden)} further member(s) of this situation are outside your visibility "
-                "scope and are not shown. Scoping hides them from you; it does not stop them "
-                "correlating."
-            ),
-        }
-    return out

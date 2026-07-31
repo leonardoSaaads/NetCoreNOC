@@ -536,7 +536,7 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
         "README.md",
         "MIGRATION.md",
         "src/netcorenoc/ui/index.html",
-        "src/netcorenoc/shaping.py",
+        "src/netcorenoc/shaping/__init__.py",
     ):
         # Normalise typesetting before matching: strip Markdown/HTML emphasis and collapse
         # whitespace, so "**NOT** tenant isolation" and a line-wrapped "NOT tenant\n isolation"

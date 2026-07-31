@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,9 @@ import pytest
 from fastapi import FastAPI
 
 from netcorenoc import auth, rbac
-from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError
+from netcorenoc.api import declare, routes_static
+from netcorenoc.api.app import create_app
+from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError, require_declaration
 from netcorenoc.store import Store
 
 import authutil
@@ -121,6 +124,178 @@ def test_add_api_route_is_confined_to_the_static_asset_allowlist() -> None:
     )
 
 
+# --- v0.7.4: F40, the gate is complete for every registration path -----------------------
+
+
+async def _create_app_with(store: Store, sabotage: Any) -> object:
+    """Build a real app through `create_app`, with `sabotage(app)` run during registration.
+
+    The extra route is added from inside `routes_events.register` — the last `register()` call —
+    so it is present on the application *before* `create_app` returns, which is the only way to
+    test that the post-hoc assertion fires where it is claimed to fire rather than in a test.
+    """
+    from netcorenoc.api import routes_events
+
+    original = routes_events.register
+
+    def patched(app: Any, ctx: Any) -> None:
+        original(app, ctx)
+        sabotage(app)
+
+    routes_events.register = patched
+    try:
+        return (await authutil.make_env(store))[2]
+    finally:
+        routes_events.register = original
+
+
+async def _handler() -> dict[str, str]:  # pragma: no cover - never actually served
+    return {}
+
+
+async def test_f40_a_route_registered_without_the_decorator_fails_create_app(store: Store) -> None:
+    """**F40.** The hole: `DeclaredRoutes` wraps three verbs and only the decorator form, so a
+    route registered directly on the FastAPI application reached the route table without ever
+    consulting the gate — reproduced by execution in `docs/gates/v0.7.4-phase-0.md` §2.
+
+    The fix is a post-hoc assertion over the built app, so it does not matter *how* the route got
+    there. `create_app` must refuse to return.
+    """
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        await _create_app_with(
+            store,
+            lambda app: app.add_api_route("/api/undeclared-bypass", _handler, methods=["GET"]),
+        )
+    assert "GET /api/undeclared-bypass" in str(excinfo.value)
+    assert "rbac.ROUTE_PERMISSIONS" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("verb", ["put", "patch"])
+async def test_f40_a_route_registered_by_an_unwrapped_verb_fails_create_app(
+    store: Store, verb: str
+) -> None:
+    """**F40, the second uncovered path.** `DeclaredRoutes` has no `put` and no `patch`, so those
+    verbs could only be registered on the app directly — and were therefore ungated.
+
+    The post-hoc assertion covers them without anyone having enumerated them, which is the
+    property that makes it complete by construction rather than by list: nothing in
+    `assert_every_route_is_declared` mentions a verb.
+    """
+    path = f"/api/undeclared-{verb}"
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        await _create_app_with(store, lambda app: getattr(app, verb)(path)(_handler))
+    assert f"{verb.upper()} {path}" in str(excinfo.value)
+
+
+async def test_f40_the_assertion_runs_before_create_app_returns(store: Store) -> None:
+    """It must stop the process, not fail only under test.
+
+    A guard that runs in CI but not at startup is a guard an operator can ship past. `create_app`
+    calls it as its last statement, so an appliance carrying an undeclared route does not start —
+    the same class of guarantee as the capability ceiling.
+    """
+    source = inspect.getsource(create_app)
+    assert "assert_every_route_is_declared(app)" in source
+    body = source.split("assert_every_route_is_declared(app)", 1)[1]
+    assert body.strip() == "return app", (
+        "the declaration assertion must be the last thing create_app does before returning; "
+        f"found {body.strip()!r} after it"
+    )
+
+
+def test_f40_the_decorator_time_refusal_is_kept_as_well() -> None:
+    """The gate got a second check, not a replacement (build prompt directive 4).
+
+    Failing at the point of registration names the route the contributor just wrote; failing at
+    the end of `create_app` names it too but three hundred lines away. Both, therefore.
+    """
+    route = DeclaredRoutes(FastAPI())
+    with pytest.raises(UndeclaredRouteError):
+        route.get("/api/still-refused-at-registration")
+
+
+# --- v0.7.4: F41, the exemption is an allowlist, not a path prefix -----------------------
+
+
+@pytest.mark.parametrize("path", ["/metrics", "/admin/debug", "/status", "/vendor/other.js"])
+def test_f41_a_non_api_path_outside_the_allowlist_is_refused(path: str) -> None:
+    """**F41.** Before v0.7.4 `require_declaration` returned early for anything not under `/api`,
+    so `/metrics` — already on the ROADMAP — would have been exempt **by accident**.
+
+    Reproduced on the unmodified tree in `docs/gates/v0.7.4-phase-0.md` §2: all of these returned
+    without raising.
+    """
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        require_declaration("GET", path)
+    assert "UNAUTHENTICATED_PATHS" in str(excinfo.value)
+
+
+# The public surface, derived from what `routes_static.py` serves plus the health endpoints and
+# FastAPI's schema route — deliberately **not** from `declare.UNAUTHENTICATED_PATHS`. Parametrising
+# over the allowlist would make the test vacuous if the allowlist were ever emptied, and it would
+# also make this file uncollectable against a tree that predates the constant, which is how the
+# fail-on-the-unmodified-tree proof is taken (`docs/gates/v0.7.4-phase-2.md` §3).
+PUBLIC_SURFACE = sorted(
+    {"/healthz", "/readyz", "/", "/openapi.json"}
+    | {f"/{asset}" for asset in routes_static.STATIC_ASSETS}
+)
+
+
+@pytest.mark.parametrize("path", PUBLIC_SURFACE)
+def test_f41_every_currently_served_public_path_is_still_accepted(path: str) -> None:
+    """The gate got stronger, never narrower (build prompt §4.3).
+
+    Every path the appliance serves without an identity must still pass. If this fails, the fix
+    removed a public route rather than closing a hole — a build failure, not a test to update.
+
+    This one passes on the unmodified tree too, and that is the point: it is the direction the fix
+    must **not** change.
+    """
+    require_declaration("GET", path)
+
+
+def test_f41_the_allowlist_matches_what_is_actually_served() -> None:
+    """The allowlist is *asserted against* `routes_static.py`, so the two cannot diverge.
+
+    `declare.py` cannot import `routes_static.py` — that module registers through this one, and the
+    import would be circular — so the derivation is checked here instead of performed there. Adding
+    a static asset without listing it fails; listing a path that is not served fails too.
+    """
+    derived = {"/healthz", "/readyz", "/", "/openapi.json"} | {
+        f"/{asset}" for asset in routes_static.STATIC_ASSETS
+    }
+    assert set(declare.UNAUTHENTICATED_PATHS) == derived, (
+        "declare.UNAUTHENTICATED_PATHS has drifted from what routes_static.py registers:\n"
+        f"  only in the allowlist: {sorted(set(declare.UNAUTHENTICATED_PATHS) - derived)}\n"
+        f"  only served:           {sorted(derived - set(declare.UNAUTHENTICATED_PATHS))}"
+    )
+
+
+async def test_f41_the_allowlist_is_exactly_the_live_non_api_surface(store: Store) -> None:
+    """The other direction, against the **built app** rather than against the source.
+
+    `test_f41_the_allowlist_matches_what_is_actually_served` checks the allowlist against the
+    module that registers the assets. This checks it against the routes that actually exist —
+    including `/openapi.json`, which FastAPI registers itself and which no source-level derivation
+    would ever see.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    live = {path for _method, path in _live_routes(app) if not path.startswith("/api")}
+    assert live == set(declare.UNAUTHENTICATED_PATHS), (
+        f"live non-/api paths {sorted(live)} != allowlist {sorted(declare.UNAUTHENTICATED_PATHS)}"
+    )
+
+
+def _live_routes(app: object) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for route in app.routes:  # type: ignore[attr-defined]
+        path = getattr(route, "path", "")
+        for method in getattr(route, "methods", set()) or set():
+            if method not in ("HEAD", "OPTIONS"):
+                out.append((method, path))
+    return out
+
+
 # --- completeness, driven from the live app so it cannot drift ---------------------------
 
 
@@ -176,7 +351,7 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     A comment is not a proof — the behavioural test below is — but an `"unscoped"` entry with no
     stated reason is an assertion nobody has had to defend, which is how F34 happened.
     """
-    source = (Path(rbac.__file__)).read_text(encoding="utf-8")
+    source = (Path(rbac.tables.__file__)).read_text(encoding="utf-8")
     table = source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0]
     lines = table.splitlines()
     entries = [i for i, line in enumerate(lines) if line.strip().endswith(': "unscoped",')]
