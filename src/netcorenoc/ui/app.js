@@ -387,10 +387,16 @@ async function renderDetail(container, sid) {
   const d = await api(`/api/situations/${sid}`);
   const byId = new Map(d.alarms.map((a) => [a.id, a]));
   const root = byId.get(d.root_alarm_id);
-  clear(container);
+  // v0.7.5 §5.2: build into a fragment and swap in ONE synchronous step at the end. v0.7.4 did
+  // `clear(container)` here — before the await had even resolved on the rebuild path — so the
+  // container was `display: block` with no children for the length of a round trip, and a click in
+  // that window hit nothing. Assembling off-document means no reachable state has the container
+  // displayed and empty, whatever the network does. This also covers the case §5.1 cannot: the
+  // very FIRST expansion of a card, where there is no previous content to hold.
+  const frag = document.createDocumentFragment();
 
   if (root) {
-    container.append(el("div", { class: "root" },
+    frag.append(el("div", { class: "root" },
       text("probable root: "), el("b", { text: alarmName(root) }),
       text(" on "), el("b", { text: deviceName(root) }),
       d.root_confidence != null ? text(`  (confidence ${(d.root_confidence * 100).toFixed(0)}%)`) : null));
@@ -399,7 +405,7 @@ async function renderDetail(container, sid) {
   // The honest signal that this situation extends past the reader's visibility scope. It carries
   // a count and the alarm classes involved — never an NE id, address, entity key, or varbind.
   if (d.redacted_members) {
-    container.append(el("div", { class: "warnbox" },
+    frag.append(el("div", { class: "warnbox" },
       el("b", { text: `${d.redacted_members.count} member(s) outside your visibility scope` }),
       text(d.redacted_members.classes.length
         ? "  classes: " + d.redacted_members.classes.join(", ")
@@ -427,7 +433,7 @@ async function renderDetail(container, sid) {
       el("td", { text: a.instance || "—" }), severityCell(a),
       el("td", { text: a.count }), el("td", { text: a.status })));
   }
-  container.append(table);
+  frag.append(table);
 
   const linkBox = el("div", { class: "links" });
   const shown = d.links.slice(0, 30);
@@ -438,7 +444,7 @@ async function renderDetail(container, sid) {
       el("span", { text: l.score.toFixed(2) }),
       el("span", { text: `${a ? alarmName(a) : l.alarm_a} ↔ ${b ? alarmName(b) : l.alarm_b}` })));
   }
-  container.append(linkBox);
+  frag.append(linkBox);
 
   if (canEdit()) {
     const fb = el("div", { class: "fb" });
@@ -446,8 +452,13 @@ async function renderDetail(container, sid) {
       el("button", { text: "✓ Confirm grouping", onclick: () => feedback(sid, "confirm") }),
       el("button", { class: "warn", text: "✗ Split (wrong grouping)", onclick: () => feedback(sid, "split") }));
     if (d.status === "open") fb.append(el("button", { text: "Close situation", onclick: () => closeSituation(sid) }));
-    container.append(fb);
+    frag.append(fb);
   }
+
+  // The atomic swap. `clear` + `append` run back to back with no await between them, so the
+  // browser never paints an empty-but-displayed container.
+  clear(container);
+  container.append(frag);
 }
 
 function renderSituations(list) {
