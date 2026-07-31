@@ -45,7 +45,6 @@ DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
     # route/capability *tables* on one side, the capability-policy parser and resolver on the
     # other. See MODULE-ARCHITECTURE.md §5.
     "rbac.py": (436, "v0.7.4 — split the declaration tables from the policy resolver"),
-    "shaping.py": (476, "v0.7.4 — two axes in one file: field shaping and NE scoping"),
     "varbind_profile.py": (417, "v0.7.4 — one extraction (the accumulator), not a package"),
 }
 
@@ -56,9 +55,7 @@ DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
 #
 # v0.7.3 removed `store.py` (and the transitional `store/_all.py` it was `git mv`-d to) and
 # `main.py`. The set may only ever get smaller from here.
-ALLOWLIST_MEMBERSHIP_CEILING: frozenset[str] = frozenset(
-    {"rbac.py", "shaping.py", "varbind_profile.py"}
-)
+ALLOWLIST_MEMBERSHIP_CEILING: frozenset[str] = frozenset({"rbac.py", "varbind_profile.py"})
 
 
 # Modules that are over the guard by **deliberate, permanent design**, mapped to the invariant
