@@ -135,6 +135,15 @@ so the prose beneath it stays the thing a human reads.
 A document that carries a release claim may only tag elements for **that** release; that is what
 catches a half-finished supersession, where a draft is retagged but one heading is missed.
 
+**Backticks around the tag are the convention, and the guard reads them.** `` `v0.8.0: planned` ``
+and a bare `v0.8.0: planned` are both found — the tag is what counts, not its rendering. Between
+v0.7.4 and v0.7.5 that was **not** true: `test_documentation.py::source_of` stripped inline code
+spans before looking, so it saw only the unbackticked form that nobody writes, and 31% of the
+repository's element tags were visible to it. The strip is gone (DECISIONS #100), and
+`test_the_element_tag_check_goes_red_on_a_backticked_stray_tag` now demonstrates the failure rather
+than assuming it. **Only a fenced block is exempt** — like the two examples above, which show the
+forms without asserting them.
+
 **Live documents and records.** The guard reads forward-looking documents (`architecture/`,
 `ROADMAP.md`, `security/threat-model.md`, this file) and deliberately does **not** read
 `scope/`, `adr/`, `gates/`, `releases/` or the per-release security reviews. Those are records of

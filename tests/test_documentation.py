@@ -41,6 +41,7 @@ exclusion is the guard's biggest risk — widened far enough it would check noth
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -128,20 +129,35 @@ def _blank(raw: str, pattern: str) -> str:
 
 
 def source_of(path: Path) -> str:
-    """A document's prose: fenced code blocks and inline code spans removed.
+    """A document's prose: **fenced code blocks removed, inline code spans kept.**
 
-    `docs/README.md` **documents** the claim form, so it contains a fenced example of a
-    `<!-- release-claim: ... -->` marker and of a `vX.Y.Z: planned` tag. Parsing those as real
-    claims would make the index appear to specify v0.8.0 — which is exactly the failure
-    `test_structure.py::_strip_code` already guards against for links ("a ``[text](target)`` written
-    as documentation-about-links must not be treated as a link"). Same precedent, same fix.
+    `docs/README.md` **documents** both claim forms, so it contains a fenced example of a
+    `<!-- release-claim: ... -->` marker and a fenced example of a `vX.Y.Z: planned` tag. Parsing
+    those as real claims would make the index appear to specify v0.8.0 — which is exactly the
+    failure `test_structure.py::_strip_code` already guards against for links ("a ``[text](target)``
+    written as documentation-about-links must not be treated as a link"). Same precedent, same fix.
+    A fenced block is a worked example and is not a claim about anything.
 
-    Inline code spans go too, which is what makes the **convention** work: the marked forms are
-    reserved for live assertions, and a historical mention — a then/now supersession row, a
-    superseded filename — is written as prose and therefore does not register as a claim. That rule
-    is stated in `docs/README.md`.
+    **v0.7.5: inline code spans are NOT stripped, and the reason this docstring used to give for
+    stripping them was the wrong way round.** It said the strip was what made "the convention" work
+    — that the marked forms were reserved for live assertions, so a historical mention written in
+    backticks did not register. The convention is the opposite: `docs/README.md` specifies the
+    **backticked** form as *the* way to tag an element, and every draft in the repository writes it
+    that way. So the strip did not filter historical mentions; it filtered the live ones, and it was
+    the only thing standing between `_ELEMENT_TAG` and the tags it exists to check.
+
+    Measured on the v0.7.4 tree (`docs/gates/v0.7.5-phase-0.md` §3.1): **15 of 48 tags visible,
+    31%**, with five of the eight tag-carrying documents entirely invisible — including
+    `FEEDBACK-DATASET-0.8-DRAFT.md`, the v0.8.0 specification, and `SCORER-PLUGINS-0.13-DRAFT.md`,
+    the half-finished supersession that `test_a_documents_element_tags_match_its_own_release_claim`
+    names as its own motivating example. A stray `` `v0.8.0: planned` `` left in that document left
+    the whole suite green. The guard written to stop the repository contradicting itself four lines
+    apart contained that contradiction, four lines apart. DECISIONS #100.
+
+    `_normalised` has always kept inline code for its own reasons, stated in its docstring; the two
+    functions now agree, which is the second thing that was wrong here.
     """
-    return _blank(_blank(path.read_text(encoding="utf-8"), r"```.*?```"), r"`[^`\n]*`")
+    return _blank(path.read_text(encoding="utf-8"), r"```.*?```")
 
 
 def _normalised(path: Path) -> tuple[str, list[int]]:
@@ -434,6 +450,109 @@ def test_the_recorded_contradiction_is_gone() -> None:
         "documentation still carries the v0.8.0 contradiction DECISIONS #93 resolved:\n  "
         + "\n  ".join(found)
         + "\n\nv0.8.0 is the operator-feedback dataset. Customer-supplied models are v0.13.0."
+    )
+
+
+# --- the guard's failure mode, demonstrated rather than asserted (v0.7.5) ----------------
+#
+# A guard whose failure mode has never been demonstrated is not a guard. That is the second time in
+# two releases this has been the thing the guard actually needed: v0.7.4 added the element-tag check
+# and never watched it go red, so nobody noticed that `source_of` blanked the very form the check
+# was written to find. 31% of the tags were invisible for a whole release.
+#
+# These two tests inject the forgotten tag into a synthetic document and drive the **real** guard
+# function over it — not a re-implementation of its logic, which would be free to agree with itself.
+
+
+def _drive_guard_over(doc: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the guard at one synthetic document and nothing else.
+
+    `REPO_ROOT` moves with `live_docs` because the guard reports a mismatch as
+    `path.relative_to(REPO_ROOT)`. `ROADMAP_TABLE_DOC` is deliberately **not** redirected: the
+    release table stays the real one, so these tests check the real claim keys.
+    """
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "live_docs", lambda: [doc])
+    monkeypatch.setattr(module, "REPO_ROOT", doc.parent)
+
+
+def _injected_draft(tmp_path: Path, tag: str) -> Path:
+    """A document shaped like `SCORER-PLUGINS-0.13-DRAFT.md`: one claim, one stray element tag."""
+    doc = tmp_path / "STRAY-0.13-DRAFT.md"
+    doc.write_text(
+        "# A draft retagged to v0.13.0, with one heading missed\n\n"
+        "<!-- release-claim: v0.13.0 = external-cartridge -->\n\n"
+        "## 1. The blessed ONNX path (`v0.13.0: planned`)\n\n"
+        "Body.\n\n"
+        f"## 2. A stray heading left by a half-finished supersession ({tag})\n\n"
+        "Body.\n",
+        encoding="utf-8",
+    )
+    return doc
+
+
+def test_the_element_tag_check_goes_red_on_a_backticked_stray_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The demonstration this guard was missing, and the regression it hides.**
+
+    The stray tag is written `` `v0.8.0: planned` `` — **inside backticks**, which is what
+    `docs/README.md` specifies and what every draft in this repository actually writes. Until
+    v0.7.5 `source_of` blanked inline code spans, so this exact document left the suite **green**
+    (`docs/gates/v0.7.5-phase-0.md` §3.2 and `docs/gates/v0.7.5-phase-3.md` §1 record the run).
+
+    If you are here because this test failed after you changed `source_of`, the question to ask is
+    not "how do I make it pass" but "does the guard still see the form the convention writes".
+
+    The backticks are the whole point. **Do not remove them to make a future change pass** — a
+    version of this test with a bare tag asserts only what v0.7.4 already asserted, and would have
+    been green throughout the entire period the guard was blind.
+    """
+    doc = _injected_draft(tmp_path, "`v0.8.0: planned`")
+    assert "`v0.8.0: planned`" in doc.read_text(encoding="utf-8"), (
+        "the injected tag must be backticked — that is the form the guard used to miss"
+    )
+    _drive_guard_over(doc, monkeypatch)
+
+    with pytest.raises(AssertionError) as excinfo:
+        test_a_documents_element_tags_match_its_own_release_claim()
+    assert "v0.8.0: planned" in str(excinfo.value)
+    assert "v0.13.0" in str(excinfo.value)
+
+
+def test_a_consistently_tagged_document_stays_green(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The control. A check that goes red on everything is not a check.
+
+    Same document, same backticks, tag matching the claim — which must pass, or the test above is
+    detecting the injection rather than the inconsistency.
+    """
+    doc = _injected_draft(tmp_path, "`v0.13.0: planned`")
+    _drive_guard_over(doc, monkeypatch)
+    test_a_documents_element_tags_match_its_own_release_claim()  # must not raise
+
+
+def test_element_tags_inside_fenced_blocks_are_still_excluded(tmp_path: Path) -> None:
+    """Dropping the inline-code strip must not drop the **fenced** strip with it.
+
+    `docs/README.md` documents the tag convention by showing it, inside a fence. That example is
+    not a claim about anything, and treating it as one would make the index appear to specify a
+    release — the failure `test_structure.py::_strip_code` guards against for links. Exactly one
+    tag in the repository is in this position; this test is what keeps it excluded.
+    """
+    doc = tmp_path / "DOCUMENTING-THE-CONVENTION.md"
+    doc.write_text(
+        "Write an element tag like this:\n\n"
+        "```\n"
+        "## 1. The blessed ONNX path (`v0.13.0: planned`)\n"
+        "```\n\n"
+        "…and a real one here (`v0.8.0: planned`).\n",
+        encoding="utf-8",
+    )
+    tags = [release for release, _line in _element_tags(doc)]
+    assert tags == ["v0.8.0"], (
+        f"the fenced example must stay excluded and the prose tag must be seen; saw {tags}"
     )
 
 
