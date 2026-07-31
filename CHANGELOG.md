@@ -4,6 +4,112 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-07-31 — "no contradictions, no unowned debt"
+
+The release that closes every loose end the v0.7.x series leaves behind, so that v0.7.5 and v0.8.0
+start from a repository that agrees with itself. Runtime dependencies stay at **five**; **zero** new
+migrations (still `0001`–`0007`); **zero** new routes, capabilities, audit actions or served paths;
+`make eval` is **byte-identical** to v0.7.3. **An operator upgrading from v0.7.3 has nothing to do**
+— see [MIGRATION.md](MIGRATION.md).
+
+**Exactly two intentional behaviour changes**, both in the route-declaration gate, both at import or
+startup time and neither on the request path. They are listed under *Security* below. Nothing else
+in the appliance's behaviour moves.
+
+### Security — F40 and F41, the first findings since F39 (v0.7.1)
+
+Both were found by adversarial probing of `api/declare.py` during the v0.7.2 review, **reproduced by
+execution** rather than by reading, and deferred from v0.7.3 because fixing a security-adjacent
+guard inside a move release forfeits the parity story. Neither was exploited on the v0.7.3 surface;
+both were latent holes in a guard whose entire value is completeness. See
+[SECURITY-REVIEW-0.7.4.md](docs/security/SECURITY-REVIEW-0.7.4.md).
+
+- **F40 — the gate covered three verbs and only the decorator form.** `DeclaredRoutes` wraps `get`,
+  `post` and `delete`, so a route registered directly on the FastAPI application reached the route
+  table without ever consulting `require_declaration`. **Behaviour change:** a route registered by
+  *any* path without a declaration now fails. Fixed by `assert_every_route_is_declared(app)`, called
+  as the last statement of `create_app` before it returns — so a mis-declared route stops the
+  process rather than failing only under test. It inspects the *result* rather than the route in,
+  which makes it complete **by construction** rather than by enumeration: a registration mechanism
+  nobody has written yet still produces a route. The decorator-time refusal is kept as well, because
+  failing where the route is written gives a far better error.
+- **F41 — the exemption was by path prefix, not by absence of capability.** `require_declaration`
+  returned early for anything not starting with `/api`, which is true of today's public surface and
+  **accidentally** true of everything else outside it — `require_declaration("GET", "/metrics")`
+  returned cleanly, and `/metrics` is on the ROADMAP. **Behaviour change:** a non-`/api` path outside
+  the unauthenticated allowlist now fails. Fixed with an explicit `UNAUTHENTICATED_PATHS` allowlist,
+  asserted against what `routes_static.py` registers **and** against the non-`/api` routes of a built
+  application.
+
+Ten regression tests, each proved to fail on the unmodified tree. Route order, the generated
+authorization matrix and both route-map completeness tests pass **unedited**.
+
+### Changed — the last three modules split; `DEBT_ALLOWLIST` reaches zero
+
+Every module under `src/netcorenoc/` is now at or under the 400-line guard **except `engine.py`
+(542), which is `COHESION_EXEMPT` permanently**. All **56** function bodies moved as identical text,
+proved by a `sha256` table taken before the move and recomputed after it.
+
+- **`shaping.py` (476) → the `shaping/` package** — `fields.py` (88), `scope.py` (302),
+  `project.py` (110), `__init__.py` (110). `MODULE-ARCHITECTURE.md` §10.2 recorded the seam as two
+  axes; the AST showed **three** parts, and the projections turned out to be the *consumer* of the
+  other two rather than a third axis. §10.2 is superseded in place (DECISIONS #95). The F35
+  invariant travels with `scope.py`, comments included.
+- **`rbac.py` (436) → the `rbac/` package** — `tables.py` (277), `policy.py` (197), `__init__.py`
+  (79). **`rbac` remains the single source of authority for authorization**: the tables are
+  re-exported by **identity, never by copy**, and two new tests assert it. Both were shown to fail
+  against a deliberately-copying `__init__.py` — against which **218 pre-existing tests pass green**,
+  which is precisely why they exist. Every `"unscoped"` justification comment travels with its entry,
+  and the three import-time asserts travel with the tables they constrain (DECISIONS #96).
+- **`varbind_profile.py` (417) → 305 + `varbind_accum.py` (154)** — one extraction, not a package.
+  `engine` layer, following its parent (DECISIONS #97).
+
+`from netcorenoc.rbac import …`, `from netcorenoc.shaping import …` and
+`from netcorenoc.varbind_profile import …` keep working for **every** symbol; the packages are
+invisible to every caller.
+
+### Changed — the roadmap says one thing about v0.8.0
+
+The repository stated **both** that v0.8.0 was customer-supplied models and that it was the
+operator-feedback dataset — twice each, four lines apart in `docs/ROADMAP.md`. The resequencing that
+settles it had been decided and acted on for two releases and was **never recorded**.
+
+- **DECISIONS #93** records it with the reasoning: **v0.8.0 is the operator-feedback dataset**;
+  customer-supplied models move to **v0.13.0**, behind the champion/challenger framework they plug
+  into; **ONNX only** — the Python entry-point escape hatch is **rejected, not deferred**; and the
+  worker-process preemption harness remains a blocking prerequisite.
+- **`docs/architecture/ROADMAP-0.8-TO-0.13.md`** is new: one screen per release, recording the chain
+  and **why the order cannot be permuted**.
+- The scorer-plugins draft was `git mv`-d to `SCORER-PLUGINS-0.13-DRAFT.md` and **superseded in
+  place** with a dated note; its analysis is untouched. `EXTENSIBILITY-0.6-DRAFT.md`,
+  `MODULE-ARCHITECTURE.md`, `repo-map.md` and `DESIGN.md` are amended where they name the sequence.
+
+### Added — a documentation-consistency guard
+
+`tests/test_documentation.py` asserts that the repository states **exactly one answer** to "what is
+release X" (DECISIONS #94). Installed against the still-contradictory tree and **observed red before
+green**; its first version caught too little and was widened until its catch set covered the Phase 0
+enumeration in full. Records and forward-looking documents are distinguished, and that distinction
+is itself asserted — `SCOPE-0.6.md` says what v0.6.0 believed, and rewriting a record to agree with
+a later decision would be falsifying it.
+
+### Added — two specifications, neither implemented
+
+- **`FEEDBACK-PATH-0.7.5-DRAFT.md`** — the operator-feedback acquisition path. Every two seconds the
+  SSE update rebuilds every situation card, including the expanded one, and the rebuilt detail is
+  filled only after a network round trip. The failure that matters is not the flicker: a click can
+  be recorded against a membership the operator never evaluated, which is a **silently wrong label**,
+  and nothing downstream can detect one.
+- **`FEEDBACK-DATASET-0.8-DRAFT.md`** — the v0.8.0 dataset, refined, with each of its four
+  constraints traced to the code that causes it.
+
+### Notes
+
+- Decisions **#93–#97**. Security findings **F40** and **F41**.
+- Test count **701 → 754**. Coverage **95.80 % → 95.9 %**.
+- `docs/scope/SCOPE-0.7.4.md`, `docs/releases/BUILD-REPORT-0.7.4.md`, and gate evidence
+  `docs/gates/v0.7.4-phase-0.md` … `-phase-6.md`.
+
 ## [0.7.3] - 2026-07-30 — "the data and engine layers" (internal structure only)
 
 **Internal structure only. No behaviour change of any kind.** Not one route path, method, status
