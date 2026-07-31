@@ -324,6 +324,16 @@ function tick() {
 
 /* ---------- situations ---------- */
 const expanded = new Set();
+// v0.7.5 §5.3: holding the card (§5.1) fixes the race by FREEZING what the operator is looking at,
+// which trades a wrong label for a stale one — and a stale label is only better if the operator
+// knows it is stale. Without this marker the release would replace a visible defect with an
+// invisible one, which is the same label-integrity failure it exists to fix, reintroduced by its own
+// fix. Styled as the existing `redacted` badge, so it costs no new CSS architecture.
+// No controls, no countdown, no refresh, no live diff — those are out of scope by SCOPE-0.7.5 §3.3.
+const HELD_MARKER = "held while open";
+const HELD_TITLE =
+  "This card is frozen while you have it open, so the grouping you are judging cannot change "
+  + "under your click. It may not reflect the last few seconds. Collapse it to resume live updates.";
 function age(ts) {
   const s = Math.max(0, Date.now() / 1000 - ts);
   if (s < 90) return Math.round(s) + "s";
@@ -482,10 +492,17 @@ function renderSituations(list) {
   for (const s of list) {
     const detail = held.get(s.id) || el("div", { class: "detail" });
     detail.style.display = expanded.has(s.id) ? "block" : "none";
+    // §5.3: the marker exists only while the card is held, i.e. exactly when `expanded.has(s.id)`.
+    // It appears on the first update that is actually being withheld rather than at the instant of
+    // expansion — which is correct: a card just opened is not yet stale.
+    const heldMarker = expanded.has(s.id)
+      ? el("span", { class: "badge redacted", title: HELD_TITLE, text: HELD_MARKER })
+      : null;
     const head = el("div", { class: "sit-head" },
       el("span", { class: "sid", text: "#" + s.id }),
       el("span", { class: "badge " + (s.status === "open" ? "alarm" : ""), text: s.status }),
       el("span", { class: "badge", text: `${s.alarm_count} alarm${s.alarm_count === 1 ? "" : "s"}` }),
+      heldMarker,
       el("span", { class: "age", text: age(s.updated_at) }));
     // A scoped viewer must be told when a situation is bigger than what they are being shown.
     // Omitting this silently would let them size an incident wrongly during the incident.
@@ -498,7 +515,14 @@ function renderSituations(list) {
       }), head.lastChild);
     }
     head.addEventListener("click", async () => {
-      if (expanded.has(s.id)) { expanded.delete(s.id); detail.style.display = "none"; return; }
+      if (expanded.has(s.id)) {
+        // Collapsing stops the hold, so the marker must go with it rather than waiting for the
+        // next render — a collapsed card carrying "held while open" would be asserting something
+        // false for up to two seconds.
+        expanded.delete(s.id); detail.style.display = "none";
+        if (heldMarker) heldMarker.remove();
+        return;
+      }
       expanded.add(s.id); detail.style.display = "block"; await renderDetail(detail, s.id);
     });
     // `data-sid` is how the next render finds this card's detail node again (see `held` above).
