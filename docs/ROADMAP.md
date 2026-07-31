@@ -220,3 +220,21 @@ Until v0.7.4 this file said **both** that v0.8.0 was customer-supplied models (t
 was the operator-feedback dataset (twice). DECISIONS #93 records the resequencing that settles it,
 and `tests/test_documentation.py` now fails if the repository ever again gives two answers to
 "what is release X".
+
+From v0.7.4 (the last loose ends — deferred, each with the reason):
+
+- **`/openapi.json` is served unauthenticated.** Noticed while building F41's allowlist: the schema
+  route is registered by FastAPI itself and carries no security dependency, so the full API surface
+  is readable without an identity. Listed in `declare.UNAUTHENTICATED_PATHS` because that set states
+  what *is* served, not what should be. Whether to authenticate it, or disable `openapi_url` as
+  `docs_url` and `redoc_url` already are, is a public-contract question and not a placement one —
+  and v0.7.4's parity story forbids changing a served path. SECURITY-REVIEW-0.7.4 §critical analysis.
+- **`test_add_api_route_is_confined_to_the_static_asset_allowlist` counts mentions, not calls.** It
+  greps the text of every module under `api/` for the identifier and asserts exactly one file
+  contains it, so naming the function in a docstring makes the count wrong. Writing the v0.7.4 gate
+  fix tripped it and the prose was reworded rather than the test. An AST-based caller count would be
+  a few lines and would say what the test means.
+- **`ROUTE_SCOPE` is still descriptive, not enforcing.** Unchanged from v0.7.2 (DECISIONS #80): the
+  declaration gate is now complete for *registration*, but completeness of a guard is not
+  correctness of what it guards. Every `ROUTE_SCOPE` entry remains a human judgement checked against
+  observed behaviour rather than a check the perimeter injects.
