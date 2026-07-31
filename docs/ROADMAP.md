@@ -266,6 +266,16 @@ Everything the release itself deferred, each with the reason it is not in it:
   spelling-sensitive (`->` versus `→`). v0.7.5 took its element-tag half from 31% visibility to
   near-complete; the phrase half is correct by design as the specific-case belt and is *not* a
   general guarantee. Restated so nobody mistakes the new figure for one.
+- **`renderEntityDetail` has the clear-then-fill shape v0.7.5 fixed in `renderDetail`.**
+  `ui/app.js:583` clears the container before its `await api(...)` resolves, so the entities panel
+  has the same visible-and-empty window §5.2 closed for situations. **Found while repairing the
+  acquisition path and deliberately not fixed**: it is not on the label path, it carries no
+  label-integrity consequence, and a fix smuggled into a small diff is invisible to review — which
+  is the whole reason that diff is small (v0.7.5 directive 6). The same `DocumentFragment` swap
+  applies verbatim when someone picks it up.
+- **A situation id stays in the `expanded` set after its card leaves the list.** Pre-existing and
+  harmless — the set is bounded by what one operator opens — but it means "expanded" is really
+  "expanded, or was once expanded and has since disappeared". Noted, not fixed.
 - **`ROUTE_SCOPE` is still descriptive, not enforcing**; `/openapi.json` is still served
   unauthenticated; `test_add_api_route_is_confined_to_the_static_asset_allowlist` still counts
   mentions rather than calls. All three carried forward from v0.7.4 unchanged — v0.7.5's scope was
