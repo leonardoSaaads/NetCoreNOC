@@ -452,10 +452,24 @@ async function renderDetail(container, sid) {
 
 function renderSituations(list) {
   const sits = $("sits");
+  // v0.7.5 §5.1: a card the operator has OPEN is held — its detail node, and the feedback buttons
+  // whose onclick closures live inside it, survive the 2 s SSE rebuild. Before this, `clear(sits)`
+  // was the first statement here and destroyed every card including the expanded one, so a click
+  // could land on a detached node, or on a button from a render the operator never read — a
+  // silently wrong label (FEEDBACK-PATH-0.7.5-DRAFT §1.1).
+  // Harvested BEFORE the clear: `clear` detaches nodes, it does not destroy them, so a held detail
+  // is re-appended below and keeps its identity and its listeners.
+  // Collapsed cards are still cleared and rebuilt: they are cheap and carry no click target the
+  // operator is aiming at. This is the narrow fix the draft prefers over a general reconciler.
+  const held = new Map();
+  for (const card of sits.children) {
+    const sid = Number(card.dataset.sid);
+    if (expanded.has(sid)) held.set(sid, card.lastChild);
+  }
   clear(sits);
   if (!list.length) { sits.append(el("div", { class: "empty", text: "No situations match — the network is quiet." })); return; }
   for (const s of list) {
-    const detail = el("div", { class: "detail" });
+    const detail = held.get(s.id) || el("div", { class: "detail" });
     detail.style.display = expanded.has(s.id) ? "block" : "none";
     const head = el("div", { class: "sit-head" },
       el("span", { class: "sid", text: "#" + s.id }),
@@ -476,9 +490,13 @@ function renderSituations(list) {
       if (expanded.has(s.id)) { expanded.delete(s.id); detail.style.display = "none"; return; }
       expanded.add(s.id); detail.style.display = "block"; await renderDetail(detail, s.id);
     });
-    const card = el("div", { class: "sit" }, head, detail);
+    // `data-sid` is how the next render finds this card's detail node again (see `held` above).
+    const card = el("div", { class: "sit", "data-sid": s.id }, head, detail);
     sits.append(card);
-    if (expanded.has(s.id)) renderDetail(detail, s.id);
+    // Only a card that was NOT held needs its detail fetched: a held one already has its content
+    // and re-fetching it is precisely the rebuild §5.1 exists to stop. This is where v0.7.4's
+    // un-awaited `renderDetail(detail, s.id)` used to fire on every update.
+    if (expanded.has(s.id) && !held.has(s.id)) renderDetail(detail, s.id);
   }
 }
 
