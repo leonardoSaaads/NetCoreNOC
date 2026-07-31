@@ -18,12 +18,14 @@ import asyncio
 import contextlib
 import inspect
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from netcorenoc import auth, rbac
 from netcorenoc.api import declare, routes_static
@@ -294,6 +296,205 @@ def _live_routes(app: object) -> list[tuple[str, str]]:
             if method not in ("HEAD", "OPTIONS"):
                 out.append((method, path))
     return out
+
+
+# --- v0.7.5: F42, the gate refuses the shapes it cannot check ----------------------------
+#
+# F40 closed the *registration paths*. It did not close the *route shapes*: the traversal named no
+# registration mechanism, which was true, and assumed a flat object exposing `.path` and `.methods`,
+# which was enumeration wearing construction's clothes. Every shape below was reproduced by
+# execution, serving real traffic through a gate that reported nothing, in
+# `docs/gates/v0.7.5-phase-0.md` §2.
+#
+# Every test in this block was proven to fail on the unmodified tree by stashing the fix; the output
+# is pasted in `docs/gates/v0.7.5-phase-2.md` §2.
+
+
+async def _ws_handler(websocket: Any) -> None:  # pragma: no cover - never actually served
+    return None
+
+
+F42_SHAPES: tuple[tuple[str, Callable[[Any], None], str], ...] = (
+    (
+        "include_router",
+        lambda app: app.include_router(_undeclared_router()),
+        "_IncludedRouter",
+    ),
+    (
+        "mount_subapp",
+        lambda app: app.mount("/api/sub", FastAPI(docs_url=None, redoc_url=None)),
+        "Mount",
+    ),
+    (
+        "mount_staticfiles",
+        lambda app: app.mount("/api/static", StaticFiles(directory=str(PKG))),
+        "Mount",
+    ),
+    (
+        "websocket",
+        lambda app: app.add_api_websocket_route("/api/undeclared-ws", _ws_handler),
+        "APIWebSocketRoute",
+    ),
+)
+
+
+def _undeclared_router() -> APIRouter:
+    router = APIRouter()
+    router.add_api_route("/api/undeclared-via-router", _handler, methods=["GET"])
+    return router
+
+
+def _shape_names(shapes: set[type]) -> list[str]:
+    return sorted(f"{shape.__module__}.{shape.__name__}" for shape in shapes)
+
+
+@pytest.mark.parametrize("name,sabotage,shape", F42_SHAPES, ids=[s[0] for s in F42_SHAPES])
+async def test_f42_a_route_shape_the_gate_cannot_check_is_refused(
+    store: Store, name: str, sabotage: Callable[[Any], None], shape: str
+) -> None:
+    """**F42.** Four shapes reached a running process unchecked. Each now stops `create_app`.
+
+    Two of them — both `Mount`s — and the websocket route evade through the **empty-methods**
+    branch rather than through a missing `.path`; the `_IncludedRouter` evades through the missing
+    `.path`, and only on newer FastAPI. That is why the fix refuses on the **class** instead of
+    patching either branch: patching the branch the finding's brief described would have closed one
+    shape out of the four.
+    """
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        await _create_app_with(store, sabotage)
+    assert shape in str(excinfo.value), f"{name}: message does not name the offending shape"
+
+
+@pytest.mark.parametrize("name,sabotage,shape", F42_SHAPES, ids=[s[0] for s in F42_SHAPES])
+def test_f42_the_refusal_names_the_offending_class_and_the_way_in(
+    name: str, sabotage: Callable[[Any], None], shape: str
+) -> None:
+    """The message must name the class *and* say where registration belongs.
+
+    A refusal that says only "unknown route shape" tells a contributor that something is wrong and
+    not what or where. `type(route).__module__` and `type(route).__name__` identify the object;
+    naming `DeclaredRoutes` identifies the fix.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    sabotage(app)
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        declare.assert_every_route_is_declared(app)
+    message = str(excinfo.value)
+    assert shape in message
+    assert message.startswith(("fastapi.routing.", "starlette.routing.")), message
+    assert "DeclaredRoutes" in message
+    assert "KNOWN_ROUTE_SHAPES" in message
+
+
+def test_f42_an_untouched_app_is_not_refused() -> None:
+    """**The control.** Half of F42's evidence is worthless without it.
+
+    A bare `FastAPI()` carries an undeclared `/docs`, so a probe built on one would make every
+    result look like a catch — the first probe of this finding was invalid for exactly that reason.
+    This app matches `create_app`: `docs_url=None, redoc_url=None`, one declared route.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    app.get("/healthz")(_handler)
+    declare.assert_every_route_is_declared(app)  # must not raise
+
+
+def test_f42_a_head_only_route_is_refused_because_it_was_asked_for_explicitly() -> None:
+    """v0.7.4 skipped `HEAD` unconditionally, on the theory that FastAPI synthesises it.
+
+    It does not: a `GET`-declared `APIRoute` carries `{'GET'}` alone (see the pair test below).
+    A `HEAD` that is a route's **sole** method was written by hand and is a declaration like any
+    other.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    app.add_api_route("/api/undeclared-head", _handler, methods=["HEAD"])
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        declare.assert_every_route_is_declared(app)
+    assert "HEAD /api/undeclared-head" in str(excinfo.value)
+
+
+def test_f42_a_get_plus_head_pair_is_not_double_checked() -> None:
+    """The other direction of the same rule, and the reason it is narrowed rather than removed.
+
+    Starlette's own `Route` synthesises `HEAD` alongside `GET` — `/openapi.json` is the live
+    example, carrying `{'GET', 'HEAD'}`. That `HEAD` is not a separate declaration and never was, so
+    checking it would demand a declaration for a verb nobody wrote. `/healthz` is in
+    `UNAUTHENTICATED_PATHS`, so a refusal here would name it.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    app.add_api_route("/healthz", _handler, methods=["GET", "HEAD"])
+    declare.assert_every_route_is_declared(app)  # must not raise
+
+    # …and the narrowing is real: drop the GET and the same HEAD is refused.
+    solo = FastAPI(docs_url=None, redoc_url=None)
+    solo.add_api_route("/api/head-alone", _handler, methods=["HEAD"])
+    with pytest.raises(UndeclaredRouteError):
+        declare.assert_every_route_is_declared(solo)
+
+
+def test_f42_options_is_never_synthesised_so_nothing_exempts_it() -> None:
+    """v0.7.4 exempted `OPTIONS` as well. Confirmed by execution: it fires on nothing.
+
+    FastAPI does not put `OPTIONS` in `route.methods`, so the exemption never applied to a real
+    route — and an `OPTIONS` route someone registers deliberately must declare itself. The
+    exemption is gone; this test is what stops it coming back as a "harmless" symmetry with `HEAD`.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    app.get("/healthz")(_handler)
+    for route in app.routes:
+        if getattr(route, "path", None) == "/healthz":
+            assert "OPTIONS" not in (getattr(route, "methods", None) or set())
+
+    explicit = FastAPI(docs_url=None, redoc_url=None)
+    explicit.add_api_route("/api/undeclared-options", _handler, methods=["OPTIONS"])
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        declare.assert_every_route_is_declared(explicit)
+    assert "OPTIONS /api/undeclared-options" in str(excinfo.value)
+
+
+async def test_f42_the_live_app_produces_exactly_the_known_shapes(store: Store) -> None:
+    """**The half that generalises — read this before changing `KNOWN_ROUTE_SHAPES`.**
+
+    The specific hole is fifteen lines. The lesson is that a guard depending on an unpinned
+    dependency's internal representation can regress with **no commit and no failing test**: the
+    `include_router` shape was refused on `fastapi==0.115.0`, the floor of this project's own pin,
+    and skipped on `0.141.1` (`docs/gates/v0.7.5-phase-0.md` §2.4). `pyproject.toml` carries no
+    upper bound, there is no lockfile, and CI runs a bare `pip install -e .[dev]`.
+
+    So this asserts the set of route classes a **real** `create_app` produces is exactly the known
+    set. A FastAPI upgrade that changes the representation then fails here loudly, naming the new
+    class, on the day of the upgrade — instead of silently widening the hole.
+
+    **`KNOWN_ROUTE_SHAPES` is enumeration**, stated plainly because the same honesty was demanded of
+    the documentation guard in v0.7.4. This test is what makes the enumeration *maintained* rather
+    than merely written down, and it is not a substitute for it being a list. Its limit is recorded
+    on `docs/ROADMAP.md`: it detects a **new shape**, not a **changed meaning**. If a future
+    `APIRoute` carried its verbs somewhere other than `.methods`, the shape set would be unchanged
+    and the gate would quietly check nothing.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    live = {type(route) for route in app.routes}  # type: ignore[attr-defined]
+    known = set(declare.KNOWN_ROUTE_SHAPES)
+    assert live == known, (
+        "the shapes a real create_app produces are no longer exactly declare.KNOWN_ROUTE_SHAPES:\n"
+        f"  produced but not known: {_shape_names(live - known)}\n"
+        f"  known but not produced: {_shape_names(known - live)}\n"
+        "If a dependency upgrade changed the representation, do NOT widen the tuple until the "
+        "traversal in assert_every_route_is_declared can check every path and method the new shape "
+        "carries. Widening it without that is how the hole F42 closed would reopen."
+    )
+
+
+async def test_f42_every_path_served_today_still_registers(store: Store) -> None:
+    """The gate got stricter and no looser: a refusal was added, none was removed.
+
+    If this fails, the served surface has changed — which is a build failure, not a test to update.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    served = _live_routes(app)
+    assert len(served) == 48, f"the served surface moved: {len(served)} method/path pairs"
+    paths = {path for _method, path in served}
+    for public in declare.UNAUTHENTICATED_PATHS:
+        assert public in paths, f"{public} is no longer served"
 
 
 # --- completeness, driven from the live app so it cannot drift ---------------------------
