@@ -75,7 +75,10 @@ one-screen tour of the tree.
   finding → fix → test reviews and standards-compliance mappings. The finding series is continuous
   and never renumbered: F1–F14 (v0.1–v0.4), F15–F19 (v0.5.0), F20–F26 (v0.6.0), F27–F33 (v0.7.0),
   F34–F39 (v0.7.1), F40–F41 (v0.7.4 — the declaration gate, in
-  [`security/SECURITY-REVIEW-0.7.4.md`](security/SECURITY-REVIEW-0.7.4.md)).
+  [`security/SECURITY-REVIEW-0.7.4.md`](security/SECURITY-REVIEW-0.7.4.md)), F42 (v0.7.5 — the same
+  gate failing open on route *shapes*, in
+  [`security/SECURITY-REVIEW-0.7.5.md`](security/SECURITY-REVIEW-0.7.5.md), which also **corrects a
+  completeness claim v0.7.4 made** about that gate).
 - [`security/operations.md`](security/operations.md) — the **operator** security & operations
   guide (deployment, TLS, roles, audit-log operations, container hardening). The root
   [`../SECURITY.md`](../SECURITY.md) is the coordinated **vulnerability disclosure policy** (how

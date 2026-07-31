@@ -1,5 +1,43 @@
 # Upgrading NetCoreNOC
 
+## v0.7.4 → v0.7.5 (the operator's click, and two guards)
+
+**There is nothing to do. Stop reading.**
+
+No migration runs. No configuration changes. No API changes. Replace the code and restart.
+
+| | |
+|---|---|
+| Schema | **unchanged** — `user_version` stays **7**; no migration file added |
+| Data | untouched — learned state, scorer configuration, governance policy, provenance, labels, feedback and the audit chain all carry over byte for byte |
+| Routes | **unchanged** — every path, method, status code and response field is identical, in the same order |
+| Capabilities | **unchanged** — `PERMISSIONS`, `ROUTE_PERMISSIONS`, `ROUTE_SCOPE`, `PUBLIC_ROUTES` and the audit action catalog are all the same |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| How you run it | **unchanged** — `python -m netcorenoc.main` and `python -m netcorenoc audit verify`, exactly as before |
+| Downgrade | safe — v0.7.4 reads a v0.7.5 database, because it is the same database |
+
+**One thing you will notice, and it is deliberate.** In the Situations panel, a card you have
+**expanded is now held**: it stops being rebuilt by the live update while it is open, so the grouping
+you are reading — and the Confirm / Split buttons under it — cannot change under your click. A held
+card carries a **`held while open`** badge in its header saying so, and resumes live updates the
+moment you collapse it. Before v0.7.5 the card was destroyed and rebuilt every two seconds, which
+meant a click could be recorded against a grouping you had never actually looked at. Nothing else in
+the UI changes.
+
+It also makes the **route-declaration gate** refuse route shapes it cannot check (F42) — an included
+router, a mount, a websocket route, or a `HEAD`-only route. Like F40 and F41 before it, this is a
+startup-time check on the application's own routes; **it is not on the request path** and cannot
+change how an existing request is answered. It matters to you only if you have added routes to a
+fork by one of those means. On an unmodified NetCoreNOC there is nothing to change.
+
+**Verified, not assumed.** A database written by the **real v0.7.4 code** — devices driven through
+the real engine from real traps, situations, links, a user, an API token and a hash-chained audit
+row — was opened by v0.7.5: no migration ran, the schema and every row count were identical,
+`PRAGMA integrity_check` returned `ok`, and the audit chain verified under **both** versions to the
+same final hash (`405275083f09…`). `make eval` is byte-identical. See `docs/gates/v0.7.5-phase-5.md`
+§1 and §8.
+
 ## v0.7.3 → v0.7.4 (the last loose ends — structure, plus two gate fixes)
 
 **There is nothing to do. Stop reading.**
