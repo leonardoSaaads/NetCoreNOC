@@ -351,7 +351,7 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     A comment is not a proof — the behavioural test below is — but an `"unscoped"` entry with no
     stated reason is an assertion nobody has had to defend, which is how F34 happened.
     """
-    source = (Path(rbac.__file__)).read_text(encoding="utf-8")
+    source = (Path(rbac.tables.__file__)).read_text(encoding="utf-8")
     table = source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0]
     lines = table.splitlines()
     entries = [i for i, line in enumerate(lines) if line.strip().endswith(': "unscoped",')]

@@ -58,6 +58,7 @@ LAYER_OF: dict[str, str] = {
     "rootcause": "engine",
     "severity": "engine",
     "varbind_profile": "engine",
+    "varbind_accum": "engine",
     "preview": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",

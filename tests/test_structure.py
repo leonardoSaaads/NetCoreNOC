@@ -73,7 +73,11 @@ SUBMODULES = [
     "logsetup",
     "main",
     "maintenance",
+    # v0.7.4: `rbac` became a package (DECISIONS #96). `tables.py` is the single source of
+    # authority; `__init__.py` re-exports it by identity, never by copy.
     "rbac",
+    "rbac.policy",
+    "rbac.tables",
     "receiver",
     "rootcause",
     "runner",
@@ -110,6 +114,7 @@ SUBMODULES = [
     "store.situations",
     "store.state_clears",
     "store.types",
+    "varbind_accum",
     "varbind_profile",
 ]
 

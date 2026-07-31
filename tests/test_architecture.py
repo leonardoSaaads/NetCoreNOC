@@ -37,16 +37,7 @@ MAX_MODULE_LINES = 400
 #     allowed to exist but is not allowed to compound.
 #
 # Adding an entry here is therefore a visible, arguable diff, which is the entire point.
-DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
-    # v0.7.2 pushed this over the guard by adding `ROUTE_SCOPE`, the declaration F34 showed was
-    # missing. The table belongs here — `rbac.py` is the single source of authority and the build
-    # scope says so — so the honest outcome is a named debt entry rather than a trimmed comment
-    # block or a table hidden somewhere it does not belong. The split seam is already visible: the
-    # route/capability *tables* on one side, the capability-policy parser and resolver on the
-    # other. See MODULE-ARCHITECTURE.md §5.
-    "rbac.py": (436, "v0.7.4 — split the declaration tables from the policy resolver"),
-    "varbind_profile.py": (417, "v0.7.4 — one extraction (the accumulator), not a package"),
-}
+DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {}
 
 # The names permitted to appear in `DEBT_ALLOWLIST`. Enforced by
 # `test_no_module_may_join_the_allowlist`, which is the half of "only shrinks" that did not exist
@@ -54,8 +45,14 @@ DEBT_ALLOWLIST: dict[str, tuple[int, str]] = {
 # through green. This set shrinks when a module is fixed and never grows.
 #
 # v0.7.3 removed `store.py` (and the transitional `store/_all.py` it was `git mv`-d to) and
-# `main.py`. The set may only ever get smaller from here.
-ALLOWLIST_MEMBERSHIP_CEILING: frozenset[str] = frozenset({"rbac.py", "varbind_profile.py"})
+# `main.py`. v0.7.4 removed the last three — `shaping.py`, `rbac.py` and `varbind_profile.py` — so
+# the set is now **empty**, and any module added to DEBT_ALLOWLIST fails immediately.
+#
+# An empty allowlist that nothing defends is a coincidence, not a guarantee. Both direction tests
+# are kept for exactly that reason: `test_allowlist_only_shrinks` catches a stale entry, and
+# `test_no_module_may_join_the_allowlist` catches a new one. The second is the one that matters
+# now, because the first has nothing left to check.
+ALLOWLIST_MEMBERSHIP_CEILING: frozenset[str] = frozenset()
 
 
 # Modules that are over the guard by **deliberate, permanent design**, mapped to the invariant
@@ -112,7 +109,7 @@ def test_modules_discovered() -> None:
     """Guard the guard: a glob that matched nothing would make every assertion below vacuous."""
     modules = _modules()
     assert len(modules) >= 20, modules
-    assert "rbac.py" in modules
+    assert "rbac/tables.py" in modules
 
 
 def test_no_module_exceeds_the_size_guard() -> None:
