@@ -4,6 +4,127 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.5] - 2026-07-31 — "the click means what the operator meant"
+
+The release that makes the operator's click mean what the operator meant, and makes the two guards
+that protect v0.8.0 actually guard. Runtime dependencies stay at **five** and dev dependencies at
+**eleven**; **zero** new migrations (still `0001`–`0007`); **zero** new routes, capabilities, audit
+actions or served paths; `make eval` is **byte-identical** to v0.7.4. **An operator upgrading from
+v0.7.4 has nothing to do** — see [MIGRATION.md](MIGRATION.md).
+
+**Exactly four intentional behaviour changes.** One is at startup — a route of a shape the
+declaration gate cannot classify now refuses. Three are in the browser: an expanded situation card
+is no longer destroyed by an SSE update, the detail container is never displayed empty, and a held
+card carries a staleness marker. Nothing else in the appliance's behaviour moves.
+
+> **Read this if you read nothing else.** Three of those four changes are browser behaviour, and
+> **the test suite does not prove them.** There is no JavaScript runtime in this repository, by
+> design, so the UI tests assert the *shape of the source* and say so in their own comments. The
+> behavioural proof is [docs/gates/v0.7.5-manual-verification.md](docs/gates/v0.7.5-manual-verification.md),
+> which this build **wrote and did not execute**. DECISIONS #99.
+
+### Security — F42, and a correction to a claim v0.7.4 made
+
+See [SECURITY-REVIEW-0.7.5.md](docs/security/SECURITY-REVIEW-0.7.5.md).
+
+- **F42 — the declaration gate failed open on route shapes it could not classify.** v0.7.4's F40
+  closed the *registration paths*; it did not close the *route shapes*.
+  `assert_every_route_is_declared` failed open twice — `if path is None: continue`, and an inner
+  loop over a `methods` set that is empty for every shape carrying no verbs. **Five shapes evaded
+  it while serving real traffic**, all reproduced by execution with a passing control and a
+  served-200 confirmation: `include_router`, `mount()` with a sub-application, `mount()` with
+  `StaticFiles`, `add_api_websocket_route`, and an explicitly-registered `HEAD`-only route.
+  **Behaviour change:** an unrecognised route shape now refuses instead of being skipped.
+  Fixed with `declare.KNOWN_ROUTE_SHAPES` and a refusal outside it, so every object on `app.routes`
+  is either checked or refused and none is skipped. Recursing into each container was rejected —
+  every attribute it would need is an undocumented FastAPI internal, which rebuilds the defect one
+  level down (DECISIONS #98). `HEAD` is now skipped only when `GET` is present on the same route;
+  the `OPTIONS` exemption fired on nothing and is gone.
+- **The gate's coverage had regressed with no commit and no failing test.** The `include_router`
+  shape was **refused** on `fastapi==0.115.0`, the floor of this project's own pin, and is
+  **skipped** on `0.141.1`. `pyproject.toml` carries no upper bound and CI has no lockfile, so the
+  gate's completeness was a property of whatever pip resolved that morning. A new test asserts the
+  route-class set a real `create_app` produces equals the known set, so a future upgrade fails
+  loudly — naming the new class — on the day it happens. Its limit is recorded: it detects a new
+  *shape*, not a changed *meaning*.
+- **v0.7.4's completeness claim is corrected.** That release called the traversal "complete by
+  construction… nothing here lists the ways a route can be registered." The second clause is true
+  and the first does not follow from it: the traversal enumerated no *mechanism* but assumed a
+  *shape*. `SECURITY-REVIEW-0.7.4.md` is **not edited** — it is the record of what was believed
+  then; `MODULE-ARCHITECTURE.md` §10.1 carries a dated correction beneath the original paragraph.
+- **Whether to also pin FastAPI is left open**, with the reasoning, as a supply-chain policy
+  question about five dependencies rather than a route-gate question about one (DECISIONS #101).
+
+Fourteen `test_f42_*` regression tests, **twelve proven to fail** on the unmodified tree. The two
+that stay green are the control and the no-looser guard, and both must pass on either tree. The F40
+and F41 sets, the authorization matrix, the route-map completeness tests and the 48-entry
+route-order table all pass **unedited**.
+
+### Fixed — the operator-feedback acquisition path
+
+Three changes in `ui/app.js` and nothing else; specified in
+[FEEDBACK-PATH-0.7.5-DRAFT.md](docs/architecture/FEEDBACK-PATH-0.7.5-DRAFT.md). The failure that
+mattered was never the flicker: a click could land on a card rebuilt between the operator's visual
+decision and their mouse-down, recording a verdict against a membership they never evaluated. That
+is a **silently wrong label**, and it is worse than a missing one — a missing label is visible as
+absence and can be counted, while a wrong one is indistinguishable from a considered one at every
+layer downstream. The feedback click is the only source of human labels in the system and **v0.8.0
+is the dataset built from it**.
+
+- **An expanded card survives the SSE update.** `clear(sits)` was the first statement of
+  `renderSituations` and destroyed every card every two seconds, expanded ones included, along with
+  the feedback buttons inside them. Detail nodes of open cards are now harvested before the clear
+  and re-appended, keeping their identity and their listeners. Collapsed cards are still rebuilt —
+  the narrow fix the draft prefers, not a general reconciler.
+- **The detail container is never displayed empty.** `renderDetail` builds into a
+  `DocumentFragment` and swaps it in one synchronous step, so no reachable state has the container
+  displayed with no children. This also covers the first expansion, which the change above does not.
+- **A held card says it is stale.** Holding the card trades a wrong label for a stale one, and a
+  stale label is only better if the operator knows. A `held while open` badge, reusing the existing
+  `.badge.redacted` styling so it costs no new CSS — `style.css` and `index.html` are untouched and
+  the UI is still four files.
+
+**What this does *not* fix, said plainly:** the label is now *deliberate*, but it is still not
+*traceable to what was on screen*. Recovering which membership a verdict was about is the membership
+fingerprint, and that is **v0.8.0**. Nobody should read v0.7.5 as having solved label provenance.
+
+### Fixed — the documentation-consistency guard saw 31% of what it checks
+
+`test_documentation.py::source_of` blanked fenced code blocks **and** inline code spans, while the
+element-tag pattern matches `vX.Y.Z: planned` — which `docs/README.md` specifies as a **backticked**
+form and which every draft in the repository writes that way. The guard was not partially blind by
+accident; it was **inverted**, catching the form nobody writes and missing the form everybody
+writes, with the comment recording the convention sitting four lines above the code that defeated
+it.
+
+**15 of 48 element tags were visible (31%)**, and five of the eight tag-carrying documents were
+invisible entirely — including the v0.8.0 specification and the half-finished supersession the
+guard's own docstring names as its motivating example. **Now 49 of 49 outside fenced blocks (100%)**,
+with the one fenced example correctly still excluded.
+
+Demonstrated in three runs rather than asserted: injected and unfixed → green; injected and fixed →
+red; injection removed → green across the whole `docs/` tree. Three tests added, each driving the
+real guard function over a synthetic document. A **test defect, not a security finding** — no `F`
+number. DECISIONS #100.
+
+### Changed
+
+- `docs/architecture/FEEDBACK-DATASET-0.8-DRAFT.md` refined in place, every element still tagged
+  `v0.8.0: planned` and **nothing implemented**. All eleven cited code locations re-read against the
+  v0.7.5 tree; two corrected with dated notes (the `alarm` uniqueness is an index rather than a
+  table constraint; `project_situation_detail` moved in the v0.7.4 package split). **No constraint
+  changed in substance.** New §0 records what v0.7.5 hands over and what it does not; new §6a leaves
+  four column questions explicitly open for v0.8.0's own Phase 0.
+- `docs/README.md` states that backticks are the tag convention **and** that the guard reads them,
+  so the two rules cannot drift apart again.
+
+### Decisions
+
+**#98** the gate refuses unknown route shapes rather than learning to walk them · **#99** the UI is
+verified by source inspection plus a written manual protocol, and why not a JS harness · **#100**
+the documentation guard's inline-code strip is dropped, not narrowed · **#101** FastAPI is not
+pinned; the representation change is detected instead.
+
 ## [0.7.4] - 2026-07-31 — "no contradictions, no unowned debt"
 
 The release that closes every loose end the v0.7.x series leaves behind, so that v0.7.5 and v0.8.0
