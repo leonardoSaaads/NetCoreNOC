@@ -194,6 +194,19 @@ State at v0.7.2:
 This is the single most valuable thing v0.7.2 leaves behind: the debt is in CI instead of in a code
 review two years from now.
 
+> **Updated 2026-07-31 (v0.7.4).** The table above records the state **at v0.7.2** and is left as
+> written. `DEBT_ALLOWLIST` is now **empty**: `store.py` and `main.py` left in v0.7.3, and
+> `shaping.py`, `rbac.py` and `varbind_profile.py` left in v0.7.4. `ALLOWLIST_MEMBERSHIP_CEILING` was
+> emptied with it, so **any** module added to the allowlist now fails immediately — an empty
+> allowlist that nothing defends is a coincidence, not a guarantee, and the "may only shrink" and
+> "no module may join" tests are both kept for that reason.
+>
+> **No module under `src/netcorenoc/` exceeds 400 lines except `engine.py` (542)**, which is
+> `COHESION_EXEMPT` permanently. That is not a claim that the codebase is well factored — it is a
+> claim that no module exceeds a line count, which is a proxy, and §2 says so. See
+> [`../security/SECURITY-REVIEW-0.7.4.md`](../security/SECURITY-REVIEW-0.7.4.md) §4.2 for what a
+> reviewer would look at next, offered as an opinion rather than a commitment.
+
 ---
 
 ## 6. `store.py` — the target (**v0.7.3: planned**)

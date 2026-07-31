@@ -106,7 +106,9 @@ a later decision would be falsifying it.
 ### Notes
 
 - Decisions **#93–#97**. Security findings **F40** and **F41**.
-- Test count **701 → 754**. Coverage **95.80 % → 95.9 %**.
+- Test count **701 → 754**. Coverage **95.81–95.85 %** across runs, at or above the v0.7.3 figure of
+  95.80 %. The spread is `receiver.py`'s known timing-dependent branches, on the ROADMAP since
+  v0.7.3 and unchanged here.
 - `docs/scope/SCOPE-0.7.4.md`, `docs/releases/BUILD-REPORT-0.7.4.md`, and gate evidence
   `docs/gates/v0.7.4-phase-0.md` … `-phase-6.md`.
 
