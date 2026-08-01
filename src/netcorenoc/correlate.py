@@ -179,10 +179,47 @@ def contribution_of(result: LinkScore, name: str) -> float:
 
 
 @dataclass(frozen=True)
+class EvaluatedPair:
+    """One candidate pair **and the verdict it received** — accepted or rejected.
+
+    Deliberately a separate type from :class:`ScoredLink` even though the two carry the same two
+    fields, because in this release conflating them is the cardinal error. `ScoredLink` means *"the
+    scorer accepted this"*; `EvaluatedPair` means *"the scorer looked at this"*, and most of them
+    were rejected or were dropped by ``MAX_LINKS_PER_ALARM``. A reader who sees `ScoredLink` in the
+    capture path would reasonably assume every row is a link, which is exactly the misreading
+    `docs/architecture/FEEDBACK-DATASET-0.8-DRAFT.md` §3.1a exists to prevent.
+
+    ``result.linked`` is the champion's decision, captured as `dataset_pair.incumbent_linked`. It is
+    **provenance, not a target** — see the invariant in that section, and DECISIONS #103.
+    """
+
+    other: WindowAlarm
+    result: LinkScore
+
+
+@dataclass(frozen=True)
 class CorrelationResult:
     links: list[ScoredLink]
     considered: list[WindowAlarm]
     storm: bool
+    # **v0.8.0 — the only change this release makes to `correlate.py`, and it is additive.**
+    #
+    # `process()` already calls `score_link` for every candidate and already discards the
+    # `LinkScore` of every pair it does not keep: `considered` carries the `WindowAlarm` objects
+    # (identity and time) but **not** their scores, so the arithmetic was computed and thrown away
+    # on every call. Capturing the rejected pairs therefore needs `process()` to *return* what it
+    # computed.
+    #
+    # The alternative — re-scoring afterwards — is worse on both counts: it doubles the arithmetic
+    # on the ingest path, and it can produce **different numbers**, because `A` and `E` move between
+    # the decision and the re-score. A dataset of features the scorer never saw is worse than no
+    # dataset.
+    #
+    # Defaulted to an empty tuple-backed list so every existing constructor call and every test that
+    # builds a `CorrelationResult` by hand keeps working unchanged. Bounded by `MAX_CANDIDATES`
+    # (100), so the per-call memory cost is bounded by construction, like everything else on this
+    # path.
+    evaluated: list[EvaluatedPair] = field(default_factory=list)
 
 
 @dataclass
@@ -287,12 +324,16 @@ class Correlator:
         self.remove(new.alarm_id)
         candidates = self._recent_live(new.ts)
         storm = len(self.index) >= STORM_ALARMS
+        evaluated = []
         links = []
         for old in candidates:
             result = self.score_link(new, old, learner)
+            evaluated.append(EvaluatedPair(old, result))  # v0.8.0: record, decide nothing
             if result.linked:
                 links.append(ScoredLink(old, result))
         links = sorted(links, key=lambda link: link.score, reverse=True)[:MAX_LINKS_PER_ALARM]
         self.window.append(new)
         self.index[new.alarm_id] = new
-        return CorrelationResult(links=links, considered=candidates, storm=storm)
+        return CorrelationResult(
+            links=links, considered=candidates, storm=storm, evaluated=evaluated
+        )
