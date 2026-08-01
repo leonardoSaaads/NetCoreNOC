@@ -2020,3 +2020,91 @@ grouping**.
   the residual, and no test in this release closes it.
 - **Not decided here**: whether to also pin is a supply-chain policy question affecting five runtime
   dependencies, not one, and the decision protocol forbids resolving ambiguity by adding scope.
+
+## 102. `FEEDBACK-DATASET-0.8-DRAFT.md` is corrected in place and dated, never rewritten (v0.8.0)
+
+- **Context**: Workstream 1 must correct eight things in the document v0.9.0–v0.13.0 will be briefed
+  from, including one sentence (§3.1's *"the majority class, without which supervised training is
+  impossible"*) that authorises the imitation trap. The document already carries two dated
+  refinement passes from v0.7.5 and is the binding specification for the release correcting it.
+- **Options**: (a) rewrite the wrong passages so the document reads cleanly; (b) supersede the whole
+  file with `FEEDBACK-DATASET-0.8.md` and leave the draft as history; (c) strike the wrong sentence
+  through in place, leave it visible, and put the correction beneath it with the date and the
+  evidence.
+- **Choice**: (c), matching the `Corrected 2026-07-31 (v0.7.5)` blockquotes already in the file.
+- **Reason**: (a) destroys the record of what the project believed, which is the thing that makes a
+  correction *reviewable* — a reader who cannot see the withdrawn sentence cannot judge whether the
+  correction is right. It also silently invalidates every external reference to §3.1. (b) doubles
+  the documents a v0.9.0 author must reconcile and creates exactly the two-answers-to-one-question
+  condition `tests/test_documentation.py` exists to prevent. (c) keeps one document, one claim, and
+  a visible audit trail; the element tags stay `v0.8.0: planned`, which is the convention
+  `FEEDBACK-PATH-0.7.5-DRAFT.md` established for a draft whose release has shipped.
+- **Also corrected**: the same withdrawn sentence had already propagated to
+  `ROADMAP-0.8-TO-0.13.md`'s v0.8.0 entry. Left alone, the repository would state the correction in
+  one place and the error in another — the precise failure DECISIONS #93 and the documentation guard
+  exist to prevent. Corrected there too, by reference rather than by restatement.
+
+## 103. The imitation-trap invariant is expressed structurally, not only in prose (v0.8.0)
+
+- **Context**: Directive 3 forbids any promotion metric computed against `incumbent_linked`, while
+  keeping the column legitimate as provenance, context, a feature, and the basis of
+  champion/challenger comparison. Prose in a specification is advisory to whoever reads it in two
+  years; the sentence it replaces was itself well-intentioned prose.
+- **Options**: (a) state the invariant in the specification and rely on it being read; (b) omit
+  `incumbent_linked` entirely so the temptation cannot arise; (c) keep the column but ensure the
+  pair table has **no target column at all**, so the only label lives in `feedback` and reaching it
+  requires a join.
+- **Choice**: (c), with the invariant also written into the specification and addressed to v0.10.0
+  and v0.11.0.
+- **Reason**: (b) destroys real information — the champion's decision at that instant is
+  irrecoverable afterwards and is exactly what v0.11.0 needs for champion/challenger comparison —
+  and it would be capture-side censoring in the release built to end censoring. (a) alone failed
+  once already, which is why this ADR exists. (c) makes the distinction between a *feature* and a
+  *target* physical: a v0.9.0 author writing a training loop must go and **get** the human label,
+  and cannot reach for the machine's by accident or by autocomplete. The friction is the mechanism.
+- **Reinforced by measurement**: Phase 0 §3a found the accept rate swings from 0 % on quiet corpus
+  traffic to 100 % in a storm, so `incumbent_linked`'s class balance is a property of the weather.
+  A quantity that unstable is unusable as an evaluation basis even setting circularity aside.
+
+## 104. The server-side membership record is a child table, and it is written from the server's state (v0.8.0)
+
+- **Context**: The draft's §6a(3) left open whether the membership fingerprint is `feedback` columns
+  or a child table, and framed the fingerprint as client-reported evidence about staleness. Phase 0
+  §1 found the stronger fact: after a merge the label's referent is gone entirely — the natural join
+  `feedback ⋈ situation_alarm` returns nothing, and the surviving situation holds the union of both
+  bags with nothing distinguishing them.
+- **Options**: (a) store only a digest of the membership on `feedback`; (b) store the ordered member
+  ids as a delimited string column; (c) a child table keyed by feedback id holding the ordered ids,
+  **plus** the digest stored alongside for cheap comparison.
+- **Choice**: (c), written from the **server's** own state at verdict time, always, independently of
+  what any client sends.
+- **Reason**: a digest proves that something changed and cannot say what it was — and after a merge
+  there is nothing left to compare it *against*, so (a) records a fact about a bag nobody can
+  reconstruct. (b) puts a list in a column, which the project has refused everywhere else and which
+  makes the only useful query (`which labels involved alarm X?`) a string scan. (c) makes the bag
+  itself durable, which is what §3.3 says the dataset is *for*. Client-reported membership is kept
+  as a **separate, optional, untrusted** half; the divergence between the two is a metric, not an
+  error.
+- **Consequence, deliberately admitted**: the child table may legitimately have **zero** rows for a
+  given feedback id. Phase 0 §2 showed a verdict posted to an already-merged situation answers 200,
+  writes a row, and passes an empty bag to `learn.penalize()`. Recording an empty bag **as empty**
+  makes that population countable for the first time, so no "at least one member" constraint may be
+  imposed.
+
+## 105. The alarm-observation row is written per activation, not per trap (v0.8.0)
+
+- **Context**: The draft's §6a(2) left this open, noting the answer changes the row count by roughly
+  the dedup ratio and that `make eval` reports ~0.71.
+- **Options**: (a) one observation row per trap received; (b) one per activation that reaches
+  `Correlator.process()`.
+- **Choice**: (b).
+- **Reason**: measured in Phase 0 §3b — 3 159 traps produced 2 256 activations, ratio **0.7142**,
+  agreeing with `make eval`'s independently-computed `dedup_ratio` of 0.7156. The 903 extra rows (a)
+  would write are re-fires that **by construction never reached `score_link`**, so no pair row could
+  ever reference them: a 40 % increase in write volume on the ingest path, inside the batch lock,
+  buying rows nothing can join to. Prime directive 1 makes that decisive rather than merely
+  unattractive.
+- **Cost, recorded**: the count of suppressed re-fires between two activations is not recoverable
+  from the observation rows alone. It is recoverable from `alarm.count`, which the observation row
+  captures at decision time — so the information survives in the form that is actually useful (the
+  count at the instant), and only the individual re-fire timestamps are lost.
