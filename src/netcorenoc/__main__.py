@@ -75,6 +75,13 @@ async def _dataset_stats(db_path: str) -> int:
         await store.close()
     for key in sorted(stats):
         print(f"{key:<32} {stats[key]}")
+    window = stats.get("sink_window_days")
+    if window is not None:
+        print()
+        print(f"The sink currently spans {window} days of traffic.")
+        print("This is the window in which a label can still find its pairs. It is set by")
+        print("whichever bound binds FIRST — the row cap or the age limit — and at most")
+        print("traffic rates that is the ROW CAP, not the configured retention in days.")
     return 0
 
 

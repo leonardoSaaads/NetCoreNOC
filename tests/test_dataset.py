@@ -22,6 +22,7 @@ from netcorenoc.rootcause import Member
 from netcorenoc.scoring import LinkScore, TermContribution
 from netcorenoc.store import MAX_CLIENT_MEMBERS, Store
 
+import authutil
 import util
 
 TS = 1_000_000.0
@@ -612,3 +613,254 @@ def test_capture_defaults_to_on() -> None:
     """Capture ships **on**: a deployment that discovers this dataset's importance six months in
     has lost six months that cannot be reconstructed. §3.4 is the whole reason."""
     assert Capture().enabled is True
+
+
+async def test_applying_a_reduction_actually_deletes(store: Store) -> None:
+    """**A bug the dead-code guard found before a human did.**
+
+    The first implementation stored the new policy and audited the change — and deleted nothing,
+    because the maintenance loop only prunes the sink. `vulture` flagged `prune_dataset` as unused,
+    which is exactly what an unwired destructive path looks like: an operator would have set three
+    months, seen the count, confirmed, and kept twelve.
+
+    The deletion now happens in the audited transaction, **after** the audit row, so a crash
+    mid-delete still leaves the intent on record.
+    """
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    async with store.lock:
+        sid = await store.create_situation(TS, None)
+        old, new = TS - 100.0, TS + 100.0
+        run = engine.capture.run_id
+        await store.add_pairs(
+            [
+                (run, i, i + 1, None, None, sid, 1.0, 0.0, 0.0, 0, 0, 0.9, 1, 0, 0, ts)
+                for i, ts in enumerate([old] * 4 + [new] * 2)
+            ]
+        )
+        await store.conn.execute("UPDATE dataset_pair SET lifecycle='dataset'")
+        await store.commit()
+
+    async with store.lock:
+        impact = await store.preview_retention(TS)
+        assert impact["pairs"] == 4
+        deleted = await store.prune_dataset(TS)
+        await store.commit()
+
+    assert deleted["pairs"] == 4, "applying a reduction must destroy what the preview counted"
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair")
+    assert int((await cur.fetchone())[0]) == 2  # type: ignore[index]
+
+
+# --- the HTTP surface: admin-only, previewed, and not an existence oracle ------------------
+
+
+async def test_retention_routes_are_admin_only(store: Store) -> None:
+    """The dataset is a scope bypass by construction, so there is no scoped view to build.
+
+    A viewer and an editor must not reach either route — not filtered, not redacted, not
+    aggregated-for-an-editor.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    body = {"sink_days": 21, "sink_rows": 1000, "training_days": 365, "audit_days": 730}
+    for role in ("viewer", "editor"):
+        client = await authutil.client_as(app, role)
+        try:
+            assert (await client.get("/api/dataset/retention")).status_code == 403, role
+            assert (await client.post("/api/dataset/retention", json=body)).status_code == 403, role
+        finally:
+            await client.aclose()
+    admin = await authutil.client_as(app, "admin")
+    try:
+        assert (await admin.get("/api/dataset/retention")).status_code == 200
+    finally:
+        await admin.aclose()
+
+
+async def test_the_retention_route_previews_by_default_and_destroys_nothing(
+    store: Store,
+) -> None:
+    """**`preview` defaults to True**, and that default is the safety property.
+
+    A client that forgets the field, or a script written against an older contract, gets a count
+    and no deletion. Reaching the destructive branch takes `preview=false`, sent deliberately.
+    """
+    engine, _queue, app = await authutil.make_env(store)
+    async with store.lock:
+        sid = await store.create_situation(TS - 10**7, None)
+        await store.add_pairs(
+            [
+                (
+                    engine.capture.run_id,
+                    1,
+                    2,
+                    None,
+                    None,
+                    sid,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0,
+                    0,
+                    0.9,
+                    1,
+                    0,
+                    0,
+                    TS - 10**7,
+                )
+            ]
+        )
+        await store.conn.execute("UPDATE dataset_pair SET lifecycle='dataset'")
+        await store.commit()
+
+    body = {"sink_days": 1, "sink_rows": 100, "training_days": 2, "audit_days": 3}
+    client = await authutil.client_as(app, "admin")
+    try:
+        resp = await client.post("/api/dataset/retention", json=body)
+        assert resp.status_code == 200, resp.text
+        payload = resp.json()
+        assert payload["applied"] is False
+        assert payload["status"] == "preview"
+        assert payload["would_delete"]["pairs"] == 1
+    finally:
+        await client.aclose()
+
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair")
+    assert int((await cur.fetchone())[0]) == 1, "the preview destroyed a row"  # type: ignore[index]
+
+    # And the audit records the LOOK, not only the destruction.
+    cur = await store.conn.execute(
+        "SELECT COUNT(*) FROM audit_log WHERE action='retention.preview'"
+    )
+    assert int((await cur.fetchone())[0]) == 1  # type: ignore[index]
+
+
+async def test_the_retention_route_applies_and_audits_the_reduction(store: Store) -> None:
+    """The destructive branch: deletes, and records before/after plus the previewed impact."""
+    engine, _queue, app = await authutil.make_env(store)
+    async with store.lock:
+        sid = await store.create_situation(TS - 10**7, None)
+        await store.add_pairs(
+            [
+                (
+                    engine.capture.run_id,
+                    1,
+                    2,
+                    None,
+                    None,
+                    sid,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0,
+                    0,
+                    0.9,
+                    1,
+                    0,
+                    0,
+                    TS - 10**7,
+                )
+            ]
+        )
+        await store.conn.execute("UPDATE dataset_pair SET lifecycle='dataset'")
+        await store.commit()
+
+    body = {
+        "sink_days": 1,
+        "sink_rows": 100,
+        "training_days": 2,
+        "audit_days": 3,
+        "preview": False,
+    }
+    client = await authutil.client_as(app, "admin")
+    try:
+        resp = await client.post("/api/dataset/retention", json=body)
+        assert resp.status_code == 200, resp.text
+        payload = resp.json()
+        assert payload["applied"] is True
+        assert payload["deleted"]["pairs"] == 1
+    finally:
+        await client.aclose()
+
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair")
+    assert int((await cur.fetchone())[0]) == 0, "applying a reduction did not delete"  # type: ignore[index]
+    assert engine.retention.training_days == 2.0
+
+    cur = await store.conn.execute(
+        "SELECT details FROM audit_log WHERE action='retention.change' ORDER BY id DESC LIMIT 1"
+    )
+    details = str((await cur.fetchone())[0])  # type: ignore[index]
+    assert "before" in details and "after" in details and "previewed_impact" in details
+
+
+async def test_an_invalid_retention_ordering_is_refused_with_a_reason(store: Store) -> None:
+    """Fail-closed, and the 400 names the offending tier — not a bare "invalid"."""
+    _engine, _queue, app = await authutil.make_env(store)
+    client = await authutil.client_as(app, "admin")
+    try:
+        resp = await client.post(
+            "/api/dataset/retention",
+            json={
+                "sink_days": 400,
+                "sink_rows": 100,
+                "training_days": 365,
+                "audit_days": 730,
+                "preview": False,
+            },
+        )
+    finally:
+        await client.aclose()
+    assert resp.status_code == 400
+    assert "strictly less than training" in resp.json()["detail"]
+    cur = await store.conn.execute("SELECT COUNT(*) FROM audit_log WHERE action='retention.change'")
+    assert int((await cur.fetchone())[0]) == 0, "a refused change must not be audited as applied"  # type: ignore[index]
+
+
+async def test_the_client_fingerprint_is_not_an_existence_oracle(store: Store) -> None:
+    """**The existence-oracle test, over HTTP: status, body and timing.**
+
+    A scoped editor must not be able to learn, from any difference in the response, whether an
+    alarm id they named exists. This is the discipline F34 established for situations and F37 for
+    label targets, applied to a field that accepts arbitrary integers.
+    """
+    engine, _queue, app = await authutil.make_env(store)
+    async with store.lock:
+        ids = await _alarms(store, 3)
+        sid = await store.create_situation(TS, None)
+        for t in ids:
+            await store.add_alarm_to_situation(sid, t[0])
+        await store.commit()
+    engine.members[sid] = [Member(*t, TS) for t in ids]
+
+    real, ghost = ids[0][0], 987_654_321
+
+    async def post(member_ids: list[int], verdict: str) -> tuple[int, str, float]:
+        client = await authutil.client_as(app, "editor")
+        try:
+            start = time.perf_counter()
+            resp = await client.post(
+                f"/api/situations/{sid}/feedback",
+                json={"verdict": verdict, "member_ids": member_ids, "updated_at": 1.0},
+            )
+            return resp.status_code, resp.text, time.perf_counter() - start
+        finally:
+            await client.aclose()
+
+    # `confirm` and `split` are distinct verdicts, so each POST is a genuine insert (F36) and the
+    # two responses are comparable rather than one being an idempotent no-op.
+    status_real, body_real, t_real = await post([real], "confirm")
+    status_ghost, body_ghost, t_ghost = await post([ghost], "split")
+
+    assert status_real == status_ghost == 200, (status_real, status_ghost)
+    assert body_real.replace("confirm", "V") == body_ghost.replace("split", "V"), (
+        "the response body differs between an existing and a non-existent alarm id"
+    )
+    # Timing: the write path never looks the id up, so there is no query whose cost could differ.
+    # A generous bound — this asserts "no database round trip", not "constant time".
+    assert abs(t_real - t_ghost) < 0.25, (t_real, t_ghost)
+
+    # And both were recorded verbatim.
+    cur = await store.conn.execute(
+        "SELECT alarm_id FROM feedback_member WHERE source='client' ORDER BY feedback_id, position"
+    )
+    assert [int(r[0]) for r in await cur.fetchall()] == [real, ghost]

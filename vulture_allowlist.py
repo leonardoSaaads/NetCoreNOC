@@ -91,3 +91,20 @@ set_rbac_policy  # unused function (netcorenoc/api/routes_governance.py)
 get_scope_policy  # unused function (netcorenoc/api/routes_governance.py)
 set_scope_policy  # unused function (netcorenoc/api/routes_governance.py)
 role_allows  # unused function (netcorenoc/rbac.py) - the ceiling oracle for the parity gate
+
+# v0.8.0. `feedback_members` is the read path for the server-side membership record — the bag a
+# label was about. Nothing in the runtime package reads it yet, because v0.8.0 CAPTURES and does not
+# consume: the bias report needs only aggregates, and the consumer is v0.9.0's training loop.
+#
+# It is kept, exported and tested because it is the accessor that makes the release's headline
+# property demonstrable at all — `tests/test_dataset.py::test_the_bag_survives_a_merge_that_
+# destroys_every_other_trace` uses it to recover a bag after a merge has destroyed every other
+# trace, which is the thing `docs/gates/v0.8.0-phase-0.md` §1 proved impossible before. Deleting it
+# would leave that proof with nothing to assert against, and would make a future release re-derive
+# a query this one already got right.
+feedback_members  # unused method (netcorenoc/store/dataset.py) - the recovered-bag accessor
+
+# The two dataset-retention handlers, for the same reason as the governance handlers above:
+# they are registered through `DeclaredRoutes`' decorators, so nothing calls them by name.
+get_retention  # unused function (netcorenoc/api/routes_admin.py)
+set_retention  # unused function (netcorenoc/api/routes_admin.py)

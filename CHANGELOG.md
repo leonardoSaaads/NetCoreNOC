@@ -4,6 +4,75 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-08-01 — "the scoreboard"
+
+**Capture the operator feedback as a durable dataset, and measure its bias. Trains nothing.**
+
+Every ML release from v0.9.0 to v0.13.0 consumes what this one captures, and capture is
+irreversible: `A` and `E` decay continuously, `alarm` is deduplicated and mutated on re-fire, and
+situations are merged and lose their membership. A field not captured at the moment of decision is
+not captured late — it is captured never.
+
+### Added
+
+- **The feedback dataset** (migration `0008`). Four tables: `capture_run` (the constants a period
+  of capture shares), `dataset_observation` (one immutable row per activation, carrying the raw
+  material `alarm` overwrites on re-fire), `dataset_pair` (one row per **evaluated** pair — linked
+  and rejected alike, before `MAX_LINKS_PER_ALARM` truncation), and `feedback_member` (the
+  membership record). Fifteen columns on `feedback`, one on `situation`.
+- **The server-side membership record.** At the moment of a verdict the server writes the ordered
+  member alarm ids from its own state. A merged situation's label previously lost its referent
+  entirely — `feedback ⋈ situation_alarm` returns nothing and the surviving situation holds the
+  union of both bags — and the bag is now recoverable regardless.
+- **`situation.merged_into`.** The merge chain was unrecoverable: the merge marked the source
+  `merged` and never recorded the destination. Lineage, and v0.10.0's split-by-incident, depend on
+  it.
+- **The optional client fingerprint** on `POST /api/situations/{sid}/feedback` — what the UI
+  rendered, plus the situation's `updated_at` at render time. Additive, optional, bounded, never
+  rejected, and never used to validate the existence of anything. The divergence between it and the
+  server's own bag is a metric, not an error.
+- **Three retention tiers**, admin-configurable, `sink < training ≤ audit` enforced fail-closed with
+  a precise reason. `GET`/`POST /api/dataset/retention`, both admin-only.
+- **Preview before destruction.** Lowering retention deletes rows and there is no rollback for a
+  `DELETE`. Applying requires `preview=false` sent deliberately, after the count has been seen;
+  both the preview and the change are audited (`retention.preview`, `retention.change`).
+- **The bias report** — `python -m netcorenoc dataset bias`, and `make bias-report`. Deterministic,
+  aggregates only, and a **gate**: `make qa` compares it byte-for-byte against a frozen fixture, so
+  it goes red the day capture changes shape. Reports effective sample size as **bags, not pairs**.
+- **`python -m netcorenoc dataset stats`** / `make dataset-stats` — what capture costs in rows, and
+  the **observed** sink window in days, which is not the configured one (see Known limits).
+
+### Fixed
+
+- **F43 — the declaration gate's residual fail-open.** `assert_every_route_is_declared` refused
+  unknown route *shapes* (F42) but, within a known shape, iterated `route.methods` — and an empty
+  set produced zero iterations, so the route was neither checked nor refused while Starlette served
+  every verb on it. An empty method set is now refused, by the same logic that refuses an unknown
+  shape. Latent; no route in this repository was registered either way.
+
+### Changed
+
+- `Correlator.process()` returns the evaluated pairs it already computed. **`correlate.py`'s only
+  change, and it is additive on the return value**: `make eval` is byte-identical, `score_link`'s
+  function body hashes identically, and the `links` list is unchanged member for member.
+- Pre-v0.7.5 `feedback` rows are marked `legacy_capture` and **excluded from training by default**.
+  They are not known to be bad — they are of *unknown quality*, which is a weaker and different
+  claim — so they are marked rather than deleted.
+
+### Known limits
+
+- **The sink's row cap binds long before its 21-day age limit at any realistic traffic rate.**
+  Measured at 62 pair rows per trap on the storm-heavy eval corpus, the 2 000 000-row default is
+  exhausted after ~3.7 days at 0.1 traps/s and ~9 hours at 1 traps/s. The cap is a **disk budget**;
+  the age limit is a ceiling most deployments never reach. `dataset stats` reports the *observed*
+  window so an operator is not misled by the configured one.
+- **Capture costs 62 rows and 6.9 kB per trap on the eval corpus**, a 9.9× database growth. That
+  corpus is 86 % storm by construction and is the worst case, not the typical one.
+- The merge chain is recorded from v0.8.0 **forward**. Merges that happened before the upgrade are
+  gone; no migration can reconstruct a destination that was never written.
+- **Nothing trains.** No model, no fit, no train/test split, no `numpy`, no `scikit-learn`.
+  Runtime dependencies: **five, unchanged**.
+
 ## [0.7.5] - 2026-07-31 — "the click means what the operator meant"
 
 The release that makes the operator's click mean what the operator meant, and makes the two guards

@@ -123,3 +123,88 @@ def test_json_formatter_emits_json() -> None:
     record = logging.LogRecord("netcorenoc", logging.INFO, __file__, 1, "hello", None, None)
     payload = json.loads(JsonFormatter().format(record))
     assert payload["message"] == "hello" and payload["level"] == "INFO"
+
+
+# --- v0.8.0: the dataset CLI ----------------------------------------------------------------
+
+
+async def _dataset_fixture(db: str) -> None:
+    """A database with a capture run and one labelled situation, built without a wall clock."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from test_bias import build_fixture
+
+    store = Store(db)
+    await store.open()
+    await build_fixture(store)
+    await store.close()
+
+
+def test_dataset_bias_cli_emits_the_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`python -m netcorenoc dataset bias` — the release's deliverable, over the CLI it ships on."""
+    db = str(tmp_path / "bias.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    asyncio.run(_dataset_fixture(db))
+    assert cli.main(["dataset", "bias"]) == 0
+    out = capsys.readouterr().out
+    assert "NetCoreNOC feedback-dataset bias report" in out
+    assert "EFFECTIVE SAMPLE SIZE" in out
+    assert "*n* IS THE NUMBER OF INDEPENDENT BAGS, NOT THE NUMBER OF PAIRS." in out
+    assert "what this report CANNOT tell you" in out
+
+
+def test_dataset_bias_cli_is_deterministic_across_invocations(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two separate CLI runs must be byte-identical.
+
+    Stronger than an in-process repeat, which would still pass if the report read a clock once and
+    cached it. This is what makes the report usable as a gate.
+    """
+    db = str(tmp_path / "det.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    asyncio.run(_dataset_fixture(db))
+    assert cli.main(["dataset", "bias"]) == 0
+    first = capsys.readouterr().out
+    assert cli.main(["dataset", "bias"]) == 0
+    assert capsys.readouterr().out == first
+
+
+def test_dataset_stats_cli_reports_the_observed_window(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§7.3: what capture costs, **and the window the operator actually has**.
+
+    Not the configured `sink_days`, which the row cap almost always reaches first — an operator
+    reading `21` and concluding they have three weeks to label something would be wrong, and
+    nothing else would tell them.
+    """
+    db = str(tmp_path / "stats.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    asyncio.run(_dataset_fixture(db))
+    assert cli.main(["dataset", "stats"]) == 0
+    out = capsys.readouterr().out
+    assert "dataset_pair.dataset" in out
+    assert "capture_run" in out
+
+
+def test_dataset_stats_on_an_empty_database_says_nothing_it_cannot_know(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh appliance has no sink, so there is no window to report — and it invents none."""
+    db = str(tmp_path / "empty.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+
+    async def _open() -> None:
+        store = Store(db)
+        await store.open()
+        await store.close()
+
+    asyncio.run(_open())
+    assert cli.main(["dataset", "stats"]) == 0
+    out = capsys.readouterr().out
+    assert "sink_window_days                 None" in out
+    assert "The sink currently spans" not in out

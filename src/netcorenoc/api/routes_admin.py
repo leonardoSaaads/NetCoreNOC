@@ -269,5 +269,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "previewed_impact": dict(impact),
                 },
             )
+            # **The deletion happens HERE, in the audited transaction, not later.** Directive 9
+            # forbids the maintenance loop destroying labels on a schedule; it does not make the
+            # reduction a no-op. The operator has now seen the count and asked for it, so it
+            # happens once, visibly, attributed to them — and the audit row above precedes it, so
+            # a crash mid-delete leaves the intent on record.
+            deleted = await store.prune_dataset(cutoff)
         engine.retention = candidate
-        return {"status": "saved", "would_delete": impact, "applied": True}
+        return {
+            "status": "saved",
+            "would_delete": impact,
+            "deleted": deleted,
+            "applied": True,
+        }

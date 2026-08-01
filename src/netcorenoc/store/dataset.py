@@ -140,15 +140,6 @@ class DatasetMixin(StoreBase):
         observations = len(list(await cur.fetchall()))
         return pairs, observations
 
-    async def count_evaluated_pairs_for(self, situation_id: int) -> int:
-        """How many pairs of this situation were ever evaluated — the coverage numerator (§6.3)."""
-        cur = await self.conn.execute(
-            "SELECT COUNT(*) FROM dataset_pair WHERE situation_id=?", (situation_id,)
-        )
-        row = await cur.fetchone()
-        assert row is not None
-        return int(row[0])
-
     # -- the membership record -----------------------------------------------------------------
 
     async def situation_opened_at(self, situation_id: int) -> float | None:
@@ -238,8 +229,10 @@ class DatasetMixin(StoreBase):
         # An observation is dropped only once no sink pair references it. Promoted observations are
         # excluded by the lifecycle clause, so a promoted pair's raw material is never collected.
         cur = await self.conn.execute(
+            # nosec B608 - `_UNREFERENCED` is a module constant of literal SQL; the only value
+            # that crosses the boundary is `cutoff`, which is a bound parameter.
             "DELETE FROM dataset_observation WHERE lifecycle='sink' AND observed_at < ? "
-            f"AND {_UNREFERENCED} RETURNING id",
+            f"AND {_UNREFERENCED} RETURNING id",  # nosec B608
             (cutoff,),
         )
         counts["observations"] = len(list(await cur.fetchall()))
@@ -259,8 +252,9 @@ class DatasetMixin(StoreBase):
         )
         counts["pairs"] = len(list(await cur.fetchall()))
         cur = await self.conn.execute(
+            # nosec B608 - as above: a literal module constant, and `cutoff` is bound.
             "DELETE FROM dataset_observation WHERE lifecycle='dataset' AND observed_at < ? "
-            f"AND {_UNREFERENCED} RETURNING id",
+            f"AND {_UNREFERENCED} RETURNING id",  # nosec B608
             (cutoff,),
         )
         counts["observations"] = len(list(await cur.fetchall()))
@@ -326,4 +320,18 @@ class DatasetMixin(StoreBase):
         assert row is not None
         out["sink_oldest"] = float(row[0]) if row[0] is not None else None
         out["sink_newest"] = float(row[1]) if row[1] is not None else None
+        # **The number §7.3 actually asks for: days of window at THIS deployment's traffic.**
+        #
+        # Not the configured `sink_days`, which is a ceiling the row cap almost always reaches
+        # first. Measured over the eval corpus at 62 pair rows per trap, the 2 000 000-row default
+        # is exhausted after ~3.7 days at 0.1 traps/s and ~9 hours at 1 trap/s — so the 21-day
+        # setting is, in most deployments, not the bound that governs.
+        #
+        # An operator reading `sink_days: 21` and concluding they have three weeks to label
+        # something would be wrong, and nothing else would tell them. This does.
+        out["sink_window_days"] = (
+            None
+            if out["sink_oldest"] is None or out["sink_newest"] is None
+            else round((out["sink_newest"] - out["sink_oldest"]) / 86400.0, 2)
+        )
         return out
