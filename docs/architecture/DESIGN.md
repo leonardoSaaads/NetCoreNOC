@@ -1292,3 +1292,230 @@ in one direction only — a *stale* entry failed, but a **newly added** module w
   found while reviewing v0.7.2 are specified in `MODULE-ARCHITECTURE.md` §10 and deferred to v0.7.4,
   because fixing a security-adjacent guard inside a move release forfeits the parity story for a
   latent, unexploited gap.
+
+---
+
+## v0.8.0 — the feedback dataset: what is captured, and why each column exists
+
+The binding specification is
+[`FEEDBACK-DATASET-0.8-DRAFT.md`](FEEDBACK-DATASET-0.8-DRAFT.md) **as corrected in this release's
+Phase 1**. This section is the *design*: the physical layout, the columns, and the justification for
+each one. It is written before the SQL, because capture is irreversible and a column added later is
+a migration while a moment not captured is gone.
+
+**One rule governs every column below, and a column that satisfies neither clause does not exist:**
+
+> **Store what cannot be recomputed. Derive what can.** And: **keys are not features** — an
+> identifier is present for a join, never as a model input.
+
+### The two populations
+
+| | the **sink** | the **dataset** |
+|---|---|---|
+| Contains | rows whose destiny is **unknown** — no label has arrived | rows whose destiny is **known** — promoted by a label |
+| Grows with | **traffic** | **labels** |
+| Bounded by | time **and** a row cap, whichever binds first | a retention policy, admin-set |
+
+**The dataset grows with labels, not with traffic**, and that is what makes the design safe without
+a magic traps/day number: a 200 000-trap storm fills the sink and does not move the dataset.
+
+### The physical layout — measured, then chosen against the measurement
+
+Both candidate layouts were built with the same columns and the same **194 341-row** sink volume
+Phase 0 measured, and the four operations that matter were timed:
+
+| Operation | **A**: one table + `lifecycle` | **B**: two tables |
+|---|---|---|
+| file size after load | 23.92 MB | **21.52 MB** |
+| promotion of one label's pairs | 18.42 ms | **12.57 ms** |
+| dataset-only query (the report) | 0.44 ms | **0.06 ms** |
+| bounded sink deletion by age | 326.03 ms | **297.04 ms** |
+| bounded sink deletion by row cap | 12.51 ms | **11.07 ms** |
+
+**Layout B won every measurement**, by 9–15 % on the two that matter operationally. **Layout A was
+chosen anyway**, for a correctness property no timing can show, and the honest statement of the
+trade is:
+
+> A pair row references two **observation** rows. Under layout B a promoted pair lives in
+> `pair_dataset` while its observations would still live in `observation_sink` — so promotion must
+> either preserve ids across four tables that each autoincrement independently, or **rewrite every
+> reference as it moves**. That is a correctness hazard on the per-label path, and its failure mode
+> is a dataset row whose raw material silently points at the wrong observation, or at nothing.
+>
+> Under layout A **nothing moves**. Promotion is one `UPDATE` of one column; ids are stable;
+> references cannot break because no row changes identity.
+
+Two lesser reasons point the same way: layout B duplicates a sixteen-column definition across two
+`CREATE TABLE`s, where a column added to one and not the other makes the promotion `SELECT` silently
+drop it; and it needs **four** tables where A needs two.
+
+**The cost, accepted and stated:** every dataset query carries a `WHERE lifecycle='dataset'`
+predicate, and — the one that matters — the sink's bounded deletion is separated from the labelled
+corpus by a `WHERE lifecycle='sink'` clause rather than by a table boundary. That is a *checked*
+guarantee where B's would have been *structural*, which is against this project's usual preference.
+It is mitigated by a dedicated test that the prune paths cannot touch promoted rows, and it is
+recorded as a known limit rather than argued away. Recorded as **DECISIONS #107**.
+
+### `capture_run` — the context table
+
+Version, scorer configuration, window bounds and the retention policy are **constants over a
+period**, not per-pair facts. Normalising them into one small table referenced by foreign key is
+"generous in columns, not in row multiplicity" applied one level up, and it is what makes the
+dataset reproducible and two bias reports comparable.
+
+A new row is opened at engine start, and whenever the scorer configuration or the retention policy
+changes — so the pair rows on either side of an admin's retune are distinguishable, which nothing
+else would record.
+
+| Column | Why it is here |
+|---|---|
+| `started_at` | not recomputable — when this configuration took effect |
+| `netcorenoc_version` | not recomputable — the code that produced these rows |
+| `scorer_config_id`, `scorer_params_hash` | not recomputable — the configuration may be rolled forward or back; `NULL` means the coded defaults, the fail-safe state |
+| `window_s`, `max_candidates`, `max_links_per_alarm`, `link_threshold` | not recomputable — the censoring bounds in effect, which determine what the sink could *possibly* have seen |
+| `retention_*` | not recomputable — a corpus pruned under 12 months and one under 3 are not comparable, and nothing else would say which was which |
+| `a_epoch`, `e_epoch` | not recomputable — the decay clock at run start |
+
+### `dataset_observation` — one row per **activation**
+
+Not per trap: measured 0.7142 activations per trap, and the 903 extra rows a per-trap policy would
+write are re-fires that never reached `score_link`, so no pair row could reference them
+(DECISIONS #105). `alarm` is deduplicated on `(entity_id, class_id, instance)` and **mutated on
+re-fire**, so it holds the latest state and cannot answer "what did this look like when the decision
+was made?".
+
+| Column | Reason | Class |
+|---|---|---|
+| `capture_run_id` | the context this was captured under | key |
+| `alarm_id`, `ne_id`, `device_id`, `entity_id`, `class_id` | joins **only** — see Rule 2 | **key** |
+| `observed_at` | the instant | cannot recompute |
+| `alarm_count` | the alarm's count **at this decision**; `alarm.count` advances in place | cannot recompute |
+| `severity`, `severity_rank` | as received; `NULL` is an honest unknown, never a default | cannot recompute |
+| `instance` | the dedup instance resolved at this trap | cannot recompute |
+| `trap_oid`, `source_address` | raw material for features nobody has invented yet | cannot recompute |
+| `varbinds` | the raw material, JSON, **once per observation and never per pair** | cannot recompute |
+
+Severity and entity are captured **even though `AdditiveScorer` ignores them**. `LinkFeatures`'
+reserved slots are `None` because the *incumbent* does not use them, not because v0.9.0 will not.
+
+**Deliberately absent:** "same vendor?", "same /24?", "same OID root?". Those are *modelling
+decisions* and freezing one now is the same mistake as freezing the label-derivation policy. The raw
+material is stored; the release that models decides what a feature is.
+
+### `dataset_pair` — one row per **evaluated** pair, linked and rejected alike
+
+Written before `MAX_LINKS_PER_ALARM` truncation, which Phase 0 measured as discarding **183 029 of
+194 341** evaluated pairs — 94 % — on the eval corpus.
+
+| Column | Reason | Class |
+|---|---|---|
+| `capture_run_id` | the context | key |
+| `alarm_a`, `alarm_b` | join to the observations; `a` is the window alarm, `b` the newly activated | **key** |
+| `observation_a`, `observation_b` | the raw material | **key** |
+| `situation_id` | the situation `alarm_b` landed in **at capture time** — the join promotion uses | **key** |
+| `delta_t_s` | the window has moved on | cannot recompute |
+| `class_affinity` | the **value** of `A`, not `w_a·A` | cannot recompute |
+| `entity_affinity` | the **value** of `E`, not `w_e·E` | cannot recompute |
+| `a_epoch`, `e_epoch` | the decay clock; a reading of 0.4 at epoch 12 and at epoch 900 are not comparable | cannot recompute |
+| `score` | a function of state that no longer exists | cannot recompute |
+| `incumbent_linked` | the champion's decision at that instant — **provenance, not a target** | cannot recompute |
+| `storm` | window occupancy at that instant | cannot recompute |
+| `truncated` | whether this accepted link was dropped by `MAX_LINKS_PER_ALARM` — the difference between "the scorer rejected it" and "the cap discarded it", which Phase 0 showed is 94 % of the discard | cannot recompute |
+| `evaluated_at` | the instant | cannot recompute |
+
+**Storing the value and not the contribution** is §3.2: `term_a = w_a · A`, and dividing the weight
+back out **fails when the weight is zero** — a legal, supported, and especially interesting
+configuration. `scorer_config_id` lives on `capture_run`, so the contribution stays derivable in the
+direction that always works.
+
+> **There is no target column in this table.** The only label lives in `feedback`, and reaching it
+> requires the join. That is deliberate structural friction: it is what stops a v0.9.0 author from
+> reaching for `incumbent_linked` by accident, and it is the schema's expression of the invariant
+> *no metric that decides promotion may be computed against `incumbent_linked`* (DECISIONS #103).
+
+### The two-part membership record
+
+**(a) Server-side — authoritative, always written.** At the moment the verdict is recorded, the
+server writes the **ordered member alarm ids** from its own state. This does not depend on the
+client, and it survives the merge that Phase 0 proved destroys the referent entirely.
+
+A **child table**, `feedback_member`, keyed by feedback id and carrying `position` — because it is a
+list, and a digest proves that something changed without saying what it was. After a merge there is
+nothing left to compare a digest *against* (DECISIONS #104). The digest is stored **as well**, on
+`feedback`, for cheap comparison.
+
+**It may legitimately hold zero rows.** Phase 0 §2 showed a verdict posted to an already-merged
+situation answers 200, writes a row, and hands `learn.penalize()` an empty bag. Recording an empty
+bag **as empty** makes that population countable for the first time, so no "at least one member"
+constraint may be imposed.
+
+**(b) Client-reported — evidence, optional, untrusted.** The same child table with
+`source='client'`, so the two halves are one query apart. Bounded in length with truncation
+**recorded rather than silently applied**; never rejected; and **never used to validate the
+existence of anything** — out-of-scope and non-existent ids are recorded exactly as reported and
+change nothing about the response, status or timing. Closing that existence oracle is a security
+requirement (§5a of the spec), not a nicety.
+
+**The divergence between (a) and (b) is a metric**, not an error: it is the residual race v0.7.5
+narrowed but did not eliminate, measured rather than assumed.
+
+### What `feedback` gains
+
+| Column | Reason |
+|---|---|
+| `member_digest`, `member_count` | cheap comparison; `member_count = 0` is legitimate and informative |
+| `scope_policy_id`, `scope_restricted`, `scope_redacted_members` | a scoped editor labels a **partial view** and cannot say which part. Without this the label is uninterpretable, and the noise is **systematic** — it correlates with the scope policy, so it does **not** average out with more data |
+| `acquisition_channel` | `organic` on every row this release writes. Exists so a later release that *solicits* labels cannot destroy the bias characterisation retroactively |
+| `capture_provenance` | `legacy_capture` before v0.7.5, `current` after. Rows over the defective acquisition path are of **unknown quality** — a weaker claim than "bad" — so they are stored, marked, excluded from training by default, and includable by explicit choice |
+| `situation_opened_at` | label latency, which is also how the 21-day sink guess gets tested against reality |
+| `situation_id_at_label` | lineage: situation identity is **not stable** under `sid = min(sids)` |
+| `coverage`, `coverage_found`, `coverage_expected` | §6.3's three cases, recorded per label and never silent |
+| `client_*` | the untrusted half, including `client_truncated` so truncation is a fact rather than a silence |
+
+### The merge edge — a Phase 0 finding, and a prerequisite
+
+`merge_situations` records `status='merged'` but **not the destination**, so the merge chain is
+unrecoverable today. `situation` gains `merged_into`, written by the existing `UPDATE` that already
+runs. Without it, §5c's lineage is unimplementable and v0.10.0's split-by-incident cannot be built
+at all.
+
+**Honest limit:** this records merges from v0.8.0 **forward**. Merges that happened before the
+upgrade are gone — the destination was never written, and no migration can reconstruct one.
+
+### Retention — three tiers, and the product's first destructive control
+
+| Tier | Default | Constraint |
+|---|---|---|
+| Sink | **21 days**, and a row cap, whichever binds first | must be `<` training |
+| Training dataset | **12 months** | must be `≤` audit |
+| Audit archive | **24 months** | the outer bound |
+
+The ordering invariant `sink < training ≤ audit` is enforced **fail-closed** with a precise reason,
+and degenerate values are rejected. **The defaults are defaults, not policy** — a stable regional
+ISP and a large operator with rolling refreshes want different numbers, and the product's posture
+has always been *"you can do this, but understand the risk"*. The 21-day sink default is explicitly
+a **conservative guess**; this release measures real label latency so a later one can replace it
+with data.
+
+**Reducing retention deletes rows, and there is no rollback for a `DELETE`.** Every other admin
+configuration in NetCoreNOC is reversible — `scorer_config` is append-only, governance policies are
+versioned. So reduction reuses the v0.6.0 pattern for exactly this class of decision: **preview
+before apply** (bounded, read-only, deterministic, admin-only — the `preview.py` discipline),
+**audited as its own action**, and **never applied silently by the maintenance loop** before the
+operator has seen the count. The policy in effect is recorded on `capture_run`, because pruning a
+training corpus is **censoring by policy** — legitimate, and it must be visible.
+
+### Where the write happens
+
+Engine-side, under the batch lock, where `_assign_situation` already writes. **Nothing is added to
+`receiver.datagram_received`.** Synchronously, in the transaction the batch already holds: the batch
+is already one transaction per 500 items, so buffering would leave the transaction count unchanged
+while putting dataset rows outside the atomicity the batch already provides.
+
+**A capture failure degrades capture and can never fail ingestion** — exactly as `SafeScorer`
+degrades scoring. The failure is counted and surfaced through operator warnings, and the trap is
+still ingested.
+
+`engine.py` is at **542 lines against a recorded ceiling of 542**, so the capture code lives in its
+own module and `engine.py` gains **call sites only**. The `COHESION_EXEMPT` entry covers the ingest
+*reasoning*, not any code that happens to land nearby.
