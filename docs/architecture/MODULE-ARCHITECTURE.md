@@ -398,6 +398,34 @@ including ones nobody has written yet, because it inspects the *result* rather t
 Prefer it. Keep the decorator-time refusal as well, because failing at the point of registration
 gives a much better error than failing at the end of `create_app`.
 
+> **Corrected 2026-07-31 (v0.7.5) — F42, see [`DECISIONS.md` #98](../adr/DECISIONS.md) and
+> `docs/security/SECURITY-REVIEW-0.7.5.md`.** The paragraph
+> above is left as written; the claim in bold — *"complete by construction"* — **was wrong, and the
+> argument given for it did not support it.**
+>
+> The traversal lists no registration *mechanism*, which is what the argument establishes. It
+> assumes a *shape*: a flat object exposing `.path` and `.methods`. That is enumeration wearing
+> construction's clothes, and it fails open twice — `if path is None: continue`, and an inner loop
+> over a `methods` set that is empty for every shape carrying no verbs. Five shapes evaded the gate
+> while serving real traffic, reproduced by execution in
+> [`../gates/v0.7.5-phase-0.md`](../gates/v0.7.5-phase-0.md) §2: `_IncludedRouter`, `Mount` with a
+> sub-application, `Mount` with `StaticFiles`, `APIWebSocketRoute`, and an explicitly-registered
+> `HEAD`-only route.
+>
+> Worse, the assumption was **not stable across dependency versions**. `include_router` was
+> *refused* on `fastapi==0.115.0`, the floor of this project's own pin, and *skipped* on `0.141.1`.
+> `pyproject.toml` carries no upper bound and CI has no lockfile, so the gate's completeness had
+> become a property of whatever pip resolved that morning — and it regressed **with no commit and
+> no failing test**.
+>
+> v0.7.5's `declare.KNOWN_ROUTE_SHAPES` refuses any object on `app.routes` outside an explicit
+> allowlist of route classes. That tuple is **still enumeration** and is labelled as such; what
+> makes it maintained rather than merely written down is
+> `test_f42_the_live_app_produces_exactly_the_known_shapes`, which fails loudly — naming the new
+> class — on the day a dependency upgrade changes the representation. Recursing into each container
+> was rejected: every attribute it would need is an undocumented FastAPI internal, which rebuilds
+> this defect one level down.
+
 **Gap 2 — the exemption is by path prefix, not by absence of capability.**
 
 ```python

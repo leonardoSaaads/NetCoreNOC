@@ -75,7 +75,10 @@ one-screen tour of the tree.
   finding → fix → test reviews and standards-compliance mappings. The finding series is continuous
   and never renumbered: F1–F14 (v0.1–v0.4), F15–F19 (v0.5.0), F20–F26 (v0.6.0), F27–F33 (v0.7.0),
   F34–F39 (v0.7.1), F40–F41 (v0.7.4 — the declaration gate, in
-  [`security/SECURITY-REVIEW-0.7.4.md`](security/SECURITY-REVIEW-0.7.4.md)).
+  [`security/SECURITY-REVIEW-0.7.4.md`](security/SECURITY-REVIEW-0.7.4.md)), F42 (v0.7.5 — the same
+  gate failing open on route *shapes*, in
+  [`security/SECURITY-REVIEW-0.7.5.md`](security/SECURITY-REVIEW-0.7.5.md), which also **corrects a
+  completeness claim v0.7.4 made** about that gate).
 - [`security/operations.md`](security/operations.md) — the **operator** security & operations
   guide (deployment, TLS, roles, audit-log operations, container hardening). The root
   [`../SECURITY.md`](../SECURITY.md) is the coordinated **vulnerability disclosure policy** (how
@@ -134,6 +137,15 @@ so the prose beneath it stays the thing a human reads.
 
 A document that carries a release claim may only tag elements for **that** release; that is what
 catches a half-finished supersession, where a draft is retagged but one heading is missed.
+
+**Backticks around the tag are the convention, and the guard reads them.** `` `v0.8.0: planned` ``
+and a bare `v0.8.0: planned` are both found — the tag is what counts, not its rendering. Between
+v0.7.4 and v0.7.5 that was **not** true: `test_documentation.py::source_of` stripped inline code
+spans before looking, so it saw only the unbackticked form that nobody writes, and 31% of the
+repository's element tags were visible to it. The strip is gone (DECISIONS #100), and
+`test_the_element_tag_check_goes_red_on_a_backticked_stray_tag` now demonstrates the failure rather
+than assuming it. **Only a fenced block is exempt** — like the two examples above, which show the
+forms without asserting them.
 
 **Live documents and records.** The guard reads forward-looking documents (`architecture/`,
 `ROADMAP.md`, `security/threat-model.md`, this file) and deliberately does **not** read

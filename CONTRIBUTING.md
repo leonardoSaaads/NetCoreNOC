@@ -90,14 +90,26 @@ intends to improve a metric must show it and explain why it is correct, not metr
   it. The two are not interchangeable: debt carries an owner and a date, a cohesion exemption
   carries neither, because there is no fix. `engine.py` is its only entry. One level of nesting
   where it has been earned — today `src/netcorenoc/api/` and `src/netcorenoc/store/` — and never
-  two. No frameworks, plugin systems, or dynamic loading. The layer map, the placement rule and the
-  v0.7.4 targets are in [`docs/architecture/MODULE-ARCHITECTURE.md`](docs/architecture/MODULE-ARCHITECTURE.md).
+  two. No frameworks, plugin systems, or dynamic loading. The layer map and the placement rule are
+  in [`docs/architecture/MODULE-ARCHITECTURE.md`](docs/architecture/MODULE-ARCHITECTURE.md); its
+  §10 records the v0.7.4 targets, all of which shipped, with a v0.7.5 correction appended in place
+  to §10.1 (the declaration gate was **not** complete by construction — see F42).
 - **A new route declares itself, or the process does not start.** Add its capability to
   `rbac.ROUTE_PERMISSIONS` **and** its visibility posture to `rbac.ROUTE_SCOPE` (with a one-line
   reason if it is `"unscoped"`), then register it through `DeclaredRoutes` like every other route.
   `api/declare.py` refuses anything `rbac/` has not been told about, while the application is
-  being built. If you are changing the HTTP security boundary, the file to read is
+  being built. Since v0.7.5 it also refuses any route **shape** it cannot check: `include_router`,
+  `app.mount()` and `add_api_websocket_route` all fail `create_app`, because a shape the gate cannot
+  read is skipped rather than checked, and skipping is how F42 happened. `DeclaredRoutes` is *the*
+  registration path by design — a router carrying declarations would be a deliberate extension, not
+  a convenience. If you are changing the HTTP security boundary, the file to read is
   `src/netcorenoc/api/perimeter.py` — all of it, and nothing else.
+- **If you change `ui/app.js`, the test suite cannot check what you did.** There is no JavaScript
+  runtime in this repository, by design (DECISIONS #99), so every UI test asserts the *shape of the
+  source*. Behavioural changes are verified by hand — see
+  [`docs/gates/v0.7.5-manual-verification.md`](docs/gates/v0.7.5-manual-verification.md) for the
+  shape such a protocol takes, and write one for your change. A green suite is not evidence that the
+  browser does what you intended.
 
 ## Trap simulator and replay (test the engine end-to-end)
 

@@ -1019,3 +1019,123 @@ Every threat above names a control and a check. Findings **F40** and **F41** are
 the F35 resolver-input invariant green and unedited, both authorization single-sourcing tests green,
 and an upgrade from a real v0.7.3 database with no migration, an identical store snapshot and the
 same audit final hash.
+
+---
+
+# v0.7.5 — the gate refuses what it cannot classify; the operator's click means what they meant
+
+One finding, **F42**, in `api/declare.py`, found by adversarial probing of the v0.7.4 gate and
+**reproduced by execution** — five shapes, each serving real traffic, with a passing control — before
+it was fixed. Not exploited on the v0.7.4 surface. Plus one integrity defect on the operator's own
+path, specified in `FEEDBACK-PATH-0.7.5-DRAFT.md` and repaired here. Full analysis:
+[`SECURITY-REVIEW-0.7.5.md`](SECURITY-REVIEW-0.7.5.md).
+
+**No new asset, no new surface.** No route, capability, audit action, migration, runtime **or dev**
+dependency, or served path is added. The counts of §"v0.7.0 coverage check" are unchanged: 39 routes,
+1 public route, 39 scope postures, 28 capabilities, 14 audited-denied, 30 audit actions,
+7 migrations. `make eval` is byte-identical, so the engine, store, correlation and scoring seam are
+untouched.
+
+## Changed control — the gate stops assuming a shape
+
+v0.7.4 replaced *"a list of registration mechanisms"* with an assertion over the built application
+and called it complete by construction. It named no mechanism — true — but assumed a **shape**: a
+flat object exposing `.path` and `.methods`. That is enumeration wearing construction's clothes, and
+it is the same observation v0.7.4 made about its own registration gate, one level up.
+
+### Route shapes the gate could not classify (A3, A6) — **F42**
+
+**Threat.** A route reaches a running appliance without declaring the capability it requires or its
+visibility-scope posture, and is therefore outside the authorization map — the F40 threat, through a
+door F40 did not close.
+
+**Observed** (untouched v0.7.4 tree, every probe app built `docs_url=None, redoc_url=None` to match
+`create_app`, with an untouched control that correctly raised nothing): five shapes passed the gate
+**and served**. `_IncludedRouter` from `include_router` (200); `Mount` with a sub-application (200);
+`Mount` with `StaticFiles` (200, file contents returned); `APIWebSocketRoute` (handshake completed);
+an explicitly-registered `HEAD`-only `APIRoute` (200). Two distinct fail-open branches, not one: the
+`_IncludedRouter` escapes through `path is None`, the rest through an empty `methods` set.
+
+**And the coverage was not stable.** The `include_router` shape was **refused** on
+`fastapi==0.115.0` — the floor of this project's own pin — and **skipped** on `0.141.1`. With no
+upper bound, no lockfile, and CI running a bare `pip install -e .[dev]`, the gate's completeness was
+a property of whatever pip resolved that morning, and it regressed **with no commit and no failing
+test**.
+
+**Control.** `declare.KNOWN_ROUTE_SHAPES` — an explicit tuple of the route classes the traversal can
+check — with **refusal** of anything outside it, naming the offending module and class. Every object
+on `app.routes` now has an outcome: checked, or refused. None is skipped. Matched on exact type, not
+`isinstance`, because `APIRoute` subclasses `Route` and `isinstance` would admit a future subclass
+unexamined. `HEAD` is skipped only when `GET` is present on the same route — the only case Starlette
+synthesises — and the `OPTIONS` exemption is removed, having fired on nothing.
+
+Recursing into each container was **rejected**: `include_context`, `original_router` and
+`effective_route_contexts` are undocumented FastAPI internals, so a gate walking them would again be
+correct only for the dependency versions whose internals it matched (DECISIONS #98).
+
+**Check.** `test_f42_*` (14), twelve proven red on the unmodified tree by stashing `declare.py`
+alone. `test_f42_the_live_app_produces_exactly_the_known_shapes` asserts the shape set of a **real**
+`create_app` equals the allowlist, so a dependency upgrade that changes the representation fails
+loudly, naming the new class, on the day of the upgrade.
+
+**Residual, recorded.** That test detects a **new shape**, not a **changed meaning**. If a future
+`APIRoute` carried its verbs somewhere other than `.methods`, the shape set would be unchanged and
+the gate would quietly check nothing. `docs/ROADMAP.md`.
+
+### Operator feedback recorded against an unevaluated membership (integrity)
+
+**Threat.** Not an attacker threat — an **integrity** threat to the learned state and to the v0.8.0
+dataset. `renderSituations` destroyed and rebuilt every situation card every two seconds, so a click
+could land on a card rebuilt between the operator's visual decision and their mouse-down. The verdict
+is then recorded against a membership the operator never evaluated: a **silently wrong label**, which
+`learn.penalize()` acts on, the dataset records, and a future model trains on — and which **nothing
+in the system can detect**, because the record carries no evidence of what was on screen.
+
+No `F` number: no privilege is crossed, no attacker-controlled input is involved, and it was already
+specified and scheduled. It is recorded here because its consequence is data integrity.
+
+**Control.** The expanded card's detail node is held across SSE updates; `renderDetail` swaps content
+in atomically so the container is never displayed empty; a `held while open` marker tells the
+operator the card is frozen.
+
+**Check.** Six structural assertions (five proven red against the v0.7.4 source), the feedback and
+SSE contract tests **unedited**, and — for the behaviour itself —
+[`../gates/v0.7.5-manual-verification.md`](../gates/v0.7.5-manual-verification.md).
+
+**Residual 1 — provenance is not closed.** The label is now *deliberate*; it is still not *traceable
+to what was on screen*. That is the membership fingerprint and it is **v0.8.0**
+(`FEEDBACK-DATASET-0.8-DRAFT.md` §2.2).
+
+**Residual 2 — the marker informs, it does not enforce.** A held card is stale by design and the
+badge is the whole of the mitigation. There is no confirmation step and nothing that fails closed if
+it goes unread; an operator under incident pressure reading a card they believe is live is the
+realistic failure. **Accepted human-factors residual.**
+
+## v0.7.5 residual risk (accepted, documented)
+
+- **The automated suite does not prove this release's behavioural claims.** Three of four intentional
+  behaviour changes are browser behaviour and there is no JavaScript runtime in this repository, by
+  design. The UI tests assert the shape of the source and say so in their own comments; the proof is
+  a manual protocol that **this build wrote and did not execute**. DECISIONS #99.
+- **The staleness marker is a human-factors control.** See Residual 2 above.
+- **Label provenance is unresolved until v0.8.0.** See Residual 1 above.
+- **The shape allowlist is enumeration**, labelled as such. What makes it maintained rather than
+  merely written down is one test, whose own limit is recorded above.
+- **The documentation guard's forbidden-phrase half remains enumeration** and remains
+  spelling-sensitive (`->` versus `→`). Its element-tag half went from 31% to near-complete
+  visibility; those are different halves and only one of them generalises.
+- **`renderEntityDetail` still has the clear-then-fill shape** repaired in `renderDetail`. Not on the
+  label path, deliberately not fixed inside a small diff. `docs/ROADMAP.md`.
+- **`/openapi.json` is still served unauthenticated**, and `ROUTE_SCOPE` is still descriptive rather
+  than enforcing. Both carried forward from v0.7.4 unchanged.
+- **This was not a full re-review of the attack surface.** F1–F41's controls were re-checked only to
+  the extent CI asserts them on every commit. The last full pass remains v0.7.1's.
+
+## v0.7.5 coverage check
+
+Every threat above names a control and a check. Finding **F42** is tracked in
+`SECURITY-REVIEW-0.7.5.md` (property → fix → test). Gate 5 requires every F-numbered test green,
+`make eval` byte-identical, the route-order and authorization-matrix tests green **and unedited**,
+the F40/F41 sets green and unedited, the feedback and SSE contract tests green **and unedited**, the
+UI at four files with the CSP unchanged, and an upgrade from a real v0.7.4 database with no
+migration, an identical store snapshot and the same audit final hash.

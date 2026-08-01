@@ -324,6 +324,16 @@ function tick() {
 
 /* ---------- situations ---------- */
 const expanded = new Set();
+// v0.7.5 §5.3: holding the card (§5.1) fixes the race by FREEZING what the operator is looking at,
+// which trades a wrong label for a stale one — and a stale label is only better if the operator
+// knows it is stale. Without this marker the release would replace a visible defect with an
+// invisible one, which is the same label-integrity failure it exists to fix, reintroduced by its own
+// fix. Styled as the existing `redacted` badge, so it costs no new CSS architecture.
+// No controls, no countdown, no refresh, no live diff — those are out of scope by SCOPE-0.7.5 §3.3.
+const HELD_MARKER = "held while open";
+const HELD_TITLE =
+  "This card is frozen while you have it open, so the grouping you are judging cannot change "
+  + "under your click. It may not reflect the last few seconds. Collapse it to resume live updates.";
 function age(ts) {
   const s = Math.max(0, Date.now() / 1000 - ts);
   if (s < 90) return Math.round(s) + "s";
@@ -387,10 +397,16 @@ async function renderDetail(container, sid) {
   const d = await api(`/api/situations/${sid}`);
   const byId = new Map(d.alarms.map((a) => [a.id, a]));
   const root = byId.get(d.root_alarm_id);
-  clear(container);
+  // v0.7.5 §5.2: build into a fragment and swap in ONE synchronous step at the end. v0.7.4 did
+  // `clear(container)` here — before the await had even resolved on the rebuild path — so the
+  // container was `display: block` with no children for the length of a round trip, and a click in
+  // that window hit nothing. Assembling off-document means no reachable state has the container
+  // displayed and empty, whatever the network does. This also covers the case §5.1 cannot: the
+  // very FIRST expansion of a card, where there is no previous content to hold.
+  const frag = document.createDocumentFragment();
 
   if (root) {
-    container.append(el("div", { class: "root" },
+    frag.append(el("div", { class: "root" },
       text("probable root: "), el("b", { text: alarmName(root) }),
       text(" on "), el("b", { text: deviceName(root) }),
       d.root_confidence != null ? text(`  (confidence ${(d.root_confidence * 100).toFixed(0)}%)`) : null));
@@ -399,7 +415,7 @@ async function renderDetail(container, sid) {
   // The honest signal that this situation extends past the reader's visibility scope. It carries
   // a count and the alarm classes involved — never an NE id, address, entity key, or varbind.
   if (d.redacted_members) {
-    container.append(el("div", { class: "warnbox" },
+    frag.append(el("div", { class: "warnbox" },
       el("b", { text: `${d.redacted_members.count} member(s) outside your visibility scope` }),
       text(d.redacted_members.classes.length
         ? "  classes: " + d.redacted_members.classes.join(", ")
@@ -427,7 +443,7 @@ async function renderDetail(container, sid) {
       el("td", { text: a.instance || "—" }), severityCell(a),
       el("td", { text: a.count }), el("td", { text: a.status })));
   }
-  container.append(table);
+  frag.append(table);
 
   const linkBox = el("div", { class: "links" });
   const shown = d.links.slice(0, 30);
@@ -438,7 +454,7 @@ async function renderDetail(container, sid) {
       el("span", { text: l.score.toFixed(2) }),
       el("span", { text: `${a ? alarmName(a) : l.alarm_a} ↔ ${b ? alarmName(b) : l.alarm_b}` })));
   }
-  container.append(linkBox);
+  frag.append(linkBox);
 
   if (canEdit()) {
     const fb = el("div", { class: "fb" });
@@ -446,21 +462,47 @@ async function renderDetail(container, sid) {
       el("button", { text: "✓ Confirm grouping", onclick: () => feedback(sid, "confirm") }),
       el("button", { class: "warn", text: "✗ Split (wrong grouping)", onclick: () => feedback(sid, "split") }));
     if (d.status === "open") fb.append(el("button", { text: "Close situation", onclick: () => closeSituation(sid) }));
-    container.append(fb);
+    frag.append(fb);
   }
+
+  // The atomic swap. `clear` + `append` run back to back with no await between them, so the
+  // browser never paints an empty-but-displayed container.
+  clear(container);
+  container.append(frag);
 }
 
 function renderSituations(list) {
   const sits = $("sits");
+  // v0.7.5 §5.1: a card the operator has OPEN is held — its detail node, and the feedback buttons
+  // whose onclick closures live inside it, survive the 2 s SSE rebuild. Before this, `clear(sits)`
+  // was the first statement here and destroyed every card including the expanded one, so a click
+  // could land on a detached node, or on a button from a render the operator never read — a
+  // silently wrong label (FEEDBACK-PATH-0.7.5-DRAFT §1.1).
+  // Harvested BEFORE the clear: `clear` detaches nodes, it does not destroy them, so a held detail
+  // is re-appended below and keeps its identity and its listeners.
+  // Collapsed cards are still cleared and rebuilt: they are cheap and carry no click target the
+  // operator is aiming at. This is the narrow fix the draft prefers over a general reconciler.
+  const held = new Map();
+  for (const card of sits.children) {
+    const sid = Number(card.dataset.sid);
+    if (expanded.has(sid)) held.set(sid, card.lastChild);
+  }
   clear(sits);
   if (!list.length) { sits.append(el("div", { class: "empty", text: "No situations match — the network is quiet." })); return; }
   for (const s of list) {
-    const detail = el("div", { class: "detail" });
+    const detail = held.get(s.id) || el("div", { class: "detail" });
     detail.style.display = expanded.has(s.id) ? "block" : "none";
+    // §5.3: the marker exists only while the card is held, i.e. exactly when `expanded.has(s.id)`.
+    // It appears on the first update that is actually being withheld rather than at the instant of
+    // expansion — which is correct: a card just opened is not yet stale.
+    const heldMarker = expanded.has(s.id)
+      ? el("span", { class: "badge redacted", title: HELD_TITLE, text: HELD_MARKER })
+      : null;
     const head = el("div", { class: "sit-head" },
       el("span", { class: "sid", text: "#" + s.id }),
       el("span", { class: "badge " + (s.status === "open" ? "alarm" : ""), text: s.status }),
       el("span", { class: "badge", text: `${s.alarm_count} alarm${s.alarm_count === 1 ? "" : "s"}` }),
+      heldMarker,
       el("span", { class: "age", text: age(s.updated_at) }));
     // A scoped viewer must be told when a situation is bigger than what they are being shown.
     // Omitting this silently would let them size an incident wrongly during the incident.
@@ -473,12 +515,23 @@ function renderSituations(list) {
       }), head.lastChild);
     }
     head.addEventListener("click", async () => {
-      if (expanded.has(s.id)) { expanded.delete(s.id); detail.style.display = "none"; return; }
+      if (expanded.has(s.id)) {
+        // Collapsing stops the hold, so the marker must go with it rather than waiting for the
+        // next render — a collapsed card carrying "held while open" would be asserting something
+        // false for up to two seconds.
+        expanded.delete(s.id); detail.style.display = "none";
+        if (heldMarker) heldMarker.remove();
+        return;
+      }
       expanded.add(s.id); detail.style.display = "block"; await renderDetail(detail, s.id);
     });
-    const card = el("div", { class: "sit" }, head, detail);
+    // `data-sid` is how the next render finds this card's detail node again (see `held` above).
+    const card = el("div", { class: "sit", "data-sid": s.id }, head, detail);
     sits.append(card);
-    if (expanded.has(s.id)) renderDetail(detail, s.id);
+    // Only a card that was NOT held needs its detail fetched: a held one already has its content
+    // and re-fetching it is precisely the rebuild §5.1 exists to stop. This is where v0.7.4's
+    // un-awaited `renderDetail(detail, s.id)` used to fire on every update.
+    if (expanded.has(s.id) && !held.has(s.id)) renderDetail(detail, s.id);
   }
 }
 

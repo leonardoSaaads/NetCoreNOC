@@ -42,15 +42,28 @@ fixes; `docs/security/SECURITY-REVIEW-0.7.4.md` records them.
   ``require_declaration("GET", "/metrics")`` returned cleanly, and `/metrics` is on the ROADMAP.
   The prefix test is now an explicit allowlist, asserted against what `routes_static.py` actually
   registers so the two cannot drift.
+
+**v0.7.5 — F42 closes the third hole, and corrects a claim.** F40's fix was described here and in
+`SECURITY-REVIEW-0.7.4.md` as *"complete by construction… nothing here lists the ways a route can be
+registered"*. The second clause is true; **the first does not follow from it**. The traversal named
+no registration mechanism and assumed a *shape* — a flat object exposing ``.path`` and ``.methods``
+— which is enumeration wearing construction's clothes. Five shapes evaded it, all serving real
+traffic, and whether one of them evaded depended on the version of an **unpinned** dependency: the
+``include_router`` case was refused on ``fastapi==0.115.0`` and skipped on ``0.141.1``, so the gate
+regressed with no commit and no failing test. See :data:`KNOWN_ROUTE_SHAPES` and
+:func:`assert_every_route_is_declared` below, `docs/security/SECURITY-REVIEW-0.7.5.md` for the
+finding, and DECISIONS #98 for why the fix refuses unknown shapes rather than learning to walk them.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from fastapi.types import DecoratedCallable
+from starlette.routing import Route
 
 from netcorenoc import rbac
 
@@ -89,6 +102,22 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/.well-known/security.txt",  # RFC 9116
     }
 )
+
+
+# **F42.** The route shapes :func:`assert_every_route_is_declared` knows how to check. An object on
+# `app.routes` whose type is not exactly one of these is **refused, not skipped**. The gate need not
+# know what a `Mount` is in order to refuse it, and that is the point.
+#
+# Matched on **exact type**, not `isinstance`. `APIRoute` subclasses `Route`, so an `isinstance`
+# test would silently admit any future subclass of either — which is the same fail-open-on-the-
+# unknown this finding is about, one inheritance level down (DECISIONS #98).
+#
+# This tuple is **enumeration**, and saying so is the point of
+# `tests/test_declaration.py::test_f42_the_live_app_produces_exactly_the_known_shapes`: it asserts
+# that the shapes a real `create_app` produces are *exactly* this set, so a dependency upgrade that
+# changes the representation fails the suite loudly, naming the new class, on the day of the
+# upgrade. That test is the half that generalises; this tuple is the half that does not.
+KNOWN_ROUTE_SHAPES: tuple[type, ...] = (APIRoute, Route)
 
 
 def require_declaration(method: str, path: str) -> None:
@@ -137,16 +166,59 @@ def assert_every_route_is_declared(app: FastAPI) -> None:
     Running it only under test would make it a CI convenience rather than a property of the
     process.
 
-    ``HEAD`` and ``OPTIONS`` are skipped: FastAPI synthesises them from the declared verb, so they
-    are not separate declarations and never were.
+    **v0.7.5 — F42 makes the traversal refuse what it cannot classify.** The version above named no
+    registration mechanism, which was true, and assumed a *shape*: a flat object exposing ``.path``
+    and ``.methods``. That is enumeration wearing construction's clothes, and it failed open twice
+    — ``if path is None: continue``, and an inner loop over a ``methods`` set that is empty for
+    every shape carrying no verbs. Five shapes evaded it, all reproduced by execution and all
+    serving real traffic, in `docs/gates/v0.7.5-phase-0.md` §2:
+
+    * ``fastapi.routing._IncludedRouter`` (``app.include_router``) — no ``.path``;
+    * ``starlette.routing.Mount`` for a sub-application and for ``StaticFiles`` — empty ``methods``,
+      a whole subtree served unchecked;
+    * ``fastapi.routing.APIWebSocketRoute`` — empty ``methods``;
+    * an explicitly-registered ``HEAD``-only route — the exemption below, before it was narrowed.
+
+    The assumption was not even stable across dependency versions: the ``include_router`` case was
+    **refused** on ``fastapi==0.115.0``, the floor of this project's own pin, and **skipped** on
+    ``0.141.1``. `pyproject.toml` carries no upper bound and CI has no lockfile, so the gate's
+    completeness had become a property of whatever pip resolved that morning — and it regressed
+    with no commit and no failing test.
+
+    Now: any object on ``app.routes`` outside :data:`KNOWN_ROUTE_SHAPES` raises. The gate refuses
+    rather than skips, so a future FastAPI that invents a sixth shape is caught the day it arrives.
+    Teaching the traversal to *walk* each container was rejected — every attribute it would need
+    (``include_context``, ``effective_route_contexts``) is an undocumented FastAPI internal, so that
+    fix would rebuild this very defect against a private attribute. DECISIONS #98.
+
+    ``HEAD`` is skipped **only when ``GET`` is present on the same route**, because that is the only
+    case Starlette synthesises — confirmed by execution: a ``GET``-declared FastAPI ``APIRoute``
+    carries ``{'GET'}`` alone, while Starlette's own ``Route`` for ``/openapi.json`` carries
+    ``{'GET', 'HEAD'}``. A ``HEAD`` that is a route's **sole** method was asked for explicitly and
+    must declare itself. ``OPTIONS`` is **never** synthesised into ``route.methods`` — also
+    confirmed by execution — so the v0.7.4 exemption for it fired on nothing and is gone.
     """
     for route in app.routes:
-        path = getattr(route, "path", None)
-        if path is None:
-            continue
-        for method in sorted(getattr(route, "methods", set()) or set()):
-            if method not in ("HEAD", "OPTIONS"):
-                require_declaration(method, path)
+        if type(route) not in KNOWN_ROUTE_SHAPES:
+            raise UndeclaredRouteError(
+                f"{type(route).__module__}.{type(route).__name__} is a route shape this gate "
+                "cannot check, so it is refused rather than skipped (F42). Registration goes "
+                "through netcorenoc.api.declare.DeclaredRoutes, which produces a "
+                "fastapi.routing.APIRoute. If a new shape is genuinely needed, it must be added to "
+                "declare.KNOWN_ROUTE_SHAPES together with the traversal that checks every path and "
+                "method it carries — never by skipping it."
+            )
+        # Narrowing only, no runtime effect: the check above has established that `route` is one of
+        # the two known shapes, and both are `starlette.routing.Route` subclasses carrying `.path`
+        # and `.methods` as declared attributes. That is exactly what the allowlist buys — v0.7.4
+        # had to `getattr` its way through objects it could not name, and `getattr(..., None)` on an
+        # object you cannot name is the fail-open this finding is about.
+        checked = cast(Route, route)
+        methods: set[str] = checked.methods or set()
+        for method in sorted(methods):
+            if method == "HEAD" and "GET" in methods:
+                continue  # Starlette synthesises HEAD alongside GET; not a separate declaration
+            require_declaration(method, checked.path)
 
 
 class DeclaredRoutes:
