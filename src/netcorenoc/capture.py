@@ -29,7 +29,6 @@ may read them (`docs/architecture/FEEDBACK-DATASET-0.8-DRAFT.md` §5a).
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -42,6 +41,13 @@ from netcorenoc.correlate import (
     CorrelationResult,
     WindowAlarm,
 )
+from netcorenoc.labels import (
+    MAX_CLIENT_MEMBERS,
+    ClientFingerprint,
+    LabelScope,
+    member_digest,
+    record_label,
+)
 from netcorenoc.scoring import LINK_THRESHOLD, LinkScore
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
@@ -51,7 +57,17 @@ if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_l
 
 log = logging.getLogger("netcorenoc")
 
-__all__ = ["Capture", "RetentionPolicy", "member_digest"]
+# Re-exported so `engine.py` and the API keep one import site for "the capture surface", while
+# the verdict-path code lives in `labels.py`. See that module for why the split is by *path*.
+__all__ = [
+    "MAX_CLIENT_MEMBERS",
+    "Capture",
+    "ClientFingerprint",
+    "LabelScope",
+    "RetentionPolicy",
+    "member_digest",
+    "record_label",
+]
 
 
 def _value_of(result: LinkScore, name: str) -> float:
@@ -77,17 +93,6 @@ def _value_of(result: LinkScore, name: str) -> float:
         if term.name == name:
             return term.value
     return 0.0
-
-
-def member_digest(alarm_ids: list[int]) -> str:
-    """A stable digest over an **ordered** bag of member ids.
-
-    Order is part of the record, so the digest is over the ordered list rather than a set: two bags
-    with the same members in a different order are different observations of what the operator saw,
-    and collapsing them would discard that. Comma-joined decimal rather than JSON so the digest
-    never moves if a serializer's spacing changes.
-    """
-    return hashlib.sha256(",".join(str(a) for a in alarm_ids).encode()).hexdigest()
 
 
 @dataclass

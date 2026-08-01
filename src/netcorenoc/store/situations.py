@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from netcorenoc.store.base import StoreBase
@@ -49,6 +50,33 @@ class SituationMixin(StoreBase):
         )
         await self.conn.execute("DELETE FROM situation_alarm WHERE situation_id=?", (src,))
         await self.conn.execute("UPDATE link SET situation_id=? WHERE situation_id=?", (dst, src))
+        # v0.8.0: `merged_into` records **where the members went**. Until this release the merge
+        # marked the source `merged` and said nothing about the destination, so the merge chain was
+        # unrecoverable: a reader holding a labelled situation id could not follow it forward to the
+        # situation that absorbed it. Phase 0 proved the consequence — a label's referent is
+        # destroyed entirely, and no query recovers the bag.
+        #
+        # One extra column on an UPDATE that already ran: no new statement, no new index, nothing
+        # added to the batch path's cost.
+        #
+        # The fallback is the same discipline `create_situation` follows for `scorer_config_id`
+        # (0005): **this call must still succeed against a schema that predates its own column.**
+        # That is not defensive tidiness — it is what lets the identical engine code run before and
+        # after the migration, which is how `tests/test_upgrade.py` proves that `0008` changes
+        # behaviour and the code does not. Merges are rare (four across the whole eval corpus), so
+        # the cost of learning this once is a single caught error per process on an old schema.
+        if self._has_merged_into is not False:
+            try:
+                await self.conn.execute(
+                    "UPDATE situation SET status='merged', closed_at=?, updated_at=?, "
+                    "merged_into=? WHERE id=?",
+                    (ts, ts, dst, src),
+                )
+                self._has_merged_into = True
+                await self.touch_situation(dst, ts)
+                return
+            except sqlite3.OperationalError:
+                self._has_merged_into = False  # pre-0008 schema; record it and use the old form
         await self.conn.execute(
             "UPDATE situation SET status='merged', closed_at=?, updated_at=? WHERE id=?",
             (ts, ts, src),

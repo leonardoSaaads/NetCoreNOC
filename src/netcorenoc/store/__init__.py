@@ -101,3 +101,4 @@ class Store(
         # (sqlite refuses to commit while statements are in progress). The engine takes
         # it per batch; API handlers take it per request.
         self.lock = asyncio.Lock()
+        self._has_merged_into: bool | None = None

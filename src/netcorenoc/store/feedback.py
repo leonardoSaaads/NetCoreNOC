@@ -42,7 +42,12 @@ class FeedbackMixin(StoreBase):
             "VALUES (?, ?, ?, ?, ?) ON CONFLICT (situation_id, verdict) DO NOTHING RETURNING id",
             (situation_id, verdict, ts, principal_ref, role),
         )
-        return FeedbackResult(exists=True, inserted=await cur.fetchone() is not None)
+        row = await cur.fetchone()
+        # v0.8.0 returns the id as well. `RETURNING id` was already there — v0.7.1 only tested it
+        # for None-ness — so this reads a value the statement always produced and discarded.
+        return FeedbackResult(
+            exists=True, inserted=row is not None, id=int(row[0]) if row is not None else None
+        )
 
     async def label_target_exists(self, kind: str, target_id: int) -> bool:
         """Does the thing this label would name actually exist? (v0.7.1, F37)

@@ -16,7 +16,7 @@ import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth
+from netcorenoc import auth, capture
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import FeedbackIn, LabelIn
@@ -78,6 +78,23 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if not await situation_in_scope(sid, scope):
             await audit_scope_denial(request, principal, "feedback", "situation", str(sid))
             raise HTTPException(status_code=404, detail="no such situation")
+        # v0.8.0 §5.5: the scope fingerprint. A scoped editor labels a **partial view** and cannot
+        # say which part, so without this the label is uninterpretable — and the resulting noise is
+        # *systematic*, because it correlates with the policy, so it does not average out.
+        # Resolved from the same `scope` the 404 above used, so the record cannot disagree with the
+        # decision that produced it.
+        label_scope = capture.LabelScope(
+            policy_id=ctx.governance.scope_id,
+            restricted=not scope.unrestricted,
+            redacted_members=await ctx.perimeter.redacted_member_count(sid, scope),
+        )
+        # §5.4b: the client's report, bounded and never rejected. `accept` can only truncate, and
+        # records that it did. No id here is looked up, compared, or validated — see `FeedbackIn`.
+        client = (
+            capture.ClientFingerprint.accept(body.member_ids, body.updated_at)
+            if body.member_ids is not None
+            else None
+        )
         async with write_txn():
             # F36: `recorded.exists` is the 404 question; `recorded.inserted` is whether this
             # verdict was new. A repeat is a no-op that still answers 200 — the operator's
@@ -88,6 +105,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 time.time(),
                 principal_ref=principal.ref,
                 role=principal.role,
+                scope=label_scope,
+                client=client,
             )
             if recorded.exists and recorded.inserted:
                 await audit_row(

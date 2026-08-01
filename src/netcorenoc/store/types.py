@@ -64,3 +64,8 @@ class FeedbackResult(NamedTuple):
 
     exists: bool
     inserted: bool
+    # v0.8.0: the inserted row's id, so the dataset annotation and the membership child table can
+    # target it without a second SELECT. `None` on a repeat or a 404 — there is no row to annotate,
+    # and defaulting it keeps every existing construction site (`FeedbackResult(exists=...,
+    # inserted=...)`) working unchanged.
+    id: int | None = None

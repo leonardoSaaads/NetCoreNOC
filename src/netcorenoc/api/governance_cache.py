@@ -31,6 +31,16 @@ class GovernancePolicies:
     scope (DECISIONS #55). Raising on the authorization path would turn a bad row into an outage.
     """
 
+    @property
+    def scope_id(self) -> int | None:
+        """The active scope policy's identity, or ``None`` when nothing is configured.
+
+        v0.8.0 records this on every label (§5.5). `None` is meaningful rather than missing: it is
+        the unconfigured appliance, where every principal sees everything, and a label made under
+        it is a statement about the whole situation.
+        """
+        return self._scope_id
+
     def __init__(self, store: Any) -> None:
         self._store = store
         self._capability_id: int | None = None

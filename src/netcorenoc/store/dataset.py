@@ -151,6 +151,20 @@ class DatasetMixin(StoreBase):
 
     # -- the membership record -----------------------------------------------------------------
 
+    async def situation_opened_at(self, situation_id: int) -> float | None:
+        """When the situation opened — the other half of label latency.
+
+        A verdict four seconds after a situation opened and one after ten minutes of investigation
+        are not the same evidence, and `feedback.created_at` alone cannot tell them apart. Copied
+        onto the label row rather than joined later because `prune()` deletes closed situations on
+        the operational schedule, taking the open time with it.
+        """
+        cur = await self.conn.execute(
+            "SELECT created_at FROM situation WHERE id=?", (situation_id,)
+        )
+        row = await cur.fetchone()
+        return float(row[0]) if row is not None else None
+
     async def add_feedback_members(
         self, feedback_id: int, source: str, alarm_ids: list[int]
     ) -> None:

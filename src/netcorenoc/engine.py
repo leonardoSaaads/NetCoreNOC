@@ -41,8 +41,14 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from netcorenoc import capture as capture_mod
 from netcorenoc import known_oids, severity
-from netcorenoc.capture import Capture, RetentionPolicy
+from netcorenoc.capture import (
+    Capture,
+    ClientFingerprint,
+    LabelScope,
+    RetentionPolicy,
+)
 from netcorenoc.correlate import Correlator, ScoredLink, WindowAlarm
 from netcorenoc.engine_base import EngineBase
 from netcorenoc.events import Fingerprint, QuarantinedPacket, TrapEvent
@@ -491,6 +497,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         *,
         principal_ref: str | None = None,
         role: str | None = None,
+        scope: LabelScope | None = None,
+        client: ClientFingerprint | None = None,
     ) -> FeedbackResult:
         """Operator feedback: ``confirm`` reinforces the grouping, ``split`` penalizes.
 
@@ -514,9 +522,16 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         members = self.members.get(sid)
         if members is not None:
             items = [(m.class_id, m.device_id) for m in members]
+            bag = [m.alarm_id for m in members]
         else:
             rows = await self.store.situation_members(sid)
             items = [(int(r["class_id"]), int(r["device_id"])) for r in rows]
+            bag = [int(r["id"]) for r in rows]
+        # v0.8.0 (S4/S6). The bag the server holds at this instant, the label's provenance, and
+        # promotion — all of it in `netcorenoc.capture`, all of it degrading rather than raising.
+        await capture_mod.record_label(
+            self.capture, self.store, recorded, sid, ts, bag, scope=scope, client=client
+        )
         if verdict == "confirm":
             # advance_epoch=False: an epoch is a *closed situation*, which is what learn.py has
             # said since v0.1.0. Operator feedback is an opinion about one grouping and must not

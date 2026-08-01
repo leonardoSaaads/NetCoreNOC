@@ -64,6 +64,9 @@ LAYER_OF: dict[str, str] = {
     # data layer — a downward edge. It is NOT ingest: nothing here is reachable from
     # `receiver.datagram_received`, which is prime directive 1.
     "capture": "engine",
+    # The verdict side of the same feature. Split from `capture.py` by *path*, not by size:
+    # capture runs per activation on the ingest path, this runs per operator verdict.
+    "labels": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire

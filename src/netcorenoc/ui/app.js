@@ -353,9 +353,22 @@ async function rename(kind, id, current) {
   } catch (err) { alert(`Rename failed — ${err.message}`); }
   poll();
 }
-async function feedback(sid, verdict) {
+// v0.8.0 §5.4b — THE ONLY CHANGE THIS RELEASE MAKES TO THIS FILE.
+//
+// `shown` is what the card the operator clicked had actually rendered: the member alarm ids in
+// display order, and the situation's `updated_at` at render time. It is EVIDENCE, and the weaker
+// half of the record — the server writes its own authoritative membership regardless, which is what
+// survives a merge. The divergence between the two is a metric (the residual race v0.7.5 narrowed
+// but did not eliminate), not an error.
+//
+// Additive and optional: omitting it is legal and means "unrecorded", never a guess. An old cached
+// app.js, or a `curl` call, keeps working — the server treats absence and presence identically
+// apart from what it records.
+async function feedback(sid, verdict, shown) {
   try {
-    await api(`/api/situations/${sid}/feedback`, { method: "POST", json: { verdict } });
+    const json = { verdict };
+    if (shown) { json.member_ids = shown.ids; json.updated_at = shown.updated_at; }
+    await api(`/api/situations/${sid}/feedback`, { method: "POST", json });
   } catch (err) { alert(`Feedback failed — ${err.message}`); }
   poll();
 }
@@ -458,9 +471,12 @@ async function renderDetail(container, sid) {
 
   if (canEdit()) {
     const fb = el("div", { class: "fb" });
+    // Captured from `d` — the payload THIS render used — not re-read at click time, so it reports
+    // what the operator was looking at rather than what is true when they finish deciding.
+    const shown = { ids: d.alarms.map((a) => a.id), updated_at: d.updated_at };
     fb.append(
-      el("button", { text: "✓ Confirm grouping", onclick: () => feedback(sid, "confirm") }),
-      el("button", { class: "warn", text: "✗ Split (wrong grouping)", onclick: () => feedback(sid, "split") }));
+      el("button", { text: "✓ Confirm grouping", onclick: () => feedback(sid, "confirm", shown) }),
+      el("button", { class: "warn", text: "✗ Split (wrong grouping)", onclick: () => feedback(sid, "split", shown) }));
     if (d.status === "open") fb.append(el("button", { text: "Close situation", onclick: () => closeSituation(sid) }));
     frag.append(fb);
   }

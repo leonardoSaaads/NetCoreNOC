@@ -30,6 +30,22 @@ MAX_NOTE_CHARS = 500
 
 class FeedbackIn(BaseModel):
     verdict: Literal["confirm", "split"]
+    # v0.8.0 §5.4b — the client's report of what it rendered. **Optional and additive**: an old
+    # client, a `curl` call, or a UI that does not send it still works, and absence means
+    # *unrecorded*, never a guess. This is the only change to the feedback contract.
+    #
+    # `max_length` here is a *parse* bound, not a validation of meaning: a longer list is truncated
+    # by `ClientFingerprint.accept` and the truncation is recorded on the row. Pydantic rejecting an
+    # over-long list would make the bound a refusal, and **rejection is the wrong primitive for an
+    # observation** (§2.1, one level down) — so the ceiling is set well above `MAX_CLIENT_MEMBERS`
+    # and exists only to stop an unbounded parse.
+    #
+    # The ids are **never validated against anything**. An alarm id the principal cannot see, or
+    # that does not exist, is recorded exactly as reported and changes nothing about the response,
+    # its status or its timing. That is what keeps this from becoming an existence oracle for a
+    # scoped editor, and it is a security requirement rather than a nicety.
+    member_ids: list[int] | None = Field(default=None, max_length=4096)
+    updated_at: float | None = None
 
 
 class LabelIn(BaseModel):

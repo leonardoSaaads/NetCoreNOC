@@ -227,8 +227,14 @@ def test_mutating_controls_are_behind_role_guards() -> None:
     app_js = (UI_DIR / "app.js").read_text()
     detail = app_js.split("async function renderDetail(", 1)[1].split("\nfunction ", 1)[0]
     # the feedback/close block is guarded by canEdit()
+    #
+    # v0.8.0 matches on the prefix `feedback(sid, "confirm"` rather than the whole call, because
+    # the call gained a third argument — the client-reported membership of §5.4b, the release's one
+    # permitted `ui/app.js` change. What this test means is *"the control is created inside the
+    # guard"*, not *"the call has two arguments"*, so the assertion is narrowed to the part that
+    # carries the meaning.
     assert "if (canEdit())" in detail
-    assert detail.index("if (canEdit())") < detail.index('feedback(sid, "confirm")')
+    assert detail.index("if (canEdit())") < detail.index('feedback(sid, "confirm"')
     ent = app_js.split("async function renderEntityDetail(", 1)[1].split("\nfunction ", 1)[0]
     assert "if (isAdmin())" in ent
     assert ent.index("if (isAdmin())") < ent.index("/reset")
