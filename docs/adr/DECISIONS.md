@@ -2020,3 +2020,184 @@ grouping**.
   the residual, and no test in this release closes it.
 - **Not decided here**: whether to also pin is a supply-chain policy question affecting five runtime
   dependencies, not one, and the decision protocol forbids resolving ambiguity by adding scope.
+
+## 102. `FEEDBACK-DATASET-0.8-DRAFT.md` is corrected in place and dated, never rewritten (v0.8.0)
+
+- **Context**: Workstream 1 must correct eight things in the document v0.9.0–v0.13.0 will be briefed
+  from, including one sentence (§3.1's *"the majority class, without which supervised training is
+  impossible"*) that authorises the imitation trap. The document already carries two dated
+  refinement passes from v0.7.5 and is the binding specification for the release correcting it.
+- **Options**: (a) rewrite the wrong passages so the document reads cleanly; (b) supersede the whole
+  file with `FEEDBACK-DATASET-0.8.md` and leave the draft as history; (c) strike the wrong sentence
+  through in place, leave it visible, and put the correction beneath it with the date and the
+  evidence.
+- **Choice**: (c), matching the `Corrected 2026-07-31 (v0.7.5)` blockquotes already in the file.
+- **Reason**: (a) destroys the record of what the project believed, which is the thing that makes a
+  correction *reviewable* — a reader who cannot see the withdrawn sentence cannot judge whether the
+  correction is right. It also silently invalidates every external reference to §3.1. (b) doubles
+  the documents a v0.9.0 author must reconcile and creates exactly the two-answers-to-one-question
+  condition `tests/test_documentation.py` exists to prevent. (c) keeps one document, one claim, and
+  a visible audit trail; the element tags stay `v0.8.0: planned`, which is the convention
+  `FEEDBACK-PATH-0.7.5-DRAFT.md` established for a draft whose release has shipped.
+- **Also corrected**: the same withdrawn sentence had already propagated to
+  `ROADMAP-0.8-TO-0.13.md`'s v0.8.0 entry. Left alone, the repository would state the correction in
+  one place and the error in another — the precise failure DECISIONS #93 and the documentation guard
+  exist to prevent. Corrected there too, by reference rather than by restatement.
+
+## 103. The imitation-trap invariant is expressed structurally, not only in prose (v0.8.0)
+
+- **Context**: Directive 3 forbids any promotion metric computed against `incumbent_linked`, while
+  keeping the column legitimate as provenance, context, a feature, and the basis of
+  champion/challenger comparison. Prose in a specification is advisory to whoever reads it in two
+  years; the sentence it replaces was itself well-intentioned prose.
+- **Options**: (a) state the invariant in the specification and rely on it being read; (b) omit
+  `incumbent_linked` entirely so the temptation cannot arise; (c) keep the column but ensure the
+  pair table has **no target column at all**, so the only label lives in `feedback` and reaching it
+  requires a join.
+- **Choice**: (c), with the invariant also written into the specification and addressed to v0.10.0
+  and v0.11.0.
+- **Reason**: (b) destroys real information — the champion's decision at that instant is
+  irrecoverable afterwards and is exactly what v0.11.0 needs for champion/challenger comparison —
+  and it would be capture-side censoring in the release built to end censoring. (a) alone failed
+  once already, which is why this ADR exists. (c) makes the distinction between a *feature* and a
+  *target* physical: a v0.9.0 author writing a training loop must go and **get** the human label,
+  and cannot reach for the machine's by accident or by autocomplete. The friction is the mechanism.
+- **Reinforced by measurement**: Phase 0 §3a found the accept rate swings from 0 % on quiet corpus
+  traffic to 100 % in a storm, so `incumbent_linked`'s class balance is a property of the weather.
+  A quantity that unstable is unusable as an evaluation basis even setting circularity aside.
+
+## 104. The server-side membership record is a child table, and it is written from the server's state (v0.8.0)
+
+- **Context**: The draft's §6a(3) left open whether the membership fingerprint is `feedback` columns
+  or a child table, and framed the fingerprint as client-reported evidence about staleness. Phase 0
+  §1 found the stronger fact: after a merge the label's referent is gone entirely — the natural join
+  `feedback ⋈ situation_alarm` returns nothing, and the surviving situation holds the union of both
+  bags with nothing distinguishing them.
+- **Options**: (a) store only a digest of the membership on `feedback`; (b) store the ordered member
+  ids as a delimited string column; (c) a child table keyed by feedback id holding the ordered ids,
+  **plus** the digest stored alongside for cheap comparison.
+- **Choice**: (c), written from the **server's** own state at verdict time, always, independently of
+  what any client sends.
+- **Reason**: a digest proves that something changed and cannot say what it was — and after a merge
+  there is nothing left to compare it *against*, so (a) records a fact about a bag nobody can
+  reconstruct. (b) puts a list in a column, which the project has refused everywhere else and which
+  makes the only useful query (`which labels involved alarm X?`) a string scan. (c) makes the bag
+  itself durable, which is what §3.3 says the dataset is *for*. Client-reported membership is kept
+  as a **separate, optional, untrusted** half; the divergence between the two is a metric, not an
+  error.
+- **Consequence, deliberately admitted**: the child table may legitimately have **zero** rows for a
+  given feedback id. Phase 0 §2 showed a verdict posted to an already-merged situation answers 200,
+  writes a row, and passes an empty bag to `learn.penalize()`. Recording an empty bag **as empty**
+  makes that population countable for the first time, so no "at least one member" constraint may be
+  imposed.
+
+## 105. The alarm-observation row is written per activation, not per trap (v0.8.0)
+
+- **Context**: The draft's §6a(2) left this open, noting the answer changes the row count by roughly
+  the dedup ratio and that `make eval` reports ~0.71.
+- **Options**: (a) one observation row per trap received; (b) one per activation that reaches
+  `Correlator.process()`.
+- **Choice**: (b).
+- **Reason**: measured in Phase 0 §3b — 3 159 traps produced 2 256 activations, ratio **0.7142**,
+  agreeing with `make eval`'s independently-computed `dedup_ratio` of 0.7156. The 903 extra rows (a)
+  would write are re-fires that **by construction never reached `score_link`**, so no pair row could
+  ever reference them: a 40 % increase in write volume on the ingest path, inside the batch lock,
+  buying rows nothing can join to. Prime directive 1 makes that decisive rather than merely
+  unattractive.
+- **Cost, recorded**: the count of suppressed re-fires between two activations is not recoverable
+  from the observation rows alone. It is recoverable from `alarm.count`, which the observation row
+  captures at decision time — so the information survives in the form that is actually useful (the
+  count at the instant), and only the individual re-fire timestamps are lost.
+
+## 106. An empty method set is refused, not defaulted and not skipped (v0.8.0)
+
+- **Context**: F43. `assert_every_route_is_declared` iterates `route.methods`; an empty set produces
+  zero iterations, so a route of a *known* shape carrying no verb was neither checked nor refused —
+  and Starlette does not filter by verb when `methods` is falsy, so it serves all seven. Reproduced
+  in `docs/gates/v0.8.0-phase-0.md` §7 with a route answering 200 to every verb while the gate
+  passed it. F42's shape check does not fire, because the shape is known.
+- **Options**: (a) treat an empty method set as the full verb set and require a declaration for each
+  — the "what Starlette actually serves" reading; (b) refuse the route outright; (c) leave it, on
+  the grounds that neither reachable path occurs in this repository.
+- **Choice**: (b).
+- **Reason**: (a) is superficially more precise and is worse. It invents a declaration requirement
+  for seven verbs nobody wrote, so the natural fix a contributor would reach for is to declare all
+  seven — turning a mistake into seven authorizations. It also encodes an assumption about
+  Starlette's dispatch behaviour, which is the unpinned-internal dependency DECISIONS #101 already
+  recorded as the mechanism by which this gate silently regressed once. (b) needs to assume nothing:
+  there is no verb to look up, therefore nothing can be checked, therefore the route is refused —
+  the identical reasoning F42 applied to unknown shapes, and the project's posture on the
+  uncheckable has been *refuse* since v0.7.4. (c) leaves a fail-open in a guard whose entire value
+  is completeness, in the release that grows the surface it guards.
+- **Claim corrected, not deleted**: v0.7.5 claimed *"every object on `app.routes` is either checked
+  or refused; none is skipped"*. It was true of shapes and false of methods. The claim now reads:
+  every object is either checked against both tables for every verb it carries, **or refused — as an
+  unknown shape, or as a known shape carrying no verb to check**. `SECURITY-REVIEW-0.7.5.md` is not
+  edited; records are not rewritten, and the correction is issued in this release's review.
+- **Cost, accepted**: a comment in `declare.py` cannot name FastAPI's non-decorator registration
+  helper, because `test_add_api_route_is_confined_to_the_static_asset_allowlist` counts textual
+  *mentions* rather than calls. v0.7.4 met the same wall and reworded its prose; this follows that
+  precedent rather than widening scope to rebuild the guard, which stays a `docs/ROADMAP.md` item.
+
+## 107. One pair table with a lifecycle column, not two tables — chosen against the measurement (v0.8.0)
+
+- **Context**: The spec leaves the sink/dataset **physical** layout open and states the criterion —
+  cheap bounded sink deletion, simple dataset queries — with an instruction to measure both. Built
+  both at Phase 0's measured 194 341-row sink volume and timed four operations
+  (`docs/gates/v0.8.0-phase-2.md` §3).
+- **Options**: (a) one `dataset_pair` table with a `lifecycle` column; (b) separate `pair_sink` and
+  `pair_dataset` tables (and, symmetrically, two observation tables).
+- **Measured**: **(b) won every operation** — file 21.52 vs 23.92 MB, promotion 12.57 vs 18.42 ms,
+  dataset query 0.06 vs 0.44 ms, sink deletion by age 297.04 vs 326.03 ms. Between 9 % and 15 % on
+  the two that matter operationally.
+- **Choice**: **(a)**, against the measurement.
+- **Reason**: a pair row references two *observation* rows. Under (b) a promoted pair lives in
+  `pair_dataset` while its observations are still in `observation_sink`, so promotion must either
+  preserve ids across four independently-autoincrementing tables or **rewrite every reference as it
+  moves** — a correctness hazard on the per-label path whose failure mode is a dataset row silently
+  pointing at the wrong observation. Under (a) **nothing moves**: promotion is one `UPDATE` of one
+  column, ids are stable, and references cannot break. The measured margins are 6 ms and 29 ms on
+  operations that run per label and once a minute respectively; a correctness hazard on the path
+  that produces the release's entire output is not worth 29 ms. (b) also duplicates a sixteen-column
+  definition across two `CREATE TABLE`s, where a column added to one and not the other makes the
+  promotion `SELECT` silently drop it.
+- **Cost, accepted and recorded as a known limit**: the sink's bounded deletion is separated from
+  the labelled corpus by a `WHERE lifecycle='sink'` clause rather than by a table boundary. That is
+  a **checked** guarantee where (b)'s would have been **structural**, and this project normally
+  prefers structural. Mitigated by a dedicated test that neither prune path can touch a promoted
+  row — not by the layout, and the difference is stated rather than argued away.
+
+## 108. `engine.py`'s cohesion ceiling rises 542 → 580, and a new guard pays for it (v0.8.0)
+
+- **Context**: `COHESION_EXEMPT_CEILING` recorded `engine.py` at **542 lines — its exact size, so
+  zero headroom**. Capture needs call sites in `_process`, `start` and `maintenance`, and a call
+  site is by definition at the call. Anti-overengineering rule 7 anticipated this and prescribed the
+  remedy: *extract the capture code into its own module*. That was done — `capture.py` (369 lines)
+  holds every decision and `store/dataset.py` (315) holds every statement — and `engine.py` still
+  grew by **38 lines**: one import, two attribute assignments with their comment, four call
+  statements, and the eleven-line `capture.record(...)` invocation.
+- **Options**: (a) contort the call signature — bundle the eleven arguments into positional tuples —
+  until the diff fits under 542; (b) move `_process` or `maintenance` out of `engine.py` to make
+  room; (c) raise the ceiling to the measured 580 and add a control that preserves what the ceiling
+  is a proxy for.
+- **Choice**: (c). Two new tests: `test_the_engine_holds_no_capture_logic` asserts that **no SQL
+  statement and no dataset table** appears in `engine.py`, and `test_the_capture_module_is_the_one_
+  that_grew` asserts the extraction happened rather than the code being deleted.
+- **Reason**: (a) makes the code worse to satisfy a number, which is the inverse of what the guard
+  is for — an unreadable call site on the ingest path is a real cost, and "it fits" is not a
+  benefit. (b) is forbidden by DECISIONS #90 and by directive 4: `maintenance` acquires the batch
+  lock and `_process` *is* the ingest path, so moving either would destroy the invariant the
+  exemption exists to protect, to protect the number that stands for it. (c) is the option the
+  guard itself names — *"argue the new number on its own merits"* — and the merits are that all 38
+  lines are call sites and state, none is a decision, and the new tests make that **structural**
+  rather than a claim in a commit message.
+- **Why this is not the ratchet failing**: the `COHESION_EXEMPT` comment warns that a bound
+  relaxed for convenience is how a ratchet becomes a comment. The distinguishing question is
+  whether the release ends with a weaker guarantee or a stronger one. Before: *`engine.py` may not
+  exceed 542 lines.* After: *`engine.py` may not exceed 565 lines **and may contain no persistence
+  logic at all***. The second is strictly stronger — the first was satisfiable by a file full of
+  SQL — and it was verified non-vacuous by injecting `INSERT INTO dataset_pair` into `engine.py`
+  and observing the guard go red (`docs/gates/v0.8.0-phase-4.md` §2).
+- **Cost, accepted**: the exempt module is 4 % larger, and a future release wanting to add to
+  `engine.py` meets a ceiling that has moved once. The mitigation is that it may only move with an
+  ADR, which is what this entry is.

@@ -75,11 +75,22 @@ when they judged it. v0.8.0 adds that row.
 
 Three things make this a release rather than a migration:
 
-1. **There are no negatives.** `correlate.process()` evaluates candidate pairs and returns `links`
-   *and* `considered`; only `links` is persisted. The evaluated-and-rejected pairs — the majority
-   class, without which supervised training is impossible — are discarded, and
-   `MAX_LINKS_PER_ALARM` truncates the positive side too. The dataset is censored on both ends and
-   the capture has to fix that at the moment of decision, not afterwards.
+1. **The evaluation is discarded.** `correlate.process()` evaluates candidate pairs and returns
+   `links` *and* `considered`; only `links` is persisted, and `MAX_LINKS_PER_ALARM` truncates even
+   that. The dataset is censored on both ends and the capture has to fix it at the moment of
+   decision, not afterwards.
+
+   > **Corrected 2026-08-01 (v0.8.0).** This bullet previously called the evaluated-and-rejected
+   > pairs *"the majority class, without which supervised training is impossible"*. That is wrong
+   > twice and the sentence is withdrawn — see
+   > [`FEEDBACK-DATASET-0.8-DRAFT.md`](FEEDBACK-DATASET-0.8-DRAFT.md) §3.1a. Briefly: they are the
+   > **machine's decision**, not the human label's majority class, and reading them as a training
+   > target is the imitation trap — *no metric that decides promotion may be computed against
+   > `incumbent_linked`*. They are also only **0.17 %** of the eval corpus (194 341 pairs evaluated,
+   > 194 002 accepted, 339 rejected): the 17.7× amplification is `MAX_LINKS_PER_ALARM` truncating
+   > *accepted* links, and the accept rate swings from 0 % on quiet traffic to 100 % in a storm.
+   > The operational consequence — capture every evaluated pair, before either censoring — is
+   > unchanged.
 2. **Features must be captured, not reconstructed.** `A` and `E` decay continuously and `alarm` is
    deduplicated and mutated on re-fire, so the state at decision time is not recoverable later. This
    is why v0.8.0 is a capture workstream and not an offline job over history.

@@ -106,12 +106,28 @@ async def test_idle_open_situations(store: Store) -> None:
 
 async def test_feedback_requires_existing_situation(store: Store) -> None:
     s1 = await store.create_situation(ts=1.0)
-    # v0.7.1 (F36): `add_feedback` returns (exists, inserted) rather than a bare bool — a repeat of
-    # the same verdict exists but does not insert, which is what bounds its effect on learned state.
-    assert await store.add_feedback(s1, "confirm", ts=2.0) == (True, True)
-    assert await store.add_feedback(s1, "confirm", ts=3.0) == (True, False)  # idempotent
-    assert await store.add_feedback(s1, "split", ts=4.0) == (True, True)  # a correction applies
-    assert await store.add_feedback(999, "split", ts=2.0) == (False, False)
+    # v0.7.1 (F36): `add_feedback` reports `exists` and `inserted` rather than a bare bool — a
+    # repeat of the same verdict exists but does not insert, which is what bounds its effect on
+    # learned state.
+    #
+    # v0.8.0 asserts the two fields by name rather than comparing the whole tuple. The result also
+    # carries the new row's `id` now (so the dataset annotation can target it without a second
+    # SELECT), and a positional comparison would have to be rewritten every time the record grows —
+    # which is a test asserting a *shape* when what it means to assert is a *decision*.
+    first = await store.add_feedback(s1, "confirm", ts=2.0)
+    assert (first.exists, first.inserted) == (True, True)
+    assert first.id is not None
+
+    repeat = await store.add_feedback(s1, "confirm", ts=3.0)
+    assert (repeat.exists, repeat.inserted) == (True, False)  # idempotent
+    assert repeat.id is None, "a no-op insert has no row to report"
+
+    correction = await store.add_feedback(s1, "split", ts=4.0)
+    assert (correction.exists, correction.inserted) == (True, True)  # a correction applies
+
+    missing = await store.add_feedback(999, "split", ts=2.0)
+    assert (missing.exists, missing.inserted) == (False, False)
+    assert missing.id is None
 
 
 async def test_labels_and_read_models(store: Store) -> None:

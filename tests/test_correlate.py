@@ -5,9 +5,11 @@ from hypothesis import strategies as st
 
 from netcorenoc.correlate import (
     LINK_THRESHOLD,
+    MAX_LINKS_PER_ALARM,
     W_A,
     W_E,
     W_T,
+    CorrelationResult,
     Correlator,
     WindowAlarm,
 )
@@ -300,3 +302,123 @@ def test_select_candidates_skips_tombstones_and_honours_the_window_and_cap() -> 
     ]  # ts 1007 is exactly 3.0 s old -> kept
     assert [a.alarm_id for a in select_candidates(window, now=1010.0, window_s=2.9)] == [8, 9, 10]
     assert select_candidates(window, now=2000.0, window_s=10.0) == []
+
+
+# --- v0.8.0 S1: `process()` returns what it already computed ------------------------------
+#
+# The parity bar for this change is the highest in the release, because `correlate.py` is the one
+# file whose behaviour `make eval` measures directly. The change is additive on the RETURN VALUE
+# and nothing else; these tests are what make that a fact rather than a claim.
+
+
+def test_score_link_body_is_unchanged_by_the_capture_change() -> None:
+    """**The correlation-parity anchor.** `score_link` is the decision; it must not have moved.
+
+    A body hash rather than a behavioural test, because behaviour is already covered above and the
+    question here is different: did the v0.8.0 capture change touch the arithmetic *at all*? The
+    frozen digests are recorded in `docs/gates/v0.8.0-phase-0.md`, taken on the untouched v0.7.5
+    tree before any of this release's code existed.
+
+    If this fails, `make eval` may still pass — float arithmetic can be reordered without moving any
+    metric on this corpus — and that is precisely why the hash is checked separately.
+    """
+    import hashlib
+    import inspect
+
+    frozen = {
+        "score_link": "3bbec32371cc8cdf6f16f4795b5a25ed9adf0be0dd9c3663128abd31a670a256",
+        "features": "b7742649119e8876da78de16301f1c11a8db41143b0e5735e373ee7a78c4393e",
+    }
+    for name, expected in frozen.items():
+        source = inspect.getsource(getattr(Correlator, name))
+        actual = hashlib.sha256(source.encode()).hexdigest()
+        assert actual == expected, (
+            f"Correlator.{name} changed. v0.8.0 permits exactly one change to correlate.py and it "
+            f"is additive on CorrelationResult — not a change to the scoring seam.\n"
+            f"  expected {expected}\n  actual   {actual}"
+        )
+
+
+def test_evaluated_carries_every_candidate_and_links_is_unchanged() -> None:
+    """`evaluated` is a superset of `links`, in candidate order, and `links` is untouched.
+
+    The two lists answer different questions and the release turns on not confusing them:
+    `links` is what the engine persists (sorted by score, truncated at MAX_LINKS_PER_ALARM);
+    `evaluated` is what the scorer looked at (candidate order, untruncated, rejections included).
+    """
+    learner = Learner()
+    c = Correlator()
+    for i in range(1, 9):
+        c.process(wa(i, class_id=i, device_id=10, ts=1000.0 + i), learner)
+    result = c.process(wa(99, class_id=99, device_id=10, ts=1009.0), learner)
+
+    assert [e.other.alarm_id for e in result.evaluated] == [
+        a.alarm_id for a in result.considered
+    ], "evaluated must follow candidate order, one entry per candidate"
+    assert len(result.evaluated) == len(result.considered)
+    assert len(result.links) <= MAX_LINKS_PER_ALARM
+
+    accepted = [e for e in result.evaluated if e.result.linked]
+    assert len(accepted) >= len(result.links), "links cannot exceed what the scorer accepted"
+    # Every persisted link appears in `evaluated` carrying the identical score object.
+    by_id = {e.other.alarm_id: e.result for e in result.evaluated}
+    for link in result.links:
+        assert by_id[link.other.alarm_id] is link.result
+
+
+def test_evaluated_records_rejected_pairs_that_links_discards() -> None:
+    """The population v0.7.5 threw away: scored, rejected, and now recorded.
+
+    A rejection needs a pair the scorer will refuse, so the two alarms are far apart in time on
+    unrelated classes and devices — the temporal term decays and both affinities are zero on a cold
+    learner, so the score cannot clear the 0.5 threshold.
+    """
+    learner = Learner()
+    c = Correlator()
+    c.process(wa(1, class_id=1, device_id=10, ts=1000.0), learner)
+    result = c.process(wa(2, class_id=2, device_id=20, ts=1100.0), learner)
+
+    assert result.considered, "the first alarm must still be a candidate"
+    assert result.links == [], "a cold learner 100 s apart on another device must not link"
+    assert len(result.evaluated) == 1
+    rejected = result.evaluated[0]
+    assert rejected.result.linked is False
+    assert rejected.result.score < rejected.result.threshold
+    # The score exists and is a real number — this is exactly what v0.7.5 computed and discarded.
+    assert 0.0 <= rejected.result.score < 1.0
+
+
+def test_truncated_links_are_derivable_from_what_process_returns() -> None:
+    """`dataset_pair.truncated` needs no new field: it is `linked and not in links`.
+
+    Phase 0 measured that truncation, not rejection, is 94% of what the engine discards — so telling
+    the two apart is load-bearing, and doing it without another field keeps the change additive.
+    """
+    learner = Learner()
+    c = Correlator()
+    # Same device and class throughout: entity affinity is 1.0 (same NE), so every pair links and
+    # the accepted count comfortably exceeds MAX_LINKS_PER_ALARM.
+    for i in range(1, 10):
+        c.process(wa(i, class_id=5, device_id=10, ts=1000.0 + i * 0.1), learner)
+    result = c.process(wa(50, class_id=5, device_id=10, ts=1001.0), learner)
+
+    accepted = [e for e in result.evaluated if e.result.linked]
+    kept = {link.other.alarm_id for link in result.links}
+    truncated = [e for e in accepted if e.other.alarm_id not in kept]
+
+    assert len(accepted) > MAX_LINKS_PER_ALARM, "fixture must actually exceed the cap"
+    assert len(result.links) == MAX_LINKS_PER_ALARM
+    assert len(truncated) == len(accepted) - MAX_LINKS_PER_ALARM
+    # A truncated pair is an ACCEPTED link the cap dropped — not a rejection.
+    for pair in truncated:
+        assert pair.result.linked is True
+
+
+def test_correlation_result_still_constructs_without_evaluated() -> None:
+    """The field is defaulted, so every pre-v0.8.0 construction site keeps working.
+
+    `preview.py` and the tests build `CorrelationResult` by hand; a required field would have made
+    this an API break dressed as an addition.
+    """
+    empty = CorrelationResult(links=[], considered=[], storm=False)
+    assert empty.evaluated == []

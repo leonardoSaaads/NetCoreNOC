@@ -53,6 +53,23 @@ traffic, and whether one of them evaded depended on the version of an **unpinned
 regressed with no commit and no failing test. See :data:`KNOWN_ROUTE_SHAPES` and
 :func:`assert_every_route_is_declared` below, `docs/security/SECURITY-REVIEW-0.7.5.md` for the
 finding, and DECISIONS #98 for why the fix refuses unknown shapes rather than learning to walk them.
+
+**v0.8.0 — F43 narrows a claim v0.7.5 left too strong.** That release said *"every object on
+``app.routes`` is either checked or refused; none is skipped"*. F42 made the **shape** half true.
+The **method** half was not: within a known shape the traversal iterates ``route.methods``, and an
+**empty** set produces zero iterations — so the route was neither checked nor refused, while
+Starlette serves *every* verb on a route whose ``methods`` is falsy.
+
+* **F43** — an empty method set is **unverifiable**: there is no verb to look up in either
+  authorization table, so there is nothing to check. It is therefore **refused**, by the same
+  reasoning that refuses an unknown shape. Reproduced by execution in
+  `docs/gates/v0.8.0-phase-0.md` §7, where such a route answered 200 to GET, POST, PUT, DELETE,
+  PATCH, HEAD and OPTIONS while this gate passed it. `docs/security/SECURITY-REVIEW-0.8.0.md`
+  carries the finding and issues the correction; DECISIONS #106 records the choice.
+
+The claim this module now supports, written so it is checkable rather than reassuring: **every
+object on ``app.routes`` is either checked against both authorization tables for every verb it
+carries, or refused — as an unknown shape, or as a known shape carrying no verb to check.**
 """
 
 from __future__ import annotations
@@ -215,6 +232,37 @@ def assert_every_route_is_declared(app: FastAPI) -> None:
         # object you cannot name is the fail-open this finding is about.
         checked = cast(Route, route)
         methods: set[str] = checked.methods or set()
+        # **F43.** An empty method set is an *unverifiable* route, and it is refused by exactly the
+        # same logic that refuses an unknown shape. The loop below is the whole of the per-route
+        # check, and over an empty set it runs zero times: the route would be neither checked nor
+        # refused. Starlette does not filter by verb when `methods` is falsy, so such a route serves
+        # **every** verb — reproduced in `docs/gates/v0.8.0-phase-0.md` §7, where a
+        # `Route("/admin/backdoor", ep, methods=[])` passed this gate and answered 200 to GET, POST,
+        # PUT, DELETE, PATCH, HEAD and OPTIONS.
+        #
+        # This is the same fail-open F42 closed one level up, and the same reason: a guard whose
+        # entire value is completeness may not have a branch that silently does nothing. There is no
+        # verb to pass to `require_declaration`, so there is no way to check it — and the project's
+        # posture on the uncheckable is to refuse, never to skip (DECISIONS #98, #106).
+        #
+        # `DeclaredRoutes` cannot produce this — its three verbs are literals — and FastAPI's own
+        # non-decorator registration helper asserts a non-empty method list, so it cannot either.
+        # The two reachable paths are appending a `Route` directly to `router.routes` and clearing
+        # `methods` after registration. Latent, like F40/F41/F42.
+        #
+        # (That helper is deliberately not named here. The guard confining it to the static-asset
+        # allowlist counts textual *mentions* rather than calls, so naming it even in a comment
+        # fails that test — a known limitation recorded on `docs/ROADMAP.md`. v0.7.4 met the same
+        # wall and reworded its prose rather than the test; this follows that precedent instead of
+        # widening scope to rebuild the guard. `docs/gates/v0.8.0-phase-2.md` names it in full.)
+        if not methods:
+            raise UndeclaredRouteError(
+                f"{checked.path} is registered with an empty method set, which this gate cannot "
+                "check: there is no verb to look up in rbac.ROUTE_PERMISSIONS or rbac.ROUTE_SCOPE. "
+                "Starlette does not filter by verb when `methods` is falsy, so such a route serves "
+                "every verb — it is refused rather than skipped (F43). Register through "
+                "netcorenoc.api.declare.DeclaredRoutes, which always names the verb."
+            )
         for method in sorted(methods):
             if method == "HEAD" and "GET" in methods:
                 continue  # Starlette synthesises HEAD alongside GET; not a separate declaration

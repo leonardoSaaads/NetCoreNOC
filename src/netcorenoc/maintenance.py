@@ -18,6 +18,29 @@ from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE
 
 
 class MaintenanceMixin(EngineBase):
+    async def _capture_run(self, now: float) -> None:
+        """Open or refresh the feedback-dataset capture run (v0.8.0).
+
+        Here rather than in `engine.py` for the same reason everything else in this file is: it
+        reasons about *elapsed configuration*, not about a batch. It marshals the engine's current
+        scorer and retention state into `netcorenoc.capture`, which owns every decision — this is a
+        call site, and `engine.py`'s COHESION_EXEMPT entry covers the ingest reasoning, not code
+        that merely lands nearby.
+
+        Called from `Engine.start` and from the top of each `maintenance` pass, alongside
+        `load_scorer_config`: a capture run records the constants a period of capture shares, so a
+        retune that changed the scorer must not have its pair rows attributed to the configuration
+        it replaced.
+        """
+        await self.capture.open_run(
+            self.store,
+            now=now,
+            scorer_config_id=self.scorer_config_id,
+            scorer_params_hash=self._loaded_key[1] if self._loaded_key else None,
+            learner=self.learner,
+            retention=self.retention,
+        )
+
     async def _promotion_sweep(self, now: float) -> None:
         """Once per maintenance pass, try to subdivide NEs that saw traffic and have no
         discriminator yet, confirm a severity field for those without one, and audit any that

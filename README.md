@@ -183,6 +183,49 @@ other (Δt < 30·ln 2). Everything beyond that — cross-device correlation, rai
 which varbind names the alarmed entity — is learned. Run NetCoreNOC in parallel with your
 existing NMS from day one (it only needs a copy of the traps) and let it learn.
 
+## The operator-feedback dataset (v0.8.0)
+
+Every Confirm / Split click is the only **human** judgement this system ever receives. From v0.8.0
+the appliance keeps them, together with the correlation evidence each verdict was about — the
+dataset every machine-learning release from v0.9.0 onward is built on.
+
+**It captures. It trains nothing.** There is no model in this release, of any kind.
+
+What it records, at the moment of the decision, because none of it is recoverable afterwards: **one
+row per evaluated pair** — the ones the scorer rejected as well as the ones it linked, before the
+`MAX_LINKS_PER_ALARM` cap truncates anything; one immutable row per alarm activation carrying the
+raw varbinds that the `alarm` table overwrites on re-fire; and, alongside each verdict, **the
+membership the server itself held** — so a label survives the situation merges that used to destroy
+what it referred to.
+
+**It is admin-only, everywhere.** Capture runs engine-side, where visibility scoping does not exist
+and must not — correlation learns across the whole estate — so the dataset contains every NE, entity
+and raw varbind in the network, ungoverned by any scope policy. That makes it a bypass of the
+visibility model by construction, and it is treated as one: no route below `admin` reads a dataset
+row, on any path, in any format.
+
+**Capture is on by default**, because its value compounds with time and six months not captured
+cannot be reconstructed. See what it costs you:
+
+```sh
+python -m netcorenoc dataset stats     # rows, and the window you ACTUALLY have
+make bias-report                       # or: python -m netcorenoc dataset bias
+```
+
+The **bias report** is the release's deliverable: confirms versus splits, operator concentration,
+label latency, coverage, how many labels were made under a restricting scope — and, the figure most
+often got wrong, the **effective sample size stated as the number of independent labelled bags, not
+the number of pairs**. It emits aggregates only, it is deterministic, and it closes by saying what
+it *cannot* tell you.
+
+Retention has three tiers (sink / training / audit), all admin-settable. **Lowering one deletes rows
+and there is no undo**, so the endpoint previews by default and both the preview and the change are
+audited. [`MIGRATION.md`](MIGRATION.md) has the numbers and the one caveat that matters: the sink's
+**row cap**, not its 21-day window, is what governs at most traffic rates.
+
+Specified in
+[`docs/architecture/FEEDBACK-DATASET-0.8-DRAFT.md`](docs/architecture/FEEDBACK-DATASET-0.8-DRAFT.md).
+
 ## Security (v0.2.0)
 
 Identity, role-based authorization, and a tamper-evident audit log. Accounts with three

@@ -26,6 +26,7 @@ import httpx
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Route
 
 from netcorenoc import auth, rbac
 from netcorenoc.api import declare, routes_static
@@ -451,6 +452,108 @@ def test_f42_options_is_never_synthesised_so_nothing_exempts_it() -> None:
     assert "OPTIONS /api/undeclared-options" in str(excinfo.value)
 
 
+# --- F43: an empty method set is unverifiable, and unverifiable means refused ------------
+
+
+def _empty_method_route(path: str = "/admin/backdoor") -> Route:
+    """A `Route` of a **known** shape carrying no verb — the F43 shape.
+
+    Deliberately built by hand rather than through any registration helper: FastAPI's own
+    non-decorator helper asserts a non-empty method list, and `DeclaredRoutes` passes literal
+    verbs, so neither can produce this. The two reachable paths are appending one of these to
+    `router.routes` and clearing `methods` after registration, and both are exercised below.
+    """
+    return Route(path, _handler, methods=[])
+
+
+def test_f43_a_known_shape_with_no_methods_is_refused() -> None:
+    """**F43.** The route the v0.7.5 gate neither checked nor refused.
+
+    `assert_every_route_is_declared` iterates `route.methods`; over an empty set that loop runs
+    **zero times**, so the route fell through the whole check silently. Its type *is* in
+    `KNOWN_ROUTE_SHAPES`, so F42's refusal does not fire either — this is the gap between the two
+    findings, and it is why the shape check alone did not make the completeness claim true.
+
+    Proven to fail on the unmodified tree: with the `if not methods:` branch removed from
+    `declare.assert_every_route_is_declared`, this test does not raise and fails on the
+    `pytest.raises` assertion (`docs/gates/v0.8.0-phase-2.md` §2).
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    app.router.routes.append(_empty_method_route())
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        declare.assert_every_route_is_declared(app)
+    message = str(excinfo.value)
+    assert "/admin/backdoor" in message
+    assert "empty method set" in message
+    assert "DeclaredRoutes" in message, "the refusal must say where registration belongs"
+
+
+def test_f43_clearing_methods_after_registration_is_refused_too() -> None:
+    """The second reachable path, and the one a real defect would take.
+
+    Appending a bare `Route` is conspicuous. Mutating `methods` on a route that was registered
+    correctly is not: the declaration ran, the gate saw `{'GET'}`, and the emptying happens
+    afterwards. The result-inspecting traversal is the only thing positioned to catch it, which is
+    exactly the argument F40 made for having it at all.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    app.get("/healthz")(_handler)
+    declare.assert_every_route_is_declared(app)  # the control: it passes before the mutation
+
+    target = next(r for r in app.router.routes if getattr(r, "path", None) == "/healthz")
+    target.methods = set()  # type: ignore[attr-defined]
+    with pytest.raises(UndeclaredRouteError) as excinfo:
+        declare.assert_every_route_is_declared(app)
+    assert "/healthz" in str(excinfo.value)
+
+
+def test_f43_the_unreachable_construction_paths_stay_unreachable() -> None:
+    """Reachability, asserted rather than described.
+
+    The finding is **latent** — no route in this repository is registered either way — and that
+    claim is only worth making if the two paths said to be closed really are. FastAPI's own
+    non-decorator registration helper asserts a non-empty method list; `DeclaredRoutes` passes
+    literal verbs. If a dependency upgrade ever relaxed the first, this test says so.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    with pytest.raises(AssertionError):
+        app.add_api_route("/api/x", _handler, methods=[])
+
+    for verb in ("get", "post", "delete"):
+        source = inspect.getsource(getattr(DeclaredRoutes, verb))
+        assert f'require_declaration("{verb.upper()}"' in source, (
+            f"DeclaredRoutes.{verb} no longer passes a literal verb to the gate, so it could now "
+            "produce the empty method set F43 is about"
+        )
+
+
+def test_f43_an_untouched_app_is_not_refused() -> None:
+    """**The control.** Without it the four assertions above prove only that the gate raises.
+
+    Same posture as `create_app`: `docs_url=None, redoc_url=None`, and routes that carry verbs.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None)
+    app.get("/healthz")(_handler)
+    app.add_api_route("/openapi.json", _handler, methods=["GET", "HEAD"])
+    declare.assert_every_route_is_declared(app)  # must not raise
+
+
+async def test_f43_every_path_served_today_still_registers(store: Store) -> None:
+    """The live control: the gate got stricter and the served surface did not move.
+
+    The sibling of `test_f42_every_path_served_today_still_registers`, repeated for this finding
+    because a refusal added in the per-route loop is exactly the kind of change that could reject a
+    route the appliance depends on — and `create_app` calls this gate before returning, so the
+    failure mode is an appliance that does not start.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    served = _live_routes(app)
+    assert len(served) == 50, f"the served surface moved: {len(served)} method/path pairs"
+    for _method, path in served:
+        route = next(r for r in app.routes if getattr(r, "path", None) == path)  # type: ignore[attr-defined]
+        assert getattr(route, "methods", None), f"{path} carries no verb, which F43 now refuses"
+
+
 async def test_f42_the_live_app_produces_exactly_the_known_shapes(store: Store) -> None:
     """**The half that generalises — read this before changing `KNOWN_ROUTE_SHAPES`.**
 
@@ -491,7 +594,7 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    assert len(served) == 48, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 50, f"the served surface moved: {len(served)} method/path pairs"
     paths = {path for _method, path in served}
     for public in declare.UNAUTHENTICATED_PATHS:
         assert public in paths, f"{public} is no longer served"
@@ -609,7 +712,10 @@ SCOPED = sorted(r for r, p in rbac.ROUTE_SCOPE.items() if p == "scoped")
 
 def test_the_three_postures_are_all_populated() -> None:
     """Guard the guard: a posture with no routes would make its behavioural test vacuous."""
-    assert len(ADMIN_ONLY) == 22, len(ADMIN_ONLY)
+    # v0.8.0: 22 -> 24. The two dataset-retention routes are `admin_only`, and they could not
+    # be anything else: the dataset is a scope bypass by construction (captured engine-side,
+    # where visibility scoping does not exist), so there is no scoped view of it to build.
+    assert len(ADMIN_ONLY) == 24, len(ADMIN_ONLY)
     assert len(UNSCOPED) == 5, UNSCOPED
     assert len(SCOPED) == 12, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)

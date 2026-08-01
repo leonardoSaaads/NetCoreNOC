@@ -29,6 +29,14 @@ BODIES: dict[tuple[str, str], dict[str, object]] = {
     ("POST", "/api/users/{uid}/role"): {"role": "viewer"},
     ("POST", "/api/tokens"): {"name": "probe", "role": "viewer"},
     ("POST", "/api/config"): {"allowlist": "", "retention_days": 7},
+    # v0.8.0. `preview` is left at its default (True) deliberately: the authorization probe
+    # must not reach the destructive branch, and the default IS the safety property.
+    ("POST", "/api/dataset/retention"): {
+        "sink_days": 21,
+        "sink_rows": 1000,
+        "training_days": 365,
+        "audit_days": 730,
+    },
 }
 
 

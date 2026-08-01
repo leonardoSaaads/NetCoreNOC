@@ -41,7 +41,14 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from netcorenoc import capture as capture_mod
 from netcorenoc import known_oids, severity
+from netcorenoc.capture import (
+    Capture,
+    ClientFingerprint,
+    LabelScope,
+    RetentionPolicy,
+)
 from netcorenoc.correlate import Correlator, ScoredLink, WindowAlarm
 from netcorenoc.engine_base import EngineBase
 from netcorenoc.events import Fingerprint, QuarantinedPacket, TrapEvent
@@ -135,6 +142,10 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # (config id, params hash) of the configuration currently instantiated. A reload that
         # finds the same key is a no-op, which is what keeps a fail-safe degradation sticky.
         self._loaded_key: tuple[int, str] | None = None
+        # Feedback-dataset capture (v0.8.0). Call sites only; the logic is `netcorenoc.capture`,
+        # because this file's COHESION_EXEMPT entry covers the ingest reasoning, not code nearby.
+        self.capture = Capture()
+        self.retention = RetentionPolicy()
 
     def forget_situation(self, sid: int) -> None:
         """Drop in-memory membership after an operator manually closes a situation."""
@@ -144,6 +155,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
     async def start(self) -> None:
         """Reload learned state and open-situation membership after a restart."""
         await self.load_scorer_config()
+        await self._capture_run(time.time())
         await self.learner.load(self.store)
         await self.precedence.load(self.store)
         for row in await self.store.load_varbind_profiles():
@@ -289,6 +301,21 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 (candidate.class_id, candidate.device_id), item_pair, lead_weight
             )
         await self._assign_situation(entry, outcome.links)
+        # After `_assign_situation`, so the situation id is where the alarm landed, and last on
+        # this path so a capture failure precedes no decision. `capture.record` never raises.
+        await self.capture.record(
+            self.store,
+            entry,
+            item,
+            outcome,
+            self.learner,
+            ne_id=ne_id,
+            count=result.count,
+            severity=sev,
+            severity_rank=sev_rank,
+            instance=instance,
+            situation_id=self.sit_of.get(entry.alarm_id),
+        )
 
     async def _seed_clear_pair(self, oid: str, class_id: int, ts: float) -> None:
         """Register the universal raise/clear pairs the first time either side shows up."""
@@ -470,6 +497,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         *,
         principal_ref: str | None = None,
         role: str | None = None,
+        scope: LabelScope | None = None,
+        client: ClientFingerprint | None = None,
     ) -> FeedbackResult:
         """Operator feedback: ``confirm`` reinforces the grouping, ``split`` penalizes.
 
@@ -493,9 +522,16 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         members = self.members.get(sid)
         if members is not None:
             items = [(m.class_id, m.device_id) for m in members]
+            bag = [m.alarm_id for m in members]
         else:
             rows = await self.store.situation_members(sid)
             items = [(int(r["class_id"]), int(r["device_id"])) for r in rows]
+            bag = [int(r["id"]) for r in rows]
+        # v0.8.0 (S4/S6). The bag the server holds at this instant, the label's provenance, and
+        # promotion — all of it in `netcorenoc.capture`, all of it degrading rather than raising.
+        await capture_mod.record_label(
+            self.capture, self.store, recorded, sid, ts, bag, scope=scope, client=client
+        )
         if verdict == "confirm":
             # advance_epoch=False: an epoch is a *closed situation*, which is what learn.py has
             # said since v0.1.0. Operator feedback is an opinion about one grouping and must not
@@ -514,6 +550,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             # The documented scoring-configuration reload point: an admin's apply or rollback
             # takes effect here, between batches, never inside one.
             await self.load_scorer_config()
+            await self._capture_run(now)  # same reload point, same reason
             for sid in await self.store.idle_open_situations(now - IDLE_CLOSE_S):
                 await self._close_situation(sid, now)
             await self._promotion_sweep(now)
@@ -526,6 +563,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 await self.store.prune(now, retention_days * 86400.0)
                 self.profiler.prune_stale(now - PROFILE_STALE_S)
                 await self.store.delete_stale_varbind_profiles(now - PROFILE_STALE_S)
+                await self.capture.prune_sink(self.store, now, self.retention)
             await self.store.commit()
 
     async def maintenance_loop(self, retention_provider: Callable[[], float]) -> None:

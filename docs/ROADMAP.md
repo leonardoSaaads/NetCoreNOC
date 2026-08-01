@@ -239,6 +239,29 @@ From v0.7.4 (the last loose ends — deferred, each with the reason):
   correctness of what it guards. Every `ROUTE_SCOPE` entry remains a human judgement checked against
   observed behaviour rather than a check the perimeter injects.
 
+From v0.8.0 (deferred, each with the reason):
+
+- **The partial-split affordance — *"these three yes, that one no"*.** **The single
+  highest-leverage UI change for the whole ML roadmap.** A `confirm` is an all-positive bag and is
+  usable pairwise; a `split` is a bag with *at least one negative* and licenses **nothing** about
+  any individual pair (FEEDBACK-DATASET-0.8-DRAFT §3.3a). Letting the operator name which members
+  do not belong converts the weak half of the dataset into the strong half, at the source, and no
+  modelling cleverness in v0.9.0–v0.13.0 recovers it afterwards. Out of v0.8.0 because that release
+  permits exactly one `ui/app.js` change and the UI rebuild is a later release.
+- **The merge chain is recorded from v0.8.0 forward, never backwards.** `0008` adds the merge edge
+  so lineage is recoverable, but merges that happened before the upgrade are gone — the destination
+  was never written. Every pre-upgrade label whose situation was later absorbed keeps an
+  unrecoverable referent, and no migration can reconstruct one.
+- **The sink's 21-day default is a conservative guess and is documented as one.** v0.8.0 measures
+  real label latency; a later release should replace the guess with the measured distribution
+  rather than defending the number.
+- **The bias report is a CLI subcommand, not a screen.** Deliberate — a deterministic CLI report can
+  be a byte-for-byte gate in `make qa` and a UI card never can. It becomes a screen when the UI is
+  rebuilt, and the gate should survive the promotion.
+- **`incumbent_linked`'s class balance is a property of the traffic.** Measured at 0 % accept on
+  quiet corpus traffic and 100 % in a storm. Anything reasoning about it — a sampling strategy, a
+  class weight, a threshold — must condition on the traffic profile or it is fitting the weather.
+
 ## v0.7.5 — specified in v0.7.4, built there
 
 Everything the release itself deferred, each with the reason it is not in it:

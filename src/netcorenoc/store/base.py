@@ -44,6 +44,11 @@ class StoreBase:
     # statements are in progress). The engine takes it per batch; API handlers take it per request.
     # **No method in this package takes it** — it is a contract for callers.
     lock: asyncio.Lock
+    # v0.8.0: does `situation` carry `merged_into` (migration 0008)? `None` until the first merge
+    # answers it. Present so the identical engine code can run against a pre-0008 schema, which is
+    # what `tests/test_upgrade.py` relies on to prove the migration changes behaviour and the code
+    # does not — the same reason `create_situation` tolerates a schema without `scorer_config_id`.
+    _has_merged_into: bool | None
 
     @property
     def conn(self) -> aiosqlite.Connection:
