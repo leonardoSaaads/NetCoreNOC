@@ -1,5 +1,129 @@
 # Upgrading NetCoreNOC
 
+## v0.7.5 → v0.8.0 (the feedback dataset — one migration, and capture starts)
+
+**Read this one.** Unlike the last four upgrades, this release changes what the appliance stores and
+adds a control that can destroy data.
+
+Replace the code and restart. Migration `0008` applies automatically at startup, as every migration
+does.
+
+| | |
+|---|---|
+| Schema | **`user_version` 7 → 8** — four new tables, fifteen nullable columns on `feedback`, one on `situation` |
+| Data | untouched. Every existing row keeps its values; the migration seeds **no** dataset rows |
+| Audit chain | verifies with the **identical final hash** — no audit row is touched |
+| Routes | **two added**, both admin-only: `GET`/`POST /api/dataset/retention` |
+| API contract | `POST /api/situations/{sid}/feedback` still accepts `{verdict}` alone. Two optional fields are added; omitting them is legal and means *unrecorded* |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| How you run it | **unchanged** — plus `python -m netcorenoc dataset bias` and `… dataset stats` |
+| Downgrade | **one-way in practice.** v0.7.5 code opens a v0.8.0 database and runs — it ignores the new tables — but anything captured after the upgrade stops being written and the sink stops being pruned. Take a copy of the database before upgrading if you want a real rollback |
+
+### Capture starts on upgrade, and it is on by default
+
+From the first trap after restart, the appliance records **one row per evaluated correlation pair**
+and one per alarm activation. This is the dataset every release from v0.9.0 onward is built on, and
+it ships **on** for one reason: its value compounds with time, and a deployment that discovers it
+six months in has lost six months that **cannot be reconstructed**.
+
+**What it costs.** Measured over the project's own evaluation corpus:
+
+| | |
+|---|---|
+| added rows per trap | **~62** |
+| added bytes per trap | **~6.9 kB** |
+| database growth | **~9.9×** |
+
+**That corpus is 86 % storm by construction — it is the worst case, not the typical one.** A quiet
+network produces far fewer candidate pairs per alarm and therefore far fewer rows. Check yours:
+
+```
+python -m netcorenoc dataset stats
+```
+
+**To turn capture off**, set `enabled = False` on the engine's `Capture` object at startup. There is
+deliberately no environment variable: switching it off silently loses data nothing can recover, so it
+is a code-level decision a deployment makes once and can point at, rather than a flag someone flips
+during an incident.
+
+### Retention: three tiers, and the defaults
+
+| Tier | Default | What it holds |
+|---|---|---|
+| Sink | **21 days**, **and** 2 000 000 rows — whichever binds first | evaluated pairs awaiting a label |
+| Training dataset | **12 months** | pairs promoted by an operator's verdict |
+| Audit archive | **24 months** | the outer bound |
+
+Read and change them with `GET` / `POST /api/dataset/retention` (admin only). The ordering
+`sink < training ≤ audit` is enforced, and a rejection tells you which tier is wrong and why.
+
+> **The row cap is what actually governs, not the 21 days.** At ~62 rows per trap the 2 000 000-row
+> default is used up after roughly **3.7 days at 0.1 traps/s** and **9 hours at 1 trap/s**. The cap
+> is a **disk budget** (~220 MB of pair rows); the 21-day figure is a ceiling most deployments never
+> reach.
+>
+> `python -m netcorenoc dataset stats` reports the window you **actually** have. Use that number,
+> not the configured one. A label given after the sink has evicted its pairs is still recorded — it
+> is marked `coverage: none`, and the bias report counts it.
+
+### ⚠ Lowering retention deletes data, and there is no undo
+
+This is the **first destructive control this product has ever had**. Every other admin setting is
+reversible — scorer configurations are append-only and roll back in one click, governance policies
+are versioned. **A `DELETE` is not.** Moving training retention from twelve months to three destroys
+nine months of operator labels: the most expensive and least reconstructible thing in the system.
+
+So the endpoint **previews by default**:
+
+```bash
+# Shows what WOULD be removed. Deletes nothing.
+curl -X POST .../api/dataset/retention -d '{"sink_days":21,"sink_rows":2000000,
+                                            "training_days":90,"audit_days":730}'
+# => {"status":"preview","applied":false,"would_delete":{"pairs":…,"labels":…,"oldest":…}}
+```
+
+Applying requires `"preview": false`, sent deliberately, after you have seen the count. Both the
+preview and the change are written to the audit log (`retention.preview`, `retention.change`, the
+latter with before, after, and the impact you were shown).
+
+The background maintenance loop **never** deletes labelled data. It bounds the sink and nothing
+else.
+
+### Labels written before v0.7.5 are marked, and excluded from training by default
+
+v0.7.5 repaired a defect in which a situation card could be rebuilt underneath the operator, so a
+click could be recorded against a grouping they had not been reading. Labels written **before** that
+fix are marked `capture_provenance = 'legacy_capture'` by the migration.
+
+**They are not deleted, and they are not assumed to be wrong.** They are of *unknown quality*, which
+is a weaker and different claim, so they are kept, marked, **excluded from training by default**, and
+includable by an explicit choice — which preserves a comparison a later release may want. The bias
+report counts them separately and never averages them in.
+
+The migration writes only this marker. It makes no guess about any individual verdict.
+
+### The bias report
+
+```
+make bias-report        # or: python -m netcorenoc dataset bias
+```
+
+Aggregates only — no NE names, addresses, OIDs or varbind values ever leave it. It is deterministic,
+so `make qa` compares it byte-for-byte against a fixture and fails the day capture changes shape.
+
+Read the **effective sample size** section before you believe any number derived from this data: *n*
+is the number of independent labelled **bags**, not the number of pairs, and the two differ by more
+than an order of magnitude.
+
+### One more thing
+
+The route-declaration gate now refuses a route registered with an **empty method set** (F43). Like
+F40–F42 before it, this is a startup-time check on the appliance's own routes, **not on the request
+path**, and no route in the shipped application is affected.
+
+---
+
 ## v0.7.4 → v0.7.5 (the operator's click, and two guards)
 
 **There is nothing to do. Stop reading.**
