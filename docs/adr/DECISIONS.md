@@ -2108,3 +2108,61 @@ grouping**.
   from the observation rows alone. It is recoverable from `alarm.count`, which the observation row
   captures at decision time — so the information survives in the form that is actually useful (the
   count at the instant), and only the individual re-fire timestamps are lost.
+
+## 106. An empty method set is refused, not defaulted and not skipped (v0.8.0)
+
+- **Context**: F43. `assert_every_route_is_declared` iterates `route.methods`; an empty set produces
+  zero iterations, so a route of a *known* shape carrying no verb was neither checked nor refused —
+  and Starlette does not filter by verb when `methods` is falsy, so it serves all seven. Reproduced
+  in `docs/gates/v0.8.0-phase-0.md` §7 with a route answering 200 to every verb while the gate
+  passed it. F42's shape check does not fire, because the shape is known.
+- **Options**: (a) treat an empty method set as the full verb set and require a declaration for each
+  — the "what Starlette actually serves" reading; (b) refuse the route outright; (c) leave it, on
+  the grounds that neither reachable path occurs in this repository.
+- **Choice**: (b).
+- **Reason**: (a) is superficially more precise and is worse. It invents a declaration requirement
+  for seven verbs nobody wrote, so the natural fix a contributor would reach for is to declare all
+  seven — turning a mistake into seven authorizations. It also encodes an assumption about
+  Starlette's dispatch behaviour, which is the unpinned-internal dependency DECISIONS #101 already
+  recorded as the mechanism by which this gate silently regressed once. (b) needs to assume nothing:
+  there is no verb to look up, therefore nothing can be checked, therefore the route is refused —
+  the identical reasoning F42 applied to unknown shapes, and the project's posture on the
+  uncheckable has been *refuse* since v0.7.4. (c) leaves a fail-open in a guard whose entire value
+  is completeness, in the release that grows the surface it guards.
+- **Claim corrected, not deleted**: v0.7.5 claimed *"every object on `app.routes` is either checked
+  or refused; none is skipped"*. It was true of shapes and false of methods. The claim now reads:
+  every object is either checked against both tables for every verb it carries, **or refused — as an
+  unknown shape, or as a known shape carrying no verb to check**. `SECURITY-REVIEW-0.7.5.md` is not
+  edited; records are not rewritten, and the correction is issued in this release's review.
+- **Cost, accepted**: a comment in `declare.py` cannot name FastAPI's non-decorator registration
+  helper, because `test_add_api_route_is_confined_to_the_static_asset_allowlist` counts textual
+  *mentions* rather than calls. v0.7.4 met the same wall and reworded its prose; this follows that
+  precedent rather than widening scope to rebuild the guard, which stays a `docs/ROADMAP.md` item.
+
+## 107. One pair table with a lifecycle column, not two tables — chosen against the measurement (v0.8.0)
+
+- **Context**: The spec leaves the sink/dataset **physical** layout open and states the criterion —
+  cheap bounded sink deletion, simple dataset queries — with an instruction to measure both. Built
+  both at Phase 0's measured 194 341-row sink volume and timed four operations
+  (`docs/gates/v0.8.0-phase-2.md` §3).
+- **Options**: (a) one `dataset_pair` table with a `lifecycle` column; (b) separate `pair_sink` and
+  `pair_dataset` tables (and, symmetrically, two observation tables).
+- **Measured**: **(b) won every operation** — file 21.52 vs 23.92 MB, promotion 12.57 vs 18.42 ms,
+  dataset query 0.06 vs 0.44 ms, sink deletion by age 297.04 vs 326.03 ms. Between 9 % and 15 % on
+  the two that matter operationally.
+- **Choice**: **(a)**, against the measurement.
+- **Reason**: a pair row references two *observation* rows. Under (b) a promoted pair lives in
+  `pair_dataset` while its observations are still in `observation_sink`, so promotion must either
+  preserve ids across four independently-autoincrementing tables or **rewrite every reference as it
+  moves** — a correctness hazard on the per-label path whose failure mode is a dataset row silently
+  pointing at the wrong observation. Under (a) **nothing moves**: promotion is one `UPDATE` of one
+  column, ids are stable, and references cannot break. The measured margins are 6 ms and 29 ms on
+  operations that run per label and once a minute respectively; a correctness hazard on the path
+  that produces the release's entire output is not worth 29 ms. (b) also duplicates a sixteen-column
+  definition across two `CREATE TABLE`s, where a column added to one and not the other makes the
+  promotion `SELECT` silently drop it.
+- **Cost, accepted and recorded as a known limit**: the sink's bounded deletion is separated from
+  the labelled corpus by a `WHERE lifecycle='sink'` clause rather than by a table boundary. That is
+  a **checked** guarantee where (b)'s would have been **structural**, and this project normally
+  prefers structural. Mitigated by a dedicated test that neither prune path can touch a promoted
+  row — not by the layout, and the difference is stated rather than argued away.
