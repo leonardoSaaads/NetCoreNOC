@@ -60,6 +60,10 @@ LAYER_OF: dict[str, str] = {
     "varbind_profile": "engine",
     "varbind_accum": "engine",
     "preview": "engine",
+    # v0.8.0. Engine-layer because it consumes a correlation decision and writes through the
+    # data layer — a downward edge. It is NOT ingest: nothing here is reachable from
+    # `receiver.datagram_received`, which is prime directive 1.
+    "capture": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire

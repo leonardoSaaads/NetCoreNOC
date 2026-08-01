@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from netcorenoc.capture import Capture, RetentionPolicy
 from netcorenoc.correlate import Correlator
 from netcorenoc.learn import Learner
 from netcorenoc.rootcause import Precedence
@@ -59,3 +60,8 @@ class EngineBase:
     scorer_config_id: int | None
     scorer_warnings: list[str]
     _loaded_key: tuple[int, str] | None
+    # Feedback-dataset capture (v0.8.0), read by the maintenance mixin's `_capture_run`. Every
+    # decision about what to write lives in `netcorenoc.capture`; these two are state the engine
+    # owns and the mixin marshals.
+    capture: Capture
+    retention: RetentionPolicy

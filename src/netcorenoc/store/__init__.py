@@ -26,6 +26,10 @@ from netcorenoc.store.alarms import AlarmMixin
 from netcorenoc.store.audit_log import AuditLogMixin
 from netcorenoc.store.auth import AuthMixin
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.dataset import (
+    MAX_CLIENT_MEMBERS,
+    DatasetMixin,
+)
 from netcorenoc.store.devices import DeviceMixin
 from netcorenoc.store.entities import EntityMixin
 from netcorenoc.store.feedback import FeedbackMixin
@@ -48,6 +52,7 @@ from netcorenoc.store.types import (
 )
 
 __all__ = [
+    "MAX_CLIENT_MEMBERS",
     "MAX_SCOPE_PARAMS",
     "MIGRATIONS_DIR",
     "TOUCH_INTERVAL_S",
@@ -60,6 +65,7 @@ __all__ = [
 
 
 class Store(
+    DatasetMixin,
     RetentionMixin,
     AuditLogMixin,
     AuthMixin,

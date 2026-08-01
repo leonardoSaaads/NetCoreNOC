@@ -2166,3 +2166,38 @@ grouping**.
   a **checked** guarantee where (b)'s would have been **structural**, and this project normally
   prefers structural. Mitigated by a dedicated test that neither prune path can touch a promoted
   row — not by the layout, and the difference is stated rather than argued away.
+
+## 108. `engine.py`'s cohesion ceiling rises 542 → 565, and a new guard pays for it (v0.8.0)
+
+- **Context**: `COHESION_EXEMPT_CEILING` recorded `engine.py` at **542 lines — its exact size, so
+  zero headroom**. Capture needs call sites in `_process`, `start` and `maintenance`, and a call
+  site is by definition at the call. Anti-overengineering rule 7 anticipated this and prescribed the
+  remedy: *extract the capture code into its own module*. That was done — `capture.py` (369 lines)
+  holds every decision and `store/dataset.py` (315) holds every statement — and `engine.py` still
+  grew by **23 lines**: one import, two attribute assignments with their comment, four call
+  statements, and the eleven-line `capture.record(...)` invocation.
+- **Options**: (a) contort the call signature — bundle the eleven arguments into positional tuples —
+  until the diff fits under 542; (b) move `_process` or `maintenance` out of `engine.py` to make
+  room; (c) raise the ceiling to the measured 565 and add a control that preserves what the ceiling
+  is a proxy for.
+- **Choice**: (c). Two new tests: `test_the_engine_holds_no_capture_logic` asserts that **no SQL
+  statement and no dataset table** appears in `engine.py`, and `test_the_capture_module_is_the_one_
+  that_grew` asserts the extraction happened rather than the code being deleted.
+- **Reason**: (a) makes the code worse to satisfy a number, which is the inverse of what the guard
+  is for — an unreadable call site on the ingest path is a real cost, and "it fits" is not a
+  benefit. (b) is forbidden by DECISIONS #90 and by directive 4: `maintenance` acquires the batch
+  lock and `_process` *is* the ingest path, so moving either would destroy the invariant the
+  exemption exists to protect, to protect the number that stands for it. (c) is the option the
+  guard itself names — *"argue the new number on its own merits"* — and the merits are that all 23
+  lines are call sites and state, none is a decision, and the new tests make that **structural**
+  rather than a claim in a commit message.
+- **Why this is not the ratchet failing**: the `COHESION_EXEMPT` comment warns that a bound
+  relaxed for convenience is how a ratchet becomes a comment. The distinguishing question is
+  whether the release ends with a weaker guarantee or a stronger one. Before: *`engine.py` may not
+  exceed 542 lines.* After: *`engine.py` may not exceed 565 lines **and may contain no persistence
+  logic at all***. The second is strictly stronger — the first was satisfiable by a file full of
+  SQL — and it was verified non-vacuous by injecting `INSERT INTO dataset_pair` into `engine.py`
+  and observing the guard go red (`docs/gates/v0.8.0-phase-4.md` §2).
+- **Cost, accepted**: the exempt module is 4 % larger, and a future release wanting to add to
+  `engine.py` meets a ceiling that has moved once. The mitigation is that it may only move with an
+  ADR, which is what this entry is.

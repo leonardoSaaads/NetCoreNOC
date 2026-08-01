@@ -101,6 +101,7 @@ SUBMODULES = [
     "store.audit_log",
     "store.auth",
     "store.base",
+    "store.dataset",
     "store.devices",
     "store.entities",
     "store.feedback",
