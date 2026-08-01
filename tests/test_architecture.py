@@ -356,6 +356,11 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("DELETE", "/api/tokens/{tid}"),
     ("GET", "/api/config"),
     ("POST", "/api/config"),
+    # v0.8.0: the dataset retention tiers. Registered beside the other admin config because
+    # that is what they are. Neither path is a prefix of, or shadowed by, any other route, so
+    # their position changes no matching decision — the baseline grows rather than shifting.
+    ("GET", "/api/dataset/retention"),
+    ("POST", "/api/dataset/retention"),
     ("GET", "/api/scorer"),
     ("POST", "/api/scorer/preview"),
     ("POST", "/api/scorer"),

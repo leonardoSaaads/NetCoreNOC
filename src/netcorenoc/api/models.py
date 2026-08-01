@@ -54,6 +54,26 @@ class LabelIn(BaseModel):
     label: str = Field(min_length=1, max_length=MAX_LABEL_CHARS)
 
 
+class RetentionIn(BaseModel):
+    """The three dataset retention tiers (v0.8.0 §7).
+
+    The bounds here are sanity rails, not the policy: the ORDERING invariant
+    (`sink < training <= audit`) is validated by `capture.RetentionPolicy.validate`, which returns a
+    precise reason rather than a bare rejection — an admin faced with "invalid" on a form of four
+    numbers cannot act on it.
+
+    `preview` defaults to True and that is the safety property, not a convenience: **a reduction is
+    previewed before it is applied.** The caller must pass `preview=False` deliberately, having seen
+    the count, which is the v0.6.0 pattern for exactly this class of decision.
+    """
+
+    sink_days: float = Field(gt=0, le=3650)
+    sink_rows: int = Field(gt=0, le=1_000_000_000)
+    training_days: float = Field(gt=0, le=3650)
+    audit_days: float = Field(gt=0, le=3650)
+    preview: bool = True
+
+
 class LoginIn(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=auth.MAX_PASSWORD)

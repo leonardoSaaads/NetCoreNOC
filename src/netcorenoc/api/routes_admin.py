@@ -12,15 +12,20 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth
+from netcorenoc import auth, capture
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.models import ConfigIn, RoleIn, TokenIn, UserIn
+from netcorenoc.api.models import ConfigIn, RetentionIn, RoleIn, TokenIn, UserIn
+
+# The tier names, in `RetentionPolicy.as_key()` order, so the audit detail reads as a policy
+# rather than as an unlabelled tuple. Before and after are both captured.
+_TIERS = ("sink_days", "sink_rows", "training_days", "audit_days")
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the admin routes on `app`."""
     store, security, guarded, runtime = ctx.store, ctx.security, ctx.guarded, ctx.runtime
+    engine = ctx.engine  # v0.8.0: the live retention policy and capture state
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
 
@@ -178,3 +183,91 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             runtime.apply_allowlist(body.allowlist)
             runtime.retention_days = body.retention_days
         return {"status": "saved"}
+
+    # -- admin: the feedback dataset's retention (v0.8.0) ------------------------------
+    #
+    # THE ONLY DESTRUCTIVE CONTROL IN THIS PRODUCT. Every other admin configuration is
+    # reversible — `scorer_config` is append-only and rollback is a pointer move, governance
+    # policies are versioned — but **lowering retention deletes rows and there is no rollback for
+    # a DELETE**. An admin moving the training tier from twelve months to three destroys nine
+    # months of human labels: the most expensive and least reconstructible asset in the system,
+    # and the effect lands later, when the maintenance loop runs.
+    #
+    # So this reuses the pattern v0.6.0 built for exactly this class of decision (`preview.py`):
+    # preview before apply, audited as its own action, and never applied by a background loop
+    # before the operator has seen the count. Both routes are admin-only, and admin is never
+    # scoped — the dataset is a scope bypass by construction and has no scoped view.
+
+    @route.get("/api/dataset/retention", dependencies=guarded)
+    async def get_retention() -> dict[str, Any]:
+        """The policy in effect, and what capture currently costs in rows.
+
+        `dataset stats` as a route as well as a CLI view: zero-config means the default is good,
+        not that the operator is blind about what it is storing. **Aggregates only** — counts and
+        timestamps, never a row.
+        """
+        policy = engine.retention
+        async with store.lock:
+            stats = await store.dataset_stats()
+        return {
+            "sink_days": policy.sink_days,
+            "sink_rows": policy.sink_rows,
+            "training_days": policy.training_days,
+            "audit_days": policy.audit_days,
+            "capture_enabled": engine.capture.enabled,
+            "stats": stats,
+        }
+
+    @route.post("/api/dataset/retention")
+    async def set_retention(
+        body: RetentionIn, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Preview a retention change, or apply one.
+
+        **`preview` defaults to True**, so the destructive branch cannot be reached by accident or
+        by a client that forgot a field: applying requires `preview=False` sent deliberately, after
+        the count has been seen. The preview is bounded, read-only and deterministic, and it is
+        audited too — *"who looked at what this would destroy"* is part of the record, not only
+        *"who destroyed it"*.
+        """
+        candidate = capture.RetentionPolicy(
+            sink_days=body.sink_days,
+            sink_rows=body.sink_rows,
+            training_days=body.training_days,
+            audit_days=body.audit_days,
+        )
+        # Fail-closed, with a precise reason. `validate` explains *which* tier is wrong and why,
+        # because "invalid" on a form of four numbers is not something an admin can act on.
+        reason = candidate.validate()
+        if reason is not None:
+            raise HTTPException(status_code=400, detail=reason)
+        cutoff = time.time() - candidate.training_days * 86400.0
+        async with store.lock:
+            impact = await store.preview_retention(cutoff)
+        if body.preview:
+            async with write_txn():
+                await audit_row(
+                    request,
+                    principal,
+                    "retention.preview",
+                    "ok",
+                    object_type="config",
+                    details=dict(impact),
+                )
+            return {"status": "preview", "would_delete": impact, "applied": False}
+        before = engine.retention
+        async with write_txn():
+            await audit_row(
+                request,
+                principal,
+                "retention.change",
+                "ok",
+                object_type="config",
+                details={
+                    "before": dict(zip(_TIERS, before.as_key(), strict=True)),
+                    "after": dict(zip(_TIERS, candidate.as_key(), strict=True)),
+                    "previewed_impact": dict(impact),
+                },
+            )
+        engine.retention = candidate
+        return {"status": "saved", "would_delete": impact, "applied": True}

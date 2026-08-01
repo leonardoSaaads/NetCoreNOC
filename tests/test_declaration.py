@@ -548,7 +548,7 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    assert len(served) == 48, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 50, f"the served surface moved: {len(served)} method/path pairs"
     for _method, path in served:
         route = next(r for r in app.routes if getattr(r, "path", None) == path)  # type: ignore[attr-defined]
         assert getattr(route, "methods", None), f"{path} carries no verb, which F43 now refuses"
@@ -594,7 +594,7 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    assert len(served) == 48, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 50, f"the served surface moved: {len(served)} method/path pairs"
     paths = {path for _method, path in served}
     for public in declare.UNAUTHENTICATED_PATHS:
         assert public in paths, f"{public} is no longer served"
@@ -712,7 +712,10 @@ SCOPED = sorted(r for r, p in rbac.ROUTE_SCOPE.items() if p == "scoped")
 
 def test_the_three_postures_are_all_populated() -> None:
     """Guard the guard: a posture with no routes would make its behavioural test vacuous."""
-    assert len(ADMIN_ONLY) == 22, len(ADMIN_ONLY)
+    # v0.8.0: 22 -> 24. The two dataset-retention routes are `admin_only`, and they could not
+    # be anything else: the dataset is a scope bypass by construction (captured engine-side,
+    # where visibility scoping does not exist), so there is no scoped view of it to build.
+    assert len(ADMIN_ONLY) == 24, len(ADMIN_ONLY)
     assert len(UNSCOPED) == 5, UNSCOPED
     assert len(SCOPED) == 12, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)

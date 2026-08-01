@@ -109,6 +109,11 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("DELETE", "/api/tokens/{tid}"): "tokens.manage",
     ("GET", "/api/config"): "config.read",
     ("POST", "/api/config"): "config.write",
+    # v0.8.0. The dataset is a scope bypass by construction (captured engine-side, where visibility
+    # scoping does not exist), so every route that touches it is `config`-class and admin-only —
+    # and admin is never scoped. `GET` is the PREVIEW: read-only, bounded, and aggregate-only.
+    ("GET", "/api/dataset/retention"): "config.read",
+    ("POST", "/api/dataset/retention"): "config.write",
     ("GET", "/api/scorer"): "scorer.read",
     ("POST", "/api/scorer/preview"): "scorer.preview",
     ("POST", "/api/scorer"): "scorer.write",
@@ -183,6 +188,8 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("DELETE", "/api/tokens/{tid}"): "admin_only",
     ("GET", "/api/config"): "admin_only",
     ("POST", "/api/config"): "admin_only",
+    ("GET", "/api/dataset/retention"): "admin_only",
+    ("POST", "/api/dataset/retention"): "admin_only",
     # The five parameters of the active scorer and its immutable history. They *explain* every
     # grouping decision and name no network element, so every authenticated role reads the same
     # numbers (SCOPE-0.6 §2).

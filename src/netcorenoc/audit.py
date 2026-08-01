@@ -80,6 +80,15 @@ ACTIONS: frozenset[str] = frozenset(
         # the perimeter itself: admin-only, before/after captured, and one row per change.
         "rbac.policy.update",  # admin: set, rolled back, or cleared the capability policy
         "scope.policy.update",  # admin: set, rolled back, or cleared the scoping policy
+        # v0.8.0 — the feedback dataset's retention, and THE FIRST DESTRUCTIVE CONTROL IN THE
+        # PRODUCT. Every other admin configuration here is reversible: `scorer_config` is
+        # append-only and rollback is a pointer move, governance policies are versioned. LOWERING
+        # RETENTION DELETES ROWS AND THERE IS NO ROLLBACK FOR A DELETE — an admin moving the
+        # training tier from twelve months to three destroys nine months of human labels, the most
+        # expensive and least reconstructible asset in the system. Both halves are recorded: the
+        # preview the operator saw, and the reduction they then applied.
+        "retention.preview",  # admin: read-only count of what a reduction would destroy
+        "retention.change",  # admin: applied a retention policy (before/after captured)
         # system actor: a stored policy could not be parsed and the fail-safe engaged (the ceiling
         # for capabilities, deny-for-viewer/editor for scope). Recorded once per policy version, so
         # a silent degradation is impossible (DECISIONS #55).
