@@ -3,7 +3,8 @@
 PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test security deadcode checksums linkcheck run replay loadtest burst \
-	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim
+	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
+	bias-report dataset-stats
 
 qa: lint typecheck deadcode test eval
 
@@ -81,6 +82,18 @@ migrate:
 	$(PYTHON) -c "import asyncio, os; from netcorenoc.store import Store; \
 		s=Store(os.environ.get('NETCORENOC_DB','netcorenoc.db')); \
 		asyncio.run(s.open()); asyncio.run(s.close()); print('migrations applied')"
+
+# The feedback-dataset bias report (v0.8.0). Beside `make eval` deliberately: both are
+# deterministic offline reports over frozen inputs, and both are GATES rather than dashboards —
+# `tests/test_bias.py` compares this output byte-for-byte against a frozen expectation, so it goes
+# red the day capture changes shape. Emits aggregates only; reads NETCORENOC_DB.
+bias-report:
+	$(PYTHON) -m netcorenoc dataset bias
+
+# What capture currently costs, in rows. Zero-config means the default is good, not that the
+# operator is blind about what the appliance is storing.
+dataset-stats:
+	$(PYTHON) -m netcorenoc dataset stats
 
 # Walk the audit hash chain and report the first broken link.
 audit-verify:

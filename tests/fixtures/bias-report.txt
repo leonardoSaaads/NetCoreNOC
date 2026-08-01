@@ -1,0 +1,149 @@
+NetCoreNOC feedback-dataset bias report
+==============================================================
+
+This report MEASURES. It trains nothing, fits nothing, and recommends
+no model. Every figure below is an aggregate.
+
+-- corpus ----------------------------------------------------
+pairs, sink (awaiting a label)                   0
+pairs, dataset (promoted by a label)             5
+observations, sink                               6
+observations, dataset                            0
+capture runs                                     1
+
+-- the machine's decision (NOT a label) -----------------------
+pairs the incumbent linked                       3  (60.0%)
+accepted links dropped by the cap                1
+pairs evaluated during a storm                   2  (40.0%)
+
+  `incumbent_linked` is the champion's decision at that instant. It is
+  provenance and a legitimate feature. It is NOT a target, and no metric
+  that decides promotion may be computed against it: a challenger judged
+  by the champion can only converge on it. Its class balance is also a
+  property of the TRAFFIC, not of the scorer — measured at 0% accept on
+  quiet corpus traffic and 100% in a storm.
+
+-- human labels ----------------------------------------------
+confirm                                          2
+split                                            2
+total                                            4
+
+-- EFFECTIVE SAMPLE SIZE -------------------------------------
+independent bags (n)                             4
+distinct operators                               2
+distinct incidents (merge-aware)                 3
+labels with no recorded operator                 1
+
+  *n* IS THE NUMBER OF INDEPENDENT BAGS, NOT THE NUMBER OF PAIRS.
+  Pairs from one alarm share a side; pairs from one situation are strongly
+  correlated; situations from one operator share a criterion. A report
+  quoting the pair count would produce confidence intervals wrong by a
+  factor nobody checks.
+
+-- bag sizes -------------------------------------------------
+members per labelled bag              n=3 min=0 med=2 p90=3 max=3 mean=1.7
+bags with zero members                           1
+
+  CONFIRMATION STRENGTH DECAYS WITH BAG SIZE. An operator confirming a
+  twenty-member situation did not verify one hundred and ninety pairs;
+  one confirming two members verified the only pair there was. This
+  distribution is what lets a later release weight rather than assume.
+  A zero-member bag is a verdict on an already-merged situation: real,
+  recorded, and not interchangeable with the rest.
+
+-- operator concentration ------------------------------------
+share from the single top operator           66.7%
+share from the top three                    100.0%
+
+  A dataset that is three people's judgement is a dataset about three
+  people.
+
+-- visibility scope ------------------------------------------
+labels made under a restricting scope            1
+redacted members among those          n=1 min=2 med=2 p90=2 max=2 mean=2.0
+
+  A scoped editor labels a PARTIAL VIEW and cannot say which part. The
+  resulting noise is SYSTEMATIC, not random: it correlates with the scope
+  policy, so it does not average out with more data.
+
+-- label latency ---------------------------------------------
+seconds, situation open to verdict    n=3 min=30 med=88 p90=599 max=599 mean=239.0
+
+  Also how the sink's 21-day default gets tested against reality. That
+  default is a conservative GUESS; this distribution is what replaces it.
+
+-- coverage --------------------------------------------------
+situations                                       3
+situations that received a label                 3
+  as a rate                                 100.0%
+evaluated pairs ever promoted               100.0%
+per-label coverage: full                         2
+per-label coverage: partial                      0
+per-label coverage: none                         0
+per-label coverage: empty                        1
+
+  `partial` is NOT an edge case. The sliding window and MAX_CANDIDATES
+  mean pairs within a labelled situation may never have been evaluated —
+  a nine-member situation has thirty-six pairs. Recorded rather than
+  silently dropped, which is the censoring this release exists to end.
+  `empty` is a verdict on a situation with no members — a fourth state the
+  specification's three did not anticipate, because all three presuppose a bag.
+
+-- provenance (NEVER averaged together) -----------------------
+current                                          3
+legacy_capture                                   1
+
+  `legacy_capture` rows were acquired before v0.7.5 repaired the click
+  path. They are NOT known to be bad — they are of UNKNOWN QUALITY, which
+  is a weaker and different claim. Excluded from training by default,
+  includable by an explicit choice, and never blended into the figures
+  above without saying so.
+
+-- acquisition channel ---------------------------------------
+organic                                          3
+unrecorded                                       1
+
+-- membership divergence -------------------------------------
+labels carrying a client report                  1
+client bag differs from the server               1
+client report truncated                          0
+
+  This is a METRIC, not an error: the residual race v0.7.5 narrowed but
+  did not eliminate, measured rather than assumed. The server's bag is
+  authoritative; the client's is evidence.
+
+-- leakage exposure ------------------------------------------
+dataset pairs evaluated after label 1            0
+distinct matrix epochs in the dataset            1
+observations                                     6
+  distinct alarms among them                     6
+
+  A human verdict mutates A and E, so a pair evaluated afterwards carries
+  features that already contain information from an earlier label. Note
+  the mechanism: the label does NOT advance the epoch (since v0.7.1's F36
+  fix, only a closed situation does) — the contamination travels through
+  the MASS VALUES. Observations sharing an alarm id are re-fires of one
+  deduplicated alarm and are near-duplicates, not independent samples.
+
+-- retention state -------------------------------------------
+sink_days                                     21.0
+sink_rows                                  2000000
+training_days                                365.0
+audit_days                                   730.0
+span of surviving labels (days)                0.0
+
+  Pruning a training corpus is CENSORING BY POLICY. It is legitimate and
+  it must be visible: a model trained under twelve months' retention and
+  one trained under three are not comparable, and nothing else would
+  record which was which.
+
+-- what this report CANNOT tell you --------------------------
+  * whether a verdict was correct. There is no ground truth here, only
+    what an operator said.
+  * whether the labels are representative of the network. Operators
+    label what they open, and this measures what they labelled.
+  * which of the `legacy_capture` rows are actually bad. Nothing
+    recorded it, which is precisely why they are marked and not deleted.
+  * anything about pairs that were never evaluated. They are absent by
+    construction; `partial` coverage counts them, and that is all.
+

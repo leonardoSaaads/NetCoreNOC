@@ -4,6 +4,10 @@ Subcommands:
 
 - ``audit verify`` — walk the audit hash chain and report the first broken link.
 - ``audit export`` — emit the audit log as NDJSON plus the final chain hash.
+- ``dataset bias`` — the feedback-dataset bias report (v0.8.0). **Deterministic**, so it doubles
+  as a `make qa` guard: run over a fixture with its output compared byte-for-byte, it goes red the
+  day capture changes shape. Emits aggregates only.
+- ``dataset stats`` — what capture currently costs, in rows.
 
 The trap correlator itself still runs via ``python -m netcorenoc.main`` (unchanged).
 """
@@ -15,7 +19,7 @@ import asyncio
 import os
 import sys
 
-from netcorenoc import audit
+from netcorenoc import audit, bias, bias_report
 from netcorenoc.main import legacy_env_error, legacy_env_names
 from netcorenoc.store import Store
 
@@ -44,6 +48,36 @@ async def _verify(db_path: str) -> int:
     return 0 if result.ok else 1
 
 
+async def _bias(db_path: str) -> int:
+    """The bias report. A CLI subcommand rather than a route: it adds no HTTP surface to the
+    dataset's scope bypass, and — the stronger reason — a deterministic CLI report can be a
+    guard, which no UI card could ever be."""
+    store = Store(db_path)
+    await store.open()
+    try:
+        async with store.lock:
+            measurements = await bias.collect(store)
+    finally:
+        await store.close()
+    print(bias_report.render(measurements), end="")
+    return 0
+
+
+async def _dataset_stats(db_path: str) -> int:
+    """What capture costs, in rows. Zero-config means the default is good, not that the operator
+    is blind about what the appliance is storing."""
+    store = Store(db_path)
+    await store.open()
+    try:
+        async with store.lock:
+            stats = await store.dataset_stats()
+    finally:
+        await store.close()
+    for key in sorted(stats):
+        print(f"{key:<32} {stats[key]}")
+    return 0
+
+
 async def _export(db_path: str) -> int:
     store = Store(db_path)
     await store.open()
@@ -64,6 +98,10 @@ def main(argv: list[str] | None = None) -> int:
     audit_sub = audit_parser.add_subparsers(dest="audit_command", required=True)
     audit_sub.add_parser("verify", help="verify the audit hash chain")
     audit_sub.add_parser("export", help="export the audit log as NDJSON")
+    dataset_parser = sub.add_parser("dataset", help="feedback-dataset tooling (v0.8.0)")
+    dataset_sub = dataset_parser.add_subparsers(dest="dataset_command", required=True)
+    dataset_sub.add_parser("bias", help="the bias report (aggregates only, deterministic)")
+    dataset_sub.add_parser("stats", help="what capture currently costs, in rows")
     args = parser.parse_args(argv)
 
     db_path = _db_path()
@@ -72,6 +110,11 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_verify(db_path))
         if args.audit_command == "export":
             return asyncio.run(_export(db_path))
+    if args.command == "dataset":
+        if args.dataset_command == "bias":
+            return asyncio.run(_bias(db_path))
+        if args.dataset_command == "stats":
+            return asyncio.run(_dataset_stats(db_path))
     parser.error("unknown command")
     return 2
 

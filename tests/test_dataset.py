@@ -320,7 +320,10 @@ async def test_a_verdict_on_an_already_merged_situation_records_an_empty_bag(sto
     )
     row = dict(await cur.fetchone())  # type: ignore[arg-type]
     assert row["member_count"] == 0, "an empty bag must be recorded AS empty"
-    assert row["coverage"] == "none"
+    assert row["coverage"] == "empty", (
+        "an empty bag is its own coverage state — `full` would be vacuously true and would tell a "
+        "reader a complete situation was captured, `none` would suggest pairs went missing"
+    )
 
 
 # --- coverage is recorded, never silent ---------------------------------------------------
@@ -336,6 +339,8 @@ def test_coverage_states_are_the_three_cases_and_nothing_else() -> None:
     assert coverage([1, 2, 3], 1)["coverage"] == "partial"
     assert coverage([1, 2, 3], 0)["coverage"] == "none"
     assert coverage([1], 0)["coverage_expected"] == 0, "a singleton implies no pairs"
+    assert coverage([], 0)["coverage"] == "empty", "an empty bag is the fourth, degenerate state"
+    assert coverage([], 3)["coverage"] == "empty", "…even with stray pairs pointing at it"
     nine = coverage(list(range(9)), 10)
     assert nine["coverage_expected"] == 36 and nine["coverage"] == "partial"
 

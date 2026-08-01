@@ -83,7 +83,17 @@ def coverage(bag: list[int], promoted: int) -> dict[str, Any]:
     and not all passed through `score_link`. A naive join would drop those silently and v0.9.0 would
     train believing it saw a whole situation, which is the same censoring this release exists to
     prevent, one level up.
+
+    A **fourth** state the specification's three do not cover, found by
+    `tests/test_bias.py::test_the_report_counts_the_zero_member_bag`: an **empty** bag. The three
+    cases all presuppose a bag with members, and an empty one is the degenerate case Phase 0
+    discovered — a verdict posted to an already-merged situation. Reported as `full` (which
+    `promoted >= expected` makes vacuously true when `expected` is zero) it would tell a reader a
+    complete situation was captured; reported as `none` it would suggest pairs existed and were not
+    found. Neither is true, so it gets its own name and the report counts it separately.
     """
+    if not bag:
+        return {"coverage": "empty", "coverage_found": promoted, "coverage_expected": 0}
     expected = len(bag) * (len(bag) - 1) // 2
     if promoted == 0:
         state = "none"
