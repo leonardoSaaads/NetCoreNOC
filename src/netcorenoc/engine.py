@@ -563,7 +563,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 await self.store.prune(now, retention_days * 86400.0)
                 self.profiler.prune_stale(now - PROFILE_STALE_S)
                 await self.store.delete_stale_varbind_profiles(now - PROFILE_STALE_S)
-                await self.capture.prune_sink(self.store, now, self.retention)
+                await self.capture.prune(self.store, now, self.retention)
             await self.store.commit()
 
     async def maintenance_loop(self, retention_provider: Callable[[], float]) -> None:

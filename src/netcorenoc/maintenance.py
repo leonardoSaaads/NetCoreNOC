@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from netcorenoc import audit, severity
 from netcorenoc.engine_base import EngineBase
+from netcorenoc.retention_policy import RETENTION_META_KEY, RetentionPolicy
 from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE
 
 
@@ -32,6 +33,7 @@ class MaintenanceMixin(EngineBase):
         retune that changed the scorer must not have its pair rows attributed to the configuration
         it replaced.
         """
+        await self._load_retention()
         await self.capture.open_run(
             self.store,
             now=now,
@@ -40,6 +42,45 @@ class MaintenanceMixin(EngineBase):
             learner=self.learner,
             retention=self.retention,
         )
+
+    async def _load_retention(self) -> None:
+        """Adopt the persisted retention policy, or fall back to the shipped default and warn.
+
+        **Why here.** `_capture_run` is the documented configuration reload point — it already runs
+        at `Engine.start` and at the top of every maintenance pass, and a capture run is re-opened
+        when the retention policy moves. Reading the stored policy at exactly that point means a
+        restart adopts it (which is the defect: v0.8.0 answered `"saved"` and silently reverted to
+        the shipped defaults on the next boot) *and* that a change written by one process is picked
+        up by another, with the resulting pair rows correctly attributed to the new policy.
+
+        **The fail-safe.** Absent is the ordinary zero-config case and is silent. Unusable —
+        malformed JSON, a missing or wrong-typed field, or a stored ordering violation — keeps the
+        **shipped default** and raises a persistent operator warning. Never a partial
+        reconstruction: a policy that cannot be parsed must not become a policy that deletes more
+        than the default would (DECISIONS #111).
+
+        The warning goes to `store.integrity_warnings` — the channel for *durable state that is
+        damaged*, which an unreadable `meta` row is — so it reaches `/api/stats` through the wiring
+        `runner.py` already has, and the engine needs no new field. Added once and removed again
+        when a valid policy is stored, so a maintenance pass every five seconds cannot accumulate
+        copies and a fixed policy does not leave a stale complaint behind.
+        """
+        raw = await self.store.get_meta(RETENTION_META_KEY)
+        if raw is None:
+            return
+        warning = (
+            f"The stored feedback-dataset retention policy ({RETENTION_META_KEY}) could not be "
+            "read and was ignored; the shipped defaults are in effect. Re-apply it through "
+            "POST /api/dataset/retention."
+        )
+        stored = RetentionPolicy.from_json(raw)
+        if stored is None:
+            if warning not in self.store.integrity_warnings:
+                self.store.integrity_warnings.append(warning)
+            return
+        if warning in self.store.integrity_warnings:
+            self.store.integrity_warnings.remove(warning)
+        self.retention = stored
 
     async def _promotion_sweep(self, now: float) -> None:
         """Once per maintenance pass, try to subdivide NEs that saw traffic and have no

@@ -11,6 +11,20 @@ observations, sink                               6
 observations, dataset                            0
 capture runs                                     1
 
+  of those, inside the training window           5
+  outside it (held, not selectable)              0
+  ORPHANED: promoted, label since gone           0
+
+  The training window SELECTS; it does not delete. Nothing dies at that
+  boundary — a training-retention delete would destroy evidence to express
+  a modelling preference, and selection is a WHERE clause. So the corpus
+  has two sizes: what it HOLDS and what a model may READ.
+  An ORPHANED pair is a promoted pair whose label no longer exists — a
+  feature nothing can interpret. It is counted, never collected: the
+  corpus is not corrupt, its USABLE size is just smaller than its row
+  count. Sources are an audit-bound reduction landing between a label and
+  its features, and any pre-v0.8.1 database that lost labels to F44.
+
 -- the machine's decision (NOT a label) -----------------------
 pairs the incumbent linked                       3  (60.0%)
 accepted links dropped by the cap                1
@@ -73,7 +87,7 @@ seconds, situation open to verdict    n=3 min=30 med=88 p90=599 max=599 mean=239
   default is a conservative GUESS; this distribution is what replaces it.
 
 -- coverage --------------------------------------------------
-situations                                       3
+situations known (live + labelled)               3
 situations that received a label                 3
   as a rate                                 100.0%
 evaluated pairs ever promoted               100.0%
@@ -81,6 +95,12 @@ per-label coverage: full                         2
 per-label coverage: partial                      0
 per-label coverage: none                         0
 per-label coverage: empty                        1
+
+  The denominator is every situation this database has EVIDENCE of: those
+  still in `situation`, plus those named by a surviving label. It is not
+  `COUNT(*) FROM situation`, which the operational prune shrinks while
+  labels outlive it — that denominator printed 300.0% before v0.8.1. This
+  one contains its own numerator by construction, so no clamp is needed.
 
   `partial` is NOT an edge case. The sliding window and MAX_CANDIDATES
   mean pairs within a labelled situation may never have been evaluated —

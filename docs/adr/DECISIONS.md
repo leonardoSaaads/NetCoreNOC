@@ -2330,3 +2330,33 @@ grouping**.
   corpus with orphans is not corrupt, it is a corpus whose **usable** size is smaller than its row
   count, and deleting features whose label an operator destroyed would be a second destruction
   nobody asked for.
+
+## 113. `RetentionPolicy` moves to its own module, because the size guard required it (v0.8.1)
+
+- **Context**: persisting the policy (#111) and giving the tiers meanings (#110) added ~44 lines to
+  `capture.py`, which was already at **374 of its 400-line budget** — 26 lines of headroom for a
+  release that needed more. `store/dataset.py`, the other candidate, was at 337 and is SQL-only by
+  its own contract ("Nothing here decides anything"), so a policy with validation and a durable form
+  does not belong there either.
+- **Options**: (a) trim the new docstrings until the file fits; (b) add `capture.py` to
+  `DEBT_ALLOWLIST`; (c) raise a ceiling, as #108 did for `engine.py`; (d) move `RetentionPolicy`
+  and its two persistence constants to `retention_policy.py`, with `capture.py` re-exporting them.
+- **Choice**: **(d)**.
+- **Reason**: (a) is precisely what #108 rejected — *"makes the code worse to satisfy a number,
+  which is the inverse of what the guard is for"* — and the reasoning being cut is the reasoning a
+  reviewer of a data-destroying policy most needs. (b) is forbidden: v0.8.1's rules require
+  `DEBT_ALLOWLIST` to stay **empty**, and this is not debt, it is a module that has finished being
+  one thing. (c) would be the second ceiling raised in two releases, which is how a ratchet becomes
+  a comment. (d) is the option the guard's own failure message names first, and the seam is real
+  rather than convenient: `capture.py` is *"turning one correlation decision into rows"*, and a
+  retention policy is a configuration value with an invariant and a stored form. It participates in
+  no capture decision; it is passed *to* one.
+- **Why this is not the reorganisation v0.8.1 forbade**: §3.3 of the release brief rules out a
+  `dataset/` **package** — four modules restructured for tidiness. This is one class moving to one
+  module because a hard guard left no alternative, and `capture.py` re-exports every name, so **no
+  import site anywhere else in the tree changed**. That is the arrangement `MAX_CLIENT_MEMBERS`
+  already has (defined in `store/dataset.py`, re-exported through `labels.py` and `capture.py`), so
+  it introduces no pattern the codebase did not have.
+- **Cost, accepted**: one more file, and one more `LAYER_OF` entry in `tests/test_layers.py`. The
+  new module imports nothing from this package, so it cannot violate the dependency direction —
+  recorded in its layer entry rather than left to be rediscovered.

@@ -67,6 +67,10 @@ LAYER_OF: dict[str, str] = {
     # The verdict side of the same feature. Split from `capture.py` by *path*, not by size:
     # capture runs per activation on the ingest path, this runs per operator verdict.
     "labels": "engine",
+    # v0.8.1. The retention policy and its durable form. Split from `capture.py` by *size* — and
+    # unlike `labels.py` that is the honest reason, recorded as such (DECISIONS #113). Engine-layer
+    # and dependency-free: it imports nothing from this package, so it cannot violate any direction.
+    "retention_policy": "engine",
     # The bias report reads the dataset and formats it. Engine-layer, not http: it is a CLI
     # deliverable by design (§8.1) — a route would add HTTP surface to a scope bypass, and a
     # deterministic CLI report can be a byte-for-byte gate where a UI card never could.

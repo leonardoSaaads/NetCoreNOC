@@ -544,7 +544,7 @@ async def test_the_retention_preview_counts_exactly_what_would_be_destroyed(stor
     assert impact["oldest"] == old and impact["newest"] == old
 
     async with store.lock:
-        deleted = await store.prune_dataset(TS)
+        deleted = await store.prune_dataset_audit(TS)
         await store.commit()
     assert deleted["pairs"] == impact["pairs"], "the preview did not match what was destroyed"
     cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair")
@@ -552,11 +552,16 @@ async def test_the_retention_preview_counts_exactly_what_would_be_destroyed(stor
 
 
 async def test_the_maintenance_loop_prunes_the_sink_and_never_the_dataset(store: Store) -> None:
-    """**Directive 9.** The background loop may bound the sink; it may never destroy labels.
+    """**Directive 9, as v0.8.1 satisfies it (DECISIONS #110).**
 
-    Reducing the training tier deletes human labels irreversibly, so it is an explicit admin action
-    behind a preview — not something a loop does on a schedule. This is the difference between this
-    prune and every other one in the product.
+    v0.8.0 read the directive as "the loop touches nothing labelled, ever", which is what made the
+    middle and outer tiers inert — `audit_days` was validated, recorded and reported, and read by no
+    deletion path at all. The rule now is narrower and true: the loop may not destroy labelled rows
+    **inside the audit bound**, and the training bound destroys nothing at any time because it
+    *selects*. What survives of the directive is the substance: nothing dies on a schedule nobody
+    chose.
+
+    This test holds the *inside the bound* half; the two below hold the boundary itself.
     """
     engine = Engine(store, asyncio.Queue())
     await engine.start()
@@ -569,15 +574,90 @@ async def test_the_maintenance_loop_prunes_the_sink_and_never_the_dataset(store:
         )
         await store.commit()
 
-    # A maintenance pass whose clock is far beyond every row's age and every retention tier.
-    await engine.maintenance(now=TS + 10**9, retention_days=1.0, tick=0)
+    # Beyond the sink's 21 days, but far INSIDE the 730-day audit bound.
+    await engine.maintenance(now=TS + 60.0 * 86400.0, retention_days=1.0, tick=0)
 
     cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset'")
     assert int((await cur.fetchone())[0]) == 12, (  # type: ignore[index]
-        "the maintenance loop destroyed labelled rows — it may only prune the sink"
+        "the maintenance loop destroyed labelled rows inside the audit bound"
     )
     cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='sink'")
     assert int((await cur.fetchone())[0]) == 0, "the sink was not pruned"  # type: ignore[index]
+
+
+async def test_four_passes_past_the_training_bound_delete_nothing(store: Store) -> None:
+    """**The training tier SELECTS.** Crossing it must destroy nothing, on any number of passes.
+
+    Four passes rather than one, because the defect class this release exists to fix is a sweep
+    that only bites on a later tick.
+    """
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    async with store.lock:
+        sid, fid, _members = await _labelled_and_aged(store)
+        for i in range(30):
+            await engine._process(util.event(device=f"10.5.0.{i % 6}", ts=TS + i * 0.01))
+        await store.commit()
+        await store.conn.execute(
+            "UPDATE dataset_pair SET lifecycle='dataset', promoted_at=?, situation_id=?", (TS, sid)
+        )
+        await store.commit()
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset'")
+    promoted = int((await cur.fetchone())[0])  # type: ignore[index]
+    assert promoted > 0
+
+    # training_days is 365; sit well past it and well short of the 730-day audit bound.
+    for i in range(4):
+        await engine.maintenance(now=TS + (500.0 + i) * 86400.0, retention_days=7.0, tick=i)
+
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset'")
+    assert int((await cur.fetchone())[0]) == promoted, (  # type: ignore[index]
+        "the training bound deleted rows — it is a selection window, not a deletion policy"
+    )
+    cur = await store.conn.execute("SELECT COUNT(*) FROM feedback WHERE id=?", (fid,))
+    assert int((await cur.fetchone())[0]) == 1, "the training bound deleted a label"  # type: ignore[index]
+
+
+async def test_the_audit_sweep_deletes_outside_its_bound_and_nothing_newer(store: Store) -> None:
+    """**The audit sweep is bounded, and that is a test rather than a comment.**
+
+    Two promoted cohorts, one either side of the bound, plus two labels the same. Four passes.
+    Exactly the old cohort goes; the young one is untouched.
+    """
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    # More than the 730-day audit bound apart, so the bound can fall strictly between them.
+    old_ts, young_ts = TS, TS + 1000.0 * 86400.0
+    async with store.lock:
+        ids = await _alarms(store, 4)
+        for tag, ts in (("old", old_ts), ("young", young_ts)):
+            sid = await store.create_situation(ts, None)
+            recorded = await store.add_feedback(sid, "confirm", ts, principal_ref=f"u:{tag}")
+            assert recorded.id is not None
+            await store.conn.execute(
+                "INSERT INTO dataset_pair (capture_run_id, alarm_a, alarm_b, situation_id, "
+                "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
+                "incumbent_linked, storm, truncated, evaluated_at, lifecycle, promoted_at) "
+                "VALUES (?, ?, ?, ?, 1.0, 0.5, 0.5, 1, 1, 0.9, 1, 0, 0, ?, 'dataset', ?)",
+                (engine.capture.run_id, ids[0][0], ids[1][0], sid, ts, ts),
+            )
+        await store.commit()
+
+    # The bound is 730 days before `now`; place `now` so `old` is outside and `young` inside.
+    now = young_ts + 10.0 * 86400.0
+    assert now - 730.0 * 86400.0 > old_ts and now - 730.0 * 86400.0 < young_ts
+    for i in range(4):
+        await engine.maintenance(now=now + i, retention_days=7.0, tick=i)
+
+    cur = await store.conn.execute(
+        "SELECT evaluated_at FROM dataset_pair WHERE lifecycle='dataset'"
+    )
+    surviving = [float(r[0]) for r in await cur.fetchall()]
+    assert surviving == [young_ts], f"the audit sweep reached the wrong cohort: {surviving}"
+    cur = await store.conn.execute("SELECT created_at FROM feedback ORDER BY id")
+    labels = [float(r[0]) for r in await cur.fetchall()]
+    assert labels == [young_ts], f"the audit sweep reached a label inside its bound: {labels}"
+    assert engine.capture.audit_swept["labels"] == 1, "the sweep did not count what it destroyed"
 
 
 async def test_a_prune_failure_degrades_capture_and_not_maintenance(store: Store) -> None:
@@ -644,7 +724,7 @@ async def test_applying_a_reduction_actually_deletes(store: Store) -> None:
     async with store.lock:
         impact = await store.preview_retention(TS)
         assert impact["pairs"] == 4
-        deleted = await store.prune_dataset(TS)
+        deleted = await store.prune_dataset_audit(TS)
         await store.commit()
 
     assert deleted["pairs"] == 4, "applying a reduction must destroy what the preview counted"
@@ -980,3 +1060,149 @@ async def test_f44_repeated_prunes_do_not_raise_on_the_retained_situation(store:
             await store.commit()
     cur = await store.conn.execute("SELECT COUNT(*) FROM feedback WHERE id=?", (fid,))
     assert int((await cur.fetchone())[0]) == 1  # type: ignore[index]
+
+
+# --- the retention policy survives a restart (v0.8.1) ---------------------------------------
+
+
+async def test_a_policy_set_through_the_route_survives_a_fresh_engine(store: Store) -> None:
+    """**The v0.8.0 defect**: the route answered "saved", audited `retention.change`, and the next
+    restart silently returned the shipped defaults.
+
+    The asymmetry is what made it serious rather than annoying: the destruction an admin asked for
+    was permanent and the configuration they asked for was not.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    client = await authutil.client_as(app, "admin")
+    try:
+        resp = await client.post(
+            "/api/dataset/retention",
+            json={
+                "sink_days": 3,
+                "sink_rows": 111_111,
+                "training_days": 90,
+                "audit_days": 180,
+                "preview": False,
+            },
+        )
+    finally:
+        await client.aclose()
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "saved"
+
+    fresh = Engine(store, asyncio.Queue())  # exactly what runner.py builds at boot
+    await fresh.start()
+    assert fresh.retention == RetentionPolicy(
+        sink_days=3.0, sink_rows=111_111, training_days=90.0, audit_days=180.0
+    ), f"the policy did not survive a restart: {fresh.retention}"
+
+
+async def test_nothing_stored_means_the_shipped_default(store: Store) -> None:
+    """Zero-config: an untouched deployment gets the shipped defaults, silently."""
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    assert engine.retention == RetentionPolicy()
+    assert store.integrity_warnings == []
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "not json at all",
+        "{}",
+        '{"sink_days": 3, "sink_rows": 10}',  # partial
+        '{"sink_days": "x", "sink_rows": 10, "training_days": 90, "audit_days": 180}',  # typed
+        # A stored ORDERING VIOLATION: sink >= training. Valid JSON, valid types, illegal policy.
+        '{"sink_days": 400, "sink_rows": 10, "training_days": 90, "audit_days": 180}',
+    ],
+)
+async def test_a_corrupt_stored_policy_falls_back_to_the_shipped_default_and_warns(
+    store: Store, stored: str
+) -> None:
+    """**Fail-safe.** A policy that cannot be parsed must never become a policy that deletes more
+    than the default would — so the fallback is the *shipped* default, never a partial
+    reconstruction of the good fields (DECISIONS #111).
+    """
+    async with store.lock:
+        await store.set_meta("config.dataset_retention", stored)
+        await store.commit()
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+
+    assert engine.retention == RetentionPolicy(), (
+        f"a corrupt policy took effect: {engine.retention}"
+    )
+    assert any("retention policy" in w for w in store.integrity_warnings), (
+        "the operator was not warned that the stored policy was ignored"
+    )
+
+
+async def test_the_fallback_warning_is_added_once_and_cleared_when_repaired(store: Store) -> None:
+    """`_capture_run` runs every maintenance pass, so the warning must not accumulate — and a
+    repaired policy must not leave a stale complaint behind."""
+    async with store.lock:
+        await store.set_meta("config.dataset_retention", "{{{")
+        await store.commit()
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    for i in range(4):
+        await engine.maintenance(now=TS + i, retention_days=7.0, tick=i)
+    assert len(store.integrity_warnings) == 1, store.integrity_warnings
+
+    async with store.lock:
+        await store.set_meta("config.dataset_retention", RetentionPolicy().as_json())
+        await store.commit()
+    await engine.maintenance(now=TS + 100.0, retention_days=7.0, tick=1)
+    assert store.integrity_warnings == [], "a repaired policy left a stale warning"
+
+
+async def test_lowering_the_training_window_destroys_nothing(store: Store) -> None:
+    """**The preview's honesty about which tier destroys.**
+
+    v0.8.0 cut on `training_days` and its preview reported a `labels` figure the apply never
+    deleted. Under DECISIONS #110 the training window selects, so narrowing it is free — and the
+    response says so rather than reporting a count it will not act on.
+    """
+    engine, _queue, app = await authutil.make_env(store)
+    # The route cuts against the wall clock, so the fixture has to live near it: rows a month old,
+    # comfortably inside the 3650-day audit bound below and far outside the 7-day training window.
+    now = time.time()
+    recent = now - 30.0 * 86400.0
+    async with store.lock:
+        sid = await store.create_situation(recent, None)
+        recorded = await store.add_feedback(sid, "confirm", recent, principal_ref="u:1")
+        assert recorded.id is not None
+        fid = recorded.id
+        await store.conn.execute(
+            "INSERT INTO dataset_pair (capture_run_id, alarm_a, alarm_b, situation_id, delta_t_s, "
+            "class_affinity, entity_affinity, a_epoch, e_epoch, score, incumbent_linked, storm, "
+            "truncated, evaluated_at, lifecycle, promoted_at) "
+            "VALUES (?, 1, 2, ?, 1.0, 0.5, 0.5, 1, 1, 0.9, 1, 0, 0, ?, 'dataset', ?)",
+            (engine.capture.run_id, sid, recent, recent),
+        )
+        await store.commit()
+
+    client = await authutil.client_as(app, "admin")
+    try:
+        resp = await client.post(
+            "/api/dataset/retention",
+            json={
+                # Training slashed to a week; the AUDIT bound left enormous.
+                "sink_days": 1,
+                "sink_rows": 1000,
+                "training_days": 7,
+                "audit_days": 3650,
+                "preview": False,
+            },
+        )
+    finally:
+        await client.aclose()
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["bound"] == "audit" and body["training_deletes"] == 0
+    assert body["deleted"] == {"pairs": 0, "observations": 0, "labels": 0}, body["deleted"]
+
+    cur = await store.conn.execute("SELECT COUNT(*) FROM feedback WHERE id=?", (fid,))
+    assert int((await cur.fetchone())[0]) == 1, "narrowing the training window destroyed a label"  # type: ignore[index]
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset'")
+    assert int((await cur.fetchone())[0]) == 1, "narrowing the training window destroyed features"  # type: ignore[index]

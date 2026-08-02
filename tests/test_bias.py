@@ -285,3 +285,64 @@ async def test_the_report_says_what_it_cannot_tell_you(store: Store) -> None:
 async def _report_measurements(store: Store) -> dict[str, Any]:
     async with store.lock:
         return await bias.collect(store)
+
+
+# --- v0.8.1: the coverage denominator, and the orphan count ---------------------------------
+
+
+async def test_the_coverage_rate_cannot_exceed_100_percent(store: Store) -> None:
+    """**The skew, constructed.** Labels outliving their situations must not print >100%.
+
+    v0.8.0 divided `COUNT(DISTINCT situation_id) FROM feedback` by `COUNT(*) FROM situation` — a
+    table the operational prune collects — and Phase 0 measured the printed rate at **300.0%**. A
+    rate above 100% destroys a reader's trust in every other number on the page.
+
+    The `foreign_keys=OFF` window is how a *pre-v0.8.1* database gets into this state: v0.8.1's
+    `prune()` retains the labelled situation row, so a fresh database cannot reach it — but one
+    upgraded from v0.8.0 can already be here, and the report has to stay honest about it.
+    """
+    async with store.lock:
+        for i in range(3):
+            await store.conn.execute(
+                "INSERT INTO situation (id, status, created_at, updated_at, closed_at) "
+                "VALUES (?, 'closed', ?, ?, ?)",
+                (i + 1, TS, TS + 20.0, TS + 20.0),
+            )
+            await store.conn.execute(
+                "INSERT INTO feedback (situation_id, verdict, created_at) VALUES (?, 'confirm', ?)",
+                (i + 1, TS + 10.0),
+            )
+        await store.commit()
+        # Two situations collected, their labels surviving — the v0.8.0 state.
+        await store.conn.execute("PRAGMA foreign_keys=OFF")
+        await store.conn.execute("DELETE FROM situation WHERE id IN (1,2)")
+        await store.commit()
+        await store.conn.execute("PRAGMA foreign_keys=ON")
+
+    async with store.lock:
+        measured = await bias.collect(store)
+
+    assert measured["situations_labelled"] == 3
+    assert measured["situations_total"] == 3, (
+        "the denominator must be the population the report has evidence of, not the surviving rows"
+    )
+    assert measured["situation_label_rate"] == "100.0%", measured["situation_label_rate"]
+    # The general property, not just this case: the numerator is a subset of the denominator.
+    assert int(measured["situations_labelled"]) <= int(measured["situations_total"])
+
+
+async def test_the_report_counts_orphaned_promoted_pairs(store: Store) -> None:
+    """A promoted pair whose label is gone is a feature nothing can interpret. Counted, not
+    collected — the corpus is not corrupt, its *usable* size is smaller than its row count."""
+    await build_fixture(store)
+    async with store.lock:
+        before = await bias.collect(store)
+        assert before["orphaned_pairs"] == 0, "the clean fixture must have no orphans"
+        await store.conn.execute("PRAGMA foreign_keys=OFF")
+        await store.conn.execute("DELETE FROM feedback")
+        await store.commit()
+        await store.conn.execute("PRAGMA foreign_keys=ON")
+        after = await bias.collect(store)
+    assert after["orphaned_pairs"] == before["pairs_dataset"] > 0, (
+        "every promoted pair is orphaned once its label is gone, and the report must say so"
+    )

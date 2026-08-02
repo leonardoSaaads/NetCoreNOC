@@ -303,3 +303,28 @@ Everything the release itself deferred, each with the reason it is not in it:
   unauthenticated; `test_add_api_route_is_confined_to_the_static_asset_allowlist` still counts
   mentions rather than calls. All three carried forward from v0.7.4 unchanged — v0.7.5's scope was
   five workstreams and none of them was these.
+
+From v0.8.1 (found while governing the dataset's lifecycle; **not fixed**, per that release's
+directive that a defect discovered inside the changed code is a roadmap line and not a fix):
+
+- **`Capture.warnings()` is never surfaced to the operator.** `capture.py` builds a
+  `db_error_warnings`-shaped message after a capture write fails, and `tests/test_dataset.py`
+  asserts it — but `runner.py`'s warnings lambda never calls it, so a degraded capture is counted,
+  logged, and invisible on `/api/stats`. One line in `runner.py` beside
+  `engine.db_error_warnings()`. Deliberately left: it is not on the label path and v0.8.1's value
+  is the size of its diff.
+- **The sink's row cap almost certainly governs, and nobody has measured it in the field.** At
+  ~62 pair rows per trap the 2 000 000-row default is exhausted in ~9 hours at 1 trap/s, so most
+  deployments have hours of labelling window, not the 21 days `sink_days` advertises. v0.8.1
+  documented this honestly and changed nothing, because changing it is a design decision with data
+  behind it and the data is what v0.9.0 will have. Whoever raises the cap should also decide what
+  `sink_days` is *for* once it can never bind.
+- **One label promotes an entire storm's sink.** 45 050 rows from one verdict on `olt_storm.json`.
+  The promotion rule is correct — every promoted pair had both ends inside the labelled bag — but
+  it means the corpus is bounded by *labels × situation size*, so a single storm label can dominate
+  the training set. Weighting, capping promotion per label, or sampling within a bag are all
+  options; all three are modelling decisions and belong with the release that trains.
+- **DECISIONS #108's prose says `engine.py` "may not exceed 565 lines"** where the recorded ceiling
+  is 580. A typo in an ADR's summary sentence, not in the guard, which has always read 580. Left
+  alone because ADR text is a record of what was decided and is corrected in place, not edited
+  silently — and no release since has needed to touch that entry.

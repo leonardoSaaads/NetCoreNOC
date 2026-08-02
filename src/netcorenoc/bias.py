@@ -88,6 +88,35 @@ async def collect(store: Store) -> dict[str, Any]:
     out["observations_dataset"] = await _scalar(
         store, "SELECT COUNT(*) FROM dataset_observation WHERE lifecycle='dataset'"
     )
+    # -- the TRAINING WINDOW, which selects rather than deletes -----------------------------
+    # DECISIONS #110: `training_days` is a `WHERE` clause, not a retention policy. Nothing is
+    # deleted at this boundary, so the corpus has two sizes — what it HOLDS and what a model may
+    # READ — and a report that quoted only the first would overstate the usable dataset.
+    #
+    # Anchored on the newest promoted row rather than the wall clock, exactly as every other age in
+    # this module is: a clock would make the report unreproducible and it could not be a gate.
+    run = await store.latest_capture_run()
+    newest_pair = await _scalar(
+        store, "SELECT MAX(evaluated_at) FROM dataset_pair WHERE lifecycle='dataset'"
+    )
+    if run is None or newest_pair is None:
+        out["pairs_in_training_window"] = out["pairs_dataset"]
+        out["pairs_outside_training_window"] = 0
+    else:
+        cutoff = float(newest_pair) - float(run["retention_training_days"]) * DAY_S
+        out["pairs_in_training_window"] = await _scalar(
+            store,
+            "SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset' AND evaluated_at >= ?",
+            (cutoff,),
+        )
+        out["pairs_outside_training_window"] = int(out["pairs_dataset"] or 0) - int(
+            out["pairs_in_training_window"] or 0
+        )
+    # Promoted pairs whose label no longer exists: features nothing can interpret. Counted, never
+    # collected — a corpus with orphans is not corrupt, it is one whose USABLE size is smaller than
+    # its row count, and that is exactly what this report exists to say out loud.
+    out["orphaned_pairs"] = await store.orphaned_promoted_pairs()
+
     out["truncated_pairs"] = await _scalar(
         store, "SELECT COUNT(*) FROM dataset_pair WHERE truncated=1"
     )
@@ -160,7 +189,13 @@ async def collect(store: Store) -> dict[str, Any]:
     out["latency_s"] = _distribution([int(r["latency"]) for r in latencies])
 
     # -- coverage, three ways ----------------------------------------------------------------
-    situations = await _scalar(store, "SELECT COUNT(*) FROM situation")
+    # **The denominator is the population this database has EVIDENCE of**, not the rows that
+    # happen to survive in `situation` (DECISIONS #112). `prune()` collects situations on the
+    # operational schedule while labels outlive them, so `COUNT(*) FROM situation` can shrink under
+    # its own numerator — v0.8.0 printed a coverage rate of 300.0% on that basis. The union of
+    # surviving situations and situations named by a surviving label contains the numerator by
+    # construction, so the rate cannot exceed 100% for any database, and no clamp is needed.
+    situations = await store.labelled_situation_population()
     labelled_situations = await _scalar(store, "SELECT COUNT(DISTINCT situation_id) FROM feedback")
     out["situations_total"] = situations
     out["situations_labelled"] = labelled_situations
@@ -227,7 +262,7 @@ async def collect(store: Store) -> dict[str, Any]:
     )
 
     # -- retention state ----------------------------------------------------------------------
-    run = await store.latest_capture_run()
+    # `run` was read above for the training window; one read, one answer.
     out["retention"] = (
         {
             "sink_days": run["retention_sink_days"],

@@ -18,8 +18,10 @@ from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ConfigIn, RetentionIn, RoleIn, TokenIn, UserIn
 
 # The tier names, in `RetentionPolicy.as_key()` order, so the audit detail reads as a policy
-# rather than as an unlabelled tuple. Before and after are both captured.
-_TIERS = ("sink_days", "sink_rows", "training_days", "audit_days")
+# rather than as an unlabelled tuple. Before and after are both captured. Imported from the module
+# that owns the policy (v0.8.1) rather than restated here, so the audit detail and the stored form
+# cannot drift apart.
+_TIERS = capture.TIER_NAMES
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -216,6 +218,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "audit_days": policy.audit_days,
             "capture_enabled": engine.capture.enabled,
             "stats": stats,
+            # What the background audit sweep has destroyed since this process started. Deleting a
+            # label is the most consequential thing this product does, so the count is reported
+            # rather than discarded the way `store.prune`'s is.
+            "audit_swept": dict(engine.capture.audit_swept),
         }
 
     @route.post("/api/dataset/retention")
@@ -241,7 +247,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         reason = candidate.validate()
         if reason is not None:
             raise HTTPException(status_code=400, detail=reason)
-        cutoff = time.time() - candidate.training_days * 86400.0
+        # **The AUDIT bound, not the training bound (v0.8.1, DECISIONS #110).** v0.8.0 cut here on
+        # `training_days`, which made the middle tier the destructive one and left the preview
+        # reporting a `labels` figure the apply never deleted. Under the tier semantics this
+        # release adopts, training *selects* — reducing it destroys nothing — and the audit bound is
+        # the outer edge of the data's life, so it is the one an operator can ask to be enforced.
+        cutoff = time.time() - candidate.audit_days * 86400.0
         async with store.lock:
             impact = await store.preview_retention(cutoff)
         if body.preview:
@@ -254,7 +265,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     object_type="config",
                     details=dict(impact),
                 )
-            return {"status": "preview", "would_delete": impact, "applied": False}
+            return {
+                "status": "preview",
+                "would_delete": impact,
+                "applied": False,
+                # Which tier these counts belong to, so nobody reads them as the training tier's.
+                # Lowering `training_days` destroys nothing — it narrows what a model may read.
+                "bound": "audit",
+                "training_deletes": 0,
+            }
         before = engine.retention
         async with write_txn():
             await audit_row(
@@ -274,11 +293,19 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             # reduction a no-op. The operator has now seen the count and asked for it, so it
             # happens once, visibly, attributed to them — and the audit row above precedes it, so
             # a crash mid-delete leaves the intent on record.
-            deleted = await store.prune_dataset(cutoff)
+            deleted = await store.prune_dataset_audit(cutoff)
+            # **v0.8.1: the policy is PERSISTED.** v0.8.0 answered "saved", audited the change, and
+            # kept it only in memory — so the destruction an admin asked for was permanent and the
+            # configuration they asked for was not. One `meta` value, in the same transaction as
+            # the audit row and the deletion, so the record and the policy cannot disagree.
+            # No migration: `meta` is where this product has always kept operator configuration.
+            await store.set_meta(capture.RETENTION_META_KEY, candidate.as_json())
         engine.retention = candidate
         return {
             "status": "saved",
             "would_delete": impact,
             "deleted": deleted,
             "applied": True,
+            "bound": "audit",
+            "training_deletes": 0,
         }

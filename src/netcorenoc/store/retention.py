@@ -36,7 +36,8 @@ class RetentionMixin(StoreBase):
         pass. Bounded by the label count, which is the rarest event in the system. DECISIONS #109.
 
         The retained shell is collected by an ordinary later pass once the **audit sweep**
-        (`capture.prune_audit`) removes its label — the one background path that may.
+        (`capture.prune`, via :meth:`prune_dataset_audit`) removes its label — the one background
+        path that may.
         """
         cutoff = now - retention_s
         counts: dict[str, int] = {}
