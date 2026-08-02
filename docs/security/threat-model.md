@@ -1139,3 +1139,70 @@ Every threat above names a control and a check. Finding **F42** is tracked in
 the F40/F41 sets green and unedited, the feedback and SSE contract tests green **and unedited**, the
 UI at four files with the CSP unchanged, and an upgrade from a real v0.7.4 database with no
 migration, an identical store snapshot and the same audit final hash.
+
+---
+
+## v0.8.1 — the dataset's lifecycle (F44)
+
+One finding, **F44**, in `store/retention.py`. It is a **data-integrity** defect with **no
+confidentiality, audit-chain or access-control consequence**, recorded here because the asset it
+destroyed is the one this product cannot reacquire, not because it is a vulnerability.
+
+### The human label outliving its operational data (T-DATA-1) — **F44**
+
+| | |
+|---|---|
+| **Asset** | the operator's verdict (`feedback`) and its membership record (`feedback_member`) — the least reconstructible data in the system. It cannot be recomputed, re-derived, or asked for again. |
+| **Threat** | routine background maintenance destroys it, silently, on a schedule nobody chose for it |
+| **Trust boundary crossed** | **none.** No principal is involved and no data is disclosed. |
+| **Vector** | `prune()` deleted `feedback` for every situation closed longer than the *operational* retention (`NETCORENOC_RETENTION_DAYS`, default **7.0 days**), with `feedback_member` following by `ON DELETE CASCADE`. Correct before v0.8.0, when feedback was a transient learning signal; wrong the moment v0.8.0 made that row the dataset's label. |
+| **Impact** | in a **default** deployment, every human verdict was lost seven days after its situation closed, while the `dataset_pair` features it justified survived — so the corpus grew and its labels evaporated, invisibly |
+| **Control** | a label is not operational data and is not governed by the operational retention. `feedback` left `prune()`'s deletion set; the labelled `situation` row is retained with it, because `feedback.situation_id` is a restricting FK under `foreign_keys=ON` and the sweep would otherwise raise. Only the tiers in `retention_policy.py` govern a label, and only the **audit** tier deletes one. DECISIONS #109, #110. |
+| **Check** | `tests/test_dataset.py::test_f44_*` (four; two proven to fail on the unmodified tree by stashing), `test_the_whole_life_of_a_label`, and `test_the_audit_sweep_deletes_outside_its_bound_and_nothing_newer` — which asserts the one surviving background deleter cannot reach anything newer than the operator's bound |
+
+### The deletion paths, enumerated
+
+The security-relevant statement of this release: **exactly two paths can delete a human label**, and
+both are bounded by a number the operator set.
+
+| Path | Bound | Attribution | Record |
+|---|---|---|---|
+| the audit sweep, on the maintenance tick | `retention.audit_days` (default 730 d); cannot reach anything newer, by test | `system`, enforcing a configured policy | counted in `capture.audit_swept`, surfaced on `GET /api/dataset/retention` |
+| an explicit admin reduction of the audit bound | the operator's own new value, after a preview count; `preview` defaults to `True` | the authenticated **admin** principal | `retention.preview` + `retention.change`, the audit row written **before** the deletion |
+
+`store.prune()`, the sink's dual bound, and the **training** tier cannot reach a label at all — the
+training tier is a `WHERE` clause and destroys nothing (DECISIONS #110).
+
+### A near-miss worth recording
+
+The dataset sweep was first written as `store.prune_audit` — already the name of the audit-**log**
+deleter, and both are mixed into one `Store`. It would have **silently shadowed audit-log
+retention**, which *is* an audit-chain control. `mypy --strict` refused the definition and it was
+renamed `prune_dataset_audit`. The type checker was the control that caught a change to the audit
+log's lifetime; no test would have.
+
+### Residuals carried into v0.8.1
+
+- **`Capture.warnings()` is never surfaced.** Built and tested, but `runner.py`'s warnings lambda
+  does not call it, so a degraded capture is invisible on `/api/stats`. Not on the label path;
+  `docs/ROADMAP.md`.
+- **The sink's row cap, not its age limit, governs** at realistic traffic. Documented in `DESIGN.md`
+  in this release and deliberately not changed — it is a design decision with data behind it, and
+  the data is v0.9.0's.
+- **Orphaned promoted pairs are measured, never collected.** Deleting features whose label an
+  operator destroyed would be a second destruction nobody asked for. The bias report counts them.
+- **All v0.7.5 residuals above are carried forward unchanged.** `/openapi.json` is still served
+  unauthenticated, `ROUTE_SCOPE` is still descriptive, `renderEntityDetail` still has the
+  clear-then-fill shape.
+- **This was not a full re-review of the attack surface.** F1–F43's controls were re-checked only to
+  the extent `make qa` asserts them on every commit. The last full pass remains v0.7.1's.
+
+## v0.8.1 coverage check
+
+Every threat above names a control and a check. Finding **F44** is tracked in
+`SECURITY-REVIEW-0.8.1.md` (property → fix → test). Gate 5 requires every F-numbered test green,
+`make eval` byte-identical, `make bias-report` deterministic, the F34–F39 and F40–F43 sets green
+**and unedited**, the route tables and declaration gate unchanged, the layer and module-size guards
+green with `engine.py` at its unchanged 580-line ceiling and `DEBT_ALLOWLIST` empty, and an upgrade
+from a real v0.8.0 database with **no migration**, an identical schema hash, identical row counts,
+the same audit final hash, and any pre-existing orphans **reported rather than silently collected**.

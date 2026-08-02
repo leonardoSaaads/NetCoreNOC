@@ -1206,3 +1206,88 @@ async def test_lowering_the_training_window_destroys_nothing(store: Store) -> No
     assert int((await cur.fetchone())[0]) == 1, "narrowing the training window destroyed a label"  # type: ignore[index]
     cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset'")
     assert int((await cur.fetchone())[0]) == 1, "narrowing the training window destroyed features"  # type: ignore[index]
+
+
+async def test_the_whole_life_of_a_label(store: Store) -> None:
+    """**One narrative: capture, verdict, close, and each boundary in turn.**
+
+    The three prunes are tested separately above. This is the test that would have caught F44 even
+    if nobody had thought to look at `prune()`, because it follows the asset the release exists to
+    protect from the moment it is created to the moment it is legitimately destroyed, and asserts
+    what is true at every step in between.
+    """
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+
+    # 1. Capture. Traffic fills the sink; no label has arrived, so the dataset is empty.
+    async with store.lock:
+        for i in range(40):
+            await engine._process(util.event(device=f"10.7.0.{i % 5}", ts=TS + i * 0.01))
+        await store.commit()
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='sink'")
+    assert int((await cur.fetchone())[0]) > 0  # type: ignore[index]
+    # The situation carrying the most evaluated pairs. Chosen by query rather than by taking the
+    # first of `sit_of`: the earliest situation holds the FIRST alarm, which had no candidates to
+    # be scored against and therefore no pair rows at all.
+    cur = await store.conn.execute(
+        "SELECT situation_id FROM dataset_pair WHERE situation_id IS NOT NULL "
+        "GROUP BY situation_id ORDER BY COUNT(*) DESC, situation_id LIMIT 1"
+    )
+    sid = int((await cur.fetchone())[0])  # type: ignore[index]
+
+    # 2. The verdict. Promotion moves the situation's pairs; the bag and the label are written.
+    async with store.lock:
+        recorded = await engine.apply_feedback(sid, "confirm", TS + 10.0, principal_ref="u:1")
+        await store.commit()
+    fid = recorded.id
+    assert fid is not None
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset'")
+    promoted = int((await cur.fetchone())[0])  # type: ignore[index]
+    assert promoted > 0, "the verdict promoted nothing"
+
+    # 3. Close it, then age past the OPERATIONAL retention. This is F44's boundary: the verdict and
+    #    its bag survive, and the situation's operational data is collected.
+    async with store.lock:
+        await engine._close_situation(sid, TS + 20.0)
+        await store.commit()
+    await engine.maintenance(now=TS + 20.0 + 30.0 * 86400.0, retention_days=7.0, tick=0)
+
+    cur = await store.conn.execute("SELECT verdict FROM feedback WHERE id=?", (fid,))
+    assert (await cur.fetchone()) is not None, "F44: the operational prune took the verdict"
+    assert await store.feedback_members(fid, "server"), "the bag went with it"
+    cur = await store.conn.execute(
+        "SELECT COUNT(*) FROM situation_alarm WHERE situation_id=?", (sid,)
+    )
+    assert int((await cur.fetchone())[0]) == 0, "the operational data was not collected"  # type: ignore[index]
+
+    # 4. Past the TRAINING boundary. It selects, so nothing dies — but the report now distinguishes
+    #    what the corpus holds from what a model may read.
+    for i in range(4):
+        await engine.maintenance(now=TS + (500.0 + i) * 86400.0, retention_days=7.0, tick=i)
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset'")
+    assert int((await cur.fetchone())[0]) == promoted, (  # type: ignore[index]
+        "the training boundary deleted rows — it selects, it does not delete"
+    )
+    cur = await store.conn.execute("SELECT COUNT(*) FROM feedback WHERE id=?", (fid,))
+    assert int((await cur.fetchone())[0]) == 1  # type: ignore[index]
+
+    # 5. Past the AUDIT bound — the one background path that may destroy a label. Collected,
+    #    counted, and the count is what the report reads.
+    await engine.maintenance(now=TS + 900.0 * 86400.0, retention_days=7.0, tick=0)
+    cur = await store.conn.execute("SELECT COUNT(*) FROM feedback WHERE id=?", (fid,))
+    assert int((await cur.fetchone())[0]) == 0, "the audit bound did not collect the label"  # type: ignore[index]
+    cur = await store.conn.execute(
+        "SELECT COUNT(*) FROM feedback_member WHERE feedback_id=?", (fid,)
+    )
+    assert int((await cur.fetchone())[0]) == 0, "the bag outlived its label"  # type: ignore[index]
+    cur = await store.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='dataset'")
+    assert int((await cur.fetchone())[0]) == 0, "the features outlived their label"  # type: ignore[index]
+    assert engine.capture.audit_swept["labels"] == 1, engine.capture.audit_swept
+    assert engine.capture.audit_swept["pairs"] == promoted, engine.capture.audit_swept
+
+    # 6. And the retained situation shell is collected by the next ordinary operational pass.
+    await engine.maintenance(now=TS + 901.0 * 86400.0, retention_days=7.0, tick=0)
+    cur = await store.conn.execute("SELECT COUNT(*) FROM situation WHERE id=?", (sid,))
+    assert int((await cur.fetchone())[0]) == 0, (  # type: ignore[index]
+        "the situation shell retained for the label was never collected after the label went"
+    )
