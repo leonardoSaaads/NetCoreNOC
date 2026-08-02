@@ -166,8 +166,10 @@ async def test_prune_bounds_growth(store: Store) -> None:
     old = await store.ingest(util.event(device="10.0.0.1", ts=100.0))
     keep = await store.ingest(util.event(device="10.0.0.2", ts=100.0))
     await store.clear_alarm(old.device_id, old.class_id, "", ts=150.0)
+    # Deliberately UNLABELLED. v0.8.0 labelled this situation and asserted it was collected, which
+    # is exactly the behaviour F44 says is wrong — a label is not operational data. The labelled
+    # case now belongs to tests/test_dataset.py::test_f44_*, which asserts the opposite outcome.
     s_old = await store.create_situation(ts=100.0)
-    await store.add_feedback(s_old, "confirm", ts=100.0)
     await store.close_situation(s_old, ts=200.0)
     s_open = await store.create_situation(ts=100.0)
     await store.add_alarm_to_situation(s_open, keep.alarm_id)

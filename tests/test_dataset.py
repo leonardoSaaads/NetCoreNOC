@@ -864,3 +864,119 @@ async def test_the_client_fingerprint_is_not_an_existence_oracle(store: Store) -
         "SELECT alarm_id FROM feedback_member WHERE source='client' ORDER BY feedback_id, position"
     )
     assert [int(r[0]) for r in await cur.fetchall()] == [real, ghost]
+
+
+# --- F44: the operational prune does not delete human labels -------------------------------
+
+
+async def _labelled_and_aged(store: Store) -> tuple[int, int, list[int]]:
+    """A closed, labelled situation with a bag and promoted pairs, aged past every bound.
+
+    Returns `(situation_id, feedback_id, member_alarm_ids)`.
+    """
+    ids = await _alarms(store, 4)
+    sid = await store.create_situation(TS, None)
+    for triple in ids:
+        await store.add_alarm_to_situation(sid, triple[0])
+    recorded = await store.add_feedback(sid, "confirm", TS + 10.0, principal_ref="u:1")
+    assert recorded.id is not None
+    await store.add_feedback_members(recorded.id, "server", [t[0] for t in ids])
+    await store.conn.execute(
+        "INSERT INTO link (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, "
+        "created_at) VALUES (?, ?, ?, 0.9, 0.3, 0.3, 0.3, ?)",
+        (sid, ids[0][0], ids[1][0], TS),
+    )
+    await store.close_situation(sid, TS + 20.0)
+    return sid, recorded.id, [t[0] for t in ids]
+
+
+async def test_f44_the_operational_prune_does_not_delete_the_verdict_or_its_bag(
+    store: Store,
+) -> None:
+    """**F44.** A labelled, closed, aged situation keeps its verdict and its bag.
+
+    Until v0.8.1 `prune()` deleted `feedback` for every situation closed longer than the
+    OPERATIONAL retention — 7.0 days by default — and `feedback_member` followed by
+    `ON DELETE CASCADE`, while the `dataset_pair` features survived. The corpus kept the evidence
+    and lost the judgement it was evidence for.
+    """
+    async with store.lock:
+        sid, fid, members = await _labelled_and_aged(store)
+        await store.commit()
+
+    # Well past the operational retention: 7 days is the shipped default.
+    async with store.lock:
+        counts = await store.prune(now=TS + 20.0 + 30.0 * 86400.0, retention_s=7.0 * 86400.0)
+        await store.commit()
+
+    cur = await store.conn.execute("SELECT verdict FROM feedback WHERE id=?", (fid,))
+    row = await cur.fetchone()
+    assert row is not None, "F44: the operational prune deleted the human verdict"
+    assert row[0] == "confirm"
+    assert await store.feedback_members(fid, "server") == members, (
+        "F44: the bag went with the label, by ON DELETE CASCADE"
+    )
+    # The situation row is retained -- and ONLY the row -- because `feedback.situation_id` is a
+    # restricting FK. DECISIONS #109.
+    assert counts["situations"] == 0, "a labelled situation must not be counted as collected"
+    cur = await store.conn.execute("SELECT COUNT(*) FROM situation WHERE id=?", (sid,))
+    assert int((await cur.fetchone())[0]) == 1  # type: ignore[index]
+
+
+async def test_f44_the_operational_data_the_label_references_is_still_collected(
+    store: Store,
+) -> None:
+    """The other half: retaining the label must not retain the estate.
+
+    Only the one `situation` row survives. Its membership, its links and the cleared alarms behind
+    them are collected on the operational schedule exactly as before — otherwise the fix for a
+    data-loss defect would be a disk-growth defect (DECISIONS #109, rejected option (c)).
+    """
+    async with store.lock:
+        sid, _fid, _members = await _labelled_and_aged(store)
+        await store.commit()
+    async with store.lock:
+        await store.prune(now=TS + 20.0 + 30.0 * 86400.0, retention_s=7.0 * 86400.0)
+        await store.commit()
+
+    for table, column in (("situation_alarm", "situation_id"), ("link", "situation_id")):
+        cur = await store.conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE {column}=?",
+            (sid,),
+        )
+        assert int((await cur.fetchone())[0]) == 0, (  # type: ignore[index]
+            f"{table} rows survived the operational prune of a labelled situation"
+        )
+
+
+async def test_f44_an_unlabelled_situation_is_collected_exactly_as_before(store: Store) -> None:
+    """The fix is scoped to labels. An aged closed situation with no verdict still goes."""
+    async with store.lock:
+        sid = await store.create_situation(TS, None)
+        await store.close_situation(sid, TS + 20.0)
+        await store.commit()
+    async with store.lock:
+        counts = await store.prune(now=TS + 20.0 + 30.0 * 86400.0, retention_s=7.0 * 86400.0)
+        await store.commit()
+    assert counts["situations"] == 1
+    cur = await store.conn.execute("SELECT COUNT(*) FROM situation WHERE id=?", (sid,))
+    assert int((await cur.fetchone())[0]) == 0  # type: ignore[index]
+
+
+async def test_f44_repeated_prunes_do_not_raise_on_the_retained_situation(store: Store) -> None:
+    """The regression the naive fix would have introduced.
+
+    `feedback.situation_id` is `NOT NULL REFERENCES situation (id)` with no `ON DELETE` action, and
+    `foreign_keys=ON`. Removing the `DELETE FROM feedback` line *without* also retaining the
+    situation row makes every subsequent sweep raise `IntegrityError`, turning silent data loss
+    into a maintenance loop that dies. Four passes, because one would not have caught it either.
+    """
+    async with store.lock:
+        _sid, fid, _members = await _labelled_and_aged(store)
+        await store.commit()
+    for i in range(4):
+        async with store.lock:
+            await store.prune(now=TS + 20.0 + (30.0 + i) * 86400.0, retention_s=7.0 * 86400.0)
+            await store.commit()
+    cur = await store.conn.execute("SELECT COUNT(*) FROM feedback WHERE id=?", (fid,))
+    assert int((await cur.fetchone())[0]) == 1  # type: ignore[index]
