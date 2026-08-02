@@ -49,14 +49,26 @@ during an incident.
 
 ### Retention: three tiers, and the defaults
 
-| Tier | Default | What it holds |
-|---|---|---|
-| Sink | **21 days**, **and** 2 000 000 rows — whichever binds first | evaluated pairs awaiting a label |
-| Training dataset | **12 months** | pairs promoted by an operator's verdict |
-| Audit archive | **24 months** | the outer bound |
+| Tier | Default | What it holds | What the bound *does* |
+|---|---|---|---|
+| Sink | **21 days**, **and** 2 000 000 rows — whichever binds first | evaluated pairs awaiting a label | **deletes**, on the maintenance loop |
+| Training dataset | **12 months** | pairs promoted by an operator's verdict | **selects** — a query window. Nothing is deleted here. |
+| Audit archive | **24 months** | the outer bound | **deletes** — the one background path that can reach a label |
 
 Read and change them with `GET` / `POST /api/dataset/retention` (admin only). The ordering
 `sink < training ≤ audit` is enforced, and a rejection tells you which tier is wrong and why.
+
+> **Clarified 2026-08-02 (v0.8.1) — what the middle tier means.** v0.8.0 shipped these three tiers
+> and enforced only the first: `training_days` was the cutoff of an explicit admin reduction and
+> nothing else, and `audit_days` was validated, recorded and reported but read by **no deletion path
+> at all**. Two of the three were numbers that described nothing.
+>
+> v0.8.1 gives them meanings that are true. **The training tier is a selection window, not a
+> deletion policy** — a training-retention *delete* destroys evidence in order to express a
+> modelling preference, and wanting to train on the last twelve months is a statement about
+> *selection*, which is a `WHERE` clause. Nothing has to die for a model to ignore it, and keeping
+> it means the choice stays revisable. **The audit tier is the outer bound of the data's life**, and
+> the only background sweep that can delete a label. DECISIONS #110.
 
 > **The row cap is what actually governs, not the 21 days.** At ~62 rows per trap the 2 000 000-row
 > default is used up after roughly **3.7 days at 0.1 traps/s** and **9 hours at 1 trap/s**. The cap
@@ -87,8 +99,20 @@ Applying requires `"preview": false`, sent deliberately, after you have seen the
 preview and the change are written to the audit log (`retention.preview`, `retention.change`, the
 latter with before, after, and the impact you were shown).
 
-The background maintenance loop **never** deletes labelled data. It bounds the sink and nothing
-else.
+~~The background maintenance loop **never** deletes labelled data. It bounds the sink and nothing
+else.~~
+
+> **Corrected 2026-08-02 (v0.8.1). The struck sentence was false when it was written.** The
+> maintenance loop called `store.prune()`, which deleted `feedback` rows — the human verdicts — for
+> every situation closed longer than the **operational** retention (`NETCORENOC_RETENTION_DAYS`,
+> default **7 days**), taking `feedback_member` with them by `ON DELETE CASCADE`. The promoted
+> `dataset_pair` rows survived. That is **F44**, reproduced in
+> [`docs/gates/v0.8.1-phase-0.md`](docs/gates/v0.8.1-phase-0.md) §1, and it is fixed in v0.8.1.
+>
+> The sentence is now true, and for a different reason than it claimed: labels are no longer
+> governed by the operational retention at all, and the **only** background path that can delete one
+> is the **audit sweep**, at the audit bound the operator set. See the tier table above and
+> DECISIONS #109, #110.
 
 ### Labels written before v0.7.5 are marked, and excluded from training by default
 

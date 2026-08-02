@@ -1316,8 +1316,33 @@ a migration while a moment not captured is gone.
 | Grows with | **traffic** | **labels** |
 | Bounded by | time **and** a row cap, whichever binds first | a retention policy, admin-set |
 
-**The dataset grows with labels, not with traffic**, and that is what makes the design safe without
-a magic traps/day number: a 200 000-trap storm fills the sink and does not move the dataset.
+~~**The dataset grows with labels, not with traffic**, and that is what makes the design safe without
+a magic traps/day number: a 200 000-trap storm fills the sink and does not move the dataset.~~
+
+> **Corrected 2026-08-02 (v0.8.1). The struck claim is true per *situation* and false per *row*,
+> and v0.8.0 stated the row version.** Promotion is per situation: one verdict promotes **every**
+> evaluated pair of that situation, and a situation's evaluated-pair count grows with its member
+> count, which grows with traffic during a storm. Executed on `olt_storm.json`
+> ([`../gates/v0.8.1-phase-0.md`](../gates/v0.8.1-phase-0.md) §4): the storm produced **one**
+> situation of 501 alarms, and labelling it **once** promoted **45 050 pairs — the entire sink**.
+>
+> The accurate statement is that the dataset is bounded by **labels × the pairs evaluated within the
+> labelled situation**. The storm does fill the sink without moving the dataset — right up until
+> somebody labels the storm, which is exactly when they would. Nothing is wrong with the promotion
+> rule (all 45 050 promoted pairs had both ends inside the labelled bag); what was wrong was the
+> claim about what bounds the corpus.
+
+### The sink's row cap, not its age limit, is what governs
+
+At the eval corpus's measured **~62 pair rows per trap**, the 2 000 000-row default is exhausted
+after roughly **3.7 days at 0.1 traps/s** and **9 hours at 1 trap/s**. The 21-day `sink_days` figure
+is a ceiling most deployments never reach: the cap is a **disk budget** (~220 MB of pair rows) and it
+is what actually binds.
+
+An operator reading `sink_days: 21` and concluding they have three weeks to label something would be
+wrong. `python -m netcorenoc dataset stats` reports `sink_window_days` — the window this deployment
+**actually** has — and that is the number to use. Recorded here in v0.8.1 because until then it was
+stated only in `MIGRATION.md` and a commit message, and it belongs beside the tiers it qualifies.
 
 ### The physical layout — measured, then chosen against the measurement
 
