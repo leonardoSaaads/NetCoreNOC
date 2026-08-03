@@ -27,6 +27,7 @@ Five layers. The first four are a stack; the fifth is available to all of them.
 │  engine         main, engine, engine_base, maintenance, gaps,                │
 │                 scorer_lifecycle, correlate, learn, scoring, rootcause,       │
 │                 severity, varbind_profile, preview   (runner -> http)         │
+│                 capture, labels, retention_policy, bias, bias_report          │
 │                 the domain: what a situation is, what links two alarms, what │
 │                 an entity is, what the root cause is.                        │
 ├──────────────────────────────────────────────────────────────────────────────┤
@@ -77,6 +78,40 @@ the release that found it (v0.7.2 build prompt, directive 3). Both are recorded 
 
 `api.py`'s `if TYPE_CHECKING: from netcorenoc.main import Engine` is http → engine — downward, and
 therefore fine.
+
+### 1.1 The feedback-dataset modules (v0.8.0, documented here in v0.8.1)
+
+Four modules of a major feature existed in the tree and not in this document, which `docs/` calls
+binding. Recorded now, with the layer assignments **agreeing with `tests/test_layers.py`** — that
+test is the enforcement and this is the reasoning, so if the two ever disagree the test is right.
+
+| Module | Layer | What it holds, and why the layer |
+|---|---|---|
+| `capture.py` | engine | Turning one correlation decision into rows: the `Capture` object, its failure accounting, and the fail-safe that **a capture failure degrades capture and can never fail ingestion**. Engine-layer because it *consumes* a correlation decision and writes downward through the data layer. It is **not ingest** — nothing in it is reachable from `receiver.datagram_received`, which is prime directive 1. |
+| `labels.py` | engine | The **verdict** side of the same feature: the server-side bag, the scope fingerprint, the untrusted client fingerprint, and promotion. |
+| `retention_policy.py` | engine | The three tiers, their ordering invariant, and the policy's durable form. Imports nothing from this package, so it cannot violate the dependency direction (v0.8.1, DECISIONS #113). |
+| `bias.py` | engine | The bias report's **measurements** — counts, groups, distributions. Aggregates only; no row leaves it. |
+| `bias_report.py` | engine | The report's **rendering**, split at the seam `eval/` already uses (`metrics.py` computes, the harness renders). Byte-stable output, because `tests/test_bias.py` compares it against a frozen expectation. |
+
+**Why `bias.py` / `bias_report.py` are engine and not http.** The report is a **CLI deliverable by
+design**. A route would add HTTP surface to a scope bypass — the dataset contains every NE, entity
+and raw varbind, ungoverned — and would need a capability, a scope posture, a declaration, a rate
+limit and a place in the perimeter to serve a report no scoped principal may read anyway. A
+deterministic CLI report can also be a **byte-for-byte gate** in `make qa`, which a UI card could
+never be.
+
+**Why `capture.py` and `labels.py` are two modules, and it is not about size.** The split is by
+**path**:
+
+* `capture.py` runs **per activation**, on the ingest path, under the batch lock, bounded by
+  `MAX_CANDIDATES`;
+* `labels.py` runs **per operator verdict** — thousands of times rarer, on the HTTP write path, and
+  reasoning about a human judgement rather than a correlation decision.
+
+Keeping them in one module put the ingest path's hot loop and the label's provenance rules in the
+same file for no reason beyond both being called "capture". `retention_policy.py`'s split, by
+contrast, **was** by size, and DECISIONS #113 says so rather than inventing a cohesion story after
+the fact.
 
 ---
 

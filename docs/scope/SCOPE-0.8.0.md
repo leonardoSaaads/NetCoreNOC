@@ -84,10 +84,17 @@ The deliverable. Two populations with **different semantics**, not merely differ
 | Grows with | **traffic** | **labels** |
 | Bounded by | time **and** a row cap, whichever binds first | a retention policy, admin-set |
 
-**The dataset grows with labels, not with traffic.** A 200 000-trap storm on an OLT fills the sink
+~~**The dataset grows with labels, not with traffic.** A 200 000-trap storm on an OLT fills the sink
 and does not move the dataset. That is bounded growth *by construction* rather than by a configured
 number — which matters because no correct traps/day figure exists across the deployments this
-product targets.
+product targets.~~
+
+> **Corrected 2026-08-02 (v0.8.1).** True per *situation*, false per *row*. Promotion is
+> per situation, so one verdict promotes every evaluated pair of that situation — and on
+> `olt_storm.json` a single label promoted **45 050 pairs, the entire sink**
+> ([`../gates/v0.8.1-phase-0.md`](../gates/v0.8.1-phase-0.md) §4). The corpus is bounded by
+> **labels × the pairs evaluated within the labelled situation**. Corrected in
+> [`../architecture/DESIGN.md`](../architecture/DESIGN.md), which carries the full restatement.
 
 One row per **evaluated** pair (linked and rejected alike, before `MAX_LINKS_PER_ALARM`), one
 immutable row per alarm **observation**, a two-part membership record, and a capture-context table.

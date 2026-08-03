@@ -27,6 +27,14 @@ NetCoreNOC/
 │   ├── severity.py          learned severity field (shape + ordinality), honest unknown
 │   ├── varbind_profile.py   the entity/identity profiler (R/X/D score, FD containment)
 │   ├── varbind_accum.py     its bounded accumulators: Accumulator, Candidate, FD evidence
+│   ├── capture.py           the feedback dataset, PER ACTIVATION: one decision → rows, and the
+│   │                        fail-safe that a capture failure degrades capture, never ingestion
+│   ├── labels.py            the same feature PER VERDICT: the bag, its provenance, promotion.
+│   │                        Split from capture.py by *path*, not by size — see MODULE-ARCH §1.1
+│   ├── retention_policy.py  the three tiers (sink deletes, training SELECTS, audit deletes),
+│   │                        their ordering invariant, and the policy's durable `meta` form
+│   ├── bias.py              the bias report's measurements. Aggregates only; no row leaves it
+│   ├── bias_report.py       its rendering — byte-stable, because make qa compares it frozen
 │   ├── store/               the SQLite layer (v0.7.3). **One Store, ONE connection, ONE lock** —
 │   │                        the whole write discipline rests on it (F39). Sixteen domain modules.
 │   │   ├── base.py          StoreBase: the ten attribute annotations + the `conn` accessor

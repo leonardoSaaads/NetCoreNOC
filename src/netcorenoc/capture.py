@@ -48,6 +48,7 @@ from netcorenoc.labels import (
     member_digest,
     record_label,
 )
+from netcorenoc.retention_policy import RETENTION_META_KEY, TIER_NAMES, RetentionPolicy
 from netcorenoc.scoring import LINK_THRESHOLD, LinkScore
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
@@ -61,6 +62,8 @@ log = logging.getLogger("netcorenoc")
 # the verdict-path code lives in `labels.py`. See that module for why the split is by *path*.
 __all__ = [
     "MAX_CLIENT_MEMBERS",
+    "RETENTION_META_KEY",
+    "TIER_NAMES",
     "Capture",
     "ClientFingerprint",
     "LabelScope",
@@ -113,6 +116,10 @@ class Capture:
     # Bounded by pruning it against the correlator's own window on every activation, so it cannot
     # outgrow the window it mirrors.
     _observations: dict[int, int] = field(default_factory=dict)
+    # What the audit sweep has destroyed in this process's lifetime, by row kind. Deleting a label
+    # is the most consequential thing this product does, so the count is kept and surfaced rather
+    # than discarded the way `store.prune`'s is.
+    audit_swept: dict[str, int] = field(default_factory=dict)
 
     def warnings(self) -> list[str]:
         """Persistent operator warning after capture degraded, in `db_error_warnings`' shape."""
@@ -280,23 +287,29 @@ class Capture:
         self._observations[entry.alarm_id] = obs_id
         return obs_id
 
-    async def prune_sink(self, store: Store, now: float, retention: RetentionPolicy) -> None:
-        """Apply the sink's **dual bound** — age, then a row cap — on the maintenance tick.
+    async def prune(self, store: Store, now: float, retention: RetentionPolicy) -> None:
+        """Apply the policy's two **background** bounds: the sink's dual bound (age, then a row
+        cap — unchanged from v0.8.0) and the **audit bound**, the outer edge of the data's life and
+        the only background path that may delete a human label.
 
-        **Only the sink.** The training tier is never pruned from a background loop: reducing it
-        destroys human labels irreversibly, and directive 9 requires the operator to have seen a
-        preview count first. That is the whole difference between this and every other prune in the
-        product, and it is why `store.prune_dataset` has no caller here.
+        **The training tier is deliberately absent**: it *selects* rather than deletes
+        (DECISIONS #110). v0.8.0's directive 9 — this loop must never *silently* destroy labels —
+        is satisfied rather than repealed, because the audit sweep destroys nothing the operator
+        did not configure a bound for, and every deletion is counted here and reported.
 
-        Degrades exactly as capture does. A sink that failed to prune is a disk-space problem;
-        a maintenance sweep that raised would also skip the learned-state flush behind it.
+        Degrades exactly as capture does. A sweep that failed is a disk-space problem; a
+        maintenance pass that raised would also skip the learned-state flush behind it.
         """
         if not self.enabled:
             return
         try:
             await store.prune_sink(now - retention.sink_days * 86400.0, retention.sink_rows)
+            swept = await store.prune_dataset_audit(now - retention.audit_days * 86400.0)
         except Exception as exc:
             self._degrade(exc)
+        else:
+            for key, count in swept.items():
+                self.audit_swept[key] = self.audit_swept.get(key, 0) + count
 
     def _forget_outside(self, live: set[int]) -> None:
         """Keep the observation index bounded by the correlator's own window.
@@ -322,53 +335,3 @@ def _run_key(row: dict[str, Any]) -> tuple[Any, ...]:
         float(row["retention_training_days"]),
         float(row["retention_audit_days"]),
     )
-
-
-@dataclass(frozen=True)
-class RetentionPolicy:
-    """The three tiers, ordered. **The defaults are defaults, not policy.**
-
-    The right value depends on the customer's network in ways no specification can anticipate: a
-    stable regional ISP and a large operator with rolling equipment refreshes want different
-    numbers. The product's posture has always been *"you can do this, but understand the risk"*
-    rather than a number nobody may touch.
-
-    The **21-day sink default is a conservative guess and this docstring says so.** v0.8.0 measures
-    real label latency (`feedback.situation_opened_at`), so a later release can replace it with the
-    observed distribution instead of defending a number nobody derived.
-    """
-
-    sink_days: float = 21.0
-    sink_rows: int = 2_000_000
-    training_days: float = 365.0
-    audit_days: float = 730.0
-
-    def as_key(self) -> tuple[Any, ...]:
-        return (self.sink_days, self.sink_rows, self.training_days, self.audit_days)
-
-    def validate(self) -> str | None:
-        """The ordering invariant, **fail-closed, with a precise reason**.
-
-        Returns an error string, or ``None`` when valid. A reason rather than a bool because the
-        admin has to be able to fix it: "invalid" on a form with four numbers is not actionable.
-
-        `sink < training <= audit` is not arbitrary. A sink outliving the training tier would keep
-        unlabelled rows longer than labelled ones — the opposite of the point. A training tier
-        outliving the audit archive would mean the corpus survived its own provenance.
-        """
-        if self.sink_days <= 0 or self.training_days <= 0 or self.audit_days <= 0:
-            return "every retention tier must be greater than zero days"
-        if self.sink_rows <= 0:
-            return "the sink row cap must be greater than zero"
-        if self.sink_days >= self.training_days:
-            return (
-                f"sink retention ({self.sink_days} d) must be strictly less than training "
-                f"retention ({self.training_days} d): the sink holds rows whose destiny is "
-                "unknown, so it cannot outlive the corpus they are promoted into"
-            )
-        if self.training_days > self.audit_days:
-            return (
-                f"training retention ({self.training_days} d) must not exceed audit retention "
-                f"({self.audit_days} d): the corpus cannot outlive its own provenance"
-            )
-        return None

@@ -1,5 +1,99 @@
 # Upgrading NetCoreNOC
 
+## v0.8.0 → v0.8.1 (the dataset's lifecycle — no migration, and one thing you have lost)
+
+**Read this one, even though it is a patch release.** It changes nothing about how you run the
+appliance and everything about how long your data lives. Two of the three things below cannot be
+undone by upgrading, so they need a decision from you rather than just a restart.
+
+Replace the code and restart. **No migration runs.**
+
+| | |
+|---|---|
+| Schema | **`user_version` stays 8** — no new table, no new column, no migration file |
+| Data | untouched. A v0.8.0 database opens with an identical schema hash and identical row counts |
+| Audit chain | verifies with the **identical final hash** |
+| Routes | **none added**. The two retention routes are unchanged in path, method and request shape |
+| API contract | unchanged. `POST /api/dataset/retention` gains two **additive** response fields (`bound`, `training_deletes`); nothing was removed or retyped |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| How you run it | **unchanged** |
+
+### ⚠ 1. Your operator labels were being deleted after seven days. The ones already gone are gone.
+
+This is **F44**. Until v0.8.1, the background maintenance loop deleted every `feedback` row — the
+human verdict, the label your feedback dataset is *made of* — once its situation had been closed for
+longer than **`NETCORENOC_RETENTION_DAYS`, whose default is 7 days**. The membership record
+(`feedback_member`) went with it. The `dataset_pair` features those verdicts justified **survived**,
+because they carry no foreign key to the situation.
+
+So the failure was silent and one-sided: your corpus kept growing and its labels kept evaporating,
+and the bias report's label count only ever showed the last week.
+
+**Labels already lost cannot be recovered.** Nothing recorded them, nothing archived them, and no
+upgrade can reconstruct a human judgement. If you have been running v0.8.0 for longer than a week,
+assume you have the labels from roughly the last seven days and no others. Run
+`python -m netcorenoc dataset bias` after upgrading: the **`ORPHANED: promoted, label since gone`**
+figure is the size of what you lost, in feature rows.
+
+Nothing you can do repairs it. It stops happening the moment you upgrade.
+
+### ⚠ 2. Any retention policy you set was never saved. Set it again.
+
+If you used `POST /api/dataset/retention` with `"preview": false` on v0.8.0, the route answered
+`"saved"` and wrote an audit row — and the policy lived only in memory. **The next restart silently
+reverted to the shipped defaults** (21 d / 2 000 000 rows / 365 d / 730 d).
+
+The deletion it performed at the time was real and permanent. The configuration was not.
+
+**Re-apply your policy after upgrading.** It is now stored in `meta` and read at startup, so it
+survives restarts. You can confirm what is actually in effect with `GET /api/dataset/retention`.
+
+### 3. The three tiers now mean what they say
+
+v0.8.0 shipped three tiers and enforced one. `training_days` was only the cutoff of an explicit
+admin reduction, and `audit_days` was validated, recorded and reported — and read by **no deletion
+path at all**. Two of the three were numbers that changed nothing.
+
+| Tier | Default | What it does now |
+|---|---|---|
+| **sink** | 21 d **and** 2 000 000 rows | **deletes**, on the maintenance loop — unchanged |
+| **training** | 12 months | **selects.** A query window. **Nothing is deleted at this boundary.** |
+| **audit** | 24 months | **deletes** — the one background path that can reach a label |
+
+**What this changes for you in practice:**
+
+* **Lowering `training_days` no longer destroys anything.** On v0.8.0 it was the cutoff the
+  destructive apply used. It is now a statement about what a model may *read*, so narrowing it is
+  free and reversible. The response says so: `"training_deletes": 0`.
+* **Lowering `audit_days` is now the destructive control.** The preview and the apply both cut on
+  it, and both responses carry `"bound": "audit"` so you can see which tier the counts belong to.
+  This is the one to be careful with, and it still previews by default.
+* **The maintenance loop now deletes at the audit bound.** It did not before. With the default of
+  730 days this will do nothing to any existing deployment for two years — but if you set a *short*
+  `audit_days`, understand that the loop will enforce it, count what it destroyed, and report the
+  running total on `GET /api/dataset/retention`.
+
+The ordering rule `sink < training ≤ audit` is unchanged and still refuses a policy that breaks it,
+naming the tier that is wrong.
+
+### 4. If the stored policy is ever unreadable
+
+A `meta` value that cannot be parsed — bad JSON, a missing field, a wrong type, or an ordering
+violation — is **ignored as a whole**, the shipped defaults apply, and a warning appears in
+`/api/stats`. It is never partially reconstructed: a policy nobody set must not become a policy that
+deletes. Re-apply through the route and the warning clears.
+
+### What to check after upgrading
+
+```bash
+python -m netcorenoc dataset bias     # ORPHANED tells you what F44 cost you
+curl .../api/dataset/retention        # confirm the policy in effect is the one you want
+python -m netcorenoc audit verify     # unchanged: the chain verifies to the same final hash
+```
+
+---
+
 ## v0.7.5 → v0.8.0 (the feedback dataset — one migration, and capture starts)
 
 **Read this one.** Unlike the last four upgrades, this release changes what the appliance stores and
@@ -49,14 +143,26 @@ during an incident.
 
 ### Retention: three tiers, and the defaults
 
-| Tier | Default | What it holds |
-|---|---|---|
-| Sink | **21 days**, **and** 2 000 000 rows — whichever binds first | evaluated pairs awaiting a label |
-| Training dataset | **12 months** | pairs promoted by an operator's verdict |
-| Audit archive | **24 months** | the outer bound |
+| Tier | Default | What it holds | What the bound *does* |
+|---|---|---|---|
+| Sink | **21 days**, **and** 2 000 000 rows — whichever binds first | evaluated pairs awaiting a label | **deletes**, on the maintenance loop |
+| Training dataset | **12 months** | pairs promoted by an operator's verdict | **selects** — a query window. Nothing is deleted here. |
+| Audit archive | **24 months** | the outer bound | **deletes** — the one background path that can reach a label |
 
 Read and change them with `GET` / `POST /api/dataset/retention` (admin only). The ordering
 `sink < training ≤ audit` is enforced, and a rejection tells you which tier is wrong and why.
+
+> **Clarified 2026-08-02 (v0.8.1) — what the middle tier means.** v0.8.0 shipped these three tiers
+> and enforced only the first: `training_days` was the cutoff of an explicit admin reduction and
+> nothing else, and `audit_days` was validated, recorded and reported but read by **no deletion path
+> at all**. Two of the three were numbers that described nothing.
+>
+> v0.8.1 gives them meanings that are true. **The training tier is a selection window, not a
+> deletion policy** — a training-retention *delete* destroys evidence in order to express a
+> modelling preference, and wanting to train on the last twelve months is a statement about
+> *selection*, which is a `WHERE` clause. Nothing has to die for a model to ignore it, and keeping
+> it means the choice stays revisable. **The audit tier is the outer bound of the data's life**, and
+> the only background sweep that can delete a label. DECISIONS #110.
 
 > **The row cap is what actually governs, not the 21 days.** At ~62 rows per trap the 2 000 000-row
 > default is used up after roughly **3.7 days at 0.1 traps/s** and **9 hours at 1 trap/s**. The cap
@@ -87,8 +193,20 @@ Applying requires `"preview": false`, sent deliberately, after you have seen the
 preview and the change are written to the audit log (`retention.preview`, `retention.change`, the
 latter with before, after, and the impact you were shown).
 
-The background maintenance loop **never** deletes labelled data. It bounds the sink and nothing
-else.
+~~The background maintenance loop **never** deletes labelled data. It bounds the sink and nothing
+else.~~
+
+> **Corrected 2026-08-02 (v0.8.1). The struck sentence was false when it was written.** The
+> maintenance loop called `store.prune()`, which deleted `feedback` rows — the human verdicts — for
+> every situation closed longer than the **operational** retention (`NETCORENOC_RETENTION_DAYS`,
+> default **7 days**), taking `feedback_member` with them by `ON DELETE CASCADE`. The promoted
+> `dataset_pair` rows survived. That is **F44**, reproduced in
+> [`docs/gates/v0.8.1-phase-0.md`](docs/gates/v0.8.1-phase-0.md) §1, and it is fixed in v0.8.1.
+>
+> The sentence is now true, and for a different reason than it claimed: labels are no longer
+> governed by the operational retention at all, and the **only** background path that can delete one
+> is the **audit sweep**, at the audit bound the operator set. See the tier table above and
+> DECISIONS #109, #110.
 
 ### Labels written before v0.7.5 are marked, and excluded from training by default
 

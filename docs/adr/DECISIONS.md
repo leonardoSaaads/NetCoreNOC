@@ -2201,3 +2201,162 @@ grouping**.
 - **Cost, accepted**: the exempt module is 4 % larger, and a future release wanting to add to
   `engine.py` meets a ceiling that has moved once. The mitigation is that it may only move with an
   ADR, which is what this entry is.
+
+## 109. F44's fix retains the labelled `situation` row, because the foreign key is restricting (v0.8.1)
+
+- **Context**: F44 is that `store/retention.py::prune()` deletes `feedback` on the **operational**
+  retention (default 7.0 days). The obvious fix is to remove `feedback` from the deletion set and
+  let `feedback.situation_id` dangle — which is what the release brief prescribed, on the reasoning
+  that the label already survives its situation by design (`situation_opened_at` is copied onto the
+  row, and `bias.py` already `LEFT JOIN`s). **Reproduction falsified that.**
+  `feedback.situation_id` is `NOT NULL REFERENCES situation (id)` with **no `ON DELETE` action**
+  (`0001_init.sql:89`) and `PRAGMA foreign_keys=ON` (`store/lifecycle.py:30`), so SQLite does not
+  permit the dangle: `DELETE FROM situation` raises `IntegrityError: FOREIGN KEY constraint failed`
+  the moment a surviving label points at it (`docs/gates/v0.8.1-phase-0.md` §1(a)). The naive fix
+  turns a silent data-loss bug into a maintenance loop that raises on every pass.
+- **Options**: (a) drop the foreign key — a schema change and a migration in a patch release;
+  (b) `ON DELETE SET NULL` — also a migration, and `situation_id` is `NOT NULL`; (c) exclude
+  labelled situations from `prune()`'s deletion set entirely, keeping their `situation_alarm` and
+  `link` rows too; (d) retain **only the `situation` row** for a labelled situation, while still
+  collecting its operational satellites (`situation_alarm`, `link`, and the cleared alarms behind
+  them).
+- **Choice**: **(d)**.
+- **Reason**: (a) and (b) are migrations, forbidden by anti-overengineering rule 1, and both would
+  weaken a constraint that is currently doing useful work — it is the only thing that made this
+  defect *detectable* rather than silent. (c) retains unbounded operational data: a labelled storm
+  situation would keep 501 `situation_alarm` rows and every `link` row forever, so the fix for a
+  data-loss bug would become a disk-growth bug. (d) retains **one row per label** — bounded by the
+  label count, which is the rarest event in the system — and it is what makes the label
+  *interpretable*: `bias.py`'s merge-aware incident query (`LEFT JOIN situation s ON
+  s.id = f.situation_id`) keeps resolving, and the coverage denominator keeps a population that
+  contains its own numerator.
+- **Cost, accepted**: a closed, labelled situation stays queryable through `/api/situations` longer
+  than an unlabelled one, so the operational view and the operational retention no longer agree
+  exactly. Recorded rather than hidden: the retained row has no members and no links, so it renders
+  as an empty closed situation, and it is collected by the next ordinary prune once the audit sweep
+  removes its label. The alternative was one of a migration, unbounded growth, or a loop that
+  raises.
+
+## 110. The training tier selects; it does not delete (v0.8.1)
+
+- **Context**: v0.8.0 defined three retention tiers and enforced one. The sink is swept correctly
+  under its dual bound; `training_days` is only the cutoff of an explicit admin reduction; and
+  `audit_days` is validated, recorded as provenance, reported — and read by **no deletion path at
+  all** (`docs/gates/v0.8.1-phase-0.md` §3). Two of the three tiers were numbers that described
+  nothing. The build reached that state by reading v0.8.0's directive 9 correctly: it said the
+  maintenance loop must never silently destroy labels, and the only way to obey it while still
+  having a middle tier was to make the middle tier inert.
+- **Options**: (a) leave the tiers as they are and document `training_days` and `audit_days` as
+  advisory; (b) make the training tier a background deletion, so all three tiers delete;
+  (c) make the **training tier a selection window** — a `WHERE` clause applied by every reader that
+  means "the training corpus" — and make the **audit tier** the one background deletion that can
+  reach a label.
+- **Choice**: **(c)**.
+- **Reason**: (a) leaves two configuration values that an operator can set, that the product
+  validates and reports, and that change nothing — which is worse than not having them, because it
+  invites reliance. (b) is the option v0.8.0's directive 9 forbids, and rightly: a
+  training-retention *deletion* destroys evidence in order to express a **modelling preference**.
+  Wanting to train on the last twelve months is a statement about *selection*, and selection is a
+  `WHERE` clause; nothing has to die for a model to ignore it. (c) also keeps the choice
+  **revisable**, which matters enormously for a corpus that four subsequent releases will disagree
+  about how to use — a `DELETE` forecloses a decision v0.9.0 through v0.13.0 have not made yet.
+  The audit tier then becomes the only background path that can delete a label, at a bound the
+  operator set, far outside the window anything trains on. That satisfies directive 9 in substance:
+  the loop is not destroying labels on a schedule nobody chose, it is enforcing the outer bound of a
+  policy the operator configured, and every deletion is counted and reported.
+- **Consequence for the explicit admin reduction**: unchanged in mechanism, changed in meaning. It
+  still previews and still deletes, because an operator lowering the **audit** bound is asking for
+  destruction and has seen the count. Lowering the **training** window now destroys nothing, and the
+  preview must say so rather than reporting a `labels` figure the apply never acts on — the audit
+  found exactly that discrepancy in v0.8.0, and under this rule it resolves in the direction of
+  honesty about which tier destroys.
+- **Supersedes, in place and dated**: the v0.8.0 statements that the maintenance loop bounds "the
+  sink and nothing else" (`MIGRATION.md`), and `capture.prune_sink`'s docstring claim that the
+  training tier "is never pruned from a background loop". Both are annotated where they stand and
+  neither is rewritten, per DECISIONS #102's supersede-in-place rule.
+
+## 111. Retention is persisted as one JSON `meta` value, not four keys (v0.8.1)
+
+- **Context**: `engine.retention = RetentionPolicy()` in the constructor and nothing reads a stored
+  value at startup, so a policy an admin sets through `POST /api/dataset/retention` — audited,
+  answered `"saved"` — silently reverts to the shipped defaults on restart
+  (`docs/gates/v0.8.1-phase-0.md` §2). The asymmetry is the serious part: **the destruction an admin
+  asked for is permanent and the configuration they asked for is not.** `meta` is how this product
+  already persists operator configuration (`config.allowlist`, `config.retention_days`,
+  `community_hmac_key`), read at startup by `runner.py:146-148`.
+- **Options**: (a) four `meta` keys, one per tier, matching `config.retention_days`' shape most
+  literally; (b) one `meta` key holding the four values as JSON.
+- **Choice**: **(b)**, `config.dataset_retention`.
+- **Reason**: the four values are **one policy with an invariant between them**
+  (`sink < training ≤ audit`), not four independent settings. Under (a) the fail-safe has to be
+  defined per field, and a store holding three valid keys and one unreadable one forces a choice
+  between mixing stored and default values — which can synthesise a policy **no operator ever set**,
+  and potentially one that deletes more than either — or discarding three valid values for one bad
+  one. Under (b) the unit of parsing is the unit of policy: it validates as a whole through the
+  existing `RetentionPolicy.validate()`, or it falls back as a whole. One key also means one
+  `get_meta` at startup rather than four.
+- **The fail-safe**: a missing value uses the shipped defaults silently (the zero-config default
+  path). A value that is unreadable — malformed JSON, missing field, wrong type, or failing
+  `validate()` — uses the shipped defaults **and raises an operator warning**, in the shape
+  governance policies already use. A stored policy that cannot be parsed must never become a policy
+  that deletes more than the default would, which is why the fallback is the *shipped* default and
+  never a partial reconstruction.
+- **No migration**: `meta` is a key/value table that already exists. Adding a key is not a schema
+  change.
+
+## 112. The coverage denominator is the population the report can see evidence of (v0.8.1)
+
+- **Context**: `bias.py` divided `COUNT(DISTINCT situation_id) FROM feedback` by
+  `COUNT(*) FROM situation`. Situations are pruned on the operational schedule while labels now
+  outlive them, so the denominator can shrink under its own numerator; Phase 0 measured the printed
+  rate at **300.0%**. A rate above 100% destroys a reader's trust in every other number on the page.
+- **Options**: (a) clamp the printed rate at 100%; (b) count only labels whose situation still
+  exists, shrinking the numerator to match; (c) compute the denominator over the union of situations
+  that exist **and** situations referenced by a surviving label.
+- **Choice**: **(c)**.
+- **Reason**: (a) hides the inconsistency rather than removing it, and a clamped 100% is
+  indistinguishable from a real one. (b) is the wrong direction — it discards evidence to make an
+  arithmetic property hold, and it would under-report exactly the labels this release exists to
+  preserve. (c) is the only option where the numerator is a subset of the denominator **by
+  construction**: every situation counted in the numerator is, by definition, referenced by a label,
+  so it is in the union. The rate cannot exceed 100% for any database, including a pre-v0.8.1 one
+  that already lost situations to F44, and no clamp is needed to make that true.
+- **The report says which population it is**, because a denominator that is not simply "rows in
+  `situation`" must not be read as if it were. DECISIONS #109 makes the two nearly identical going
+  forward — labelled situations are retained — so the union matters mainly for databases upgraded
+  from v0.8.0, which is precisely the case a clamp would have quietly mis-stated.
+- **Orphans are counted, not collected**: a promoted pair whose label no longer exists is a
+  measurable quantity and the bias report is where measurable quantities live. No cleanup job — a
+  corpus with orphans is not corrupt, it is a corpus whose **usable** size is smaller than its row
+  count, and deleting features whose label an operator destroyed would be a second destruction
+  nobody asked for.
+
+## 113. `RetentionPolicy` moves to its own module, because the size guard required it (v0.8.1)
+
+- **Context**: persisting the policy (#111) and giving the tiers meanings (#110) added ~44 lines to
+  `capture.py`, which was already at **374 of its 400-line budget** — 26 lines of headroom for a
+  release that needed more. `store/dataset.py`, the other candidate, was at 337 and is SQL-only by
+  its own contract ("Nothing here decides anything"), so a policy with validation and a durable form
+  does not belong there either.
+- **Options**: (a) trim the new docstrings until the file fits; (b) add `capture.py` to
+  `DEBT_ALLOWLIST`; (c) raise a ceiling, as #108 did for `engine.py`; (d) move `RetentionPolicy`
+  and its two persistence constants to `retention_policy.py`, with `capture.py` re-exporting them.
+- **Choice**: **(d)**.
+- **Reason**: (a) is precisely what #108 rejected — *"makes the code worse to satisfy a number,
+  which is the inverse of what the guard is for"* — and the reasoning being cut is the reasoning a
+  reviewer of a data-destroying policy most needs. (b) is forbidden: v0.8.1's rules require
+  `DEBT_ALLOWLIST` to stay **empty**, and this is not debt, it is a module that has finished being
+  one thing. (c) would be the second ceiling raised in two releases, which is how a ratchet becomes
+  a comment. (d) is the option the guard's own failure message names first, and the seam is real
+  rather than convenient: `capture.py` is *"turning one correlation decision into rows"*, and a
+  retention policy is a configuration value with an invariant and a stored form. It participates in
+  no capture decision; it is passed *to* one.
+- **Why this is not the reorganisation v0.8.1 forbade**: §3.3 of the release brief rules out a
+  `dataset/` **package** — four modules restructured for tidiness. This is one class moving to one
+  module because a hard guard left no alternative, and `capture.py` re-exports every name, so **no
+  import site anywhere else in the tree changed**. That is the arrangement `MAX_CLIENT_MEMBERS`
+  already has (defined in `store/dataset.py`, re-exported through `labels.py` and `capture.py`), so
+  it introduces no pattern the codebase did not have.
+- **Cost, accepted**: one more file, and one more `LAYER_OF` entry in `tests/test_layers.py`. The
+  new module imports nothing from this package, so it cannot violate the dependency direction —
+  recorded in its layer entry rather than left to be rediscovered.

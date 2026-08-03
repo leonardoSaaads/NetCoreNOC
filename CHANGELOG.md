@@ -4,6 +4,104 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-08-02 — "the dataset has a governed lifecycle"
+
+**v0.8.0 designed a lifecycle for the rows it created and did not check the lifecycle the
+repository already had.** In a default deployment the consequence was that the release's own
+deliverable evaporated: the human verdict — the least reconstructible asset in the system — was
+deleted seven days after its situation closed, by a maintenance loop that predates the feature.
+
+A patch release in the v0.7.1 mould: **no schema change, no migration, no new route, no new
+dependency, no new capability.** `make eval` is byte-identical (`c2e8a0ce…`), the correlation and
+capture write paths are untouched, and rows captured per trap are unchanged on every fixture.
+
+### Fixed
+
+- **F44 — the operational prune deleted human labels.** `store/retention.py::prune()` deleted
+  `feedback` for every situation closed or merged longer than `NETCORENOC_RETENTION_DAYS`
+  (**default 7.0**), taking `feedback_member` with it by `ON DELETE CASCADE`, while the
+  `dataset_pair` features it justified survived — `dataset_pair` deliberately carries no foreign key
+  to `alarm` or `situation`. Silent and asymmetric: the corpus grew, the labels evaporated, and the
+  bias report's label count only ever reflected the last seven days. Before v0.8.0 the line was
+  correct — feedback was a transient learning signal, applied at click time and then disposable.
+  v0.8.0 made that row the dataset's **label** and did not revisit it.
+
+  A label is not operational data and is no longer governed by the operational retention. The
+  labelled `situation` **row** is retained with it — and only that row — because
+  `feedback.situation_id` is a restricting foreign key under `PRAGMA foreign_keys=ON`, so the
+  dangling reference the obvious fix assumes is one SQLite refuses; without the retention the sweep
+  would raise on every pass. Its `situation_alarm` and `link` rows are still collected on the
+  operational schedule. DECISIONS #109.
+
+- **The retention policy did not survive a restart.** An admin set a policy, the route answered
+  `"saved"`, the change was audited as `retention.change` — and the next restart silently returned
+  the shipped defaults. The asymmetry was the serious part: *the destruction an admin asked for was
+  permanent and the configuration they asked for was not.* Now persisted as one `meta` value
+  (`config.dataset_retention`), written in the same transaction as the audit row and the deletion,
+  and read at the documented configuration reload point. **No migration** — `meta` is where this
+  product has always kept operator configuration. DECISIONS #111.
+
+- **The coverage rate could exceed 100%.** `bias.py` divided labelled situations by
+  `COUNT(*) FROM situation`, a table the operational prune collects while labels outlive it;
+  measured at **300.0%**. The denominator is now the population the database has evidence of —
+  surviving situations plus situations named by a surviving label — so the numerator is a subset by
+  construction and no clamp is needed. The report names the population. DECISIONS #112.
+
+### Changed
+
+- **The three retention tiers have meanings that are true.** v0.8.0 defined three and enforced one:
+  `training_days` was only the cutoff of an explicit admin reduction, and `audit_days` was
+  validated, recorded and reported but read by **no deletion path at all**.
+
+  | Tier | Meaning | Mechanism |
+  |---|---|---|
+  | sink | pairs awaiting a verdict | **deletes**, under its dual bound — unchanged |
+  | training | what a model may *read* | **selects** — a `WHERE` clause. Nothing is deleted here. |
+  | audit | the outer bound of the data's life | **deletes** — the only background path that may reach a label |
+
+  A training-retention *delete* destroys evidence in order to express a modelling preference;
+  wanting to train on the last twelve months is a statement about **selection**, and keeping the
+  rows keeps the choice revisable for the four releases that will disagree about how to use them.
+  v0.8.0's directive that the loop must never *silently* destroy labels is satisfied rather than
+  repealed: the audit sweep enforces a bound the operator configured, and every deletion is counted
+  and reported. DECISIONS #110.
+
+- **The explicit admin reduction now cuts on `audit_days`, not `training_days`**, and both
+  responses carry `"bound": "audit"` and `"training_deletes": 0`. v0.8.0's preview reported a
+  `labels` figure the apply never deleted; that discrepancy is resolved in the direction of honesty
+  about which tier destroys. Additive response fields only — the API contract is otherwise
+  unchanged.
+
+- `store.prune_dataset` → **`store.prune_dataset_audit`**, and it now deletes labels as well as
+  pairs and observations, in the order pairs → observations → labels so a crash mid-sweep leaves
+  features without a label rather than a label whose evidence is gone. (The obvious name,
+  `prune_audit`, is already the audit-**log** deleter; `mypy --strict` caught the collision, which
+  would have silently shadowed audit-log retention.)
+
+- `RetentionPolicy` moves to `netcorenoc/retention_policy.py`. `capture.py` was at 374 of its
+  400-line budget and re-exports every name, so **no import site anywhere else changed**.
+  DECISIONS #113.
+
+### Added
+
+- **The bias report counts orphaned promoted pairs** — promoted pairs whose label no longer exists,
+  features nothing can interpret. Counted, **never collected**: a corpus with orphans is not
+  corrupt, it is one whose *usable* size is smaller than its row count. No cleanup job.
+- **The report distinguishes what the corpus holds from what a model may read**, applying the
+  training window as a selection clause anchored on the newest promoted row rather than the clock.
+- **`MODULE-ARCHITECTURE.md` and `repo-map.md` describe `capture.py`, `labels.py`, `bias.py` and
+  `bias_report.py`** — four modules of a major feature that existed in the tree and not in the
+  architecture documents `docs/` calls binding.
+- **`DESIGN.md` records that the sink's row cap, not its age limit, is what governs** at any
+  realistic traffic rate — previously stated only in `MIGRATION.md` and a commit message.
+
+### Upgrading
+
+**Labels already lost to F44 cannot be recovered**, and any retention policy set through the route
+before this release was never persisted and must be set again. `MIGRATION.md` says so plainly. No
+migration runs: a v0.8.0 database opens with an identical schema, identical row counts, and an audit
+chain verifying to the same final hash. Pre-existing orphans are **reported, not collected**.
+
 ## [0.8.0] - 2026-08-01 — "the scoreboard"
 
 **Capture the operator feedback as a durable dataset, and measure its bias. Trains nothing.**

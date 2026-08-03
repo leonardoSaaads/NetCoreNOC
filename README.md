@@ -82,7 +82,7 @@ make replay
 | `NETCORENOC_HTTP_HOST` / `NETCORENOC_HTTP_PORT` | `0.0.0.0` / `8080` | Web UI and API |
 | `NETCORENOC_ALLOWLIST` | *(allow all)* | Comma-separated source CIDRs; set it to enforce |
 | `NETCORENOC_API_TOKEN` | *(unset)* | **Removed in v0.3.0**: setting it is a hard startup error naming the migration path — use service tokens |
-| `NETCORENOC_RETENTION_DAYS` | `7` | Pruning horizon for cleared/closed history |
+| `NETCORENOC_RETENTION_DAYS` | `7` | Pruning horizon for cleared/closed **operational** history. It does **not** govern the feedback dataset or operator labels — those have their own tiers (`GET /api/dataset/retention`). Until v0.8.1 it silently did, which was F44 |
 | `NETCORENOC_AUDIT_RETENTION_DAYS` | `365` | Retention for the audit log (admin-triggered prune only) |
 | `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY` | *(unset)* | Enable built-in TLS; the session cookie then gains `Secure` |
 | `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging when set |

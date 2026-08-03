@@ -238,14 +238,32 @@ class DatasetMixin(StoreBase):
         counts["observations"] = len(list(await cur.fetchall()))
         return counts
 
-    async def prune_dataset(self, cutoff: float) -> dict[str, int]:
-        """The training tier. **This deletes human labels and there is no rollback for a DELETE.**
+    async def prune_dataset_audit(self, cutoff: float) -> dict[str, int]:
+        """The **audit tier**: the outer bound of the data's life.
 
-        Never called without the operator having seen :meth:`preview_retention`'s count first —
-        that discipline lives in the caller, because the preview is an HTTP-side, admin-only,
-        read-only action (`preview.py`'s pattern, v0.6.0).
+        **This is the only path in the product that deletes a human label**, and there is no
+        rollback for a `DELETE`. Two callers, both legitimate and both bounded by a number the
+        operator set:
+
+        * the maintenance loop, enforcing the audit bound the operator configured; and
+        * an explicit admin **reduction** of that bound, which previews first
+          (:meth:`preview_retention`) and is audited as `retention.change`.
+
+        **Renamed from `prune_dataset` in v0.8.1, and it now deletes `feedback` too.** The old name
+        and the old behaviour both said "training tier", and under DECISIONS #110 the training tier
+        **selects rather than deletes** — a training-retention delete destroys evidence in order to
+        express a modelling preference, and selection is a `WHERE` clause. The old version also
+        deleted a label's *features* while leaving the label, which produced the orphans v0.8.1
+        counts; deleting the two together at one bound is what makes the corpus internally
+        consistent.
+
+        Labels go **last**, after the rows they justify, so a crash mid-sweep leaves features
+        without a label — the state the report already measures and names — rather than a label
+        whose evidence has silently gone. `feedback_member` follows by `ON DELETE CASCADE`, and the
+        `situation` shell `prune()` retained for that label is collected by the next ordinary
+        operational sweep, which is why nothing here touches `situation`.
         """
-        counts = {"pairs": 0, "observations": 0}
+        counts = {"pairs": 0, "observations": 0, "labels": 0}
         cur = await self.conn.execute(
             "DELETE FROM dataset_pair WHERE lifecycle='dataset' AND evaluated_at < ? RETURNING id",
             (cutoff,),
@@ -258,7 +276,47 @@ class DatasetMixin(StoreBase):
             (cutoff,),
         )
         counts["observations"] = len(list(await cur.fetchall()))
+        cur = await self.conn.execute(
+            "DELETE FROM feedback WHERE created_at < ? RETURNING id", (cutoff,)
+        )
+        counts["labels"] = len(list(await cur.fetchall()))
         return counts
+
+    async def orphaned_promoted_pairs(self) -> int:
+        """Promoted pairs whose label no longer exists — **features nothing can interpret**.
+
+        Measured, never collected (DECISIONS #112). A corpus with orphans is not corrupt; it is a
+        corpus whose *usable* size is smaller than its row count, and deleting features whose label
+        an operator destroyed would be a second destruction nobody asked for.
+
+        Two paths still produce them after v0.8.1: an explicit reduction of the audit bound landing
+        between a label and its features, and any pre-v0.8.1 database that already lost labels
+        to F44.
+        """
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) FROM dataset_pair p WHERE p.lifecycle='dataset' "
+            "AND NOT EXISTS (SELECT 1 FROM feedback f WHERE f.situation_id = p.situation_id)"
+        )
+        row = await cur.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    async def labelled_situation_population(self) -> int:
+        """The coverage denominator: **every situation this database has evidence of.**
+
+        `COUNT(*) FROM situation` alone cannot be the denominator, because `prune()` collects
+        situations on the operational schedule while labels now outlive them — v0.8.0 printed a
+        coverage rate of **300.0%** on that basis. The union of surviving situations and situations
+        named by a surviving label **contains the numerator by construction**, so the rate cannot
+        exceed 100% for any database, including one upgraded from v0.8.0. DECISIONS #112.
+        """
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) FROM "
+            "(SELECT id FROM situation UNION SELECT situation_id FROM feedback)"
+        )
+        row = await cur.fetchone()
+        assert row is not None
+        return int(row[0])
 
     async def preview_retention(self, cutoff: float) -> dict[str, Any]:
         """**Bounded, read-only, deterministic**: what a retention reduction would destroy.
