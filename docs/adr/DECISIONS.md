@@ -2360,3 +2360,160 @@ grouping**.
 - **Cost, accepted**: one more file, and one more `LAYER_OF` entry in `tests/test_layers.py`. The
   new module imports nothing from this package, so it cannot violate the dependency direction —
   recorded in its layer entry rather than left to be rediscovered.
+
+## 114. The evidentiary standard has a floor a deployment may raise and can never lower (v0.9.0)
+
+- **Context**: v0.9.0 introduces the project's first **evidentiary** standard — the sufficiency
+  floors a corpus must meet before a challenger is fitted at all
+  (`docs/analysis/PREREGISTRATION-0.9.0.md` §5). Every previous configurable in this product is
+  *operational*: a retention bound, a scorer parameter, an allowlist. Those are choices about what a
+  deployment wants. A sufficiency floor is a choice about what counts as evidence, and the two do not
+  deserve the same governance.
+- **Options**: (a) fixed constants in code, not configurable at all; (b) ordinary configuration —
+  a deployment sets whatever numbers it likes; (c) `resolved = the more demanding of (project floor,
+  deployment policy)`, monotone toward evidence, with the direction of "more demanding" declared per
+  threshold.
+- **Choice**: **(c)**, in `meta` key `config.evidence_floors`, absent by default.
+- **Reason**: (a) is defensible and loses something real — a deployment with a genuinely larger or
+  noisier corpus has a legitimate reason to demand more, and a product that refuses to hear it
+  invites the floors to be patched out downstream. (b) is the option that destroys the standard: a
+  threshold anyone may lower is not a threshold, and the first release that finds its corpus short
+  will lower it rather than report insufficiency, which is precisely the failure the pre-registration
+  exists to prevent.
+- **The asymmetry is the whole argument, and it is stated rather than assumed**: *softening admits a
+  bad model; hardening rejects a good one.* Those costs are not symmetric. A rejected good model
+  costs a release. An admitted bad one costs the operator's trust in every grouping the product makes
+  afterwards, and no later fix recovers it. So the monotone direction is toward evidence, always.
+  This is the same shape as `ceiling(role) ∩ granted` in v0.7.0 — which made privilege escalation
+  structurally impossible rather than merely forbidden — applied to evidence instead of to authority.
+- **The boundary, drawn explicitly**: what is *not* deployment-configurable is the requirement to
+  implement and report at least two derivation policies, the prohibition on evaluating against
+  `incumbent_linked`, the pre-registration itself, and the floors **as floors**. A policy that sets a
+  floor to zero, to null, or omits it resolves to the project floor. The product makes the cost of an
+  *operational* choice visible; it does not make the *evidentiary standard* negotiable.
+- **No new HTTP surface**: `meta` is how this product already persists operator configuration
+  (`config.allowlist`, `config.dataset_retention`), and a route would add a capability, a scope
+  posture, a declaration and a rate limit for a value no scoped principal may read anyway.
+- **Fail-safe**: an unreadable value falls back to the **project floors as a whole** and raises an
+  operator warning — never a partial reconstruction, and never softer than shipped. Same discipline
+  as #111, same reason: a policy that cannot be parsed must not become a policy that admits more than
+  the default would.
+- **Recorded in provenance and printed**: the resolved thresholds go on the challenger run row and at
+  the top of the report, so two deployments reporting "passed" cannot mean different things without
+  saying so.
+
+## 115. The champion-agreement report is a sibling subcommand, not a section of the bias report (v0.9.0)
+
+- **Context**: Workstream 1 explicitly leaves the choice open — *"this lands in the existing bias
+  report as its own section, or as a sibling CLI subcommand — choose, and record why."*
+- **Options**: (a) a new section inside `dataset bias`; (b) a sibling subcommand
+  `dataset agreement`; (c) a route.
+- **Choice**: **(b)**, `python -m netcorenoc dataset agreement`, `make agreement-report`.
+- **Reason**, in the order the reasons actually weigh:
+  1. **`tests/test_bias.py` compares the bias report byte-for-byte against a frozen expectation.**
+     Adding a section makes every future change to *either* deliverable re-cut *both* fixtures, and
+     couples two independent gates into one. The two reports answer different questions — the bias
+     report characterises the whole dataset, agreement characterises the *labelled* subset — and a
+     gate should go red for one reason.
+  2. **The size guard.** `bias.py` is 282 lines and `bias_report.py` 230. The conditioning W1
+     requires — six cuts, each with a clustered interval — does not fit in either without pushing
+     past the 400-line guard, and #113 already settled that the guard is not traded away for
+     convenience.
+  3. (c) is refused for the reason `bias.py`'s own docstring gives: a route adds HTTP surface to a
+     scope bypass, needing a capability, a scope posture, a declaration, a rate limit and a place in
+     the perimeter to serve a report no scoped principal may read — and a route can never be a
+     byte-for-byte gate in `make qa`, which is the property that makes these reports worth having.
+- **Consequence**: the same compute/render split the project already uses twice (`metrics.py` /
+  `harness.py`, `bias.py` / `bias_report.py`) — `agreement.py` measures, `agreement_report.py`
+  renders. That is a pattern the codebase has, not a new abstraction.
+
+## 116. The challenger satisfies `LinkScorer` structurally, and lives in its own module (v0.9.0)
+
+- **Context**: v0.6.0 made the scorer a Protocol with no base class and no registry, and shipped four
+  test-only implementations as the plurality proof (`docs/gates/v0.9.0-phase-0.md` §3). v0.9.0's
+  challenger is the first non-test second implementation.
+- **Options**: (a) a subclass of `AdditiveScorer`; (b) a new abstract base or registry both scorers
+  join; (c) an independent class in a new module that satisfies the Protocol structurally.
+- **Choice**: **(c)**, `src/netcorenoc/challenger.py`. `scoring.py` gains nothing.
+- **Reason**: (a) inherits five parameters the challenger does not have and an arithmetic the
+  challenger must not reproduce. (b) is the plugin surface that is specified for v0.13.0 and
+  forbidden here, and it would also destroy the property v0.6.0 paid for — that a second
+  implementation needs **no edit to `src/netcorenoc/`** to be accepted. (c) gets three things for
+  free rather than by promise: per-term explainability is contractual, so a test asserts the
+  contributions sum to the pre-link score; `SafeScorer` already wraps it, so the fail-safe discipline
+  is inherited; and v0.11.0's promotion becomes a pointer move in the mechanism that exists.
+- **Recorded limitation, found in Phase 0 and not worked around**: `scorer_config` has columns for
+  the additive scorer's five parameters and no general parameter blob, so a learned coefficient
+  vector has nowhere to live in it. That is a fact about v0.11.0's promotion path, not about this
+  release, which has no promotion mechanism at all.
+
+## 117. The fit is over all labelled bags, bag-normalised and class-balanced — not over mixed bags (v0.9.0)
+
+- **Context**: Phase 0 §1 measured that the champion accepts 99.83 % of evaluated pairs, so a fit
+  over the joined data has a near-constant target. The build prompt requires the training population
+  to be pre-registered rather than defaulted, and the alternative reported.
+- **Options**: (a) unweighted over all pairs of labelled bags; (b) restrict to **mixed** bags — those
+  whose pairs span the threshold; (c) all labelled bags, weighted `1/(pairs in bag)` so every bag
+  contributes equally, then class-balanced.
+- **Choice**: **(c)**, with (b) retained as a **diagnostic population** and (a) run as a
+  pre-registered **contrast**.
+- **Reason**: (a) is the choice that produces the triumphant number — the optimiser reaches its best
+  loss by predicting the majority, and the bag-size distribution measured in Phase 0 §2 (0 to 1 051
+  members) means the largest storm present would dominate the fit even before the class imbalance
+  did. (b) is right in principle and empty in practice: Phase 0 measured **5** mixed bags in the
+  richest corpus this repository can construct, of which **1** was a `split`. A fit restricted to
+  that is a description of five situations wearing a model's clothes. (c) keeps every bag and removes
+  both distortions the measurement identified, and `1/(pairs in bag)` is not an invented weight — it
+  is the bias report's own prose (*"confirmation strength decays with bag size"*) expressed as
+  arithmetic, and it is policy D's size-weighting half applied to both A and B so the two policies
+  differ in exactly one thing.
+- **Both alternatives are reported**, not merely mentioned: (b) as a separate column on every metric,
+  printed with a *"below the pre-registered floor; not interpretable"* marker when the mixed-bag count
+  is short, and (a) as a contrast run with the same code and weights of 1.0 — so the cost of the
+  choice is a number rather than an argument.
+
+## 118. Training runs in `maintenance_loop`, because no unlocked slow-loop point existed (v0.9.0)
+
+- **Context**: the build prompt says to train *"at the point Phase 0 identified as running outside the
+  batch lock"*. Phase 0 §4 parsed `Engine.maintenance` and found that point **does not exist**: the
+  method's body is one `async with self.store.lock`, taken as its first statement, with
+  `await self.store.commit()` as its last statement inside it and **zero** statements after the block.
+  The only code in the periodic path outside the lock is `maintenance_loop`'s `await asyncio.sleep`.
+- **Options**: (a) train inside `maintenance()`, accepting the stall; (b) add a third supervised task
+  beside `engine` and `maintenance`; (c) train in `maintenance_loop`, after `maintenance()` has
+  returned and released the lock.
+- **Choice**: **(c)**.
+- **Reason**: (a) is forbidden outright — `Store.lock` is the *same* `asyncio.Lock` object
+  `_commit_batch` takes (there is only one, `store/base.py`), so a two-second fit is a two-second
+  ingestion stall, and "ingestion is sacred" is the project's oldest invariant. (b) is a third
+  long-lived task, a third supervisor entry, a third crash-and-restart story and a second cadence to
+  reason about, bought for work that is already periodic and already has a loop. (c) reuses the
+  existing task, the existing supervisor, the existing cadence and the existing failure surface, and
+  it is the *only* place in the periodic path where the lock is provably not held — which is a
+  property a reviewer can check by reading twelve lines rather than by tracing a scheduler.
+- **The discipline that goes with it**: the lock is taken **only** to read the training rows and,
+  separately, to write the result — each a bounded statement. The fit itself holds nothing. Training
+  is bounded in wall time with the bound declared, and a failure degrades training and raises an
+  operator warning exactly as a capture failure does; it never fails ingestion.
+
+## 119. Both shadow mechanisms ship, because their disagreement is the measurement (v0.9.0)
+
+- **Context**: `SHADOW-MODE-0.9-DRAFT.md` §d asks for a training/serving skew test. Two mechanisms
+  were available — recompute the challenger's opinion offline from stored features, or score live in
+  the engine and write a sample — and it is natural to read them as alternatives.
+- **Options**: (a) offline reconstruction only; (b) sampled online only; (c) both.
+- **Choice**: **(c)**, and they are not alternatives.
+- **Reason**: offline reconstruction measures model quality at no ingest cost and **cannot measure
+  skew by construction** — recomputing from the stored features is tautologically consistent with
+  them, so it would report agreement whatever the serving path did. Online shadow measures real
+  per-call latency and real behaviour under real traffic and says nothing further about quality. So
+  (a) ships a quality number with no evidence the served features match, and (b) ships no quality
+  number at all. **The divergence between them is the skew test**, and a divergence rate above zero
+  means the quality figures in the same report describe features that were never served — which is
+  among the most common and most silent ways an ML system fails.
+- **What the deployment chooses is the sampling rate and the duration, not whether online ever runs.**
+  The product makes the cost visible — rows, bytes, microseconds, measured rather than claimed — and
+  lets the operator size it. It does not offer the option of promoting, two releases later, a model
+  that was never measured inside the engine.
+- **Pre-registered expectation: 0.0000 % divergence.** Any non-zero rate is a defect, not a tolerance
+  to widen, and the comparison is `==` on the float rather than a threshold.
