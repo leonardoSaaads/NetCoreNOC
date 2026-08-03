@@ -399,7 +399,7 @@ async def test_online_and_offline_opinions_agree_bit_for_bit(store: Store) -> No
     assert rows, "the fixture wrote no online opinions"
     diverged = 0
     for row in rows:
-        offline, linked = shadow.reconstruct(LogisticScorer(fitted), row)
+        offline, linked = shadow_eval.reconstruct(LogisticScorer(fitted), row)
         if offline != float(row["online_score"]) or linked != bool(int(row["online_linked"])):
             diverged += 1
     assert diverged == 0, f"{diverged} of {len(rows)} sampled opinions diverged"

@@ -27,7 +27,7 @@ from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from netcorenoc.challenger import FEATURE_NAMES, LogisticScorer
+from netcorenoc.challenger import FEATURE_NAMES, LogisticScorer, sigmoid
 from netcorenoc.scoring import AdditiveScorer, LinkFeatures
 
 __all__ = [
@@ -39,6 +39,7 @@ __all__ = [
     "evaluate",
     "over_merge_rate",
     "partition",
+    "reconstruct",
     "split_bag_intact_rate",
     "under_merge_rate",
 ]
@@ -342,12 +343,35 @@ def champion_decisions(pairs: list[dict[str, Any]]) -> dict[int, bool]:
     return {int(p["pair_id"]): bool(int(p["incumbent_linked"])) for p in pairs}
 
 
+def reconstruct(scorer: LogisticScorer, row: dict[str, Any]) -> tuple[float, bool]:
+    """**The offline half.** Recompute the challenger's opinion from stored features.
+
+    Built from the *stored* columns and the *same* `LogisticScorer` the online path used, through
+    the *same* `feature_vector`. That is what makes the skew comparison meaningful: if the two
+    disagree it is because a feature was computed differently somewhere, and there is exactly one
+    function that could have done it.
+
+    Works on a `dataset_pair` row and on a `shadow_opinion` row alike — both carry `delta_t_s`,
+    `class_affinity` and `entity_affinity` under those names, which is not a coincidence but the
+    reason migration 0009 chose them.
+    """
+    features = LinkFeatures(
+        delta_t_s=float(row["delta_t_s"]),
+        class_i=0,
+        class_j=0,
+        class_affinity=float(row["class_affinity"]),
+        ne_i=0,
+        ne_j=0,
+        entity_affinity=float(row["entity_affinity"]),
+    )
+    verdict = scorer.score(features)
+    return sigmoid(verdict.score), verdict.linked
+
+
 def challenger_decisions(
     scorer: LogisticScorer, pairs: list[dict[str, Any]]
 ) -> tuple[dict[int, bool], dict[int, float]]:
     """`(pair_id -> linked, pair_id -> probability)` by offline reconstruction."""
-    from netcorenoc.shadow import reconstruct
-
     linked: dict[int, bool] = {}
     probability: dict[int, float] = {}
     for pair in pairs:

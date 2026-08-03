@@ -58,7 +58,7 @@ if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_l
 
 log = logging.getLogger("netcorenoc")
 
-__all__ = ["FLOORS_META_KEY", "SHADOW_MAX_ROWS", "Shadow", "corpus_stats", "reconstruct"]
+__all__ = ["FLOORS_META_KEY", "SHADOW_MAX_ROWS", "Shadow", "corpus_stats"]
 
 # The deployment's evidence-floor policy, absent by default. `meta` is how this product already
 # persists operator configuration (DECISIONS #111/#114); no route, no capability, no new HTTP
@@ -113,6 +113,17 @@ class Shadow:
     def warnings(self) -> list[str]:
         """Operator warnings, in `db_error_warnings`' shape."""
         out = list(self.warnings_extra)
+        if self.dropped:
+            # **Measured, not hypothetical.** At `sample_rate = 1.0` over the eval corpus the buffer
+            # fills long before the flush and 43 474 of 45 474 opinions are dropped. The bound is
+            # working — but an operator who set 1.0 expecting every pair must be told they did not
+            # get one, or they will read a 2 000-row sample as a census.
+            out.append(
+                f"{self.dropped} shadow opinion(s) were dropped because the in-memory buffer "
+                f"({MAX_BUFFERED}) filled between maintenance flushes. The sample is smaller than "
+                "the configured rate implies; lower config.shadow_sample_rate to make the sample "
+                "representative rather than truncated. Nothing else was affected."
+            )
         if self.errors:
             out.append(
                 f"{self.errors} shadow-mode operation(s) failed (last: {self.last_error}). "
@@ -310,11 +321,10 @@ def _sample_rate(raw: str | None) -> float:
 
 
 def _value_of(result: Any, name: str) -> float:
-    """A named term's **input value**, as the champion actually saw it — `capture._value_of`'s rule.
+    """A named term's **input value**, as the champion actually saw it.
 
-    Read back from the terms rather than re-derived, because the learner's masses have already moved
-    by the time this runs. Re-deriving would record numbers the scorer never saw, which is a
-    fabricated feature indistinguishable from a real one.
+    `capture._value_of`'s rule and its reasoning, one module over: read back from the terms rather
+    than re-derived, because the learner's masses have already moved by the time this runs.
     """
     for term in result.terms:
         if term.name == name:
@@ -369,28 +379,3 @@ def corpus_stats(bags: list[dict[str, Any]]) -> CorpusStats:
         oldest_label_at=min(times),
         newest_label_at=max(times),
     )
-
-
-def reconstruct(scorer: LogisticScorer, row: dict[str, Any]) -> tuple[float, bool]:
-    """**The offline half.** Recompute the challenger's opinion from stored features.
-
-    Deliberately built from the *stored* columns and the *same* `LogisticScorer` the online path
-    used, through the *same* `feature_vector`. That is what makes the skew comparison meaningful:
-    if the two disagree it is because a feature was computed differently somewhere, and there is
-    exactly one function that could have done it.
-
-    Works on a `dataset_pair` row and on a `shadow_opinion` row alike — both carry `delta_t_s`,
-    `class_affinity` and `entity_affinity` under those names, which is not a coincidence but the
-    reason 0009 chose them.
-    """
-    features = LinkFeatures(
-        delta_t_s=float(row["delta_t_s"]),
-        class_i=0,
-        class_j=0,
-        class_affinity=float(row["class_affinity"]),
-        ne_i=0,
-        ne_j=0,
-        entity_affinity=float(row["entity_affinity"]),
-    )
-    verdict = scorer.score(features)
-    return sigmoid(verdict.score), verdict.linked

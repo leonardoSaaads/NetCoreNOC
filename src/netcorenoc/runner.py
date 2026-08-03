@@ -182,6 +182,10 @@ async def run(settings: Settings) -> None:
             + engine.entity_cap_warnings()
             + engine.db_error_warnings()
             + engine.scorer_warning_list()
+            # v0.9.0: shadow mode degrades loudly. A training failure, an unreadable floor policy
+            # or a truncated sample all reach the operator through the channel that already exists.
+            + engine.shadow.warnings()
+            + engine.capture.warnings()
             + list(store.integrity_warnings)
             + supervisor.warnings()
         ),

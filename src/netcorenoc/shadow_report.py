@@ -152,7 +152,7 @@ def _skew(rows: list[dict[str, Any]], runs: list[dict[str, Any]]) -> dict[str, A
         if coefficients is None:
             unmatched += 1
             continue
-        offline, _linked = shadow.reconstruct(LogisticScorer(coefficients), row)
+        offline, _linked = shadow_eval.reconstruct(LogisticScorer(coefficients), row)
         compared += 1
         if offline != float(row["online_score"]):
             diverged += 1
