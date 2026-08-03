@@ -76,6 +76,12 @@ LAYER_OF: dict[str, str] = {
     # deterministic CLI report can be a byte-for-byte gate where a UI card never could.
     "bias": "engine",
     "bias_report": "engine",
+    # v0.9.0. The champion-agreement report — the same compute/render seam, one layer up from the
+    # store and one below the CLI. Engine-layer for the reason `bias.py` is: a CLI deliverable by
+    # design (DECISIONS #115), because a route would add HTTP surface to a scope bypass and could
+    # never be a byte-for-byte gate.
+    "agreement": "engine",
+    "agreement_report": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire
