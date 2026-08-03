@@ -2545,3 +2545,61 @@ grouping**.
   reference is never put into the returned document, so `agreement_report.render` **cannot** print
   one even by mistake. A convention that says "don't print it" is a comment; a document that does
   not contain it is a guarantee.
+
+## 121. `maintenance_loop` moves to `maintenance.py`; `EngineBase` gains one declaration (v0.9.0)
+
+- **Context**: DECISIONS #118 places the challenger's training in `maintenance_loop`, after
+  `maintenance()` has returned and released `store.lock` — the only point in the periodic path that
+  Phase 0 could prove runs unlocked. That needs a call site, and `engine.py` sits at **exactly 580
+  lines**, its `COHESION_EXEMPT_CEILING`, with **zero headroom** (v0.8.0's own note: *"its recorded
+  ceiling is its exact current size"*).
+- **Options**: (a) raise the ceiling; (b) trim reasoning elsewhere in `engine.py` to make room;
+  (c) add a third supervised task in `runner.py`; (d) move `maintenance_loop` — six lines that take
+  no lock — to `maintenance.py`, where the rest of the periodic work already lives.
+- **Choice**: **(d)**.
+- **Reason**: (a) would be the second ceiling raised in three releases, which is how a ratchet
+  becomes a comment, and this release's own rules forbid it. (b) is what #108 and #113 both
+  rejected — *making the code worse to satisfy a number is the inverse of what the guard is for* —
+  and the reasoning that would have to go is on the ingest path, which is the one thing the
+  exemption exists to protect. (c) was rejected by #118 already: a third long-lived task, a third
+  supervisor entry and a second cadence, bought for work that is already periodic. (d) costs
+  nothing structural and **shrinks** `engine.py`, which an exempt module is always free to do.
+- **Why this does not re-litigate #90.** #90's measurement was about `maintenance()`: it takes
+  `store.lock` and calls `_close_situation`, so it stays, and **it does stay**. `maintenance_loop`
+  was kept beside it on a weaker ground — *"six lines whose whole body calls `maintenance`"* — and
+  as of this release that sentence is no longer true. Its body now sequences **two periodic
+  activities with different lock disciplines**: the maintenance pass, which holds the lock
+  throughout, and the fit, which must not. Stating that distinction is exactly what
+  `maintenance.py`'s docstring is for, and `engine.py`'s exemption covers the **ingest path's**
+  readability — which a loop that runs *between* batches is not part of.
+- **The cost, paid deliberately**: `EngineBase` gains its **first method declaration**, because
+  `maintenance_loop` calls `self.maintenance`, which `Engine` still owns. It is declared under
+  `if TYPE_CHECKING:`, so **no runtime attribute exists**: `mypy --strict` gets its signature, and
+  a build that somehow lost `Engine.maintenance` raises `AttributeError` rather than resolving to a
+  stub that silently does nothing. #88's objection was to *stubs that resolve*; a declaration that
+  does not exist at runtime cannot be one.
+
+## 122. The partition metrics move into the package; `eval/metrics.py` re-exports them (v0.9.0)
+
+- **Context**: the pre-registration makes `over_merge_rate` and `under_merge_rate` the release's
+  **primary** metrics, computed at partition level over the challenger's decisions. They have lived
+  in `eval/metrics.py` since v0.2.0, and `preview.py` records the standing rule that
+  `src/netcorenoc/` **never imports `eval/`** — the corpus harness is a dev/CI gate and must not
+  become a runtime dependency. So the shadow report could not call them where they were.
+- **Options**: (a) reimplement the two functions in the package; (b) let `src/` import `eval/`;
+  (c) move the implementation into the package and have `eval/metrics.py` import it back.
+- **Choice**: **(c)**, into `netcorenoc.shadow_eval`.
+- **Reason**: (a) is a **second implementation of one decision**, which `MODULE-ARCHITECTURE.md` §2
+  calls a defect regardless of where it lives — and the failure mode is specific and nasty: the two
+  copies would agree until one was tuned, and the release's headline metric would then differ
+  between the harness and the report with nothing to notice. (b) inverts the dependency the whole
+  `eval/` arrangement rests on. (c) is the arrangement `select_candidates` already established in
+  DECISIONS #61 for exactly this problem — the engine and the what-if had two copies of the
+  candidate rule that *happened* to agree — and it keeps the harness's call sites, and therefore
+  the frozen baseline's meaning, textually unchanged.
+- **The proof it is safe**: the functions are pure and were moved without an edit, so
+  `make eval`'s output is byte-identical — verified against
+  `c2e8a0ced29d9edf986279d41089ddb68e18da65a46bdc7e9f04811e8b9b6f26` before and after.
+- **What did NOT move**: `pairwise_f1`, `adjusted_rand_index`, `entity_accuracy`, `root_top1`,
+  `dedup_ratio` and `percentile`. They have no runtime consumer, and moving code nothing needs into
+  the shipped package to keep a file tidy would be the opposite of this decision's reasoning.

@@ -13,9 +13,17 @@ Only the attributes the **may-leave** mixins touch are declared here — fifteen
 rather than listed by hand. The rest of `Engine`'s state is private to `engine.py` and stays
 there, because nothing outside it needs to see it.
 
-There are **no method declarations here at all**, which is a consequence of DECISIONS #90 rather
-than luck: once `maintenance()` stays in `engine.py`, the cross-boundary call graph has zero
-mixin→`Engine` and zero mixin→mixin edges, so nothing needs a signature it does not own.
+Between v0.7.3 and v0.8.1 there were **no method declarations here at all**, which was a
+consequence of DECISIONS #90 rather than luck: with `maintenance()` staying in `engine.py`, the
+cross-boundary call graph had zero mixin→`Engine` and zero mixin→mixin edges.
+
+**v0.9.0 adds exactly one (DECISIONS #121)**, and its shape is chosen so the hazard DECISIONS #88
+named cannot occur. `maintenance_loop` moved here from `engine.py` and calls `self.maintenance`,
+which `Engine` still owns — one mixin→`Engine` edge. The declaration is under `if TYPE_CHECKING:`,
+so **at runtime this class has no such attribute at all**: `mypy --strict` gets the signature it
+needs, and a build that somehow lost `Engine.maintenance` would raise `AttributeError` rather than
+resolve to a stub that silently did nothing. #88's objection was to *stubs that resolve*; a
+declaration that does not exist at runtime cannot.
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ from netcorenoc.capture import Capture, RetentionPolicy
 from netcorenoc.correlate import Correlator
 from netcorenoc.learn import Learner
 from netcorenoc.rootcause import Precedence
+from netcorenoc.shadow import Shadow
 from netcorenoc.store import Store
 from netcorenoc.varbind_profile import VarbindProfiler
 
@@ -65,3 +74,13 @@ class EngineBase:
     # owns and the mixin marshals.
     capture: Capture
     retention: RetentionPolicy
+    # Shadow mode (v0.9.0), read by `maintenance_loop`. The `Shadow` object owns the challenger and
+    # every decision about it; the engine only holds it and calls it.
+    shadow: Shadow
+
+    if TYPE_CHECKING:  # pragma: no cover - declaration only; no runtime attribute exists
+
+        async def maintenance(
+            self, now: float, retention_days: float, tick: int = 0
+        ) -> None:  # pragma: no cover
+            """Declared, never defined. `Engine` owns the body; see this module's docstring."""

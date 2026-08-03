@@ -108,3 +108,21 @@ feedback_members  # unused method (netcorenoc/store/dataset.py) - the recovered-
 # they are registered through `DeclaredRoutes`' decorators, so nothing calls them by name.
 get_retention  # unused function (netcorenoc/api/routes_admin.py)
 set_retention  # unused function (netcorenoc/api/routes_admin.py)
+
+# --- v0.9.0: shadow mode ---------------------------------------------------------------------
+# The measurements the shadow report reads and vulture cannot see reaching, because the report
+# addresses them through a dict built by `collect`. Each is a NUMBER THE RELEASE PROMISED TO
+# PUBLISH — the online sampling cost in rows and microseconds, and whether a fit ever happened —
+# so deleting one to satisfy a dead-code check would delete evidence, not code.
+sampled
+score_ns
+trained
+# `Store.shadow_opinions` is the admin-side read of the sampled opinions. Not called from the
+# report (which uses the richer `shadow_skew_rows` join) and kept because it is the only way to
+# read the table without the join — the surface a later release's evaluator needs.
+shadow_opinions
+# `LabelledPair` fields carried for provenance rather than for the fit: `incumbent_linked` is the
+# champion's decision (a comparison basis, never a target) and `evaluated_at` is the leakage
+# vector's clock. Both are read by tests and by v0.10.0's split; neither is a feature.
+incumbent_linked
+evaluated_at

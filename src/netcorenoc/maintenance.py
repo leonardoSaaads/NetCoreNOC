@@ -8,17 +8,56 @@ reasons about elapsed time and accumulated evidence rather than about a batch, w
 same `asyncio.Lock` object `_commit_batch` takes, because there is only one — and it calls
 `_close_situation`, which directive 4 names as must-stay. The methods here run *inside* the lock
 `maintenance` already holds and must never take it themselves.
+
+**`maintenance_loop` DID leave, in v0.9.0 (DECISIONS #121).** It takes no lock and calls no
+must-stay method, and as of this release its body is no longer one call to `maintenance()`: it
+sequences **two** periodic activities with *different* lock disciplines — the maintenance pass,
+which holds `store.lock` throughout, and the challenger's training, which must not. Stating that
+distinction is exactly what this module's docstring is for, and `engine.py`'s cohesion exemption
+covers the **ingest path's** readability, which a loop that runs between batches is not part of.
 """
 
 from __future__ import annotations
+
+import asyncio
+import time
+from collections.abc import Callable
 
 from netcorenoc import audit, severity
 from netcorenoc.engine_base import EngineBase
 from netcorenoc.retention_policy import RETENTION_META_KEY, RetentionPolicy
 from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE
 
+MAINT_INTERVAL_S = 5.0
+# Train once every this many maintenance ticks. The fit reads the whole labelled corpus and runs a
+# fixed number of passes over it; at the 5 s maintenance cadence that would be constant work for a
+# quantity that moves when an operator clicks — which is minutes or hours apart, not seconds.
+TRAIN_EVERY_TICKS = 60
+
 
 class MaintenanceMixin(EngineBase):
+    async def maintenance_loop(self, retention_provider: Callable[[], float]) -> None:
+        """The slow loop: the maintenance pass, then — **off the lock** — the challenger's training.
+
+        The ordering is the whole design (DECISIONS #118). Phase 0 measured that
+        `Engine.maintenance` is a single `async with self.store.lock` block with zero statements
+        after it, so **there was no point in the periodic path that ran outside the lock**. This is
+        that point: `maintenance()` has returned and released the lock before `shadow.train` is
+        called, and `train` takes the lock only to read its rows and, separately, to write its
+        result. The fit itself holds nothing and yields to the event loop between iterations.
+
+        Training failure degrades training. `Shadow.train` catches everything and records it as an
+        operator warning, exactly as a capture failure does, so a bad fit can never stop the
+        maintenance pass behind it or the ingestion behind that.
+        """
+        tick = 0
+        while True:
+            await asyncio.sleep(MAINT_INTERVAL_S)
+            tick += 1
+            await self.maintenance(time.time(), retention_provider(), tick)
+            if self.shadow.enabled and tick % TRAIN_EVERY_TICKS == 0:
+                await self.shadow.train(self.store, time.time(), self.store.lock)
+
     async def _capture_run(self, now: float) -> None:
         """Open or refresh the feedback-dataset capture run (v0.8.0).
 
