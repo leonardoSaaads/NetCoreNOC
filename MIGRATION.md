@@ -1,5 +1,107 @@
 # Upgrading NetCoreNOC
 
+## v0.8.1 → v0.9.0 (shadow mode — one migration, and **nothing groups differently**)
+
+Replace the code and restart. Migration **`0009`** runs automatically at startup, adds two tables,
+and **seeds no rows**.
+
+| | |
+|---|---|
+| Schema | `user_version` **8 → 9** — two new tables (`challenger_run`, `shadow_opinion`), two indexes, no column on an existing table, no trigger |
+| Data | untouched. Verified against a populated v0.8.1 database: identical situation partition, identical learned edges, identical `dataset_stats()`, identical matrix epochs |
+| Audit chain | verifies with the **identical final hash** — the migration writes no event |
+| Grouping | **unchanged, and this is the release's central claim.** The built-in scorer decides everything; the challenger reaches no situation, no link, no UI and no operator |
+| Routes | **none added**, and none changed |
+| Capabilities / audit actions | **unchanged** |
+| API contract | **unchanged** |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| How you run it | **unchanged** |
+
+### What `0009` adds, and what it deliberately does not
+
+**`challenger_run`** — one row per training attempt: the model's identity, the derivation policy,
+the training window, the effective sample size *in bags*, the **resolved sufficiency thresholds**,
+the verdict, and the fit. A row is written **even when nothing is fitted**: `sufficient = 0` with
+NULL coefficients is a result — *which floors were missed, by how much, and how long until they
+would be met* — and a schema that could only record a successful fit would make insufficiency
+invisible.
+
+**`shadow_opinion`** — one row per **sampled** pair the challenger scored **online, inside the
+engine**, with its features **as served**. That last part is the point: the offline reconstruction
+recomputes from `dataset_pair` and is tautologically consistent with it, so it **cannot** measure
+training/serving skew. These columns are the other side of that comparison.
+
+**What it does not add:** no target column, no route, and **no pointer from `scorer_config` to a
+challenger**. There is no promotion mechanism in this release, deliberately — a release that could
+promote would be judged by the only metric it had, which would be agreement with the champion.
+
+### Shadow mode changes no grouping. Really.
+
+The first boot after the upgrade behaves exactly as the last boot before it. Both new tables are
+empty after the migration; the champion is unchanged and still active; the first replay writes no
+shadow row until a training run has opened one. Asserted by
+`tests/test_upgrade.py::test_v090_upgrade_applies_0009_and_changes_no_grouping`, which builds a
+genuine v0.8.1 database, labels a situation in it, and checks every one of those claims **before**
+the engine starts.
+
+The measured ingest cost, at the shipped default, over four corpus scenarios: **454 sampled
+opinions against 45 474 captured pair rows (1.0 %)**, **+45 KB on a 5.3 MB database (+0.85 %)**, and
+**6.09 ms of scoring across the whole replay**. `make eval` is byte-identical and rows captured per
+trap are unchanged at 82.830601.
+
+### Two new reports, both CLI, both deterministic
+
+```
+python -m netcorenoc dataset agreement    # make agreement-report
+python -m netcorenoc dataset shadow       # make shadow-report
+```
+
+**Run `dataset agreement` first.** It needs no model and it is the number that bounds the value of
+everything after this release: how well the built-in scorer already agrees with your operators,
+broken down by mixed-versus-uniform bag, bag size, storm, visibility scope, operator (anonymised)
+and capture provenance. **Read the decomposition, not the headline** — a uniform bag contained no
+decision the scorer could have got wrong, so agreement on it says nothing about the scorer.
+
+`dataset shadow` leads with the **sufficiency verdict**. On any corpus below the pre-registered
+floors it will say `INSUFFICIENT`, fit nothing, and tell you roughly how many months of labelling at
+your current rate would close each gap. **That is the expected outcome and it is not a fault.**
+
+### How to size the sampling rate
+
+Two `meta` keys, both **absent by default**, both read at the start of each training pass. There is
+no route for either — set them the way you would set any `meta` value, out of band.
+
+| key | default | meaning |
+|---|---|---|
+| `config.shadow_sample_rate` | `0.01` | one online opinion per hundred evaluated pairs. Clamped into `[0, 1]`; unreadable falls back to the default |
+| `config.evidence_floors` | *(project floors)* | JSON; a deployment may make a sufficiency floor **harder** and can never make one softer, including by setting it to zero |
+
+**Sizing rule, from the measurement above:** at the default, shadow mode costs about **1 % of what
+capture already costs** in rows and under **1 %** in bytes. Raising the rate scales both linearly
+until you hit the buffer.
+
+> **⚠ Do not set `config.shadow_sample_rate` to 1.0 expecting every pair.** The in-memory buffer
+> between the ingest path and the maintenance flush holds **2 000** opinions; beyond that the sample
+> is dropped. Measured at full rate over the eval corpus: **43 474 of 45 474 opinions discarded**.
+> The appliance raises an operator warning naming the drop count when this happens — but if you do
+> not read it, you will be looking at a truncated prefix and calling it a census. **A rate that fits
+> inside the buffer is a representative sample; one that does not is a biased one.**
+
+`shadow_opinion` is bounded by a **row cap** (200 000, oldest-first) rather than by age, because
+these rows grow with traffic × sample rate and not with time. It holds no human label and joins to
+none, so no retention tier reaches it and none needs to.
+
+### If you want none of this
+
+Shadow mode ships **on**, like capture, because the value of the measurement compounds with time.
+Setting `config.shadow_sample_rate` to `0` stops the online half — nothing is scored on the ingest
+path and nothing is buffered. It does **not** switch shadow mode off: the offline reconstruction
+still runs in the slow loop, so `dataset shadow` still reports, and only the skew test loses its
+subject.
+
+---
+
 ## v0.8.0 → v0.8.1 (the dataset's lifecycle — no migration, and one thing you have lost)
 
 **Read this one, even though it is a patch release.** It changes nothing about how you run the

@@ -328,3 +328,21 @@ directive that a defect discovered inside the changed code is a roadmap line and
   is 580. A typo in an ADR's summary sentence, not in the guard, which has always read 580. Left
   alone because ADR text is a record of what was decided and is corrected in place, not edited
   silently — and no release since has needed to touch that entry.
+
+## Found while building v0.9.0 (one line each, not this release's work)
+
+- **`MIN_INCIDENTS_FOR_INTERVAL = 10` is too permissive** in the champion-agreement report — twelve
+  incidents printed `[33.3, 91.7]`, a range wide enough to contain any conclusion; thirty would have
+  printed `n/a`.
+- **`shadow_eval.evaluate` namespaces component ids with `hash()`** — stable in CPython for integer
+  tuples and verified across processes, but a documented `(bag, component)` tuple key would not
+  depend on that.
+- **`situation.merged_into` is resolved one hop, not transitively.** A merge chain longer than one
+  hop resolves to the wrong incident, and no code prevents a cycle. v0.10.0's split-by-incident needs
+  a fixed-point walk with a cycle guard — recorded in `HONEST-JUDGE-0.10-DRAFT.md` §2.
+- **`scorer_config` has no general parameter blob**, only the additive scorer's five columns, so a
+  learned coefficient vector has nowhere to live in it. A fact about v0.11.0's promotion path, found
+  in v0.9.0's Phase 0.
+- **`shadow_opinion` is bounded by a row cap and no age bound**, so a deployment whose traffic falls
+  keeps old opinions indefinitely. Deliberate — they hold no label and join to none — but a reader
+  auditing "what deletes what" should find it written down.

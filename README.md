@@ -226,6 +226,47 @@ audited. [`MIGRATION.md`](MIGRATION.md) has the numbers and the one caveat that 
 Specified in
 [`docs/architecture/FEEDBACK-DATASET-0.8-DRAFT.md`](docs/architecture/FEEDBACK-DATASET-0.8-DRAFT.md).
 
+## Shadow mode (v0.9.0)
+
+A **challenger** runs beside the built-in scorer and writes its opinion to a table nobody acts on.
+**The built-in scorer decides everything** — the challenger reaches no situation, no link, no UI and
+no operator, there is no promotion mechanism, and the release adds no route at all. Upgrading changes
+no grouping, and the first boot after it behaves exactly like the last boot before it.
+
+The valuable output is not a model. It is two numbers, and both are CLI reports:
+
+```sh
+make agreement-report    # or: python -m netcorenoc dataset agreement
+make shadow-report       # or: python -m netcorenoc dataset shadow
+```
+
+**Run the first one.** *How well does the built-in scorer already agree with your operators?* It
+needs no model, and it is the number that bounds the value of every model release after this one.
+The headline is cheap — at bag level, agreement **is** the confirm rate. **The deliverable is the
+conditioning**: by mixed-versus-uniform bag, by size, by storm, by visibility scope, by operator
+(anonymised) and by capture provenance, with a clustered interval over incidents that is *refused*
+rather than narrowed when there are too few.
+
+The cut that matters is mixed versus uniform. **A uniform bag contained no decision** — every pair
+in it fell on the same side of the threshold — so confirming it says nothing about the scorer's
+judgement. On the fullest corpus this repository can build, only about an eighth of labelled bags
+are mixed. An aggregate of 94 % that is 99 % on uniform bags and 58 % on mixed ones is the difference
+between an ML programme with no headroom and one with a clear target.
+
+The second report leads with a **sufficiency verdict** against floors that were pre-registered — in
+[`docs/analysis/PREREGISTRATION-0.9.0.md`](docs/analysis/PREREGISTRATION-0.9.0.md), before any result
+existed, and hash-guarded since. On a corpus below them it says `INSUFFICIENT`, **fits nothing**, and
+projects roughly how many months of labelling at your current rate would close each gap. *That is
+the expected outcome, and it is not a fault.* On this project's own corpus it is the outcome:
+13 `split` bags against 50 required, and exactly one bag that is both `split` and mixed.
+
+Shadow mode ships on and costs about **1 %** of what capture already costs, measured rather than
+claimed. [`MIGRATION.md`](MIGRATION.md) has the numbers and the sizing rule — including the one trap:
+setting the sample rate to 1.0 does **not** give you every pair.
+
+Specified in
+[`docs/architecture/SHADOW-MODE-0.9-DRAFT.md`](docs/architecture/SHADOW-MODE-0.9-DRAFT.md).
+
 ## Security (v0.2.0)
 
 Identity, role-based authorization, and a tamper-evident audit log. Accounts with three

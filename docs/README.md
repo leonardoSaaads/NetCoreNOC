@@ -50,6 +50,14 @@ one-screen tour of the tree.
 - [`architecture/FEEDBACK-DATASET-0.8-DRAFT.md`](architecture/FEEDBACK-DATASET-0.8-DRAFT.md) — the
   operator-feedback **dataset**: capture-don't-reject, the four constraints the schema must answer,
   and the bias report. Spec only, `v0.8.0: planned`.
+- [`architecture/SHADOW-MODE-0.9-DRAFT.md`](architecture/SHADOW-MODE-0.9-DRAFT.md) — the v0.9.0
+  specification: what a challenger may and may not do, the label-derivation policies, the leakage
+  vectors, and why effective sample size is bags rather than pairs.
+- [`architecture/HONEST-JUDGE-0.10-DRAFT.md`](architecture/HONEST-JUDGE-0.10-DRAFT.md) — the
+  v0.10.0 specification, **written from what v0.9.0 measured rather than from what it hoped**: the
+  split by time or by incident and never at random, why the merge chain makes incident identity
+  non-obvious, the iterative-overfitting hazard no column measures, and the restated
+  `incumbent_linked` invariant.
 - [`architecture/SCORER-PLUGINS-0.13-DRAFT.md`](architecture/SCORER-PLUGINS-0.13-DRAFT.md) —
   customer-supplied models (blessed ONNX adapter) under the v0.6.0 `LinkScorer` contract, spec only,
   `v0.13.0: planned`. Refined during v0.7.0 (§R1–R5): the worker-process preemption harness is a
