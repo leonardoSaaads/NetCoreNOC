@@ -191,6 +191,116 @@ def test_dataset_stats_cli_reports_the_observed_window(
     assert "capture_run" in out
 
 
+# --- v0.9.0: the champion-agreement CLI -----------------------------------------------------
+
+
+def test_dataset_agreement_cli_emits_the_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`python -m netcorenoc dataset agreement` — v0.9.0's primary deliverable, on the CLI it
+    ships on. A sibling of `dataset bias`, not a section of it (DECISIONS #115)."""
+    db = str(tmp_path / "agreement.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    asyncio.run(_dataset_fixture(db))
+    assert cli.main(["dataset", "agreement"]) == 0
+    out = capsys.readouterr().out
+    assert "NetCoreNOC champion-agreement report" in out
+    assert "AGREEMENT IS NOT CORRECTNESS" in out
+    assert "A UNIFORM BAG CONTAINED NO DECISION" in out
+    assert "what this report CANNOT tell you" in out
+    # It is its own report, not the bias one wearing a new heading.
+    assert "feedback-dataset bias report" not in out
+
+
+def test_dataset_agreement_cli_is_deterministic_across_invocations(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two separate processes, byte-identical — including the bootstrap interval, which is the
+    only part of the report with a generator in it."""
+    db = str(tmp_path / "agreement-det.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    asyncio.run(_dataset_fixture(db))
+    assert cli.main(["dataset", "agreement"]) == 0
+    first = capsys.readouterr().out
+    assert cli.main(["dataset", "agreement"]) == 0
+    assert capsys.readouterr().out == first
+
+
+def test_dataset_agreement_on_an_empty_database_reports_nothing_rather_than_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh appliance has no labels. `(none)` is the honest rendering; `0.0%` would be a
+    claim about a population that does not exist."""
+    db = str(tmp_path / "agreement-empty.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+
+    async def _open() -> None:
+        store = Store(db)
+        await store.open()
+        await store.close()
+
+    asyncio.run(_open())
+    assert cli.main(["dataset", "agreement"]) == 0
+    out = capsys.readouterr().out
+    assert "champion agreement" in out
+    assert "(none)" in out
+    assert "0.0%" not in out
+
+
+# --- v0.9.0: the shadow-mode CLI ------------------------------------------------------------
+
+
+def test_dataset_shadow_cli_leads_with_the_sufficiency_verdict(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`python -m netcorenoc dataset shadow`. On the bias fixture the corpus is far below every
+    floor, so the report must say INSUFFICIENT, fit nothing, and say when."""
+    db = str(tmp_path / "shadow.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    asyncio.run(_dataset_fixture(db))
+    assert cli.main(["dataset", "shadow"]) == 0
+    out = capsys.readouterr().out
+    assert "NetCoreNOC shadow-mode report" in out
+    assert "THE BUILT-IN SCORER DECIDES EVERYTHING" in out
+    assert "INSUFFICIENT" in out
+    assert "No model was fitted" in out
+    assert out.index("SUFFICIENCY") < out.index("the corpus")
+
+
+def test_dataset_shadow_cli_is_deterministic_across_invocations(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two separate processes, byte-identical — the admission filter does not run on an
+    insufficient corpus, so there is no measured duration to normalise here."""
+    db = str(tmp_path / "shadow-det.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    asyncio.run(_dataset_fixture(db))
+    assert cli.main(["dataset", "shadow"]) == 0
+    first = capsys.readouterr().out
+    assert cli.main(["dataset", "shadow"]) == 0
+    assert capsys.readouterr().out == first
+
+
+def test_dataset_shadow_on_an_empty_database_is_insufficient_not_broken(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh appliance has no labels. That is INSUFFICIENT with an `undefined` projection —
+    never a crash, and never a number extrapolated from nothing."""
+    db = str(tmp_path / "shadow-empty.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+
+    async def _open() -> None:
+        store = Store(db)
+        await store.open()
+        await store.close()
+
+    asyncio.run(_open())
+    assert cli.main(["dataset", "shadow"]) == 0
+    out = capsys.readouterr().out
+    assert "INSUFFICIENT" in out
+    assert "undefined (no measurable labelling rate yet)" in out
+
+
 def test_dataset_stats_on_an_empty_database_says_nothing_it_cannot_know(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

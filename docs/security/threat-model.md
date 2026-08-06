@@ -1142,6 +1142,60 @@ migration, an identical store snapshot and the same audit final hash.
 
 ---
 
+## v0.9.0 — shadow mode (no finding)
+
+**No trust boundary moves, no asset changes classification, and no new attacker capability appears.**
+The release adds **no route, no capability, no audit action and no dependency**; it adds one
+migration and two tables. `docs/security/SECURITY-REVIEW-0.9.0.md` is the review.
+
+### The shadow tables (T-DATA-1, same classification as the feedback dataset)
+
+`challenger_run` and `shadow_opinion` are written engine-side, where visibility scoping does not
+exist and must not — correlation learns across the whole estate. They inherit migration 0008's
+posture exactly: **no read below `admin`, on any route, in any format, ever.**
+
+- **Control**: v0.9.0 adds **no route**, which is the strongest available form of that. Both reports
+  are CLI subcommands, aggregates-only, and the champion-agreement report anonymises operators at
+  the measurement boundary so a `principal_ref` never reaches the renderer (DECISIONS #120).
+- **Check**: `tests/test_declaration.py` unedited and green; `tests/test_agreement.py::test_the_report_never_prints_an_operator_identity`;
+  `tests/test_shadow.py::test_the_report_emits_aggregates_only`.
+
+### The challenger cannot influence grouping (T-LOGIC-1)
+
+A component that scores pairs and whose opinion, if it reached the correlation path, would change
+what an operator is shown.
+
+- **Control**: structural, not conventional. No module outside the five shadow modules may import
+  the challenger; no shadow module may call `set_scorer`, `penalize`, or assign another object's
+  `.scorer`; the schema adds **no pointer** from `scorer_config` to a challenger run; and there is
+  **no promotion mechanism at all**.
+- **Check**: four tests in `tests/test_challenger.py`, three of them by **parsing the tree**, plus
+  a guard-the-guard test asserting the two scorers genuinely disagree — without which every
+  isolation check would pass vacuously.
+
+### Training cannot stall or fail ingestion (T-AVAIL-1, unchanged posture)
+
+- **Control**: the fit runs off `store.lock` (there was no such point before — `maintenance()` is
+  one lock block with nothing after it, so the release built one), yields to the event loop between
+  iterations, is bounded by constants rather than by a deadline, and degrades exactly as capture
+  does.
+- **Check**: `test_an_injected_training_failure_degrades_training_and_not_ingestion` and
+  `test_an_injected_scoring_failure_never_reaches_the_engine`; measured ingest cost 6.09 ms across
+  a four-scenario replay.
+
+### Two new `meta` keys (T-CONF-2, operator configuration)
+
+`config.evidence_floors` and `config.shadow_sample_rate`. Neither has a write route in this release.
+Both fail safe: the first falls back to the **project floors as a whole** on anything unreadable and
+is monotone toward *more* evidence by construction — a deployment may harden a sufficiency floor and
+can never soften one (DECISIONS #114); the second clamps into `[0, 1]`. **Neither can widen what any
+principal may read.**
+
+**Scope of this pass.** F1–F44's controls were re-checked only where this release touches them: the
+write-transaction discipline (untouched), the dataset's admin-only posture (extended to two more
+tables), and the operator-warning channel (extended by two messages). Everything else was verified
+as *unchanged*, by diff, rather than re-reasoned.
+
 ## v0.8.1 — the dataset's lifecycle (F44)
 
 One finding, **F44**, in `store/retention.py`. It is a **data-integrity** defect with **no

@@ -18,6 +18,7 @@ one-screen tour of the tree.
 | [`scope/`](scope/) | Per-version product scope (what each release does and does not do) | maintainers, reviewers |
 | [`releases/`](releases/) | Per-version build reports (what changed, quality numbers, caveats) | anyone auditing a release |
 | [`gates/`](gates/) | Phase-gate evidence for each build (proof each phase's bar was met) | maintainers |
+| [`analysis/`](analysis/) | **Pre-registered analysis plans** — what a release will measure and what it will conclude under each outcome, written *before* the results and hash-guarded afterwards | maintainers, reviewers |
 | [`ROADMAP.md`](ROADMAP.md) | Post-MVP, ordered — everything out of the current scope lands here as one line | everyone |
 
 ## Architecture
@@ -49,6 +50,14 @@ one-screen tour of the tree.
 - [`architecture/FEEDBACK-DATASET-0.8-DRAFT.md`](architecture/FEEDBACK-DATASET-0.8-DRAFT.md) — the
   operator-feedback **dataset**: capture-don't-reject, the four constraints the schema must answer,
   and the bias report. Spec only, `v0.8.0: planned`.
+- [`architecture/SHADOW-MODE-0.9-DRAFT.md`](architecture/SHADOW-MODE-0.9-DRAFT.md) — the v0.9.0
+  specification: what a challenger may and may not do, the label-derivation policies, the leakage
+  vectors, and why effective sample size is bags rather than pairs.
+- [`architecture/HONEST-JUDGE-0.10-DRAFT.md`](architecture/HONEST-JUDGE-0.10-DRAFT.md) — the
+  v0.10.0 specification, **written from what v0.9.0 measured rather than from what it hoped**: the
+  split by time or by incident and never at random, why the merge chain makes incident identity
+  non-obvious, the iterative-overfitting hazard no column measures, and the restated
+  `incumbent_linked` invariant.
 - [`architecture/SCORER-PLUGINS-0.13-DRAFT.md`](architecture/SCORER-PLUGINS-0.13-DRAFT.md) —
   customer-supplied models (blessed ONNX adapter) under the v0.6.0 `LinkScorer` contract, spec only,
   `v0.13.0: planned`. Refined during v0.7.0 (§R1–R5): the worker-process preemption harness is a
@@ -92,7 +101,22 @@ one-screen tour of the tree.
   [`scope/SCOPE-0.7.md`](scope/SCOPE-0.7.md), [`scope/SCOPE-0.7.1.md`](scope/SCOPE-0.7.1.md),
   [`scope/SCOPE-0.7.2.md`](scope/SCOPE-0.7.2.md), [`scope/SCOPE-0.7.3.md`](scope/SCOPE-0.7.3.md),
   [`scope/SCOPE-0.7.4.md`](scope/SCOPE-0.7.4.md) — per-version product scope. Later documents state
-  only what changed; earlier invariants still hold.
+  only what changed; earlier invariants still hold. The current one is
+  [`scope/SCOPE-0.9.0.md`](scope/SCOPE-0.9.0.md).
+
+## Analysis plans
+
+- [`analysis/PREREGISTRATION-0.9.0.md`](analysis/PREREGISTRATION-0.9.0.md) — v0.9.0's plan,
+  written **before any model existed**: the hypotheses, both label-derivation policies, the
+  features, the training population, the metrics, the held-out choice, the sufficiency floors, and
+  **what will be concluded under every outcome** — including the outcome where nothing beats the
+  champion and the outcome where the data is insufficient.
+
+  A plan in this directory is **immutable once written**. Its SHA-256 is recorded in the phase gate
+  and asserted by a test, so editing it after seeing a result turns the suite red. The guard makes
+  the plan immutable, not honest; that limit is stated in the test's own docstring. A disagreement
+  with a registered plan goes into the release's security review as an **opinion for the next
+  release**, never into the plan.
 
 ## Releases
 

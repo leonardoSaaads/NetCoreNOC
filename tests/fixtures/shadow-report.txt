@@ -1,0 +1,163 @@
+NetCoreNOC shadow-mode report
+==============================================================
+
+A challenger runs beside the champion and writes its opinion where
+nobody acts on it. THE BUILT-IN SCORER DECIDES EVERYTHING. There is no
+promotion mechanism in this release, deliberately: a release that could
+promote would be judged by the only metric it had, which would be
+agreement with the champion.
+
+-- SUFFICIENCY (read this first) -----------------------------
+  verdict                                 SUFFICIENT
+
+  floor                       required  observed
+  split bags                        50        60
+  mixed bags                        20        40
+  merge-aware incidents             30       100
+  distinct operators                 3         3
+  top-operator share (max)       60.0%     34.0%
+
+  Every floor met. The floors were pre-registered before any result
+  existed; a deployment may harden them and can never soften them.
+
+-- the corpus ------------------------------------------------
+  labelled bags (n)                          100
+    confirm / split                      40 / 60
+    MIXED (pairs both sides)                  40
+  merge-aware incidents                      100
+  distinct operators                           3
+  promoted pairs behind them                 300
+  label span (days)                        13.86
+  legacy_capture rows included             False
+
+  *n* IS BAGS, NOT PAIRS. Pairs from one alarm share a side; pairs from
+  one situation are strongly correlated; two labels on situations that
+  were merged are ONE incident. A MIXED bag is the only kind that
+  contained a decision the champion could have got wrong.
+
+-- THE CHAMPION: partition vs the human verdicts ------------
+  over_merge_rate                     0.0000
+  under_merge_rate                    0.5000
+  split_bag_intact_rate               0.0000
+    over confirm bags / alarms      40 / 120
+    split bags scored                     60
+
+-- CHALLENGER, policy A: split -> all pairs negative -----------
+  intercept                            -3.855649
+  decay                                 2.987760
+  class_affinity                        2.762142
+  entity_affinity                       2.740819
+  fingerprint                       fcbce7673eda
+  training rows / bags                 300 / 100
+  positive / negative mass          40.00 / 60.00
+  training log loss (NOT quality)       0.068975
+
+-- policy A: partition vs the human verdicts ----------------
+  over_merge_rate                     0.0000
+  under_merge_rate                    0.0000
+  split_bag_intact_rate               0.0000
+    over confirm bags / alarms      40 / 120
+    split bags scored                     60
+
+  calibration at BAG level, Brier 0.005223
+  bin              n    mean predicted    observed
+  0.0-0.2         60            0.0828      0.0000
+  0.2-0.4          0               n/a         n/a
+  0.4-0.6          0               n/a         n/a
+  0.6-0.8          0               n/a         n/a
+  0.8-1.0         40            0.9472      1.0000
+
+  CALIBRATION IS NOT IMPLIED BY ACCURACY. A model can rank perfectly and
+  be badly calibrated, which is exactly where a threshold does the most
+  damage. And the half that is a trap: CONFIDENCE MAY ROUTE WHAT THE
+  OPERATOR IS ASKED; IT MAY NEVER AUTHORISE AUTONOMY. The autonomy
+  trigger is measured agreement with humans, never a model's own
+  certainty — a confidently wrong model is more dangerous than an
+  uncertainly wrong one.
+
+-- CHALLENGER, policy B: split discarded -----------------------
+  intercept                             1.847774
+  decay                                 1.671628
+  class_affinity                        1.387365
+  entity_affinity                       1.384296
+  fingerprint                       e6867b5a474f
+  training rows / bags                  120 / 40
+  positive / negative mass          40.00 / 0.00
+  training log loss (NOT quality)       0.004335
+
+  >>> DEGENERATE: THIS POLICY DERIVED ONLY ONE CLASS. <<<
+  With bag-level labels, discarding `split` discards the only source
+  of negatives, so the target is constant and the best achievable
+  model predicts 'link' unconditionally. The draft called policy B
+  'throws away the minority class'; measured, it throws away the
+  only class that could have taught anything. Reported rather than
+  suppressed, because a policy whose failure is invisible is one a
+  later release picks by default.
+
+-- policy B: partition vs the human verdicts ----------------
+  over_merge_rate                     0.0000
+  under_merge_rate                    0.0000
+  split_bag_intact_rate               1.0000
+    over confirm bags / alarms      40 / 120
+    split bags scored                     60
+
+  calibration at BAG level, Brier 0.520812
+  bin              n    mean predicted    observed
+  0.0-0.2          0               n/a         n/a
+  0.2-0.4          0               n/a         n/a
+  0.4-0.6          0               n/a         n/a
+  0.6-0.8          0               n/a         n/a
+  0.8-1.0        100            0.9572      0.4000
+
+  CALIBRATION IS NOT IMPLIED BY ACCURACY. A model can rank perfectly and
+  be badly calibrated, which is exactly where a threshold does the most
+  damage. And the half that is a trap: CONFIDENCE MAY ROUTE WHAT THE
+  OPERATOR IS ASKED; IT MAY NEVER AUTHORISE AUTONOMY. The autonomy
+  trigger is measured agreement with humans, never a model's own
+  certainty — a confidently wrong model is more dangerous than an
+  uncertainly wrong one.
+
+-- the admission filter --------------------------------------
+                         median us      p99 us   terms   det   mem
+  additive              <measured>  <measured>       3  True  True
+  logistic-shadow       <measured>  <measured>       4  True  True
+
+  admitted                    True
+
+  THE CHAMPION IS MEASURED AGAINST THE SAME FILTER, on the same samples,
+  in the same process. A filter nobody has run against the incumbent is a
+  filter whose budget is a guess. The speed budget is a RATIO of the
+  champion's p99, not a microsecond figure: Phase 0 measured the
+  champion's own p99 moving 2.6x between two runs on one machine.
+
+-- training/serving skew -------------------------------------
+  sampled online opinions                      0
+  challenger runs recorded                     1
+  compared against reconstruction              0
+  unmatched (no captured pair)                 0
+  DIVERGED                                     0
+  divergence rate                           n/a%
+
+  THE TWO MECHANISMS ARE NOT ALTERNATIVES. Offline reconstruction
+  measures quality at no ingest cost and CANNOT measure skew by
+  construction — recomputing from the stored features is tautologically
+  consistent with them. Online shadow measures real latency and real
+  behaviour and says nothing further about quality. THEIR DIVERGENCE IS
+  THE TEST, compared with == on the float rather than a tolerance.
+  The pre-registered expectation is 0.0000%. Any non-zero rate is a
+  DEFECT, and it means the quality figures above describe features that
+  were never served.
+
+-- what this report CANNOT tell you --------------------------
+  * whether the challenger should be promoted. There is no promotion
+    mechanism here and no evaluator worth trusting yet; that is v0.10.0
+    and v0.11.0, in that order and for that reason.
+  * whether either scorer is RIGHT. The truth here is what an operator
+    said about a grouping they were shown, at bag granularity.
+  * anything from a pairwise accuracy. The champion accepts 99.83% of
+    evaluated pairs, so a constant 'link' scores 99.83%. No pairwise
+    accuracy is reported anywhere above, deliberately.
+  * how a model would behave on a different network. The held-out split
+    this release uses is a reporting device over an n in the tens, and
+    it is NOT v0.10.0's split.
+

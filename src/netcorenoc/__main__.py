@@ -8,6 +8,15 @@ Subcommands:
   as a `make qa` guard: run over a fixture with its output compared byte-for-byte, it goes red the
   day capture changes shape. Emits aggregates only.
 - ``dataset stats`` — what capture currently costs, in rows.
+- ``dataset agreement`` — **how well the champion already agrees with the operators** (v0.9.0),
+  conditioned by bag size, storm, mixed-versus-uniform, scope, operator and capture provenance.
+  A sibling subcommand rather than a section of ``dataset bias`` (DECISIONS #115): the two reports
+  answer different questions, each is a byte-for-byte gate, and a gate should go red for one reason.
+  Deterministic, aggregates only, and it trains nothing.
+- ``dataset shadow`` — **the shadow-mode report** (v0.9.0): the sufficiency verdict first, then
+  both label-derivation policies, partition-level over/under-merge against the human verdicts,
+  bag-level calibration, the admission filter run against the champion too, and the
+  training/serving skew rate. Deterministic; it re-derives offline and **fits nothing**.
 
 The trap correlator itself still runs via ``python -m netcorenoc.main`` (unchanged).
 """
@@ -19,7 +28,7 @@ import asyncio
 import os
 import sys
 
-from netcorenoc import audit, bias, bias_report
+from netcorenoc import agreement, agreement_report, audit, bias, bias_report, shadow_report
 from netcorenoc.main import legacy_env_error, legacy_env_names
 from netcorenoc.store import Store
 
@@ -60,6 +69,42 @@ async def _bias(db_path: str) -> int:
     finally:
         await store.close()
     print(bias_report.render(measurements), end="")
+    return 0
+
+
+async def _agreement(db_path: str) -> int:
+    """The champion-agreement report — v0.9.0's primary deliverable, and it needs no model.
+
+    Same posture as `_bias`: no HTTP surface over a scope bypass, and a deterministic CLI report
+    that `make qa` can compare byte-for-byte.
+    """
+    store = Store(db_path)
+    await store.open()
+    try:
+        async with store.lock:
+            measurements = await agreement.collect(store)
+    finally:
+        await store.close()
+    print(agreement_report.render(measurements), end="")
+    return 0
+
+
+async def _shadow(db_path: str) -> int:
+    """The shadow-mode report. Same posture as `_bias` and `_agreement`: no HTTP surface over a
+    scope bypass, and a deterministic CLI report `make qa` can compare byte-for-byte.
+
+    **It fits nothing.** The report re-derives the challenger's opinion offline from stored
+    features and from the coefficients a training run recorded; training happens in the engine's
+    slow loop, and a report that trained would be a report whose numbers changed when it was read.
+    """
+    store = Store(db_path)
+    await store.open()
+    try:
+        async with store.lock:
+            measurements = await shadow_report.collect(store)
+    finally:
+        await store.close()
+    print(shadow_report.render(measurements), end="")
     return 0
 
 
@@ -109,6 +154,12 @@ def main(argv: list[str] | None = None) -> int:
     dataset_sub = dataset_parser.add_subparsers(dest="dataset_command", required=True)
     dataset_sub.add_parser("bias", help="the bias report (aggregates only, deterministic)")
     dataset_sub.add_parser("stats", help="what capture currently costs, in rows")
+    dataset_sub.add_parser(
+        "agreement", help="how well the champion already agrees with the operators (v0.9.0)"
+    )
+    dataset_sub.add_parser(
+        "shadow", help="the shadow-mode report: sufficiency, both policies, skew (v0.9.0)"
+    )
     args = parser.parse_args(argv)
 
     db_path = _db_path()
@@ -122,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_bias(db_path))
         if args.dataset_command == "stats":
             return asyncio.run(_dataset_stats(db_path))
+        if args.dataset_command == "agreement":
+            return asyncio.run(_agreement(db_path))
+        if args.dataset_command == "shadow":
+            return asyncio.run(_shadow(db_path))
     parser.error("unknown command")
     return 2
 

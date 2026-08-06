@@ -405,3 +405,118 @@ async def test_v071_upgrade_changes_no_behaviour_except_the_three_documented_cha
             await admin.aclose()
     finally:
         await new.close()
+
+
+async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path) -> None:
+    """Gate 3 (v0.9.0): a live v0.8.1 database upgrades in place, and **shadow mode changes
+    nothing**.
+
+    The strongest claim this release makes about the upgrade is a negative one: migration 0009 adds
+    two tables, seeds **no rows**, and the appliance's first boot afterwards behaves exactly as it
+    did before. A shadow-mode release is structurally tempted to arrive with an opinion already in
+    the database; this asserts it does not.
+
+    Compare 0005, which *had* to seed a row because the engine needs scoring parameters. Nothing
+    here is needed for the engine to run, because the challenger is never consulted about anything.
+    """
+    import netcorenoc.store.lifecycle as store_mod
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV8:
+        """The migration directory as a v0.8.1 install saw it: nothing past 0008 exists yet.
+
+        Filtered by migration *number*, so a later release adding 0010 cannot silently un-freeze
+        this fixture and turn a genuine v0.8.1 database into a current one.
+        """
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 8]
+
+    async def partition_of(store: Store) -> set[frozenset[int]]:
+        cur = await store.conn.execute("SELECT situation_id, alarm_id FROM situation_alarm")
+        groups: dict[int, set[int]] = {}
+        for row in await cur.fetchall():
+            groups.setdefault(int(row[0]), set()).add(int(row[1]))
+        return {frozenset(members) for members in groups.values()}
+
+    db = str(tmp_path / "v081-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV8()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 8  # a genuine v0.8.1 database
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        sids = [int(r["id"]) for r in await old.list_situations(None, 10)]
+        async with old.lock:
+            # A real label, so the upgrade carries a promoted corpus rather than an empty one.
+            await engine_old.apply_feedback(
+                sids[0], "confirm", BASE + 20, principal_ref="alice", role="editor"
+            )
+            await audit.write_event(
+                old,
+                ts=BASE,
+                actor="admin",
+                role="admin",
+                source_ip="-",
+                action="login.ok",
+                outcome="ok",
+            )
+            await old.commit()
+        before_partition = await partition_of(old)
+        before_edges = (await old.graph_snapshot(min_edge_n=0))["edges"]
+        before_stats = await old.stats()
+        before_situations = await old.list_situations(None, 500)
+        before_dataset = await old.dataset_stats()
+        before_epoch = (engine_old.learner.A.epoch, engine_old.learner.E.epoch)
+        before_chain = (await audit.verify_chain(old)).final_hash
+        assert before_partition and before_edges
+        assert before_dataset["dataset_pair.dataset"] > 0  # a labelled corpus exists
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    # The upgrade: same file, migration 0009 now present.
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == Store.latest_schema_version() == 9
+        assert new.integrity_warnings == []
+
+        # Asserted BEFORE the engine starts, because `Engine.start` legitimately opens a new
+        # `capture_run` in any new process (v0.8.0 behaviour, unrelated to this migration). The
+        # question here is what the MIGRATION did, so it is asked before anything else runs.
+        assert await new.dataset_stats() == before_dataset
+        # **No rows seeded.** Both new tables are empty immediately after the migration.
+        for table in ("challenger_run", "shadow_opinion"):
+            cur = await new.conn.execute(f"SELECT COUNT(*) FROM {table}")  # nosec B608
+            row = await cur.fetchone()
+            assert row is not None and int(row[0]) == 0, f"{table} was seeded by the migration"
+        # The audit chain verifies, and to the SAME final hash — the migration wrote no event.
+        result = await audit.verify_chain(new)
+        assert result.ok and result.final_hash == before_chain
+
+        engine_new = Engine(new, asyncio.Queue())
+        await engine_new.start()
+
+        # Data intact: grouping, learned edges, the corpus, and the epoch.
+        assert await partition_of(new) == before_partition
+        assert (await new.graph_snapshot(min_edge_n=0))["edges"] == before_edges
+        assert await new.stats() == before_stats
+        assert await new.list_situations(None, 500) == before_situations
+        assert (engine_new.learner.A.epoch, engine_new.learner.E.epoch) == before_epoch
+
+        # First boot still writes no shadow row: capture opened a run, the challenger did not.
+        cur = await new.conn.execute("SELECT COUNT(*) FROM shadow_opinion")
+        row = await cur.fetchone()
+        assert row is not None and int(row[0]) == 0
+
+        # The champion is unchanged and still active: shadow mode swapped nothing.
+        config = await new.active_scorer_config()
+        assert config is not None and config["scorer_id"] == "additive"
+        assert engine_new.correlator.scorer.active.scorer_id == "additive"
+    finally:
+        await new.close()

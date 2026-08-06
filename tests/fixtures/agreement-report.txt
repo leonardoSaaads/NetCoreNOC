@@ -1,0 +1,130 @@
+NetCoreNOC champion-agreement report
+==============================================================
+
+How well the BUILT-IN SCORER already agrees with the operators, at bag
+level, conditioned. This report trains nothing and involves no model.
+
+  AGREEMENT IS NOT CORRECTNESS. There is no ground truth here — only what
+  an operator said about a grouping they were shown. A high rate means the
+  champion and the operators concur; it does not mean either was right.
+
+-- population ------------------------------------------------
+  labelled bags, all provenance               13
+  labelled bags, provenance=current           12
+  merge-aware incidents among them            12
+  distinct operators                           3
+  bags with no promoted pair                   1
+  promoted pairs behind them                1885
+  verdict: confirm                             8
+  verdict: split                               4
+
+  EVERY FIGURE BELOW EXCEPT THE PROVENANCE SECTION IS OVER `current` ROWS
+  ALONE. `legacy_capture` labels were acquired before v0.7.5 repaired the
+  click path: they are of UNKNOWN quality, which is weaker than bad, and
+  blending them into a headline would make it uninterpretable in a way no
+  reader could detect afterwards.
+
+-- THE HEADLINE ----------------------------------------------
+  champion agreement      n=   12  confirmed=    8    66.7%  [ 33.3,  91.7]
+
+  The interval is a CLUSTER BOOTSTRAP OVER INCIDENTS, not over bags and
+  never over pairs: two labels on situations that were merged into one are
+  ONE incident. Below 10 incidents it is REFUSED outright and
+  prints `n/a` — resampling a handful of clusters gives an interval that
+  looks like a measurement and is an artefact of a handful of numbers.
+
+  READ THE DECOMPOSITION, NOT THIS LINE. An aggregate of 94% that is 99% on
+  uniform storm bags and 58% on mixed bags is the difference between an ML
+  programme with no headroom and one with a clear target.
+
+-- by MIXED vs UNIFORM bag (the strongest cut) ---------------
+  mixed                   n=    3  confirmed=    2    66.7%  [interval n/a]
+  uniform-accept          n=    6  confirmed=    5    83.3%  [interval n/a]
+  uniform-reject          n=    2  confirmed=    0     0.0%  [interval n/a]
+  no-pairs                n=    1  confirmed=    1   100.0%  [interval n/a]
+
+  A UNIFORM BAG CONTAINED NO DECISION. Every pair in it fell on the same
+  side of the threshold, so the operator confirmed an outcome the champion
+  could not have reached differently: the confirm says nothing whatever
+  about the scorer's judgement. A MIXED bag spans the threshold — there the
+  champion made a call, and there alone the agreement rate is about it.
+  Measured over the eval corpus, 7 of 9 scenarios are uniform.
+
+-- by bag size -----------------------------------------------
+  1                       n=    1  confirmed=    1   100.0%  [interval n/a]
+  2                       n=    3  confirmed=    1    33.3%  [interval n/a]
+  3-5                     n=    5  confirmed=    3    60.0%  [interval n/a]
+  6-10                    n=    1  confirmed=    1   100.0%  [interval n/a]
+  11-50                   n=    1  confirmed=    1   100.0%  [interval n/a]
+  51+                     n=    1  confirmed=    1   100.0%  [interval n/a]
+
+  CONFIRMATION STRENGTH DECAYS WITH SIZE. An operator confirming a
+  five-hundred-member storm did not verify one hundred and twenty-four
+  thousand pairs; one confirming two members verified the only pair there
+  was. `unrecorded` is a pre-v0.8.0 label, distinguishable from a zero.
+
+-- by storm --------------------------------------------------
+  quiet                   n=    5  confirmed=    2    40.0%  [interval n/a]
+  partly                  n=    1  confirmed=    1   100.0%  [interval n/a]
+  storm                   n=    5  confirmed=    4    80.0%  [interval n/a]
+  no-pairs                n=    1  confirmed=    1   100.0%  [interval n/a]
+
+  IN A STORM THE CHAMPION IS RIGHT ABOUT SOMETHING IT COULD NOT HAVE GOT
+  WRONG. Accept rates measured at 0% on quiet corpus traffic and 100% in
+  every storm scenario, so a storm confirm is close to tautological.
+  `partly` is a bag whose pairs straddle the storm boundary; it is given
+  its own row rather than assigned by a majority rule, because the
+  threshold such a rule would need is a number nobody measured.
+
+-- by visibility scope ---------------------------------------
+  full view               n=   10  confirmed=    7    70.0%  [ 40.0, 100.0]
+  restricted              n=    2  confirmed=    1    50.0%  [interval n/a]
+
+  A SCOPED EDITOR JUDGED A PARTIAL VIEW and cannot say which part — the
+  redaction deliberately carries no NE id, address or entity key. The
+  resulting noise is SYSTEMATIC, not random: it correlates with the scope
+  policy, so it does not average out with more data.
+
+-- by operator -----------------------------------------------
+  (unattributed)          n=    1  confirmed=    1   100.0%  [interval n/a]
+  operator 1              n=    4  confirmed=    3    75.0%  [interval n/a]
+  operator 2              n=    4  confirmed=    2    50.0%  [interval n/a]
+  operator 3              n=    3  confirmed=    2    66.7%  [interval n/a]
+
+  A HEADLINE OVER THREE PEOPLE IS THREE PEOPLE'S OPINION. Spread here is
+  not noise to be averaged away — it is the quantity that says whether
+  `confirm` means the same thing to two operators.
+  OPERATORS ARE ANONYMISED and the aliases are ordered by bag count, not by
+  identity. What this cut is for is the spread; a name would turn a bias
+  measurement into a per-employee performance report nobody consented to.
+
+-- by capture provenance (NEVER averaged) --------------------
+  current                 n=   12  confirmed=    8    66.7%  [ 33.3,  91.7]
+  legacy_capture          n=    1  confirmed=    0     0.0%  [interval n/a]
+
+  The one section computed over ALL rows, because separating the two
+  populations is its entire purpose. If these two rates differ materially,
+  the pre-v0.7.5 click path is visible in the data and the `current` rate
+  above is the only one worth quoting.
+
+-- by promotion coverage -------------------------------------
+  full                    n=   11  confirmed=    7    63.6%  [ 36.4,  90.9]
+  none                    n=    1  confirmed=    1   100.0%  [interval n/a]
+
+  `partial` is NOT an edge case: the sliding window and MAX_CANDIDATES mean
+  pairs within a labelled situation may never have been evaluated. A bag
+  with coverage `none` or `empty` has no promoted pair, so it appears in
+  the `no-pairs` row of the cuts above — counted, never silently dropped.
+
+-- what this report CANNOT tell you --------------------------
+  * whether the champion was RIGHT. Only whether an operator agreed.
+  * whether a disagreement was the scorer's fault. A `split` may mean the
+    grouping was wrong, or that the operator wanted a different grouping
+    for an operational reason this system never sees.
+  * anything about situations nobody labelled. Operators label what they
+    open, and this measures what they labelled.
+  * anything about pairs that were never evaluated. They are absent by
+    construction; the coverage section counts them, and that is all.
+  * how much headroom a model has. It bounds it from above on the labelled
+    population and says nothing about the rest of the network.
+

@@ -4,7 +4,7 @@ PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test security deadcode checksums linkcheck run replay loadtest burst \
 	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
-	bias-report dataset-stats
+	bias-report dataset-stats agreement-report shadow-report
 
 qa: lint typecheck deadcode test eval
 
@@ -89,6 +89,21 @@ migrate:
 # red the day capture changes shape. Emits aggregates only; reads NETCORENOC_DB.
 bias-report:
 	$(PYTHON) -m netcorenoc dataset bias
+
+# v0.9.0's primary deliverable, and it needs no model: how well the built-in scorer ALREADY agrees
+# with the operators, conditioned by bag size, storm, mixed-vs-uniform, scope, operator and capture
+# provenance. Beside `make bias-report` for the same two reasons — deterministic offline report over
+# frozen inputs, and a GATE rather than a dashboard (`tests/test_agreement.py` compares it
+# byte-for-byte). Emits aggregates only; reads NETCORENOC_DB.
+agreement-report:
+	$(PYTHON) -m netcorenoc dataset agreement
+
+# The shadow-mode report (v0.9.0): the sufficiency verdict FIRST, then both label-derivation
+# policies, partition-level over/under-merge against the human verdicts, bag-level calibration, the
+# admission filter run against the champion too, and the training/serving skew rate. Deterministic,
+# aggregates only, and it FITS NOTHING — training happens in the engine's slow loop.
+shadow-report:
+	$(PYTHON) -m netcorenoc dataset shadow
 
 # What capture currently costs, in rows. Zero-config means the default is good, not that the
 # operator is blind about what the appliance is storing.

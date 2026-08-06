@@ -112,6 +112,10 @@ SUBMODULES = [
     "store.read_models",
     "store.retention",
     "store.scoring_config",
+    # v0.9.0: shadow mode's SQL. A separate module from `store.dataset` because that file is at
+    # 395 of its 400-line budget and the seam is real — `dataset` owns what capture wrote, this
+    # owns what the challenger read and wrote back.
+    "store.shadow",
     "store.situations",
     "store.state_clears",
     "store.types",

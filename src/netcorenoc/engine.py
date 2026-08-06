@@ -17,14 +17,15 @@ What stayed, and why:
 * `_resolve_entity`, `_resolve_severity`, `_seed_clear_pair`, `_is_flapping`, `FlapDetector` — the
   per-trap decisions the batch makes.
 * `apply_feedback` — a write path into learned state, on the same lock discipline.
-* `maintenance` and `maintenance_loop` — against both module tables, because `maintenance`
-  acquires ``self.store.lock`` (the *same* `asyncio.Lock` `_commit_batch` takes; there is only one)
-  and calls `_close_situation`. A reviewer asking "what closes a situation, and under which lock?"
-  must not have to follow an import (DECISIONS #90).
+* `maintenance` — against the module table, because it acquires ``self.store.lock`` (the *same*
+  `asyncio.Lock` `_commit_batch` takes; there is only one) and calls `_close_situation`. A reviewer
+  asking "what closes a situation, and under which lock?" must not have to follow an import
+  (DECISIONS #90).
 
-What left: the maintenance *helpers* (`maintenance.py`), the gap tracker (`gaps.py`), the scorer
-lifecycle (`scorer_lifecycle.py`), configuration (`settings.py`) and the process runner
-(`runner.py`).
+What left: the maintenance *helpers* and, in v0.9.0, `maintenance_loop` itself (`maintenance.py`,
+DECISIONS #121 — it takes no lock and is now the one place two periodic activities with *different*
+lock disciplines are sequenced), the gap tracker (`gaps.py`), the scorer lifecycle
+(`scorer_lifecycle.py`), configuration (`settings.py`) and the process runner (`runner.py`).
 
 **`engine.py` must never import `netcorenoc.api`.** That was v0.7.2's one recorded layer violation
 and v0.7.3 resolved it; `tests/test_layers.py` holds the line.
@@ -58,6 +59,7 @@ from netcorenoc.maintenance import MaintenanceMixin
 from netcorenoc.receiver import MAX_INSTANCE_CHARS, QueueItem
 from netcorenoc.rootcause import Member, Precedence
 from netcorenoc.scorer_lifecycle import ScorerLifecycleMixin
+from netcorenoc.shadow import Shadow
 from netcorenoc.store import FeedbackResult, Store
 from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler
 
@@ -146,6 +148,9 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # because this file's COHESION_EXEMPT entry covers the ingest reasoning, not code nearby.
         self.capture = Capture()
         self.retention = RetentionPolicy()
+        # Shadow mode (v0.9.0). Call sites only; every decision is `netcorenoc.shadow`. It scores
+        # a sample and buffers — it writes nothing here, decides nothing, and reaches no situation.
+        self.shadow = Shadow()
 
     def forget_situation(self, sid: int) -> None:
         """Drop in-memory membership after an operator manually closes a situation."""
@@ -316,6 +321,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             instance=instance,
             situation_id=self.sit_of.get(entry.alarm_id),
         )
+        # Last on this path, after capture, so no decision follows it. `observe` never raises.
+        self.shadow.observe(entry, outcome, self.sit_of.get(entry.alarm_id))
 
     async def _seed_clear_pair(self, oid: str, class_id: int, ts: float) -> None:
         """Register the universal raise/clear pairs the first time either side shows up."""
@@ -565,13 +572,6 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 await self.store.delete_stale_varbind_profiles(now - PROFILE_STALE_S)
                 await self.capture.prune(self.store, now, self.retention)
             await self.store.commit()
-
-    async def maintenance_loop(self, retention_provider: Callable[[], float]) -> None:
-        tick = 0
-        while True:
-            await asyncio.sleep(MAINT_INTERVAL_S)
-            tick += 1
-            await self.maintenance(time.time(), retention_provider(), tick)
 
     def latency_p95(self) -> float:
         if not self.latencies:

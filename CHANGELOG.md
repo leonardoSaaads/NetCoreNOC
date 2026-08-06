@@ -4,6 +4,104 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-08-03 — "shadow mode"
+
+**A challenger runs beside the champion and writes its opinion where nobody acts on it. The
+built-in scorer decides everything.**
+
+The most valuable output of this release is not a model. It is two numbers — **how well the
+champion already agrees with the operators**, and **whether there is enough signal in the data to
+learn anything at all** — and the second one came back *no*, which is the release succeeding rather
+than failing.
+
+`make eval` is byte-identical (`c2e8a0ce…`), rows captured per trap are unchanged at **82.830601**
+on the same four scenarios, **five** runtime dependencies, **one** migration, **no route**, **no
+capability**, and no promotion mechanism anywhere.
+
+### Added
+
+- **The champion-agreement report** — `python -m netcorenoc dataset agreement`
+  (`make agreement-report`). How well the built-in scorer already agrees with the operators, at bag
+  level, conditioned six ways: by mixed-versus-uniform bag, bag size, storm, visibility scope,
+  operator and capture provenance. **It needs no model**, which is why it shipped first and why a
+  test parses its imports to keep it that way.
+
+  The headline is cheap; the conditioning is the deliverable. **A uniform bag contained no
+  decision** — every pair fell on the same side of the threshold, so confirming it says nothing
+  about the scorer's judgement. On the fullest corpus this repository can build, **five of
+  forty-one bags are mixed**, and that proportion is structural rather than a property of who did
+  the labelling. Intervals are a cluster bootstrap over **incidents**, refused below ten of them
+  rather than printed narrow. Operators are anonymised, structurally (DECISIONS #120).
+
+- **The shadow-mode report** — `python -m netcorenoc dataset shadow` (`make shadow-report`). Leads
+  with the **sufficiency verdict**, then both label-derivation policies, partition-level over-merge
+  and under-merge against the human verdicts, bag-level calibration, the admission filter run
+  against the champion too, and the training/serving skew rate. It re-derives offline and **fits
+  nothing**.
+
+- **The challenger** — a deterministic, dependency-free logistic `LinkScorer` satisfying the v0.6.0
+  Protocol **structurally**: no base class, no registry, and `scoring.py` gains nothing. Its
+  `score()` returns the **pre-link** score so the terms sum to it exactly, the same property
+  `AdditiveScorer` has; the probability is a separate method. Per-term explainability and
+  `SafeScorer`'s fail-safe are inherited by contract rather than promised (DECISIONS #116).
+
+- **Training in a slow loop this release had to build.** Phase 0 proved by parsing the code that
+  **no point inside `maintenance()` runs outside `store.lock`** — one `async with` block, zero
+  statements after it. So training runs in `maintenance_loop` *after* `maintenance()` returns and
+  releases the lock; the lock is taken only to read rows and to write the result, and **the fit
+  holds nothing**. It yields to the event loop between iterations, because a fit that never yielded
+  would stall ingestion by an indirect route (DECISIONS #118, #121).
+
+- **Both label-derivation policies, A and B**, fitted and reported — never one with its number.
+- **Migration `0009`**: `challenger_run` and `shadow_opinion`. Seeds no rows; a run row is written
+  **even when nothing is fitted**, because insufficiency is a result and a schema that could only
+  record a successful fit would make it invisible.
+- **The pre-registered analysis plan**, `docs/analysis/PREREGISTRATION-0.9.0.md`, written before any
+  model existed, stating what will be concluded under **ten** outcomes including insufficiency —
+  and hash-guarded, so editing it after seeing a result turns the suite red.
+
+### Findings
+
+- **The corpus is insufficient, and the release says when.** Against pre-registered floors: **13
+  `split` bags of 50 required**, **5 mixed bags of 20**, and **exactly one bag that is both `split`
+  and mixed**. Where the floors are unmet the release fits nothing and publishes a projection in
+  months at the measured labelling rate — or `undefined` where no rate exists, because an
+  extrapolation from a single instant is a fabricated number.
+
+- **Policy B derives only one class.** The shadow-mode draft called it *"throws away the minority
+  class"*; measured, on bag-level labels it throws away **the only source of negatives**, so the
+  target is constant and the best achievable model predicts "link" unconditionally. On the fixture
+  it scores 0.0000 on both headline rates **and buries all sixty split bags** — which is why
+  `split_bag_intact_rate` is reported as a separate, named third quantity.
+
+- **Training/serving skew: 0.0000 %** over 2 000 sampled opinions from four corpus scenarios,
+  compared with `==` on the float rather than a tolerance. Both shadow mechanisms ship because
+  offline reconstruction **cannot** measure skew by construction, and their divergence is the test
+  (DECISIONS #119).
+
+- **A full-rate sample is silently truncated — found by measuring, fixed here.** At
+  `sample_rate = 1.0` the in-memory buffer discards 43 474 of 45 474 opinions. The bound is correct;
+  what was missing is that nothing told the operator, who would read a truncated prefix as a census.
+  It now raises an operator warning. No F-number: the F-series tracks defects in *shipped* code.
+
+### Changed
+
+- `over_merge_rate` and `under_merge_rate` moved into `netcorenoc.shadow_eval`; `eval/metrics.py`
+  imports them back (DECISIONS #122). They became a runtime metric and `src/` never imports `eval/`;
+  two copies of one metric agree until one is tuned. `make eval` byte-identical across the move.
+- `maintenance_loop` moved from `engine.py` to `maintenance.py` (DECISIONS #121). `engine.py` stays
+  at exactly its 580-line cohesion ceiling.
+- `docs/analysis/` is a new documentation area for **pre-registered analysis plans** — immutable
+  once written, hash-guarded, and disagreed with in the *next* release's review rather than by
+  editing.
+
+### Unchanged, and verified so
+
+`correlate.py`, `capture.py`, `receiver.py`, `learn.py`, `rbac/`, `shaping/`, `scoring.py` and every
+existing migration: **zero-byte diff**. Routes, capabilities, audit actions, served paths and
+runtime dependencies: unchanged. F34–F44 regression tests: unedited. Coverage **96 %**, equal to
+v0.8.1, after 2 836 new source lines. Tests **855 → 923**.
+
 ## [0.8.1] - 2026-08-02 — "the dataset has a governed lifecycle"
 
 **v0.8.0 designed a lifecycle for the rows it created and did not check the lifecycle the

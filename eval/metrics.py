@@ -8,12 +8,32 @@ and keeps the evaluation as auditable as the correlator it measures.
 The pair-counting metrics (``pairwise_f1``, ``adjusted_rand_index``) are derived from a
 single contingency table in O(N) rather than by enumerating O(N^2) pairs, so a 2 000-alarm
 storm scores in milliseconds.
+
+**``over_merge_rate`` and ``under_merge_rate`` moved into the package in v0.9.0** and are imported
+back here (DECISIONS #122). They became a *runtime* metric — the shadow report scores the
+challenger's partition with them — and ``src/netcorenoc/`` never imports ``eval/``, so the
+implementation had to live on the other side. Re-exported rather than reimplemented, because two
+copies of one metric agree until one is tuned and then the harness and the report disagree with
+nothing to notice. The functions were moved without an edit; ``make eval`` is byte-identical.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Hashable, Sequence
+
+from netcorenoc.shadow_eval import over_merge_rate, under_merge_rate
+
+__all__ = [
+    "adjusted_rand_index",
+    "dedup_ratio",
+    "entity_accuracy",
+    "over_merge_rate",
+    "pairwise_f1",
+    "percentile",
+    "root_top1",
+    "under_merge_rate",
+]
 
 Label = Hashable
 
@@ -77,32 +97,6 @@ def adjusted_rand_index(pred: Sequence[Label], truth: Sequence[Label]) -> float:
     if max_index == expected:
         return 1.0  # both partitions are degenerate (all-together or all-singletons)
     return (index - expected) / (max_index - expected)
-
-
-def _groups(labels: Sequence[Label], keys: Sequence[Label]) -> dict[Label, set[Label]]:
-    """For each label, the set of distinct co-labels (e.g. truth situations per predicted)."""
-    out: dict[Label, set[Label]] = {}
-    for label, key in zip(labels, keys, strict=True):
-        out.setdefault(label, set()).add(key)
-    return out
-
-
-def over_merge_rate(pred: Sequence[Label], truth: Sequence[Label]) -> float:
-    """Fraction of predicted situations that span two or more true situations."""
-    groups = _groups(pred, truth)
-    if not groups:
-        return 0.0
-    spanning = sum(1 for members in groups.values() if len(members) >= 2)
-    return spanning / len(groups)
-
-
-def under_merge_rate(pred: Sequence[Label], truth: Sequence[Label]) -> float:
-    """Fraction of true situations split across two or more predicted situations."""
-    groups = _groups(truth, pred)
-    if not groups:
-        return 0.0
-    split = sum(1 for members in groups.values() if len(members) >= 2)
-    return split / len(groups)
 
 
 def entity_accuracy(pred_entity: Sequence[Label], truth_entity: Sequence[Label]) -> float:

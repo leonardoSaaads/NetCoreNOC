@@ -76,6 +76,20 @@ LAYER_OF: dict[str, str] = {
     # deterministic CLI report can be a byte-for-byte gate where a UI card never could.
     "bias": "engine",
     "bias_report": "engine",
+    # v0.9.0. The champion-agreement report — the same compute/render seam, one layer up from the
+    # store and one below the CLI. Engine-layer for the reason `bias.py` is: a CLI deliverable by
+    # design (DECISIONS #115), because a route would add HTTP surface to a scope bypass and could
+    # never be a byte-for-byte gate.
+    "agreement": "engine",
+    "agreement_report": "engine",
+    # v0.9.0 — shadow mode. All engine-layer: the challenger consumes the same `LinkFeatures` the
+    # correlator builds and writes downward through the data layer, exactly as `capture.py` does.
+    # **None of them is ingest**, and none is reachable from `receiver.datagram_received`.
+    "challenger": "engine",
+    "training": "engine",
+    "shadow": "engine",
+    "shadow_eval": "engine",
+    "shadow_report": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire
@@ -116,8 +130,12 @@ LAYER_OF: dict[str, str] = {
 # After that, an entry here is a visible, arguable diff — exactly as DEBT_ALLOWLIST is for size.
 EXEMPTIONS: dict[tuple[str, str], str] = {}
 
-# Modules this release creates, which `LAYER_OF` names before they exist. Emptied in Phase 4, so
-# the dead-entry check below goes back to being absolute.
+# Modules this release creates, which `LAYER_OF` names before they exist. Emptied at the end of
+# the release, so the dead-entry check below goes back to being absolute.
+#
+# v0.9.0 uses it as v0.7.3 did: the shadow-mode modules are placed in `LAYER_OF` in Phase 4 step 1,
+# before the later steps write them, so no module can arrive without having been placed first —
+# which is the property the guard exists for. Emptied in Phase 5.
 PLANNED_THIS_RELEASE: set[str] = set()
 
 # Type-only imports (`if TYPE_CHECKING:`) create no runtime edge and no import cycle.
