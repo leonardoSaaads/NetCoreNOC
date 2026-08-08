@@ -135,3 +135,33 @@ class FeedbackMixin(StoreBase):
             f"UPDATE feedback SET {assignments} WHERE id=?",  # nosec B608
             (*fields.values(), feedback_id),
         )
+
+    async def add_feedback_exclusion(self, feedback_id: int, alarm_ids: list[int]) -> None:
+        """The members the operator marked as **not belonging** (v0.9.1, migration `0010`).
+
+        `DELETE` then insert, rather than `INSERT OR REPLACE`, because this is a *set* and a
+        changed verdict re-posts (F36): replacing position-by-position would leave the tail of a
+        longer previous marking behind, and the row would then assert negatives the operator had
+        withdrawn. The bag next door can use `INSERT OR REPLACE` safely because the server writes
+        it and it does not shrink under a correction; this one is the client's and does.
+
+        An **empty** ``alarm_ids`` writes nothing, and the caller records `excluded_count = NULL`
+        rather than 0 — *"the operator marked nothing"* is a **plain** split, not an assertion
+        about an empty set.
+        """
+        await self.conn.execute(
+            "DELETE FROM feedback_exclusion WHERE feedback_id=?", (feedback_id,)
+        )
+        if not alarm_ids:
+            return
+        await self.conn.executemany(
+            "INSERT INTO feedback_exclusion (feedback_id, position, alarm_id) VALUES (?, ?, ?)",
+            [(feedback_id, i, aid) for i, aid in enumerate(alarm_ids)],
+        )
+
+    async def feedback_exclusion(self, feedback_id: int) -> list[int]:
+        cur = await self.conn.execute(
+            "SELECT alarm_id FROM feedback_exclusion WHERE feedback_id=? ORDER BY position",
+            (feedback_id,),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]

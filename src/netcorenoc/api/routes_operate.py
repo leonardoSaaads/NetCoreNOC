@@ -95,6 +95,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             if body.member_ids is not None
             else None
         )
+        # v0.9.1: **which members do not belong**, under the identical discipline — bounded, never
+        # rejected, and never used to validate the existence of anything. Absence is "the operator
+        # marked nothing", which is a plain `split`, and never a guess.
+        exclusion = (
+            capture.Exclusion.accept(body.excluded_ids, body.remainder_together)
+            if body.excluded_ids is not None
+            else None
+        )
         async with write_txn():
             # F36: `recorded.exists` is the 404 question; `recorded.inserted` is whether this
             # verdict was new. A repeat is a no-op that still answers 200 — the operator's
@@ -105,8 +113,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 time.time(),
                 principal_ref=principal.ref,
                 role=principal.role,
-                scope=label_scope,
-                client=client,
+                label=capture.LabelContext(label_scope, client, exclusion),
             )
             if recorded.exists and recorded.inserted:
                 await audit_row(

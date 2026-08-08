@@ -44,9 +44,12 @@ from netcorenoc.correlate import (
 from netcorenoc.labels import (
     MAX_CLIENT_MEMBERS,
     ClientFingerprint,
+    Exclusion,
+    LabelContext,
     LabelScope,
     member_digest,
     record_label,
+    server_bag,
 )
 from netcorenoc.retention_policy import RETENTION_META_KEY, TIER_NAMES, RetentionPolicy
 from netcorenoc.scoring import LINK_THRESHOLD, LinkScore
@@ -66,10 +69,13 @@ __all__ = [
     "TIER_NAMES",
     "Capture",
     "ClientFingerprint",
+    "Exclusion",
+    "LabelContext",
     "LabelScope",
     "RetentionPolicy",
     "member_digest",
     "record_label",
+    "server_bag",
 ]
 
 

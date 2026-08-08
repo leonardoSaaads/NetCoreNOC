@@ -2784,3 +2784,35 @@ grouping**.
   `Store`, and `tests/test_store_concurrency.py::test_no_store_method_acquires_the_store_lock` walks
   the MRO, so the new arrangement is covered automatically — a point that test's own docstring
   anticipated: *"the split is exactly when someone might 'helpfully' add one to a new mixin."*
+
+## 129. `LabelContext`, and the bag resolution leaves `engine.py` (v0.9.1)
+
+- **Context**: `engine.apply_feedback` had to learn two more things — the exclusion set and the
+  acquisition channel — and `engine.py` sat at **exactly 580 lines**, its `COHESION_EXEMPT_CEILING`,
+  with **zero headroom** (Gate 0 §6). Adding two keyword parameters and their call-site arguments
+  pushed the file to **600**, because a `record_label(...)` call that no longer fits on one line is
+  exploded to one argument per line by the formatter.
+- **Options**: (a) raise the ceiling; (b) trim reasoning in `engine.py` to make room; (c) bundle the
+  per-verdict parameters into one object; (d) move something out of `engine.py`.
+- **Choice**: **(c) and (d) together** — a frozen `LabelContext` in `labels.py`, and `server_bag`
+  moved there too.
+- **Reason**: (a) is forbidden by this release's own rules and is the ratchet #121 refused; (b) is
+  what #108 and #113 both rejected. (c) alone was not enough, and (d) alone would not have stopped
+  the parameter list growing again next release — so both, and each pays for itself:
+  * **`LabelContext`** collapses `scope`, `client`, `exclusion` and `channel` into one argument, so
+    the next release adds a field *here* rather than in `apply_feedback`'s signature, its call site,
+    and every test that constructs one. It also gives the two rules about a label's contents a place
+    to live: `for_verdict` drops an exclusion that arrived on a `confirm` (#124), and
+    `marked_positions` returns `None` when nothing was asserted (#125). Both are decisions about
+    *what a label records*, which is `labels.py`'s subject and not the engine's.
+  * **`server_bag`** is the eight lines that read the bag from engine state or, for a closed or
+    merged situation, from `situation_alarm`. It is about **what a label's evidence is**, which
+    `labels.py`'s docstring already claims; `engine.py`'s exemption covers the **ingest path**, not
+    code that happens to sit near it. Net: `engine.py` 580 → **569**, with headroom for the close
+    channel that follows.
+- **The cost, paid deliberately**: five call sites change from `scope=`/`client=` to
+  `label=LabelContext(...)` — one route and four test fixtures. They are mechanical and they are
+  listed in Gate 6's `tests/` diff justification rather than buried.
+- **What did NOT move**: `apply_feedback` itself. It is a write path into learned state on the batch
+  lock's discipline, which `engine.py`'s docstring lists among what stays, and #90's reasoning is
+  untouched.

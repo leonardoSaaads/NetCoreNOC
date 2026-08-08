@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from netcorenoc import bias, bias_report
-from netcorenoc.labels import ClientFingerprint
+from netcorenoc.labels import ClientFingerprint, LabelContext
 from netcorenoc.main import Engine
 from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
@@ -115,7 +115,9 @@ async def build_fixture(store: Store) -> None:
             TS + 30.0,
             principal_ref="alice",
             role="editor",
-            client=ClientFingerprint.accept([triples[0][0], triples[1][0]], TS + 25.0),
+            label=LabelContext(
+                client=ClientFingerprint.accept([triples[0][0], triples[1][0]], TS + 25.0)
+            ),
         )
         # A split from a scoped operator who could not see two of the members.
         from netcorenoc.capture import LabelScope
@@ -126,7 +128,7 @@ async def build_fixture(store: Store) -> None:
             TS + 600.0,
             principal_ref="bob",
             role="editor",
-            scope=LabelScope(policy_id=7, restricted=True, redacted_members=2),
+            label=LabelContext(scope=LabelScope(policy_id=7, restricted=True, redacted_members=2)),
         )
         # A verdict on a situation with no members at all — the zero-member bag.
         await engine.apply_feedback(sid_c, "confirm", TS + 90.0, principal_ref="alice")

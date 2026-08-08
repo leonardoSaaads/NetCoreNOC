@@ -364,10 +364,19 @@ async function rename(kind, id, current) {
 // Additive and optional: omitting it is legal and means "unrecorded", never a guess. An old cached
 // app.js, or a `curl` call, keeps working — the server treats absence and presence identically
 // apart from what it records.
-async function feedback(sid, verdict, shown) {
+// v0.9.1 §4.1 — `excluded` is WHICH members the operator marked as not belonging. Optional and
+// additive exactly as `shown` is: omitting it is legal and means "the operator marked nothing",
+// which is a PLAIN split, never a guess.
+//
+// It asserts `marked`-by-`rest` negative and NOTHING ELSE. The remainder is left unasserted, and
+// this file does not offer a control for asserting it: that would be a SECOND gesture, and the
+// stronger claim is not worth buying that way (DECISIONS #127). The API and the schema carry the
+// field for a rebuilt UI; every row this release writes leaves it NULL.
+async function feedback(sid, verdict, shown, excluded) {
   try {
     const json = { verdict };
     if (shown) { json.member_ids = shown.ids; json.updated_at = shown.updated_at; }
+    if (excluded && excluded.length) json.excluded_ids = excluded;
     await api(`/api/situations/${sid}/feedback`, { method: "POST", json });
   } catch (err) { alert(`Feedback failed — ${err.message}`); }
   poll();
@@ -438,8 +447,17 @@ async function renderDetail(container, sid) {
         + "is larger than what is shown here." })));
   }
 
+  // v0.9.1 §4.3 — THE ONLY CHANGE THIS RELEASE MAKES TO THIS FILE, and it is a selection on rows
+  // that are already on screen: one checkbox cell per member, read by the Split button below.
+  // No panel, no modal, no restyling, and the card's identity and lifecycle are untouched, so the
+  // v0.7.5 held-card behaviour (§5.1-§5.3) is exactly what it was.
+  //
+  // The boxes exist only for an editor, because only an editor can post a verdict — a viewer's
+  // table renders as it did before, with the same six columns.
+  const marked = new Set();
   const table = el("table");
   table.append(el("tr", null,
+    canEdit() ? el("th", { title: "tick the members that do NOT belong" }) : null,
     el("th", { text: "device" }), el("th", { text: "class" }), el("th", { text: "instance" }),
     el("th", { text: "severity" }), el("th", { text: "count" }), el("th", { text: "state" })));
   for (const a of d.alarms) {
@@ -452,7 +470,15 @@ async function renderDetail(container, sid) {
     if (canEdit()) clsName.addEventListener("click", () => rename("class", a.class_id, alarmName(a)));
     clsCell.append(clsName);
     if (a.is_flapping) clsCell.append(el("span", { class: "flap", text: " ~flapping" }));
-    table.append(el("tr", null, devCell, clsCell,
+    let markCell = null;
+    if (canEdit()) {
+      // `type` is set through `el`'s setAttribute path; no string is ever interpolated into
+      // markup here or anywhere in this function (F1).
+      const box = el("input", { type: "checkbox", title: "this member does not belong" });
+      box.addEventListener("change", () => { box.checked ? marked.add(a.id) : marked.delete(a.id); });
+      markCell = el("td", null, box);
+    }
+    table.append(el("tr", null, markCell, devCell, clsCell,
       el("td", { text: a.instance || "—" }), severityCell(a),
       el("td", { text: a.count }), el("td", { text: a.status })));
   }
@@ -476,7 +502,10 @@ async function renderDetail(container, sid) {
     const shown = { ids: d.alarms.map((a) => a.id), updated_at: d.updated_at };
     fb.append(
       el("button", { text: "✓ Confirm grouping", onclick: () => feedback(sid, "confirm", shown) }),
-      el("button", { class: "warn", text: "✗ Split (wrong grouping)", onclick: () => feedback(sid, "split", shown) }));
+      // The marked set is read AT CLICK TIME from the boxes in this render's own table, and it is
+      // sent only with a `split` — a `confirm` asserts every pair positive, so an exclusion on one
+      // would be a contradiction the server would drop anyway.
+      el("button", { class: "warn", text: "✗ Split (wrong grouping)", onclick: () => feedback(sid, "split", shown, [...marked]) }));
     if (d.status === "open") fb.append(el("button", { text: "Close situation", onclick: () => closeSituation(sid) }));
     frag.append(fb);
   }

@@ -16,7 +16,7 @@ import pytest
 
 from netcorenoc.capture import Capture, RetentionPolicy
 from netcorenoc.correlate import ScoredLink, WindowAlarm
-from netcorenoc.labels import ClientFingerprint, coverage, member_digest
+from netcorenoc.labels import ClientFingerprint, LabelContext, coverage, member_digest
 from netcorenoc.main import Engine
 from netcorenoc.rootcause import Member
 from netcorenoc.scoring import LinkScore, TermContribution
@@ -437,7 +437,7 @@ async def test_the_client_fingerprint_is_recorded_verbatim_including_unknown_ids
             sid,
             "confirm",
             TS + 1.0,
-            client=ClientFingerprint.accept([ids[0][0], ghost], 99.0),
+            label=LabelContext(client=ClientFingerprint.accept([ids[0][0], ghost], 99.0)),
         )
         await store.commit()
     assert recorded.id is not None

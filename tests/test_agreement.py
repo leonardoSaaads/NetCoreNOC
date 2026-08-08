@@ -21,7 +21,7 @@ import asyncio
 from pathlib import Path
 
 from netcorenoc import agreement, agreement_report
-from netcorenoc.labels import LabelScope
+from netcorenoc.labels import LabelContext, LabelScope
 from netcorenoc.main import Engine
 from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
@@ -123,9 +123,11 @@ async def build_fixture(store: Store) -> None:
                 TS + 1000.0 + index,
                 principal_ref=operator,
                 role="editor" if operator else None,
-                scope=LabelScope(policy_id=7, restricted=True, redacted_members=2)
-                if restricted
-                else None,
+                label=LabelContext(
+                    scope=LabelScope(policy_id=7, restricted=True, redacted_members=2)
+                    if restricted
+                    else None
+                ),
             )
         # A pre-v0.7.5 row, marked as migration 0008 would have marked it. It must appear in the
         # provenance section and NOWHERE else — the headline is `current` only.

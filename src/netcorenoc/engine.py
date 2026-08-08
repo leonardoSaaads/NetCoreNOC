@@ -44,12 +44,7 @@ from dataclasses import dataclass, field
 
 from netcorenoc import capture as capture_mod
 from netcorenoc import known_oids, severity
-from netcorenoc.capture import (
-    Capture,
-    ClientFingerprint,
-    LabelScope,
-    RetentionPolicy,
-)
+from netcorenoc.capture import Capture, LabelContext, RetentionPolicy
 from netcorenoc.correlate import Correlator, ScoredLink, WindowAlarm
 from netcorenoc.engine_base import EngineBase
 from netcorenoc.events import Fingerprint, QuarantinedPacket, TrapEvent
@@ -504,8 +499,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         *,
         principal_ref: str | None = None,
         role: str | None = None,
-        scope: LabelScope | None = None,
-        client: ClientFingerprint | None = None,
+        label: LabelContext | None = None,
     ) -> FeedbackResult:
         """Operator feedback: ``confirm`` reinforces the grouping, ``split`` penalizes.
 
@@ -526,26 +520,21 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         )
         if not recorded.exists or not recorded.inserted:
             return recorded
-        members = self.members.get(sid)
-        if members is not None:
-            items = [(m.class_id, m.device_id) for m in members]
-            bag = [m.alarm_id for m in members]
-        else:
-            rows = await self.store.situation_members(sid)
-            items = [(int(r["class_id"]), int(r["device_id"])) for r in rows]
-            bag = [int(r["id"]) for r in rows]
+        items, bag = await capture_mod.server_bag(self.members.get(sid), self.store, sid)
+        # v0.9.1: `for_verdict` drops an exclusion that arrived on a `confirm`, which would be a
+        # contradiction rather than evidence (DECISIONS #124).
+        ctx = (label or capture_mod.LabelContext()).for_verdict(verdict)
         # v0.8.0 (S4/S6). The bag the server holds at this instant, the label's provenance, and
         # promotion — all of it in `netcorenoc.capture`, all of it degrading rather than raising.
-        await capture_mod.record_label(
-            self.capture, self.store, recorded, sid, ts, bag, scope=scope, client=client
-        )
+        await capture_mod.record_label(self.capture, self.store, recorded, sid, ts, bag, ctx)
         if verdict == "confirm":
             # advance_epoch=False: an epoch is a *closed situation*, which is what learn.py has
             # said since v0.1.0. Operator feedback is an opinion about one grouping and must not
             # age the whole appliance's learned state (DECISIONS #69).
             self.learner.learn_epoch(items, advance_epoch=False)
         else:
-            self.learner.penalize(items)
+            # Only the pairs the operator asserted, when they asserted any (DECISIONS #125).
+            self.learner.penalize(items, ctx.marked_positions(bag))
         return recorded
 
     async def maintenance(self, now: float, retention_days: float, tick: int = 0) -> None:

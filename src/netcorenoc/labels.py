@@ -30,11 +30,16 @@ if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
 __all__ = [
     "MAX_CLIENT_MEMBERS",
     "ClientFingerprint",
+    "Exclusion",
+    "LabelContext",
     "LabelScope",
     "coverage",
     "member_digest",
     "record_label",
+    "server_bag",
 ]
+
+Item = tuple[int, int]  # (class_id, device_id) — `learn.Item`, restated to avoid the import
 
 
 @dataclass(frozen=True)
@@ -73,6 +78,108 @@ class ClientFingerprint:
         recorded — there is no path here that raises, rejects, or inspects an id's meaning."""
         bounded = alarm_ids[:MAX_CLIENT_MEMBERS]
         return cls(bounded, updated_at, truncated=len(alarm_ids) > MAX_CLIENT_MEMBERS)
+
+
+@dataclass(frozen=True)
+class Exclusion:
+    """**Which members do not belong** — the assertion v0.9.1 exists to capture.
+
+    A `split` says *"these members are at least two situations"* and does not say which. This says
+    which, and it says **only** that: the pairs `marked`-by-`rest` are asserted negative, and the
+    pairs *within* the remainder and *within* the marked set are **unknown** (DECISIONS #124). The
+    arithmetic closes — `m*r + r(r-1)/2 + m(m-1)/2 = n(n-1)/2` — which is what makes "and nothing
+    else" checkable rather than merely promised.
+
+    Hostile input, on a write path that has already produced F34, F35 and F39, so it gets the
+    treatment `ClientFingerprint` gets and for the same reasons: **bounded, never rejected, and
+    never used to validate the existence of anything.** A marked id the principal cannot see, or
+    that does not exist, is recorded exactly as reported and changes nothing about the response,
+    its status or its timing.
+
+    `remainder_together` is the operator's *separate* assertion about the rest, and `None` means
+    **not asserted** — it is never inferred from the marking.
+    """
+
+    alarm_ids: list[int]
+    remainder_together: bool | None = None
+    truncated: bool = False
+
+    @classmethod
+    def accept(cls, alarm_ids: list[int], remainder_together: bool | None) -> Exclusion:
+        """Bound the report. **The only thing that can happen to it is truncation**, and that is
+        recorded — there is no path here that raises, rejects, or inspects an id's meaning."""
+        bounded = alarm_ids[:MAX_CLIENT_MEMBERS]
+        return cls(bounded, remainder_together, truncated=len(alarm_ids) > MAX_CLIENT_MEMBERS)
+
+    def marked_positions(self, bag: list[int]) -> frozenset[int]:
+        """The positions **in the server's own bag** that the operator marked.
+
+        The intersection is where the untrusted half meets the trusted one, and it is deliberately
+        silent: an id that is not in the bag — because it does not exist, or because the caller
+        guessed it — simply contributes to nothing. It is still *recorded* verbatim as evidence;
+        it just cannot assert anything about a pair that does not exist.
+        """
+        marked = set(self.alarm_ids)
+        return frozenset(i for i, alarm_id in enumerate(bag) if alarm_id in marked)
+
+
+@dataclass(frozen=True)
+class LabelContext:
+    """Everything about a verdict that is not the verdict itself.
+
+    One object rather than four parameters threaded through two layers, so that adding a fifth is
+    a change here instead of a change in `engine.apply_feedback`'s signature, its call site, and
+    every test that constructs one. `engine.py` is `COHESION_EXEMPT` at a ceiling equal to its
+    exact size, so a parameter list that grows once per release is a real cost there.
+    """
+
+    scope: LabelScope | None = None
+    client: ClientFingerprint | None = None
+    exclusion: Exclusion | None = None
+    channel: str = "organic"
+
+    def for_verdict(self, verdict: str) -> LabelContext:
+        """Drop an exclusion that arrived on a `confirm`.
+
+        A `confirm` already asserts **every** pair positive, so attaching negatives to one would
+        record a contradiction as though it were evidence (DECISIONS #124). The request still
+        succeeds and its status, body and timing are unchanged — the exclusion is simply not part
+        of what a `confirm` asserts, which is the §10 rule that ambiguity about what the operator
+        asserted resolves to *less*.
+        """
+        if verdict == "split" or self.exclusion is None:
+            return self
+        return LabelContext(self.scope, self.client, None, self.channel)
+
+    def marked_positions(self, bag: list[int]) -> frozenset[int] | None:
+        """The positions in the server's bag the operator marked, or `None` for no assertion.
+
+        `None` is what keeps the plain-split path byte-identical to v0.9.0 (DECISIONS #125).
+        """
+        return None if self.exclusion is None else self.exclusion.marked_positions(bag)
+
+
+async def server_bag(
+    members: list[Any] | None, store: Store, situation_id: int
+) -> tuple[list[Item], list[int]]:
+    """**The bag the server holds at this instant**, from engine state or from the store.
+
+    Two readings of one fact, and the fallback is not a nicety: `engine.members` holds only *open*
+    situations, so a verdict on a closed or merged one has to come from `situation_alarm`. Both
+    return the same two lists — the `(class, device)` items the learner works in, and the ordered
+    alarm ids that are the label's evidence.
+
+    Lives here rather than in `engine.py` because it is about **what a label records**, which is
+    this module's subject, and because `engine.py`'s cohesion exemption covers the ingest path
+    rather than code that happens to sit near it (DECISIONS #121's reasoning, applied again).
+    """
+    if members is not None:
+        return [(m.class_id, m.device_id) for m in members], [m.alarm_id for m in members]
+    rows = await store.situation_members(situation_id)
+    return (
+        [(int(r["class_id"]), int(r["device_id"])) for r in rows],
+        [int(r["id"]) for r in rows],
+    )
 
 
 def coverage(bag: list[int], promoted: int) -> dict[str, Any]:
@@ -122,9 +229,7 @@ async def record_label(
     situation_id: int,
     ts: float,
     bag: list[int],
-    *,
-    scope: LabelScope | None,
-    client: ClientFingerprint | None,
+    label: LabelContext,
 ) -> None:
     """S4 + S6: the label's provenance, its bag, and promotion — recorded, never guessed.
 
@@ -143,17 +248,20 @@ async def record_label(
     """
     if not capture.enabled or recorded.id is None:
         return
+    scope, client, exclusion = label.scope, label.client, label.exclusion
     try:
         await store.add_feedback_members(recorded.id, "server", bag)
         promoted, _observations = await store.promote_for_situation(situation_id, ts)
         fields: dict[str, Any] = {
             "member_digest": member_digest(bag),
             "member_count": len(bag),
-            # v0.8.0 writes `organic` on every row. The column exists so that if a later release
-            # ever *solicits* labels, the two populations stay separable — solicited labels have a
-            # deliberately different distribution, and mixing them destroys the bias
-            # characterisation retroactively, for rows already written (§5b).
-            "acquisition_channel": "organic",
+            # v0.8.0 wrote `organic` on every row and built this column for the day a second
+            # channel existed. v0.9.1 is that day: a verdict recorded through `close` writes
+            # `close`, because closing selects for RESOLVED incidents and that is a different
+            # population from the one an operator browses and labels spontaneously
+            # (DECISIONS #126). The two are reported separately and never averaged — mixing them
+            # would destroy the bias characterisation retroactively, for rows already written.
+            "acquisition_channel": label.channel,
             # Everything this release writes was acquired over the path v0.7.5 repaired.
             "capture_provenance": "current",
             "situation_opened_at": await store.situation_opened_at(situation_id),
@@ -180,6 +288,24 @@ async def record_label(
             # about the response, its status or its timing. That is what keeps this from being an
             # existence oracle (§5a) — a security requirement, not a nicety.
             await store.add_feedback_members(recorded.id, "client", client.alarm_ids)
+        if exclusion is not None:
+            # The same three properties as the client fingerprint above, for the same reasons: the
+            # ids are written verbatim, nothing is looked up, and an id that names nothing simply
+            # asserts nothing. `excluded_count` is NULL when the operator marked nothing, because
+            # "marked nothing" is a PLAIN split rather than an assertion about an empty set — and
+            # 0 would be indistinguishable from one.
+            fields.update(
+                excluded_count=len(exclusion.alarm_ids) or None,
+                excluded_truncated=1 if exclusion.truncated else 0,
+                # Three states, and NULL is the one that matters: the operator did not say.
+                # Never inferred from the marking (DECISIONS #124).
+                remainder_together=(
+                    None
+                    if exclusion.remainder_together is None
+                    else int(exclusion.remainder_together)
+                ),
+            )
+            await store.add_feedback_exclusion(recorded.id, exclusion.alarm_ids)
         await store.annotate_feedback(recorded.id, **fields)
     except Exception as exc:
         capture._degrade(exc)
