@@ -296,3 +296,61 @@ def test_no_module_but_tables_binds_an_authorization_table() -> None:
         + "\n  ".join(offenders)
         + "\n\ntables.py is the single source of authority. Import the name; never rebind it."
     )
+
+
+def test_every_capability_names_the_role_it_was_designed_for() -> None:
+    """**The whole capability table, pinned** (v0.9.1's test audit, seeds A1 and A2).
+
+    Until this test, `PERMISSIONS["config.read"] == "admin"` was the *only* role assignment anything
+    asserted. The seeded-defect audit moved `feedback.write` and `situation.close` from `editor` to
+    `viewer` — granting every read-only account the ability to write labels and close situations —
+    and **all 958 tests stayed green** (`docs/gates/v0.9.1-test-audit.md`, seeds A1/A2).
+
+    Nothing downstream noticed because everything downstream is derived: `role_allows`, the
+    resolver, the route table and the generated authorization matrix all read `PERMISSIONS` and
+    agree with whatever it says. A table that is the source of truth for every derived check needs
+    its own assertion, or the derivation is measuring itself.
+
+    This is deliberately a **whole-table** expectation rather than a spot check on the two the audit
+    happened to seed. A capability added without a line here fails, which is the point: adding one
+    is a decision about least privilege, and it should cost a reviewer's attention.
+    """
+    assert rbac.PERMISSIONS == {
+        # any authenticated principal
+        "self.read": "viewer",
+        # read / stream (viewer+)
+        "stats.read": "viewer",
+        "graph.read": "viewer",
+        "classes.read": "viewer",
+        "situations.read": "viewer",
+        "timeline.read": "viewer",
+        "events.stream": "viewer",
+        "entities.read": "viewer",
+        "scorer.read": "viewer",
+        # operate (editor+)
+        "feedback.write": "editor",
+        "label.write": "editor",
+        "situation.close": "editor",
+        # administer (admin only)
+        "users.manage": "admin",
+        "entity.reset": "admin",
+        "profile.reset": "admin",
+        "tokens.manage": "admin",
+        "config.read": "admin",
+        "config.write": "admin",
+        "quarantine.read": "admin",
+        "audit.read": "admin",
+        "audit.export": "admin",
+        "audit.prune": "admin",
+        "scorer.preview": "admin",
+        "scorer.write": "admin",
+        "rbac.read": "admin",
+        "rbac.write": "admin",
+        "scope.read": "admin",
+        "scope.write": "admin",
+    }, (
+        "the capability table changed. Every derived check — role_allows, the resolver, the "
+        "route table, the authorization matrix — reads this dict and will agree with whatever it "
+        "says, so a capability quietly moved to a lower role is invisible everywhere else. If the "
+        "change is intended, update this expectation deliberately."
+    )

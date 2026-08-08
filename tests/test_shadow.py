@@ -404,6 +404,25 @@ async def test_online_and_offline_opinions_agree_bit_for_bit(store: Store) -> No
             diverged += 1
     assert diverged == 0, f"{diverged} of {len(rows)} sampled opinions diverged"
 
+    # v0.9.1 (test audit, seed S1). `shadow_skew_rows` SELECTs `served_delta_t_s`,
+    # `served_class_affinity` and `served_entity_affinity` and the comparison above never reads
+    # them: `reconstruct` works from the OFFLINE `dataset_pair` columns. SECURITY-REVIEW-0.9.0
+    # predicted the consequence — the score comparison "is blind to a feature divergence that does
+    # not move the score, and its correctness depends on a column-aliasing convention that a future
+    # SELECT rewrite would silently invert" — and the audit CONFIRMED it by execution: swapping
+    # which source column each `served_*` alias points at left all 958 tests green.
+    #
+    # One assertion closes the aliasing half: each served column must carry the value the online
+    # path actually served for that pair. A rewrite that inverted two aliases now fails here.
+    for row in rows:
+        served = entry_by_pair[(int(row["alarm_a"]), int(row["alarm_b"]))]
+        assert float(row["served_delta_t_s"]) == float(served["delta_t_s"]), (
+            "served_delta_t_s does not carry the served delta_t — the aliasing convention the "
+            "skew comparison depends on has been inverted"
+        )
+        assert float(row["served_class_affinity"]) == float(served["class_affinity"])
+        assert float(row["served_entity_affinity"]) == float(served["entity_affinity"])
+
     async with store.lock:
         document = await shadow_report.collect(store)
     assert document["skew"]["diverged"] == 0

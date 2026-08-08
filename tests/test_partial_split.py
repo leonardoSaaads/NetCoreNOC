@@ -565,3 +565,41 @@ async def test_a_close_with_a_verdict_needs_feedback_write_as_well(store: Store)
     cur = await store.conn.execute("SELECT COUNT(*) FROM feedback")
     row = await cur.fetchone()
     assert row is not None and int(row[0]) == 0
+
+
+async def test_marking_nothing_records_no_assertion_rather_than_an_empty_one(
+    store: Store,
+) -> None:
+    """`excluded_count` is **NULL, never 0** — migration `0010` states that "0 cannot occur", and
+    until this test nothing checked it (v0.9.1's test audit, seed L4).
+
+    The distinction is the release's whole discipline in one column. *"The operator marked
+    nothing"* is a **plain** split, which asserts the bag is at least two situations and nothing
+    about any pair. A stored 0 would say something different and weaker-sounding but strictly
+    stronger: *"the operator made an exclusion assertion, and it was empty"* — a claim nobody made,
+    and one a later release could reasonably read as "the operator considered the members and
+    excluded none of them".
+
+    The shipped UI cannot produce this (it sends `excluded_ids` only when something is ticked), so
+    the path is reachable only by a direct API call — which is exactly the kind of input this write
+    path is required to handle without inventing meaning.
+    """
+    engine, _queue, app = await authutil.make_env(store)
+    sid, _alarms = await _situation(store, engine, 4)
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        resp = await client.post(
+            f"/api/situations/{sid}/feedback", json={"verdict": "split", "excluded_ids": []}
+        )
+    finally:
+        await client.aclose()
+
+    assert resp.status_code == 200, resp.text
+    cur = await store.conn.execute("SELECT id, excluded_count FROM feedback")
+    row = dict(next(iter(await cur.fetchall())))
+    assert row["excluded_count"] is None, (
+        "an empty marked set was recorded as an assertion about nothing (0) rather than as no "
+        "assertion (NULL); `0010` says 0 cannot occur"
+    )
+    assert await store.feedback_exclusion(int(row["id"])) == []
