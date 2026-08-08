@@ -10,6 +10,11 @@ Nothing here decides anything. The engine-side logic that turns a `CorrelationRe
 including the fail-safe that a capture error degrades capture and never ingestion — is
 `netcorenoc.capture`. This module is SQL.
 
+**v0.9.1 (DECISIONS #128): the label row's children left for `feedback.py`** — the bag, the
+annotations, the situation's open time. What remains is the **ingest-path** half: the capture run,
+the sink, promotion, and the retention tiers. The two were never two halves of one thing, and this
+release's additions land entirely on the other side of that line.
+
 **No method here takes ``store.lock``.** That is this package's contract for callers and it is not
 relaxed for a dataset feature (v0.7.3's invariant; `tests/test_store_concurrency.py` is the
 control).
@@ -139,60 +144,6 @@ class DatasetMixin(StoreBase):
         )
         observations = len(list(await cur.fetchall()))
         return pairs, observations
-
-    # -- the membership record -----------------------------------------------------------------
-
-    async def situation_opened_at(self, situation_id: int) -> float | None:
-        """When the situation opened — the other half of label latency.
-
-        A verdict four seconds after a situation opened and one after ten minutes of investigation
-        are not the same evidence, and `feedback.created_at` alone cannot tell them apart. Copied
-        onto the label row rather than joined later because `prune()` deletes closed situations on
-        the operational schedule, taking the open time with it.
-        """
-        cur = await self.conn.execute(
-            "SELECT created_at FROM situation WHERE id=?", (situation_id,)
-        )
-        row = await cur.fetchone()
-        return float(row[0]) if row is not None else None
-
-    async def add_feedback_members(
-        self, feedback_id: int, source: str, alarm_ids: list[int]
-    ) -> None:
-        """The ordered bag, server-side or client-reported (§5.4).
-
-        `INSERT OR REPLACE` because a *changed* verdict is a legitimate correction (F36) that
-        re-posts, and the second post's bag is the one that matches its row.
-
-        An **empty** ``alarm_ids`` writes nothing and that is correct, not a no-op to guard against:
-        a verdict posted to an already-merged situation genuinely has an empty bag, and recording
-        zero rows is how that population becomes countable.
-        """
-        if not alarm_ids:
-            return
-        await self.conn.executemany(
-            "INSERT OR REPLACE INTO feedback_member (feedback_id, source, position, alarm_id) "
-            "VALUES (?, ?, ?, ?)",
-            [(feedback_id, source, i, aid) for i, aid in enumerate(alarm_ids)],
-        )
-
-    async def feedback_members(self, feedback_id: int, source: str) -> list[int]:
-        cur = await self.conn.execute(
-            "SELECT alarm_id FROM feedback_member WHERE feedback_id=? AND source=? "
-            "ORDER BY position",
-            (feedback_id, source),
-        )
-        return [int(r[0]) for r in await cur.fetchall()]
-
-    async def annotate_feedback(self, feedback_id: int, **fields: Any) -> None:
-        """Set the label row's dataset columns. Written once, at the moment of the verdict."""
-        if not fields:
-            return
-        assignments = ", ".join(f"{name}=?" for name in fields)
-        await self.conn.execute(
-            f"UPDATE feedback SET {assignments} WHERE id=?",  # nosec B608
-            (*fields.values(), feedback_id),
-        )
 
     # -- retention -----------------------------------------------------------------------------
 
