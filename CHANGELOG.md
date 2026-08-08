@@ -4,6 +4,83 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-08-08 — "the partial split"
+
+**The operator can say *which* members do not belong — and the project audits whether its own tests
+would notice if they were wrong.**
+
+A patch-shaped release in the v0.7.5 mould: a small, auditable diff that improves the evidence the
+product gathers, and turns the same scepticism on the test suite that guards everything else. It is
+the second release inserted for label integrity, and the first one bought the whole v0.8.0 dataset.
+
+### Why
+
+Two releases in a row reported insufficiency. The binding constraint on v0.10.0 through v0.13.0 is
+not a missing evaluator — it is a missing **label**. A `split` verdict asserted *"these members are
+at least two situations"* **without saying which**, so it supported no pairwise claim at all: the
+minority class, the only source of negative evidence in the entire system, was also the least
+informative label the product knew how to collect.
+
+Gate 0 §1 demonstrates it by query and by arithmetic. The complete recorded evidence of a `split` was
+a verdict and an ordered member list, with no column, table or row anywhere in the schema asserting
+one member separate from another — while `learn.penalize()` responded by halving **every** matrix
+cell the bag spanned: on a nine-member bag, all 36 member pairs driving 72 cells, from an assertion
+that named none of them.
+
+### Added
+
+* **The partial split.** `POST /api/situations/{sid}/feedback` accepts an optional `excluded_ids` —
+  the members the operator marked as not belonging — and an optional `remainder_together`. The
+  assertion is recorded **exactly as made**: `marked` × `rest` is asserted negative and **nothing
+  else**, with the pairs inside the remainder and inside the marked set left **unknown**. On a
+  nine-member bag with two marked, one gesture now yields **fourteen asserted negative pairs** where
+  it previously yielded none.
+* **The close channel.** `POST /api/situations/{sid}/close` accepts an optional verdict, recording
+  the same label the feedback endpoint would — same bag, same fingerprint discipline, same scope
+  fingerprint — with `acquisition_channel = 'close'` rather than `'organic'`, because closing selects
+  for *resolved* incidents and that is a different population.
+* **Informativeness in all three reports.** Asserted negative pairs, the plain-versus-partial split
+  breakdown, `|marked|` against bag size, the remainder-assertion rate, closes without a verdict, a
+  per-channel section in the bias report, every existing conditioning repeated per channel in the
+  agreement report, and `split ∧ mixed` and asserted negatives as observations beside the shadow
+  report's floors.
+* **A seeded-defect audit of the test suite**, `docs/gates/v0.9.1-test-audit.md`.
+* **Migration `0010`** — `feedback_exclusion`, and `excluded_count`, `excluded_truncated` and
+  `remainder_together` on `feedback`. Additive; seeds nothing; **backfills nothing**.
+
+### Changed
+
+* **`learn.penalize()` uses the assertion when there is one.** Given an exclusion it halves only the
+  asserted `marked` × `rest` pairs and leaves the unasserted remainder alone. **Without one it is
+  v0.9.0 byte for byte**, proved against a restatement of the v0.9.0 body.
+* The label row's children moved from `store/dataset.py` to `store/feedback.py`, where the label row
+  already lives (DECISIONS #128) — a pure move, no body edited.
+* `engine.apply_feedback` takes one `LabelContext` in place of `scope=` and `client=`
+  (DECISIONS #129), which is what kept `engine.py` inside its 580-line cohesion ceiling.
+
+### Not changed, deliberately
+
+* **`make eval` is byte-identical**: `c2e8a0ced29d9edf986279d41089ddb68e18da65a46bdc7e9f04811e8b9b6f26`.
+* **Closing without judging** is exactly as easy as it was: no body, `{}` and `{"verdict": null}` all
+  behave as at v0.9.0 and write no label.
+* **No new capability, audit action, route, runtime dependency or served path.** Five runtime
+  dependencies, unchanged for nine releases.
+* **The UI stays four files**, with no panel, modal or restyling. The exclusion gesture is a checkbox
+  cell in the member table already on screen; the v0.7.5 held-card tests pass unedited.
+* **The v0.9.0 pre-registration is untouched**, hash `bb5bff85…2cbaef`, and no floor was moved.
+
+### What this release does not claim
+
+* **It raises informativeness, not rate.** The close gesture is deferred (DECISIONS #130), so the
+  shipped UI writes `organic` on every row: the channel has its mechanism and none of its volume.
+* **The exclusion set cannot be demonstrated on the corpus.** Eleven of the thirteen `split` bags in
+  the fullest corpus this repository can construct have fewer than two members; the other two are
+  storms of 240 and 501. The semantics are proved on a purpose-built fixture, and no projection of
+  the gain is supportable from the data available.
+* **The prize is unmeasurable here.** The corpus labels every situation by construction and none of
+  its closes came from an operator, so closes-without-a-verdict is counted from the day this release
+  ships rather than estimated now.
+
 ## [0.9.0] - 2026-08-03 — "shadow mode"
 
 **A challenger runs beside the champion and writes its opinion where nobody acts on it. The

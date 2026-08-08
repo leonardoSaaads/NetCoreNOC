@@ -177,3 +177,102 @@ here is a release that lists the hazard and then does none of them.
 4. **A composite quality score.** See §3.
 5. **Relaxing the `incumbent_linked` invariant.** See §0 — and if v0.10.0 believes it has earned the
    relaxation, that belief belongs in its pre-registration, before the numbers.
+## 7. What v0.9.1 changed about this inheritance (added 2026-08-08, `v0.10.0: planned`)
+
+**Appended, not rewritten.** §§0–6 above were written from what v0.9.0 measured and stay exactly as
+they were; this section records what a **patch release inserted for label integrity** changed about
+what v0.10.0 receives. Where it contradicts an earlier section, it says so explicitly rather than
+editing the earlier text.
+
+### 7.1 The `split` label is no longer uninformative by construction
+
+§3 states the defect and treats it as permanent:
+
+> A `split` bag asserts *"these members are at least two situations"* without saying **which**, so it
+> supports no truth partition; folding it into an over-merge rate fabricates a denominator.
+
+**That is now a property of a `split` *without* an exclusion set, not of `split`.** v0.9.1 added an
+optional exclusion: the operator marks which members do not belong, and the record asserts
+`marked × rest` **negative** and nothing else — the pairs *within* the remainder and *within* the
+marked set stay **unknown** (DECISIONS #124). The arithmetic closes exactly,
+`m·r + r(r−1)/2 + m(m−1)/2 = n(n−1)/2`, which is what makes "and nothing else" checkable.
+
+**What this gives v0.10.0, and what it does not:**
+
+* **It does give** the first **asserted negative pairs** the system has ever held. Every previous
+  release's negative class was derived — policy A fabricated it, policy B discarded it. These are
+  observations.
+* **It does not retire `split_bag_intact_rate`.** A **plain** split still supports no truth
+  partition, and plain splits will remain the majority for as long as an operator can record one in
+  one click. v0.10.0 must keep the third number, and it must now keep it **conditioned on whether
+  the bag carried an exclusion** — a plain split and a partial split are different evidence and an
+  intact-rate that averaged them would be measuring the mix.
+* **It does not license treating the remainder as positive.** `feedback.remainder_together` is
+  `NULL` on every row v0.9.1 writes, because the shipped UI offers no control for it
+  (DECISIONS #127). **`NULL` means the operator did not say**, and a release that read it as
+  agreement would be committing the fabrication v0.8.0 §3.3 refused, one level down. The bias report
+  prints the unasserted-pair count beside the asserted-negative count for exactly this reason.
+
+### 7.2 There are now two acquisition channels
+
+`feedback.acquisition_channel` has held `'organic'` on every row since v0.8.0 built it. v0.9.1
+defines a second value, `'close'`, for a verdict recorded through `POST .../close`
+(DECISIONS #126) — a moment of judgement that **selects for resolved incidents**, which is a
+different population from the one an operator browses and labels spontaneously.
+
+**v0.10.0 must never average them**, and must state which channels its training population drew
+from. The bias and agreement reports repeat every existing conditioning per channel so that the
+question is answerable rather than assumed.
+
+**The honest limit, and it is large**: v0.9.1 **deferred the UI gesture** (DECISIONS #130), so the
+shipped client writes `'organic'` on every row. v0.10.0 will therefore very likely inherit a corpus
+with **zero `close` rows** and a channel mechanism that has never been exercised outside tests. The
+mechanism is real; the volume is not.
+
+### 7.3 The `split ∧ mixed` opinion is now printed, and still not registered
+
+§5 records `SECURITY-REVIEW-0.9.0.md` §5.4's argument that the wrong floor was registered — that
+`split ∧ mixed`, not `split`, is the population carrying information. v0.9.1's shadow report **prints
+that quantity** beside the floors, labelled *"not floors, and not substituted for one"*.
+
+**It floors nothing, and v0.9.1 moved no threshold.** Reporting a better quantity is honest;
+replacing a registered floor after the data has been seen is exactly what pre-registration exists to
+prevent. **The decision belongs in v0.10.0's own pre-registration, in advance**, and it is a real
+decision with a real cost either way: adopting it makes sufficiency harder to reach on a corpus that
+already fails two floors, and rejecting it keeps a floor its own security review argued is measuring
+the wrong thing.
+
+### 7.4 What v0.9.1 did **not** change, stated so it is not re-derived
+
+* **The corpus still does not meet the floors.** Re-measured on v0.9.1's tree, unchanged from
+  v0.9.0: **13 `split` bags against 50, 5 mixed against 20, exactly one bag that is both**
+  (`../gates/v0.9.1-phase-0.md` §2).
+* **`make eval` is byte-identical**, and the correlation, capture and shadow paths are untouched.
+* **The pre-registration of v0.9.0 is unedited**, hash `bb5bff85…2cbaef`, guard green.
+* **No promotion mechanism exists**, and §0's invariant is untouched: no metric that decides
+  promotion may be computed against `incumbent_linked`.
+
+### 7.5 A finding v0.10.0 should not have to rediscover
+
+v0.9.1's Gate 0 §2.1 counted what the fullest corpus this repository can construct actually holds:
+**eleven of its thirteen `split` bags have fewer than two members** — nine singletons and two empty
+— and the remaining two are storms of 240 and 501 members.
+
+> **Not one of them would yield a single asserted negative pair.** The exclusion set cannot be
+> demonstrated on that corpus at all.
+
+That is a property of the corpus's **mechanical labelling rule** (every third situation `split`,
+regardless of whether splitting it means anything), not evidence about operators. Two consequences
+v0.10.0 inherits directly:
+
+1. **A synthetic corpus cannot validate an affordance that depends on what an operator would
+   choose.** v0.9.1 proved its semantics on a purpose-built fixture and said so.
+2. **Any projection of how quickly asserted negatives will accumulate is unsupported.** v0.9.1
+   published none, and v0.10.0 should not manufacture one from the same corpus.
+
+### 7.6 The test suite has been audited, and the map is worth reading
+
+v0.9.1 seeded thirty-one defects across twelve subsystems and recorded which the suite caught
+(`../gates/v0.9.1-test-audit.md`). It is **a sample, not a proof**, and it says so. v0.10.0 inherits
+both the map and the method: a release that adds an evaluator is a release whose guards matter more
+than most, and re-running the technique against the new code costs an afternoon.
