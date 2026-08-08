@@ -132,6 +132,91 @@ async def collect(store: Store) -> dict[str, Any]:
     out["verdicts"] = {str(r["verdict"]): int(r["n"]) for r in verdicts}
     out["labels_total"] = sum(out["verdicts"].values())
 
+    # -- INFORMATIVENESS, not only count (v0.9.1) -------------------------------------------
+    # A label count became the wrong headline the moment labels started to differ in what they
+    # ASSERT. Before this release the quantity below was zero for every corpus that has ever
+    # existed: nothing in the system asserted a negative pair.
+    #
+    # `member_count` is the bag size at label time and `excluded_count` is NULL unless the operator
+    # marked something, so `m * (n - m)` is computed only over rows where an assertion was actually
+    # made. Rows whose bag size was never recorded (pre-v0.8.0) are excluded rather than assumed.
+    partial = await _rows(
+        store,
+        "SELECT id, verdict, member_count AS n, excluded_count AS m, "
+        "       COALESCE(excluded_truncated, 0) AS truncated, remainder_together "
+        "FROM feedback WHERE excluded_count IS NOT NULL AND member_count IS NOT NULL "
+        "ORDER BY id",
+    )
+    negatives = [int(r["m"]) * (int(r["n"]) - int(r["m"])) for r in partial]
+    out["asserted_negative_pairs"] = sum(negatives)
+    out["partial_splits"] = len(partial)
+    out["plain_splits"] = int(out["verdicts"].get("split", 0)) - len(partial)
+    out["asserted_negatives_per_label"] = _distribution(negatives)
+    # Marking eight of nine is a different assertion from marking one of nine, and neither number
+    # means anything without the other — so the DISTRIBUTION of |marked| relative to bag size, in
+    # tenths, rather than a mean that would hide both ends.
+    out["marked_fraction_tenths"] = _distribution(
+        [min(10, int(10 * int(r["m"]) / int(r["n"]))) for r in partial if int(r["n"]) > 0]
+    )
+    out["exclusions_truncated"] = sum(1 for r in partial if int(r["truncated"]))
+    # OFFERED versus TAKEN. The shipped UI offers no control for the remainder assertion
+    # (DECISIONS #127), so `offered` is 0 and so is `taken`. Printed anyway, and named, because a
+    # rate over an affordance nobody was given is not a measurement of operators.
+    out["remainder_offered"] = len(partial)
+    out["remainder_asserted"] = sum(1 for r in partial if r["remainder_together"] is not None)
+    # The pairs a partial split leaves UNASSERTED — within the remainder and within the marked set.
+    # Reported beside the negatives so that v0.10.0 cannot read "not asserted positive" as
+    # "asserted negative": these are the pairs about which the operator said NOTHING.
+    out["unasserted_pairs_in_partial"] = sum(
+        (int(r["n"]) - int(r["m"])) * (int(r["n"]) - int(r["m"]) - 1) // 2
+        + int(r["m"]) * (int(r["m"]) - 1) // 2
+        for r in partial
+    )
+
+    # -- per channel (v0.9.1) ----------------------------------------------------------------
+    # Two populations, reported separately and NEVER averaged. A release that raised the labelling
+    # rate without recording which population it raised it in would have damaged the corpus while
+    # appearing to improve it (DECISIONS #126).
+    out["by_channel"] = {
+        str(r["c"]): {
+            "labels": int(r["n"]),
+            "confirm": int(r["confirms"]),
+            "split": int(r["splits"]),
+            "partial_splits": int(r["partials"]),
+            "asserted_negatives": int(r["negatives"] or 0),
+            "restricted_scope": int(r["restricted"]),
+            "client_reported": int(r["client"]),
+        }
+        for r in await _rows(
+            store,
+            "SELECT COALESCE(acquisition_channel, 'unrecorded') AS c, COUNT(*) AS n, "
+            "  SUM(verdict='confirm') AS confirms, SUM(verdict='split') AS splits, "
+            "  SUM(excluded_count IS NOT NULL) AS partials, "
+            "  SUM(COALESCE(excluded_count, 0) * (COALESCE(member_count, 0) "
+            "      - COALESCE(excluded_count, 0))) AS negatives, "
+            "  SUM(COALESCE(scope_restricted, 0)) AS restricted, "
+            "  SUM(client_member_digest IS NOT NULL) AS client "
+            "FROM feedback GROUP BY c ORDER BY c",
+        )
+    }
+
+    # -- the prize: judgement the product is still failing to capture (v0.9.1) ---------------
+    # Every situation an operator closed without recording a verdict is a judgement that was made
+    # and not captured. Gate 0 §3 measured this as UNMEASURABLE on any corpus this repository can
+    # construct — the corpus labels every situation by construction, and none of its closes came
+    # from an operator — so this counts it from the day the release ships, for v0.10.0's benefit.
+    out["situations_closed"] = await _scalar(
+        store, "SELECT COUNT(*) FROM situation WHERE status='closed'"
+    )
+    out["closed_with_verdict"] = await _scalar(
+        store,
+        "SELECT COUNT(*) FROM situation s WHERE s.status='closed' "
+        "AND EXISTS (SELECT 1 FROM feedback f WHERE f.situation_id = s.id)",
+    )
+    out["closed_without_verdict"] = int(out["situations_closed"] or 0) - int(
+        out["closed_with_verdict"] or 0
+    )
+
     # -- effective sample size -------------------------------------------------------------
     # The number that is most often reported wrongly, and the one this report exists to state
     # correctly. `n` is the number of independent BAGS, not the number of pairs.

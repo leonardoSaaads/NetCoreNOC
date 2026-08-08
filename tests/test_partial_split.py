@@ -17,6 +17,7 @@ Four properties, and each is a section:
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from typing import Any
 
@@ -424,3 +425,143 @@ async def test_the_oracle_is_closed_in_timing_too(store: Store) -> None:
     assert ratio < 3.0, (
         f"existence is measurable in timing: real={real:.6f}s fake={fake:.6f}s ratio={ratio:.2f}"
     )
+
+
+# --- the close channel (v0.9.1, Workstream 2) --------------------------------------------------
+
+
+async def test_a_close_recorded_verdict_carries_the_close_channel(store: Store) -> None:
+    """**The channel test.** A verdict given while resolving a situation is a different population
+    from one given while browsing, and the two must never be blended (DECISIONS #126)."""
+    engine, _queue, app = await authutil.make_env(store)
+    sid, _alarms = await _situation(store, engine, 4)
+    sid2, _a2 = await _situation(store, engine, 4)
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        card = await client.post(f"/api/situations/{sid}/feedback", json={"verdict": "confirm"})
+        closed = await client.post(f"/api/situations/{sid2}/close", json={"verdict": "confirm"})
+    finally:
+        await client.aclose()
+
+    assert card.status_code == 200 and closed.status_code == 200
+    assert closed.json() == {"status": "closed"}
+
+    cur = await store.conn.execute(
+        "SELECT situation_id, acquisition_channel FROM feedback ORDER BY situation_id"
+    )
+    channels = {int(r[0]): r[1] for r in await cur.fetchall()}
+    assert channels[sid] == "organic", "a card-recorded verdict is organic"
+    assert channels[sid2] == "close", "a close-recorded verdict is close"
+
+
+async def test_closing_without_a_verdict_is_unchanged(store: Store) -> None:
+    """The half that must NOT move. Closing without judging stays exactly as easy as it was: no
+    body, an empty body, and a body with a null verdict all behave as v0.9.0 did, and none of them
+    writes a label."""
+    engine, _queue, app = await authutil.make_env(store)
+    ids = [(await _situation(store, engine, 3))[0] for _ in range(3)]
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        no_body = await client.post(f"/api/situations/{ids[0]}/close")
+        empty = await client.post(f"/api/situations/{ids[1]}/close", json={})
+        explicit = await client.post(f"/api/situations/{ids[2]}/close", json={"verdict": None})
+    finally:
+        await client.aclose()
+
+    for resp in (no_body, empty, explicit):
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"status": "closed"}
+    cur = await store.conn.execute("SELECT COUNT(*) FROM feedback")
+    row = await cur.fetchone()
+    assert row is not None and int(row[0]) == 0, "closing without judging wrote a label"
+
+
+async def test_a_close_carrying_a_verdict_records_the_same_label_a_card_would(
+    store: Store,
+) -> None:
+    """A label acquired through `close` must be **identical in every respect but its channel** —
+    same bag, same digest, same coverage, same scope fingerprint, same exclusion discipline.
+
+    That identity is what the channel column's value depends on: if the two differed in some other
+    way nobody intended, a per-channel comparison would be measuring the difference rather than
+    the population.
+    """
+    engine, _queue, app = await authutil.make_env(store)
+    sid, alarms = await _situation(store, engine, 5)
+    sid2, alarms2 = await _situation(store, engine, 5)
+
+    body = {"verdict": "split", "member_ids": None, "excluded_ids": None}
+    client = await authutil.client_as(app, "editor")
+    try:
+        await client.post(
+            f"/api/situations/{sid}/feedback", json={**body, "excluded_ids": alarms[:2]}
+        )
+        await client.post(
+            f"/api/situations/{sid2}/close", json={**body, "excluded_ids": alarms2[:2]}
+        )
+    finally:
+        await client.aclose()
+
+    cur = await store.conn.execute(
+        "SELECT situation_id, verdict, member_count, excluded_count, excluded_truncated, "
+        "coverage, capture_provenance, scope_restricted, acquisition_channel "
+        "FROM feedback ORDER BY situation_id"
+    )
+    rows = [dict(r) for r in await cur.fetchall()]
+    assert len(rows) == 2
+    card, closed = rows
+    assert card["acquisition_channel"] == "organic"
+    assert closed["acquisition_channel"] == "close"
+    for field in (
+        "verdict",
+        "member_count",
+        "excluded_count",
+        "excluded_truncated",
+        "coverage",
+        "capture_provenance",
+        "scope_restricted",
+    ):
+        assert card[field] == closed[field], f"the two channels disagree on {field}"
+    assert closed["excluded_count"] == 2, "the close path records the exclusion too"
+
+
+async def test_a_close_with_a_verdict_needs_feedback_write_as_well(store: Store) -> None:
+    """`feedback.write` and `situation.close` are **distinct capabilities**, and a stored policy
+    may grant one while restricting the other. A close carrying a verdict needs both.
+
+    Refused rather than silently stripped of its verdict: dropping a judgement without saying so is
+    the failure this release exists to end. Closing WITHOUT a verdict is unaffected.
+    """
+    from netcorenoc import rbac
+
+    engine, _queue, app = await authutil.make_env(store)
+    sid, _alarms = await _situation(store, engine, 3)
+    sid2, _a2 = await _situation(store, engine, 3)
+
+    # A policy that keeps `situation.close` and drops `feedback.write` — reachable, because
+    # `resolve_capabilities` is `ceiling ∩ policy`.
+    kept = sorted(rbac.PERMISSIONS.keys() - {"feedback.write"})
+    document = json.dumps(
+        {"version": 1, "roles": {"editor": kept}}, sort_keys=True, separators=(",", ":")
+    )
+    async with store.lock:
+        policy_id = await store.insert_governance_policy("rbac", document, "h" * 64, None, 0.0, "")
+        await store.set_active_governance_policy("rbac", policy_id, None, 0.0)
+        await store.commit()
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        with_verdict = await client.post(
+            f"/api/situations/{sid}/close", json={"verdict": "confirm"}
+        )
+        without = await client.post(f"/api/situations/{sid2}/close", json={})
+    finally:
+        await client.aclose()
+
+    assert with_verdict.status_code == 403, "a verdict was recorded without `feedback.write`"
+    assert without.status_code == 200, "closing without a verdict must be unaffected"
+    cur = await store.conn.execute("SELECT COUNT(*) FROM feedback")
+    row = await cur.fetchone()
+    assert row is not None and int(row[0]) == 0

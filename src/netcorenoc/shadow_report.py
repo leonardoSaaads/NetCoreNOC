@@ -49,6 +49,13 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
     stats = shadow.corpus_stats(bags)
     floors, floors_warning = training.resolve_floors(await store.get_meta(shadow.FLOORS_META_KEY))
     verdict = training.assess(stats, floors)
+    # `sum(m * (n - m))` over labels carrying an exclusion: the pairs an operator ASSERTED
+    # negative, and a quantity that was zero for every corpus before v0.9.1.
+    cur = await store.conn.execute(
+        "SELECT COALESCE(SUM(excluded_count * (member_count - excluded_count)), 0) FROM feedback "
+        "WHERE excluded_count IS NOT NULL AND member_count IS NOT NULL"
+    )
+    negatives = await cur.fetchone()
 
     out: dict[str, Any] = {
         "run": run,
@@ -56,6 +63,13 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
         "floors": floors,
         "floors_warning": floors_warning,
         "verdict": verdict,
+        # v0.9.1 OBSERVATIONS, not floors — see the prose in `render`. Printed beside the
+        # floors and flooring nothing, because replacing a registered floor after seeing the data
+        # is what pre-registration exists to prevent (HONEST-JUDGE §5).
+        "split_and_mixed": sum(
+            1 for b in bags if b["verdict"] == "split" and 0 < int(b["accepted"]) < int(b["pairs"])
+        ),
+        "asserted_negatives": 0 if negatives is None else int(negatives[0]),
         "include_legacy": include_legacy,
         "shadow_stats": await store.shadow_stats(),
         "skew": _skew(await store.shadow_skew_rows(), await store.challenger_runs(limit=50)),
@@ -212,6 +226,15 @@ def render(m: dict[str, Any]) -> str:
         f"  {'top-operator share (max)':<26}{floors.top_operator_share_pct:>9.1f}%"
         f"{stats.top_operator_share_pct:>9.1f}%"
     )
+    add("")
+    add("  ADDITIONAL OBSERVATIONS — not floors, and not substituted for one:")
+    add(f"  {'split AND mixed bags':<26}{'(no floor)':>10}{m['split_and_mixed']:>10}")
+    add(f"  {'asserted negative pairs':<26}{'(no floor)':>10}{m['asserted_negatives']:>10}")
+    add("  `split AND mixed` is the population SECURITY-REVIEW-0.9.0 §5.4 argued")
+    add("  the floor should be over — a `split` on a UNIFORM bag only says the")
+    add("  champion should reject what it already rejects — and it floors NOTHING")
+    add("  here: replacing a registered floor after seeing the data is what")
+    add("  pre-registration prevents, so v0.10.0's plan decides it in advance.")
     add("")
     if verdict.unmet:
         add("  UNMET, and how long until they would be met:")

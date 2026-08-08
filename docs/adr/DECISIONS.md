@@ -2732,9 +2732,11 @@ grouping**.
   authorization decision is re-implemented (#65, #76). Lacking `feedback.write` the request is
   **refused** rather than silently stripped of its verdict: discarding a judgement without saying so
   is the exact failure this release exists to end.
-- **The verdict is recorded before the close, inside one transaction**, so the label is written
-  against the bag as the operator saw it rather than against a situation the same request has already
-  closed and forgotten.
+- **The close runs first, inside one transaction.** The close is what decides the 404, and a verdict
+  must never be recorded against a situation that was not open. Both statements are in one
+  `write_txn`, so they land together or not at all, and the bag is unaffected either way —
+  `engine.forget_situation` runs *after* the transaction boundary, so the label is still written
+  against the membership the server held when the operator clicked.
 
 ## 127. The gesture ships; the remainder assertion does not (v0.9.1)
 
@@ -2816,3 +2818,31 @@ grouping**.
 - **What did NOT move**: `apply_feedback` itself. It is a write path into learned state on the batch
   lock's discipline, which `engine.py`'s docstring lists among what stays, and #90's reasoning is
   untouched.
+
+## 130. The close gesture is deferred; the contract and the channel ship (v0.9.1)
+
+- **Context**: Workstream 2 raises the labelling rate by letting one gesture both judge and close.
+  The endpoint now accepts an optional verdict and writes `acquisition_channel='close'` (#126). The
+  remaining question is whether `ui/app.js` should offer it, and the card's feedback row currently
+  holds three buttons: **Confirm grouping**, **Split (wrong grouping)**, and **Close situation**.
+- **Options**: (a) add *Confirm & close* and *Split & close* beside them; (b) make the existing
+  Confirm/Split buttons close the situation as well; (c) ship the API and the channel, and leave the
+  gesture to the rebuild.
+- **Choice**: **(c)**.
+- **Reason**: (a) is technically small — two `el("button", …)` calls, no panel, no modal, no new file
+  — and it is still wrong here. It would put **five** near-identical click targets in one row, two of
+  them differing from their neighbours only in a trailing word, on the one path in this product where
+  a mis-click is not an annoyance but a **silently wrong label**. That is precisely the failure
+  `FEEDBACK-PATH-0.7.5-DRAFT.md` §1.1 exists to prevent: *"a wrong label is indistinguishable from a
+  considered one at every layer downstream, and nothing in the system can detect it."* A release
+  inserted for label integrity should not raise the mis-click rate on the label path to raise the
+  label count. (b) silently changes what an existing control does, which is worse still — an
+  operator who has clicked Confirm a thousand times would start closing situations by doing it.
+- **The honest consequence, and it is reported rather than buried**: the shipped UI writes
+  **`organic` on every row**, so this release adds the channel's *mechanism* and none of its *volume*.
+  It raises the **informativeness** of a label and not the **rate**, and the build report says so in
+  those words. The endpoint is what a rebuilt UI will use, and the channel column now has a second
+  value that is defined, tested, and reported per channel the day anything writes it.
+- **What this is not**: a decision that the merged gesture is wrong. It is a decision that it needs a
+  card layout this release is not allowed to redesign — and the contract, which is the durable half,
+  is finished either way.

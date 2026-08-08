@@ -69,6 +69,31 @@ class FeedbackIn(BaseModel):
     remainder_together: bool | None = None
 
 
+class CloseIn(BaseModel):
+    """v0.9.1 — closing a situation, optionally carrying the verdict the operator already formed.
+
+    **Every field is optional and the whole body may be absent.** `POST .../close` with no body, or
+    with `{}`, behaves exactly as it did at v0.9.0: the situation closes, no label is written, and
+    nothing about the response changes. That is the point — Workstream 2 raises the labelling rate
+    by merging two gestures into one, and it must never make the first gesture harder.
+
+    A verdict recorded here is written with **`acquisition_channel = 'close'`**, never `'organic'`
+    (DECISIONS #126): closing selects for *resolved* incidents, which is a different population
+    from the one an operator browses and labels spontaneously, and two populations blended into one
+    column destroy the bias characterisation retroactively.
+
+    The label fields mirror `FeedbackIn` exactly, because a label acquired here must be the same
+    label in every respect but its channel — same bag, same fingerprint discipline, same scope
+    fingerprint, same bounds.
+    """
+
+    verdict: Literal["confirm", "split"] | None = None
+    member_ids: list[int] | None = Field(default=None, max_length=4096)
+    updated_at: float | None = None
+    excluded_ids: list[int] | None = Field(default=None, max_length=4096)
+    remainder_together: bool | None = None
+
+
 class LabelIn(BaseModel):
     kind: Literal["device", "class"]
     id: int

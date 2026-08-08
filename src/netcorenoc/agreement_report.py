@@ -149,6 +149,28 @@ def render(m: dict[str, Any]) -> str:
     add("  the `no-pairs` row of the cuts above — counted, never silently dropped.")
     add("")
 
+    _section(add, "by acquisition channel (NEVER averaged)", m["by_channel"])
+    add("  `organic` is a verdict an operator gave while BROWSING. `close` is one")
+    add("  given while RESOLVING a situation, and that selects for resolved")
+    add("  incidents — a different population, not a bigger sample of the same one.")
+    add("  Every cut above is therefore repeated within each channel below, because")
+    add("  a channel that changes WHICH situations get labelled changes what each")
+    add("  of those conditional rates is a rate OF.")
+    add("")
+
+    for channel in sorted(m["per_channel_cuts"]):
+        cuts = m["per_channel_cuts"][channel]
+        add(f"-- channel `{channel}` " + "-" * max(0, _WIDTH - 14 - len(channel)))
+        add(_rate_line("headline agreement", cuts["headline"]))
+        for name, key in (
+            ("by bag size", "by_size"),
+            ("by storm state", "by_storm"),
+            ("by mixedness", "by_mixedness"),
+            ("by visibility scope", "by_scope"),
+            ("by promotion coverage", "by_coverage"),
+        ):
+            _section(add, f"  {name}", cuts[key])
+
     add("-- what this report CANNOT tell you " + "-" * (_WIDTH - 36))
     add("  * whether the champion was RIGHT. Only whether an operator agreed.")
     add("  * whether a disagreement was the scorer's fault. A `split` may mean the")

@@ -29,21 +29,27 @@ from netcorenoc.store import Store
 EXPECTED = Path(__file__).parent / "fixtures" / "agreement-report.txt"
 TS = 1_000_000.0
 
-# (members, verdict, operator, storm pairs, accepted pairs, restricted)
+# (members, verdict, operator, storm pairs, accepted pairs, restricted, channel)
 # Twelve situations, chosen so every cut has at least two populated cells.
-PLAN: list[tuple[int, str, str | None, str, str, bool]] = [
-    (2, "confirm", "alice", "quiet", "all", False),
-    (2, "split", "alice", "quiet", "none", False),
-    (3, "confirm", "alice", "quiet", "mixed", False),
-    (4, "split", "bob", "storm", "all", False),
-    (5, "confirm", "bob", "storm", "all", False),
-    (3, "confirm", "bob", "partly", "mixed", True),
-    (7, "confirm", "carol", "storm", "all", False),
-    (12, "confirm", "carol", "storm", "all", False),
-    (3, "split", "carol", "quiet", "mixed", True),
-    (1, "confirm", None, "quiet", "none", False),
-    (60, "confirm", "alice", "storm", "all", False),
-    (2, "split", "bob", "quiet", "none", False),
+#
+# v0.9.1 adds the CHANNEL. Four of the twelve are acquired through `close` rather than on a card,
+# and they are deliberately not a random quarter: they skew toward CONFIRM and toward larger bags,
+# because that is the selection the channel is suspected of having — closing selects for RESOLVED
+# incidents. A fixture whose channels were interchangeable would make the per-channel cuts look
+# like a formality, which is exactly the reading DECISIONS #126 exists to prevent.
+PLAN: list[tuple[int, str, str | None, str, str, bool, str]] = [
+    (2, "confirm", "alice", "quiet", "all", False, "organic"),
+    (2, "split", "alice", "quiet", "none", False, "organic"),
+    (3, "confirm", "alice", "quiet", "mixed", False, "organic"),
+    (4, "split", "bob", "storm", "all", False, "organic"),
+    (5, "confirm", "bob", "storm", "all", False, "close"),
+    (3, "confirm", "bob", "partly", "mixed", True, "organic"),
+    (7, "confirm", "carol", "storm", "all", False, "close"),
+    (12, "confirm", "carol", "storm", "all", False, "close"),
+    (3, "split", "carol", "quiet", "mixed", True, "organic"),
+    (1, "confirm", None, "quiet", "none", False, "organic"),
+    (60, "confirm", "alice", "storm", "all", False, "close"),
+    (2, "split", "bob", "quiet", "none", False, "organic"),
 ]
 
 
@@ -67,7 +73,7 @@ async def build_fixture(store: Store) -> None:
         klass = int((await cur.fetchone())[0])  # type: ignore[index]
 
         situations: list[tuple[int, list[int]]] = []
-        for index, (members, _v, _op, storm, accepted, _r) in enumerate(PLAN):
+        for index, (members, _v, _op, storm, accepted, _r, _c) in enumerate(PLAN):
             sid = await store.create_situation(TS + index, None)
             alarms: list[int] = []
             for m in range(members):
@@ -111,12 +117,12 @@ async def build_fixture(store: Store) -> None:
             await store.add_pairs(rows)
         await store.commit()
 
-    for (sid, alarms), (_m, _v, _op, _s, _a, _r) in zip(situations, PLAN, strict=True):
+    for (sid, alarms), (_m, _v, _op, _s, _a, _r, _c) in zip(situations, PLAN, strict=True):
         engine.members[sid] = [Member(a, klass, device, TS) for a in alarms]
 
     async with store.lock:
         for index, ((sid, _alarms), plan) in enumerate(zip(situations, PLAN, strict=True)):
-            _members, verdict, operator, _storm, _accepted, restricted = plan
+            _members, verdict, operator, _storm, _accepted, restricted, channel = plan
             await engine.apply_feedback(
                 sid,
                 verdict,
@@ -126,7 +132,8 @@ async def build_fixture(store: Store) -> None:
                 label=LabelContext(
                     scope=LabelScope(policy_id=7, restricted=True, redacted_members=2)
                     if restricted
-                    else None
+                    else None,
+                    channel=channel,
                 ),
             )
         # A pre-v0.7.5 row, marked as migration 0008 would have marked it. It must appear in the
