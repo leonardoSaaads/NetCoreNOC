@@ -2603,3 +2603,184 @@ grouping**.
 - **What did NOT move**: `pairwise_f1`, `adjusted_rand_index`, `entity_accuracy`, `root_top1`,
   `dedup_ratio` and `percentile`. They have no runtime consumer, and moving code nothing needs into
   the shipped package to keep a file tidy would be the opposite of this decision's reasoning.
+
+## 123. The operator marks *which* members do not belong: the exclusion set (v0.9.1)
+
+- **Context**: a `split` verdict asserts *"these members are at least two situations"* **without
+  saying which**. Gate 0 §1 demonstrates the consequence by query: the complete recorded evidence of
+  a split is a verdict and an ordered member list, and **no pair is asserted negative anywhere in the
+  schema**. `split_bag_intact_rate` had to be invented as a separately named quantity precisely
+  because folding split bags into an over-merge rate would fabricate a denominator
+  (`HONEST-JUDGE-0.10-DRAFT.md` §3, `PREREGISTRATION-0.9.0.md` §4.1). So the minority class — **the
+  only source of negative evidence in the entire system** — is also the least informative label the
+  product knows how to collect. Four documents named this and all four deferred it.
+- **Options**: (a) **pairwise** — the operator names two members that do not belong together;
+  (b) **exclusion set** — the operator marks the members that do not belong; (c) **full partition** —
+  the operator assigns every member to a group.
+- **Choice**: **(b)**, the exclusion set.
+- **Reason**: measured against what one gesture yields.
+
+  | | Assertion yielded, bag of *n* | Cost per click |
+  |---|---|---|
+  | (a) pairwise | **1** negative pair | high — fourteen clicks for what (b) does in one |
+  | **(b) exclusion set** | `marked × rest` negative pairs | **one gesture** |
+  | (c) full partition | the whole partition | high, **and usually unknown** |
+
+  (a) is dominated by (b) at every bag size ≥ 3 and identical to it at 2, so it buys nothing and
+  costs clicks. (c) is the most expressive and asks a question the operator usually **cannot
+  answer**: they know *those two do not belong*, not what the correct grouping is — and an affordance
+  that demands the unknown gets abandoned or guessed at, and **a guess recorded as an assertion is
+  worse than no assertion**. (b) is the point on that curve where one gesture yields real pairwise
+  negatives, the class the system has never had: on a nine-member bag with two marked, one click
+  yields **fourteen asserted negatives** where today it yields none.
+- **What this is not**: a fourth verdict value. See #124.
+- **The honest limit, from Gate 0 §2.1**: eleven of the thirteen `split` bags in the fullest corpus
+  this repository can construct have fewer than two members, so **not one of them would yield an
+  asserted negative pair**. The affordance is right; the corpus cannot show it, and this release
+  says so rather than projecting a gain it has no data for.
+
+## 124. A partial split asserts `marked × rest` and **nothing else** (v0.9.1)
+
+- **Context**: an exclusion set makes it possible to record more than the operator said, and every
+  temptation in this release runs that way. If an operator marks two of nine members, what exactly
+  has been asserted?
+- **Options**: (a) marked × rest negative, **and** the remainder inferred to hold together;
+  (b) marked × rest negative, **and** the marked set inferred to hold together; (c) marked × rest
+  negative and **nothing else**; (d) a fourth verdict value, `partial_split`, beside `confirm` and
+  `split`.
+- **Choice**: **(c)**, with the remainder recordable as a **separate, explicit, nullable** assertion
+  in which `NULL` means *"not asserted"*.
+- **Reason**: (a) and (b) are **fabrication**. An operator pulling two alarms out of a bag has said
+  those two do not belong with the other seven; they have **not** said the other seven belong
+  together, and they have **not** said the two belong to each other. Either inference would be
+  invisible in the data — every row would look like an observation — which is exactly what v0.8.0
+  §3.3 refused and what policy A in v0.9.0 measured the cost of. (d) is rejected because **a partial
+  split *is* a split**: it asserts at least two situations, every reader that understands `split`
+  today stays correct, `split_bag_intact_rate` keeps its meaning, and a fourth value would make every
+  downstream consumer learn something new to gain nothing. The exclusion set is **extra evidence
+  attached to a `split`**, not a new kind of verdict.
+- **The arithmetic, and the check that it closes**: bag of *n*, `m` marked, `r = n − m` remaining.
+  Asserted negative: `m × r`. Unasserted: `r(r−1)/2` within the remainder and `m(m−1)/2` within the
+  marked set. For n = 9, m = 2: **14 asserted, 21 + 1 = 22 unasserted, and 14 + 22 = 36 = n(n−1)/2**
+  exactly — verified in Gate 0 §1(c). The identity is what makes *"and nothing else"* checkable
+  rather than merely stated, and it is asserted by a test.
+- **An exclusion is recorded only on a `split`.** A `confirm` already asserts every pair positive, so
+  attaching negatives to one would record a **contradiction** as though it were evidence. The request
+  still succeeds and its status, body and timing are unchanged; the exclusion is simply not part of
+  what a `confirm` asserts. This is the §10 rule — ambiguity about what the operator asserted
+  resolves to *less* — and the shipped UI cannot produce the combination at all.
+- **The remainder assertion**, if ever made, is its own column with three states — asserted true,
+  asserted false, and `NULL` for *not asserted* — and it is **never inferred from the exclusion**.
+  The shipped UI does not offer it (#127), so it is `NULL` on every row this release writes, and the
+  report says that rather than printing a rate over an affordance nobody was given.
+
+## 125. `penalize` acts on the assertion when there is one (v0.9.1)
+
+- **Context**: `learn.penalize()` halves every distinct class-pair and device-pair cell a bag spans.
+  For a **plain** split that is the only thing it can do — the operator named no boundary. For a
+  **partial** split it is knowably wrong: Gate 0 §1(c) shows a nine-member bag driving all 36 member
+  pairs into the penalty from an assertion that names none of them, and after this release the
+  operator has named fourteen.
+- **Options**: (a) leave `penalize` alone and record the exclusion as evidence only; (b) penalise only
+  the asserted `(marked × rest)` pairs when an exclusion is present; (c) penalise the asserted pairs
+  harder than the unasserted ones, on some weighting.
+- **Choice**: **(b)**.
+- **Reason**: (a) is defensible — it is the strictly smaller diff, and restraint is this release's
+  whole thesis — but it means the product **collects a better signal and then knowingly acts on the
+  worse one**, un-learning the affinity of thirty-six pairs when the operator contradicted fourteen.
+  That is not restraint; it is a defect the release would have documented and left in. (c) invents a
+  second penalty constant and a weighting nobody has evidence for, which is the modelling this
+  release is explicitly not doing.
+- **The bound, provable rather than measured**: the asserted pairs are a **subset** of the pairs
+  `penalize` visits today, so the distinct class-pair and device-pair cells they span are subsets of
+  today's, and the penalised cell count **can never exceed** today's. `SPLIT_PENALTY`,
+  `EPOCH_PAIR_CAP` and the confirm path are untouched, so the F36 boundedness tests pass unedited.
+- **Absent an exclusion the path is byte-identical to v0.9.0**, asserted by a parity test — because
+  the overwhelming majority of splits will keep arriving without one, and a release that quietly
+  changed them would have changed the meaning of every label already in the corpus.
+- **Truncation resolves to less**: `EPOCH_PAIR_CAP` samples the first twenty members *before* marking
+  is considered, so a mark on member 300 of a 500-member bag survives into no asserted pair and
+  nothing is penalised. That is the §10 resolution, and it is also the direction the bound requires.
+
+## 126. A verdict recorded through `close` is a **second acquisition channel** (v0.9.1)
+
+- **Context**: making the close carry an optional verdict is the one change that raises how many
+  judgements are recorded, because it merges two gestures into one. Anything that changes *which*
+  situations get labelled is a new acquisition channel.
+- **Options**: (a) write `acquisition_channel = 'organic'`, as every row does today; (b) write
+  `acquisition_channel = 'close'`.
+- **Choice**: **(b)**, and it is not optional.
+- **Reason**: closing a situation is a moment of judgement that **selects for resolved incidents**,
+  which is a different population from the one an operator browses and labels spontaneously. The
+  column exists for exactly this (v0.8.0 §5.5, and `0008_feedback_dataset.sql`'s own comment), and
+  the failure mode it was built against is **retroactive**: labels from two populations mixed into
+  one undifferentiated column destroy the bias characterisation for rows *already written*,
+  including every row captured before the second channel existed. A release that raises the labelling
+  rate and does not record which population it raised it in has **damaged the corpus while appearing
+  to improve it**.
+- **Reported separately, never averaged.** Every rate the bias and agreement reports already print is
+  reported per channel as well as overall.
+- **What this must not become**: a modal, a prompt, a nag, a required field, or a close that fails
+  without a verdict. Closing without judging stays exactly as easy as it is today, and
+  closes-without-a-verdict remains a **reported quantity**, because it is the measure of how much
+  judgement the product is still failing to capture.
+- **The capability gap, closed**: `feedback.write` and `situation.close` are both `editor` in the
+  compiled table, but they are **distinct capabilities**, and a stored governance policy may grant
+  one while restricting the other — `resolve_capabilities` is `ceiling ∩ policy`, so that
+  configuration is reachable. A close carrying a verdict therefore requires **both**, tested against
+  `request.state.capabilities`, the set the perimeter already resolved for this request — so no
+  authorization decision is re-implemented (#65, #76). Lacking `feedback.write` the request is
+  **refused** rather than silently stripped of its verdict: discarding a judgement without saying so
+  is the exact failure this release exists to end.
+- **The verdict is recorded before the close, inside one transaction**, so the label is written
+  against the bag as the operator saw it rather than against a situation the same request has already
+  closed and forgotten.
+
+## 127. The gesture ships; the remainder assertion does not (v0.9.1)
+
+- **Context**: the exclusion gesture is allowed only *where the feedback buttons already are* — no new
+  panel, no modal, no restyling, four UI files. The remainder assertion is allowed only if it costs
+  no second gesture.
+- **Options**: (a) ship both the exclusion and the remainder assertion; (b) ship the exclusion only;
+  (c) ship neither and defer the whole gesture to the rebuild, shipping the contract alone.
+- **Choice**: **(b)**.
+- **Reason**: the card **already renders the member table**, so the exclusion is a selection on rows
+  already on screen — a checkbox cell in an existing `<tr>`, read by the existing Split button,
+  feeding the existing `feedback(sid, verdict, shown)` call with one more argument. No panel, no
+  modal, no new file, no string interpolated into `innerHTML` (F1), and the v0.7.5 held-card
+  behaviour is untouched because nothing about a card's identity or lifecycle changes. The remainder
+  assertion has **no such home**: it is not a property of a row, so it needs a control of its own, and
+  a checkbox beside the buttons is a **second gesture** — which must not be manufactured to save a
+  click. So the API and the schema carry it, `NULL` means *not asserted*, and a rebuilt UI can offer
+  it.
+- **What (c) would have cost**: the contract is the durable part and the gesture is replaceable, so
+  (c) was never unsafe — but the gesture is a dozen lines inside a table cell, and deferring it would
+  mean shipping a label-integrity release that collects no labels.
+
+## 128. The label row's children move to `store/feedback.py` (v0.9.1)
+
+- **Context**: `store/dataset.py` stood at **395 lines** against the 400-line guard (Gate 0 §6), and
+  this release must add the exclusion set's reads and writes. `DEBT_ALLOWLIST` is empty and stays
+  empty; `COHESION_EXEMPT` is not for a SQL module.
+- **Options**: (a) add the module to `DEBT_ALLOWLIST`; (b) raise `MAX_MODULE_LINES`; (c) trim
+  reasoning to make room; (d) move the label row's children into `store/feedback.py`, where
+  `add_feedback` already lives; (e) create a new `store/labels.py`.
+- **Choice**: **(d)**.
+- **Reason**: (a) and (b) are the ratchet #121 refused, and (c) is what #108 and #113 both rejected —
+  *making the code worse to satisfy a number is the inverse of what the guard is for*. Between (d)
+  and (e), (d) wins because **the destination already exists and already holds the label row**:
+  `store/feedback.py` is `add_feedback` and the label-target table, at 73 lines. The methods being
+  moved — `situation_opened_at`, `add_feedback_members`, `feedback_members`, `annotate_feedback` —
+  are the **children of that row**, and they were only ever in `dataset.py` because v0.8.0 added them
+  in the same release as the sink.
+- **The seam is one this codebase has already cut, one layer up.** `labels.py` was split from
+  `capture.py` in v0.8.0 because *"these are two different paths, not two halves of one"* — capture
+  runs on the ingest path, once per activation, under the batch lock; the label runs once per
+  operator verdict, thousands of times rarer, on the HTTP write path. **The store layer had the same
+  two paths in one file**, and every line this release adds lands on the second one.
+- **What moved**: the four methods above, plus this release's exclusion reads and writes. **What
+  stayed**: the capture run, the sink, promotion, and every retention tier — the ingest-path half.
+- **The proof it is safe**: the methods moved **without an edit**, both mixins compose into the same
+  `Store`, and `tests/test_store_concurrency.py::test_no_store_method_acquires_the_store_lock` walks
+  the MRO, so the new arrangement is covered automatically — a point that test's own docstring
+  anticipated: *"the split is exactly when someone might 'helpfully' add one to a new mixin."*
