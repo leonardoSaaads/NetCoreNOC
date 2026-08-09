@@ -410,3 +410,16 @@ be one, and its diff could not be read in one sitting.
   by hand; CI caught the fifth. A pre-commit or release checklist that invokes the *target* would
   have caught it earlier — recorded because the failure was procedural, not technical, and this
   repository's guards are otherwise unusually good at catching exactly this class of thing.
+- **Two guards scope themselves by an exact directory or symbol NAME, and quietly widen when the
+  name differs.** `tests/test_structure.py`'s `_SKIP_DIRS` excludes `.venv` literally, so a
+  virtualenv created inside the repo under any other name (`venv`, `env`, `.venv-ci`) puts every
+  third-party `README.md` through the broken-link checker — found by execution while verifying
+  v0.9.1 in a clean room, where it reported a broken link inside the `cyclonedx` package. The
+  vulture allowlist has the same shape one level up (matched by name, documented by path). Neither
+  is a correctness bug; both are guards whose *scope* is a string, and a `.gitignore`-derived or
+  git-tracked-files-derived walk would remove the whole class.
+- **`make security` fails on `pip` itself in an environment whose bundled pip is old.** A fresh
+  `python3.12 -m venv` ships pip 24.0, which `pip-audit` reports with six advisories; `pip` is not a
+  declared dependency of this project and upgrading it clears the run. Not a repository defect and
+  deliberately not "fixed" by pinning pip in `pyproject.toml` — recorded so that whoever meets it in
+  CI recognises it as an environment fact rather than a finding against NetCoreNOC.
