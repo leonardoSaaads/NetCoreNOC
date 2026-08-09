@@ -395,3 +395,18 @@ be one, and its diff could not be read in one sitting.
   behavioural guarantee.** Its reachability assertion is correctly shaped; two of its assertions
   restate a property `test_store_concurrency.py` already tests behaviourally, and its docstring does
   not say which is which.
+
+## Found while releasing v0.9.1 (one line each)
+
+- **The dead-code allowlist matches by NAME, not by path, so a moved method keeps its exemption
+  silently.** DECISIONS #128 moved `feedback_members` from `store/dataset.py` to
+  `store/feedback.py`; `make deadcode` stayed green while `vulture_allowlist.py`'s comment went on
+  naming a file that no longer contained it. The comment is corrected, and the general problem is
+  not: an allowlist whose entries carry a path in prose and are matched by name has provenance that
+  decays without anything going red. A gate comparing each entry's recorded path against where the
+  name actually resolves would cost one test.
+- **`make qa` is `lint typecheck deadcode test eval`, and running those five commands individually
+  is not the same as running the target.** v0.9.1's release commit was made having run four of them
+  by hand; CI caught the fifth. A pre-commit or release checklist that invokes the *target* would
+  have caught it earlier — recorded because the failure was procedural, not technical, and this
+  repository's guards are otherwise unusually good at catching exactly this class of thing.
