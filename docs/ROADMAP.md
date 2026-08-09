@@ -346,3 +346,80 @@ directive that a defect discovered inside the changed code is a roadmap line and
 - **`shadow_opinion` is bounded by a row cap and no age bound**, so a deployment whose traffic falls
   keeps old opinions indefinitely. Deliberate — they hold no label and join to none — but a reader
   auditing "what deletes what" should find it written down.
+
+## Found while building v0.9.1 (one line each, not this release's work)
+
+Every item below is a **miss from the seeded-defect audit**
+([`gates/v0.9.1-test-audit.md`](gates/v0.9.1-test-audit.md)) that this release deliberately did not
+close, because its themes do not touch it. A patch release that fixed everything it found would not
+be one, and its diff could not be read in one sitting.
+
+- **The authorization perimeter fails *open* on an undeclared route, and nothing tests it.** Seed A4
+  inverted `if permission is None or permission not in capabilities` so that a route with no
+  declared capability is **allowed**, and all 958 tests stayed green. The declaration gate should
+  make `permission is None` unreachable in a built application — so this is the *second* layer of a
+  two-layer defence, untested. The first layer's own seeds (D1, D2) were caught.
+- **Three retention behaviours nothing pins.** Seeds R2, R3 and R4: the sink's row cap deleting
+  **newest**-first instead of oldest-first; the audit tier losing its `lifecycle='dataset'` clause;
+  and label deletion shifting `<` to `<=`. The tier that could destroy a promoted corpus **is**
+  guarded (R1 was caught) — the ordering and the boundaries within each tier are not.
+- **The coverage classification is off by one and no fixture notices.** Seed P2 changed
+  `promoted >= expected` to `>= expected - 1`, reclassifying `partial` bags as `full`. The bias
+  fixture's bags are too small for the boundary to land where it matters. The most likely of the
+  twelve misses to bite silently, because `coverage` is a label-quality field v0.10.0 will filter on.
+- **Two bounds can be widened by orders of magnitude unnoticed.** Seeds C2 (`capture.py`'s
+  observation buffer, ×4 → ×40) and H1 (`SHADOW_MAX_ROWS`, 200 000 → 200 000 000). Both are bounds
+  whose only consequence is memory under storm, and no test reaches either.
+- **The skew comparison is still blind to a feature divergence that does not move the score.**
+  v0.9.1 pinned the *aliasing convention* with one assertion after seed S1 confirmed
+  `SECURITY-REVIEW-0.9.0.md`'s prediction by execution. The deeper half — comparing the served
+  features against the offline ones rather than only the scores — needs the comparison redesigned,
+  which is v0.10.0's.
+- **The cluster-bootstrap interval arithmetic is exercised by no gate.** Every report fixture sits
+  below `MIN_INCIDENTS_FOR_INTERVAL`, so every frozen expectation prints `[interval n/a]`. When a
+  real corpus crosses that threshold the intervals appear in production having never been compared
+  against a frozen value. Nothing breaks; the coverage was simply never there.
+- **`app.js` is never executed by the test suite.** A thousand lines of behaviour — the held card,
+  the atomic detail swap, the reconciler, and v0.9.1's exclusion checkboxes — tested only by string
+  search. The defects v0.7.5 existed to fix were *composition* defects between individually correct
+  lines, which no string search can see.
+- **No test exercises a migration that fails half-applied.** `lifecycle.py` runs a script and *then*
+  sets `user_version`, so a crash mid-script leaves a database whose version says "not applied"
+  while some statements have landed. Whether `executescript`'s implicit transaction saves this is a
+  fact nobody in this repository has checked.
+- **Nothing runs the ingest batch loop and a stream of API writes against each other.** The
+  invariants are proved and the ingest path is load-tested alone; the property at risk is the
+  **latency of the batch under API pressure**, which an operator experiences as a NOC that stops
+  keeping up during an incident — exactly when they are also clicking Confirm and Split.
+- **`test_f39_every_mutating_handler_uses_the_transaction_helper` sells a source scan as a
+  behavioural guarantee.** Its reachability assertion is correctly shaped; two of its assertions
+  restate a property `test_store_concurrency.py` already tests behaviourally, and its docstring does
+  not say which is which.
+
+## Found while releasing v0.9.1 (one line each)
+
+- **The dead-code allowlist matches by NAME, not by path, so a moved method keeps its exemption
+  silently.** DECISIONS #128 moved `feedback_members` from `store/dataset.py` to
+  `store/feedback.py`; `make deadcode` stayed green while `vulture_allowlist.py`'s comment went on
+  naming a file that no longer contained it. The comment is corrected, and the general problem is
+  not: an allowlist whose entries carry a path in prose and are matched by name has provenance that
+  decays without anything going red. A gate comparing each entry's recorded path against where the
+  name actually resolves would cost one test.
+- **`make qa` is `lint typecheck deadcode test eval`, and running those five commands individually
+  is not the same as running the target.** v0.9.1's release commit was made having run four of them
+  by hand; CI caught the fifth. A pre-commit or release checklist that invokes the *target* would
+  have caught it earlier — recorded because the failure was procedural, not technical, and this
+  repository's guards are otherwise unusually good at catching exactly this class of thing.
+- **Two guards scope themselves by an exact directory or symbol NAME, and quietly widen when the
+  name differs.** `tests/test_structure.py`'s `_SKIP_DIRS` excludes `.venv` literally, so a
+  virtualenv created inside the repo under any other name (`venv`, `env`, `.venv-ci`) puts every
+  third-party `README.md` through the broken-link checker — found by execution while verifying
+  v0.9.1 in a clean room, where it reported a broken link inside the `cyclonedx` package. The
+  vulture allowlist has the same shape one level up (matched by name, documented by path). Neither
+  is a correctness bug; both are guards whose *scope* is a string, and a `.gitignore`-derived or
+  git-tracked-files-derived walk would remove the whole class.
+- **`make security` fails on `pip` itself in an environment whose bundled pip is old.** A fresh
+  `python3.12 -m venv` ships pip 24.0, which `pip-audit` reports with six advisories; `pip` is not a
+  declared dependency of this project and upgrading it clears the run. Not a repository defect and
+  deliberately not "fixed" by pinning pip in `pyproject.toml` — recorded so that whoever meets it in
+  CI recognises it as an environment fact rather than a finding against NetCoreNOC.

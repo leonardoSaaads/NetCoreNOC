@@ -1,14 +1,14 @@
 """Incremental co-occurrence learning: matrices A (classxclass) and E (devicexdevice).
 
-Affinity is normalized PMI over co-occurrence masses. Forgetting is exponential per
-learning epoch (an epoch is a closed situation): every stored mass decays lazily by
-(1-λ)^Δepochs the next time it is touched, so forgetting is O(1) per update with no
-matrix sweeps. Updates during mass storms are damped 10x so confounders (e.g. a regional
-power outage) are not learned as structure. Operator feedback flows back in: ``confirm``
-re-applies a situation's pairwise updates, ``split`` halves its pair masses.
+Affinity is normalized PMI over co-occurrence masses. Forgetting is exponential per learning epoch
+(an epoch is a closed situation): every stored mass decays lazily by (1-λ)^Δepochs the next time it
+is touched, so forgetting is O(1) per update with no matrix sweeps. Updates during mass storms are
+damped 10x so confounders (e.g. a regional power outage) are not learned as structure. Operator
+feedback flows back in: ``confirm`` re-applies a situation's pairwise updates; ``split`` halves them
+— every pair, or **only the ones asserted** when v0.9.1's exclusion set names which do not belong.
 
-Raise/clear pairs are learned from strict alternation of two classes on one
-(device, instance), seeded with the universal standard pairs (linkDown → linkUp).
+Raise/clear pairs are learned from strict alternation of two classes on one (device, instance),
+seeded with the universal standard pairs (linkDown → linkUp).
 """
 
 from __future__ import annotations
@@ -363,16 +363,22 @@ class Learner:
         for a_id, b_id in device_pairs:
             self.E.observe_pair(a_id, b_id, weight)
 
-    def penalize(self, members: list[Item]) -> None:
-        """A "split" feedback: halve each distinct pair mass grouped together, once."""
+    def penalize(self, members: list[Item], marked: frozenset[int] | None = None) -> None:
+        """A "split" feedback: halve each distinct pair mass grouped together, once.
+
+        With `marked` (positions the operator said do not belong) only the asserted marked-to-rest
+        pairs are halved: a subset of what `marked=None` halves, which is v0.9.0. DECISIONS #125.
+        """
         sample = members[:EPOCH_PAIR_CAP]
-        class_pairs = {_pair(a[0], b[0]) for i, a in enumerate(sample) for b in sample[i + 1 :]}
-        device_pairs = {
-            _pair(a[1], b[1]) for i, a in enumerate(sample) for b in sample[i + 1 :] if a[1] != b[1]
-        }
-        for a_id, b_id in class_pairs:
+        asserted = [
+            (a, b)
+            for i, a in enumerate(sample)
+            for j, b in enumerate(sample[i + 1 :], i + 1)
+            if marked is None or ((i in marked) != (j in marked))
+        ]
+        for a_id, b_id in {_pair(a[0], b[0]) for a, b in asserted}:
             self.A.scale_pair(a_id, b_id, SPLIT_PENALTY)
-        for a_id, b_id in device_pairs:
+        for a_id, b_id in {_pair(a[1], b[1]) for a, b in asserted if a[1] != b[1]}:
             self.E.scale_pair(a_id, b_id, SPLIT_PENALTY)
 
     async def save(self, store: Store, ts: float) -> None:

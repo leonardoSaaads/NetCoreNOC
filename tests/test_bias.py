@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from netcorenoc import bias, bias_report
-from netcorenoc.labels import ClientFingerprint
+from netcorenoc.labels import ClientFingerprint, Exclusion, LabelContext
 from netcorenoc.main import Engine
 from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
@@ -42,7 +42,7 @@ async def build_fixture(store: Store) -> None:
     async with store.lock:
         # Three situations with real members, and the pairs among some of them.
         triples: list[tuple[int, int, int]] = []
-        for i in range(6):
+        for i in range(9):
             cur = await store.conn.execute(
                 "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
                 (f"10.0.0.{i + 1}", TS, TS),
@@ -65,10 +65,16 @@ async def build_fixture(store: Store) -> None:
         sid_a = await store.create_situation(TS, None)
         sid_b = await store.create_situation(TS + 1.0, None)
         sid_c = await store.create_situation(TS + 2.0, None)
+        # v0.9.1: a fourth situation, so the partial split has a bag of its own — `sid_a` already
+        # carries both a `confirm` and the legacy `split`, and `feedback` is UNIQUE on
+        # (situation_id, verdict).
+        sid_d = await store.create_situation(TS + 3.0, None)
         for t in triples[:3]:
             await store.add_alarm_to_situation(sid_a, t[0])
         for t in triples[3:5]:
             await store.add_alarm_to_situation(sid_b, t[0])
+        for t in triples[6:9]:
+            await store.add_alarm_to_situation(sid_d, t[0])
 
         # Observations, one per alarm, and pairs with a deliberate mix of outcomes.
         for idx, t in enumerate(triples):
@@ -95,6 +101,11 @@ async def build_fixture(store: Store) -> None:
             (sid_a, triples[1][0], triples[2][0], 0, 0, 1),
             (sid_b, triples[3][0], triples[4][0], 1, 0, 0),
             (sid_c, triples[4][0], triples[5][0], 0, 0, 1),
+            # v0.9.1: the partial split's bag, MIXED across the threshold, so the assertion it
+            # carries is visible in every cut that needs promoted pairs.
+            (sid_d, triples[6][0], triples[7][0], 1, 0, 0),
+            (sid_d, triples[6][0], triples[8][0], 0, 0, 0),
+            (sid_d, triples[7][0], triples[8][0], 1, 0, 0),
         ]
         await store.add_pairs(
             [
@@ -115,7 +126,9 @@ async def build_fixture(store: Store) -> None:
             TS + 30.0,
             principal_ref="alice",
             role="editor",
-            client=ClientFingerprint.accept([triples[0][0], triples[1][0]], TS + 25.0),
+            label=LabelContext(
+                client=ClientFingerprint.accept([triples[0][0], triples[1][0]], TS + 25.0)
+            ),
         )
         # A split from a scoped operator who could not see two of the members.
         from netcorenoc.capture import LabelScope
@@ -126,10 +139,33 @@ async def build_fixture(store: Store) -> None:
             TS + 600.0,
             principal_ref="bob",
             role="editor",
-            scope=LabelScope(policy_id=7, restricted=True, redacted_members=2),
+            label=LabelContext(scope=LabelScope(policy_id=7, restricted=True, redacted_members=2)),
         )
         # A verdict on a situation with no members at all — the zero-member bag.
         await engine.apply_feedback(sid_c, "confirm", TS + 90.0, principal_ref="alice")
+        # v0.9.1: a PARTIAL split — the operator marked one of the three members of `sid_a` as
+        # not belonging. One asserted negative pair per remaining member, and the remainder left
+        # UNASSERTED. Without this row the informativeness section would be all zeros and the gate
+        # would notice nothing about the feature the release exists for.
+        engine.members[sid_d] = [Member(*t, TS) for t in triples[6:9]]
+        await engine.apply_feedback(
+            sid_d,
+            "split",
+            TS + 120.0,
+            principal_ref="alice",
+            role="editor",
+            label=LabelContext(exclusion=Exclusion.accept([triples[6][0]], None)),
+        )
+        # v0.9.1: a verdict acquired through the CLOSE channel rather than on a card. A different
+        # population, reported separately and never averaged.
+        await engine.apply_feedback(
+            sid_b,
+            "confirm",
+            TS + 130.0,
+            principal_ref="bob",
+            role="editor",
+            label=LabelContext(channel="close"),
+        )
         # And a pre-v0.7.5 row, marked as the migration would have marked it.
         await store.conn.execute(
             "INSERT INTO feedback (situation_id, verdict, created_at, capture_provenance) "
@@ -244,7 +280,7 @@ async def test_the_report_separates_legacy_capture_and_never_averages_it(store: 
     await build_fixture(store)
     measurements = await _report_measurements(store)
     assert measurements["provenance"]["legacy_capture"] == 1
-    assert measurements["provenance"]["current"] == 3
+    assert measurements["provenance"]["current"] == 5
     text = await _report(store)
     assert "NEVER averaged together" in text
     assert "UNKNOWN QUALITY" in text

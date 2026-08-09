@@ -1,5 +1,96 @@
 # Upgrading NetCoreNOC
 
+## v0.9.0 → v0.9.1 (the partial split — one migration, and **existing labels are untouched**)
+
+Replace the code and restart. Migration **`0010`** runs automatically at startup, adds one table and
+three nullable columns, and **seeds nothing and backfills nothing**.
+
+| | |
+|---|---|
+| Schema | `user_version` **9 → 10** — one new table (`feedback_exclusion`), three nullable columns on `feedback`, no index, no trigger |
+| Data | untouched. Verified against a populated v0.9.0 database: `feedback` and `feedback_member` compared **row for row, value for value**, identical `dataset_stats()` |
+| Existing labels | **unchanged, and readable as exactly what they are — plain splits and confirms.** All three new columns are `NULL` on every pre-existing row |
+| Audit chain | verifies with the **identical final hash** — the migration writes no event |
+| Grouping | **unchanged.** The correlation, capture and shadow paths are untouched and `make eval` is byte-identical |
+| Routes | **none added**, and none changed |
+| Capabilities / audit actions | **unchanged** |
+| API contract | **extended, never broken** — see below |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| How you run it | **unchanged** |
+
+### What `0010` adds
+
+**`feedback_exclusion`** — the members the operator marked as **not belonging**, ordered. A child
+table rather than a column because it is a list, and a table separate from `feedback_member` because
+the two answer different questions: `feedback_member` records **what the bag was**, this records
+**what the operator asserted about it**.
+
+**Three nullable columns on `feedback`:**
+
+* `excluded_count` — how many members were marked. **`NULL` means no exclusion was asserted**, and 0
+  cannot occur: an empty marked set is recorded as no assertion rather than as an assertion about
+  nothing.
+* `excluded_truncated` — whether the report hit the bound. Truncation is a **fact**, never a silence,
+  because a clipped marked set asserts fewer negatives than the operator made.
+* `remainder_together` — the operator's *separate* assertion that the rest holds together.
+  **Three states, and `NULL` is the important one: the operator did not say.** It is never inferred
+  from the exclusion.
+
+### What `0010` deliberately does **not** do
+
+**It backfills nothing.** Migration `0008` permitted itself exactly one data write — the
+`capture_provenance` marker — and justified it on a fact *knowable at migration time*: a row that
+existed when `0008` ran predated v0.8.0's capture path by definition. **No equivalent fact exists
+here.** Nothing about *which* members an operator would have marked is knowable from anything, so
+`0010` writes no data at all.
+
+Every label already in your corpus therefore keeps reading as exactly what it is: a **plain** split,
+which asserts the bag is at least two situations and says nothing about any pair. That is what that
+operator actually asserted, and inventing more would be the fabrication this release exists to
+refuse.
+
+### The API contract extends; it never breaks
+
+`POST /api/situations/{sid}/feedback` gains two optional fields, `excluded_ids` and
+`remainder_together`. A `curl` call, an old cached `app.js`, and any client that does not send them
+keep working unchanged, and **absence means the operator marked nothing** — a plain split — never a
+guess.
+
+`POST /api/situations/{sid}/close` gains an **optional body**. No body, `{}`, and
+`{"verdict": null}` all behave exactly as they did at v0.9.0: the situation closes, no label is
+written, and the response is byte-identical. **Closing without judging is exactly as easy as it
+was** — there is no modal, no prompt, no required field, and no close that fails for want of a
+verdict.
+
+> **One narrowing, and it is deliberate.** `close` previously accepted *any* body and ignored it, so
+> `{"verdict": 123}` answered 200. It now validates the body, so a **malformed** one answers 422 —
+> the same behaviour every other endpoint in the product has always had. No shipped client sends
+> one, and a body that was silently discarded is not a contract worth preserving.
+
+### What a partial split changes about learning — **only when one is given**
+
+`learn.penalize()` halves the co-occurrence mass of pairs a `split` grouped together. Given an
+exclusion set it now halves **only the pairs the operator actually asserted** — `marked × rest` —
+and leaves the remainder alone.
+
+**Without an exclusion, behaviour is byte-identical to v0.9.0.** The overwhelming majority of splits
+will keep arriving without one, and every label already in your database is one of those. The
+asserted pairs are a subset of the pairs the plain path visits, so **the penalised count can never
+exceed what v0.9.0 would have done**.
+
+### The operator-visible change
+
+One checkbox column in the member table of an expanded situation card, for editors only. Tick the
+members that do not belong, then press **Split**. Ticking nothing and pressing Split records a plain
+split exactly as before.
+
+### Rollback
+
+Downgrading the code to v0.9.0 against a `user_version = 10` database leaves the new table and
+columns in place and unread; nothing in v0.9.0 queries them. The labels themselves are unaffected in
+either direction. As always, take a copy of the database file before upgrading.
+
 ## v0.8.1 → v0.9.0 (shadow mode — one migration, and **nothing groups differently**)
 
 Replace the code and restart. Migration **`0009`** runs automatically at startup, adds two tables,

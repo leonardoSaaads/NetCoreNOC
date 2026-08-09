@@ -46,6 +46,52 @@ class FeedbackIn(BaseModel):
     # scoped editor, and it is a security requirement rather than a nicety.
     member_ids: list[int] | None = Field(default=None, max_length=4096)
     updated_at: float | None = None
+    # v0.9.1 — **which members do not belong.** The whole point of the release, and it is optional
+    # and additive for exactly the reasons `member_ids` is: a `curl` call, an old client, or a UI
+    # that does not send it all keep working, and **absence means the operator marked nothing** —
+    # a plain `split` — never a guess.
+    #
+    # It asserts `marked-by-rest` negative and **nothing else**; the pairs within the remainder and
+    # within the marked set stay unknown (DECISIONS #124). Meaningful only on a `split`: a
+    # `confirm` already asserts every pair positive, so an exclusion on one is a contradiction and
+    # is dropped rather than recorded (`LabelContext.for_verdict`).
+    #
+    # Same three properties as `member_ids`, on the same write path and for the same reasons:
+    # **bounded, never rejected, never used to validate the existence of anything.** The parse
+    # ceiling is a parse bound, not a validation of meaning — `Exclusion.accept` truncates at
+    # `MAX_CLIENT_MEMBERS` and records that it did, because rejection is the wrong primitive for
+    # an observation and a silence would make the bound invisible in the data.
+    excluded_ids: list[int] | None = Field(default=None, max_length=4096)
+    # The operator's SEPARATE assertion about the rest. `None` means **not asserted**, and it is
+    # never inferred from `excluded_ids` — excluding two of nine says nothing whatever about the
+    # other seven. The shipped UI does not offer it (DECISIONS #127); the contract carries it for
+    # the rebuild.
+    remainder_together: bool | None = None
+
+
+class CloseIn(BaseModel):
+    """v0.9.1 — closing a situation, optionally carrying the verdict the operator already formed.
+
+    **Every field is optional and the whole body may be absent.** `POST .../close` with no body, or
+    with `{}`, behaves exactly as it did at v0.9.0: the situation closes, no label is written, and
+    nothing about the response changes. That is the point — Workstream 2 raises the labelling rate
+    by merging two gestures into one, and it must never make the first gesture harder.
+
+    A verdict recorded here is written with **`acquisition_channel = 'close'`**, never `'organic'`
+    (DECISIONS #126): closing selects for *resolved* incidents, which is a different population
+    from the one an operator browses and labels spontaneously, and two populations blended into one
+    column destroy the bias characterisation retroactively.
+
+    The label fields mirror `FeedbackIn` exactly, because a label acquired here must be the same
+    label in every respect but its channel — same bag, same fingerprint discipline, same scope
+    fingerprint, same bounds.
+    """
+
+    verdict: Literal["confirm", "split"] | None = None
+    member_ids: list[int] | None = Field(default=None, max_length=4096)
+    updated_at: float | None = None
+    excluded_ids: list[int] | None = Field(default=None, max_length=4096)
+    remainder_together: bool | None = None
 
 
 class LabelIn(BaseModel):

@@ -479,11 +479,13 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
     finally:
         store_mod.MIGRATIONS_DIR = real_dir
 
-    # The upgrade: same file, migration 0009 now present.
+    # The upgrade: same file, every migration past 0008 now present. From v0.9.1 that is 0009 and
+    # 0010 together — the fixture is frozen at 8, so this asserts a v0.8.1 database reaches the
+    # CURRENT schema, and the "no rows seeded" claim below is now made about both of them.
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 9
+        assert await new.schema_version() == Store.latest_schema_version() == 10
         assert new.integrity_warnings == []
 
         # Asserted BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -491,7 +493,7 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
         # question here is what the MIGRATION did, so it is asked before anything else runs.
         assert await new.dataset_stats() == before_dataset
         # **No rows seeded.** Both new tables are empty immediately after the migration.
-        for table in ("challenger_run", "shadow_opinion"):
+        for table in ("challenger_run", "shadow_opinion", "feedback_exclusion"):
             cur = await new.conn.execute(f"SELECT COUNT(*) FROM {table}")  # nosec B608
             row = await cur.fetchone()
             assert row is not None and int(row[0]) == 0, f"{table} was seeded by the migration"
@@ -518,5 +520,153 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
         config = await new.active_scorer_config()
         assert config is not None and config["scorer_id"] == "additive"
         assert engine_new.correlator.scorer.active.scorer_id == "additive"
+    finally:
+        await new.close()
+
+
+async def test_v091_upgrade_applies_0010_and_leaves_existing_labels_plain(tmp_path: Path) -> None:
+    """Gate 2 (v0.9.1): a live **v0.9.0** database upgrades in place, and every label it already
+    holds stays exactly what it was — a **plain** split or confirm.
+
+    The claim this release makes about the upgrade is a negative one, and it is stronger than
+    0009's because 0010 touches the table the corpus lives in. `feedback` gains three nullable
+    columns and there is **no backfill at all** — not even the marker backfill 0008 permitted
+    itself, because 0008 could write `capture_provenance` from a fact knowable at migration time
+    (the row existed, so it predated v0.8.0), and **nothing about which members an operator would
+    have marked is knowable from anything**. Inventing it would be the fabrication this release
+    exists to refuse.
+
+    So: `excluded_count`, `excluded_truncated` and `remainder_together` are NULL on every
+    pre-existing row, `feedback_exclusion` is empty, and a reader of an old label sees a bag and a
+    verdict — which is precisely what that operator asserted.
+    """
+    import netcorenoc.store.lifecycle as store_mod
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV9:
+        """The migration directory as a v0.9.0 install saw it: 0010 does not exist yet.
+
+        Filtered by migration *number*, so a later release adding 0011 cannot silently un-freeze
+        this fixture and turn a genuine v0.9.0 database into a current one.
+        """
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 9]
+
+    db = str(tmp_path / "v090-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV9()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 9  # a genuine v0.9.0 database
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        sids = [int(r["id"]) for r in await old.list_situations(None, 10)]
+        async with old.lock:
+            # Two real labels, so the upgrade carries a corpus with both verdicts in it.
+            await engine_old.apply_feedback(
+                sids[0], "confirm", BASE + 20, principal_ref="alice", role="editor"
+            )
+            await engine_old.apply_feedback(
+                sids[0], "split", BASE + 21, principal_ref="bob", role="editor"
+            )
+            await audit.write_event(
+                old,
+                ts=BASE,
+                actor="admin",
+                role="admin",
+                source_ip="-",
+                action="login.ok",
+                outcome="ok",
+            )
+            await old.commit()
+        before_labels = [
+            dict(r)
+            for r in await (
+                await old.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, acquisition_channel "
+                    "FROM feedback ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        before_members = [
+            dict(r)
+            for r in await (
+                await old.conn.execute(
+                    "SELECT feedback_id, source, position, alarm_id FROM feedback_member "
+                    "ORDER BY feedback_id, source, position"
+                )
+            ).fetchall()
+        ]
+        before_dataset = await old.dataset_stats()
+        before_chain = (await audit.verify_chain(old)).final_hash
+        assert len(before_labels) == 2, "the fixture must carry both verdicts"
+        assert before_members, "the fixture must carry a recorded bag"
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    # The upgrade: same file, 0010 now present.
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == Store.latest_schema_version() == 10
+        assert new.integrity_warnings == []
+
+        # Asked BEFORE the engine starts, because `Engine.start` legitimately opens a new
+        # `capture_run` in any new process. The question here is what the MIGRATION did.
+        assert await new.dataset_stats() == before_dataset
+
+        # **Nothing seeded.** The one new table is empty.
+        cur = await new.conn.execute("SELECT COUNT(*) FROM feedback_exclusion")
+        row = await cur.fetchone()
+        assert row is not None and int(row[0]) == 0, "0010 seeded feedback_exclusion"
+
+        # **Nothing backfilled.** Every pre-existing label reads as a PLAIN verdict: no exclusion
+        # was asserted, no truncation was recorded, and the remainder was not spoken about.
+        cur = await new.conn.execute(
+            "SELECT COUNT(*) FROM feedback WHERE excluded_count IS NOT NULL "
+            "OR excluded_truncated IS NOT NULL OR remainder_together IS NOT NULL"
+        )
+        row = await cur.fetchone()
+        assert row is not None and int(row[0]) == 0, (
+            "0010 backfilled an assertion onto a label whose operator never made one"
+        )
+
+        # The labels and their bags are untouched, value for value.
+        after_labels = [
+            dict(r)
+            for r in await (
+                await new.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, acquisition_channel "
+                    "FROM feedback ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        after_members = [
+            dict(r)
+            for r in await (
+                await new.conn.execute(
+                    "SELECT feedback_id, source, position, alarm_id FROM feedback_member "
+                    "ORDER BY feedback_id, source, position"
+                )
+            ).fetchall()
+        ]
+        assert after_labels == before_labels
+        assert after_members == before_members
+
+        # The audit chain verifies, and to the SAME final hash — the migration wrote no event.
+        result = await audit.verify_chain(new)
+        assert result.ok and result.final_hash == before_chain
+
+        # First boot after the upgrade still writes no exclusion.
+        engine_new = Engine(new, asyncio.Queue())
+        await engine_new.start()
+        cur = await new.conn.execute("SELECT COUNT(*) FROM feedback_exclusion")
+        row = await cur.fetchone()
+        assert row is not None and int(row[0]) == 0
     finally:
         await new.close()

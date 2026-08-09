@@ -104,6 +104,10 @@ class Bag:
     pairs: int
     accepted: int
     storm_pairs: int
+    # v0.9.1. `organic` is a label given while browsing; `close` is one given while RESOLVING a
+    # situation, which selects for resolved incidents — a different population, never averaged
+    # with the first (DECISIONS #126).
+    channel: str = "organic"
 
     @property
     def agreed(self) -> bool:
@@ -269,6 +273,7 @@ SELECT f.id                                        AS feedback_id,
        COALESCE(f.scope_restricted, 0)             AS scope_restricted,
        COALESCE(f.coverage, 'unrecorded')          AS coverage,
        COALESCE(f.capture_provenance, 'unrecorded') AS provenance,
+       COALESCE(f.acquisition_channel, 'unrecorded') AS channel,
        COALESCE(s.merged_into, f.situation_id)     AS incident,
        COUNT(p.id)                                 AS pairs,
        COALESCE(SUM(p.incumbent_linked), 0)        AS accepted,
@@ -300,6 +305,7 @@ async def load_bags(store: Store) -> list[Bag]:
             scope_restricted=bool(int(r["scope_restricted"])),
             coverage=str(r["coverage"]),
             provenance=str(r["provenance"]),
+            channel=str(r["channel"]),
             incident=int(r["incident"]),
             pairs=int(r["pairs"]),
             accepted=int(r["accepted"]),
@@ -307,6 +313,32 @@ async def load_bags(store: Store) -> list[Bag]:
         )
         for r in await cur.fetchall()
     ]
+
+
+def _cuts(bags: list[Bag]) -> dict[str, Any]:
+    """The five conditional cuts, computed once and reused per channel (v0.9.1).
+
+    A channel that changes WHICH situations get labelled changes what every one of these rates is a
+    rate *of*, so each is repeated per channel rather than averaged — and one definition means the
+    per-channel figure and the overall figure can never drift apart.
+    """
+    return {
+        "by_size": _group(
+            bags, lambda b: size_bucket(b.size) if b.size >= 0 else "unrecorded", SIZE_ORDER
+        ),
+        "by_storm": _group(bags, lambda b: b.storm_state, ["quiet", "partly", "storm", "no-pairs"]),
+        "by_mixedness": _group(
+            bags, lambda b: b.mixedness, ["mixed", "uniform-accept", "uniform-reject", "no-pairs"]
+        ),
+        "by_scope": _group(
+            bags,
+            lambda b: "restricted" if b.scope_restricted else "full view",
+            ["full view", "restricted"],
+        ),
+        "by_coverage": _group(
+            bags, lambda b: b.coverage, ["full", "partial", "none", "empty", "unrecorded"]
+        ),
+    }
 
 
 async def collect(store: Store) -> dict[str, Any]:
@@ -327,26 +359,18 @@ async def collect(store: Store) -> dict[str, Any]:
         "incidents": len({b.incident for b in bags}),
         "operators": len({b.operator for b in bags if b.operator != UNATTRIBUTED}),
         "headline": rate_of(bags),
-        "by_size": _group(
-            bags,
-            lambda b: size_bucket(b.size) if b.size >= 0 else "unrecorded",
-            SIZE_ORDER,
-        ),
-        "by_storm": _group(bags, lambda b: b.storm_state, ["quiet", "partly", "storm", "no-pairs"]),
-        "by_mixedness": _group(
-            bags, lambda b: b.mixedness, ["mixed", "uniform-accept", "uniform-reject", "no-pairs"]
-        ),
-        "by_scope": _group(
-            bags,
-            lambda b: "restricted" if b.scope_restricted else "full view",
-            ["full view", "restricted"],
-        ),
+        **_cuts(bags),
         # Anonymised at the boundary: the alias is computed here and the reference is never put in
         # the returned document, so a renderer cannot print one even by mistake.
         "by_operator": _group(bags, lambda b: aliases[b.operator]),
-        "by_coverage": _group(
-            bags, lambda b: b.coverage, ["full", "partial", "none", "empty", "unrecorded"]
-        ),
+        # v0.9.1. The channel split, and then every cut above it repeated within each channel.
+        "by_channel": _group(bags, lambda b: b.channel, ["organic", "close", "unrecorded"]),
+        "per_channel_cuts": {
+            c: {"headline": rate_of(sub), **_cuts(sub)}
+            for c, sub in (
+                (c, [b for b in bags if b.channel == c]) for c in sorted({b.channel for b in bags})
+            )
+        },
         # The one cut computed over EVERYTHING, because separating the populations is its entire
         # purpose. Never averaged, never folded into the headline.
         "by_provenance": _group(

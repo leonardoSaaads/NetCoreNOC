@@ -116,6 +116,64 @@ level, conditioned. This report trains nothing and involves no model.
   with coverage `none` or `empty` has no promoted pair, so it appears in
   the `no-pairs` row of the cuts above — counted, never silently dropped.
 
+-- by acquisition channel (NEVER averaged) -------------------
+  organic                 n=    8  confirmed=    4    50.0%  [interval n/a]
+  close                   n=    4  confirmed=    4   100.0%  [interval n/a]
+
+  `organic` is a verdict an operator gave while BROWSING. `close` is one
+  given while RESOLVING a situation, and that selects for resolved
+  incidents — a different population, not a bigger sample of the same one.
+  Every cut above is therefore repeated within each channel below, because
+  a channel that changes WHICH situations get labelled changes what each
+  of those conditional rates is a rate OF.
+
+-- channel `close` -------------------------------------------
+  headline agreement      n=    4  confirmed=    4   100.0%  [interval n/a]
+--   by bag size ---------------------------------------------
+  3-5                     n=    1  confirmed=    1   100.0%  [interval n/a]
+  6-10                    n=    1  confirmed=    1   100.0%  [interval n/a]
+  11-50                   n=    1  confirmed=    1   100.0%  [interval n/a]
+  51+                     n=    1  confirmed=    1   100.0%  [interval n/a]
+
+--   by storm state ------------------------------------------
+  storm                   n=    4  confirmed=    4   100.0%  [interval n/a]
+
+--   by mixedness --------------------------------------------
+  uniform-accept          n=    4  confirmed=    4   100.0%  [interval n/a]
+
+--   by visibility scope -------------------------------------
+  full view               n=    4  confirmed=    4   100.0%  [interval n/a]
+
+--   by promotion coverage -----------------------------------
+  full                    n=    4  confirmed=    4   100.0%  [interval n/a]
+
+-- channel `organic` -----------------------------------------
+  headline agreement      n=    8  confirmed=    4    50.0%  [interval n/a]
+--   by bag size ---------------------------------------------
+  1                       n=    1  confirmed=    1   100.0%  [interval n/a]
+  2                       n=    3  confirmed=    1    33.3%  [interval n/a]
+  3-5                     n=    4  confirmed=    2    50.0%  [interval n/a]
+
+--   by storm state ------------------------------------------
+  quiet                   n=    5  confirmed=    2    40.0%  [interval n/a]
+  partly                  n=    1  confirmed=    1   100.0%  [interval n/a]
+  storm                   n=    1  confirmed=    0     0.0%  [interval n/a]
+  no-pairs                n=    1  confirmed=    1   100.0%  [interval n/a]
+
+--   by mixedness --------------------------------------------
+  mixed                   n=    3  confirmed=    2    66.7%  [interval n/a]
+  uniform-accept          n=    2  confirmed=    1    50.0%  [interval n/a]
+  uniform-reject          n=    2  confirmed=    0     0.0%  [interval n/a]
+  no-pairs                n=    1  confirmed=    1   100.0%  [interval n/a]
+
+--   by visibility scope -------------------------------------
+  full view               n=    6  confirmed=    3    50.0%  [interval n/a]
+  restricted              n=    2  confirmed=    1    50.0%  [interval n/a]
+
+--   by promotion coverage -----------------------------------
+  full                    n=    7  confirmed=    3    42.9%  [interval n/a]
+  none                    n=    1  confirmed=    1   100.0%  [interval n/a]
+
 -- what this report CANNOT tell you --------------------------
   * whether the champion was RIGHT. Only whether an operator agreed.
   * whether a disagreement was the scorer's fault. A `split` may mean the

@@ -102,7 +102,28 @@ role_allows  # unused function (netcorenoc/rbac.py) - the ceiling oracle for the
 # trace, which is the thing `docs/gates/v0.8.0-phase-0.md` §1 proved impossible before. Deleting it
 # would leave that proof with nothing to assert against, and would make a future release re-derive
 # a query this one already got right.
-feedback_members  # unused method (netcorenoc/store/dataset.py) - the recovered-bag accessor
+#
+# **v0.9.1: the path in the comment below was `store/dataset.py` until DECISIONS #128 moved the
+# label row's children to `store/feedback.py`.** Vulture matches by NAME, not by path, so this
+# exemption followed the method silently and the gate stayed green while the comment pointed at the
+# wrong file. Corrected here, and recorded in `docs/ROADMAP.md` — an allowlist that cannot notice a
+# move is an allowlist whose provenance decays without anything going red.
+feedback_members  # unused method (netcorenoc/store/feedback.py) - the recovered-bag accessor
+
+# v0.9.1. `feedback_exclusion` is the exact structural analogue for the child table migration `0010`
+# added: the read path for **which members the operator marked as not belonging**. It is unused in
+# the runtime package for the same reason and at the same point in the same arc — this release
+# CAPTURES the assertion and does not consume it. The bias and shadow reports need only aggregates
+# (`excluded_count`, and `m * (n - m)` computed from the label row), and the consumer of the member
+# ids themselves is v0.10.0, where an asserted negative pair becomes a training row.
+#
+# It is kept for the reason its sibling is kept, and one more. `tests/test_partial_split.py` uses it
+# to assert the release's central claim — that a partial split records `marked` and nothing else —
+# in six places, including the withdrawn-marks test that proves a corrected verdict REPLACES the
+# marking rather than merging it. Without the accessor those assertions would each hand-roll the
+# same `SELECT ... ORDER BY position`, putting schema knowledge in the test suite and leaving
+# v0.10.0 to re-derive a query this release already got right.
+feedback_exclusion  # unused method (netcorenoc/store/feedback.py) - the marked-members accessor
 
 # The two dataset-retention handlers, for the same reason as the governance handlers above:
 # they are registered through `DeclaredRoutes`' decorators, so nothing calls them by name.

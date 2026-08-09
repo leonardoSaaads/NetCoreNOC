@@ -16,10 +16,10 @@ import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth, capture
+from netcorenoc import auth, capture, shaping
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.models import FeedbackIn, LabelIn
+from netcorenoc.api.models import CloseIn, FeedbackIn, LabelIn
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -70,6 +70,40 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     # the same body, the same timing (DECISIONS #60, #65). `scope_for` is awaited *before*
     # `write_txn()`, because it takes `store.lock` itself and the lock is not reentrant.
 
+    async def label_context(
+        sid: int, scope: shaping.Scope, body: FeedbackIn | CloseIn, channel: str
+    ) -> capture.LabelContext:
+        """Everything a verdict records except the verdict, built once for both routes that write
+        one. Two copies of this would be two chances for a label acquired through `close` to differ
+        from one acquired on a card in some way nobody intended — and the whole value of the channel
+        column depends on the two being **identical apart from the channel**.
+
+        `scope` is the one the caller's 404 decision already used, so the record cannot disagree
+        with the decision that produced it.
+        """
+        return capture.LabelContext(
+            # v0.8.0 §5.5: the scope fingerprint. A scoped editor labels a **partial view** and
+            # cannot say which part, so without this the label is uninterpretable — and the noise is
+            # *systematic*, because it correlates with the policy, so it does not average out.
+            capture.LabelScope(
+                policy_id=ctx.governance.scope_id,
+                restricted=not scope.unrestricted,
+                redacted_members=await ctx.perimeter.redacted_member_count(sid, scope),
+            ),
+            # §5.4b: the client's report, bounded and never rejected. `accept` can only truncate,
+            # and records that it did. No id here is looked up, compared, or validated.
+            capture.ClientFingerprint.accept(body.member_ids, body.updated_at)
+            if body.member_ids is not None
+            else None,
+            # v0.9.1: **which members do not belong**, under the identical discipline — bounded,
+            # never rejected, never used to validate the existence of anything. Absence means "the
+            # operator marked nothing", which is a plain `split`, and never a guess.
+            capture.Exclusion.accept(body.excluded_ids, body.remainder_together)
+            if body.excluded_ids is not None
+            else None,
+            channel,
+        )
+
     @route.post("/api/situations/{sid}/feedback")
     async def feedback(
         sid: int, body: FeedbackIn, request: Request, principal: auth.Principal = Depends(security)
@@ -78,23 +112,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if not await situation_in_scope(sid, scope):
             await audit_scope_denial(request, principal, "feedback", "situation", str(sid))
             raise HTTPException(status_code=404, detail="no such situation")
-        # v0.8.0 §5.5: the scope fingerprint. A scoped editor labels a **partial view** and cannot
-        # say which part, so without this the label is uninterpretable — and the resulting noise is
-        # *systematic*, because it correlates with the policy, so it does not average out.
-        # Resolved from the same `scope` the 404 above used, so the record cannot disagree with the
-        # decision that produced it.
-        label_scope = capture.LabelScope(
-            policy_id=ctx.governance.scope_id,
-            restricted=not scope.unrestricted,
-            redacted_members=await ctx.perimeter.redacted_member_count(sid, scope),
-        )
-        # §5.4b: the client's report, bounded and never rejected. `accept` can only truncate, and
-        # records that it did. No id here is looked up, compared, or validated — see `FeedbackIn`.
-        client = (
-            capture.ClientFingerprint.accept(body.member_ids, body.updated_at)
-            if body.member_ids is not None
-            else None
-        )
+        label = await label_context(sid, scope, body, "organic")
         async with write_txn():
             # F36: `recorded.exists` is the 404 question; `recorded.inserted` is whether this
             # verdict was new. A repeat is a no-op that still answers 200 — the operator's
@@ -105,8 +123,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 time.time(),
                 principal_ref=principal.ref,
                 role=principal.role,
-                scope=label_scope,
-                client=client,
+                label=label,
             )
             if recorded.exists and recorded.inserted:
                 await audit_row(
@@ -157,14 +174,58 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.post("/api/situations/{sid}/close")
     async def close_situation(
-        sid: int, request: Request, principal: auth.Principal = Depends(security)
+        sid: int,
+        request: Request,
+        body: CloseIn | None = None,
+        principal: auth.Principal = Depends(security),
     ) -> dict[str, str]:
+        """Close a situation, optionally recording the verdict the operator already formed.
+
+        **v0.9.1 (Workstream 2).** Every field of `CloseIn` is optional and the body may be absent
+        entirely, so a `curl` call, an old client and a UI that sends `{}` all behave exactly as
+        they did at v0.9.0. Closing without judging stays exactly as easy as it was — no modal, no
+        prompt, no required field, and no close that fails for want of a verdict.
+
+        A verdict recorded here is written with **`acquisition_channel = 'close'`**, because closing
+        selects for *resolved* incidents and that is a different population from the one an operator
+        browses and labels spontaneously (DECISIONS #126).
+        """
         scope = await scope_for(principal)
         if not await situation_in_scope(sid, scope):
             await audit_scope_denial(request, principal, "situation.close", "situation", str(sid))
             raise HTTPException(status_code=404, detail="no such open situation")
+        verdict = body.verdict if body is not None else None
+        # `feedback.write` and `situation.close` are DISTINCT capabilities, and a stored governance
+        # policy may grant one while restricting the other (`resolve_capabilities` is
+        # `ceiling ∩ policy`, so that configuration is reachable). A close carrying a verdict needs
+        # both. `request.state.capabilities` is the set the perimeter already resolved for this
+        # request, so no authorization decision is re-implemented here (DECISIONS #65, #76).
+        #
+        # Refused rather than silently stripped of its verdict: discarding a judgement without
+        # saying so is the exact failure this release exists to end. Closing WITHOUT a verdict is
+        # unaffected — the check is not reached.
+        if verdict is not None and "feedback.write" not in request.state.capabilities:
+            raise HTTPException(status_code=403, detail="insufficient role")
+        label = (
+            await label_context(sid, scope, body, "close")
+            if body is not None and verdict is not None
+            else None
+        )
         async with write_txn():
+            # The close runs FIRST, because it is what decides the 404: a verdict must never be
+            # recorded against a situation that was not open. Both are in one transaction, so they
+            # land together or not at all, and the bag is unaffected either way —
+            # `forget_situation` runs after the boundary.
             closed = await store.manual_close_situation(sid, time.time())
+            if closed and label is not None and verdict is not None:
+                await engine.apply_feedback(
+                    sid,
+                    verdict,
+                    time.time(),
+                    principal_ref=principal.ref,
+                    role=principal.role,
+                    label=label,
+                )
             if closed:
                 await audit_row(
                     request,
@@ -173,6 +234,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "ok",
                     object_type="situation",
                     object_id=str(sid),
+                    # No new audit ACTION: the verdict rides along on the row the close already
+                    # wrote, so one request stays one audit row.
+                    details={"verdict": verdict} if verdict is not None else None,
                 )
         if not closed:
             raise HTTPException(status_code=404, detail="no such open situation")
