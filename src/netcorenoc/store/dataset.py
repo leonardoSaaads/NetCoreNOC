@@ -317,11 +317,26 @@ class DatasetMixin(StoreBase):
             )
             for r in await cur.fetchall():
                 out[f"{table}.{r[0]}"] = int(r[1])
-        for table in ("capture_run", "feedback_member"):
-            cur = await self.conn.execute(f"SELECT COUNT(*) FROM {table}")  # nosec B608
-            row = await cur.fetchone()
-            assert row is not None
-            out[table] = int(row[0])
+        cur = await self.conn.execute("SELECT COUNT(*) FROM capture_run")
+        row = await cur.fetchone()
+        assert row is not None
+        out["capture_run"] = int(row[0])
+        # **`feedback_member` split by source (v0.9.2).** The total is still printed — the row cost
+        # is real either way — but the COMPOSITION is what an operator sizing retention needs, and
+        # v0.9.1 summed the two silently. `source='server'` is the authoritative bag the engine
+        # wrote; `source='client'` is the UI's report of what it rendered, which is untrusted
+        # evidence and which a client can inflate by up to `MAX_CLIENT_MEMBERS` per label. Mixing
+        # them in one number let a client move an operator's cost view without that being visible
+        # anywhere (`docs/architecture/EVIDENCE-BOUNDARY-0.9.2.md` §3).
+        by_source = {"server": 0, "client": 0}
+        cur = await self.conn.execute(
+            "SELECT source, COUNT(*) FROM feedback_member GROUP BY source ORDER BY source"
+        )
+        for r in await cur.fetchall():
+            by_source[str(r[0])] = int(r[1])
+        out["feedback_member"] = sum(by_source.values())
+        out["feedback_member.server"] = by_source["server"]
+        out["feedback_member.client"] = by_source["client"]
         cur = await self.conn.execute(
             "SELECT MIN(evaluated_at), MAX(evaluated_at) FROM dataset_pair WHERE lifecycle='sink'"
         )

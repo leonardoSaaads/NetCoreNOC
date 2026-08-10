@@ -4,6 +4,41 @@ NetCoreNOC feedback-dataset bias report
 This report MEASURES. It trains nothing, fits nothing, and recommends
 no model. Every figure below is an aggregate.
 
+-- THE EVIDENCE BOUNDARY (read this first) -------------------
+label rows: reported != reconciled               0
+  marks that difference accounts for             0
+marks the CLIENT reported (untrusted)            1
+marks the SERVER reconciled                      1
+  of those, derived by migration 0011            0
+
+  A NUMBER THAT DESCRIBES THE EVIDENCE IS DERIVED BY THE SERVER; a
+  number that describes the client may be derived from the client. The
+  marked ids are what an operator's browser SENT, and until v0.9.2 their
+  raw count was multiplied into the asserted-negative total below — so a
+  label marking ids that named no member of its bag could move that total
+  while asserting nothing at all. The reconciled count is the reported
+  set intersected with the server's own bag, computed at the verdict.
+  A NON-ZERO FIRST LINE means some label was written by something other
+  than the shipped UI. Nothing is corrected on its account: a
+  disagreement is evidence about a write path, and repairing the row
+  would destroy it.
+
+-- SCOPE OF THE ASSERTION (never averaged) -------------------
+  clean   (nothing was hidden)                   0
+  checked (restricted, and measured)             0
+  unknown (no scope was recorded)                1
+marks about members not observable               0
+
+  A scoped editor may mark a member they were never shown — the
+  redaction carries no alarm id, so the ids are guessable — and the
+  resulting assertion is one they were not in a position to make. It is
+  still recorded: this makes it LEGIBLE, it does not prevent it.
+  The three populations are counted SEPARATELY and never averaged. An
+  `unknown` row is one whose scope was never recorded — every label
+  written before migration 0011, plus any written through a path that
+  resolved none. It is permanently uninterpretable and is NOT assumed to
+  be clean; assuming would invent an observation nobody made.
+
 -- corpus ----------------------------------------------------
 pairs, sink (awaiting a label)                   0
 pairs, dataset (promoted by a label)             8
@@ -43,7 +78,7 @@ split                                            3
 total                                            6
 
 -- INFORMATIVENESS (what a label ASSERTS, not how many there are) --
-ASSERTED NEGATIVE PAIRS                          2
+ASSERTED NEGATIVE PAIRS (reconciled)             2
   splits: plain (no boundary named)              2
   splits: partial (boundary named)               1
   exclusions truncated at the bound              0
@@ -75,19 +110,22 @@ pairs left UNASSERTED in those bags              1
 close                                            1
   confirm / split                            1 / 0
   of the splits, partial                         0
-  asserted negative pairs                        0
+  asserted neg. pairs (reconciled)               0
+  marks the client reported                      0
   under a restricting scope                      0
   carrying a client report                       0
 organic                                          4
   confirm / split                            2 / 2
   of the splits, partial                         1
-  asserted negative pairs                        2
+  asserted neg. pairs (reconciled)               2
+  marks the client reported                      1
   under a restricting scope                      1
   carrying a client report                       1
 unrecorded                                       1
   confirm / split                            0 / 1
   of the splits, partial                         0
-  asserted negative pairs                        0
+  asserted neg. pairs (reconciled)               0
+  marks the client reported                      0
   under a restricting scope                      0
   carrying a client report                       0
 

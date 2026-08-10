@@ -28,7 +28,15 @@ import asyncio
 import os
 import sys
 
-from netcorenoc import agreement, agreement_report, audit, bias, bias_report, shadow_report
+from netcorenoc import (
+    agreement,
+    agreement_report,
+    audit,
+    bias,
+    bias_report,
+    shadow_render,
+    shadow_report,
+)
 from netcorenoc.main import legacy_env_error, legacy_env_names
 from netcorenoc.store import Store
 
@@ -104,7 +112,7 @@ async def _shadow(db_path: str) -> int:
             measurements = await shadow_report.collect(store)
     finally:
         await store.close()
-    print(shadow_report.render(measurements), end="")
+    print(shadow_render.render(measurements), end="")
     return 0
 
 

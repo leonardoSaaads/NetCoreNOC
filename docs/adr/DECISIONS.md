@@ -3021,3 +3021,31 @@ grouping**.
   machine, including one that has never had the maintenance loop running.
 - **Reconsider when**: a release adds an audit action for system-detected data-integrity events as a
   class. Then this belongs with it, rather than being the reason to open the catalog for one row.
+
+## 139. Two modules split at the 400-line guard, rather than the guard raised (v0.9.2)
+
+- **Context**: `shadow_report.py` sat at **exactly 400** and `bias.py` at 367 with 33 lines of
+  headroom. The evidence boundary needed a rendered line in the first and a whole new reported
+  section in the second. Raising a module-size guard to fit a corrective release is the one move
+  this project has never made.
+- **Choice**: split both, on seams that already exist in the tree.
+  * `shadow_report.py` → **`shadow_render.py`**, on the reader/renderer seam `bias.py` /
+    `bias_report.py` has used since v0.8.0. `collect` reads the store and returns a mapping;
+    `render` takes a mapping and returns text, opens no connection and holds no state.
+  * `bias.py` → **`bias_labels.py`**, on the **subject** seam `capture.py` / `labels.py` was split
+    on in v0.9.1: `bias.py` measures what capture *cost* and what the corpus *looks like*;
+    `bias_labels.py` measures what an operator *said* — verdicts, informativeness, the evidence
+    boundary, the acquisition channels. Exactly one of those two subjects moved in this release.
+- **The dependency direction, which was the only hard part**: `bias.py` imports `bias_labels`, and
+  `bias_labels` imports nothing from `bias`. That is why the shared primitives (`pct`, `_scalar`,
+  `_rows`, `distribution`) live in the **new** module rather than the one with the longer history —
+  a cycle between two halves of one report would be worse than either arrangement of the names.
+  `pct` is re-exported from `bias` because `bias_report` has imported it from there since v0.8.0,
+  and a split is not a reason to move a caller's import.
+- **What the split is not**: a behaviour change. The rendered reports change only in the figures
+  this release deliberately moves, and both frozen expectations were re-read line by line and
+  re-frozen by hand.
+- **What it cost the guards**: `tests/test_layers.py::LAYER_OF` gains both modules, and
+  `tests/test_challenger.py`'s two enumerations gain `shadow_render.py` — a **split of an already
+  allowed module**, not a new reach, and adding it to the second list *widens* what the
+  never-reaches-the-champion guard covers.

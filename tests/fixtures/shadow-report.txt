@@ -19,7 +19,8 @@ agreement with the champion.
 
   ADDITIONAL OBSERVATIONS — not floors, and not substituted for one:
   split AND mixed bags      (no floor)        20
-  asserted negative pairs   (no floor)         0
+  asserted negative pairs     (server)         0
+  client-reported marks       (client)         0
   `split AND mixed` is the population SECURITY-REVIEW-0.9.0 §5.4 argued
   the floor should be over — a `split` on a UNIFORM bag only says the
   champion should reject what it already rejects — and it floors NOTHING

@@ -22,7 +22,7 @@ from typing import Any
 
 import pytest
 
-from netcorenoc import bias, learn
+from netcorenoc import bias, labels, learn
 from netcorenoc.capture import Exclusion, LabelContext, LabelScope
 from netcorenoc.main import Engine
 from netcorenoc.rootcause import Member
@@ -52,6 +52,11 @@ def test_the_partition_is_non_negative_and_closed_over_the_reconciled_count(
 ) -> None:
     """**The invariant, made non-vacuous** (F46, DECISIONS #136).
 
+    Driven through `labels._assertion` — the production expression — rather than over a number this
+    test made up, so that reverting the reconciliation makes it **fail** rather than merely making
+    it irrelevant. The bag is `1..n`; the reported marks are `1..m_reported`, so `m_reported - n` of
+    them name nothing.
+
     Three assertions, and their strengths are deliberately unequal:
 
     1. ``0 <= m <= n`` — the half the old identity never had;
@@ -64,20 +69,19 @@ def test_the_partition_is_non_negative_and_closed_over_the_reconciled_count(
     That is why migration `0010`'s "the arithmetic closes, which is what makes *and nothing else*
     checkable" was not the guarantee it read as, and why (1) and (2) exist.
 
-    **And (2) is necessary but NOT sufficient**, which is the half `docs/gates/v0.9.2-phase-0.md`
-    §2a measured, and the reason this test is parametrised over ``m_reported`` not over ``m``.
-    At ``n = 60, m = 30`` every component is ``>= 0`` and the sum closes while the label asserts
-    **nothing at all** — thirty marks, none of them naming a member of the bag. No arithmetic
-    property can discriminate that case; only the **intersection** can. So the property is asserted
-    over ``m = min(m_reported, n)``, standing in for the reconciled count, and this test is a guard
-    against that construction being undone rather than a filter applied to a client's number.
+    **And (2) is necessary but NOT sufficient**, which is what `docs/gates/v0.9.2-phase-0.md` §2a
+    measured. At ``n = 60`` with thirty marks that name nothing, every component would be ``>= 0``
+    and the sum would close while the label asserted **nothing at all**. No arithmetic property can
+    discriminate that case; only the **intersection** can, which is why this test reads the
+    reconciled count out of the production path instead of computing one.
 
     Deterministically generated — an enumerated grid, no RNG and no seed, so a failure names one
     ``(n, m_reported)`` and there is no run-to-run variance to argue about.
     """
-    # What reconciliation guarantees: the count is over positions in the server's own bag, so it
-    # cannot exceed the bag. `min` stands in for the intersection here; §2 drives the real one.
-    m = min(m_reported, n)
+    bag = list(range(1, n + 1))
+    reported = list(range(1, m_reported + 1))
+    fields = labels._assertion(Exclusion(reported), bag, None)
+    m = fields["excluded_reconciled"] or 0
 
     asserted, within_rest, within_marked = _partition(n, m)
 
@@ -322,19 +326,26 @@ async def test_a_report_truncated_at_the_bound_reconciles_what_survived(store: S
     """At the truncation boundary the reconciled count is a **lower bound**, and the row says so
     through `excluded_truncated` (DECISIONS #135).
 
-    600 ids sent, 512 kept, and the two real marks are inside the kept prefix. What must not happen
-    is the v0.9.1 behaviour: `excluded_count = 512` multiplied against a four-member bag, which
-    produced -260,096 asserted negative pairs from one request.
+    600 ids sent, 512 kept. What must not happen is the v0.9.1 behaviour: `excluded_count = 512`
+    multiplied against a four-member bag, which produced -260,096 asserted negative pairs from one
+    request.
+
+    **The fixture also fixes the ORDER of the two steps.** Two real members sit inside the kept
+    prefix and a third sits at position 600, beyond the bound. Truncation happens first, so that
+    third mark never reaches reconciliation and must not be counted; swapping the two steps would
+    count it, and this is the only arrangement that can tell the orders apart.
     """
     engine, _q, app = await authutil.make_env(store)
     sid, alarms = await _situation(store, engine, 4)
-    marks = [alarms[0], alarms[1]] + [GHOST - i for i in range(598)]
+    marks = [alarms[0], alarms[1]] + [GHOST - i for i in range(598)] + [alarms[2]]
     assert (await _label(app, sid, marks)).status_code == 200
 
     row = await _row(store, sid)
     assert row["excluded_count"] == 512, "tier 1: the bound, recorded rather than silently applied"
     assert row["excluded_truncated"] == 1
-    assert row["excluded_reconciled"] == 2
+    assert row["excluded_reconciled"] == 2, (
+        "a real member beyond the truncation bound was reconciled — truncation must come first"
+    )
 
 
 async def test_a_zero_member_bag_with_a_marking_reconciles_to_zero(store: Store) -> None:
@@ -503,6 +514,58 @@ def test_penalize_is_byte_identical_to_v091(size: int, marked_count: int) -> Non
 
     assert new.A.pairs == old.A.pairs
     assert new.E.pairs == old.E.pairs
+
+
+async def test_a_ghost_marking_moves_no_matrix_cell(store: Store) -> None:
+    """**The live learner reads tier 2, and this is what would notice if it stopped.**
+
+    `LabelContext.marked_positions` intersects the reported ids with the server's own bag before
+    `learn.penalize` ever sees them. Feed it a marking made entirely of ids that name nothing and
+    **no cell may move** — a penalty applied on the strength of a client's say-so would be this
+    release's defect appearing in the one place it never was.
+
+    The control is the second half: the same shape of bag with a REAL marking must move exactly the
+    cells `|marked| x |rest|` names, or the first half would pass on a learner that does nothing.
+    """
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    sid, _alarms = await _situation(store, engine, 6)
+    learner = engine.learner
+    members = engine.members[sid]
+    for i, a in enumerate(members):
+        for b in members[i + 1 :]:
+            learner.A.observe_pair(a.class_id, b.class_id, 1.0)
+    before = {k: v[0] for k, v in learner.A.pairs.items()}
+
+    async with store.lock:
+        await engine.apply_feedback(
+            sid,
+            "split",
+            TS + 10.0,
+            label=LabelContext(exclusion=Exclusion.accept([GHOST, GHOST - 1], None)),
+        )
+        await store.commit()
+    assert {k: v[0] for k, v in learner.A.pairs.items()} == before, (
+        "a marking of ids that name nothing moved a matrix cell"
+    )
+
+    # CONTROL: a real marking must move exactly |marked| x |rest| class cells.
+    sid2, alarms2 = await _situation(store, engine, 6)
+    members2 = engine.members[sid2]
+    for i, a in enumerate(members2):
+        for b in members2[i + 1 :]:
+            learner.A.observe_pair(a.class_id, b.class_id, 1.0)
+    before2 = {k: v[0] for k, v in learner.A.pairs.items()}
+    async with store.lock:
+        await engine.apply_feedback(
+            sid2,
+            "split",
+            TS + 20.0,
+            label=LabelContext(exclusion=Exclusion.accept(alarms2[:2], None)),
+        )
+        await store.commit()
+    moved = {k for k, v in learner.A.pairs.items() if v[0] != before2.get(k)}
+    assert len(moved) == 2 * 4, "the control moved no cells; the first half proves nothing"
 
 
 async def test_the_response_is_unchanged_in_status_and_body(store: Store) -> None:
@@ -751,3 +814,138 @@ async def test_the_label_scope_defaults_keep_an_unscoped_construction_honest() -
     scope = LabelScope()
     assert scope.policy_id is None and scope.restricted is False
     assert scope.redacted_members == 0 and scope.hidden_members == frozenset()
+
+
+# --- §7 the consumers ----------------------------------------------------------------------------
+
+
+async def test_the_corpus_total_is_derived_from_the_reconciled_count(store: Store) -> None:
+    """**F46's corpus-wide consumer** (`bias.py`), and the number this release exists to move.
+
+    The same three labels Gate 0 §1 measured taking the total to -259,084: eight honest ones, a
+    truncated 600-id marking on a four-member bag, and thirty ghosts on a sixty-member bag. The
+    honest labels assert 8 x 2 x 7 = 112 pairs. The other two assert **nothing**, and the total must
+    say so.
+    """
+    engine, _q, app = await authutil.make_env(store)
+    for _ in range(8):
+        sid, alarms = await _situation(store, engine, 9)
+        assert (await _label(app, sid, alarms[:2])).status_code == 200
+    async with store.lock:
+        honest = await bias.collect(store)
+    assert honest["asserted_negative_pairs"] == 112, "the control: eight honest labels"
+
+    sid, _alarms = await _situation(store, engine, 4)
+    assert (await _label(app, sid, [GHOST - i for i in range(600)])).status_code == 200
+    sid, _alarms = await _situation(store, engine, 60)
+    assert (await _label(app, sid, [GHOST - 700 - i for i in range(30)])).status_code == 200
+
+    async with store.lock:
+        after = await bias.collect(store)
+    assert after["asserted_negative_pairs"] == 112, (
+        "v0.9.1 read -259,084 here: -260,096 from the truncated marking and +900 from thirty "
+        "ghosts, neither of which asserted a single pair"
+    )
+    # And the disagreement is now visible rather than silent.
+    assert after["reported_vs_reconciled_rows"] == 2
+    assert after["reported_vs_reconciled_marks"] == 512 + 30
+    assert after["client_reported_marks"] == 16 + 512 + 30
+    assert after["reconciled_marks"] == 16
+
+
+async def test_the_per_channel_total_is_derived_independently(store: Store) -> None:
+    """**F46's second consumer**, and it is a SEPARATE code path from the corpus-wide one.
+
+    `bias.py`'s per-channel figure had its own copy of the defect, in its own SQL. A single test
+    driving only the corpus-wide total would leave this path unguarded, so it is asserted here on
+    its own — with both channels present, since the two are never averaged.
+    """
+    engine, _q, app = await authutil.make_env(store)
+    sid, _alarms = await _situation(store, engine, 5)
+    assert (await _label(app, sid, [GHOST, GHOST - 1, GHOST - 2])).status_code == 200
+
+    sid2, alarms2 = await _situation(store, engine, 5)
+    client = await authutil.client_as(app, "editor")
+    try:
+        closed = await client.post(
+            f"/api/situations/{sid2}/close",
+            json={"verdict": "split", "excluded_ids": [alarms2[0], GHOST - 9]},
+        )
+    finally:
+        await client.aclose()
+    assert closed.status_code == 200
+
+    async with store.lock:
+        channels = (await bias.collect(store))["by_channel"]
+    assert channels["organic"]["asserted_negatives"] == 0, "three ghosts assert nothing"
+    assert channels["organic"]["client_reported_marks"] == 3
+    assert channels["close"]["asserted_negatives"] == 1 * (5 - 1), "one real mark of five"
+    assert channels["close"]["client_reported_marks"] == 2
+
+
+async def test_the_disagreement_is_the_first_number_the_report_prints(store: Store) -> None:
+    """The report must put it first, and must name both tiers in words a reader can follow without
+    holding `EVIDENCE-BOUNDARY-0.9.2.md`."""
+    from netcorenoc import bias_report
+
+    engine, _q, app = await authutil.make_env(store)
+    sid, _alarms = await _situation(store, engine, 4)
+    assert (await _label(app, sid, [GHOST, GHOST - 1])).status_code == 200
+    async with store.lock:
+        text = bias_report.render(await bias.collect(store))
+
+    body = text.split("aggregate.\n", 1)[1]
+    first = next(line for line in body.splitlines() if line.strip() and not line.startswith("--"))
+    assert first.startswith("label rows: reported != reconciled"), first
+    assert first.strip().endswith("1"), "two ghosts on one row: one row disagrees"
+    assert "marks the CLIENT reported (untrusted)" in text
+    assert "marks the SERVER reconciled" in text
+    assert "ASSERTED NEGATIVE PAIRS (reconciled)" in text
+
+
+async def test_dataset_stats_splits_the_bag_by_source(store: Store) -> None:
+    """The operator's row-cost view says how much of `feedback_member` is authoritative.
+
+    The cost is real either way; the composition is what an operator sizing retention needs, and a
+    client can inflate one half of it by up to `MAX_CLIENT_MEMBERS` per label. The total is still
+    printed, so nothing an operator read before has gone away.
+    """
+    engine, _q, app = await authutil.make_env(store)
+    sid, alarms = await _situation(store, engine, 5)
+    client = await authutil.client_as(app, "editor")
+    try:
+        resp = await client.post(
+            f"/api/situations/{sid}/feedback",
+            json={
+                "verdict": "split",
+                "member_ids": [alarms[0], GHOST],
+                "excluded_ids": [alarms[1]],
+            },
+        )
+    finally:
+        await client.aclose()
+    assert resp.status_code == 200
+
+    stats = await store.dataset_stats()
+    assert stats["feedback_member.server"] == 5, "the bag the engine wrote"
+    assert stats["feedback_member.client"] == 2, "what the browser said it rendered"
+    assert stats["feedback_member"] == 7, "and the total an operator already read"
+
+
+async def test_a_report_over_a_backfilled_corpus_says_the_count_was_derived(store: Store) -> None:
+    """`reconciled_backfilled` distinguishes a count `0011` derived from one the server wrote live.
+
+    Two acts, two times, two actors. A report that could not tell them apart would let a reader
+    treat a migration's arithmetic as an observation made at the verdict.
+    """
+    engine, _q, app = await authutil.make_env(store)
+    sid, alarms = await _situation(store, engine, 5)
+    assert (await _label(app, sid, alarms[:2])).status_code == 200
+
+    async with store.lock:
+        assert (await bias.collect(store))["reconciled_backfilled"] == 0
+        await store.conn.execute(
+            "UPDATE feedback SET excluded_reconciled_source='backfill' WHERE situation_id=?", (sid,)
+        )
+        await store.commit()
+        assert (await bias.collect(store))["reconciled_backfilled"] == 1

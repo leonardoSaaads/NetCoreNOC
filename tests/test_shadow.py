@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import shadow, shadow_eval, shadow_report, training
+from netcorenoc import shadow, shadow_eval, shadow_render, shadow_report, training
 from netcorenoc.challenger import Coefficients, LogisticScorer
 from netcorenoc.correlate import CorrelationResult, EvaluatedPair, WindowAlarm
 from netcorenoc.main import Engine
@@ -587,7 +587,7 @@ def _stable(text: str) -> str:
 
 async def _report(store: Store) -> str:
     async with store.lock:
-        return shadow_report.render(await shadow_report.collect(store))
+        return shadow_render.render(await shadow_report.collect(store))
 
 
 async def test_the_report_is_deterministic_across_two_runs(store: Store) -> None:
