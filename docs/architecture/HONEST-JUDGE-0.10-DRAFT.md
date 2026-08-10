@@ -276,3 +276,65 @@ v0.9.1 seeded thirty-one defects across twelve subsystems and recorded which the
 (`../gates/v0.9.1-test-audit.md`). It is **a sample, not a proof**, and it says so. v0.10.0 inherits
 both the map and the method: a release that adds an evaluator is a release whose guards matter more
 than most, and re-running the technique against the new code costs an afternoon.
+
+---
+
+## 8. What v0.9.2 changed about this inheritance (added 2026-08-10, `v0.10.0: planned`)
+
+**This section adds nothing to v0.10.0's scope and decides nothing that belongs to its
+pre-registration.** It records one change in what is available, and one change in what may honestly
+be said about it. The choice of floor unit remains v0.10.0's to make deliberately and in advance.
+
+### 8.1 The asserted-negative quantity is now server-derived
+
+§7.1 recorded that v0.9.1 made a `split` informative for the first time: an operator may mark which
+members do not belong, and `m · (n − m)` pairs are asserted negative. **In v0.9.1 that `m` was the
+length of a list the client sent.** It was never intersected with the server's own bag, and three
+consumers multiplied it — so a label marking thirty ids that named no member of its bag moved the
+corpus total by **+900** while asserting nothing at all, and one marking 512 ids on a four-member
+bag moved it by **−260 096**. Both were produced over HTTP, as an ordinary `editor`, in a single
+request (`../gates/v0.9.2-phase-0.md` §1). The finding is **F46**.
+
+From v0.9.2 the quantity every consumer reads is `feedback.excluded_reconciled` —
+`|reported ∩ the server's own bag|`, computed server-side at the instant of the verdict, bounded by
+`0 ≤ m ≤ n` at four layers, and **exactly the value `learn.penalize` has always used**. The report
+and the learner now read one expression rather than two that happened to agree.
+
+`excluded_count` still exists, unchanged and undeprecated. It is what the client reported, it is a
+legitimate measurement **of the client**, and the gap between the two is printed as the bias
+report's first number.
+
+### 8.2 Which population a floor could honestly be expressed over
+
+v0.9.2 also repaired **F47**: a label now records how many of its reconciled marks were about
+members the labeller could not observe. The corpus divides into three populations, reported
+separately and **never averaged** (DECISIONS #133):
+
+| population | what it means | may a floor be expressed over it? |
+|---|---|---|
+| **clean** | nothing was hidden from the labeller | yes — every asserted pair joins two members they could see |
+| **checked** | a restricted scope, and the row says how much of the assertion was blind | yes, **if the floor states how it treats the blind fraction**, which is a choice, not a default |
+| **unknown** | no scope was recorded — every pre-`0011` label, and any written through a path that resolved none | **no.** It is permanently uninterpretable and must be counted, never assumed clean |
+
+A fourth distinction cuts across all three: a **truncated** report (`excluded_truncated = 1`) yields
+a reconciled count that is a **lower bound** rather than a count, so it may contribute to a total and
+may not silently set a threshold (DECISIONS #135).
+
+### 8.3 What v0.9.2 did **not** decide, deliberately
+
+* **The floor unit.** Asserted negative pairs, labels carrying an assertion, or something else —
+  and over which of the three populations. Choosing it here, after the repair and after seeing the
+  corpus, is precisely what pre-registration exists to prevent. §5's rule stands unchanged: a
+  deployment may harden a floor and can never soften one, and the registration comes before the
+  data is looked at.
+* **Whether the reconciled count is *sufficient*.** It is now honest. Whether there is enough of it
+  is a different question and it is still v0.10.0's.
+* **Whether client ids should ever be rejected.** v0.9.2 says no, and says what would have to become
+  true to revisit it (`EVIDENCE-BOUNDARY-0.9.2.md` §5, `../security/SECURITY-REVIEW-0.9.2.md` §4).
+
+### 8.4 One inherited limitation, stated so it is not rediscovered
+
+**The reconciled count does not mean the operator was right.** It means they marked members that
+existed in the bag. Whether those members truly belonged to another situation is the thing the
+corpus is evidence *for*, and no column added in v0.9.2 validates it. §7.4's warning applies
+unchanged, one level in.

@@ -156,10 +156,22 @@ def test_a_virtualenv_under_any_name_is_excluded_from_the_link_check(tmp_path: P
     ]
     assert named, "the fixture must contain a Markdown file a name-based walk would pick up"
 
-    # THE REPAIR: `pyvenv.cfg`-aware exclusion removes it, whatever the directory is called.
-    assert test_structure._is_inside_venv(venv / "lib" / "README.md", roots=[tmp_path]) is True
-    # CONTROL: a real repository document is NOT excluded, or the repair would exclude everything.
-    assert test_structure._is_inside_venv(REPO_ROOT / "README.md", roots=[REPO_ROOT]) is False
+    # THE REPAIR, exercised through **the walk itself** rather than through the helper it uses.
+    # A first version of this test called `_is_inside_venv` directly and stayed green when the walk
+    # was reverted to the name list — the helper still existed, so the test measured a function
+    # nothing called. That is this file's own subject, caught by this file's own method
+    # (`../docs/gates/v0.9.2-guard-demonstrations.md`, ledger entry L2).
+    monkey = tmp_path / "repo"
+    (monkey / "docs").mkdir(parents=True)
+    (monkey / "docs" / "real.md").write_text("[ok](../env/pyvenv.cfg)\n", encoding="utf-8")
+    (venv / "lib" / "nested").mkdir()
+    found = test_structure._markdown_files_under(monkey.parent)
+    assert (venv / "lib" / "README.md") not in found, (
+        "a virtualenv named `env` was walked by the link checker"
+    )
+    assert (monkey / "docs" / "real.md") in found, (
+        "the repair excluded a real document; the walk must still see this repository's own files"
+    )
 
 
 def test_the_link_checker_still_sees_this_repositorys_own_documents() -> None:

@@ -692,9 +692,11 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
       reconstructible from what the policy document said. It stays `NULL` on every pre-existing
       row, forever.
 
-    The fixture deliberately carries **a partial split whose marking includes a ghost id**, so the
-    backfill has something to reconcile *away*: three ids reported, two of them real, and the
-    migration must write `2` — not `3`, which is what the old column says, and not `0`.
+    The fixture deliberately carries **a partial split whose marking includes a ghost id and a
+    duplicate**, so the backfill has two different things to reconcile away: four ids reported,
+    naming two distinct members of the bag, and the migration must write `2` — not `4`, which is
+    what the old column says, not `3`, which counting rows instead of distinct marks would give,
+    and not `0`.
     """
     import netcorenoc.store.lifecycle as store_mod
 
@@ -744,9 +746,14 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
                 sids[0], "split", BASE + 21, principal_ref="bob", role="editor"
             )
             assert split.id is not None
-            await old.add_feedback_exclusion(split.id, [bag[0], bag[1], ghost])
+            # `bag[1]` is marked TWICE, on purpose. `feedback_exclusion` is keyed on
+            # `(feedback_id, position)`, so a client may legitimately send a duplicate — and the
+            # backfill must count DISTINCT marks or a duplicate would inflate the derived count,
+            # and on a small enough bag would produce a value the CHECK refuses, turning a hostile
+            # label into a failed upgrade (ledger L4).
+            await old.add_feedback_exclusion(split.id, [bag[0], bag[1], bag[1], ghost])
             await old.annotate_feedback(
-                split.id, excluded_count=3, excluded_truncated=0, remainder_together=None
+                split.id, excluded_count=4, excluded_truncated=0, remainder_together=None
             )
             # A confirm, which asserts nothing negative and must stay untouched by the backfill.
             await engine_old.apply_feedback(
@@ -784,8 +791,8 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
         before_dataset = await old.dataset_stats()
         before_chain = (await audit.verify_chain(old)).final_hash
         partial = next(r for r in before_labels if r["excluded_count"] is not None)
-        assert partial["excluded_count"] == 3, "v0.9.1 records the CLIENT's list length"
-        assert len(before_exclusion) == 3, "all three reported ids are stored as evidence"
+        assert partial["excluded_count"] == 4, "v0.9.1 records the CLIENT's list length"
+        assert len(before_exclusion) == 4, "all four reported ids are stored as evidence"
         await old.close()
     finally:
         store_mod.MIGRATIONS_DIR = real_dir
@@ -803,8 +810,10 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
             "excluded_reconciled_out_of_scope FROM feedback WHERE excluded_count IS NOT NULL"
         )
         row = dict(next(iter(await cur.fetchall())))
-        assert row["excluded_count"] == 3, "tier 1 is unchanged, byte for byte"
-        assert row["excluded_reconciled"] == 2, "the ghost asserted nothing and must not be counted"
+        assert row["excluded_count"] == 4, "tier 1 is unchanged, byte for byte"
+        assert row["excluded_reconciled"] == 2, (
+            "the ghost asserted nothing and the duplicate is one mark, not two"
+        )
         assert row["excluded_reconciled_source"] == "backfill", (
             "a derived count that cannot say it was derived will be read as a live one"
         )

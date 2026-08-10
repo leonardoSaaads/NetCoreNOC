@@ -196,14 +196,25 @@ def _strip_code(text: str) -> str:
     return _INLINE_CODE.sub("", _FENCED.sub("", text))
 
 
-def _markdown_files() -> list[Path]:
-    venvs = _venv_roots([REPO_ROOT])
+def _markdown_files_under(root: Path) -> list[Path]:
+    """Every Markdown file under `root` that this repository is responsible for.
+
+    Parameterised on the root so the guard can be **driven over a fixture** rather than only over
+    the repository it happens to live in. `tests/test_guard_scope.py` does exactly that: a first
+    version of that test called `_is_inside_venv` directly and stayed green when this walk was
+    reverted to the name list, because the helper still existed and nothing called it.
+    """
+    venvs = _venv_roots([root])
     return [
         p
-        for p in REPO_ROOT.rglob("*.md")
+        for p in root.rglob("*.md")
         if not any(part in _SKIP_DIRS or part.endswith(".egg-info") for part in p.parts)
         and not any(p.is_relative_to(venv) for venv in venvs)
     ]
+
+
+def _markdown_files() -> list[Path]:
+    return _markdown_files_under(REPO_ROOT)
 
 
 def test_markdown_files_discovered() -> None:

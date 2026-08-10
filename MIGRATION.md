@@ -1,5 +1,95 @@
 # Upgrading NetCoreNOC
 
+## v0.9.1 → v0.9.2 (the evidence boundary — one migration, and **one derived column**)
+
+Replace the code and restart. Migration **`0011`** runs automatically at startup, adds three
+nullable columns to `feedback`, and **derives one of them from evidence you already have**.
+
+| | |
+|---|---|
+| Schema | `user_version` **10 → 11** — three nullable columns on `feedback`, two of them carrying an enforced `CHECK`; no new table, no index, no trigger |
+| Data | untouched. Verified against a database written by real v0.9.1 code: `feedback`, `feedback_exclusion` and `feedback_member` compared **value for value**, identical `dataset_stats()` |
+| Existing labels | **unchanged.** One new column is *derived* on partial splits (below); every other value is exactly what v0.9.1 wrote |
+| Audit chain | verifies with the **identical final hash** — the migration writes no event |
+| Grouping | **unchanged.** Correlation, capture and ingest are untouched and `make eval` is byte-identical |
+| Learned state | **unchanged.** `learn.penalize` is byte-identical, asserted by test |
+| Routes | **none added**, and none changed |
+| Capabilities / audit actions | **unchanged** |
+| API contract | **unchanged** — no field added, removed or newly validated |
+| Responses | **unchanged**, in status, body **and timing** |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **unchanged** (still five) |
+| How you run it | **unchanged** |
+
+### Why this release exists
+
+`feedback.excluded_count` was the length of the list an operator's **browser** sent, and three
+reports multiplied it as though it described the network. Nothing checked that the operator marked
+no more members than the situation had. A label naming ids that were not members of its own bag
+could move the corpus-wide asserted-negative total — in one direction loudly (a negative total), in
+the other **quietly and plausibly**, while asserting nothing at all.
+
+### What `0011` adds
+
+**`excluded_reconciled`** — how many of the marked ids were actually members of the situation, as the
+*server* saw it at the moment of the verdict. This is the number every report now uses.
+
+**`excluded_reconciled_source`** — `'live'` if the server computed it at the verdict, `'backfill'` if
+this migration derived it. Two different acts; a column that could not tell them apart would be
+misread.
+
+**`excluded_reconciled_out_of_scope`** — for a **scoped** operator, how many of those marks were
+about members their visibility policy hid from them. `NULL` means *not recorded*, and it means it
+permanently.
+
+`excluded_count` is **unchanged and is not deprecated.** It is still exactly what the client
+reported, and it is now printed beside the reconciled count under a label that says whose
+measurement it is.
+
+### What is backfilled, and what is not
+
+**Backfilled:** `excluded_reconciled`, on every label that already carries a marking, computed from
+`feedback_exclusion` and `feedback_member` — rows you already have, which no retention path removes.
+Every backfilled row is marked `excluded_reconciled_source = 'backfill'`, so a later reader can tell
+a migration's arithmetic from an observation made at the verdict.
+
+**Not backfilled, and there is no exception:** `excluded_reconciled_out_of_scope`. Deciding whether a
+mark was about a member the operator could see needs `alarm.ne_id`, which the ordinary retention
+sweep collects one pass after a situation closes — and even where it survives, it would reconstruct
+what the *policy said* rather than what the *operator saw*. Every label written before this upgrade
+therefore reads `NULL` for ever, and the report counts that population rather than assuming it away.
+
+### What you will see change in your reports
+
+**On any corpus written by the shipped UI: no number moves.** The UI sends only ids it rendered, so
+the reported count and the reconciled count agree on every row, and the asserted-negative total is
+identical before and after. What changes is that the reports now **say more about the same
+numbers**:
+
+* `make bias-report` gains two leading sections. The **first number** is now *"label rows: reported
+  != reconciled"*, followed by the client's mark count and the server's. Then the three scope
+  populations — **clean**, **checked**, **unknown** — reported separately and never averaged.
+* `make shadow-report` labels its asserted-negative line `(server)` and prints the client's figure
+  beside it as `(client)`.
+* `make dataset-stats` splits `feedback_member` into `.server` and `.client`. The total is still
+  printed.
+
+**If that first number is not zero, something other than the shipped UI has written labels into your
+corpus.** That is worth investigating and it is not necessarily an attack — a script, an old client,
+or a `curl` call would all do it. **Nothing is corrected on its account**: a disagreement is evidence
+about a write path, and repairing the row would destroy it. The same disagreement is surfaced as an
+operator warning by the maintenance sweep.
+
+**No grouping changes.** No situation is re-partitioned, no learned state moves, and no verdict is
+reinterpreted.
+
+### If you carry a database older than v0.8.0
+
+`0011` touches only rows where `excluded_count` and `member_count` are both present, so labels
+predating v0.8.0 (no recorded bag size) and plain splits (no marking) are left entirely alone. If
+your database has been through several upgrades, `netcorenoc audit verify` after the restart is the
+one check worth running — it should report the same final hash it did before.
+
 ## v0.9.0 → v0.9.1 (the partial split — one migration, and **existing labels are untouched**)
 
 Replace the code and restart. Migration **`0010`** runs automatically at startup, adds one table and

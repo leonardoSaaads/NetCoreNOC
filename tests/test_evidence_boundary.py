@@ -672,6 +672,116 @@ async def test_a_corrupted_row_is_reported_by_maintenance_and_not_corrected(stor
     assert (await _row(store, sid))["excluded_reconciled"] == 5
 
 
+async def test_a_repeated_mark_is_not_reported_as_drift(store: Store) -> None:
+    """**Ledger L3.** The drift query must count DISTINCT marks, exactly as the write path does.
+
+    `feedback_exclusion` is keyed on `(feedback_id, position)`, so `[5, 5, 5]` is three legal rows
+    and one mark. A drift check counting rows would report a healthy corpus as corrupt on every
+    pass, which is worse than not checking: an operator who learns the warning is usually wrong
+    stops reading it.
+    """
+    engine, _q, app = await authutil.make_env(store)
+    sid, alarms = await _situation(store, engine, 4)
+    assert (await _label(app, sid, [alarms[0]] * 3)).status_code == 200
+    assert (await _row(store, sid))["excluded_reconciled"] == 1
+
+    async with store.lock:
+        assert await store.reconciliation_drift() == [], (
+            "a repeated mark was reported as drift; the recomputation counted rows, not marks"
+        )
+
+
+async def test_the_maintenance_sweep_itself_runs_the_verification(store: Store) -> None:
+    """**Ledger L13.** Driven through `capture.prune`, not through `verify_evidence` directly.
+
+    A test that calls the verification by hand proves the query works and proves nothing about
+    whether anything calls it. Deleting the call site left every other drift test green.
+    """
+    engine, _q, app = await authutil.make_env(store)
+    sid, alarms = await _situation(store, engine, 6)
+    assert (await _label(app, sid, alarms[:2])).status_code == 200
+    async with store.lock:
+        await store.conn.execute(
+            "UPDATE feedback SET excluded_reconciled=5 WHERE situation_id=?", (sid,)
+        )
+        await store.commit()
+
+    assert engine.capture.drift_rows == 0, "the control: nothing has swept yet"
+    async with store.lock:
+        await engine.capture.prune(store, TS + 1.0, engine.retention)
+    assert engine.capture.drift_rows == 1, "the maintenance sweep did not run the verification"
+    assert any("NOTHING HAS BEEN CORRECTED" in w for w in engine.capture.warnings())
+
+
+async def test_a_redacted_member_marked_twice_is_one_blind_mark(store: Store) -> None:
+    """**Ledger L15.** The blind count is taken over the RECONCILED marks, not over the report.
+
+    The two agree on every input except a repeated mark, because the hidden set is a subset of the
+    bag by construction — so this is the only fixture that can tell them apart, and without it the
+    distinction is an equivalent mutant that nothing would notice.
+    """
+    engine, _q, app = await authutil.make_env(store)
+    await _install_scope(store)
+    sid, alarms = await _situation(store, engine, 6, hidden_from=3)
+
+    assert (await _label(app, sid, [alarms[4], alarms[4], alarms[4]])).status_code == 200
+    row = await _row(store, sid)
+    assert row["excluded_count"] == 3, "three ids were reported, and are recorded verbatim"
+    assert row["excluded_reconciled"] == 1
+    assert row["excluded_reconciled_out_of_scope"] == 1, (
+        "one redacted member, marked three times, is one blind mark"
+    )
+
+
+async def test_the_store_layer_refuses_exactly_at_the_boundary(store: Store) -> None:
+    """**Ledger L6.** `n` is legal and `n + 1` is not, asserted at the boundary itself.
+
+    The original test used `10` against a bag of `4`, which a precondition loosened by one still
+    refuses — so it proved a bound existed without proving where it was.
+    """
+    engine, _q, _app = await authutil.make_env(store)
+    sid, _alarms = await _situation(store, engine, 4)
+    async with store.lock:
+        recorded = await store.add_feedback(sid, "split", TS)
+        assert recorded.id is not None
+        await store.annotate_feedback(recorded.id, member_count=4, excluded_reconciled=4)
+        with pytest.raises(ValueError, match="excluded_reconciled"):
+            await store.annotate_feedback(recorded.id, member_count=4, excluded_reconciled=5)
+        await store.rollback()
+
+
+async def test_the_schema_refuses_a_reconciled_count_with_no_bag_size(store: Store) -> None:
+    """**Ledger L5.** The CHECK's `member_count IS NOT NULL` clause, asserted against SQLite itself.
+
+    The store layer refuses this first, so the constraint is unreachable through any code path —
+    which is exactly why it needs a test that goes around the store. SQLite treats a CHECK
+    evaluating to NULL as satisfied, so dropping that clause would let a reconciled count be written
+    against a bag whose size was never recorded, and nothing above would have noticed.
+    """
+    import sqlite3
+
+    engine, _q, _app = await authutil.make_env(store)
+    sid, _alarms = await _situation(store, engine, 4)
+    async with store.lock:
+        recorded = await store.add_feedback(sid, "split", TS)
+        assert recorded.id is not None
+        await store.commit()
+
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+        await store.conn.execute(
+            "UPDATE feedback SET member_count=NULL, excluded_reconciled=0 WHERE id=?",
+            (recorded.id,),
+        )
+    await store.rollback()
+
+    # CONTROL: the same write with a bag size recorded is accepted, or the refusal above would
+    # prove only that the column rejects everything.
+    await store.conn.execute(
+        "UPDATE feedback SET member_count=4, excluded_reconciled=0 WHERE id=?", (recorded.id,)
+    )
+    await store.rollback()
+
+
 async def test_a_failing_verification_degrades_capture_and_never_the_maintenance_pass(
     store: Store,
 ) -> None:
