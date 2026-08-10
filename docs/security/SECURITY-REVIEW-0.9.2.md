@@ -101,13 +101,13 @@ named control that passed under the injection.
 
 | Test | Demonstration |
 |---|---|
-| `test_the_corpus_total_is_derived_from_the_reconciled_count` | §1 — the corpus-wide consumer reverted |
-| `test_the_per_channel_total_is_derived_independently` | §2 — the per-channel consumer reverted **independently** |
-| `test_the_partition_is_non_negative_and_closed_over_the_reconciled_count` | §3 — the write path reverted |
-| `test_reported_and_reconciled_differ_exactly_when_they_should` | §3, §4, §5 |
-| `test_marking_members_of_a_different_situation_asserts_nothing` | §4 — reconciliation inverted |
-| `test_a_report_truncated_at_the_bound_reconciles_what_survived` | §6 — truncation and reconciliation swapped |
-| `test_a_ghost_marking_moves_no_matrix_cell` | §12 — `penalize` fed the unreconciled set |
+| `test_the_corpus_total_is_derived_from_the_reconciled_count` | `M1` — the corpus-wide consumer reverted |
+| `test_the_per_channel_total_is_derived_independently` | `M2` — the per-channel consumer reverted **independently** |
+| `test_the_partition_is_non_negative_and_closed_over_the_reconciled_count` | `M3` — the write path reverted |
+| `test_reported_and_reconciled_differ_exactly_when_they_should` | `M3`, `M4`, `M5` |
+| `test_marking_members_of_a_different_situation_asserts_nothing` | `M4` — reconciliation inverted |
+| `test_a_report_truncated_at_the_bound_reconciles_what_survived` | `M6` — truncation and reconciliation swapped |
+| `test_a_ghost_marking_moves_no_matrix_cell` | `M12` — `penalize` fed the unreconciled set |
 
 ---
 
@@ -193,10 +193,10 @@ existence oracle F34 closed — a strictly worse exchange, refused in DECISIONS 
 
 | Test | Demonstration |
 |---|---|
-| `test_a_mark_on_a_redacted_member_is_recorded_as_blind` | §7 — the scope of the marking not recorded |
-| `test_zero_blind_marks_is_a_real_answer_and_not_a_silence` | §7 |
-| `test_a_label_with_no_resolved_scope_records_unknown_not_zero` | §8 — `0` fabricated in place of `NULL` |
-| `test_v092_upgrade_reconciles_and_leaves_tier_three_null` | §9 — the backfill widened to a tier-3 column |
+| `test_a_mark_on_a_redacted_member_is_recorded_as_blind` | `M7` — the scope of the marking not recorded |
+| `test_zero_blind_marks_is_a_real_answer_and_not_a_silence` | `M7` |
+| `test_a_label_with_no_resolved_scope_records_unknown_not_zero` | `M8` — `0` fabricated in place of `NULL` |
+| `test_v092_upgrade_reconciles_and_leaves_tier_three_null` | `M9` — the backfill widened to a tier-3 column |
 
 ---
 

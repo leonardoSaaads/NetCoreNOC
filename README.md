@@ -218,6 +218,14 @@ often got wrong, the **effective sample size stated as the number of independent
 the number of pairs**. It emits aggregates only, it is deterministic, and it closes by saying what
 it *cannot* tell you.
 
+Since v0.9.2 it **leads with the evidence boundary**. Every figure that describes the *evidence* is
+derived by the server — the members an operator marked, intersected with the situation's own bag —
+and every figure that describes the *client* is labelled as such. The first number is how many label
+rows disagree between the two. On a corpus written by the shipped UI it is zero; a non-zero value
+means something else has written labels here, which is worth investigating and is not corrected on
+its own account. [`docs/architecture/EVIDENCE-BOUNDARY-0.9.2.md`](docs/architecture/EVIDENCE-BOUNDARY-0.9.2.md)
+is the rule and the reasoning.
+
 Retention has three tiers (sink / training / audit), all admin-settable. **Lowering one deletes rows
 and there is no undo**, so the endpoint previews by default and both the preview and the change are
 audited. [`MIGRATION.md`](MIGRATION.md) has the numbers and the one caveat that matters: the sink's

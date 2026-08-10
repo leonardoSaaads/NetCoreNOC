@@ -53,6 +53,12 @@ one-screen tour of the tree.
 - [`architecture/SHADOW-MODE-0.9-DRAFT.md`](architecture/SHADOW-MODE-0.9-DRAFT.md) — the v0.9.0
   specification: what a challenger may and may not do, the label-derivation policies, the leakage
   vectors, and why effective sample size is bags rather than pairs.
+- [`architecture/EVIDENCE-BOUNDARY-0.9.2.md`](architecture/EVIDENCE-BOUNDARY-0.9.2.md) — **which
+  side of the trust boundary a stored quantity comes from**: the three tiers (reported, reconciled,
+  interpretable), every client-controlled write-path input classified against them, what each
+  consumer is entitled to read, and the two findings that came of getting it wrong. Written in
+  v0.9.2 and **live**: it is the document a release consults before adding a column that measures
+  anything.
 - [`architecture/HONEST-JUDGE-0.10-DRAFT.md`](architecture/HONEST-JUDGE-0.10-DRAFT.md) — the
   v0.10.0 specification, **written from what v0.9.0 measured rather than from what it hoped**: the
   split by time or by incident and never at random, why the merge chain makes incident identity

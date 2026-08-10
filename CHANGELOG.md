@@ -4,6 +4,99 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-08-10 — "the evidence boundary"
+
+**A number that describes the evidence is derived by the server; a number that describes the client
+may be derived from the client; and the place where the two meet is a named, stored, auditable act
+rather than an arithmetic accident.**
+
+A **corrective** release. No new capability, no new route, no new model, no product movement. It
+exists because the quantity v0.10.0 is most likely to promote into a pre-registered sufficiency
+floor — the count of asserted negative pairs — was being computed from unvalidated client input,
+and a floor computed from something the subject controls is not a floor.
+
+### Why
+
+`labels.py` recorded `excluded_count` as the raw length of a client-supplied list, never intersected
+with the server's own bag, and three reports multiplied it. Measured over HTTP as an ordinary
+`editor`, against an honest corpus:
+
+```
+8 honest labels (9-member bags, 2 marked each)      total =     112
++ ONE label: bag of 4, 600 ids sent (truncated 512) total = -259,984   delta = -260,096
++ ONE label: bag of 60, 30 GHOST ids marked         total = -259,084   delta =    +900
+```
+
+The third line is the release. `-260,096` is loud and any `>= N` floor fails on it. `+900` is
+positive, plausible, and composed of **zero true assertions** — the same label read through the path
+`learn.penalize` actually uses resolves 0 marks and moves not one matrix cell.
+
+### Security
+
+- **F46 — the asserted-negative count is the client's list length.** High for evidence integrity;
+  nil for confidentiality and availability; not a privilege escalation. Repaired by
+  `feedback.excluded_reconciled`, computed server-side at the verdict.
+- **F47 — the assertion does not record whether it could have been made.** A scoped editor may mark
+  members they were never shown, and nothing recorded that. Repaired by
+  `feedback.excluded_reconciled_out_of_scope`. **It makes the assertion legible; it does not prevent
+  it** — preventing it would mean rejecting client ids and reintroducing the existence oracle F34
+  closed.
+
+Both are reproduced with controls in `docs/gates/v0.9.2-phase-0.md`; the full analysis is
+`docs/security/SECURITY-REVIEW-0.9.2.md`.
+
+### Added
+
+- **Migration `0011`** — three nullable columns on `feedback`: `excluded_reconciled` (the reported
+  marks intersected with the server's own bag, distinct by alarm id), `excluded_reconciled_source`
+  (`live` or `backfill`), and `excluded_reconciled_out_of_scope` (how many reconciled marks were
+  about members the labeller could not observe; `NULL` means unknown, for ever). Two enforced
+  `CHECK` constraints.
+- **`docs/architecture/EVIDENCE-BOUNDARY-0.9.2.md`** — the three-tier model, every client-controlled
+  write-path input classified against it, and what each consumer is entitled to read.
+- **A maintenance drift check** that recomputes the reconciled count from the child tables and
+  **reports** disagreement as an operator warning. It never corrects: a disagreement is evidence
+  that a write path is broken, and repairing the row would destroy it.
+- **`docs/gates/v0.9.2-guard-demonstrations.md`** — every guard this release ships, with the exact
+  defect injected as a diff, the verbatim red, the verbatim green, and a named control that passed
+  under the injection. Thirteen mandatory injections, all caught; a fifteen-mutant ledger whose
+  first run caught nine, with all six survivors named and repaired.
+
+### Changed
+
+Four intentional behaviour changes, and any change not on this list is a defect.
+
+1. `make bias-report` leads with the **disagreement between the reported and reconciled counts**,
+   then prints both, then the three scope populations (**clean / checked / unknown**) separately and
+   never averaged.
+2. `make shadow-report` labels its asserted-negative line `(server)` and prints the client's figure
+   beside it as `(client)`.
+3. `make dataset-stats` splits `feedback_member` into `.server` and `.client`; the total is still
+   printed.
+4. `make migrate` derives `excluded_reconciled` on labels that already carry a marking, marked as
+   `backfill`. Nothing from the scope column is seeded.
+
+**On any corpus written by the shipped UI, no number moves.** The reports say more about the same
+figures.
+
+### Unchanged, and asserted by test
+
+`make eval` is byte-identical (`c2e8a0ce…b9b6f26`, since v0.7.0). `learn.penalize` is byte-identical.
+Every response is unchanged in status, body **and timing**. No route, capability, audit action,
+served path or runtime dependency is added. `engine.py` is untouched at 569 lines.
+
+### Internal
+
+- `shadow_report.py` reached its 400-line guard and was split into `shadow_report.py` (the reader)
+  and `shadow_render.py` (the renderer); `bias.py` was split into `bias.py` (what capture cost) and
+  `bias_labels.py` (what an operator said). **Neither guard was raised** (DECISIONS #139).
+- `Perimeter.redacted_member_count` became `Perimeter.hidden_member_ids`, returning the set rather
+  than its size, so both scope facts on a label come from **one** read (DECISIONS #137).
+- The perimeter's fail-open branch has a test for the first time, and
+  `tests/test_structure.py`'s virtualenv exclusion is now `pyvenv.cfg`-aware rather than a literal
+  name.
+- ADRs #131–#139.
+
 ## [0.9.1] - 2026-08-08 — "the partial split"
 
 **The operator can say *which* members do not belong — and the project audits whether its own tests
