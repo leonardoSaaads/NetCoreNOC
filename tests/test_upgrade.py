@@ -13,6 +13,7 @@ from pathlib import Path
 
 from netcorenoc import audit, shaping
 from netcorenoc.api import create_app
+from netcorenoc.capture import Exclusion, LabelContext
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
@@ -479,13 +480,13 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
     finally:
         store_mod.MIGRATIONS_DIR = real_dir
 
-    # The upgrade: same file, every migration past 0008 now present. From v0.9.1 that is 0009 and
-    # 0010 together — the fixture is frozen at 8, so this asserts a v0.8.1 database reaches the
-    # CURRENT schema, and the "no rows seeded" claim below is now made about both of them.
+    # The upgrade: same file, every migration past 0008 now present. From v0.9.2 that is 0009,
+    # 0010 and 0011 together — the fixture is frozen at 8, so this asserts a v0.8.1 database reaches
+    # the CURRENT schema, and the "no rows seeded" claim below is now made about all three.
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 10
+        assert await new.schema_version() == Store.latest_schema_version() == 11
         assert new.integrity_warnings == []
 
         # Asserted BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -609,11 +610,15 @@ async def test_v091_upgrade_applies_0010_and_leaves_existing_labels_plain(tmp_pa
     finally:
         store_mod.MIGRATIONS_DIR = real_dir
 
-    # The upgrade: same file, 0010 now present.
+    # The upgrade: same file, 0010 now present — and, from v0.9.2, 0011 with it. The claims below
+    # are about what 0010 did NOT do to a v0.9.0 corpus, and 0011 does not weaken any of them: it
+    # backfills only where `excluded_count IS NOT NULL`, which is exactly the set of rows this
+    # fixture proves is empty. `test_v092_upgrade_reconciles_and_leaves_tier_three_null` is the
+    # test that exercises 0011 against a corpus that DOES carry assertions.
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 10
+        assert await new.schema_version() == Store.latest_schema_version() == 11
         assert new.integrity_warnings == []
 
         # Asked BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -668,5 +673,189 @@ async def test_v091_upgrade_applies_0010_and_leaves_existing_labels_plain(tmp_pa
         cur = await new.conn.execute("SELECT COUNT(*) FROM feedback_exclusion")
         row = await cur.fetchone()
         assert row is not None and int(row[0]) == 0
+    finally:
+        await new.close()
+
+
+async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path) -> None:
+    """Gate 2 (v0.9.2): a live **v0.9.1** database upgrades in place, `0011` **derives** the
+    reconciled count from evidence that is already stored, and it seeds **nothing** from tier 3.
+
+    The claim is two-sided, and the two sides come from different rules.
+
+    * **Derivation is permitted.** `feedback_exclusion ∩ feedback_member(source='server')` is
+      stored evidence that no retention path removes, so recomputing it is not invention. Every
+      backfilled row is marked `excluded_reconciled_source='backfill'`, because *derived by the
+      migration* and *written live at the verdict* are two different acts and a column that cannot
+      tell them apart will be misread (DECISIONS #131, #133).
+    * **Fabrication is not.** `excluded_reconciled_out_of_scope` needs `alarm.ne_id`, which
+      `prune()` collects, and the scope policy **as the operator experienced it**, which is not
+      reconstructible from what the policy document said. It stays `NULL` on every pre-existing
+      row, forever.
+
+    The fixture deliberately carries **a partial split whose marking includes a ghost id**, so the
+    backfill has something to reconcile *away*: three ids reported, two of them real, and the
+    migration must write `2` — not `3`, which is what the old column says, and not `0`.
+    """
+    import netcorenoc.store.lifecycle as store_mod
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV10:
+        """The migration directory as a v0.9.1 install saw it: `0011` does not exist yet.
+
+        Filtered by migration *number*, so a later release adding `0012` cannot silently un-freeze
+        this fixture and turn a genuine v0.9.1 database into a current one.
+        """
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 10]
+
+    ghost = 999_999_999
+    db = str(tmp_path / "v091-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV10()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 10  # a genuine v0.9.1 database
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        sids = [int(r["id"]) for r in await old.list_situations(None, 10)]
+        bag = [int(r["id"]) for r in await old.situation_members(sids[0])]
+        assert len(bag) >= 2, "the fixture must carry a bag big enough to mark two of"
+        async with old.lock:
+            # A partial split, marked with two REAL members and one ghost. Written by v0.9.1's own
+            # code path, so `excluded_count` is what v0.9.1 would have written: 3.
+            await engine_old.apply_feedback(
+                sids[0],
+                "split",
+                BASE + 21,
+                principal_ref="bob",
+                role="editor",
+                label=LabelContext(exclusion=Exclusion.accept([bag[0], bag[1], ghost], None)),
+            )
+            # A confirm, which asserts nothing negative and must stay untouched by the backfill.
+            await engine_old.apply_feedback(
+                sids[0], "confirm", BASE + 20, principal_ref="alice", role="editor"
+            )
+            await audit.write_event(
+                old,
+                ts=BASE,
+                actor="admin",
+                role="admin",
+                source_ip="-",
+                action="login.ok",
+                outcome="ok",
+            )
+            await old.commit()
+        before_labels = [
+            dict(r)
+            for r in await (
+                await old.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, excluded_count, "
+                    "excluded_truncated, remainder_together, acquisition_channel "
+                    "FROM feedback ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        before_exclusion = [
+            dict(r)
+            for r in await (
+                await old.conn.execute(
+                    "SELECT feedback_id, position, alarm_id FROM feedback_exclusion "
+                    "ORDER BY feedback_id, position"
+                )
+            ).fetchall()
+        ]
+        before_dataset = await old.dataset_stats()
+        before_chain = (await audit.verify_chain(old)).final_hash
+        partial = next(r for r in before_labels if r["excluded_count"] is not None)
+        assert partial["excluded_count"] == 3, "v0.9.1 records the CLIENT's list length"
+        assert len(before_exclusion) == 3, "all three reported ids are stored as evidence"
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    # The upgrade: same file, 0011 now present.
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == Store.latest_schema_version() == 11
+        assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0011"
+
+        # **The derivation.** Three ids reported, two of them members of the server's own bag.
+        cur = await new.conn.execute(
+            "SELECT id, excluded_count, excluded_reconciled, excluded_reconciled_source, "
+            "excluded_reconciled_out_of_scope FROM feedback WHERE excluded_count IS NOT NULL"
+        )
+        row = dict(next(iter(await cur.fetchall())))
+        assert row["excluded_count"] == 3, "tier 1 is unchanged, byte for byte"
+        assert row["excluded_reconciled"] == 2, "the ghost asserted nothing and must not be counted"
+        assert row["excluded_reconciled_source"] == "backfill", (
+            "a derived count that cannot say it was derived will be read as a live one"
+        )
+        # **The boundary.** Nothing from tier 3, on any row, ever.
+        assert row["excluded_reconciled_out_of_scope"] is None
+        cur = await new.conn.execute(
+            "SELECT COUNT(*) FROM feedback WHERE excluded_reconciled_out_of_scope IS NOT NULL"
+        )
+        seeded = await cur.fetchone()
+        assert seeded is not None and int(seeded[0]) == 0, (
+            "0011 fabricated a scope record for a label whose scope is not reconstructible"
+        )
+
+        # A verdict that asserted nothing negative is left entirely alone: NULL means "no
+        # assertion was made", and 0 would be an assertion about an empty set.
+        cur = await new.conn.execute(
+            "SELECT excluded_reconciled, excluded_reconciled_source FROM feedback "
+            "WHERE verdict='confirm'"
+        )
+        confirm = dict(next(iter(await cur.fetchall())))
+        assert confirm["excluded_reconciled"] is None
+        assert confirm["excluded_reconciled_source"] is None
+
+        # Tier 1 and the evidence rows survive value for value — the migration reads them and
+        # writes nothing back.
+        after_labels = [
+            dict(r)
+            for r in await (
+                await new.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, excluded_count, "
+                    "excluded_truncated, remainder_together, acquisition_channel "
+                    "FROM feedback ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        after_exclusion = [
+            dict(r)
+            for r in await (
+                await new.conn.execute(
+                    "SELECT feedback_id, position, alarm_id FROM feedback_exclusion "
+                    "ORDER BY feedback_id, position"
+                )
+            ).fetchall()
+        ]
+        assert after_labels == before_labels
+        assert after_exclusion == before_exclusion
+        assert ghost in {r["alarm_id"] for r in after_exclusion}, (
+            "the ghost is still recorded verbatim: reconciliation is an additional quantity, "
+            "never a filter on what is stored"
+        )
+        assert await new.dataset_stats() == before_dataset
+
+        # The audit chain verifies, and to the SAME final hash — the migration wrote no event.
+        result = await audit.verify_chain(new)
+        assert result.ok and result.final_hash == before_chain
+
+        # First boot after the upgrade seeds nothing further.
+        engine_new = Engine(new, asyncio.Queue())
+        await engine_new.start()
+        cur = await new.conn.execute(
+            "SELECT COUNT(*) FROM feedback WHERE excluded_reconciled_out_of_scope IS NOT NULL"
+        )
+        booted = await cur.fetchone()
+        assert booted is not None and int(booted[0]) == 0
     finally:
         await new.close()
