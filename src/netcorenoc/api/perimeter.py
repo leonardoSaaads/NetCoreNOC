@@ -336,23 +336,33 @@ class Perimeter:
             members = await self._store.situation_member_ne(sid)
         return any(scope.allows_ne(ne_id) for ne_id in members.values())
 
-    async def redacted_member_count(self, sid: int, scope: shaping.Scope) -> int:
-        """How many of this situation's members the principal **could not see** (v0.8.0 §5.5).
+    async def hidden_member_ids(self, sid: int, scope: shaping.Scope) -> frozenset[int]:
+        """**Which** of this situation's members the principal could not see (v0.8.0 §5.5).
 
-        The scope fingerprint's third field. `situation_in_scope` answers *"may they label it at
-        all?"*; this answers *"how much of it was hidden when they did?"* — and the second question
-        is what makes the label interpretable later, because a verdict over four visible members of
-        a nine-member situation is a statement about four.
+        The scope fingerprint's third field, and — from v0.9.2 — the input to its fourth.
+        `situation_in_scope` answers *"may they label it at all?"*; this answers *"which part of it
+        was hidden when they did?"*, and the second question is what makes the label interpretable
+        later: a verdict over four visible members of a nine-member situation is a statement about
+        four, and a *mark* on one of the other five is an assertion the operator was not in a
+        position to make (F47).
 
-        Reuses `situation_member_ne` and `scope.allows_ne`, the same two the visibility decision
-        uses, so this can never disagree with what the operator was actually shown. Zero for an
-        unrestricted scope, without touching the database — the parity path stays free.
+        **The set rather than the count, and that is the whole change in v0.9.2.** `LabelScope`
+        needs both `scope_redacted_members` (how much of the bag was hidden) and
+        `excluded_reconciled_out_of_scope` (how much of the *assertion* was blind), and the two must
+        come from **one** read of one predicate. Two reads are two answers that can drift, which is
+        the reasoning `situation_in_scope` and this method already share `situation_member_ne` and
+        `scope.allows_ne` for (DECISIONS #59, #137) — so the count is `len()` of this, at the one
+        call site that needs it, rather than a second query.
+
+        Empty for an unrestricted scope, without touching the database — the parity path stays free.
         """
         if scope.unrestricted:
-            return 0
+            return frozenset()
         async with self._store.lock:
             members = await self._store.situation_member_ne(sid)
-        return sum(1 for ne_id in members.values() if not scope.allows_ne(ne_id))
+        return frozenset(
+            alarm_id for alarm_id, ne_id in members.items() if not scope.allows_ne(ne_id)
+        )
 
     async def audit_scope_denial(
         self,

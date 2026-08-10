@@ -13,7 +13,6 @@ from pathlib import Path
 
 from netcorenoc import audit, shaping
 from netcorenoc.api import create_app
-from netcorenoc.capture import Exclusion, LabelContext
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
@@ -726,15 +725,28 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
         bag = [int(r["id"]) for r in await old.situation_members(sids[0])]
         assert len(bag) >= 2, "the fixture must carry a bag big enough to mark two of"
         async with old.lock:
-            # A partial split, marked with two REAL members and one ghost. Written by v0.9.1's own
-            # code path, so `excluded_count` is what v0.9.1 would have written: 3.
-            await engine_old.apply_feedback(
-                sids[0],
-                "split",
-                BASE + 21,
-                principal_ref="bob",
-                role="editor",
-                label=LabelContext(exclusion=Exclusion.accept([bag[0], bag[1], ghost], None)),
+            # A partial split, marked with two REAL members and one ghost.
+            #
+            # **Why the exclusion is written through the store rather than through
+            # `LabelContext`.** The migration directory can be frozen; the *code* cannot — this
+            # process is always v0.9.2, and `labels._assertion` writes three columns a schema-v10
+            # database does not have. Handing `apply_feedback` an exclusion here would therefore
+            # exercise v0.9.2's capture fail-safe (it degrades, correctly, on an `OperationalError`)
+            # and would leave no exclusion at all, which is the opposite of the fixture this test
+            # needs.
+            #
+            # So the verdict, the bag and every other annotation come from the real engine path, and
+            # the two v0.9.1-shaped exclusion facts are written with the **same store methods
+            # v0.9.1 used**, carrying **exactly the column set v0.9.1 wrote**. What lands on disk is
+            # a v0.9.1 row, which is what "a database written by v0.9.1" has to mean when the only
+            # interpreter available is the current one.
+            split = await engine_old.apply_feedback(
+                sids[0], "split", BASE + 21, principal_ref="bob", role="editor"
+            )
+            assert split.id is not None
+            await old.add_feedback_exclusion(split.id, [bag[0], bag[1], ghost])
+            await old.annotate_feedback(
+                split.id, excluded_count=3, excluded_truncated=0, remainder_together=None
             )
             # A confirm, which asserts nothing negative and must stay untouched by the backfill.
             await engine_old.apply_feedback(

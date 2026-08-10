@@ -34,8 +34,21 @@
 --     -------------------------------------------------
 --     total               n(n-1)/2  = every pair of the bag, and nothing is unaccounted for
 --
--- At n = 9, m = 2: 14 asserted, 22 unasserted, 36 total. `tests/test_learn.py` asserts the
+-- At n = 9, m = 2: 14 asserted, 22 unasserted, 36 total. `tests/test_partial_split.py` asserts the
 -- identity rather than trusting it.
+--
+-- CORRECTED IN v0.9.2, AND THE CLAIM ABOVE IS WEAKER THAN IT READS. Two things, and only the
+-- comment changed -- no statement in this file was edited, so no database sees a different schema.
+--
+--   (1) This comment named `tests/test_learn.py`. The assertion is in `tests/test_partial_split.py`.
+--       The documentation guard checks relative Markdown links, not cross-file claims inside SQL
+--       comments, so nothing caught it for a release.
+--   (2) MORE IMPORTANTLY: the identity above is a POLYNOMIAL IDENTITY in `m` and `n`. Substituting
+--       r = n - m and expanding, `m` cancels entirely, so it holds for EVERY integer `m` --
+--       including m > n. At n = 4, m = 512 it closes exactly while the asserted component is
+--       -260,096. It is therefore NOT what makes "and nothing else" checkable; it cannot fail.
+--       What discriminates is COMPONENT NON-NEGATIVITY, plus the reconciliation `0011` adds --
+--       `docs/gates/v0.9.2-phase-0.md` §2 measures both, and F46 is the finding.
 -- ---------------------------------------------------------------------------------------------
 --
 -- A PARTIAL SPLIT IS STILL A `split`. No verdict value is added and none is changed. Every reader

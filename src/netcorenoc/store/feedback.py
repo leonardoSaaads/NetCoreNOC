@@ -24,6 +24,33 @@ from netcorenoc.store.base import StoreBase
 from netcorenoc.store.types import FeedbackResult
 
 
+def _check_reconciled(fields: dict[str, Any]) -> None:
+    """`0 <= excluded_reconciled <= member_count`, and the blind count within it (v0.9.2).
+
+    A **precondition**, not a validation of user input: nothing a client sends reaches here
+    unreconciled, so a violation is a bug in `labels._assertion` or in a caller that invented a
+    number. Stated as `ValueError` rather than `assert` because the process is the same either way
+    and an assertion would vanish under `-O`.
+
+    Only checks what the call actually carries. `record_label` writes all of these in **one**
+    `UPDATE`, so `member_count` is present whenever `excluded_reconciled` is — and a call that
+    carried a reconciled count without a bag size would be exactly the malformed write this refuses.
+    """
+    reconciled = fields.get("excluded_reconciled")
+    if reconciled is not None:
+        n = fields.get("member_count")
+        if n is None or not 0 <= reconciled <= n:
+            raise ValueError(
+                f"excluded_reconciled={reconciled!r} is not within [0, member_count={n!r}]"
+            )
+    blind = fields.get("excluded_reconciled_out_of_scope")
+    if blind is not None and (reconciled is None or not 0 <= blind <= reconciled):
+        raise ValueError(
+            f"excluded_reconciled_out_of_scope={blind!r} is not within "
+            f"[0, excluded_reconciled={reconciled!r}]"
+        )
+
+
 class FeedbackMixin(StoreBase):
     async def add_feedback(
         self,
@@ -127,14 +154,60 @@ class FeedbackMixin(StoreBase):
         return [int(r[0]) for r in await cur.fetchall()]
 
     async def annotate_feedback(self, feedback_id: int, **fields: Any) -> None:
-        """Set the label row's dataset columns. Written once, at the moment of the verdict."""
+        """Set the label row's dataset columns. Written once, at the moment of the verdict.
+
+        **The store layer refuses a reconciled count that is not one** (v0.9.2). Migration `0011`
+        carries the same invariant as a `CHECK`, and the schema is the *last* line rather than the
+        only one: a violation that reaches SQLite is then unambiguous evidence of a bug in a layer
+        above, instead of an ambiguity about which layer was responsible
+        (`EVIDENCE-BOUNDARY-0.9.2.md` §4.3).
+
+        Raising is safe here and is the correct failure. Every caller is inside
+        `labels.record_label`'s `try`, so a violation degrades **capture** — it loses the
+        annotation, never the operator's verdict, which the caller has already recorded, and never
+        the response, its status or its timing.
+        """
         if not fields:
             return
+        _check_reconciled(fields)
         assignments = ", ".join(f"{name}=?" for name in fields)
         await self.conn.execute(
             f"UPDATE feedback SET {assignments} WHERE id=?",  # nosec B608
             (*fields.values(), feedback_id),
         )
+
+    async def reconciliation_drift(self) -> list[dict[str, Any]]:
+        """Rows whose stored reconciled count disagrees with a recomputation from the child tables.
+
+        **The reconciliation query.** `excluded_reconciled` is a denormalized copy, and the
+        normalized tables stay the source of truth, so the system carries a query that rebuilds it
+        and compares rather than trusting the copy. `COUNT(DISTINCT alarm_id)` for the reason
+        migration `0011` gives: `feedback_exclusion` is keyed on `(feedback_id, position)`, so one
+        member marked three times is three evidence rows and one mark.
+
+        **This reports. It never corrects** (DECISIONS #134). A disagreement means a write path is
+        broken, and silently repairing the row would destroy the evidence of that — had this check
+        existed in v0.9.1 as a corrector, F46 would have been invisible.
+
+        Deterministic: ordered by `id`, and it returns rows rather than a verdict so the caller
+        decides what to say about them. Empty on every healthy corpus.
+        """
+        cur = await self.conn.execute(
+            "SELECT f.id AS feedback_id, f.excluded_count, f.excluded_reconciled AS stored, "
+            "       f.excluded_reconciled_source AS source, ("
+            "  SELECT COUNT(DISTINCT x.alarm_id) FROM feedback_exclusion x "
+            "    JOIN feedback_member m ON m.feedback_id = x.feedback_id "
+            "     AND m.alarm_id = x.alarm_id AND m.source = 'server' "
+            "   WHERE x.feedback_id = f.id) AS recomputed "
+            "FROM feedback f WHERE f.excluded_reconciled IS NOT NULL "
+            "  AND f.excluded_reconciled <> ("
+            "  SELECT COUNT(DISTINCT x.alarm_id) FROM feedback_exclusion x "
+            "    JOIN feedback_member m ON m.feedback_id = x.feedback_id "
+            "     AND m.alarm_id = x.alarm_id AND m.source = 'server' "
+            "   WHERE x.feedback_id = f.id) "
+            "ORDER BY f.id"
+        )
+        return [dict(r) for r in await cur.fetchall()]
 
     async def add_feedback_exclusion(self, feedback_id: int, alarm_ids: list[int]) -> None:
         """The members the operator marked as **not belonging** (v0.9.1, migration `0010`).

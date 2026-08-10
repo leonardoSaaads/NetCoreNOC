@@ -2977,3 +2977,47 @@ grouping**.
 - **Also**: `0010`'s comment names `tests/test_learn.py` as the file asserting the identity. It is
   `tests/test_partial_split.py`. Corrected in the comment, not in the migration's SQL, which is
   never edited.
+
+## 137. `redacted_member_count` becomes `hidden_member_ids` — one read, one answer (v0.9.2)
+
+- **Context**: tier 3 needs to know **which** members were hidden, not only how many, so that
+  `record_label` can count the reconciled marks that named one of them. The perimeter already
+  resolves that set internally: `redacted_member_count` reads `situation_member_ne` and counts the
+  members `scope.allows_ne` rejects, then throws the identities away.
+- **Options**: (a) add a second method beside it and read `situation_member_ne` twice per labelled
+  request; (b) widen the existing method to return the set, and derive the count at its one call
+  site.
+- **Choice**: **(b)**. `Perimeter.hidden_member_ids` returns `frozenset[int]`; `label_context` calls
+  it once and passes `redacted_members=len(hidden)` and `hidden_members=hidden` into `LabelScope`.
+- **Reason**: under (a), `scope_redacted_members` and `excluded_reconciled_out_of_scope` would come
+  from **two reads**, and two reads are two answers that can drift. That is the same argument
+  #59 made for `situation_in_scope` and `redacted_member_count` sharing a predicate, one level in:
+  a label whose two scope facts disagreed would be worse than one that recorded neither, because a
+  reader would have no way to tell which half was wrong. (a) is also strictly more work on the
+  write path, for a weaker guarantee.
+- **What it costs**: the method's name is now stale in `SECURITY-REVIEW-0.8.0.md`, which is a
+  **record** and is not rewritten to agree with a later release — the same rule that leaves
+  `SCOPE-0.6.md` saying v0.8.0 is customer models. The behaviour that review describes is unchanged:
+  the same `situation_member_ne` and the same `scope.allows_ne`, so the record cannot disagree with
+  what the operator was shown.
+- **What did not change**: the unrestricted short-circuit. An appliance with no scope policy returns
+  an empty set without touching the database, so the parity path still pays nothing.
+
+## 138. The drift check reports through the warning channel, and writes no audit row (v0.9.2)
+
+- **Context**: #134 settled that the maintenance check **reports** rather than corrects. Where it
+  reports was left open, and the build prompt sketches *"an operator warning and an audit row"* while
+  also making *"no new audit action"* a hard constraint whose violation is a build failure.
+- **Choice**: the **operator-warning channel** (`Capture.warnings`, already surfaced through the
+  API's warnings list), plus the **bias report**, which recomputes the disagreement from the
+  database on every run. **No audit row, and no new action in the frozen catalog.**
+- **Reason**: the two instructions conflict, and the hard constraint wins — but the substance
+  survives intact, which is why this is a placement decision rather than a reduction in scope. The
+  catalog records **events**: something a principal did, or a system behaviour that changed
+  (`scorer.fallback` is in it because the engine *fell back*). A drift detection changes no
+  behaviour and no principal did it. And durability, which is the only thing an audit row would add
+  over a warning, is already provided better by the report: a warning lives in one process's memory,
+  while `dataset bias` re-derives the count from the child tables every time it runs, on any
+  machine, including one that has never had the maintenance loop running.
+- **Reconsider when**: a release adds an audit action for system-detected data-integrity events as a
+  class. Then this belongs with it, rather than being the reason to open the catalog for one row.

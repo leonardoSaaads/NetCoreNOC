@@ -81,6 +81,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         `scope` is the one the caller's 404 decision already used, so the record cannot disagree
         with the decision that produced it.
         """
+        # v0.9.2 (F47): ONE read, and both scope facts derived from it. `hidden_member_ids` reuses
+        # the same `situation_member_ne` + `scope.allows_ne` pair the 404 decision used, so the
+        # count of hidden members and the identity of the hidden members are one answer rather than
+        # two that can drift (DECISIONS #137).
+        hidden = await ctx.perimeter.hidden_member_ids(sid, scope)
         return capture.LabelContext(
             # v0.8.0 §5.5: the scope fingerprint. A scoped editor labels a **partial view** and
             # cannot say which part, so without this the label is uninterpretable — and the noise is
@@ -88,7 +93,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             capture.LabelScope(
                 policy_id=ctx.governance.scope_id,
                 restricted=not scope.unrestricted,
-                redacted_members=await ctx.perimeter.redacted_member_count(sid, scope),
+                redacted_members=len(hidden),
+                hidden_members=hidden,
             ),
             # §5.4b: the client's report, bounded and never rejected. `accept` can only truncate,
             # and records that it did. No id here is looked up, compared, or validated.
