@@ -56,6 +56,8 @@ it; nothing had yet tried.
 
 | Check | Result |
 |---|---|
+| tests | **1086 passed** (960 at v0.9.1, +126) |
+| coverage | **96.19 %**, against a 96.14 % baseline measured on this toolchain |
 | `make eval` | `c2e8a0ced29d9edf986279d41089ddb68e18da65a46bdc7e9f04811e8b9b6f26` — byte-identical across two processes, and unchanged since v0.7.0 |
 | `mypy --strict` | clean, 146 files |
 | `ruff check` / `format --check` | clean, 330 files |
