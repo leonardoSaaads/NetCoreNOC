@@ -423,3 +423,41 @@ be one, and its diff could not be read in one sitting.
   declared dependency of this project and upgrading it clears the run. Not a repository defect and
   deliberately not "fixed" by pinning pip in `pyproject.toml` — recorded so that whoever meets it in
   CI recognises it as an environment fact rather than a finding against NetCoreNOC.
+
+## Found while building v0.9.2 (one line each, not this release's work)
+
+- **`client_diverged` compares ORDERED digests**, so a client that sorts its bag differently from
+  the server reads as diverged even when the two hold the same members. That is legitimate as a
+  measurement *of the client* — which is what the metric is — and imprecise only when it is read as
+  a measurement of *staleness*, which is how a v0.10.0 reader will be tempted to read it. Repairing
+  it means a second, order-insensitive digest beside the first, never in place of it: the ordered
+  one is what records that the client rendered the bag in a different order, and that is a real
+  observation.
+- **`shadow_skew_rows` selects `served_*` and compares by score**, so it is blind to a training/
+  serving divergence that does not move the score, and its correctness rests on a column-aliasing
+  convention rather than on a check. Carried forward from v0.9.1 unchanged; v0.9.2 read it while
+  sweeping the consumers and found no new defect, only the same unmeasured surface.
+- **An exact stored count of *unobservable asserted pairs* does not exist.**
+  `excluded_reconciled_out_of_scope` records the **marked** side of a partial split; the remainder
+  may also contain redacted members, and a pair is unobservable if either end is. The surviving
+  columns bound it — with `n`, `m`, `h`, `b` the observable pairs lie in
+  `[(m−b)·(n−m−(h−b)), (m−b)·(n−m)]`, which was exact on the measured case — but that is arithmetic
+  a reader must do rather than a number the schema holds. `EVIDENCE-BOUNDARY-0.9.2.md` §10 carries
+  the decision and what it does not cover.
+- **The editor tier's capability set is protected by one expectation test, where the admin tier is
+  protected structurally.** Demoting `scorer.write` from `admin` refuses at *import*; demoting
+  `label.write` from `editor` to `viewer` fails exactly one test out of 960. The candidate
+  invariant — *every mutating route's capability ranks at or above `editor`, with the self-service
+  pair enumerated as the exception* — was assessed in v0.9.2 and deferred: the exception list is a
+  second table that can drift from the first (`password.change` and `logout` are mutating routes a
+  `viewer` must hold), and a structural guard with a wrong exception list is worse than an
+  expectation test because it looks stronger.
+- **The audit catalog has no action for a system-detected data-integrity event.** v0.9.2's drift
+  check reports through the operator-warning channel and through `dataset bias`, and writes no audit
+  row, because the catalog is frozen and a corrective release may not open it (DECISIONS #138). An
+  appliance audited from its log alone therefore cannot see that a drift detection occurred. The
+  right repair is one action for the *class*, decided deliberately, not one action for this check.
+- **Nothing exercises `app.js`, and the corpus-exposure claim rests on it.** Already a ROADMAP line
+  from v0.9.1 for other reasons; v0.9.2 gives it a sharper edge. The claim *"no label written by the
+  shipped UI can produce F46 or F47"* is a claim about 52 KB of JavaScript that no test executes,
+  and it is the claim that keeps the measured corpus exposure at zero.

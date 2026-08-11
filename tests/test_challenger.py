@@ -256,7 +256,18 @@ def test_no_code_path_makes_the_challenger_the_active_scorer() -> None:
     construct one are enumerated here, so a new call site anywhere else is a failing diff rather
     than a review someone might not do.
     """
-    allowed = {"challenger.py", "training.py", "shadow.py", "shadow_eval.py", "shadow_report.py"}
+    allowed = {
+        "challenger.py",
+        "training.py",
+        "shadow.py",
+        "shadow_eval.py",
+        "shadow_report.py",
+        # v0.9.2: `shadow_report.py` was split on the reader/renderer seam (DECISIONS #139). The
+        # renderer prints the fitted coefficients, so it imports `FEATURE_NAMES` and
+        # `Coefficients` — the same two names the module it came out of already imported. This is
+        # a SPLIT of an allowed module, not a new reach: the set below covers the moved code too.
+        "shadow_render.py",
+    }
     offenders: list[str] = []
     for path in sorted(PKG.rglob("*.py")):
         name = str(path.relative_to(PKG))
@@ -289,7 +300,14 @@ def test_the_shadow_modules_never_reach_the_active_scorer_or_the_learner() -> No
     documentation out of the file, which is the opposite of what it is for.
     """
     forbidden = {"set_scorer", "penalize"}
-    for name in ("challenger.py", "training.py", "shadow.py", "shadow_eval.py", "shadow_report.py"):
+    for name in (
+        "challenger.py",
+        "training.py",
+        "shadow.py",
+        "shadow_eval.py",
+        "shadow_report.py",
+        "shadow_render.py",
+    ):
         path = PKG / name
         if not path.exists():
             continue

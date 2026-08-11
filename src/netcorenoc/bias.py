@@ -31,44 +31,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from netcorenoc import bias_labels
+
+# The aggregate primitives live one module down, with the label aggregates that use them most
+# (DECISIONS #139). `pct` is re-exported because `bias_report` has imported it from here since
+# v0.8.0 and the split is not a reason to move a caller's import.
+from netcorenoc.bias_labels import _rows, _scalar, distribution, pct
+
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
     from netcorenoc.store import Store
 
 __all__ = ["collect", "pct"]
 
 DAY_S = 86400.0
-
-
-def pct(part: int, whole: int) -> str:
-    return "n/a" if whole == 0 else f"{100.0 * part / whole:.1f}%"
-
-
-async def _scalar(store: Store, sql: str, args: tuple[Any, ...] = ()) -> Any:
-    cur = await store.conn.execute(sql, args)
-    row = await cur.fetchone()
-    return None if row is None else row[0]
-
-
-async def _rows(store: Store, sql: str, args: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-    cur = await store.conn.execute(sql, args)
-    return [dict(r) for r in await cur.fetchall()]
-
-
-def _distribution(values: list[int]) -> dict[str, Any]:
-    """Min / median / p90 / max, and the mean to one decimal. No numpy, no statistics import —
-    four indices into a sorted list, which is all a distribution of this size needs."""
-    if not values:
-        return {"n": 0, "min": None, "median": None, "p90": None, "max": None, "mean": None}
-    ordered = sorted(values)
-    n = len(ordered)
-    return {
-        "n": n,
-        "min": ordered[0],
-        "median": ordered[n // 2],
-        "p90": ordered[min(n - 1, int(0.9 * n))],
-        "max": ordered[-1],
-        "mean": round(sum(ordered) / n, 1),
-    }
 
 
 async def collect(store: Store) -> dict[str, Any]:
@@ -125,80 +100,11 @@ async def collect(store: Store) -> dict[str, Any]:
     )
     out["storm_pairs"] = await _scalar(store, "SELECT COUNT(*) FROM dataset_pair WHERE storm=1")
 
-    # -- confirms versus splits ------------------------------------------------------------
-    verdicts = await _rows(
-        store, "SELECT verdict, COUNT(*) AS n FROM feedback GROUP BY verdict ORDER BY verdict"
-    )
-    out["verdicts"] = {str(r["verdict"]): int(r["n"]) for r in verdicts}
-    out["labels_total"] = sum(out["verdicts"].values())
-
-    # -- INFORMATIVENESS, not only count (v0.9.1) -------------------------------------------
-    # A label count became the wrong headline the moment labels started to differ in what they
-    # ASSERT. Before this release the quantity below was zero for every corpus that has ever
-    # existed: nothing in the system asserted a negative pair.
-    #
-    # `member_count` is the bag size at label time and `excluded_count` is NULL unless the operator
-    # marked something, so `m * (n - m)` is computed only over rows where an assertion was actually
-    # made. Rows whose bag size was never recorded (pre-v0.8.0) are excluded rather than assumed.
-    partial = await _rows(
-        store,
-        "SELECT id, verdict, member_count AS n, excluded_count AS m, "
-        "       COALESCE(excluded_truncated, 0) AS truncated, remainder_together "
-        "FROM feedback WHERE excluded_count IS NOT NULL AND member_count IS NOT NULL "
-        "ORDER BY id",
-    )
-    negatives = [int(r["m"]) * (int(r["n"]) - int(r["m"])) for r in partial]
-    out["asserted_negative_pairs"] = sum(negatives)
-    out["partial_splits"] = len(partial)
-    out["plain_splits"] = int(out["verdicts"].get("split", 0)) - len(partial)
-    out["asserted_negatives_per_label"] = _distribution(negatives)
-    # Marking eight of nine is a different assertion from marking one of nine, and neither number
-    # means anything without the other — so the DISTRIBUTION of |marked| relative to bag size, in
-    # tenths, rather than a mean that would hide both ends.
-    out["marked_fraction_tenths"] = _distribution(
-        [min(10, int(10 * int(r["m"]) / int(r["n"]))) for r in partial if int(r["n"]) > 0]
-    )
-    out["exclusions_truncated"] = sum(1 for r in partial if int(r["truncated"]))
-    # OFFERED versus TAKEN. The shipped UI offers no control for the remainder assertion
-    # (DECISIONS #127), so `offered` is 0 and so is `taken`. Printed anyway, and named, because a
-    # rate over an affordance nobody was given is not a measurement of operators.
-    out["remainder_offered"] = len(partial)
-    out["remainder_asserted"] = sum(1 for r in partial if r["remainder_together"] is not None)
-    # The pairs a partial split leaves UNASSERTED — within the remainder and within the marked set.
-    # Reported beside the negatives so that v0.10.0 cannot read "not asserted positive" as
-    # "asserted negative": these are the pairs about which the operator said NOTHING.
-    out["unasserted_pairs_in_partial"] = sum(
-        (int(r["n"]) - int(r["m"])) * (int(r["n"]) - int(r["m"]) - 1) // 2
-        + int(r["m"]) * (int(r["m"]) - 1) // 2
-        for r in partial
-    )
-
-    # -- per channel (v0.9.1) ----------------------------------------------------------------
-    # Two populations, reported separately and NEVER averaged. A release that raised the labelling
-    # rate without recording which population it raised it in would have damaged the corpus while
-    # appearing to improve it (DECISIONS #126).
-    out["by_channel"] = {
-        str(r["c"]): {
-            "labels": int(r["n"]),
-            "confirm": int(r["confirms"]),
-            "split": int(r["splits"]),
-            "partial_splits": int(r["partials"]),
-            "asserted_negatives": int(r["negatives"] or 0),
-            "restricted_scope": int(r["restricted"]),
-            "client_reported": int(r["client"]),
-        }
-        for r in await _rows(
-            store,
-            "SELECT COALESCE(acquisition_channel, 'unrecorded') AS c, COUNT(*) AS n, "
-            "  SUM(verdict='confirm') AS confirms, SUM(verdict='split') AS splits, "
-            "  SUM(excluded_count IS NOT NULL) AS partials, "
-            "  SUM(COALESCE(excluded_count, 0) * (COALESCE(member_count, 0) "
-            "      - COALESCE(excluded_count, 0))) AS negatives, "
-            "  SUM(COALESCE(scope_restricted, 0)) AS restricted, "
-            "  SUM(client_member_digest IS NOT NULL) AS client "
-            "FROM feedback GROUP BY c ORDER BY c",
-        )
-    }
+    # -- what the labels ASSERT (v0.9.1; reconciled in v0.9.2) ------------------------------
+    # Verdicts, informativeness, the evidence boundary and the acquisition channels, all of
+    # which are aggregates over what an operator SAID rather than over what capture cost.
+    # `bias_labels.py` since v0.9.2 (DECISIONS #139).
+    out.update(await bias_labels.assertions(store))
 
     # -- the prize: judgement the product is still failing to capture (v0.9.1) ---------------
     # Every situation an operator closed without recording a verdict is a judgement that was made
@@ -240,7 +146,7 @@ async def collect(store: Store) -> dict[str, Any]:
         store,
         "SELECT member_count FROM feedback WHERE member_count IS NOT NULL ORDER BY id",
     )
-    out["bag_sizes"] = _distribution([int(r["member_count"]) for r in sizes])
+    out["bag_sizes"] = distribution([int(r["member_count"]) for r in sizes])
     out["empty_bags"] = await _scalar(store, "SELECT COUNT(*) FROM feedback WHERE member_count = 0")
 
     # -- operator concentration ------------------------------------------------------------
@@ -263,7 +169,7 @@ async def collect(store: Store) -> dict[str, Any]:
         "SELECT scope_redacted_members FROM feedback WHERE scope_restricted = 1 "
         "AND scope_redacted_members IS NOT NULL ORDER BY id",
     )
-    out["redacted_members"] = _distribution([int(r["scope_redacted_members"]) for r in redacted])
+    out["redacted_members"] = distribution([int(r["scope_redacted_members"]) for r in redacted])
 
     # -- label latency -----------------------------------------------------------------------
     latencies = await _rows(
@@ -271,7 +177,7 @@ async def collect(store: Store) -> dict[str, Any]:
         "SELECT CAST(created_at - situation_opened_at AS INTEGER) AS latency FROM feedback "
         "WHERE situation_opened_at IS NOT NULL ORDER BY id",
     )
-    out["latency_s"] = _distribution([int(r["latency"]) for r in latencies])
+    out["latency_s"] = distribution([int(r["latency"]) for r in latencies])
 
     # -- coverage, three ways ----------------------------------------------------------------
     # **The denominator is the population this database has EVIDENCE of**, not the rows that

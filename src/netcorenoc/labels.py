@@ -50,11 +50,23 @@ class LabelScope:
     deliberately carries no NE id, address or entity key. Without this the label is uninterpretable
     — and the resulting noise is **systematic, not random**: it correlates with the scope policy, so
     it does not average out with more data. It teaches a model the shape of the policy.
+
+    **v0.9.2 (F47): it also carries WHICH members were hidden**, not only how many. A scoped editor
+    may mark an id they were never shown — the redaction deliberately carries no alarm id, so the
+    ids are guessable — and the resulting assertion is one they were not in a position to make.
+    `hidden_members` is what lets `record_label` say how much of the *assertion* was blind, and it
+    comes from the **same** `Perimeter.hidden_member_ids` read that produced `redacted_members`, so
+    the two can never disagree (DECISIONS #137).
+
+    `hidden_members` is transient: it is used to derive a count and is never itself stored. An
+    empty set means *nothing was hidden* on a restricted scope as well as on an unrestricted one,
+    and `restricted` is what distinguishes those.
     """
 
     policy_id: int | None = None
     restricted: bool = False
     redacted_members: int = 0
+    hidden_members: frozenset[int] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -211,6 +223,55 @@ def coverage(bag: list[int], promoted: int) -> dict[str, Any]:
     return {"coverage": state, "coverage_found": promoted, "coverage_expected": expected}
 
 
+def _assertion(exclusion: Exclusion, bag: list[int], scope: LabelScope | None) -> dict[str, Any]:
+    """**The evidence boundary, as one function** (v0.9.2; F46, F47).
+
+    Five columns, and the whole release is which side of the boundary each of them comes from.
+    `docs/architecture/EVIDENCE-BOUNDARY-0.9.2.md` is the argument; this is the arithmetic.
+
+    **Tier 1 — what the client said.** `excluded_count` and `excluded_truncated` are unchanged from
+    v0.9.1, byte for byte. `excluded_count` is the length of the reported list and it is a
+    measurement **of the client**, never of the evidence. It is NULL when the operator marked
+    nothing, because "marked nothing" is a PLAIN split rather than an assertion about an empty set,
+    and 0 would be indistinguishable from one.
+
+    **Tier 2 — what the server reconciled.** `excluded_reconciled` is `|reported ∩ the server's own
+    bag|`, and it is **exactly `len(marked_positions(bag))`** — the same value `learn.penalize` has
+    always used. That is not a coincidence to be maintained but the point: the report and the
+    learner now read one quantity, so they agree by construction. Distinct by position, hence by
+    alarm id, so a client that sends `[5, 5, 5]` has three evidence rows and **one** mark.
+
+    `excluded_reconciled = 0` with `excluded_count = 30` is a legal and meaningful row: the
+    client reported thirty marks and **none of them named a member of the bag**. That is the label
+    Gate 0 §1 measured moving a corpus total by +900 while asserting nothing, and after this release
+    it asserts 0 and says so.
+
+    **Tier 3 — whether the assertion could have been made.** `excluded_reconciled_out_of_scope`
+    counts the reconciled marks that named a member the labeller could not observe. It is written
+    only when a scope was resolved: `None` means **unknown**, and unknown is not zero. Zero is a
+    real and common answer — an unrestricted scope hid nothing, so no mark could have been blind —
+    and it must stay distinguishable from a label whose scope was never recorded at all.
+    """
+    reported = len(exclusion.alarm_ids)
+    marked = exclusion.marked_positions(bag)
+    fields: dict[str, Any] = {
+        "excluded_count": reported or None,
+        "excluded_reconciled": len(marked) if reported else None,
+        "excluded_reconciled_source": "live" if reported else None,
+        "excluded_truncated": 1 if exclusion.truncated else 0,
+        # Three states, and NULL is the one that matters: the operator did not say.
+        # Never inferred from the marking (DECISIONS #124).
+        "remainder_together": (
+            None if exclusion.remainder_together is None else int(exclusion.remainder_together)
+        ),
+    }
+    if reported and scope is not None:
+        fields["excluded_reconciled_out_of_scope"] = sum(
+            1 for i in marked if bag[i] in scope.hidden_members
+        )
+    return fields
+
+
 def member_digest(alarm_ids: list[int]) -> str:
     """A stable digest over an **ordered** bag of member ids.
 
@@ -289,22 +350,7 @@ async def record_label(
             # existence oracle (§5a) — a security requirement, not a nicety.
             await store.add_feedback_members(recorded.id, "client", client.alarm_ids)
         if exclusion is not None:
-            # The same three properties as the client fingerprint above, for the same reasons: the
-            # ids are written verbatim, nothing is looked up, and an id that names nothing simply
-            # asserts nothing. `excluded_count` is NULL when the operator marked nothing, because
-            # "marked nothing" is a PLAIN split rather than an assertion about an empty set — and
-            # 0 would be indistinguishable from one.
-            fields.update(
-                excluded_count=len(exclusion.alarm_ids) or None,
-                excluded_truncated=1 if exclusion.truncated else 0,
-                # Three states, and NULL is the one that matters: the operator did not say.
-                # Never inferred from the marking (DECISIONS #124).
-                remainder_together=(
-                    None
-                    if exclusion.remainder_together is None
-                    else int(exclusion.remainder_together)
-                ),
-            )
+            fields.update(_assertion(exclusion, bag, scope))
             await store.add_feedback_exclusion(recorded.id, exclusion.alarm_ids)
         await store.annotate_feedback(recorded.id, **fields)
     except Exception as exc:

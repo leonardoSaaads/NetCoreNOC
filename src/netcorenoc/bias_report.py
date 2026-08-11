@@ -35,6 +35,49 @@ def render(m: dict[str, Any]) -> str:
     add("no model. Every figure below is an aggregate.")
     add("")
 
+    # **The first number, and it is first on purpose** (v0.9.2, F46). Every quantity below that
+    # describes the EVIDENCE is derived from the server's own reconciliation of the operator's
+    # marks against its own bag. This line says whether the client ever disagreed with it — which
+    # is how an operator learns that something other than the shipped UI has written into this
+    # corpus, whether or not it was hostile.
+    add("-- THE EVIDENCE BOUNDARY (read this first) -------------------")
+    add(f"{'label rows: reported != reconciled':<38}{m['reported_vs_reconciled_rows']:>12}")
+    add(f"{'  marks that difference accounts for':<38}{m['reported_vs_reconciled_marks']:>12}")
+    add(f"{'marks the CLIENT reported (untrusted)':<38}{m['client_reported_marks']:>12}")
+    add(f"{'marks the SERVER reconciled':<38}{m['reconciled_marks']:>12}")
+    add(f"{'  of those, derived by migration 0011':<38}{m['reconciled_backfilled']:>12}")
+    add("")
+    add("  A NUMBER THAT DESCRIBES THE EVIDENCE IS DERIVED BY THE SERVER; a")
+    add("  number that describes the client may be derived from the client. The")
+    add("  marked ids are what an operator's browser SENT, and until v0.9.2 their")
+    add("  raw count was multiplied into the asserted-negative total below — so a")
+    add("  label marking ids that named no member of its bag could move that total")
+    add("  while asserting nothing at all. The reconciled count is the reported")
+    add("  set intersected with the server's own bag, computed at the verdict.")
+    add("  A NON-ZERO FIRST LINE means some label was written by something other")
+    add("  than the shipped UI. Nothing is corrected on its account: a")
+    add("  disagreement is evidence about a write path, and repairing the row")
+    add("  would destroy it.")
+    add("")
+
+    add("-- SCOPE OF THE ASSERTION (never averaged) -------------------")
+    pops = m["scope_populations"]
+    add(f"{'  clean   (nothing was hidden)':<38}{pops['clean']:>12}")
+    add(f"{'  checked (restricted, and measured)':<38}{pops['checked']:>12}")
+    add(f"{'  unknown (no scope was recorded)':<38}{pops['unknown']:>12}")
+    add(f"{'marks about members not observable':<38}{m['blind_marks_in_checked']:>12}")
+    add("")
+    add("  A scoped editor may mark a member they were never shown — the")
+    add("  redaction carries no alarm id, so the ids are guessable — and the")
+    add("  resulting assertion is one they were not in a position to make. It is")
+    add("  still recorded: this makes it LEGIBLE, it does not prevent it.")
+    add("  The three populations are counted SEPARATELY and never averaged. An")
+    add("  `unknown` row is one whose scope was never recorded — every label")
+    add("  written before migration 0011, plus any written through a path that")
+    add("  resolved none. It is permanently uninterpretable and is NOT assumed to")
+    add("  be clean; assuming would invent an observation nobody made.")
+    add("")
+
     add("-- corpus ----------------------------------------------------")
     add(f"pairs, sink (awaiting a label)        {m['pairs_sink']:>12}")
     add(f"pairs, dataset (promoted by a label)  {m['pairs_dataset']:>12}")
@@ -84,7 +127,7 @@ def render(m: dict[str, Any]) -> str:
     add("")
 
     add("-- INFORMATIVENESS (what a label ASSERTS, not how many there are) --")
-    add(f"{'ASSERTED NEGATIVE PAIRS':<38}{m['asserted_negative_pairs']:>12}")
+    add(f"{'ASSERTED NEGATIVE PAIRS (reconciled)':<38}{m['asserted_negative_pairs']:>12}")
     add(f"{'  splits: plain (no boundary named)':<38}{m['plain_splits']:>12}")
     add(f"{'  splits: partial (boundary named)':<38}{m['partial_splits']:>12}")
     add(f"{'  exclusions truncated at the bound':<38}{m['exclusions_truncated']:>12}")
@@ -119,7 +162,8 @@ def render(m: dict[str, Any]) -> str:
         add(f"{key:<38}{c['labels']:>12}")
         add(f"{'  confirm / split':<38}{f'{c["confirm"]} / {c["split"]}':>12}")
         add(f"{'  of the splits, partial':<38}{c['partial_splits']:>12}")
-        add(f"{'  asserted negative pairs':<38}{c['asserted_negatives']:>12}")
+        add(f"{'  asserted neg. pairs (reconciled)':<38}{c['asserted_negatives']:>12}")
+        add(f"{'  marks the client reported':<38}{c['client_reported_marks']:>12}")
         add(f"{'  under a restricting scope':<38}{c['restricted_scope']:>12}")
         add(f"{'  carrying a client report':<38}{c['client_reported']:>12}")
     add("")

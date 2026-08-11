@@ -167,7 +167,25 @@ def test_no_stale_flat_package() -> None:
 _LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 _FENCED = re.compile(r"```.*?```", re.DOTALL)
 _INLINE_CODE = re.compile(r"`[^`]*`")
+# Directories that never hold this repository's own documentation. **Names, and names are the
+# problem**: v0.9.2 found that `.venv` here is a literal, so a virtualenv created under any other
+# name — `env`, `venv`, a CI cache — put every third-party `README.md` through the broken-link
+# checker below. The list is kept for the non-virtualenv cases and is no longer the only defence.
 _SKIP_DIRS = {".git", ".venv", "node_modules", "build", "dist", "__pycache__", ".hypothesis"}
+
+# The other half, and the one that removes the whole class: a virtualenv is identified by the
+# `pyvenv.cfg` every one of them has and no hand-written directory does. Name-independent, so the
+# guard cannot silently stop guarding because somebody called their environment something else.
+_VENV_MARKER = "pyvenv.cfg"
+
+
+def _venv_roots(roots: list[Path]) -> list[Path]:
+    """Every virtualenv under `roots`, found by its marker file rather than by its name."""
+    return [cfg.parent for root in roots for cfg in root.rglob(_VENV_MARKER)]
+
+
+def _is_inside_venv(path: Path, roots: list[Path]) -> bool:
+    return any(path.is_relative_to(venv) for venv in _venv_roots(roots))
 
 
 def _strip_code(text: str) -> str:
@@ -178,12 +196,25 @@ def _strip_code(text: str) -> str:
     return _INLINE_CODE.sub("", _FENCED.sub("", text))
 
 
-def _markdown_files() -> list[Path]:
+def _markdown_files_under(root: Path) -> list[Path]:
+    """Every Markdown file under `root` that this repository is responsible for.
+
+    Parameterised on the root so the guard can be **driven over a fixture** rather than only over
+    the repository it happens to live in. `tests/test_guard_scope.py` does exactly that: a first
+    version of that test called `_is_inside_venv` directly and stayed green when this walk was
+    reverted to the name list, because the helper still existed and nothing called it.
+    """
+    venvs = _venv_roots([root])
     return [
         p
-        for p in REPO_ROOT.rglob("*.md")
+        for p in root.rglob("*.md")
         if not any(part in _SKIP_DIRS or part.endswith(".egg-info") for part in p.parts)
+        and not any(p.is_relative_to(venv) for venv in venvs)
     ]
+
+
+def _markdown_files() -> list[Path]:
+    return _markdown_files_under(REPO_ROOT)
 
 
 def test_markdown_files_discovered() -> None:

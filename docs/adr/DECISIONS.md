@@ -2846,3 +2846,206 @@ grouping**.
 - **What this is not**: a decision that the merged gesture is wrong. It is a decision that it needs a
   card layout this release is not allowed to redesign — and the contract, which is the durable half,
   is finished either way.
+
+## 131. Three tiers, and the sentence that decides which one a consumer may read (v0.9.2)
+
+- **Context**: `feedback.excluded_count` is the length of a client-supplied list, and three
+  consumers multiply it as though it described the network. `learn.penalize` reads the same input
+  through `Exclusion.marked_positions`, intersects it with the server's bag, and is correct. The two
+  differ in one thing only, and the release needs a name for it before it needs any code.
+- **Options**: (a) clamp `excluded_count` to `member_count` at the write and move on; (b) validate
+  the ids and reject the ones that name nothing; (c) name the boundary, classify every
+  client-controlled input against it, and derive every quantity about the evidence from the server's
+  own reconciliation.
+- **Choice**: **(c)**, stated as one sentence: *a quantity that describes the client may be derived
+  from the client; a quantity that describes the evidence must be derived from the server's
+  reconciliation; the reported set never reaches an arithmetic operator whose result is reported as
+  a property of the network.*
+- **Reason**: (a) is the fix that looks like the fix and is not one. Clamping turns `−60` into a
+  number in range and leaves `+900` — Gate 0 §1 measured thirty ghost marks on a sixty-member bag
+  producing a positive, plausible total from zero real assertions, and a clamp accepts every digit
+  of it. (b) reintroduces the existence oracle F34 closed — a scoped editor would learn whether an
+  alarm exists by watching the status, the body or the timing — and is refused for that reason
+  alone; `EVIDENCE-BOUNDARY-0.9.2.md` §5 states what would have to become true to revisit it.
+  (c) is the only option that explains why `client_diverged` — also
+  computed from client input — is *correct*: its subject is the client, and a client that lies about
+  its own bag has told you exactly the thing that metric records.
+- **The vocabulary**, borrowed from W3C PROV as vocabulary only, with no dependency and no
+  serialisation format: the report is an **entity** attributed to an **agent** who is the client; the
+  reconciliation is an **activity** performed by the server; the reconciled count is an entity
+  **derived from** both. If a column cannot be described in that sentence form, its provenance is not
+  yet clear enough to store — which is why the reconciled count ships with a provenance column and
+  not without one.
+- **Where it is written down**: `docs/architecture/EVIDENCE-BOUNDARY-0.9.2.md`, in full, with every
+  client-controlled write-path input classified and every consumer's entitlement stated.
+
+## 132. Both quantities are computed at write time and stored (v0.9.2)
+
+- **Context**: the reconciled count could be a join, computed lazily forever. Whether the marks were
+  about members the labeller could observe could not — Gate 0 §4 measured `alarm.ne_id` collected one
+  retention pass after a situation closes, on one clock, while the label, its exclusion rows and its
+  server bag all survive.
+- **Options**: (a) derive the reconciled count lazily and store only the scope record; (b) store
+  both, computed eagerly at the verdict.
+- **Choice**: **(b)**.
+- **Reason**: under (a), two quantities belonging to **the same assertion** would have different
+  availability profiles, and every consumer for the rest of the project's life would have to know
+  which is which. (b) also preserves migration `0010`'s own denormalization argument unchanged — *"a
+  report that had to join to count would not stay cheap, and a corpus whose exclusions were pruned
+  would lose the count as well as the members."* The denormalized number stays; what changes is which
+  side of the trust boundary produces it.
+- **The scope object is reused, never re-resolved.** The perimeter already resolved this principal's
+  scope to make the 404 decision and to compute `scope_redacted_members`; `label_context` receives
+  that same object. A second resolution is a second answer that can drift, which is the reasoning
+  `situation_in_scope` and `redacted_member_count` already share a predicate for (#59).
+
+## 133. What may be backfilled, and what is `NULL` forever (v0.9.2)
+
+- **Context**: `0011` adds two kinds of column. One is recomputable from rows that already exist;
+  one is not. Migration `0010` seeded nothing and was right to; `0008` backfilled
+  `capture_provenance` and was also right to. This release needs the line between them stated rather
+  than re-argued per column.
+- **Choice**: **derivation may be backfilled; fabrication may not.** Recomputing a quantity from
+  evidence already stored is derivation. Inventing a quantity whose input is gone is fabrication, and
+  must be `NULL` — counted and reported as unknown, **never assumed zero**.
+- **Applied**: the reconciled count is `feedback_exclusion ∩ feedback_member(source='server')`.
+  Both survive every retention path, measured. It is backfilled, and **every backfilled row is
+  marked as backfilled**, because "derived by the migration from stored evidence" and "written live
+  by the server at the verdict" are two different acts and a column that cannot tell them apart will
+  be misread. The scope of the marking is **not** backfilled, and there is no exception: `alarm.ne_id`
+  expires, and even where it has not, the *scope policy in effect at label time* is a reconstruction
+  of what the policy said rather than of what the operator saw — and the gap between those is exactly
+  what the column exists to record.
+- **Consequence, stated so nobody reads `0` as reassurance**: a restricted-scope label whose every
+  reconciled mark was about a visible member records `0`, and that is a strong statement. A row
+  written before `0011` records `NULL`, and `NULL` means unknown forever. The three populations —
+  **clean**, **checked**, **unknown** — are reported separately and never averaged, exactly as
+  `acquisition_channel` is (#126).
+
+## 134. The drift check reports; it does not correct (v0.9.2)
+
+- **Context**: a denormalized aggregate needs a reconciliation query against its source, or it is
+  trusted rather than verified. Maintenance already runs a periodic pass, so the check has a home.
+  The question is what it does when the stored value and the recomputed one disagree.
+- **Options**: (a) correct the row silently; (b) correct the row and audit it; (c) report the
+  disagreement as an operator warning and an audit row, and change nothing.
+- **Choice**: **(c)**.
+- **Reason**: a disagreement means a **write path is broken**, and correcting it destroys the
+  evidence of that. Run the counterfactual: had this check existed in v0.9.1 as a corrector, F46
+  would have been *invisible* — every hostile row quietly repaired on the next pass, the reports
+  looking right, the write path staying broken indefinitely. (b) is better than (a) and still wrong:
+  the audit row would record that a correction happened, not what the corrupt value was, so the
+  shape of the defect is still lost. Under (c) the stored value, the recomputed value and the
+  difference are all preserved and the operator decides.
+- **What this costs**: a corrupt row stays corrupt until someone acts. Accepted, and it is the same
+  posture the product takes everywhere else it refuses to guess — orphaned promoted pairs are
+  *counted, never collected* (#112), for the same reason.
+
+## 135. A truncated assertion is its own population, not a denominator (v0.9.2)
+
+- **Context**: `excluded_truncated = 1` means the client's list was cut at `MAX_CLIENT_MEMBERS`.
+  After reconciliation such a report may **under-count** the real marks: the ids beyond the bound are
+  gone, and some of them may have named members of the bag. So a truncated row's reconciled count is
+  a **lower bound**, not a count.
+- **Options**: (a) exclude truncated rows from the asserted-negative total; (b) include them
+  silently; (c) include them and report them as their own counted, named population.
+- **Choice**: **(c)**.
+- **Reason**: (a) discards evidence, which is the primitive this project has refused since v0.8.0
+  §2.1. (b) lets a known-incomplete count contribute to a quantity that may become a threshold, which
+  is the whole failure this release repairs, in a smaller font. (c) is what the project already does
+  with every other mixed population — `capture_provenance`, `acquisition_channel`, and the three
+  scope populations of #133 — and it lets v0.10.0 decide, in advance and in the open, whether a floor
+  is expressed over all rows or over untruncated ones.
+
+## 136. The identity test becomes a property test, because the old one could not fail (v0.9.2)
+
+- **Context**: migration `0010` offers `m·r + r(r−1)/2 + m(m−1)/2 = n(n−1)/2` as what makes *"and
+  nothing else"* checkable rather than merely promised. Expand it with `r = n − m` and `m` cancels
+  entirely: it is a **polynomial identity in `m` and `n`** and holds for every integer `m`, including
+  `m > n`. Gate 0 §2 shows it closing at `n = 4, m = 512` while the asserted component is `−260 096`.
+- **Choice**: replace the fixed-fixture assertion with a **deterministic property test** over a
+  generated range of `(n, m)` that reaches `m > n`, `m = 0`, `m = n`, `n = 0` and `n = 1`, asserting
+  three things: `0 ≤ m ≤ n`; **every component `≥ 0`**; and the sum. No RNG and no seed — the range is
+  enumerated, so the test has no run-to-run variance to argue about and a failure names one `(n, m)`.
+- **The half that matters, and the half Gate 0 added**: component non-negativity is what
+  discriminates `m > n`, and the sum alone cannot fail — the docstring says so, in those words, so
+  the next reader does not mistake it for coverage. But non-negativity is **necessary and not
+  sufficient**: at `n = 60, m = 30` every component is `≥ 0` and the identity closes while the label
+  asserts nothing at all. Only the **intersection** discriminates that case. The property is therefore
+  asserted over the *reconciled* count, where `0 ≤ m ≤ n` holds by construction, and the test is a
+  guard against that construction being undone rather than a filter applied to a client number.
+- **Also**: `0010`'s comment names `tests/test_learn.py` as the file asserting the identity. It is
+  `tests/test_partial_split.py`. Corrected in the comment, not in the migration's SQL, which is
+  never edited.
+
+## 137. `redacted_member_count` becomes `hidden_member_ids` — one read, one answer (v0.9.2)
+
+- **Context**: tier 3 needs to know **which** members were hidden, not only how many, so that
+  `record_label` can count the reconciled marks that named one of them. The perimeter already
+  resolves that set internally: `redacted_member_count` reads `situation_member_ne` and counts the
+  members `scope.allows_ne` rejects, then throws the identities away.
+- **Options**: (a) add a second method beside it and read `situation_member_ne` twice per labelled
+  request; (b) widen the existing method to return the set, and derive the count at its one call
+  site.
+- **Choice**: **(b)**. `Perimeter.hidden_member_ids` returns `frozenset[int]`; `label_context` calls
+  it once and passes `redacted_members=len(hidden)` and `hidden_members=hidden` into `LabelScope`.
+- **Reason**: under (a), `scope_redacted_members` and `excluded_reconciled_out_of_scope` would come
+  from **two reads**, and two reads are two answers that can drift. That is the same argument
+  #59 made for `situation_in_scope` and `redacted_member_count` sharing a predicate, one level in:
+  a label whose two scope facts disagreed would be worse than one that recorded neither, because a
+  reader would have no way to tell which half was wrong. (a) is also strictly more work on the
+  write path, for a weaker guarantee.
+- **What it costs**: the method's name is now stale in `SECURITY-REVIEW-0.8.0.md`, which is a
+  **record** and is not rewritten to agree with a later release — the same rule that leaves
+  `SCOPE-0.6.md` saying v0.8.0 is customer models. The behaviour that review describes is unchanged:
+  the same `situation_member_ne` and the same `scope.allows_ne`, so the record cannot disagree with
+  what the operator was shown.
+- **What did not change**: the unrestricted short-circuit. An appliance with no scope policy returns
+  an empty set without touching the database, so the parity path still pays nothing.
+
+## 138. The drift check reports through the warning channel, and writes no audit row (v0.9.2)
+
+- **Context**: #134 settled that the maintenance check **reports** rather than corrects. Where it
+  reports was left open, and the build prompt sketches *"an operator warning and an audit row"* while
+  also making *"no new audit action"* a hard constraint whose violation is a build failure.
+- **Choice**: the **operator-warning channel** (`Capture.warnings`, already surfaced through the
+  API's warnings list), plus the **bias report**, which recomputes the disagreement from the
+  database on every run. **No audit row, and no new action in the frozen catalog.**
+- **Reason**: the two instructions conflict, and the hard constraint wins — but the substance
+  survives intact, which is why this is a placement decision rather than a reduction in scope. The
+  catalog records **events**: something a principal did, or a system behaviour that changed
+  (`scorer.fallback` is in it because the engine *fell back*). A drift detection changes no
+  behaviour and no principal did it. And durability, which is the only thing an audit row would add
+  over a warning, is already provided better by the report: a warning lives in one process's memory,
+  while `dataset bias` re-derives the count from the child tables every time it runs, on any
+  machine, including one that has never had the maintenance loop running.
+- **Reconsider when**: a release adds an audit action for system-detected data-integrity events as a
+  class. Then this belongs with it, rather than being the reason to open the catalog for one row.
+
+## 139. Two modules split at the 400-line guard, rather than the guard raised (v0.9.2)
+
+- **Context**: `shadow_report.py` sat at **exactly 400** and `bias.py` at 367 with 33 lines of
+  headroom. The evidence boundary needed a rendered line in the first and a whole new reported
+  section in the second. Raising a module-size guard to fit a corrective release is the one move
+  this project has never made.
+- **Choice**: split both, on seams that already exist in the tree.
+  * `shadow_report.py` → **`shadow_render.py`**, on the reader/renderer seam `bias.py` /
+    `bias_report.py` has used since v0.8.0. `collect` reads the store and returns a mapping;
+    `render` takes a mapping and returns text, opens no connection and holds no state.
+  * `bias.py` → **`bias_labels.py`**, on the **subject** seam `capture.py` / `labels.py` was split
+    on in v0.9.1: `bias.py` measures what capture *cost* and what the corpus *looks like*;
+    `bias_labels.py` measures what an operator *said* — verdicts, informativeness, the evidence
+    boundary, the acquisition channels. Exactly one of those two subjects moved in this release.
+- **The dependency direction, which was the only hard part**: `bias.py` imports `bias_labels`, and
+  `bias_labels` imports nothing from `bias`. That is why the shared primitives (`pct`, `_scalar`,
+  `_rows`, `distribution`) live in the **new** module rather than the one with the longer history —
+  a cycle between two halves of one report would be worse than either arrangement of the names.
+  `pct` is re-exported from `bias` because `bias_report` has imported it from there since v0.8.0,
+  and a split is not a reason to move a caller's import.
+- **What the split is not**: a behaviour change. The rendered reports change only in the figures
+  this release deliberately moves, and both frozen expectations were re-read line by line and
+  re-frozen by hand.
+- **What it cost the guards**: `tests/test_layers.py::LAYER_OF` gains both modules, and
+  `tests/test_challenger.py`'s two enumerations gain `shadow_render.py` — a **split of an already
+  allowed module**, not a new reach, and adding it to the second list *widens* what the
+  never-reaches-the-champion guard covers.
