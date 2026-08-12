@@ -3109,3 +3109,84 @@ grouping**.
   re-derives it by brute force on every run, **and runs the superseded expression through the same
   enumeration requiring it to disagree** — because v0.9.2 shipped an identity test that no input
   could falsify, and a formula test whose formula cannot be wrong repeats that error exactly.
+
+## 142. The plan's detection threshold is not reproduced, and neither side is adjusted (v0.10.0)
+
+- **Context**: `PREREGISTRATION-0.10.0.md` §3.1 registers a minimum-detectable-difference table —
+  12 incidents → 42 p.p., 37 → 25, 120 → 16, 300 → 10. Phase 1 implemented the documented closed
+  form (a normal approximation on the difference of two clustered proportions at `p = 0.70`) and,
+  independently, a direct Monte-Carlo power search sharing no arithmetic with it. **The two agree
+  with each other and disagree with the plan below `n = 120`**: at 37 they give 0.298 and 0.33
+  against a registered 0.25; at 12, 0.524 and 0.52 against 0.42. At 120 and 300 all three agree.
+- **Options**: (a) tune the closed form until it reproduces the table; (b) treat the table as
+  authoritative and report the closed form as broken; (c) report the disagreement, adjust neither,
+  and carry it to the security review as an opinion for v0.11.0.
+- **Choice**: **(c)**, which is also what the build brief instructs in exactly this case.
+- **Reason**: (a) is fitting a formula to a table — the same error as fitting a model to a test set,
+  one level down, and it would destroy the closed form's only value, which is that it was derived
+  independently. (b) asserts which of two disagreeing measurements is right without evidence. The
+  plan is ratified and hash-guarded, so it could not be edited in any case, and **that constraint is
+  the mechanism working rather than an obstacle**: a plan that could be quietly corrected when its
+  numbers failed to reproduce would not be a pre-registration.
+- **What makes this safe to leave open**: the disagreement runs in the direction that **strengthens**
+  the plan's conclusion. The plan's argument is *"no plausible pair of scorers differs by 25 p.p."*;
+  if the true threshold is 30, that is more true, not less. Nothing registered depends on 25 being
+  right — only on it being far larger than any difference this project could produce, which both
+  candidate values are.
+- **The diagnostic, offered as a symptom and not a diagnosis**: the `p` at which the closed form
+  returns exactly 0.25 at `n = 37` is 0.821, and at `n = 12` for 0.42 it is 0.832 — close to each
+  other and far from the ≈ 0.72 implied by the 120 and 300 rows. The table's two halves behave as
+  though produced under different assumptions.
+
+## 143. Incident identity is one function, and its guard is demonstrated on a fixture (v0.10.0)
+
+- **Context**: `store/shadow.py` resolves incidents with `COALESCE(s.merged_into, f.situation_id)` —
+  **one hop**. Situations merge in chains under `sid = min(sids)` and the schema forbids no cycle, so
+  one hop is not incident identity. Phase 1 measured the corpus: **four merge edges, every chain
+  exactly one hop deep, zero cycles**. `COALESCE` and a transitive resolution both return 37
+  incidents.
+- **Choice**: one function with one implementation, following `merged_into` to a fixed point with a
+  cycle guard and a non-termination guard, **both reported rather than silently collapsed**; the
+  census prints the transitive count **and the one-hop count** so the difference is visible even
+  when it is zero; and the guard is demonstrated on a **purpose-built fixture**.
+- **Reason for the fixture, stated because it is the whole point**: the corpus returns 37 either
+  way, so quoting *"37 = 37"* would be evidence of nothing. This is the same shape as v0.9.1's
+  exclusion set — a mechanism the fullest available corpus cannot exercise — and it gets the same
+  treatment: demonstrated where it can be, and said plainly to be undemonstrated where it cannot.
+  A control separates the two resolutions: on a `201→202→203→204` chain, one hop reports **3**
+  incidents where there is **1**.
+- **Why one implementation and not two**: two call sites computing incident identity separately is
+  how the estimator and the seal come to disagree about which incidents exist — which would make the
+  seal meaningless with nothing going red. The failure is silent, so the structure has to prevent it.
+
+## 144. A zero is measured with a probe that must return non-zero (v0.10.0)
+
+- **Context**: this release's central corpus finding is a **zero** — no asserted negative pairs, no
+  asserting bags. This repository has already once compared `None → None`, observed nothing, and
+  would have reported a finding closed (Appendix B).
+- **Choice**: every zero is paired with a **control corpus** built by the same code under the same
+  mechanical policy, differing only in that a `split` on a bag of four or more members also marks
+  its first two. The same census queries then return **1 474 asserted pairs and 2 asserting bags**.
+- **Reason**: a zero from a broken query is indistinguishable from a zero from an empty corpus, and
+  only the second supports a conclusion. The control makes the distinction observable rather than
+  assumed.
+- **What the control itself found**, which is worth more than the reassurance: even when the rule
+  marks **everything it can**, only **two** bags assert anything, because only two of the thirteen
+  `split` bags have four or more members. Two against a floor of fifty. The corpus is not merely
+  short of assertions — it is structurally incapable of producing them.
+
+## 145. The seal is designed before the estimator, and its unreadability is structural (v0.10.0)
+
+- **Context**: plan §4.3 requires that the CV estimator, the training path and every report be
+  **unable** to read the sealed incident ids — "asserted by a test that injects a read and observes
+  it refused, not by convention".
+- **Options**: (a) a code-review rule and a comment; (b) a naming convention plus a linter rule;
+  (c) build the seal in its own phase, **before** the estimator exists, with the read path guarded
+  by a required plan hash and an append-only log, and an import-level guard asserted by AST.
+- **Choice**: **(c)**, and the phase ordering is part of the decision rather than an accident of
+  scheduling: Phase 4 builds the seal, Phase 5 builds the estimator.
+- **Reason**: retrofitting isolation onto an estimator that already has a `Store` handle is exactly
+  how a structural guarantee decays into a convention — the code compiles either way and the only
+  thing standing between the two is somebody remembering. Building the seal first means the
+  estimator is written against an interface that never offered the sealed ids, so reading them is
+  not a rule it must obey but a thing it cannot express.
