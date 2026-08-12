@@ -215,8 +215,8 @@ Neither can be pushed from the build environment, so both are recorded here with
 
 | Tag | Points at | Created |
 |---|---|---|
-| **`v0.10.0-gate0`** | the commit that adds `docs/analysis/PREREGISTRATION-0.10.0.md` **and nothing else** | Phase 0 |
-| **`v0.10.0`** | the release commit | Phase 8 |
+| **`v0.10.0-gate0`** | `6b1c73a59e1dafc312f02a4d60e58093f575093a` — the commit that adds `docs/analysis/PREREGISTRATION-0.10.0.md` **and nothing else** (1 file, 512 insertions) | Phase 0 |
+| **`v0.10.0`** | the merge commit on `main` | Phase 8 |
 
 **`v0.10.0-gate0` is the one that matters and it is not ceremonial.** The pre-registration's entire
 claim is that it was fixed *before* any result could be seen. `tests/test_preregistration.py` proves
@@ -224,10 +224,14 @@ the plan has not changed since its hash was recorded; it cannot prove *when* tha
 claim rests on the commit history, and an annotated tag on a single-file commit is what makes that
 history addressable independently of any later branch, rebase or squash.
 
+The tag already exists **locally**, created in Phase 0 on exactly that commit. It only needs
+pushing:
+
 ```sh
-# Phase 0 — after the pre-registration commit, which changes nothing else:
-git tag -a v0.10.0-gate0 <that commit> \
-  -m "v0.10.0 Gate 0 — PREREGISTRATION-0.10.0.md ratified, sha256 <hash>"
+# Phase 0 — created locally; the command that produced it, for the record:
+git tag -a v0.10.0-gate0 6b1c73a59e1dafc312f02a4d60e58093f575093a \
+  -m "v0.10.0 Gate 0 — PREREGISTRATION-0.10.0.md ratified, sha256 \
+c03aef0181554c0c71482e57d03677f25964c3a5ac20a7bf1b1d74bff1ba1e01"
 
 # Phase 8 — on the release commit, and AFTER the merge if the branch is rebased:
 git tag -a v0.10.0 <merge commit on main> -m "v0.10.0 — the honest judge"
