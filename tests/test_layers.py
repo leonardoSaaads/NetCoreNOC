@@ -91,6 +91,7 @@ LAYER_OF: dict[str, str] = {
     "shadow": "engine",
     "shadow_eval": "engine",
     "shadow_admission": "engine",
+    "shadow_assertions": "engine",
     "shadow_cv": "engine",
     "judge": "engine",
     "shadow_report": "engine",

@@ -16,7 +16,7 @@ import ast
 from itertools import pairwise
 from pathlib import Path
 
-from netcorenoc import shadow_cv, shadow_eval
+from netcorenoc import shadow_assertions, shadow_cv
 from netcorenoc.judge import Judgement, Trigger, Verdict, judge
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -237,14 +237,29 @@ def test_a_floor_evaluation_is_never_emitted_without_its_detection_threshold() -
 
 
 def test_the_renderer_prints_the_threshold_wherever_it_prints_the_floors() -> None:
-    """The pairing, asserted where it can actually be broken: the renderer."""
-    source = (PKG / "shadow_render.py").read_text(encoding="utf-8")
-    if "floors_met" not in source and "floor" not in source:
-        return
-    assert "detectable" in source or "detection" in source, (
-        "shadow_render.py prints a floor evaluation and no detection threshold. §2.5: the two are "
+    """The pairing, asserted against the **rendered text** rather than against the source.
+
+    **The first version of this guard read `shadow_render.py` for the substring "detection".** It
+    survived an injection that deleted both printed lines, because the explanatory paragraph
+    underneath still contained the words — a guard that could be satisfied by prose about the number
+    rather than by the number. Recorded as survivor M6 in `v0.10.0-guard-demonstrations.md`.
+
+    The shipped guard renders a report and requires the two claims to appear **in the output**, on
+    lines carrying a value.
+    """
+    text = (Path(__file__).parent / "fixtures" / "shadow-report.txt").read_text(encoding="utf-8")
+    floor_lines = [ln for ln in text.splitlines() if "floors met" in ln]
+    threshold_lines = [ln for ln in text.splitlines() if "minimum detectable difference" in ln]
+    n_lines = [ln for ln in text.splitlines() if "at n incidents" in ln]
+    assert floor_lines, "the report no longer prints a floor evaluation; this guard is vacuous"
+    assert threshold_lines, (
+        "the report prints a floor evaluation and NO detection threshold. §2.5: the two are "
         "emitted together, because 'floors met' must not be readable as 'this evaluation decides'."
     )
+    assert n_lines, "a detection threshold without the n it was computed at is not a claim"
+    # And each must carry a VALUE, not merely the words.
+    assert any(ch.isdigit() for ch in threshold_lines[0])
+    assert any(ch.isdigit() for ch in n_lines[0])
 
 
 # --- the estimator -------------------------------------------------------------------------------
@@ -334,8 +349,8 @@ def _bag(
     marked: list[int],
     hidden: tuple[int, ...] = (),
     coverage: str = "full",
-) -> shadow_eval.AssertingBag:
-    return shadow_eval.AssertingBag(
+) -> shadow_assertions.AssertingBag:
+    return shadow_assertions.AssertingBag(
         feedback_id=fid,
         incident=incident,
         members=tuple(members),
@@ -359,7 +374,7 @@ def test_the_rate_is_per_bag_and_never_pooled_over_pairs() -> None:
         1: dict.fromkeys(range(60), 0),
         2: {900: 0, 901: 1, 902: 2, 903: 3},
     }
-    per_incident, diagnostics = shadow_eval.asserted_negative_respected_rate(
+    per_incident, diagnostics = shadow_assertions.asserted_negative_respected_rate(
         [storm, small], components
     )
     assert per_incident == {10: [0.0], 20: [1.0]}
@@ -376,7 +391,7 @@ def test_bags_with_no_or_empty_coverage_are_excluded_counted_and_reported() -> N
     satisfied for free — v0.9.0's measured policy-B failure in a new place."""
     for coverage in ("none", "empty"):
         bag = _bag(1, 10, [1, 2, 3], [1], coverage=coverage)
-        per_incident, diagnostics = shadow_eval.asserted_negative_respected_rate(
+        per_incident, diagnostics = shadow_assertions.asserted_negative_respected_rate(
             [bag],
             {1: {1: 0, 2: 1, 3: 2}},
         )
@@ -389,7 +404,7 @@ def test_a_full_coverage_bag_is_scored() -> None:
     """**CONTROL for the exclusion.** If nothing were ever scored, the exclusion test would pass
     for the wrong reason."""
     bag = _bag(1, 10, [1, 2, 3], [1], coverage="full")
-    per_incident, diagnostics = shadow_eval.asserted_negative_respected_rate(
+    per_incident, diagnostics = shadow_assertions.asserted_negative_respected_rate(
         [bag],
         {1: {1: 0, 2: 1, 3: 2}},
     )
@@ -411,12 +426,32 @@ def test_only_observable_pairs_are_counted() -> None:
 def test_a_bag_whose_every_asserted_pair_is_blind_is_excluded_rather_than_scored_one() -> None:
     """Scoring it 1.0 would be the free-perfect-number failure one level down."""
     bag = _bag(1, 10, [1, 2], [1], hidden=(2,))
-    per_incident, diagnostics = shadow_eval.asserted_negative_respected_rate(
+    per_incident, diagnostics = shadow_assertions.asserted_negative_respected_rate(
         [bag],
         {1: {1: 0, 2: 1}},
     )
     assert per_incident == {}
     assert diagnostics["bags_excluded"] == 1
+
+
+def test_a_bag_with_no_partition_scores_nothing_rather_than_one() -> None:
+    """**Found by mutant M3**, which the first champion-parity guard failed to kill.
+
+    With an empty component mapping every `component.get(a, a) != component.get(b, b)` is True, so a
+    bag the model produced no partition for would score **1.0 — every asserted pair respected**.
+    That is a perfect number produced by nothing happening: v0.9.0's measured policy-B failure and
+    §2.6(c)'s trivially-satisfied case, arriving through a door neither of them guards.
+
+    It is excluded and counted, exactly as a `coverage IN ('none','empty')` bag is.
+    """
+    bag = _bag(1, 10, [1, 2, 3], [1])
+    per_incident, diagnostics = shadow_assertions.asserted_negative_respected_rate([bag], {})
+    assert per_incident == {}, "a bag with no partition was scored"
+    assert diagnostics["bags_excluded"] == 1
+    assert diagnostics["bags_scored"] == 0
+    # CONTROL: the same bag WITH a partition is scored, so the exclusion is about the absence.
+    scored, _d = shadow_assertions.asserted_negative_respected_rate([bag], {1: {1: 0, 2: 1, 3: 1}})
+    assert scored == {10: [1.0]}
 
 
 def test_the_champion_and_the_challenger_go_through_one_code_path() -> None:
@@ -426,8 +461,10 @@ def test_the_champion_and_the_challenger_go_through_one_code_path() -> None:
     give the champion a different scoring rule — the caller can only give it different components.
     """
     bags = [_bag(1, 10, [1, 2, 3], [1])]
-    champion = shadow_eval.asserted_negative_respected_rate(bags, {1: dict.fromkeys([1, 2, 3], 0)})
-    challenger = shadow_eval.asserted_negative_respected_rate(bags, {1: {1: 0, 2: 1, 3: 1}})
+    champion = shadow_assertions.asserted_negative_respected_rate(
+        bags, {1: dict.fromkeys([1, 2, 3], 0)}
+    )
+    challenger = shadow_assertions.asserted_negative_respected_rate(bags, {1: {1: 0, 2: 1, 3: 1}})
     assert champion[0] == {10: [0.0]}
     assert challenger[0] == {10: [1.0]}
 

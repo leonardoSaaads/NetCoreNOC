@@ -3326,3 +3326,37 @@ grouping**.
 - **Worth recording separately**: the dead-code gate found a design defect, not dead code. Three
   times in this release a `vulture` finding has been the visible end of something real, and none of
   the three was resolved by adding an allowlist entry.
+
+## 153. The mutation ledger found two real defects, and neither was a mutant (v0.10.0)
+
+- **Context**: Workstream 6 asks for a seeded mutant set beyond the mandatory injections, and for
+  **the survivor list rather than the ratio**. Twenty-eight injections were run: 17 mandatory, 11
+  additional.
+- **The result worth recording is not the count.** Three mandatory injections survived, and two of
+  those survivals were about the guard rather than the code. **One was about the code, and it was a
+  defect already shipped in this release's own new metric.**
+- **M3.** `asserted_negative_respected_rate` read `components.get(bag.feedback_id, {})`. With an
+  empty mapping, `component.get(a, a) != component.get(b, b)` is `True` for every pair — so a bag
+  the model produced **no partition for** scored **1.0: every asserted negative pair respected.** A
+  perfect number produced by nothing happening: v0.9.0's measured policy-B failure and §2.6(c)'s
+  trivially-satisfied case arriving through a door neither of them guards. Such a bag is now
+  excluded and counted.
+- **A11.** The bootstrap's LCG returned `state % bound`. A power-of-two-modulus LCG has notoriously
+  poor **low** bits, so `% 2` alternated with period 2 and every resample of a two-cluster corpus
+  drew exactly one of each — a **zero-width interval**, a bootstrap reporting perfect precision
+  because it never resampled anything.
+- **M6 was a weak guard of a kind this project has met before.** The pairing guard read
+  `shadow_render.py` for the substring `"detection"`, and survived deleting both printed lines
+  because the *explanatory paragraph* still contained the word. Rewritten to read the **rendered
+  output**. Appendix B's grep lesson, in a new place: the guard asked whether the source *mentioned*
+  the number, and the property is whether the report *prints* it.
+- **M7 was a bad injection, and is recorded as a known limitation rather than fixed.**
+  `assign_folds` takes incidents, so a row-wise split is inexpressible without changing the
+  signature — and an injection that changes the signature breaks the call site, which is a
+  compile-time failure rather than a guard. `test_no_incident_spans_two_folds` therefore **cannot
+  fail while the signature stands**: it documents the design rather than detecting a regression, and
+  it is named as such.
+- **The general lesson**: three of this release's findings came from the **dead-code gate** and two
+  from the **mutation ledger**, and none from reading the code. Both instruments were treated as
+  sources of evidence rather than as chores to satisfy, and neither was ever answered with an
+  allowlist entry.

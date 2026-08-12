@@ -31,9 +31,7 @@ from netcorenoc.scoring import LinkFeatures
 
 __all__ = [
     "CALIBRATION_BINS",
-    "AssertingBag",
     "PartitionScore",
-    "asserted_negative_respected_rate",
     "brier",
     "calibration",
     "evaluate",
@@ -304,97 +302,3 @@ def bag_probabilities(
         p = probability[int(pair["pair_id"])]
         out[key] = p if key not in out else min(out[key], p)
     return out
-
-
-# -- the fourth named quantity (v0.10.0) --------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class AssertingBag:
-    """One bag that asserts something negative, with everything needed to score it.
-
-    `marked` is the **reconciled** set — the client's report intersected with the server's own bag,
-    which is what v0.9.2 built and the only quantity a metric about the evidence may read (F46).
-    `hidden` is the set of members the labeller could not observe, so the observable pairs can be
-    counted rather than assumed (§2.4).
-    """
-
-    feedback_id: int
-    incident: int
-    members: tuple[int, ...]
-    marked: frozenset[int]
-    hidden: frozenset[int]
-    coverage: str
-
-    @property
-    def eligible(self) -> bool:
-        """§2.6(c): a bag with `coverage IN ('none','empty')` is EXCLUDED, counted, and reported.
-
-        Such a bag yields an all-singleton partition, in which **every asserted negative pair is
-        satisfied for free** — v0.9.0's measured policy-B failure (a perfect number produced by
-        nothing happening) appearing in a new place.
-        """
-        return self.coverage not in ("none", "empty") and bool(self.marked)
-
-    def observable_pairs(self) -> list[tuple[int, int]]:
-        """The `marked x rest` pairs **both of whose ends the labeller could see** (§2.4).
-
-        `EVIDENCE-BOUNDARY-0.9.2.md` §10, corrected in v0.10.0 Gate 0 and machine-checked by
-        `tests/test_evidence_boundary_observable.py`: the count is exactly
-        `(m - b) * ((n - m) - (h - b))`, and this enumerates precisely those pairs. A pair is
-        unobservable if **either** end is hidden.
-        """
-        marked_visible = [a for a in self.members if a in self.marked and a not in self.hidden]
-        rest_visible = [a for a in self.members if a not in self.marked and a not in self.hidden]
-        return [(a, b) for a in marked_visible for b in rest_visible]
-
-
-def asserted_negative_respected_rate(
-    bags: list[AssertingBag], components: dict[int, dict[int, int]]
-) -> tuple[dict[int, list[float]], dict[str, int]]:
-    """**The fourth named quantity.** Per bag, aggregated by the caller as the mean over bags.
-
-    Returns `(incident -> [per-bag rates], diagnostics)`. The caller hands the first to
-    `shadow_cv.cluster_bootstrap`, which resamples **incidents**.
-
-    Three properties a build gets wrong if it is not careful, all three registered in §2.6(d):
-
-    * **Per bag, never pooled over pairs.** One 501-member storm with 250 marks contributes 62 750
-      pairs; a pooled rate would be *that storm's rate wearing the corpus's name*. This function
-      returns one number per bag and has no expression that could pool.
-    * **`coverage IN ('none','empty')` excluded, counted and reported.** The diagnostics carry the
-      exclusion count so the report can print it rather than the reader inferring it from a gap.
-    * **The champion is scored by this same function.** ``components`` is whatever partition a
-      caller produced, so the challenger's and the champion's numbers come from one code path —
-      a challenger number with no champion number beside it is not a comparison.
-
-    **Never composed** with `over_merge_rate`, `under_merge_rate` or `split_bag_intact_rate`. It is
-    a fourth quantity for the same reason the third exists.
-    """
-    per_incident: dict[int, list[float]] = {}
-    excluded = observable = respected = 0
-    scored = 0
-    for bag in bags:
-        if not bag.eligible:
-            excluded += 1
-            continue
-        pairs = bag.observable_pairs()
-        if not pairs:
-            # A bag whose every asserted pair was blind asserts nothing this metric can read. Not
-            # an exclusion under §2.6(c) and not a 1.0 either: counted separately, because scoring
-            # it as "respected" would be the free-perfect-number failure one level down.
-            excluded += 1
-            continue
-        component = components.get(bag.feedback_id, {})
-        kept = sum(1 for a, b in pairs if component.get(a, a) != component.get(b, b))
-        observable += len(pairs)
-        respected += kept
-        scored += 1
-        per_incident.setdefault(bag.incident, []).append(kept / len(pairs))
-    return per_incident, {
-        "bags_scored": scored,
-        "bags_excluded": excluded,
-        "observable_pairs": observable,
-        "pairs_respected": respected,
-        "incidents": len(per_incident),
-    }
