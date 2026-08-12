@@ -53,6 +53,13 @@ one-screen tour of the tree.
 - [`architecture/SHADOW-MODE-0.9-DRAFT.md`](architecture/SHADOW-MODE-0.9-DRAFT.md) — the v0.9.0
   specification: what a challenger may and may not do, the label-derivation policies, the leakage
   vectors, and why effective sample size is bags rather than pairs.
+- [`analysis/PREREGISTRATION-0.10.0.md`](analysis/PREREGISTRATION-0.10.0.md) — **what v0.10.0 would
+  conclude under every outcome, written before any result existed.** Ratified in a commit that
+  changed nothing else, hash-guarded by `tests/test_preregistration.py`, and tagged `v0.10.0-gate0`.
+  Read §7.1 first: it names `INSUFFICIENT_EVIDENCE` as the expected branch, in advance.
+- [`architecture/CHAMPION-CHALLENGER-0.11-DRAFT.md`](architecture/CHAMPION-CHALLENGER-0.11-DRAFT.md)
+  — promotion as a pointer move, the human approval that may never be skipped, and the two refusals
+  that must differ. **Specification only; v0.10.0 implements none of it.**
 - [`architecture/EVIDENCE-BOUNDARY-0.9.2.md`](architecture/EVIDENCE-BOUNDARY-0.9.2.md) — **which
   side of the trust boundary a stored quantity comes from**: the three tiers (reported, reconciled,
   interpretable), every client-controlled write-path input classified against them, what each

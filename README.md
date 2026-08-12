@@ -226,6 +226,19 @@ means something else has written labels here, which is worth investigating and i
 its own account. [`docs/architecture/EVIDENCE-BOUNDARY-0.9.2.md`](docs/architecture/EVIDENCE-BOUNDARY-0.9.2.md)
 is the rule and the reasoning.
 
+Since v0.10.0 the **shadow report** leads with a **verdict** — `BETTER`, `NOT_BETTER` or
+`INSUFFICIENT_EVIDENCE` — and the third value is a first-class terminal answer rather than an error.
+*"The challenger is not better"* and *"this corpus cannot tell"* are opposite claims, and the report
+does not conflate them. Beside every floor evaluation it prints the **minimum detectable difference**
+at your corpus's `n`, because a corpus can meet every floor and still be unable to resolve anything.
+
+It also prints a **sealed holdout**: the most recent third of your incidents, cut once, and **the
+number of times they have been read**. On a fresh v0.10.0 that number is `0` and this release never
+moves it — reserving evidence later is impossible, spending it later is always possible, and looking
+at one holdout across four releases inflates a reported rate by a median **+11 points** even when
+nothing has actually improved. [`docs/analysis/PREREGISTRATION-0.10.0.md`](docs/analysis/PREREGISTRATION-0.10.0.md)
+is the plan, ratified and hash-guarded before any of it was built.
+
 Retention has three tiers (sink / training / audit), all admin-settable. **Lowering one deletes rows
 and there is no undo**, so the endpoint previews by default and both the preview and the change are
 audited. [`MIGRATION.md`](MIGRATION.md) has the numbers and the one caveat that matters: the sink's
