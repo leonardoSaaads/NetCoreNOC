@@ -3049,3 +3049,63 @@ grouping**.
   `tests/test_challenger.py`'s two enumerations gain `shadow_render.py` — a **split of an already
   allowed module**, not a new reach, and adding it to the second list *widens* what the
   never-reaches-the-champion guard covers.
+
+## 140. F48 is issued without a corrective release, and the argument is written down (v0.10.0)
+
+- **Context**: v0.10.0's Gate 0 issues **F48** — the `source = 'server'` reconciliation predicate is
+  adversarially tested in one of the three places it appears, and removing it from either of the
+  other two leaves all 1086 shipped tests green. This project has inserted **four** corrective
+  releases (v0.7.1, v0.7.5, v0.9.1, v0.9.2), each because a defect was found between planned
+  releases. A reader who has watched four of those insertions is entitled to ask why this one did
+  not produce a fifth, and the answer must be a written argument rather than a silence.
+- **Options**: (a) insert **v0.9.3**, carrying F48's regression test and nothing else; (b) issue
+  F48 in v0.10.0's Gate 0, before any v0.10.0 code, and leave the version at 0.9.2 until Phase 2;
+  (c) fold F48 into v0.10.0's ordinary work and issue it in the Phase 8 security review.
+- **Choice**: **(b)**.
+- **Reason, and the distinction it turns on**: **F48 requires no production change.** The shipped
+  code carries the predicate in all three places and every number it produces is correct; what is
+  missing is a *demonstration*, not a *fix*. All four previous corrective releases changed
+  behaviour an operator was running — v0.7.1 and v0.7.5 repaired live paths, v0.9.1 added an
+  affordance, v0.9.2 changed which side of a trust boundary a stored quantity came from. A release
+  exists so that an operator can *obtain* something; there is nothing here for one to obtain. Cutting
+  0.9.3 would ship an unchanged appliance under a new number, which devalues the four insertions that
+  did carry a repair — the signal *"a corrective release means something in your deployment was
+  wrong"* is worth more than the tidiness of one finding per version.
+- **Why not (c)**: the finding is about **v0.9.2's** tree and is a prerequisite of ratifying
+  v0.10.0's pre-registration (`../analysis/PREREGISTRATION-0.10.0.md` §10.1). Discovering it in
+  Phase 8 would mean the plan had been ratified while a named prerequisite was open, and the
+  pre-registration's whole claim is that its prerequisites closed first.
+- **What (b) costs, stated rather than hidden**: an operator running 0.9.2 has no version number
+  that tells them the guard now exists. The compensation is that they need none — their appliance
+  behaves identically either way — and the finding is written into
+  `SECURITY-REVIEW-0.9.2.md` §6, *in the release it is about*, rather than into the review of a
+  release that merely happened to notice it.
+- **The boundary this does not move**: had the measurement found the predicate genuinely absent
+  from any of the three sites, this would be a repair and the answer would have been (a) without
+  argument. The rule is the distinction, not the outcome: **a missing guard is a gate item; a
+  missing fix is a release.**
+
+## 141. The observable-pair expression is corrected and machine-checked, and three copies are not (v0.10.0)
+
+- **Context**: `EVIDENCE-BOUNDARY-0.9.2.md` §10 justified omitting a stored column by *bounding* the
+  observable asserted pairs. The bound's upper expression is spurious and its worked case was
+  misstated as `[2, 2]` where the published interval gives `[2, 4]`. Exhaustive enumeration over
+  86 868 configurations shows the lower expression is **exact**. The wrong sentence had reached
+  **six** places, not the two the build brief believed.
+- **Options**: (a) correct all six; (b) correct the two normative documents and leave the four
+  historical records alone; (c) correct the two, and append a dated erratum to the one historical
+  document this release is already writing to.
+- **Choice**: **(c)**. `EVIDENCE-BOUNDARY-0.9.2.md` §10 and `../ROADMAP.md` are corrected in place;
+  `SECURITY-REVIEW-0.9.2.md` §4.1 gets an erratum as its new §7; `v0.9.2-phase-1.md`,
+  `BUILD-REPORT-0.9.2.md` and migration `0011`'s comment are left exactly as written.
+- **Reason**: a gate document and a build report are *dated records of what was believed at the
+  time*. Editing one retroactively is the failure this project's append-only conventions exist to
+  prevent, and it would destroy the evidence that the mistake was made and propagated — which is the
+  most useful thing the episode leaves behind. An applied migration is never touched at all. The
+  security review is different only because v0.10.0 is appending F48 to it regardless, and leaving a
+  wrong sentence unmarked in a document this release is actively writing would be a different
+  failure from leaving one in a document it is not touching.
+- **The compensating control**: the claim stops being prose. `tests/test_evidence_boundary_observable.py`
+  re-derives it by brute force on every run, **and runs the superseded expression through the same
+  enumeration requiring it to disagree** — because v0.9.2 shipped an identity test that no input
+  could falsify, and a formula test whose formula cannot be wrong repeats that error exactly.

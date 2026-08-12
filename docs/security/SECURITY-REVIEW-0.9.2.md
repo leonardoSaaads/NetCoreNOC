@@ -3,6 +3,11 @@
 Continues from **F45**. This release issues **F46** and **F47**. The next finding this project
 issues, in any release, is **F48**.
 
+> **Amended 2026-08-12.** **F48** has since been issued, in v0.10.0's Gate 0 and against this
+> release's tree, and it is written up in **§6** below. The next finding this project issues is
+> therefore **F49**. §7 is an erratum against §4.1. Everything between this note and §6 is exactly
+> what v0.9.2 shipped.
+
 Both are **evidence-integrity** findings on the feedback write path — the path that has already
 produced F34 (a scoped editor's existence oracle), F35, F39 and F44. Neither discloses anything,
 neither threatens availability, and neither is a privilege escalation. Both are nonetheless rated
@@ -351,3 +356,171 @@ a class**, which is a design decision a corrective release should not make alone
 | no new route / capability / audit action / served path | `tests/test_declaration.py`, `tests/test_audit.py`, `tests/test_rbac.py` |
 | no new runtime dependency | five, unchanged |
 | F34–F45 regression tests | unedited and green |
+
+---
+
+## 6. F48 — the reconciliation predicate, demonstrated where it was only asserted
+
+**Issued in v0.10.0's Gate 0, against the v0.9.2 tree, and appended here because §3 reserved the
+number and because a finding belongs with the release whose code it is about.** Everything above
+this heading is unchanged from what v0.9.2 shipped; this section and §7 are additions, dated
+2026-08-12.
+
+**Severity: medium (evidence integrity). Confidentiality: nil. Availability: nil. Privilege
+escalation: no. Production change required: none.**
+
+### 6.1 The defect, and what it is not
+
+The predicate expressing *"reconcile against the server's bag, not the client's"* —
+`AND m.source = 'server'` — appears **three times** in the tree v0.9.2 shipped:
+
+| # | Location | Adversarially tested in v0.9.2? |
+|---|---|---|
+| 1 | the live path, via `Exclusion.marked_positions` | **yes** |
+| 2 | migration `0011`'s backfill `UPDATE` | **no** |
+| 3 | `Store.reconciliation_drift`, twice in one statement | **no** |
+
+**This is a missing demonstration, not a missing fix.** The shipped code carries the predicate in
+all three places and every number it produces is correct. What was missing is any evidence that the
+suite would notice if one of them stopped carrying it — and a guard nobody has watched fail is not
+a guard.
+
+### 6.2 The reproduction, with the measurement that makes it a finding
+
+The case is **not hostile**. A browser whose view is one alarm behind reports a member the bag no
+longer holds and marks it — which the v0.7.5 SSE teardown produced routinely, on an ordinary
+`editor`, with no adversary anywhere.
+
+Removing the predicate from `Store.reconciliation_drift` and running the shipped suite:
+
+```
+$ python -m pytest -q --ignore=tests/test_evidence_boundary_f48.py \
+                     --ignore=tests/test_evidence_boundary_observable.py
+1086 passed in 267.34s (0:04:27)
+```
+
+**Every one of the 1086 tests v0.9.2 shipped passes with the predicate gone.**
+
+### 6.3 The non-equivalence proof
+
+A guard against a change that alters nothing proves nothing, so the two expressions are measured
+against each other on the stale-view fixture. With a three-member server bag and a fourth real
+alarm the client believes is a member and marks:
+
+| expression | value |
+|---|---:|
+| the live path (`excluded_reconciled`, stored) | **0** |
+| an unfiltered join (`recomputed`, no `source` predicate) | **1** |
+
+Verbatim, from `Store.reconciliation_drift` with the predicate removed:
+
+```
+{'feedback_id': 1, 'excluded_count': 1, 'stored': 0, 'source': 'live', 'recomputed': 1}
+```
+
+Verified non-equivalent. The unfiltered drift check reports a healthy row as drifted, which would
+send an operator hunting a write-path defect that does not exist; the unfiltered backfill lets the
+client's own report reconcile itself, which is **F46 re-entering by the migration's door**.
+
+### 6.4 The regression test, and its recorded red
+
+`tests/test_evidence_boundary_f48.py`, three tests, green on the unmodified tree:
+
+```
+$ python -m pytest tests/test_evidence_boundary_f48.py -q
+...                                                                      [100%]
+3 passed in 1.89s
+```
+
+Every test carries a control that must behave the other way, so neither *"everything reconciles to
+zero"* nor *"everything reconciles to the report"* can be mistaken for the property.
+
+**Injection 1 — the predicate removed from `Store.reconciliation_drift` (both halves):**
+
+```
+E       AssertionError: the drift check disagreed with the live path on a stale-view label, which
+E       would send an operator hunting a write-path defect that does not exist
+E       assert [{'feedback_i... 'live', ...}] == []
+FAILED tests/test_evidence_boundary_f48.py::test_the_drift_check_reconciles_against_the_server_bag_only
+========================= 1 failed, 2 passed in 1.79s ==========================
+```
+
+**Injection 2 — the predicate removed from the pinned `BACKFILL` expression:**
+
+```
+E       AssertionError: the backfill expression must agree with the live path
+E       assert 1 == 0
+FAILED tests/test_evidence_boundary_f48.py::test_the_backfill_expression_reconciles_against_the_server_bag_only
+========================= 1 failed, 2 passed in 1.84s ==========================
+```
+
+**The control passed under both injections.**
+`test_the_live_path_reconciles_against_the_server_bag_only` is green in the unmodified run and in
+both injected runs, which is what establishes that the fixture is a *stale-view* fixture rather than
+a broken one, and that the two reds are about the two expressions rather than about the label.
+
+### 6.5 What this guard still does not cover — measured, not assumed
+
+**The migration file's own text is unguarded.** `tests/test_evidence_boundary_f48.py` pins the
+backfill *expression* as a constant, because a migration cannot be re-run against an
+already-migrated database. Nothing ties that constant to
+`src/netcorenoc/migrations/0011_evidence_boundary.sql`. The file's docstring asserts that
+`tests/test_upgrade.py` catches the drift. **It does not**, and this was measured rather than
+reasoned about:
+
+```
+# AND m.source = 'server' removed from 0011_evidence_boundary.sql itself
+$ python -m pytest tests/test_upgrade.py -q
+7 passed in 2.15s
+$ python -m pytest -q          # the whole tree, including the two new v0.10.0 files
+1093 passed in 270.29s (0:04:30)
+```
+
+The reason is specific and worth recording: `test_upgrade.py`'s v0.9.1 fixture writes its exclusion
+through `Store.add_feedback_exclusion` with **no client fingerprint**, so the label has no
+`feedback_member(source='client')` rows at all. With nothing on the untrusted side of the join, the
+predicate has nothing to exclude and its removal changes no value. The fixture is a *correct*
+upgrade fixture and an *inert* probe for this predicate.
+
+This is a **third** location, it is a real gap, and it is not closed here: Gate 0 is fenced to four
+items and Part VII rule 7 of the v0.10.0 brief sends a newly revealed defect to a ROADMAP line and a
+finding number rather than into an unrelated commit. It is carried as **F49** in
+`SECURITY-REVIEW-0.10.0.md` and as an open question in [`../ROADMAP.md`](../ROADMAP.md). The honest
+one-line summary: *F48 closes two of the three locations and proves the third is open.*
+
+### 6.6 Why this did not warrant a corrective release
+
+Recorded as [DECISIONS #140](../adr/DECISIONS.md). This project has inserted four corrective
+releases (v0.7.1, v0.7.5, v0.9.1, v0.9.2) and the argument for **not** inserting a fifth deserves
+to be written down as carefully as the arguments for the others were.
+
+---
+
+## 7. Erratum — §4.1 note 2's observable-pair interval (added 2026-08-12)
+
+**§4.1 note 2 above is wrong and is left standing as written.** It repeats
+`EVIDENCE-BOUNDARY-0.9.2.md` §10's interval `[(m−b)·(n−m−(h−b)), (m−b)·(n−m)]` and states the
+measured case as `[2, 2]`.
+
+The upper expression is **spurious** — it is the count that would obtain if the remainder held no
+hidden members — and the cited case evaluates under that interval to `[2, 4]`, not `[2, 2]`. The
+lower expression is **exact**:
+
+```
+observable asserted pairs = (m − b) · ((n − m) − (h − b))
+```
+
+Verified by exhaustive enumeration over 86 868 configurations, and machine-checked on every run by
+`tests/test_evidence_boundary_observable.py`. The correction is
+[`../gates/v0.10.0-phase-0.md`](../gates/v0.10.0-phase-0.md) §1; the normative statement now lives
+in `EVIDENCE-BOUNDARY-0.9.2.md` §10.
+
+**The note's substantive claim survives the correction and is in fact strengthened.** Note 2 exists
+to say that `m·(n − m)` is not a count of observable pairs on a restricted scope, and that remains
+true; what changes is that the surviving columns *determine* the real count rather than merely
+bounding it.
+
+**The prose above is not edited**, for the same reason no gate document is: a security review is a
+dated record of what a reviewer concluded, and silently repairing one destroys the evidence that
+the mistake was made and propagated. The correction is appended, dated, and pointed at from the
+sentence it corrects.
