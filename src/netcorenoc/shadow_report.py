@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from netcorenoc import census, shadow, shadow_eval, training
 from netcorenoc.challenger import Coefficients, LogisticScorer
 from netcorenoc.scoring import AdditiveScorer, LinkFeatures
+from netcorenoc.seal import summary as seal_summary
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
     from netcorenoc.store import Store
@@ -47,6 +48,11 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
     # the two the plan's §3.3 warns must not compute it separately.
     identity = await census.resolve_identity(store, bags, pairs)
     pre_v080_merges = await store.pre_v080_merges()
+    # The seal SUMMARY, never its membership. `seal.summary` reads no member row and
+    # logs nothing — a counter that moved when a report ran would be counting reports
+    # rather than counting the times the holdout was spent.
+    holdout = await seal_summary(store)
+    holdout_attempts = len(await store.access_log())
     run = await store.latest_challenger_run()
     stats = census.corpus_stats(bags, identity)
     floors, floors_warning = training.resolve_floors(await store.get_meta(shadow.FLOORS_META_KEY))
@@ -71,6 +77,8 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
         "stats": stats,
         "floors": floors,
         "pre_v080_merges": pre_v080_merges,
+        "holdout": holdout,
+        "holdout_attempts": holdout_attempts,
         "floors_warning": floors_warning,
         "verdict": verdict,
         # v0.9.1 OBSERVATIONS, not floors — see the prose in `render`. Printed beside the

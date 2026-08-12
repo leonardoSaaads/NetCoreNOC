@@ -23,6 +23,7 @@ from typing import Any
 
 from netcorenoc import shadow_eval, training
 from netcorenoc.challenger import FEATURE_NAMES, Coefficients
+from netcorenoc.seal import SealSummary
 
 __all__ = ["render"]
 
@@ -107,6 +108,35 @@ def render(m: dict[str, Any]) -> str:
     if m["floors_warning"]:
         add("")
         add("  WARNING: the stored floor policy was unreadable and was ignored.")
+    add("")
+
+    holdout: SealSummary = m["holdout"]
+    add("-- THE SEALED HOLDOUT " + "-" * (_WIDTH - 22))
+    if not holdout.exists:
+        add("  no seal has been constructed yet — one is cut on the first")
+        add("  training tick after a labelled corpus exists")
+    else:
+        add(f"  {'sealed incidents':<34}{holdout.incident_count:>12}")
+        add(f"  {'of a corpus of':<34}{holdout.corpus_incidents:>12}")
+        add(f"  {'digest':<20}{holdout.digest[:24]}...")
+    # **THE HEADLINE, and it is printed as one.** Every holdout number ever published carries its
+    # query count (§4.3(4)) so a reader can apply the inflation table without being told to:
+    # 12 queries on 37 incidents inflate a rate by a median +11.1 p.p. when every candidate is
+    # equally good. `attempts` includes refusals and plan registrations; `queries` counts only
+    # granted reads of the membership, which is what "spending the holdout" means.
+    add(f"  {'QUERIES (times spent)':<34}{holdout.query_count:>12}")
+    add(f"  {'state':<34}{('SPENT' if holdout.spent else 'INTACT'):>12}")
+    add(f"  {'access-log rows (incl. refusals)':<34}{m['holdout_attempts']:>12}")
+    add(
+        "  The holdout is "
+        + ("CONSTRUCTED AND NOT SPENT." if holdout.exists else "NOT YET CUT.")
+        + " Reserving later is"
+    )
+    add("  impossible; spending later is always possible. Adaptive selection")
+    add("  over 12 queries on 37 incidents inflates a reported rate by a median")
+    add("  +11.1 points when every candidate is equally good, so four releases")
+    add("  tuning against one holdout would report an improvement produced")
+    add("  entirely by looking.")
     add("")
 
     add("-- the corpus " + "-" * (_WIDTH - 14))

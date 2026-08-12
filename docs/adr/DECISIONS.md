@@ -3217,3 +3217,57 @@ grouping**.
   `reduction_from_one_hop` moved to `CorpusStats`, where the renderer reads it, and the two `sound`
   properties were deleted; they return in Phase 5 if the verdict's §7.9 trigger reads them. Growing
   an allowlist to hold code no caller has yet is how an empty ratchet stops being one.
+
+## 147. The seal refuses a second construction at the schema, not at the caller (v0.10.0)
+
+- **Context**: `PREREGISTRATION-0.10.0.md` §3.3(4) requires the seal be written **once**. The
+  obvious implementation is `if await store.seal_row() is None: construct(...)`.
+- **Choice**: a constant `singleton` column carrying `UNIQUE` and `CHECK (singleton = 1)`, and a
+  `construct_seal` that **inserts without checking first** and lets SQLite refuse.
+- **Reason**: check-then-act is a race, and — far more importantly — it is a rule that lives in
+  whichever caller remembered it. The refusal has to hold against a method written next year and
+  against somebody at a `sqlite3` prompt, because the failure mode is not an accident. *A seal that
+  can be rebuilt is a seal that can be rebuilt **after** seeing a result*, and the person rebuilding
+  it would be doing so for a reason that felt good at the time.
+- **Rejected**: many seals, take the newest. It reads as more flexible and is precisely the
+  affordance the plan forbids.
+- **The test re-cuts against a LARGER corpus**, so a silent re-derivation shows as a changed
+  membership rather than as a no-op.
+
+## 148. The seal's access log is not the audit log (v0.10.0)
+
+- **Context**: this project already has a hash-chained, append-only, admin-visible log of who did
+  what. Putting seal accesses in it would be free.
+- **Choice**: a separate `holdout_access` table with its own append-only triggers.
+- **Reason**: `audit_log` records **operator** actions reachable from HTTP, each attributed to a
+  principal and a source IP. Nothing about the seal is reachable from a route and no principal
+  performs it — the maintenance pass does. Adding a system-generated action to a frozen catalog is
+  the decision `SECURITY-REVIEW-0.9.2.md` §4.6 explicitly declined to make alone, and v0.10.0 does
+  not make it either. The two logs also answer different questions: one is *who touched this
+  appliance*, the other is *how many times has this analysis looked at its own answer*.
+- **Refusals are logged too**, and `granted` distinguishes them. A log of successful reads answers
+  *"how often was the holdout spent"* and not *"how often did somebody try"* — and the second is the
+  question a reviewer of a four-release tuning loop actually needs. It is also the only trace a
+  missing-plan refusal leaves anywhere.
+- **`summary` logs nothing**, deliberately: the report prints the seal's state on every run, so a
+  counter that moved when a report ran would be counting reports.
+
+## 149. The isolation guard forbids reaching the membership, not importing the module (v0.10.0)
+
+- **Context**: plan §4.3(1) says the estimator, the training path and **every report** must be
+  unable to read the sealed ids. The first guard implemented that literally: no module in that list
+  may import `netcorenoc.seal`. It failed immediately, on `shadow_report.py`.
+- **The failure was correct.** §4.3(4) requires **every holdout number ever printed to carry its
+  query count**, so the report must reach the seal's *state*. Forbidding the import would have moved
+  the query count out of the report — a weaker outcome wearing a stronger rule.
+- **Choice**: state the property that matters, in two halves. (a) The estimator and the training
+  path may not import the module at all. (b) **Exactly one function in the package may call the one
+  expression that returns the membership**, asserted over every `.py` by AST.
+- **Reason**: `seal.summary` returns a `SealSummary` that *cannot* carry the membership — no field
+  for it, no method that yields it. The report therefore holds the module, prints the count, and
+  still has no way to obtain the ids. **That is a stronger guarantee than an import ban**, because
+  it constrains what can be *obtained* rather than what can be *named*.
+- **A third guard** requires exactly one `SELECT … FROM holdout_seal_member` in the package. Its
+  first draft counted `store/seal.py`'s own **docstring** as a second read; the shipped version
+  subtracts docstrings by AST and requires `FROM`. A scan that cannot tell prose from SQL reports
+  the module that is correct.

@@ -30,6 +30,19 @@ agreement with the champion.
   Every floor met. The floors were pre-registered before any result
   existed; a deployment may harden them and can never soften them.
 
+-- THE SEALED HOLDOUT ----------------------------------------
+  no seal has been constructed yet — one is cut on the first
+  training tick after a labelled corpus exists
+  QUERIES (times spent)                        0
+  state                                   INTACT
+  access-log rows (incl. refusals)             0
+  The holdout is NOT YET CUT. Reserving later is
+  impossible; spending later is always possible. Adaptive selection
+  over 12 queries on 37 incidents inflates a reported rate by a median
+  +11.1 points when every candidate is equally good, so four releases
+  tuning against one holdout would report an improvement produced
+  entirely by looking.
+
 -- the corpus ------------------------------------------------
   labelled bags (n)                          100
     confirm / split                      40 / 60

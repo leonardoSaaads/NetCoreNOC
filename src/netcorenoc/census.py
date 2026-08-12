@@ -26,7 +26,7 @@ from netcorenoc.incidents import IncidentMap, resolve_all, stamp
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.store import Store
 
-__all__ = ["CorpusStats", "corpus_stats", "resolve_identity"]
+__all__ = ["CorpusStats", "corpus_stats", "first_label_per_incident", "resolve_identity"]
 
 DAY_S = 86400.0
 
@@ -136,3 +136,26 @@ def corpus_stats(bags: list[dict[str, Any]], identity: IncidentMap) -> CorpusSta
         oldest_label_at=min(times),
         newest_label_at=max(times),
     )
+
+
+async def first_label_per_incident(store: Store) -> dict[int, float]:
+    """`incident -> the timestamp of its EARLIEST label`. What the seal is ordered by.
+
+    `PREREGISTRATION-0.10.0.md` §3.3(2). Earliest rather than latest because the seal is meant to
+    hold the *most recent third of the corpus by when it was first labelled*, and a bag relabelled
+    today does not make its incident new.
+
+    Resolved through the one implementation, like everything else that groups by incident: an
+    ordering built on a one-hop identity would seal a different set from the one the estimator
+    excludes, and nothing would go red.
+    """
+    bags = await store.labelled_bags()
+    identity = await resolve_identity(store, bags, [])
+    earliest: dict[int, float] = {}
+    for bag in bags:
+        incident = int(bag["incident"])
+        at = float(bag["label_at"])
+        if incident not in earliest or at < earliest[incident]:
+            earliest[incident] = at
+    _ = identity
+    return earliest

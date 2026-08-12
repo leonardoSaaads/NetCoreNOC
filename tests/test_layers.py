@@ -100,6 +100,7 @@ LAYER_OF: dict[str, str] = {
     # it cannot violate any direction — the same standing `retention_policy` has.
     "incidents": "engine",
     "census": "engine",
+    "seal": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire
