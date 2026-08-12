@@ -479,3 +479,11 @@ be one, and its diff could not be read in one sitting.
   — every migration whose SQL a test pins by copy should have that copy checked against the file —
   not a one-off assertion for this predicate, and it needs a fixture carrying both member sources.
   See `security/SECURITY-REVIEW-0.9.2.md` §6.5 and `security/SECURITY-REVIEW-0.10.0.md`.
+- **Two consumers still resolve incident identity with a one-hop `COALESCE`.** v0.10.0 converted
+  `store/shadow.py`'s two training joins to `incidents.resolve_all` and left `agreement.py`'s bag
+  query and `bias.py`'s `distinct_incidents` as they were — Workstream 1 named only the first, both
+  of the others feed byte-frozen v0.9.0 reports, and Part VII rule 7 forbids a fix inside a move. On
+  every corpus this repository can construct all four agree at 37 incidents, because every merge
+  chain in it is exactly one hop, **which is precisely the condition under which a divergence would
+  first appear silently.** The repair is mechanical (both take the edges and call the one function)
+  and its cost is re-freezing two report expectations by hand.

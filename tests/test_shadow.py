@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import shadow, shadow_eval, shadow_render, shadow_report, training
+from netcorenoc import census, shadow, shadow_eval, shadow_render, shadow_report, training
 from netcorenoc.challenger import Coefficients, LogisticScorer
 from netcorenoc.correlate import CorrelationResult, EvaluatedPair, WindowAlarm
 from netcorenoc.main import Engine
@@ -187,7 +187,8 @@ async def test_a_single_instant_corpus_projects_undefined_rather_than_a_number(
     await _corpus(store, [("confirm", 1)])
     async with store.lock:
         bags = await store.labelled_bags()
-    stats = shadow.corpus_stats(bags)
+        identity = await census.resolve_identity(store, bags, [])
+    stats = census.corpus_stats(bags, identity)
     assert stats.span_days == 0.0
     verdict = training.assess(stats, training.PROJECT_FLOORS)
     assert not verdict.ok
@@ -218,7 +219,12 @@ async def test_policy_b_derives_only_one_class_and_says_so(store: Store) -> None
     """
     await build_sufficient(store)
     async with store.lock:
-        pairs = [shadow.labelled_pair(row) for row in await store.labelled_pairs()]
+        raw = await store.labelled_pairs()
+        # v0.10.0: `incident` is stamped by `census.resolve_identity`, never by the SQL. A reader
+        # that skips it has no `incident` key at all, which is a loud failure rather than a
+        # quietly one-hop answer.
+        await census.resolve_identity(store, [], raw)
+        pairs = [shadow.labelled_pair(row) for row in raw]
     rows_a, diagnostics_a = training.derive(pairs, "A")
     rows_b, diagnostics_b = training.derive(pairs, "B")
     assert not diagnostics_a["single_class"], "policy A has both classes; the corpus has splits"
@@ -233,7 +239,12 @@ async def test_every_bag_contributes_one_unit_of_mass(store: Store) -> None:
     storm would be the fit."""
     await build_sufficient(store)
     async with store.lock:
-        pairs = [shadow.labelled_pair(row) for row in await store.labelled_pairs()]
+        raw = await store.labelled_pairs()
+        # v0.10.0: `incident` is stamped by `census.resolve_identity`, never by the SQL. A reader
+        # that skips it has no `incident` key at all, which is a loud failure rather than a
+        # quietly one-hop answer.
+        await census.resolve_identity(store, [], raw)
+        pairs = [shadow.labelled_pair(row) for row in raw]
     rows, diagnostics = training.derive(pairs, "A")
     # Class balancing scales the two classes, so mass is one unit per bag WITHIN a class.
     assert abs(diagnostics["positive_mass"] - diagnostics["bags_used"] * 0.4) < 1e-6 or True

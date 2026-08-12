@@ -114,6 +114,20 @@ def render(m: dict[str, Any]) -> str:
     add(f"  {'  confirm / split':<34}{f'{stats.confirm_bags} / {stats.split_bags}':>12}")
     add(f"  {'  MIXED (pairs both sides)':<34}{stats.mixed_bags:>12}")
     add(f"  {'merge-aware incidents':<34}{stats.incidents:>12}")
+    # v0.10.0 (Workstream 1). BOTH answers, and their difference, always. Until this release the
+    # incident was `COALESCE(merged_into, situation_id)` — ONE HOP — and a merge chain can be
+    # longer. The one-hop count is printed beside the resolved one so the correction is visible
+    # even when it is zero, which is what this project's own corpus produces: every chain in it is
+    # exactly one hop. A number that only appears when it differs is a number nobody checks.
+    add(f"  {'  one-hop count (superseded)':<34}{stats.incidents_one_hop:>12}")
+    add(f"  {'  reduction from one hop':<34}{stats.reduction_from_one_hop:>12}")
+    # A cycle or a chain past the depth bound. NEVER silently collapsed: the plan's §7.9 makes
+    # these `unknown` and a verdict trigger, so a zero here is a claim and not a default.
+    add(f"  {'  unsound merge chains':<34}{stats.unsound_chains:>12}")
+    # Merged before `0008` existed, so the destination was never written and no migration can
+    # reconstruct one. Such a situation LOOKS independent and is not, and no column tells them
+    # apart. §3.3: counted, never assumed absent.
+    add(f"  {'pre-v0.8.0 merges (unrecoverable)':<34}{m['pre_v080_merges']:>12}")
     add(f"  {'distinct operators':<34}{stats.operators:>12}")
     add(f"  {'promoted pairs behind them':<34}{stats.pairs:>12}")
     add(f"  {'label span (days)':<34}{stats.span_days:>12.2f}")

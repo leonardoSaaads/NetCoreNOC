@@ -3190,3 +3190,30 @@ grouping**.
   thing standing between the two is somebody remembering. Building the seal first means the
   estimator is written against an interface that never offered the sealed ids, so reading them is
   not a rule it must obey but a thing it cannot express.
+
+## 146. `census.py`, and `CorpusStats` moving into it (v0.10.0)
+
+- **Context**: adding the transitive incident resolution took `shadow.py` to **417** of its 400-line
+  budget, and adding two fields to `CorpusStats` took `training.py` to **408**. Two modules over the
+  guard in one phase.
+- **Options**: (a) raise `MAX_MODULE_LINES`; (b) add both to `DEBT_ALLOWLIST`; (c) split.
+- **Choice**: **(c)**, on a seam that already existed rather than at whatever line the counter
+  reached. `census.py` owns *what the labelled corpus contains* — `CorpusStats`, `corpus_stats`, and
+  the `resolve_identity` step that turns a `situation_id` into an incident. `shadow.py` keeps the
+  shadow **lifecycle**: when to sample, when to train, what to write back.
+- **Why that seam and not another**: the census is asked by three things that do not own it — the
+  sufficiency floors, the CV estimator, and the seal. Leaving it inside `shadow.py` would have made
+  the seal import the shadow lifecycle to find out how many incidents exist, which is the dependency
+  that would later make "the estimator and the seal disagree" easy to write by accident.
+- **`CorpusStats` moves and is re-exported.** It is *literally* the new module's subject. It is
+  re-exported from `training` because `assess()` takes one and every caller since v0.9.0 has
+  imported it from there, and a split is not a reason to move a caller's import (DECISIONS #139's
+  own rule, applied again).
+- **The dependency direction, which was the only hard part**: `training` imports `census`, and
+  `census` imports nothing from `training`. The reverse would cycle, because `census.corpus_stats`
+  constructs the dataclass `training.assess` consumes.
+- **Rejected: `vulture_allowlist.py`.** Three properties were flagged unused by the dead-code gate,
+  and the allowlist has precedent for *"surface a later release needs"*. It was not used.
+  `reduction_from_one_hop` moved to `CorpusStats`, where the renderer reads it, and the two `sound`
+  properties were deleted; they return in Phase 5 if the verdict's §7.9 trigger reads them. Growing
+  an allowlist to hold code no caller has yet is how an empty ratchet stops being one.

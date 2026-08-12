@@ -28,6 +28,48 @@ __all__ = ["ShadowMixin"]
 
 
 class ShadowMixin(StoreBase):
+    # -- incident identity ---------------------------------------------------------------------
+
+    async def merge_edges(self) -> dict[int, int]:
+        """Every recorded merge, as `merged situation -> destination`.
+
+        **This module no longer decides what an incident is.** Until v0.10.0 the two joins below
+        carried `COALESCE(s.merged_into, f.situation_id) AS incident`, which is **one hop** — and a
+        merge chain can be longer than one hop, because `merge_situations(sid, other)` marks the
+        source merged into `sid` and `sid` can itself later be merged.
+
+        Resolving the chain is `netcorenoc.incidents.resolve_all`, and it lives there rather than
+        here for a reason that is not stylistic: SQLite could follow the chain with a recursive CTE,
+        and then there would be **two** implementations of incident identity — one in Python for the
+        seal and one in SQL for the estimator — which is exactly how the two come to disagree about
+        which incidents exist with nothing going red. So the SQL returns the **edges** and the
+        arithmetic happens once.
+
+        Ordered by `id` so the mapping is built in a stable order; the result is a `dict` and the
+        order does not affect it, but a deterministic read is cheaper to reason about than an
+        argument that the order cannot matter.
+        """
+        cur = await self.conn.execute(
+            "SELECT id, merged_into FROM situation WHERE merged_into IS NOT NULL ORDER BY id"
+        )
+        return {int(r[0]): int(r[1]) for r in await cur.fetchall()}
+
+    async def pre_v080_merges(self) -> int:
+        """Situations merged before `0008` existed: `status='merged'` with **no destination**.
+
+        Unrecoverable by construction — the destination was never written and no migration can
+        reconstruct one — so such a situation *looks* independent and is not, and **no column
+        distinguishes it from a genuinely independent one**. `PREREGISTRATION-0.10.0.md` §3.3
+        requires these to be counted rather than assumed absent, and §7.10 makes them a verdict
+        trigger above 10 % of `asserting_incidents`.
+        """
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) FROM situation WHERE status = 'merged' AND merged_into IS NULL"
+        )
+        row = await cur.fetchone()
+        assert row is not None
+        return int(row[0])
+
     # -- the training join ---------------------------------------------------------------------
 
     async def labelled_pairs(self, *, include_legacy: bool = False) -> list[dict[str, Any]]:
@@ -49,11 +91,9 @@ class ShadowMixin(StoreBase):
         cur = await self.conn.execute(
             "SELECT p.id AS pair_id, p.delta_t_s, p.class_affinity, p.entity_affinity, "
             "       p.incumbent_linked, p.evaluated_at, p.situation_id, p.alarm_a, p.alarm_b, "
-            "       f.id AS feedback_id, f.verdict, f.created_at AS label_at, "
-            "       COALESCE(s.merged_into, f.situation_id) AS incident "
+            "       f.id AS feedback_id, f.verdict, f.created_at AS label_at "
             "FROM dataset_pair p "
             "JOIN feedback f ON f.situation_id = p.situation_id "
-            "LEFT JOIN situation s ON s.id = f.situation_id "
             "WHERE p.lifecycle = 'dataset' "
             "  AND (f.capture_provenance = 'current' OR ?) "
             "  AND f.id = (SELECT f2.id FROM feedback f2 "
@@ -75,15 +115,13 @@ class ShadowMixin(StoreBase):
         """
         legacy = 1 if include_legacy else 0
         cur = await self.conn.execute(
-            "SELECT f.id AS feedback_id, f.verdict, f.created_at AS label_at, "
+            "SELECT f.id AS feedback_id, f.verdict, f.created_at AS label_at, f.situation_id, "
             "       COALESCE(f.principal_ref, '(unattributed)') AS principal, "
             "       COALESCE(f.member_count, -1) AS member_count, "
             "       COALESCE(f.coverage, 'unrecorded') AS coverage, "
-            "       COALESCE(s.merged_into, f.situation_id) AS incident, "
             "       COUNT(p.id) AS pairs, "
             "       COALESCE(SUM(p.incumbent_linked), 0) AS accepted "
             "FROM feedback f "
-            "LEFT JOIN situation s ON s.id = f.situation_id "
             "LEFT JOIN dataset_pair p "
             "       ON p.situation_id = f.situation_id AND p.lifecycle = 'dataset' "
             "WHERE (f.capture_provenance = 'current' OR ?) "

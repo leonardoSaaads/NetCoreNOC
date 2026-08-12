@@ -92,6 +92,14 @@ LAYER_OF: dict[str, str] = {
     "shadow_eval": "engine",
     "shadow_report": "engine",
     "shadow_render": "engine",
+    # v0.10.0 — the honest judge. Engine-layer for the same reason the shadow modules are:
+    # they consume stored evidence and read downward through the data layer, and none of them
+    # is reachable from `receiver.datagram_received`.
+    #
+    # `incidents` is pure arithmetic over a mapping and imports NOTHING from this package, so
+    # it cannot violate any direction — the same standing `retention_policy` has.
+    "incidents": "engine",
+    "census": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire

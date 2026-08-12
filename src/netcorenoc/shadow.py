@@ -36,6 +36,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from netcorenoc.census import corpus_stats, resolve_identity
 from netcorenoc.challenger import (
     CHALLENGER_SCORER_ID,
     Coefficients,
@@ -44,7 +45,6 @@ from netcorenoc.challenger import (
 )
 from netcorenoc.scoring import CONTRACT_VERSION, LinkFeatures
 from netcorenoc.training import (
-    CorpusStats,
     LabelledPair,
     assess,
     derive,
@@ -245,12 +245,14 @@ class Shadow:
                 raw_floors = await store.get_meta(FLOORS_META_KEY)
                 raw_rate = await store.get_meta(SAMPLE_META_KEY)
                 bags = await store.labelled_bags()
-                pairs = [labelled_pair(row) for row in await store.labelled_pairs()]
+                raw_pairs = await store.labelled_pairs()
+                identity = await resolve_identity(store, bags, raw_pairs)
+                pairs = [labelled_pair(row) for row in raw_pairs]
                 capture_run = await store.latest_capture_run()
             self.sample_rate = _sample_rate(raw_rate)
             floors, warning = resolve_floors(raw_floors)
             self.warnings_extra = [warning] if warning else []
-            stats = corpus_stats(bags)
+            stats = corpus_stats(bags, identity)
             verdict = assess(stats, floors)
 
             outcomes: dict[str, Any] = {}
@@ -345,37 +347,4 @@ def labelled_pair(row: dict[str, Any]) -> LabelledPair:
         incumbent_linked=bool(int(row["incumbent_linked"])),
         evaluated_at=float(row["evaluated_at"]),
         label_at=float(row["label_at"]),
-    )
-
-
-def corpus_stats(bags: list[dict[str, Any]]) -> CorpusStats:
-    """The corpus, counted in the units the floors are expressed in.
-
-    A **mixed** bag is one whose promoted pairs sit on both sides of the champion's threshold — the
-    only population where there was a decision to get wrong. Phase 0 measured five of them in the
-    richest corpus this repository can construct, which is why this count is the one the report
-    leads with.
-    """
-    if not bags:
-        return CorpusStats()
-    per_operator: dict[str, int] = {}
-    for bag in bags:
-        principal = str(bag["principal"])
-        if principal != "(unattributed)":
-            per_operator[principal] = per_operator.get(principal, 0) + 1
-    attributed = sum(per_operator.values())
-    times = [float(bag["label_at"]) for bag in bags]
-    return CorpusStats(
-        bags=len(bags),
-        confirm_bags=sum(1 for b in bags if b["verdict"] == "confirm"),
-        split_bags=sum(1 for b in bags if b["verdict"] == "split"),
-        mixed_bags=sum(1 for b in bags if 0 < int(b["accepted"]) < int(b["pairs"])),
-        incidents=len({int(b["incident"]) for b in bags}),
-        operators=len(per_operator),
-        top_operator_share_pct=(
-            100.0 * max(per_operator.values()) / attributed if attributed else 0.0
-        ),
-        pairs=sum(int(b["pairs"]) for b in bags),
-        oldest_label_at=min(times),
-        newest_label_at=max(times),
     )

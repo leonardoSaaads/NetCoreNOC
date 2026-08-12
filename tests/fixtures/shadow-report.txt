@@ -35,6 +35,10 @@ agreement with the champion.
     confirm / split                      40 / 60
     MIXED (pairs both sides)                  40
   merge-aware incidents                      100
+    one-hop count (superseded)               100
+    reduction from one hop                     0
+    unsound merge chains                       0
+  pre-v0.8.0 merges (unrecoverable)            0
   distinct operators                           3
   promoted pairs behind them                 300
   label span (days)                        13.86

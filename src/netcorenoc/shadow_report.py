@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc import shadow, shadow_eval, training
+from netcorenoc import census, shadow, shadow_eval, training
 from netcorenoc.challenger import Coefficients, LogisticScorer
 from netcorenoc.scoring import AdditiveScorer, LinkFeatures
 
@@ -42,8 +42,13 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
     """
     bags = await store.labelled_bags(include_legacy=include_legacy)
     pairs = await store.labelled_pairs(include_legacy=include_legacy)
+    # Workstream 1: incident identity is resolved ONCE, through the one implementation, and
+    # stamped onto both lists from the same map. This call site and `shadow.Shadow.run`'s are
+    # the two the plan's §3.3 warns must not compute it separately.
+    identity = await census.resolve_identity(store, bags, pairs)
+    pre_v080_merges = await store.pre_v080_merges()
     run = await store.latest_challenger_run()
-    stats = shadow.corpus_stats(bags)
+    stats = census.corpus_stats(bags, identity)
     floors, floors_warning = training.resolve_floors(await store.get_meta(shadow.FLOORS_META_KEY))
     verdict = training.assess(stats, floors)
     # `sum(m * (n - m))` over labels carrying an exclusion: the pairs an operator ASSERTED
@@ -65,6 +70,7 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
         "run": run,
         "stats": stats,
         "floors": floors,
+        "pre_v080_merges": pre_v080_merges,
         "floors_warning": floors_warning,
         "verdict": verdict,
         # v0.9.1 OBSERVATIONS, not floors — see the prose in `render`. Printed beside the
