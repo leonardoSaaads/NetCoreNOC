@@ -23,6 +23,7 @@ from typing import Any
 
 from netcorenoc import shadow_eval, training
 from netcorenoc.challenger import FEATURE_NAMES, Coefficients
+from netcorenoc.judge import Judgement
 from netcorenoc.seal import SealSummary
 
 __all__ = ["render"]
@@ -108,6 +109,41 @@ def render(m: dict[str, Any]) -> str:
     if m["floors_warning"]:
         add("")
         add("  WARNING: the stored floor policy was unreadable and was ignored.")
+    add("")
+
+    judgement: Judgement = m["judgement"]
+    add("-- THE VERDICT " + "-" * (_WIDTH - 15))
+    add(f"  {'verdict':<34}{judgement.verdict.value:>26}")
+    # §2.5's STRUCTURAL MITIGATION: a floor evaluation is NEVER printed without the detection
+    # threshold for the same n beside it. A reader who sees "floors met" must not be able to read
+    # "the evaluation is trustworthy" — the two are different claims and the second needs this
+    # number. `tests/test_judge.py` fails if one is emitted without the other.
+    add(f"  {'floors met':<34}{('yes' if judgement.floors_met else 'no'):>26}")
+    add(f"  {'minimum detectable difference':<34}{judgement.detectable_difference:>26.3f}")
+    add(f"  {'  at n incidents':<34}{judgement.incidents:>26}")
+    add(f"  {'holdout queries':<34}{judgement.query_count:>26}")
+    add("  projection")
+    add(f"    {judgement.projection}")
+    if judgement.triggers:
+        add("")
+        add("  INSUFFICIENT_EVIDENCE because:")
+        for trigger in judgement.triggers:
+            add(f"    - {trigger.value}")
+    for note in judgement.notes:
+        add(f"  {note}")
+    add("")
+    if not judgement.decisive:
+        add("  NO QUALITY CLAIM IS AVAILABLE FROM THIS CORPUS, and none is made.")
+        add("  INSUFFICIENT_EVIDENCE is a MEASUREMENT of the corpus — not an error,")
+        add("  not a failure, and NOT a finding that the challenger is no better.")
+        add("  Those are opposite claims and this release does not conflate them.")
+        add("")
+    add("  THE FLOORS AND THE THRESHOLD ARE TWO DIFFERENT CLAIMS. Floors met")
+    add("  says a fit would not be degenerate and not one person's opinion.")
+    add("  The detection threshold says whether a difference, if real, could")
+    add("  be RESOLVED at this n. A corpus can clear every floor and still be")
+    add("  unable to decide anything, which is why the second is a verdict")
+    add("  trigger that no deployment may harden or disable.")
     add("")
 
     holdout: SealSummary = m["holdout"]

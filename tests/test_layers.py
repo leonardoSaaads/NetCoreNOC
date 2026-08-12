@@ -90,6 +90,9 @@ LAYER_OF: dict[str, str] = {
     "training": "engine",
     "shadow": "engine",
     "shadow_eval": "engine",
+    "shadow_admission": "engine",
+    "shadow_cv": "engine",
+    "judge": "engine",
     "shadow_report": "engine",
     "shadow_render": "engine",
     # v0.10.0 — the honest judge. Engine-layer for the same reason the shadow modules are:

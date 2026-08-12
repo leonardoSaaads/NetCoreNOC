@@ -3271,3 +3271,58 @@ grouping**.
   first draft counted `store/seal.py`'s own **docstring** as a second read; the shipped version
   subtracts docstrings by AST and requires `FROM`. A scan that cannot tell prose from SQL reports
   the module that is correct.
+
+## 150. `shadow_eval.py` is split on the admission seam, not at the line counter (v0.10.0)
+
+- **Context**: `shadow_eval.py` sat at **394 of its 400-line budget** and this release adds a fourth
+  metric to it. Part VII rule 6 is explicit: **split, never exempt.**
+- **Options**: (a) `DEBT_ALLOWLIST`; (b) raise the guard; (c) split the calibration out; (d) split
+  the **admission filter** out.
+- **Choice**: **(d)** — `shadow_admission.py`, carrying `admission`, `verdict` and their two
+  helpers.
+- **Reason**: it is the seam that already existed. `shadow_eval.py` answers *how good is this model*;
+  admission answers *is it allowed to be measured at all* — a different question, asked **first**,
+  with a different consequence: a model that fails admission does not get a bad score, it gets **no
+  score**. Calibration (c) would have been a split by size, because calibration is a quality metric
+  and belongs beside the others.
+- **What it cost the guards**: `tests/test_challenger.py`'s two enumerations gain
+  `shadow_admission.py`. That is a **split of an already-allowed module**, not a new reach, and
+  adding it *widens* what the never-reaches-the-champion guard covers — DECISIONS #139's reasoning
+  applied again.
+
+## 151. The bootstrap ships its own nine-line PRNG, and the dead-code gate found the bug in it (v0.10.0)
+
+- **Context**: the cluster bootstrap needs pseudo-random indices. `random.Random` is the obvious
+  choice.
+- **Choice**: a nine-line LCG with an explicit constant, seeded from a module constant.
+- **Reason**: this project's oldest property is that two runs and two processes produce identical
+  bytes. `random.Random`'s stability guarantee is about a *version*, not a *value*; nine lines of
+  arithmetic is a smaller promise to keep than "the standard library will not change its Mersenne
+  Twister seeding".
+- **The bug this decision introduced, and how it was caught.** The first version returned
+  `state % bound`. A power-of-two-modulus LCG has notoriously poor **low** bits: `state % 2`
+  alternates with period 2, so every "resample" of a two-cluster corpus drew exactly one of each and
+  the interval came back **zero-width** — a bootstrap reporting perfect precision because it never
+  resampled anything. `test_the_bootstrap_resamples_incidents_and_not_observations` caught it, by
+  asserting a two-cluster corpus has a *wider* interval than a 200-cluster one; both were 0.000.
+  The fix is `(state >> 16) % bound`.
+- **The validation that now stands behind it**: the shipped bootstrap reproduces the plan's §3.1
+  table — 12 → 0.500, 37 → 0.297, 50 → 0.260, 100 → 0.180, 500 → 0.080 against a registered
+  0.500 / 0.289 / 0.246 / 0.180 / 0.079. A table reproduced by the **shipped** PRNG is worth more
+  than one reproduced by a throwaway script.
+
+## 152. The power condition has one implementation, and the dead-code gate is why (v0.10.0)
+
+- **Context**: `judge()` originally inlined `abs(observed_difference) <= detectable_difference`
+  while `shadow_cv.Power.sufficient` expressed the same condition. `vulture` flagged `sufficient` as
+  unused, which was the symptom rather than the disease.
+- **Choice**: `judge()` takes a `Power` object and reads `power.sufficient`. The inline comparison
+  is deleted, and `Power` carries the `n` and the observed difference the `Judgement` reports.
+- **Reason**: two implementations of one condition is how **the number the report prints and the
+  number the verdict uses come to disagree**, silently — the same failure mode as the four
+  `COALESCE`s of Workstream 1, one release later and one level in. §2.5 makes the power condition a
+  *reported quantity* **and** a *verdict trigger*, so those two consumers reading different code
+  would be exactly the defect the plan's structural mitigation exists to prevent.
+- **Worth recording separately**: the dead-code gate found a design defect, not dead code. Three
+  times in this release a `vulture` finding has been the visible end of something real, and none of
+  the three was resolved by adding an allowlist entry.

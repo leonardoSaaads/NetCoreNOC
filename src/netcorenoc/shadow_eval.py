@@ -22,18 +22,18 @@ until one was tuned.
 
 from __future__ import annotations
 
-import time
 from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from netcorenoc.challenger import FEATURE_NAMES, LogisticScorer, sigmoid
-from netcorenoc.scoring import AdditiveScorer, LinkFeatures
+from netcorenoc.challenger import LogisticScorer, sigmoid
+from netcorenoc.scoring import LinkFeatures
 
 __all__ = [
     "CALIBRATION_BINS",
+    "AssertingBag",
     "PartitionScore",
-    "admission",
+    "asserted_negative_respected_rate",
     "brier",
     "calibration",
     "evaluate",
@@ -245,94 +245,6 @@ def brier(points: list[tuple[float, float]]) -> float:
     return round(sum((p - y) ** 2 for p, y in points) / len(points), 6) if points else 0.0
 
 
-# -- the admission filter ----------------------------------------------------------------------
-
-
-def admission(
-    scorer: LogisticScorer | AdditiveScorer, samples: list[LinkFeatures], *, budget_ratio: float
-) -> dict[str, Any]:
-    """Run one scorer against the filter. **The champion is measured on the same samples.**
-
-    A model competes on quality **only after** passing this, and the filter was written before the
-    first model so it could not be shaped around whatever won. Six checks:
-
-    * **speed** — median and p99 microseconds per `score()` call, expressed *relative to the
-      champion measured in the same process at the same time*. Phase 0 §5 measured the champion's
-      p99 moving 2.6x between two runs on one machine, so an absolute microsecond budget would be a
-      measurement of the scheduler; a ratio is not.
-    * **explainability** — emits `terms`, one per free parameter, summing to the score. Asserted.
-    * **determinism** — the same features give a byte-identical score on a second call.
-    * **memory** — the scorer's own state does not grow with the number of calls.
-    * **contract** — implements `LinkScorer` at a version this build supports.
-    * **dependencies** — none new; asserted at the suite level, reported here for completeness.
-    """
-    warmed = samples[: min(200, len(samples))]
-    for features in warmed:
-        scorer.score(features)
-    timings: list[float] = []
-    for features in samples:
-        started = time.perf_counter_ns()
-        scorer.score(features)
-        timings.append((time.perf_counter_ns() - started) / 1000.0)
-    timings.sort()
-
-    probe = samples[0]
-    first, second = scorer.score(probe), scorer.score(probe)
-    total = 0.0
-    for term in first.terms:
-        total += term.contribution
-    before = _state_size(scorer)
-    for features in samples[: min(1000, len(samples))]:
-        scorer.score(features)
-    return {
-        "scorer_id": scorer.scorer_id,
-        "contract_version": scorer.contract_version,
-        "calls": len(timings),
-        "median_us": round(_quantile(timings, 0.5), 3),
-        "p99_us": round(_quantile(timings, 0.99), 3),
-        "budget_ratio": budget_ratio,
-        "explainable": bool(first.terms) and total == first.score,
-        "terms": len(first.terms),
-        "deterministic": first == second and first.score.hex() == second.score.hex(),
-        "memory_stable": _state_size(scorer) == before,
-        "state_floats": before,
-    }
-
-
-def _quantile(ordered: list[float], q: float) -> float:
-    return ordered[min(len(ordered) - 1, int(q * len(ordered)))] if ordered else 0.0
-
-
-def _state_size(scorer: object) -> int:
-    """The number of scalars the scorer carries. A cache or an accumulator would move it."""
-    return sum(1 for value in vars(scorer).values() if isinstance(value, (int, float, str))) + len(
-        FEATURE_NAMES
-    )
-
-
-def verdict(challenger: dict[str, Any], champion: dict[str, Any]) -> tuple[bool, list[str]]:
-    """`(admitted, reasons it was not)`. **A model failing any check does not compete.**"""
-    reasons: list[str] = []
-    if not challenger["explainable"]:
-        reasons.append("explainability: contributions do not sum to the score")
-    if not challenger["deterministic"]:
-        reasons.append("determinism: two calls on identical features differed")
-    if not challenger["memory_stable"]:
-        reasons.append("memory: the scorer's state grew while scoring")
-    if challenger["contract_version"] != champion["contract_version"]:
-        reasons.append(
-            f"contract: {challenger['contract_version']} is not the running "
-            f"{champion['contract_version']}"
-        )
-    budget = champion["p99_us"] * challenger["budget_ratio"]
-    if challenger["p99_us"] > budget:
-        reasons.append(
-            f"speed: p99 {challenger['p99_us']:.3f}us over the budget {budget:.3f}us "
-            f"({challenger['budget_ratio']:.1f}x the champion's {champion['p99_us']:.3f}us)"
-        )
-    return not reasons, reasons
-
-
 def champion_decisions(pairs: list[dict[str, Any]]) -> dict[int, bool]:
     """The champion's link decisions, from `incumbent_linked`.
 
@@ -392,3 +304,97 @@ def bag_probabilities(
         p = probability[int(pair["pair_id"])]
         out[key] = p if key not in out else min(out[key], p)
     return out
+
+
+# -- the fourth named quantity (v0.10.0) --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class AssertingBag:
+    """One bag that asserts something negative, with everything needed to score it.
+
+    `marked` is the **reconciled** set — the client's report intersected with the server's own bag,
+    which is what v0.9.2 built and the only quantity a metric about the evidence may read (F46).
+    `hidden` is the set of members the labeller could not observe, so the observable pairs can be
+    counted rather than assumed (§2.4).
+    """
+
+    feedback_id: int
+    incident: int
+    members: tuple[int, ...]
+    marked: frozenset[int]
+    hidden: frozenset[int]
+    coverage: str
+
+    @property
+    def eligible(self) -> bool:
+        """§2.6(c): a bag with `coverage IN ('none','empty')` is EXCLUDED, counted, and reported.
+
+        Such a bag yields an all-singleton partition, in which **every asserted negative pair is
+        satisfied for free** — v0.9.0's measured policy-B failure (a perfect number produced by
+        nothing happening) appearing in a new place.
+        """
+        return self.coverage not in ("none", "empty") and bool(self.marked)
+
+    def observable_pairs(self) -> list[tuple[int, int]]:
+        """The `marked x rest` pairs **both of whose ends the labeller could see** (§2.4).
+
+        `EVIDENCE-BOUNDARY-0.9.2.md` §10, corrected in v0.10.0 Gate 0 and machine-checked by
+        `tests/test_evidence_boundary_observable.py`: the count is exactly
+        `(m - b) * ((n - m) - (h - b))`, and this enumerates precisely those pairs. A pair is
+        unobservable if **either** end is hidden.
+        """
+        marked_visible = [a for a in self.members if a in self.marked and a not in self.hidden]
+        rest_visible = [a for a in self.members if a not in self.marked and a not in self.hidden]
+        return [(a, b) for a in marked_visible for b in rest_visible]
+
+
+def asserted_negative_respected_rate(
+    bags: list[AssertingBag], components: dict[int, dict[int, int]]
+) -> tuple[dict[int, list[float]], dict[str, int]]:
+    """**The fourth named quantity.** Per bag, aggregated by the caller as the mean over bags.
+
+    Returns `(incident -> [per-bag rates], diagnostics)`. The caller hands the first to
+    `shadow_cv.cluster_bootstrap`, which resamples **incidents**.
+
+    Three properties a build gets wrong if it is not careful, all three registered in §2.6(d):
+
+    * **Per bag, never pooled over pairs.** One 501-member storm with 250 marks contributes 62 750
+      pairs; a pooled rate would be *that storm's rate wearing the corpus's name*. This function
+      returns one number per bag and has no expression that could pool.
+    * **`coverage IN ('none','empty')` excluded, counted and reported.** The diagnostics carry the
+      exclusion count so the report can print it rather than the reader inferring it from a gap.
+    * **The champion is scored by this same function.** ``components`` is whatever partition a
+      caller produced, so the challenger's and the champion's numbers come from one code path —
+      a challenger number with no champion number beside it is not a comparison.
+
+    **Never composed** with `over_merge_rate`, `under_merge_rate` or `split_bag_intact_rate`. It is
+    a fourth quantity for the same reason the third exists.
+    """
+    per_incident: dict[int, list[float]] = {}
+    excluded = observable = respected = 0
+    scored = 0
+    for bag in bags:
+        if not bag.eligible:
+            excluded += 1
+            continue
+        pairs = bag.observable_pairs()
+        if not pairs:
+            # A bag whose every asserted pair was blind asserts nothing this metric can read. Not
+            # an exclusion under §2.6(c) and not a 1.0 either: counted separately, because scoring
+            # it as "respected" would be the free-perfect-number failure one level down.
+            excluded += 1
+            continue
+        component = components.get(bag.feedback_id, {})
+        kept = sum(1 for a, b in pairs if component.get(a, a) != component.get(b, b))
+        observable += len(pairs)
+        respected += kept
+        scored += 1
+        per_incident.setdefault(bag.incident, []).append(kept / len(pairs))
+    return per_incident, {
+        "bags_scored": scored,
+        "bags_excluded": excluded,
+        "observable_pairs": observable,
+        "pairs_respected": respected,
+        "incidents": len(per_incident),
+    }

@@ -30,6 +30,33 @@ agreement with the champion.
   Every floor met. The floors were pre-registered before any result
   existed; a deployment may harden them and can never soften them.
 
+-- THE VERDICT -----------------------------------------------
+  verdict                                INSUFFICIENT_EVIDENCE
+  floors met                                                no
+  minimum detectable difference                          0.182
+    at n incidents                                         100
+  holdout queries                                            0
+  projection
+    undefined (no measurable labelling rate yet)
+
+  INSUFFICIENT_EVIDENCE because:
+    - a §2 floor is unmet
+    - the sealed holdout has not been spent
+    - the minimum detectable difference at this n exceeds the observed difference
+    - unknown-population rows would change the verdict if included
+
+  NO QUALITY CLAIM IS AVAILABLE FROM THIS CORPUS, and none is made.
+  INSUFFICIENT_EVIDENCE is a MEASUREMENT of the corpus — not an error,
+  not a failure, and NOT a finding that the challenger is no better.
+  Those are opposite claims and this release does not conflate them.
+
+  THE FLOORS AND THE THRESHOLD ARE TWO DIFFERENT CLAIMS. Floors met
+  says a fit would not be degenerate and not one person's opinion.
+  The detection threshold says whether a difference, if real, could
+  be RESOLVED at this n. A corpus can clear every floor and still be
+  unable to decide anything, which is why the second is a verdict
+  trigger that no deployment may harden or disable.
+
 -- THE SEALED HOLDOUT ----------------------------------------
   no seal has been constructed yet — one is cut on the first
   training tick after a labelled corpus exists

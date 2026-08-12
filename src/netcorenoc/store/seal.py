@@ -157,3 +157,43 @@ class SealMixin(StoreBase):
         )
         _ = plan_sha256  # validated by `seal.spend`; named here so the contract is visible
         return [int(r[0]) for r in await cur.fetchall()]
+
+    # -- the asserting-bag census ---------------------------------------------------------------
+
+    async def asserting_bag_rows(self) -> list[dict[str, Any]]:
+        """Every labelled bag that carries an assertion, with what §2.2 needs to judge it.
+
+        Here rather than in `store/shadow.py` because it is read by the **judge** — the thing that
+        decides whether the evidence suffices — and not by the training join. `store/shadow.py` owns
+        *what the challenger read and wrote back*; this owns *what the seal and the judge are
+        allowed to count*, which is the same seam `0011` drew between the report and the learner.
+
+        `excluded_reconciled`, never `excluded_count` (F46): every threshold counts the quantity the
+        **server** derived. `capture_provenance = 'current'` because `legacy_capture` rows were
+        acquired over the path v0.7.5 repaired and are of *unknown* quality.
+        """
+        cur = await self.conn.execute(
+            "SELECT f.id AS feedback_id, f.situation_id, f.verdict, "
+            "       COALESCE(f.coverage, 'unrecorded') AS coverage, "
+            "       COALESCE(f.member_count, 0) AS member_count, "
+            "       f.excluded_reconciled, f.excluded_reconciled_out_of_scope, "
+            "       f.scope_redacted_members, f.excluded_truncated, f.capture_provenance "
+            "FROM feedback f "
+            "WHERE f.verdict = 'split' AND f.excluded_reconciled >= 1 "
+            "  AND f.capture_provenance = 'current' "
+            "ORDER BY f.id"
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def unknown_scope_rows(self) -> int:
+        """Labels written before `0011`, whose scope is **permanently uninterpretable**.
+
+        §2.3: the `unknown` population is excluded, counted, and reported. It may not be assumed
+        clean and may not swell a denominator, and `NULL` means unknown **forever** — never zero.
+        """
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) FROM feedback WHERE scope_redacted_members IS NULL"
+        )
+        row = await cur.fetchone()
+        assert row is not None
+        return int(row[0])

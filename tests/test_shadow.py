@@ -23,7 +23,15 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import census, shadow, shadow_eval, shadow_render, shadow_report, training
+from netcorenoc import (
+    census,
+    shadow,
+    shadow_admission,
+    shadow_eval,
+    shadow_render,
+    shadow_report,
+    training,
+)
 from netcorenoc.challenger import Coefficients, LogisticScorer
 from netcorenoc.correlate import CorrelationResult, EvaluatedPair, WindowAlarm
 from netcorenoc.main import Engine
@@ -536,15 +544,15 @@ def test_the_admission_filter_runs_against_the_champion_too() -> None:
         )
         for i in range(500)
     ]
-    champion = shadow_eval.admission(AdditiveScorer(), samples, budget_ratio=10.0)
-    challenger = shadow_eval.admission(
+    champion = shadow_admission.admission(AdditiveScorer(), samples, budget_ratio=10.0)
+    challenger = shadow_admission.admission(
         LogisticScorer(Coefficients(-1.0, 2.0, 1.0, 0.5)), samples, budget_ratio=10.0
     )
     for row in (champion, challenger):
         assert row["explainable"] and row["deterministic"] and row["memory_stable"]
         assert row["median_us"] > 0.0 and row["p99_us"] >= row["median_us"]
     assert champion["terms"] == 3 and challenger["terms"] == 4
-    admitted, reasons = shadow_eval.verdict(challenger, champion)
+    admitted, reasons = shadow_admission.verdict(challenger, champion)
     assert admitted, reasons
 
 
@@ -567,7 +575,7 @@ def test_a_model_failing_any_check_does_not_compete() -> None:
             "budget_ratio": 10.0,
             **broken,
         }
-        admitted, reasons = shadow_eval.verdict(challenger, champion)
+        admitted, reasons = shadow_admission.verdict(challenger, champion)
         assert not admitted and any(r.startswith(expected) for r in reasons), reasons
 
 
