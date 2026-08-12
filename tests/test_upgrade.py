@@ -9,6 +9,7 @@ real v0.3.0 database with learned state" evidence for the release gate.
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from pathlib import Path
 
 from netcorenoc import audit, shaping
@@ -485,7 +486,7 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 11
+        assert await new.schema_version() == Store.latest_schema_version() == 12
         assert new.integrity_warnings == []
 
         # Asserted BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -617,7 +618,7 @@ async def test_v091_upgrade_applies_0010_and_leaves_existing_labels_plain(tmp_pa
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 11
+        assert await new.schema_version() == Store.latest_schema_version() == 12
         assert new.integrity_warnings == []
 
         # Asked BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -801,7 +802,7 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 11
+        assert await new.schema_version() == Store.latest_schema_version() == 12
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0011"
 
         # **The derivation.** Three ids reported, two of them members of the server's own bag.
@@ -880,3 +881,148 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
         assert booted is not None and int(booted[0]) == 0
     finally:
         await new.close()
+
+
+async def test_v0100_upgrade_applies_0012_and_seeds_nothing(tmp_path: Path) -> None:
+    """Gate 3 (v0.10.0): a live **v0.9.2** database upgrades in place and gains an EMPTY seal.
+
+    The distinction this test exists for is `0012`'s own: `0011` backfilled a column because
+    *recomputing a quantity from evidence already stored is derivation*. **A seal is not a
+    derivation.** It is a choice about which evidence will be allowed to decide something later, and
+    manufacturing one during an upgrade would make that choice on behalf of an operator who was
+    never asked — and would do it at the moment the corpus happened to be whatever size it was.
+
+    So the assertion is the opposite of `0011`'s: three new tables, and **nothing in them**.
+    """
+    import netcorenoc.store.lifecycle as store_mod
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV11:
+        """The migration directory as a v0.9.2 install saw it: `0012` does not exist yet."""
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 11]
+
+    db = str(tmp_path / "v092-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV11()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 11, "the fixture is not a genuine v0.9.2 database"
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        sids = [int(r["id"]) for r in await old.list_situations(None, 10)]
+        async with old.lock:
+            await engine_old.apply_feedback(
+                sids[0], "confirm", BASE + 20, principal_ref="alice", role="editor"
+            )
+            await audit.write_event(
+                old,
+                ts=BASE,
+                actor="admin",
+                role="admin",
+                source_ip="-",
+                action="login.ok",
+                outcome="ok",
+            )
+            await old.commit()
+        before_labels = [
+            dict(r)
+            for r in await (
+                await old.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, coverage FROM feedback "
+                    "ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        before_dataset = await old.dataset_stats()
+        before_chain = (await audit.verify_chain(old)).final_hash
+        assert before_labels, "the fixture must carry at least one label"
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == Store.latest_schema_version() == 12
+        assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0012"
+
+        # **Nothing is seeded.** Three empty tables, and that is the claim.
+        for table in ("holdout_seal", "holdout_seal_member", "holdout_access"):
+            cur = await new.conn.execute(f"SELECT COUNT(*) FROM {table}")  # nosec B608
+            row = await cur.fetchone()
+            assert row is not None and int(row[0]) == 0, f"0012 seeded {table}"
+
+        # The data is untouched, byte for byte.
+        after_labels = [
+            dict(r)
+            for r in await (
+                await new.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, coverage FROM feedback "
+                    "ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        assert after_labels == before_labels, "0012 altered a label"
+        assert await new.dataset_stats() == before_dataset, "0012 altered the captured dataset"
+
+        chain = await audit.verify_chain(new)
+        assert chain.ok, "the audit chain broke across the upgrade"
+        assert chain.final_hash == before_chain, "the audit chain's final hash moved"
+    finally:
+        await new.close()
+
+
+async def test_the_seal_schema_refuses_a_second_construction_and_every_edit(store: Store) -> None:
+    """`0012`'s refusals, exercised against the database rather than against the layer above.
+
+    **A seal that can be rebuilt is a seal that can be rebuilt *after* seeing a result**, so the
+    refusal is structural: a constant `singleton` column with a UNIQUE constraint means the second
+    INSERT fails at SQLite, not at whichever caller remembered to look first.
+
+    **The controls come first, and they are not decoration.** A `BEFORE UPDATE` trigger on an
+    *empty* table fires on nothing, so a refusal test that ran before any row existed would pass
+    while proving nothing whatever — which is exactly the "measuring nothing and concluding CLOSED"
+    failure this repository has on its record. So every table is populated and the insert asserted
+    to have worked before a single refusal is checked.
+    """
+    seal = (
+        "INSERT INTO holdout_seal (release, plan_sha256, created_at, digest, incident_count, "
+        "corpus_incidents) VALUES (?, 'abc', 1.0, 'd', 3, 9)"
+    )
+    # CONTROLS. Each table must ACCEPT a legal row, or every refusal below is vacuous.
+    await store.conn.execute(seal, ("v0.10.0",))
+    await store.conn.execute(
+        "INSERT INTO holdout_seal_member (seal_id, position, incident_id) VALUES (1, 0, 7)"
+    )
+    await store.conn.execute(
+        "INSERT INTO holdout_access (at, release, plan_sha256, purpose, granted, outcome) "
+        "VALUES (1.0, 'v0.10.0', 'abc', 'probe', 0, 'refused')"
+    )
+    cur = await store.conn.execute(
+        "SELECT (SELECT COUNT(*) FROM holdout_seal), (SELECT COUNT(*) FROM holdout_seal_member), "
+        "       (SELECT COUNT(*) FROM holdout_access)"
+    )
+    row = await cur.fetchone()
+    assert row is not None and tuple(row) == (1, 1, 1), (
+        "a table refused a legal insert, so every refusal asserted below would be meaningless"
+    )
+
+    for label, sql, params in (
+        ("a second seal", seal, ("v0.11.0",)),
+        ("an update to the seal", "UPDATE holdout_seal SET digest = 'x'", ()),
+        ("a delete of the seal", "DELETE FROM holdout_seal", ()),
+        ("an update to the membership", "UPDATE holdout_seal_member SET incident_id = 1", ()),
+        ("a delete of the membership", "DELETE FROM holdout_seal_member", ()),
+        ("an update to the access log", "UPDATE holdout_access SET outcome = 'x'", ()),
+        ("a delete of the access log", "DELETE FROM holdout_access", ()),
+    ):
+        try:
+            await store.conn.execute(sql, params)
+        except sqlite3.IntegrityError:
+            continue
+        raise AssertionError(f"the schema permitted {label}")
