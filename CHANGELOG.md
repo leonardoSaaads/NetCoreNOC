@@ -4,6 +4,98 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-08-13 — "the corrections v0.10.0 earned"
+
+**A guard that was not merely untested but wrong, a conclusion about a statistic that ran backwards,
+and a reported number that did not reproduce — all three fixed without moving a single line of the
+plan those numbers were measured against.**
+
+A patch release inside the v0.10.0 line. **No new capability, no migration, no schema change, no new
+route, no new dependency, and one declared behaviour change.** `make eval` is byte-identical, the
+database schema is byte-identical, and the full HTTP surface answers exactly as v0.10.0 did across
+39 measured probes.
+
+### The three corrections
+
+- **F50 — `incidents.resolve` took the minimum over the walk, not over the cycle.** Its docstring
+  states that a cycle resolves to *"the minimum id in the cycle"* and argues that this is what stops
+  two bags entering the same cycle at different points from being assigned different incidents. The
+  code did `min(seen)`, and `seen` is the **whole walk including the tail**. `{1: 7, 7: 8, 8: 7}`
+  reported **two** incidents where there is one — the exact inflation the transitive resolution
+  exists to remove, produced by the line that claimed to prevent it. The minimum is now over the
+  cycle members. Unreachable through the write path today (`engine.py` merges into `min(sids)`, so
+  `merged_into` always points downward) and **wrong in the guard that exists for when that stops
+  holding**. Four tests, two of them controls; three injections recorded red.
+- **The minimum detectable difference was pessimistic, and DECISIONS #142's conclusion ran
+  backwards.** The closed form gave **both** arms the base rate's variance `p(1−p)`; the second arm
+  sits at `p + delta` with a far smaller one — at `n = 37`, 0.210 against **0.058** — so the form
+  demanded a **larger** delta than reality, increasingly so as `n` shrank. Replaced with the
+  variance-correct fixed point (no dependency added). The ratified §3.1 table now reproduces:
+  0.238 / 0.149 / 0.099 against a registered 0.25 / 0.16 / 0.10 and an independent Monte-Carlo's
+  0.240 / 0.150 / 0.099. **The plan was never optimistic; the formula was pessimistic.**
+  DECISIONS **#154** supersedes #142; #142, the ratified pre-registration and both its hash guards
+  are untouched.
+- **The coverage figure did not reproduce, and the cause was arithmetic.** Every count reproduced
+  exactly and the percentage did not, because **96.20 % was never a coverage.py output** — it is the
+  four printed columns computed by hand, and `BrPart` (partially-covered *statements*) is not
+  `missing_branches` (missing *arcs*). coverage.py's own figure for the v0.10.0 tree is **95.95 %**.
+
+### Added
+
+- **`make coverage`** — the one true coverage command, with the rule that matters in a comment
+  above it: quote the tool's own `Total coverage:` line and never recompute it from the columns.
+- **`tests/test_shadow_cv_power.py`** — the detection threshold pinned against a Monte-Carlo that
+  shares **no arithmetic** with the closed form: exact inverse-CDF binomial draws, a pooled z-test,
+  a fixed absolute grid, and its own generator. Tolerance derived from three named terms.
+  **The next disagreement is detected, not argued.**
+- **A structural guard forbidding the one-hop expression.** No module may compute incident identity
+  in SQL at all, so a fifth consumer cannot be written rather than having to be found. `ast`, not
+  `grep` — six modules name the expression in prose — with its **own vacuity check**, because a
+  broken extractor reports every module clean.
+- **`src/netcorenoc/agreement_bags.py`** — what a labelled bag *is* and how one is read, split from
+  `agreement.py` when routing identity through `netcorenoc.incidents` took it to 402 of a 400-line
+  ceiling. **Split, never exempted**: `DEBT_ALLOWLIST` is still empty and no ceiling moved.
+- **Three architecture documents that specify and implement nothing** —
+  `DATA-LINEAGE.md`, `OBSERVABILITY-DRAFT.md`, `STORAGE-PORTABILITY-DRAFT.md`. They exist so
+  v0.11.0, the UI work and the storage work can be scoped rather than discovered.
+
+### Fixed
+
+- **The last two consumers of incident identity** — `agreement.py` and `bias.py` — now resolve
+  through `incidents.resolve_all` like `store/shadow.py` and `census.py`. Four consumers, one
+  implementation. Both frozen reports are byte-identical: on this corpus every merge chain is one
+  hop, so the two readings coincide — **which is the hazard rather than the reassurance**.
+- **F49, both repairs.** The pinned backfill expression is tied to `0011_evidence_boundary.sql` by
+  normalised substring, and `test_upgrade.py`'s v0.9.1 fixture now writes the client's reported bag
+  containing the ghost id, so the `source = 'server'` predicate has something to exclude. Deleting
+  the predicate from the migration fails **three** tests, against v0.10.0's measured 1093 passing.
+- **`_cycle_members` is bounded.** The mutation ledger seeded a one-token mistake in F50's own repair
+  and the run **hung** rather than failing — the walk's stopping condition was an invariant. Bounded
+  by `MAX_CHAIN_DEPTH`, returning what it collected: a wrong number is visible where a hang is a
+  support ticket. DECISIONS #158.
+- **`census.first_label_per_incident`'s discarded computation** (`_ = identity`) removed.
+
+### Changed
+
+- **One reported quantity, declared and counted.** The shadow report's printed
+  `minimum detectable difference` moves **0.182 → 0.161** at its fixture's `n = 100`. The verdict,
+  its four trigger lines, every floor and every other number in the report are byte-identical.
+  **This is the release's only behaviour change.**
+
+### Known limitations
+
+- **The coverage figure is not reproducible**, and pinning the command was necessary but not
+  sufficient: two runs of `make coverage` on the same tree give **96.21 %** and **96.10 %**.
+  `receiver.py` carries the entire 0.11-point band, because `tests/test_receiver.py` fuzzes the BER
+  decoder with `@given(st.binary(…))` and Hypothesis generates different examples each run.
+  **Deliberately not derandomised** — that trades a real fuzzer for a tidy number (DECISIONS #159).
+  Every coverage figure in this project's history is one sample from a distribution, and a release
+  gate of the form *"coverage at or above X"* is not well-defined on this suite.
+- **Neither byte-frozen corpus contains a single merge edge**, so the strongest gate this project
+  has **cannot discriminate** a one-hop reading from a transitive one. That is measured, not
+  assumed: restoring either `COALESCE` leaves both reports byte-identical and only the structural
+  guard goes red.
+
 ## [0.10.0] - 2026-08-12 — "the honest judge"
 
 **An evaluation whose verdict cannot be produced by the thing being evaluated, and a holdout that is

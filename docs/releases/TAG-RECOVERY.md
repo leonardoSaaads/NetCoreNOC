@@ -242,3 +242,59 @@ git push origin v0.10.0-gate0 v0.10.0
 **Recreate `v0.10.0` after the merge**, pointing at the merge commit on `main`. A rebase rewrites the
 branch's commits and orphans a tag created before it — which, on the evidence of §1, is the most
 likely explanation for six of these having gone missing in the first place.
+
+---
+
+## 7. The tag v0.10.1 adds
+
+| Tag | Points at | Created |
+|---|---|---|
+| **`v0.10.1`** | the release commit on the build branch, and **recreated on the merge commit after merging** | Phase 6 |
+
+**One tag, and there is no gate tag.** v0.10.0 needed `v0.10.0-gate0` because its pre-registration's
+whole claim is *fixed before any result could be seen*, and a hash proves content while a tag on a
+single-file commit proves *when*. **v0.10.1 ratifies nothing.** It corrects an implementation and
+appends to an append-only ledger, and neither carries a temporal claim that needs an anchor. Adding a
+ceremonial gate tag would dilute the one place in this repository where a tag means something
+specific.
+
+```sh
+# Phase 6 — on the release commit:
+git tag -a v0.10.1 <release commit> -m "v0.10.1 — the corrections v0.10.0 earned"
+
+git push origin v0.10.1
+```
+
+**Recreate `v0.10.1` on the merge commit after merging**, for the reason §6 gives and §1 measures: a
+rebase rewrites the branch's commits and orphans a tag created before it, which is the most likely
+explanation for six of these having gone missing in the first place.
+
+### Verification, in the shape §5 uses
+
+Each candidate is verified by **tree comparison** rather than by trusting the ref:
+
+```
+$ git rev-parse v0.10.0^{tree}
+5d8a1786d175fd257e5c4315958a765b6dd2405d
+$ git rev-parse v0.10.0^{commit}
+fa82fa6b86dbdb395f67433de567df3b6bdf9560
+```
+
+`v0.10.0` and `v0.10.0-gate0` were **recovered into this build's clone** — the clone arrived with no
+local tags at all, and neither tag exists on the remote — by fetching them from the `.git` directory
+shipped alongside the v0.10.0 archive:
+
+```sh
+git fetch <path-to-v0.10.0-archive>/.git 'refs/tags/*:refs/tags/*'
+```
+
+That recovery is what made Gate 5's parity measurements possible: every *"identical to v0.10.0"*
+claim in `../gates/v0.10.1-phase-5.md` is measured against a git worktree at the real `v0.10.0` tag,
+not argued from a diff. **The tags being unpushed is not a bookkeeping detail — it is the difference
+between a release that can be compared against and one that cannot.**
+
+After tagging, the version check of §5 must print:
+
+```
+v0.10.1  ->  0.10.1
+```
