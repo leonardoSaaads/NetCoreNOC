@@ -37,6 +37,7 @@ from netcorenoc import bias_labels
 # (DECISIONS #139). `pct` is re-exported because `bias_report` has imported it from here since
 # v0.8.0 and the split is not a reason to move a caller's import.
 from netcorenoc.bias_labels import _rows, _scalar, distribution, pct
+from netcorenoc.incidents import IncidentMap, resolve_all
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
     from netcorenoc.store import Store
@@ -44,6 +45,25 @@ if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
 __all__ = ["collect", "pct"]
 
 DAY_S = 86400.0
+
+
+async def _incident_map(store: Store) -> IncidentMap:
+    """Every labelled situation's incident, resolved through the **one** implementation.
+
+    Deliberately not a `COALESCE` in the query above it. A merge chain can be longer than one hop —
+    `merge_situations(sid, other)` marks the source merged into `sid`, and `sid` can itself later be
+    merged — and a one-hop count over-states the number of independent incidents by exactly the
+    amount the chain removes. On this project's own corpus the two answers agree, because every
+    chain in it is one hop; **that is the hazard rather than the reassurance**, because a corpus
+    with a longer chain would make this report and the estimator disagree with nothing going red.
+
+    Reads the labelled situations rather than every situation: the count is over the *labelled*
+    corpus, and resolving the whole `situation` table would be arithmetic over rows no floor
+    is expressed in.
+    """
+    rows = await _rows(store, "SELECT DISTINCT situation_id FROM feedback ORDER BY situation_id")
+    edges = await store.merge_edges()
+    return resolve_all([int(r["situation_id"]) for r in rows], edges)
 
 
 async def collect(store: Store) -> dict[str, Any]:
@@ -135,11 +155,14 @@ async def collect(store: Store) -> dict[str, Any]:
     )
     # Distinct INCIDENTS, following the merge chain: two labels on situations that were merged into
     # one are one incident, and treating them as two would overstate independence.
-    out["distinct_incidents"] = await _scalar(
-        store,
-        "SELECT COUNT(DISTINCT COALESCE(s.merged_into, f.situation_id)) FROM feedback f "
-        "LEFT JOIN situation s ON s.id = f.situation_id",
-    )
+    #
+    # v0.10.1 (B1). This was `COUNT(DISTINCT COALESCE(s.merged_into, f.situation_id))` — **one
+    # hop** — and v0.10.0 named it rather than fixing it, because Workstream 1 scoped
+    # `store/shadow.py` and a fix inside a move is forbidden. Now it is the scope. The SQL returns
+    # `situation_id` and nothing about identity; `netcorenoc.incidents` follows the edges to a fixed
+    # point; and this report and the estimator and the seal cannot disagree about which incidents
+    # exist, because there is one implementation and the callers cannot express the other answer.
+    out["distinct_incidents"] = (await _incident_map(store)).incidents
 
     # -- the bag-size distribution ---------------------------------------------------------
     sizes = await _rows(

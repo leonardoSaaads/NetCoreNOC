@@ -82,6 +82,10 @@ LAYER_OF: dict[str, str] = {
     # design (DECISIONS #115), because a route would add HTTP surface to a scope bypass and could
     # never be a byte-for-byte gate.
     "agreement": "engine",
+    # v0.10.1 (B1). Split from `agreement.py` when routing incident identity through
+    # `netcorenoc.incidents` took it past 400 lines: what a bag IS and how one is read,
+    # apart from what is measured over a set of them. Engine-layer for the same reason.
+    "agreement_bags": "engine",
     "agreement_report": "engine",
     # v0.9.0 — shadow mode. All engine-layer: the challenger consumes the same `LinkFeatures` the
     # correlator builds and writes downward through the data layer, exactly as `capture.py` does.

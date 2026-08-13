@@ -354,3 +354,142 @@ async def test_pre_v080_merges_are_counted_rather_than_assumed_absent(store: Sto
     assert await store.pre_v080_merges() == 1, "the destination-less merge was not counted"
     # CONTROL: a merge WITH a destination is recoverable and must not be counted as unrecoverable.
     assert merged in await store.merge_edges()
+
+
+# --- B2: the expression is forbidden, not merely fixed where it was found -----------------------
+#
+# v0.10.0 fixed two of the four consumers and NAMED the other two; v0.10.1 fixed those two. Fixing
+# instances closes instances. This closes the CLASS: no module may express incident identity in SQL
+# at all, so the fifth consumer cannot be written rather than having to be found.
+#
+# `ast`, not `grep`, and Appendix B says why: a grep once reported `engine.py` importing
+# `netcorenoc.api` when it was the docstring saying it never must. **Six modules name this exact
+# expression in prose right now** — `bias.py`, `census.py` (twice), `store/shadow.py`,
+# `incidents.py` (twice), `shadow_render.py` and `agreement_bags.py` — so a scan that could not tell
+# a SQL literal from a sentence about one would report the whole package guilty and be switched off.
+
+
+def _coalesced_identity_literals(source: str) -> list[str]:
+    """Every **non-docstring** string constant in ``source`` that computes identity with a COALESCE.
+
+    The extractor both guards and vacuity-checks, and it must be the same function for the second to
+    say anything about the first — a vacuity check against a different implementation proves that
+    *some* extractor works.
+
+    Docstrings are collected first and subtracted by object identity rather than filtered by
+    keyword: `incidents.py`'s own module docstring quotes the expression while being the module that
+    exists to replace it. `#` comments never reach the tree at all, which is why three of the six
+    prose mentions are invisible here for free.
+    """
+    tree = ast.parse(source)
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        if id(node) in docstrings:
+            continue
+        text = node.value.upper()
+        if "COALESCE" in text and "MERGED_INTO" in text:
+            found.append(node.value)
+    return found
+
+
+# A file where the expression is KNOWN to exist, in both forms. The docstring copy is the half that
+# makes this a discrimination test rather than only a smoke test.
+_VACUITY_FIXTURE = '''
+"""A module docstring that names COALESCE(s.merged_into, f.situation_id) in prose."""
+
+# A comment naming COALESCE(s.merged_into, f.situation_id), which never reaches the AST.
+
+QUERY = """
+SELECT COALESCE(s.merged_into, f.situation_id) AS incident FROM feedback f
+"""
+
+
+def f() -> None:
+    """Another docstring quoting COALESCE(merged_into, situation_id)."""
+    return None
+'''
+
+
+def test_the_expression_extractor_finds_the_expression_where_it_is_known_to_exist() -> None:
+    """**The vacuity check.** Without it, an extractor broken in any way reports every module clean.
+
+    This is the failure mode the guard below cannot detect about itself: `assert not offenders`
+    passes just as happily when `offenders` is empty because nothing was scanned, because the parse
+    silently returned nothing, or because the substring test was inverted.
+    """
+    found = _coalesced_identity_literals(_VACUITY_FIXTURE)
+    assert len(found) == 1, f"the extractor must find exactly the SQL literal, not prose: {found}"
+    assert "AS incident" in found[0], found[0]
+
+
+def test_no_module_computes_incident_identity_in_sql() -> None:
+    """**The class, closed.** `COALESCE(<anything>merged_into<anything>)` exists in no module's SQL.
+
+    Not "the four known consumers are fixed" — *the expression cannot be written*. A fifth consumer
+    would have to add it and would fail here, which is the difference between a defect that was
+    repaired and a defect that cannot recur.
+
+    Why this matters more than it looks: on this corpus all four consumers agree at 37 incidents,
+    because every merge chain in it is exactly one hop. A corpus with a longer chain makes them
+    disagree with **nothing going red** — and two of the four are the estimator and the seal, so the
+    seal would be reserving a different set from the one the estimator excluded. A guarantee whose
+    failure is invisible has to be structural.
+    """
+    offenders = [
+        f"{path.relative_to(PKG)}: {literal.strip()[:70]}"
+        for path in sorted(PKG.rglob("*.py"))
+        for literal in _coalesced_identity_literals(path.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, (
+        "incident identity is computed in SQL again:\n  "
+        + "\n  ".join(offenders)
+        + "\n\nOne hop is not incident identity. Read the merge EDGES and resolve them through "
+        "netcorenoc.incidents.resolve_all, as store/shadow.py, census.py, bias.py and "
+        "agreement_bags.py all do."
+    )
+
+
+def test_all_four_consumers_resolve_identity_through_the_one_implementation() -> None:
+    """**CONTROL for the guard above**, and the half it structurally cannot check.
+
+    A package where every consumer had simply *stopped counting incidents* would pass
+    `test_no_module_computes_incident_identity_in_sql` perfectly. This asserts the other side: each
+    of the four still resolves identity, and does it by calling into `netcorenoc.incidents`.
+    """
+    consumers = {
+        "census.py": ("resolve_all", "stamp"),
+        "bias.py": ("resolve_all",),
+        "agreement_bags.py": ("resolve_all", "stamp"),
+        "store/shadow.py": ("merge_edges",),
+    }
+    for module, expected in consumers.items():
+        source = (PKG / module).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        names = {
+            node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+        }
+        if module == "store/shadow.py":
+            # The store does not resolve; it EXPOSES the edges and refuses to decide. Asserted by
+            # the method existing, because that is the whole of its contribution.
+            assert any(
+                isinstance(n, ast.AsyncFunctionDef) and n.name == "merge_edges"
+                for n in ast.walk(tree)
+            ), "store/shadow.py no longer exposes the merge edges"
+            continue
+        assert set(expected) <= names, (
+            f"{module} no longer resolves incident identity through netcorenoc.incidents; "
+            f"found calls {sorted(names)}"
+        )

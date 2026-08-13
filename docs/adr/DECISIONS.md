@@ -3420,3 +3420,80 @@ grouping**.
   incidents there is no detectable difference *at all* — a stronger version of the plan's own
   conclusion, and it means the registered figure is not a threshold that was too optimistic but one
   that does not exist. The plan is still not edited, for the reasons above.
+
+## 155. `agreement.py` split rather than exempted, and the seam B1 created (v0.10.1)
+
+- **Context**: routing `agreement.py`'s incident identity through `netcorenoc.incidents` (B1) took
+  the module from 386 to **402 lines of a 400-line ceiling**. `DEBT_ALLOWLIST` is empty and
+  `COHESION_EXEMPT` holds `engine.py` alone.
+- **Options**: (a) raise `MAX_MODULE_LINES`; (b) add `agreement.py` to `DEBT_ALLOWLIST`; (c) add a
+  cohesion exemption; (d) split the module.
+- **Choice**: **(d)**.
+- **Reason**: (a) is raising a guard to fit a corrective release, which this project has never done
+  and which a release about repairing guards is the worst possible place to start. (b) and (c) both
+  spend a mechanism that exists for a different problem — debt is *"too big, will be fixed by
+  release N"* and cohesion is *"large because an invariant requires it"*, and neither describes a
+  module that grew by sixteen lines because a defect was repaired in it.
+- **The seam, and why it is real rather than arithmetic**: `agreement.py` owns **what is measured
+  over a set of bags** — confirm rates, the cluster bootstrap, the six conditional cuts, the
+  operator anonymisation. `agreement_bags.py` owns **what a bag is and where one comes from** — the
+  row shape, the size bucketing, the query, and the incident resolution that reading one now
+  requires. **B1 is what made that seam load-bearing**: before this release the second half was a
+  `COALESCE` in a select list and there was nothing to own, because the query decided what an
+  incident was and no consumer could tell. It is the third split on this seam
+  (`bias.py`/`bias_labels.py` in v0.9.2, `shadow.py`/`census.py` in v0.10.0).
+- **Re-exports, deliberately**: `agreement.py` re-exports `Bag`, `size_bucket` and `SIZE_ORDER`,
+  because `agreement_report.py` and `tests/test_agreement.py` have imported them from there since
+  v0.9.0 and **a split is not a reason to move a caller's import** — the courtesy `bias_labels.py`
+  was given for `pct` (#139).
+- **Result**: `agreement.py` 265, `agreement_bags.py` 178, both frozen reports byte-identical, no
+  ceiling raised, `DEBT_ALLOWLIST` still empty.
+
+## 156. The one-hop expression is forbidden rather than fixed where it was found (v0.10.1)
+
+- **Context**: v0.10.0 fixed two of four consumers of incident identity and **named** the other two;
+  B1 fixed those two. Fixing instances closes instances. Nothing stopped a fifth from being written,
+  and the failure would be **silent**: on this project's corpus every merge chain is one hop, so the
+  one-hop and transitive answers coincide at 37 incidents and every frozen report stays
+  byte-identical under the regression.
+- **Options**: (a) rely on the four consumers now being correct; (b) a `grep`-based check in CI;
+  (c) an `ast`-based guard asserting the expression appears in no module's SQL.
+- **Choice**: **(c)**, with its own vacuity check.
+- **Reason**: (a) closes instances and leaves the class open, in a place where the class re-opening
+  is undetectable — and two of the four consumers are the estimator and the seal, so a disagreement
+  means the seal reserves a different set from the one the estimator excludes. (b) is Appendix B's
+  recorded trap: **six modules name this exact expression in prose right now**, three in `#`
+  comments and three in docstrings — including `incidents.py`, the module that exists to replace it
+  — so a grep reports eight offenders and is switched off within a week.
+- **The vacuity check is not optional, and it is what distinguishes this from a guard that only
+  looks like one.** `assert not offenders` passes identically when nothing was scanned, when the
+  parse returned nothing, and when the substring test was inverted. The check runs **the same
+  extractor function** — a second implementation would only prove that *some* extractor works — over
+  a fixture carrying the expression in a docstring, a `#` comment and a SQL literal, and requires
+  exactly one hit.
+- **And a control for the other half**: a package where every consumer simply stopped counting
+  incidents would satisfy the guard perfectly, so a second test asserts by AST that all four still
+  resolve identity through `netcorenoc.incidents`.
+
+## 157. F49 gets both repairs, because they fail independently (v0.10.1)
+
+- **Context**: `tests/test_evidence_boundary_f48.py` pins migration `0011`'s backfill expression as
+  a Python constant, since a migration cannot be re-run against an already-migrated database.
+  Nothing tied the constant to the file, and v0.10.0 measured the cost: deleting
+  `AND m.source = 'server'` from `0011_evidence_boundary.sql` left **1093 tests passing**.
+- **Options**: (a) tie the constant to the file; (b) give `test_upgrade.py`'s v0.9.1 fixture a
+  client fingerprint so the predicate has something to exclude; (c) both.
+- **Choice**: **(c)**.
+- **Reason**: they fail for different reasons and neither subsumes the other. The tie is exact and
+  cheap and closes the *drift*; the fixture makes the *claim in the docstring true*, turning an
+  inert upgrade probe into a live one. Shipping both means the tie survives a fixture change and the
+  probe survives a refactor of the constant. Under the injection, three tests fail against v0.10.0's
+  1093 passing.
+- **A control that had to be rewritten, recorded because the first version was wrong**: the obvious
+  control for a substring tie — *"the predicate-free expression must not match the migration"* — is
+  false on a healthy tree, because deleting a trailing clause leaves a **prefix** and every prefix
+  is a substring. The control now performs the deletion on an in-memory copy and evaluates the tie's
+  own assertion against it, after asserting the predicate occurs exactly once in the file.
+- **Stated limitation**: a substring tie is **directional**. It detects a deletion from the
+  migration, which is the measured failure mode; it would not detect an addition elsewhere in the
+  file that changed the backfill's meaning without touching the compared span.
