@@ -40,6 +40,7 @@ from netcorenoc.store.lifecycle import LifecycleMixin
 from netcorenoc.store.read_models import ReadModelsMixin
 from netcorenoc.store.retention import RetentionMixin
 from netcorenoc.store.scoring_config import ScoringConfigMixin
+from netcorenoc.store.seal import SealMixin
 from netcorenoc.store.shadow import ShadowMixin
 from netcorenoc.store.situations import SituationMixin
 from netcorenoc.store.state_clears import StateClearMixin
@@ -66,6 +67,7 @@ __all__ = [
 
 
 class Store(
+    SealMixin,
     ShadowMixin,
     DatasetMixin,
     RetentionMixin,

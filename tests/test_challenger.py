@@ -267,6 +267,10 @@ def test_no_code_path_makes_the_challenger_the_active_scorer() -> None:
         # `Coefficients` — the same two names the module it came out of already imported. This is
         # a SPLIT of an allowed module, not a new reach: the set below covers the moved code too.
         "shadow_render.py",
+        # v0.10.0: a SPLIT of `shadow_eval.py`, which was already on this list — not a new
+        # reach. Adding it WIDENS what the never-reaches-the-champion guard covers
+        # (DECISIONS #139's reasoning, applied again).
+        "shadow_admission.py",
     }
     offenders: list[str] = []
     for path in sorted(PKG.rglob("*.py")):
@@ -307,6 +311,10 @@ def test_the_shadow_modules_never_reach_the_active_scorer_or_the_learner() -> No
         "shadow_eval.py",
         "shadow_report.py",
         "shadow_render.py",
+        # v0.10.0: a SPLIT of `shadow_eval.py`, which was already on this list — not a new
+        # reach. Adding it WIDENS what the never-reaches-the-champion guard covers
+        # (DECISIONS #139's reasoning, applied again).
+        "shadow_admission.py",
     ):
         path = PKG / name
         if not path.exists():

@@ -364,13 +364,41 @@ because of the *remainder* side, not the marked side.
 
 Why the marked side alone is nonetheless the right thing to store:
 
-* **`scope_redacted_members` already bounds the remainder side.** A reader holding
+* **`scope_redacted_members` already determines the remainder side.** A reader holding
   `member_count = n`, `excluded_reconciled = m`, `scope_redacted_members = h`, and the new column
-  `excluded_reconciled_out_of_scope = b` can bound the observable pairs without a further column:
-  the marked-and-visible count is `m − b`, the remainder holds `n − m` members of which at most
-  `h − b` are hidden, so observable pairs lie in
-  `[(m − b) · (n − m − (h − b)), (m − b) · (n − m)]`. On the measured case that is `[2, 2]` —
-  exact — and it is exact whenever the bounds are tight.
+  `excluded_reconciled_out_of_scope = b` can compute the observable pairs **exactly**, without a
+  further column:
+
+  ```
+  observable asserted pairs = (m − b) · ((n − m) − (h − b))
+  ```
+
+  The marked-and-visible count is `m − b`. The hidden members `h` are partitioned by the marking
+  into the `b` that are marked and the `h − b` that are not — and every member that is not marked
+  **is** in the remainder, so `h − b` is not *at most* the hidden count in the remainder, it **is**
+  that count. The remainder therefore holds exactly `(n − m) − (h − b)` visible members, and a
+  marked-by-remainder pair is observable exactly when both of its ends are visible.
+
+  **This is an exact expression, not a bound**, and this document previously said otherwise
+  (corrected in v0.10.0 Gate 0; the reasoning and the enumeration are
+  [`../gates/v0.10.0-phase-0.md`](../gates/v0.10.0-phase-0.md) §1). The superseded text presented
+  the interval `[(m − b) · (n − m − (h − b)), (m − b) · (n − m)]` and stated the measured case as
+  `[2, 2]`. Two things were wrong with it. The upper expression `(m − b) · (n − m)` is **spurious**
+  — it is what the count would be if the remainder held no hidden members, which is the special
+  case `h = b` rather than an attainable maximum given `h`. And the measured case
+  (`n = 6, m = 2, h = 3, b = 1`) evaluates under that interval to `[2, 4]`, not `[2, 2]`; the exact
+  value is **2**.
+
+  Verified by exhaustive enumeration over **86 868** configurations — every non-empty marked set
+  against every hidden set, for `n` from 2 to 8. The expression above equals the true count in
+  **every one**. The superseded upper expression equals it in **21.5 %** of them. The enumeration
+  is not left as prose: `tests/test_evidence_boundary_observable.py` re-derives it by brute force
+  on every run, so the claim is machine-checked rather than asserted.
+
+  **The correction makes this section's justification stronger, not weaker.** The argument for not
+  storing a second column was *"the surviving columns bound the quantity"*. A bound is a weak
+  reason to omit a column — a consumer needing the number would still not have it. The surviving
+  columns **determine** the quantity, so the omitted column would have been strictly redundant.
 * **A second stored column would be a second thing to keep correct**, and this release's own thesis
   is that stored quantities need a named, auditable derivation. One column with a stated derivation
   is better than two, one of which is a convenience.

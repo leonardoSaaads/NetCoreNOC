@@ -440,10 +440,13 @@ be one, and its diff could not be read in one sitting.
 - **An exact stored count of *unobservable asserted pairs* does not exist.**
   `excluded_reconciled_out_of_scope` records the **marked** side of a partial split; the remainder
   may also contain redacted members, and a pair is unobservable if either end is. The surviving
-  columns bound it — with `n`, `m`, `h`, `b` the observable pairs lie in
-  `[(m−b)·(n−m−(h−b)), (m−b)·(n−m)]`, which was exact on the measured case — but that is arithmetic
-  a reader must do rather than a number the schema holds. `EVIDENCE-BOUNDARY-0.9.2.md` §10 carries
-  the decision and what it does not cover.
+  columns **determine** it — with `n`, `m`, `h`, `b` the observable asserted pairs are exactly
+  `(m−b)·((n−m)−(h−b))` — but that is arithmetic a reader must do rather than a number the schema
+  holds. `EVIDENCE-BOUNDARY-0.9.2.md` §10 carries the decision and what it does not cover.
+  *(Corrected in v0.10.0 Gate 0. This entry, and §10, previously presented an interval whose upper
+  expression was spurious and whose measured case was misstated; the expression above is exact,
+  verified by exhaustive enumeration over 86 868 configurations and machine-checked on every run by
+  `tests/test_evidence_boundary_observable.py`. See `gates/v0.10.0-phase-0.md` §1.)*
 - **The editor tier's capability set is protected by one expectation test, where the admin tier is
   protected structurally.** Demoting `scorer.write` from `admin` refuses at *import*; demoting
   `label.write` from `editor` to `viewer` fails exactly one test out of 960. The candidate
@@ -461,3 +464,26 @@ be one, and its diff could not be read in one sitting.
   from v0.9.1 for other reasons; v0.9.2 gives it a sharper edge. The claim *"no label written by the
   shipped UI can produce F46 or F47"* is a claim about 52 KB of JavaScript that no test executes,
   and it is the claim that keeps the measured corpus exposure at zero.
+
+## Found while building v0.10.0 (one line each, not this release's work)
+
+- **The migration files' own SQL text is unguarded (F49).** `tests/test_evidence_boundary_f48.py`
+  pins migration `0011`'s backfill expression as a **constant**, because a migration cannot be
+  re-run against an already-migrated database — and nothing ties that constant to
+  `src/netcorenoc/migrations/0011_evidence_boundary.sql`. The file's docstring asserts that
+  `tests/test_upgrade.py` catches the drift. **Measured: it does not.** With
+  `AND m.source = 'server'` deleted from the migration itself, `test_upgrade.py` gives *7 passed* and
+  the whole tree gives *1093 passed*. The reason is specific: the v0.9.1 upgrade fixture writes its
+  exclusion with no client fingerprint, so there are no `feedback_member(source='client')` rows for
+  the predicate to exclude, and its removal changes no value. The repair is a guard for the **class**
+  — every migration whose SQL a test pins by copy should have that copy checked against the file —
+  not a one-off assertion for this predicate, and it needs a fixture carrying both member sources.
+  See `security/SECURITY-REVIEW-0.9.2.md` §6.5 and `security/SECURITY-REVIEW-0.10.0.md`.
+- **Two consumers still resolve incident identity with a one-hop `COALESCE`.** v0.10.0 converted
+  `store/shadow.py`'s two training joins to `incidents.resolve_all` and left `agreement.py`'s bag
+  query and `bias.py`'s `distinct_incidents` as they were — Workstream 1 named only the first, both
+  of the others feed byte-frozen v0.9.0 reports, and Part VII rule 7 forbids a fix inside a move. On
+  every corpus this repository can construct all four agree at 37 incidents, because every merge
+  chain in it is exactly one hop, **which is precisely the condition under which a divergence would
+  first appear silently.** The repair is mechanical (both take the edges and call the one function)
+  and its cost is re-freezing two report expectations by hand.

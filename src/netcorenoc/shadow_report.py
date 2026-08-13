@@ -17,9 +17,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc import shadow, shadow_eval, training
+from netcorenoc import census, shadow, shadow_admission, shadow_cv, shadow_eval, training
+from netcorenoc import judge as judge_mod
 from netcorenoc.challenger import Coefficients, LogisticScorer
 from netcorenoc.scoring import AdditiveScorer, LinkFeatures
+from netcorenoc.seal import summary as seal_summary
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
     from netcorenoc.store import Store
@@ -42,10 +44,55 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
     """
     bags = await store.labelled_bags(include_legacy=include_legacy)
     pairs = await store.labelled_pairs(include_legacy=include_legacy)
+    # Workstream 1: incident identity is resolved ONCE, through the one implementation, and
+    # stamped onto both lists from the same map. This call site and `shadow.Shadow.run`'s are
+    # the two the plan's §3.3 warns must not compute it separately.
+    identity = await census.resolve_identity(store, bags, pairs)
+    pre_v080_merges = await store.pre_v080_merges()
+    # The seal SUMMARY, never its membership. `seal.summary` reads no member row and
+    # logs nothing — a counter that moved when a report ran would be counting reports
+    # rather than counting the times the holdout was spent.
+    holdout = await seal_summary(store)
+    holdout_attempts = len(await store.access_log())
     run = await store.latest_challenger_run()
-    stats = shadow.corpus_stats(bags)
+    stats = census.corpus_stats(bags, identity)
     floors, floors_warning = training.resolve_floors(await store.get_meta(shadow.FLOORS_META_KEY))
     verdict = training.assess(stats, floors)
+
+    asserting = await store.asserting_bag_rows()
+    unknown_rows = await store.unknown_scope_rows()
+    # §2.2: an asserting bag must ALSO clear the coverage rule and the blind-fraction rule. The
+    # raw count and the registered count are both carried so the report can show the attrition.
+    eligible = [row for row in asserting if str(row["coverage"]) not in ("none", "empty")]
+    asserting_incidents = len({int(r["situation_id"]) for r in eligible})
+    # THE VERDICT. v0.10.0 constructs the seal and does not spend it, so `holdout_spent` is False
+    # on every real run and §7.1's branch is the one this release reports — as its own §0
+    # declared, in advance, that it would be.
+    judgement = judge_mod.judge(
+        floors_met=verdict.ok and len(eligible) >= 50 and asserting_incidents >= 30,
+        holdout_spent=holdout.spent,
+        # The power condition, computed ONCE and handed to the judge as an object. v0.10.0 runs no
+        # challenger-vs-champion comparison, so the observed difference is 0.0 by construction and
+        # the condition necessarily fires — which is honest rather than convenient: a release that
+        # measured no difference has not resolved one.
+        power=shadow_cv.power_at(stats.incidents, 0.0),
+        smallest_side=min(stats.incidents - stats.incidents // 3, stats.incidents // 3),
+        coverage_excluded=len(asserting) - len(eligible),
+        unknown_rows=unknown_rows,
+        truncated_load_bearing=any(int(r["excluded_truncated"] or 0) for r in eligible),
+        unsound_chains=stats.unsound_chains,
+        pre_v080_merges=pre_v080_merges,
+        asserting_incidents=asserting_incidents,
+        difference_excludes_zero=False,
+        favours_challenger=False,
+        query_count=holdout.query_count,
+        projection="undefined (no measurable labelling rate yet)",
+        diagnostics={
+            "asserting_bags": len(eligible),
+            "asserting_bags_raw": len(asserting),
+            "asserting_incidents": asserting_incidents,
+        },
+    )
     # `sum(m * (n - m))` over labels carrying an exclusion: the pairs an operator ASSERTED
     # negative, and a quantity that was zero for every corpus before v0.9.1.
     #
@@ -65,6 +112,10 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
         "run": run,
         "stats": stats,
         "floors": floors,
+        "pre_v080_merges": pre_v080_merges,
+        "holdout": holdout,
+        "judgement": judgement,
+        "holdout_attempts": holdout_attempts,
         "floors_warning": floors_warning,
         "verdict": verdict,
         # v0.9.1 OBSERVATIONS, not floors — see the prose in `render`. Printed beside the
@@ -109,13 +160,13 @@ async def collect(store: Store, *, include_legacy: bool = False) -> dict[str, An
             }
         samples = _samples(pairs)
         if samples:
-            champion = shadow_eval.admission(
+            champion = shadow_admission.admission(
                 AdditiveScorer(), samples, budget_ratio=ADMISSION_BUDGET_RATIO
             )
-            challenger = shadow_eval.admission(
+            challenger = shadow_admission.admission(
                 LogisticScorer(coefficients), samples, budget_ratio=ADMISSION_BUDGET_RATIO
             )
-            admitted, reasons = shadow_eval.verdict(challenger, champion)
+            admitted, reasons = shadow_admission.verdict(challenger, champion)
             out["admission"] = {
                 "champion": champion,
                 "challenger": challenger,

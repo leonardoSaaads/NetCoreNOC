@@ -1,5 +1,74 @@
 # Upgrading NetCoreNOC
 
+## v0.9.2 → v0.10.0 (the honest judge — one migration, and **it seeds nothing**)
+
+Replace the code and restart. Migration **`0012`** runs automatically at startup and adds **three
+empty tables**. Nothing you already have is read, rewritten or reinterpreted.
+
+| | |
+|---|---|
+| Schema | `user_version` **11 → 12** — three new tables (`holdout_seal`, `holdout_seal_member`, `holdout_access`), six append-only triggers, no new column on any existing table, no index |
+| Data | **untouched.** Verified against a database written by real v0.9.2 code: twelve tables compared row-for-row, every `feedback` row compared field by field |
+| Existing labels | **unchanged.** `0012` writes no value to any pre-existing row |
+| Audit chain | verifies with the **identical final hash** — the migration writes no event |
+| Grouping | **unchanged.** Correlation, capture and ingest are untouched and `make eval` is byte-identical |
+| Learned state | **unchanged** |
+| Routes | **none added**, and none changed |
+| Capabilities / audit actions | **unchanged** |
+| API contract / responses | **unchanged**, in status, body and timing |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **five**, unchanged |
+| Rollback | keep a copy of the database file before upgrading, as always. `0012` is forward-only and additive; a v0.9.2 binary will not open a schema-12 database |
+
+### What an operator will see change
+
+**In the appliance: nothing.** No route, no UI element, no response, no correlation decision, no
+learned matrix cell. The champion decides everything in production exactly as it did before, and
+this release adds no mechanism that could change that.
+
+**In `python -m netcorenoc dataset shadow`:** three new sections.
+
+* **THE VERDICT** — one of `BETTER`, `NOT_BETTER` or `INSUFFICIENT_EVIDENCE`, with the reasons named,
+  and **the floor evaluation printed together with the minimum detectable difference** at your
+  corpus's `n`. Those are two different claims: *floors met* says a fit would not be degenerate;
+  *the detection threshold* says whether a difference, if real, could be **resolved** at that `n`. A
+  corpus can clear every floor and still be unable to decide anything.
+* **THE SEALED HOLDOUT** — how many incidents are reserved, and **how many times they have been
+  read**. On a fresh v0.10.0 that count is **0** and it stays 0: this release constructs the holdout
+  and does not spend it.
+* Four new census lines in *the corpus*: the one-hop incident count this release supersedes, the
+  reduction between the two (**0** on every corpus without a multi-hop merge chain), unsound merge
+  chains, and pre-v0.8.0 merges.
+
+**You will almost certainly see `INSUFFICIENT_EVIDENCE`, and that is the expected result rather than
+a problem.** It means the corpus cannot support an evaluation — most often because it holds too few
+**partial splits**, the labels where an operator marked *which* members do not belong. A `split` on
+a one-member bag asserts nothing. The report names which floors are unmet.
+
+### The seal, and the one thing you cannot undo
+
+On the first maintenance tick after a labelled corpus exists, the appliance **cuts a holdout**: the
+most recent third of your incidents by earliest label, recorded as an explicit immutable list with a
+SHA-256.
+
+**It is cut once and can never be re-cut.** The schema refuses a second construction, and the three
+tables refuse `UPDATE` and `DELETE`. That is deliberate: a holdout that can be re-cut is a holdout
+that can be re-cut *after* somebody has seen a result they did not like.
+
+**Nothing reads it.** Reading it requires a ratified pre-registration hash already on record, every
+attempt appends a row whether or not it succeeds, and no code path in v0.10.0 calls the function
+that would spend it.
+
+**If you would rather not have one at all**, there is no configuration for that in this release — the
+seal costs three small tables and one row per training tick, reads nothing, and affects no
+correlation decision. If that is wrong for your deployment, say so: it is a decision worth revisiting
+deliberately rather than by adding a switch.
+
+### Fresh installs
+
+Nothing to do. A new database reaches schema 12 on first boot with the same three empty tables, and
+first-boot behaviour is otherwise byte-identical to v0.9.2.
+
 ## v0.9.1 → v0.9.2 (the evidence boundary — one migration, and **one derived column**)
 
 Replace the code and restart. Migration **`0011`** runs automatically at startup, adds three

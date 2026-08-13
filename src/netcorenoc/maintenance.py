@@ -23,7 +23,7 @@ import asyncio
 import time
 from collections.abc import Callable
 
-from netcorenoc import audit, severity
+from netcorenoc import __version__, audit, census, seal, severity
 from netcorenoc.engine_base import EngineBase
 from netcorenoc.retention_policy import RETENTION_META_KEY, RetentionPolicy
 from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE
@@ -33,6 +33,13 @@ MAINT_INTERVAL_S = 5.0
 # fixed number of passes over it; at the 5 s maintenance cadence that would be constant work for a
 # quantity that moves when an operator clicks — which is minutes or hours apart, not seconds.
 TRAIN_EVERY_TICKS = 60
+
+# The pre-registration that authorises cutting the seal, recorded ON the seal row so a later reader
+# can tell WHICH ratified plan it was cut under — and required again before it may ever be read
+# (`PREREGISTRATION-0.10.0.md` §4.3(3)). Pinned here rather than read from the file at runtime: the
+# appliance must not depend on `docs/` being installed, and a hash read from a file the operator can
+# edit would authorise whatever that file happened to say.
+PLAN_SHA256 = "c03aef0181554c0c71482e57d03677f25964c3a5ac20a7bf1b1d74bff1ba1e01"
 
 
 class MaintenanceMixin(EngineBase):
@@ -57,6 +64,43 @@ class MaintenanceMixin(EngineBase):
             await self.maintenance(time.time(), retention_provider(), tick)
             if self.shadow.enabled and tick % TRAIN_EVERY_TICKS == 0:
                 await self.shadow.train(self.store, time.time(), self.store.lock)
+                await self._seal_once(time.time())
+
+    async def _seal_once(self, now: float) -> None:
+        """Cut the sealed holdout, once, ever. **Off the batch lock, and it cannot fail upward.**
+
+        v0.10.0, Workstream 2. The seal is a set of incidents reserved for a decision no release in
+        this version is permitted to make, and it is constructed here rather than by a command
+        because it must exist from the moment there is a corpus to cut — `reserving later is
+        impossible; spending later is always possible`.
+
+        **A second call is not a special case that needs handling; it is the normal steady state.**
+        This runs on every training tick for the life of the appliance, and every call after the
+        first is refused by `holdout_seal.singleton`'s UNIQUE constraint. That is not an error and
+        is not logged as one.
+
+        Any other failure degrades **sealing** and nothing else: it is counted as a shadow-mode
+        error, surfaced as an operator warning, and the maintenance pass and the ingestion behind it
+        are untouched. A holdout is evidence discipline, not a correlator, and it may never be the
+        reason a trap is dropped.
+        """
+        try:
+            async with self.store.lock:
+                if await self.store.seal_row() is not None:
+                    return
+                first_label_at = await census.first_label_per_incident(self.store)
+                if not first_label_at:
+                    return  # nothing labelled yet; there is no corpus to cut
+                await seal.construct(
+                    self.store,
+                    release=__version__,
+                    plan_sha256=PLAN_SHA256,
+                    now=now,
+                    first_label_at=first_label_at,
+                )
+                await self.store.commit()
+        except Exception as exc:
+            self.shadow._degrade(exc)
 
     async def _capture_run(self, now: float) -> None:
         """Open or refresh the feedback-dataset capture run (v0.8.0).

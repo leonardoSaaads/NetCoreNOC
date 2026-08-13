@@ -4,6 +4,94 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-12 — "the honest judge"
+
+**An evaluation whose verdict cannot be produced by the thing being evaluated, and a holdout that is
+built and deliberately not spent.**
+
+This release does **not** produce a better model. It produces the machinery that could one day tell
+whether a model is better — and the verdict that machinery returns on this corpus is
+`INSUFFICIENT_EVIDENCE`. **That is the pre-registered expected outcome and it is a successful
+release.** `docs/analysis/PREREGISTRATION-0.10.0.md` §7.1 says so in advance, before any result
+existed, which is the entire point of having written it first.
+
+### The headline, in the order it should be read
+
+```
+verdict                                INSUFFICIENT_EVIDENCE
+holdout queries                                            0
+sealed incidents                          12 of a corpus of 37
+asserting bags                                    0  (floor 50)
+asserting incidents                               0  (floor 30)
+minimum detectable difference at n=37                  0.298
+```
+
+**The corpus cannot support an evaluation. The judge exists and is demonstrated on fixtures. The
+seal is intact at query count 0.** What would have to change is stated in
+`docs/releases/BUILD-REPORT-0.10.0.md`.
+
+### Added
+
+- **Incident identity that follows the merge chain.** `netcorenoc/incidents.py` resolves
+  `situation.merged_into` transitively to a fixed point, with a **cycle guard** and a **depth
+  guard** reported separately and never collapsed. One implementation; the SQL no longer computes
+  identity at all. A cycle resolves to `min(cycle)`, so two bags entering it at different points get
+  the same incident rather than silently inflating the count.
+- **`netcorenoc/census.py`** — what the labelled corpus contains, including the one-hop count the
+  merge-aware count replaces, the reduction between them (**0** on this corpus), unsound chains, and
+  pre-v0.8.0 merges **counted rather than assumed absent**.
+- **The sealed holdout** — migration `0012`, `netcorenoc/seal.py`, `store/seal.py`. Constructed
+  once (a `UNIQUE` constant column, so a second construction fails at SQLite); an explicit ordered
+  immutable list rather than a predicate; append-only access log recording refusals as well as
+  reads; a read requires a ratified plan hash already on record.
+- **`netcorenoc/shadow_cv.py`** — grouped repeated cross-validation over merge-aware incidents, a
+  cluster bootstrap over incidents, and the closed-form power condition.
+- **`netcorenoc/shadow_assertions.py`** — `asserted_negative_respected_rate`, the **fourth** named
+  quantity: per bag, aggregated as the mean over bags, **never pooled over pairs**, excluding
+  `coverage IN ('none','empty')` bags, and computed for the champion by the same code path.
+- **`netcorenoc/judge.py`** — a three-valued verdict. `BETTER`, `NOT_BETTER`,
+  `INSUFFICIENT_EVIDENCE`, with every §6.2 trigger a named enum member and each individually fired
+  by a fixture that fires it and no other.
+- The shadow report gains a **verdict** section, a **sealed holdout** section carrying the query
+  count, and four census lines.
+
+### Changed
+
+- `shadow_eval.py` **split twice** rather than exempted: `shadow_admission.py` (may this model
+  compete) and `shadow_assertions.py` (the fourth metric). `shadow.py` and `training.py` likewise
+  split into `census.py`. No module is over 400 lines; `DEBT_ALLOWLIST` is still empty.
+- `store/shadow.py`'s two training joins return `situation_id` and the merge **edges**; the
+  `COALESCE` that computed one-hop identity is gone.
+
+### Fixed
+
+- **A bag with no partition scored 1.0** on the new metric — every asserted negative pair
+  "respected" — because an empty component mapping makes every pair look separated. Found by the
+  mutation ledger (M3), not by review.
+- **The bootstrap's PRNG used an LCG's low bits**, so `% 2` alternated with period 2 and a
+  two-cluster corpus produced a **zero-width interval**. Found by a test (A11).
+
+### Security
+
+- **F48** (issued in Gate 0, against the v0.9.2 tree): the `source = 'server'` reconciliation
+  predicate was adversarially tested in one of the three places it appears. No production change —
+  a missing demonstration, not a missing fix (DECISIONS #140).
+- **F49**: nothing ties a migration's pinned SQL constant to the migration file's own text, and
+  `test_upgrade.py` does not catch the drift. Measured, open, and a ROADMAP line.
+
+### Not in this release, deliberately
+
+**No promotion mechanism, no pointer move, no new route, no new capability, no UI change.** The
+champion decides everything in production, exactly as before. The seal is **constructed and not
+spent**: reserving later is impossible, spending later is always possible, and adaptive selection
+over 12 queries on 37 incidents inflates a reported rate by a median **+11.1 points** when every
+candidate is equally good.
+
+### Migration
+
+`0012` is additive and forward-only, applies to a populated v0.9.2 database with every row intact
+and the audit chain verifying to the same final hash, and **seeds nothing**. See `MIGRATION.md`.
+
 ## [0.9.2] - 2026-08-10 — "the evidence boundary"
 
 **A number that describes the evidence is derived by the server; a number that describes the client

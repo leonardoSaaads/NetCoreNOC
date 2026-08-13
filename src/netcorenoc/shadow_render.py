@@ -23,6 +23,8 @@ from typing import Any
 
 from netcorenoc import shadow_eval, training
 from netcorenoc.challenger import FEATURE_NAMES, Coefficients
+from netcorenoc.judge import Judgement
+from netcorenoc.seal import SealSummary
 
 __all__ = ["render"]
 
@@ -109,11 +111,89 @@ def render(m: dict[str, Any]) -> str:
         add("  WARNING: the stored floor policy was unreadable and was ignored.")
     add("")
 
+    judgement: Judgement = m["judgement"]
+    add("-- THE VERDICT " + "-" * (_WIDTH - 15))
+    add(f"  {'verdict':<34}{judgement.verdict.value:>26}")
+    # §2.5's STRUCTURAL MITIGATION: a floor evaluation is NEVER printed without the detection
+    # threshold for the same n beside it. A reader who sees "floors met" must not be able to read
+    # "the evaluation is trustworthy" — the two are different claims and the second needs this
+    # number. `tests/test_judge.py` fails if one is emitted without the other.
+    add(f"  {'floors met':<34}{('yes' if judgement.floors_met else 'no'):>26}")
+    add(f"  {'minimum detectable difference':<34}{judgement.detectable_difference:>26.3f}")
+    add(f"  {'  at n incidents':<34}{judgement.incidents:>26}")
+    add(f"  {'holdout queries':<34}{judgement.query_count:>26}")
+    add("  projection")
+    add(f"    {judgement.projection}")
+    if judgement.triggers:
+        add("")
+        add("  INSUFFICIENT_EVIDENCE because:")
+        for trigger in judgement.triggers:
+            add(f"    - {trigger.value}")
+    for note in judgement.notes:
+        add(f"  {note}")
+    add("")
+    if not judgement.decisive:
+        add("  NO QUALITY CLAIM IS AVAILABLE FROM THIS CORPUS, and none is made.")
+        add("  INSUFFICIENT_EVIDENCE is a MEASUREMENT of the corpus — not an error,")
+        add("  not a failure, and NOT a finding that the challenger is no better.")
+        add("  Those are opposite claims and this release does not conflate them.")
+        add("")
+    add("  THE FLOORS AND THE THRESHOLD ARE TWO DIFFERENT CLAIMS. Floors met")
+    add("  says a fit would not be degenerate and not one person's opinion.")
+    add("  The detection threshold says whether a difference, if real, could")
+    add("  be RESOLVED at this n. A corpus can clear every floor and still be")
+    add("  unable to decide anything, which is why the second is a verdict")
+    add("  trigger that no deployment may harden or disable.")
+    add("")
+
+    holdout: SealSummary = m["holdout"]
+    add("-- THE SEALED HOLDOUT " + "-" * (_WIDTH - 22))
+    if not holdout.exists:
+        add("  no seal has been constructed yet — one is cut on the first")
+        add("  training tick after a labelled corpus exists")
+    else:
+        add(f"  {'sealed incidents':<34}{holdout.incident_count:>12}")
+        add(f"  {'of a corpus of':<34}{holdout.corpus_incidents:>12}")
+        add(f"  {'digest':<20}{holdout.digest[:24]}...")
+    # **THE HEADLINE, and it is printed as one.** Every holdout number ever published carries its
+    # query count (§4.3(4)) so a reader can apply the inflation table without being told to:
+    # 12 queries on 37 incidents inflate a rate by a median +11.1 p.p. when every candidate is
+    # equally good. `attempts` includes refusals and plan registrations; `queries` counts only
+    # granted reads of the membership, which is what "spending the holdout" means.
+    add(f"  {'QUERIES (times spent)':<34}{holdout.query_count:>12}")
+    add(f"  {'state':<34}{('SPENT' if holdout.spent else 'INTACT'):>12}")
+    add(f"  {'access-log rows (incl. refusals)':<34}{m['holdout_attempts']:>12}")
+    add(
+        "  The holdout is "
+        + ("CONSTRUCTED AND NOT SPENT." if holdout.exists else "NOT YET CUT.")
+        + " Reserving later is"
+    )
+    add("  impossible; spending later is always possible. Adaptive selection")
+    add("  over 12 queries on 37 incidents inflates a reported rate by a median")
+    add("  +11.1 points when every candidate is equally good, so four releases")
+    add("  tuning against one holdout would report an improvement produced")
+    add("  entirely by looking.")
+    add("")
+
     add("-- the corpus " + "-" * (_WIDTH - 14))
     add(f"  {'labelled bags (n)':<34}{stats.bags:>12}")
     add(f"  {'  confirm / split':<34}{f'{stats.confirm_bags} / {stats.split_bags}':>12}")
     add(f"  {'  MIXED (pairs both sides)':<34}{stats.mixed_bags:>12}")
     add(f"  {'merge-aware incidents':<34}{stats.incidents:>12}")
+    # v0.10.0 (Workstream 1). BOTH answers, and their difference, always. Until this release the
+    # incident was `COALESCE(merged_into, situation_id)` — ONE HOP — and a merge chain can be
+    # longer. The one-hop count is printed beside the resolved one so the correction is visible
+    # even when it is zero, which is what this project's own corpus produces: every chain in it is
+    # exactly one hop. A number that only appears when it differs is a number nobody checks.
+    add(f"  {'  one-hop count (superseded)':<34}{stats.incidents_one_hop:>12}")
+    add(f"  {'  reduction from one hop':<34}{stats.reduction_from_one_hop:>12}")
+    # A cycle or a chain past the depth bound. NEVER silently collapsed: the plan's §7.9 makes
+    # these `unknown` and a verdict trigger, so a zero here is a claim and not a default.
+    add(f"  {'  unsound merge chains':<34}{stats.unsound_chains:>12}")
+    # Merged before `0008` existed, so the destination was never written and no migration can
+    # reconstruct one. Such a situation LOOKS independent and is not, and no column tells them
+    # apart. §3.3: counted, never assumed absent.
+    add(f"  {'pre-v0.8.0 merges (unrecoverable)':<34}{m['pre_v080_merges']:>12}")
     add(f"  {'distinct operators':<34}{stats.operators:>12}")
     add(f"  {'promoted pairs behind them':<34}{stats.pairs:>12}")
     add(f"  {'label span (days)':<34}{stats.span_days:>12.2f}")

@@ -3049,3 +3049,314 @@ grouping**.
   `tests/test_challenger.py`'s two enumerations gain `shadow_render.py` — a **split of an already
   allowed module**, not a new reach, and adding it to the second list *widens* what the
   never-reaches-the-champion guard covers.
+
+## 140. F48 is issued without a corrective release, and the argument is written down (v0.10.0)
+
+- **Context**: v0.10.0's Gate 0 issues **F48** — the `source = 'server'` reconciliation predicate is
+  adversarially tested in one of the three places it appears, and removing it from either of the
+  other two leaves all 1086 shipped tests green. This project has inserted **four** corrective
+  releases (v0.7.1, v0.7.5, v0.9.1, v0.9.2), each because a defect was found between planned
+  releases. A reader who has watched four of those insertions is entitled to ask why this one did
+  not produce a fifth, and the answer must be a written argument rather than a silence.
+- **Options**: (a) insert **v0.9.3**, carrying F48's regression test and nothing else; (b) issue
+  F48 in v0.10.0's Gate 0, before any v0.10.0 code, and leave the version at 0.9.2 until Phase 2;
+  (c) fold F48 into v0.10.0's ordinary work and issue it in the Phase 8 security review.
+- **Choice**: **(b)**.
+- **Reason, and the distinction it turns on**: **F48 requires no production change.** The shipped
+  code carries the predicate in all three places and every number it produces is correct; what is
+  missing is a *demonstration*, not a *fix*. All four previous corrective releases changed
+  behaviour an operator was running — v0.7.1 and v0.7.5 repaired live paths, v0.9.1 added an
+  affordance, v0.9.2 changed which side of a trust boundary a stored quantity came from. A release
+  exists so that an operator can *obtain* something; there is nothing here for one to obtain. Cutting
+  0.9.3 would ship an unchanged appliance under a new number, which devalues the four insertions that
+  did carry a repair — the signal *"a corrective release means something in your deployment was
+  wrong"* is worth more than the tidiness of one finding per version.
+- **Why not (c)**: the finding is about **v0.9.2's** tree and is a prerequisite of ratifying
+  v0.10.0's pre-registration (`../analysis/PREREGISTRATION-0.10.0.md` §10.1). Discovering it in
+  Phase 8 would mean the plan had been ratified while a named prerequisite was open, and the
+  pre-registration's whole claim is that its prerequisites closed first.
+- **What (b) costs, stated rather than hidden**: an operator running 0.9.2 has no version number
+  that tells them the guard now exists. The compensation is that they need none — their appliance
+  behaves identically either way — and the finding is written into
+  `SECURITY-REVIEW-0.9.2.md` §6, *in the release it is about*, rather than into the review of a
+  release that merely happened to notice it.
+- **The boundary this does not move**: had the measurement found the predicate genuinely absent
+  from any of the three sites, this would be a repair and the answer would have been (a) without
+  argument. The rule is the distinction, not the outcome: **a missing guard is a gate item; a
+  missing fix is a release.**
+
+## 141. The observable-pair expression is corrected and machine-checked, and three copies are not (v0.10.0)
+
+- **Context**: `EVIDENCE-BOUNDARY-0.9.2.md` §10 justified omitting a stored column by *bounding* the
+  observable asserted pairs. The bound's upper expression is spurious and its worked case was
+  misstated as `[2, 2]` where the published interval gives `[2, 4]`. Exhaustive enumeration over
+  86 868 configurations shows the lower expression is **exact**. The wrong sentence had reached
+  **six** places, not the two the build brief believed.
+- **Options**: (a) correct all six; (b) correct the two normative documents and leave the four
+  historical records alone; (c) correct the two, and append a dated erratum to the one historical
+  document this release is already writing to.
+- **Choice**: **(c)**. `EVIDENCE-BOUNDARY-0.9.2.md` §10 and `../ROADMAP.md` are corrected in place;
+  `SECURITY-REVIEW-0.9.2.md` §4.1 gets an erratum as its new §7; `v0.9.2-phase-1.md`,
+  `BUILD-REPORT-0.9.2.md` and migration `0011`'s comment are left exactly as written.
+- **Reason**: a gate document and a build report are *dated records of what was believed at the
+  time*. Editing one retroactively is the failure this project's append-only conventions exist to
+  prevent, and it would destroy the evidence that the mistake was made and propagated — which is the
+  most useful thing the episode leaves behind. An applied migration is never touched at all. The
+  security review is different only because v0.10.0 is appending F48 to it regardless, and leaving a
+  wrong sentence unmarked in a document this release is actively writing would be a different
+  failure from leaving one in a document it is not touching.
+- **The compensating control**: the claim stops being prose. `tests/test_evidence_boundary_observable.py`
+  re-derives it by brute force on every run, **and runs the superseded expression through the same
+  enumeration requiring it to disagree** — because v0.9.2 shipped an identity test that no input
+  could falsify, and a formula test whose formula cannot be wrong repeats that error exactly.
+
+## 142. The plan's detection threshold is not reproduced, and neither side is adjusted (v0.10.0)
+
+- **Context**: `PREREGISTRATION-0.10.0.md` §3.1 registers a minimum-detectable-difference table —
+  12 incidents → 42 p.p., 37 → 25, 120 → 16, 300 → 10. Phase 1 implemented the documented closed
+  form (a normal approximation on the difference of two clustered proportions at `p = 0.70`) and,
+  independently, a direct Monte-Carlo power search sharing no arithmetic with it. **The two agree
+  with each other and disagree with the plan below `n = 120`**: at 37 they give 0.298 and 0.33
+  against a registered 0.25; at 12, 0.524 and 0.52 against 0.42. At 120 and 300 all three agree.
+- **Options**: (a) tune the closed form until it reproduces the table; (b) treat the table as
+  authoritative and report the closed form as broken; (c) report the disagreement, adjust neither,
+  and carry it to the security review as an opinion for v0.11.0.
+- **Choice**: **(c)**, which is also what the build brief instructs in exactly this case.
+- **Reason**: (a) is fitting a formula to a table — the same error as fitting a model to a test set,
+  one level down, and it would destroy the closed form's only value, which is that it was derived
+  independently. (b) asserts which of two disagreeing measurements is right without evidence. The
+  plan is ratified and hash-guarded, so it could not be edited in any case, and **that constraint is
+  the mechanism working rather than an obstacle**: a plan that could be quietly corrected when its
+  numbers failed to reproduce would not be a pre-registration.
+- **What makes this safe to leave open**: the disagreement runs in the direction that **strengthens**
+  the plan's conclusion. The plan's argument is *"no plausible pair of scorers differs by 25 p.p."*;
+  if the true threshold is 30, that is more true, not less. Nothing registered depends on 25 being
+  right — only on it being far larger than any difference this project could produce, which both
+  candidate values are.
+- **The diagnostic, offered as a symptom and not a diagnosis**: the `p` at which the closed form
+  returns exactly 0.25 at `n = 37` is 0.821, and at `n = 12` for 0.42 it is 0.832 — close to each
+  other and far from the ≈ 0.72 implied by the 120 and 300 rows. The table's two halves behave as
+  though produced under different assumptions.
+
+## 143. Incident identity is one function, and its guard is demonstrated on a fixture (v0.10.0)
+
+- **Context**: `store/shadow.py` resolves incidents with `COALESCE(s.merged_into, f.situation_id)` —
+  **one hop**. Situations merge in chains under `sid = min(sids)` and the schema forbids no cycle, so
+  one hop is not incident identity. Phase 1 measured the corpus: **four merge edges, every chain
+  exactly one hop deep, zero cycles**. `COALESCE` and a transitive resolution both return 37
+  incidents.
+- **Choice**: one function with one implementation, following `merged_into` to a fixed point with a
+  cycle guard and a non-termination guard, **both reported rather than silently collapsed**; the
+  census prints the transitive count **and the one-hop count** so the difference is visible even
+  when it is zero; and the guard is demonstrated on a **purpose-built fixture**.
+- **Reason for the fixture, stated because it is the whole point**: the corpus returns 37 either
+  way, so quoting *"37 = 37"* would be evidence of nothing. This is the same shape as v0.9.1's
+  exclusion set — a mechanism the fullest available corpus cannot exercise — and it gets the same
+  treatment: demonstrated where it can be, and said plainly to be undemonstrated where it cannot.
+  A control separates the two resolutions: on a `201→202→203→204` chain, one hop reports **3**
+  incidents where there is **1**.
+- **Why one implementation and not two**: two call sites computing incident identity separately is
+  how the estimator and the seal come to disagree about which incidents exist — which would make the
+  seal meaningless with nothing going red. The failure is silent, so the structure has to prevent it.
+
+## 144. A zero is measured with a probe that must return non-zero (v0.10.0)
+
+- **Context**: this release's central corpus finding is a **zero** — no asserted negative pairs, no
+  asserting bags. This repository has already once compared `None → None`, observed nothing, and
+  would have reported a finding closed (Appendix B).
+- **Choice**: every zero is paired with a **control corpus** built by the same code under the same
+  mechanical policy, differing only in that a `split` on a bag of four or more members also marks
+  its first two. The same census queries then return **1 474 asserted pairs and 2 asserting bags**.
+- **Reason**: a zero from a broken query is indistinguishable from a zero from an empty corpus, and
+  only the second supports a conclusion. The control makes the distinction observable rather than
+  assumed.
+- **What the control itself found**, which is worth more than the reassurance: even when the rule
+  marks **everything it can**, only **two** bags assert anything, because only two of the thirteen
+  `split` bags have four or more members. Two against a floor of fifty. The corpus is not merely
+  short of assertions — it is structurally incapable of producing them.
+
+## 145. The seal is designed before the estimator, and its unreadability is structural (v0.10.0)
+
+- **Context**: plan §4.3 requires that the CV estimator, the training path and every report be
+  **unable** to read the sealed incident ids — "asserted by a test that injects a read and observes
+  it refused, not by convention".
+- **Options**: (a) a code-review rule and a comment; (b) a naming convention plus a linter rule;
+  (c) build the seal in its own phase, **before** the estimator exists, with the read path guarded
+  by a required plan hash and an append-only log, and an import-level guard asserted by AST.
+- **Choice**: **(c)**, and the phase ordering is part of the decision rather than an accident of
+  scheduling: Phase 4 builds the seal, Phase 5 builds the estimator.
+- **Reason**: retrofitting isolation onto an estimator that already has a `Store` handle is exactly
+  how a structural guarantee decays into a convention — the code compiles either way and the only
+  thing standing between the two is somebody remembering. Building the seal first means the
+  estimator is written against an interface that never offered the sealed ids, so reading them is
+  not a rule it must obey but a thing it cannot express.
+
+## 146. `census.py`, and `CorpusStats` moving into it (v0.10.0)
+
+- **Context**: adding the transitive incident resolution took `shadow.py` to **417** of its 400-line
+  budget, and adding two fields to `CorpusStats` took `training.py` to **408**. Two modules over the
+  guard in one phase.
+- **Options**: (a) raise `MAX_MODULE_LINES`; (b) add both to `DEBT_ALLOWLIST`; (c) split.
+- **Choice**: **(c)**, on a seam that already existed rather than at whatever line the counter
+  reached. `census.py` owns *what the labelled corpus contains* — `CorpusStats`, `corpus_stats`, and
+  the `resolve_identity` step that turns a `situation_id` into an incident. `shadow.py` keeps the
+  shadow **lifecycle**: when to sample, when to train, what to write back.
+- **Why that seam and not another**: the census is asked by three things that do not own it — the
+  sufficiency floors, the CV estimator, and the seal. Leaving it inside `shadow.py` would have made
+  the seal import the shadow lifecycle to find out how many incidents exist, which is the dependency
+  that would later make "the estimator and the seal disagree" easy to write by accident.
+- **`CorpusStats` moves and is re-exported.** It is *literally* the new module's subject. It is
+  re-exported from `training` because `assess()` takes one and every caller since v0.9.0 has
+  imported it from there, and a split is not a reason to move a caller's import (DECISIONS #139's
+  own rule, applied again).
+- **The dependency direction, which was the only hard part**: `training` imports `census`, and
+  `census` imports nothing from `training`. The reverse would cycle, because `census.corpus_stats`
+  constructs the dataclass `training.assess` consumes.
+- **Rejected: `vulture_allowlist.py`.** Three properties were flagged unused by the dead-code gate,
+  and the allowlist has precedent for *"surface a later release needs"*. It was not used.
+  `reduction_from_one_hop` moved to `CorpusStats`, where the renderer reads it, and the two `sound`
+  properties were deleted; they return in Phase 5 if the verdict's §7.9 trigger reads them. Growing
+  an allowlist to hold code no caller has yet is how an empty ratchet stops being one.
+
+## 147. The seal refuses a second construction at the schema, not at the caller (v0.10.0)
+
+- **Context**: `PREREGISTRATION-0.10.0.md` §3.3(4) requires the seal be written **once**. The
+  obvious implementation is `if await store.seal_row() is None: construct(...)`.
+- **Choice**: a constant `singleton` column carrying `UNIQUE` and `CHECK (singleton = 1)`, and a
+  `construct_seal` that **inserts without checking first** and lets SQLite refuse.
+- **Reason**: check-then-act is a race, and — far more importantly — it is a rule that lives in
+  whichever caller remembered it. The refusal has to hold against a method written next year and
+  against somebody at a `sqlite3` prompt, because the failure mode is not an accident. *A seal that
+  can be rebuilt is a seal that can be rebuilt **after** seeing a result*, and the person rebuilding
+  it would be doing so for a reason that felt good at the time.
+- **Rejected**: many seals, take the newest. It reads as more flexible and is precisely the
+  affordance the plan forbids.
+- **The test re-cuts against a LARGER corpus**, so a silent re-derivation shows as a changed
+  membership rather than as a no-op.
+
+## 148. The seal's access log is not the audit log (v0.10.0)
+
+- **Context**: this project already has a hash-chained, append-only, admin-visible log of who did
+  what. Putting seal accesses in it would be free.
+- **Choice**: a separate `holdout_access` table with its own append-only triggers.
+- **Reason**: `audit_log` records **operator** actions reachable from HTTP, each attributed to a
+  principal and a source IP. Nothing about the seal is reachable from a route and no principal
+  performs it — the maintenance pass does. Adding a system-generated action to a frozen catalog is
+  the decision `SECURITY-REVIEW-0.9.2.md` §4.6 explicitly declined to make alone, and v0.10.0 does
+  not make it either. The two logs also answer different questions: one is *who touched this
+  appliance*, the other is *how many times has this analysis looked at its own answer*.
+- **Refusals are logged too**, and `granted` distinguishes them. A log of successful reads answers
+  *"how often was the holdout spent"* and not *"how often did somebody try"* — and the second is the
+  question a reviewer of a four-release tuning loop actually needs. It is also the only trace a
+  missing-plan refusal leaves anywhere.
+- **`summary` logs nothing**, deliberately: the report prints the seal's state on every run, so a
+  counter that moved when a report ran would be counting reports.
+
+## 149. The isolation guard forbids reaching the membership, not importing the module (v0.10.0)
+
+- **Context**: plan §4.3(1) says the estimator, the training path and **every report** must be
+  unable to read the sealed ids. The first guard implemented that literally: no module in that list
+  may import `netcorenoc.seal`. It failed immediately, on `shadow_report.py`.
+- **The failure was correct.** §4.3(4) requires **every holdout number ever printed to carry its
+  query count**, so the report must reach the seal's *state*. Forbidding the import would have moved
+  the query count out of the report — a weaker outcome wearing a stronger rule.
+- **Choice**: state the property that matters, in two halves. (a) The estimator and the training
+  path may not import the module at all. (b) **Exactly one function in the package may call the one
+  expression that returns the membership**, asserted over every `.py` by AST.
+- **Reason**: `seal.summary` returns a `SealSummary` that *cannot* carry the membership — no field
+  for it, no method that yields it. The report therefore holds the module, prints the count, and
+  still has no way to obtain the ids. **That is a stronger guarantee than an import ban**, because
+  it constrains what can be *obtained* rather than what can be *named*.
+- **A third guard** requires exactly one `SELECT … FROM holdout_seal_member` in the package. Its
+  first draft counted `store/seal.py`'s own **docstring** as a second read; the shipped version
+  subtracts docstrings by AST and requires `FROM`. A scan that cannot tell prose from SQL reports
+  the module that is correct.
+
+## 150. `shadow_eval.py` is split on the admission seam, not at the line counter (v0.10.0)
+
+- **Context**: `shadow_eval.py` sat at **394 of its 400-line budget** and this release adds a fourth
+  metric to it. Part VII rule 6 is explicit: **split, never exempt.**
+- **Options**: (a) `DEBT_ALLOWLIST`; (b) raise the guard; (c) split the calibration out; (d) split
+  the **admission filter** out.
+- **Choice**: **(d)** — `shadow_admission.py`, carrying `admission`, `verdict` and their two
+  helpers.
+- **Reason**: it is the seam that already existed. `shadow_eval.py` answers *how good is this model*;
+  admission answers *is it allowed to be measured at all* — a different question, asked **first**,
+  with a different consequence: a model that fails admission does not get a bad score, it gets **no
+  score**. Calibration (c) would have been a split by size, because calibration is a quality metric
+  and belongs beside the others.
+- **What it cost the guards**: `tests/test_challenger.py`'s two enumerations gain
+  `shadow_admission.py`. That is a **split of an already-allowed module**, not a new reach, and
+  adding it *widens* what the never-reaches-the-champion guard covers — DECISIONS #139's reasoning
+  applied again.
+
+## 151. The bootstrap ships its own nine-line PRNG, and the dead-code gate found the bug in it (v0.10.0)
+
+- **Context**: the cluster bootstrap needs pseudo-random indices. `random.Random` is the obvious
+  choice.
+- **Choice**: a nine-line LCG with an explicit constant, seeded from a module constant.
+- **Reason**: this project's oldest property is that two runs and two processes produce identical
+  bytes. `random.Random`'s stability guarantee is about a *version*, not a *value*; nine lines of
+  arithmetic is a smaller promise to keep than "the standard library will not change its Mersenne
+  Twister seeding".
+- **The bug this decision introduced, and how it was caught.** The first version returned
+  `state % bound`. A power-of-two-modulus LCG has notoriously poor **low** bits: `state % 2`
+  alternates with period 2, so every "resample" of a two-cluster corpus drew exactly one of each and
+  the interval came back **zero-width** — a bootstrap reporting perfect precision because it never
+  resampled anything. `test_the_bootstrap_resamples_incidents_and_not_observations` caught it, by
+  asserting a two-cluster corpus has a *wider* interval than a 200-cluster one; both were 0.000.
+  The fix is `(state >> 16) % bound`.
+- **The validation that now stands behind it**: the shipped bootstrap reproduces the plan's §3.1
+  table — 12 → 0.500, 37 → 0.297, 50 → 0.260, 100 → 0.180, 500 → 0.080 against a registered
+  0.500 / 0.289 / 0.246 / 0.180 / 0.079. A table reproduced by the **shipped** PRNG is worth more
+  than one reproduced by a throwaway script.
+
+## 152. The power condition has one implementation, and the dead-code gate is why (v0.10.0)
+
+- **Context**: `judge()` originally inlined `abs(observed_difference) <= detectable_difference`
+  while `shadow_cv.Power.sufficient` expressed the same condition. `vulture` flagged `sufficient` as
+  unused, which was the symptom rather than the disease.
+- **Choice**: `judge()` takes a `Power` object and reads `power.sufficient`. The inline comparison
+  is deleted, and `Power` carries the `n` and the observed difference the `Judgement` reports.
+- **Reason**: two implementations of one condition is how **the number the report prints and the
+  number the verdict uses come to disagree**, silently — the same failure mode as the four
+  `COALESCE`s of Workstream 1, one release later and one level in. §2.5 makes the power condition a
+  *reported quantity* **and** a *verdict trigger*, so those two consumers reading different code
+  would be exactly the defect the plan's structural mitigation exists to prevent.
+- **Worth recording separately**: the dead-code gate found a design defect, not dead code. Three
+  times in this release a `vulture` finding has been the visible end of something real, and none of
+  the three was resolved by adding an allowlist entry.
+
+## 153. The mutation ledger found two real defects, and neither was a mutant (v0.10.0)
+
+- **Context**: Workstream 6 asks for a seeded mutant set beyond the mandatory injections, and for
+  **the survivor list rather than the ratio**. Twenty-eight injections were run: 17 mandatory, 11
+  additional.
+- **The result worth recording is not the count.** Three mandatory injections survived, and two of
+  those survivals were about the guard rather than the code. **One was about the code, and it was a
+  defect already shipped in this release's own new metric.**
+- **M3.** `asserted_negative_respected_rate` read `components.get(bag.feedback_id, {})`. With an
+  empty mapping, `component.get(a, a) != component.get(b, b)` is `True` for every pair — so a bag
+  the model produced **no partition for** scored **1.0: every asserted negative pair respected.** A
+  perfect number produced by nothing happening: v0.9.0's measured policy-B failure and §2.6(c)'s
+  trivially-satisfied case arriving through a door neither of them guards. Such a bag is now
+  excluded and counted.
+- **A11.** The bootstrap's LCG returned `state % bound`. A power-of-two-modulus LCG has notoriously
+  poor **low** bits, so `% 2` alternated with period 2 and every resample of a two-cluster corpus
+  drew exactly one of each — a **zero-width interval**, a bootstrap reporting perfect precision
+  because it never resampled anything.
+- **M6 was a weak guard of a kind this project has met before.** The pairing guard read
+  `shadow_render.py` for the substring `"detection"`, and survived deleting both printed lines
+  because the *explanatory paragraph* still contained the word. Rewritten to read the **rendered
+  output**. Appendix B's grep lesson, in a new place: the guard asked whether the source *mentioned*
+  the number, and the property is whether the report *prints* it.
+- **M7 was a bad injection, and is recorded as a known limitation rather than fixed.**
+  `assign_folds` takes incidents, so a row-wise split is inexpressible without changing the
+  signature — and an injection that changes the signature breaks the call site, which is a
+  compile-time failure rather than a guard. `test_no_incident_spans_two_folds` therefore **cannot
+  fail while the signature stands**: it documents the design rather than detecting a regression, and
+  it is named as such.
+- **The general lesson**: three of this release's findings came from the **dead-code gate** and two
+  from the **mutation ledger**, and none from reading the code. Both instruments were treated as
+  sources of evidence rather than as chores to satisfy, and neither was ever answered with an
+  allowlist entry.

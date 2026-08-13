@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from netcorenoc.census import CorpusStats
 from netcorenoc.challenger import Coefficients, feature_vector, sigmoid
 
 __all__ = [
@@ -38,7 +39,6 @@ __all__ = [
     "MAX_PAIRS_PER_BAG",
     "MAX_TRAINING_ROWS",
     "PROJECT_FLOORS",
-    "CorpusStats",
     "Floors",
     "LabelledPair",
     "Sufficiency",
@@ -46,6 +46,11 @@ __all__ = [
     "derive",
     "fit",
 ]
+
+# `CorpusStats` moved to `census.py` in v0.10.0 — "what the labelled corpus contains" is that
+# module's whole subject, and this one had reached its 400-line budget. Re-exported here
+# because `assess()` takes one and every caller since v0.9.0 has imported it from this module.
+__all__ += ["CorpusStats"]
 
 DAY_S = 86400.0
 MONTH_DAYS = 30.44
@@ -149,30 +154,6 @@ def resolve_floors(stored: str | None) -> tuple[Floors, str | None]:
         )
     except (ValueError, TypeError):
         return PROJECT_FLOORS, warning
-
-
-@dataclass(frozen=True)
-class CorpusStats:
-    """What the labelled corpus actually contains, in the units the floors are expressed in."""
-
-    bags: int = 0
-    confirm_bags: int = 0
-    split_bags: int = 0
-    mixed_bags: int = 0
-    incidents: int = 0
-    operators: int = 0
-    top_operator_share_pct: float = 0.0
-    pairs: int = 0
-    oldest_label_at: float | None = None
-    newest_label_at: float | None = None
-
-    @property
-    def span_days(self) -> float:
-        """The labelling window. Zero when there is one label or none, and the projection says so
-        rather than extrapolating from a single instant."""
-        if self.oldest_label_at is None or self.newest_label_at is None:
-            return 0.0
-        return (self.newest_label_at - self.oldest_label_at) / DAY_S
 
 
 @dataclass(frozen=True)
