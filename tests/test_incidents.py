@@ -19,7 +19,14 @@ from itertools import pairwise
 from pathlib import Path
 
 from netcorenoc import census
-from netcorenoc.incidents import MAX_CHAIN_DEPTH, IncidentMap, resolve, resolve_all, stamp
+from netcorenoc.incidents import (
+    MAX_CHAIN_DEPTH,
+    IncidentMap,
+    _cycle_members,
+    resolve,
+    resolve_all,
+    stamp,
+)
 from netcorenoc.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -153,6 +160,43 @@ def test_a_self_merge_is_a_one_node_cycle() -> None:
     """`a -> a`. The degenerate cycle, and the one whose member walk terminates immediately."""
     outcome = resolve(7, {7: 7})
     assert outcome.cycle and outcome.incident == 7
+
+
+def test_the_cycle_walk_terminates_even_when_its_precondition_is_violated() -> None:
+    """**Found by the mutation ledger, and it hung rather than failing.**
+
+    `_cycle_members` is called with the **re-visited** node, which is on the cycle by construction,
+    and its `while node != entry` loop terminates because of that and nothing else. Seeding the
+    obvious one-token mistake — passing the walk's *start* instead — makes the walk enter the cycle
+    and never come back to a tail that is not on it. The mutant did not fail; the process stopped
+    responding, and a ten-minute harness timeout was the only thing that noticed.
+
+    A module whose entire subject is merge chains the schema does not forbid should not contain a
+    walk whose only stopping condition is an invariant. Bounded by `MAX_CHAIN_DEPTH`, like
+    :func:`resolve` itself, and returning what it has rather than raising — a wrong number is
+    visible where a hung process is a support ticket.
+
+    Called directly because **no input to `resolve` can reach this state**: the caller always passes
+    a node on the cycle. That is the honest reason for a private-function test, and stating it is
+    better than inventing a public path that does not exist.
+    """
+    tail_not_on_the_cycle = 1
+    outcome = _cycle_members(tail_not_on_the_cycle, {1: 7, 7: 8, 8: 7})
+    assert outcome, "the bounded walk must return what it collected rather than nothing"
+    assert 1 in outcome, "the entry it was given is always a member of what it returns"
+
+
+def test_the_bound_is_never_reached_on_a_real_cycle() -> None:
+    """**CONTROL for the bound.** A bound that fired early would silently truncate a long cycle and
+    resolve it to the minimum of a *prefix* — a wrong incident, quietly."""
+    # A cycle of EXACTLY MAX_CHAIN_DEPTH members: 0 -> 1 -> … -> 63 -> 0. The walk needs exactly
+    # MAX_CHAIN_DEPTH iterations to come back to 0, so this sits on the bound rather than near it.
+    at_the_bound = {i: (i + 1) % MAX_CHAIN_DEPTH for i in range(MAX_CHAIN_DEPTH)}
+    members = _cycle_members(0, at_the_bound)
+    assert len(members) == MAX_CHAIN_DEPTH, f"the cycle was truncated to {len(members)}"
+    assert min(members) == 0
+    # And the whole resolution agrees: every entry into it answers 0, not a prefix minimum.
+    assert {resolve(entry, at_the_bound).incident for entry in (0, 17, 63)} == {0}
 
 
 # --- the depth guard -------------------------------------------------------------------------
@@ -493,3 +537,109 @@ def test_all_four_consumers_resolve_identity_through_the_one_implementation() ->
             f"{module} no longer resolves incident identity through netcorenoc.incidents; "
             f"found calls {sorted(names)}"
         )
+
+
+# --- the three survivors of the v0.10.1 mutation ledger, closed ---------------------------------
+#
+# A8, A9 and A10 survived because **the frozen corpora cannot demonstrate the properties**: the bias
+# fixture has 4 situations and 4 labelled ones (zero unlabelled), and neither the bias nor the
+# agreement fixture contains a single merge edge. Measured, not assumed:
+#
+#     bias fixture:      situations=4    labelled=4   unlabelled=0   merge edges=0
+#     agreement fixture: situations=12   labelled=12  unlabelled=0   merge edges=0
+#
+# That is this file's own opening sentence arriving in three new places — *the corpus cannot
+# demonstrate any of this* — and the answer is the same one v0.9.1 used for its exclusion set:
+# purpose-built fixtures, here, rather than a change to a byte-frozen corpus. **A test's fixture is
+# part of the guard.**
+
+
+async def test_the_bias_incident_count_is_over_labelled_situations_only(store: Store) -> None:
+    """**Ledger A8.** `bias._incident_map` resolving *every* situation survived every test.
+
+    `distinct_incidents` is the effective sample size of the **labelled** corpus — it is `n` for
+    every floor expressed in incidents — so an unlabelled situation must not enter it. The frozen
+    fixture has none, so the report is blind to the difference; this fixture has one.
+    """
+    from netcorenoc import bias
+
+    async with store.lock:
+        labelled = await store.create_situation(1_000.0, None)
+        unlabelled = await store.create_situation(1_001.0, None)
+        await store.add_feedback(labelled, "confirm", 1_002.0)
+        await store.commit()
+    mapping = await bias._incident_map(store)
+    assert mapping.incidents == 1, (
+        f"the unlabelled situation {unlabelled} entered the labelled corpus's incident count: "
+        f"{dict(mapping.incident_of)}"
+    )
+    assert set(mapping.incident_of) == {labelled}
+
+
+async def test_agreement_bags_follow_a_real_merge_chain(store: Store) -> None:
+    """**Ledger A9.** `agreement_bags.load_bags` resolving against an EMPTY edge map survived.
+
+    Both frozen corpora contain **zero merge edges**, so `resolve_all(ids, {})` and
+    `resolve_all(ids, edges)` return the same thing and the byte-frozen report cannot tell them
+    apart. Two hops here, so a one-hop reader and an edge-less reader both fail.
+    """
+    from netcorenoc.agreement_bags import load_bags
+
+    async with store.lock:
+        a = await store.create_situation(1_000.0, None)
+        b = await store.create_situation(1_001.0, None)
+        c = await store.create_situation(1_002.0, None)
+        for source, destination in ((a, b), (b, c)):
+            await store.conn.execute(
+                "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?",
+                (destination, source),
+            )
+        for sid in (a, b, c):
+            await store.add_feedback(sid, "confirm", 1_010.0)
+        await store.commit()
+
+    bags = await load_bags(store)
+    assert len(bags) == 3, "the fixture must produce one bag per situation"
+    assert {bag.incident for bag in bags} == {c}, (
+        f"the two-hop chain did not resolve to one incident: {[b.incident for b in bags]}"
+    )
+    # CONTROL: one hop would report TWO incidents here, and no edges at all would report three —
+    # so the fixture separates all three readings rather than only the first two.
+    assert len({b, c}) == 2 and len({a, b, c}) == 3
+
+
+async def test_the_seal_ordering_uses_the_earliest_label_and_not_the_latest(store: Store) -> None:
+    """**Ledger A10.** `census.first_label_per_incident` taking the LATEST label survived.
+
+    `PREREGISTRATION-0.10.0.md` §3.3(2): the seal holds the most recent third of the corpus **by
+    when each incident was first labelled**, *earliest rather than latest because a bag relabelled
+    today does not make its incident new*.
+
+    **Why no existing fixture could reach this, and it is not simply that none happened to.**
+    `store.labelled_bags()` already returns **one row per situation** — the latest verdict, by its
+    own sub-select — so `min` and `max` over a single-situation incident are identical *by
+    construction of the query*, not by accident of the corpus. The `min` in this function does work
+    only when **two or more situations resolve to one incident**, which needs a merge, and neither
+    frozen corpus contains a single merge edge.
+
+    So the fixture is two situations merged into one, labelled 4 000 seconds apart.
+    """
+    async with store.lock:
+        early = await store.create_situation(1_000.0, None)
+        late = await store.create_situation(1_001.0, None)
+        await store.conn.execute(
+            "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?", (late, early)
+        )
+        for sid, at in ((early, 1_100.0), (late, 5_100.0)):
+            await store.conn.execute(
+                "INSERT INTO feedback (situation_id, verdict, created_at, capture_provenance, "
+                "member_count) VALUES (?, 'confirm', ?, 'current', 2)",
+                (sid, at),
+            )
+        await store.commit()
+
+    earliest = await census.first_label_per_incident(store)
+    assert earliest == {late: 1_100.0}, (
+        f"the seal's ordering took the later label instead of the first: {earliest}. Both "
+        f"situations are one incident ({late}); a later bag does not make its incident new."
+    )

@@ -3497,3 +3497,34 @@ grouping**.
 - **Stated limitation**: a substring tie is **directional**. It detects a deletion from the
   migration, which is the measured failure mode; it would not detect an addition elsewhere in the
   file that changed the backfill's meaning without touching the compared span.
+
+## 158. The cycle walk is bounded, and the mutation ledger found it by hanging (v0.10.1)
+
+- **Context**: F50's repair added `_cycle_members`, which walks a cycle from the re-visited node back
+  to itself. Its stopping condition was `while node != entry`, and that terminates **only** because
+  the caller passes a node that is on the cycle. The mutation ledger seeded the obvious one-token
+  mistake — pass the walk's *start* instead of the re-visited node — and the run **hung**. A
+  ten-minute harness timeout was the only thing that noticed; the mutant neither failed nor survived.
+- **Options**: (a) record it as a bad injection and move on, since the precondition holds in the
+  shipped code; (b) assert the precondition and raise when it is violated; (c) bound the walk by
+  `MAX_CHAIN_DEPTH` and return what it collected.
+- **Choice**: **(c)**, with a direct test of the bounded behaviour and a control at the bound.
+- **Reason**: (a) is the reading v0.9.2's Appendix B entry warns against — *before trusting an
+  invariant, ask what value of its inputs would make it false; if there is none, it is not an
+  invariant*. Here there **is** one, it is a single token away, and `incidents.py` is the module
+  whose entire subject is merge chains the schema does not forbid and no code prevents. A walk whose
+  only stopping condition is an invariant is the wrong shape in exactly that module. (b) raises, and
+  this module's stated posture is that neither unsound condition raises: *a corrupt merge chain is a
+  fact about the corpus to be reported, not an error that should stop an offline report* — and an
+  offline report is where every caller of this function lives.
+- **What the bound buys, stated precisely**: it does not make a violated precondition *correct*. It
+  makes the failure **a wrong number instead of a hung process**, and a wrong number is visible where
+  a hang is a support ticket. `resolve` makes the same trade at `MAX_CHAIN_DEPTH` and says so.
+- **The control matters as much as the bound.** `test_the_bound_is_never_reached_on_a_real_cycle`
+  uses a cycle of **exactly** `MAX_CHAIN_DEPTH` members, so a bound firing one step early would
+  truncate it and resolve the cycle to the minimum of a *prefix* — a wrong incident, quietly. Both
+  the early-bound and the empty-return mutants are killed by it (ledger A13, A14).
+- **This is the third release running in which the mutation ledger found something the rest of the
+  suite was blind to** (#153: `shadow_eval`'s empty-partition 1.0, the bootstrap's low-bit LCG). It
+  is treated as a source of evidence rather than a chore, and it was not answered with an allowlist
+  entry.

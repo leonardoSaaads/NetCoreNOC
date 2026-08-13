@@ -115,12 +115,32 @@ def _cycle_members(entry: int, merged_into: Mapping[int, int]) -> set[int]:
     cycle by construction and every node from it back to itself has an edge. Walking that loop is
     what separates the cycle from the tail, and the separation is the whole of F50: `min` over the
     walk is not `min` over the cycle whenever the tail carries the smaller id.
+
+    **Bounded, and the bound is not decoration.** The loop's termination rests entirely on that
+    precondition: an ``entry`` that is *not* on the cycle walks into the cycle and never returns to
+    itself, and the walk **never ends**. v0.10.1's mutation ledger found this by seeding exactly
+    that mistake — passing the walk's start instead of the re-visited node, a one-token edit — and
+    the run hung rather than failing. In a module whose whole subject is merge chains the schema
+    does not forbid, a walk whose only stopping condition is an invariant is the wrong shape:
+    *before trusting an invariant, ask what value of its inputs would make it false.*
+
+    Returns what it has rather than raising, exactly as :func:`resolve` does at its own bound — a
+    corrupt merge chain is a fact about the corpus to be reported, not an error that should stop an
+    offline report. The caller's answer would then be wrong; it would not be a hung process, and a
+    wrong number is visible where a hang is a support ticket.
     """
     members = {entry}
     node = merged_into[entry]
-    while node != entry:
+    for _step in range(MAX_CHAIN_DEPTH):
+        if node == entry:
+            return members
         members.add(node)
-        node = merged_into[node]
+        next_node = merged_into.get(node)
+        if next_node is None:
+            # Only reachable if the precondition is violated: a node on a real cycle always has an
+            # edge. Returning rather than raising, for the reason above.
+            return members
+        node = next_node
     return members
 
 
