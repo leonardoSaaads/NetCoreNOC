@@ -3360,3 +3360,217 @@ grouping**.
   from the **mutation ledger**, and none from reading the code. Both instruments were treated as
   sources of evidence rather than as chores to satisfy, and neither was ever answered with an
   allowlist entry.
+
+## 154. The detection threshold was pessimistic, not the plan optimistic — superseding #142 (v0.10.1)
+
+- **Supersedes #142**, which stays exactly as written. A correction to an append-only ledger is an
+  addition; a project whose ADRs can be edited has ADRs nobody can cite.
+- **What #142 concluded**: `PREREGISTRATION-0.10.0.md` §3.1's minimum-detectable-difference table
+  *"does not reproduce below `n = 120`"*, on a closed form giving 0.298 at `n = 37` and a
+  Monte-Carlo giving 0.33 against a registered 0.25. It adjusted neither side — correctly — and
+  carried the disagreement to `SECURITY-REVIEW-0.10.0.md` §3.2 as an opinion for v0.11.0: *"the
+  plan's small-`n` figures are optimistic and should be re-derived"*.
+- **What the measurement shows**: the closed form was wrong, and in the opposite direction. It read
+  `delta = (z_α/2 + z_power)·sqrt(2·p(1−p)/n)`, which gives **both** arms the base rate's variance.
+  The second arm sits at `p + delta`, and when the detectable delta is large — which is exactly the
+  small-`n` regime — its variance is far smaller. At `n = 37`, `p = 0.70`: the arms are 0.210 and
+  **0.058**. Assuming the larger for both demands a bigger delta than reality, and the error grows
+  as `n` shrinks:
+
+  | n | naive | variance-correct | independent MC | plan |
+  |---:|---:|---:|---:|---:|
+  | 37 | 0.298 | **0.238** | 0.240 | 0.25 |
+  | 120 | 0.166 | **0.149** | 0.150 | 0.16 |
+  | 300 | 0.105 | **0.099** | 0.099 | 0.10 |
+
+- **Why the correction runs opposite to #142's direction**: the plan's table was never optimistic.
+  The closed form was **pessimistic**, and increasingly so as the corpus shrank. #142's diagnostic —
+  that the `p` making the naive form return 0.25 at `n = 37` is 0.821, far from the ≈ 0.72 implied by
+  the large-`n` rows — was a real symptom read as evidence for the wrong cause: the two halves of the
+  table behaved differently because the *formula* behaved differently at the two ends, not because
+  the table was produced under two assumptions.
+- **Why #142's corroboration failed**: its Monte-Carlo returned 0.33 at `n = 37`, *higher* than the
+  naive form where the truth is *lower*. **Two methods that share an assumption are not two
+  methods.** Whatever that search did, it did not provide independent confirmation, and its
+  agreement is what made the wrong conclusion look corroborated. Independence means independent
+  *arithmetic*, not independent *code* (Appendix B).
+- **Options**: (a) leave the form and re-derive the plan's table in v0.11.0, as #142 recommended;
+  (b) correct the closed form and edit the plan to match; (c) correct the closed form, leave the
+  plan untouched, and pin the form against a genuinely independent simulation.
+- **Choice**: **(c)**.
+- **Reason**: (a) acts on a conclusion now known to be backwards and would have re-derived a table
+  that was right. (b) edits a ratified, hash-guarded document, which §8 forbids and which would
+  destroy the only property a pre-registration has. (c) repairs the *implementation*, leaves the
+  *plan*, and — the part that matters — replaces an argument with a test:
+  `tests/test_shadow_cv_power.py` searches for the threshold by simulating two binomials and
+  counting z-test rejections, sharing no arithmetic with the closed form and using a different
+  generator. **The next disagreement is detected, not argued.**
+- **What does not change**: v0.10.0's verdict. A *lower* threshold makes `observed > detectable`
+  **easier** to satisfy, so `INSUFFICIENT_EVIDENCE` was reached on a floor failure and would have
+  been reached anyway. What is repaired is a trigger that was **more conservative than intended** —
+  a future release with a real corpus would have been told it could not resolve a difference it
+  actually could.
+- **One intentional change to a reported quantity, and it is counted**: the shadow report's printed
+  `minimum detectable difference` moves from **0.182 to 0.161** at its fixture's `n = 100`. The
+  verdict, its four trigger lines, every floor and every other number in the report are byte-
+  identical; the diff is one line, read line by line before re-freezing as #139 requires.
+- **A second finding, recorded and not repaired**: §3.1 registers **0.42** at `n = 12`. At
+  `p = 0.70` that puts the second arm at **1.12**, which is not a proportion. The largest difference
+  that exists at this base rate is 0.30, and the simulation puts its power at **0.519**. So at 12
+  incidents there is no detectable difference *at all* — a stronger version of the plan's own
+  conclusion, and it means the registered figure is not a threshold that was too optimistic but one
+  that does not exist. The plan is still not edited, for the reasons above.
+
+## 155. `agreement.py` split rather than exempted, and the seam B1 created (v0.10.1)
+
+- **Context**: routing `agreement.py`'s incident identity through `netcorenoc.incidents` (B1) took
+  the module from 386 to **402 lines of a 400-line ceiling**. `DEBT_ALLOWLIST` is empty and
+  `COHESION_EXEMPT` holds `engine.py` alone.
+- **Options**: (a) raise `MAX_MODULE_LINES`; (b) add `agreement.py` to `DEBT_ALLOWLIST`; (c) add a
+  cohesion exemption; (d) split the module.
+- **Choice**: **(d)**.
+- **Reason**: (a) is raising a guard to fit a corrective release, which this project has never done
+  and which a release about repairing guards is the worst possible place to start. (b) and (c) both
+  spend a mechanism that exists for a different problem — debt is *"too big, will be fixed by
+  release N"* and cohesion is *"large because an invariant requires it"*, and neither describes a
+  module that grew by sixteen lines because a defect was repaired in it.
+- **The seam, and why it is real rather than arithmetic**: `agreement.py` owns **what is measured
+  over a set of bags** — confirm rates, the cluster bootstrap, the six conditional cuts, the
+  operator anonymisation. `agreement_bags.py` owns **what a bag is and where one comes from** — the
+  row shape, the size bucketing, the query, and the incident resolution that reading one now
+  requires. **B1 is what made that seam load-bearing**: before this release the second half was a
+  `COALESCE` in a select list and there was nothing to own, because the query decided what an
+  incident was and no consumer could tell. It is the third split on this seam
+  (`bias.py`/`bias_labels.py` in v0.9.2, `shadow.py`/`census.py` in v0.10.0).
+- **Re-exports, deliberately**: `agreement.py` re-exports `Bag`, `size_bucket` and `SIZE_ORDER`,
+  because `agreement_report.py` and `tests/test_agreement.py` have imported them from there since
+  v0.9.0 and **a split is not a reason to move a caller's import** — the courtesy `bias_labels.py`
+  was given for `pct` (#139).
+- **Result**: `agreement.py` 265, `agreement_bags.py` 178, both frozen reports byte-identical, no
+  ceiling raised, `DEBT_ALLOWLIST` still empty.
+
+## 156. The one-hop expression is forbidden rather than fixed where it was found (v0.10.1)
+
+- **Context**: v0.10.0 fixed two of four consumers of incident identity and **named** the other two;
+  B1 fixed those two. Fixing instances closes instances. Nothing stopped a fifth from being written,
+  and the failure would be **silent**: on this project's corpus every merge chain is one hop, so the
+  one-hop and transitive answers coincide at 37 incidents and every frozen report stays
+  byte-identical under the regression.
+- **Options**: (a) rely on the four consumers now being correct; (b) a `grep`-based check in CI;
+  (c) an `ast`-based guard asserting the expression appears in no module's SQL.
+- **Choice**: **(c)**, with its own vacuity check.
+- **Reason**: (a) closes instances and leaves the class open, in a place where the class re-opening
+  is undetectable — and two of the four consumers are the estimator and the seal, so a disagreement
+  means the seal reserves a different set from the one the estimator excludes. (b) is Appendix B's
+  recorded trap: **six modules name this exact expression in prose right now**, three in `#`
+  comments and three in docstrings — including `incidents.py`, the module that exists to replace it
+  — so a grep reports eight offenders and is switched off within a week.
+- **The vacuity check is not optional, and it is what distinguishes this from a guard that only
+  looks like one.** `assert not offenders` passes identically when nothing was scanned, when the
+  parse returned nothing, and when the substring test was inverted. The check runs **the same
+  extractor function** — a second implementation would only prove that *some* extractor works — over
+  a fixture carrying the expression in a docstring, a `#` comment and a SQL literal, and requires
+  exactly one hit.
+- **And a control for the other half**: a package where every consumer simply stopped counting
+  incidents would satisfy the guard perfectly, so a second test asserts by AST that all four still
+  resolve identity through `netcorenoc.incidents`.
+
+## 157. F49 gets both repairs, because they fail independently (v0.10.1)
+
+- **Context**: `tests/test_evidence_boundary_f48.py` pins migration `0011`'s backfill expression as
+  a Python constant, since a migration cannot be re-run against an already-migrated database.
+  Nothing tied the constant to the file, and v0.10.0 measured the cost: deleting
+  `AND m.source = 'server'` from `0011_evidence_boundary.sql` left **1093 tests passing**.
+- **Options**: (a) tie the constant to the file; (b) give `test_upgrade.py`'s v0.9.1 fixture a
+  client fingerprint so the predicate has something to exclude; (c) both.
+- **Choice**: **(c)**.
+- **Reason**: they fail for different reasons and neither subsumes the other. The tie is exact and
+  cheap and closes the *drift*; the fixture makes the *claim in the docstring true*, turning an
+  inert upgrade probe into a live one. Shipping both means the tie survives a fixture change and the
+  probe survives a refactor of the constant. Under the injection, three tests fail against v0.10.0's
+  1093 passing.
+- **A control that had to be rewritten, recorded because the first version was wrong**: the obvious
+  control for a substring tie — *"the predicate-free expression must not match the migration"* — is
+  false on a healthy tree, because deleting a trailing clause leaves a **prefix** and every prefix
+  is a substring. The control now performs the deletion on an in-memory copy and evaluates the tie's
+  own assertion against it, after asserting the predicate occurs exactly once in the file.
+- **Stated limitation**: a substring tie is **directional**. It detects a deletion from the
+  migration, which is the measured failure mode; it would not detect an addition elsewhere in the
+  file that changed the backfill's meaning without touching the compared span.
+
+## 158. The cycle walk is bounded, and the mutation ledger found it by hanging (v0.10.1)
+
+- **Context**: F50's repair added `_cycle_members`, which walks a cycle from the re-visited node back
+  to itself. Its stopping condition was `while node != entry`, and that terminates **only** because
+  the caller passes a node that is on the cycle. The mutation ledger seeded the obvious one-token
+  mistake — pass the walk's *start* instead of the re-visited node — and the run **hung**. A
+  ten-minute harness timeout was the only thing that noticed; the mutant neither failed nor survived.
+- **Options**: (a) record it as a bad injection and move on, since the precondition holds in the
+  shipped code; (b) assert the precondition and raise when it is violated; (c) bound the walk by
+  `MAX_CHAIN_DEPTH` and return what it collected.
+- **Choice**: **(c)**, with a direct test of the bounded behaviour and a control at the bound.
+- **Reason**: (a) is the reading v0.9.2's Appendix B entry warns against — *before trusting an
+  invariant, ask what value of its inputs would make it false; if there is none, it is not an
+  invariant*. Here there **is** one, it is a single token away, and `incidents.py` is the module
+  whose entire subject is merge chains the schema does not forbid and no code prevents. A walk whose
+  only stopping condition is an invariant is the wrong shape in exactly that module. (b) raises, and
+  this module's stated posture is that neither unsound condition raises: *a corrupt merge chain is a
+  fact about the corpus to be reported, not an error that should stop an offline report* — and an
+  offline report is where every caller of this function lives.
+- **What the bound buys, stated precisely**: it does not make a violated precondition *correct*. It
+  makes the failure **a wrong number instead of a hung process**, and a wrong number is visible where
+  a hang is a support ticket. `resolve` makes the same trade at `MAX_CHAIN_DEPTH` and says so.
+- **The control matters as much as the bound.** `test_the_bound_is_never_reached_on_a_real_cycle`
+  uses a cycle of **exactly** `MAX_CHAIN_DEPTH` members, so a bound firing one step early would
+  truncate it and resolve the cycle to the minimum of a *prefix* — a wrong incident, quietly. Both
+  the early-bound and the empty-return mutants are killed by it (ledger A13, A14).
+- **This is the third release running in which the mutation ledger found something the rest of the
+  suite was blind to** (#153: `shadow_eval`'s empty-partition 1.0, the bootstrap's low-bit LCG). It
+  is treated as a source of evidence rather than a chore, and it was not answered with an allowlist
+  entry.
+
+## 159. The coverage figure has a band, and it is reported rather than removed (v0.10.1)
+
+- **Context**: A3 set out to fix the ambiguity in a coverage number that did not reproduce. Pinning
+  the command and quoting coverage.py's own `Total coverage:` line explained the 96.20 / 95.95
+  disagreement completely — it was hand-arithmetic over the printed columns, `BrPart` (123
+  partially-covered *statements*) used where `missing_branches` (143 missing *arcs*) belongs. **That
+  turned out to be only half the problem.** Two runs of `make coverage` on the **same tree** give:
+
+  ```
+  run 1   Total coverage: 96.21%     uncovered units 310
+  run 2   Total coverage: 96.10%     uncovered units 319
+  ```
+
+- **The cause is exact, and one module carries all of it**:
+
+  ```
+   d(unc) module                          run1  run2
+       +9 receiver.py                       24    33
+  ```
+
+  `tests/test_receiver.py` carries two `@given(st.binary(min_size=0, max_size=300))` properties that
+  feed random byte strings to the BER trap decoder. Hypothesis generates **different examples on
+  every run** — there is no `derandomize` setting and no seeded profile — so which of `receiver.py`'s
+  malformed-datagram branches get exercised varies. Nothing else in the suite drifts at all.
+- **Options**: (a) set `derandomize=True` or pin a Hypothesis seed, making the number exact;
+  (b) exclude `receiver.py` from the measurement; (c) report the figure **with its band** and name
+  the cause.
+- **Choice**: **(c)**.
+- **Reason**: (a) trades a **real fuzzer for a stable number**. The value of `st.binary` against a
+  BER decoder is precisely that it tries inputs nobody thought of; a derandomised run tries the same
+  inputs forever and stops being a fuzzer the day it is pinned. That is A3's own instruction —
+  *do not write tests to buy the number back* — one register up: do not weaken a test to make a
+  metric tidy. (b) hides the variance instead of measuring it, and `receiver.py` is the ingest path,
+  which is the last module whose coverage anyone should stop looking at.
+- **What this changes about A3's own conclusion, stated plainly**: pinning the command was
+  **necessary and not sufficient**. The honest deliverable is the figure, the command, **and the
+  band** — `96.10 %–96.21 %` over two runs, ±0.11 points, with `receiver.py` named as the whole of
+  it. A single measurement of this suite is not a reproducible number and never was; v0.10.0's error
+  was not that its figure moved but that it was computed by hand and reported as exact.
+- **And it qualifies Gate 1 §3.2's own comparison.** The v0.9.2 → v0.10.0 movement of
+  96.19 % → 95.95 % is 0.24 points, which is about **two bands** — larger than the noise, but not
+  cleanly separable from it on one measurement each. The release reports it as *probably real and
+  not established*, which is what one sample per release supports. A release that wants a
+  defensible coverage trend needs repeated measurement, and that is a ROADMAP line rather than
+  something this release invents a method for.

@@ -2,7 +2,7 @@
 #   make qa PYTHON=python
 PYTHON ?= .venv/bin/python
 
-.PHONY: qa lint typecheck test security deadcode checksums linkcheck run replay loadtest burst \
+.PHONY: qa lint typecheck test coverage security deadcode checksums linkcheck run replay loadtest burst \
 	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
 	bias-report dataset-stats agreement-report shadow-report
 
@@ -34,6 +34,19 @@ typecheck:
 
 test:
 	$(PYTHON) -m pytest --cov=netcorenoc --cov-report=term-missing
+
+# THE ONE TRUE COVERAGE COMMAND (v0.10.1, A3). `make test` above and this target report the same
+# percentage — `term` and `term-missing` differ only in the trailing "Missing" column — and this one
+# exists so that the figure a gate document quotes has a single, named provenance.
+#
+# **Quote the `Total coverage:` line and nothing else.** That line is coverage.py's own
+# `percent_covered`. The TOTAL row above it prints four columns, and computing the percentage from
+# them BY HAND is how v0.10.0 came to record 96.20 % for a tree coverage.py measures at 95.95 %:
+# the `BrPart` column counts partially-covered STATEMENTS (123 here), and the percentage divides by
+# missing branch ARCS (143 here) — a statement with two unexercised exits is 1 and 2 respectively.
+# Recomputing a number the tool already printed is how the two come to disagree with nobody noticing.
+coverage:
+	$(PYTHON) -m pytest -q --cov=netcorenoc --cov-report=term
 
 fmt:
 	$(PYTHON) -m ruff format .

@@ -1,5 +1,50 @@
 # Upgrading NetCoreNOC
 
+## v0.10.0 → v0.10.1 (the corrections — **no migration, and nothing for you to do**)
+
+Replace the code and restart. **There is no migration.** `user_version` stays at **12** and the
+schema is byte-identical: the same `schema_sha`, the same 71 objects, `integrity_check` ok and
+`foreign_key_check` empty, measured against a real v0.10.0 tree.
+
+| | |
+|---|---|
+| Schema | **unchanged.** Zero migrations; `src/netcorenoc/migrations/` has no diff |
+| Data | **untouched.** Nothing is read, rewritten or reinterpreted |
+| Existing labels | **unchanged** |
+| Audit chain | **unchanged**; this release writes no event and adds no action |
+| Grouping | **unchanged.** Correlation, capture and ingest are untouched and `make eval` is byte-identical |
+| Learned state | **unchanged** |
+| Routes | **none added, none changed.** 50 routes, same order, same handlers; 39 live responses measured identical across three roles |
+| Capabilities / audit actions | **unchanged** |
+| API contract / responses | **unchanged**, in status, body and timing |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **five**, unchanged |
+| Rollback | keep a copy of the database file before upgrading, as always — but there is nothing to roll back: a v0.10.0 binary opens a v0.10.1 database and vice versa, because the schema is the same |
+
+### What an operator will see change
+
+**In the appliance: nothing.** No route, no UI element, no response, no correlation decision, no
+learned matrix cell.
+
+**In `python -m netcorenoc dataset shadow`: one number.** The printed
+`minimum detectable difference` falls — on the release's own fixture, 0.182 → 0.161 at `n = 100`.
+The verdict, the reasons under it, and every floor are unchanged.
+
+That number is the smallest true difference between two scorers that your corpus could resolve at
+80 % power. It went **down** because the formula behind it was wrong in the conservative direction:
+it assumed both scorers vary as much as the base rate, when the better one varies less. **A lower
+threshold means your corpus can resolve a difference it previously reported it could not.** Nothing
+about your data changed; the arithmetic describing it got more accurate.
+
+**In `python -m netcorenoc dataset bias` and `dataset agreement`: nothing at all.** Both are
+byte-identical, verified across two runs, two processes and against v0.10.0.
+
+### If you maintain a fork or a downstream script
+
+`netcorenoc.agreement`'s `Bag`, `size_bucket`, `SIZE_ORDER` and `load_bags` moved to
+`netcorenoc.agreement_bags` and are **re-exported from `agreement` unchanged**, so
+`from netcorenoc.agreement import Bag` still works. Nothing else moved.
+
 ## v0.9.2 → v0.10.0 (the honest judge — one migration, and **it seeds nothing**)
 
 Replace the code and restart. Migration **`0012`** runs automatically at startup and adds **three

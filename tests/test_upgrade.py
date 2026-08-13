@@ -753,6 +753,22 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
             # and on a small enough bag would produce a value the CHECK refuses, turning a hostile
             # label into a failed upgrade (ledger L4).
             await old.add_feedback_exclusion(split.id, [bag[0], bag[1], bag[1], ghost])
+            # **THE CLIENT'S FINGERPRINT — F49's second repair (v0.10.1).**
+            #
+            # v0.9.1 records what the client said its bag was, in `feedback_member(source=
+            # 'client')`, separately from what the server's bag was. This fixture wrote only the
+            # server side, and v0.10.0 measured the consequence: **deleting `AND m.source =
+            # 'server'` from `0011_evidence_boundary.sql` left 1093 tests passing**, because with no
+            # rows the predicate had nothing to exclude and an unfiltered join gave the same answer.
+            # An upgrade probe that cannot distinguish the two is inert, and this test's docstring
+            # claimed a boundary it was not exercising.
+            #
+            # The client's reported bag contains the GHOST — which is exactly the real case: a
+            # browser whose view is stale reports a member the server's bag no longer holds and
+            # marks it (F48's premise, and what the v0.7.5 SSE teardown produced routinely). With
+            # this row present the predicate has work to do: filtered, the ghost joins nothing and
+            # the backfill writes 2; unfiltered, the ghost joins its own client row and it writes 3.
+            await old.add_feedback_members(split.id, "client", [bag[0], bag[1], ghost])
             await old.annotate_feedback(
                 split.id, excluded_count=4, excluded_truncated=0, remainder_together=None
             )

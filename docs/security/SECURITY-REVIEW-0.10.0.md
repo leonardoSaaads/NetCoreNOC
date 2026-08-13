@@ -145,6 +145,26 @@ build report says so in those terms.
 
 ### 3.2 Which pre-registered threshold I would argue is wrong — **an opinion for v0.11.0**
 
+> ---
+>
+> **CORRECTION, 2026-08-13 (v0.10.1). This section reached the wrong conclusion, and the correction
+> runs in the opposite direction to the one it argues for below.** The plan's small-`n` figures were
+> not optimistic. **The closed form was pessimistic**, because it gave *both* arms the base rate's
+> variance `p(1−p)` when the second arm sits at `p + delta` with a far smaller one — at `n = 37`,
+> 0.210 against **0.058**. Corrected by fixed-point solve, the form returns 0.238 at `n = 37`, 0.149
+> at 120 and 0.099 at 300, against a genuinely independent Monte-Carlo's 0.240, 0.150 and 0.099 and
+> the plan's registered 0.25, 0.16 and 0.10. **The plan reproduces.**
+>
+> The Monte-Carlo quoted below at 0.33 did not corroborate the closed form independently; two
+> methods that share an assumption are one method. The `p = 0.821` diagnostic was a real symptom
+> read as evidence for the wrong cause.
+>
+> **DECISIONS #154** supersedes #142 and carries the full measurement. The plan was not edited then
+> and is not edited now. Nothing below is deleted: a review that quietly changes its mind is worse
+> than one that shows the change.
+>
+> ---
+
 Plan §9 sends a disagreement here rather than into an edit, and this is the one.
 
 **§3.1's minimum-detectable-difference table does not reproduce below `n = 120`.** A documented

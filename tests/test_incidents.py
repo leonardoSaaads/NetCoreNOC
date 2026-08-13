@@ -19,7 +19,14 @@ from itertools import pairwise
 from pathlib import Path
 
 from netcorenoc import census
-from netcorenoc.incidents import MAX_CHAIN_DEPTH, IncidentMap, resolve, resolve_all, stamp
+from netcorenoc.incidents import (
+    MAX_CHAIN_DEPTH,
+    IncidentMap,
+    _cycle_members,
+    resolve,
+    resolve_all,
+    stamp,
+)
 from netcorenoc.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -87,6 +94,109 @@ def test_a_two_node_cycle_is_a_cycle() -> None:
     """`a -> b -> a` is the smallest one, and the one a one-hop reader cannot see at all."""
     outcome = resolve(1, {1: 2, 2: 1})
     assert outcome.cycle and outcome.incident == 1
+
+
+# --- F50: the minimum is over the CYCLE, not over the walk --------------------------------------
+#
+# The four tests below exist because the test above them passes on a fixture where every entry point
+# is already a cycle member, so `min(the walk) == min(the cycle)` by coincidence of the fixture. A
+# TAIL leading into the cycle is what separates the two, and until v0.10.1 nothing exercised one.
+
+
+def test_a_tail_below_the_cycle_minimum_does_not_become_its_own_incident() -> None:
+    """**F50.** `min` over the walk includes the tail; `min` over the cycle does not.
+
+    `{1: 7, 7: 8, 8: 7}` is one incident: situation 1 merged into a cycle of 7 and 8. Resolving to
+    `min(seen)` gives situation 1 the answer `1` — because the walk `1 -> 7 -> 8` contains 1 — while
+    7 and 8 both answer `7`. **Two incidents where there is one**, which is precisely the inflation
+    the transitive resolution exists to remove, re-entering through the failure path the docstring
+    says it closes.
+    """
+    tailed = {1: 7, 7: 8, 8: 7}
+    mapping = resolve_all([1, 7, 8], tailed)
+    assert mapping.incidents == 1, (
+        f"the tail was assigned its own incident: {dict(mapping.incident_of)}"
+    )
+    assert {resolve(entry, tailed).incident for entry in (1, 7, 8)} == {7}
+    assert mapping.cycles == frozenset({1, 7, 8}), "every walk that reaches the cycle is flagged"
+
+
+def test_a_tail_above_the_cycle_minimum_resolves_to_the_cycle_minimum_too() -> None:
+    """**CONTROL**, and it does two jobs the test above cannot do alone.
+
+    The tail sits **above** every cycle member, so `min(the walk)` and `min(the cycle)` agree and
+    **this test passes on the defective code too** — which is what makes it a control rather than a
+    second probe: it has to hold in the red run and the green one.
+
+    It also pins **which** incident, not merely that there is one. A repair returning `max(cycle)`
+    would answer `8` everywhere, report one incident, and satisfy the F50 test above — one incident
+    is still one incident. The assertion on `incident_of[99]` is what rejects it.
+    """
+    tailed = {99: 7, 7: 8, 8: 7}
+    mapping = resolve_all([7, 8, 99], tailed)
+    assert mapping.incidents == 1
+    assert mapping.incident_of[99] == 7, "the tail must join the cycle's incident, not keep its own"
+    assert set(mapping.incident_of.values()) == {7}, (
+        "the cycle's minimum is 7; resolving to max(cycle) would say 8 and still report one "
+        "incident"
+    )
+
+
+def test_two_separate_tails_into_one_cycle_agree_with_each_other() -> None:
+    """The property in its general form: **which** door you came through must not matter.
+
+    One tail below the cycle minimum and one above it. Under `min(seen)` the two walks contain
+    different ids, so the two tails answer differently — from each other as well as from the cycle.
+    """
+    tailed = {1: 7, 99: 7, 7: 8, 8: 7}
+    mapping = resolve_all([1, 7, 8, 99], tailed)
+    assert mapping.incident_of[1] == mapping.incident_of[99] == 7
+    assert mapping.incidents == 1, (
+        f"three incidents where there is one: {dict(mapping.incident_of)}"
+    )
+
+
+def test_a_self_merge_is_a_one_node_cycle() -> None:
+    """`a -> a`. The degenerate cycle, and the one whose member walk terminates immediately."""
+    outcome = resolve(7, {7: 7})
+    assert outcome.cycle and outcome.incident == 7
+
+
+def test_the_cycle_walk_terminates_even_when_its_precondition_is_violated() -> None:
+    """**Found by the mutation ledger, and it hung rather than failing.**
+
+    `_cycle_members` is called with the **re-visited** node, which is on the cycle by construction,
+    and its `while node != entry` loop terminates because of that and nothing else. Seeding the
+    obvious one-token mistake — passing the walk's *start* instead — makes the walk enter the cycle
+    and never come back to a tail that is not on it. The mutant did not fail; the process stopped
+    responding, and a ten-minute harness timeout was the only thing that noticed.
+
+    A module whose entire subject is merge chains the schema does not forbid should not contain a
+    walk whose only stopping condition is an invariant. Bounded by `MAX_CHAIN_DEPTH`, like
+    :func:`resolve` itself, and returning what it has rather than raising — a wrong number is
+    visible where a hung process is a support ticket.
+
+    Called directly because **no input to `resolve` can reach this state**: the caller always passes
+    a node on the cycle. That is the honest reason for a private-function test, and stating it is
+    better than inventing a public path that does not exist.
+    """
+    tail_not_on_the_cycle = 1
+    outcome = _cycle_members(tail_not_on_the_cycle, {1: 7, 7: 8, 8: 7})
+    assert outcome, "the bounded walk must return what it collected rather than nothing"
+    assert 1 in outcome, "the entry it was given is always a member of what it returns"
+
+
+def test_the_bound_is_never_reached_on_a_real_cycle() -> None:
+    """**CONTROL for the bound.** A bound that fired early would silently truncate a long cycle and
+    resolve it to the minimum of a *prefix* — a wrong incident, quietly."""
+    # A cycle of EXACTLY MAX_CHAIN_DEPTH members: 0 -> 1 -> … -> 63 -> 0. The walk needs exactly
+    # MAX_CHAIN_DEPTH iterations to come back to 0, so this sits on the bound rather than near it.
+    at_the_bound = {i: (i + 1) % MAX_CHAIN_DEPTH for i in range(MAX_CHAIN_DEPTH)}
+    members = _cycle_members(0, at_the_bound)
+    assert len(members) == MAX_CHAIN_DEPTH, f"the cycle was truncated to {len(members)}"
+    assert min(members) == 0
+    # And the whole resolution agrees: every entry into it answers 0, not a prefix minimum.
+    assert {resolve(entry, at_the_bound).incident for entry in (0, 17, 63)} == {0}
 
 
 # --- the depth guard -------------------------------------------------------------------------
@@ -288,3 +398,248 @@ async def test_pre_v080_merges_are_counted_rather_than_assumed_absent(store: Sto
     assert await store.pre_v080_merges() == 1, "the destination-less merge was not counted"
     # CONTROL: a merge WITH a destination is recoverable and must not be counted as unrecoverable.
     assert merged in await store.merge_edges()
+
+
+# --- B2: the expression is forbidden, not merely fixed where it was found -----------------------
+#
+# v0.10.0 fixed two of the four consumers and NAMED the other two; v0.10.1 fixed those two. Fixing
+# instances closes instances. This closes the CLASS: no module may express incident identity in SQL
+# at all, so the fifth consumer cannot be written rather than having to be found.
+#
+# `ast`, not `grep`, and Appendix B says why: a grep once reported `engine.py` importing
+# `netcorenoc.api` when it was the docstring saying it never must. **Six modules name this exact
+# expression in prose right now** — `bias.py`, `census.py` (twice), `store/shadow.py`,
+# `incidents.py` (twice), `shadow_render.py` and `agreement_bags.py` — so a scan that could not tell
+# a SQL literal from a sentence about one would report the whole package guilty and be switched off.
+
+
+def _coalesced_identity_literals(source: str) -> list[str]:
+    """Every **non-docstring** string constant in ``source`` that computes identity with a COALESCE.
+
+    The extractor both guards and vacuity-checks, and it must be the same function for the second to
+    say anything about the first — a vacuity check against a different implementation proves that
+    *some* extractor works.
+
+    Docstrings are collected first and subtracted by object identity rather than filtered by
+    keyword: `incidents.py`'s own module docstring quotes the expression while being the module that
+    exists to replace it. `#` comments never reach the tree at all, which is why three of the six
+    prose mentions are invisible here for free.
+    """
+    tree = ast.parse(source)
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        if id(node) in docstrings:
+            continue
+        text = node.value.upper()
+        if "COALESCE" in text and "MERGED_INTO" in text:
+            found.append(node.value)
+    return found
+
+
+# A file where the expression is KNOWN to exist, in both forms. The docstring copy is the half that
+# makes this a discrimination test rather than only a smoke test.
+_VACUITY_FIXTURE = '''
+"""A module docstring that names COALESCE(s.merged_into, f.situation_id) in prose."""
+
+# A comment naming COALESCE(s.merged_into, f.situation_id), which never reaches the AST.
+
+QUERY = """
+SELECT COALESCE(s.merged_into, f.situation_id) AS incident FROM feedback f
+"""
+
+
+def f() -> None:
+    """Another docstring quoting COALESCE(merged_into, situation_id)."""
+    return None
+'''
+
+
+def test_the_expression_extractor_finds_the_expression_where_it_is_known_to_exist() -> None:
+    """**The vacuity check.** Without it, an extractor broken in any way reports every module clean.
+
+    This is the failure mode the guard below cannot detect about itself: `assert not offenders`
+    passes just as happily when `offenders` is empty because nothing was scanned, because the parse
+    silently returned nothing, or because the substring test was inverted.
+    """
+    found = _coalesced_identity_literals(_VACUITY_FIXTURE)
+    assert len(found) == 1, f"the extractor must find exactly the SQL literal, not prose: {found}"
+    assert "AS incident" in found[0], found[0]
+
+
+def test_no_module_computes_incident_identity_in_sql() -> None:
+    """**The class, closed.** `COALESCE(<anything>merged_into<anything>)` exists in no module's SQL.
+
+    Not "the four known consumers are fixed" — *the expression cannot be written*. A fifth consumer
+    would have to add it and would fail here, which is the difference between a defect that was
+    repaired and a defect that cannot recur.
+
+    Why this matters more than it looks: on this corpus all four consumers agree at 37 incidents,
+    because every merge chain in it is exactly one hop. A corpus with a longer chain makes them
+    disagree with **nothing going red** — and two of the four are the estimator and the seal, so the
+    seal would be reserving a different set from the one the estimator excluded. A guarantee whose
+    failure is invisible has to be structural.
+    """
+    offenders = [
+        f"{path.relative_to(PKG)}: {literal.strip()[:70]}"
+        for path in sorted(PKG.rglob("*.py"))
+        for literal in _coalesced_identity_literals(path.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, (
+        "incident identity is computed in SQL again:\n  "
+        + "\n  ".join(offenders)
+        + "\n\nOne hop is not incident identity. Read the merge EDGES and resolve them through "
+        "netcorenoc.incidents.resolve_all, as store/shadow.py, census.py, bias.py and "
+        "agreement_bags.py all do."
+    )
+
+
+def test_all_four_consumers_resolve_identity_through_the_one_implementation() -> None:
+    """**CONTROL for the guard above**, and the half it structurally cannot check.
+
+    A package where every consumer had simply *stopped counting incidents* would pass
+    `test_no_module_computes_incident_identity_in_sql` perfectly. This asserts the other side: each
+    of the four still resolves identity, and does it by calling into `netcorenoc.incidents`.
+    """
+    consumers = {
+        "census.py": ("resolve_all", "stamp"),
+        "bias.py": ("resolve_all",),
+        "agreement_bags.py": ("resolve_all", "stamp"),
+        "store/shadow.py": ("merge_edges",),
+    }
+    for module, expected in consumers.items():
+        source = (PKG / module).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        names = {
+            node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+        }
+        if module == "store/shadow.py":
+            # The store does not resolve; it EXPOSES the edges and refuses to decide. Asserted by
+            # the method existing, because that is the whole of its contribution.
+            assert any(
+                isinstance(n, ast.AsyncFunctionDef) and n.name == "merge_edges"
+                for n in ast.walk(tree)
+            ), "store/shadow.py no longer exposes the merge edges"
+            continue
+        assert set(expected) <= names, (
+            f"{module} no longer resolves incident identity through netcorenoc.incidents; "
+            f"found calls {sorted(names)}"
+        )
+
+
+# --- the three survivors of the v0.10.1 mutation ledger, closed ---------------------------------
+#
+# A8, A9 and A10 survived because **the frozen corpora cannot demonstrate the properties**: the bias
+# fixture has 4 situations and 4 labelled ones (zero unlabelled), and neither the bias nor the
+# agreement fixture contains a single merge edge. Measured, not assumed:
+#
+#     bias fixture:      situations=4    labelled=4   unlabelled=0   merge edges=0
+#     agreement fixture: situations=12   labelled=12  unlabelled=0   merge edges=0
+#
+# That is this file's own opening sentence arriving in three new places — *the corpus cannot
+# demonstrate any of this* — and the answer is the same one v0.9.1 used for its exclusion set:
+# purpose-built fixtures, here, rather than a change to a byte-frozen corpus. **A test's fixture is
+# part of the guard.**
+
+
+async def test_the_bias_incident_count_is_over_labelled_situations_only(store: Store) -> None:
+    """**Ledger A8.** `bias._incident_map` resolving *every* situation survived every test.
+
+    `distinct_incidents` is the effective sample size of the **labelled** corpus — it is `n` for
+    every floor expressed in incidents — so an unlabelled situation must not enter it. The frozen
+    fixture has none, so the report is blind to the difference; this fixture has one.
+    """
+    from netcorenoc import bias
+
+    async with store.lock:
+        labelled = await store.create_situation(1_000.0, None)
+        unlabelled = await store.create_situation(1_001.0, None)
+        await store.add_feedback(labelled, "confirm", 1_002.0)
+        await store.commit()
+    mapping = await bias._incident_map(store)
+    assert mapping.incidents == 1, (
+        f"the unlabelled situation {unlabelled} entered the labelled corpus's incident count: "
+        f"{dict(mapping.incident_of)}"
+    )
+    assert set(mapping.incident_of) == {labelled}
+
+
+async def test_agreement_bags_follow_a_real_merge_chain(store: Store) -> None:
+    """**Ledger A9.** `agreement_bags.load_bags` resolving against an EMPTY edge map survived.
+
+    Both frozen corpora contain **zero merge edges**, so `resolve_all(ids, {})` and
+    `resolve_all(ids, edges)` return the same thing and the byte-frozen report cannot tell them
+    apart. Two hops here, so a one-hop reader and an edge-less reader both fail.
+    """
+    from netcorenoc.agreement_bags import load_bags
+
+    async with store.lock:
+        a = await store.create_situation(1_000.0, None)
+        b = await store.create_situation(1_001.0, None)
+        c = await store.create_situation(1_002.0, None)
+        for source, destination in ((a, b), (b, c)):
+            await store.conn.execute(
+                "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?",
+                (destination, source),
+            )
+        for sid in (a, b, c):
+            await store.add_feedback(sid, "confirm", 1_010.0)
+        await store.commit()
+
+    bags = await load_bags(store)
+    assert len(bags) == 3, "the fixture must produce one bag per situation"
+    assert {bag.incident for bag in bags} == {c}, (
+        f"the two-hop chain did not resolve to one incident: {[b.incident for b in bags]}"
+    )
+    # CONTROL: one hop would report TWO incidents here, and no edges at all would report three —
+    # so the fixture separates all three readings rather than only the first two.
+    assert len({b, c}) == 2 and len({a, b, c}) == 3
+
+
+async def test_the_seal_ordering_uses_the_earliest_label_and_not_the_latest(store: Store) -> None:
+    """**Ledger A10.** `census.first_label_per_incident` taking the LATEST label survived.
+
+    `PREREGISTRATION-0.10.0.md` §3.3(2): the seal holds the most recent third of the corpus **by
+    when each incident was first labelled**, *earliest rather than latest because a bag relabelled
+    today does not make its incident new*.
+
+    **Why no existing fixture could reach this, and it is not simply that none happened to.**
+    `store.labelled_bags()` already returns **one row per situation** — the latest verdict, by its
+    own sub-select — so `min` and `max` over a single-situation incident are identical *by
+    construction of the query*, not by accident of the corpus. The `min` in this function does work
+    only when **two or more situations resolve to one incident**, which needs a merge, and neither
+    frozen corpus contains a single merge edge.
+
+    So the fixture is two situations merged into one, labelled 4 000 seconds apart.
+    """
+    async with store.lock:
+        early = await store.create_situation(1_000.0, None)
+        late = await store.create_situation(1_001.0, None)
+        await store.conn.execute(
+            "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?", (late, early)
+        )
+        for sid, at in ((early, 1_100.0), (late, 5_100.0)):
+            await store.conn.execute(
+                "INSERT INTO feedback (situation_id, verdict, created_at, capture_provenance, "
+                "member_count) VALUES (?, 'confirm', ?, 'current', 2)",
+                (sid, at),
+            )
+        await store.commit()
+
+    earliest = await census.first_label_per_incident(store)
+    assert earliest == {late: 1_100.0}, (
+        f"the seal's ordering took the later label instead of the first: {earliest}. Both "
+        f"situations are one incident ({late}); a later bag does not make its incident new."
+    )
