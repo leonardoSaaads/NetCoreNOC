@@ -3528,3 +3528,49 @@ grouping**.
   suite was blind to** (#153: `shadow_eval`'s empty-partition 1.0, the bootstrap's low-bit LCG). It
   is treated as a source of evidence rather than a chore, and it was not answered with an allowlist
   entry.
+
+## 159. The coverage figure has a band, and it is reported rather than removed (v0.10.1)
+
+- **Context**: A3 set out to fix the ambiguity in a coverage number that did not reproduce. Pinning
+  the command and quoting coverage.py's own `Total coverage:` line explained the 96.20 / 95.95
+  disagreement completely — it was hand-arithmetic over the printed columns, `BrPart` (123
+  partially-covered *statements*) used where `missing_branches` (143 missing *arcs*) belongs. **That
+  turned out to be only half the problem.** Two runs of `make coverage` on the **same tree** give:
+
+  ```
+  run 1   Total coverage: 96.21%     uncovered units 310
+  run 2   Total coverage: 96.10%     uncovered units 319
+  ```
+
+- **The cause is exact, and one module carries all of it**:
+
+  ```
+   d(unc) module                          run1  run2
+       +9 receiver.py                       24    33
+  ```
+
+  `tests/test_receiver.py` carries two `@given(st.binary(min_size=0, max_size=300))` properties that
+  feed random byte strings to the BER trap decoder. Hypothesis generates **different examples on
+  every run** — there is no `derandomize` setting and no seeded profile — so which of `receiver.py`'s
+  malformed-datagram branches get exercised varies. Nothing else in the suite drifts at all.
+- **Options**: (a) set `derandomize=True` or pin a Hypothesis seed, making the number exact;
+  (b) exclude `receiver.py` from the measurement; (c) report the figure **with its band** and name
+  the cause.
+- **Choice**: **(c)**.
+- **Reason**: (a) trades a **real fuzzer for a stable number**. The value of `st.binary` against a
+  BER decoder is precisely that it tries inputs nobody thought of; a derandomised run tries the same
+  inputs forever and stops being a fuzzer the day it is pinned. That is A3's own instruction —
+  *do not write tests to buy the number back* — one register up: do not weaken a test to make a
+  metric tidy. (b) hides the variance instead of measuring it, and `receiver.py` is the ingest path,
+  which is the last module whose coverage anyone should stop looking at.
+- **What this changes about A3's own conclusion, stated plainly**: pinning the command was
+  **necessary and not sufficient**. The honest deliverable is the figure, the command, **and the
+  band** — `96.10 %–96.21 %` over two runs, ±0.11 points, with `receiver.py` named as the whole of
+  it. A single measurement of this suite is not a reproducible number and never was; v0.10.0's error
+  was not that its figure moved but that it was computed by hand and reported as exact.
+- **And it qualifies Gate 1 §3.2's own comparison.** The v0.9.2 → v0.10.0 movement of
+  96.19 % → 95.95 % is 0.24 points, which is about **two bands** — larger than the noise, but not
+  cleanly separable from it on one measurement each. The release reports it as *probably real and
+  not established*, which is what one sample per release supports. A release that wants a
+  defensible coverage trend needs repeated measurement, and that is a ROADMAP line rather than
+  something this release invents a method for.
