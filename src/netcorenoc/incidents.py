@@ -87,6 +87,13 @@ def resolve(situation_id: int, merged_into: Mapping[int, int]) -> Resolution:
     incident count — the exact error the transitive resolution exists to remove, re-entering through
     the failure path. Minimum, because `sid = min(sids)` is already this project's convention for
     naming a merged group.
+
+    **The minimum is over the cycle and not over the walk** (F50, v0.10.1). Until v0.10.1 this
+    returned `min(seen)`, and `seen` is the whole walk — including the *tail* that led into the
+    cycle. A tail id smaller than every cycle member became the answer for that tail alone, so the
+    tail resolved to itself while the cycle members resolved to the cycle minimum: `{1: 7, 7: 8,
+    8: 7}` reported **two** incidents where there is one, which is the failure mode this paragraph
+    claims to prevent, produced by the line that claimed to prevent it.
     """
     seen: set[int] = {situation_id}
     current = situation_id
@@ -95,10 +102,26 @@ def resolve(situation_id: int, merged_into: Mapping[int, int]) -> Resolution:
         if nxt is None:
             return Resolution(current)
         if nxt in seen:
-            return Resolution(min(seen), cycle=True)
+            return Resolution(min(_cycle_members(nxt, merged_into)), cycle=True)
         seen.add(nxt)
         current = nxt
     return Resolution(current, unterminated=True)
+
+
+def _cycle_members(entry: int, merged_into: Mapping[int, int]) -> set[int]:
+    """The ids on the cycle reached at ``entry``, and nothing that merely led into it.
+
+    ``entry`` is the already-visited node the walk arrived at a second time, so it is **on** the
+    cycle by construction and every node from it back to itself has an edge. Walking that loop is
+    what separates the cycle from the tail, and the separation is the whole of F50: `min` over the
+    walk is not `min` over the cycle whenever the tail carries the smaller id.
+    """
+    members = {entry}
+    node = merged_into[entry]
+    while node != entry:
+        members.add(node)
+        node = merged_into[node]
+    return members
 
 
 @dataclass(frozen=True)

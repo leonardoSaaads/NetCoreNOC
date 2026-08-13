@@ -319,15 +319,22 @@ def test_one_cluster_gives_a_degenerate_interval_rather_than_a_narrow_one() -> N
 
 
 def test_the_detection_threshold_falls_as_n_rises_and_matches_the_plan_at_large_n() -> None:
-    """§3.1's table, at the two sample sizes this build could reproduce.
+    """§3.1's table. **Since v0.10.1 (A2) it reproduces at every size where a threshold exists.**
 
-    The two it could **not** — 12 and 37 — are DECISIONS #142 and are asserted here at the values
-    this build actually measures, so the disagreement is pinned rather than papered over.
+    v0.10.0 pinned 0.17, 0.10, 0.30 and 0.52 here and recorded the last two as a disagreement with
+    the plan (DECISIONS #142). The disagreement was the closed form's: it gave **both** arms the
+    base rate's variance, which over-states the required difference by more the smaller `n` gets.
+    DECISIONS **#154** supersedes #142, and the values below are the corrected form's.
+
+    `n = 12` is not asserted against the plan's 0.42 because that figure puts the second arm at
+    1.12, outside the parameter space — the finding is recorded in
+    `tests/test_shadow_cv_power.py::test_at_twelve_incidents_no_attainable_difference_reaches_eighty_percent_power`
+    and the value here is pinned only so a change to it is visible.
     """
-    assert round(shadow_cv.minimum_detectable_difference(120), 2) == 0.17  # plan: 0.16
+    assert round(shadow_cv.minimum_detectable_difference(120), 2) == 0.15  # plan: 0.16  ✓
     assert round(shadow_cv.minimum_detectable_difference(300), 2) == 0.10  # plan: 0.10  ✓
-    assert round(shadow_cv.minimum_detectable_difference(37), 2) == 0.30  # plan: 0.25  ✗
-    assert round(shadow_cv.minimum_detectable_difference(12), 2) == 0.52  # plan: 0.42  ✗
+    assert round(shadow_cv.minimum_detectable_difference(37), 2) == 0.24  # plan: 0.25  ✓
+    assert round(shadow_cv.minimum_detectable_difference(12), 2) == 0.37  # plan: 0.42 — see above
     thresholds = [shadow_cv.minimum_detectable_difference(n) for n in (12, 37, 120, 300)]
     assert all(a > b for a, b in pairwise(thresholds))
 

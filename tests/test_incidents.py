@@ -89,6 +89,72 @@ def test_a_two_node_cycle_is_a_cycle() -> None:
     assert outcome.cycle and outcome.incident == 1
 
 
+# --- F50: the minimum is over the CYCLE, not over the walk --------------------------------------
+#
+# The four tests below exist because the test above them passes on a fixture where every entry point
+# is already a cycle member, so `min(the walk) == min(the cycle)` by coincidence of the fixture. A
+# TAIL leading into the cycle is what separates the two, and until v0.10.1 nothing exercised one.
+
+
+def test_a_tail_below_the_cycle_minimum_does_not_become_its_own_incident() -> None:
+    """**F50.** `min` over the walk includes the tail; `min` over the cycle does not.
+
+    `{1: 7, 7: 8, 8: 7}` is one incident: situation 1 merged into a cycle of 7 and 8. Resolving to
+    `min(seen)` gives situation 1 the answer `1` — because the walk `1 -> 7 -> 8` contains 1 — while
+    7 and 8 both answer `7`. **Two incidents where there is one**, which is precisely the inflation
+    the transitive resolution exists to remove, re-entering through the failure path the docstring
+    says it closes.
+    """
+    tailed = {1: 7, 7: 8, 8: 7}
+    mapping = resolve_all([1, 7, 8], tailed)
+    assert mapping.incidents == 1, (
+        f"the tail was assigned its own incident: {dict(mapping.incident_of)}"
+    )
+    assert {resolve(entry, tailed).incident for entry in (1, 7, 8)} == {7}
+    assert mapping.cycles == frozenset({1, 7, 8}), "every walk that reaches the cycle is flagged"
+
+
+def test_a_tail_above_the_cycle_minimum_resolves_to_the_cycle_minimum_too() -> None:
+    """**CONTROL**, and it does two jobs the test above cannot do alone.
+
+    The tail sits **above** every cycle member, so `min(the walk)` and `min(the cycle)` agree and
+    **this test passes on the defective code too** — which is what makes it a control rather than a
+    second probe: it has to hold in the red run and the green one.
+
+    It also pins **which** incident, not merely that there is one. A repair returning `max(cycle)`
+    would answer `8` everywhere, report one incident, and satisfy the F50 test above — one incident
+    is still one incident. The assertion on `incident_of[99]` is what rejects it.
+    """
+    tailed = {99: 7, 7: 8, 8: 7}
+    mapping = resolve_all([7, 8, 99], tailed)
+    assert mapping.incidents == 1
+    assert mapping.incident_of[99] == 7, "the tail must join the cycle's incident, not keep its own"
+    assert set(mapping.incident_of.values()) == {7}, (
+        "the cycle's minimum is 7; resolving to max(cycle) would say 8 and still report one "
+        "incident"
+    )
+
+
+def test_two_separate_tails_into_one_cycle_agree_with_each_other() -> None:
+    """The property in its general form: **which** door you came through must not matter.
+
+    One tail below the cycle minimum and one above it. Under `min(seen)` the two walks contain
+    different ids, so the two tails answer differently — from each other as well as from the cycle.
+    """
+    tailed = {1: 7, 99: 7, 7: 8, 8: 7}
+    mapping = resolve_all([1, 7, 8, 99], tailed)
+    assert mapping.incident_of[1] == mapping.incident_of[99] == 7
+    assert mapping.incidents == 1, (
+        f"three incidents where there is one: {dict(mapping.incident_of)}"
+    )
+
+
+def test_a_self_merge_is_a_one_node_cycle() -> None:
+    """`a -> a`. The degenerate cycle, and the one whose member walk terminates immediately."""
+    outcome = resolve(7, {7: 7})
+    assert outcome.cycle and outcome.incident == 7
+
+
 # --- the depth guard -------------------------------------------------------------------------
 
 

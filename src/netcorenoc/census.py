@@ -148,14 +148,19 @@ async def first_label_per_incident(store: Store) -> dict[int, float]:
     Resolved through the one implementation, like everything else that groups by incident: an
     ordering built on a one-hop identity would seal a different set from the one the estimator
     excludes, and nothing would go red.
+
+    :func:`resolve_identity`'s return value is deliberately not bound. It stamps ``bags`` **in
+    place**, which is the effect this function needs, and the map it also returns is the caller's
+    business elsewhere. Until v0.10.1 this read ``identity = await resolve_identity(...)`` followed
+    by ``_ = identity`` — a discarded computation, and the kind of leftover a dead-code gate cannot
+    see because the discard is what makes the name used.
     """
     bags = await store.labelled_bags()
-    identity = await resolve_identity(store, bags, [])
+    await resolve_identity(store, bags, [])
     earliest: dict[int, float] = {}
     for bag in bags:
         incident = int(bag["incident"])
         at = float(bag["label_at"])
         if incident not in earliest or at < earliest[incident]:
             earliest[incident] = at
-    _ = identity
     return earliest

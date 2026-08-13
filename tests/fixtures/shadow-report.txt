@@ -33,7 +33,7 @@ agreement with the champion.
 -- THE VERDICT -----------------------------------------------
   verdict                                INSUFFICIENT_EVIDENCE
   floors met                                                no
-  minimum detectable difference                          0.182
+  minimum detectable difference                          0.161
     at n incidents                                         100
   holdout queries                                            0
   projection

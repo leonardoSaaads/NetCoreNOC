@@ -85,6 +85,15 @@ RESAMPLES = 2000
 Z_ALPHA = 1.959964
 Z_POWER = 0.841621
 
+# The fixed-point solve in `minimum_detectable_difference`. The bound is a SECOND guard, not the
+# stopping rule: the iteration is a contraction and converges to 1e-12 in under ten steps at every
+# `n` this project can produce, so reaching 64 would be evidence that the arithmetic changed rather
+# than that the problem was hard. Returning the last iterate rather than raising is deliberate and
+# matches `incidents.MAX_CHAIN_DEPTH`: this is an offline report, and a threshold that is slightly
+# off is a number to report, where an exception would take the whole evaluation down with it.
+_MDD_MAX_ITERATIONS = 64
+_MDD_TOLERANCE = 1e-12
+
 
 class _Lcg:
     """A tiny deterministic PRNG, so the resamples do not depend on CPython's `random`.
@@ -195,23 +204,54 @@ def minimum_detectable_difference(n: int, p: float = 0.70) -> float:
     """The smallest true difference two models must have for `n` clusters to separate them.
 
     Two-sided alpha = 0.05, power = 0.80, normal approximation on the difference of two proportions
-    measured over `n` clusters each:
+    measured over `n` clusters each. **Each arm carries its own variance:**
 
-        delta = (z_alpha/2 + z_power) * sqrt(2 * p(1-p) / n)
+        delta = (z_alpha/2 + z_power) * sqrt((p(1-p) + q(1-q)) / n),   q = p + delta
 
-    Documented and dependency-free, as prime directive 4 requires.
+    which is implicit in `delta` and solved by fixed-point iteration from the equal-variance value.
+    It converges monotonically downward in a handful of steps, adds no dependency, and is a
+    contraction wherever it is evaluated here — `d(rhs)/d(delta)` is bounded well below 1 for every
+    `n >= 1` at these quantiles, because the square root's argument moves by at most `1/(4n)` per
+    unit of `delta`.
 
-    **This build could not reproduce the plan's table below `n = 120`, and did not adjust either
-    side** (DECISIONS #142). At `n = 37` this returns **0.298** where §3.1 registers 0.25; an
-    independent Monte-Carlo power search, sharing no arithmetic with this expression, returns 0.33.
-    At 120 and 300 all three agree. The disagreement runs in the direction that **strengthens** the
-    plan's conclusion — if the true threshold at 37 incidents is 30 p.p. rather than 25, "no
-    plausible pair of scorers differs by that" is more true, not less — and nothing registered
-    depends on 25 being the right number.
+    **v0.10.1 (A2) replaced `2 * p(1-p)`, and the correction runs in the opposite direction to the
+    one DECISIONS #142 recorded.** The old form gave **both** arms the base-rate variance. The
+    second arm sits at `p + delta`, and when the detectable delta is large — which is exactly the
+    small-`n` regime — its variance is far smaller: at `n = 37` and `p = 0.70` the arms are 0.210
+    and **0.058**. Assuming the larger one for both **demands a bigger delta than reality**, and the
+    error grows as `n` shrinks. Measured, against an independent Monte-Carlo sharing no arithmetic
+    with this expression (`tests/test_shadow_cv_power.py`):
+
+        n     naive    this    MC     plan
+        37    0.298   0.238   0.237   0.25
+        120   0.166   0.149   0.150   0.16
+        300   0.105   0.099   0.099   0.10
+
+    So the plan's §3.1 table was **not** optimistic; the closed form was pessimistic, and the two
+    "independent" methods that agreed with each other in v0.10.0 shared the assumption that was
+    wrong. DECISIONS **#154** supersedes #142. `PREREGISTRATION-0.10.0.md` is **not edited** — it is
+    ratified and hash-guarded, and this table is a reported quantity and a verdict trigger, never a
+    floor, so nothing registered depends on the number.
+
+    The direction matters for what it does **not** do: a lower threshold makes
+    `observed > detectable` *easier* to satisfy, so v0.10.0's `INSUFFICIENT_EVIDENCE` — reached on a
+    floor failure — is unaffected. What it repairs is a trigger that was more conservative than
+    intended, which would have told a future release with a real corpus that it could not resolve a
+    difference it actually could.
     """
     if n <= 0:
         return 1.0
-    return (Z_ALPHA + Z_POWER) * math.sqrt(2.0 * p * (1.0 - p) / n)
+    delta = (Z_ALPHA + Z_POWER) * math.sqrt(2.0 * p * (1.0 - p) / n)
+    for _step in range(_MDD_MAX_ITERATIONS):
+        # Clamped because a large delta at tiny `n` can push the second arm past 1.0, where
+        # `q(1-q)` would go negative and the square root would raise. At q = 1 the arm's variance is
+        # zero, which is the correct limit: a proportion of 1 has no sampling variance.
+        q = min(1.0, p + delta)
+        nxt = (Z_ALPHA + Z_POWER) * math.sqrt((p * (1.0 - p) + q * (1.0 - q)) / n)
+        if abs(nxt - delta) < _MDD_TOLERANCE:
+            return nxt
+        delta = nxt
+    return delta
 
 
 @dataclass(frozen=True)

@@ -3360,3 +3360,63 @@ grouping**.
   from the **mutation ledger**, and none from reading the code. Both instruments were treated as
   sources of evidence rather than as chores to satisfy, and neither was ever answered with an
   allowlist entry.
+
+## 154. The detection threshold was pessimistic, not the plan optimistic — superseding #142 (v0.10.1)
+
+- **Supersedes #142**, which stays exactly as written. A correction to an append-only ledger is an
+  addition; a project whose ADRs can be edited has ADRs nobody can cite.
+- **What #142 concluded**: `PREREGISTRATION-0.10.0.md` §3.1's minimum-detectable-difference table
+  *"does not reproduce below `n = 120`"*, on a closed form giving 0.298 at `n = 37` and a
+  Monte-Carlo giving 0.33 against a registered 0.25. It adjusted neither side — correctly — and
+  carried the disagreement to `SECURITY-REVIEW-0.10.0.md` §3.2 as an opinion for v0.11.0: *"the
+  plan's small-`n` figures are optimistic and should be re-derived"*.
+- **What the measurement shows**: the closed form was wrong, and in the opposite direction. It read
+  `delta = (z_α/2 + z_power)·sqrt(2·p(1−p)/n)`, which gives **both** arms the base rate's variance.
+  The second arm sits at `p + delta`, and when the detectable delta is large — which is exactly the
+  small-`n` regime — its variance is far smaller. At `n = 37`, `p = 0.70`: the arms are 0.210 and
+  **0.058**. Assuming the larger for both demands a bigger delta than reality, and the error grows
+  as `n` shrinks:
+
+  | n | naive | variance-correct | independent MC | plan |
+  |---:|---:|---:|---:|---:|
+  | 37 | 0.298 | **0.238** | 0.240 | 0.25 |
+  | 120 | 0.166 | **0.149** | 0.150 | 0.16 |
+  | 300 | 0.105 | **0.099** | 0.099 | 0.10 |
+
+- **Why the correction runs opposite to #142's direction**: the plan's table was never optimistic.
+  The closed form was **pessimistic**, and increasingly so as the corpus shrank. #142's diagnostic —
+  that the `p` making the naive form return 0.25 at `n = 37` is 0.821, far from the ≈ 0.72 implied by
+  the large-`n` rows — was a real symptom read as evidence for the wrong cause: the two halves of the
+  table behaved differently because the *formula* behaved differently at the two ends, not because
+  the table was produced under two assumptions.
+- **Why #142's corroboration failed**: its Monte-Carlo returned 0.33 at `n = 37`, *higher* than the
+  naive form where the truth is *lower*. **Two methods that share an assumption are not two
+  methods.** Whatever that search did, it did not provide independent confirmation, and its
+  agreement is what made the wrong conclusion look corroborated. Independence means independent
+  *arithmetic*, not independent *code* (Appendix B).
+- **Options**: (a) leave the form and re-derive the plan's table in v0.11.0, as #142 recommended;
+  (b) correct the closed form and edit the plan to match; (c) correct the closed form, leave the
+  plan untouched, and pin the form against a genuinely independent simulation.
+- **Choice**: **(c)**.
+- **Reason**: (a) acts on a conclusion now known to be backwards and would have re-derived a table
+  that was right. (b) edits a ratified, hash-guarded document, which §8 forbids and which would
+  destroy the only property a pre-registration has. (c) repairs the *implementation*, leaves the
+  *plan*, and — the part that matters — replaces an argument with a test:
+  `tests/test_shadow_cv_power.py` searches for the threshold by simulating two binomials and
+  counting z-test rejections, sharing no arithmetic with the closed form and using a different
+  generator. **The next disagreement is detected, not argued.**
+- **What does not change**: v0.10.0's verdict. A *lower* threshold makes `observed > detectable`
+  **easier** to satisfy, so `INSUFFICIENT_EVIDENCE` was reached on a floor failure and would have
+  been reached anyway. What is repaired is a trigger that was **more conservative than intended** —
+  a future release with a real corpus would have been told it could not resolve a difference it
+  actually could.
+- **One intentional change to a reported quantity, and it is counted**: the shadow report's printed
+  `minimum detectable difference` moves from **0.182 to 0.161** at its fixture's `n = 100`. The
+  verdict, its four trigger lines, every floor and every other number in the report are byte-
+  identical; the diff is one line, read line by line before re-freezing as #139 requires.
+- **A second finding, recorded and not repaired**: §3.1 registers **0.42** at `n = 12`. At
+  `p = 0.70` that puts the second arm at **1.12**, which is not a proportion. The largest difference
+  that exists at this base rate is 0.30, and the simulation puts its power at **0.519**. So at 12
+  incidents there is no detectable difference *at all* — a stronger version of the plan's own
+  conclusion, and it means the registered figure is not a threshold that was too optimistic but one
+  that does not exist. The plan is still not edited, for the reasons above.
