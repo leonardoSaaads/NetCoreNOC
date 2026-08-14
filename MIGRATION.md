@@ -1,5 +1,75 @@
 # Upgrading NetCoreNOC
 
+## v0.10.1 → v0.11.0 (champion/challenger — **one migration, and nothing will start promoting**)
+
+Replace the code and restart. Migration **`0013`** applies automatically at startup and takes
+`user_version` from **12** to **13**.
+
+**The single most important thing to know: this release does not change how your alarms are
+grouped.** An appliance with no `model_version` row behaves exactly as v0.10.1 did — same scorer,
+same parameters, same situations, and `make eval` is byte-identical.
+
+| | |
+|---|---|
+| Schema | **`0013`**, additive and forward-only. Three new tables, one rebuilt pointer table, three new columns on `holdout_access` |
+| Rows seeded | **none.** Fresh installs and upgrades both start with no model version, no promotion and no fold assignment |
+| Data | **untouched**, verified row-for-row across the upgrade on a populated database |
+| Existing labels | **unchanged** |
+| Audit chain | **verifies, with the same final hash** across the upgrade. Four actions added |
+| Grouping | **unchanged.** Correlation, capture and ingest untouched; `scoring.py` byte-identical; `make eval` byte-identical |
+| Learned state | **unchanged** |
+| Routes | **two added** — `GET /api/promotion` (viewer+) and `POST /api/promotion` (admin) |
+| UI | **unchanged.** Not a button, not a field, not a string |
+| Environment variables | **unchanged.** There is no setting that enables promotion |
+| Runtime dependencies | **five**, unchanged |
+
+### The one schema change worth understanding
+
+`scorer_active` is **rebuilt** — `config_id` had to become nullable so a `CHECK` could enforce that
+**exactly one** of `config_id` / `model_version_id` is set. Your existing pointer keeps its
+`config_id` and gets `model_version_id = NULL`, which is truthful: every pre-v0.11.0 appliance was
+in fact running an additive configuration. This is checked field by field by
+`tests/test_upgrade.py::test_v0101_upgrade_applies_0013_and_seeds_nothing`, because a rebuild that
+lost the pointer would leave the correlator on the coded defaults **silently**.
+
+### What an operator will see change
+
+**In the appliance: nothing, until you ask for something.** No promotion happens on its own. There
+is **no `auto_promote` setting, not even defaulted off.**
+
+**Two new things you can do**, both admin-only to write:
+
+```sh
+# Register an artefact. This is NOT a promotion — nothing runs it.
+python -m netcorenoc promotion register --kind logistic --params '{"intercept":-1.5,...}'
+
+# See what has been proposed, and why each was refused.
+python -m netcorenoc promotion list
+```
+
+Proposing a promotion is `POST /api/promotion` with `{"model_version_id": N}`. **The server decides.**
+Your request names a candidate; it cannot assert a verdict, a metric or a floor evaluation.
+
+**On today's data, every promotion will be refused**, and the refusal will tell you why:
+
+```
+PROMOTION REFUSED — INSUFFICIENT_EVIDENCE.
+Triggers that fired (4):
+  - FLOOR_UNMET: a §2 floor is unmet
+  ...
+Detection threshold at n = 37 incidents: 0.2384 (23.8 percentage points).
+```
+
+**That is not a bug and not a misconfiguration.** The floors are counts of *labelled evidence* and
+are met by labelling, not by tuning. Nothing you can set will change the verdict — which is the
+point of the gate.
+
+### Rollback
+
+Keep a copy of the database file before upgrading, as always. `0013` is forward-only: a v0.10.1
+binary will not open a `user_version = 13` database. Nothing else needs undoing — the release adds
+capability and changes no existing behaviour.
+
 ## v0.10.0 → v0.10.1 (the corrections — **no migration, and nothing for you to do**)
 
 Replace the code and restart. **There is no migration.** `user_version` stays at **12** and the

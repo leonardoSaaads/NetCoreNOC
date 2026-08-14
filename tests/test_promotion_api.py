@@ -16,9 +16,10 @@ import json
 
 import pytest
 
-from netcorenoc import audit, model_version, promotion
+from netcorenoc import audit, challenger, model_version, promotion, seal
 from netcorenoc.api import create_app
 from netcorenoc.main import Engine
+from netcorenoc.shadow_cv import Interval, power_at
 from netcorenoc.store import Store
 
 import authutil
@@ -240,3 +241,156 @@ async def test_the_seal_is_not_read_by_a_refusal_on_the_real_floors(store: Store
     await client.post("/api/promotion", json={"model_version_id": model_version_id})
     await client.aclose()
     assert await store.query_count() == 0
+
+
+# -- S4: the applied path, end to end through the route ---------------------------------------
+
+
+async def _sufficient_corpus(store: Store) -> None:
+    """**Sixty asserting bags over sixty incidents — real rows, not patched floors.**
+
+    The earlier version of this fixture lowered `ASSERTING_BAGS_FLOOR` to 0. That reached the
+    applied path by removing the floor rather than by clearing it, and it left `smallest_side` at a
+    derived 0 so `THIN_SPLIT` fired anyway — which is how the missing `smallest_side` derivation in
+    the route was found. Seeding evidence that genuinely clears the registered floors exercises the
+    same arithmetic an operator would.
+    """
+    async with store.lock:
+        for _ in range(60):
+            sid = await store.create_situation(BASE, None)
+            await store.conn.execute(
+                "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, "
+                "coverage, member_count, excluded_reconciled, scope_redacted_members, "
+                "capture_provenance) VALUES (?, 'split', ?, 'alice', 'full', 8, 2, 0, 'current')",
+                (sid, BASE),
+            )
+        await store.commit()
+
+
+async def test_the_applied_path_moves_the_pointer_and_records_before_and_after(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The one path this corpus can never reach, exercised where it can be.**
+
+    Forced by lowering the **server's own floors** and widening the **server's own** power
+    calculation — never by anything the request carries. That distinction is the point: the only way
+    to reach `BETTER` is to change what the server measures, and a fixture that got here by sending
+    a field would be evidence the boundary had been breached rather than that the path works.
+    """
+    await _sufficient_corpus(store)
+    from netcorenoc.api import routes_promotion
+
+    # Patched on the ROUTE's binding, deliberately: that is the one the handler calls, and the
+    # substitute still goes through the real `power_at` — only its `n` and observed difference are
+    # replaced, so the power arithmetic under test is the shipped arithmetic.
+    monkeypatch.setattr(routes_promotion, "power_at", lambda _n, _d, p=0.70: power_at(400, 0.60, p))
+
+    good = Interval(0.10, 0.08, 0.12, 40)
+    bad = Interval(0.30, 0.28, 0.32, 40)
+    monkeypatch.setattr(
+        promotion.Metrics,
+        "by_name",
+        lambda self, name: promotion.Quantity(
+            name,
+            Interval(0.90, 0.88, 0.92, 40) if "respected" in name else good,
+            Interval(0.50, 0.48, 0.52, 40) if "respected" in name else bad,
+        ),
+    )
+
+    engine, app = await _env(store)
+    async with store.lock:
+        await store.construct_seal(
+            release="0.11.0",
+            plan_sha256=PLAN,
+            created_at=BASE,
+            digest="d" * 64,
+            incident_ids=[1, 2, 3],
+            corpus_incidents=9,
+        )
+        await seal.ratify(store, release="0.11.0", plan_sha256=PLAN, now=BASE)
+        await store.commit()
+    model_version_id = await _register(store)
+
+    client = await authutil.client_as(app, "admin")
+    response = await client.post("/api/promotion", json={"model_version_id": model_version_id})
+    await client.aclose()
+    body = response.json()
+    assert body["status"] == "applied", body
+    assert body["verdict"] == "BETTER"
+    assert body["reason"] is None, "an applied promotion carried a refusal reason"
+
+    # The pointer moved, and EXACTLY ONE side is set.
+    cur = await store.conn.execute("SELECT config_id, model_version_id FROM scorer_active")
+    assert tuple(await cur.fetchone()) == (None, model_version_id)  # type: ignore[arg-type]
+
+    # The engine picks it up at its reload point and runs the promoted scorer.
+    await engine.load_scorer_config()
+    assert engine.scorer_model_version_id == model_version_id
+    assert engine.scorer_config_id is None
+    assert isinstance(engine.correlator.scorer.active, challenger.LogisticScorer)
+
+    # The row, and the audit row with before/after.
+    row = (await store.list_promotions(10))[0]
+    assert row["outcome"] == "applied"
+    assert row["refusal_reason"] is None
+    assert row["query_count"] == 1, "the seal was not spent when the gate reached it"
+
+    entry = next(r for r in await store.audit_all() if r["action"] == "promotion.applied")
+    details = json.loads(str(entry["details"]))
+    assert details["before"]["config_id"] == 1
+    assert details["after"]["model_version_id"] == model_version_id
+    assert (await audit.verify_chain(store)).ok
+
+
+async def test_a_better_verdict_with_no_challenger_run_is_still_refused(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The third refusal, reached through the route: the evidence permits it and the artefact
+    cannot be traced. **`registering is not promoting`, enforced.**"""
+    await _sufficient_corpus(store)
+    from netcorenoc.api import routes_promotion
+
+    # Patched on the ROUTE's binding, deliberately: that is the one the handler calls, and the
+    # substitute still goes through the real `power_at` — only its `n` and observed difference are
+    # replaced, so the power arithmetic under test is the shipped arithmetic.
+    monkeypatch.setattr(routes_promotion, "power_at", lambda _n, _d, p=0.70: power_at(400, 0.60, p))
+    good = Interval(0.10, 0.08, 0.12, 40)
+    bad = Interval(0.30, 0.28, 0.32, 40)
+    monkeypatch.setattr(
+        promotion.Metrics,
+        "by_name",
+        lambda self, name: promotion.Quantity(
+            name,
+            Interval(0.90, 0.88, 0.92, 40) if "respected" in name else good,
+            Interval(0.50, 0.48, 0.52, 40) if "respected" in name else bad,
+        ),
+    )
+
+    _engine, app = await _env(store)
+    async with store.lock:
+        await store.construct_seal(
+            release="0.11.0",
+            plan_sha256=PLAN,
+            created_at=BASE,
+            digest="d" * 64,
+            incident_ids=[1, 2, 3],
+            corpus_incidents=9,
+        )
+        await seal.ratify(store, release="0.11.0", plan_sha256=PLAN, now=BASE)
+        await store.commit()
+    model_version_id = await _register(store, with_run=False)
+
+    client = await authutil.client_as(app, "admin")
+    response = await client.post("/api/promotion", json={"model_version_id": model_version_id})
+    await client.aclose()
+    body = response.json()
+
+    assert body["status"] == "refused"
+    assert body["verdict"] == "BETTER", "the verdict itself was sufficient; the provenance was not"
+    assert "no challenger run" in body["reason"]
+
+    cur = await store.conn.execute("SELECT config_id, model_version_id FROM scorer_active")
+    assert tuple(await cur.fetchone()) == (1, None)  # type: ignore[arg-type]
+    row = (await store.list_promotions(10))[0]
+    assert row["outcome"] == "refused"
+    assert "retune with a better story" in str(row["refusal_reason"])

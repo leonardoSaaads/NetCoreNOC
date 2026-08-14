@@ -380,3 +380,94 @@ def test_the_metrics_object_offers_no_composite() -> None:
     present = {name for name in dir(Metrics) if not name.startswith("_")}
     assert not (present & banned), f"Metrics grew a composite: {sorted(present & banned)}"
     assert set(promotion.QUANTITY_NAMES) == {q.name for q in metrics().quantities}
+
+
+# -- the third refusal: the evidence permits it, and the artefact cannot be traced -------------
+
+
+def test_a_promotion_with_no_challenger_run_is_refused_even_when_the_verdict_permits_it() -> None:
+    """**The schema cannot enforce this and the verdict does not cover it.**
+
+    `model_version.challenger_run_id` is legitimately `NULL` for an additive artefact registered
+    from hand-chosen parameters — registering is not promoting. So the rule that a *promotion* must
+    name the run that produced its coefficients lives in code, and it is a refusal **with a reason**
+    rather than a silent skip.
+
+    Kept distinct from both of the plan's §4 refusals on purpose: this is neither *"the corpus
+    cannot decide"* nor *"the corpus decided against"*. The evidence is sufficient and the
+    challenger won; the **provenance** is missing.
+    """
+    better = promotion.Decision(
+        judgement=Judgement(verdict=Verdict.BETTER),
+        metrics=metrics(),
+        evaluation_run_id="r",
+        plan_sha256=PLAN,
+    )
+    message = promotion.missing_run_refusal(better, 7)
+    assert "no challenger run" in message
+    assert "model version 7" in message
+    assert "retune with a better story" in message
+    # It must not read as either of the other two.
+    assert "INSUFFICIENT_EVIDENCE" not in message
+    assert "NOT_BETTER" not in message
+
+
+def test_the_missing_run_refusal_cannot_describe_a_verdict_that_never_permitted_a_promotion() -> (
+    None
+):
+    """The same guard its two siblings carry: it cannot become a way of reaching a refusal message
+    the verdict did not earn."""
+    for verdict in (Verdict.INSUFFICIENT_EVIDENCE, Verdict.NOT_BETTER):
+        decision = promotion.Decision(
+            judgement=Judgement(verdict=verdict),
+            metrics=metrics(),
+            evaluation_run_id="r",
+            plan_sha256=PLAN,
+        )
+        with pytest.raises(PromotionPathError, match="applies only where"):
+            promotion.missing_run_refusal(decision, 7)
+
+
+# -- F52: the asserting-bag predicate itself ---------------------------------------------------
+
+
+async def test_f52_a_bag_with_no_reconciled_mark_is_not_an_asserting_bag(store: Store) -> None:
+    """**F52.** `asserting_bag_rows` counts bags with `excluded_reconciled >= 1`, and until this
+    test nothing guarded the `1`.
+
+    Measured during Phase 6: widening the predicate to `>= 0` left **all 1 296 tests green**. The
+    consequence is not cosmetic — `asserting_bags` is `PREREGISTRATION-0.10.0.md` §2.2's PRIMARY
+    floor, and a predicate that counted bags asserting **nothing** would let that floor be cleared
+    by evidence that does not exist. It is F46 in a new place: *a threshold counting a quantity
+    other than the one it names.*
+
+    On the current corpus the verdict would not change (13 < 50 either way), which is exactly why
+    no existing test noticed — the release's headline outcome is insensitive to it, and a larger
+    corpus would not be.
+
+    **The control comes first**: a bag that DOES carry a reconciled mark must be counted, or this
+    test would pass against a predicate that counted nothing at all.
+    """
+    async with store.lock:
+        # One situation per bag: `feedback` is UNIQUE on (situation_id, verdict), which is itself
+        # the "a repeat is a no-op" rule from DECISIONS #68 and not something to work around.
+        for marks, verdict in ((2, "split"), (0, "split"), (0, "confirm")):
+            sid = await store.create_situation(BASE, None)
+            await store.conn.execute(
+                "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, "
+                "coverage, member_count, excluded_reconciled, scope_redacted_members, "
+                "capture_provenance) VALUES (?, ?, ?, 'alice', 'full', 5, ?, 0, 'current')",
+                (sid, verdict, BASE, marks),
+            )
+        await store.commit()
+
+    rows = await store.asserting_bag_rows()
+    # THE CONTROL: the one bag that asserts something is counted.
+    assert len(rows) == 1, f"expected exactly the marked split bag, got {len(rows)}"
+    assert int(rows[0]["excluded_reconciled"]) == 2
+    # THE GUARD: neither unmarked bag is, and the `split` one is the case that matters — a `split`
+    # with no marks is a real and common label that asserts no PAIR.
+    assert all(int(row["excluded_reconciled"]) >= 1 for row in rows), (
+        "a bag with no reconciled mark was counted as an asserting bag: `asserting_bags` is the "
+        "PRIMARY floor, and this predicate is what decides what counts toward it"
+    )

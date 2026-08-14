@@ -361,6 +361,35 @@ def refusal_for(decision: Decision) -> str:
             )
 
 
+def missing_run_refusal(decision: Decision, model_version_id: int) -> str:
+    """The third refusal: **the verdict permits it, and the artefact cannot be traced.**
+
+    Not one of the plan's §4 pair, and deliberately kept distinct from both: it is neither *"the
+    corpus cannot decide"* nor *"the corpus decided against"*. The evidence is sufficient and the
+    challenger won; what is missing is the **provenance** — which `challenger_run` produced these
+    coefficients. *A promotion whose evidence cannot be named afterwards is a retune with a better
+    story.*
+
+    The schema cannot enforce it, because `model_version.challenger_run_id` is legitimately `NULL`
+    for an additive artefact registered from hand-chosen parameters. Registering is not promoting;
+    this is the rule that separates them.
+
+    Raises if the verdict does not permit a promotion at all — the same guard its two siblings
+    carry, so this cannot become a way of reaching a refusal message the verdict did not earn.
+    """
+    if not decision.may_apply:
+        raise PromotionPathError(
+            f"the missing-run refusal was asked to describe a {decision.verdict.name} verdict. It "
+            "applies only where the evidence WOULD have permitted a promotion."
+        )
+    return (
+        "PROMOTION REFUSED — no challenger run.\n"
+        f"The verdict is {decision.verdict.name}, but model version {model_version_id} carries no "
+        "`challenger_run_id`, so the coefficients cannot be traced to the run that produced them. "
+        "A promotion whose evidence cannot be named afterwards is a retune with a better story."
+    )
+
+
 def triggers_document(judgement: Judgement) -> str:
     """The `promotion.triggers` column: **enumerated, not summarised** (§2 item 3)."""
     return json.dumps([t.name for t in judgement.triggers], separators=(",", ":"))

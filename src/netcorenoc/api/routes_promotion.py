@@ -156,6 +156,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 release=__import__("netcorenoc").__version__,
                 now=now,
                 asserting_incidents=asserting,
+                # The smallest side of the comparison, in INCIDENTS — the unit every clustered
+                # estimate is expressed in. With no asserting incidents it is 0 and `THIN_SPLIT`
+                # fires, which is correct: a split nobody reported has fewer than ten incidents on
+                # one side of it. Passing it explicitly rather than leaving `evaluate`'s default is
+                # what makes that a DERIVED zero instead of an unset parameter.
+                smallest_side=asserting,
             )
             unavailable.extend(decision.unavailable)
             decision = promotion.Decision(
@@ -172,17 +178,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             missing_run = candidate["challenger_run_id"] is None
             applied = decision.may_apply and not missing_run
             reason: str | None = None
-            if not applied:
-                reason = (
-                    promotion.refusal_for(decision)
-                    if not decision.may_apply
-                    else (
-                        "PROMOTION REFUSED — no challenger run.\nThe verdict is BETTER, but model "
-                        f"version {body.model_version_id} carries no `challenger_run_id`, so the "
-                        "coefficients cannot be traced to the run that produced them. A promotion "
-                        "whose evidence cannot be named afterwards is a retune with a better story."
-                    )
-                )
+            if not decision.may_apply:
+                reason = promotion.refusal_for(decision)
+            elif missing_run:
+                reason = promotion.missing_run_refusal(decision, body.model_version_id)
 
             before = _params_of(await store.active_scorer_config())
             promotion_id = await store.insert_promotion(

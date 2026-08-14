@@ -4,6 +4,70 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-08-14 — "champion/challenger"
+
+**Promotion becomes possible, auditable, and refusable — and on this corpus it refuses.**
+
+The slow loop can now propose a scorer swap, an admin can approve it, and the evidence survives the
+swap. Against the real corpus the gate returns **`INSUFFICIENT_EVIDENCE`**, the sealed holdout is
+**not read**, and its query count remains **0**.
+[`docs/analysis/PREREGISTRATION-0.11.0.md`](docs/analysis/PREREGISTRATION-0.11.0.md) §6.1 predicted
+that outcome **before any of this release's code existed**, and the census in
+[`docs/gates/v0.11.0-phase-1.md`](docs/gates/v0.11.0-phase-1.md) predicted it again from real data
+before the gate was built. **That is the expected result and it is a successful release.**
+
+### The verdict, on real data
+
+```
+verdict          : INSUFFICIENT_EVIDENCE
+triggers         : FLOOR_UNMET, HOLDOUT_UNSPENT, THIN_SPLIT, POWER
+seal query count : 0
+promotions applied / refused : 0 / 1
+```
+
+`asserting_bags` is **0** against a registered floor of **50**. The detection threshold at
+n = 37 incidents is **0.2384**, reproducing ADR #154's corrected closed form. The projection is
+`undefined`, because this repository has measured that it has no labelling-rate data at all.
+
+### Added
+
+- **Migration `0013`** — one, additive, forward-only, seeding no rows. `model_version` (the
+  artefact), `promotion` (the event, **refusals included**), `evaluation_fold` (the assignment a
+  citation points at), a rebuilt `scorer_active` with a `CHECK` admitting **exactly one** pointer,
+  and three hash-chain columns on `holdout_access`.
+- **`model_version.py`** — canonical JSON parameter documents with a **per-kind validator**. The
+  logistic kind's five degeneracy rules were registered in the plan §5 **before any fit existed**.
+- **Dispatch by kind in `scorer_lifecycle`**, which it had never had.
+- **`promotion.py`** — the gate. Floors, then the power condition, then the seal, in that registered
+  order; two refusals by **different code paths**, each of which raises if handed the other's
+  verdict; and a third for an artefact whose coefficients cannot be traced to a run.
+- **`evaluation_folds.py`** — fold materialisation, so a promotion cites stored rows.
+- **`POST` / `GET /api/promotion`** and `netcorenoc promotion list|register`.
+- **Four audit actions**: `promotion.applied`, `promotion.refused`, `seal.construct`, `seal.spend`.
+- **`make census`** — the corpus census as a command, byte-identical across two processes.
+
+### Fixed
+
+- **F52 — the asserting-bag predicate was unguarded.** Widening
+  `excluded_reconciled >= 1` to `>= 0` in `asserting_bag_rows` left **all 1 296 tests green**, while
+  making bags that assert nothing count toward `asserting_bags` — the **primary** registered floor.
+  Found by re-running F48's injection in Phase 6, and closed in the same release.
+
+### Not in this release, deliberately
+
+- **No UI change** — not a button, not a field, not a string (ADR #163).
+- **No automatic promotion**, and **no `auto_promote` flag, not even defaulted off**.
+- **No composite quality score.** Four named quantities, never composed.
+- **No plugin surface**: no adapter column, no registry, no entry point. ONNX is v0.13.0.
+- **No re-cutting of the seal**, and no change to its construction rule.
+- The v0.9.2 reconciliation-drift audit gap stays open; nothing here makes it newly reachable.
+
+### Unchanged
+
+`make eval` is byte-identical (`c2e8a0ce…8b9b6f26`), `scoring.py` is byte-identical, `engine.py` is
+still exactly 569 lines, and there are still **five** runtime dependencies. An appliance with no
+`model_version` row behaves exactly as v0.10.1 did.
+
 ## [0.10.1] - 2026-08-13 — "the corrections v0.10.0 earned"
 
 **A guard that was not merely untested but wrong, a conclusion about a statistic that ran backwards,
