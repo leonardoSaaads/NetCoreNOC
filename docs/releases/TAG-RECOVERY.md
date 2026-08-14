@@ -309,7 +309,7 @@ automation), so both are recorded here with the others.
 | Tag | Points at | Created |
 |---|---|---|
 | **`v0.11.0-gate0`** | `78faace` — the commit that adds `docs/analysis/PREREGISTRATION-0.11.0.md` **and nothing else** (1 file, 187 insertions) | Phase 0 |
-| **`v0.11.0`** | the release commit on the build branch, and **recreated on the merge commit after merging** | Phase 8 |
+| **`v0.11.0`** | `2234c3b` — the release commit on the build branch, and **recreated on the merge commit after merging** | Phase 8 |
 
 **`v0.11.0-gate0` matters for the same reason `v0.10.0-gate0` did, and slightly more.** v0.10.0's
 plan governed a verdict nothing acted on. v0.11.0's plan governs a **promotion**, and its §4 fixes
@@ -341,3 +341,23 @@ After tagging, the version check of §5 must print:
 ```
 v0.11.0  ->  0.11.0
 ```
+
+**Both tags exist locally and neither could be pushed.** `git push` returned **403 on both
+attempts**, which Appendix A of the build prompt anticipates: *the repository is read-only to
+automation*. The cap is two attempts and it was not routed around — no fork, no API write path.
+
+A **verified `git bundle`** is produced alongside the tree so both tags and the whole history travel
+with the archive rather than depending on a push that cannot happen:
+
+```sh
+git bundle create NetCoreNOC-v0.11.0.bundle --all
+git bundle verify NetCoreNOC-v0.11.0.bundle
+#   -> The bundle records a complete history.
+
+# to recover, from a clone of the repository:
+git fetch /path/to/NetCoreNOC-v0.11.0.bundle 'refs/tags/*:refs/tags/*' \
+    'refs/heads/claude/netcorenoc-v0-11-build-78ysex:refs/heads/v0.11.0-build'
+```
+
+The bundle is **evidence alongside a report, never a substitute for one**: the push failure is
+reported above in the terms Appendix A asks for.
