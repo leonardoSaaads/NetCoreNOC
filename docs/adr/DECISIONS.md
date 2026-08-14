@@ -3574,3 +3574,128 @@ grouping**.
   not established*, which is what one sample per release supports. A release that wants a
   defensible coverage trend needs repeated measurement, and that is a ROADMAP line rather than
   something this release invents a method for.
+
+## 160. Three tables, three responsibilities: the artefact, the event, and the retune (v0.11.0)
+
+- **Context**: `CHAMPION-CHALLENGER-0.11-DRAFT.md` §1 specifies that *"promotion is that table
+  gaining a row"* — a new `scorer_config` row. The draft was written by v0.10.0 from what it could
+  see. It does not survive contact with the schema, and Gate 0 reproduces each refutation by
+  execution rather than arguing it (`../gates/v0.11.0-phase-0.md` §2).
+- **The three refutations, and they are independent**:
+  1. **The columns are the `AdditiveScorer`'s.** `w_t`, `w_a`, `w_e`, `tau_s`, `threshold`, all
+     `NOT NULL`. A logistic model has an intercept and one weight per feature, and the feature set
+     is a modelling decision this project has explicitly not frozen.
+  2. **A fitted challenger is rejected by the validator.** Measured: `validate_params(1.7, 3.1,
+     -0.8, 30.0, 0.0)` raises on `w_t`, and on `w_a`, and on `w_e`, and on `threshold` — four
+     independent rejections, not one. Logit coefficients are unbounded reals and the validator
+     demands `[0, 1]`. The threshold is the part that cannot be negotiated: `MIN_THRESHOLD = 0.01`
+     exists because *for the additive scorer* a threshold at zero links every candidate pair into
+     one situation, while *for the logistic scorer* `0.0` is exactly `p = 0.5`, the neutral point.
+     **The same number means opposite things to the two kinds.** Relaxing the validator to admit
+     the challenger would remove the additive scorer's only protection — and that validator is the
+     sole barrier between a database row and the correlation engine.
+  3. **`NULL` would become ambiguous.** `POST /api/scorer` inserts a row with no judgement, no
+     challenger run and no approver; measured by `ast` (11 arguments, none naming any of the three)
+     and by execution (a retune reads back with `created_by = 'adm'`, an *actor*, not an approver of
+     a judgement). A promotion-provenance column added to `scorer_config` would therefore be `NULL`
+     on **every manual retune**, and `NULL` would mean both *"a human retuned this by hand"* and
+     *"this was a promotion and its provenance is missing"*. That is exactly the ambiguity v0.9.2
+     spent a release eliminating.
+- **Options**: (a) the draft's single table, with the validator relaxed and provenance columns
+  added; (b) one new table holding artefact and event together; (c) **three tables** — `model_version`
+  for the artefact, `promotion` for the event, `scorer_config` unchanged.
+- **Choice**: **(c)**.
+- **Reason**: (a) is refuted three times over and its second refutation is a safety regression, not
+  a schema inconvenience. (b) fails because the artefact and the event have different cardinalities
+  and different lifetimes: one model version may be **proposed many times and refused many times**,
+  and `PREREGISTRATION-0.11.0.md` §2 requires a refused promotion to leave a row. Merging them would
+  either duplicate the parameters per attempt or lose the attempts. `holdout_access` is the
+  precedent and it is exact — the seal is one object, the accesses are many, and the log is what
+  answers *"what has this appliance been asked to do"* rather than only *"what did it do"*.
+- **`scorer_config` is left alone, and that is the point.** It remains the additive parameter table
+  and keeps receiving manual retunes, which it has always done and which this release does not stop.
+  The one change is `scorer_active` gaining a nullable `model_version_id` with a `CHECK` that
+  **exactly one** of the two pointers is set — because two sources of truth about what is running is
+  what principle 6 forbids, and it is the one place where getting it wrong would be silent.
+
+## 161. The parameters are a canonical JSON document with a per-kind validator, not typed columns (v0.11.0)
+
+- **Context**: Having decided a separate `model_version` table (#160), the parameters have to be
+  stored somehow. Typed columns per scorer kind is the obvious shape and the wrong one.
+- **Options**: (a) typed columns, one set per kind; (b) a canonical JSON `params_document` with a
+  `params_hash` and a **per-kind validator**; (c) a JSON document with no validator, leaning on
+  `SafeScorer`.
+- **Choice**: **(b)**.
+- **Reason for rejecting (a)**: it means **one migration per scorer kind, forever**. v0.12.0
+  (per-archetype weights) and v0.13.0 (the external cartridge) are both coming, and a schema that
+  requires a migration to learn a new kind has put the release cadence inside the database. Two
+  precedents in this repository already chose the document, with the rationale written down:
+  `governance_policy` is `kind` + `document` + `doc_hash` with a separate active pointer, and
+  `challenger_run.coefficients` is already JSON — its schema says why, *"text rather than columns
+  because the feature set is a modelling decision this release is explicitly not freezing."*
+- **Reason for rejecting (c), which is the part a build gets wrong**: `SafeScorer` catches an
+  **exception at score time**. It does not catch a **parameter set that scores without raising and
+  destroys grouping**. An all-zero logistic weight vector raises nothing, returns a finite score and
+  a full term breakdown, and gives every pair the identical logit — the scorer stops discriminating
+  and every guard stays green. That is the logistic analogue of `MIN_WEIGHT_SUM`, and
+  `MIN_WEIGHT_SUM` exists because *silently stops grouping* is a failure this project has already
+  had. **A payload validator without degeneracy rules is a type check wearing a safety check's
+  name.** The rules are registered in advance in `../analysis/PREREGISTRATION-0.11.0.md` §5, before
+  any fit existed that they could have been chosen to suit.
+- **And the document is not a plugin surface.** No `adapter` column, no registry, no entry point.
+  v0.13.0 owns the external cartridge, and a `model_version` table that grew an adapter column would
+  be that release starting early — which `CHAMPION-CHALLENGER-0.11-DRAFT.md` §4 names in advance.
+
+## 162. The audit catalog reopens for exactly the actions this release makes possible (v0.11.0)
+
+- **Context**: `ACTIONS` in `audit.py` is a **frozen, enumerated** catalog and `tests/test_audit.py`
+  drives a flow that produces every member. Promotion needs actions that do not exist, so the
+  catalog reopens — and a reopened catalog invites every pending gap to be closed at once.
+- **Options**: (a) add the promotion actions **and** close `SECURITY-REVIEW-0.10.0.md` §3.4's wider
+  reconciliation-drift gap while the file is open; (b) add only the actions this release makes
+  possible; (c) add nothing and record promotion outside the audit chain.
+- **Choice**: **(b)** — promotion applied, promotion refused, and — because this release makes the
+  seal **spendable for the first time** — seal construction and seal spend.
+- **Reason**: (c) is not available: a promotion is a governed operator act with a before and an
+  after, which is the shape of everything already in the chain, and recording it anywhere else would
+  make the swap the one admin action not hash-chained. (a) is the tempting one and it is refused on
+  the project's own rule — **ambiguity about scope resolves to the smaller theme**. Nothing in this
+  release makes the reconciliation-drift gap **newly reachable**; it is exactly as reachable as it
+  was at v0.9.2, and a release that closed unrelated gaps because it happened to have the file open
+  would be sizing its work by convenience. It stays a ROADMAP line and a finding.
+- **Said plainly rather than left looking overlooked**: `SECURITY-REVIEW-0.10.0.md` §3.4 argues the
+  wider gap and argues it well. It is **not** closed here, and the reason is scope discipline rather
+  than disagreement.
+- **The seal actions are not scope creep, and the distinction is worth stating.** `0012`'s comment
+  declined to put seal access in the audit chain, on the grounds that *"nothing here is reachable
+  from a route, no principal performs it"*. **v0.11.0 changes that premise**: an admin approving a
+  promotion is a principal, on a route, whose approval may cause the seal to be spent. The
+  precondition the earlier decision rested on is the thing this release removes, so the decision is
+  revisited rather than overridden. `holdout_access` remains the primary record and stays
+  append-only; the audit row is the operator-facing half, and `PREREGISTRATION-0.11.0.md` §3
+  additionally registers that `holdout_access` becomes **hash-chained** — because a query count
+  cited as evidence must be tamper-evident, and triggers stop the application, not somebody with the
+  file.
+
+## 163. No UI in v0.11.0, and the reason is a measured defect rather than a preference (v0.11.0)
+
+- **Context**: Promotion is an admin action and every other admin action in this product has a
+  screen. The obvious release includes one.
+- **Options**: (a) route, CLI **and** a promotion screen; (b) route and CLI, no UI change at all;
+  (c) UI only, no CLI.
+- **Choice**: **(b)** — not a button, not a field, not a string.
+- **Reason, and the two halves compound**:
+  1. **The audit catalog is reopening in this same release** (#162). Changing the frozen record of
+     what the system did, and the surface through which a human does it, in one release means a
+     defect in either is diagnosed against a moved reference.
+  2. **The v0.7.5 defect is the most expensive in this project's history and it was a click gesture
+     in a UI that no test executes to this day.** A promotion screen where a mis-click swaps the
+     correlator is that same failure mode with a strictly larger consequence: the v0.7.5 defect lost
+     annotations, and this one would change how every subsequent alarm is grouped.
+- **What would make the UI safe to build, stated so it is a prerequisite and not a vague intention**:
+  a test that executes `ui/app.js` **in a real DOM**. Node is available in this build environment —
+  that is how a false claim about the first expansion was disproved in v0.7.5 — so this is a
+  schedulable task and not a research question. It is written as a ROADMAP line with that reasoning.
+- **The refusal is not less usable for having no screen.** The route returns the refusal reason,
+  the triggers, the detection threshold and what would have to change; the CLI prints the same. An
+  operator who cannot promote learns why from either.

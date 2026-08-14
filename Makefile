@@ -4,7 +4,7 @@ PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test coverage security deadcode checksums linkcheck run replay loadtest burst \
 	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
-	bias-report dataset-stats agreement-report shadow-report
+	bias-report dataset-stats agreement-report shadow-report census
 
 qa: lint typecheck deadcode test eval
 
@@ -122,6 +122,14 @@ shadow-report:
 # operator is blind about what the appliance is storing.
 dataset-stats:
 	$(PYTHON) -m netcorenoc dataset stats
+
+# The corpus census (v0.11.0): what the promotion gate decides on real data, stated in advance.
+# Beside `make eval` and the three dataset reports for their reason — a deterministic offline
+# measurement over a frozen input, byte-identical across two runs and two processes. It carries its
+# own CONTROL and EXITS NON-ZERO if the control comes back empty, because a census whose zero could
+# be a property of the query rather than of the corpus is worse than no census.
+census:
+	$(PYTHON) tools/corpus_census.py
 
 # Walk the audit hash chain and report the first broken link.
 audit-verify:
