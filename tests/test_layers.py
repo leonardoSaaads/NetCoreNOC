@@ -122,6 +122,9 @@ LAYER_OF: dict[str, str] = {
     # — which is what lets the load path call it without acquiring anything.
     "model_version": "engine",
     "promotion": "engine",
+    # Split out of `promotion.py` at the 400-line guard, onto a seam that was already there: this
+    # answers to `DATA-LINEAGE.md` §4 and the gate answers to the pre-registration (DECISIONS #165).
+    "evaluation_folds": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire
@@ -168,7 +171,7 @@ EXEMPTIONS: dict[tuple[str, str], str] = {}
 # v0.9.0 uses it as v0.7.3 did: the shadow-mode modules are placed in `LAYER_OF` in Phase 4 step 1,
 # before the later steps write them, so no module can arrive without having been placed first —
 # which is the property the guard exists for. Emptied in Phase 5.
-PLANNED_THIS_RELEASE: set[str] = {"promotion"}
+PLANNED_THIS_RELEASE: set[str] = set()
 
 # Type-only imports (`if TYPE_CHECKING:`) create no runtime edge and no import cycle.
 # MODULE-ARCHITECTURE.md §1 records `audit.py`/`auth.py` -> `store.Store` as tolerated on exactly

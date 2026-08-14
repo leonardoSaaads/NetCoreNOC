@@ -59,6 +59,7 @@ SUBMODULES = [
     "api.routes_governance",
     "api.routes_operate",
     "api.routes_read",
+    "api.routes_promotion",
     "api.routes_scorer",
     "api.routes_static",
     "audit",

@@ -32,6 +32,7 @@ from netcorenoc.api import (
     routes_events,
     routes_governance,
     routes_operate,
+    routes_promotion,
     routes_read,
     routes_scorer,
     routes_static,
@@ -102,6 +103,7 @@ def create_app(
     routes_operate.register(app, ctx)
     routes_admin.register(app, ctx)
     routes_scorer.register(app, ctx)
+    routes_promotion.register(app, ctx)
     routes_governance.register(app, ctx)
     routes_audit.register(app, ctx)
     routes_events.register(app, ctx)

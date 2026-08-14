@@ -170,6 +170,22 @@ class ScorerRollbackIn(BaseModel):
     config_id: int = Field(ge=1)
 
 
+class PromotionIn(BaseModel):
+    """A promotion proposal. **It names a candidate; it may not assert a verdict.**
+
+    There is deliberately no `verdict`, `metrics`, `floors_met` or `query_count` field. This is
+    v0.9.2's evidence boundary applied to promotion — *a quantity that describes the evidence is
+    derived by the server* — and the enforcement is that **the field does not exist**, not that a
+    handler ignores it. Pydantic drops unknown keys, so a client that sends `verdict: BETTER` is
+    answered normally and its assertion reaches nothing;
+    `tests/test_promotion_api.py::test_a_client_asserted_verdict_is_ignored_and_the_servers_stands`
+    is what proves that rather than assuming it.
+    """
+
+    model_version_id: int = Field(ge=1)
+    note: str = Field(default="", max_length=500)
+
+
 class PolicyIn(BaseModel):
     """One governance write: apply a new document, roll back to a version, or clear the policy.
 

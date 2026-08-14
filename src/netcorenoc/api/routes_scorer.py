@@ -24,6 +24,11 @@ from netcorenoc.api.models import ScorerParamsIn, ScorerRollbackIn
 from netcorenoc.api.perimeter import _client_ip
 
 MAX_SCORER_HISTORY = 50
+MAX_PROMOTION_HISTORY = 50
+
+# `PREREGISTRATION-0.10.0.md` §2.2's registered floors, read here and never softened.
+ASSERTING_BAGS_FLOOR = 50
+ASSERTING_INCIDENTS_FLOOR = 30
 
 
 def _params_of(row: dict[str, Any] | None) -> dict[str, Any] | None:

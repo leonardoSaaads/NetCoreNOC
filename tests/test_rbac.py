@@ -344,6 +344,8 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         "audit.prune": "admin",
         "scorer.preview": "admin",
         "scorer.write": "admin",
+        "promotion.read": "viewer",
+        "promotion.write": "admin",
         "rbac.read": "admin",
         "rbac.write": "admin",
         "scope.read": "admin",

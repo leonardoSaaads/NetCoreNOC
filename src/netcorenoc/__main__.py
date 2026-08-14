@@ -27,6 +27,7 @@ import argparse
 import asyncio
 import os
 import sys
+import time
 
 from netcorenoc import (
     agreement,
@@ -34,6 +35,10 @@ from netcorenoc import (
     audit,
     bias,
     bias_report,
+    model_version,
+    promotion,
+    scoring,
+    seal,
     shadow_render,
     shadow_report,
 )
@@ -138,6 +143,82 @@ async def _dataset_stats(db_path: str) -> int:
     return 0
 
 
+async def _promotion_list(db_path: str) -> int:
+    """**What has this appliance been asked to deploy, and why was it refused?**
+
+    The read half of the promotion surface, as a CLI rather than a screen (DECISIONS #163). Every
+    decision, refusals included — a table of successes answers the smaller question.
+    """
+    store = Store(db_path)
+    await store.open()
+    try:
+        async with store.lock:
+            rows = await store.list_promotions(50)
+            versions = await store.list_model_versions(50)
+            summary = await seal.summary(store)
+    finally:
+        await store.close()
+
+    # §4.3(4): printed beside every holdout number this project ever publishes.
+    print(f"sealed-holdout query count: {summary.query_count}")
+    print(f"ratified plan in force:     {promotion.RATIFIED_PLAN_SHA256}")
+    print()
+    print(f"model versions ({len(versions)}):")
+    for row in versions:
+        active = " ACTIVE" if row.get("active") else ""
+        run = row["challenger_run_id"] or "-"
+        print(f"  [{row['id']}] {row['kind']:<10} run={run:<4} {row['params_hash'][:16]}…{active}")
+    print()
+    print(f"promotion decisions ({len(rows)}):")
+    if not rows:
+        print("  (none — nothing has been proposed)")
+    for row in rows:
+        print(
+            f"  [{row['id']}] {row['outcome']:<8} {row['verdict']:<22} "
+            f"model={row['model_version_id']} by={row['approved_by']} "
+            f"queries={row['query_count']}"
+        )
+        if row["refusal_reason"]:
+            for line in str(row["refusal_reason"]).splitlines():
+                print(f"        {line}")
+    return 0
+
+
+async def _promotion_register(db_path: str, kind: str, params: str, run_id: int | None) -> int:
+    """Register an artefact. **Registering is not promoting**, and nothing here moves a pointer.
+
+    The document is validated by the same per-kind validator the load path uses, so a payload that
+    would be refused at load is refused at registration too — one validator, not two that could
+    disagree.
+    """
+    try:
+        model_version.validate_document(kind, scoring.CONTRACT_VERSION, params)
+    except model_version.ModelPayloadError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    store = Store(db_path)
+    await store.open()
+    try:
+        async with store.lock:
+            new_id = await store.insert_model_version(
+                kind=kind,
+                contract_version=scoring.CONTRACT_VERSION,
+                params_document=params,
+                params_hash=model_version.params_hash(kind, scoring.CONTRACT_VERSION, params),
+                challenger_run_id=run_id,
+                created_by="cli",
+                created_at=time.time(),
+                note="registered from the CLI",
+            )
+            await store.commit()
+    finally:
+        await store.close()
+    print(f"registered model version {new_id} ({kind})")
+    print("This is an ARTEFACT, not a promotion. Nothing is running it, and nothing will until an")
+    print("admin proposes it through POST /api/promotion and the server's verdict permits it.")
+    return 0
+
+
 async def _export(db_path: str) -> int:
     store = Store(db_path)
     await store.open()
@@ -168,6 +249,17 @@ def main(argv: list[str] | None = None) -> int:
     dataset_sub.add_parser(
         "shadow", help="the shadow-mode report: sufficiency, both policies, skew (v0.9.0)"
     )
+    promotion_parser = sub.add_parser("promotion", help="champion/challenger tooling (v0.11.0)")
+    promotion_sub = promotion_parser.add_subparsers(dest="promotion_command", required=True)
+    promotion_sub.add_parser(
+        "list", help="what has been proposed and why each was refused (refusals included)"
+    )
+    register = promotion_sub.add_parser(
+        "register", help="register a model version — an ARTEFACT, never a promotion"
+    )
+    register.add_argument("--kind", required=True, choices=sorted(model_version.SUPPORTED_KINDS))
+    register.add_argument("--params", required=True, help="the parameter document, as JSON")
+    register.add_argument("--challenger-run", type=int, default=None)
     args = parser.parse_args(argv)
 
     db_path = _db_path()
@@ -185,6 +277,13 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_agreement(db_path))
         if args.dataset_command == "shadow":
             return asyncio.run(_shadow(db_path))
+    if args.command == "promotion":
+        if args.promotion_command == "list":
+            return asyncio.run(_promotion_list(db_path))
+        if args.promotion_command == "register":
+            return asyncio.run(
+                _promotion_register(db_path, args.kind, args.params, args.challenger_run)
+            )
     parser.error("unknown command")
     return 2
 

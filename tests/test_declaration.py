@@ -548,7 +548,7 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    assert len(served) == 50, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 52, f"the served surface moved: {len(served)} method/path pairs"
     for _method, path in served:
         route = next(r for r in app.routes if getattr(r, "path", None) == path)  # type: ignore[attr-defined]
         assert getattr(route, "methods", None), f"{path} carries no verb, which F43 now refuses"
@@ -594,7 +594,7 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    assert len(served) == 50, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 52, f"the served surface moved: {len(served)} method/path pairs"
     paths = {path for _method, path in served}
     for public in declare.UNAUTHENTICATED_PATHS:
         assert public in paths, f"{public} is no longer served"
@@ -659,7 +659,10 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     table = source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0]
     lines = table.splitlines()
     entries = [i for i, line in enumerate(lines) if line.strip().endswith(': "unscoped",')]
-    assert len(entries) == 5, entries
+    # v0.11.0 adds `GET /api/promotion`: a refusal EXPLAINS why the correlator is still what
+    # it is, and names no network element. Six now, and the count is asserted exactly so a
+    # seventh cannot arrive without this line moving.
+    assert len(entries) == 6, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -715,8 +718,12 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.8.0: 22 -> 24. The two dataset-retention routes are `admin_only`, and they could not
     # be anything else: the dataset is a scope bypass by construction (captured engine-side,
     # where visibility scoping does not exist), so there is no scoped view of it to build.
-    assert len(ADMIN_ONLY) == 24, len(ADMIN_ONLY)
-    assert len(UNSCOPED) == 5, UNSCOPED
+    # v0.11.0: 24 -> 25 and 5 -> 6. `POST /api/promotion` is `admin_only` because its capability's
+    # minimum role is `admin` — the posture is DERIVED, never asserted independently — and
+    # `GET /api/promotion` is `unscoped` for `GET /api/scorer`'s reason: a decision about the
+    # correlator's arithmetic names no network element.
+    assert len(ADMIN_ONLY) == 25, len(ADMIN_ONLY)
+    assert len(UNSCOPED) == 6, UNSCOPED
     assert len(SCOPED) == 12, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 

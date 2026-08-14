@@ -3760,3 +3760,33 @@ grouping**.
   `../security/SECURITY-REVIEW-0.11.0.md` as an open question for v0.12.0 — which is where Part VIII
   sends an ambiguity the plan does not settle. Whichever reading v0.12.0 adopts, adding an override
   later is additive; having shipped the permissive one would not have been.
+
+## 165. `evaluation_folds.py` is split out of `promotion.py`, by size, onto a real seam (v0.11.0)
+
+- **Context**: `promotion.py` reached **415 lines** against the project's 400-line guard. Build
+  prompt VII.6 says *"no new abstractions: one model-version module, one promotion module"*, and
+  VII.9 says *"no module over 400 lines; `DEBT_ALLOWLIST` empty"*. Read as *exactly one file*, the
+  two rules conflict.
+- **Options**: (a) add `promotion.py` to `DEBT_ALLOWLIST`; (b) trim prose until it fits; (c) split.
+- **Choice**: **(c)**, and the guard's own failure message says so: *"Split the module
+  (MODULE-ARCHITECTURE.md §2), or add it to DEBT_ALLOWLIST with the release that will fix it."*
+  Part II requires `DEBT_ALLOWLIST` **empty**, so (a) is not available.
+- **Reason (b) was tried first and abandoned honestly**: ~50 lines of docstring were trimmed and the
+  module reached 415, still over. Going further would have meant deleting *claims* — the measurement
+  behind the fold table, the reason the wide `except` exists — to fit a line count. **Deleting the
+  reasoning to satisfy the size guard is the size guard doing harm**, and the guard exists to force
+  a split, not a redaction.
+- **Why the split is not arbitrary.** The two halves answer to **different specifications** and
+  change for **different reasons**: `evaluation_folds.py` implements `DATA-LINEAGE.md` §4, and
+  `promotion.py` implements `PREREGISTRATION-0.11.0.md` §3 and §4. They were built in different
+  phases (4 and 5) against different gates. The precedent and its honesty standard are v0.10.1's:
+  *"Split from `agreement.py` … by size — and unlike `labels.py` that is the honest reason, recorded
+  as such."* Same here: **size first, and the seam it landed on happened to be real.**
+- **On VII.6.** That rule is headed *"no new abstractions"* and every prohibition it enumerates is a
+  plugin surface — *no plugin registry, no adapter column, no scorer-kind plugin surface*. This
+  split introduces **no abstraction**: the same two functions, one import, no interface, no
+  registry, no indirection. The thing VII.6 forbids is v0.13.0 starting early, and moving a pure
+  function into the file whose specification governs it is not that.
+- **The count that matters is still honoured**: v0.11.0 adds **three** runtime modules
+  (`model_version`, `promotion`, `evaluation_folds`) plus one store mixin, and **no** extension
+  point of any kind.
