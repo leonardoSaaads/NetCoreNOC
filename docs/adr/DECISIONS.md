@@ -3699,3 +3699,64 @@ grouping**.
 - **The refusal is not less usable for having no screen.** The route returns the refusal reason,
   the triggers, the detection threshold and what would have to change; the CLI prints the same. An
   operator who cannot promote learns why from either.
+
+## 164. The magnitude bound is 25.0, and here is the arithmetic that chose it (v0.11.0)
+
+- **Context**: `PREREGISTRATION-0.11.0.md` §5 rule 5 requires a bound on `|coefficient|` **"argued in
+  an ADR rather than asserted"**, with the reasoning that a coefficient large enough to saturate the
+  link function turns a probabilistic scorer into a step function and makes the per-term explanation
+  useless in practice while still summing correctly. The plan deliberately does not name a number —
+  naming one would have been choosing it before the argument existed.
+- **The arithmetic**, computed rather than recalled. The logistic link's response to its own logit:
+
+  ```
+    |z| =   1.0  ->  p = 0.73105858   dp/dz = 1.966e-01   1-p = 2.689e-01
+    |z| =   2.2  ->  p = 0.90024951   dp/dz = 8.980e-02   1-p = 9.975e-02
+    |z| =   4.6  ->  p = 0.99004820   dp/dz = 9.853e-03   1-p = 9.952e-03
+    |z| =   6.9  ->  p = 0.99899323   dp/dz = 1.006e-03   1-p = 1.007e-03
+    |z| =   9.2  ->  p = 0.99989897   dp/dz = 1.010e-04   1-p = 1.010e-04
+    |z| =  13.8  ->  p = 0.99999898   dp/dz = 1.016e-06   1-p = 1.016e-06
+    |z| =  25.0  ->  p = 1.00000000   dp/dz = 1.389e-11   1-p = 1.389e-11
+  ```
+
+  Every feature in `FEATURE_NAMES` lives in a range whose width is at most 1, so **a coefficient of
+  magnitude `c` moves the logit by at most `c` across that feature's whole range**. That is what
+  makes the table above directly a statement about a single coefficient rather than about the sum.
+- **What the numbers say.** At `|z| ≈ 9.2` the probability is within `1e-4` of its limit and the
+  slope has fallen by three orders of magnitude: one feature, moving across its full range, has
+  taken the decision from "certain" to "certain the other way" and the other two features can no
+  longer change the answer. **That is the point at which a term stops meaning *this much evidence*
+  and starts meaning *this is a switch*** — the explanation still sums correctly and has stopped
+  being an explanation.
+- **Options**: (a) bound at the saturation point, ~9.2; (b) bound at 25.0, roughly 2.7× it;
+  (c) bound only at the overflow clamp `challenger._LOGIT_CLAMP = 700`; (d) no bound.
+- **Choice**: **(b), 25.0.**
+- **Reason**: (d) and (c) are the same choice in practice — 700 is where `math.exp` reaches the
+  double-precision limit, which is a fact about IEEE 754 and not about modelling; a bound there
+  refuses nothing a fit would plausibly produce. (a) is the tempting one and it is **too tight**: a
+  genuinely strong learned effect *should* be allowed to saturate. If entity affinity of 1.0 really
+  is near-conclusive evidence that two alarms belong together, a model that says so is right, and a
+  validator that refused it would be encoding a prior about the network that this project has
+  explicitly not measured. What 25.0 refuses is the **runaway** regime: unpenalised logistic
+  regression on separable data has no finite maximum-likelihood solution and its coefficients grow
+  without bound with each iteration, so a diverged fit does not arrive at 30, it arrives at 400 or
+  4 000. The bound is set where it separates *a strong effect* from *an optimisation that did not
+  converge*, and 2.7× the single-feature saturation point is comfortably inside that gap.
+- **An honest limit on this bound, stated rather than left to be discovered**: it is a **per-
+  coefficient** bound, so four coefficients each at 24.9 pass it while summing to a logit range no
+  real pair could sit in the middle of. That case is not unguarded — **rule 4 catches it**, because
+  a threshold inside a range that wide is reachable but the model is still effectively a step
+  function. Rule 5 is checked **before** rule 4 in `model_version._validate_logistic`, and the
+  ordering is deliberate: a runaway coefficient makes the reachability arithmetic report an enormous
+  attainable range, which *passes* rule 4. A build that ordered them the other way would let the
+  least plausible payloads through the rule written to catch them.
+- **On "a project floor a deployment may raise".** The plan's §5 says rules 1–4 may not be softened
+  and rule 5's bound is *"a project floor a deployment may raise"*. Read literally as *raise the
+  number*, that would make rule 5 the one softenable rule, which contradicts §1's own
+  `resolved = the more demanding of (project floor, deployment policy)` and principle 9. **This
+  release resolves it the safe way and ships no override at all**: `MAX_ABS_COEFFICIENT` is a
+  module constant, there is no environment variable, and no deployment can move it in either
+  direction. That makes the question moot for v0.11.0 rather than answered, and it is carried into
+  `../security/SECURITY-REVIEW-0.11.0.md` as an open question for v0.12.0 — which is where Part VIII
+  sends an ambiguity the plan does not settle. Whichever reading v0.12.0 adopts, adding an override
+  later is additive; having shipped the permissive one would not have been.

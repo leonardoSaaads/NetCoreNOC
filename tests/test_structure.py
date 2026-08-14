@@ -109,6 +109,7 @@ SUBMODULES = [
     "store.ingest_gaps",
     "store.learned",
     "store.lifecycle",
+    "store.promotion",
     "store.read_models",
     "store.retention",
     "store.scoring_config",

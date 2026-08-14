@@ -135,6 +135,11 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # tests may have no pointer). Loaded at the documented reload point only — never per
         # packet, never in receiver.datagram_received.
         self.scorer_config_id: int | None = None
+        # v0.11.0. Set instead of `scorer_config_id` when the active pointer names a model version.
+        # `situation.scorer_config_id` still records the additive provenance and is NULL under a
+        # promoted model — the column means "which scorer_config formed this", and inventing a
+        # value for a situation no scorer_config formed would be the F46 mistake in a new column.
+        self.scorer_model_version_id: int | None = None
         self.scorer_warnings: list[str] = []
         # (config id, params hash) of the configuration currently instantiated. A reload that
         # finds the same key is a no-op, which is what keeps a fail-safe degradation sticky.

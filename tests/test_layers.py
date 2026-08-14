@@ -109,6 +109,19 @@ LAYER_OF: dict[str, str] = {
     "incidents": "engine",
     "census": "engine",
     "seal": "engine",
+    # v0.11.0 — champion/challenger. Engine-layer for the reason every module above is: they
+    # consume stored evidence and read downward through the data layer, and none is reachable from
+    # `receiver.datagram_received`.
+    #
+    # **Exactly two new modules, and that is a scope rule rather than an outcome** (build prompt
+    # VII.6): one model-version module, one promotion module, and dispatch inside the
+    # `scorer_lifecycle` that already exists. No plugin registry, no adapter layer, no third module
+    # that would be v0.13.0 starting early.
+    #
+    # `model_version` is pure — it parses, validates and constructs, touching no store and no clock
+    # — which is what lets the load path call it without acquiring anything.
+    "model_version": "engine",
+    "promotion": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire
@@ -155,7 +168,7 @@ EXEMPTIONS: dict[tuple[str, str], str] = {}
 # v0.9.0 uses it as v0.7.3 did: the shadow-mode modules are placed in `LAYER_OF` in Phase 4 step 1,
 # before the later steps write them, so no module can arrive without having been placed first —
 # which is the property the guard exists for. Emptied in Phase 5.
-PLANNED_THIS_RELEASE: set[str] = set()
+PLANNED_THIS_RELEASE: set[str] = {"promotion"}
 
 # Type-only imports (`if TYPE_CHECKING:`) create no runtime edge and no import cycle.
 # MODULE-ARCHITECTURE.md §1 records `audit.py`/`auth.py` -> `store.Store` as tolerated on exactly

@@ -67,6 +67,10 @@ class EngineBase:
     # configuration currently instantiated; a reload that finds the same key is a no-op, which is
     # what keeps a fail-safe degradation sticky.
     scorer_config_id: int | None
+    # v0.11.0. The OTHER thing the active pointer may name. Exactly one of the two is ever set,
+    # which the database enforces (`0013`'s CHECK) and `scorer_lifecycle` maintains — two live
+    # values here would be two answers to "what is running", which principle 6 forbids.
+    scorer_model_version_id: int | None
     scorer_warnings: list[str]
     _loaded_key: tuple[int, str] | None
     # Feedback-dataset capture (v0.8.0), read by the maintenance mixin's `_capture_run`. Every

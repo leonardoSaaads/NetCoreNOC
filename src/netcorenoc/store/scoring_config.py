@@ -80,13 +80,22 @@ class ScoringConfigMixin(StoreBase):
         self, config_id: int, activated_by: str | None, ts: float
     ) -> bool:
         """Point the single active row at a configuration. Apply and rollback are this one call —
-        history is immutable, so reverting is moving the pointer, never editing or deleting."""
+        history is immutable, so reverting is moving the pointer, never editing or deleting.
+
+        **v0.11.0: it also clears `model_version_id`, in the same statement.** `0013`'s `CHECK`
+        admits exactly one pointer, so an `ON CONFLICT` clause that updated `config_id` and left the
+        other column alone would raise `IntegrityError` the first time an admin retuned the additive
+        scorer while a model version was active — half-way through a write, on a path that has
+        nothing to do with promotion. The `CHECK` is the second line of defence; writing both
+        columns every time is the first.
+        """
         cur = await self.conn.execute("SELECT 1 FROM scorer_config WHERE id=?", (config_id,))
         if await cur.fetchone() is None:
             return False
         await self.conn.execute(
-            "INSERT INTO scorer_active (id, config_id, activated_by, activated_at) "
-            "VALUES (1, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET config_id=excluded.config_id, "
+            "INSERT INTO scorer_active (id, config_id, model_version_id, activated_by, "
+            "activated_at) VALUES (1, ?, NULL, ?, ?) "
+            "ON CONFLICT (id) DO UPDATE SET config_id=excluded.config_id, model_version_id=NULL, "
             "activated_by=excluded.activated_by, activated_at=excluded.activated_at",
             (config_id, activated_by, ts),
         )

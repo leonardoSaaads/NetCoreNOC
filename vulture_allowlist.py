@@ -147,3 +147,20 @@ shadow_opinions
 # vector's clock. Both are read by tests and by v0.10.0's split; neither is a feature.
 incumbent_linked
 evaluated_at
+
+# --- v0.11.0, champion/challenger -----------------------------------------------------------
+# The promotion surface, exercised from `tests/test_model_version.py`,
+# `tests/test_scorer_dispatch.py` and `tests/test_upgrade.py` before Phase 5 wires the routes and
+# the CLI that reach it from the running application. Entries that become reachable from a route
+# are REMOVED again in Phase 5 — an allowlist entry that outlives its reason is how this file stops
+# being a list of exceptions and becomes a list of things nobody checks.
+_.scorer_model_version_id  # set on every load path (netcorenoc/scorer_lifecycle.py)
+document_for  # the inverse of scorer_for (netcorenoc/model_version.py)
+_.insert_model_version  # (netcorenoc/store/promotion.py)
+_.get_model_version  # (netcorenoc/store/promotion.py)
+_.list_model_versions  # (netcorenoc/store/promotion.py)
+_.set_active_model_version  # (netcorenoc/store/promotion.py)
+_.insert_promotion  # (netcorenoc/store/promotion.py)
+_.list_promotions  # (netcorenoc/store/promotion.py)
+_.write_fold_assignment  # (netcorenoc/store/promotion.py)
+_.fold_assignment  # (netcorenoc/store/promotion.py)
