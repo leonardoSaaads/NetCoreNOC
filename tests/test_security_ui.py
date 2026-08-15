@@ -152,9 +152,24 @@ ADMIN_PANELS = {
 def _tab_caps() -> dict[str, str]:
     """Parse the TABS capability map out of app.js: {panel_id: required_capability}.
 
-    v0.7.0 gates tabs on the **resolved capability** from `/api/me` rather than on role rank: an
-    admin may have narrowed what a role holds, and a UI still offering the control would promise
-    something the server refuses.
+    ### v0.12.0: THIS IS NO LONGER THE PRIMARY GUARD, AND HERE IS WHY IT SURVIVES ANYWAY. ###
+
+    Splitting on the literal `"const TABS"` cannot fail for the thing it guards. A rewrite that
+    changed the *shape* of the map — an array of objects becoming a `Map`, a component declaring
+    its own requirement, a table moving to another file — leaves this regex matching nothing, and
+    a matcher that finds nothing reports no violations. The panel/capability map is the only
+    client-side defence against an admin screen rendering for a viewer, and it would have gone
+    unguarded exactly during the release that rewrote it.
+
+    **The behavioural guard is now `tests/test_ui_invariants.py`**, which boots `app.js` in a DOM
+    as each real role and asserts which panels exist, cross-checking the panel-to-capability
+    mapping — *discovered from the requests each panel issues* — against `rbac.ROUTE_PERMISSIONS`.
+
+    This text-level guard is **kept deliberately**, and only for one reason: the DOM harness skips
+    when Node is absent, and a skipped guard is a silent one. These two fail for different reasons
+    — this one when the source drifts, that one when the behaviour does — and on a machine with no
+    Node this is the only one of the pair still watching. Neither is sufficient alone; that is the
+    point of having both. See ADR #168.
     """
     app_js = (UI_DIR / "app.js").read_text()
     block = app_js.split("const TABS", 1)[1].split("];", 1)[0]
@@ -167,6 +182,11 @@ def test_admin_panels_are_gated_to_admin() -> None:
     Stronger than the old "role: admin" string check, because the required capability is now
     resolved against `rbac.PERMISSIONS` — the same source the server enforces from — so a panel
     gated on a capability that was quietly lowered to editor would fail here.
+
+    **v0.12.0**: this asserts the shape of the source. The property itself — that a viewer's DOM
+    contains no admin panel — is asserted by rendering in
+    `test_ui_invariants.py::test_a_role_never_renders_a_panel_whose_capability_it_lacks`. A green
+    tick here is not that assertion and must never be reported as though it were.
     """
     from netcorenoc import rbac
 
@@ -180,7 +200,13 @@ def test_admin_panels_are_gated_to_admin() -> None:
 
 
 def test_every_tab_is_gated_on_a_real_capability() -> None:
-    """No tab may be gated on a capability the authorization map does not know."""
+    """No tab may be gated on a capability the authorization map does not know.
+
+    The `assert caps` line is this guard's own vacuity check, and it is the only thing standing
+    between a shape change and a silently empty result. It is not sufficient — a map that still
+    *parsed* but had stopped being what the UI reads would pass it — which is what the behavioural
+    guard is for.
+    """
     from netcorenoc import rbac
 
     caps = _tab_caps()
