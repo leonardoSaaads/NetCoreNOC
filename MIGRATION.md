@@ -5,16 +5,16 @@
 Replace the code and restart. **There is no migration, no new setting, and nothing for an operator
 to do.** `user_version` stays at **13**.
 
-This release adds a test harness and an architecture document. It changes **not one byte of
-`src/`** — the appliance you are running after the upgrade is, file for file, the appliance you were
-running before it.
+This release adds a test harness and an architecture document. The only line of `src/` that differs
+from v0.11.0 is `__version__` — the appliance you are running after the upgrade is, on every
+execution path, the appliance you were running before it.
 
 | | |
 |---|---|
 | Schema | **none.** Zero migrations; `user_version` unchanged at 13 |
 | Rows seeded, changed or deleted | **none** |
 | Data | **untouched** |
-| Grouping | **unchanged.** `src/` is byte-identical; `make eval` is byte-identical |
+| Grouping | **unchanged.** `src/` differs only in the version string; `make eval` is byte-identical |
 | Learned state | **unchanged** |
 | Routes | **none added, none changed** |
 | Capabilities | **none added** |

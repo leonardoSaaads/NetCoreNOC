@@ -1,8 +1,9 @@
 # Security review — v0.12.0 (the instrument and the shape)
 
 **This release adds no route, no capability, no audit action, no migration and no runtime
-dependency, and changes not one byte of `src/`.** The whole diff is `tests/`, `docs/`, ten lines of
-`Makefile` and six of `pyproject.toml`.
+dependency, and the only line of `src/` it changes is the `__version__` string.** The whole diff is
+`tests/`, `docs/`, ten lines of `Makefile`, six of `pyproject.toml`, and that one version line —
+which `tools/release_check.py` reads and no execution path does.
 
 That makes the security question unusual, and narrower than usual: **not "is the new code safe" but
 "did the new instrument reach anywhere it should not, and does the guard it replaces still hold".**
@@ -71,7 +72,8 @@ assert "style-src 'self'" in CSP and "script-src 'self'" in CSP
 assert "'unsafe-inline'" not in CSP and "default-src 'none'" in CSP
 ```
 
-`src/netcorenoc/api/perimeter.py` is byte-identical to v0.11.0 — as is all of `src/` — so the CSP,
+`src/netcorenoc/api/perimeter.py` is byte-identical to v0.11.0 — as is every module under `src/`
+except `__init__.py`'s version string — so the CSP,
 `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` and the cookie flags are the ones
 reviewed in earlier releases and re-asserted, unchanged, by `test_csp_is_unchanged_and_forbids_inline`
 and `test_security_headers_on_every_route_class`.

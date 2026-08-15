@@ -32,8 +32,11 @@ harness is built so that the difference cannot pass unnoticed.
 
 **Not one byte of `ui/`.** All four files byte-identical by SHA-256, asserted by a test.
 
-**Not one byte of `src/`.** `git diff` against v0.11.0 over `src/` and `eval/` is empty. Behaviour
-parity across the HTTP surface — including timing — follows from identity, not from measurement.
+**One line of `src/`, and it is the version string.** `git diff` against v0.11.0 over `src/` and
+`eval/` is `__version__ = "0.11.0"` → `"0.12.0"` and nothing else. Behaviour parity across the HTTP
+surface — including timing — follows from identity, not from measurement. (An earlier draft said
+*"not one byte of `src/`"*; that was true before the Phase 7 bump and false at tag time, and it is
+corrected in place rather than defended — `gates/v0.12.0-phase-6.md` §4.)
 
 Zero migrations. Zero new routes, capabilities or audit actions. Zero new runtime dependencies.
 **Zero intentional behaviour changes**, and the count is asserted rather than claimed.
