@@ -199,7 +199,7 @@ roadmap. v0.7.5 fixed the acquisition path before v0.8.0 built the dataset; v0.9
 evidence boundary before v0.10.0 built the judge. Rewriting the UI before it could be tested would
 have inverted that for the first time.
 
-It also settles the shape, in `UI-0.13-DRAFT.md`. Ten horizontal tabs are
+It also settles the shape, in [`UI-0.13-DRAFT.md`](UI-0.13-DRAFT.md). Ten horizontal tabs are
 saturated — promotion would be the eleventh — and Phase 2 (LLM-assisted troubleshooting, test
 templates) and Phase 3 (NOC ticket emission) cannot be added to a horizontal bar at all. Choosing
 sidebar navigation is architecture, and it deserved a document rather than being decided while
@@ -213,7 +213,7 @@ someone was writing CSS.
 
 **Sidebar navigation, per-role dashboards, the network graph, themes, the full admin surface.**
 
-Specified in `UI-0.13-DRAFT.md`, written by v0.12.0 against a UI that could by
+Specified in [`UI-0.13-DRAFT.md`](UI-0.13-DRAFT.md), written by v0.12.0 against a UI that could by
 then be executed. Three constraints travel with it and are not negotiable at build time:
 
 * **No build step and no npm.** One vendored ESM asset with pinned bytes — the door
@@ -223,7 +223,8 @@ then be executed. Three constraints travel with it and are not negotiable at bui
   were captured against the UI being replaced precisely so that the replacement has something to
   honour.
 * **No settings control may lower a hardening-only value.** `resolved = max(project floor,
-  deployment policy)`; the parameter surface has three visible classes and `UI-0.13-DRAFT.md` §6
+  deployment policy)`; the parameter surface has three visible classes and
+  [`UI-0.13-DRAFT.md`](UI-0.13-DRAFT.md) §6
   defines them.
 
 ---
