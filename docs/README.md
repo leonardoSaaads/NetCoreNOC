@@ -73,7 +73,7 @@ one-screen tour of the tree.
   `incumbent_linked` invariant.
 - [`architecture/SCORER-PLUGINS-0.13-DRAFT.md`](architecture/SCORER-PLUGINS-0.13-DRAFT.md) —
   customer-supplied models (blessed ONNX adapter) under the v0.6.0 `LinkScorer` contract, spec only,
-  `v0.13.0: planned`. Refined during v0.7.0 (§R1–R5): the worker-process preemption harness is a
+  `v0.14.0: planned`. Refined during v0.7.0 (§R1–R5): the worker-process preemption harness is a
   **blocking prerequisite**. Written as the v0.8.0 spec and **resequenced in place** by v0.7.4
   (DECISIONS #93); the Python entry-point escape hatch it also specified is **rejected, not
   deferred**. Read the box at the top for the disposition.
@@ -169,7 +169,7 @@ so the prose beneath it stays the thing a human reads.
 **2. An element tag — what a spec *element* is planned for.** The pre-existing convention, kept:
 
 ```
-## 1. The blessed ONNX path (`v0.13.0: planned`)
+## 1. The blessed ONNX path (`v0.14.0: planned`)
 ```
 
 A document that carries a release claim may only tag elements for **that** release; that is what

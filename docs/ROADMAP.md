@@ -509,12 +509,35 @@ be one, and its diff could not be read in one sitting.
   the `dataset_pair` rows and labels the evaluation was computed from are subject to the sink's dual
   bound and the audit tier. Nothing prevents a promotion citing a run whose inputs have since been
   pruned, and nothing warns. `architecture/DATA-LINEAGE.md` §5 names it; v0.11.0 did not solve it.
-- **A promotion UI needs a test that executes `ui/app.js` in a real DOM first.** DECISIONS #163
-  defers the screen for a measured reason — the v0.7.5 defect was a click gesture in a UI no test
-  executes to this day — and names the prerequisite rather than a date. Node is available in the
-  build environment, so this is a schedulable task and not a research question.
+- ~~**A promotion UI needs a test that executes `ui/app.js` in a real DOM first.**~~ **Done in
+  v0.12.0.** DECISIONS #163 named the prerequisite rather than a date; `tests/domharness/` is it,
+  and `tests/test_ui_invariants.py` holds the five invariants a rewrite must honour. The screen
+  itself is `architecture/UI-0.13-DRAFT.md` §5.3 and is v0.13.0's work.
 - **The merge graph is still unsnapshotted.** v0.11.0 materialises the *fold assignment*, which makes
   an evaluation **citable**; it does not make it **reproducible**, does not explain why an incident
   moved, and does not make the seal's own membership reproducible.
   `architecture/DATA-LINEAGE.md` §4's second-order hazard is open, and
   `architecture/ARCHETYPES-0.12-DRAFT.md` §2 warns that a `k`-way split makes it worse.
+
+## Found while building v0.12.0 (one line each, not this release's work)
+
+- **The panel loaders have no capability check of their own.** Calling `renderPanel("audit")`
+  directly as a viewer issues no request — but for an *incidental* reason: `prunePanels` removed the
+  container, so `clear(null)` throws before `api(...)` is reached. The observed outcome is right and
+  the mechanism is a `TypeError`. v0.13.0 introduces routing, which is exactly when an accidental
+  defence stops being available; `architecture/UI-0.13-DRAFT.md` §11 carries it as a constraint.
+  Found by the harness, **not fixed here**: this release changes not one byte of `ui/app.js`.
+- **The graph and the timeline are still uncharacterised.** d3 is a recording double in the harness
+  (DECISIONS #167), so `updateGraph` and `loadTimeline` — two of the largest render paths in the
+  file — execute against a stub. They are layout, which is outside v0.12.0's characterisation
+  boundary, but "outside the boundary" is not the same as "covered". Whatever v0.13.0 does with the
+  graph, its correctness is not protected by anything today.
+- **Two documents have filenames that misstate the release they govern.**
+  `architecture/ARCHETYPES-0.12-DRAFT.md` governs v0.15.0 and `architecture/ROADMAP-0.8-TO-0.13.md`
+  governs to v0.15.0, both since DECISIONS #170. The convention elsewhere (DECISIONS #93) is
+  filename-equals-target. They were not renamed because gates, security reviews and build reports
+  cite both paths by name and are records that are never rewritten. A rename means updating those
+  citations knowingly, or accepting dangling ones — a decision, not a tidy-up.
+- **`make dom` reports executed DOM tests; nothing reports them in CI.** The count is quoted by
+  hand in the gate documents. A CI step that failed when the number of *executed* DOM tests dropped
+  to zero would close the last gap in the anti-skip argument, and it is one line of workflow.

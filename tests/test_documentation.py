@@ -236,8 +236,15 @@ def test_the_release_table_parses() -> None:
     """A table this test could not read would make every assertion below vacuous — which is
     exactly the failure mode `apisource.py` was written for in v0.7.2."""
     table = release_table()
-    assert len(table) == 6, f"expected v0.8.0…v0.13.0, parsed {sorted(table)}"
-    assert set(table) == {"v0.8.0", "v0.9.0", "v0.10.0", "v0.11.0", "v0.12.0", "v0.13.0"}
+    # v0.12.0 resequenced the chain (DECISIONS #170): archetypes moved out of v0.12.0 to v0.15.0 on
+    # the measurement that a corpus which cannot decide one comparison cannot decide `k` of them,
+    # and the UI work took v0.12.0 and v0.13.0. The membership is pinned EXACTLY, so a later
+    # release cannot quietly add a row or retire one; moving it is a deliberate edit with an ADR
+    # beside it, which is what this line has just been.
+    assert len(table) == 8, f"expected v0.8.0…v0.15.0, parsed {sorted(table)}"
+    assert set(table) == {
+        "v0.8.0", "v0.9.0", "v0.10.0", "v0.11.0", "v0.12.0", "v0.13.0", "v0.14.0", "v0.15.0",
+    }
     claims = [claim for _theme, claim in table.values()]
     assert len(set(claims)) == len(claims), f"two releases share a claim key: {claims}"
     for release, (theme, claim) in table.items():
