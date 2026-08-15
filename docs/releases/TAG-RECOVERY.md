@@ -417,3 +417,54 @@ git fetch /path/to/NetCoreNOC-v0.12.0.bundle 'refs/tags/*:refs/tags/*' \
 
 The bundle is **evidence alongside a report, never a substitute for one**: the push failure is
 reported above in the terms Appendix A asks for.
+
+---
+
+## v0.13.0 — the tag exists locally; the push returned 403 on both attempts
+
+`git push` returned **403 on both attempts**, which Appendix A of the build prompt anticipates: *the
+repository is read-only to automation.* The cap is two attempts and it was **not** routed around —
+no fork, no MCP write tool, no API write path, no alternate remote.
+
+```
+$ git push -u origin claude/netcorenoc-v0-13-build-bi782x
+fatal: unable to access 'https://github.com/leonardoSaaads/NetCoreNOC/': The requested URL returned error: 403
+```
+
+The tag `v0.13.0` exists **locally only**, on the tip of
+`claude/netcorenoc-v0-13-build-bi782x`. A **verified bundle** carries the tag and the whole history
+alongside the archive, so neither depends on a push that cannot happen:
+
+```sh
+git bundle create NetCoreNOC-v0.13.0.bundle --all
+git bundle verify NetCoreNOC-v0.13.0.bundle
+#   -> The bundle records a complete history.
+
+# to recover, from a clone of the repository:
+git fetch /path/to/NetCoreNOC-v0.13.0.bundle 'refs/tags/*:refs/tags/*' \
+    'refs/heads/claude/netcorenoc-v0-13-build-bi782x:refs/heads/v0.13.0-build'
+git rev-parse v0.13.0^{commit}   # == the branch tip; the tag is annotated
+```
+
+**No commit hash is quoted here, deliberately.** v0.12.0's entry named one, and a hash written
+*into* the commit that records it cannot be correct — amending to fix the hash changes the hash.
+The branch name and the tag name are stable; the hashes are one `git rev-parse` away and are
+verified by the bundle rather than by a number in prose.
+
+**The bundle is not committed.** A 3.5 MB pack of the repository, inside the repository, is a copy
+that is stale at the next commit. The two commands above regenerate it.
+
+The bundle is **evidence alongside a report, never a substitute for one**: the push failure is
+reported above in the terms Appendix A asks for.
+
+### After merging, recreate the tag on the merge commit
+
+Unchanged from v0.12.0 and repeated because it is the documented cause of six historically missing
+tags in this repository: **the Sync button in VS Code does not push tags**, and a rebase orphans a
+tag that pointed at the pre-rebase commit.
+
+```sh
+git checkout main && git pull
+git tag -a v0.13.0 -m "v0.13.0 — the UI" <merge-commit>
+git push origin v0.13.0        # tags need their own push, always
+```
