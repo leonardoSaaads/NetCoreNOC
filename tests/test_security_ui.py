@@ -359,26 +359,43 @@ def test_link_terms_come_from_the_named_term_list() -> None:
 #
 # ### READ THIS BEFORE ADDING TO THIS BLOCK, AND BEFORE TRUSTING IT. ###
 #
-# Every assertion below inspects the **shape of the source**. None of them observes the **behaviour
-# of the browser**, because there is no JavaScript runtime anywhere in this repository — no node, no
-# npm, no jsdom, no browser automation, in pyproject.toml, the Makefile, flake.nix or
-# .github/workflows/ (evidenced in `docs/gates/v0.7.5-phase-0.md` §5). That is a deliberate
-# consequence of "one static UI, no build step, no npm", and v0.7.5 does not overturn it
-# (DECISIONS #99).
+# Every assertion below inspects the **shape of the source**. None of them observes behaviour.
 #
-# So these tests CANNOT establish the three claims this release actually makes:
+# ### CORRECTED IN v0.12.0. The paragraph that stood here said: ###
+#
+#   "there is no JavaScript runtime anywhere in this repository — no node, no npm, no jsdom, no
+#    browser automation … That is a deliberate consequence of 'one static UI, no build step, no
+#    npm', and v0.7.5 does not overturn it (DECISIONS #99)."
+#
+# **That is no longer true, and the sentence is corrected in place rather than deleted**, because a
+# reader arriving from `docs/gates/v0.7.5-phase-0.md` §5 needs to know what changed and what did
+# not. What changed: `tests/domharness/` executes `ui/app.js` in a DOM under Node (ADR #167, which
+# supersedes #99 on that narrow question only). What did **not** change: no npm, no package
+# manifest, no lockfile, no build step, and Node is a **test** dependency that nothing under `src/`
+# needs — `tests/test_build_step.py` is now the guard on all of that.
+#
+# So the three claims this block could never establish —
 #
 #   * that the same DOM node survives an SSE update,
 #   * that no reachable state has the detail container displayed and empty,
-#   * that a click lands on the card the operator was reading.
+#   * that a click lands on the card the operator was reading,
 #
-# `FEEDBACK-PATH-0.7.5-DRAFT.md` §5 asks for exactly those, phrased as "drive `applyUpdate` twice
-# and assert the same DOM node is still in the document". There is no DOM to drive.
+# — are the ones `FEEDBACK-PATH-0.7.5-DRAFT.md` §5 asked for, phrased as *"drive `applyUpdate` twice
+# and assert the same DOM node is still in the document"*. **There is now a DOM to drive**, and the
+# first and third are asserted by
+# `tests/test_ui_invariants.py::test_an_sse_update_mid_gesture_does_not_destroy_the_click_target`,
+# demonstrated red under the re-created v0.7.4 defect
+# (`docs/gates/v0.12.0-guard-demonstrations.md` §4).
 #
-# **The behavioural claims are verified by `docs/gates/v0.7.5-manual-verification.md`**, executed by
-# a human against a running appliance. That document is the proof; this block is a tripwire that
-# catches the source drifting away from the shape the fix requires. A green tick here is NOT the
-# assertion the draft asked for, and must never be reported as though it were.
+# **The second is still not machine-checked.** "Displayed and empty for the length of a round trip"
+# is about *paint*, and the harness has no renderer. Test B of
+# `docs/gates/v0.7.5-manual-verification.md`, run under network throttling by a human, remains the
+# only evidence for it.
+#
+# This block stays, unchanged in substance, for the reason ADR #168 gives: it is a **tripwire on the
+# source** that fails when the shape drifts, and it is the only one of the pair still watching on a
+# machine without Node. A green tick here is still NOT a behavioural assertion, and must never be
+# reported as though it were.
 
 
 def _code_only(body: str) -> str:

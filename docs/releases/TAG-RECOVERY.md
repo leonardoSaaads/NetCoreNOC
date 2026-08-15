@@ -361,3 +361,31 @@ git fetch /path/to/NetCoreNOC-v0.11.0.bundle 'refs/tags/*:refs/tags/*' \
 
 The bundle is **evidence alongside a report, never a substitute for one**: the push failure is
 reported above in the terms Appendix A asks for.
+
+---
+
+## v0.12.0 — the instrument and the shape
+
+**No Phase 0 tag this release.** There is no pre-registration to ratify: v0.12.0 fits nothing,
+evaluates nothing and reads no holdout, so there is no result to register a plan against. Gate 0 is
+`../gates/v0.12.0-phase-0.md`, and what it fences is a *measurement* (no test executes `ui/app.js`),
+not a prediction.
+
+```sh
+# On the release commit, and AFTER the merge if the branch is rebased:
+git tag -a v0.12.0 <merge commit on main> -m "v0.12.0 — the instrument and the shape"
+git push origin v0.12.0
+```
+
+**Recreate `v0.12.0` after the merge**, pointing at the merge commit on `main`, for the reason §6
+gives and §1 measures: a rebase rewrites the branch's commits and orphans a tag created before it.
+
+**The Sync button in VS Code does not push tags.** `git push origin <tag>` — or
+`git push --follow-tags` — is required. This is the most likely explanation for the historical tags
+that went missing, and it is repeated here because it has already cost this repository once.
+
+After tagging, the version check must print:
+
+```
+v0.12.0  ->  0.12.0
+```

@@ -1,5 +1,47 @@
 # Upgrading NetCoreNOC
 
+## v0.11.0 → v0.12.0 (the instrument and the shape — **nothing to do**)
+
+Replace the code and restart. **There is no migration, no new setting, and nothing for an operator
+to do.** `user_version` stays at **13**.
+
+This release adds a test harness and an architecture document. It changes **not one byte of
+`src/`** — the appliance you are running after the upgrade is, file for file, the appliance you were
+running before it.
+
+| | |
+|---|---|
+| Schema | **none.** Zero migrations; `user_version` unchanged at 13 |
+| Rows seeded, changed or deleted | **none** |
+| Data | **untouched** |
+| Grouping | **unchanged.** `src/` is byte-identical; `make eval` is byte-identical |
+| Learned state | **unchanged** |
+| Routes | **none added, none changed** |
+| Capabilities | **none added** |
+| Audit actions | **none added** |
+| UI | **unchanged.** All four files byte-identical by SHA-256 — asserted by a test |
+| Environment variables | **unchanged** |
+| Runtime dependencies | **five**, unchanged since v0.2.0 |
+
+### Downgrade
+
+Reinstall v0.11.0. No schema change means nothing to undo.
+
+### For contributors only: the test suite now wants Node
+
+`make qa` runs 18 DOM tests that execute `ui/app.js` in a harness under Node.
+
+* **Node ≥ 22** on `PATH`. That is a **rule, not a pin** (ADR #166): the floor is a major version
+  and the harness uses no version-specific API.
+* **No `npm install`.** The harness is stdlib-only — no `package.json`, no `node_modules`, no
+  lockfile, no network. Cloning the repository is the whole setup.
+* **Without Node, they skip**, loudly, with a reason naming the requirement. `make qa` still passes.
+  `make dom` then prints `18 skipped` instead of `18 passed`, and **that difference is what to
+  look at** — a green suite over zero executed DOM tests reads like coverage and is not.
+
+**Node is a test dependency and never a runtime one.** Nothing under `src/` needs it; the appliance
+still runs on five Python packages and a static UI a browser loads directly.
+
 ## v0.10.1 → v0.11.0 (champion/challenger — **one migration, and nothing will start promoting**)
 
 Replace the code and restart. Migration **`0013`** applies automatically at startup and takes

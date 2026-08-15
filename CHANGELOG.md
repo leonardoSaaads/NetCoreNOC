@@ -4,6 +4,92 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-08-15 — "the instrument and the shape"
+
+**Before rewriting fifty-two kilobytes that no test executes, build the thing that would notice —
+and decide the shape of what replaces it. This release changes no pixel of the UI.**
+
+`src/netcorenoc/ui/app.js` is 52 738 bytes and 55 top-level functions. Until now **no test executed
+it**, and that was demonstrated rather than assumed: with the file made unparseable by any
+JavaScript engine, the full suite reported **1302 passed**
+([`docs/gates/v0.12.0-phase-0.md`](docs/gates/v0.12.0-phase-0.md) §2.3).
+
+**18 DOM tests now execute it.** The number was zero.
+
+### The headline
+
+```
+make dom  ->  18 passed          (executed, never a collected count)
+make qa   ->  1339 passed, coverage 96.13 %
+make eval ->  byte-identical: c2e8a0ce…8b9b6f26
+ui/       ->  byte-identical, all four files, by SHA-256
+src/      ->  unchanged since v0.11.0, not one byte
+```
+
+### The five invariants now under guard
+
+Each captured against the current UI so the replacement has something to honour; each with a
+control; each demonstrated **red** under an injected defect
+([`docs/gates/v0.12.0-guard-demonstrations.md`](docs/gates/v0.12.0-guard-demonstrations.md)).
+
+1. **A role never renders a panel requiring a capability it lacks.** Viewer and editor get three
+   panels; admin gets ten. The seven admin panels are *absent* from a viewer's document.
+2. **A partial split sends exactly the ids the operator marked, and no others** — the contract the
+   whole v0.9.1 → v0.9.2 evidence chain rests on.
+3. **A server-sent update mid-gesture does not destroy the click target.** *The v0.7.5 defect,
+   machine-checked for the first time.* `FEEDBACK-PATH-0.7.5-DRAFT.md` §5 asked for exactly this;
+   DECISIONS #99 recorded that there was no DOM to drive.
+4. **No render path writes unescaped data into the document** (F1), asserted by counting *elements*
+   rather than serialised text.
+5. **A capability the client lacks produces no request** — not a request the server refuses.
+
+### Added
+
+- **`tests/domharness/`** — a DOM harness that evaluates `ui/app.js` under `node:vm`. Stdlib-only
+  Node: **no npm, no `package.json`, no `node_modules`, no lockfile, no network, no install step.**
+  Not jsdom, and ADR #167 is why: both jsdom and Playwright need `npm install`, and introducing a
+  package manifest to build the guard against package manifests is incoherent.
+- **`tests/test_ui_invariants.py`** — the five invariants, with fixtures **captured from the real
+  server** at the exact URLs `app.js` requests.
+- **`tests/test_build_step.py`** — **principle 6 finally has a test.** Before this, a tracked
+  `package.json`, three lockfiles, a `vite.config.js` and a tracked `node_modules/` passed all 1302
+  tests. The file list comes from `git ls-files`, never a directory walk with a skip-list — that is
+  F51 in the mirror.
+- **`make dom`** — reports DOM tests **executed**. On a machine without Node it prints `18 skipped`,
+  and that difference is the point.
+- **[`docs/architecture/UI-0.13-DRAFT.md`](docs/architecture/UI-0.13-DRAFT.md)** — the release's most
+  durable output. Sidebar navigation with room for Phase 2 and Phase 3 **and no empty placeholders
+  for them**; per-role dashboards; the enumeration of every capability with no UI surface; the three
+  parameter classes; the env-then-database precedent `runtime.py` already proves; the framework
+  recommendation; twelve things v0.13.0 must not do.
+
+### Changed
+
+- **The `split("const TABS")` guard is replaced by rendering.** The panel-to-capability mapping is
+  now *discovered by execution* and cross-checked against `rbac.ROUTE_PERMISSIONS`. The text-level
+  guard is **kept** (ADR #168): it is the only one of the pair still watching on a machine without
+  Node, and its docstring now says so.
+- **The chain is resequenced** (ADR #170). Archetypes move to **v0.15.0**, the external cartridge to
+  **v0.14.0**; both drafts are retagged in place, not deleted. A corpus that cannot decide one
+  comparison cannot decide `k` of them.
+- **`tests/test_security_ui.py`'s v0.7.5 comment block is corrected in place.** It said *"there is no
+  JavaScript runtime anywhere in this repository"*. That is no longer true, and the correction says
+  what changed and what did not.
+
+### Found and deliberately not fixed — **F53**
+
+**The panel loaders have no capability check of their own.** A direct `renderPanel("audit")` as a
+viewer issues no request — but only because `prunePanels` removed the container and `clear(null)`
+throws. Not exploitable today (no path reaches a loader) and the server enforces regardless.
+**v0.13.0 introduces routing, which is exactly when an accidental defence stops being available.**
+Recorded, constrained in the draft, and asserted with its mechanism named so the note cannot rot.
+
+### Unchanged
+
+**Zero** migrations, **zero** new routes, **zero** new capabilities, **zero** new audit actions,
+**zero** new runtime dependencies (five since v0.2.0), **zero** intentional behaviour changes. An
+operator upgrading has nothing to do.
+
 ## [0.11.0] - 2026-08-14 — "champion/challenger"
 
 **Promotion becomes possible, auditable, and refusable — and on this corpus it refuses.**

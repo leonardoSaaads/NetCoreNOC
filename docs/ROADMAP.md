@@ -538,6 +538,23 @@ be one, and its diff could not be read in one sitting.
   filename-equals-target. They were not renamed because gates, security reviews and build reports
   cite both paths by name and are records that are never rewritten. A rename means updating those
   citations knowingly, or accepting dangling ones — a decision, not a tidy-up.
+- **ADR #159's coverage band may be misplaced.** Two runs on the v0.12.0 tree gave 96.13 % and
+  96.02 %, and the v0.11.0 baseline was 96.02 % — so two of three observations across two trees sit
+  0.08 **below** the documented 96.10 – 96.21 % band, while the 0.11-point spread reproduces the
+  drift the band describes. Either the band is slightly misplaced or the drift is wider than ±0.11.
+  Re-deriving it needs more than three samples; v0.12.0 reported both figures rather than guessing
+  (`gates/v0.12.0-phase-6.md` §8).
+- **The sixth invariant: the unauthenticated boot path.** Every harness scenario boots a successful
+  `/api/me`. Nothing executes the path where it returns 401 and `showLogin()` runs, so nothing
+  asserts that the app container stays hidden, that no panel renders, or — the part that would
+  matter — that a failed resume issues no further requests. It is a security invariant of the same
+  class as the five that were captured, it survives a rewrite, and it is about fifteen lines. Left
+  out of v0.12.0 rather than added late, because an invariant added after the guard demonstrations
+  were run would have no red beside its green (`security/SECURITY-REVIEW-0.12.0.md` §3.1).
+- **No shape assertion on the captured fixtures.** `uifixtures` captures from the live app, so drift
+  is impossible by construction — but nothing asserts the captured shapes contain the fields
+  `app.js` reads. A route that dropped `alarm_count` would render "undefined alarms" and every
+  invariant would still pass (survivor S4).
 - **`make dom` reports executed DOM tests; nothing reports them in CI.** The count is quoted by
   hand in the gate documents. A CI step that failed when the number of *executed* DOM tests dropped
   to zero would close the last gap in the anti-skip argument, and it is one line of workflow.
