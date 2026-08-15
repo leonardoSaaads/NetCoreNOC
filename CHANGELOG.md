@@ -4,6 +4,105 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-08-15 — "the UI"
+
+**The largest single change in this project's history, and the first release whose deliverable is
+something a human looks at.** v0.12.0 built an instrument and changed no pixel. This changes every
+pixel, against that instrument, with every screen rendered and driven as every role while it was
+being built.
+
+### The headline
+
+```
+make dom  ->  24 passed          (executed, never a collected count; was 18)
+make qa   ->  1428 passed        (was 1339)
+make eval ->  byte-identical: c2e8a0ce…8b9b6f26
+ui/app.js ->  52 738 bytes in one file  ->  an entry point plus 34 ESM modules
+/api      ->  44 route/method pairs, order byte-identical to the v0.7.1 baseline
+migrations -> zero
+runtime deps -> five
+```
+
+### F53 is closed, and the mechanism is a decision rather than an exception
+
+The finding v0.12.0 issued and could not fix: the panel loaders had no capability check, and a
+viewer's zero-request property held only because `clear(null)` threw a `TypeError`. **Routing is
+exactly what arms that**, so the repair is structural: `router.resolve()` returns a *decision*, and
+one call site turns only a `view` decision into a mounted component. A principal without the
+capability gets a refusal — the real component is never constructed, so there is no request to
+suppress.
+
+Reproduced before (7 panels, 7 `TypeError`s, 0 requests) and measured after (7 refusals, 0
+requests, **0 exceptions**). The test that asserted the `TypeError` now asserts its absence.
+
+### Eight routes that had no screen now have one
+
+Re-derived by driving every control in Gate 0, not copied from the design draft:
+
+| Route | What an operator could not do |
+|---|---|
+| `GET /api/promotion` | see what the gate decided and **why it refused** |
+| `POST /api/promotion` | approve a promotion |
+| `GET`/`POST /api/dataset/retention` | see and change the three retention tiers |
+| `POST /api/audit/prune` | prune the audit log |
+| `POST /api/users/{uid}/role` | change a role without deleting the account |
+| `POST /api/password` | **change their own password while signed in** |
+| `GET /api/classes` | browse learned alarm classes |
+
+### Added
+
+- **A three-region console**: grouped sidebar, work area, context panel. Hash routing, so a
+  situation is a shareable deep link during an incident.
+- **The per-term contributions on every situation**, with each term's number beside its bar —
+  the screen that answers *"why did the system group these alarms?"* without leaving it.
+- **Seventeen screens**, each with explicit loading, empty, error and partial states. The empty
+  state says what will fill the screen and what to do meanwhile, because a zero-config product's
+  first screen is always empty.
+- **The settings surface in three visible classes** — mechanism, hardening-only, structural — with
+  three-column precedence (environment default, database override, effective) and an impact
+  statement per setting. A structural value is a fact with no control, never a greyed-out input.
+- **Themes** (dark / light / system) and **density** (compact / comfortable), persisted in a cookie
+  carrying a theme name from a closed set and nothing else.
+- **Keyboard navigation**: the sidebar is one tab stop with roving `tabindex`; focus moves to the
+  work-area heading on every route change.
+- Preact 10.29.8 + htm 3.1.1, vendored as two import-free ESM assets — 12 900 bytes against d3's
+  279 706 — each with its version in the filename, its SHA-256 pinned and its licence beside it.
+
+### Fixed
+
+- **F54** — the member-marking checkbox's accessible name embedded operator-supplied text. Not an
+  XSS (the attribute is set safely), but an inert string is not therefore appropriate to read
+  aloud: a screen-reader user would have had a hostile payload announced as a checkbox's name.
+- **F55** — Governance offered `rbac.write` controls to a principal gated only on `rbac.read`, and
+  the scorer offered Preview without `scorer.preview`. Granting one capability without the other is
+  the entire point of the governance feature.
+- The sidebar's arrow keys were inert; the Overview sat on a spinner forever when `/api/stats`
+  failed. Both were found by **driving** the UI, not by reading it.
+- `tests/test_supply_chain.py` verified only what `CHECKSUMS.txt` already named, so an asset
+  dropped into `vendor/` with no pin was invisible to it.
+
+### Changed
+
+- `GET /api/config` gained `precedence` and `startup`, additively. TLS is reported as one boolean
+  and the removed shared token is not reported at all.
+- The 400-line module guard now applies to JavaScript. Largest module: 388 lines.
+- `test_ui_invariants.py` grew from 33 assertions to 65 — the draft's rule was that a selector
+  rename may not reduce the count.
+
+### Unchanged
+
+`engine.py`, the correlation path, the capture path, the ingest path, every migration, the CSP and
+the security headers, `rbac.PERMISSIONS`, `rbac.ROUTE_PERMISSIONS`, the audit catalog, the seal's
+query count (0), and the five runtime dependencies.
+
+### Honest limits
+
+**The visual layer is outside the instrument, and so is the graph.** The harness has no layout, no
+cascade and no accessibility tree; d3 is a recording double, so `app/views/graph.js` is executed by
+no assertion at all. No screen-reader testing was performed. These are stated in
+[`docs/security/SECURITY-REVIEW-0.13.0.md`](docs/security/SECURITY-REVIEW-0.13.0.md) §5 rather than
+implied away by a green suite.
+
 ## [0.12.0] - 2026-08-15 — "the instrument and the shape"
 
 **Before rewriting fifty-two kilobytes that no test executes, build the thing that would notice —

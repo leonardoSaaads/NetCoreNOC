@@ -1,5 +1,66 @@
 # Upgrading NetCoreNOC
 
+## Upgrading to v0.13.0 — "the UI"
+
+**Zero migrations. Zero new runtime dependencies. Nothing to do.**
+
+`pip install --upgrade netcorenoc` (or pull the image) and restart. The schema is unchanged at
+`0013`, the five runtime dependencies are unchanged, and no environment variable was added,
+renamed or removed.
+
+### What you will notice
+
+The console looks entirely different. Ten horizontal tabs became a grouped sidebar — **Operations**
+(what is broken now), **Evidence** (what the appliance has learned and what it refuses to conclude)
+and **Administer** (the machine itself) — with a work area and a detail panel.
+
+**The address bar now means something.** `#/situations/12` is a link to one situation, shareable
+during an incident. Bookmarks to the old console still work: it had no addresses, so there is
+nothing to break.
+
+### Seven things you could not do before
+
+1. **Change your own password while signed in** — *Your account*, from your username in the top
+   bar. Previously only the forced first-sign-in change existed.
+2. **See what the promotion gate decided and why it refused** — *Judge & promotion*.
+3. **Approve a promotion**, with the same preview-before-apply discipline as every other
+   consequential action.
+4. **See and change the three corpus retention tiers**, with a real count of what a change would
+   delete, from *Settings*.
+5. **Prune the audit log** — *Audit*.
+6. **Change a user's role** without deleting and recreating the account — *Users*. Note that a
+   role change revokes that user's sessions, and the screen says so before you click.
+7. **Browse learned alarm classes** — *Alarm classes*.
+
+### If you have customised anything
+
+**You have not.** The console has never had a configuration surface: no dashboards to migrate, no
+saved views, no layout to re-create. If you patched `ui/app.js` locally, that file no longer exists
+in the form you patched — it is now `ui/app.js` plus `ui/app/**`, and the module that owns your
+change is almost certainly named after the screen it affects.
+
+### If you reverse-proxy the console
+
+**It now fetches ~35 files instead of three.** They are all under `/app/`, `/app/views/` and
+`/vendor/`, all same-origin, all `application/javascript`. A proxy that allowlists individual paths
+needs the new ones; a proxy that passes everything through needs no change. There is no bundle and
+no build step, so the files a browser fetches are the files on disk.
+
+### Theme and density
+
+Both are stored in a cookie (`ncn_theme`, `ncn_density`, `SameSite=Strict`, one year). Neither is
+`HttpOnly` — the console reads them — and neither carries anything but a name from a closed set. If
+you clear cookies, the console falls back to your operating system's `prefers-color-scheme`, which
+is what v0.12.0 did unconditionally.
+
+### Accessibility, stated plainly
+
+The sidebar is keyboard-operable and focus moves into the work area on navigation. **The network
+graph is not keyboard-operable and has no screen-reader equivalent beyond its label** — everything
+it shows is available as text on the *Entities* screen, and the graph says so. No screen-reader
+testing was performed.
+
+
 ## v0.11.0 → v0.12.0 (the instrument and the shape — **nothing to do**)
 
 Replace the code and restart. **There is no migration, no new setting, and nothing for an operator

@@ -590,3 +590,73 @@ async def test_f39_feedback_commits_exactly_once(
         f"POST /feedback committed {write_commits} time(s) beyond identity resolution, not 1 — "
         "the mutation is durable before its audit row"
     )
+
+
+# -- v0.13.0: the three-column precedence `GET /api/config` reports (ADR #179) --------------------
+
+
+async def test_config_precedence_distinguishes_the_environment_from_the_override(
+    client: httpx.AsyncClient,
+) -> None:
+    """`UI-0.13-DRAFT.md` §7.1: environment default, database override, effective — **three
+    distinct things**, because an operator's real question during an incident is *"why is this
+    value what it is?"* and two sources behind one number cannot answer it.
+
+    **This test exists because a mutation survived without it.** Replacing `env.allowlist` with the
+    saved override in the response left every test in the repository green: the settings screen
+    would have rendered the same value in the "environment default" and "database override"
+    columns, which reads as *"the environment was already set to this"* — the opposite of what
+    happened — and the precedence table would have been decoration.
+
+    Asserted in both states, before and after a save, because the interesting one is *after*: with
+    no override the two agree by definition and the mutant is invisible.
+    """
+    before = (await client.get("/api/config")).json()
+    assert before["precedence"]["allowlist"]["override"] is None
+    assert before["precedence"]["retention_days"]["override"] is None
+    environment_default = before["precedence"]["allowlist"]["env"]
+    environment_retention = before["precedence"]["retention_days"]["env"]
+    assert before["allowlist"] == environment_default
+    assert before["retention_days"] == environment_retention
+
+    saved = await client.post(
+        "/api/config", json={"allowlist": "10.9.0.0/16", "retention_days": 3.5}
+    )
+    assert saved.status_code == 200
+
+    after = (await client.get("/api/config")).json()
+    precedence = after["precedence"]
+    # The override is what was saved…
+    assert precedence["allowlist"]["override"] == "10.9.0.0/16"
+    assert precedence["retention_days"]["override"] == 3.5
+    # …the effective value follows it…
+    assert after["allowlist"] == "10.9.0.0/16"
+    assert after["retention_days"] == 3.5
+    # …and the environment column still reports the ENVIRONMENT, unmoved by the save. These are
+    # the assertions the mutants escaped — **both fields**, because the first version of this test
+    # checked only the allowlist and a second ledger run showed the retention half still living.
+    assert precedence["allowlist"]["env"] == environment_default
+    assert precedence["allowlist"]["env"] != precedence["allowlist"]["override"]
+    assert precedence["retention_days"]["env"] == environment_retention
+    assert precedence["retention_days"]["env"] != precedence["retention_days"]["override"]
+
+
+async def test_config_reports_what_needs_a_restart_without_disclosing_tls_paths(
+    client: httpx.AsyncClient,
+) -> None:
+    """`startup` exists so the console can say which changes need a restart **before** one is
+    attempted (draft §7.3), and it is deliberately narrower than `Settings`.
+
+    `config.read` is in `AUDITED_DENIED_PERMISSIONS` because reading the allowlist reveals
+    network-security posture (F9). Adding filesystem paths to that response would widen what one
+    audited capability discloses for no operator benefit, so TLS is one boolean and the removed
+    shared token is absent entirely.
+    """
+    startup = (await client.get("/api/config")).json()["startup"]
+    for key in ("trap_host", "trap_port", "http_host", "http_port", "audit_retention_days"):
+        assert key in startup, key
+    assert startup["tls_enabled"] in (True, False)
+    assert "tls_cert" not in startup and "tls_key" not in startup
+    assert "api_token" not in startup
+    body = (await client.get("/api/config")).text
+    assert "api_token" not in body
