@@ -309,10 +309,23 @@ secret-leak scan run in CI. See [`SECURITY.md`](SECURITY.md) and
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install -e .[dev]
-make qa        # ruff + mypy --strict + pytest with coverage
+make qa        # ruff + mypy --strict + pytest with coverage + eval
+make dom       # just the DOM tests, reporting how many actually EXECUTED
 make security  # bandit + pip-audit
 make loadtest  # 1000 traps/s for 60 s against a running instance
 ```
+
+**The UI is tested by executing it (v0.12.0).** `tests/domharness/` evaluates `ui/app.js` in a DOM
+and drives it against responses captured from the real server, so five invariants — the per-role
+panel boundary, the partial-split payload, a gesture surviving a server-sent update, escaping, and
+least privilege at the client — are asserted behaviourally rather than by reading the source as
+text. Until v0.12.0 no test executed that file at all.
+
+It needs **Node ≥ 22 on `PATH` and nothing else**: no `npm install`, no `package.json`, no
+`node_modules`, no lockfile, no network. **Node is a test dependency and never a runtime one** — the
+appliance still runs on five Python packages and a static UI a browser loads directly, and
+`tests/test_build_step.py` is the guard on that. Without Node the DOM tests **skip, loudly**; `make
+dom` then prints `18 skipped` rather than `18 passed`, and that difference is the one to read.
 
 Start at the documentation index [`docs/README.md`](docs/README.md): design rationale in
 `docs/architecture/`, scope in `docs/scope/`, every ambiguity call in
@@ -335,7 +348,9 @@ the tree is [`docs/architecture/repo-map.md`](docs/architecture/repo-map.md).
   edges, and precedence statistics are learned, never declared.
 - **Explainability over sophistication.** Three numbers explain every link. No black
   boxes.
-- **Simplicity is a feature.** No brokers, no ORMs, no plugins, no frontend toolchain.
+- **Simplicity is a feature.** No brokers, no ORMs, no plugins, no frontend toolchain — and since
+  v0.12.0 that last one is a **test** (`tests/test_build_step.py`) rather than an intention: no
+  `package.json`, lockfile, bundler config or `node_modules` may exist in the tracked tree.
 
 ## License
 

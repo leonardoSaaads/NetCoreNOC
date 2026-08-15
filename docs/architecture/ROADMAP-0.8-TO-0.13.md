@@ -29,8 +29,10 @@ theme with a reason for its position in the chain, not a commitment to a date.
 | **v0.9.0** | **Shadow mode** — simple models train in the slow loop and record how they *would* have grouped. The built-in scorer decides everything. | `shadow-mode` |
 | **v0.10.0** | **The honest judge** — held-out evaluation split **by time or by incident, never at random**, scored on over-merge and under-merge. | `honest-judge` |
 | **v0.11.0** | **Champion/challenger** — the slow loop proposes a promotion with the evidence; an admin approves; the swap is one more immutable `scorer_config` row. | `champion-challenger` |
-| **v0.12.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. | `archetypes` |
-| **v0.13.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. | `external-cartridge` |
+| **v0.12.0** | **The instrument and the shape** — a DOM harness that executes `ui/app.js`, the invariants that survive a rewrite, and the architecture of the UI that replaces the current one. | `ui-harness` |
+| **v0.13.0** | **The UI** — sidebar navigation, per-role dashboards, the network graph, themes, the full admin surface. | `ui` |
+| **v0.14.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. | `external-cartridge` |
+| **v0.15.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. | `archetypes` |
 
 ---
 
@@ -180,28 +182,56 @@ agreement between the proposal and what admins actually approve.
 
 ---
 
-## v0.12.0 — archetypes
+## v0.12.0 — the instrument and the shape
 
-<!-- release-claim: v0.12.0 = archetypes -->
+<!-- release-claim: v0.12.0 = ui-harness -->
 
-**Per-archetype weights — PON/access, transport/DWDM, IP core.** Marked ***likely, review before
-committing***.
+**A DOM harness that executes `ui/app.js`, the invariants that survive a rewrite, and the
+architecture of the UI that replaces the current one. It changes no pixel.**
 
-A dying-gasp storm on a PON tree and a fibre cut on a DWDM span have different time constants, and
-one set of weights is a compromise between them. The `LinkScorer` seam accommodates per-archetype
-parameter sets without a contract change, and by v0.12.0 the champion/challenger framework can prove
-that a specialised set beats the general one *per archetype* rather than on average.
+`ui/app.js` is 52 738 bytes and 55 top-level functions, and **no test executed it**. That was
+demonstrated rather than assumed: `../gates/v0.12.0-phase-0.md` §2 made the file unparseable by any
+JavaScript engine and the full suite reported 1302 passed. The most expensive defect in this
+project's history (v0.7.5) was a click gesture in this UI, found only because a human executed it.
 
-The hedge is deliberate and is carried from `ROADMAP.md`: this depends on device-archetype
-clustering (DECISIONS #36), which is itself unbuilt, and it multiplies the number of models to
-evaluate and roll back by the number of archetypes. Review the evidence from v0.11.0 before
-committing to it. It is the one release in this chain that may reasonably be dropped.
+So the safety net comes **before** the thing it protects — the pattern that bought this whole
+roadmap. v0.7.5 fixed the acquisition path before v0.8.0 built the dataset; v0.9.2 fixed the
+evidence boundary before v0.10.0 built the judge. Rewriting the UI before it could be tested would
+have inverted that for the first time.
+
+It also settles the shape, in [`UI-0.13-DRAFT.md`](UI-0.13-DRAFT.md). Ten horizontal tabs are
+saturated — promotion would be the eleventh — and Phase 2 (LLM-assisted troubleshooting, test
+templates) and Phase 3 (NOC ticket emission) cannot be added to a horizontal bar at all. Choosing
+sidebar navigation is architecture, and it deserved a document rather than being decided while
+someone was writing CSS.
 
 ---
 
-## v0.13.0 — the external cartridge
+## v0.13.0 — the UI
 
-<!-- release-claim: v0.13.0 = external-cartridge -->
+<!-- release-claim: v0.13.0 = ui -->
+
+**Sidebar navigation, per-role dashboards, the network graph, themes, the full admin surface.**
+
+Specified in [`UI-0.13-DRAFT.md`](UI-0.13-DRAFT.md), written by v0.12.0 against a UI that could by
+then be executed. Three constraints travel with it and are not negotiable at build time:
+
+* **No build step and no npm.** One vendored ESM asset with pinned bytes — the door
+  `d3.v7.min.js` already uses, tested by `tests/test_supply_chain.py` and permitted by
+  `script-src 'self'`. `tests/test_build_step.py` is the guard, and v0.12.0 demonstrated it red.
+* **The five invariants of `tests/test_ui_invariants.py` are inherited, not renegotiated.** They
+  were captured against the UI being replaced precisely so that the replacement has something to
+  honour.
+* **No settings control may lower a hardening-only value.** `resolved = max(project floor,
+  deployment policy)`; the parameter surface has three visible classes and
+  [`UI-0.13-DRAFT.md`](UI-0.13-DRAFT.md) §6
+  defines them.
+
+---
+
+## v0.14.0 — the external cartridge
+
+<!-- release-claim: v0.14.0 = external-cartridge -->
 
 **ONNX under the proven framework, behind the worker-process harness.**
 
@@ -233,7 +263,37 @@ Two constraints travel with the resequencing and are not negotiable at build tim
 * **v0.7.5.** It is not in this chain: it is a runtime-behaviour fix to the feedback *acquisition*
   path, specified in [`FEEDBACK-PATH-0.7.5-DRAFT.md`](FEEDBACK-PATH-0.7.5-DRAFT.md), and it is a
   prerequisite for v0.8.0 rather than a member of the sequence.
-* **Anything after v0.13.0.** `ROADMAP.md` keeps the unsequenced ideas, one line each, as it always
+* **Anything after v0.15.0.** `ROADMAP.md` keeps the unsequenced ideas, one line each, as it always
   has.
-* **Whether v0.12.0 happens at all.** Recorded above as *likely, review before committing*, which is
-  the honest state.
+* **Whether v0.15.0 happens at all.** Recorded above as *likely, review before committing*, which is
+  the honest state. It was resequenced out of v0.12.0 on evidence (DECISIONS #170), which is not
+  the same as being dropped.
+
+---
+
+## v0.15.0 — archetypes
+
+<!-- release-claim: v0.15.0 = archetypes -->
+
+**Per-archetype weights — PON/access, transport/DWDM, IP core.** Marked ***likely, review before
+committing***.
+
+A dying-gasp storm on a PON tree and a fibre cut on a DWDM span have different time constants, and
+one set of weights is a compromise between them. The `LinkScorer` seam accommodates per-archetype
+parameter sets without a contract change, and by then the champion/challenger framework can prove
+that a specialised set beats the general one *per archetype* rather than on average.
+
+The hedge is deliberate and is carried from `ROADMAP.md`: this depends on device-archetype
+clustering (DECISIONS #36), which is itself unbuilt, and it multiplies the number of models to
+evaluate and roll back by the number of archetypes. Review the evidence from v0.11.0 before
+committing to it. It is the one release in this chain that may reasonably be dropped.
+
+**Deferred out of v0.12.0 by DECISIONS #170, on a measurement rather than a preference.** v0.11.0's
+promotion gate refused on this project's own corpus with `asserting_bags = 0` against a floor of 50.
+Per-archetype weights mean one model per archetype, which means splitting an already-insufficient
+corpus `k` ways: *a corpus that cannot decide one comparison cannot decide `k` of them, and dividing
+it makes every arm worse.* [`ARCHETYPES-0.12-DRAFT.md`](ARCHETYPES-0.12-DRAFT.md) is preserved and
+retagged to this release rather than deleted — its analysis stands and starts from exactly that
+fact. Its filename records when it was written, not what it governs; §0 of the document says so.
+
+---

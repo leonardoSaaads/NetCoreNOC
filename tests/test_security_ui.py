@@ -152,9 +152,24 @@ ADMIN_PANELS = {
 def _tab_caps() -> dict[str, str]:
     """Parse the TABS capability map out of app.js: {panel_id: required_capability}.
 
-    v0.7.0 gates tabs on the **resolved capability** from `/api/me` rather than on role rank: an
-    admin may have narrowed what a role holds, and a UI still offering the control would promise
-    something the server refuses.
+    ### v0.12.0: THIS IS NO LONGER THE PRIMARY GUARD, AND HERE IS WHY IT SURVIVES ANYWAY. ###
+
+    Splitting on the literal `"const TABS"` cannot fail for the thing it guards. A rewrite that
+    changed the *shape* of the map — an array of objects becoming a `Map`, a component declaring
+    its own requirement, a table moving to another file — leaves this regex matching nothing, and
+    a matcher that finds nothing reports no violations. The panel/capability map is the only
+    client-side defence against an admin screen rendering for a viewer, and it would have gone
+    unguarded exactly during the release that rewrote it.
+
+    **The behavioural guard is now `tests/test_ui_invariants.py`**, which boots `app.js` in a DOM
+    as each real role and asserts which panels exist, cross-checking the panel-to-capability
+    mapping — *discovered from the requests each panel issues* — against `rbac.ROUTE_PERMISSIONS`.
+
+    This text-level guard is **kept deliberately**, and only for one reason: the DOM harness skips
+    when Node is absent, and a skipped guard is a silent one. These two fail for different reasons
+    — this one when the source drifts, that one when the behaviour does — and on a machine with no
+    Node this is the only one of the pair still watching. Neither is sufficient alone; that is the
+    point of having both. See ADR #168.
     """
     app_js = (UI_DIR / "app.js").read_text()
     block = app_js.split("const TABS", 1)[1].split("];", 1)[0]
@@ -167,6 +182,11 @@ def test_admin_panels_are_gated_to_admin() -> None:
     Stronger than the old "role: admin" string check, because the required capability is now
     resolved against `rbac.PERMISSIONS` — the same source the server enforces from — so a panel
     gated on a capability that was quietly lowered to editor would fail here.
+
+    **v0.12.0**: this asserts the shape of the source. The property itself — that a viewer's DOM
+    contains no admin panel — is asserted by rendering in
+    `test_ui_invariants.py::test_a_role_never_renders_a_panel_whose_capability_it_lacks`. A green
+    tick here is not that assertion and must never be reported as though it were.
     """
     from netcorenoc import rbac
 
@@ -180,7 +200,13 @@ def test_admin_panels_are_gated_to_admin() -> None:
 
 
 def test_every_tab_is_gated_on_a_real_capability() -> None:
-    """No tab may be gated on a capability the authorization map does not know."""
+    """No tab may be gated on a capability the authorization map does not know.
+
+    The `assert caps` line is this guard's own vacuity check, and it is the only thing standing
+    between a shape change and a silently empty result. It is not sufficient — a map that still
+    *parsed* but had stopped being what the UI reads would pass it — which is what the behavioural
+    guard is for.
+    """
     from netcorenoc import rbac
 
     caps = _tab_caps()
@@ -333,26 +359,43 @@ def test_link_terms_come_from_the_named_term_list() -> None:
 #
 # ### READ THIS BEFORE ADDING TO THIS BLOCK, AND BEFORE TRUSTING IT. ###
 #
-# Every assertion below inspects the **shape of the source**. None of them observes the **behaviour
-# of the browser**, because there is no JavaScript runtime anywhere in this repository — no node, no
-# npm, no jsdom, no browser automation, in pyproject.toml, the Makefile, flake.nix or
-# .github/workflows/ (evidenced in `docs/gates/v0.7.5-phase-0.md` §5). That is a deliberate
-# consequence of "one static UI, no build step, no npm", and v0.7.5 does not overturn it
-# (DECISIONS #99).
+# Every assertion below inspects the **shape of the source**. None of them observes behaviour.
 #
-# So these tests CANNOT establish the three claims this release actually makes:
+# ### CORRECTED IN v0.12.0. The paragraph that stood here said: ###
+#
+#   "there is no JavaScript runtime anywhere in this repository — no node, no npm, no jsdom, no
+#    browser automation … That is a deliberate consequence of 'one static UI, no build step, no
+#    npm', and v0.7.5 does not overturn it (DECISIONS #99)."
+#
+# **That is no longer true, and the sentence is corrected in place rather than deleted**, because a
+# reader arriving from `docs/gates/v0.7.5-phase-0.md` §5 needs to know what changed and what did
+# not. What changed: `tests/domharness/` executes `ui/app.js` in a DOM under Node (ADR #167, which
+# supersedes #99 on that narrow question only). What did **not** change: no npm, no package
+# manifest, no lockfile, no build step, and Node is a **test** dependency that nothing under `src/`
+# needs — `tests/test_build_step.py` is now the guard on all of that.
+#
+# So the three claims this block could never establish —
 #
 #   * that the same DOM node survives an SSE update,
 #   * that no reachable state has the detail container displayed and empty,
-#   * that a click lands on the card the operator was reading.
+#   * that a click lands on the card the operator was reading,
 #
-# `FEEDBACK-PATH-0.7.5-DRAFT.md` §5 asks for exactly those, phrased as "drive `applyUpdate` twice
-# and assert the same DOM node is still in the document". There is no DOM to drive.
+# — are the ones `FEEDBACK-PATH-0.7.5-DRAFT.md` §5 asked for, phrased as *"drive `applyUpdate` twice
+# and assert the same DOM node is still in the document"*. **There is now a DOM to drive**, and the
+# first and third are asserted by
+# `tests/test_ui_invariants.py::test_an_sse_update_mid_gesture_does_not_destroy_the_click_target`,
+# demonstrated red under the re-created v0.7.4 defect
+# (`docs/gates/v0.12.0-guard-demonstrations.md` §4).
 #
-# **The behavioural claims are verified by `docs/gates/v0.7.5-manual-verification.md`**, executed by
-# a human against a running appliance. That document is the proof; this block is a tripwire that
-# catches the source drifting away from the shape the fix requires. A green tick here is NOT the
-# assertion the draft asked for, and must never be reported as though it were.
+# **The second is still not machine-checked.** "Displayed and empty for the length of a round trip"
+# is about *paint*, and the harness has no renderer. Test B of
+# `docs/gates/v0.7.5-manual-verification.md`, run under network throttling by a human, remains the
+# only evidence for it.
+#
+# This block stays, unchanged in substance, for the reason ADR #168 gives: it is a **tripwire on the
+# source** that fails when the shape drifts, and it is the only one of the pair still watching on a
+# machine without Node. A green tick here is still NOT a behavioural assertion, and must never be
+# reported as though it were.
 
 
 def _code_only(body: str) -> str:

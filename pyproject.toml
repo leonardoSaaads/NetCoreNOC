@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.11.0"
+version = "0.12.0"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -104,6 +104,12 @@ skips = ["B101"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    # v0.12.0. Tests that actually execute `ui/app.js` in the harness DOM, so `make dom` can
+    # report how many were EXECUTED. They skip — loudly, with a reason naming the requirement —
+    # when Node is absent, and a skipped DOM suite must never be read as a green one.
+    "dom: drives the DOM harness in a Node subprocess (skipped when Node >= 22 is absent)",
+]
 
 [tool.coverage.run]
 source = ["netcorenoc"]

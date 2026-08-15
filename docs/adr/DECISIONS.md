@@ -3790,3 +3790,220 @@ grouping**.
 - **The count that matters is still honoured**: v0.11.0 adds **three** runtime modules
   (`model_version`, `promotion`, `evaluation_folds`) plus one store mixin, and **no** extension
   point of any kind.
+
+## 166. The harness's Node requirement is a rule, not a pinned version (v0.12.0)
+
+- **Context**: the DOM harness needs a JavaScript runtime. The obvious move is to pin the version
+  it was developed against, so that everyone runs the same one.
+- **Options**: (a) pin an exact version (`v22.22.2`, the version this build detected); (b) pin the
+  Active LTS line by number (`24.x`); (c) register a **floor** — `>= 22` — plus a prohibition on
+  version-specific APIs, and record the *detected* version in the gate evidence rather than in the
+  code.
+- **Choice**: **(c)**.
+- **Reason**: this repository has at least three runtimes that must all work — GitHub's
+  `ubuntu-latest`, `flake.nix`'s dev shell, and a maintainer's machine — and DECISIONS #99 already
+  recorded the failure mode: *"this build container happens to carry `node` and `bun` on `PATH`
+  while CI, `flake.nix` and a maintainer's machine do not, so a test written against them would be
+  green only on the machine it ran on — worse than no test."* A harness pinned to an exact version
+  is a harness the build environment cannot run, and its failure would be a **skip**, which is the
+  most dangerous outcome available to this release. The floor is 22 because Node 22 is the
+  Maintenance LTS supported into April 2027 and Node 24 is the Active LTS; Node 26 removes several
+  legacy APIs and enables Temporal by default, so a harness written against 26-only behaviour would
+  fail on both LTS lines. The reference target is *the Active LTS line at the time of the release*,
+  which is a rule and not a number.
+- **Consequence**: `tests/domdriver.py::NODE_MIN_MAJOR` is the only version fact in the code, and
+  `test_the_node_requirement_is_a_rule_not_a_pinned_version` asserts that no harness file carries an
+  engine pin. `availability()` refuses a lower interpreter **with its version named** rather than
+  silently accepting it. The gate records `v22.22.2` as a *detection*.
+- **What this does not solve**: determinism across Node **majors**. Two majors could in principle
+  order object keys differently, and the determinism test compares two processes on one runtime. The
+  gate records the detected version for exactly that reason.
+
+## 167. A JavaScript runtime enters the test tree, and it brings no npm — superseding #99 (v0.12.0)
+
+- **Context**: DECISIONS #99 (v0.7.5) chose source inspection plus a written manual protocol over a
+  JavaScript test harness, and named where to revisit it: *"the planned UI rebuild is the point at
+  which testability should be a design input — the honest place to reopen this, and not before."*
+  DECISIONS #163 (v0.11.0) made it a prerequisite in so many words: *"a test that executes
+  `ui/app.js` in a real DOM."* This is that point.
+- **Options**: (a) keep #99 — no runtime, rewrite the UI on source inspection and a human protocol;
+  (b) jsdom as a dev dependency, via npm; (c) Playwright or Puppeteer against a real browser;
+  (d) a purpose-built DOM in stdlib-only Node, evaluated through `node:vm`, with no package
+  manifest and no install step.
+- **Choice**: **(d)**, and #99 is superseded **only** on the narrow question of whether a JavaScript
+  runtime may exist in the *test* tree. Everything else #99 decided still stands, including that a
+  source-inspection test must say what it does not prove.
+- **Reason**:
+  - (a) is what #99 itself scheduled for replacement, and Phase 0 measured what it costs: an
+    `app.js` that no JavaScript engine can parse left all 1302 tests green.
+  - **(b) and (c) both require `npm install`**, and that is the whole argument. Principle 6 is *"a
+    static UI with no build step and no npm"*. A harness that needs a package manager puts a
+    `package.json` and a `node_modules/` in the tree of a project whose constitution forbids them,
+    and — worse — makes the harness depend on a network fetch. A harness that cannot install is a
+    harness that **skips**, and Part XI of this release's plan names a skipping harness as the most
+    likely way it fails. Workstream 2 builds a guard against exactly the artefacts (b) would
+    introduce; introducing them to build the guard would be incoherent.
+  - (d) needs Node and nothing else. It runs where CI runs, where the flake's dev shell runs, and on
+    a machine with no network.
+- **The cost, stated plainly, because it is real**: a hand-written DOM is a fresh way to measure
+  nothing. If `append` copied instead of moving, or `removeChild` destroyed instead of detaching,
+  the v0.7.5 invariant would pass for a property of the instrument. Two things answer that, and
+  neither is a promise: `tests/domharness/selftest.mjs` asserts this DOM's own semantics for every
+  behaviour a captured invariant depends on, and **every invariant is demonstrated red under an
+  injected defect** in `../gates/v0.12.0-guard-demonstrations.md`. A DOM too lenient to notice the
+  defect would have shown green there.
+- **The second substitution, declared**: d3 is a strict recording double, so the force-directed
+  graph and the timeline SVG are **not executed**. They are layout, they are outside the
+  characterisation boundary (#168), and they are exactly what v0.13.0 rewrites. The double throws on
+  any d3 API it does not implement rather than returning `undefined`, so drift is loud — it caught
+  `sim.force("link").links(…)` during construction, which a lenient double would have swallowed.
+- **Consequence**: Node is a **test** dependency and never a runtime one. The five runtime
+  dependencies are unchanged, `package-data` names no `.mjs`, nothing under `src/` references the
+  harness, and `tests/test_build_step.py` asserts all three. `tests/test_security_ui.py`'s v0.7.5
+  comment block — *"there is no JavaScript runtime anywhere in this repository"* — is now false and
+  is corrected in place, with a pointer to the behavioural tests that replaced the claim it guarded.
+
+## 168. The characterisation boundary: invariants only, and the text guard is kept beside the behavioural one (v0.12.0)
+
+- **Context**: v0.13.0 replaces this UI. A characterisation suite written now can describe either
+  what the UI *is* or what it must *keep doing*, and only one of those survives the rewrite.
+- **Options**: (a) characterise broadly — panels, tab order, DOM structure, copy — for maximum
+  regression coverage; (b) capture only properties that must hold after a rewrite; (c) (b), and
+  **delete** the text-level guards the behavioural ones replace.
+- **Choice**: **(b)**, and explicitly **not** (c).
+- **Reason**: a test asserting a CSS class or a tab's position is a description of what is about to
+  be deleted; it would be thrown away with the UI and, worse, would have to be *edited* during the
+  rewrite, which is when a guard is least trustworthy. So the captured set is five properties, each
+  of which the replacement must honour: the per-role panel boundary, the partial-split payload, the
+  gesture surviving a server-sent update, escaping, and least privilege at the client.
+  On (c): the behavioural guard is **stronger** than the `split("const TABS")` text guard it
+  replaces — it cannot pass by matching nothing — but it is also **skippable**, because it needs
+  Node. Deleting the text guard would mean that on a machine without Node the capability map has no
+  guard at all. They fail for different reasons, and that is the reason to keep both: the text one
+  when the source drifts, the behavioural one when the behaviour does. Neither is sufficient alone,
+  and each test's docstring now says which one it is.
+- **Consequence**: `tests/test_ui_invariants.py` holds five invariants and no layout assertion; each
+  docstring states what it does not cover, in `../gates/v0.9.1-test-audit.md`'s voice.
+  `_tab_caps()` survives in `tests/test_security_ui.py` with a docstring saying it is no longer the
+  primary guard and why it is kept anyway.
+- **What was found and deliberately not fixed**: driving `renderPanel(id)` directly as a viewer —
+  what a deep link would do — issues no request, but for an **incidental** reason: `prunePanels`
+  removed the container, so the loader dereferences null and throws before reaching `api(...)`.
+  There is no capability check inside the loaders. That is recorded as a ROADMAP line and as a
+  constraint on v0.13.0 (which introduces routing, and with it loses the accidental defence), not
+  repaired here — this release changes not one byte of `ui/app.js`.
+
+## 169. The principle-6 guard derives from the git-tracked set, and `node_modules` stays out of `.gitignore` (v0.12.0)
+
+- **Context**: nothing in the suite failed if a build step appeared. Phase 0 §3 committed a
+  `package.json`, three lockfiles, a `vite.config.js` and a tracked `node_modules/`, and all 1302
+  tests passed. The one adjacent guard is scoped to `UI_DIR`, which is the single directory a
+  package manager would *not* put a manifest in.
+- **Options**: (a) widen the existing `UI_DIR.rglob` to the repository root; (b) a directory walk
+  from the root with a skip-list; (c) derive the file list from `git ls-files`.
+- **Choice**: **(c)**.
+- **Reason**: (b) is F51 in the mirror. v0.10.1's `_SKIP_DIRS` excluded `.venv` **by name**, so a
+  virtualenv called anything else stopped being skipped; a build-step guard with a skip-list fails
+  the same way in the other direction — an artefact under a directory the list happens to name
+  stops being *found*, and the guard goes quiet without going red. `git ls-files` answers "what does
+  this repository contain", which is the question being asked, and it has no name-based scope to
+  drift. (a) inherits the same problem one directory up.
+- **On `.gitignore`**: adding `node_modules/` to it would be the obvious tidy-up and it is the wrong
+  one. The guard is scoped to the **tracked** set by design — an untracked directory is not part of
+  what the maintainer ships — so the only remaining signal that a machine has grown one is a dirty
+  `git status`. Ignoring it would remove that signal *and* leave the guard unable to see it by
+  construction. Two blind spots where there was one.
+- **Consequence**: `tests/test_build_step.py` derives from `git ls-files`, returns `None` rather
+  than an empty list when git does not answer (an extractor that reported "no files" would report
+  every tree clean), and carries a **vacuity check** that adds each artefact class to a real
+  scratch repository and asserts the extractor finds it — driven through the same code path the
+  guard uses, because v0.9.2's ledger entry L2 records a guard test that called the helper directly
+  and stayed green when the caller was reverted.
+
+## 170. Archetypes are deferred to v0.15.0 and the draft is retagged, not deleted (v0.12.0)
+
+- **Context**: `ROADMAP-0.8-TO-0.13.md` named v0.12.0 as archetypes — per-archetype weights for
+  PON/access, transport/DWDM and IP core — marked *likely, review before committing*. v0.11.0 was
+  the review point, and it ended in `INSUFFICIENT_EVIDENCE` with `asserting_bags = 0` against a
+  floor of 50.
+- **Options**: (a) build archetypes as scheduled; (b) drop them and delete the draft; (c) defer
+  them, retag the draft, and give v0.12.0 the work that the evidence actually permits.
+- **Choice**: **(c)**. Archetypes move to **v0.15.0**; v0.12.0 becomes the instrument and the shape,
+  v0.13.0 the UI, v0.14.0 the external cartridge.
+- **Reason**: per-archetype weights mean one model per archetype, which means splitting an
+  already-insufficient corpus `k` ways. **A corpus that cannot decide one comparison cannot decide
+  `k` of them, and dividing it makes every arm worse.** That is not a scheduling preference, it is
+  the measurement four consecutive releases have returned. (b) is wrong because the draft's analysis
+  is *correct* and starts from exactly this fact — its §0 opens with the uncomfortable arithmetic —
+  so deleting it would discard the reasoning and invite someone to redo it worse.
+- **On ONNX**: the external cartridge stays **last**. It is the largest trust decision in the chain
+  and the only one that puts foreign code near the process, and nothing about deferring archetypes
+  makes it safer to bring forward.
+- **Consequence**: the release table gains `v0.14.0` and `v0.15.0`; `ARCHETYPES-0.12-DRAFT.md` and
+  `SCORER-PLUGINS-0.13-DRAFT.md` are retagged in place (six element tags each, plus their claim
+  markers), the precedent being DECISIONS #93's resequencing of the latter; `docs/README.md`'s two
+  tags follow. `tests/test_documentation.py`'s membership pin moves from six releases to eight, in
+  the same commit, deliberately.
+- **On the filenames**: `ARCHETYPES-0.12-DRAFT.md` keeps its name while governing v0.15.0, and
+  `ROADMAP-0.8-TO-0.13.md` keeps its while governing to v0.15.0. Renaming would follow #93's
+  filename-equals-target convention and was the alternative considered; it was not taken because
+  the two paths are cited by name across gates, security reviews and build reports that are
+  **records and are never rewritten**, and a rename would leave those citations pointing at nothing.
+  The cost is a filename that misstates its release, which is why each document's own header now
+  says what it governs. A rename is a ROADMAP line, not a silent follow-up.
+
+## 171. v0.13.0 vendors one ESM micro-framework, and the recommendation is Preact + htm (v0.12.0)
+
+- **Context**: `ui/app.js` is 52 738 bytes of hand-written DOM building with no component model.
+  v0.13.0 rewrites it. Choosing the tool while writing CSS is how a constitution gets amended by
+  accident, so v0.12.0 chooses and v0.13.0 builds.
+- **Options**: (a) vanilla and modern — ES modules, Web Components, CSS custom properties;
+  (b) one micro-framework delivered as ESM and **vendored** with pinned bytes (Preact + htm, or
+  Lit); (c) a bundler and npm.
+- **Choice**: **(b)**, recommending **Preact + htm**.
+- **Reason**: (c) breaks principle 6 and would require reopening the constitution, which is not a
+  thing a UI release gets to do. (a) preserves everything and solves nothing: it produces another
+  hand-written 50 KB without structure — today's problem, deferred one release, with the rewrite
+  budget already spent. (b) asks the project for **nothing new**. `vendor/d3.v7.min.js` is 279 706
+  bytes — five times `app.js` — and already ships under `CHECKSUMS.txt` with its licence beside it,
+  guarded by `tests/test_supply_chain.py` and permitted by `script-src 'self'`. A second vendored
+  asset walks a path that already has an instrument on it.
+  Preact + htm over Lit on one specific ground: **htm needs no compile step.** Lit's ergonomic form
+  is decorators plus TypeScript, which is a build step wearing a different hat; htm is tagged
+  template literals evaluated by the browser, so the source a maintainer edits is the source the
+  browser runs — which is the actual content of principle 6.
+- **The security argument, which is the one that decided it**: it makes the capability guard
+  **structural rather than textual**. A component that declares the capability it requires, rendered
+  once per role by a test, is a far stronger guard than `split("const TABS")` — and v0.12.0's Phase
+  0 measured exactly how weak the textual form is.
+- **Consequence**: recorded in `UI-0.13-DRAFT.md` §8 with the vendoring procedure, the checksum
+  obligation, and the licence requirement. **v0.12.0 vendors nothing and writes no framework code.**
+- **What this does not decide**: the version to vendor, which must be chosen at build time against
+  the then-current release and pinned by hash in the same commit.
+
+## 172. Theme persistence goes to a cookie, not `localStorage` (v0.12.0, specifying v0.13.0)
+
+- **Context**: `style.css` already carries 30 custom properties, a `:root` block and a
+  `@media (prefers-color-scheme: light)` override. What is missing is an explicit toggle and
+  somewhere to remember it. The obvious place is `localStorage`, and **an existing test forbids it**
+  — `assert "localStorage" not in app_js`, which is F2's remediation.
+- **Options**: (a) `localStorage`, deleting or narrowing the F2 guard; (b) a server-side per-user
+  preference, on a new route or a new column; (c) a cookie written by the client, `SameSite=Strict`,
+  not `HttpOnly`, carrying a theme name and nothing else; (d) no toggle — follow
+  `prefers-color-scheme` only.
+- **Choice**: **(c)**, with (d) as the honest fallback if v0.13.0 runs out of room.
+- **Reason**: (a) is not available. The F2 guard exists because a token lived in `localStorage`, and
+  the guard's value comes from being an absolute — *no string, no exception* — which is a shape
+  that stops working the moment it acquires its first carve-out. A reviewer would then have to
+  judge, on every future diff, whether this `localStorage` use is the permitted one. (b) is correct
+  and too expensive for a display preference: a route, a capability, a migration and an audit
+  decision for something that is not a security boundary and does not need to survive a device
+  change. (c) costs no route, no schema, no capability and no audit row; a cookie is already the
+  session mechanism, so the concept is not new to the reader.
+- **The rule that comes with it**: the theme cookie carries a **theme name from a closed set** and
+  nothing else — never a user id, never a token, never a preference blob. An unrecognised value
+  falls back to `prefers-color-scheme`, which means a hostile cookie can at worst select a supported
+  theme. It is **not** `HttpOnly`, deliberately, because the client must read it to avoid a flash of
+  the wrong theme; that is why it may never carry anything whose disclosure matters.
+- **Consequence**: `UI-0.13-DRAFT.md` §9 specifies it; the F2 guard is untouched and v0.13.0
+  inherits the prohibition intact.

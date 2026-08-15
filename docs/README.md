@@ -71,9 +71,21 @@ one-screen tour of the tree.
   split by time or by incident and never at random, why the merge chain makes incident identity
   non-obvious, the iterative-overfitting hazard no column measures, and the restated
   `incumbent_linked` invariant.
+- [`architecture/UI-0.13-DRAFT.md`](architecture/UI-0.13-DRAFT.md) — the v0.13.0 UI, specified by
+  v0.12.0 **against a UI that could by then be executed**: sidebar navigation with room for Phase 2
+  and Phase 3 (and **no empty placeholders** for them), per-role dashboards, the enumeration of
+  every capability with no UI surface today, the **three parameter classes** that keep a settings
+  screen from lowering a sufficiency floor, the env-then-database precedent `runtime.py` already
+  proves, the framework recommendation, and the twelve things v0.13.0 must not do. Spec only,
+  `v0.13.0: planned`.
+- [`architecture/ARCHETYPES-0.12-DRAFT.md`](architecture/ARCHETYPES-0.12-DRAFT.md) — per-archetype
+  weights, spec only, **`v0.15.0: planned`**. Written during v0.11.0 as the v0.12.0 specification
+  and **resequenced by DECISIONS #170** on the measurement in its own §0: a corpus that cannot
+  decide one comparison cannot decide `k` of them. The filename records when it was written, not
+  what it governs; read the box at the top.
 - [`architecture/SCORER-PLUGINS-0.13-DRAFT.md`](architecture/SCORER-PLUGINS-0.13-DRAFT.md) —
   customer-supplied models (blessed ONNX adapter) under the v0.6.0 `LinkScorer` contract, spec only,
-  `v0.13.0: planned`. Refined during v0.7.0 (§R1–R5): the worker-process preemption harness is a
+  `v0.14.0: planned`. Refined during v0.7.0 (§R1–R5): the worker-process preemption harness is a
   **blocking prerequisite**. Written as the v0.8.0 spec and **resequenced in place** by v0.7.4
   (DECISIONS #93); the Python entry-point escape hatch it also specified is **rejected, not
   deferred**. Read the box at the top for the disposition.
@@ -169,7 +181,7 @@ so the prose beneath it stays the thing a human reads.
 **2. An element tag — what a spec *element* is planned for.** The pre-existing convention, kept:
 
 ```
-## 1. The blessed ONNX path (`v0.13.0: planned`)
+## 1. The blessed ONNX path (`v0.14.0: planned`)
 ```
 
 A document that carries a release claim may only tag elements for **that** release; that is what
