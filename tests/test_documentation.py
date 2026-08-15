@@ -243,7 +243,14 @@ def test_the_release_table_parses() -> None:
     # beside it, which is what this line has just been.
     assert len(table) == 8, f"expected v0.8.0…v0.15.0, parsed {sorted(table)}"
     assert set(table) == {
-        "v0.8.0", "v0.9.0", "v0.10.0", "v0.11.0", "v0.12.0", "v0.13.0", "v0.14.0", "v0.15.0",
+        "v0.8.0",
+        "v0.9.0",
+        "v0.10.0",
+        "v0.11.0",
+        "v0.12.0",
+        "v0.13.0",
+        "v0.14.0",
+        "v0.15.0",
     }
     claims = [claim for _theme, claim in table.values()]
     assert len(set(claims)) == len(claims), f"two releases share a claim key: {claims}"

@@ -97,7 +97,14 @@ async def test_a_role_never_renders_a_panel_whose_capability_it_lacks(
     This asserts the same property by **rendering**: boot as each real role with the real resolved
     capability set, then read which panels exist in the resulting DOM. The panel-to-capability
     mapping is not read from the source at all — it is discovered from the requests each panel
-    issues (below) — so there is nothing for a rewrite to make unmatchable.
+    issues — so there is nothing for a rewrite to make unmatchable.
+
+    **Why the admin-panel set is derived from `rbac.PERMISSIONS` and not from a set difference.**
+    The first version of this test computed `admin_only = seen["admin"] - seen["viewer"]`. The
+    guard demonstration in `../docs/gates/v0.12.0-guard-demonstrations.md` §1 showed that assertion
+    is unfalsifiable by the defect it exists to catch: lower a panel's required capability so a
+    viewer *does* see it, and the panel simply leaves the difference set. The expected set must come
+    from an authority the injection does not touch, which is the server's own table.
 
     What this does NOT cover: what a panel *contains* once rendered, and any control inside a
     panel the role does hold. It covers presence and absence.
@@ -110,14 +117,35 @@ async def test_a_role_never_renders_a_panel_whose_capability_it_lacks(
 
     # Capabilities are nested (viewer ⊆ editor ⊆ admin), so the rendered panels must be too.
     assert seen["viewer"] <= seen["editor"] <= seen["admin"]
-    # And the strong half: an admin-ceiling panel is ABSENT from a non-admin DOM, not merely
-    # hidden. `prunePanels` removes the node; this is what asserts that it really did.
-    admin_only = seen["admin"] - seen["viewer"]
-    assert admin_only, "no panel distinguishes an admin from a viewer; the fixture proves nothing"
+
+    # The admin-ceiling panels, discovered by executing each of admin's tabs and resolving what it
+    # requests against `rbac` — never from the viewer/admin difference.
+    admin_only = _admin_ceiling_panels(routes)
+    assert admin_only, "no panel resolved to an admin capability; the fixture proves nothing"
+    # The strong half: such a panel is ABSENT from a non-admin DOM, not merely hidden.
+    # `prunePanels` removes the node; this is what asserts that it really did.
     for role in ("viewer", "editor"):
         assert not (seen[role] & admin_only), (
             f"{role} rendered admin panel(s) {sorted(seen[role] & admin_only)}"
         )
+
+
+def _admin_ceiling_panels(routes: dict[str, Any]) -> set[str]:
+    """Panels that read an admin-only route, discovered by execution at admin and keyed on the
+    panel's `data-panel` id — never on its tab label, which is copy."""
+    admin_capabilities = {c for c, role in rbac.PERMISSIONS.items() if role == "admin"}
+    result = domdriver.run_scenario(
+        "capabilityRequests", {"routes": routes["admin"], "clickTabs": ALL_TAB_LABELS}
+    )
+    found: set[str] = set()
+    for record in result["perTab"].values():
+        if not record["offered"] or not record["panel"]:
+            continue
+        for entry in record["paths"]:
+            method, path = entry.split(" ", 1)
+            if method == "GET" and _capability_for(path) in admin_capabilities:
+                found.add(record["panel"])
+    return found
 
 
 @dom_test

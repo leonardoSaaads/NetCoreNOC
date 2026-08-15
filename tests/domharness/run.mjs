@@ -216,6 +216,11 @@ const scenarios = {
       await settle(env);
       perTab[label] = {
         offered: existed,
+        // The panel the click actually activated, by its `data-panel` id. Reported so a test can
+        // key on the PANEL rather than on the tab's label: a label is copy, and copy is not an
+        // invariant. This is what lets invariant 1 derive its admin-panel set from capabilities
+        // instead of from an observed viewer/admin difference an injection could move.
+        panel: env.document.querySelector(".panel.active")?.dataset.panel ?? null,
         paths: env.network.requests.slice(before).map((r) => `${r.method} ${r.path}`),
       };
     }
