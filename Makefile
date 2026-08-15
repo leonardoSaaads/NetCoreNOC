@@ -35,6 +35,16 @@ typecheck:
 test:
 	$(PYTHON) -m pytest --cov=netcorenoc --cov-report=term-missing
 
+# The DOM harness (v0.12.0), reported on its own. `make qa` already runs these — they are ordinary
+# pytest tests — and this target exists for ONE reason: so a gate can quote the number of DOM tests
+# **executed** rather than collected.
+#
+# On a machine with Node this prints "N passed". On a machine without it prints "N skipped", and
+# that difference is the whole point: a harness that skipped everywhere and was reported as green
+# is the most likely way this release fails (SCOPE-0.12.0 §7). Never quote a collected count.
+dom:
+	$(PYTHON) -m pytest -q -m dom -p no:cacheprovider
+
 # THE ONE TRUE COVERAGE COMMAND (v0.10.1, A3). `make test` above and this target report the same
 # percentage — `term` and `term-missing` differ only in the trailing "Missing" column — and this one
 # exists so that the figure a gate document quotes has a single, named provenance.
