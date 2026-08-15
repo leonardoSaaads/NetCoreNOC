@@ -196,7 +196,7 @@ and the note cannot quietly become false.
 | tests | 1302 | **1339** |
 | **DOM tests executed** | **0** | **18** |
 | `mypy --strict` | 172 files, clean | **177 files, clean** |
-| coverage | 96.02 % | **96.02 – 96.13 %** (two runs) |
+| coverage | 96.02 % | **96.02 – 96.13 %** (three runs) |
 | `eval` hash | `c2e8a0ce…` | **`c2e8a0ce…`** identical |
 | migrations | 0001–0013 | **0001–0013** |
 | runtime dependencies | 5 | **5** |
@@ -204,12 +204,13 @@ and the note cannot quietly become false.
 | seal query count | 0 | **0** |
 | ADRs / findings | #165 / F52 | **#172 / F53** |
 
-**Two runs of `make coverage` on the same tree gave 96.13 % and 96.02 %.** The 0.11-point spread is
-exactly the drift ADR #159 attributes to two underandomised `hypothesis` properties, so the mechanism
-is confirmed — but the range **straddles the band's lower edge** (96.10 – 96.21 %), and the honest
-statement is *"coverage on this tree is 96.02 – 96.13 %"*, not *"coverage is inside the band"*. An
-earlier draft of the Gate 6 document made the second claim from a single sample; the second run
-falsified it and the correction is recorded in place. Nothing here is attributable to this release —
+**Three runs of `make coverage` on the same tree gave 96.13 %, 96.02 % and 96.05 %.** The
+0.11-point spread is exactly the drift ADR #159 attributes to two underandomised `hypothesis`
+properties, so the mechanism is confirmed — but the range **straddles the band's lower edge**
+(96.10 – 96.21 %), and the honest statement is *"coverage on this tree is 96.02 – 96.13 %"*, not
+*"coverage is inside the band"*. An earlier draft of the Gate 6 document made the second claim from a
+single sample; the second run falsified it, the third confirmed the falsification, and the correction
+is recorded in place. Nothing here is attributable to this release —
 the v0.11.0 baseline was also 96.02 %. The band was not widened, the properties were not
 derandomised, and the measurement was not replaced by the band.
 
