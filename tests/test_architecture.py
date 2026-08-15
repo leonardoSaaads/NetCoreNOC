@@ -326,8 +326,44 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/readyz"),
     ("GET", "/"),
     ("GET", "/app.js"),
-    ("GET", "/style.css"),
+    ("GET", "/app/api.js"),
+    ("GET", "/app/context.js"),
+    ("GET", "/app/destructive.js"),
+    ("GET", "/app/dom.js"),
+    ("GET", "/app/format.js"),
+    ("GET", "/app/login.js"),
+    ("GET", "/app/parameters.js"),
+    ("GET", "/app/registry.js"),
+    ("GET", "/app/router.js"),
+    ("GET", "/app/session.js"),
+    ("GET", "/app/shell.js"),
+    ("GET", "/app/sidebar.js"),
+    ("GET", "/app/store.js"),
+    ("GET", "/app/theme.js"),
+    ("GET", "/app/views/account.js"),
+    ("GET", "/app/views/audit.js"),
+    ("GET", "/app/views/classes.js"),
+    ("GET", "/app/views/corpus.js"),
+    ("GET", "/app/views/entities.js"),
+    ("GET", "/app/views/facts.js"),
+    ("GET", "/app/views/governance.js"),
+    ("GET", "/app/views/graph.js"),
+    ("GET", "/app/views/labelling.js"),
+    ("GET", "/app/views/overview.js"),
+    ("GET", "/app/views/promotion.js"),
+    ("GET", "/app/views/quarantine.js"),
+    ("GET", "/app/views/retention.js"),
+    ("GET", "/app/views/scorer.js"),
+    ("GET", "/app/views/settings.js"),
+    ("GET", "/app/views/situations.js"),
+    ("GET", "/app/views/timeline.js"),
+    ("GET", "/app/views/tokens.js"),
+    ("GET", "/app/views/users.js"),
+    ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
+    ("GET", "/vendor/preact-10.29.8.module.js"),
+    ("GET", "/vendor/htm-3.1.1.module.js"),
+    ("GET", "/style.css"),
     ("GET", "/.well-known/security.txt"),
     ("POST", "/api/login"),
     ("POST", "/api/logout"),
@@ -356,19 +392,12 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("DELETE", "/api/tokens/{tid}"),
     ("GET", "/api/config"),
     ("POST", "/api/config"),
-    # v0.8.0: the dataset retention tiers. Registered beside the other admin config because
-    # that is what they are. Neither path is a prefix of, or shadowed by, any other route, so
-    # their position changes no matching decision — the baseline grows rather than shifting.
     ("GET", "/api/dataset/retention"),
     ("POST", "/api/dataset/retention"),
     ("GET", "/api/scorer"),
     ("POST", "/api/scorer/preview"),
     ("POST", "/api/scorer"),
     ("POST", "/api/scorer/rollback"),
-    # v0.11.0. Registered immediately after the scorer routes, because `routes_promotion.register`
-    # is called immediately after `routes_scorer.register` — and the ORDER is the assertion: FastAPI
-    # resolves the first matching route, so this list is what makes "we only moved code between
-    # files" mean something.
     ("GET", "/api/promotion"),
     ("POST", "/api/promotion"),
     ("GET", "/api/rbac"),
@@ -406,6 +435,30 @@ async def test_route_table_order_is_unchanged(store: Store) -> None:
     """
     _engine, _queue, app = await authutil.make_env(store)
     assert route_order(app) == ROUTE_ORDER_BASELINE
+
+
+#: The `/api` subsequence of the v0.7.1 baseline, unchanged through every release since.
+#:
+#: v0.13.0 appended 36 static module paths to the table, which moved the FULL list above without
+#: moving anything that can shadow a handler — a static asset is an exact literal with no template
+#: and cannot capture another route's requests. So the table is re-pinned **and** the property it
+#: actually protects is asserted separately, rather than the whole comparison being loosened.
+API_ORDER_BASELINE: list[tuple[str, str]] = [
+    entry for entry in ROUTE_ORDER_BASELINE if entry[1].startswith("/api")
+]
+
+
+async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) -> None:
+    """The half of the ordering guard that decides which handler answers.
+
+    `/api/situations` must stay above `/api/situations/{sid}` and `/api/scorer/preview` above the
+    bare `POST /api/scorer`; a template that moves above its literal silently changes behaviour.
+    v0.13.0 touches no `/api` route, and this states that as a fact rather than as an intention.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    live = [entry for entry in route_order(app) if entry[1].startswith("/api")]
+    assert live == API_ORDER_BASELINE
+    assert len(live) == 44, f"the /api surface is {len(live)} pairs; v0.13.0 adds no route"
 
 
 async def test_route_order_baseline_has_no_duplicates(store: Store) -> None:
@@ -479,3 +532,94 @@ def test_the_capture_module_is_the_one_that_grew() -> None:
     assert "store/dataset.py" in modules, "netcorenoc/store/dataset.py is missing"
     assert modules["capture.py"] > 100, "capture.py is too small to hold the capture logic"
     assert "capture.py" not in COHESION_EXEMPT, "capture.py must live under the ordinary guard"
+
+
+# --- the JavaScript module-size guard (v0.13.0) -------------------------------------------------
+#
+# `MODULE-ARCHITECTURE.md` §2 — *a module owns one noun or one decision* — was written about Python
+# and enforced only there. v0.12.0's Phase 0 measured what that omission cost: `ui/app.js` was
+# 52 738 bytes with 55 top-level functions, and no guard in this repository had an opinion about it.
+#
+# The rule is the same rule and the number is the same number. Applying it to JavaScript is what
+# stops v0.13.0 from replacing one 52 KB file with one 52 KB file in a new syntax — which would
+# pass every other test here (Part XI: *replace the shape, not just the file*).
+#
+# **The vendored assets are exempt and the exemption is not a judgement call**: they are
+# third-party bytes pinned by SHA-256, so holding them to this project's conventions would mean
+# either editing them (breaking the pin, which is the point of the pin) or arguing about it once
+# per asset. `test_the_javascript_exemption_is_only_vendor` asserts the exemption is exactly that
+# set and nothing else — F51's lesson, which was a guard whose scope silently widened.
+
+JS_ROOT = PKG / "ui"
+
+
+def javascript_modules() -> dict[str, int]:
+    """`{relative path: line count}` for every JavaScript module this project wrote."""
+    return {
+        str(path.relative_to(JS_ROOT)): len(path.read_text(encoding="utf-8").splitlines())
+        for path in sorted(JS_ROOT.rglob("*.js"))
+        if "vendor" not in path.parts
+    }
+
+
+def test_no_javascript_module_is_over_the_size_guard() -> None:
+    """The Python guard's number, applied to the UI (Part VII.7).
+
+    If this fails, split the module along a noun — do not raise the limit. There is deliberately no
+    debt allowlist on this side: the Python one exists because it inherited debt, and this guard is
+    installed against a tree that has none.
+    """
+    modules = javascript_modules()
+    assert len(modules) >= 20, f"only {len(modules)} modules found; this guard is not guarding"
+    oversize = {name: lines for name, lines in modules.items() if lines > MAX_MODULE_LINES}
+    assert not oversize, (
+        f"JavaScript modules over {MAX_MODULE_LINES} lines: {oversize}. "
+        f"Split along a noun; do not raise the limit."
+    )
+
+
+def test_the_javascript_exemption_is_only_vendor() -> None:
+    """Guard the guard: the skip is scoped to `ui/vendor/` and to nothing else.
+
+    F51 was a guard scoped by a literal string — `_SKIP_DIRS` excluded `.venv` by name, so a
+    virtualenv called anything else stopped being skipped. This is the mirror image: a skip that
+    quietly widened would stop the guard *finding* things. So the exempt set is asserted to be
+    exactly the vendored files, by counting both sides.
+    """
+    everything = set(JS_ROOT.rglob("*.js"))
+    checked = {JS_ROOT / name for name in javascript_modules()}
+    exempt = everything - checked
+    assert exempt, "nothing is exempt, so this test is asserting nothing"
+    assert all(path.parent.name == "vendor" for path in exempt), (
+        f"the exemption reaches outside ui/vendor/: {sorted(str(p) for p in exempt)}"
+    )
+    assert len(exempt) == 3, f"expected exactly the three vendored assets, found {len(exempt)}"
+
+
+def test_the_ui_entry_point_only_boots() -> None:
+    """`app.js` is an entry point, and an entry point that grows is a `main()` becoming a program.
+
+    Named separately from the size guard because the limit that matters here is far below 400: this
+    file resolves a session, mounts one of two components, and opens the update stream.
+    """
+    lines = javascript_modules()["app.js"]
+    assert lines < 160, f"the entry point is {lines} lines; it should boot and nothing else"
+
+
+def test_every_javascript_module_opens_with_a_block_comment() -> None:
+    """`MODULE-ARCHITECTURE.md` §2's other half: a module states the decision it owns.
+
+    The Python side gets this from the docstring guard. The UI had no equivalent, and the file this
+    release deleted opened with eleven lines of comment covering 52 KB of code.
+    """
+    for path in sorted(JS_ROOT.rglob("*.js")):
+        if "vendor" in path.parts:
+            continue
+        source = path.read_text(encoding="utf-8")
+        assert source.lstrip().startswith("/*"), (
+            f"{path.name} does not open with a block comment saying what it owns"
+        )
+        header = source.split("*/", 1)[0]
+        assert len(header.split()) >= 20, (
+            f"{path.name}'s header is {len(header.split())} words; it does not explain anything"
+        )

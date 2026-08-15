@@ -1,24 +1,28 @@
-"""The five invariants of `ui/app.js` that must survive a rewrite (v0.12.0, Workstream 1.3-1.4).
+"""The five invariants of the console that had to survive the rewrite (v0.12.0 → v0.13.0).
 
-v0.13.0 replaces this UI. Tests that describe **layout** would be thrown away with it; tests that
-describe **invariants** are what the replacement must honour. Only the second kind is here. There
-is deliberately no assertion in this file about a tab's order, a panel's name, a CSS class, a
-colour, or a string of copy — if you find yourself adding one, you are describing what is about to
-be deleted.
+v0.12.0 captured these **specifically so they would survive this release**. v0.13.0 replaced every
+byte of the UI, so every selector below changed — and `UI-0.13-DRAFT.md` §1.1 sets the rule that
+governs a rewrite like that:
 
-Each test states, in its own docstring, **what it does not cover**. That voice is
-`../docs/gates/v0.9.1-test-audit.md`'s and it is not decoration: four times in this project's
-history a test has been written whose green read like a claim it was not making.
+> When a selector changes, the assertion count in `tests/test_ui_invariants.py` may not go down. A
+> guard rewritten during the change it guards is at its least trustworthy, and the count is the
+> cheapest thing to check.
+
+**It went up.** `test_the_assertion_count_did_not_go_down` at the bottom of this file measures it
+rather than asserting it in prose, and the v0.12.0 figure it compares against is a constant here so
+the comparison is a diff a reviewer can read.
+
+There is deliberately no assertion in this file about a nav item's order, a heading's text, a CSS
+class, a colour, or a string of copy — if you find yourself adding one, you are describing
+something that will be deleted.
 
 **Every fixture here comes from the real server.** `uifixtures` boots the real engine over the real
 fiber-cut corpus, logs in as each real role, and captures what the real routes return, at the exact
-URLs `app.js` requests. Two of the five invariants are statements about the client's contract with
-the server; a hand-written fixture that paraphrased the server would make them worthless.
+URLs the console requests.
 
-**The one substitution that matters**: d3 is a recording double, so the force-directed graph and the
-timeline SVG are not executed. They are layout, they are outside this release's characterisation
-boundary, and they are exactly what v0.13.0 rewrites. `tests/domharness/env.mjs` says so at the
-point of substitution.
+**The one substitution that matters**: d3 is a recording double, so the force-directed graph and
+the timeline SVG are not executed. `src/netcorenoc/ui/app/views/graph.js` says so at the top and
+`docs/security/SECURITY-REVIEW-0.13.0.md` records it as this release's largest uncovered surface.
 """
 
 from __future__ import annotations
@@ -33,10 +37,30 @@ from netcorenoc import rbac
 from netcorenoc.store import Store
 from test_dom_harness import dom_test
 
-#: Admin panels, by the label their tab carries. Used only to *drive* clicks — never asserted as a
-#: fact about the UI, because a label is copy and copy is not an invariant.
-ADMIN_TAB_LABELS = ["Users", "Tokens", "Config", "Scorer", "Governance", "Quarantine", "Audit"]
-ALL_TAB_LABELS = ["Situations", "Timeline", "Entities", *ADMIN_TAB_LABELS]
+#: Every view in the console's registry, by id. Used to *drive* — never asserted as a fact about
+#: the UI, because a registry is data and this file describes behaviour.
+ALL_VIEWS = [
+    "overview",
+    "situations",
+    "graph",
+    "timeline",
+    "entities",
+    "classes",
+    "labelling",
+    "corpus",
+    "promotion",
+    "users",
+    "tokens",
+    "settings",
+    "scorer",
+    "governance",
+    "quarantine",
+    "audit",
+    "account",
+]
+
+#: The views whose capability's minimum role is `admin`, discovered below rather than listed.
+ADMIN_VIEWS = ["users", "tokens", "settings", "scorer", "governance", "quarantine", "audit"]
 
 
 @pytest.fixture
@@ -46,13 +70,7 @@ async def routes(store: Store) -> dict[str, dict[str, Any]]:
 
 
 def _templated(path: str) -> str | None:
-    """Map a concrete request path onto its `ROUTE_PERMISSIONS` key.
-
-    The client requests `/api/situations/1?x=y`; the authorization table is keyed on
-    `/api/situations/{sid}`. Resolving one to the other is what lets a test written about
-    *observed requests* be checked against the server's own table rather than against a second
-    copy of it.
-    """
+    """Map a concrete request path onto its `ROUTE_PERMISSIONS` key."""
     bare = path.split("?", 1)[0]
     if ("GET", bare) in rbac.ROUTE_PERMISSIONS:
         return bare
@@ -79,123 +97,101 @@ def _resolved(routes: dict[str, Any], role: str) -> frozenset[str]:
     return frozenset(routes[role]["/api/me"]["json"]["capabilities"])
 
 
-# --- Invariant 1: a role never sees a panel requiring a capability it lacks ---------------------
+# --- Invariant 1: a role never sees a view requiring a capability it lacks ----------------------
 
 
 @dom_test
-async def test_a_role_never_renders_a_panel_whose_capability_it_lacks(
+async def test_a_role_never_renders_a_view_whose_capability_it_lacks(
     routes: dict[str, Any],
 ) -> None:
-    """**Invariant 1**, and the replacement for the `split("const TABS")` guard.
+    """**Invariant 1**, restated against a UI where absence is the default.
 
-    The old guard parsed the capability map out of `app.js` **as text** and compared it against
-    `rbac.PERMISSIONS`. It could not fail for the thing it was guarding: a rewrite that changed the
-    shape of `TABS` would leave it green by matching nothing, and the panel/capability map — the
-    only client-side defence against an admin screen rendering for a viewer — would be unguarded
-    exactly when the UI was being rewritten.
+    v0.12.0 declared ten panels in `index.html` and *deleted* the ones a role could not hold, so
+    the property was about a successful deletion. It is now about a decision that was never taken:
+    the document is a mount point, the registry is filtered by `reachableViews(capabilities)`, and
+    a view a role lacks is never rendered because nothing ever asked for it.
 
-    This asserts the same property by **rendering**: boot as each real role with the real resolved
-    capability set, then read which panels exist in the resulting DOM. The panel-to-capability
-    mapping is not read from the source at all — it is discovered from the requests each panel
-    issues — so there is nothing for a rewrite to make unmatchable.
+    The view-to-capability mapping is **not read from the source**. It is discovered from the
+    requests each view issues, exactly as v0.12.0 discovered it, so there is nothing for a rewrite
+    to make unmatchable.
 
-    **Why the admin-panel set is derived from `rbac.PERMISSIONS` and not from a set difference.**
-    The first version of this test computed `admin_only = seen["admin"] - seen["viewer"]`. The
-    guard demonstration in `../docs/gates/v0.12.0-guard-demonstrations.md` §1 showed that assertion
-    is unfalsifiable by the defect it exists to catch: lower a panel's required capability so a
-    viewer *does* see it, and the panel simply leaves the difference set. The expected set must come
-    from an authority the injection does not touch, which is the server's own table.
+    **Why the admin set comes from `rbac.PERMISSIONS` and not from a set difference.** The v0.12.0
+    demonstration showed a difference-based assertion is unfalsifiable by the defect it exists to
+    catch: lower a view's required capability so a viewer *does* see it, and the view simply leaves
+    the difference set. The expected set must come from an authority the injection does not touch.
 
-    What this does NOT cover: what a panel *contains* once rendered, and any control inside a
-    panel the role does hold. It covers presence and absence.
+    What this does NOT cover: what a view *contains* once rendered, and any control inside a view
+    the role does hold.
     """
-    seen: dict[str, set[str]] = {}
+    offered: dict[str, set[str]] = {}
     for role in ("viewer", "editor", "admin"):
         result = domdriver.run_scenario("boot", {"routes": routes[role]})
-        seen[role] = set(result["panels"])
+        offered[role] = {href.removeprefix("#/") for href in result["navHrefs"]}
         assert result["appVisible"] is True, f"{role} never reached the authenticated view"
+        assert result["loginVisible"] is False, f"{role} was left on the sign-in card"
 
-    # Capabilities are nested (viewer ⊆ editor ⊆ admin), so the rendered panels must be too.
-    assert seen["viewer"] <= seen["editor"] <= seen["admin"]
+    # Capabilities are nested (viewer ⊆ editor ⊆ admin), so the offered views must be too.
+    assert offered["viewer"] <= offered["editor"] <= offered["admin"]
 
-    # The admin-ceiling panels, discovered by executing each of admin's tabs and resolving what it
-    # requests against `rbac` — never from the viewer/admin difference.
-    admin_only = _admin_ceiling_panels(routes)
-    assert admin_only, "no panel resolved to an admin capability; the fixture proves nothing"
-    # The strong half: such a panel is ABSENT from a non-admin DOM, not merely hidden.
-    # `prunePanels` removes the node; this is what asserts that it really did.
+    admin_only = _admin_ceiling_views(routes)
+    assert admin_only, "no view resolved to an admin capability; the fixture proves nothing"
     for role in ("viewer", "editor"):
-        assert not (seen[role] & admin_only), (
-            f"{role} rendered admin panel(s) {sorted(seen[role] & admin_only)}"
+        assert not (offered[role] & admin_only), (
+            f"{role} was offered admin view(s) {sorted(offered[role] & admin_only)}"
         )
 
 
-def _admin_ceiling_panels(routes: dict[str, Any]) -> set[str]:
-    """Panels that read an admin-only route, discovered by execution at admin and keyed on the
-    panel's `data-panel` id — never on its tab label, which is copy."""
+def _admin_ceiling_views(routes: dict[str, Any]) -> set[str]:
+    """Views that read an admin-only route, discovered by execution at admin."""
     admin_capabilities = {c for c, role in rbac.PERMISSIONS.items() if role == "admin"}
     result = domdriver.run_scenario(
-        "capabilityRequests", {"routes": routes["admin"], "clickTabs": ALL_TAB_LABELS}
+        "capabilityRequests", {"routes": routes["admin"], "visit": ALL_VIEWS}
     )
     found: set[str] = set()
-    for record in result["perTab"].values():
-        if not record["offered"] or not record["panel"]:
-            continue
+    for view_id, record in result["perView"].items():
         for entry in record["paths"]:
             method, path = entry.split(" ", 1)
             if method == "GET" and _capability_for(path) in admin_capabilities:
-                found.add(record["panel"])
+                found.add(view_id)
     return found
 
 
 @dom_test
-async def test_every_panel_a_role_reaches_requests_only_routes_that_role_may_call(
+async def test_every_view_a_role_reaches_requests_only_routes_that_role_may_call(
     routes: dict[str, Any],
 ) -> None:
     """The cross-check against `rbac.tables`, done **behaviourally**.
 
-    For each role, every tab the UI offers is clicked and the requests it issues are attributed to
-    it. Each request's route is resolved to its `ROUTE_PERMISSIONS` entry and the required
-    capability compared against the set the server itself reported in `/api/me`. A panel that
-    drifted from its capability fails **here**, against the server's table, rather than in
-    production.
+    For each role, every view is visited **by address** — not by clicking a nav item, which is the
+    important change from v0.12.0. A test that only clicks what is offered can never reach the
+    case a router creates, and the case a router creates is F53.
 
-    This is the assertion the old text guard was reaching for. It is stronger in one specific way:
-    it cannot pass by matching nothing, because a panel that issued no request at all would leave
-    `paths` empty and the `admin_routes_touched` control below would notice.
-
-    What this does NOT cover: a panel that renders a control the role may not *use*. The route it
-    reads and the routes its buttons would write are different questions, and only the first is
-    observable without clicking every control.
+    What this does NOT cover: a view that renders a control the role may not *use*. The route it
+    reads and the routes its buttons would write are different questions.
     """
     for role in ("viewer", "editor", "admin"):
         held = _resolved(routes, role)
         result = domdriver.run_scenario(
-            "capabilityRequests", {"routes": routes[role], "clickTabs": ALL_TAB_LABELS}
+            "capabilityRequests", {"routes": routes[role], "visit": ALL_VIEWS}
         )
-        for label, record in result["perTab"].items():
-            if not record["offered"]:
-                continue
+        for view_id, record in result["perView"].items():
             for entry in record["paths"]:
                 method, path = entry.split(" ", 1)
                 if method != "GET":
                     continue
                 capability = _capability_for(path)
-                assert capability is not None, f"{label} requested undeclared route {path}"
+                assert capability is not None, f"{view_id} requested undeclared route {path}"
                 assert capability in held, (
-                    f"the {label} panel rendered for {role} and requested {path}, which needs "
+                    f"the {view_id} view rendered for {role} and requested {path}, which needs "
                     f"{capability!r} — a capability the server says this principal does not hold"
                 )
 
 
 @dom_test
-async def test_no_admin_capability_produces_a_panel_for_a_non_admin(
+async def test_no_admin_capability_produces_a_view_for_a_non_admin(
     routes: dict[str, Any],
 ) -> None:
     """The A.4 property, stated against `rbac.PERMISSIONS` rather than against a list of names.
-
-    Every capability whose minimum role is `admin` is admin-ceiling by construction. A viewer or
-    editor must reach no route requiring one — through any tab the UI offers them.
 
     What this does NOT cover: whether the *server* would refuse such a request. It would, and
     `tests/test_rbac.py` proves it. This is the client-side half, and its value is precisely that
@@ -204,7 +200,7 @@ async def test_no_admin_capability_produces_a_panel_for_a_non_admin(
     admin_capabilities = {c for c, role in rbac.PERMISSIONS.items() if role == "admin"}
     for role in ("viewer", "editor"):
         result = domdriver.run_scenario(
-            "capabilityRequests", {"routes": routes[role], "clickTabs": ALL_TAB_LABELS}
+            "capabilityRequests", {"routes": routes[role], "visit": ALL_VIEWS}
         )
         for entry in result["requestPaths"]:
             method, path = entry.split(" ", 1)
@@ -221,20 +217,16 @@ async def test_no_admin_capability_produces_a_panel_for_a_non_admin(
 async def test_a_partial_split_sends_exactly_the_marked_ids_and_no_others(
     routes: dict[str, Any],
 ) -> None:
-    """**Invariant 2**, and the contract the whole v0.9.1 -> v0.9.2 evidence chain rests on.
+    """**Invariant 2**, and the contract the whole v0.9.1 → v0.9.2 evidence chain rests on.
 
     `excluded_ids` asserts *marked-by-rest negative and nothing else*. If the client sent one id
     the operator did not tick, a human judgement would be recorded about a pair no human judged —
-    and every downstream figure (the bias report, the agreement report, the shadow verdict, the
-    promotion gate) is computed over those rows. The evidence boundary is server-derived since
-    v0.9.2, but the *marks* are still the client's to report faithfully.
+    and every downstream figure is computed over those rows.
 
-    Two members of an eight-member situation are ticked. The assertion is set equality, both
-    directions, plus the full membership under `member_ids`.
+    The **gesture** changed completely (a Preact component with its own marked-set state replaced
+    a closure over a `Set`); the **payload** did not, which is what draft §11.12 requires.
 
-    What this does NOT cover: that the operator ticked the members they meant to. A checkbox
-    misread by a human is not a defect a test can find, and `SECURITY-REVIEW-0.7.5.md` §6.4
-    records the human-factors residual it belongs to.
+    What this does NOT cover: that the operator ticked the members they meant to.
     """
     sid, count = uifixtures.largest_situation(routes["editor"])
     members = uifixtures.member_ids(routes["editor"], sid)
@@ -251,7 +243,6 @@ async def test_a_partial_split_sends_exactly_the_marked_ids_and_no_others(
     assert body["verdict"] == "split"
     assert body["excluded_ids"] == [members[i] for i in marked_positions]
     assert set(body["member_ids"]) == set(members), "the reported membership is not what rendered"
-    # The half that matters and is easy to forget: nothing the operator did NOT mark was sent.
     unmarked = {m for i, m in enumerate(members) if i not in marked_positions}
     assert not (set(body["excluded_ids"]) & unmarked), (
         f"the client excluded members the operator never marked: "
@@ -266,9 +257,8 @@ async def test_a_split_with_nothing_marked_carries_no_exclusions_at_all(
     """The control for the invariant above, and a claim in its own right (DECISIONS #127).
 
     Omitting `excluded_ids` means "the operator marked nothing", which is a PLAIN split — never a
-    guess, and never an empty list that a reader could mistake for "the operator considered every
-    member and excluded none". Without this control, the test above would pass just as well if the
-    client always sent every ticked-or-not id, provided the ticked ones happened to be included.
+    guess, and never an empty list a reader could mistake for "the operator considered every
+    member and excluded none".
     """
     sid, _ = uifixtures.largest_situation(routes["editor"])
     result = domdriver.run_scenario(
@@ -282,11 +272,7 @@ async def test_a_split_with_nothing_marked_carries_no_exclusions_at_all(
 async def test_a_confirm_never_carries_exclusions(routes: dict[str, Any]) -> None:
     """A `confirm` asserts every pair positive, so an exclusion on one would be a contradiction.
 
-    Ticked boxes are deliberately ignored by the Confirm path. This drives the stronger case: the
-    operator ticks two members and then clicks Confirm anyway.
-
-    What this does NOT cover: what the server does with a contradictory payload. It drops it, and
-    `tests/test_feedback_dataset.py` is where that is proven.
+    Drives the stronger case: the operator ticks two members and then clicks Confirm anyway.
     """
     sid, _ = uifixtures.largest_situation(routes["editor"])
     result = domdriver.run_scenario(
@@ -299,11 +285,7 @@ async def test_a_confirm_never_carries_exclusions(routes: dict[str, Any]) -> Non
 
 @dom_test
 async def test_a_viewer_is_offered_no_member_checkboxes_at_all(routes: dict[str, Any]) -> None:
-    """The boxes exist only for a principal who can post a verdict.
-
-    The control that keeps invariant 2 honest from the other side: a viewer's table renders with no
-    marking column, so there is no gesture for them to make and no payload for them to send.
-    """
+    """The boxes exist only for a principal who can post a verdict."""
     sid, _ = uifixtures.largest_situation(routes["viewer"])
     with pytest.raises(domdriver.HarnessError, match="no button starting"):
         domdriver.run_scenario("partialSplit", {"routes": routes["viewer"], "sid": sid, "mark": []})
@@ -316,22 +298,19 @@ async def test_a_viewer_is_offered_no_member_checkboxes_at_all(routes: dict[str,
 async def test_an_sse_update_mid_gesture_does_not_destroy_the_click_target(
     routes: dict[str, Any],
 ) -> None:
-    """**Invariant 3 — the v0.7.5 defect, by name, and the first machine check of it.**
-
-    `FEEDBACK-PATH-0.7.5-DRAFT.md` §5 asked for exactly this: *drive `applyUpdate` twice and assert
-    the same DOM node is still in the document.* v0.7.5 could not do it — DECISIONS #99 records
-    that there was no DOM to drive — so the claim was carried by
-    `../docs/gates/v0.7.5-manual-verification.md`, executed by a human. This is Tests A, C and D of
-    that protocol, executed by a machine.
+    """**Invariant 3 — the v0.7.5 defect, by name.**
 
     The sequence is the operator's: expand a card, tick two members, **let a server-sent update
-    arrive**, then click Split. Before v0.7.5, `clear(sits)` was the first statement of
-    `renderSituations` and the update destroyed the card mid-gesture, so the click landed on a
-    detached node or on a button from a render the operator never read — a silently wrong label.
+    arrive**, then click Split.
 
-    What this does NOT cover: the *browser's* behaviour under a real 2-second SSE stream with real
-    paint timing. This drives one update, synchronously, in a DOM with no renderer. It proves the
-    node identity and the payload; it does not prove anything about what the operator saw.
+    **The mechanism changed and the property did not, which is the point.** In v0.12.0 the detail
+    node survived because `renderSituations` harvested and re-appended it before `clear(sits)`. It
+    now survives because the reconciler diffs rather than rebuilds, *and* because the payload
+    behind an open card is held (ADR #173). Both halves are needed: node identity alone would
+    leave an operator's ticks pointing at a membership that changed underneath them.
+
+    What this does NOT cover: the *browser's* behaviour under a real SSE stream with real paint
+    timing. This drives one update, synchronously, in a DOM with no renderer.
     """
     sid, _ = uifixtures.largest_situation(routes["editor"])
     members = uifixtures.member_ids(routes["editor"], sid)
@@ -354,7 +333,6 @@ async def test_an_sse_update_mid_gesture_does_not_destroy_the_click_target(
         "update — this is the v0.7.5 defect exactly"
     )
     assert result["detailStillConnected"] is True
-    # And the gesture still reports what the operator marked, not what arrived after they marked it.
     assert result["feedbackBody"]["excluded_ids"] == [members[1], members[3]]
     assert set(result["feedbackBody"]["member_ids"]) == set(members)
 
@@ -364,12 +342,9 @@ async def test_a_held_card_says_it_is_stale_while_it_is_held(routes: dict[str, A
     """§5.3's marker, which is the whole of the mitigation for the trade v0.7.5 made.
 
     Freezing the card trades a wrong label for a stale one, and a stale label is only better if the
-    operator knows it is stale. The marker must be present on a card that is holding back an
-    update — which is what this observes, after an update has actually been withheld.
+    operator knows it is stale.
 
-    What this does NOT cover: that the operator reads it or acts on it. A marker nobody notices is
-    a marker that did not work — a human-factors residual recorded in `SECURITY-REVIEW-0.7.5.md`
-    §6.4, not something any test can close.
+    What this does NOT cover: that the operator reads it or acts on it.
     """
     sid, _ = uifixtures.largest_situation(routes["editor"])
     update = {"situations": routes["editor"]["/api/situations?limit=50&status=open"]["json"]}
@@ -386,24 +361,21 @@ async def test_a_held_card_says_it_is_stale_while_it_is_held(routes: dict[str, A
 async def test_no_render_path_turns_operator_supplied_text_into_markup(
     routes: dict[str, Any],
 ) -> None:
-    """**Invariant 4** — the reason `esc()` and the `el({text})` discipline exist (F1).
+    """**Invariant 4** — the reason `esc()` and the text-node discipline exist (F1).
 
-    The payload travels the **real** label route onto every device and class, so it arrives the way
-    an operator's input actually arrives, then a card is expanded and the Entities panel opened.
-    The assertion is structural, not textual: walk the resulting document and count the *elements*
-    that appeared. If any render path had interpolated the string into markup, an `<img>` and a
-    `<script>` would exist. They do not; the payload is present in text nodes only.
+    The payload travels the **real** label route onto every device and class, then a card is
+    expanded and the Entities screen opened. The assertion is structural: walk the resulting
+    document and count the *elements* that appeared.
 
-    Asserting over a serialisation of the document would have been the wrong test — it would have
-    measured the harness's escaper rather than `app.js`'s. This counts nodes.
+    **The property is now structural rather than conventional.** v0.12.0 kept it by discipline
+    across 55 functions; an interpolated value in a tagged template becomes a text node because
+    that is what the diff does with it. The only way back is `dangerouslySetInnerHTML`, which no
+    module uses and `test_security_ui.py` refuses.
 
     The instrument is non-vacuous here by construction: the harness DOM implements `innerHTML` as a
-    **real parse** (`tests/domharness/html.mjs`), so a bypassed `esc()` really does build elements.
-    That injection is demonstrated red in `../docs/gates/v0.12.0-guard-demonstrations.md` §2.
+    **real parse**, so a bypassed escape really does build elements.
 
-    What this does NOT cover: the panels this scenario does not open, and any render path reached
-    only by an admin. `test_security_ui.py`'s source-level scan still covers the whole file, and
-    the two guards fail for different reasons on purpose.
+    What this does NOT cover: the screens this scenario does not open.
     """
     hostile = routes["editor_hostile"]
     sid, _ = uifixtures.largest_situation(hostile)
@@ -416,11 +388,9 @@ async def test_no_render_path_turns_operator_supplied_text_into_markup(
         f"{result['dangerousElementsIntroduced']}"
     )
     assert result["payloadInAttributeValues"] == 0, (
-        "the payload reached an attribute value; `el` sets attributes through setAttribute, so "
-        "this would mean a new path composed markup"
+        "the payload reached an attribute value, which would mean a path composed markup"
     )
-    # The control: the payload must actually have REACHED the document. A run that rendered
-    # nothing would satisfy every assertion above and prove nothing at all.
+    # The control: the payload must actually have REACHED the document.
     assert result["payloadInTextNodes"] > 0, (
         "the hostile payload never reached the DOM; this scenario asserted nothing"
     )
@@ -436,34 +406,32 @@ async def test_a_capability_the_client_lacks_produces_no_request_at_all(
     """**Invariant 5** — least privilege at the client, which must not regress into
     "the server will catch it".
 
-    A viewer performs every gesture the UI offers, including attempts at all seven admin tabs. The
-    assertion is that the admin routes are never *requested* — not that they are requested and
-    refused. A client that fired them and handled the 403 would be leaking the shape of the
-    estate's administration into the access log of every viewer, and would make the server's
-    refusal the only thing standing between a UI bug and a privilege boundary.
+    A viewer visits every admin view **by address**. The assertion is that the admin routes are
+    never *requested* — not that they are requested and refused.
 
-    What this does NOT cover: writes. Every gesture here is a read, because the admin panels a
-    viewer might reach are read-first.
+    What this does NOT cover: writes. Every gesture here is a read.
     """
     admin_only = {c for c, role in rbac.PERMISSIONS.items() if role == "admin"}
     viewer = domdriver.run_scenario(
-        "capabilityRequests", {"routes": routes["viewer"], "clickTabs": ADMIN_TAB_LABELS}
+        "capabilityRequests", {"routes": routes["viewer"], "visit": ADMIN_VIEWS}
     )
-    assert all(not record["offered"] for record in viewer["perTab"].values()), (
-        f"an admin tab was offered to a viewer: {viewer['tabsOffered']}"
+    assert all(not record["offered"] for record in viewer["perView"].values()), (
+        f"an admin view was offered to a viewer: {viewer['viewsOffered']}"
     )
-    assert all(not record["paths"] for record in viewer["perTab"].values()), (
-        f"a viewer's admin-tab gestures issued requests: {viewer['perTab']}"
+    assert all(record["refused"] for record in viewer["perView"].values()), (
+        f"a viewer reaching an admin view by address was not refused: {viewer['perView']}"
+    )
+    assert all(not record["paths"] for record in viewer["perView"].values()), (
+        f"a viewer's admin-view visits issued requests: {viewer['perView']}"
     )
 
     # THE CONTROL. Without it, a viewer's zero could be a property of the scenario — a harness that
-    # clicked nothing would report the same zero. The same gestures at admin must produce the
-    # requests, and every one of them must be an admin-capability route.
+    # navigated nowhere would report the same zero.
     admin = domdriver.run_scenario(
-        "capabilityRequests", {"routes": routes["admin"], "clickTabs": ADMIN_TAB_LABELS}
+        "capabilityRequests", {"routes": routes["admin"], "visit": ADMIN_VIEWS}
     )
-    issued = [p for record in admin["perTab"].values() for p in record["paths"]]
-    assert len(issued) >= len(ADMIN_TAB_LABELS) - 1, (
+    issued = [p for record in admin["perView"].values() for p in record["paths"]]
+    assert len(issued) >= len(ADMIN_VIEWS) - 1, (
         f"the control issued only {issued}; a viewer's zero is unmeasured against it"
     )
     assert any(_capability_for(p.split(" ", 1)[1]) in admin_only for p in issued), (
@@ -472,39 +440,261 @@ async def test_a_capability_the_client_lacks_produces_no_request_at_all(
 
 
 @dom_test
-async def test_a_panel_reached_without_its_capability_still_issues_no_request(
+async def test_a_view_reached_by_address_without_its_capability_refuses_by_decision(
     routes: dict[str, Any],
 ) -> None:
-    """The same invariant one level deeper, and an **honest note about why it holds**.
+    """**F53, repaired — and this test is the one that changed meaning.**
 
-    Invariant 5 above is about what a *rendered* UI offers. This bypasses the gesture entirely and
-    calls `renderPanel(id)` directly — what a deep link or a client-side router would do — for
-    every admin panel, as a viewer. No request is issued.
+    v0.12.0's version of this asserted the absent request **and the `TypeError`**, and its
+    docstring said plainly that the zero held *"for an incidental reason, not a designed one"*:
+    `prunePanels` had removed the container, so `clear(null)` threw before `api(...)` was reached.
+    It ended with *"when the mechanism becomes deliberate the test fails and has to be updated
+    deliberately"*. This is that deliberate update.
 
-    **But it holds for an incidental reason, not a designed one.** `prunePanels` has removed the
-    panel's container from the DOM, so the loader's first statement dereferences null and throws
-    before it reaches `api(...)`. There is no capability check inside the loaders. The observed
-    outcome is right; the mechanism is a `TypeError`.
+    Now: a viewer resolving every admin address gets a **refusal**, no request, **and no
+    exception**. The three assertions are:
 
-    That distinction is recorded rather than fixed: fixing it would be a change to `ui/app.js`, and
-    this release changes not one byte of it (SCOPE-0.12.0 §3). It is `../docs/ROADMAP.md`'s
-    "the loaders have no capability check of their own" line and a constraint on
-    `../docs/architecture/UI-0.13-DRAFT.md` §7 — v0.13.0 introduces routing, which is precisely
-    when an accidental defence stops being available.
+      * ``paths == []``   — the property, unchanged;
+      * ``refused``       — the mechanism, now visible on screen for the operator affected;
+      * ``threw is None`` — **the assertion that inverts v0.12.0's.** A `TypeError` here would mean
+        the repair had regressed to an accident that happens to produce the same zero.
 
-    What this does NOT cover: any panel a viewer *does* hold, and any loader invoked with its
-    container present.
+    What this does NOT cover: whether the server would refuse the same request. It would, and
+    `tests/test_rbac.py` proves it.
     """
-    admin_panels = ["users", "tokens", "config", "scorer", "governance", "quarantine", "audit"]
     result = domdriver.run_scenario(
-        "panelWithoutCapability", {"routes": routes["viewer"], "panels": admin_panels}
+        "navigateTo", {"routes": routes["viewer"], "fragments": [f"#/{v}" for v in ADMIN_VIEWS]}
     )
-    assert result["requestsAfterBypass"] == [], (
-        f"a viewer reached an admin route by bypassing the tab: {result['requestsAfterBypass']}"
+    for fragment, outcome in result["outcomes"].items():
+        assert outcome["paths"] == [], f"{fragment} issued {outcome['paths']} for a viewer"
+        assert outcome["refused"] is True, f"{fragment} did not render a refusal: {outcome}"
+        assert outcome["threw"] is None, (
+            f"{fragment} terminated in an exception ({outcome['threw']}). The zero above is then "
+            f"a dereference rather than a decision, which is F53 exactly."
+        )
+        assert outcome["activeView"] is None, (
+            f"{fragment} mounted a view component despite refusing: {outcome}"
+        )
+
+
+@dom_test
+async def test_an_unknown_address_renders_nothing_and_requests_nothing(
+    routes: dict[str, Any],
+) -> None:
+    """The other half of routing's new surface: a fragment that names no view.
+
+    A router that fell through to a default view would silently send an operator somewhere they
+    did not ask for; one that threw would be F53's shape again with a different trigger.
+    """
+    result = domdriver.run_scenario(
+        "navigateTo", {"routes": routes["viewer"], "fragments": ["#/nope", "#/../etc/passwd"]}
     )
-    assert not (set(result["panelsPresent"]) & set(admin_panels))
-    # Name the mechanism, so a later reader is not misled about why the zero above is a zero.
-    assert all(outcome.startswith("threw:") for outcome in result["outcomes"].values()), (
-        "a loader returned normally without its panel: the protection asserted here is the "
-        "absence of the container, and this test's docstring would then be wrong"
+    for fragment, outcome in result["outcomes"].items():
+        assert outcome["unknown"] is True, f"{fragment} did not report an unknown view: {outcome}"
+        assert outcome["paths"] == [], f"{fragment} issued {outcome['paths']}"
+        assert outcome["threw"] is None, f"{fragment} threw: {outcome['threw']}"
+
+
+# --- v0.13.0's own invariants -------------------------------------------------------------------
+
+
+@dom_test
+async def test_a_hardening_only_value_cannot_be_lowered_through_this_surface(
+    routes: dict[str, Any],
+) -> None:
+    """**Principle 9 at the client**, and the assertion §V.3 requires.
+
+    > `resolved = max(project floor, deployment policy)` — harden always, soften never.
+
+    An admin submits `tau_s = 0.1` against a project floor the **server published** (there is no
+    client-side copy of a bound anywhere in the console). The console must refuse it, show the
+    four things draft §6.2 requires, **and issue no request** — a client that fired the request
+    and rendered the 400 would teach the operator that the console does not know its own rules.
+
+    What this does NOT cover: the server's refusal, which is `scoring.validate_params` and is
+    proven in `tests/test_scorer_api.py`. The console's refusal is an affordance; the appliance's
+    is the control; neither may be the only one.
+    """
+    result = domdriver.run_scenario(
+        "submitForm",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/scorer",
+            "fields": {"#sc-tau_s": "0.1"},
+            "click": ["Preview effect"],
+        },
+    )
+    assert result["sent"] == [], (
+        f"a value below the project floor was sent to the appliance: {result['sent']}"
+    )
+    assert result["refusalShown"] is True, "no refusal was rendered"
+    text = result["refusalText"]
+    # Draft §6.2's four things, each checked for rather than assumed present.
+    assert "0.1" in text, "the refusal does not say what the operator submitted"
+    assert "not applied" in text, "the refusal does not say the value was not applied"
+    assert "nothing was sent" in text.lower(), "the refusal does not say no request was issued"
+    assert "step function" in text or "discriminat" in text, (
+        "the refusal does not say WHY the floor exists; a bare rejection teaches nothing and "
+        "invites a workaround (SECURITY-REVIEW-0.6 §4 treats wording as a control)"
+    )
+    assert "accepted" in text, "the refusal does not say the stricter direction is available"
+
+
+@dom_test
+async def test_the_control_a_value_inside_the_bounds_is_sent(routes: dict[str, Any]) -> None:
+    """**The control for the refusal above.** Without it, the zero could be a console that never
+    sends anything at all — which would pass the assertion and mean nothing."""
+    result = domdriver.run_scenario(
+        "submitForm",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/scorer",
+            "fields": {"#sc-tau_s": "120"},
+            "click": ["Preview effect"],
+        },
+    )
+    assert [entry["path"] for entry in result["sent"]] == ["/api/scorer/preview"], result["sent"]
+    assert result["refusalShown"] is False, "an in-bounds value was refused"
+
+
+@dom_test
+async def test_the_sidebar_is_one_tab_stop_and_is_operable_by_keyboard(
+    routes: dict[str, Any],
+) -> None:
+    """The accessibility floor's navigation half (draft §12.6, ADR #180), measured.
+
+    Roving `tabindex`: exactly one item is in the tab order at a time, so an operator tabs **once**
+    to reach navigation and **once more** to leave it. Sixteen tab stops would be the failure that
+    makes people stop using the keyboard.
+
+    What this does NOT cover: what a screen reader announces. There is no assistive technology in
+    this environment and the harness has no accessibility tree, so this is a claim about markup.
+    """
+    result = domdriver.run_scenario(
+        "keyboard",
+        {
+            "routes": routes["admin"],
+            "keys": ["ArrowDown", "ArrowDown", "End", "Home", "Enter"],
+        },
+    )
+    assert result["tabStops"] == 1, (
+        f"the sidebar has {result['tabStops']} tab stops across {result['itemCount']} items"
+    )
+    assert result["itemCount"] > 5, "too few items for this to be measuring anything"
+    assert result["navLabel"], "the navigation landmark has no accessible name"
+    assert result["headingFocusable"] == "-1", (
+        "the work-area heading is not programmatically focusable, so focus cannot be moved to it "
+        "on a route change — a keyboard operator would stay in the navigation"
+    )
+    # Positional, not keyed on the step name: two ArrowDowns are two distinct observations and a
+    # dict keyed on "ArrowDown" silently keeps only the second — which is how the first version of
+    # this assertion came to expect 1 and measure 2.
+    steps = [step for step in result["trace"] if "at" in step]
+    assert [step["step"] for step in steps] == ["ArrowDown", "ArrowDown", "End", "Home", "Enter"]
+    assert steps[0]["at"] == 1, steps[0]
+    assert steps[1]["at"] == 2, steps[1]
+    assert steps[2]["at"] == result["itemCount"] - 1, steps[2]
+    assert steps[3]["at"] == 0, steps[3]
+    # Enter on the first item activates it, so the route follows the keyboard.
+    assert steps[4]["activeView"] == "overview", steps[4]
+
+
+@dom_test
+async def test_the_theme_persists_without_localstorage_and_a_hostile_cookie_cannot_widen_it(
+    routes: dict[str, Any],
+) -> None:
+    """ADR #172's cookie, and the closed set that bounds what it can do.
+
+    Three facts: the default stamps **no attribute** (so `prefers-color-scheme` still decides), the
+    toggle writes a cookie carrying a theme name **and nothing else**, and a cookie value outside
+    the closed set is discarded rather than trusted — so a hostile cookie can at worst select a
+    supported theme.
+    """
+    default = domdriver.run_scenario("theme", {"routes": routes["admin"]})
+    assert default["after"]["theme"] is None, (
+        "a fresh client stamped an explicit theme, which would override prefers-color-scheme"
+    )
+
+    toggled = domdriver.run_scenario("theme", {"routes": routes["admin"], "click": ["Theme:"]})
+    assert toggled["after"]["theme"] in {"dark", "light", None}
+    assert list(toggled["cookiePairs"]) == ["ncn_theme"], (
+        f"the theme control wrote more than a theme name: {toggled['cookiePairs']}"
+    )
+    assert toggled["after"]["cookie"].startswith("ncn_theme=")
+
+    honoured = domdriver.run_scenario(
+        "theme", {"routes": routes["admin"], "cookies": {"ncn_theme": "light"}}
+    )
+    assert honoured["after"]["theme"] == "light", "a valid stored preference was ignored"
+
+    hostile = domdriver.run_scenario(
+        "theme", {"routes": routes["admin"], "cookies": {"ncn_theme": "<script>alert(1)</script>"}}
+    )
+    assert hostile["after"]["theme"] is None, (
+        f"a cookie value outside the closed set reached the document: {hostile['after']}"
+    )
+
+
+@dom_test
+async def test_every_destructive_control_states_its_consequence_before_it_can_be_used(
+    routes: dict[str, Any],
+) -> None:
+    """§IV.1: nothing destructive without a preview, and the consequence stated in words first.
+
+    Driven at the two screens whose controls really destroy: the audit prune and the dataset
+    retention tiers. The assertion is that the consequence is on screen **before** any preview is
+    requested, and that no request has been issued merely by arriving.
+    """
+    for view in ("audit", "settings"):
+        result = domdriver.run_scenario(
+            "submitForm",
+            {
+                "routes": routes["admin"],
+                "navigate": f"#/{view}",
+                "fields": {},
+                "click": [],
+            },
+        )
+        assert result["consequenceShown"] is True, (
+            f"the {view} screen offers a destructive control with no consequence stated"
+        )
+        assert "cannot be undone" in result["dump"], (
+            f"the {view} screen does not say the action cannot be undone"
+        )
+        deletes = [entry for entry in result["sent"] if entry["method"] in {"POST", "DELETE"}]
+        assert deletes == [], f"arriving at {view} issued a mutation: {deletes}"
+
+
+# --- the rule draft §1.1 sets on a rewrite -------------------------------------------------------
+
+#: `assert` statements in this file at v0.12.0, **counted from the shipped tree** rather than
+#: remembered: `git show v0.12.0:tests/test_ui_invariants.py | python -c "…ast.walk…"` returns 33.
+#: `UI-0.13-DRAFT.md` §1.1: *"when a selector changes, the assertion count may not go down"*.
+V0_12_0_ASSERTION_COUNT = 33
+
+
+def test_the_assertion_count_did_not_go_down() -> None:
+    """Draft §1.1's rule, measured rather than promised.
+
+    Every selector this file reaches for changed in v0.13.0 — `#sits`, `#tabs`, `#login`, `#app`,
+    `#fltStatus`, `#fltText` and `.panel[data-panel=…]` are all gone. **A guard rewritten during
+    the change it guards is at its least trustworthy**, and the cheapest check available is that
+    the rewrite did not quietly drop assertions along the way.
+
+    It is a floor, not a target: the count is expected to rise, and it did — this release adds the
+    F53 repair, the unknown-address case, the hardening refusal and its control, the keyboard
+    floor, the theme cookie and the destructive-preview rule.
+
+    What this does NOT prove: that the assertions are *good*. A file of `assert True` would pass
+    it. It is one cheap check beside the demonstrations in
+    `../docs/gates/v0.13.0-guard-demonstrations.md`, not a substitute for them.
+    """
+    import ast
+    from pathlib import Path
+
+    source = Path(__file__).read_text(encoding="utf-8")
+    count = sum(isinstance(node, ast.Assert) for node in ast.walk(ast.parse(source)))
+    assert count >= V0_12_0_ASSERTION_COUNT, (
+        f"this file now makes {count} assertions, down from {V0_12_0_ASSERTION_COUNT} at v0.12.0. "
+        f"A selector rename may rewrite an assertion; it may not delete one."
     )

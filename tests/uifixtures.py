@@ -68,12 +68,20 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("scope.read", "/api/scope"),
     ("quarantine.read", "/api/quarantine?limit=100"),
     ("audit.read", "/api/audit?limit=200"),
+    # v0.13.0: three routes that had no UI surface before this release and now have one
+    # (UI-0.13-DRAFT §4). They are captured for the same reason as every other entry — a screen
+    # driven against a 404 renders its error state, and a test that read that as the screen's
+    # behaviour would be measuring the fixture.
+    ("classes.read", "/api/classes"),
+    ("promotion.read", "/api/promotion"),
+    ("config.read", "/api/dataset/retention"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.
 CLIENT_WRITES: dict[str, dict[str, Any]] = {
     "POST /api/labels": {"status": 200, "json": {"ok": True}},
     "POST /api/logout": {"status": 200, "json": {"ok": True}},
+    "POST /api/password": {"status": 200, "json": {"status": "password changed"}},
 }
 
 

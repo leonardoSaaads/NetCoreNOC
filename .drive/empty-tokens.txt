@@ -1,0 +1,197 @@
+<div #app .shell>
+  <nav #nav .sidebar aria-label="Sections">
+    <div .brand>
+      <span .brand-mark>
+        "◈"
+      <span .brand-name>
+        "Net"
+        <b>
+          "CoreNOC"
+    <div .nav-group>
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◎"
+            <span .nav-label>
+              "Overview"
+    <div .nav-group>
+      <h2 #nav-group-operations .nav-heading>
+        "Operations"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◉"
+            <span .nav-label>
+              "Situations"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⬡"
+            <span .nav-label>
+              "Network graph"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▤"
+            <span .nav-label>
+              "Timeline"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▢"
+            <span .nav-label>
+              "Entities"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "≡"
+            <span .nav-label>
+              "Alarm classes"
+    <div .nav-group>
+      <h2 #nav-group-evidence .nav-heading>
+        "Evidence"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "✓"
+            <span .nav-label>
+              "Labelling"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▦"
+            <span .nav-label>
+              "Corpus"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚖"
+            <span .nav-label>
+              "Judge & promotion"
+    <div .nav-group>
+      <h2 #nav-group-administer .nav-heading>
+        "Administer"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◍"
+            <span .nav-label>
+              "Users"
+        <li>
+          <a .nav-item.active>
+            <span .nav-glyph>
+              "⚿"
+            <span .nav-label>
+              "Service tokens"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚙"
+            <span .nav-label>
+              "Settings"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "∿"
+            <span .nav-label>
+              "Link scorer"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⛨"
+            <span .nav-label>
+              "Governance"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚑"
+            <span .nav-label>
+              "Quarantine"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⛓"
+            <span .nav-label>
+              "Audit log"
+  <div .main>
+    <header .topbar>
+      <div .topbar-live>
+        <span .conn.conn-connecting role=status>
+          <span .conn-dot>
+          "connecting"
+        <span .chips>
+          <span .chip>
+            <b>
+              "0"
+            "devices"
+          <span .chip>
+            <b>
+              "0"
+            "classes"
+          <span .chip>
+            <b>
+              "0"
+            "active alarms"
+          <span .chip>
+            <b>
+              "0"
+            "open situations"
+      <div .topbar-who>
+        <span .role-tag>
+          "admin"
+        <a .who-name>
+          "adm"
+        <button .icon aria-label="Theme: system. Change theme.">
+          "◒"
+        <button .icon aria-label="Density: compact. Change density.">
+          "▤"
+        <button>
+          "Sign out"
+    <div .banners>
+    <main #work .work>
+      <div .work-heading>
+        <h1>
+          "Service tokens"
+        <p .work-summary>
+          "Non-interactive credentials, shown once."
+      <div .view>
+        <div .tokensview>
+          <p .hint>
+            "0 tokens"
+            ". A token carries a role exactly as a user
+        account does, and Governanc"
+          <div .state.state-empty>
+            <h3>
+              "No service tokens."
+            <p .what-fills>
+              "Tokens you issue appear here, by name and role — never by value."
+            <p .hint>
+              "Interactive sign-in needs no token; these are for scripts and collectors."
+          <section .panel-block>
+            <div .section-heading>
+              <h3>
+                "Issue a token"
+              <p .hint>
+                "The value is returned once, in the response to this form, and never again."
+            <form .row-form>
+              <label .visually-hidden>
+                "Token name"
+              <input #tn>
+              <label .visually-hidden>
+                "Role"
+              <select #tr>
+                <option>
+                  "viewer"
+                <option>
+                  "editor"
+                <option>
+                  "admin"
+              <button>
+                "Create token"
+  <aside #context .context.context-idle aria-label="Details">
+    <p .hint>
+      "Select something to see its detail here."

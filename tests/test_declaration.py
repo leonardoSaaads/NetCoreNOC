@@ -548,7 +548,17 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    assert len(served) == 52, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.13.0: 52 -> 88. Every one of the 36 new pairs is a **static UI module**
+    # (ADR #175): the console is now an ES module graph and each module is enumerated in
+    # `routes_static.STATIC_ASSETS` and in `declare.UNAUTHENTICATED_PATHS`. No `/api` route
+    # was added, removed or renamed by this release, which is the property this count is
+    # really guarding and which the assertion below states directly.
+    assert len(served) == 88, f"the served surface moved: {len(served)} method/path pairs"
+    api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
+    assert len(api_pairs) == 44, (
+        f"the /api surface moved: {len(api_pairs)} pairs. v0.13.0 adds no route — it adds "
+        f"static module paths only, and a change here means something else happened."
+    )
     for _method, path in served:
         route = next(r for r in app.routes if getattr(r, "path", None) == path)  # type: ignore[attr-defined]
         assert getattr(route, "methods", None), f"{path} carries no verb, which F43 now refuses"
@@ -594,7 +604,17 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    assert len(served) == 52, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.13.0: 52 -> 88. Every one of the 36 new pairs is a **static UI module**
+    # (ADR #175): the console is now an ES module graph and each module is enumerated in
+    # `routes_static.STATIC_ASSETS` and in `declare.UNAUTHENTICATED_PATHS`. No `/api` route
+    # was added, removed or renamed by this release, which is the property this count is
+    # really guarding and which the assertion below states directly.
+    assert len(served) == 88, f"the served surface moved: {len(served)} method/path pairs"
+    api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
+    assert len(api_pairs) == 44, (
+        f"the /api surface moved: {len(api_pairs)} pairs. v0.13.0 adds no route — it adds "
+        f"static module paths only, and a change here means something else happened."
+    )
     paths = {path for _method, path in served}
     for public in declare.UNAUTHENTICATED_PATHS:
         assert public in paths, f"{public} is no longer served"

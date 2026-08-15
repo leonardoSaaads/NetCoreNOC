@@ -1,0 +1,172 @@
+<div #app .shell>
+  <nav #nav .sidebar aria-label="Sections">
+    <div .brand>
+      <span .brand-mark>
+        "◈"
+      <span .brand-name>
+        "Net"
+        <b>
+          "CoreNOC"
+    <div .nav-group>
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◎"
+            <span .nav-label>
+              "Overview"
+    <div .nav-group>
+      <h2 #nav-group-operations .nav-heading>
+        "Operations"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◉"
+            <span .nav-label>
+              "Situations"
+            <span .nav-count>
+              "1"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⬡"
+            <span .nav-label>
+              "Network graph"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▤"
+            <span .nav-label>
+              "Timeline"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▢"
+            <span .nav-label>
+              "Entities"
+        <li>
+          <a .nav-item.active>
+            <span .nav-glyph>
+              "≡"
+            <span .nav-label>
+              "Alarm classes"
+    <div .nav-group>
+      <h2 #nav-group-evidence .nav-heading>
+        "Evidence"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "✓"
+            <span .nav-label>
+              "Labelling"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚖"
+            <span .nav-label>
+              "Judge & promotion"
+  <div .main>
+    <header .topbar>
+      <div .topbar-live>
+        <span .conn.conn-connecting role=status>
+          <span .conn-dot>
+          "connecting"
+        <span .chips>
+          <span .chip>
+            <b>
+              "2"
+            "devices"
+          <span .chip>
+            <b>
+              "4"
+            "classes"
+          <span .chip>
+            <b>
+              "8"
+            "active alarms"
+          <span .chip>
+            <b>
+              "1"
+            "open situations"
+      <div .topbar-who>
+        <span .role-tag>
+          "editor"
+        <a .who-name>
+          "edt"
+        <button .icon aria-label="Theme: system. Change theme.">
+          "◒"
+        <button .icon aria-label="Density: compact. Change density.">
+          "▤"
+        <button>
+          "Sign out"
+    <div .banners>
+    <main #work .work>
+      <div .work-heading>
+        <h1>
+          "Alarm classes"
+        <p .work-summary>
+          "Every trap type the appliance has learned, with no configuration."
+      <div .view>
+        <div>
+          <p .hint>
+            "4 classes"
+            ", every one of them inferred.
+        A label you set here is cosmetic: it ren"
+          <div .table-scroll>
+            <table .data>
+              <thead>
+                <tr>
+                  <th .num>
+                    "#"
+                  <th>
+                    "class"
+                  <th>
+                    "trap OID"
+                  <th>
+                    "vendor"
+              <tbody>
+                <tr>
+                  <td .num>
+                    "1"
+                  <td>
+                    "—"
+                  <td>
+                    <code .mono>
+                      "1.3.6.1.4.1.1271.2.1.1"
+                  <td>
+                    "Ciena"
+                <tr>
+                  <td .num>
+                    "2"
+                  <td>
+                    "—"
+                  <td>
+                    <code .mono>
+                      "1.3.6.1.4.1.1271.2.1.2"
+                  <td>
+                    "Ciena"
+                <tr>
+                  <td .num>
+                    "3"
+                  <td>
+                    "—"
+                  <td>
+                    <code .mono>
+                      "1.3.6.1.4.1.1271.2.1.3"
+                  <td>
+                    "Ciena"
+                <tr>
+                  <td .num>
+                    "4"
+                  <td>
+                    "—"
+                  <td>
+                    <code .mono>
+                      "1.3.6.1.4.1.1271.2.1.4"
+                  <td>
+                    "Ciena"
+  <aside #context .context.context-idle aria-label="Details">
+    <p .hint>
+      "Select something to see its detail here."

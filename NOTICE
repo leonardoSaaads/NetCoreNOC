@@ -12,6 +12,22 @@ apply to their respective files:
     beside it at src/netcorenoc/ui/vendor/d3.LICENSE, and its exact bytes are
     pinned in src/netcorenoc/ui/vendor/CHECKSUMS.txt.
 
+  - preact (v10.29.8), Copyright (c) 2015-present Jason Miller, licensed under
+    the MIT licence. Vendored (self-hosted, no CDN) at
+    src/netcorenoc/ui/vendor/preact-10.29.8.module.js; the upstream licence text
+    is shipped beside it at src/netcorenoc/ui/vendor/preact.LICENSE, and its
+    exact bytes are pinned in src/netcorenoc/ui/vendor/CHECKSUMS.txt.
+
+  - htm (v3.1.1), Copyright Jason Miller, licensed under the Apache License,
+    Version 2.0. Vendored (self-hosted, no CDN) at
+    src/netcorenoc/ui/vendor/htm-3.1.1.module.js; the upstream licence text is
+    shipped beside it at src/netcorenoc/ui/vendor/htm.LICENSE, and its exact
+    bytes are pinned in src/netcorenoc/ui/vendor/CHECKSUMS.txt. The upstream
+    LICENSE file is the unmodified Apache-2.0 text with no copyright line
+    filled in; the attribution above comes from the package's own metadata
+    (`author: Jason Miller`, `license: Apache-2.0`) and is recorded here
+    because Apache-2.0 §4(c) expects it to travel with the redistribution.
+
 No other third-party code is bundled. The runtime Python dependencies
 (pysnmp, aiosqlite, fastapi, uvicorn, pydantic) are declared in pyproject.toml
 and installed from their own distributions under their own licences; they are

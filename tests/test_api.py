@@ -72,7 +72,12 @@ async def test_index_serves_the_single_file_ui(client: httpx.AsyncClient) -> Non
     response = await client.get("/", headers={"Authorization": ""})
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "d3" in response.text and "NetCoreNOC" in response.text
+    # v0.13.0: the document is a mount point. What it must still do is name the two scripts a
+    # browser has to fetch, by paths that exist on disk — no bundle, no manifest, no import map.
+    assert "NetCoreNOC" in response.text
+    assert 'src="/vendor/d3.v7.min.js"' in response.text
+    assert 'type="module" src="/app.js"' in response.text
+    assert "importmap" not in response.text
 
 
 async def test_api_requires_token(client: httpx.AsyncClient) -> None:

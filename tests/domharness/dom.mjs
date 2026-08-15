@@ -33,9 +33,40 @@
  * no real event loop ordering beyond microtasks. `getBoundingClientRect()` returns zeroes.
  * Nothing here can characterise anything visual, which is consistent with the release's
  * characterisation boundary: invariants only, never layout.
+ *
+ * ## v0.13.0: five deliberate additions, and why each is not optional
+ *
+ * The UI now renders through a vendored Preact. Preact's DOM surface is small and enumerable —
+ * `grep` over `vendor/preact-10.29.8.module.js` finds nineteen distinct members — and five of
+ * them were absent here. Each was added because its absence produced a WRONG result rather than
+ * an obvious one, which is the class of gap this file's "throw, never return undefined" rule
+ * exists to prevent:
+ *
+ *   1. `createElementNS` / `localName` / `namespaceURI` — Preact creates every element through
+ *      `createElementNS` and compares `localName` when reusing one. Absent: throws on first
+ *      render (loud, and the correct failure) — but `namespaceURI` absent on the *document*
+ *      would have silently built the whole tree namespaceless.
+ *   2. `on<type>` handler properties — see HANDLER_EVENTS. Absent: every listener lands on a
+ *      capitalised type nothing dispatches, and **the UI renders perfectly and responds to
+ *      nothing** while every markup assertion still passes. This is the dangerous one.
+ *   3. `style.setProperty` / `style.cssText` — Preact's `style` prop path calls both.
+ *   4. an `id` setter — a browser reflects `id` as a writable property; Preact assigns it inside
+ *      a `try`/`catch`, so a getter-only `id` would have fallen back to `setAttribute` and
+ *      worked by accident. Added so it works for the reason a browser does.
+ *   5. `addEventListener` refuses a capitalised type — the tripwire that makes (2) impossible to
+ *      reintroduce silently.
+ *
+ * All five are covered by `selftest.mjs`, and (2) is covered *behaviourally* — a Preact-style
+ * `onClick` prop must produce a handler a dispatched `click` reaches — because asserting that
+ * the property merely exists would not have caught the failure it exists to prevent.
  */
 
 import { parseHTML } from "./html.mjs";
+
+/* Namespaces. v0.13.0 needs these because Preact creates EVERY element through
+ * `createElementNS` and then reads `localName` back when it reuses a node — a DOM without them
+ * throws on the first render rather than producing a wrong one, which is the correct failure. */
+const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -136,6 +167,18 @@ class DomNode {
   }
 
   addEventListener(type, handler) {
+    // A capitalised type is never a real event type; it is the signature of a framework that
+    // asked `"on<type>" in node`, got `false`, and fell back to slicing the prop name. Throwing
+    // here is what turns that into a loud failure instead of a UI that renders and does nothing
+    // (see HANDLER_EVENTS below).
+    if (/^[A-Z]/.test(type)) {
+      throw new Error(
+        `addEventListener(${JSON.stringify(type)}): a capitalised event type means the prop ` +
+        `name was not reflected as an on<type> property on this element. Add the event to ` +
+        `HANDLER_EVENTS in tests/domharness/dom.mjs rather than letting the listener sit on a ` +
+        `type nothing dispatches.`,
+      );
+    }
     if (!this._listeners.has(type)) this._listeners.set(type, []);
     this._listeners.get(type).push(handler);
   }
@@ -238,10 +281,15 @@ class DocumentFragment extends DomNode {
 }
 
 class Element extends DomNode {
-  constructor(ownerDocument, tagName) {
+  constructor(ownerDocument, tagName, namespaceURI = XHTML_NS) {
     super(ownerDocument);
     this.nodeType = ELEMENT_NODE;
     this.tagName = tagName.toLowerCase();
+    // `localName` is the namespace-aware name and is what Preact compares when it decides
+    // whether an existing node can be reused. `namespaceURI` is what it propagates to children,
+    // so an `<svg>` subtree really is built in the SVG namespace here as it is in a browser.
+    this.localName = this.tagName;
+    this.namespaceURI = namespaceURI;
     this._attrs = new Map();
     this.style = makeStyle();
     this.classList = makeClassList(this);
@@ -281,6 +329,7 @@ class Element extends DomNode {
   set title(v) { this._attrs.set("title", String(v)); }
 
   get id() { return this._attrs.get("id") ?? ""; }
+  set id(v) { this._attrs.set("id", String(v)); }
 
   getAttribute(name) { return this._attrs.has(name) ? this._attrs.get(name) : null; }
   setAttribute(name, value) { this._attrs.set(name.toLowerCase(), String(value)); }
@@ -302,10 +351,43 @@ class Element extends DomNode {
   click() { this.dispatchEvent(new DomEvent("click")); }
 }
 
+/* Event handler reflection: `onclick`, `oninput`, … as real properties.
+ *
+ * **This is not cosmetic and getting it wrong produces a silently dead UI.** Preact maps a
+ * `onClick` prop to a listener type by asking `"onclick" in node`: when the property exists it
+ * registers `click`, and when it does not it registers `Click`. A DOM without these would take
+ * the second branch, every handler would sit on a capitalised type no dispatched event ever
+ * matches, and every assertion about *rendered markup* would still pass. The UI would render
+ * perfectly and respond to nothing.
+ *
+ * Bounded on purpose: the set below is what this UI uses. `addEventListener` refuses a
+ * capitalised type (see below), so the day a new handler prop is added without its entry here,
+ * the harness says so instead of registering a listener nothing can reach.
+ */
+const HANDLER_EVENTS = [
+  "click", "input", "change", "submit", "keydown", "keyup",
+  "focus", "blur", "focusin", "focusout", "dblclick", "mousedown", "mouseup",
+];
+for (const type of HANDLER_EVENTS) {
+  Object.defineProperty(Element.prototype, `on${type}`, {
+    configurable: true,
+    get() { return this[`_on_${type}`] ?? null; },
+    set(handler) {
+      const previous = this[`_on_${type}`];
+      if (previous) this.removeEventListener(type, previous);
+      this[`_on_${type}`] = handler;
+      if (handler) this.addEventListener(type, handler);
+    },
+  });
+}
+
 function makeStyle() {
-  // A plain property bag. `style.display = "none"` and `style.width = "12px"` are the only two
-  // the UI sets, both through CSSOM because the CSP forbids inline style attributes.
-  return {};
+  // A property bag with the two CSSOM entry points Preact uses. The UI sets style through
+  // CSSOM rather than a `style=` attribute because the CSP forbids inline styles.
+  const style = { cssText: "" };
+  style.setProperty = (name, value) => { style[name] = value == null ? "" : String(value); };
+  style.removeProperty = (name) => { delete style[name]; };
+  return style;
 }
 
 function makeClassList(el) {
@@ -380,11 +462,15 @@ export class Document extends DomNode {
     super(null);
     this.ownerDocument = this;
     this.nodeType = 9;
+    // `render(vnode, container)` reads `container.namespaceURI` to decide the namespace of what
+    // it builds; a document that answered `undefined` would build the whole UI namespaceless.
+    this.namespaceURI = XHTML_NS;
     this.documentElement = null;
     this.body = null;
   }
 
   createElement(tag) { return new Element(this, tag); }
+  createElementNS(ns, tag) { return new Element(this, tag, ns || XHTML_NS); }
   createTextNode(data) { return new Text(this, data); }
   createDocumentFragment() { return new DocumentFragment(this); }
 

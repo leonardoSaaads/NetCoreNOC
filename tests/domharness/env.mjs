@@ -21,6 +21,8 @@
  * that matters. They are also exactly what v0.13.0 will rewrite.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import vm from "node:vm";
 import { Document, DomEvent, documentFromHTML } from "./dom.mjs";
 
@@ -207,17 +209,60 @@ class FakeEventSource {
 
 /* ---------- the sandbox ---------- */
 
-export function createEnvironment({ indexHtml, appJs, routes, dialogs = {} }) {
+/** Cookie jar. A plain string, exactly as `document.cookie` is, with the browser's split
+ * semantics: reading returns `name=value; name=value`, writing sets or replaces ONE pair and
+ * carries attributes the reader never sees. The theme preference is persisted here (ADR #172),
+ * and modelling it as a dictionary would have hidden the one property that matters — that a
+ * write is a single pair and a read is all of them, with no attributes. */
+function makeCookieJar() {
+  const pairs = new Map();
+  return {
+    get value() {
+      return [...pairs].map(([name, v]) => `${name}=${v}`).join("; ");
+    },
+    write(raw) {
+      const [pair] = String(raw).split(";");
+      const at = pair.indexOf("=");
+      if (at === -1) return;
+      pairs.set(pair.slice(0, at).trim(), pair.slice(at + 1).trim());
+    },
+    // Driver-side, so a scenario can plant a cookie the way a previous session would have.
+    seed(name, value) { pairs.set(name, value); },
+    raw: pairs,
+  };
+}
+
+export function createEnvironment({ indexHtml, routes, dialogs = {}, cookies = {}, hash = "" }) {
   const document = documentFromHTML(indexHtml);
   const d3Calls = [];
   const network = new RecordingNetwork(routes);
   const eventSources = [];
   const dialogCalls = [];
   const timers = [];
+  const cookieJar = makeCookieJar();
+  for (const [name, value] of Object.entries(cookies)) cookieJar.seed(name, value);
 
+  // `location.hash` is the router's input, so it is a real, writable property here rather than a
+  // constant: a scenario navigates by assigning it, exactly as a link click would, and the
+  // `hashchange` listener the router registers fires from that assignment.
+  const location = {
+    hash,
+    pathname: "/",
+    reload: () => dialogCalls.push({ kind: "reload" }),
+  };
+  const windowListeners = new Map();
   const window = {
-    addEventListener: (type, handler) => document.addEventListener(type, handler),
-    location: { reload: () => dialogCalls.push({ kind: "reload" }) },
+    location,
+    addEventListener: (type, handler) => {
+      if (!windowListeners.has(type)) windowListeners.set(type, []);
+      windowListeners.get(type).push(handler);
+    },
+    removeEventListener: (type, handler) => {
+      const list = windowListeners.get(type) ?? [];
+      const at = list.indexOf(handler);
+      if (at !== -1) list.splice(at, 1);
+    },
+    matchMedia: (query) => ({ matches: false, media: query, addEventListener() {} }),
   };
 
   const sandbox = {
@@ -227,11 +272,12 @@ export function createEnvironment({ indexHtml, appJs, routes, dialogs = {} }) {
     console: { log() {}, warn() {}, error() {} },
     fetch: (path, init) => network.fetch(path, init),
     EventSource: function EventSource(url) { return new FakeEventSource(url, eventSources); },
-    location: window.location,
+    location,
     setInterval: (fn, ms) => { timers.push({ kind: "interval", fn, ms }); return timers.length; },
     clearInterval: () => {},
     setTimeout: (fn, ms) => { timers.push({ kind: "timeout", fn, ms }); return timers.length; },
     clearTimeout: () => {},
+    queueMicrotask: (fn) => { void Promise.resolve().then(fn); },
     alert: (message) => { dialogCalls.push({ kind: "alert", message }); },
     confirm: (message) => {
       dialogCalls.push({ kind: "confirm", message });
@@ -243,16 +289,106 @@ export function createEnvironment({ indexHtml, appJs, routes, dialogs = {} }) {
     },
     Blob: function Blob(parts) { this.parts = parts; },
     URL: { createObjectURL: () => "blob:harness", revokeObjectURL: () => {} },
+    // A real browser global the router uses to read a fragment's query string. Node's own
+    // implementation, passed through rather than re-modelled: this is a pure parser with no I/O
+    // and no clock, so substituting it would add a way for the harness to disagree with a browser
+    // for no benefit. (`fetch`, `EventSource`, the clock, the timers and d3 remain doubles, and
+    // those five are the whole substitution list.)
+    URLSearchParams,
+    Intl,
   };
   sandbox.globalThis = sandbox;
   sandbox.window.document = document;
+  Object.defineProperty(document, "cookie", {
+    configurable: true,
+    get: () => cookieJar.value,
+    set: (raw) => cookieJar.write(raw),
+  });
 
   const context = vm.createContext(sandbox);
   vm.runInContext(CLOCK_PRELUDE, context, { filename: "harness:clock" });
-  // THE LINE THIS RELEASE EXISTS FOR: `ui/app.js`, evaluated.
-  vm.runInContext(appJs, context, { filename: "ui/app.js" });
 
-  return { context, sandbox, document, network, eventSources, dialogCalls, d3Calls, timers, DomEvent, Document };
+  const env = {
+    context, sandbox, document, network, eventSources, dialogCalls, d3Calls, timers,
+    cookies: cookieJar, location, DomEvent, Document,
+    /** Fire a window-level event the way the browser does (the router listens for `hashchange`). */
+    emitWindow(type, detail = {}) {
+      for (const handler of windowListeners.get(type) ?? []) handler({ type, ...detail });
+    },
+    /** Navigate: set the fragment and deliver `hashchange`, in that order, as a browser does. */
+    navigate(to) {
+      location.hash = to;
+      env.emitWindow("hashchange");
+    },
+    modules: new Map(),
+  };
+  return env;
+}
+
+/* ---------- the module graph ---------- */
+
+/**
+ * Evaluate the UI's ESM entry point and everything it imports, inside `env`'s context.
+ *
+ * v0.12.0 ran one file through `vm.runInContext`, which cannot see an `import`. v0.13.0's UI is a
+ * module graph — an entry point, ~20 view modules, and two vendored assets — so the harness links
+ * it with `vm.SourceTextModule` and a resolver that reads **the real files from the real
+ * directory**. Two consequences worth stating:
+ *
+ *   * the vendored Preact and htm the browser would load are the exact bytes evaluated here.
+ *     They are not stubbed, not shimmed, and not a second copy; `CHECKSUMS.txt` pins what runs.
+ *   * every module the entry point imports is evaluated, because the UI's imports are static.
+ *     **Module evaluation is not view activation**: the registry holds every view's component
+ *     whatever the principal's role, and what a role's capabilities decide is whether the
+ *     component is ever *mounted*. Invariant 5 is about requests, and a module that was loaded
+ *     but never mounted issues none.
+ *
+ * `--experimental-vm-modules` is required and `domdriver.py` passes it. Still stdlib-only: no
+ * npm, no loader hook, no transform. The resolver refuses a specifier that escapes the UI
+ * directory, so a scenario cannot make the harness read outside what ships.
+ */
+export async function evaluateModules(env, { uiDir, entry }) {
+  const root = path.resolve(uiDir);
+
+  /* Instantiate (never link) one module and cache it by absolute path.
+   *
+   * `link()` walks the whole graph itself, so the resolver must only HAND BACK a module — calling
+   * `link()` on it from inside the resolver is what produced "request … is from a module not been
+   * linked" on the first attempt: a diamond (every view imports `dom.js`) reached the shared
+   * module while its own linking was still in flight. One `link()` at the entry, and the caching
+   * here is what makes the diamond collapse to a single instance — which matters, because the
+   * proof reads `esc` off the same `dom.js` instance the running UI imported.
+   */
+  const instantiate = (file) => {
+    const cached = env.modules.get(file);
+    if (cached) return cached;
+    if (!file.startsWith(root + path.sep) && file !== path.join(root, entry)) {
+      throw new Error(`module ${file} is outside the UI directory; the harness loads what ships`);
+    }
+    const module = new vm.SourceTextModule(fs.readFileSync(file, "utf8"), {
+      context: env.context,
+      identifier: path.relative(root, file),
+    });
+    env.modules.set(file, module);
+    return module;
+  };
+
+  const entryModule = instantiate(path.join(root, entry));
+  await entryModule.link((specifier, referrer) => {
+    if (!specifier.startsWith(".")) {
+      throw new Error(
+        `${referrer.identifier} imports the bare specifier ${JSON.stringify(specifier)}. The ` +
+        `shipped UI resolves every import by relative path, because a bare specifier needs an ` +
+        `import map and an import map is an inline <script> the CSP forbids.`,
+      );
+    }
+    return instantiate(
+      path.resolve(path.dirname(path.join(root, referrer.identifier)), specifier),
+    );
+  });
+  await entryModule.evaluate();
+  env.entry = entryModule;
+  return entryModule;
 }
 
 /** Drain the microtask queue until the doubles have no outstanding promises. Deterministic. */

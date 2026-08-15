@@ -210,17 +210,91 @@ export function runSelfTests() {
     assert(frag.childNodes.length === 0, "the fragment kept its children after being appended");
   });
 
-  check("the shipped index.html parses into the elements app.js reaches for at load", () => {
-    // app.js binds these by id at module scope. If the parser dropped any of them, `app.js`
-    // would throw during evaluation and every scenario would fail loudly rather than silently —
-    // but this check names the dependency instead of leaving it implicit in a stack trace.
+  check("the shipped index.html parses into the mount point the console needs", () => {
+    // v0.13.0: the document is a mount point. It carries #root and the two script tags and
+    // nothing else — the screens are rendered, not declared — so this checks the two facts the
+    // harness actually depends on rather than eight ids that no longer exist.
     const source = fs.readFileSync(path.join(import.meta.dirname, "..", "..",
       "src", "netcorenoc", "ui", "index.html"), "utf8");
     const d = documentFromHTML(source);
-    for (const id of ["login", "loginForm", "app", "tabs", "sits", "fltText", "fltStatus", "graph"]) {
-      assert(d.getElementById(id) !== null, `index.html parsed without #${id}`);
+    assert(d.getElementById("root") !== null, "index.html parsed without #root");
+    const scripts = d.querySelectorAll("script");
+    assert(scripts.length === 2, `expected two script tags, parsed ${scripts.length}`);
+    assert(scripts[1].getAttribute("type") === "module", "app.js is not loaded as a module");
+    // The old ids must be GONE, not merely unused. `#sidebar` was the work area and is the
+    // collision draft §1.1 required this release to resolve; a document that still carried it
+    // would let a guard match the old id and report that it had found navigation.
+    for (const id of ["sidebar", "tabs", "sits", "app", "login"]) {
+      assert(d.getElementById(id) === null, `index.html still declares #${id}`);
     }
-    assert(d.querySelectorAll(".panel").length === 10, "index.html did not parse into 10 panels");
+  });
+
+  /* ---------- v0.13.0: the five additions, each covered behaviourally ---------- */
+
+  check("createElementNS builds an element carrying its namespace and localName", () => {
+    const d = new Document();
+    const svg = d.createElementNS("http://www.w3.org/2000/svg", "svg");
+    assert(svg.namespaceURI === "http://www.w3.org/2000/svg", "namespaceURI was not recorded");
+    assert(svg.localName === "svg", "localName was not set");
+    const div = d.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    assert(div.namespaceURI === "http://www.w3.org/1999/xhtml", "the XHTML namespace was lost");
+    assert(d.namespaceURI === "http://www.w3.org/1999/xhtml",
+      "the document has no namespaceURI; render() reads it to decide what it builds");
+  });
+
+  check("an on<type> property EXISTS and registers a real listener", () => {
+    // THE IMPORTANT ONE. Preact maps `onClick` to a listener type by asking `"onclick" in node`.
+    // Without the property it registers the type "Click", no dispatched `click` ever reaches it,
+    // and the UI renders perfectly while responding to nothing — with every assertion about
+    // rendered markup still green. So this asserts BOTH halves: the property is `in` the node,
+    // and setting it produces a handler a dispatched lower-case event actually reaches.
+    const d = new Document();
+    const button = d.createElement("button");
+    assert("onclick" in button, '"onclick" is not `in` an element; Preact would register "Click"');
+    let fired = 0;
+    button.onclick = () => { fired += 1; };
+    button.dispatchEvent(new DomEvent("click"));
+    assert(fired === 1, `the on<type> handler did not fire (fired ${fired} times)`);
+    // Reassigning replaces rather than stacking, as a browser does.
+    button.onclick = () => { fired += 10; };
+    button.dispatchEvent(new DomEvent("click"));
+    assert(fired === 11, `reassigning on<type> stacked handlers instead of replacing (${fired})`);
+    button.onclick = null;
+    button.dispatchEvent(new DomEvent("click"));
+    assert(fired === 11, "clearing on<type> did not remove the listener");
+  });
+
+  check("addEventListener refuses a capitalised event type", () => {
+    // The tripwire that makes the failure above impossible to reintroduce silently.
+    const d = new Document();
+    const el = d.createElement("div");
+    let threw = false;
+    try { el.addEventListener("Click", () => {}); } catch { threw = true; }
+    assert(threw, "a capitalised event type was accepted; a dead listener would go unnoticed");
+    // The control: the lower-case form must still work, or this would refuse everything.
+    let fired = false;
+    el.addEventListener("click", () => { fired = true; });
+    el.dispatchEvent(new DomEvent("click"));
+    assert(fired, "the lower-case listener did not fire; the refusal above is over-broad");
+  });
+
+  check("style exposes setProperty and cssText", () => {
+    const d = new Document();
+    const el = d.createElement("div");
+    el.style.setProperty("width", "12px");
+    assert(el.style.width === "12px", "setProperty did not set the property");
+    el.style.cssText = "";
+    assert(el.style.cssText === "", "cssText is not assignable");
+    el.style.removeProperty("width");
+    assert(el.style.width === undefined, "removeProperty did not remove it");
+  });
+
+  check("id is a writable property, as a browser reflects it", () => {
+    const d = new Document();
+    const el = d.createElement("div");
+    el.id = "work";
+    assert(el.getAttribute("id") === "work", "assigning .id did not set the attribute");
+    assert(el.id === "work", "reading .id back did not return it");
   });
 
   return { results, passed: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length };

@@ -61,3 +61,103 @@ def test_all_ui_assets_are_covered_by_package_data_globs() -> None:
         if not any(fnmatch(rel, glob) for glob in globs):
             uncovered.append(rel)
     assert not uncovered, f"UI files not covered by package-data (won't ship): {uncovered}"
+
+
+# -- v0.13.0: the gaps the checksum loop above could not see --------------------------------------
+
+
+def test_every_vendored_asset_is_pinned_by_name() -> None:
+    """**The gap `test_vendored_assets_match_pinned_checksums` cannot close.**
+
+    That loop iterates `CHECKSUMS.txt` and verifies what it finds, so it can only ever check what
+    the file already names. An asset dropped into `vendor/` with no pin is invisible to it — the
+    loop passes, the asset ships, and nothing has verified a byte of it.
+
+    `UI-0.13-DRAFT.md` §10.1(4) said this had to be *"verified rather than assumed"* before a
+    second asset was vendored. It was assumed. This is the verification, and it goes in the
+    opposite direction: every file in the directory must be **named** in the pin file.
+    """
+    pinned = {
+        line.split()[1]
+        for line in (VENDOR / "CHECKSUMS.txt").read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+    present = {
+        path.name
+        for path in VENDOR.iterdir()
+        if path.is_file() and path.name != "CHECKSUMS.txt" and not path.name.endswith("LICENSE")
+    }
+    assert present == pinned, (
+        f"the vendored set and the pinned set disagree.\n"
+        f"  present, unpinned: {sorted(present - pinned)}\n"
+        f"  pinned, missing:   {sorted(pinned - present)}"
+    )
+    assert len(pinned) >= 3, f"only {len(pinned)} assets pinned; d3, preact and htm are expected"
+
+
+def test_every_vendored_asset_ships_its_licence() -> None:
+    """§10.1(3): the upstream licence travels with the bytes, per asset.
+
+    Derived from the pinned set rather than listed, so vendoring a fourth asset without its licence
+    fails here instead of being noticed at a compliance review.
+    """
+    pinned = {
+        line.split()[1]
+        for line in (VENDOR / "CHECKSUMS.txt").read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+    # `d3.v7.min.js` -> `d3`; `preact-10.29.8.module.js` -> `preact`;
+    # `htm-3.1.1.module.js` -> `htm`.
+    for asset in pinned:
+        package = asset.split(".")[0].split("-")[0]
+        licence = VENDOR / f"{package}.LICENSE"
+        assert licence.exists(), f"{asset} ships without {licence.name}"
+        assert len(licence.read_text().strip()) > 200, f"{licence.name} is not a licence text"
+
+
+def test_every_vendored_asset_is_attributed_in_notice() -> None:
+    """Apache-2.0 §4(c) and plain honesty: NOTICE names what this product bundles."""
+    notice = (REPO_ROOT / "NOTICE").read_text(encoding="utf-8")
+    for asset in ("d3.v7.min.js", "preact-10.29.8.module.js", "htm-3.1.1.module.js"):
+        assert asset in notice, f"{asset} is bundled but is not attributed in NOTICE"
+    assert "No other third-party code is bundled." in notice
+
+
+def test_the_framework_carries_its_version_in_its_filename() -> None:
+    """§10.1(1). A vendored asset whose filename does not state its version is an asset nobody can
+    audit against an advisory without opening it."""
+    for asset, marker in (
+        ("preact-10.29.8.module.js", "10.29.8"),
+        ("htm-3.1.1.module.js", "3.1.1"),
+    ):
+        assert (VENDOR / asset).exists(), f"{asset} is not vendored"
+        assert marker in asset
+
+
+def test_the_vendored_modules_carry_no_bare_specifier() -> None:
+    """Load-bearing, not cosmetic (ADR #174).
+
+    A bare specifier in a vendored module would need an import map to resolve, and an import map is
+    an inline `<script type="importmap">` that `script-src 'self'` forbids. It is the reason this
+    release vendors Preact's *core* and no hooks module — `hooks.module.js` imports `"preact"`.
+    """
+    import re
+
+    for asset in ("preact-10.29.8.module.js", "htm-3.1.1.module.js"):
+        source = (VENDOR / asset).read_text(encoding="utf-8")
+        specifiers = re.findall(r'\bfrom\s*"([^"]+)"', source)
+        assert not specifiers, f"{asset} imports {specifiers}, which would need an import map"
+
+
+def test_the_served_module_set_equals_the_module_set_on_disk() -> None:
+    """ADR #175: the appliance serves an **enumerated** set, and enumeration only helps if it is
+    complete. Both directions: a module on disk that is not served is a console that half-loads;
+    a module served that is not on disk is a 404 waiting for a browser to find it."""
+    from netcorenoc.api.routes_static import STATIC_ASSETS
+
+    on_disk = {str(p.relative_to(UI)) for p in UI.rglob("*.js")}
+    served = {name for name in STATIC_ASSETS if name.endswith(".js")}
+    assert on_disk == served, (
+        f"on disk, not served: {sorted(on_disk - served)}\n"
+        f"served, not on disk: {sorted(served - on_disk)}"
+    )

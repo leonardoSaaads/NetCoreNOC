@@ -1,0 +1,118 @@
+<div #app .shell>
+  <nav #nav .sidebar aria-label="Sections">
+    <div .brand>
+      <span .brand-mark>
+        "◈"
+      <span .brand-name>
+        "Net"
+        <b>
+          "CoreNOC"
+    <div .nav-group>
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◎"
+            <span .nav-label>
+              "Overview"
+    <div .nav-group>
+      <h2 #nav-group-operations .nav-heading>
+        "Operations"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◉"
+            <span .nav-label>
+              "Situations"
+            <span .nav-count>
+              "1"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⬡"
+            <span .nav-label>
+              "Network graph"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▤"
+            <span .nav-label>
+              "Timeline"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▢"
+            <span .nav-label>
+              "Entities"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "≡"
+            <span .nav-label>
+              "Alarm classes"
+    <div .nav-group>
+      <h2 #nav-group-evidence .nav-heading>
+        "Evidence"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚖"
+            <span .nav-label>
+              "Judge & promotion"
+  <div .main>
+    <header .topbar>
+      <div .topbar-live>
+        <span .conn.conn-connecting role=status>
+          <span .conn-dot>
+          "connecting"
+        <span .chips>
+          <span .chip>
+            <b>
+              "2"
+            "devices"
+          <span .chip>
+            <b>
+              "4"
+            "classes"
+          <span .chip>
+            <b>
+              "8"
+            "active alarms"
+          <span .chip>
+            <b>
+              "1"
+            "open situations"
+      <div .topbar-who>
+        <span .role-tag>
+          "viewer"
+        <a .who-name>
+          "vwr"
+        <button .icon aria-label="Theme: system. Change theme.">
+          "◒"
+        <button .icon aria-label="Density: compact. Change density.">
+          "▤"
+        <button>
+          "Sign out"
+    <div .banners>
+    <main #work .work>
+      <div .work-heading>
+        <h1>
+          "Link scorer"
+      <div .state.state-refused role=alert>
+        <h3>
+          "Link scorer"
+          "is not available to you"
+        <p>
+          "Your account does not hold"
+          "the capability"
+          <code>
+            "scorer.write"
+          "."
+        <p .hint>
+          "Nothing was requested from the server. An administrator can grant this under
+ "
+  <aside #context .context.context-idle aria-label="Details">
+    <p .hint>
+      "Select something to see its detail here."

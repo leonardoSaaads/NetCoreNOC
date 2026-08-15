@@ -49,6 +49,11 @@ netcorenoc = [
     "migrations/*.sql",
     "ui/*.html",
     "ui/*.js",
+    # v0.13.0: the console is an ES module graph (ADR #175). Two more globs, one per level, so a
+    # wheel carries every module the browser will ask for. F12 was a wheel that shipped index.html
+    # and nothing else; tests/test_supply_chain.py asserts every UI file matches a glob here.
+    "ui/app/*.js",
+    "ui/app/views/*.js",
     "ui/*.css",
     "ui/vendor/*",
     "ui/.well-known/*",  # RFC 9116 security.txt, served by the app

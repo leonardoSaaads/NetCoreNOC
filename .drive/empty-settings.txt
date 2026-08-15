@@ -1,0 +1,530 @@
+<div #app .shell>
+  <nav #nav .sidebar aria-label="Sections">
+    <div .brand>
+      <span .brand-mark>
+        "◈"
+      <span .brand-name>
+        "Net"
+        <b>
+          "CoreNOC"
+    <div .nav-group>
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◎"
+            <span .nav-label>
+              "Overview"
+    <div .nav-group>
+      <h2 #nav-group-operations .nav-heading>
+        "Operations"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◉"
+            <span .nav-label>
+              "Situations"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⬡"
+            <span .nav-label>
+              "Network graph"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▤"
+            <span .nav-label>
+              "Timeline"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▢"
+            <span .nav-label>
+              "Entities"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "≡"
+            <span .nav-label>
+              "Alarm classes"
+    <div .nav-group>
+      <h2 #nav-group-evidence .nav-heading>
+        "Evidence"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "✓"
+            <span .nav-label>
+              "Labelling"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▦"
+            <span .nav-label>
+              "Corpus"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚖"
+            <span .nav-label>
+              "Judge & promotion"
+    <div .nav-group>
+      <h2 #nav-group-administer .nav-heading>
+        "Administer"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◍"
+            <span .nav-label>
+              "Users"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚿"
+            <span .nav-label>
+              "Service tokens"
+        <li>
+          <a .nav-item.active>
+            <span .nav-glyph>
+              "⚙"
+            <span .nav-label>
+              "Settings"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "∿"
+            <span .nav-label>
+              "Link scorer"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⛨"
+            <span .nav-label>
+              "Governance"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚑"
+            <span .nav-label>
+              "Quarantine"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⛓"
+            <span .nav-label>
+              "Audit log"
+  <div .main>
+    <header .topbar>
+      <div .topbar-live>
+        <span .conn.conn-connecting role=status>
+          <span .conn-dot>
+          "connecting"
+        <span .chips>
+          <span .chip>
+            <b>
+              "0"
+            "devices"
+          <span .chip>
+            <b>
+              "0"
+            "classes"
+          <span .chip>
+            <b>
+              "0"
+            "active alarms"
+          <span .chip>
+            <b>
+              "0"
+            "open situations"
+      <div .topbar-who>
+        <span .role-tag>
+          "admin"
+        <a .who-name>
+          "adm"
+        <button .icon aria-label="Theme: system. Change theme.">
+          "◒"
+        <button .icon aria-label="Density: compact. Change density.">
+          "▤"
+        <button>
+          "Sign out"
+    <div .banners>
+    <main #work .work>
+      <div .work-heading>
+        <h1>
+          "Settings"
+        <p .work-summary>
+          "Every parameter, in three classes, with its precedence and its impact."
+      <div .view>
+        <div .settingsview>
+          <section .panel-block.legend-block>
+            <p .hint>
+              "Every parameter on this screen belongs to one of three classes, and the class
+"
+            <dl .class-legend>
+              <dt .param-mechanism>
+                "mechanism"
+              <dd>
+                "Yours to set. The cost of each choice is stated beside it; where a change dest"
+              <dt .param-hardening>
+                "hardening-only"
+              <dd>
+                "You may make these stricter and not looser. The project floor is shown; a loos"
+                <em>
+                  "and"
+                "at the API, with the reason."
+              <dt .param-structural>
+                "structural"
+              <dd>
+                "Facts about this appliance, shown for transparency. There is no control becaus"
+          <section .panel-block.param-mechanism>
+            <div .section-heading>
+              <h3>
+                "Live configuration"
+              <p .hint>
+                "These two take effect without a restart: an admin saving here writes a databas"
+            <div .table-scroll>
+              <table .data>
+                <caption>
+                  "Why each value is what it is: the environment sets the default, a saved overri"
+                <thead>
+                  <tr>
+                    <th>
+                      "setting"
+                    <th>
+                      "environment default"
+                    <th>
+                      "database override"
+                    <th>
+                      "effective"
+                <tbody>
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_ALLOWLIST"
+                    <td>
+                      <span .muted>
+                        "(unset"
+                        "— empty = accept every source"
+                        ")"
+                    <td>
+                      <span .muted>
+                        "(none)"
+                    <td>
+                      <b .mono>
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_RETENTION_DAYS"
+                    <td>
+                      <code .mono>
+                        "7"
+                    <td>
+                      <span .muted>
+                        "(none)"
+                    <td>
+                      <b .mono>
+                        "0"
+            <form .stack>
+              <label>
+                "Trap allowlist (CIDRs, comma-separated; empty accepts every source)"
+              <input #cfgAllow>
+              <p .impact>
+                "Which source addresses the receiver accepts traps from. An empty value accepts"
+              <label>
+                "Operational retention (days)"
+              <input #cfgRet>
+              <p .impact>
+                "How long cleared and closed history is kept."
+                <b>
+                  "Lowering this deletes
+          rows and there is no rollback."
+                "The maintenance loop applies it in the background."
+              <button>
+                "Save"
+          <section .panel-block.param-mechanism>
+            <div .section-heading>
+              <h3>
+                "Feedback-corpus retention"
+              <p .hint>
+                "The three tiers that decide how long the human-labelled corpus lives. This is "
+            <div .stat-row>
+            <p .hint>
+              "Capture is currently"
+              <b>
+                "on"
+              ".
+        Since this process started, the background sweep has removed"
+              "nothing"
+              "."
+            <form .grid-form>
+              <div>
+                <label>
+                  "Sink tier (days)"
+                <input #ret-sink_days>
+              <div>
+                <label>
+                  "Sink tier (rows)"
+                <input #ret-sink_rows>
+              <div>
+                <label>
+                  "Training tier (days)"
+                <input #ret-training_days>
+              <div>
+                <label>
+                  "Audit tier (days)"
+                <input #ret-audit_days>
+            <p .impact>
+              "The ordering"
+              <code>
+                "sink &lt; training ≤ audit"
+              "is enforced by the
+        appliance with a precise reason, not a bare rejecti"
+              <b>
+                "The audit tier is the
+        destructive one"
+              ": it is the outer edge of the data's life. Lowering the training tier
+        "
+            <section .panel-block.destructive>
+              <div .section-heading>
+                <h3>
+                  "Apply these retention tiers"
+                <p .hint>
+                  "The preview is a real count from the appliance, and the preview itself is audi"
+              <p .consequence role=note>
+                <b>
+                  "This cannot be undone."
+                "Rows older than the audit tier are deleted in the same audited transaction as "
+              <button>
+                "Preview what this would delete"
+          <section .panel-block.param-hardening>
+            <div .section-heading>
+              <h3>
+                "Hardening-only"
+              <p .hint>
+                "resolved = max(project floor, deployment policy). You may make these stricter."
+            <div .table-scroll>
+              <table .data>
+                <caption>
+                  "The scorer's degeneracy bounds — enforced live, on the Link scorer screen"
+                <thead>
+                  <tr>
+                    <th>
+                      "floor"
+                    <th .num>
+                      "project value"
+                    <th>
+                      "you may"
+                    <th>
+                      "where it is enforced"
+                <tbody>
+                  <tr>
+                    <td>
+                      "minimum tau"
+                    <td .num>
+                      "1.0000"
+                    <td>
+                      "raise it"
+                    <td>
+                      "scoring.validate_params, and this console"
+                  <tr>
+                    <td>
+                      "maximum tau"
+                    <td .num>
+                      "3600.0000"
+                    <td>
+                      "lower it"
+                    <td>
+                      "scoring.validate_params, and this console"
+                  <tr>
+                    <td>
+                      "minimum weight sum"
+                    <td .num>
+                      "0.1000"
+                    <td>
+                      "raise it"
+                    <td>
+                      "scoring.validate_params, and this console"
+                  <tr>
+                    <td>
+                      "threshold margin"
+                    <td .num>
+                      "0.0100"
+                    <td>
+                      "raise it"
+                    <td>
+                      "scoring.validate_params, and this console"
+            <p .structural-note>
+              <b>
+                "The pre-registered sufficiency floors have no write path in this
+      release"
+              <code>
+                "asserting_bags ≥ 50"
+              "and"
+              <code>
+                "asserting_incidents ≥ 30"
+              "are
+      constants in the promotion route. Giving a deployment a way to raise"
+          <section .panel-block.param-structural>
+            <div .section-heading>
+              <h3>
+                "Structural — facts, not settings"
+              <p .hint>
+                "These have no edit control because they are not choices. A greyed-out field wo"
+            <dl .facts>
+              <div .fact>
+                <dt>
+                  "sealed holdout"
+                <dd>
+                  <b .mono>
+                    "displayed on the Judge & promotion screen"
+                  <span .why>
+                    "The holdout's query count is a property of what has been read, not a setting. "
+              <div .fact>
+                <dt>
+                  "audit hash chain"
+                <dd>
+                  <b .mono>
+                    "verified by `python -m netcorenoc audit verify`"
+                  <span .why>
+                    "Each row hashes the row before it. There is no repair, because a repairable ch"
+              <div .fact>
+                <dt>
+                  "asserting_bags floor"
+                <dd>
+                  <b .mono>
+                    "50"
+                  <span .why>
+                    "Pre-registered in PREREGISTRATION-0.10.0 §2.2 before any data was seen. Regist"
+              <div .fact>
+                <dt>
+                  "asserting_incidents floor"
+                <dd>
+                  <b .mono>
+                    "30"
+                  <span .why>
+                    "Pre-registered alongside the bag floor."
+              <div .fact>
+                <dt>
+                  "eval output hash"
+                <dd>
+                  <b .mono>
+                    "byte-identical across releases"
+                  <span .why>
+                    "The offline evaluation gate reproduces byte-for-byte. That is a property of th"
+              <div .fact>
+                <dt>
+                  "capability ceiling"
+                <dd>
+                  <b .mono>
+                    "rbac.PERMISSIONS"
+                  <span .why>
+                    "A stored policy can only take capabilities away. The compiled map is the maxim"
+              <div .fact>
+                <dt>
+                  "scorer contract version"
+                <dd>
+                  <b .mono>
+                    "1.0"
+                  <span .why>
+                    "Which scoring contract the running engine implements."
+          <section .panel-block.param-structural>
+            <div .section-heading>
+              <h3>
+                "Read at startup — a change needs a restart"
+              <p .hint>
+                "`Settings` is read once when the process starts and is never mutated afterward"
+            <div .table-scroll>
+              <table .data>
+                <thead>
+                  <tr>
+                    <th>
+                      "environment variable"
+                    <th>
+                      "value at startup"
+                    <th>
+                      "what it controls"
+                <tbody>
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_DB"
+                    <td>
+                      <b .mono>
+                        "netcorenoc.db"
+                    <td>
+                      "Which SQLite file the appliance opens."
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_TRAP_HOST"
+                    <td>
+                      <b .mono>
+                        "0.0.0.0"
+                    <td>
+                      "The address the trap receiver binds."
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_TRAP_PORT"
+                    <td>
+                      <b .mono>
+                        "162"
+                    <td>
+                      "The UDP port the trap receiver binds."
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_HTTP_HOST"
+                    <td>
+                      <b .mono>
+                        "0.0.0.0"
+                    <td>
+                      "The address the API and this console bind."
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_HTTP_PORT"
+                    <td>
+                      <b .mono>
+                        "8080"
+                    <td>
+                      "The port the API and this console bind."
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_AUDIT_RETENTION_DAYS"
+                    <td>
+                      <b .mono>
+                        "365"
+                    <td>
+                      "The outer bound on the audit log's life."
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_TLS_CERT / _TLS_KEY"
+                    <td>
+                      <b .mono>
+                        "false"
+                    <td>
+                      "Whether the console is served over TLS."
+                  <tr>
+                    <td>
+                      <code .mono>
+                        "NETCORENOC_LOG_JSON"
+                    <td>
+                      <b .mono>
+                        "false"
+                    <td>
+                      "Whether the process logs JSON lines instead of text."
+            <p .hint>
+              "To change one: set the environment variable and restart the process. Nothing
+ "
+              "8 settings"
+              "are in this class."
+  <aside #context .context.context-idle aria-label="Details">
+    <p .hint>
+      "Select something to see its detail here."

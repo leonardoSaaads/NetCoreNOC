@@ -1,0 +1,320 @@
+<div #app .shell>
+  <nav #nav .sidebar aria-label="Sections">
+    <div .brand>
+      <span .brand-mark>
+        "◈"
+      <span .brand-name>
+        "Net"
+        <b>
+          "CoreNOC"
+    <div .nav-group>
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◎"
+            <span .nav-label>
+              "Overview"
+    <div .nav-group>
+      <h2 #nav-group-operations .nav-heading>
+        "Operations"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◉"
+            <span .nav-label>
+              "Situations"
+            <span .nav-count>
+              "1"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⬡"
+            <span .nav-label>
+              "Network graph"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▤"
+            <span .nav-label>
+              "Timeline"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▢"
+            <span .nav-label>
+              "Entities"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "≡"
+            <span .nav-label>
+              "Alarm classes"
+    <div .nav-group>
+      <h2 #nav-group-evidence .nav-heading>
+        "Evidence"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "✓"
+            <span .nav-label>
+              "Labelling"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▦"
+            <span .nav-label>
+              "Corpus"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚖"
+            <span .nav-label>
+              "Judge & promotion"
+    <div .nav-group>
+      <h2 #nav-group-administer .nav-heading>
+        "Administer"
+      <ul .nav-list>
+        <li>
+          <a .nav-item.active>
+            <span .nav-glyph>
+              "◍"
+            <span .nav-label>
+              "Users"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚿"
+            <span .nav-label>
+              "Service tokens"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚙"
+            <span .nav-label>
+              "Settings"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "∿"
+            <span .nav-label>
+              "Link scorer"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⛨"
+            <span .nav-label>
+              "Governance"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚑"
+            <span .nav-label>
+              "Quarantine"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⛓"
+            <span .nav-label>
+              "Audit log"
+  <div .main>
+    <header .topbar>
+      <div .topbar-live>
+        <span .conn.conn-connecting role=status>
+          <span .conn-dot>
+          "connecting"
+        <span .chips>
+          <span .chip>
+            <b>
+              "2"
+            "devices"
+          <span .chip>
+            <b>
+              "4"
+            "classes"
+          <span .chip>
+            <b>
+              "8"
+            "active alarms"
+          <span .chip>
+            <b>
+              "1"
+            "open situations"
+      <div .topbar-who>
+        <span .role-tag>
+          "admin"
+        <a .who-name>
+          "adm"
+        <button .icon aria-label="Theme: system. Change theme.">
+          "◒"
+        <button .icon aria-label="Density: compact. Change density.">
+          "▤"
+        <button>
+          "Sign out"
+    <div .banners>
+    <main #work .work>
+      <div .work-heading>
+        <h1>
+          "Users"
+        <p .work-summary>
+          "Accounts and their roles."
+      <div .view>
+        <div .usersview>
+          <p .hint>
+            "4 accounts"
+            ". A role is a ceiling, not a grant:
+        Governance can take capabilities a"
+          <div .table-scroll>
+            <table .data>
+              <thead>
+                <tr>
+                  <th>
+                    "user"
+                  <th>
+                    "role"
+                  <th>
+                    "state"
+                  <th>
+              <tbody>
+                <tr>
+                  <td>
+                    <span>
+                      "adm"
+                      <span .muted>
+                        "(you)"
+                  <td>
+                    <div .role-control>
+                      <label .visually-hidden>
+                        "Role for"
+                        "adm"
+                      <select #role-4>
+                        <option>
+                          "viewer"
+                        <option>
+                          "editor"
+                        <option>
+                          "admin"
+                  <td>
+                    "active"
+                  <td>
+                    <span .muted>
+                      "you cannot delete your own account"
+                <tr>
+                  <td>
+                    "admin"
+                  <td>
+                    <div .role-control>
+                      <label .visually-hidden>
+                        "Role for"
+                        "admin"
+                      <select #role-1>
+                        <option>
+                          "viewer"
+                        <option>
+                          "editor"
+                        <option>
+                          "admin"
+                  <td>
+                    "active"
+                  <td>
+                    <section .panel-block.destructive>
+                      <div .section-heading>
+                        <h3>
+                          "Delete admin"
+                        <p .hint>
+                          "Removes the account and revokes its sessions."
+                      <p .consequence role=note>
+                        <b>
+                          "This cannot be undone."
+                        "The account "admin" is removed and every session it holds is revoked immediate"
+                      <button>
+                        "Delete…"
+                <tr>
+                  <td>
+                    "edt"
+                  <td>
+                    <div .role-control>
+                      <label .visually-hidden>
+                        "Role for"
+                        "edt"
+                      <select #role-3>
+                        <option>
+                          "viewer"
+                        <option>
+                          "editor"
+                        <option>
+                          "admin"
+                  <td>
+                    "active"
+                  <td>
+                    <section .panel-block.destructive>
+                      <div .section-heading>
+                        <h3>
+                          "Delete edt"
+                        <p .hint>
+                          "Removes the account and revokes its sessions."
+                      <p .consequence role=note>
+                        <b>
+                          "This cannot be undone."
+                        "The account "edt" is removed and every session it holds is revoked immediately"
+                      <button>
+                        "Delete…"
+                <tr>
+                  <td>
+                    "vwr"
+                  <td>
+                    <div .role-control>
+                      <label .visually-hidden>
+                        "Role for"
+                        "vwr"
+                      <select #role-2>
+                        <option>
+                          "viewer"
+                        <option>
+                          "editor"
+                        <option>
+                          "admin"
+                  <td>
+                    "active"
+                  <td>
+                    <section .panel-block.destructive>
+                      <div .section-heading>
+                        <h3>
+                          "Delete vwr"
+                        <p .hint>
+                          "Removes the account and revokes its sessions."
+                      <p .consequence role=note>
+                        <b>
+                          "This cannot be undone."
+                        "The account "vwr" is removed and every session it holds is revoked immediately"
+                      <button>
+                        "Delete…"
+          <section .panel-block>
+            <div .section-heading>
+              <h3>
+                "Add an account"
+              <p .hint>
+                "Passwords are 12–128 characters. The appliance stores a hash and never the pas"
+            <form .row-form>
+              <label .visually-hidden>
+                "Username"
+              <input #nu>
+              <label .visually-hidden>
+                "Password"
+              <input #np>
+              <label .visually-hidden>
+                "Role"
+              <select #nr>
+                <option>
+                  "viewer"
+                <option>
+                  "editor"
+                <option>
+                  "admin"
+              <button>
+                "Add user"
+  <aside #context .context.context-idle aria-label="Details">
+    <p .hint>
+      "Select something to see its detail here."

@@ -1,0 +1,164 @@
+<div #app .shell>
+  <nav #nav .sidebar aria-label="Sections">
+    <div .brand>
+      <span .brand-mark>
+        "◈"
+      <span .brand-name>
+        "Net"
+        <b>
+          "CoreNOC"
+    <div .nav-group>
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◎"
+            <span .nav-label>
+              "Overview"
+    <div .nav-group>
+      <h2 #nav-group-operations .nav-heading>
+        "Operations"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◉"
+            <span .nav-label>
+              "Situations"
+            <span .nav-count>
+              "1"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⬡"
+            <span .nav-label>
+              "Network graph"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▤"
+            <span .nav-label>
+              "Timeline"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▢"
+            <span .nav-label>
+              "Entities"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "≡"
+            <span .nav-label>
+              "Alarm classes"
+    <div .nav-group>
+      <h2 #nav-group-evidence .nav-heading>
+        "Evidence"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "✓"
+            <span .nav-label>
+              "Labelling"
+        <li>
+          <a .nav-item.active>
+            <span .nav-glyph>
+              "⚖"
+            <span .nav-label>
+              "Judge & promotion"
+  <div .main>
+    <header .topbar>
+      <div .topbar-live>
+        <span .conn.conn-connecting role=status>
+          <span .conn-dot>
+          "connecting"
+        <span .chips>
+          <span .chip>
+            <b>
+              "2"
+            "devices"
+          <span .chip>
+            <b>
+              "4"
+            "classes"
+          <span .chip>
+            <b>
+              "8"
+            "active alarms"
+          <span .chip>
+            <b>
+              "1"
+            "open situations"
+      <div .topbar-who>
+        <span .role-tag>
+          "editor"
+        <a .who-name>
+          "edt"
+        <button .icon aria-label="Theme: system. Change theme.">
+          "◒"
+        <button .icon aria-label="Density: compact. Change density.">
+          "▤"
+        <button>
+          "Sign out"
+    <div .banners>
+    <main #work .work>
+      <div .work-heading>
+        <h1>
+          "Judge & promotion"
+        <p .work-summary>
+          "What the gate decided, why it refused, and the seal's query count."
+      <div .view>
+        <div .promotionview>
+          <section .panel-block.param-structural>
+            <div .section-heading>
+              <h3>
+                "The sealed holdout"
+              <p .hint>
+                "Displayed, never actionable. The query count is a property of what has been re"
+            <div .stat-row>
+              <div .stat.stat-quiet>
+                <div .stat-value>
+                  "0"
+                <div .stat-label>
+                  "seal query count"
+                <div .stat-note>
+                  "the holdout has never been read"
+              <div .stat>
+                <div .stat-value>
+                  "—"
+                <div .stat-label>
+                  "active model version"
+              <div .stat>
+                <div .stat-value>
+                  "1"
+                <div .stat-label>
+                  "active scorer configuration"
+            <p .hint>
+              "Ratified plan:"
+              <code .mono>
+                "e011ee6ad2367d44f2ede14cad7b072df598298f91ecc1a405744358b589d449"
+              ". Every
+          decision below was taken against this plan and records the h"
+          <div .section-heading>
+            <h3>
+              "Decisions"
+            <p .hint>
+              "Refusals are included — that is the audit question this table exists to answer"
+          <div .state.state-empty>
+            <h3>
+              "No promotion has been proposed."
+            <p .what-fills>
+              "Every proposal — applied or refused — is recorded here with its verdict, the t"
+            <p .hint>
+              "A proposal needs a registered model version with a challenger run behind it, a"
+          <div .section-heading>
+            <h3>
+              "Model versions"
+            <p .hint>
+              "The artefact inventory. A version without a challenger run behind it can be re"
+          <p .hint>
+            "No model versions have been registered."
+  <aside #context .context.context-idle aria-label="Details">
+    <p .hint>
+      "Select something to see its detail here."
