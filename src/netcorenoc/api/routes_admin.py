@@ -176,8 +176,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         would widen what one audited capability discloses for no operator benefit.
         """
         env = Settings.from_env()
-        allowlist = runtime.allowlist if runtime else ""
-        retention = runtime.retention_days if runtime else 0.0
+        # **The fallback is the environment default, not a literal.** With no `RuntimeConfig` —
+        # which is every app built without one — v0.12.0 answered `retention_days: 0.0` while the
+        # environment said `7.0`. Nothing noticed, because nothing displayed the two side by side.
+        # The precedence object does display them side by side, and an "effective" value that
+        # contradicts the "environment default" beside it is exactly the confusion §7.1 exists to
+        # remove. Found by the test written to kill a surviving mutant.
+        allowlist = runtime.allowlist if runtime else env.allowlist
+        retention = runtime.retention_days if runtime else env.retention_days
         async with store.lock:
             saved_allow = await store.get_meta("config.allowlist")
             saved_ret = await store.get_meta("config.retention_days")

@@ -1,6 +1,6 @@
 # The external cartridge — v0.14.0 draft (specification only, not implemented in v0.13.0)
 
-<!-- release-claim: v0.14.0 = cartridge -->
+<!-- release-claim: v0.14.0 = external-cartridge -->
 
 **Implement none of this in v0.13.0.** Every element below is tagged **`v0.14.0: planned`**.
 
