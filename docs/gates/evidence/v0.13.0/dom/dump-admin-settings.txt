@@ -25,6 +25,8 @@
               "◉"
             <span .nav-label>
               "Situations"
+            <span .nav-count>
+              "1"
         <li>
           <a .nav-item>
             <span .nav-glyph>
@@ -126,19 +128,19 @@
         <span .chips>
           <span .chip>
             <b>
-              "0"
+              "2"
             "devices"
           <span .chip>
             <b>
-              "0"
+              "4"
             "classes"
           <span .chip>
             <b>
-              "0"
+              "8"
             "active alarms"
           <span .chip>
             <b>
-              "0"
+              "1"
             "open situations"
       <div .topbar-who>
         <span .role-tag>
@@ -227,7 +229,7 @@
                         "(none)"
                     <td>
                       <b .mono>
-                        "0"
+                        "7"
             <form .stack>
               <label>
                 "Trap allowlist (CIDRs, comma-separated; empty accepts every source)"
@@ -252,6 +254,51 @@
               <p .hint>
                 "The three tiers that decide how long the human-labelled corpus lives. This is "
             <div .stat-row>
+              <div .stat>
+                <div .stat-value>
+                  "1"
+                <div .stat-label>
+                  "capture run"
+              <div .stat>
+                <div .stat-value>
+                  "8"
+                <div .stat-label>
+                  "dataset observation.sink"
+              <div .stat>
+                <div .stat-value>
+                  "28"
+                <div .stat-label>
+                  "dataset pair.sink"
+              <div .stat>
+                <div .stat-value>
+                  "0"
+                <div .stat-label>
+                  "feedback member"
+              <div .stat>
+                <div .stat-value>
+                  "0"
+                <div .stat-label>
+                  "feedback member.client"
+              <div .stat>
+                <div .stat-value>
+                  "0"
+                <div .stat-label>
+                  "feedback member.server"
+              <div .stat>
+                <div .stat-value>
+                  "1,700,000,007.5"
+                <div .stat-label>
+                  "sink newest"
+              <div .stat>
+                <div .stat-value>
+                  "1,700,000,000.6"
+                <div .stat-label>
+                  "sink oldest"
+              <div .stat>
+                <div .stat-value>
+                  "0"
+                <div .stat-label>
+                  "sink window days"
             <p .hint>
               "Capture is currently"
               <b>

@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, TypedDict
 
 ROOT = Path("/home/user/NetCoreNOC")
 OUT = ROOT / ".demos"
@@ -26,17 +27,43 @@ CONTROL = "tests/test_ui_invariants.py::test_a_confirm_never_carries_exclusions"
 def run(test_ids: list[str], timeout: int = 400) -> str:
     proc = subprocess.run(
         [PY, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider", *test_ids],
-        cwd=str(ROOT), capture_output=True, text=True, timeout=timeout, check=False,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
     )
     lines = [
-        line for line in proc.stdout.splitlines()
-        if line.startswith("FAILED") or line.startswith("ERROR")
+        line
+        for line in proc.stdout.splitlines()
+        if line.startswith("FAILED")
+        or line.startswith("ERROR")
         or (" passed" in line or " failed" in line or " error" in line)
     ]
     return "\n".join(lines[-6:]) or proc.stdout.strip()[-400:]
 
 
-DEMOS = [
+class Injection(TypedDict, total=False):
+    """One injected defect. `file`+`old`+`new` edits a file; `create`+`content` adds one.
+
+    A `TypedDict` rather than a bare dict because `mypy --strict` covers `tools/` and the loop below
+    indexes these by key — an untyped table would make every access `object` and the type checker
+    would stop having an opinion about the one script whose correctness decides whether the
+    demonstrations mean anything.
+    """
+
+    n: int
+    title: str
+    file: str
+    old: str
+    new: str
+    create: str
+    content: str
+    track: bool
+    guards: list[str]
+
+
+DEMOS: list[Injection] = [
     {
         "n": 1,
         "title": "A capability lowered so a viewer would see an admin screen",
@@ -166,7 +193,9 @@ DEMOS = [
         "create": "package.json",
         "content": '{"name": "netcorenoc-ui", "dependencies": {"preact": "^10"}}\n',
         "track": True,
-        "guards": ["tests/test_build_step.py::test_the_tracked_tree_contains_no_build_step_apparatus"],
+        "guards": [
+            "tests/test_build_step.py::test_the_tracked_tree_contains_no_build_step_apparatus"
+        ],
     },
     {
         "n": 14,
@@ -184,23 +213,25 @@ DEMOS = [
         "title": "A JavaScript module grown past the 400-line guard",
         "file": "src/netcorenoc/ui/app/format.js",
         "old": "export function alarmName(alarm) {",
-        "new": "\n".join(f"// filler {i}" for i in range(320)) + "\nexport function alarmName(alarm) {",
+        "new": "\n".join(f"// filler {i}" for i in range(320))
+        + "\nexport function alarmName(alarm) {",
         "guards": ["tests/test_architecture.py::test_no_javascript_module_is_over_the_size_guard"],
     },
 ]
 
 
 def main() -> None:
-    results = []
+    results: list[dict[str, Any]] = []
     control_before = run([CONTROL])
     print(f"control, corrected tree: {control_before}\n", flush=True)
 
     for demo in DEMOS:
         n, title = demo["n"], demo["title"]
+        guards: list[str] = demo["guards"]
         print(f"--- {n}. {title}", flush=True)
-        created = None
-        target = None
-        original = None
+        created: Path | None = None
+        target: Path | None = None
+        original = ""
 
         if demo.get("create"):
             created = ROOT / demo["create"]
@@ -214,38 +245,48 @@ def main() -> None:
             assert demo["old"] in original, f"injection {n}: anchor not found in {demo['file']}"
             target.write_text(original.replace(demo["old"], demo["new"], 1), encoding="utf-8")
 
-        red = run(demo["guards"])
+        red = run(guards)
         control_red = run([CONTROL])
 
         if created is not None:
             if demo.get("track"):
-                subprocess.run(["git", "rm", "-q", "-f", "--cached", demo["create"]],
-                               cwd=str(ROOT), check=True)
+                subprocess.run(
+                    ["git", "rm", "-q", "-f", "--cached", demo["create"]], cwd=str(ROOT), check=True
+                )
             created.unlink()
-        else:
+        elif target is not None:
             target.write_text(original, encoding="utf-8")
 
-        green = run(demo["guards"])
-        results.append({
-            "n": n, "title": title,
-            "file": demo.get("file") or demo.get("create"),
-            "guards": demo["guards"], "red": red, "green": green,
-            "control_under_injection": control_red,
-            "caught": "failed" in red or "error" in red.lower(),
-            "restored": "failed" not in green and "error" not in green.lower(),
-            "control_held": "1 passed" in control_red,
-        })
+        green = run(guards)
+        results.append(
+            {
+                "n": n,
+                "title": title,
+                "file": demo.get("file") or demo.get("create"),
+                "guards": guards,
+                "red": red,
+                "green": green,
+                "control_under_injection": control_red,
+                "caught": "failed" in red or "error" in red.lower(),
+                "restored": "failed" not in green and "error" not in green.lower(),
+                "control_held": "1 passed" in control_red,
+            }
+        )
         print(f"    RED:   {red.splitlines()[-1] if red else '(none)'}")
         print(f"    GREEN: {green.splitlines()[-1] if green else '(none)'}")
-        print(f"    caught={results[-1]['caught']} restored={results[-1]['restored']} "
-              f"control_held={results[-1]['control_held']}\n", flush=True)
+        print(
+            f"    caught={results[-1]['caught']} restored={results[-1]['restored']} "
+            f"control_held={results[-1]['control_held']}\n",
+            flush=True,
+        )
 
     (OUT / "demos.json").write_text(json.dumps(results, indent=2))
 
     # The tree must be exactly as it was. A demonstration that left a defect behind is the worst
     # possible outcome, so this is measured rather than assumed.
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=str(ROOT),
-                            capture_output=True, text=True, check=True).stdout.strip()
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=str(ROOT), capture_output=True, text=True, check=True
+    ).stdout.strip()
     ui = ROOT / "src" / "netcorenoc" / "ui"
     digest = hashlib.sha256(
         b"".join(sorted(p.read_bytes() for p in ui.rglob("*") if p.is_file()))
@@ -253,8 +294,10 @@ def main() -> None:
     print(f"\ngit status after all injections: {status or '(clean)'}")
     print(f"ui/ tree digest: {digest}")
     missed = [r for r in results if not (r["caught"] and r["restored"] and r["control_held"])]
-    print(f"\n{len(results) - len(missed)}/{len(results)} demonstrated red, restored green, "
-          f"control held in both.")
+    print(
+        f"\n{len(results) - len(missed)}/{len(results)} demonstrated red, restored green, "
+        f"control held in both."
+    )
     for r in missed:
         print(f"  NOT DEMONSTRATED: {r['n']}. {r['title']} -> {r}")
     sys.exit(1 if (missed or status) else 0)

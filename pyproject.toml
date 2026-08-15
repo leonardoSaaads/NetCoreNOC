@@ -83,6 +83,11 @@ known-local-folder = [
 ]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
+# The evidence tools (v0.13.0) carry **verbatim source fragments** as injection anchors and mutant
+# bodies: each string must match `src/` character for character or the injection does not apply and
+# the demonstration silently measures nothing. Re-wrapping them to satisfy a line limit would break
+# exactly the property that makes them evidence, so E501 is lifted here and nowhere else.
+"tools/evidence/*" = ["T20", "E501"]
 "src/netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
 
 [tool.mypy]
