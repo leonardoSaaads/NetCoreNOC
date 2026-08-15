@@ -11,6 +11,13 @@ the honest judge; `PREREGISTRATION-0.9.0.md` still governs the corpus that relea
 **both** are pinned. A guard that moved from one plan to the next would leave every earlier
 release's standard of evidence unprotected the moment it stopped being current.
 
+**v0.11.0 adds a third and replaces neither.** `PREREGISTRATION-0.11.0.md` governs promotion; the
+floors it refuses against are v0.10.0's §2.2 and the corpus beneath them is v0.9.0's, so a promotion
+refused today rests on all three documents at once. That is the literal reason the table grows
+rather than rotates: v0.11.0's `INSUFFICIENT_EVIDENCE` cites a floor registered in a plan two
+releases old, and a guard that had retired that plan would leave the cited floor editable by the
+release that failed to clear it.
+
 This is the discipline the frozen `eval` baseline already applies to an *output*, applied instead to
 a *claim*. `tests/test_eval.py` fails when the correlator's behaviour drifts; this fails when the
 standard the correlator is being judged against drifts.
@@ -55,6 +62,10 @@ PREREGISTRATION_SHA256 = "bb5bff851588837aa07f21c54b5301f7ada5fec3f8017a5ca4e9d7
 # See docs/gates/v0.10.0-phase-0.md §4.
 PREREGISTRATION_0_10_0_SHA256 = "c03aef0181554c0c71482e57d03677f25964c3a5ac20a7bf1b1d74bff1ba1e01"
 
+# Recorded in Gate 0, before any v0.11.0 code existed, in a commit that changed nothing else and
+# carries the annotated tag `v0.11.0-gate0`. See docs/gates/v0.11.0-phase-0.md §1.
+PREREGISTRATION_0_11_0_SHA256 = "e011ee6ad2367d44f2ede14cad7b072df598298f91ecc1a405744358b589d449"
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -74,6 +85,12 @@ PLANS: tuple[Plan, ...] = (
         PREREGISTRATION_0_10_0_SHA256,
         REPO_ROOT / "docs" / "gates" / "v0.10.0-phase-0.md",
     ),
+    Plan(
+        "v0.11.0",
+        REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.11.0.md",
+        PREREGISTRATION_0_11_0_SHA256,
+        REPO_ROOT / "docs" / "gates" / "v0.11.0-phase-0.md",
+    ),
 )
 
 _IDS = [plan.release for plan in PLANS]
@@ -83,16 +100,20 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_both_plans_are_guarded() -> None:
+def test_every_plan_is_guarded() -> None:
     """Guard the guard.
 
     `PLANS` is what every parametrised test below iterates over, so a table that quietly lost an
     entry would retire a plan's guard without a single test going red — which is exactly the failure
     mode the parametrisation introduces and the reason this test exists beside it.
+
+    The membership is asserted **exactly**, not by a minimum: `>= 2` would have let v0.11.0 drop
+    v0.9.0's guard while adding its own and stay green, which is the shape of the retirement this
+    test exists to make visible. Adding a plan is meant to require editing this line.
     """
-    assert len(PLANS) == 2, f"expected both plans to be pinned, found {_IDS}"
-    assert _IDS == ["v0.9.0", "v0.10.0"]
-    assert len({plan.sha256 for plan in PLANS}) == 2, "two plans cannot share one hash"
+    assert len(PLANS) == 3, f"expected all three plans to be pinned, found {_IDS}"
+    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0"]
+    assert len({plan.sha256 for plan in PLANS}) == 3, "no two plans may share one hash"
 
 
 @pytest.mark.parametrize("plan", PLANS, ids=_IDS)
@@ -181,4 +202,64 @@ def test_the_0_10_0_plan_keeps_the_third_value_and_the_unspent_seal() -> None:
     assert "No promotion" in text, "the plan does not say v0.10.0 promotes nothing"
 
     # The invariant this release is the first to be tempted by, and the one §1 refuses to relax.
+    assert "may be computed against `incumbent_linked`" in text
+
+
+def test_the_0_11_0_plan_keeps_the_conditional_seal_and_the_two_distinct_refusals() -> None:
+    """v0.11.0's §3 and §4, and the two claims a promotion gate would be worthless without.
+
+    Deliberately **not** the same assertions as v0.10.0's, for the reason that test's own docstring
+    gives: a structural check weak enough to pass every plan is a formality. What is asserted here
+    is what this plan specifically would be worthless without.
+
+    * **The seal policy is CONDITIONAL, and its evaluation order is registered.** "Spend it" buys a
+      number that cannot resolve anything on twelve incidents and destroys the one-shot property;
+      "do not require it" makes `Trigger.HOLDOUT_UNSPENT` decorative. The order — floors, then
+      power, then the seal — is what makes the third option a rule rather than a preference, and it
+      is the sentence a later release under pressure would quietly reorder.
+    * **The two refusals are registered as opposite claims.** A plan that did not say so would let
+      the build collapse them into one condition, which is the failure Part I of the build prompt
+      names as the most likely way this release fails.
+    * **The query count is predicted at 0 IN ADVANCE.** A plan that reported the count instead of
+      predicting it would be describing an outcome, not registering one.
+    """
+    text = (REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.11.0.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## 6. What will be concluded under each outcome" in text
+    outcomes = [line for line in text.splitlines() if line.startswith("**6.")]
+    assert len(outcomes) == 9, f"§6 enumerates {len(outcomes)} outcomes, not the registered 9"
+
+    # §3 — the conditional seal, and the order that makes it a rule.
+    assert "the seal is read only after the" in text, "the seal policy is not conditional"
+    assert (
+        "**Evaluation order, registered:** floors first, power condition second, seal last." in text
+    ), "the evaluation order is not registered"
+    assert "v0.11.0's query count is 0" in text, "the query count is not predicted in advance"
+
+    # §4 — the refusals, which may never be producible by one condition.
+    assert "They are opposite claims and must never be producible by the same condition." in text
+    for value in ("`INSUFFICIENT_EVIDENCE`", "`NOT_BETTER`", "`BETTER`"):
+        assert value in text, f"{value} is not a registered verdict value"
+
+    # §5 — five degeneracy rules, named before any fit existed to choose them to suit.
+    assert "## 5. The logistic kind's degeneracy rules" in text
+    for rule in (
+        "**Finiteness**",
+        "**Feature completeness**",
+        "**Non-degenerate discrimination**",
+        "**Threshold reachability**",
+        "**Magnitude sanity**",
+    ):
+        assert rule in text, f"{rule} is not a registered degeneracy rule"
+    # The en dash is written as an escape rather than as a literal: the plan uses U+2013 and the
+    # assertion must match its bytes, but a literal here trips ruff's ambiguous-character rule
+    # (RUF001) — which exists for good reason and is not worth a blanket `noqa` on this file.
+    assert "**Rules 1\u20134 are floors and a deployment may not soften them.**" in text
+
+    # §7 — the two stopping rules this release is most tempted to soften.
+    assert (
+        "**No promotion is applied without an admin**, and no configuration makes one automatic."
+        in text
+    )
     assert "may be computed against `incumbent_linked`" in text

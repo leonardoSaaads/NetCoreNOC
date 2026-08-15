@@ -147,3 +147,16 @@ shadow_opinions
 # vector's clock. Both are read by tests and by v0.10.0's split; neither is a feature.
 incumbent_linked
 evaluated_at
+
+# --- v0.11.0, champion/challenger -----------------------------------------------------------
+# Route handlers (registered via decorators, exactly like every other entry above) plus two names
+# vulture cannot see reached.
+#
+# **Eight store methods were listed here in Phase 3 and have been REMOVED in Phase 5**, because the
+# routes now reach them and the entries had outlived their reason. An allowlist entry that survives
+# its justification is how this file stops being a list of exceptions and becomes a list of things
+# nobody checks.
+_.scorer_model_version_id  # set on every load path (netcorenoc/scorer_lifecycle.py)
+document_for  # the inverse of scorer_for (netcorenoc/model_version.py)
+get_promotion  # unused function (netcorenoc/api/routes_promotion.py)
+propose_promotion  # unused function (netcorenoc/api/routes_promotion.py)

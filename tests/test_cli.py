@@ -318,3 +318,68 @@ def test_dataset_stats_on_an_empty_database_says_nothing_it_cannot_know(
     out = capsys.readouterr().out
     assert "sink_window_days                 None" in out
     assert "The sink currently spans" not in out
+
+
+# --- the promotion CLI (v0.11.0): the other half of "route plus CLI, no UI" ---------------
+
+
+def test_promotion_list_on_an_appliance_that_has_been_asked_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The zero state is the one every operator sees first, so it is the one that must read well.
+
+    **The seal's query count is printed first**, per `PREREGISTRATION-0.10.0.md` §4.3(4): *beside
+    every holdout number this project ever publishes*. An empty promotion history is not silence —
+    it says so.
+    """
+    db = str(tmp_path / "p.db")
+    asyncio.run(_open_and_close(db))
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    assert cli.main(["promotion", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "sealed-holdout query count: 0" in out
+    assert "ratified plan in force:" in out
+    assert "(none — nothing has been proposed)" in out
+
+
+def test_promotion_register_creates_an_artefact_and_says_it_is_not_a_promotion(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**Registering is not promoting**, and the CLI says so in the operator's own words rather
+    than leaving it to be inferred from a table name."""
+    db = str(tmp_path / "p.db")
+    asyncio.run(_open_and_close(db))
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    params = (
+        '{"intercept":-1.5,"decay":2.0,"class_affinity":1.2,"entity_affinity":0.8,"threshold":0.0}'
+    )
+    assert cli.main(["promotion", "register", "--kind", "logistic", "--params", params]) == 0
+    out = capsys.readouterr().out
+    assert "registered model version 1 (logistic)" in out
+    assert "ARTEFACT, not a promotion" in out
+
+    assert cli.main(["promotion", "list"]) == 0
+    listing = capsys.readouterr().out
+    assert "logistic" in listing
+    assert "ACTIVE" not in listing, "registering must not have activated anything"
+
+
+def test_promotion_register_refuses_a_degenerate_payload_through_the_same_validator(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One validator, not two that could disagree: a payload the load path would refuse is refused
+    at registration, with the same message and a non-zero exit."""
+    db = str(tmp_path / "p.db")
+    asyncio.run(_open_and_close(db))
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    zeroes = (
+        '{"intercept":0.0,"decay":0.0,"class_affinity":0.0,"entity_affinity":0.0,"threshold":0.0}'
+    )
+    assert cli.main(["promotion", "register", "--kind", "logistic", "--params", zeroes]) == 2
+    assert "every feature weight is zero" in capsys.readouterr().err
+
+
+async def _open_and_close(db: str) -> None:
+    store = Store(db)
+    await store.open()
+    await store.close()

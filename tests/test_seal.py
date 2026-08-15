@@ -321,24 +321,76 @@ async def test_the_query_count_moves_only_on_a_granted_read(store: Store) -> Non
     assert summary.spent
 
 
-async def test_v0100_spends_nothing(store: Store) -> None:
-    """**The release's headline discipline.**
+async def test_exactly_one_code_path_can_spend_the_seal_and_it_is_the_promotion_gate(
+    store: Store,
+) -> None:
+    """**v0.10.0's headline discipline, rewritten for the release that makes the seal spendable.**
 
-    Everything v0.10.0 does to the seal — construct it, summarise it, print it — leaves the query
-    count at zero. The only thing that moves it is `spend`, and no v0.10.0 code path calls it.
+    v0.10.0 asserted that *no* code path calls `seal.spend`, and that was the whole of its claim.
+    **v0.11.0 adds exactly one**, deliberately, and softening the guard to "some code path may"
+    would have retired the only mechanical statement anyone had about who can spend the holdout.
+
+    So the assertion is **narrower than v0.10.0's, not looser**: not *"nobody spends"* but
+    *"exactly one module spends, and it is the one the plan authorises."* A second call site — a
+    report that peeked, a CLI that read the membership to print it — fails here, which is precisely
+    the drift the original guard existed to catch.
+
+    Reading and summarising still move nothing: `seal.summary` is called twice below and the count
+    stays 0.
     """
     await _sealed(store)
     await seal.summary(store)
     summary = await seal.summary(store)
-    assert summary.query_count == 0
+    assert summary.query_count == 0, "summarising the seal moved the query count"
     assert not summary.spent
 
-    callers = [
-        path.relative_to(PKG)
-        for path in sorted(PKG.rglob("*.py"))
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+    callers = sorted(
+        {
+            str(path.relative_to(PKG))
+            for path in sorted(PKG.rglob("*.py"))
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "spend"
+        }
+    )
+    assert callers == ["promotion.py"], (
+        f"the set of modules that can spend the sealed holdout changed: {callers}. Exactly one is "
+        "authorised — `netcorenoc.promotion`, at the point PREREGISTRATION-0.11.0.md §3 permits, "
+        "after the floors and the power condition have BOTH passed."
+    )
+
+
+def test_the_one_spend_is_guarded_by_the_floors_and_the_power_condition() -> None:
+    """**The plan's §3 evaluation order, asserted structurally rather than only behaviourally.**
+
+    `tests/test_promotion_gate.py` proves the seal stays unread when either check fails. This proves
+    *why*: the single `seal.spend` call sits inside a branch testing **both** `floors_met` and
+    `power.sufficient`. A behavioural test alone would pass against code that happened to short-
+    circuit for an unrelated reason, and would go quiet the day that reason changed.
+    """
+    tree = ast.parse((PKG / "promotion.py").read_text(encoding="utf-8"))
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    spends = [
+        node
+        for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "spend"
     ]
-    assert not callers, f"a v0.10.0 code path calls seal.spend: {callers}"
+    assert len(spends) == 1, f"{len(spends)} spend call sites in promotion.py"
+
+    guards: list[str] = []
+    walker: ast.AST | None = spends[0]
+    while walker is not None:
+        walker = parents.get(walker)
+        if isinstance(walker, ast.If):
+            guards.append(ast.unparse(walker.test))
+    assert guards, "the spend is UNGUARDED — it would read the seal on every evaluation"
+    condition = " ".join(guards)
+    assert "floors_met" in condition, f"the spend is not guarded by the floors: {condition}"
+    assert "sufficient" in condition, f"the spend is not guarded by the power: {condition}"

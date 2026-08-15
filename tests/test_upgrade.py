@@ -486,7 +486,7 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 12
+        assert await new.schema_version() == Store.latest_schema_version() == 13
         assert new.integrity_warnings == []
 
         # Asserted BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -618,7 +618,7 @@ async def test_v091_upgrade_applies_0010_and_leaves_existing_labels_plain(tmp_pa
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 12
+        assert await new.schema_version() == Store.latest_schema_version() == 13
         assert new.integrity_warnings == []
 
         # Asked BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -818,7 +818,7 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 12
+        assert await new.schema_version() == Store.latest_schema_version() == 13
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0011"
 
         # **The derivation.** Three ids reported, two of them members of the server's own bag.
@@ -964,7 +964,7 @@ async def test_v0100_upgrade_applies_0012_and_seeds_nothing(tmp_path: Path) -> N
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 12
+        assert await new.schema_version() == Store.latest_schema_version() == 13
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0012"
 
         # **Nothing is seeded.** Three empty tables, and that is the claim.
@@ -1036,6 +1036,196 @@ async def test_the_seal_schema_refuses_a_second_construction_and_every_edit(stor
         ("a delete of the membership", "DELETE FROM holdout_seal_member", ()),
         ("an update to the access log", "UPDATE holdout_access SET outcome = 'x'", ()),
         ("a delete of the access log", "DELETE FROM holdout_access", ()),
+    ):
+        try:
+            await store.conn.execute(sql, params)
+        except sqlite3.IntegrityError:
+            continue
+        raise AssertionError(f"the schema permitted {label}")
+
+
+async def test_v0101_upgrade_applies_0013_and_seeds_nothing(tmp_path: Path) -> None:
+    """Gate 2 (v0.11.0): a live **v0.10.1** database upgrades in place and gains empty tables.
+
+    `0012`'s claim repeated for the same reason and one more. A seal is not a derivation; **neither
+    is a model version, and neither is a promotion**. Manufacturing either during an upgrade would
+    put a row in an audit trail that no operator wrote, in the one table whose whole purpose is to
+    answer *"what has this appliance been asked to deploy"*.
+
+    The additional claim, and it is this migration's riskiest step: **`scorer_active` is rebuilt**,
+    because `config_id` has to become nullable and SQLite cannot drop a `NOT NULL` in place. A
+    rebuild that lost the pointer would leave the correlator loading the coded defaults on every
+    upgraded appliance, silently — so the row is compared field by field, not merely counted.
+    """
+    import netcorenoc.store.lifecycle as store_mod
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV12:
+        """The migration directory as a v0.10.1 install saw it: `0013` does not exist yet."""
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 12]
+
+    db = str(tmp_path / "v0101-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV12()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 12, "the fixture is not a genuine v0.10.1 database"
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        sids = [int(r["id"]) for r in await old.list_situations(None, 10)]
+        async with old.lock:
+            await engine_old.apply_feedback(
+                sids[0], "confirm", BASE + 20, principal_ref="alice", role="editor"
+            )
+            await audit.write_event(
+                old,
+                ts=BASE,
+                actor="admin",
+                role="admin",
+                source_ip="-",
+                action="scorer.config.update",
+                outcome="ok",
+                object_type="scorer_config",
+                object_id="1",
+                details={"action": "apply"},
+            )
+            await old.commit()
+        before_labels = [
+            dict(r)
+            for r in await (
+                await old.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, coverage FROM feedback "
+                    "ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        before_dataset = await old.dataset_stats()
+        before_chain = (await audit.verify_chain(old)).final_hash
+        before_pointer = dict(
+            await (await old.conn.execute("SELECT * FROM scorer_active WHERE id=1")).fetchone()  # type: ignore[arg-type]
+        )
+        before_configs = [
+            dict(r)
+            for r in await (
+                await old.conn.execute("SELECT * FROM scorer_config ORDER BY id")
+            ).fetchall()
+        ]
+        assert before_labels, "the fixture must carry at least one label"
+        assert before_pointer["config_id"] is not None, "the fixture has no active pointer to keep"
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == Store.latest_schema_version() == 13
+        assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0013"
+
+        # **Nothing is seeded.** Three empty tables, and that is the claim.
+        for table in ("model_version", "promotion", "evaluation_fold"):
+            cur = await new.conn.execute(f"SELECT COUNT(*) FROM {table}")  # nosec B608
+            row = await cur.fetchone()
+            assert row is not None and int(row[0]) == 0, f"0013 seeded {table}"
+
+        # The rebuilt pointer kept every field, and gained exactly one NULL.
+        after_pointer = dict(
+            await (await new.conn.execute("SELECT * FROM scorer_active WHERE id=1")).fetchone()  # type: ignore[arg-type]
+        )
+        assert after_pointer["model_version_id"] is None, "0013 activated a model version"
+        assert {k: v for k, v in after_pointer.items() if k != "model_version_id"} == before_pointer
+
+        # The history the pointer points into is untouched — the rebuild was of the pointer only.
+        after_configs = [
+            dict(r)
+            for r in await (
+                await new.conn.execute("SELECT * FROM scorer_config ORDER BY id")
+            ).fetchall()
+        ]
+        assert after_configs == before_configs, "0013 altered the scorer configuration history"
+
+        # The data is untouched, byte for byte.
+        after_labels = [
+            dict(r)
+            for r in await (
+                await new.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, coverage FROM feedback "
+                    "ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        assert after_labels == before_labels, "0013 altered a label"
+        assert await new.dataset_stats() == before_dataset, "0013 altered the captured dataset"
+
+        chain = await audit.verify_chain(new)
+        assert chain.ok, "the audit chain broke across the upgrade"
+        assert chain.final_hash == before_chain, "the audit chain's final hash moved"
+
+        # The access log gained its chain columns and no rows. The prefix is empty on every real
+        # upgrade because nothing in v0.10.x writes `holdout_access` at all, which is measured here
+        # rather than asserted in a comment.
+        cur = await new.conn.execute("PRAGMA table_info(holdout_access)")
+        columns = {str(r[1]) for r in await cur.fetchall()}
+        assert {"prev_hash", "entry_hash", "chain_source"} <= columns
+        cur = await new.conn.execute("SELECT COUNT(*) FROM holdout_access")
+        row = await cur.fetchone()
+        assert row is not None and int(row[0]) == 0
+    finally:
+        await new.close()
+
+
+async def test_the_active_pointer_admits_exactly_one_of_the_two(store: Store) -> None:
+    """`0013`'s `CHECK`, exercised against the database rather than against the layer above.
+
+    **Two sources of truth about what is running is the one place where getting it wrong would be
+    silent**: the engine would load one pointer, the API would report the other, and every grouping
+    decision in between would be attributed to the wrong parameters. So the refusal is the
+    database's, and it holds against a future method and against anyone with a SQLite prompt.
+
+    **The control comes first and it is not decoration.** A `CHECK` that refused *everything* would
+    pass both refusal assertions below while making the pointer unmovable — a far worse defect than
+    the one being guarded against, and invisible to a test that only checks that bad input fails.
+    """
+    cur = await store.conn.execute(
+        "INSERT INTO model_version (kind, contract_version, params_document, params_hash, "
+        "created_at) VALUES ('additive', '1.0', '{}', 'deadbeef', 0.0) RETURNING id"
+    )
+    row = await cur.fetchone()
+    assert row is not None
+    model_version_id = int(row[0])
+
+    # THE CONTROL, first: a legitimate single-pointer move in each direction must be ACCEPTED.
+    await store.conn.execute(
+        "UPDATE scorer_active SET config_id=NULL, model_version_id=? WHERE id=1",
+        (model_version_id,),
+    )
+    pointer = "SELECT config_id, model_version_id FROM scorer_active WHERE id=1"
+    cur = await store.conn.execute(pointer)
+    assert tuple(await cur.fetchone()) == (None, model_version_id)  # type: ignore[arg-type]
+
+    await store.conn.execute(
+        "UPDATE scorer_active SET config_id=1, model_version_id=NULL WHERE id=1"
+    )
+    cur = await store.conn.execute(pointer)
+    assert tuple(await cur.fetchone()) == (1, None)  # type: ignore[arg-type]
+
+    # Now the two refusals.
+    for label, sql, params in (
+        (
+            "both pointers set at once",
+            "UPDATE scorer_active SET config_id=1, model_version_id=? WHERE id=1",
+            (model_version_id,),
+        ),
+        (
+            "neither pointer set",
+            "UPDATE scorer_active SET config_id=NULL, model_version_id=NULL WHERE id=1",
+            (),
+        ),
     ):
         try:
             await store.conn.execute(sql, params)

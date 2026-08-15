@@ -71,6 +71,12 @@ PERMISSIONS: dict[str, str] = {
     # phrasing of the v0.5.0 extensibility draft (SCOPE-0.6 §2, DECISIONS #43).
     "scorer.preview": "admin",  # bounded, read-only what-if over recent alarms
     "scorer.write": "admin",  # append a config, move the active pointer, roll back
+    # v0.11.0. Reading what has been proposed and refused is `viewer+` for `scorer.read`'s reason —
+    # a refusal EXPLAINS why the correlator is still what it is, and names no network element.
+    # PROPOSING a promotion is a system-wide logic change and is admin-only with NO editor
+    # delegation, exactly as `scorer.write` is: this release adds no capability beyond these two.
+    "promotion.read": "viewer",
+    "promotion.write": "admin",
     # v0.7.0: governance. Who may do what, and who may see which NEs, is itself admin-only —
     # `config`-class, no delegation. Under `ceiling ∩ policy` that is structural rather than a
     # convention: no stored policy can move an admin-ceiling capability down to editor or viewer.
@@ -118,6 +124,8 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/scorer/preview"): "scorer.preview",
     ("POST", "/api/scorer"): "scorer.write",
     ("POST", "/api/scorer/rollback"): "scorer.write",
+    ("GET", "/api/promotion"): "promotion.read",
+    ("POST", "/api/promotion"): "promotion.write",
     ("GET", "/api/rbac"): "rbac.read",
     ("POST", "/api/rbac"): "rbac.write",
     ("GET", "/api/scope"): "scope.read",
@@ -194,6 +202,12 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     # grouping decision and name no network element, so every authenticated role reads the same
     # numbers (SCOPE-0.6 §2).
     ("GET", "/api/scorer"): "unscoped",
+    # Same reasoning one release on: a promotion decision is about the SCORER, not about a network
+    # element, and its row names no NE. Scoping the READ would be scoping a statement about
+    # arithmetic. The WRITE is `admin_only` because its capability's minimum role is `admin` — the
+    # posture is DERIVED from PERMISSIONS and never asserted independently (DECISIONS #58, #80).
+    ("GET", "/api/promotion"): "unscoped",
+    ("POST", "/api/promotion"): "admin_only",
     ("POST", "/api/scorer/preview"): "admin_only",
     ("POST", "/api/scorer"): "admin_only",
     ("POST", "/api/scorer/rollback"): "admin_only",

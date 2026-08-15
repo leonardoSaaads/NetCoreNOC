@@ -93,6 +93,24 @@ ACTIONS: frozenset[str] = frozenset(
         # for capabilities, deny-for-viewer/editor for scope). Recorded once per policy version, so
         # a silent degradation is impossible (DECISIONS #55).
         "governance.fallback",
+        # v0.11.0 — champion/challenger. EXACTLY the actions this release makes possible and no
+        # others (DECISIONS #162): promotion applied, promotion refused, and — because this release
+        # makes the seal SPENDABLE for the first time — seal construction and seal spend.
+        #
+        # `0012` declined to put seal access in this chain, on the grounds that "nothing here is
+        # reachable from a route, no principal performs it". **v0.11.0 removes that premise**: an
+        # admin approving a promotion is a principal, on a route, whose approval may cause the seal
+        # to be spent. The decision is revisited because its precondition changed, not overridden.
+        # `holdout_access` remains the primary record and stays append-only; this is the
+        # operator-facing half.
+        #
+        # The v0.9.2 reconciliation-drift gap (`SECURITY-REVIEW-0.10.0.md` §3.4) is NOT closed here.
+        # Nothing in this release makes it newly reachable, and a release that closed unrelated gaps
+        # because it happened to have the file open would be sizing its work by convenience.
+        "promotion.applied",  # admin: a model version became the active scorer
+        "promotion.refused",  # admin: a promotion was proposed and the evidence did not support it
+        "seal.construct",  # system actor: the sealed holdout was cut, once, ever
+        "seal.spend",  # the sealed membership was read; the query count moved
     }
 )
 

@@ -487,3 +487,34 @@ be one, and its diff could not be read in one sitting.
   chain in it is exactly one hop, **which is precisely the condition under which a divergence would
   first appear silently.** The repair is mechanical (both take the edges and call the one function)
   and its cost is re-freezing two report expectations by hand.
+
+## Found while building v0.11.0 (one line each, not this release's work)
+
+- **F52 — the asserting-bag predicate is now guarded, but only for this one predicate.** Widening
+  `asserting_bag_rows`'s `excluded_reconciled >= 1` to `>= 0` left **all 1 296 tests green** while
+  changing what counts toward `PREREGISTRATION-0.10.0.md` §2.2's **primary** floor. It is closed by
+  `test_f52_a_bag_with_no_reconciled_mark_is_not_an_asserting_bag`. **The class is not closed**: the
+  repair every floor deserves is a guard that ties each threshold's *predicate* to the quantity it
+  claims to count, the way F46 tied each threshold to `excluded_reconciled` rather than
+  `excluded_count`. Found only because the build prompt mandated re-running F48's injection, which
+  is itself the measurement of how much a self-chosen mutation ledger is worth.
+- **A quantity that is `not computable` is represented as `0.0`.** On a corpus with no asserted
+  negative pairs the four named quantities cannot be computed at all; v0.11.0 records that in
+  `promotion.unavailable` in prose and derives `observed_difference = 0`, which makes `POWER` fire.
+  The verdict is right and the *reason* is conflated: `POWER` should mean *"the corpus cannot resolve
+  a real difference"*, not *"there was no difference to resolve because there were no metrics"*.
+  Registering a fourth state, and a trigger that names it, belongs in v0.12.0's pre-registration —
+  `security/SECURITY-REVIEW-0.11.0.md` §3.2 argues it as an opinion for the next release.
+- **No retention tier knows what a citation is.** A `promotion` row cites an `evaluation_run_id`, and
+  the `dataset_pair` rows and labels the evaluation was computed from are subject to the sink's dual
+  bound and the audit tier. Nothing prevents a promotion citing a run whose inputs have since been
+  pruned, and nothing warns. `architecture/DATA-LINEAGE.md` §5 names it; v0.11.0 did not solve it.
+- **A promotion UI needs a test that executes `ui/app.js` in a real DOM first.** DECISIONS #163
+  defers the screen for a measured reason — the v0.7.5 defect was a click gesture in a UI no test
+  executes to this day — and names the prerequisite rather than a date. Node is available in the
+  build environment, so this is a schedulable task and not a research question.
+- **The merge graph is still unsnapshotted.** v0.11.0 materialises the *fold assignment*, which makes
+  an evaluation **citable**; it does not make it **reproducible**, does not explain why an incident
+  moved, and does not make the seal's own membership reproducible.
+  `architecture/DATA-LINEAGE.md` §4's second-order hazard is open, and
+  `architecture/ARCHETYPES-0.12-DRAFT.md` §2 warns that a `k`-way split makes it worse.

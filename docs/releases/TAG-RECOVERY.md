@@ -298,3 +298,66 @@ After tagging, the version check of §5 must print:
 ```
 v0.10.1  ->  0.10.1
 ```
+
+---
+
+## 8. The two tags v0.11.0 adds
+
+Neither can be pushed from the build environment (Appendix A: the repository is read-only to
+automation), so both are recorded here with the others.
+
+| Tag | Points at | Created |
+|---|---|---|
+| **`v0.11.0-gate0`** | `78faace` — the commit that adds `docs/analysis/PREREGISTRATION-0.11.0.md` **and nothing else** (1 file, 187 insertions) | Phase 0 |
+| **`v0.11.0`** | `2234c3b` — the release commit on the build branch, and **recreated on the merge commit after merging** | Phase 8 |
+
+**`v0.11.0-gate0` matters for the same reason `v0.10.0-gate0` did, and slightly more.** v0.10.0's
+plan governed a verdict nothing acted on. v0.11.0's plan governs a **promotion**, and its §4 fixes
+the two refusals *before* the approval path exists. The claim the release rests on is an ordering —
+the refusal was specified first — and an ordering is a fact about history, not about content. The
+hash guard proves the plan has not changed; only the tag on a single-file commit says *when* it was
+fixed.
+
+The tag already exists **locally**, created in Phase 0 on exactly that commit:
+
+```sh
+# Phase 0 — created locally; the command that produced it, for the record:
+git tag -a v0.11.0-gate0 78faace \
+  -m "v0.11.0 Gate 0 — PREREGISTRATION-0.11.0.md ratified, sha256 \
+e011ee6ad2367d44f2ede14cad7b072df598298f91ecc1a405744358b589d449"
+
+# Phase 8 — on the release commit, and AFTER the merge if the branch is rebased:
+git tag -a v0.11.0 <merge commit on main> -m "v0.11.0 — champion/challenger"
+
+git push origin v0.11.0-gate0 v0.11.0
+```
+
+**Recreate `v0.11.0` after the merge**, pointing at the merge commit on `main`, for the reason §6
+gives and §1 measures: a rebase rewrites the branch's commits and orphans a tag created before it,
+which is the most likely explanation for the historical tags having gone missing.
+
+After tagging, the version check of §5 must print:
+
+```
+v0.11.0  ->  0.11.0
+```
+
+**Both tags exist locally and neither could be pushed.** `git push` returned **403 on both
+attempts**, which Appendix A of the build prompt anticipates: *the repository is read-only to
+automation*. The cap is two attempts and it was not routed around — no fork, no API write path.
+
+A **verified `git bundle`** is produced alongside the tree so both tags and the whole history travel
+with the archive rather than depending on a push that cannot happen:
+
+```sh
+git bundle create NetCoreNOC-v0.11.0.bundle --all
+git bundle verify NetCoreNOC-v0.11.0.bundle
+#   -> The bundle records a complete history.
+
+# to recover, from a clone of the repository:
+git fetch /path/to/NetCoreNOC-v0.11.0.bundle 'refs/tags/*:refs/tags/*' \
+    'refs/heads/claude/netcorenoc-v0-11-build-78ysex:refs/heads/v0.11.0-build'
+```
+
+The bundle is **evidence alongside a report, never a substitute for one**: the push failure is
+reported above in the terms Appendix A asks for.

@@ -37,6 +37,7 @@ from netcorenoc.store.governance import GovernanceMixin
 from netcorenoc.store.ingest_gaps import IngestGapMixin
 from netcorenoc.store.learned import LearnedMixin
 from netcorenoc.store.lifecycle import LifecycleMixin
+from netcorenoc.store.promotion import PromotionMixin
 from netcorenoc.store.read_models import ReadModelsMixin
 from netcorenoc.store.retention import RetentionMixin
 from netcorenoc.store.scoring_config import ScoringConfigMixin
@@ -67,6 +68,7 @@ __all__ = [
 
 
 class Store(
+    PromotionMixin,
     SealMixin,
     ShadowMixin,
     DatasetMixin,

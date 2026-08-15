@@ -109,6 +109,22 @@ LAYER_OF: dict[str, str] = {
     "incidents": "engine",
     "census": "engine",
     "seal": "engine",
+    # v0.11.0 — champion/challenger. Engine-layer for the reason every module above is: they
+    # consume stored evidence and read downward through the data layer, and none is reachable from
+    # `receiver.datagram_received`.
+    #
+    # **Exactly two new modules, and that is a scope rule rather than an outcome** (build prompt
+    # VII.6): one model-version module, one promotion module, and dispatch inside the
+    # `scorer_lifecycle` that already exists. No plugin registry, no adapter layer, no third module
+    # that would be v0.13.0 starting early.
+    #
+    # `model_version` is pure — it parses, validates and constructs, touching no store and no clock
+    # — which is what lets the load path call it without acquiring anything.
+    "model_version": "engine",
+    "promotion": "engine",
+    # Split out of `promotion.py` at the 400-line guard, onto a seam that was already there: this
+    # answers to `DATA-LINEAGE.md` §4 and the gate answers to the pre-registration (DECISIONS #165).
+    "evaluation_folds": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire

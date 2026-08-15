@@ -365,6 +365,12 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/scorer/preview"),
     ("POST", "/api/scorer"),
     ("POST", "/api/scorer/rollback"),
+    # v0.11.0. Registered immediately after the scorer routes, because `routes_promotion.register`
+    # is called immediately after `routes_scorer.register` — and the ORDER is the assertion: FastAPI
+    # resolves the first matching route, so this list is what makes "we only moved code between
+    # files" mean something.
+    ("GET", "/api/promotion"),
+    ("POST", "/api/promotion"),
     ("GET", "/api/rbac"),
     ("POST", "/api/rbac"),
     ("GET", "/api/scope"),
