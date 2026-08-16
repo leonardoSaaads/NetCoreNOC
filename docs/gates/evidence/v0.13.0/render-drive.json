@@ -1,0 +1,1078 @@
+{
+  "empty": {
+    "account": {
+      "hasEmptyState": false,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 260
+    },
+    "audit": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 213
+    },
+    "classes": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 171
+    },
+    "corpus": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 242
+    },
+    "entities": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 171
+    },
+    "governance": {
+      "hasEmptyState": false,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 305
+    },
+    "graph": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 187
+    },
+    "labelling": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 215
+    },
+    "overview": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 171
+    },
+    "promotion": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 214
+    },
+    "quarantine": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 171
+    },
+    "scorer": {
+      "hasEmptyState": false,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 299
+    },
+    "settings": {
+      "hasEmptyState": false,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 531
+    },
+    "situations": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 190
+    },
+    "timeline": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 171
+    },
+    "tokens": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 197
+    },
+    "users": {
+      "hasEmptyState": true,
+      "hasError": false,
+      "hasLoading": false,
+      "lines": 200
+    }
+  },
+  "errors": {
+    "account": {
+      "hasError": false,
+      "lines": 242
+    },
+    "audit": {
+      "hasError": true,
+      "lines": 157
+    },
+    "classes": {
+      "hasError": true,
+      "lines": 157
+    },
+    "corpus": {
+      "hasError": true,
+      "lines": 157
+    },
+    "entities": {
+      "hasError": true,
+      "lines": 157
+    },
+    "governance": {
+      "hasError": true,
+      "lines": 157
+    },
+    "graph": {
+      "hasError": true,
+      "lines": 169
+    },
+    "labelling": {
+      "hasError": true,
+      "lines": 197
+    },
+    "overview": {
+      "hasError": true,
+      "lines": 153
+    },
+    "promotion": {
+      "hasError": true,
+      "lines": 157
+    },
+    "quarantine": {
+      "hasError": true,
+      "lines": 157
+    },
+    "scorer": {
+      "hasError": true,
+      "lines": 157
+    },
+    "settings": {
+      "hasError": true,
+      "lines": 157
+    },
+    "situations": {
+      "hasError": true,
+      "lines": 172
+    },
+    "timeline": {
+      "hasError": true,
+      "lines": 157
+    },
+    "tokens": {
+      "hasError": true,
+      "lines": 157
+    },
+    "users": {
+      "hasError": true,
+      "lines": 157
+    }
+  },
+  "hardeningAccepted": {
+    "consequenceShown": true,
+    "dialogs": [],
+    "dump": "<div .scorerview>\n  <section .panel-block>\n    <div .section-heading>\n      <h3>\n        \"Active configuration\"\n      <p .hint>\n        \"What the running engine is grouping with right now.\"\n    <p>\n      <b .mono>\n        \"additive\"\n      <span .muted>\n        \"contract\"\n        \"1.0\"\n        \", configuration\n        #\"\n        \"1\"\n    <p .mono>\n      \"w_t=0.3  w_a=0.35  w_e=0.35  tau_s=30  threshold=0.5\"\n  <section .panel-block.param-hardening>\n    <div .section-heading>\n      <h3>\n        \"Retune\"\n      <p .hint>\n        \"Changing these changes how every alarm groups, at the next engine reload. Prev\"\n    <form .grid-form>\n      <div>\n        <label>\n          \"w_t \u2014 temporal weight\"\n        <input #sc-w_t>\n      <div>\n        <label>\n          \"w_a \u2014 class-affinity weight\"\n        <input #sc-w_a>\n      <div>\n        <label>\n          \"w_e \u2014 entity-affinity weight\"\n        <input #sc-w_e>\n      <div>\n        <label>\n          \"tau (s) \u2014 temporal decay constant\"\n        <input #sc-tau_s>\n      <div>\n        <label>\n          \"threshold \u2014 link when the score exceeds this\"\n        <input #sc-threshold>\n      <div .wide>\n        <label>\n          \"Note (recorded in the audit log)\"\n        <input #sc-note>\n    <p .impact>\n      \"Bounds: weights and threshold in [0, 1]; tau in\n        [\"\n      \"1.00\"\n      \",\"\n      \"3600.00\"\n      \"] s; the weights must sum to\n        at least\"\n      \"0.10\"\n      \"; the threshold must stay at least\"\n      \"0.01\"\n      \"below the weight sum. These are hardening-only:\n        stricter is accepted, \"\n    <div .fb>\n      <button>\n        \"Preview effect\"\n    <section .panel-block.destructive>\n      <div .section-heading>\n        <h3>\n          \"Apply these parameters\"\n        <p .hint>\n          \"Grouping changes at the next engine reload.\"\n      <p .consequence role=note>\n        <b>\n          \"This cannot be undone.\"\n        \"Every alarm the appliance correlates from the next engine reload onwards is gr\"\n      <button>\n        \"Apply\u2026\"\n    <p .err role=alert>\n      \"no canned response\"\n  <section .panel-block>\n    <div .section-heading>\n      <h3>\n        \"History\"\n      <p .hint>\n        \"Immutable and append-only: nothing here is ever edited or deleted. Rolling bac\"\n    <div .table-scroll>\n      <table .data>\n        <thead>\n          <tr>\n            <th .num>\n              \"#\"\n            <th>\n              \"parameters\"\n            <th>\n              \"by\"\n            <th>\n              \"when\"\n            <th>\n              \"note\"\n            <th>\n        <tbody>\n          <tr>\n            <td .num>\n              <b>\n                \"2\"\n                \"(active)\"\n            <td>\n              <code .mono>\n                \"0.3/0.35/0.35 tau=30 thr=0.5\"\n            <td>\n              \"adm\"\n            <td>\n              <span .ts-abs>\n                \"2026-08-16T14:11:24.899Z\"\n              <span .ts-rel>\n                \"in 1005.7d\"\n            <td>\n              \"gate drive\"\n            <td>\n          <tr>\n            <td .num>\n              \"1\"\n            <td>\n              <code .mono>\n                \"0.3/0.35/0.35 tau=30 thr=0.5\"\n            <td>\n              \"\u2014\"\n            <td>\n              <span .ts-abs>\n                \"1970-01-01T00:00:00.000Z\"\n              <span .ts-rel>\n                \"19675.9d ago\"\n            <td>\n              \"coded defaults, seeded by migration 0005\"\n            <td>\n              <button>\n                \"Roll back\"",
+    "proof": {
+      "escaped": "&lt;a href=&quot;x&quot;&gt;",
+      "modulesEvaluated": 37,
+      "mounted": true
+    },
+    "refusalShown": false,
+    "refusalText": null,
+    "sent": [
+      {
+        "body": {
+          "note": "",
+          "tau_s": 120,
+          "threshold": 0.5,
+          "w_a": 0.35,
+          "w_e": 0.35,
+          "w_t": 0.3
+        },
+        "method": "POST",
+        "path": "/api/scorer/preview"
+      }
+    ]
+  },
+  "hardeningRefused": {
+    "consequenceShown": true,
+    "dialogs": [],
+    "dump": "<div .scorerview>\n  <section .panel-block>\n    <div .section-heading>\n      <h3>\n        \"Active configuration\"\n      <p .hint>\n        \"What the running engine is grouping with right now.\"\n    <p>\n      <b .mono>\n        \"additive\"\n      <span .muted>\n        \"contract\"\n        \"1.0\"\n        \", configuration\n        #\"\n        \"1\"\n    <p .mono>\n      \"w_t=0.3  w_a=0.35  w_e=0.35  tau_s=30  threshold=0.5\"\n  <section .panel-block.param-hardening>\n    <div .section-heading>\n      <h3>\n        \"Retune\"\n      <p .hint>\n        \"Changing these changes how every alarm groups, at the next engine reload. Prev\"\n    <form .grid-form>\n      <div>\n        <label>\n          \"w_t \u2014 temporal weight\"\n        <input #sc-w_t>\n      <div>\n        <label>\n          \"w_a \u2014 class-affinity weight\"\n        <input #sc-w_a>\n      <div>\n        <label>\n          \"w_e \u2014 entity-affinity weight\"\n        <input #sc-w_e>\n      <div>\n        <label>\n          \"tau (s) \u2014 temporal decay constant\"\n        <input #sc-tau_s>\n      <div>\n        <label>\n          \"threshold \u2014 link when the score exceeds this\"\n        <input #sc-threshold>\n      <div .wide>\n        <label>\n          \"Note (recorded in the audit log)\"\n        <input #sc-note>\n    <p .impact>\n      \"Bounds: weights and threshold in [0, 1]; tau in\n        [\"\n      \"1.00\"\n      \",\"\n      \"3600.00\"\n      \"] s; the weights must sum to\n        at least\"\n      \"0.10\"\n      \"; the threshold must stay at least\"\n      \"0.01\"\n      \"below the weight sum. These are hardening-only:\n        stricter is accepted, \"\n    <div .refusal role=alert>\n      <h4>\n        \"Not applied \u2014 these values would loosen a project floor\"\n      <div .refusal-item>\n        <p>\n          <b>\n            \"tau (temporal decay constant) cannot be lowered below 1 s here.\"\n        <p>\n          \"You entered\"\n          <code .mono>\n            \"0.1\"\n          \"; the project floor is\"\n          <code .mono>\n            \"1\"\n            \"s\"\n          \".\"\n          <b>\n            \"Your value was not applied and nothing was sent to the appliance.\"\n        <p .why>\n          \"Below one second the temporal term becomes a step function inside a single eng\"\n        <p .hint>\n          \"a larger value\"\n          \"is accepted \u2014 this floor can be made stricter here, only\n        not looser. T\"\n    <div .fb>\n      <button>\n        \"Preview effect\"\n    <section .panel-block.destructive>\n      <div .section-heading>\n        <h3>\n          \"Apply these parameters\"\n        <p .hint>\n          \"Grouping changes at the next engine reload.\"\n      <p .consequence role=note>\n        <b>\n          \"This cannot be undone.\"\n        \"Every alarm the appliance correlates from the next engine reload onwards is gr\"\n      <button>\n        \"Apply\u2026\"\n  <section .panel-block>\n    <div .section-heading>\n      <h3>\n        \"History\"\n      <p .hint>\n        \"Immutable and append-only: nothing here is ever edited or deleted. Rolling bac\"\n    <div .table-scroll>\n      <table .data>\n        <thead>\n          <tr>\n            <th .num>\n              \"#\"\n            <th>\n              \"parameters\"\n            <th>\n              \"by\"\n            <th>\n              \"when\"\n            <th>\n              \"note\"\n            <th>\n        <tbody>\n          <tr>\n            <td .num>\n              <b>\n                \"2\"\n                \"(active)\"\n            <td>\n              <code .mono>\n                \"0.3/0.35/0.35 tau=30 thr=0.5\"\n            <td>\n              \"adm\"\n            <td>\n              <span .ts-abs>\n                \"2026-08-16T14:11:24.899Z\"\n              <span .ts-rel>\n                \"in 1005.7d\"\n            <td>\n              \"gate drive\"\n            <td>\n          <tr>\n            <td .num>\n              \"1\"\n            <td>\n              <code .mono>\n                \"0.3/0.35/0.35 tau=30 thr=0.5\"\n            <td>\n              \"\u2014\"\n            <td>\n              <span .ts-abs>\n                \"1970-01-01T00:00:00.000Z\"\n              <span .ts-rel>\n                \"19675.9d ago\"\n            <td>\n              \"coded defaults, seeded by migration 0005\"\n            <td>\n              <button>\n                \"Roll back\"",
+    "proof": {
+      "escaped": "&lt;a href=&quot;x&quot;&gt;",
+      "modulesEvaluated": 37,
+      "mounted": true
+    },
+    "refusalShown": true,
+    "refusalText": "Not applied \u2014 these values would loosen a project floortau (temporal decay constant) cannot be lowered below 1 s here.You entered 0.1; the project floor is1 s.Your value was not applied and nothing was sent to the appliance.Below one second the temporal term becomes a step function inside a single engine batch, so pairs stop being distinguishable by time at all.a larger value is accepted \u2014 this floor can be made stricter here, only\n        not looser. The field is still usable; change it and try again.",
+    "sent": []
+  },
+  "keyboard": {
+    "headingFocusable": "-1",
+    "itemCount": 16,
+    "navLabel": "Sections",
+    "proof": {
+      "escaped": "&lt;a href=&quot;x&quot;&gt;",
+      "modulesEvaluated": 37,
+      "mounted": true
+    },
+    "tabStops": 1,
+    "trace": [
+      {
+        "step": "initial",
+        "tabindex": [
+          "0",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1"
+        ]
+      },
+      {
+        "activeView": "overview",
+        "at": 1,
+        "step": "ArrowDown",
+        "tabindex": [
+          "-1",
+          "0",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1"
+        ]
+      },
+      {
+        "activeView": "overview",
+        "at": 2,
+        "step": "ArrowDown",
+        "tabindex": [
+          "-1",
+          "-1",
+          "0",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1"
+        ]
+      },
+      {
+        "activeView": "overview",
+        "at": 15,
+        "step": "End",
+        "tabindex": [
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "0"
+        ]
+      },
+      {
+        "activeView": "overview",
+        "at": 0,
+        "step": "Home",
+        "tabindex": [
+          "0",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1"
+        ]
+      },
+      {
+        "activeView": "overview",
+        "at": 0,
+        "step": "Enter",
+        "tabindex": [
+          "0",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1",
+          "-1"
+        ]
+      }
+    ]
+  },
+  "light": {
+    "dumpLines": 200,
+    "theme": "light"
+  },
+  "perRole": {
+    "admin": {
+      "_nav": [
+        "#/overview",
+        "#/situations",
+        "#/graph",
+        "#/timeline",
+        "#/entities",
+        "#/classes",
+        "#/labelling",
+        "#/corpus",
+        "#/promotion",
+        "#/users",
+        "#/tokens",
+        "#/settings",
+        "#/scorer",
+        "#/governance",
+        "#/quarantine",
+        "#/audit"
+      ],
+      "account": {
+        "activeView": "account",
+        "dumpLines": 262,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "audit": {
+        "activeView": "audit",
+        "dumpLines": 783,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/audit?limit=200"
+        ]
+      },
+      "classes": {
+        "activeView": "classes",
+        "dumpLines": 224,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/classes"
+        ]
+      },
+      "corpus": {
+        "activeView": "corpus",
+        "dumpLines": 283,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/dataset/retention"
+        ]
+      },
+      "entities": {
+        "activeView": "entities",
+        "dumpLines": 188,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/entities",
+          "GET /api/state-clears"
+        ]
+      },
+      "governance": {
+        "activeView": "governance",
+        "dumpLines": 307,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/rbac",
+          "GET /api/scope"
+        ]
+      },
+      "graph": {
+        "activeView": "graph",
+        "dumpLines": 193,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "labelling": {
+        "activeView": "labelling",
+        "dumpLines": 242,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "overview": {
+        "activeView": "overview",
+        "dumpLines": 310,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "promotion": {
+        "activeView": "promotion",
+        "dumpLines": 216,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/promotion"
+        ]
+      },
+      "quarantine": {
+        "activeView": "quarantine",
+        "dumpLines": 173,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/quarantine?limit=100"
+        ]
+      },
+      "scorer": {
+        "activeView": "scorer",
+        "dumpLines": 301,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/scorer"
+        ]
+      },
+      "settings": {
+        "activeView": "settings",
+        "dumpLines": 578,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/config",
+          "GET /api/dataset/retention",
+          "GET /api/scorer"
+        ]
+      },
+      "situations": {
+        "activeView": "situations",
+        "dumpLines": 200,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "timeline": {
+        "activeView": "timeline",
+        "dumpLines": 284,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/timeline?limit=300"
+        ]
+      },
+      "tokens": {
+        "activeView": "tokens",
+        "dumpLines": 225,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/tokens"
+        ]
+      },
+      "users": {
+        "activeView": "users",
+        "dumpLines": 320,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/users"
+        ]
+      }
+    },
+    "editor": {
+      "_nav": [
+        "#/overview",
+        "#/situations",
+        "#/graph",
+        "#/timeline",
+        "#/entities",
+        "#/classes",
+        "#/labelling",
+        "#/promotion"
+      ],
+      "account": {
+        "activeView": "account",
+        "dumpLines": 176,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "audit": {
+        "activeView": null,
+        "dumpLines": 124,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "classes": {
+        "activeView": "classes",
+        "dumpLines": 172,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/classes"
+        ]
+      },
+      "corpus": {
+        "activeView": null,
+        "dumpLines": 124,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "entities": {
+        "activeView": "entities",
+        "dumpLines": 136,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/entities",
+          "GET /api/state-clears"
+        ]
+      },
+      "governance": {
+        "activeView": null,
+        "dumpLines": 127,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "graph": {
+        "activeView": "graph",
+        "dumpLines": 141,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "labelling": {
+        "activeView": "labelling",
+        "dumpLines": 190,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "overview": {
+        "activeView": "overview",
+        "dumpLines": 203,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "promotion": {
+        "activeView": "promotion",
+        "dumpLines": 164,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/promotion"
+        ]
+      },
+      "quarantine": {
+        "activeView": null,
+        "dumpLines": 124,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "scorer": {
+        "activeView": null,
+        "dumpLines": 124,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "settings": {
+        "activeView": null,
+        "dumpLines": 124,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "situations": {
+        "activeView": "situations",
+        "dumpLines": 148,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "timeline": {
+        "activeView": "timeline",
+        "dumpLines": 232,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/timeline?limit=300"
+        ]
+      },
+      "tokens": {
+        "activeView": null,
+        "dumpLines": 124,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "users": {
+        "activeView": null,
+        "dumpLines": 124,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      }
+    },
+    "viewer": {
+      "_nav": [
+        "#/overview",
+        "#/situations",
+        "#/graph",
+        "#/timeline",
+        "#/entities",
+        "#/classes",
+        "#/promotion"
+      ],
+      "account": {
+        "activeView": "account",
+        "dumpLines": 164,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "audit": {
+        "activeView": null,
+        "dumpLines": 118,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "classes": {
+        "activeView": "classes",
+        "dumpLines": 166,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/classes"
+        ]
+      },
+      "corpus": {
+        "activeView": null,
+        "dumpLines": 118,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "entities": {
+        "activeView": "entities",
+        "dumpLines": 130,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/entities",
+          "GET /api/state-clears"
+        ]
+      },
+      "governance": {
+        "activeView": null,
+        "dumpLines": 121,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "graph": {
+        "activeView": "graph",
+        "dumpLines": 135,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "labelling": {
+        "activeView": null,
+        "dumpLines": 118,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "overview": {
+        "activeView": "overview",
+        "dumpLines": 163,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "promotion": {
+        "activeView": "promotion",
+        "dumpLines": 158,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/promotion"
+        ]
+      },
+      "quarantine": {
+        "activeView": null,
+        "dumpLines": 118,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "scorer": {
+        "activeView": null,
+        "dumpLines": 118,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "settings": {
+        "activeView": null,
+        "dumpLines": 118,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "situations": {
+        "activeView": "situations",
+        "dumpLines": 142,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "timeline": {
+        "activeView": "timeline",
+        "dumpLines": 226,
+        "refused": false,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open",
+          "GET /api/timeline?limit=300"
+        ]
+      },
+      "tokens": {
+        "activeView": null,
+        "dumpLines": 118,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      },
+      "users": {
+        "activeView": null,
+        "dumpLines": 118,
+        "refused": true,
+        "requests": [
+          "GET /api/me",
+          "GET /api/stats",
+          "GET /api/graph",
+          "GET /api/situations?limit=50&status=open"
+        ]
+      }
+    }
+  },
+  "themeDefault": {
+    "after": {
+      "cookie": "",
+      "density": "compact",
+      "theme": null
+    },
+    "before": {
+      "cookie": "",
+      "density": "compact",
+      "theme": null
+    },
+    "cookiePairs": {},
+    "proof": {
+      "escaped": "&lt;a href=&quot;x&quot;&gt;",
+      "modulesEvaluated": 37,
+      "mounted": true
+    }
+  },
+  "themeFromCookie": {
+    "after": {
+      "cookie": "ncn_theme=light",
+      "density": "compact",
+      "theme": "light"
+    },
+    "before": {
+      "cookie": "ncn_theme=light",
+      "density": "compact",
+      "theme": "light"
+    },
+    "cookiePairs": {
+      "ncn_theme": "light"
+    },
+    "proof": {
+      "escaped": "&lt;a href=&quot;x&quot;&gt;",
+      "modulesEvaluated": 37,
+      "mounted": true
+    }
+  },
+  "themeHostileCookie": {
+    "after": {
+      "cookie": "ncn_theme=<script>evil</script>",
+      "density": "compact",
+      "theme": null
+    },
+    "before": {
+      "cookie": "ncn_theme=<script>evil</script>",
+      "density": "compact",
+      "theme": null
+    },
+    "cookiePairs": {
+      "ncn_theme": "<script>evil</script>"
+    },
+    "proof": {
+      "escaped": "&lt;a href=&quot;x&quot;&gt;",
+      "modulesEvaluated": 37,
+      "mounted": true
+    }
+  },
+  "themeToggled": {
+    "after": {
+      "cookie": "ncn_theme=dark",
+      "density": "compact",
+      "theme": "dark"
+    },
+    "before": {
+      "cookie": "",
+      "density": "compact",
+      "theme": null
+    },
+    "cookiePairs": {
+      "ncn_theme": "dark"
+    },
+    "proof": {
+      "escaped": "&lt;a href=&quot;x&quot;&gt;",
+      "modulesEvaluated": 37,
+      "mounted": true
+    }
+  }
+}

@@ -136,7 +136,14 @@ def run_scenario(name: str, params: dict[str, Any] | None = None) -> dict[str, A
         params_path = Path(tmp) / "params.json"
         params_path.write_text(json.dumps(params or {}, sort_keys=True), encoding="utf-8")
         proc = subprocess.run(
-            ["node", str(RUNNER), name, str(params_path)],
+            # `--experimental-vm-modules` enables `vm.SourceTextModule`, which is how the harness
+            # links and evaluates the UI's **real module graph** — including the vendored Preact
+            # and htm bytes `CHECKSUMS.txt` pins. v0.12.0's UI was one classic script and
+            # `vm.runInContext` sufficed; v0.13.0's is ESM and cannot be evaluated that way.
+            #
+            # Still stdlib-only: a Node flag is not a dependency. No npm, no loader hook, no
+            # transform, and nothing under `src/` needs any of it.
+            ["node", "--experimental-vm-modules", str(RUNNER), name, str(params_path)],
             capture_output=True,
             text=True,
             timeout=120,

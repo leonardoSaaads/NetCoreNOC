@@ -1,0 +1,221 @@
+[
+  {
+    "n": 1,
+    "title": "A capability lowered so a viewer would see an admin screen",
+    "file": "src/netcorenoc/ui/app/registry.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_a_role_never_renders_a_view_whose_capability_it_lacks",
+      "tests/test_ui_invariants.py::test_no_admin_capability_produces_a_view_for_a_non_admin",
+      "tests/test_security_ui.py::test_admin_views_are_gated_on_an_admin_ceiling_capability"
+    ],
+    "red": "FAILED tests/test_ui_invariants.py::test_a_role_never_renders_a_view_whose_capability_it_lacks\nFAILED tests/test_ui_invariants.py::test_no_admin_capability_produces_a_view_for_a_non_admin\nFAILED tests/test_security_ui.py::test_admin_views_are_gated_on_an_admin_ceiling_capability\n3 failed in 2.51s",
+    "green": "3 passed in 2.49s",
+    "control_under_injection": "1 passed in 1.73s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 2,
+    "title": "The escaping discipline bypassed on one render path",
+    "file": "src/netcorenoc/ui/app/views/entities.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_no_render_path_turns_operator_supplied_text_into_markup",
+      "tests/test_security_ui.py::test_ui_source_has_no_f1_antipatterns"
+    ],
+    "red": "FAILED tests/test_security_ui.py::test_ui_source_has_no_f1_antipatterns - Ass...\n1 failed, 1 passed in 1.80s",
+    "green": "2 passed in 1.76s",
+    "control_under_injection": "1 passed in 1.70s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 3,
+    "title": "The partial-split gesture sending one id the operator never marked",
+    "file": "src/netcorenoc/ui/app/views/situations.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_a_partial_split_sends_exactly_the_marked_ids_and_no_others"
+    ],
+    "red": "FAILED tests/test_ui_invariants.py::test_a_partial_split_sends_exactly_the_marked_ids_and_no_others\n1 failed in 1.73s",
+    "green": "1 passed in 1.68s",
+    "control_under_injection": "1 passed in 1.69s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 4,
+    "title": "An SSE update destroying the gesture in flight (the v0.7.5 defect)",
+    "file": "src/netcorenoc/ui/app/store.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_an_sse_update_mid_gesture_does_not_destroy_the_click_target",
+      "tests/test_ui_invariants.py::test_a_held_card_says_it_is_stale_while_it_is_held"
+    ],
+    "red": "FAILED tests/test_ui_invariants.py::test_an_sse_update_mid_gesture_does_not_destroy_the_click_target\nFAILED tests/test_ui_invariants.py::test_a_held_card_says_it_is_stale_while_it_is_held\n2 failed in 1.90s",
+    "green": "2 passed in 1.98s",
+    "control_under_injection": "1 passed in 1.76s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 5,
+    "title": "F53's repair reverted: a view fetches before its capability is resolved",
+    "file": "src/netcorenoc/ui/app/shell.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_a_view_reached_by_address_without_its_capability_refuses_by_decision",
+      "tests/test_ui_invariants.py::test_a_capability_the_client_lacks_produces_no_request_at_all",
+      "tests/test_security_ui.py::test_capability_is_resolved_before_anything_is_constructed"
+    ],
+    "red": "FAILED tests/test_ui_invariants.py::test_a_view_reached_by_address_without_its_capability_refuses_by_decision\nFAILED tests/test_ui_invariants.py::test_a_capability_the_client_lacks_produces_no_request_at_all\nFAILED tests/test_security_ui.py::test_capability_is_resolved_before_anything_is_constructed\n3 failed in 2.04s",
+    "green": "3 passed in 2.10s",
+    "control_under_injection": "1 passed in 1.77s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 6,
+    "title": "A hardening-only value accepted below the project floor",
+    "file": "src/netcorenoc/ui/app/parameters.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_a_hardening_only_value_cannot_be_lowered_through_this_surface"
+    ],
+    "red": "FAILED tests/test_ui_invariants.py::test_a_hardening_only_value_cannot_be_lowered_through_this_surface\n1 failed in 1.74s",
+    "green": "1 passed in 1.72s",
+    "control_under_injection": "1 passed in 1.71s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 7,
+    "title": "A destructive control applying without a preview",
+    "file": "src/netcorenoc/ui/app/destructive.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_every_destructive_control_states_its_consequence_before_it_can_be_used",
+      "tests/test_security_ui.py::test_every_destructive_control_goes_through_one_component"
+    ],
+    "red": "FAILED tests/test_ui_invariants.py::test_every_destructive_control_states_its_consequence_before_it_can_be_used\n1 failed, 1 passed in 1.71s",
+    "green": "2 passed in 1.86s",
+    "control_under_injection": "1 passed in 1.75s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 8,
+    "title": "The sidebar made unreachable by keyboard (sixteen tab stops)",
+    "file": "src/netcorenoc/ui/app/sidebar.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_the_sidebar_is_one_tab_stop_and_is_operable_by_keyboard"
+    ],
+    "red": "FAILED tests/test_ui_invariants.py::test_the_sidebar_is_one_tab_stop_and_is_operable_by_keyboard\n1 failed in 1.73s",
+    "green": "1 passed in 1.64s",
+    "control_under_injection": "1 passed in 1.65s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 9,
+    "title": "A hostile theme cookie reaching the document",
+    "file": "src/netcorenoc/ui/app/theme.js",
+    "guards": [
+      "tests/test_ui_invariants.py::test_the_theme_persists_without_localstorage_and_a_hostile_cookie_cannot_widen_it"
+    ],
+    "red": "FAILED tests/test_ui_invariants.py::test_the_theme_persists_without_localstorage_and_a_hostile_cookie_cannot_widen_it\n1 failed in 2.07s",
+    "green": "1 passed in 1.99s",
+    "control_under_injection": "1 passed in 1.66s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 10,
+    "title": "The vendored framework's checksum altered",
+    "file": "src/netcorenoc/ui/vendor/CHECKSUMS.txt",
+    "guards": [
+      "tests/test_supply_chain.py::test_vendored_assets_match_pinned_checksums"
+    ],
+    "red": "FAILED tests/test_supply_chain.py::test_vendored_assets_match_pinned_checksums\n1 failed in 0.19s",
+    "green": "1 passed in 0.20s",
+    "control_under_injection": "1 passed in 1.66s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 11,
+    "title": "A vendored asset dropped in with no pin at all",
+    "file": "src/netcorenoc/ui/vendor/sneaky-1.0.0.module.js",
+    "guards": [
+      "tests/test_supply_chain.py::test_every_vendored_asset_is_pinned_by_name"
+    ],
+    "red": "FAILED tests/test_supply_chain.py::test_every_vendored_asset_is_pinned_by_name\n1 failed in 0.20s",
+    "green": "1 passed in 0.18s",
+    "control_under_injection": "1 passed in 1.72s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 12,
+    "title": "The CSP relaxed to 'unsafe-inline'",
+    "file": "src/netcorenoc/api/perimeter.py",
+    "guards": [
+      "tests/test_security_ui.py::test_csp_is_unchanged_and_forbids_inline",
+      "tests/test_security_ui.py::test_security_headers_on_every_route_class"
+    ],
+    "red": "FAILED tests/test_security_ui.py::test_csp_is_unchanged_and_forbids_inline - ...\n1 failed, 5 passed in 1.30s",
+    "green": "6 passed in 1.23s",
+    "control_under_injection": "1 passed in 1.79s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 13,
+    "title": "A package.json added to the tracked tree",
+    "file": "package.json",
+    "guards": [
+      "tests/test_build_step.py::test_the_tracked_tree_contains_no_build_step_apparatus"
+    ],
+    "red": "FAILED tests/test_build_step.py::test_the_tracked_tree_contains_no_build_step_apparatus\n1 failed in 0.26s",
+    "green": "1 passed in 0.19s",
+    "control_under_injection": "1 passed in 1.69s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 14,
+    "title": "A module served but missing from the enumerated allowlist",
+    "file": "src/netcorenoc/api/routes_static.py",
+    "guards": [
+      "tests/test_supply_chain.py::test_the_served_module_set_equals_the_module_set_on_disk",
+      "tests/test_security_ui.py::test_the_ui_tree_is_exactly_what_is_declared"
+    ],
+    "red": "FAILED tests/test_supply_chain.py::test_the_served_module_set_equals_the_module_set_on_disk\nFAILED tests/test_security_ui.py::test_the_ui_tree_is_exactly_what_is_declared\n2 failed in 0.64s",
+    "green": "2 passed in 0.55s",
+    "control_under_injection": "1 passed in 1.67s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  },
+  {
+    "n": 15,
+    "title": "A JavaScript module grown past the 400-line guard",
+    "file": "src/netcorenoc/ui/app/format.js",
+    "guards": [
+      "tests/test_architecture.py::test_no_javascript_module_is_over_the_size_guard"
+    ],
+    "red": "FAILED tests/test_architecture.py::test_no_javascript_module_is_over_the_size_guard\n1 failed in 0.62s",
+    "green": "1 passed in 0.56s",
+    "control_under_injection": "1 passed in 1.69s",
+    "caught": true,
+    "restored": true,
+    "control_held": true
+  }
+]

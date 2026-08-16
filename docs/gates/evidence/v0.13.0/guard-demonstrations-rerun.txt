@@ -1,0 +1,82 @@
+control, corrected tree: 1 passed in 1.70s
+
+--- 1. A capability lowered so a viewer would see an admin screen
+    RED:   3 failed in 2.51s
+    GREEN: 3 passed in 2.49s
+    caught=True restored=True control_held=True
+
+--- 2. The escaping discipline bypassed on one render path
+    RED:   1 failed, 1 passed in 1.80s
+    GREEN: 2 passed in 1.76s
+    caught=True restored=True control_held=True
+
+--- 3. The partial-split gesture sending one id the operator never marked
+    RED:   1 failed in 1.73s
+    GREEN: 1 passed in 1.68s
+    caught=True restored=True control_held=True
+
+--- 4. An SSE update destroying the gesture in flight (the v0.7.5 defect)
+    RED:   2 failed in 1.90s
+    GREEN: 2 passed in 1.98s
+    caught=True restored=True control_held=True
+
+--- 5. F53's repair reverted: a view fetches before its capability is resolved
+    RED:   3 failed in 2.04s
+    GREEN: 3 passed in 2.10s
+    caught=True restored=True control_held=True
+
+--- 6. A hardening-only value accepted below the project floor
+    RED:   1 failed in 1.74s
+    GREEN: 1 passed in 1.72s
+    caught=True restored=True control_held=True
+
+--- 7. A destructive control applying without a preview
+    RED:   1 failed, 1 passed in 1.71s
+    GREEN: 2 passed in 1.86s
+    caught=True restored=True control_held=True
+
+--- 8. The sidebar made unreachable by keyboard (sixteen tab stops)
+    RED:   1 failed in 1.73s
+    GREEN: 1 passed in 1.64s
+    caught=True restored=True control_held=True
+
+--- 9. A hostile theme cookie reaching the document
+    RED:   1 failed in 2.07s
+    GREEN: 1 passed in 1.99s
+    caught=True restored=True control_held=True
+
+--- 10. The vendored framework's checksum altered
+    RED:   1 failed in 0.19s
+    GREEN: 1 passed in 0.20s
+    caught=True restored=True control_held=True
+
+--- 11. A vendored asset dropped in with no pin at all
+    RED:   1 failed in 0.20s
+    GREEN: 1 passed in 0.18s
+    caught=True restored=True control_held=True
+
+--- 12. The CSP relaxed to 'unsafe-inline'
+    RED:   1 failed, 5 passed in 1.30s
+    GREEN: 6 passed in 1.23s
+    caught=True restored=True control_held=True
+
+--- 13. A package.json added to the tracked tree
+    RED:   1 failed in 0.26s
+    GREEN: 1 passed in 0.19s
+    caught=True restored=True control_held=True
+
+--- 14. A module served but missing from the enumerated allowlist
+    RED:   2 failed in 0.64s
+    GREEN: 2 passed in 0.55s
+    caught=True restored=True control_held=True
+
+--- 15. A JavaScript module grown past the 400-line guard
+    RED:   1 failed in 0.62s
+    GREEN: 1 passed in 0.56s
+    caught=True restored=True control_held=True
+
+
+git status after all injections: (clean)
+ui/ tree digest: a57fbab35d2a9a9950adb558871aa0b12c06339994b936974fd53a75eddcd2ce
+
+15/15 demonstrated red, restored green, control held in both.

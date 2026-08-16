@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.12.0"
+version = "0.13.0"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -49,6 +49,11 @@ netcorenoc = [
     "migrations/*.sql",
     "ui/*.html",
     "ui/*.js",
+    # v0.13.0: the console is an ES module graph (ADR #175). Two more globs, one per level, so a
+    # wheel carries every module the browser will ask for. F12 was a wheel that shipped index.html
+    # and nothing else; tests/test_supply_chain.py asserts every UI file matches a glob here.
+    "ui/app/*.js",
+    "ui/app/views/*.js",
     "ui/*.css",
     "ui/vendor/*",
     "ui/.well-known/*",  # RFC 9116 security.txt, served by the app
@@ -78,6 +83,11 @@ known-local-folder = [
 ]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
+# The evidence tools (v0.13.0) carry **verbatim source fragments** as injection anchors and mutant
+# bodies: each string must match `src/` character for character or the injection does not apply and
+# the demonstration silently measures nothing. Re-wrapping them to satisfy a line limit would break
+# exactly the property that makes them evidence, so E501 is lifted here and nowhere else.
+"tools/evidence/*" = ["T20", "E501"]
 "src/netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
 
 [tool.mypy]

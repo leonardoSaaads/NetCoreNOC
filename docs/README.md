@@ -71,7 +71,13 @@ one-screen tour of the tree.
   split by time or by incident and never at random, why the merge chain makes incident identity
   non-obvious, the iterative-overfitting hazard no column measures, and the restated
   `incumbent_linked` invariant.
-- [`architecture/UI-0.13-DRAFT.md`](architecture/UI-0.13-DRAFT.md) — the v0.13.0 UI, specified by
+- [`architecture/CARTRIDGE-0.14-DRAFT.md`](architecture/CARTRIDGE-0.14-DRAFT.md) — the v0.14.0
+  external cartridge, specified by v0.13.0: a separate process that receives features and returns
+  scores and can be killed without the appliance noticing, so tree ensembles can compete for the
+  champion slot without the core acquiring a sixth dependency. **Everything in it is tagged
+  `v0.14.0: planned`.**
+- [`architecture/UI-0.13-DRAFT.md`](architecture/UI-0.13-DRAFT.md) — **implemented in v0.13.0**; the
+  UI, specified by
   v0.12.0 **against a UI that could by then be executed**: sidebar navigation with room for Phase 2
   and Phase 3 (and **no empty placeholders** for them), per-role dashboards, the enumeration of
   every capability with no UI surface today, the **three parameter classes** that keep a settings

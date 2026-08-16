@@ -1,0 +1,163 @@
+<div #app .shell>
+  <nav #nav .sidebar aria-label="Sections">
+    <div .brand>
+      <span .brand-mark>
+        "◈"
+      <span .brand-name>
+        "Net"
+        <b>
+          "CoreNOC"
+    <div .nav-group>
+      <ul .nav-list>
+        <li>
+          <a .nav-item.active>
+            <span .nav-glyph>
+              "◎"
+            <span .nav-label>
+              "Overview"
+    <div .nav-group>
+      <h2 #nav-group-operations .nav-heading>
+        "Operations"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "◉"
+            <span .nav-label>
+              "Situations"
+            <span .nav-count>
+              "1"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⬡"
+            <span .nav-label>
+              "Network graph"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▤"
+            <span .nav-label>
+              "Timeline"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "▢"
+            <span .nav-label>
+              "Entities"
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "≡"
+            <span .nav-label>
+              "Alarm classes"
+    <div .nav-group>
+      <h2 #nav-group-evidence .nav-heading>
+        "Evidence"
+      <ul .nav-list>
+        <li>
+          <a .nav-item>
+            <span .nav-glyph>
+              "⚖"
+            <span .nav-label>
+              "Judge & promotion"
+  <div .main>
+    <header .topbar>
+      <div .topbar-live>
+        <span .conn.conn-connecting role=status>
+          <span .conn-dot>
+          "connecting"
+        <span .chips>
+          <span .chip>
+            <b>
+              "2"
+            "devices"
+          <span .chip>
+            <b>
+              "4"
+            "classes"
+          <span .chip>
+            <b>
+              "8"
+            "active alarms"
+          <span .chip>
+            <b>
+              "1"
+            "open situations"
+      <div .topbar-who>
+        <span .role-tag>
+          "viewer"
+        <a .who-name>
+          "vwr"
+        <button .icon aria-label="Theme: system. Change theme.">
+          "◒"
+        <button .icon aria-label="Density: compact. Change density.">
+          "▤"
+        <button>
+          "Sign out"
+    <div .banners>
+    <main #work .work>
+      <div .work-heading>
+        <h1>
+          "Overview"
+        <p .work-summary>
+          "What is happening now, shaped by what your role can act on."
+      <div .view>
+        <div .overview>
+          <div .stat-row>
+            <div .stat.stat-alarm>
+              <div .stat-value>
+                "8"
+              <div .stat-label>
+                "active alarms"
+            <div .stat>
+              <div .stat-value>
+                "1"
+              <div .stat-label>
+                "open situations"
+            <div .stat>
+              <div .stat-value>
+                "2"
+              <div .stat-label>
+                "devices"
+              <div .stat-note>
+                "learned, not configured"
+            <div .stat>
+              <div .stat-value>
+                "4"
+              <div .stat-label>
+                "alarm classes"
+              <div .stat-note>
+                "learned, not configured"
+            <div .stat>
+              <div .stat-value>
+                "86889484.3387 s"
+              <div .stat-label>
+                "p95 latency"
+          <div .section-heading>
+            <h3>
+              "Open situations"
+            <p .hint>
+              "Newest first. Open one to see the per-term contributions that produced each li"
+          <ul .mini-list>
+            <li>
+              <a>
+                "#"
+                "1"
+              <span>
+                "8 alarms"
+              <span .muted>
+                "in 8s"
+          <section .panel-block.on-demand>
+            <div .section-heading>
+              <h3>
+                "Judge and promotion"
+              <button>
+                "Compute now"
+              <p .hint>
+                "What the promotion gate last decided, why it refused, and the sealed holdout's"
+            <p .hint>
+              "Not computed yet."
+  <aside #context .context.context-idle aria-label="Details">
+    <p .hint>
+      "Select something to see its detail here."

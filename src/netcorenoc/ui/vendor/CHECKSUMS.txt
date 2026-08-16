@@ -1,6 +1,31 @@
 # SHA-256 checksums of vendored, self-hosted third-party assets (§A.6 supply-chain integrity).
-# The strict CSP forbids any CDN, so d3 is vendored; this file pins its exact bytes. A test
-# (tests/test_supply_chain.py) and a CI job fail if the file ever changes without this pin
-# being updated deliberately. Regenerate intentionally with:
-#   sha256sum src/netcorenoc/ui/vendor/d3.v7.min.js
+# The strict CSP forbids any CDN, so every third-party asset is vendored; this file pins their
+# exact bytes. A test (tests/test_supply_chain.py) and a CI job fail if any of them ever changes
+# without this pin being updated deliberately.
+#
+# **Every file in this directory that is not a licence or this file itself must be listed here.**
+# That is asserted by tests/test_supply_chain.py::test_every_vendored_asset_is_pinned_by_name —
+# without it, dropping a new asset in with no pin would be invisible to the checksum loop, which
+# only ever verifies what this file already names (v0.13.0).
+#
+# Regenerate intentionally with:
+#   cd src/netcorenoc/ui/vendor && sha256sum d3.v7.min.js preact-10.29.8.module.js htm-3.1.1.module.js
+#
+# ## Provenance
+#
+# Each asset's bytes are the corresponding file from the upstream npm tarball, unmodified. The
+# tarballs themselves were verified against the registry's own published `dist.shasum` before any
+# file was extracted, so the chain is registry -> tarball -> file -> the pin below.
+#
+#   d3.v7.min.js              d3 v7.9.0, ISC
+#   preact-10.29.8.module.js  preact 10.29.8, MIT, npm tarball dist/preact.module.js
+#                             tarball sha1 fc85b82dc2474e245b1430b51781d417361f5fc3
+#   htm-3.1.1.module.js       htm 3.1.1, Apache-2.0, npm tarball dist/htm.module.js
+#                             tarball sha1 49266582be0dc66ed2235d5ea892307cc0c24b78
+#
+# Both ESM modules are **import-free**: neither carries a bare specifier, so the UI loads them by
+# relative path with no import map. That is load-bearing — an import map is an inline
+# <script type="importmap">, which the CSP forbids (see docs/adr/DECISIONS.md #175).
 f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539  d3.v7.min.js
+c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8  preact-10.29.8.module.js
+ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4  htm-3.1.1.module.js

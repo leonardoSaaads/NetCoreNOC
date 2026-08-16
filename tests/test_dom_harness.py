@@ -120,20 +120,27 @@ def test_the_node_requirement_is_a_rule_not_a_pinned_version() -> None:
 
 
 @dom_test
-def test_the_harness_evaluates_app_js_and_can_prove_it() -> None:
-    """**The assertion this whole release is built to make possible.**
+def test_the_harness_evaluates_the_ui_module_graph_and_can_prove_it() -> None:
+    """**The assertion this whole release is built to make possible**, one release on.
 
-    `proof.escaped` is the output of `app.js`'s own `esc()` helper, called inside the sandbox
-    after the file was evaluated. The harness cannot fabricate it without running the file. Phase
-    0's probe showed the pre-v0.12.0 suite produced nothing of the kind for any test.
+    `proof.escaped` is the output of the UI's own `esc()` — but v0.13.0's UI is an ES module
+    graph, so it is no longer read off a global. It is called on the **evaluated namespace of
+    `app/dom.js`**, the same module instance the running console imported. That cannot be produced
+    without linking and evaluating the real graph, which makes the proof strictly stronger than
+    v0.12.0's: it additionally proves the graph linked.
 
-    What this does NOT prove: that `app.js` is *correct*, or that the DOM it ran against behaves
+    `modulesEvaluated` counts the whole graph, **including the two vendored framework assets whose
+    bytes `CHECKSUMS.txt` pins**. The framework a browser would run is the framework this ran.
+
+    What this does NOT prove: that the console is *correct*, or that the DOM it ran against behaves
     like a browser. Those are `test_ui_invariants.py` and `§3` respectively.
     """
     result = domdriver.run_scenario("boot", {"routes": _minimal_routes()})
     assert result["proof"]["escaped"] == domdriver.ESC_PROOF
-    assert result["proof"]["functionsDefined"] == 6, result["proof"]["functionNames"]
-    assert result["appVisible"] is True, "app.js did not reach its authenticated view"
+    # The entry point, the infrastructure modules, seventeen views, and the two vendored assets.
+    assert result["proof"]["modulesEvaluated"] >= 30, result["proof"]
+    assert result["proof"]["mounted"] is True, "the console rendered nothing into #root"
+    assert result["appVisible"] is True, "the console did not reach its authenticated view"
 
 
 def test_a_scenario_that_did_not_execute_app_js_is_refused_rather_than_returned() -> None:
@@ -168,7 +175,11 @@ def test_the_harness_dom_passes_its_own_conformance_suite() -> None:
     result = domdriver.run_scenario("selfTest")
     failed = [r for r in result["results"] if not r["ok"]]
     assert not failed, "\n".join(f"{r['name']}: {r.get('detail')}" for r in failed)
-    assert result["passed"] >= 15, "the conformance suite shrank; a smaller suite guards less"
+    # v0.12.0 shipped 17; v0.13.0 adds five for the DOM additions the framework needs (dom.mjs
+    # names all five and says why each one's absence produced a WRONG result rather than an
+    # obvious one). The floor moves up with the suite, because a floor that never moves stops
+    # being a ratchet.
+    assert result["passed"] >= 22, "the conformance suite shrank; a smaller suite guards less"
 
 
 # --- §4 determinism ----------------------------------------------------------------------------
@@ -217,9 +228,26 @@ def test_make_qa_runs_the_dom_harness() -> None:
     other. What could still go wrong is the *reporting*: on a machine without Node these become
     skips, and a reader of "1300 passed" would not know. The `dom` marker exists so the gate can
     quote `pytest -m dom` separately, and `Makefile`'s `dom` target makes that a named command.
+
+    **The prerequisite list is parsed, not matched as a literal** (v0.13.0). The first version
+    asserted the exact string `"qa: lint typecheck deadcode test eval"`, which is the trap
+    Appendix B names: a guard scoped by a literal fails on a change it has no opinion about. It
+    duly failed when `scan` was added to `qa` — a change that makes the gate *stronger* — while
+    what this test actually claims is only that `test` is one of `qa`'s prerequisites. That claim
+    is now stated directly, so the recipe can grow without this test objecting, and can still not
+    quietly drop the step that runs the harness.
     """
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
-    assert "qa: lint typecheck deadcode test eval" in makefile
+    qa_lines = [line for line in makefile.splitlines() if line.startswith("qa:")]
+    assert len(qa_lines) == 1, f"expected exactly one `qa:` target, found {len(qa_lines)}"
+    prerequisites = qa_lines[0].split(":", 1)[1].split()
+    assert "test" in prerequisites, (
+        f"`make qa` no longer runs `test`, so nothing collects the DOM harness: {prerequisites}"
+    )
+    assert "eval" in prerequisites, (
+        f"`make qa` no longer runs `eval`, so a correlation regression would not be gated: "
+        f"{prerequisites}"
+    )
     assert "\ndom:\n" in makefile, "Makefile has no `dom` target for reporting executed DOM tests"
     config = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'markers = ["dom' in config or "dom:" in config, "the `dom` marker is not registered"
@@ -282,6 +310,7 @@ def _minimal_routes() -> dict[str, object]:
                 "role": "viewer",
                 "capabilities": ["self.read", "stats.read", "graph.read", "situations.read"],
                 "scope": {"scoped": False, "ne_count": None},
+                "must_change_password": False,
             }
         },
         "/api/stats": {

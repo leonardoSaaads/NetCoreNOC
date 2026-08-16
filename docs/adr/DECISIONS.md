@@ -4007,3 +4007,252 @@ grouping**.
   the wrong theme; that is why it may never carry anything whose disclosure matters.
 - **Consequence**: `UI-0.13-DRAFT.md` §9 specifies it; the F2 guard is untouched and v0.13.0
   inherits the prohibition intact.
+
+## 173. The situation card keeps the held-card behaviour; the reconciler is a ROADMAP line (v0.13.0)
+
+- **Context**: `UI-0.13-DRAFT.md` §12.1 leaves open whether the card keeps v0.7.5's held-card
+  behaviour or gets a real reconciler. v0.13.0 replaces the entire UI with a framework that
+  reconciles by construction, which changes the question rather than answering it.
+- **What measurement changed**: Preact's diff **already** gives the property invariant 3 asserts.
+  A spike (Phase 1) confirmed by execution that a button node is object-identical across two
+  re-renders and stays connected, so the v0.7.5 defect — the click target destroyed mid-gesture —
+  cannot be reintroduced by a re-render at all.
+- **Options**: (a) rely on the reconciler alone and delete the hold; (b) keep holding the DOM
+  subtree as v0.12.0 did; (c) keep the hold but move it from the DOM to **the payload**.
+- **Choice**: **(c)**.
+- **Reason**: (a) is the trap. Node identity is not meaning identity. An operator who has ticked
+  members 2 and 4 of an eight-member situation is asserting something about *those two alarms*; if
+  an update re-members or re-orders the situation underneath them, every DOM node survives and the
+  marks now refer to alarms the operator never saw. That is the v0.7.5 label-integrity failure
+  reintroduced in a form no node-identity assertion can detect. (b) is what v0.12.0 did and is
+  redundant once the renderer holds nodes for us. (c) freezes the thing the operator is actually
+  judging — the payload — and lets the renderer do what it is good at.
+- **Consequence**: `store.js` holds the detail payload for an expanded card, counts the updates it
+  withholds, and releases both on collapse. The staleness marker remains the whole of the
+  mitigation for the trade, and now states how many updates are being withheld rather than only
+  that some are.
+- **The ROADMAP line**: a true reconciler — one that updates everything *except* the gesture in
+  flight, so an operator sees a live card and a frozen selection — is better and is a larger
+  change than this release should carry. Recorded, not built.
+
+## 174. The framework is vendored as two assets, not one, and the version is 10.29.8 / 3.1.1 (v0.13.0)
+
+- **Context**: ADR #171 chose Preact + htm and deliberately named no version, because *"a version
+  named a release early is a version nobody re-checked"*. `UI-0.13-DRAFT.md` §10 describes the
+  outcome as "one ESM asset with pinned bytes".
+- **Options**: (a) `htm/preact/standalone.module.js` — literally one file containing both packages;
+  (b) `preact/dist/preact.module.js` and `htm/dist/htm.module.js` as two separately pinned assets;
+  (c) concatenate the two by hand into one file.
+- **Choice**: **(b)**. Preact **10.29.8** (2026-08-01, the current release at build time) and htm
+  **3.1.1**.
+- **Reason**: (a) is one file whose contents are two packages at versions the filename cannot
+  state: htm 3.1.1 was published in 2022 and its standalone bundle pins the Preact of that era, so
+  vendoring it would silently ship a four-year-old renderer under a filename that says `htm-3.1.1`.
+  §10.1's procedure — *version in the filename, SHA-256 in `CHECKSUMS.txt`, licence beside it* — is
+  written per asset, and (b) is the shape that can actually satisfy it. (c) produces a derived
+  artefact whose bytes match no upstream release, so the checksum would pin only *our* build, which
+  is strictly worse supply-chain hygiene than pinning two upstream files.
+- **What made (b) possible**: both `dist` modules are **import-free**. Neither carries a bare
+  specifier, so the UI resolves them by relative path. Preact's *hooks* module is not import-free —
+  it imports `"preact"` — so this UI uses `Component` from the core and no hooks at all, because a
+  bare specifier would need an import map and an import map is an inline `<script>` the CSP
+  forbids. That is a real constraint on how this UI is written and it is recorded here rather than
+  discovered later.
+- **Provenance**: each tarball was verified against the npm registry's own published `dist.shasum`
+  before a file was extracted, so the chain is registry → tarball → file → the pin in
+  `CHECKSUMS.txt`. Both sha1 values are recorded in that file.
+- **Consequence**: 12 900 bytes of vendored framework, against d3's 279 706. `NOTICE` carries both
+  attributions; `tests/test_supply_chain.py` gained an assertion that **every** file in `vendor/`
+  is named in `CHECKSUMS.txt`, which it did not have — the checksum loop only ever verified what
+  the file already listed, so a new asset dropped in with no pin was invisible to it.
+
+## 175. The UI becomes an ES module graph, and `STATIC_ASSETS` enumerates every module (v0.13.0)
+
+- **Context**: replacing 52 738 bytes in one file with 52 738 bytes in one file would be failing
+  while appearing to succeed. The 400-line module guard now applies to JavaScript, so the UI is
+  necessarily many files, and every one of them has to be served.
+- **Options**: (a) serve `ui/` as a static directory; (b) enumerate each module in
+  `routes_static.STATIC_ASSETS`; (c) keep one file and accept the size.
+- **Choice**: **(b)**.
+- **Reason**: (a) is a path-traversal surface and, worse, it makes "what does this appliance
+  serve?" unanswerable from the code. `STATIC_ASSETS` is a compile-time allowlist and
+  `tests/test_declaration.py` already pins that fact; making it a directory would delete a
+  deny-by-default property to save typing. (b) keeps the allowlist and adds a test that the set on
+  disk and the set in the allowlist are **equal in both directions** — so a module that exists and
+  is not served, or is served and does not exist, both fail.
+- **Consequence, stated as a cost**: the console now loads ~30 module files instead of one. There
+  is no bundler, so that is ~30 requests on a cold load. Over a management LAN with HTTP keep-alive
+  this is not the dominant cost; over a slow WAN it is worse than a bundle would be. **This is a
+  real and unmeasured cost of principle 6** and it is recorded here rather than absorbed.
+- **What this does not decide**: whether a future release ships an optional pre-bundled asset. It
+  would need a build step, so it would need the constitution reopened.
+
+## 176. Routing resolves capability before construction, which is F53's structural repair (v0.13.0)
+
+- **Context**: F53 — the panel loaders have no capability check, and a viewer's zero-request
+  property held because `clear(null)` threw a `TypeError`. `docs/gates/v0.13.0-phase-0.md` §3
+  reproduces it by execution: seven panels, seven `TypeError`s, zero requests. Routing is precisely
+  what arms it, because a URL fragment can name any view.
+- **Options**: (a) a capability check at the top of each view's loader; (b) a check in the router
+  before dispatch; (c) the router returns a **decision**, and only a `view` decision is ever turned
+  into a mounted component.
+- **Choice**: **(c)**.
+- **Reason**: (a) is 17 checks, which is 17 chances to forget, and the one that is forgotten is
+  invisible until it is exploited. (b) is better but still a check — something a later refactor can
+  move, reorder or short-circuit. (c) makes the refusal a *different component*: a principal
+  without the capability is rendered `Refused`, the real component is never constructed, its
+  `componentDidMount` never runs, and no request exists to suppress. **The zero is a decision, not
+  a dereference.**
+- **The property that makes it testable**: `resolve()` is a pure function of (fragment, capability
+  set). It touches no DOM, issues no request and constructs nothing, so a test drives every view at
+  every capability set without needing a server that would refuse or a role that happens to exist.
+- **Consequence**: there is exactly **one** call site that turns a decision into a mounted
+  component (`shell.js`). A second one would be a second authorisation surface, which is the shape
+  of F53, and `tests/test_ui_invariants.py` asserts there is only one.
+
+## 177. One context panel, addressable by any section (v0.13.0, closing draft §12.3)
+
+- **Context**: `UI-0.13-DRAFT.md` §12.3 leaves open whether the context panel is one panel or one
+  per section.
+- **Choice**: **one**, with a two-function publish/clear interface.
+- **Reason**: §2 requires only that any section can address it, and one panel is the smaller thing.
+  A per-section panel is a lifecycle problem — which section owns it when two are on screen, what
+  happens on a route change — bought for a benefit nothing in this release needs.
+- **Consequence**: `context.js` exports `setContext`/`clearContext`; the shell clears on every
+  route change, so a section cannot leave its detail standing over someone else's screen. Phase 2's
+  troubleshooting transcript attaches to the same panel, which is the obligation draft §2.3
+  records.
+
+## 178. The hardening-only class is enforced where a write path exists, and named where none does (v0.13.0)
+
+- **Context**: draft §6 requires three visibly distinct parameter classes and §7.4 requires that a
+  hardening-only value can never be lowered through the settings surface. §V.3 requires a test that
+  asserts it, demonstrated red by an injection that lets one through.
+- **What measurement changed**: enumerating the hardening-only values in this tree found that
+  **most of them have no write path at all**. `MIN_PASSWORD`, `IDLE_TIMEOUT_S`,
+  `ASSERTING_BAGS_FLOOR` and `ASSERTING_INCIDENTS_FLOOR` are module constants; nothing in the API
+  can set them. The scorer's degeneracy bounds (`MIN_TAU_S`, `MAX_TAU_S`, `MIN_WEIGHT_SUM`,
+  `THRESHOLD_MARGIN`) are the exception: `POST /api/scorer` accepts parameters that those bounds
+  constrain, and `scoring.validate_params` refuses a submission outside them.
+- **Options**: (a) add persistence for every floor so the class has a uniform write path;
+  (b) render every floor with an input that cannot work; (c) enforce raise-only where a write path
+  exists, and display the rest as facts with the reason.
+- **Choice**: **(c)**.
+- **Reason**: (a) is not a UI release. Persisting the sufficiency floors changes the promotion
+  gate's inputs, which is evidence-chain work with its own risk, and it would need a route, a
+  capability and an audit decision this release has no reason to add (Part VI.8). (b) is the empty
+  placeholder draft §2 forbids, in its most damaging form: a control that appears to harden the
+  appliance and does nothing.
+- **Consequence**: `parameters.js` owns the classification and `hardeningRefusal()` — pure, so a
+  test drives it directly. The scorer form checks every candidate against **the bounds the server
+  published** (there is no client-side copy of a bound anywhere in this UI) and refuses a looser
+  submission *before* issuing a request, showing all four things §6.2 requires. The sufficiency
+  floors appear on the settings screen as hardening-only with `settable: false` and the reason
+  stated. "Give a deployment a way to raise the pre-registered floors" is a ROADMAP line.
+- **The division that is not negotiable**: the console's refusal is an affordance; the appliance's
+  is the control. Both exist for the scorer bounds, and the test asserts both.
+
+## 179. `RuntimeConfig` does not grow; `GET /api/config` reports precedence instead (v0.13.0)
+
+- **Context**: draft §7.1 requires three columns — environment default, database override,
+  effective value — and Part III closes §12.5 with *"`RuntimeConfig` does not grow in this
+  release"*. `RuntimeConfig` holds only the **merged** value, so the client cannot show three
+  columns from what exists.
+- **Options**: (a) add the environment defaults to `RuntimeConfig`; (b) have the client read the
+  environment (it cannot); (c) extend `GET /api/config`'s response, additively, with a `precedence`
+  object and a `startup` object read from `Settings.from_env()`.
+- **Choice**: **(c)**.
+- **Reason**: (a) is exactly what §12.5 closes — every addition to `RuntimeConfig` is a live-reload
+  path in a running receiver or maintenance loop. (c) adds no route, no capability, no audit action
+  and no migration; the existing top-level keys are unchanged, so nothing that reads this route
+  today notices.
+- **What is deliberately NOT reported**: `tls_cert` and `tls_key` are reported as a single
+  `tls_enabled` boolean rather than as filesystem paths, and `api_token` (removed in v0.3.0) is not
+  reported at all. `config.read` is admin-only and is in `AUDITED_DENIED_PERMISSIONS` precisely
+  because *"reading the allowlist reveals network-security posture"* (F9); adding paths to that
+  response would widen what one denied-and-audited capability discloses, for no operator benefit.
+- **Consequence**: the settings screen renders three columns from one route, and
+  `docs/security/SECURITY-REVIEW-0.13.0.md` assesses the widened response.
+
+## 180. The accessibility floor is met and the graph is explicitly excluded (v0.13.0, closing draft §12.6)
+
+- **Context**: draft §12.6 leaves accessibility to the implementer with the floor stated: every
+  interactive control reachable and operable by keyboard; visible focus; landmark regions;
+  accessible names on icon-only controls; focus moved deliberately on navigation. Above the floor,
+  decide and record — **and name what was not attempted.**
+- **Choice**: meet the floor for the whole console; give the graph and the timeline SVG a label and
+  a **text equivalent** rather than ARIA semantics.
+- **What was done**: the sidebar is one tab stop with roving `tabindex` and Up/Down/Home/End/Enter;
+  focus moves to the work-area heading on every route change (`tabindex="-1"`, focusable
+  programmatically, never a tab stop); `nav`, `main` and `aside` carry `aria-label`; every
+  icon-only control carries an `aria-label` that states its current value as well as its action;
+  every state component carries `role="status"` or `role="alert"`; every form control has a label,
+  visually hidden where the design has no room for one; severity and connection state are encoded
+  in glyph and text as well as colour; `prefers-reduced-motion` is honoured.
+- **What was NOT attempted, named**: (1) **the force-directed graph has no ARIA semantics and is
+  not keyboard-operable.** It carries a label and a pointer to the Entities screen, which holds the
+  same facts as text, and that pairing is the mitigation rather than a fix. (2) The timeline SVG is
+  the same, paired with its own table. (3) No screen-reader testing was performed at all — there is
+  no assistive technology in this environment, and the harness has no accessibility tree, so every
+  claim above is a claim about **markup**, not about what a screen reader announces. (4) Colour
+  contrast ratios were chosen by eye and are **not measured**; the harness has no cascade.
+- **Reason for the exclusion**: an accessible force-directed graph is a genuine piece of work — a
+  keyboard traversal model, a live region, an alternative navigation order — and doing it badly
+  produces a worse experience than a clear pointer to the text equivalent. **An accessibility claim
+  that overstates is worse than none**, so the graph says what it is.
+
+## 181. Coverage: v0.13.0 registers a band before the measuring run, and reports against both (v0.13.0)
+
+- **Context**: ADR #159's band is 96.10–96.21 %, set from **two** samples, and four of the five
+  observations this project has recorded fall below it. Part VII.10 forbids re-cutting it to fit
+  this release — that would be choosing a band after seeing the data.
+- **What was measured first**: three consecutive `make coverage` runs on the **untouched v0.12.0
+  tree** — stashed for the purpose, `git rev-parse` `e8de092`, 0 files modified — before one line
+  of v0.13.0's UI was written. 1339 tests each time. The figures were **96.02 %, 96.02 %,
+  96.13 %**: a spread of **0.11 points** on a tree that did not change between runs. Recorded in
+  `docs/gates/v0.13.0-phase-0.md` §5.
+- **That the same tree moves at all is the finding**, and it is why ADR #159's 0.11-wide band was
+  never going to hold: a band narrower than the measurement's own noise fails for reasons that have
+  nothing to do with the code. #159's band is 96.10–96.21 %, which is exactly 0.11 wide — the whole
+  band is one noise interval.
+- **The band, registered before the measuring run**: **95.60 %–96.60 %**.
+- **Reason for that width, decided before any v0.13.0 number was seen**: 0.11 points of measured
+  noise, plus room for what this release does to the denominator. v0.13.0 adds Python only in
+  `routes_static.py` and `routes_admin.py` (both fully exercised) and removes none, so the
+  denominator barely moves; but it adds a large body of test code and several new guards, and a
+  guard's own error branches are frequently unexecuted. ±0.50 absorbs four noise intervals and
+  still fails if a whole module went untested. **A band the release cannot fail is not a band.**
+- **Consequence**: Phase 7 reports the measured figure against **both** #159's band and this one,
+  and says plainly which it falls in. Neither band is moved after the fact.
+
+## 182. A UI release gets one pass with eyes on it, and that pass is not automated (v0.13.0)
+
+- **Context**: v0.13.0's DOM harness links the real module graph, mounts the real components and
+  dumps the real tree. It has **no layout, no cascade and no paint**. Everything gates 2 to 7
+  measure is structure.
+- **What happened**: with all 1428 tests green, a real-browser pass over the finished tree found
+  **six defects on screen**. Five were `htm` whitespace collapse — a newline adjacent to a tag
+  boundary collapses to *nothing*, not a space, so `Probable root:` painted flush against the OID
+  next to it. The sixth was the settings precedence table rendering an unset `NETCORENOC_ALLOWLIST`
+  as a blank cell, in the one table whose entire purpose is to explain why a setting has the value
+  it has. The harness dumps an identical, correct tree in all six cases.
+- **The class**: *the harness cannot see whitespace, and it cannot see emptiness.* Both are
+  properties of what is **painted**, and a test that reads `textContent` is reading what was
+  **written**. This is not a gap that can be closed by adding assertions to the harness — closing
+  it needs a layout engine, which is a browser, which is the thing this project's test suite
+  deliberately does not depend on.
+- **Decision**: a release that changes the UI gets **one pass in a real browser before it ships**,
+  recorded in a gate document naming what was driven **and what was not**. The pass is explicitly
+  **not** added to `make qa`, not added to CI, and not added to `pyproject.toml`. The driver lives
+  outside the repository.
+- **Why not automate it**: a browser in the test suite is a build-adjacent dependency in a product
+  whose sixth principle is one runtime identity, no build step and five runtime dependencies. It
+  would also be the wrong instrument: what caught these six was *reading the screen*, and an
+  automated pass asserts only what someone already thought to assert. The v0.13.0 drive's own probe
+  carried three defects of exactly that shape — a guard scoped by a literal string that CSS
+  uppercases, a selector matching zero cells and reporting the empty set, and a control addressed
+  by text it never had. All three are recorded in
+  `docs/gates/v0.13.0-live-verification.md` §5.
+- **Consequence**: `docs/gates/v0.13.0-live-verification.md` is the first such document, including
+  its §6 — the list of what the pass did not verify: one browser, one viewport, no screen reader,
+  no contrast measurement, no repeated timing.

@@ -282,8 +282,18 @@ def test_the_harness_is_a_tool_and_is_not_flagged_as_a_product_build_step() -> N
 def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
     """The property principle 6 is actually about: what a browser receives is what is in the tree.
 
-    Two script tags, both same-origin, both naming a file that exists on disk byte-for-byte as
-    served. No bundle, no hashed filename, no manifest, no import map to resolve.
+    **`type="module"` is now permitted and `importmap` is still not**, and the distinction is the
+    whole of this test. v0.12.0 forbade both together because the UI was one classic script and
+    neither was needed. They are not the same thing:
+
+    * a module script is still *one file, fetched by name, executed as written* — no
+      transformation happens between the tree and the browser, which is what principle 6 is about;
+    * an **import map** is an inline `<script type="importmap">`, which `script-src 'self'` forbids
+      outright, and which exists precisely to let bare specifiers resolve — the first step towards
+      a resolver, a lockfile and a bundler.
+
+    So: two script tags, both same-origin, both naming a file that exists on disk byte-for-byte as
+    served. No bundle, no hashed filename, no manifest, no import map.
     """
     index = (UI_DIR / "index.html").read_text(encoding="utf-8")
     sources = [line for line in index.splitlines() if "<script" in line]
@@ -291,7 +301,27 @@ def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
     for relative in ("vendor/d3.v7.min.js", "app.js"):
         assert (UI_DIR / relative).exists()
         assert f'src="/{relative}"' in index
-    assert 'type="module"' not in index and "importmap" not in index
+    assert "importmap" not in index
+    assert 'type="module" src="/app.js"' in index
+    # Every relative import in every module resolves to a file that exists. A specifier that only
+    # a resolver could satisfy is the thing an import map would be introduced for.
+    import re
+
+    for module in sorted(UI_DIR.rglob("*.js")):
+        if "vendor" in module.parts:
+            continue
+        # Anchored to a statement at the start of a line. An unanchored `from "…"` also matches
+        # prose inside a string literal — the word "from" followed by a quoted fragment — which is
+        # how the first version of this reported `session.js` as importing ' +\n      '.
+        source_text = module.read_text(encoding="utf-8")
+        for specifier in re.findall(r'^import\s[^;]*?from\s+"([^"]+)"', source_text, re.MULTILINE):
+            assert specifier.startswith("."), (
+                f"{module.name} imports the bare specifier {specifier!r}, which needs an import "
+                f"map — an inline script the CSP forbids"
+            )
+            assert (module.parent / specifier).resolve().exists(), (
+                f"{module.name} imports {specifier!r}, which is not a file in this tree"
+            )
 
 
 # --- §4 the four UI files, pinned ---------------------------------------------------------------
@@ -299,36 +329,151 @@ def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
 # Here rather than in a file of its own because it asserts the same thing from the other side: not
 # only is there no machinery to transform the UI, the UI itself did not move.
 
-#: SHA-256 of every shipped UI file at v0.11.0. **v0.12.0 changes not one byte of any of them.**
+#: SHA-256 of every shipped UI file at **v0.13.0**. v0.12.0's table carried the v0.11.0 hashes and
+#: said: *"A later release will change these files, and will update this table in the same commit.
+#: That is the point: the change becomes a deliberate, reviewable line in a diff rather than
+#: something that happens while someone is in the file for another reason."* This is that release
+#: and this is that commit.
 UI_HASHES: dict[str, str] = {
-    "app.js": "c9758ffb2a4fd5fdeac584fa6828260291063a2130844eed69c80c818d43858c",
-    "index.html": "8a2d870f5588eb0f5cced0646d76d08d0258c8746b08e976198e904c18e9699b",
-    "style.css": "3101122e3eeafd38c1f3780048edb8cbd7c4ef814bd04e1dadb29f33e946343c",
+    "app.js": "36bb65da9e1f9cb30d9090663e89a6055c4e6cde5c901f1300951ffcd8b8d0df",
+    "app/api.js": "186f79e412a22550a061bc7fd0354a97398e41a153d60c1d19f8e9f03965e977",
+    "app/context.js": "4edc771c857a4f64c33af2faf9f25f3a5925644dee102134383a08d8a0fab6b2",
+    "app/destructive.js": "51994f0640e3e170061ec0f9bea068f7b3fff7348ca153ffb00d64cfb11838e0",
+    "app/dom.js": "b0e279c902ae6f76a902dbc24bb8595d6936aff13f46354870120c4fe42b119b",
+    "app/format.js": "7882f75a19083d8e063331531214369d5ce13e8950c3a1c8a81e467d20170ae4",
+    "app/login.js": "8476f8682b4b470170a864281c0e536eee16b6e2338f99c2a4d5159f91762cc7",
+    "app/parameters.js": "a8f72d0a641b8fe5af8eca32cdff9d48eb70c2560ec1417c8483eafa30d861fc",
+    "app/registry.js": "e275b2765a0abeea13ced3ec1c5fa50d8d02e3973203f8abf1cbeea0ca4b71da",
+    "app/router.js": "9c2d575b5f4706f383bc4696e82f939a370a86675fc17c0f434edb04b6afad88",
+    "app/session.js": "921a2a0681c536b7236160561911cf98178d60205208c5645c0b2d9bafd241bc",
+    "app/shell.js": "53b7053e3424c7f87ca7f8aab51242ae82bd1d9d3cb3362b24ef3b1548ca6201",
+    "app/sidebar.js": "5d73c5e6e888b0789a033c4fe9935dac2328d2158d1f244055f7671895356fb5",
+    "app/store.js": "778dd8dbae3fcb9596bb805fffb578e5ff2e50a24775c8dc80d561a1aa3321b2",
+    "app/theme.js": "ea002928f7cc58cfd490418f6c3c942f43a9b1d1c0f11ffba3a4b4b819e47b0e",
+    "app/views/account.js": "2a72ae4f1730dcd1690f8f6d8a89c78bbb84691046709897c150b8eab9c9ab42",
+    "app/views/audit.js": "da8bdf240a29505b8439ed3806bc506da6a39d550be9e24a57bd8636925cbb84",
+    "app/views/classes.js": "c231cf522759a9b01f4866889a8fb247dc2fbb1189095653ad2ab1aee1340879",
+    "app/views/corpus.js": "be622a6c979c0bc4ef0149422e5c08139099f83c3997f10e4181a1487c1ab826",
+    "app/views/entities.js": "964108e4c45ae09e3e164aa0cf18c4e274c4240ed4b1bea3d19e8d9e5ff93463",
+    "app/views/facts.js": "e419d7d7a0add689fb917f0a6d0a5ce02fd74b0ce643ef111abb3456c8e0ba99",
+    "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
+    "app/views/graph.js": "5aac4bfe93123d3a9190ef951ad63d418f6357113db9b2e4e51cc44d1995424d",
+    "app/views/labelling.js": "b57cbef5822df14584a36a6a36c84587441750cad0cfedeaad2848a3195817c3",
+    "app/views/overview.js": "bc42b93cc0aa0933406093797cf1e73720adbca076faa6ff25136d49c7046657",
+    "app/views/promotion.js": "5dde1eccf40acd06f73efcf1972399532b314156c5e994d2786f99e9cd63b993",
+    "app/views/quarantine.js": "04ed768d8180e7d3182086e8dd12c69c8a497196bfb0086ea5023e34a5470b5b",
+    "app/views/retention.js": "e542bfb8f0ba686ceeb06d7bc8ce6895bca51f3a36eab66f513c588f436a36a3",
+    "app/views/scorer.js": "1bc0e8cce98ad3d151132686a9c930883959e6188d0def45b29dd20abfd6ac34",
+    "app/views/settings.js": "710ea7153620ab5a595ea3f7a471e3ace6c5c769c0891dc396c5710a57e25f5a",
+    "app/views/situations.js": "57664f5b1473b2ced229e5972762c01cfc1b05b075b4584a182313e4de9f51e3",
+    "app/views/timeline.js": "acad3eeaaf0e5f2b5cef2de55eb18abc382038ec9caa95187e4cbb5e39962940",
+    "app/views/tokens.js": "f1195d816ebc5e2a9a431d9d618c05299b4497eb60d8a26774be2edb99fbb676",
+    "app/views/users.js": "2ca4e88282bb88a93abf2f995b7b471b48b8077faf10b7088ae8b92833bd0499",
+    "app/widgets.js": "9d6c36dc9e69741e07cdbbad86f1dbaa62e537402ccc90c3d895c5f1b1718729",
+    "index.html": "a9f95273c23be3714fd2eab8de11124e62e1738a309f45e9add42884939a1cab",
+    "style.css": "246dc34432c2549fa93033d3ec3b5c05064a317fc3c656cc2c7ecf53bb89425b",
+    "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
+    "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
     "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
+    "vendor/htm-3.1.1.module.js": (
+        "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
+    ),
+    "vendor/htm.LICENSE": "740725f7252e750af735d0028cc534970772f513331e9f68150fede8fb3ce00f",
+    "vendor/preact-10.29.8.module.js": (
+        "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8"
+    ),
+    "vendor/preact.LICENSE": "1fe6958409c8c257a70c587a18b6f7f412b179b456630790d30b2ec9a8e4b7d4",
 }
 
 #: Byte sizes, recorded beside the hashes because a size is the figure a reader can check by eye.
+#: `app.js` went from **52 738 bytes in one file** to an entry point plus 34 modules.
 UI_SIZES: dict[str, int] = {
-    "app.js": 52_738,
-    "index.html": 5_818,
-    "style.css": 13_251,
+    "app.js": 5_163,
+    "app/api.js": 3_424,
+    "app/context.js": 2_499,
+    "app/destructive.js": 4_152,
+    "app/dom.js": 2_142,
+    "app/format.js": 4_993,
+    "app/login.js": 3_741,
+    "app/parameters.js": 8_097,
+    "app/registry.js": 7_716,
+    "app/router.js": 5_191,
+    "app/session.js": 2_568,
+    "app/shell.js": 8_848,
+    "app/sidebar.js": 6_513,
+    "app/store.js": 3_912,
+    "app/theme.js": 3_785,
+    "app/views/account.js": 3_417,
+    "app/views/audit.js": 6_484,
+    "app/views/classes.js": 2_304,
+    "app/views/corpus.js": 4_359,
+    "app/views/entities.js": 9_000,
+    "app/views/facts.js": 6_903,
+    "app/views/governance.js": 10_218,
+    "app/views/graph.js": 7_916,
+    "app/views/labelling.js": 5_084,
+    "app/views/overview.js": 11_891,
+    "app/views/promotion.js": 8_303,
+    "app/views/quarantine.js": 2_247,
+    "app/views/retention.js": 4_985,
+    "app/views/scorer.js": 11_681,
+    "app/views/settings.js": 11_319,
+    "app/views/situations.js": 16_613,
+    "app/views/timeline.js": 4_567,
+    "app/views/tokens.js": 5_104,
+    "app/views/users.js": 6_753,
+    "app/widgets.js": 9_332,
+    "index.html": 2_218,
+    "style.css": 22_789,
 }
 
+#: What the one file measured at v0.12.0, kept so the diff states the change
+#: rather than implying it.
+V0_12_0_APP_JS_BYTES = 52_738
 
-def test_not_one_byte_of_the_shipped_ui_changed() -> None:
-    """v0.12.0's central scope claim, as an assertion.
 
-    This release builds the instrument and writes down the shape of the replacement. It changes no
-    pixel. If characterising a behaviour had required editing the UI to make it testable, that
-    would have been a finding and a ROADMAP line — never a change — because a characterisation
-    test written against a UI the test itself modified characterises nothing.
+def test_the_shipped_ui_is_exactly_what_this_release_pinned() -> None:
+    """The pin, carried forward. Every shipped UI file, by hash, updated deliberately.
 
-    A later release **will** change these files, and will update this table in the same commit.
-    That is the point: the change becomes a deliberate, reviewable line in a diff rather than
-    something that happens while someone is in the file for another reason.
+    The table's job does not change with the release: a UI file that moves without this line
+    moving with it is a change nobody reviewed.
     """
+    on_disk = {
+        str(path.relative_to(UI_DIR))
+        for path in UI_DIR.rglob("*")
+        if path.is_file() and ".well-known" not in path.parts
+    }
+    assert on_disk == set(UI_HASHES), (
+        f"the shipped UI file set moved.\n"
+        f"  on disk, unpinned: {sorted(on_disk - set(UI_HASHES))}\n"
+        f"  pinned, missing:   {sorted(set(UI_HASHES) - on_disk)}"
+    )
     for relative, expected in UI_HASHES.items():
         digest = hashlib.sha256((UI_DIR / relative).read_bytes()).hexdigest()
         assert digest == expected, f"src/netcorenoc/ui/{relative} changed: {digest}"
     for relative, size in UI_SIZES.items():
         assert (UI_DIR / relative).stat().st_size == size, relative
+
+
+def test_the_one_file_became_a_module_graph_and_no_module_is_the_old_file_renamed() -> None:
+    """Part XI: *replace the shape, not just the file.*
+
+    52 738 bytes in one file with 55 top-level functions was the problem. One file of the same size
+    in a new syntax would be the problem, renamed — and it would pass every other test in this
+    repository. So the shape is asserted: many modules, none of them anywhere near the old size,
+    and the entry point smallest of all because it only boots.
+    """
+    modules = {
+        str(path.relative_to(UI_DIR)): path.stat().st_size
+        for path in UI_DIR.rglob("*.js")
+        if "vendor" not in path.parts
+    }
+    assert len(modules) >= 20, f"the UI is {len(modules)} files; that is not a module graph"
+    largest = max(modules.items(), key=lambda item: item[1])
+    assert largest[1] < V0_12_0_APP_JS_BYTES // 3, (
+        f"{largest[0]} is {largest[1]} bytes, more than a third of the 52 738-byte file this "
+        f"release replaced. The shape has not changed, only the syntax."
+    )
+    assert modules["app.js"] < 6_000, (
+        f"the entry point is {modules['app.js']} bytes; it should boot and nothing else"
+    )

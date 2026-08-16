@@ -24,10 +24,66 @@ from netcorenoc.api.declare import DeclaredRoutes
 UI_DIR = Path(__file__).parent.parent / "ui"
 UI_FILE = UI_DIR / "index.html"
 QUEUE_SATURATION = 0.9  # /readyz reports not-ready once the ingest queue passes this fraction
+
+# v0.13.0: the console is an ES module graph, so every module has to be reachable. It is
+# **enumerated**, not served from a directory (ADR #175).
+#
+# A directory route would be a path-traversal surface and — worse — it would make "what does this
+# appliance serve?" unanswerable from the code. `STATIC_ASSETS` is a compile-time allowlist and
+# `tests/test_declaration.py` pins that fact; turning it into a directory would delete a
+# deny-by-default property to save typing.
+#
+# `tests/test_supply_chain.py::test_the_served_module_set_equals_the_module_set_on_disk` asserts
+# the two sets are equal **in both directions**, so a module that exists and is not served, and a
+# module that is served and does not exist, both fail.
+_UI_MODULES = (
+    "app.js",
+    "app/api.js",
+    "app/context.js",
+    "app/destructive.js",
+    "app/dom.js",
+    "app/format.js",
+    "app/login.js",
+    "app/parameters.js",
+    "app/registry.js",
+    "app/router.js",
+    "app/session.js",
+    "app/shell.js",
+    "app/sidebar.js",
+    "app/store.js",
+    "app/theme.js",
+    "app/views/account.js",
+    "app/views/audit.js",
+    "app/views/classes.js",
+    "app/views/corpus.js",
+    "app/views/entities.js",
+    "app/views/facts.js",
+    "app/views/governance.js",
+    "app/views/graph.js",
+    "app/views/labelling.js",
+    "app/views/overview.js",
+    "app/views/promotion.js",
+    "app/views/quarantine.js",
+    "app/views/retention.js",
+    "app/views/scorer.js",
+    "app/views/settings.js",
+    "app/views/situations.js",
+    "app/views/timeline.js",
+    "app/views/tokens.js",
+    "app/views/users.js",
+    "app/widgets.js",
+)
+
+_VENDOR_ASSETS = (
+    "vendor/d3.v7.min.js",
+    "vendor/preact-10.29.8.module.js",
+    "vendor/htm-3.1.1.module.js",
+)
+
 STATIC_ASSETS = {
-    "app.js": "application/javascript",
+    **dict.fromkeys(_UI_MODULES, "application/javascript"),
+    **dict.fromkeys(_VENDOR_ASSETS, "application/javascript"),
     "style.css": "text/css",
-    "vendor/d3.v7.min.js": "application/javascript",
     # RFC 9116 machine-readable security contact. Static, public, unauthenticated, additive to
     # this allowlist (not a new dynamic surface); it is served under the same CSP/security-headers
     # middleware and shipped in the package (ui/.well-known/security.txt).

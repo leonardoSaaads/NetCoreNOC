@@ -113,10 +113,52 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/readyz",  # orchestrator readiness; ok/not-ok only, no detail
         "/",  # the single-page UI
         "/openapi.json",  # the schema; docs_url and redoc_url are disabled
-        "/app.js",
         "/style.css",
-        "/vendor/d3.v7.min.js",
         "/.well-known/security.txt",  # RFC 9116
+        # v0.13.0: the console is an ES module graph (ADR #175). Every module is listed
+        # individually, and that verbosity is the point: each line is the reviewable claim
+        # "fetching this needs no capability". A glob here would make the claim unreadable
+        # and would re-open F41 — an exemption that is accidentally true of the next path
+        # somebody adds.
+        "/app.js",
+        "/app/api.js",
+        "/app/context.js",
+        "/app/destructive.js",
+        "/app/dom.js",
+        "/app/format.js",
+        "/app/login.js",
+        "/app/parameters.js",
+        "/app/registry.js",
+        "/app/router.js",
+        "/app/session.js",
+        "/app/shell.js",
+        "/app/sidebar.js",
+        "/app/store.js",
+        "/app/theme.js",
+        "/app/views/account.js",
+        "/app/views/audit.js",
+        "/app/views/classes.js",
+        "/app/views/corpus.js",
+        "/app/views/entities.js",
+        "/app/views/governance.js",
+        "/app/views/graph.js",
+        "/app/views/labelling.js",
+        "/app/views/overview.js",
+        "/app/views/promotion.js",
+        "/app/views/quarantine.js",
+        "/app/views/scorer.js",
+        "/app/views/settings.js",
+        "/app/views/situations.js",
+        "/app/views/timeline.js",
+        "/app/views/tokens.js",
+        "/app/views/users.js",
+        "/app/widgets.js",
+        "/app/views/facts.js",
+        "/app/views/retention.js",
+        # Vendored third-party assets, pinned by CHECKSUMS.txt.
+        "/vendor/d3.v7.min.js",
+        "/vendor/htm-3.1.1.module.js",
+        "/vendor/preact-10.29.8.module.js",
     }
 )
 

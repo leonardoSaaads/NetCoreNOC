@@ -16,6 +16,7 @@ from netcorenoc import auth, capture
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ConfigIn, RetentionIn, RoleIn, TokenIn, UserIn
+from netcorenoc.settings import Settings
 
 # The tier names, in `RetentionPolicy.as_key()` order, so the audit detail reads as a policy
 # rather than as an unlabelled tuple. Before and after are both captured. Imported from the module
@@ -153,14 +154,59 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/config", dependencies=guarded)
     async def get_config() -> dict[str, Any]:
-        allowlist = runtime.allowlist if runtime else ""
-        retention = runtime.retention_days if runtime else 0.0
+        """The live configuration, and — from v0.13.0 — **why each value is what it is**.
+
+        The two top-level keys are unchanged, so nothing that reads this route today notices. Two
+        objects are added (ADR #179):
+
+        * ``precedence`` — the environment default and the database override **separately**, so a
+          console can show three columns. An operator's real question during an incident is *"why
+          is this value what it is?"*, and two sources behind one displayed number cannot answer
+          it. `RuntimeConfig` holds only the merged value, and growing it is what
+          `UI-0.13-DRAFT.md` §12.5 closes, so the defaults are re-read from the environment here —
+          which is exactly what they are.
+        * ``startup`` — the settings `Settings` reads once and never mutates, so the console can
+          say *which changes need a restart* before one is attempted rather than after. A settings
+          page that accepted a new ``trap_port`` and appeared to succeed, while the receiver kept
+          listening on the old one, would be worse than no settings page.
+
+        **`tls_cert` and `tls_key` are reported as one boolean, and `api_token` is not reported.**
+        This capability is in ``AUDITED_DENIED_PERMISSIONS`` precisely because reading the
+        allowlist reveals network-security posture (F9); adding filesystem paths to the response
+        would widen what one audited capability discloses for no operator benefit.
+        """
+        env = Settings.from_env()
+        # **The fallback is the environment default, not a literal.** With no `RuntimeConfig` —
+        # which is every app built without one — v0.12.0 answered `retention_days: 0.0` while the
+        # environment said `7.0`. Nothing noticed, because nothing displayed the two side by side.
+        # The precedence object does display them side by side, and an "effective" value that
+        # contradicts the "environment default" beside it is exactly the confusion §7.1 exists to
+        # remove. Found by the test written to kill a surviving mutant.
+        allowlist = runtime.allowlist if runtime else env.allowlist
+        retention = runtime.retention_days if runtime else env.retention_days
         async with store.lock:
             saved_allow = await store.get_meta("config.allowlist")
             saved_ret = await store.get_meta("config.retention_days")
         return {
             "allowlist": saved_allow if saved_allow is not None else allowlist,
             "retention_days": float(saved_ret) if saved_ret is not None else retention,
+            "precedence": {
+                "allowlist": {"env": env.allowlist, "override": saved_allow},
+                "retention_days": {
+                    "env": env.retention_days,
+                    "override": float(saved_ret) if saved_ret is not None else None,
+                },
+            },
+            "startup": {
+                "db_path": env.db_path,
+                "trap_host": env.trap_host,
+                "trap_port": env.trap_port,
+                "http_host": env.http_host,
+                "http_port": env.http_port,
+                "audit_retention_days": env.audit_retention_days,
+                "tls_enabled": env.tls_enabled,
+                "log_json": env.log_json,
+            },
         }
 
     @route.post("/api/config")

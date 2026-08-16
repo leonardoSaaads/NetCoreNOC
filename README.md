@@ -305,6 +305,48 @@ quarantine, non-root container, no secrets in logs. `bandit`, `pip-audit`, and a
 secret-leak scan run in CI. See [`SECURITY.md`](SECURITY.md) and
 [`docs/security/SECURITY-REVIEW-0.2.md`](docs/security/SECURITY-REVIEW-0.2.md).
 
+## The console (v0.13.0)
+
+One static web UI, loaded directly by the browser: **no build step, no npm, no lockfile, no
+bundle.** The files a browser fetches are the files on disk.
+
+```
+Operations   Situations · Network graph · Timeline · Entities · Alarm classes
+Evidence     Labelling · Corpus · Judge & promotion
+Administer   Users · Service tokens · Settings · Link scorer · Governance · Quarantine · Audit
+```
+
+*(Screenshots are described rather than embedded, because this build could not produce images.)*
+
+**The Situations screen** is a list of dense cards — id, status, alarm count, age — that expand in
+place. An expanded card shows the probable root cause, the member alarms in a compact table with
+severity encoded in colour **and** glyph **and** text, and then the section this whole product
+exists for: *Why these were grouped*. One row per link, carrying the score, the pair, and **the
+three named terms with each term's number beside its bar** — temporal, class affinity, entity
+affinity. You can answer "why did the system group these alarms?" without leaving the screen.
+
+**The Settings screen** shows every parameter in three visibly different classes. *Mechanism* is
+yours to set, with the cost stated beside it. *Hardening-only* you may make stricter and not looser
+— the project floor is shown, and a looser value is refused with the reason, by the console before
+it is sent and by the appliance if it is sent anyway. *Structural* is a fact with no control:
+`seal: 0 queries` has no edit box because it is a guarantee, not a preference. Every live setting
+shows three columns — environment default, database override, effective — so the question *"why is
+this value what it is?"* has an answer on screen.
+
+**Nothing destructive happens without a preview.** The apply control does not exist until you have
+asked what would be destroyed; where a route has no preview mode, the console says so rather than
+inventing a count.
+
+Dark, light or your system's preference; compact or comfortable density; both remembered in a
+cookie that carries a theme name and nothing else. The sidebar is one tab stop with arrow-key
+navigation, and focus moves into the work area when you navigate.
+
+**Two things the console does not claim.** The network graph is not keyboard-operable and has no
+screen-reader equivalent beyond its label — everything it shows is on the Entities screen as text,
+and the graph says so. And no screen-reader testing has been performed;
+[`docs/security/SECURITY-REVIEW-0.13.0.md`](docs/security/SECURITY-REVIEW-0.13.0.md) §5 lists what
+the test instrument cannot see.
+
 ## Development
 
 ```sh
@@ -315,17 +357,21 @@ make security  # bandit + pip-audit
 make loadtest  # 1000 traps/s for 60 s against a running instance
 ```
 
-**The UI is tested by executing it (v0.12.0).** `tests/domharness/` evaluates `ui/app.js` in a DOM
-and drives it against responses captured from the real server, so five invariants — the per-role
-panel boundary, the partial-split payload, a gesture surviving a server-sent update, escaping, and
-least privilege at the client — are asserted behaviourally rather than by reading the source as
-text. Until v0.12.0 no test executed that file at all.
+**The console is tested by executing it.** `tests/domharness/` links and evaluates the UI's whole
+ES module graph — **including the vendored Preact and htm bytes `CHECKSUMS.txt` pins** — in a DOM
+under `node:vm`, and drives it against responses captured from the real server. Five invariants are
+asserted behaviourally rather than by reading the source as text: the per-role screen boundary, the
+partial-split payload, a gesture surviving a server-sent update, escaping, and least privilege at
+the client. v0.13.0 adds the keyboard floor, the theme cookie, the hardening-only refusal and the
+destructive-preview rule to the same instrument.
+
+Until v0.12.0 no test executed the UI at all, and that was demonstrated rather than assumed.
 
 It needs **Node ≥ 22 on `PATH` and nothing else**: no `npm install`, no `package.json`, no
 `node_modules`, no lockfile, no network. **Node is a test dependency and never a runtime one** — the
 appliance still runs on five Python packages and a static UI a browser loads directly, and
 `tests/test_build_step.py` is the guard on that. Without Node the DOM tests **skip, loudly**; `make
-dom` then prints `18 skipped` rather than `18 passed`, and that difference is the one to read.
+dom` then prints `24 skipped` rather than `24 passed`, and that difference is the one to read.
 
 Start at the documentation index [`docs/README.md`](docs/README.md): design rationale in
 `docs/architecture/`, scope in `docs/scope/`, every ambiguity call in

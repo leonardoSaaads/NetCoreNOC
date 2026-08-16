@@ -535,7 +535,10 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
         "docs/security/threat-model.md",
         "README.md",
         "MIGRATION.md",
-        "src/netcorenoc/ui/index.html",
+        # v0.13.0: index.html is a mount point and carries no copy. The claim moved to the
+        # module that renders the Governance screen, which is where an operator reads it — and
+        # that is what this control is about, not which file it lives in.
+        "src/netcorenoc/ui/app/views/governance.js",
         "src/netcorenoc/shaping/__init__.py",
     ):
         # Normalise typesetting before matching: strip Markdown/HTML emphasis and collapse
