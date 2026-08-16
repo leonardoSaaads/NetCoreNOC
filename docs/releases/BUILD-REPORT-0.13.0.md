@@ -109,7 +109,14 @@ field. Then the new test found a **third** thing: with no `RuntimeConfig`, the r
 contradicting the environment column printed beside it, which is precisely the confusion the
 three-column table exists to remove. Fixed in `routes_admin.py`.
 
-**Final ledger: 21 mutants, 21 killed, 0 survivors.** The value was never the number.
+**Final ledger: 20 mutants, 20 killed, 0 survivors.** The value was never the number.
+
+This paragraph first said *21 of 21*, and re-running the tool printed **17 of 19**. The prose had
+added up mutants that were never in the table while the tool's `SUITE` omitted the very test file
+that killed two of them — and one mutant's anchor named code the file does not contain, so it had
+never been applied. All three faults were in the instrument, all three are fixed, and 20/20 is now
+what the command prints rather than what the paragraph asserts. Recorded in full at
+[`docs/gates/v0.13.0-phase-7.md`](../gates/v0.13.0-phase-7.md) §7.2.
 
 ### Then the finished tree was opened in a browser, and six more defects were on screen
 

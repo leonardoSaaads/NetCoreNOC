@@ -9,15 +9,52 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
+import shutil
+
+# B404 is suppressed on the import below: subprocess is how this tool runs pytest and git. Every
+# call site passes a fixed argv list with `shell=False`, and both executables are absolute paths
+# resolved here rather than looked up by the shell at call time.
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 from typing import Any, TypedDict
 
-ROOT = Path("/home/user/NetCoreNOC")
+#: Derived, not hardcoded. The first version of this file pinned the build container's absolute
+#: path, so the command `docs/gates/v0.13.0-phase-7.md` tells a reader to run failed on every
+#: machine except the one it was written on — a reproduction instruction that cannot reproduce.
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / ".demos"
-OUT.mkdir(exist_ok=True)
-PY = str(ROOT / ".venv" / "bin" / "python")
+
+#: The interpreter running this script, so the demonstrations use the same environment the operator
+#: invoked. Pinning `.venv/bin/python` assumed a virtualenv at a fixed path; CI installs into the
+#: system Python and would have run a `python` that does not exist.
+PY = sys.executable
+
+#: Resolved ONCE, to an absolute path. This is bandit's B607 and it is a real property, not a
+#: formality: a partial name is resolved against `PATH` at call time, so a directory earlier on
+#: `PATH` decides which `git` runs. Resolving here also makes the absence of git an explicit error
+#: instead of a confusing failure inside a subprocess.
+GIT = shutil.which("git")
+
+
+def git(*args: str) -> str:
+    """Run git by absolute path and return its stdout.
+
+    `check=True`: every use below is a step the demonstration depends on, and a silent failure
+    would leave a tracked injection file behind — the one outcome this tool exists to rule out.
+    """
+    if GIT is None:
+        raise RuntimeError(
+            "git was not found on PATH. The demonstrations stage and unstage one created file, "
+            "and verify the tree afterwards, so git is required rather than optional."
+        )
+    # B603: fixed argv, `shell=False`, and no element comes from operator input — `GIT` is an
+    # absolute path and every argument is a literal from the DEMOS table in this file.
+    proc = subprocess.run(  # nosec B603
+        [GIT, *args], cwd=str(ROOT), capture_output=True, text=True, check=True
+    )
+    return proc.stdout
+
 
 #: The control must pass in BOTH states, so a red that came from breaking the suite generally is
 #: distinguishable from a red the guard actually caught.
@@ -25,7 +62,10 @@ CONTROL = "tests/test_ui_invariants.py::test_a_confirm_never_carries_exclusions"
 
 
 def run(test_ids: list[str], timeout: int = 400) -> str:
-    proc = subprocess.run(
+    # B603: `shell=False` with a fixed argv — `PY` is `sys.executable`, the flags are literals,
+    # and `test_ids` are node ids from the DEMOS table in this file. Nothing here is operator
+    # input, and no shell parses any of it.
+    proc = subprocess.run(  # nosec B603
         [PY, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider", *test_ids],
         cwd=str(ROOT),
         capture_output=True,
@@ -221,6 +261,10 @@ DEMOS: list[Injection] = [
 
 
 def main() -> None:
+    # Created here rather than at import. A module that writes to the repository merely by being
+    # imported means `mypy`, `bandit` and `ruff` all leave a directory behind, and this tool's
+    # closing check is precisely "is the tree as it was".
+    OUT.mkdir(exist_ok=True)
     results: list[dict[str, Any]] = []
     control_before = run([CONTROL])
     print(f"control, corrected tree: {control_before}\n", flush=True)
@@ -238,7 +282,7 @@ def main() -> None:
             created.parent.mkdir(parents=True, exist_ok=True)
             created.write_text(demo["content"], encoding="utf-8")
             if demo.get("track"):
-                subprocess.run(["git", "add", "-f", demo["create"]], cwd=str(ROOT), check=True)
+                git("add", "-f", demo["create"])
         else:
             target = ROOT / demo["file"]
             original = target.read_text(encoding="utf-8")
@@ -250,9 +294,7 @@ def main() -> None:
 
         if created is not None:
             if demo.get("track"):
-                subprocess.run(
-                    ["git", "rm", "-q", "-f", "--cached", demo["create"]], cwd=str(ROOT), check=True
-                )
+                git("rm", "-q", "-f", "--cached", demo["create"])
             created.unlink()
         elif target is not None:
             target.write_text(original, encoding="utf-8")
@@ -284,9 +326,7 @@ def main() -> None:
 
     # The tree must be exactly as it was. A demonstration that left a defect behind is the worst
     # possible outcome, so this is measured rather than assumed.
-    status = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=str(ROOT), capture_output=True, text=True, check=True
-    ).stdout.strip()
+    status = git("status", "--porcelain").strip()
     ui = ROOT / "src" / "netcorenoc" / "ui"
     digest = hashlib.sha256(
         b"".join(sorted(p.read_bytes() for p in ui.rglob("*") if p.is_file()))

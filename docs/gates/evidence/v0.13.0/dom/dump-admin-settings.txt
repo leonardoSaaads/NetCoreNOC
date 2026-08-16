@@ -216,7 +216,8 @@
                       <span .muted>
                         "(none)"
                     <td>
-                      <b .mono>
+                      <span .muted>
+                        "(empty — every source accepted)"
                   <tr>
                     <td>
                       <code .mono>

@@ -16,12 +16,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
-ROOT = Path("/home/user/NetCoreNOC")
+#: Derived from this file's location. Pinning the build container's absolute path made the
+#: reproduction command in `docs/gates/v0.13.0-phase-7.md` false everywhere except the machine it
+#: was written on — a reproduce-me instruction that cannot reproduce is worse than none.
+ROOT = Path(__file__).resolve().parents[2]
 for extra in ("tests", "src", "tools"):
     sys.path.insert(0, str(ROOT / extra))
 
+#: Created in `main()`, not here: importing a module should not write to the repository.
 OUT = ROOT / ".drive"
-OUT.mkdir(exist_ok=True)
 
 VIEWS = [
     "overview",
@@ -52,6 +55,7 @@ async def main() -> None:
     import authutil
     import util
 
+    OUT.mkdir(exist_ok=True)
     for stale in OUT.glob("gate.db*"):
         stale.unlink()
     store = Store(str(OUT / "gate.db"))

@@ -11,13 +11,37 @@ whole UI-facing set, so a mutant that survives survived everything that could pl
 from __future__ import annotations
 
 import json
-import subprocess
+import shutil
+
+# B404 is suppressed on the import below: subprocess is how this tool runs the suite against each
+# mutant and reads the tree back afterwards. Both call sites pass a fixed argv with `shell=False`
+# and an absolute executable.
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
-ROOT = Path("/home/user/NetCoreNOC")
-PY = str(ROOT / ".venv" / "bin" / "python")
+#: Derived from this file's location rather than pinned to the build container's absolute path,
+#: which is what the first version did — making the reproduction command in the gate document
+#: false on every machine but one.
+ROOT = Path(__file__).resolve().parents[2]
+OUT = ROOT / ".demos"
 
+#: The interpreter running this script, not an assumed `.venv/bin/python`.
+PY = sys.executable
+
+#: Resolved once to an absolute path (bandit B607): a partial name is resolved against `PATH` at
+#: call time, so whichever directory comes first on `PATH` decides which `git` runs.
+GIT = shutil.which("git")
+
+#: The suite each mutant is run against.
+#:
+#: **`test_api.py` is here because leaving it out made the ledger lie.** The two Python mutants
+#: below live in `routes_admin.py` and `routes_static.py`, and the tests that kill them are HTTP
+#: tests in `test_api.py`. Without it the ledger reported `routes_admin.py: precedence …` as a
+#: SURVIVOR while the repository killed it — so the documented figure and the tool's own output
+#: disagreed, and the tool was the one that was wrong. A mutation ledger whose suite does not
+#: include the tests that cover the mutated file is not measuring the repository; it is measuring
+#: its own SUITE list.
 SUITE = [
     "tests/test_ui_invariants.py",
     "tests/test_security_ui.py",
@@ -26,6 +50,7 @@ SUITE = [
     "tests/test_supply_chain.py",
     "tests/test_architecture.py",
     "tests/test_declaration.py",
+    "tests/test_api.py",
 ]
 
 MUTANTS = [
@@ -136,9 +161,13 @@ MUTANTS = [
 
 PY_MUTANTS = [
     (
+        # The anchor was wrong in the first version — it named a dict comprehension the file does
+        # not contain — so this mutant was recorded as "NOT APPLIED — anchor missing" and has never
+        # actually been measured. An injection that does not apply measures nothing, which is
+        # Appendix B's trap and is why the ledger prints the reason instead of a tick.
         "routes_static.py: the vendored assets stop being served",
         "src/netcorenoc/api/routes_static.py",
-        '    **{name: "application/javascript" for name in _VENDOR_ASSETS},\n',
+        '    **dict.fromkeys(_VENDOR_ASSETS, "application/javascript"),\n',
         "",
     ),
     (
@@ -147,11 +176,23 @@ PY_MUTANTS = [
         '                "allowlist": {"env": env.allowlist, "override": saved_allow},',
         '                "allowlist": {"env": saved_allow, "override": saved_allow},',
     ),
+    (
+        # The third mutant `v0.13.0-phase-7.md` §7.2 says was found while closing the second: the
+        # same defect one field over. It was closed at the time but never added to this table, so
+        # the tool could not reproduce the figure the document quoted.
+        "routes_admin.py: precedence reports the retention override as the environment default",
+        "src/netcorenoc/api/routes_admin.py",
+        '                    "env": env.retention_days,',
+        '                    "env": float(saved_ret) if saved_ret is not None else '
+        "env.retention_days,",
+    ),
 ]
 
 
 def run() -> str:
-    proc = subprocess.run(
+    # B603: `shell=False` with a fixed argv — `PY` is `sys.executable`, the flags are literals
+    # and `SUITE` is a module constant of test paths. No operator input reaches this.
+    proc = subprocess.run(  # nosec B603
         [PY, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider", *SUITE],
         cwd=str(ROOT),
         capture_output=True,
@@ -163,7 +204,24 @@ def run() -> str:
     return tail[-1] if tail else proc.stdout.strip()[-200:]
 
 
+def git(*args: str) -> str:
+    """Run git by absolute path and return its stdout."""
+    if GIT is None:
+        raise RuntimeError(
+            "git was not found on PATH. The ledger reads the tree back after every mutant is "
+            "reverted, and a ledger that cannot check that is not evidence."
+        )
+    # B603: fixed argv, `shell=False`, `GIT` absolute, every argument a literal.
+    return subprocess.run(  # nosec B603
+        [GIT, *args], cwd=str(ROOT), capture_output=True, text=True, check=True
+    ).stdout
+
+
 def main() -> None:
+    # Created here rather than at import, and created at all: the first version wrote
+    # `.demos/mutants.json` into a directory only `guard_demonstrations.py` created, so running
+    # this tool on its own raised `FileNotFoundError` after a nine-minute measurement.
+    OUT.mkdir(exist_ok=True)
     ledger = []
     for title, relative, old, new in [
         (t, f"src/netcorenoc/ui/{r}", o, n) for t, r, o, n in MUTANTS
@@ -190,19 +248,13 @@ def main() -> None:
         )
         print(f"{'kill ' if killed else 'LIVE '} {title}\n        {outcome}", flush=True)
 
-    Path(ROOT / ".demos" / "mutants.json").write_text(json.dumps(ledger, indent=2))
+    (OUT / "mutants.json").write_text(json.dumps(ledger, indent=2))
     survivors = [m for m in ledger if m["status"] != "killed"]
     print(f"\n{len(ledger) - len(survivors)}/{len(ledger)} killed.")
     print("\nSURVIVORS, by name:")
     for m in survivors:
         print(f"  - {m['file']}: {m['title']}")
-    status = subprocess.run(
-        ["git", "status", "--porcelain", "src", "tests"],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    status = git("status", "--porcelain", "src", "tests").strip()
     print(f"\ntree after: {status or '(clean)'}")
     sys.exit(0 if not status else 1)
 

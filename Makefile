@@ -2,14 +2,28 @@
 #   make qa PYTHON=python
 PYTHON ?= .venv/bin/python
 
-.PHONY: qa lint typecheck test coverage security deadcode checksums linkcheck run replay loadtest burst \
+.PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay loadtest burst \
 	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
 	bias-report dataset-stats agreement-report shadow-report census
 
-qa: lint typecheck deadcode test eval
+qa: lint typecheck deadcode scan test eval
 
-security:
+# `security` is `scan` plus a PyPI query, and CI runs it as its own step. `scan` exists so that the
+# offline half is also in `qa` (v0.13.0).
+#
+# **Why the split.** v0.13.0 added three tools under `tools/evidence/` that shell out to pytest and
+# git. `make qa` was green, every gate document was written, the release was tagged — and CI failed
+# on `make security`, because bandit is the one static analyser this project runs that `qa` never
+# invoked. A local gate that does not run what CI runs is a gate with a hole in it, and the hole is
+# exactly the size of the check nobody local performs.
+#
+# `pip_audit` stays out of `qa` deliberately: it queries PyPI, so putting it there would make the
+# routine local gate fail on an offline machine for a reason that has nothing to do with the code.
+# Bandit reads files and nothing else, which is the same contract as ruff, mypy and vulture above.
+scan:
 	$(PYTHON) -m bandit -q -c pyproject.toml -r src/netcorenoc tools
+
+security: scan
 	$(PYTHON) -m pip_audit
 
 # Dead-code gate (§7): vulture over the runtime package with a committed allowlist.

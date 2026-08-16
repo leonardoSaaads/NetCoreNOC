@@ -228,9 +228,26 @@ def test_make_qa_runs_the_dom_harness() -> None:
     other. What could still go wrong is the *reporting*: on a machine without Node these become
     skips, and a reader of "1300 passed" would not know. The `dom` marker exists so the gate can
     quote `pytest -m dom` separately, and `Makefile`'s `dom` target makes that a named command.
+
+    **The prerequisite list is parsed, not matched as a literal** (v0.13.0). The first version
+    asserted the exact string `"qa: lint typecheck deadcode test eval"`, which is the trap
+    Appendix B names: a guard scoped by a literal fails on a change it has no opinion about. It
+    duly failed when `scan` was added to `qa` — a change that makes the gate *stronger* — while
+    what this test actually claims is only that `test` is one of `qa`'s prerequisites. That claim
+    is now stated directly, so the recipe can grow without this test objecting, and can still not
+    quietly drop the step that runs the harness.
     """
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
-    assert "qa: lint typecheck deadcode test eval" in makefile
+    qa_lines = [line for line in makefile.splitlines() if line.startswith("qa:")]
+    assert len(qa_lines) == 1, f"expected exactly one `qa:` target, found {len(qa_lines)}"
+    prerequisites = qa_lines[0].split(":", 1)[1].split()
+    assert "test" in prerequisites, (
+        f"`make qa` no longer runs `test`, so nothing collects the DOM harness: {prerequisites}"
+    )
+    assert "eval" in prerequisites, (
+        f"`make qa` no longer runs `eval`, so a correlation regression would not be gated: "
+        f"{prerequisites}"
+    )
     assert "\ndom:\n" in makefile, "Makefile has no `dom` target for reporting executed DOM tests"
     config = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'markers = ["dom' in config or "dom:" in config, "the `dom` marker is not registered"
