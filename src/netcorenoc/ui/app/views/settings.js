@@ -219,7 +219,12 @@ function PrecedenceTable({ rows }) {
         db: override && override.override != null && override.override !== ""
           ? html`<code class="mono">${override.override}</code>`
           : html`<span class="muted">(none)</span>`,
-        effective: html`<b class="mono">${String(effective)}</b>`,
+        // An empty effective value must SAY it is empty. A blank cell in a precedence table is
+        // exactly the ambiguity the table exists to remove: the operator cannot tell "no value"
+        // from "the console failed to render one". Found by looking at the running console.
+        effective: effective === "" || effective == null
+          ? html`<span class="muted">(empty — every source accepted)</span>`
+          : html`<b class="mono">${String(effective)}</b>`,
       },
     }))} />`;
 }

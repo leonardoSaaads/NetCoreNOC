@@ -41,7 +41,7 @@ has.** Every live setting shows three columns — environment default, database 
 | `ui/app.js` | 52 738 bytes, one file, 55 top-level functions | **an entry point plus 34 ESM modules**, largest 388 lines |
 | screens | 10 tabs | **17 views in three groups** |
 | declared routes with no screen | 8 | **0** |
-| `mypy --strict` | clean, 177 files | **clean, 177 files** |
+| `mypy --strict` | clean, 177 files | **clean, 180 files** — the three added files are the evidence commands under `tools/evidence/`, which `[tool.mypy].files` covers |
 | `make eval` | `c2e8a0ce…8b9b6f26` | **byte-identical** |
 | migrations | `0001`–`0013` | **unchanged** |
 | runtime dependencies | 5 | **5** |
@@ -111,6 +111,37 @@ three-column table exists to remove. Fixed in `routes_admin.py`.
 
 **Final ledger: 21 mutants, 21 killed, 0 survivors.** The value was never the number.
 
+### Then the finished tree was opened in a browser, and six more defects were on screen
+
+Every figure above comes from the harness, and the harness has no layout, no cascade and no paint.
+So the finished console was driven in a real Chromium against a real appliance — empty SQLite, real
+SNMPv2c traps over UDP, four correlated situations, both judgement paths — and **six defects were
+found by looking, with all 1428 tests green.**
+
+Five were the same defect five times. `htm` collapses a newline **adjacent to a tag boundary to
+nothing**, not to a space, so
+
+```js
+html`<p class="root">Probable root:
+  <b>${alarmName(root)}</b>`
+```
+
+painted `Probable root:1.3.6.1.4.1.1271.2.1.1`. The sixth was worse in kind: `NETCORENOC_ALLOWLIST`
+is unset, unset means *accept every source*, and the settings precedence table rendered that as a
+**blank cell** — in the one table whose entire purpose is to explain why a setting has the value it
+has. It now reads `(empty — every source accepted)`.
+
+The harness dumps an identical, correct tree in all six cases. It cannot see whitespace and it
+cannot see emptiness, because both are properties of what is **painted** and `textContent` is what
+was **written**. That gap does not close by adding assertions; closing it needs a layout engine.
+Hence ADR #182: one browser pass per UI release, recorded with what it did **not** verify, and
+deliberately **not** added to `make qa`, CI or `pyproject.toml`. The drive's own probe carried
+three defects of exactly the shape Appendix B names — a literal that CSS uppercases, a selector
+matching zero cells, a control addressed by text it never had — and all three are recorded beside
+the six.
+
+Full record: [`docs/gates/v0.13.0-live-verification.md`](../gates/v0.13.0-live-verification.md).
+
 ---
 
 ## Honest notes
@@ -123,6 +154,12 @@ The harness has **no layout, no CSS cascade, no `getComputedStyle`, no paint, an
 tree.** `style.css` is 560 lines and no test executes any of it beyond substring checks on a handful
 of tokens. Every judgement in this release about spacing, contrast, visual hierarchy, or whether two
 severity colours are distinguishable is **unmeasured**. I chose them by reading hex values.
+
+The browser pass above changes what *I have seen* and changes nothing about what is *tested*. Both
+themes were rendered and read by eye at one viewport in one browser; **no contrast ratio was
+computed against WCAG AA**, no second browser was driven, no narrow viewport was exercised, and
+nothing was heard by a screen reader. The pass is not in the suite and will not protect the next
+release. Six defects it found are the measure of how much this note was understating the gap.
 
 **And the graph is unexecuted in every sense.** d3 is a recording double, so `app/views/graph.js` —
 172 lines of force simulation, drag, zoom and edge rendering — is executed by no assertion at all.

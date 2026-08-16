@@ -197,8 +197,8 @@ class Detail extends Component {
       ${withheld > 0 ? html`<p class="held-note">${
         `Frozen while open — ${plural(withheld, "update")} withheld. Collapse to resume.`}</p>` : null}
 
-      ${root ? html`<p class="root">Probable root:
-        <b>${alarmName(root)}</b> on <b>${deviceName(root)}</b>
+      ${root ? html`<p class="root">${"Probable root: "}
+        <b>${alarmName(root)}</b>${" on "}<b>${deviceName(root)}</b>
         ${detail.root_confidence != null
           ? html` <span class="muted">(confidence ${percent(detail.root_confidence)})</span>` : null}
       </p>` : null}

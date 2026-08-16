@@ -89,7 +89,7 @@ export class DatasetRetention extends Component {
             ${count(result.training_deletes)} rows — it selects rather than destroys.</p>
         </div>`}
         apply=${async () => post("/api/dataset/retention", this.body(false))}
-        renderResult=${(result) => html`<span>Deleted
+        renderResult=${(result) => html`<span>${"Deleted "}
           ${Object.entries(result.deleted || {}).map(([k, v]) => `${count(v)} ${k}`).join(", ") || "nothing"}.</span>`}
         onDone=${onSaved} />
     </section>`;

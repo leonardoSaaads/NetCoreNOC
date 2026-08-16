@@ -161,8 +161,8 @@ function Propose({ versions, onDone }) {
     })}
     apply=${async () => post("/api/promotion", { model_version_id: candidate.id, note: "" })}
     renderResult=${(result) => html`<span>
-      Verdict <b class="mono">${result.verdict}</b>, outcome <b>${result.status}</b>.
-      ${result.reason ? ` Reason: ${result.reason}` : ""}
+      Verdict <b class="mono">${result.verdict}</b>, outcome <b>${result.status}</b>.${" "}
+      ${result.reason ? `Reason: ${result.reason}` : ""}
       ${(result.unavailable || []).length
         ? html` ${plural(result.unavailable.length, "quantity", "quantities")} could not be
             computed and are recorded as absent rather than as zero.` : ""}

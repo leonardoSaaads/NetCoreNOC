@@ -258,7 +258,7 @@ release could produce.
 | **F53** | **CLOSED** — §1 |
 | **F54** | **fixed in this release** — §2, residual recorded |
 | **F55** | **fixed in this release** — §3 |
-| tests | 1426 passing, up from 1339 |
+| tests | 1428 passing, up from 1339 |
 | DOM tests executed | 24, up from 18 |
 | `make eval` | byte-identical: `c2e8a0ce…8b9b6f26` |
 | seal query count | 0 |

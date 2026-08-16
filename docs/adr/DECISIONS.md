@@ -4224,3 +4224,35 @@ grouping**.
   still fails if a whole module went untested. **A band the release cannot fail is not a band.**
 - **Consequence**: Phase 7 reports the measured figure against **both** #159's band and this one,
   and says plainly which it falls in. Neither band is moved after the fact.
+
+## 182. A UI release gets one pass with eyes on it, and that pass is not automated (v0.13.0)
+
+- **Context**: v0.13.0's DOM harness links the real module graph, mounts the real components and
+  dumps the real tree. It has **no layout, no cascade and no paint**. Everything gates 2 to 7
+  measure is structure.
+- **What happened**: with all 1428 tests green, a real-browser pass over the finished tree found
+  **six defects on screen**. Five were `htm` whitespace collapse — a newline adjacent to a tag
+  boundary collapses to *nothing*, not a space, so `Probable root:` painted flush against the OID
+  next to it. The sixth was the settings precedence table rendering an unset `NETCORENOC_ALLOWLIST`
+  as a blank cell, in the one table whose entire purpose is to explain why a setting has the value
+  it has. The harness dumps an identical, correct tree in all six cases.
+- **The class**: *the harness cannot see whitespace, and it cannot see emptiness.* Both are
+  properties of what is **painted**, and a test that reads `textContent` is reading what was
+  **written**. This is not a gap that can be closed by adding assertions to the harness — closing
+  it needs a layout engine, which is a browser, which is the thing this project's test suite
+  deliberately does not depend on.
+- **Decision**: a release that changes the UI gets **one pass in a real browser before it ships**,
+  recorded in a gate document naming what was driven **and what was not**. The pass is explicitly
+  **not** added to `make qa`, not added to CI, and not added to `pyproject.toml`. The driver lives
+  outside the repository.
+- **Why not automate it**: a browser in the test suite is a build-adjacent dependency in a product
+  whose sixth principle is one runtime identity, no build step and five runtime dependencies. It
+  would also be the wrong instrument: what caught these six was *reading the screen*, and an
+  automated pass asserts only what someone already thought to assert. The v0.13.0 drive's own probe
+  carried three defects of exactly that shape — a guard scoped by a literal string that CSS
+  uppercases, a selector matching zero cells and reporting the empty set, and a control addressed
+  by text it never had. All three are recorded in
+  `docs/gates/v0.13.0-live-verification.md` §5.
+- **Consequence**: `docs/gates/v0.13.0-live-verification.md` is the first such document, including
+  its §6 — the list of what the pass did not verify: one browser, one viewport, no screen reader,
+  no contrast measurement, no repeated timing.

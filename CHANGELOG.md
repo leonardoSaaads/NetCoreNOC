@@ -78,6 +78,13 @@ Re-derived by driving every control in Gate 0, not copied from the design draft:
   the entire point of the governance feature.
 - The sidebar's arrow keys were inert; the Overview sat on a spinner forever when `/api/stats`
   failed. Both were found by **driving** the UI, not by reading it.
+- **Six defects the whole green suite passed through, found in a real browser.** Five collapsed
+  spaces — `htm` collapses a newline adjacent to a tag boundary to *nothing*, not a space, so
+  `Probable root:` painted flush against the OID beside it — and a blank cell where the settings
+  precedence table should have said `(empty — every source accepted)`. The harness dumps an
+  identical, correct tree in all six cases: it has no layout and no paint, so it can see neither
+  whitespace nor emptiness.
+  [`docs/gates/v0.13.0-live-verification.md`](docs/gates/v0.13.0-live-verification.md) §4.
 - `tests/test_supply_chain.py` verified only what `CHECKSUMS.txt` already named, so an asset
   dropped into `vendor/` with no pin was invisible to it.
 
@@ -99,9 +106,20 @@ query count (0), and the five runtime dependencies.
 
 **The visual layer is outside the instrument, and so is the graph.** The harness has no layout, no
 cascade and no accessibility tree; d3 is a recording double, so `app/views/graph.js` is executed by
-no assertion at all. No screen-reader testing was performed. These are stated in
+no assertion at all. These are stated in
 [`docs/security/SECURITY-REVIEW-0.13.0.md`](docs/security/SECURITY-REVIEW-0.13.0.md) §5 rather than
 implied away by a green suite.
+
+**One pass with eyes on it, and it is not automated** (ADR #182). The finished console was driven
+in a real Chromium against a real appliance carrying four situations built from real UDP traps —
+43 checks green, all 17 views, both judgement paths, a clean console. The **built wheel** was then
+installed into an empty venv and driven from its own bytes on an empty database: 45 UI files, zero
+byte differences against the tree, 40 declared assets served, the forced first password change, and
+every screen rendering its empty state. What that pass did **not** verify is listed as plainly as
+what it did: one browser, one viewport, no screen reader, no contrast measurement, no repeated
+timing, one user. The driver is a scratch script outside the repository; `pyproject.toml`,
+`make qa` and the five runtime dependencies are untouched by it.
+[`docs/gates/v0.13.0-live-verification.md`](docs/gates/v0.13.0-live-verification.md) §6–§7.
 
 ## [0.12.0] - 2026-08-15 — "the instrument and the shape"
 

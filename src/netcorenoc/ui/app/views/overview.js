@@ -152,7 +152,7 @@ class EditorPanel extends Component {
                  note="nothing to confirm or split" />
       </div>
       <p class="hint">
-        How many of your labels have reached the pre-registered floors is computed by
+        How many of your labels have reached the pre-registered floors is computed by${" "}
         <code>make shadow-report</code>, which runs offline over frozen inputs and is compared
         byte-for-byte by a test. <b>This console displays such numbers and never recomputes
         them</b> — a second implementation of the shadow verdict would be a second source of truth

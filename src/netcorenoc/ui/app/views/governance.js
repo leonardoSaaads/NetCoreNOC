@@ -180,7 +180,7 @@ class PolicyEditor extends Component {
         <button type="button" disabled=${busy}
                 onClick=${() => this.write({ clear: true })}>Clear policy</button>
       </div>` : html`<p class="hint">You can read this policy but not change it: your account
-        holds <code class="mono">${kind}.read</code> and not
+        holds <code class="mono">${kind}.read</code>${" and not "}
         <code class="mono">${kind}.write</code>.</p>`}
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
     </div>`;
