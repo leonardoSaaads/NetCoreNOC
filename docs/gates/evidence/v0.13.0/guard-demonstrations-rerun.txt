@@ -1,180 +1,82 @@
-control, corrected tree: 1 passed in 1.42s
+control, corrected tree: 1 passed in 1.70s
 
 --- 1. A capability lowered so a viewer would see an admin screen
-    RED:   3 failed in 1.86s
-    GREEN: 3 passed in 1.96s
+    RED:   3 failed in 2.51s
+    GREEN: 3 passed in 2.49s
     caught=True restored=True control_held=True
 
 --- 2. The escaping discipline bypassed on one render path
-    RED:   1 failed, 1 passed in 1.36s
-    GREEN: 2 passed in 1.35s
+    RED:   1 failed, 1 passed in 1.80s
+    GREEN: 2 passed in 1.76s
     caught=True restored=True control_held=True
 
 --- 3. The partial-split gesture sending one id the operator never marked
-    RED:   1 failed in 1.35s
-    GREEN: 1 passed in 1.35s
+    RED:   1 failed in 1.73s
+    GREEN: 1 passed in 1.68s
     caught=True restored=True control_held=True
 
 --- 4. An SSE update destroying the gesture in flight (the v0.7.5 defect)
-    RED:   2 failed in 1.51s
-    GREEN: 2 passed in 1.47s
+    RED:   2 failed in 1.90s
+    GREEN: 2 passed in 1.98s
     caught=True restored=True control_held=True
 
 --- 5. F53's repair reverted: a view fetches before its capability is resolved
-    RED:   3 failed in 1.45s
-    GREEN: 3 passed in 1.61s
+    RED:   3 failed in 2.04s
+    GREEN: 3 passed in 2.10s
     caught=True restored=True control_held=True
 
 --- 6. A hardening-only value accepted below the project floor
-    RED:   1 failed in 1.31s
-    GREEN: 1 passed in 1.33s
+    RED:   1 failed in 1.74s
+    GREEN: 1 passed in 1.72s
     caught=True restored=True control_held=True
 
 --- 7. A destructive control applying without a preview
-    RED:   1 failed, 1 passed in 1.34s
-    GREEN: 2 passed in 1.43s
+    RED:   1 failed, 1 passed in 1.71s
+    GREEN: 2 passed in 1.86s
     caught=True restored=True control_held=True
 
 --- 8. The sidebar made unreachable by keyboard (sixteen tab stops)
-    RED:   1 failed in 1.33s
-    GREEN: 1 passed in 1.32s
+    RED:   1 failed in 1.73s
+    GREEN: 1 passed in 1.64s
     caught=True restored=True control_held=True
 
 --- 9. A hostile theme cookie reaching the document
-    RED:   1 failed in 1.61s
-    GREEN: 1 passed in 1.58s
+    RED:   1 failed in 2.07s
+    GREEN: 1 passed in 1.99s
     caught=True restored=True control_held=True
 
 --- 10. The vendored framework's checksum altered
-    RED:   1 failed in 0.15s
-    GREEN: 1 passed in 0.16s
+    RED:   1 failed in 0.19s
+    GREEN: 1 passed in 0.20s
     caught=True restored=True control_held=True
 
 --- 11. A vendored asset dropped in with no pin at all
-    RED:   1 failed in 0.14s
-    GREEN: 1 passed in 0.13s
+    RED:   1 failed in 0.20s
+    GREEN: 1 passed in 0.18s
     caught=True restored=True control_held=True
 
 --- 12. The CSP relaxed to 'unsafe-inline'
-    RED:   1 failed, 5 passed in 0.95s
-    GREEN: 6 passed in 0.89s
+    RED:   1 failed, 5 passed in 1.30s
+    GREEN: 6 passed in 1.23s
     caught=True restored=True control_held=True
 
 --- 13. A package.json added to the tracked tree
-    RED:   1 failed in 0.16s
-    GREEN: 1 passed in 0.14s
+    RED:   1 failed in 0.26s
+    GREEN: 1 passed in 0.19s
     caught=True restored=True control_held=True
 
 --- 14. A module served but missing from the enumerated allowlist
-    RED:   2 failed in 0.45s
-    GREEN: 2 passed in 0.43s
+    RED:   2 failed in 0.64s
+    GREEN: 2 passed in 0.55s
     caught=True restored=True control_held=True
 
 --- 15. A JavaScript module grown past the 400-line guard
-    RED:   1 failed in 0.45s
-    GREEN: 1 passed in 0.44s
+    RED:   1 failed in 0.62s
+    GREEN: 1 passed in 0.56s
     caught=True restored=True control_held=True
 
 
-git status after all injections: D  .demos/demos.json
-D  .demos/mutants.json
-D  .demos/mutants.py
-D  .demos/mutants2.py
-D  .demos/run_demos.py
-D  .drive/dump-admin-account.txt
-D  .drive/dump-admin-audit.txt
-D  .drive/dump-admin-classes.txt
-D  .drive/dump-admin-corpus.txt
-D  .drive/dump-admin-entities.txt
-D  .drive/dump-admin-governance.txt
-D  .drive/dump-admin-graph.txt
-D  .drive/dump-admin-labelling.txt
-D  .drive/dump-admin-overview.txt
-D  .drive/dump-admin-promotion.txt
-D  .drive/dump-admin-quarantine.txt
-D  .drive/dump-admin-scorer.txt
-D  .drive/dump-admin-settings.txt
-D  .drive/dump-admin-situations-light.txt
-D  .drive/dump-admin-situations.txt
-D  .drive/dump-admin-timeline.txt
-D  .drive/dump-admin-tokens.txt
-D  .drive/dump-admin-users.txt
-D  .drive/dump-admin.txt
-D  .drive/dump-editor-account.txt
-D  .drive/dump-editor-audit.txt
-D  .drive/dump-editor-classes.txt
-D  .drive/dump-editor-corpus.txt
-D  .drive/dump-editor-entities.txt
-D  .drive/dump-editor-governance.txt
-D  .drive/dump-editor-graph.txt
-D  .drive/dump-editor-labelling.txt
-D  .drive/dump-editor-overview.txt
-D  .drive/dump-editor-promotion.txt
-D  .drive/dump-editor-quarantine.txt
-D  .drive/dump-editor-scorer.txt
-D  .drive/dump-editor-settings.txt
-D  .drive/dump-editor-situations.txt
-D  .drive/dump-editor-timeline.txt
-D  .drive/dump-editor-tokens.txt
-D  .drive/dump-editor-users.txt
-D  .drive/dump-viewer-account.txt
-D  .drive/dump-viewer-audit.txt
-D  .drive/dump-viewer-classes.txt
-D  .drive/dump-viewer-corpus.txt
-D  .drive/dump-viewer-entities.txt
-D  .drive/dump-viewer-governance.txt
-D  .drive/dump-viewer-graph.txt
-D  .drive/dump-viewer-labelling.txt
-D  .drive/dump-viewer-overview.txt
-D  .drive/dump-viewer-promotion.txt
-D  .drive/dump-viewer-quarantine.txt
-D  .drive/dump-viewer-scorer.txt
-D  .drive/dump-viewer-settings.txt
-D  .drive/dump-viewer-situations.txt
-D  .drive/dump-viewer-timeline.txt
-D  .drive/dump-viewer-tokens.txt
-D  .drive/dump-viewer-users.txt
-D  .drive/empty-account.txt
-D  .drive/empty-audit.txt
-D  .drive/empty-classes.txt
-D  .drive/empty-corpus.txt
-D  .drive/empty-entities.txt
-D  .drive/empty-governance.txt
-D  .drive/empty-graph.txt
-D  .drive/empty-labelling.txt
-D  .drive/empty-overview.txt
-D  .drive/empty-promotion.txt
-D  .drive/empty-quarantine.txt
-D  .drive/empty-scorer.txt
-D  .drive/empty-settings.txt
-D  .drive/empty-situations.txt
-D  .drive/empty-timeline.txt
-D  .drive/empty-tokens.txt
-D  .drive/empty-users.txt
-D  .drive/error-account.txt
-D  .drive/error-audit.txt
-D  .drive/error-classes.txt
-D  .drive/error-corpus.txt
-D  .drive/error-entities.txt
-D  .drive/error-governance.txt
-D  .drive/error-graph.txt
-D  .drive/error-labelling.txt
-D  .drive/error-overview.txt
-D  .drive/error-promotion.txt
-D  .drive/error-quarantine.txt
-D  .drive/error-scorer.txt
-D  .drive/error-settings.txt
-D  .drive/error-situations.txt
-D  .drive/error-timeline.txt
-D  .drive/error-tokens.txt
-D  .drive/error-users.txt
-D  .drive/gate.json
-D  .drive/routes.json
- M docs/gates/v0.13.0-phase-7.md
- M pyproject.toml
-?? .demos/
-?? docs/gates/evidence/
-?? tools/evidence/
-ui/ tree digest: b9d19f99db1dd3b1e4787753672e22b405db4f22de16f7a47e03511a5f825ba0
+git status after all injections: (clean)
+ui/ tree digest: a57fbab35d2a9a9950adb558871aa0b12c06339994b936974fd53a75eddcd2ce
 
 15/15 demonstrated red, restored green, control held in both.

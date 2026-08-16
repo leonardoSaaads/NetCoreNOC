@@ -131,7 +131,7 @@
                 "learned, not configured"
             <div .stat>
               <div .stat-value>
-                "86885686.307 s"
+                "86889484.3387 s"
               <div .stat-label>
                 "p95 latency"
           <div .section-heading>

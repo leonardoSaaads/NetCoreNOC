@@ -326,7 +326,12 @@ def main() -> None:
 
     # The tree must be exactly as it was. A demonstration that left a defect behind is the worst
     # possible outcome, so this is measured rather than assumed.
-    status = git("status", "--porcelain").strip()
+    #
+    # **Scoped to `src` and `tests`, which is the question.** The unscoped form also reported this
+    # tool's own untracked `.demos/` and `.drive/` output, so `status` was never empty and the exit
+    # code below was `1` on every run including a perfect one. An exit code that cannot be zero
+    # carries no information, and a check that always fires is a check nobody reads.
+    status = git("status", "--porcelain", "src", "tests").strip()
     ui = ROOT / "src" / "netcorenoc" / "ui"
     digest = hashlib.sha256(
         b"".join(sorted(p.read_bytes() for p in ui.rglob("*") if p.is_file()))
