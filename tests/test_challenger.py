@@ -271,6 +271,18 @@ def test_no_code_path_makes_the_challenger_the_active_scorer() -> None:
         # reach. Adding it WIDENS what the never-reaches-the-champion guard covers
         # (DECISIONS #139's reasoning, applied again).
         "shadow_admission.py",
+        # v0.14.0, and this one is NOT a split — it is an admission that this guard's premise was
+        # superseded and nobody noticed. `model_version.scorer_for` constructs a `LogisticScorer`
+        # and hands it to the engine as the **champion**, which is exactly what v0.11.0's promotion
+        # made legal: a promoted logistic model IS the champion. The guard was written in v0.9.0,
+        # when promotion did not exist and "the challenger never becomes the active scorer" was
+        # simply true.
+        #
+        # It was passing only because of the hole closed below: `model_version.py` writes
+        # `from netcorenoc import challenger`, which the original check did not look for. So this
+        # module has reached the challenger since v0.11.0 and the guard said nothing. Issued as
+        # **F57**; the name is on the list now with the reason the docstring asks for.
+        "model_version.py",
     }
     offenders: list[str] = []
     for path in sorted(PKG.rglob("*.py")):

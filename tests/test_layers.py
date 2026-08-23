@@ -125,6 +125,25 @@ LAYER_OF: dict[str, str] = {
     # Split out of `promotion.py` at the 400-line guard, onto a seam that was already there: this
     # answers to `DATA-LINEAGE.md` §4 and the gate answers to the pre-registration (DECISIONS #165).
     "evaluation_folds": "engine",
+    # v0.14.0 — the model family. Engine-layer for the reason every model module above is:
+    # they consume features the correlator built and none is reachable from
+    # `receiver.datagram_received`.
+    #
+    # `scorer_contract` is the scoring **contract** split out of `scoring.py` at the 400-line guard
+    # (DECISIONS #191). Classified `engine` beside `scoring`, not cross-cutting: it is the domain's
+    # own vocabulary, and cross-cutting is for concerns every layer has.
+    "scorer_contract": "engine",
+    # `background` is DATA — the registered attribution background set and nothing else. It imports
+    # NOTHING from this package, so it cannot violate any direction, the same standing
+    # `retention_policy` and `incidents` have.
+    "background": "engine",
+    # `attribution` is pure arithmetic over that data plus the contract. `cart` is the shared fit.
+    # The three kind modules own their own rules and documents (DECISIONS #187).
+    "attribution": "engine",
+    "cart": "engine",
+    "tree": "engine",
+    "forest": "engine",
+    "boosting": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire
