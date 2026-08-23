@@ -634,6 +634,15 @@ that section, from the ADRs and the build report, not a fresh opinion.*
   found F58. Spacing them measures the promotion machinery, which is what the floors count. v0.14.0's
   plan registered one shape and got both questions half-answered; a v0.15.0 pre-registration should
   decide which it is asking. `security/SECURITY-REVIEW-0.14.0.md` §7.4.
+- **`test_the_report_is_deterministic_across_two_runs` flapped once, under machine load.** It failed
+  in a full run that shared the machine with a headless browser drive, and passed in isolation and in
+  a clean full run of all 1542 tests immediately afterwards. **The mechanism was not identified.**
+  `_stable` blanks the two measured durations with `^  (\S+)\s+\d+\.\d{3}\s+\d+\.\d{3}(.*)$`
+  against a `{:>12.3f}` field, so a duration wide enough to consume its own padding would stop
+  matching and leave a real timing in the compared text — which is a plausible mechanism and is not
+  evidence. A gate over a byte-frozen report that can flap on a busy machine is worth either a wider
+  blanking rule or a stated tolerance; guessing which, from one observation, is how a flake becomes a
+  silently loosened assertion.
 - **Eight named mutations survive the suite.** `gates/v0.14.0-phase-8.md` §3 lists them rather than
   reporting a ratio. Two are worth a line on their own: reverting `appliance.Sender.socket_for` to
   suppress an unbindable bind — the exact construct its docstring forbids — is caught by nothing,

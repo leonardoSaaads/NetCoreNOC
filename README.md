@@ -439,8 +439,10 @@ the tree is [`docs/architecture/repo-map.md`](docs/architecture/repo-map.md).
 - **Zero configuration.** The user provides nothing but a trap destination.
 - **Structure emerges from the stream.** Devices, classes, raise/clear pairs, topology
   edges, and precedence statistics are learned, never declared.
-- **Explainability over sophistication.** Three numbers explain every link. No black
-  boxes.
+- **Explainability over sophistication.** Three numbers explain every link. No black boxes — and
+  since v0.14.0 that survives the arrival of tree ensembles: each of the five scorer kinds
+  decomposes its own decision into the same three contributions, **exactly**, and a model too large
+  to explain exactly is refused rather than approximated.
 - **Simplicity is a feature.** No brokers, no ORMs, no plugins, no frontend toolchain — and since
   v0.12.0 that last one is a **test** (`tests/test_build_step.py`) rather than an intention: no
   `package.json`, lockfile, bundler config or `node_modules` may exist in the tracked tree.
