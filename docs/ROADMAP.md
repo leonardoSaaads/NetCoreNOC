@@ -558,3 +558,35 @@ be one, and its diff could not be read in one sitting.
 - **`make dom` reports executed DOM tests; nothing reports them in CI.** The count is quoted by
   hand in the gate documents. A CI step that failed when the number of *executed* DOM tests dropped
   to zero would close the last gap in the anti-skip argument, and it is one line of workflow.
+
+## Found while building v0.13.0 (one line each, not this release's work)
+
+*Written in v0.14.0 Phase 0. Three ADRs — #173, #178, #179 — each promise a line here, and
+`releases/BUILD-REPORT-0.13.0.md`'s closing section names the same three plus F54's residual. The
+section itself was never written, so the promises pointed at nothing for a whole release. This is
+that section, from the ADRs and the build report, not a fresh opinion.*
+
+- **A true reconciler for the situation card (ADR #173).** v0.13.0 holds the *payload* of an
+  expanded card and counts the updates it withholds, because node identity is not meaning identity:
+  an operator who has ticked members 2 and 4 is asserting something about *those two alarms*, and a
+  re-membering underneath them would leave every DOM node intact while the marks moved. The better
+  answer — update everything **except** the gesture in flight, so the card is live and the selection
+  is frozen — is a larger change than a UI release should carry. Recorded, not built.
+- **A write path for the pre-registered sufficiency floors (ADR #178).** Most hardening-only values
+  in this tree have no write path at all: `MIN_PASSWORD`, `IDLE_TIMEOUT_S`, `ASSERTING_BAGS_FLOOR`
+  and `ASSERTING_INCIDENTS_FLOOR` are module constants. v0.13.0 enforces raise-only where a write
+  path exists (the scorer's degeneracy bounds) and renders the rest as facts with the reason. *"Give
+  a deployment a way to raise the pre-registered floors"* is the line — and it is evidence-chain
+  work, not UI work, because persisting a floor changes the promotion gate's inputs.
+- **Growing `RuntimeConfig` (ADR #179).** `Settings` is read once at startup and never mutated, and
+  `RuntimeConfig` holds exactly two live-reloadable values — `allowlist` and `retention_days`.
+  v0.13.0 reports precedence from `GET /api/config` rather than growing the holder, because every
+  addition is a live-reload path in a running receiver or maintenance loop. Which settings should
+  become live, and what each one's reload costs, is engine work nobody has scoped.
+- **HTTP routes for the four CLI reports.** `make bias-report`, `make agreement-report`,
+  `make shadow-report` and `make census` compute numbers the console can only name. The screens
+  exist; the routes do not, so an operator reads a verdict's *label* in the browser and its
+  *content* in a terminal.
+- **F54's residual.** *No operator-supplied text in an accessible name* is asserted only where the
+  escaping scenario walks. A future screen can reintroduce it somewhere the scenario does not go,
+  and nothing would notice.

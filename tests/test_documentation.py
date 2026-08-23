@@ -241,7 +241,12 @@ def test_the_release_table_parses() -> None:
     # and the UI work took v0.12.0 and v0.13.0. The membership is pinned EXACTLY, so a later
     # release cannot quietly add a row or retire one; moving it is a deliberate edit with an ADR
     # beside it, which is what this line has just been.
-    assert len(table) == 8, f"expected v0.8.0…v0.15.0, parsed {sorted(table)}"
+    #
+    # v0.14.0 resequenced it again (DECISIONS #184), on DECISIONS #183: the roadmap's claim that a
+    # tree ensemble "can only enter through the ONNX door" drew a packaging conclusion from a
+    # premise about packages, and three tree kinds now run in process with no new dependency. The
+    # model family took v0.14.0; the cartridge and archetypes each moved one place. Nine rows.
+    assert len(table) == 9, f"expected v0.8.0…v0.16.0, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -251,6 +256,7 @@ def test_the_release_table_parses() -> None:
         "v0.13.0",
         "v0.14.0",
         "v0.15.0",
+        "v0.16.0",
     }
     claims = [claim for _theme, claim in table.values()]
     assert len(set(claims)) == len(claims), f"two releases share a claim key: {claims}"

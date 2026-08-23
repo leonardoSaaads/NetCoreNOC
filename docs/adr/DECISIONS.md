@@ -4256,3 +4256,72 @@ grouping**.
 - **Consequence**: `docs/gates/v0.13.0-live-verification.md` is the first such document, including
   its §6 — the list of what the pass did not verify: one browser, one viewport, no screen reader,
   no contrast measurement, no repeated timing.
+
+## 183. Tree ensembles run in process; the ONNX-door sentence is superseded, not edited (v0.14.0)
+
+- **Context**: `../architecture/ROADMAP-0.8-TO-0.13.md` §v0.11.0 states that *"tree ensembles cannot
+  be champion before v0.13.0. Not on merit — on plumbing. **There is no in-process implementation of
+  one among the five runtime dependencies**, so a gradient-boosted model can only enter through the
+  ONNX door."* The whole of v0.14.0's scope depends on whether that is true.
+- **What measurement changed**: nothing was measured, because nothing needed to be. The premise is
+  true and **the conclusion does not follow from it**. Principle 5 forbids *dependencies*, not
+  *implementations*. v0.9.0 wrote logistic regression in pure Python, without numpy, on the argument
+  that *"logistic regression over a handful of features is arithmetic"* — and a CART over three
+  continuous features is arithmetic too: a greedy split search over three sorted feature columns is
+  comparisons and sums. The sentence read a *packaging* constraint out of a premise about *packages*,
+  which is exactly the mistake its own last clause warns a future reader against.
+- **Options**: (a) edit the sentence in place; (b) delete it; (c) leave it and record a new entry
+  that supersedes it, plus an amendment box in the document, in the shape the document already
+  carries for the v0.8.0 correction.
+- **Choice**: **(c)**.
+- **Reason**: (a) and (b) both falsify the record. `../adr/README.md` states the rule for this log —
+  *"a later decision that supersedes an earlier one references it by number rather than editing it"* —
+  and `ROADMAP-0.8-TO-0.13.md` already follows the same rule for its own v0.8.0 correction, in a
+  blockquote that withdraws a sentence and leaves it visible. A reader who finds the original claim
+  cited in a gate document from three releases ago must be able to find the original claim.
+- **Consequence**: v0.14.0 ships `tree`, `forest` and `gradient_boosting` as branches of
+  `model_version.scorer_for`, in pure Python, with **zero** new runtime dependencies — five, as
+  since v0.2.0. `SUPPORTED_KINDS` grows from two to five.
+- **The half of the bullet that survives**: *"not on merit"*. The constraint was never a finding
+  about model families. It was not a finding about plumbing either.
+- **What this does to the cartridge**: the external cartridge stops being *"the only way a tree
+  ensemble can be champion"* and becomes *"the way a **customer's own** model can be champion"*.
+  That is still a good reason to build it, and it is a different reason.
+  `CARTRIDGE-0.15-DRAFT.md` must say so rather than inheriting a justification that has been
+  withdrawn.
+
+## 184. The chain is resequenced: the model family at v0.14.0, cartridge to v0.15.0, archetypes to v0.16.0 (v0.14.0)
+
+- **Context**: #183 makes three in-process model kinds buildable now. The release table in
+  `../architecture/ROADMAP-0.8-TO-0.13.md` had v0.14.0 as the external cartridge and v0.15.0 as
+  archetypes, and `tests/test_documentation.py::test_the_release_table_parses` pins the membership
+  **exactly** so that moving it is a deliberate act with an ADR beside it. This is that act.
+- **What measurement changed**: `seal.spend()` has existed in production code since v0.10.0 and its
+  query count is **0** — not by discipline in this instance, but because the branch that calls it is
+  unreachable on this corpus. Phase 0 §3 reproduced it: `asserting_bags = 0` against a floor of 50,
+  `asserting_incidents = 0` against a floor of 30, with a control corpus returning 2 and 1 474
+  through the same code so the zeros are properties of the corpus rather than of the query. **The
+  project has never observed a promotion happen.**
+- **Options**: (a) keep the cartridge at v0.14.0 and fold the in-process kinds into it;
+  (b) keep the cartridge at v0.14.0 and defer the in-process kinds; (c) insert the model family at
+  v0.14.0 and shift the cartridge and archetypes one place each.
+- **Choice**: **(c)**.
+- **Reason**: (a) is the worst of the three. It would put a second process, a preemption harness and
+  an amendment to *"ingestion is sacred"* in the same release as four new model kinds, and the two
+  risks are unrelated — a failure in either would contaminate the evidence for the other. (b) leaves
+  the chain's central claim untested for another release while the riskiest step is taken. (c) puts
+  the cheap proof first: **driving the chain end to end costs no new process, no new dependency and
+  no new trust surface**, and it means the cartridge arrives at a gate that has been watched to open.
+- **Consequence**: five documents are retagged — `ROADMAP-0.8-TO-0.13.md` (table, three sections,
+  one added *why-not-permuted* bullet), `SCORER-PLUGINS-0.13-DRAFT.md`, `CARTRIDGE-0.14-DRAFT.md`,
+  `ARCHETYPES-0.12-DRAFT.md` and `docs/README.md` — and
+  `tests/test_documentation.py::test_the_release_table_parses` grows from eight rows to nine.
+- **Subtlety — the filenames now misstate three releases, and they are still not renamed.**
+  `ARCHETYPES-0.12-DRAFT.md` governs v0.16.0, `SCORER-PLUGINS-0.13-DRAFT.md` and
+  `CARTRIDGE-0.14-DRAFT.md` govern v0.15.0, and `ROADMAP-0.8-TO-0.13.md` governs to v0.16.0.
+  `docs/ROADMAP.md`'s *"Found while building v0.12.0"* section already records this class for two of
+  them, with the reason: gates, security reviews and build reports cite these paths by name and are
+  records that are never rewritten, so a rename means updating those citations knowingly or
+  accepting dangling ones. This release makes the mismatch worse by one document and still does not
+  rename, because the reason has not changed and *"no fix inside a move"* applies to a resequencing
+  as much as to a refactor.

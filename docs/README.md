@@ -71,11 +71,13 @@ one-screen tour of the tree.
   split by time or by incident and never at random, why the merge chain makes incident identity
   non-obvious, the iterative-overfitting hazard no column measures, and the restated
   `incumbent_linked` invariant.
-- [`architecture/CARTRIDGE-0.14-DRAFT.md`](architecture/CARTRIDGE-0.14-DRAFT.md) — the v0.14.0
+- [`architecture/CARTRIDGE-0.14-DRAFT.md`](architecture/CARTRIDGE-0.14-DRAFT.md) — the v0.15.0
   external cartridge, specified by v0.13.0: a separate process that receives features and returns
-  scores and can be killed without the appliance noticing, so tree ensembles can compete for the
-  champion slot without the core acquiring a sixth dependency. **Everything in it is tagged
-  `v0.14.0: planned`.**
+  scores and can be killed without the appliance noticing. **Everything in it is tagged
+  `v0.15.0: planned`.** Resequenced from v0.14.0 by DECISIONS #184, and its stated purpose is
+  corrected by DECISIONS #183: the cartridge is the door for a **customer's own** model, not the
+  only door for a tree ensemble — v0.14.0 runs three of those in process. **Superseded by
+  `architecture/CARTRIDGE-0.15-DRAFT.md`**; read that one.
 - [`architecture/UI-0.13-DRAFT.md`](architecture/UI-0.13-DRAFT.md) — **implemented in v0.13.0**; the
   UI, specified by
   v0.12.0 **against a UI that could by then be executed**: sidebar navigation with room for Phase 2
@@ -85,13 +87,13 @@ one-screen tour of the tree.
   proves, the framework recommendation, and the twelve things v0.13.0 must not do. Spec only,
   `v0.13.0: planned`.
 - [`architecture/ARCHETYPES-0.12-DRAFT.md`](architecture/ARCHETYPES-0.12-DRAFT.md) — per-archetype
-  weights, spec only, **`v0.15.0: planned`**. Written during v0.11.0 as the v0.12.0 specification
-  and **resequenced by DECISIONS #170** on the measurement in its own §0: a corpus that cannot
-  decide one comparison cannot decide `k` of them. The filename records when it was written, not
-  what it governs; read the box at the top.
+  weights, spec only, **`v0.16.0: planned`**. Written during v0.11.0 as the v0.12.0 specification,
+  **resequenced by DECISIONS #170** on the measurement in its own §0 — a corpus that cannot decide
+  one comparison cannot decide `k` of them — and shifted one place further by DECISIONS #184. The
+  filename records when it was written, not what it governs; read the box at the top.
 - [`architecture/SCORER-PLUGINS-0.13-DRAFT.md`](architecture/SCORER-PLUGINS-0.13-DRAFT.md) —
   customer-supplied models (blessed ONNX adapter) under the v0.6.0 `LinkScorer` contract, spec only,
-  `v0.14.0: planned`. Refined during v0.7.0 (§R1–R5): the worker-process preemption harness is a
+  `v0.15.0: planned`. Refined during v0.7.0 (§R1–R5): the worker-process preemption harness is a
   **blocking prerequisite**. Written as the v0.8.0 spec and **resequenced in place** by v0.7.4
   (DECISIONS #93); the Python entry-point escape hatch it also specified is **rejected, not
   deferred**. Read the box at the top for the disposition.
@@ -187,7 +189,7 @@ so the prose beneath it stays the thing a human reads.
 **2. An element tag — what a spec *element* is planned for.** The pre-existing convention, kept:
 
 ```
-## 1. The blessed ONNX path (`v0.14.0: planned`)
+## 1. The blessed ONNX path (`v0.15.0: planned`)
 ```
 
 A document that carries a release claim may only tag elements for **that** release; that is what

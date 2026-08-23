@@ -1,8 +1,8 @@
 # The external cartridge — v0.14.0 draft (specification only, not implemented in v0.13.0)
 
-<!-- release-claim: v0.14.0 = external-cartridge -->
+<!-- release-claim: v0.15.0 = external-cartridge -->
 
-**Implement none of this in v0.13.0.** Every element below is tagged **`v0.14.0: planned`**.
+**Implement none of this in v0.13.0.** Every element below is tagged **`v0.15.0: planned`**.
 
 v0.13.0 built the console. This is the shape of what lets a model that cannot run inside this
 process compete for the champion slot — decided **now**, in a document, rather than under deadline
@@ -15,7 +15,7 @@ the promotion machinery of v0.11.0.
 
 ---
 
-## 0. The three facts this draft starts from (`v0.14.0: planned`)
+## 0. The three facts this draft starts from (`v0.15.0: planned`)
 
 **Tree ensembles cannot be champion today, and not on merit.** `ROADMAP-0.8-TO-0.13.md` records the
 reason: *"not on merit — on plumbing."* XGBoost, random forests and gradient-boosted trees would all
@@ -33,7 +33,7 @@ built-in scorer is judged by, and **that is the property that makes this safe to
 
 ---
 
-## 1. What a cartridge is (`v0.14.0: planned`)
+## 1. What a cartridge is (`v0.15.0: planned`)
 
 **A separate process that receives features and returns scores, and can be killed at any moment
 without the appliance noticing.** Not a plugin, not an import, not a subclass.
@@ -52,7 +52,7 @@ without the appliance noticing.** Not a plugin, not an import, not a subclass.
 **The appliance's five runtime dependencies do not change.** A cartridge's dependencies are the
 cartridge's, installed in its own environment, and the appliance never imports them.
 
-## 2. The properties that are not negotiable (`v0.14.0: planned`)
+## 2. The properties that are not negotiable (`v0.15.0: planned`)
 
 1. **Ingestion is sacred (principle 4).** The trap path never waits on a cartridge. Scoring happens
    in the engine's slow loop, exactly where challenger training already happens.
@@ -70,7 +70,7 @@ cartridge's, installed in its own environment, and the appliance never imports t
 5. **The seal is not reachable from a cartridge.** Its query count is the number every holdout
    figure is printed beside; a subprocess that could read the holdout would end that guarantee.
 
-## 3. The boundary, stated as a threat model (`v0.14.0: planned`)
+## 3. The boundary, stated as a threat model (`v0.15.0: planned`)
 
 A cartridge is **operator-supplied code running on the appliance**. That is a larger trust change
 than anything since the token, and the draft's honest position is that it is *not* a sandbox:
@@ -86,7 +86,7 @@ than anything since the token, and the draft's honest position is that it is *no
 everything into one situation. The promotion gate is what stops that reaching the champion slot, and
 a cartridge that is merely a bad model is what the gate exists for.
 
-## 4. Open questions, deliberately (`v0.14.0: planned`)
+## 4. Open questions, deliberately (`v0.15.0: planned`)
 
 1. **Whether a cartridge may be a container rather than a process.** A container is a better
    boundary and a much larger operational surface.
@@ -101,7 +101,7 @@ a cartridge that is merely a bad model is what the gate exists for.
    adding entries to `app/registry.js` and a group to `app/sidebar.js` — which is the whole of what
    v0.13.0 owed the future.
 
-## 5. What v0.14.0 must not do (`v0.14.0: planned`)
+## 5. What v0.14.0 must not do (`v0.15.0: planned`)
 
 1. **No new runtime dependency in the core.** Five.
 2. **No import of cartridge code into the appliance's process**, ever, under any flag.

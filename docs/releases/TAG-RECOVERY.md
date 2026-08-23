@@ -468,3 +468,104 @@ git checkout main && git pull
 git tag -a v0.13.0 -m "v0.13.0 — the UI" <merge-commit>
 git push origin v0.13.0        # tags need their own push, always
 ```
+
+---
+
+## v0.14.0 — and `v0.13.0`, which was never pushed. **The seventh occurrence.**
+
+### The measurement, on the tree this release starts from
+
+```
+$ git ls-remote --tags origin
+92cbb455f7a421ced51847e64a7d8cf9be27a1f5	refs/tags/v0.12.0
+e367a99319e2bbd510d8b4c7a62af9963a80e4fc	refs/tags/v0.12.0^{}
+
+$ git tag -l
+(empty — this clone, like v0.10.1's, arrived with no local tags at all)
+```
+
+**`v0.13.0` is absent from the remote.** §v0.13.0 above records the tag as existing *locally only*
+after a 403; the clone this release starts from carries no local tags, so the tag now exists
+**nowhere**. That is the seventh time a release in this repository has ended without an immutable
+reference on the remote, and the cause is the one §v0.12.0 already names: **the Sync button in VS
+Code does not push tags**, and a rebase orphans a tag created before it.
+
+### Identifying the commit `v0.13.0` should carry, by tree comparison
+
+Same method as §2, and the same four checks, because a branch name is a label and not evidence:
+
+```
+v0.13.0
+  merge   c31817c88133280dd3025519b7e0656bd99009e7   (Merge pull request #16)
+  parent2 f7b32c55ffc3268c375d72ed3c41864ea49b5693   (tip of claude/netcorenoc-v0-13-build-bi782x)
+  tree(merge)   06320881a8ae4885c71bf6ed0eb2a9813ac0c57c
+  tree(parent2) 06320881a8ae4885c71bf6ed0eb2a9813ac0c57c
+  trees   IDENTICAL
+  pyproject=0.13.0  __init__=0.13.0  changelog="## [0.13.0] - 2026-08-15 — \"the UI\""
+```
+
+**The control, and it is a real one.** `v0.12.0` is the one tag the remote still has, and this
+method was not used to create it. The method predicts `v0.12.0`'s content is the tree shared by the
+merge commit `e8de092` and its second parent `e367a99`; the remote tag dereferences to **`e367a99`**
+and both trees are **`2528111d7015ca01ca01809e03e0225b223b7aaf`** — identical. The method agrees
+with an answer it did not produce, and it also confirms §3's observation that **the maintainer's
+tags point at the release-branch tip rather than at the merge commit**. Either captures the same
+bytes; the commands below follow §4 and tag the merge commit, and substituting `f7b32c5` for
+`v0.13.0` is equally correct if the maintainer prefers consistency with `v0.12.0`.
+
+### The three tags this release adds to the backlog
+
+| Tag | Points at | Created |
+|---|---|---|
+| **`v0.13.0`** | `c31817c` — the merge commit on `main` whose tree is `06320881…` (or `f7b32c5`, the branch tip, for consistency with `v0.12.0`) | never; recovered here |
+| **`v0.14.0-gate0`** | the commit that adds `docs/analysis/PREREGISTRATION-0.14.0.md` **and nothing else** | Phase 0 |
+| **`v0.14.0`** | the release commit on the build branch, and **recreated on the merge commit after merging** | Phase 10 |
+
+**`v0.14.0-gate0` matters more this release than in any before it, and the reason is specific.**
+v0.10.0's plan governed a verdict nothing acted on; v0.11.0's governed a promotion that never
+happened. **v0.14.0's plan governs a corpus this release GENERATES**, and the one thing that
+separates that from a manufactured result is that the generator's shape, its proportions, its seed,
+its labelling rule and its stopping rule were all fixed *before* any verdict was seen. The hash
+guard proves the plan has not changed. Only a tag on a single-file commit says **when** it was
+fixed, and here that ordering is the whole of the release's honesty.
+
+```sh
+# Phase 0 — created locally; the command that produced it, for the record:
+git tag -a v0.14.0-gate0 <the single-file commit> \
+  -m "v0.14.0 Gate 0 — PREREGISTRATION-0.14.0.md ratified, sha256 <see ../gates/v0.14.0-phase-0.md>"
+
+# The recovery of the tag that was never pushed:
+git tag -a v0.13.0 c31817c88133280dd3025519b7e0656bd99009e7 \
+  -m "v0.13.0 — the UI (merge commit on main; tree 06320881 verified against f7b32c5)"
+
+# Phase 10 — on the release commit, and AFTER the merge if the branch is rebased:
+git tag -a v0.14.0 <merge commit on main> -m "v0.14.0 — the model family"
+
+git push origin v0.13.0 v0.14.0-gate0 v0.14.0     # tags need their own push, always
+```
+
+**No hash is quoted for `v0.14.0-gate0`**, for §v0.13.0's reason: a hash written *into* the commit
+that records it cannot be correct, because amending to fix the hash changes the hash. The commit is
+identified by its content — the only commit in this branch that touches
+`docs/analysis/PREREGISTRATION-0.14.0.md` and nothing else — and by the plan's SHA-256, which is in
+`../gates/v0.14.0-phase-0.md` and pinned by `tests/test_preregistration.py`:
+
+```sh
+git log --oneline --diff-filter=A -- docs/analysis/PREREGISTRATION-0.14.0.md
+git show --stat <that commit>          # must be: 1 file changed, N insertions(+)
+```
+
+### Verification after the push
+
+```sh
+git ls-remote --tags origin | grep -c 'refs/tags/v[0-9]\+\.[0-9]\+\.[0-9]\+\^{}'
+for v in v0.12.0 v0.13.0 v0.14.0; do
+  printf '%s  ->  %s\n' "$v" \
+    "$(git show "$v:pyproject.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)"
+done
+```
+
+Every line must print the tag's own version. `v0.14.0-gate0` is deliberately **not** in that loop:
+it points at a commit where `pyproject.toml` still reads `0.13.0`, which is correct — the gate
+precedes the version bump, and a check that expected otherwise would be asserting that the fence
+came after the work.
