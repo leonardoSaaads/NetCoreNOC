@@ -4,6 +4,119 @@ All notable changes to this project are documented in this file. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-08-23 — "the model family"
+
+**Three new scorer kinds this appliance trains and runs itself, and the first end-to-end walk of the
+whole evidence chain.** The kinds were the easy half. The walk found three defects, fixed two, and
+ended in a refusal the plan had registered in advance as a successful outcome.
+
+### The headline
+
+```
+scorer kinds  ->  5   (additive, logistic, tree, forest, gradient_boosting)
+runtime deps  ->  5   unchanged since v0.2.0. Three model kinds added zero
+migrations    ->  0   a new kind is a model_version row and always was
+make qa       ->  1554 passed  (was 1428)
+make eval     ->  byte-identical: c2e8a0ce…8b9b6f26
+trap path     ->  byte-identical, and now pinned by a test rather than by a habit
+/api          ->  unchanged: not one route added, removed or renamed
+the champion  ->  did not change. asserting_bags 10/50, asserting_incidents 10/30
+```
+
+### Three kinds, in process, in pure Python
+
+`tree`, `forest` and `gradient_boosting`. Each is **one branch in `model_version.scorer_for` and
+nothing at the call site** — no plugin surface, no registry, no dynamic import. Each owns its own
+degeneracy rules (T1–T6, F1–F4, G1–G4), registered in `PREREGISTRATION-0.14.0.md` §2 **before any of
+them existed**, and there is no shared base class because the rules are the point.
+
+`docs/ROADMAP.md` said *"a gradient-boosted model can only enter through the ONNX door"*. **ADR #183
+supersedes that sentence and this release is the proof.** The sentence is not edited: an ADR log
+whose entries change is a log of what a project currently believes, not of what it decided and when.
+
+### Exact attribution, or the kind does not ship
+
+Marginal (interventional) Shapley values over the three features, by enumeration of all 2³ = 8
+coalitions against a registered background set. `sum(contributions) + base_value == score`
+**exactly**, and `MAX_CELLS_PER_TREE` **refuses** a model too large to tabulate rather than
+approximating one. A sampled Shapley value wearing the exact one's name would be worse than a
+refusal, because a report could not tell them apart.
+
+`LinkScore` gains optional `basis` and `base_value` fields — a **minor** contract bump by
+DECISIONS #49.
+
+### The admission band is discrimination, never the clock
+
+A model that cannot reach its own threshold does not compete. The floor is the **spread of its
+scores over a fixed probe set**, not a wall-clock time: §4.1 of the plan measured that the clock
+cannot separate a working model from a degenerate one. A deployment may **add** a wall-clock floor
+and can never make it the only lower bound.
+
+### The chain, walked end to end for the first time
+
+A simulated network of six adversarial shapes in registered proportions from a registered seed,
+driven into a real appliance: `python -m netcorenoc.main` in a subprocess, **855 datagrams over a
+real UDP socket with 0 dropped**, situations formed, three principals labelling through
+`POST /api/situations/{sid}/feedback`, three artefacts registered through the CLI, and
+`POST /api/promotion` deriving every input server-side.
+
+**It refused all three, and that is the machinery working.** After ten increments the floors were
+still unmet — `asserting_bags` 10 of 50, `asserting_incidents` 10 of 30.
+`PREREGISTRATION-0.14.0.md` §5.3 registered that branch in advance as one of two successful stopping
+conditions and §8.3 named it. The release leads with it rather than burying it, because it is also
+the thing the release set out to do.
+
+**Nothing registered was changed after the verdict was seen** — not the shapes, the proportions, the
+seed, the labelling rule, the increment size, the ten-increment ceiling or the floors. The obvious
+rescue was available and was not taken.
+
+### Three findings
+
+* **F58 — a storm defeats the only NE-affinity guard.** *Issued, not fixed.* 56 dying-gasp alarms on
+  one OLT deposit `56 × STORM_DAMPING = 5.6` units of pair mass on **every** other NE in the window,
+  above the 5.0 `MIN_EDGE_N` requires; past that gate the NPMI is the evidence discount `m/(m+1)`
+  alone, because during a storm everything co-occurs with everything. Measured, not inferred: the
+  observed entity terms are exactly 5/6, 6/7, 7/8, 8/9 and the largest is 34/35 beside a recorded
+  pair mass of 34.000. The whole increment collapses into one 230-member situation holding 24
+  ground-truth situations, which is why one asserting bag forms per increment.
+* **F59 — the promotion gate measured the wrong model.** *Fixed (ADR #195).* `_derived_inputs`
+  scored `engine.shadow.scorer` while `propose_promotion` activates the `model_version_id` the
+  request named, and nothing bound them. The arm measured is now built from the candidate row by
+  `model_version.scorer_for` — the same dispatch the activation path uses.
+* **F60 — the console reported the wrong parameters.** *Fixed (ADR #196).* With a model version
+  active there is no scorer configuration row, so `GET /api/scorer` fell back to the coded defaults
+  and the screen rendered them under the heading *"Active configuration"*.
+
+**None of the three is visible from reading.** F59 survived three releases because no test had ever
+proposed a candidate that *differed* from the shadow scorer; F60 survived two, one of them a console
+rewrite, because nothing had ever been promoted.
+
+### The console
+
+The Link scorer screen leads with **"What is deciding"** and shows a scorer in the three classes one
+can be: typed by an admin, fitted from labels, or fitted with hyperparameters. Hyperparameters are
+read out of the hashed `params_document`, so there is no field on the screen the fingerprint does not
+cover. The promotion screen renders a decision in **every** branch the gate can reach — the four
+named quantities for both arms with their cluster-bootstrap intervals, never composed into a fifth,
+with *"not computable"* where a quantity is absent rather than `0.0000` — and the propose control
+gains a candidate selector.
+
+`UI-0.13-DRAFT.md` §8's planned placeholder is **not shipped**: it said tree ensembles run out of
+process behind a worker harness, and that is the sentence ADR #183 supersedes.
+
+### Prime directive 1, now a test
+
+`correlate.py`, `engine.py`, `receiver.py`, `capture.py` and `learn.py` are byte-identical to
+v0.13.0 — and `TRAP_PATH_HASHES` pins them, so it holds on every run rather than when a human
+remembers to run `sha256sum`. That mattered here: **F58 is a finding about `learn.py`, measured with
+the evidence on screen, and left unfixed.**
+
+### Upgrading
+
+Nothing to do. **Zero migrations**, no configuration change, no new environment variable, and no
+behaviour change on the trap path. An appliance that upgrades and never registers a model version
+behaves exactly as v0.13.0 did.
+
 ## [0.13.0] - 2026-08-15 — "the UI"
 
 **The largest single change in this project's history, and the first release whose deliverable is

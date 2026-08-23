@@ -590,3 +590,51 @@ that section, from the ADRs and the build report, not a fresh opinion.*
 - **F54's residual.** *No operator-supplied text in an accessible name* is asserted only where the
   escaping scenario walks. A future screen can reintroduce it somewhere the scenario does not go,
   and nothing would notice.
+
+## Found while building v0.14.0 (one line each, not this release's work)
+
+- **A storm defeats `MIN_EDGE_N` for every NE in the window (F58).** `Learner.observe_pairs`
+  deposits `STORM_DAMPING` (0.1) of mass on the pair between the new alarm's NE and **every distinct
+  other NE currently in the window**, so 56 dying-gasp alarms on one OLT deposit 5.6 against the 5.0
+  the gate requires — and past that gate the NPMI is the evidence discount `m/(m+1)` alone, because
+  during a storm everything co-occurs with everything. Measured exactly: the observed entity terms
+  are 5/6, 6/7, 7/8, 8/9 and the largest is 34/35 beside a pair mass of 34.000. `STORM_DAMPING` does
+  not prevent it — it damps the pair mass and not the marginals, and a storm large enough to matter
+  clears 5.0 at a tenth weight. **Not fixed here**: the trap path is byte-identical for the whole of
+  v0.14.0, and changing the correlator after seeing the verdict it produced is adaptive selection
+  one layer below where `PREREGISTRATION-0.14.0.md` §5.4 forbids it.
+- **A malformed corpus file hangs `eval/harness.py` rather than failing it (F56).** A scenario
+  missing its `truth` key raises `KeyError` at `harness.py:233`, prints a traceback, and never
+  exits: `run_scenario` leaves the `Engine.run()` task alive and `asyncio.run`'s shutdown waits on
+  it. In CI that is an indefinite hang rather than a red build. The repair is one `finally` that
+  cancels the task. Offline tooling, so the blast radius is a person's afternoon.
+- **`eval/corpus_gen.py` and `eval/harness.py` are over the 400-line module guard.** 457 and 435
+  lines, unchanged since v0.13.0 and untouched by this release. The guard scans `src/netcorenoc`
+  only, so they are outside its reach rather than exempted from it — which is the kind of gap that
+  survives by nobody naming it. Splitting `harness.py` needs care: its stdout is the frozen
+  `c2e8a0ce…` hash every release since v0.7.0 has quoted.
+- **The two `ASSERTING_*_FLOOR` constants are declared twice.** `routes_promotion.py` uses them;
+  `routes_scorer.py` declares an identical pair and reads neither. The dead copy cannot drift into a
+  wrong verdict, so it is weight rather than hazard — but v0.14.0 wrote a comment in
+  `eval/simulation/drive.py` about importing a floor rather than transcribing one, and leaving a
+  transcription in the tree beside it is inconsistent.
+- **No behavioural equivalent exists for the parameter-inspecting degeneracy rules.** ADR #193 built
+  the discrimination floor as the behavioural form of threshold-reachability, which is what an
+  opaque artefact needs. T5's reachability, T6's saturation, F4's identical-members rule and G4's
+  base score are still parameter inspections, and a model whose parameters cannot be read defeats
+  every one. `architecture/CARTRIDGE-0.15-DRAFT.md` §2.3 argues this is the real design question
+  behind the cartridge, and it is unanswered.
+- **The champion has never changed on any corpus this project holds.** §5.3 steps 7 and 8 — an admin
+  approving a promotion, and verifying by observation that subsequent situations carry the new
+  model's provenance — have never run, so `PREREGISTRATION-0.14.0.md` §8.7's failure mode is
+  untested in either direction. The first release that changes a champion should change it to
+  something this process can build.
+- **The simulated corpus conflates two measurements.** Driving twenty incidents concurrently
+  measures the appliance under NOC-at-3-a.m. load, which is the interesting case and the one that
+  found F58. Spacing them measures the promotion machinery, which is what the floors count. v0.14.0's
+  plan registered one shape and got both questions half-answered; a v0.15.0 pre-registration should
+  decide which it is asking. `security/SECURITY-REVIEW-0.14.0.md` §7.4.
+- **Eight named mutations survive the suite.** `gates/v0.14.0-phase-8.md` §3 lists them rather than
+  reporting a ratio. Two are worth a line on their own: reverting `appliance.Sender.socket_for` to
+  suppress an unbindable bind — the exact construct its docstring forbids — is caught by nothing,
+  and so is a non-computable rate contributing zero instead of contributing nothing.

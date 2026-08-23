@@ -1,5 +1,61 @@
 # Upgrading NetCoreNOC
 
+## Upgrading to v0.14.0 — "the model family"
+
+**Zero migrations. Zero new runtime dependencies. Nothing to do.**
+
+`pip install --upgrade netcorenoc` (or pull the image) and restart. The schema is unchanged at
+`0013`, the five runtime dependencies are unchanged, and no environment variable was added, renamed
+or removed.
+
+**An appliance that upgrades and registers no model version behaves exactly as v0.13.0 did.** The
+trap path is byte-identical — `correlate.py`, `engine.py`, `receiver.py`, `capture.py` and `learn.py`
+are unchanged to the byte, pinned by a test rather than by a habit — so grouping does not move, the
+frozen evaluation corpus produces the same hash it has since v0.7.0, and the first boot after the
+upgrade behaves like the last boot before it.
+
+### What is new, and none of it is on by default
+
+Three scorer kinds — `tree`, `forest` and `gradient_boosting` — that this appliance trains and runs
+**in this process**. They are inert until you register one and the promotion gate lets it through:
+
+```sh
+python -m netcorenoc promotion register --kind tree --params "$(cat model.json)"
+python -m netcorenoc promotion list
+```
+
+Registration is an **artefact**, not a promotion. Nothing runs it, and nothing will until an admin
+proposes it through `POST /api/promotion` and the server's verdict permits it. There is no HTTP route
+that creates a model version.
+
+### One thing worth checking after the upgrade
+
+Open **Link scorer** in the console. It now leads with **"What is deciding"**, and if a model version
+is active it says so and names the artefact.
+
+**Before v0.14.0 that screen was wrong in this case.** With a model version running there is no
+scorer configuration row, so `GET /api/scorer` fell back to the built-in defaults and the console
+rendered them under the heading *"Active configuration"* — five weights that decided nothing,
+presented as though they did. If you have ever promoted a `logistic` model, that is what you were
+reading. Nothing was mis-scored; the screen was mis-labelled. Fixed in this release (F60, ADR #196).
+
+### One finding you should know about, unfixed
+
+**F58.** On a network where many incidents are concurrent, a mass storm defeats the only guard that
+stops the correlator trusting an unlearned pair of network elements. Fifty-six dying-gasp alarms on
+one OLT deposit `56 × STORM_DAMPING = 5.6` units of co-occurrence mass on **every** other NE in the
+120-second window — above the 5.0 `learn.MIN_EDGE_N` requires — and past that gate the affinity it
+returns is the evidence discount alone, because during a storm everything co-occurs with everything.
+
+On the generated network this release built, an entire increment of twenty concurrent incidents
+collapsed into **one 230-member situation** spanning 24 unrelated faults.
+
+It is measured, not inferred, and it is **not fixed in this release**: the trap path is byte-identical
+for the whole of v0.14.0 and changing the correlator after seeing the verdict it produced would be
+adaptive selection with the data-generating process as the knob.
+`docs/gates/v0.14.0-phase-7.md` §3 has the arithmetic and §3.4 the reasoning. If your network sees
+large storms concurrent with unrelated faults, that is the behaviour to expect today.
+
 ## Upgrading to v0.13.0 — "the UI"
 
 **Zero migrations. Zero new runtime dependencies. Nothing to do.**

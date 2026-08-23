@@ -631,3 +631,76 @@ def test_every_javascript_module_opens_with_a_block_comment() -> None:
         assert len(header.split()) >= 20, (
             f"{path.name}'s header is {len(header.split())} words; it does not explain anything"
         )
+
+
+# --- prime directive 1, as a test rather than as a command someone remembers to run --------------
+
+#: SHA-256 of the five modules on the trap path, at **v0.13.0** — the release this one branched
+#: from. v0.14.0's build prompt makes their byte-identity its first non-negotiable:
+#:
+#:   > `correlate.py`, `engine.py`, `receiver.py`, `capture.py`, `learn.py` byte-identical at the
+#:   > end, verified by hash.
+#:
+#: Every gate document in this release quotes those hashes. **Quoting them is not a guard**: a hash
+#: a human runs `sha256sum` for at the end of a phase catches a change only if the human remembers,
+#: and the phase where they would most want to forget is the phase that found a defect in one of
+#: these files. This release is that phase — F58 is a finding about `learn.py`, measured with the
+#: evidence on screen, and left unfixed. This table is what made leaving it unfixed a property of
+#: the tree rather than a promise in a document.
+#:
+#: Pinned by content, not by `git diff`, so it holds against a working tree with no history: a
+#: reformat, an import reordering, a comment fix and a semantic change are all the same event here,
+#: which is right, because "did anything at all move" is the question prime directive 1 asks.
+#:
+#: **When a later release legitimately changes one of these**, it updates this table in the same
+#: commit — the reviewable-line-in-a-diff discipline `UI_HASHES` has used since v0.11.0.
+TRAP_PATH_HASHES: dict[str, str] = {
+    "capture.py": "8676482c1965a97d3720b642e62451ecba8ed5317fae9f779ed1b30be47dea1e",
+    "correlate.py": "48767428a93ab511e09a07e0c6d40c9d3c0fc39fee33ec95625b49be722a4845",
+    "engine.py": "07d0e2595e4a550c51e747448e2e34f65446dde4812d6800deccdfc4bbe2e13e",
+    "learn.py": "7545e7d9d33563b9fa832ca5e958f0ef24337afc540f6c5b9ad1a91c7fcddf63",
+    "receiver.py": "139611c9f69bf54e87d8099cbfa3eb4820355b2f758106c1866dc4bbc8bdb441",
+}
+
+
+def test_the_trap_path_is_byte_identical_to_the_release_this_one_branched_from() -> None:
+    """**Prime directive 1**, measured on every run rather than at the end of a phase.
+
+    The five modules are named individually. A glob over "the ingest path" would be a claim about
+    a boundary nobody drew, and the boundary is the point: these are the files a trap actually
+    passes through, and a release about *models* has no business inside any of them.
+    """
+    import hashlib
+
+    moved = []
+    for name, expected in sorted(TRAP_PATH_HASHES.items()):
+        actual = hashlib.sha256((PKG / name).read_bytes()).hexdigest()
+        if actual != expected:
+            moved.append(f"  {name}\n    pinned: {expected}\n    actual: {actual}")
+    assert not moved, (
+        "a module on the trap path moved:\n"
+        + "\n".join(moved)
+        + "\n\nPrime directive 1: correlate.py, engine.py, receiver.py, capture.py and learn.py "
+        "are byte-identical for the whole of v0.14.0. If a later release changes one of these "
+        "legitimately, update TRAP_PATH_HASHES in the same commit — which makes the change a "
+        "reviewable line in a diff instead of something that happened while someone was in the "
+        "file for another reason."
+    )
+
+
+def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() -> None:
+    """The other direction: the table names five files and they are the five that exist.
+
+    Without this, deleting an entry would make the guard pass by having nothing left to check —
+    the same hole `test_no_module_may_join_the_allowlist` closes for the size guard, and the same
+    reason: a guard whose subject can be edited away is not a guard.
+    """
+    assert set(TRAP_PATH_HASHES) == {
+        "capture.py",
+        "correlate.py",
+        "engine.py",
+        "learn.py",
+        "receiver.py",
+    }, "the pinned set is no longer the five modules the build prompt names"
+    for name in TRAP_PATH_HASHES:
+        assert (PKG / name).is_file(), f"{name} is pinned and does not exist"
