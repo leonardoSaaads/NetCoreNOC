@@ -4579,3 +4579,41 @@ grouping**.
   test of whether a band is a band. 0.02–0.11 of measurement noise is negligible against it.
 - **Consequence**: Phase 8 reports the measured figure against **both** bands, #181's and this one,
   and neither is re-cut afterwards.
+
+## 195. The promotion gate measures the candidate, not whatever is in shadow (v0.14.0, F59)
+
+- **Context**: v0.11.0's `routes_promotion._derived_inputs` computed the four named quantities
+  against `engine.shadow.scorer`, while `propose_promotion` activates the `model_version_id` the
+  **request** named. Nothing bound the two: no check that the candidate's parameters are the shadow
+  scorer's, and `params_hash` reaches `promotion.evaluate` only as a fold-materialisation key.
+- **How it was found**: by walking the chain. Phase 7 registered a `tree` artefact through the CLI
+  and proposed it over HTTP, and the verdict came back derived from an arm that had nothing to do
+  with the tree. Three releases of tests had not caught it because no test had ever proposed a
+  candidate that **differed** from the shadow scorer — which is what an end-to-end demonstration is
+  for.
+- **Why it matters more here than in most systems**: `PromotionIn` has no `verdict`, `metrics` or
+  `floors_met` field, and `routes_promotion.py`'s own docstring says why — *"the request body may
+  name a `model_version_id`; it may not assert a verdict."* Measuring a different model re-opens that
+  door from the other side, and in the worse direction: **a verdict about a model nobody measured
+  looks derived.** The `missing_run` guard bounds the damage — an artefact with no challenger run
+  behind it cannot be applied — but it checks that *a* run exists, not that the run fitted these
+  parameters.
+- **Decision**: the challenger arm is the scorer the candidate row describes, built by
+  `model_version.scorer_for` — **the** dispatch, and the same function `scorer_lifecycle` uses to
+  activate a row. One function, one document, so the model scored at the gate and the model that
+  would run after the pointer moves cannot differ.
+- **Why this release and not v0.15.0**: `scorer_for` covered two kinds before v0.14.0, so the gate
+  could not have loaded a `tree` candidate at all — part of why the gap survived. The release that
+  makes five kinds loadable is the release where the repair is even expressible. It also **cannot
+  change any verdict reported here**: the floors are unmet, so the verdict is
+  `INSUFFICIENT_EVIDENCE` whatever the metrics say, which removes the adaptive-selection objection
+  that would otherwise apply to changing a measurement after seeing a result.
+- **A candidate whose document will not load is refused, never substituted**: `ModelPayloadError`
+  becomes a 400 naming the reason, and no `promotion` row is written. Scoring *something else* and
+  returning a verdict would be the same defect wearing an error-handling hat.
+- **Demonstrated, not asserted**: reverting the one line turns
+  `test_the_gate_measures_the_candidate_and_not_whatever_is_in_shadow` and
+  `test_a_candidate_whose_document_will_not_load_is_refused_not_substituted` red with the other 15
+  tests in the file green as the control. The first uses a sentinel scorer that raises if it is ever
+  called, **and asserts the corpus supplied promoted pairs** — because a sentinel that is never
+  reached is a sentinel that always passes.

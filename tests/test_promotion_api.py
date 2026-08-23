@@ -73,6 +73,38 @@ async def _register(store: Store, *, with_run: bool = True) -> int:
     return model_version_id
 
 
+async def _document_for(kind: str) -> str:
+    """A **valid** parameter document for one kind, built the way the product builds one.
+
+    The three tree kinds are fitted by their own `fit_document`, not hand-written: a hand-written
+    tree would be a second definition of the format and the two would drift. `modelfixtures` is the
+    same row generator `tests/test_tree_kinds.py` fits against, so the documents here are the ones
+    that file already exercises in depth.
+    """
+    import modelfixtures
+    from netcorenoc import boosting, forest, tree
+
+    if kind == model_version.KIND_ADDITIVE:
+        return model_version.canonical_document(
+            {"w_t": 0.30, "w_a": 0.35, "w_e": 0.35, "tau_s": 30.0, "threshold": 0.50}
+        )
+    if kind == model_version.KIND_LOGISTIC:
+        return model_version.canonical_document(FITTED)
+    rows = modelfixtures.training_rows()
+    fitters = {
+        model_version.KIND_TREE: lambda: tree.fit_document(
+            rows, max_depth=3, min_samples_leaf=20, criterion="gini", threshold=0.5
+        ),
+        model_version.KIND_FOREST: lambda: forest.fit_document(
+            rows, n_estimators=3, max_depth=3, min_samples_leaf=20, mtry=2, seed=7, threshold=0.5
+        ),
+        model_version.KIND_GRADIENT_BOOSTING: lambda: boosting.fit_document(
+            rows, n_rounds=3, learning_rate=0.2, max_depth=2, min_samples_leaf=20, threshold=0.5
+        ),
+    }
+    return model_version.canonical_object(await fitters[kind]())
+
+
 # -- S5: THE REFUSED PATH, first ------------------------------------------------------------
 
 
@@ -394,3 +426,146 @@ async def test_a_better_verdict_with_no_challenger_run_is_still_refused(
     row = (await store.list_promotions(10))[0]
     assert row["outcome"] == "refused"
     assert "retune with a better story" in str(row["refusal_reason"])
+
+
+# -- F59: the arm measured is the model that would be activated (v0.14.0, Phase 7) ---------------
+
+
+async def _labelled_pairs(store: Store, engine: Engine) -> None:
+    """A bag with **promoted pairs under it**, so the gate has something to score.
+
+    Without this the test below proves nothing: `promotion_metrics.measure` returns early on a
+    corpus with no promoted pairs — recording the four quantities as absent rather than as zero,
+    which is correct — and never touches either arm's scorer. A sentinel that is never called is a
+    sentinel that always passes, so the assertion that the pairs were there is part of the test.
+    """
+    async with store.lock:
+        sid = await store.create_situation(BASE, None)
+        # Raw SQL, as `_sufficient_corpus` above uses, and for the same reason: `add_feedback`
+        # leaves `capture_provenance` NULL, and `store.labelled_pairs` filters on `'current'` —
+        # v0.7.5's repair, which makes a pre-repair label unusable rather than merely old.
+        await store.conn.execute(
+            "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, coverage, "
+            "member_count, excluded_reconciled, scope_redacted_members, capture_provenance) "
+            "VALUES (?, 'split', ?, 'alice', 'full', 6, 2, 0, 'current')",
+            (sid, BASE),
+        )
+        for index, (delta, affinity, entity) in enumerate(
+            ((1.0, 0.9, 0.9), (25.0, 0.1, 0.1), (5.0, 0.6, 0.2))
+        ):
+            await store.conn.execute(
+                "INSERT INTO dataset_pair (capture_run_id, alarm_a, alarm_b, situation_id, "
+                "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
+                "incumbent_linked, storm, truncated, evaluated_at, lifecycle, promoted_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 0.9, ?, 0, 0, ?, 'dataset', ?)",
+                (
+                    engine.capture.run_id,
+                    1 + index * 2,
+                    2 + index * 2,
+                    sid,
+                    delta,
+                    affinity,
+                    entity,
+                    1 if index == 0 else 0,
+                    BASE,
+                    BASE,
+                ),
+            )
+        await store.commit()
+
+
+async def test_the_gate_measures_the_candidate_and_not_whatever_is_in_shadow(
+    store: Store,
+) -> None:
+    """**F59.** v0.11.0 scored `engine.shadow.scorer` and activated `body.model_version_id`.
+
+    Nothing bound them: no check that the candidate's parameters were the shadow scorer's, and
+    `params_hash` reaches `promotion.evaluate` only as a fold-materialisation key. A promotion could
+    therefore be applied on metrics measured against a *different model* — which re-opens by the
+    back door the door `PromotionIn` closes at the front, and does it in the worse direction,
+    because a verdict about a model nobody measured looks derived.
+
+    Asserted by observation rather than by reading the call: the shadow scorer is replaced with one
+    that would raise if it were ever asked to score, and the proposal is expected to succeed. A
+    sentinel is used instead of a spy because a spy would pass on a call that merely *reached* the
+    right object; only an exception proves the wrong one was never touched.
+    """
+    engine, app = await _env(store)
+    await _labelled_pairs(store, engine)
+    model_version_id = await _register(store)
+
+    class Detonator:
+        """A `LinkScorer` that fails the moment it is scored. Never the candidate."""
+
+        scorer_id = "detonator"
+        contract_version = "1.0"
+
+        def score(self, features: object) -> object:  # pragma: no cover - must never run
+            raise AssertionError("the gate scored the SHADOW arm, not the candidate (F59)")
+
+        def params_fingerprint(self) -> str:
+            return "detonator"
+
+    engine.shadow.scorer = Detonator()  # type: ignore[assignment]
+    client = await authutil.client_as(app, "admin")
+    response = await client.post("/api/promotion", json={"model_version_id": model_version_id})
+    assert response.status_code == 200, response.text
+    assert response.json()["verdict"] == "INSUFFICIENT_EVIDENCE"
+    body = response.json()
+    assert not any("no promoted pairs" in note for note in body["unavailable"]), (
+        "the corpus supplied no pairs, so nothing was scored and this test proves nothing"
+    )
+    await client.aclose()
+
+
+async def test_a_candidate_whose_document_will_not_load_is_refused_not_substituted(
+    store: Store,
+) -> None:
+    """A model that cannot be built cannot be promoted, and the gate is where that is discovered.
+
+    The alternative — scoring *something else* and returning a verdict — is the defect above wearing
+    an error-handling hat. 400 rather than 500: the request named a row this appliance cannot build,
+    which is the client's problem to see and the server's to name.
+
+    The row is inserted through the store directly, because `netcorenoc promotion register` runs
+    `validate_document` and would refuse it. That is the point: the CLI is a gate, not the only
+    writer, and a row that predates a contract change can reach this code path.
+    """
+    async with store.lock:
+        broken = await store.insert_model_version(
+            kind=model_version.KIND_TREE,
+            contract_version="1.0",
+            params_document='{"nodes": "not a list of nodes"}',
+            params_hash="0" * 64,
+            challenger_run_id=None,
+            created_by="admin",
+            created_at=BASE,
+        )
+        await store.commit()
+    _engine, app = await _env(store)
+    client = await authutil.client_as(app, "admin")
+    response = await client.post("/api/promotion", json={"model_version_id": broken})
+    assert response.status_code == 400, response.text
+    assert "will not load" in response.json()["detail"]
+    assert not await store.list_promotions(10), "a candidate that cannot be built wrote a row"
+    await client.aclose()
+
+
+async def test_every_supported_kind_can_be_scored_by_the_gate(store: Store) -> None:
+    """The five kinds reach the gate through **one** dispatch, `model_version.scorer_for`.
+
+    Part of why F59 survived three releases is that before v0.14.0 the gate could not have loaded a
+    `tree` candidate at all — `scorer_for` covered two kinds — so the shadow scorer was the only
+    thing there was to measure. This asserts the coverage the repair depends on, over
+    `SUPPORTED_KINDS` rather than over a list written here, so a sixth kind added without a branch
+    fails rather than silently falling through.
+    """
+    from netcorenoc.api.routes_promotion import _candidate_scorer
+
+    assert len(model_version.SUPPORTED_KINDS) == 5
+    for kind in sorted(model_version.SUPPORTED_KINDS):
+        document = await _document_for(kind)
+        scorer = _candidate_scorer(
+            {"kind": kind, "contract_version": "1.0", "params_document": document}
+        )
+        assert scorer.params_fingerprint(), f"{kind} built a scorer with no fingerprint"

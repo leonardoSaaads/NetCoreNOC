@@ -142,6 +142,10 @@ LAYER_OF: dict[str, str] = {
     "attribution": "engine",
     "cart": "engine",
     "tree": "engine",
+    # v0.14.0 — the four named quantities for both arms. Engine-layer beside `promotion`, and a
+    # separate module for `evaluation_folds`' reason: the HTTP surface owns what a request may
+    # assert (nothing) and this owns what the server derives.
+    "promotion_metrics": "engine",
     "forest": "engine",
     "boosting": "engine",
     # data — one SQLite connection under one asyncio lock

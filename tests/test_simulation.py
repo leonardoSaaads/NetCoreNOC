@@ -176,3 +176,125 @@ def test_no_promotion_path_module_mentions_a_ground_truth_field(word: str) -> No
     for name in ("promotion.py", "judge.py", "shadow_cv.py", "evaluation_folds.py"):
         source = (PKG / name).read_text(encoding="utf-8")
         assert word not in source, f"{name} mentions {word!r}"
+
+
+# -- the loop's discipline (v0.14.0, Phase 7) ----------------------------------------------------
+#
+# The loop stopped at ten increments with the floors unmet, which `PREREGISTRATION-0.14.0.md` §5.3
+# registers **in advance** as one of two successful outcomes and §8.3 names. The hazard in that
+# branch is not the outcome; it is that a later edit quietly turns the ceiling into a target, or
+# softens a floor, or lets the report call the shortfall something other than a shortfall. Each
+# test below pins one of those.
+
+
+def test_the_increment_ceiling_is_the_registered_ten() -> None:
+    """§5.3: *"ten increments have been generated without every floor being met"*.
+
+    A constant rather than a parameter, and asserted here rather than trusted, because a loop whose
+    stopping rule can be raised from the command line has no stopping rule. The plan's own sentence
+    is the reason: **a loop that cannot stop without success is a loop that will manufacture one.**
+    """
+    from simulation import drive
+
+    assert drive.MAX_INCREMENTS == 10
+    assert "--increments" not in Path(drive.__file__).read_text(encoding="utf-8")
+
+
+def test_the_loop_reads_the_servers_floors_and_never_its_own() -> None:
+    """The floors the loop reports against are **the ones the verdict is decided by**.
+
+    `routes_promotion._derived_inputs` computes `floors_met` from `ASSERTING_BAGS_FLOOR` and
+    `ASSERTING_INCIDENTS_FLOOR`. A driver carrying its own copy of 50 and 30 would keep reporting
+    success after the server's had moved, which is the class of defect `census()`'s own docstring
+    calls "a query written for a report" one level down.
+    """
+    from netcorenoc.api import routes_promotion
+    from simulation import drive
+
+    assert drive.FLOORS == {
+        "asserting_bags": routes_promotion.ASSERTING_BAGS_FLOOR,
+        "asserting_incidents": routes_promotion.ASSERTING_INCIDENTS_FLOOR,
+    }
+    assert drive.FLOORS == {"asserting_bags": 50, "asserting_incidents": 30}
+
+
+def test_the_shortfall_is_per_floor_and_never_a_single_number() -> None:
+    """§5.3: *"After each increment it computes the census and reports, **per unmet floor**, the
+    shortfall."* One number for two floors would say a demonstration was 40 short of something.
+    """
+    from simulation import drive
+
+    assert drive.shortfall({"asserting_bags": 10, "asserting_incidents": 10}) == {
+        "asserting_bags": 40,
+        "asserting_incidents": 20,
+    }
+    assert drive.shortfall({"asserting_bags": 50, "asserting_incidents": 30}) == {}
+    # A floor that is exceeded is met, not negative.
+    assert drive.shortfall({"asserting_bags": 99, "asserting_incidents": 99}) == {}
+
+
+def test_the_labelling_rule_is_the_one_registered_before_the_verdict() -> None:
+    """§5.2's decision function, pinned as a property rather than as a call.
+
+    The rule is *one truth key -> confirm; two or more -> split, marking the minority key*. §5.4
+    forbids changing it now that a verdict has been observed, so this test exists to make a change
+    a failing diff rather than a quiet edit. It reads the source because the rule is a branch and
+    not a value: there is no constant to compare against.
+    """
+    source = (REPO_ROOT / "eval" / "simulation" / "labelling.py").read_text(encoding="utf-8")
+    assert 'verdict = "split"' in source
+    assert 'verdict = "confirm"' in source
+    assert "min(by_key.values(), key=lambda ids: (len(ids), ids[0]))" in source
+    assert "if len(by_key) > 1:" in source
+
+
+def test_the_three_principals_are_distinct_and_round_robin() -> None:
+    """§5.2: three distinct principals, **none contributing more than 60 % of bags.**
+
+    Round-robin over three gives 33.3 % each whatever the corpus size — the operator-concentration
+    floor of `PREREGISTRATION-0.9.0.md` satisfied by construction rather than by luck. Two
+    principals would give 50 % each and still pass the ceiling, which is why the count is asserted
+    and not just the ceiling.
+    """
+    from simulation.labelling import PRINCIPALS
+
+    assert len(PRINCIPALS) == 3
+    assert len(set(PRINCIPALS)) == 3
+    assert 100.0 / len(PRINCIPALS) <= 60.0
+
+
+def test_the_diagnosis_supports_no_conclusion_and_says_so() -> None:
+    """§9: an additional observation *"may never support a conclusion in §8"*.
+
+    `diagnose.py` measures why the census reads what it reads. Nothing it computes may be read by
+    the loop's stopping decision, so `shortfall` and `census` must not mention it — asserted by
+    parsing `drive.py`, because the two live in one file and an accidental reference would be one
+    line.
+    """
+    from simulation import drive
+
+    tree = ast.parse(Path(drive.__file__).read_text(encoding="utf-8"))
+    deciding = {"shortfall", "census"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name in deciding:
+            body = ast.dump(node)
+            assert "diagnose" not in body, f"{node.name}() reads the diagnosis"
+
+
+def test_the_transport_rewrite_is_a_bijection_on_this_corpus() -> None:
+    """The demonstration host cannot bind `10.0.0.0/8`, so the harness sends from `127.a.b.c`.
+
+    It is a change to the **transport** and not to the corpus, and that claim is only true if the
+    mapping is injective over the addresses the generator actually produces — otherwise two devices
+    would arrive as one NE and the appliance would see a different network. Asserted over every
+    device in an increment rather than argued from the second octet's range.
+    """
+    from simulation.appliance import from_wire, to_wire
+    from simulation.generator import devices_of
+
+    devices = sorted(devices_of(0))
+    assert len(devices) > 1
+    wire = [to_wire(ip) for ip in devices]
+    assert len(set(wire)) == len(set(devices)), "the rewrite collapsed two devices onto one address"
+    assert all(from_wire(to_wire(ip)) == ip for ip in devices)
+    assert all(address.startswith("127.") for address in wire)
