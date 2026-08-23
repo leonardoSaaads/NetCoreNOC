@@ -41,8 +41,8 @@
  */
 
 import { html } from "../dom.js";
-import { SectionHeading, DataTable, TimeCell } from "../widgets.js";
-import { score, count } from "../format.js";
+import { SectionHeading, DataTable } from "../widgets.js";
+import { score, count, absolute, relative, timeTitle } from "../format.js";
 
 /** Kinds fitted from labelled evidence. Nothing here is typed by an admin. */
 const FITTED = ["logistic", "tree", "forest", "gradient_boosting"];
@@ -179,8 +179,9 @@ function Artefact({ version, document }) {
       not reachable from the network.</p>
     <p class="mono">model version #${version.id} · ${version.kind} · ${version.params_hash}</p>
     <p class="hint">
-      Registered by ${version.created_by || "—"} at
-      <${TimeCell} ts=${version.created_at} />.${" "}
+      ${`Registered by ${version.created_by || "—"} at `}
+      <span title=${timeTitle(version.created_at)}>${absolute(version.created_at)}</span>
+      ${` (${relative(version.created_at)}). `}
       ${version.challenger_run_id == null
         ? html`<b>No challenger run behind it</b> — an artefact in that state can be registered but
             never applied.`
@@ -195,8 +196,9 @@ function Artefact({ version, document }) {
       : html`<p class="hint">This artefact's document carries no hyperparameter this build knows
           how to name. The fingerprint above still covers every byte of it.</p>`}
     ${document && document.base_value !== undefined
-      ? html`<p class="hint">Attribution base value
-          <code class="mono">${score(document.base_value, 6)}</code> — the model's mean output over
+      ? html`<p class="hint">${"Attribution base value "}
+          <code class="mono">${score(document.base_value, 6)}</code>${" "}
+          — the model's mean output over
           the registered background set. Contributions sum to the score <b>minus</b> this, which is
           what makes the decomposition exact rather than approximate.</p>`
       : null}

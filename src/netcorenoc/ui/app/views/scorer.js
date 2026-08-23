@@ -79,8 +79,9 @@ function Configured({ config, running }) {
         ? "The five numbers the running engine is grouping with."
         : "Stored and inactive: a model version is deciding, so these numbers group nothing " +
           "until it is rolled back."} />
-    <p class="muted">configuration #${config.config_id ?? "—"}
-      ${running.tunable ? "" : " — not active"}</p>
+    <p class="muted">${config.config_id == null
+      ? "no configuration stored — these are the built-in defaults"
+      : `configuration #${config.config_id}`}${running.tunable ? "" : " · not active"}</p>
     <p class="mono">${FIELDS.map(([key]) => `${key}=${config.params[key]}`).join("  ")}</p>
   </section>`;
 }

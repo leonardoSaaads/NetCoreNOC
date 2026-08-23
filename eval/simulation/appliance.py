@@ -192,6 +192,7 @@ class Appliance:
         self.base = f"http://127.0.0.1:{http_port}"
         self.process: subprocess.Popen[str] | None = None
         self.bootstrap_password: str | None = None
+        self.log_path = Path(f"{db_path}.log")
         self.log: list[str] = []
 
     def __enter__(self) -> Appliance:
@@ -215,13 +216,20 @@ class Appliance:
                 "PYTHONUNBUFFERED": "1",
             }
         )
+        # **The appliance's output goes to a file, never to a pipe nobody drains.**
+        # A `subprocess.PIPE` read once for the banner and then ignored fills at 64 KB, and the
+        # appliance blocks on its next `write` — which looks exactly like a hung server and is not
+        # one. uvicorn logs a line per request, so a browser session reaches that in seconds.
+        # Measured the hard way in Phase 9: a 30-second navigation timeout against an appliance
+        # that had answered `/healthz` correctly moments before.
+        self.log_path.unlink(missing_ok=True)
+        self._log_file = self.log_path.open("w", encoding="utf-8")
         self.process = subprocess.Popen(
             [sys.executable, "-m", "netcorenoc.main"],
             env=env,
-            stdout=subprocess.PIPE,
+            stdout=self._log_file,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1,
         )
         self._read_bootstrap_banner()
         self._await_health()
@@ -233,16 +241,17 @@ class Appliance:
         that made it once. Reading it here is what a maintainer does at a first boot; it is not
         stored, and the first thing the driver does with it is change it.
         """
-        assert self.process is not None and self.process.stdout is not None
+        assert self.process is not None
         deadline = time.monotonic() + BOOT_TIMEOUT_S
         while time.monotonic() < deadline:
-            line = self.process.stdout.readline()
-            if not line:
+            for line in self.log_path.read_text(encoding="utf-8").splitlines():
+                if "password:" in line:
+                    self.bootstrap_password = line.split("password:", 1)[1].strip()
+                    return
+            if self.process.poll() is not None:
                 break
-            self.log.append(line.rstrip())
-            if "password:" in line:
-                self.bootstrap_password = line.split("password:", 1)[1].strip()
-                return
+            time.sleep(0.1)
+        self.log = self.log_path.read_text(encoding="utf-8").splitlines()
         raise RuntimeError(
             "the appliance never printed a bootstrap banner:\n  " + "\n  ".join(self.log[-20:])
         )
@@ -302,7 +311,8 @@ class Appliance:
         if self.process.poll() is None:  # pragma: no cover - only on a wedged appliance
             self.process.kill()
             self.process.wait(timeout=5.0)
-        if self.process.stdout is not None:
-            with contextlib.suppress(Exception):
-                self.log.extend(line.rstrip() for line in self.process.stdout)
+        with contextlib.suppress(Exception):
+            self._log_file.close()
+        with contextlib.suppress(Exception):
+            self.log = self.log_path.read_text(encoding="utf-8").splitlines()
         self.process = None

@@ -112,8 +112,11 @@ function toDecision(row) {
         ${row.outcome}</span>`,
       // The whole point of this screen: a refusal that cannot say why is indistinguishable from
       // a broken gate.
+      // **The headline only.** The reason is several paragraphs with a bulleted trigger list, and
+      // a table cell collapses every newline in it into one run of prose that nobody reads. The
+      // expanded decision below carries the whole text in a `<pre>`, where its shape survives.
       reason: row.refusal_reason
-        ? html`<span class="refusal-reason">${row.refusal_reason}</span>`
+        ? html`<span class="refusal-reason">${String(row.refusal_reason).split("\n")[0]}</span>`
         : html`<span class="muted">—</span>`,
       triggers: (Array.isArray(triggers) ? triggers : []).length
         ? html`<span class="mono">${(Array.isArray(triggers) ? triggers : []).map(String).join(", ")}</span>`

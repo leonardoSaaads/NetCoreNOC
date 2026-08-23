@@ -117,10 +117,11 @@ export function Quantities({ row }) {
       { key: "champion", label: "champion" },
       { key: "clusters", label: "incidents", numeric: true },
     ]} rows=${rows} />
-    <p class="hint">Both arms come from one code path, because a challenger number with no champion
-      number beside it is not a comparison. The interval is a cluster bootstrap over
-      <b>incidents</b> — never over pairs and never over bags, so one large storm cannot speak for
-      the corpus. A quantity that could not be computed says so; it is never recorded as zero.</p>
+    <p class="hint">${"Both arms come from one code path, because a challenger number with no " +
+      "champion number beside it is not a comparison. The interval is a cluster bootstrap over "}
+      <b>incidents</b>${" — never over pairs and never over bags, so one large storm cannot speak " +
+      "for the corpus. A quantity that could not be computed says so; it is never recorded as " +
+      "zero."}</p>
   </div>`;
 }
 
@@ -142,8 +143,11 @@ export function Decision({ row }) {
 
     <p>
       <span class=${`outcome outcome-${applied ? "ok" : "denied"}`}>${row.outcome}</span>
-      <span class="muted"> · model version ${row.model_version_id} · by
-        ${row.approved_by || "—"} · seal queries ${row.query_count}</span>
+      ${" "}
+      <span class="muted">
+        ${` · model version ${row.model_version_id} · by ${row.approved_by || "—"}`}
+        ${` · seal queries ${row.query_count}`}
+      </span>
     </p>
 
     ${applied
@@ -157,10 +161,10 @@ export function Decision({ row }) {
       : null}
 
     ${(Array.isArray(triggers) ? triggers : []).length
-      ? html`<p class="hint">Triggers that fired:
-          <b class="mono">${triggers.map(String).join(", ")}</b>.
-          Every trigger is evaluated; none short-circuits, so this list is complete rather than
-          first-wins.</p>`
+      ? html`<p class="hint">${"Triggers that fired: "}
+          <b class="mono">${triggers.map(String).join(", ")}</b>${". "}
+          ${"Every trigger is evaluated; none short-circuits, so this list is complete rather " +
+            "than first-wins."}</p>`
       : html`<p class="hint">No trigger fired.</p>`}
 
     <${Quantities} row=${row} />
@@ -172,9 +176,9 @@ export function Decision({ row }) {
         </div>`
       : null}
 
-    <p class="hint">Taken against ratified plan
-      <code class="mono">${row.plan_sha256}</code>, evaluation run
-      <code class="mono">${row.evaluation_run_id || "—"}</code>.</p>
+    <p class="hint">${"Taken against ratified plan "}
+      <code class="mono">${row.plan_sha256}</code>${", evaluation run "}
+      <code class="mono">${row.evaluation_run_id || "—"}</code>${"."}</p>
   </section>`;
 }
 
