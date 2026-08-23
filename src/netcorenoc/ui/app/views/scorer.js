@@ -25,6 +25,7 @@ import { get, post } from "../api.js";
 import { Loader, DataTable, SectionHeading, TimeCell, Loading, Failed, cell } from "../widgets.js";
 import { score, count, plural } from "../format.js";
 import { scorerRefusals } from "../parameters.js";
+import { Running } from "./model.js";
 import { can } from "../session.js";
 import { Destructive } from "../destructive.js";
 
@@ -46,26 +47,41 @@ export class Scorer extends Loader {
   async load() { return get("/api/scorer"); }
 
   view(config) {
+    // `running` is v0.14.0's addition and the screen leads with it: **what is deciding** comes
+    // before **what is configured**, because until v0.14.0 the two were conflated and the second
+    // was rendered under the first's heading whenever a model version was active (F60).
+    const running = config.running || {
+      kind: config.scorer_id, scorer_id: config.scorer_id,
+      contract_version: config.contract_version, params_hash: config.params_hash,
+      tunable: true, model_version: null,
+    };
     return html`<div class="scorerview">
-      <${Active} config=${config} />
+      <${Running} running=${running} degraded=${config.degraded}
+                  degradedReason=${config.degraded_reason} />
+      <${Configured} config=${config} running=${running} />
       <${Form} config=${config} onApplied=${this.reload} />
       <${History} config=${config} onRolledBack=${this.reload} />
     </div>`;
   }
 }
 
-function Active({ config }) {
+/**
+ * The five-number table an admin edits — **and whether it is currently deciding anything.**
+ *
+ * Named `Configured` rather than `Active` deliberately. The old name was the display half of F60:
+ * with a model version running there is no scorer configuration at all, the route returned the
+ * coded defaults, and this section rendered them under the word "Active".
+ */
+function Configured({ config, running }) {
   return html`<section class="panel-block">
-    <${SectionHeading} title="Active configuration"
-      hint="What the running engine is grouping with right now." />
-    <p>
-      <b class="mono">${config.scorer_id}</b>
-      <span class="muted"> contract ${config.contract_version}, configuration
-        #${config.config_id ?? "—"}</span>
-    </p>
+    <${SectionHeading} title="Configured parameters"
+      hint=${running.tunable
+        ? "The five numbers the running engine is grouping with."
+        : "Stored and inactive: a model version is deciding, so these numbers group nothing " +
+          "until it is rolled back."} />
+    <p class="muted">configuration #${config.config_id ?? "—"}
+      ${running.tunable ? "" : " — not active"}</p>
     <p class="mono">${FIELDS.map(([key]) => `${key}=${config.params[key]}`).join("  ")}</p>
-    ${config.degraded ? html`<p class="warnbox"><b>Degraded:</b> ${config.degraded_reason} —
-      running on the built-in defaults.</p>` : null}
   </section>`;
 }
 

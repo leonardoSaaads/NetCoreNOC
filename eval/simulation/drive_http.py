@@ -11,13 +11,12 @@ a shortcut and it is not a substitute: it calls the same parser on the same wire
 `engine.apply_feedback` the route calls. What it does not exercise is the socket, the allowlist, the
 community tagging, authentication, RBAC, request validation, scope resolution and the audit row —
 **and those are exactly what this module exercises**, on the same increments, so the two censuses
-can
-be compared rather than assumed equal.
+can be compared rather than assumed equal.
 
 Ten increments here would be about half an hour of wall clock, because the receiver stamps a trap on
 **arrival**: `spread_beyond_tau` has to reach past `TAU_S` and stay under `WINDOW_S`, so its
-95-second
-gap is 95 seconds of real time and no time scale can compress it without changing the shape. So this
+95-second gap is 95 seconds of real time and no time scale can compress it without changing the
+shape. So this
 runs the first increments and the gate reports which number came from which path.
 
     python eval/simulation/drive_http.py --increments 2
@@ -94,10 +93,9 @@ def label_situation(
     one truth key -> `confirm`; two or more keys -> `split`, marking the **minority** key's members.
 
     The member list comes from `GET /api/situations/{sid}`, so the ids sent as `excluded_ids` are
-    ids
-    the *console* would have rendered — which is the whole point of labelling through the route. The
-    server reconciles them against its own membership and writes `excluded_reconciled`; F46 is the
-    finding that made that the server's number rather than the client's.
+    ids the *console* would have rendered — which is the whole point of labelling through the route.
+    The server reconciles them against its own membership and writes `excluded_reconciled`; F46 is
+    the finding that made that the server's number rather than the client's.
     """
     by_key: dict[str, list[int]] = defaultdict(list)
     for alarm in situation["alarms"]:
@@ -215,9 +213,7 @@ def run(increments: int, kinds: tuple[str, ...], verbose: bool = True) -> dict[s
                 labelled = label_increment(
                     clients, admin, truth_of(increment), increment * 20, done
                 )
-                history.append(
-                    {"increment": increment, "datagrams": sent, "labelled": labelled}
-                )
+                history.append({"increment": increment, "datagrams": sent, "labelled": labelled})
                 if verbose:
                     print(  # noqa: T201
                         f"  increment {increment:>2}: {sent:>4} datagrams  "

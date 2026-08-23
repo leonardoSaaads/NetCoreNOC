@@ -349,6 +349,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/governance.js"),
     ("GET", "/app/views/graph.js"),
     ("GET", "/app/views/labelling.js"),
+    ("GET", "/app/views/model.js"),  # v0.14.0
     ("GET", "/app/views/overview.js"),
     ("GET", "/app/views/promotion.js"),
     ("GET", "/app/views/quarantine.js"),
@@ -359,6 +360,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/timeline.js"),
     ("GET", "/app/views/tokens.js"),
     ("GET", "/app/views/users.js"),
+    ("GET", "/app/views/verdict.js"),  # v0.14.0
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
@@ -439,10 +441,14 @@ async def test_route_table_order_is_unchanged(store: Store) -> None:
 
 #: The `/api` subsequence of the v0.7.1 baseline, unchanged through every release since.
 #:
-#: v0.13.0 appended 36 static module paths to the table, which moved the FULL list above without
-#: moving anything that can shadow a handler — a static asset is an exact literal with no template
-#: and cannot capture another route's requests. So the table is re-pinned **and** the property it
+#: v0.13.0 appended 36 static module paths to the table and v0.14.0 inserted two more
+#: (`app/views/model.js`, `app/views/verdict.js`), which moved the FULL list above without moving
+#: anything that can shadow a handler — a static asset is an exact literal with no template and
+#: cannot capture another route's requests. So the table is re-pinned **and** the property it
 #: actually protects is asserted separately, rather than the whole comparison being loosened.
+#:
+#: This list is **derived** from the one above rather than transcribed, so a v0.14.0 edit that had
+#: touched an `/api` route would have moved both and the second assertion would have caught it.
 API_ORDER_BASELINE: list[tuple[str, str]] = [
     entry for entry in ROUTE_ORDER_BASELINE if entry[1].startswith("/api")
 ]
@@ -453,7 +459,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
 
     `/api/situations` must stay above `/api/situations/{sid}` and `/api/scorer/preview` above the
     bare `POST /api/scorer`; a template that moves above its literal silently changes behaviour.
-    v0.13.0 touches no `/api` route, and this states that as a fact rather than as an intention.
+    v0.13.0 touched no `/api` route and neither does v0.14.0 — three scorer kinds, a repaired
+    promotion gate and two new screens moved the served API surface by exactly nothing. This states
+    that as a fact rather than as an intention.
     """
     _engine, _queue, app = await authutil.make_env(store)
     live = [entry for entry in route_order(app) if entry[1].startswith("/api")]

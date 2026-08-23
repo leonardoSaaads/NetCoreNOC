@@ -4617,3 +4617,34 @@ grouping**.
   tests in the file green as the control. The first uses a sentinel scorer that raises if it is ever
   called, **and asserts the corpus supplied promoted pairs** — because a sentinel that is never
   reached is a sentinel that always passes.
+
+## 196. The console reports what is DECIDING, not what is configured (v0.14.0, F60)
+
+- **Context**: `scorer_config` and `model_version` are mutually exclusive by a database CHECK, so
+  with a model version active there is no scorer configuration row. `routes_scorer._active_scorer()`
+  fell back to `scoring.default_scorer()` and `GET /api/scorer` published that fallback as
+  `scorer_id`, `params` and `params_hash`. The console rendered it under the heading **"Active
+  configuration"**, captioned *"What the running engine is grouping with right now."*
+- **What that means for an operator**: a promoted champion, and five weights on the screen that
+  decide nothing, under a heading asserting that they do. Nothing on the screen said otherwise.
+- **It predates the tree kinds.** A promoted `logistic` champion — reachable since v0.11.0 —
+  produced the same misreport. It survived two releases, one of them a console rewrite, because
+  nothing had ever been promoted: every corpus returned `INSUFFICIENT_EVIDENCE`, so
+  `active_model_version()` was always `None` and the fallback was never taken outside a unit test.
+- **Decision**: split the one function into two, because it had two meanings.
+  **`_tunable_scorer()`** is what the form edits; **`_running_scorer()`** is what the engine is
+  scoring with. `GET /api/scorer` publishes the running scorer's own identity — whatever kind it is
+  — plus a `running` block naming the active artefact: its id, kind, fingerprint, challenger run and
+  `params_document`. The console leads with **"What is deciding"** and labels the five weights
+  **"Configured parameters"**, marked inactive when they are.
+- **The weights are still shown, deliberately**: an admin may retune the stored configuration and
+  roll the model version back, and hiding the table would make that impossible to reason about. The
+  defect was not showing them; it was calling them active.
+- **`kind` is derived from the running scorer, never from the artefact row**, so a degraded fallback
+  reports `additive` — what is running — rather than the kind of an artefact that failed to load.
+  Reporting the intent of a load that failed is how a fail-safe becomes a second lie.
+- **Demonstrated**: reverting the four lines turns
+  `test_the_console_says_a_tree_is_deciding_and_not_five_additive_weights` red with 20 green,
+  and the control — `test_the_control_an_additive_champion_is_not_warned_about` — rules out a
+  console that warns unconditionally. The fixture fits, registers, activates and loads a real tree,
+  which is the four steps a promotion takes.

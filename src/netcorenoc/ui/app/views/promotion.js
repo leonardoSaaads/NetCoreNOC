@@ -20,12 +20,13 @@
  * it is a guarantee rather than a preference.
  */
 
-import { html } from "../dom.js";
+import { html, Component } from "../dom.js";
 import { get, post } from "../api.js";
 import { Loader, Empty, DataTable, SectionHeading, Stat, TimeCell, cell } from "../widgets.js";
 import { count, plural } from "../format.js";
 import { can } from "../session.js";
 import { Destructive } from "../destructive.js";
+import { Decision } from "./verdict.js";
 
 export class Promotion extends Loader {
   constructor(props) {
@@ -62,7 +63,12 @@ export class Promotion extends Loader {
         hint=${"Refusals are included — that is the audit question this table exists to answer. " +
                "A refusal writes a row exactly as an application does."} />
       ${promotions.length
-        ? html`<${DataTable} columns=${DECISION_COLUMNS} rows=${promotions.map(toDecision)} />`
+        ? html`<${DataTable} columns=${DECISION_COLUMNS} rows=${promotions.map(toDecision)} />
+            <${Decision} row=${promotions[0]} />
+            <p class="hint">Expanded above: the most recent decision. Every decision carries the
+              same record — the four named quantities for both arms, the triggers, and what was
+              recorded as absent — and it is written at the moment the gate decides, never
+              recomputed afterwards.</p>`
         : html`<${Empty}
             title="No promotion has been proposed."
             will=${"Every proposal — applied or refused — is recorded here with its verdict, " +
@@ -139,8 +145,52 @@ function toVersion(row) {
   };
 }
 
-function Propose({ versions, onDone }) {
-  const candidate = versions[0];
+/**
+ * Choose a candidate, then propose it.
+ *
+ * v0.13.0 proposed `versions[0]` with no selector, which was defensible when the inventory held one
+ * logistic artefact and is not now: v0.14.0 registers five kinds, and a screen that silently picks
+ * the newest is a screen where the consequential action depends on a sort order the operator cannot
+ * see. The selection is a plain `<select>` and the confirmation names the version it will propose.
+ *
+ * A version with no challenger run behind it stays selectable **on purpose**. It cannot be applied
+ * — the server refuses it with a reason — and letting an admin propose one and read that reason is
+ * how the rule becomes visible. Hiding it would leave the operator to infer a rule nobody stated.
+ */
+class Propose extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { chosen: props.versions[0].id };
+  }
+
+  render({ versions, onDone }, { chosen }) {
+    const candidate = versions.find((one) => one.id === Number(chosen)) || versions[0];
+    return html`<section class="panel-block param-structural">
+      <${SectionHeading} title="Propose"
+        hint=${"The body names a candidate and nothing else. Which one it names is your choice; " +
+               "what happens next is not."} />
+      <div class="grid-form">
+        <div>
+          <label for="promote-candidate">Model version</label>
+          <select id="promote-candidate" value=${String(chosen)}
+                  onChange=${(e) => this.setState({ chosen: Number(e.target.value) })}>
+            ${versions.map((one) => html`<option key=${one.id} value=${String(one.id)}>
+              #${one.id} — ${one.kind}${one.challenger_run_id == null ? " (no challenger run)" : ""}
+            </option>`)}
+          </select>
+        </div>
+      </div>
+      ${candidate.challenger_run_id == null
+        ? html`<p class="warnbox">This artefact has <b>no challenger run behind it</b>. It can be
+            proposed and the decision will be recorded, but it cannot be applied — the server
+            refuses it with that reason, whatever the verdict.</p>`
+        : null}
+      <${ProposeControl} candidate=${candidate} onDone=${onDone} />
+    </section>`;
+  }
+}
+
+function ProposeControl({ candidate, onDone }) {
   return html`<${Destructive}
     title="Propose a promotion"
     hint=${"The body names a candidate. **The server decides**: the floors, the power condition, " +

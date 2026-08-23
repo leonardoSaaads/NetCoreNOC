@@ -14,7 +14,7 @@ Two sentences shaped the method, and both are worth stating before the scope.
    `INSUFFICIENT_EVIDENCE` on a corpus with zero asserting bags, so the promotion machinery has been
    verified by unit test and never by use. This release built a network to walk it on, walked it, and
    **reports what it found rather than what it hoped** — which turned out to be a shortfall, a defect
-   in the gate, and a defect in the correlator.
+   in the gate, a defect in the console, and a defect in the correlator.
 
 ---
 
@@ -32,6 +32,7 @@ Two sentences shaped the method, and both are worth stating before the scope.
 | The chain, walked | real appliance, real UDP, the console's own route, the CLI, the gate |
 | **F58** | issued: a storm defeats `MIN_EDGE_N` for every NE in the window. Measured, unfixed, and the reason it is unfixed is recorded |
 | **F59** | **fixed**: the promotion gate measured the shadow scorer and activated the candidate. ADR #195 |
+| **F60** | **fixed**: the console reported the coded additive defaults as the active configuration whenever a model version was running. ADR #196 |
 
 ## 2. Out of scope, and why
 
@@ -68,7 +69,7 @@ arrived over a UDP socket, situations formed, three principals labelled them thr
 triggers each and the seal unspent.** The refusal is the machinery working. The missing half is the
 observation that a champion change propagates, and this release has no observation either way.
 
-## 4. The two defects the walk found, and neither would have come from reading
+## 4. The three defects the walk found, and none would have come from reading
 
 * **F59 — the gate measured the wrong model.** `_derived_inputs` computed the four named quantities
   against `engine.shadow.scorer` while `propose_promotion` activated the `model_version_id` the
@@ -76,6 +77,12 @@ observation that a champion change propagates, and this release has no observati
   ever proposed a candidate that differed from the shadow scorer.** Fixed here (ADR #195); the arm
   measured is now built from the candidate row by `model_version.scorer_for`, the same dispatch the
   activation path uses.
+* **F60 — the console reported the wrong parameters.** With a model version active there is no
+  scorer configuration row, so `GET /api/scorer` fell back to the **coded defaults** and the screen
+  rendered them under the heading *"Active configuration"*. An operator with a promoted champion
+  would have read five weights that decided nothing. It predates the tree kinds — a promoted
+  `logistic` produced it too — and survived two releases, one of them a console rewrite, because
+  nothing had ever been promoted. Fixed here (ADR #196).
 * **F58 — a storm defeats the only NE-affinity guard.** 56 dying-gasp alarms on one OLT deposit
   `56 × STORM_DAMPING = 5.6` units of pair mass on **every** other NE in the window, above the 5.0
   `MIN_EDGE_N` requires; past that gate the NPMI is the evidence discount `m/(m+1)` alone, because

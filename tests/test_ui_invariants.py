@@ -665,6 +665,206 @@ async def test_every_destructive_control_states_its_consequence_before_it_can_be
         assert deletes == [], f"arriving at {view} issued a mutation: {deletes}"
 
 
+# --- v0.14.0: the console tells the truth about what is deciding (F60) --------------------------
+
+
+async def _routes_with_a_promoted_tree(store: Store) -> dict[str, Any]:
+    """Capture the admin's route table with a **`tree` model version active**.
+
+    Not a hand-written fixture: the artefact is fitted by `tree.fit_document`, registered through
+    `store.insert_model_version`, activated through `store.set_active_model_version`, and loaded by
+    `engine.load_scorer_config` — the same four steps a promotion takes. What the console then reads
+    from `GET /api/scorer` is what an operator with a promoted tree reads.
+    """
+    import modelfixtures
+    from netcorenoc import model_version, scoring, tree
+
+    engine, app = await uifixtures.corpus(store)
+    document = model_version.canonical_object(
+        await tree.fit_document(
+            modelfixtures.training_rows(),
+            max_depth=3,
+            min_samples_leaf=20,
+            criterion="gini",
+            threshold=0.5,
+        )
+    )
+    async with store.lock:
+        version = await store.insert_model_version(
+            kind=model_version.KIND_TREE,
+            contract_version=scoring.CONTRACT_VERSION,
+            params_document=document,
+            params_hash=model_version.params_hash(
+                model_version.KIND_TREE, scoring.CONTRACT_VERSION, document
+            ),
+            challenger_run_id=None,
+            created_by="admin",
+            created_at=1_700_000_000.0,
+            note="v0.14.0 console fixture",
+        )
+        await store.set_active_model_version(version, "admin", 1_700_000_000.0)
+        await store.commit()
+    await engine.load_scorer_config()
+    assert engine.scorer_model_version_id == version, "the tree did not become the champion"
+    return await uifixtures.capture(app, "admin")
+
+
+@dom_test
+async def test_the_console_says_a_tree_is_deciding_and_not_five_additive_weights(
+    store: Store,
+) -> None:
+    """**F60.** With a model version active there is no scorer configuration, and the route used to
+    answer with the **coded additive defaults** — which this screen rendered under the heading
+    *"Active configuration"*.
+
+    An operator whose champion was a promoted tree would have read five weights that decided
+    nothing, with nothing on the screen to say so. It is a display defect and it predates the tree
+    kinds: a promoted `logistic` champion produced it too. It took a release about the model family
+    to be noticed, which is the argument for driving a console rather than reading it.
+
+    Driven, not read: the artefact is fitted, registered, activated and loaded exactly as a
+    promotion does it, and the assertions are against the rendered document.
+    """
+    captured = await _routes_with_a_promoted_tree(store)
+    result = domdriver.run_scenario("render", {"routes": captured, "navigate": "#/scorer"})
+    dump = result["dump"]
+
+    assert "tree" in dump, "the screen never names the kind that is running"
+    assert "model version" in dump.lower(), "the screen never names the artefact behind the model"
+    assert "not what is deciding" in dump.lower(), (
+        "the screen shows five additive weights and does not say they decide nothing while a "
+        "model version is active -- which is exactly F60"
+    )
+    # The five weights are still rendered, and that is right: an admin may retune the stored
+    # configuration and roll the model version back. What must not happen is presenting them as
+    # what is running.
+    assert "Configured parameters" in dump, "the tunable table vanished instead of being labelled"
+    assert "Active configuration" not in dump, (
+        "the heading that made the defect a lie is still on the screen"
+    )
+
+
+@dom_test
+async def test_the_control_an_additive_champion_is_not_warned_about(
+    routes: dict[str, Any],
+) -> None:
+    """**The control.** Without it the assertion above could be satisfied by a console that warns
+    unconditionally, which would be a different defect wearing the same words.
+
+    The default fixture runs the additive scorer, so the warning must be **absent** and the section
+    must still be there.
+    """
+    result = domdriver.run_scenario("render", {"routes": routes["admin"], "navigate": "#/scorer"})
+    dump = result["dump"]
+    assert "Configured parameters" in dump, "the tunable table is missing on an additive champion"
+    assert "not what is deciding" not in dump.lower(), (
+        "an additive champion was warned that its own parameters decide nothing"
+    )
+    assert "What is deciding" in dump, (
+        "the running-scorer banner is shown only in the unusual case, which teaches an operator "
+        "that the usual case needs no checking"
+    )
+
+
+async def _routes_with_an_applied_promotion(store: Store) -> dict[str, Any]:
+    """Capture the admin's table with a **`BETTER` / applied** decision on record.
+
+    The `promotion` row is written directly, and that is deliberate rather than a shortcut: this
+    test is about **rendering a decision**, and the row is the contract between the gate and the
+    screen. Forcing the real gate to return `BETTER` needs the floors, the power calculation and
+    the seal all moved, which `tests/test_promotion_api.py` does — there, where the subject is the
+    gate. Doing it again here would be testing the gate twice and the screen not at all.
+
+    The metrics document is `promotion.Metrics.as_document()`'s own shape, built from real
+    `Interval`s, so a change to that shape breaks this fixture rather than leaving it green against
+    a format nothing produces.
+    """
+    from netcorenoc import promotion as promotion_module
+    from netcorenoc.shadow_cv import Interval
+
+    _engine, app = await uifixtures.corpus(store)
+    metrics = promotion_module.Metrics(
+        quantities=tuple(
+            promotion_module.Quantity(
+                name,
+                Interval(0.12, 0.09, 0.15, 42),
+                Interval(0.31, 0.27, 0.35, 42),
+            )
+            for name in promotion_module.QUANTITY_NAMES
+        )
+    )
+    async with store.lock:
+        version = await store.insert_model_version(
+            kind="tree",
+            contract_version="1.0",
+            params_document='{"nodes":[[-1,0.0,-1,-1,0.5]],"base_value":0.25,"threshold":0.5,'
+            '"criterion":"gini","max_depth":3,"min_samples_leaf":20}',
+            params_hash="a" * 64,
+            challenger_run_id=None,
+            created_by="admin",
+            created_at=1_700_000_000.0,
+        )
+        await store.insert_promotion(
+            model_version_id=version,
+            verdict="BETTER",
+            triggers="[]",
+            metrics=metrics.as_document(),
+            evaluation_run_id="e" * 32,
+            plan_sha256=promotion_module.RATIFIED_PLAN_SHA256,
+            query_count=1,
+            approved_by="adm",
+            decided_at=1_700_000_100.0,
+            outcome="applied",
+            refusal_reason=None,
+            unavailable="[]",
+        )
+        await store.commit()
+    # The engine is not reloaded: this fixture is about a decision **on record**, not about a
+    # pointer that moved. `GET /api/promotion` reads the table, and the table is what the screen
+    # renders.
+    return await uifixtures.capture(app, "admin")
+
+
+@dom_test
+async def test_a_decided_promotion_shows_both_arms_of_all_four_quantities(
+    store: Store,
+) -> None:
+    """**The non-`INSUFFICIENT_EVIDENCE` branch, rendered.**
+
+    v0.13.0's screen showed a decision as a table row: verdict, outcome, reason, triggers. That is
+    complete for `INSUFFICIENT_EVIDENCE` — the only verdict this project had ever produced — and
+    thin for the other two, because a `BETTER` is a **comparison** and a comparison shown without
+    the numbers it compared is an assertion.
+
+    `PREREGISTRATION-0.11.0.md` §2 item 4: both arms come from one code path, because a challenger
+    number with no champion number beside it is not a comparison. This asserts the screen keeps
+    that property — all four quantities, both arms — and that the one branch with a consequence
+    says what the consequence was.
+    """
+    captured = await _routes_with_an_applied_promotion(store)
+    result = domdriver.run_scenario("render", {"routes": captured, "navigate": "#/promotion"})
+    dump = result["dump"]
+
+    for label in (
+        "over-merge rate",
+        "under-merge rate",
+        "split-bag intact rate",
+        "asserted-negative respected rate",
+    ):
+        assert label in dump, f"the decision does not show {label!r}"
+    assert "challenger" in dump and "champion" in dump, (
+        "only one arm is rendered; a challenger number with no champion beside it is not a "
+        "comparison (PREREGISTRATION-0.11.0.md §2 item 4)"
+    )
+    assert "BETTER" in dump, "the verdict is not shown"
+    assert "The champion changed" in dump, (
+        "the one branch with a consequence does not say what the consequence was"
+    )
+    # The interval, not just the point estimate: a rate with no interval beside it invites being
+    # read as exact, and every one of these is a cluster bootstrap over incidents.
+    assert "0.0900" in dump and "0.1500" in dump, "the challenger's interval bounds are missing"
+
+
 # --- the rule draft §1.1 sets on a rewrite -------------------------------------------------------
 
 #: `assert` statements in this file at v0.12.0, **counted from the shipped tree** rather than

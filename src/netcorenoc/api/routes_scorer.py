@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth, preview, scoring
+from netcorenoc import auth, model_version, preview, scoring
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ScorerParamsIn, ScorerRollbackIn
@@ -54,10 +54,60 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     # -- the scoring seam (v0.6.0) -----------------------------------------------------
 
-    def _active_scorer() -> scoring.AdditiveScorer:
-        """The parameters the engine is scoring with right now (post-fallback, if degraded)."""
+    def _tunable_scorer() -> scoring.AdditiveScorer:
+        """The **five-parameter table the form edits**, post-fallback if degraded.
+
+        Renamed from `_active_scorer` in v0.14.0, and the rename is the repair (F60). The old name
+        claimed this was what the engine is scoring with; it is not, whenever a `model_version` is
+        active. `scorer_config` and `model_version` are mutually exclusive by a database CHECK, so
+        with a model version running `active_scorer_config()` is NULL and this returns the **coded
+        defaults** — which the console then rendered as *"active configuration"*. That was a lie
+        the screen presented as fact, and it predates the tree kinds: a promoted `logistic`
+        champion produced it too.
+
+        What is running is `_running_scorer()`. This is what an admin may retune, which is a
+        different question and is now asked under a different name.
+        """
         active = engine.correlator.scorer.active
         return active if isinstance(active, scoring.AdditiveScorer) else scoring.default_scorer()
+
+    def _running_scorer() -> scoring.LinkScorer:
+        """**What the engine is actually scoring with**, whatever kind it is."""
+        return engine.correlator.scorer.active
+
+    async def _running_identity() -> dict[str, Any]:
+        """Who is deciding, said truthfully — the kind, the fingerprint, and the artefact if any.
+
+        `kind` is derived from the running scorer's `scorer_id` against `SUPPORTED_KINDS` rather
+        than from the `model_version` row, so a degraded fallback reports `additive` — which is
+        what is running — instead of the kind of an artefact that failed to load.
+        """
+        running = _running_scorer()
+        row = await store.active_model_version()
+        kind = running.scorer_id if running.scorer_id in model_version.SUPPORTED_KINDS else "custom"
+        return {
+            "kind": kind,
+            "scorer_id": running.scorer_id,
+            "contract_version": running.contract_version,
+            "params_hash": running.params_fingerprint(),
+            "tunable": kind == model_version.KIND_ADDITIVE,
+            "model_version": None
+            if row is None
+            else {
+                "id": int(row["id"]),
+                "kind": str(row["kind"]),
+                "params_hash": str(row["params_hash"]),
+                "challenger_run_id": row["challenger_run_id"],
+                "created_at": row["created_at"],
+                "created_by": row["created_by"],
+                # The document itself, because the hyperparameters an operator wants to read are
+                # inside it and `UI-0.13-DRAFT.md` §8 registers that *"exposing what is already
+                # recorded is a far stronger design than inventing fields."* It is a parameter
+                # set: it explains grouping and names no network element, which is the same
+                # reasoning that makes the five additive numbers `viewer+` (SCOPE-0.6 §2).
+                "params_document": str(row["params_document"]),
+            },
+        }
 
     def _scorer_row(row: dict[str, Any]) -> dict[str, Any]:
         """One history row, projected. No secrets here — a parameter set explains grouping."""
@@ -85,14 +135,19 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         (SCOPE-0.6 §2). Writing them is a separate, admin-only capability."""
         async with store.lock:
             history = await store.list_scorer_configs(MAX_SCORER_HISTORY)
-        active = _active_scorer()
+            running = await _running_identity()
+        tunable = _tunable_scorer()
         safe = engine.correlator.scorer
         return {
-            "scorer_id": active.scorer_id,
-            "contract_version": active.contract_version,
+            # **What is running**, and it is the running scorer's own identity even when that is
+            # not an additive one (F60). `params`/`bounds` below describe the five-number table
+            # the form edits, which is a different thing whenever `running.tunable` is false.
+            "scorer_id": running["scorer_id"],
+            "contract_version": running["contract_version"],
+            "params_hash": running["params_hash"],
+            "running": running,
             "supported_contract_version": scoring.CONTRACT_VERSION,
-            "params": active.params(),
-            "params_hash": active.params_fingerprint(),
+            "params": tunable.params(),
             "config_id": engine.scorer_config_id,
             "degraded": safe.degraded,
             "degraded_reason": safe.last_error,
@@ -144,7 +199,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
             for r in rows
         ]
-        active = _active_scorer()
+        active = _tunable_scorer()
         deadline = time.monotonic() + preview.PREVIEW_TIMEOUT_S
         try:
             before, links_before = preview.partition(

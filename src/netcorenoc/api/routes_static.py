@@ -61,6 +61,11 @@ _UI_MODULES = (
     "app/views/governance.js",
     "app/views/graph.js",
     "app/views/labelling.js",
+    # v0.14.0: `model.js` renders what is DECIDING (the three classes of scorer, and the artefact
+    # behind a fitted one); `verdict.js` renders a promotion decision in every branch the gate can
+    # reach rather than only in the refusal. Both are split out of the screens that own them, at
+    # the seam those screens already had.
+    "app/views/model.js",
     "app/views/overview.js",
     "app/views/promotion.js",
     "app/views/quarantine.js",
@@ -71,6 +76,7 @@ _UI_MODULES = (
     "app/views/timeline.js",
     "app/views/tokens.js",
     "app/views/users.js",
+    "app/views/verdict.js",
     "app/widgets.js",
 )
 
