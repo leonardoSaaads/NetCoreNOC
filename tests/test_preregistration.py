@@ -18,6 +18,16 @@ rather than rotates: v0.11.0's `INSUFFICIENT_EVIDENCE` cites a floor registered 
 releases old, and a guard that had retired that plan would leave the cited floor editable by the
 release that failed to clear it.
 
+**v0.14.0 adds a fourth, and it is the first that governs a corpus this project WRITES.**
+`PREREGISTRATION-0.14.0.md` fixes the degeneracy rules for three new model kinds, the attribution
+method, the discrimination floor, and — the part with no precedent in the three above — the shape,
+proportions, seed, labelling rule and stopping rule of a **simulated network this release
+generates**. The other three plans constrain how an existing corpus may be read. This one also
+constrains how a corpus may be *made*, and that is precisely the guard that matters most: tuning a
+generator until the verdict comes out well is adaptive selection with reality as the knob, and
+unlike a model's tuning it would be recorded nowhere. The hash is what makes "the shape was fixed
+first" checkable.
+
 This is the discipline the frozen `eval` baseline already applies to an *output*, applied instead to
 a *claim*. `tests/test_eval.py` fails when the correlator's behaviour drifts; this fails when the
 standard the correlator is being judged against drifts.
@@ -66,6 +76,10 @@ PREREGISTRATION_0_10_0_SHA256 = "c03aef0181554c0c71482e57d03677f25964c3a5ac20a7b
 # carries the annotated tag `v0.11.0-gate0`. See docs/gates/v0.11.0-phase-0.md §1.
 PREREGISTRATION_0_11_0_SHA256 = "e011ee6ad2367d44f2ede14cad7b072df598298f91ecc1a405744358b589d449"
 
+# Recorded in Gate 0, before any v0.14.0 code existed, in a commit that changed nothing else and
+# carries the annotated tag `v0.14.0-gate0`. See docs/gates/v0.14.0-phase-0.md §6.
+PREREGISTRATION_0_14_0_SHA256 = "5607328a573d9a3c78374e47ba11e6dcff76f07c023b3f2e8174b6feed4d219f"
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -91,6 +105,12 @@ PLANS: tuple[Plan, ...] = (
         PREREGISTRATION_0_11_0_SHA256,
         REPO_ROOT / "docs" / "gates" / "v0.11.0-phase-0.md",
     ),
+    Plan(
+        "v0.14.0",
+        REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.14.0.md",
+        PREREGISTRATION_0_14_0_SHA256,
+        REPO_ROOT / "docs" / "gates" / "v0.14.0-phase-0.md",
+    ),
 )
 
 _IDS = [plan.release for plan in PLANS]
@@ -111,9 +131,9 @@ def test_every_plan_is_guarded() -> None:
     v0.9.0's guard while adding its own and stay green, which is the shape of the retirement this
     test exists to make visible. Adding a plan is meant to require editing this line.
     """
-    assert len(PLANS) == 3, f"expected all three plans to be pinned, found {_IDS}"
-    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0"]
-    assert len({plan.sha256 for plan in PLANS}) == 3, "no two plans may share one hash"
+    assert len(PLANS) == 4, f"expected all four plans to be pinned, found {_IDS}"
+    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0", "v0.14.0"]
+    assert len({plan.sha256 for plan in PLANS}) == 4, "no two plans may share one hash"
 
 
 @pytest.mark.parametrize("plan", PLANS, ids=_IDS)
@@ -263,3 +283,70 @@ def test_the_0_11_0_plan_keeps_the_conditional_seal_and_the_two_distinct_refusal
         in text
     )
     assert "may be computed against `incumbent_linked`" in text
+
+
+def test_the_0_14_0_plan_keeps_the_generator_prohibitions_and_the_stopping_rule() -> None:
+    """v0.14.0's §5 and §6, and the two claims its demonstration would be worthless without.
+
+    Deliberately **not** the same assertions as the three above, for the reason those tests' own
+    docstrings give: a structural check weak enough to pass every plan is a formality. What is
+    asserted here is what makes a verdict on a corpus **this release generated** honest rather than
+    manufactured.
+
+    * **The generator's shape is fixed and may not move after a verdict is seen.** This is the one
+      hazard with no precedent in the other three plans. A model's tuning is recorded in
+      `params_document`; a generator retuned until the verdict came out well would be recorded
+      nowhere, which makes it *worse* than tuning the model and invisible rather than merely
+      adaptive.
+    * **The stopping rule's failing branch is registered as a SUCCESS.** A loop that cannot stop
+      without success is a loop that will manufacture one, and "ten increments and the floors are
+      still unmet" has to be a shippable outcome *before* the first increment runs, or the tenth
+      increment will find a reason to become the eleventh.
+    * **The demonstration is registered as not being a claim**, and the ground-truth prohibition of
+      §1 is extended to the simulator by name. The DSL knows every event's correct `situation_key`;
+      that is a second source of truth of exactly the shape `incumbent_linked` has, and the
+      invariant that forbids one forbids the other.
+    """
+    text = (REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.14.0.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## 8. What will be concluded under each outcome" in text
+    outcomes = [line for line in text.splitlines() if line.startswith("**8.")]
+    assert len(outcomes) == 7, f"§8 enumerates {len(outcomes)} outcomes, not the registered 7"
+
+    # §1 — the inherited invariant, and its extension to the thing this release builds.
+    assert "may be computed against `incumbent_linked`" in text
+    assert (
+        "**The simulation's ground truth is subject to the same prohibition, for the same reason.**"
+        in text
+    ), "the ground-truth prohibition is not extended to the simulator"
+
+    # §5.4 — the generator does not move after a verdict is seen.
+    assert "are fixed here and are not changed after any verdict is observed" in text
+    assert "adaptive selection with the data-generating process" in text
+
+    # §5.3 — the failing branch is a success, registered in advance.
+    assert "**The second branch is a successful gate outcome and the report says so.**" in text
+    assert "A loop that cannot stop" in text
+
+    # §6 — the demonstration is not a claim, enforced three ways.
+    assert "demonstration of the machinery and is never a claim about model quality" in text, (
+        "the demonstration/claim distinction is not registered"
+    )
+
+    # §2 — the degeneracy rules, named before any fit existed to choose them to suit.
+    for rule in ("**T1 ", "**T2 ", "**T3 ", "**T4 ", "**T5 ", "**T6 "):
+        assert rule in text, f"tree rule {rule.strip('* ')} is not registered"
+    for rule in ("**F1 ", "**F2 ", "**F3 ", "**F4 "):
+        assert rule in text, f"forest rule {rule.strip('* ')} is not registered"
+    for rule in ("**G1 ", "**G2 ", "**G3 ", "**G4 "):
+        assert rule in text, f"boosting rule {rule.strip('* ')} is not registered"
+
+    # §4 — the lower bound is discrimination, and it is hardening-only.
+    assert "**The floor is hardening-only.**" in text
+    assert "MIN_SCORE_SPREAD = 0.01" in text
+    assert "may never be the only lower bound in effect" in text
+
+    # §3 — the attribution method and the contract consequence it forces.
+    assert "exact marginal (interventional) Shapley values" in text
+    assert "sum(contributions) + base_value == score" in text
