@@ -50,9 +50,10 @@ scorer kinds            2 -> 5      additive, logistic, tree, forest, gradient_b
 runtime dependencies    5           unchanged since v0.2.0. Three model kinds added zero
 migrations              0001-0013   none added; a kind is a model_version row and always was
 tests                   1428 -> 1542
-coverage                95.92 %     inside BOTH registered bands, neither re-cut
-mypy --strict           clean, 104 source files
-ruff / ruff format      clean, 202 files
+coverage                95.92 % / 95.94 %  two runs, both inside BOTH registered bands
+make qa                 green       lint typecheck deadcode scan test eval
+mypy (strict)           clean, 202 source files: src, tests, eval, tools
+ruff / ruff format      clean, 462 files
 python eval/harness.py | sha256sum
                         c2e8a0ced29d9edf986279d41089ddb68e18da65a46bdc7e9f04811e8b9b6f26
                         byte-identical, unchanged since v0.7.0
