@@ -1,6 +1,6 @@
 # Archetypes — draft specification, **retagged to v0.15.0** (not implemented)
 
-<!-- release-claim: v0.15.0 = archetypes -->
+<!-- release-claim: v0.16.0 = archetypes -->
 
 > **The filename records when this was written, not what it governs.** Written during v0.11.0 as the
 > v0.12.0 specification and **resequenced to v0.15.0 by DECISIONS #170** — on the measurement in §0,
@@ -10,7 +10,7 @@
 >
 > Nothing else about this draft changed. Its analysis stands.
 
-**Implement none of this.** Every element below is tagged **`v0.15.0: planned`**.
+**Implement none of this.** Every element below is tagged **`v0.16.0: planned`**.
 
 Written **from what v0.11.0 measured**, not from what it hoped. Where the two differ, the measurement
 wins and the difference is recorded.
@@ -21,7 +21,7 @@ lineage problem it must not make worse is [`DATA-LINEAGE.md`](DATA-LINEAGE.md) �
 
 ---
 
-## 0. The uncomfortable fact this draft must start from (`v0.15.0: planned`)
+## 0. The uncomfortable fact this draft must start from (`v0.16.0: planned`)
 
 **v0.11.0 built a promotion gate and it refused, on a corpus with `asserting_bags = 0` against a
 floor of 50.** Per-archetype weights mean **one model per archetype**, which means **splitting an
@@ -35,7 +35,7 @@ is **what evidence a per-archetype model needs before it may be evaluated at all
 default is: `asserting_bags ≥ 50` **per archetype**, not in total. A build that floored the total
 would let one well-labelled archetype carry `k − 1` that nobody had labelled.
 
-## 1. What an archetype is, and the three candidates (`v0.15.0: planned`)
+## 1. What an archetype is, and the three candidates (`v0.16.0: planned`)
 
 Not chosen here. Each is costed at one line and the choice belongs to a pre-registration written
 before any per-archetype number exists.
@@ -50,7 +50,7 @@ before any per-archetype number exists.
 discover it: choosing an archetype from a property of the grouping the scorer produced is
 `incumbent_linked` wearing a different hat.
 
-## 2. What v0.11.0 hands over, unchanged (`v0.15.0: planned`)
+## 2. What v0.11.0 hands over, unchanged (`v0.16.0: planned`)
 
 * **`model_version`** already carries `kind` + a **canonical JSON document**. A per-archetype model
   is a document with more in it, **not a new column and not a migration** — which is the whole reason
@@ -65,7 +65,7 @@ discover it: choosing an archetype from a property of the grouping the scorer pr
   rotation over the same incident ids, **grouped by archetype**, and the incident must stay wholly
   within one fold *and* one archetype.
 
-## 3. What v0.12.0 must decide in advance (`v0.15.0: planned`)
+## 3. What v0.12.0 must decide in advance (`v0.16.0: planned`)
 
 Listed so it is not discovered mid-build:
 
@@ -81,7 +81,7 @@ Listed so it is not discovered mid-build:
 * **the detection threshold at `n/k`**, printed beside every per-archetype floor evaluation, because
   §2.5's structural mitigation applies unchanged and bites much harder after a `k`-way split.
 
-## 4. What v0.11.0 recommends against, from what it measured (`v0.15.0: planned`)
+## 4. What v0.11.0 recommends against, from what it measured (`v0.16.0: planned`)
 
 1. **Do not ship archetypes before the corpus can decide one comparison.** v0.11.0's refusal is not a
    defect to route around; it is the measurement that says a `k`-way split has nothing to spend.

@@ -329,11 +329,16 @@ def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
 # Here rather than in a file of its own because it asserts the same thing from the other side: not
 # only is there no machinery to transform the UI, the UI itself did not move.
 
-#: SHA-256 of every shipped UI file at **v0.13.0**. v0.12.0's table carried the v0.11.0 hashes and
-#: said: *"A later release will change these files, and will update this table in the same commit.
-#: That is the point: the change becomes a deliberate, reviewable line in a diff rather than
-#: something that happens while someone is in the file for another reason."* This is that release
-#: and this is that commit.
+#: SHA-256 of every shipped UI file at **v0.14.0**. v0.12.0's table said: *"A later release will
+#: change these files, and will update this table in the same commit. That is the point: the change
+#: becomes a deliberate, reviewable line in a diff rather than something that happens while someone
+#: is in the file for another reason."* v0.13.0 was that release for the rewrite; this is that
+#: commit for the model family.
+#:
+#: **Four lines moved and two are new.** `app/views/scorer.js` and `app/views/promotion.js` changed;
+#: `app/views/model.js` and `app/views/verdict.js` are new. Nothing else in the console was touched
+#: by a release that added three scorer kinds — which is the property this table exists to make
+#: visible at a glance rather than to be argued.
 UI_HASHES: dict[str, str] = {
     "app.js": "36bb65da9e1f9cb30d9090663e89a6055c4e6cde5c901f1300951ffcd8b8d0df",
     "app/api.js": "186f79e412a22550a061bc7fd0354a97398e41a153d60c1d19f8e9f03965e977",
@@ -359,19 +364,21 @@ UI_HASHES: dict[str, str] = {
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
     "app/views/graph.js": "5aac4bfe93123d3a9190ef951ad63d418f6357113db9b2e4e51cc44d1995424d",
     "app/views/labelling.js": "b57cbef5822df14584a36a6a36c84587441750cad0cfedeaad2848a3195817c3",
+    "app/views/model.js": "5f1baf6f596ec8cd886ab278893f15dffe133b118c2ce6ac79c8e1cb7c001310",
     "app/views/overview.js": "bc42b93cc0aa0933406093797cf1e73720adbca076faa6ff25136d49c7046657",
-    "app/views/promotion.js": "5dde1eccf40acd06f73efcf1972399532b314156c5e994d2786f99e9cd63b993",
+    "app/views/promotion.js": "0202bd0a8ec48c098054ea9942bf5d660210e6d4ec418538d92383a2328d5b10",
     "app/views/quarantine.js": "04ed768d8180e7d3182086e8dd12c69c8a497196bfb0086ea5023e34a5470b5b",
     "app/views/retention.js": "e542bfb8f0ba686ceeb06d7bc8ce6895bca51f3a36eab66f513c588f436a36a3",
-    "app/views/scorer.js": "1bc0e8cce98ad3d151132686a9c930883959e6188d0def45b29dd20abfd6ac34",
+    "app/views/scorer.js": "7032335d62fd2e89771e71fd8a7fc8a58a36a5a7127e67c26d7b28cd8a6149e0",
     "app/views/settings.js": "710ea7153620ab5a595ea3f7a471e3ace6c5c769c0891dc396c5710a57e25f5a",
     "app/views/situations.js": "57664f5b1473b2ced229e5972762c01cfc1b05b075b4584a182313e4de9f51e3",
     "app/views/timeline.js": "acad3eeaaf0e5f2b5cef2de55eb18abc382038ec9caa95187e4cbb5e39962940",
     "app/views/tokens.js": "f1195d816ebc5e2a9a431d9d618c05299b4497eb60d8a26774be2edb99fbb676",
     "app/views/users.js": "2ca4e88282bb88a93abf2f995b7b471b48b8077faf10b7088ae8b92833bd0499",
+    "app/views/verdict.js": "ce4c88685518beca4bcb1056db612d93a9de404c46bd8e014da92e517e652fff",
     "app/widgets.js": "9d6c36dc9e69741e07cdbbad86f1dbaa62e537402ccc90c3d895c5f1b1718729",
     "index.html": "a9f95273c23be3714fd2eab8de11124e62e1738a309f45e9add42884939a1cab",
-    "style.css": "246dc34432c2549fa93033d3ec3b5c05064a317fc3c656cc2c7ecf53bb89425b",
+    "style.css": "664797bba0883da2cdc09b91e52b7fd1d18da38e363fbb0e9e046a5a15662d4e",
     "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
     "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
     "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
@@ -386,7 +393,7 @@ UI_HASHES: dict[str, str] = {
 }
 
 #: Byte sizes, recorded beside the hashes because a size is the figure a reader can check by eye.
-#: `app.js` went from **52 738 bytes in one file** to an entry point plus 34 modules.
+#: `app.js` went from **52 738 bytes in one file** to an entry point plus 36 modules.
 UI_SIZES: dict[str, int] = {
     "app.js": 5_163,
     "app/api.js": 3_424,
@@ -412,19 +419,28 @@ UI_SIZES: dict[str, int] = {
     "app/views/governance.js": 10_218,
     "app/views/graph.js": 7_916,
     "app/views/labelling.js": 5_084,
+    "app/views/model.js": 10_281,
     "app/views/overview.js": 11_891,
-    "app/views/promotion.js": 8_303,
+    "app/views/promotion.js": 11_235,
     "app/views/quarantine.js": 2_247,
     "app/views/retention.js": 4_985,
-    "app/views/scorer.js": 11_681,
+    "app/views/scorer.js": 12_812,
     "app/views/settings.js": 11_319,
     "app/views/situations.js": 16_613,
     "app/views/timeline.js": 4_567,
     "app/views/tokens.js": 5_104,
     "app/views/users.js": 6_753,
+    "app/views/verdict.js": 8_411,
     "app/widgets.js": 9_332,
     "index.html": 2_218,
-    "style.css": 22_789,
+    "style.css": 23_587,
+    "vendor/CHECKSUMS.txt": 2_039,
+    "vendor/d3.LICENSE": 764,
+    "vendor/d3.v7.min.js": 279_706,
+    "vendor/htm-3.1.1.module.js": 1_207,
+    "vendor/htm.LICENSE": 11_341,
+    "vendor/preact-10.29.8.module.js": 11_693,
+    "vendor/preact.LICENSE": 1_087,
 }
 
 #: What the one file measured at v0.12.0, kept so the diff states the change

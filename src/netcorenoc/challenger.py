@@ -31,6 +31,13 @@ The probability is available separately, from :meth:`LogisticScorer.probability`
 calibration and the shadow table use. Two quantities, each in the place it is correct, rather than
 one quantity that is slightly wrong in both.
 
+## Where the feature vocabulary lives (v0.14.0, DECISIONS #192)
+
+`FEATURE_NAMES`, `TAU0_S` and `feature_vector` moved to `scorer_contract.py` and are **re-exported
+here**, so every existing importer is unchanged. They were never the challenger's: the champion
+reads them, and from v0.14.0 so do the three tree kinds. Keeping them here made the isolation guard
+below fire on a module that wanted a constant.
+
 ## Three features and an intercept — and the fourth feature the plan registered
 
 `docs/analysis/PREREGISTRATION-0.9.0.md` §2.3 registered **four** features: the three below plus
@@ -56,6 +63,15 @@ import json
 import math
 from dataclasses import dataclass
 
+from netcorenoc.scorer_contract import (
+    FEATURE_NAMES as FEATURE_NAMES,
+)
+from netcorenoc.scorer_contract import (
+    TAU0_S as TAU0_S,
+)
+from netcorenoc.scorer_contract import (
+    feature_vector as feature_vector,
+)
 from netcorenoc.scoring import (
     CONTRACT_VERSION,
     LinkFeatures,
@@ -66,24 +82,17 @@ from netcorenoc.scoring import (
 __all__ = [
     "CHALLENGER_SCORER_ID",
     "FEATURE_NAMES",
+    "LOGISTIC_KEYS",
     "TAU0_S",
     "Coefficients",
+    "LogisticDegeneracyError",
     "LogisticScorer",
     "feature_vector",
     "sigmoid",
+    "validate_logistic",
 ]
 
 CHALLENGER_SCORER_ID = "logistic-shadow"
-
-# The champion's τ, held fixed and NOT learned. Learning it makes the objective non-convex and the
-# fit non-deterministic in the way prime directive 5 forbids. Recorded as a limitation in the
-# pre-registration §2.3 rather than hidden as an implementation detail.
-TAU0_S = 30.0
-
-# The three live features, in the order the coefficient vector uses. Fixed here so that training,
-# offline reconstruction and the online shadow path cannot disagree about it — the skew test
-# (DECISIONS #119) is what proves that claim rather than repeating it.
-FEATURE_NAMES = ("decay", "class_affinity", "entity_affinity")
 
 # A logit magnitude beyond which `exp` would overflow to infinity. `SafeScorer` treats a non-finite
 # score as a contract violation and degrades permanently, so the clamp is not cosmetic: an
@@ -104,24 +113,6 @@ def sigmoid(logit: float) -> float:
         return 1.0 / (1.0 + math.exp(-clamped))
     scaled = math.exp(clamped)
     return scaled / (1.0 + scaled)
-
-
-def feature_vector(
-    delta_t_s: float, class_affinity: float, entity_affinity: float
-) -> tuple[float, float, float]:
-    """**The one place a feature vector is built.**
-
-    Training, offline reconstruction and the online shadow path all call this function, with the
-    values each has to hand — from `dataset_pair` in the first two, from `LinkFeatures` in the
-    third. That is what makes the skew test a real test rather than a tautology: if the three
-    disagreed it would be because one of them computed a feature differently, and there is exactly
-    one function that could have.
-
-    `abs(delta_t_s)` matches `AdditiveScorer`, whose decay is over `abs(features.delta_t_s)`; the
-    captured `dataset_pair.delta_t_s` is already non-negative, so the two agree by construction and
-    the `abs` is the belt to that brace.
-    """
-    return (math.exp(-abs(delta_t_s) / TAU0_S), class_affinity, entity_affinity)
 
 
 @dataclass(frozen=True)
@@ -249,3 +240,82 @@ class LogisticScorer:
     def trained(self) -> bool:
         """Whether anything was ever fitted. An all-zero vector abstains, and says so."""
         return self.coefficients != Coefficients()
+
+
+# -- the kind's own degeneracy rules (v0.14.0, DECISIONS #187) ---------------------------------
+#
+# Moved here from `model_version.py` when the three tree kinds arrived, so that **every kind owns
+# its own rules and `model_version` owns only the dispatch**. Nothing about the rules changed: they
+# are `PREREGISTRATION-0.11.0.md` §5's five, in the order that release registered them, refusing
+# the same cases with the same messages.
+#
+# The bounds arrive as arguments rather than as imports, exactly as `tree.validate`'s do. That is
+# what lets `model_version` remain the single place `FEATURE_BOUNDS`, `MAX_ABS_COEFFICIENT` and
+# `LOGIT_MARGIN` are written down while the rules that consume them live beside the model they
+# describe — and it is why this module cannot import `model_version`, so the pair cannot cycle.
+
+LOGISTIC_KEYS = ("intercept", "threshold", *FEATURE_NAMES)
+
+
+class LogisticDegeneracyError(ValueError):
+    """A logistic parameter set that is degenerate. Translated to `ModelPayloadError` upstream."""
+
+
+def validate_logistic(
+    params: dict[str, float],
+    *,
+    bounds: dict[str, tuple[float, float]],
+    max_abs: float,
+    logit_margin: float,
+) -> None:
+    """The plan's §5, rules 3 to 5. Rules 1 and 2 are applied by the document parser upstream.
+
+    Every rule refuses **its own case and no other**, which is what makes a per-rule test able to
+    say more than "something was rejected".
+    """
+    weights = {name: params[name] for name in FEATURE_NAMES}
+    threshold = params["threshold"]
+    intercept = params["intercept"]
+
+    # RULE 3 — non-degenerate discrimination. An all-zero weight vector gives every pair the same
+    # logit and the scorer stops discriminating SILENTLY. The intercept is deliberately not counted:
+    # a non-zero intercept with zero weights is still constant, so it links everything or nothing.
+    if all(weight == 0.0 for weight in weights.values()):
+        raise LogisticDegeneracyError(
+            "every feature weight is zero: the logit is constant, so the scorer would give every "
+            "pair the same answer and grouping would stop silently (the logistic analogue of "
+            "MIN_WEIGHT_SUM)"
+        )
+
+    # RULE 5 — magnitude sanity. Checked before rule 4 because a runaway coefficient makes the
+    # reachability arithmetic report a huge range and pass, so a build that ordered these the other
+    # way would let the least plausible payloads through the rule written to catch them.
+    for name, value in (("intercept", intercept), *weights.items()):
+        if abs(value) > max_abs:
+            raise LogisticDegeneracyError(
+                f"{name} is {value!r}, beyond the magnitude bound {max_abs}: a "
+                "coefficient this large saturates the link function, turning a probabilistic "
+                "scorer into a step function whose per-term explanation still sums correctly and "
+                "no longer means anything (DECISIONS #164)"
+            )
+
+    # RULE 4 — threshold reachability, over the features' DECLARED ranges. The logit is monotone in
+    # each feature, so the attainable extremes sit at the corners of the box: take each weight's
+    # better and worse end independently.
+    low = high = intercept
+    for name, weight in weights.items():
+        lo, hi = bounds[name]
+        low += min(weight * lo, weight * hi)
+        high += max(weight * lo, weight * hi)
+
+    if threshold >= high - logit_margin:
+        raise LogisticDegeneracyError(
+            f"threshold {threshold!r} is at or above the highest attainable logit {high:.6f} "
+            f"(margin {logit_margin}): no pair could ever cross it, so nothing would ever link and "
+            "every alarm would be a singleton"
+        )
+    if threshold < low:
+        raise LogisticDegeneracyError(
+            f"threshold {threshold!r} is below the lowest attainable logit {low:.6f}: every "
+            "candidate pair would cross it, collapsing every alarm into one situation"
+        )

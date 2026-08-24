@@ -4256,3 +4256,395 @@ grouping**.
 - **Consequence**: `docs/gates/v0.13.0-live-verification.md` is the first such document, including
   its §6 — the list of what the pass did not verify: one browser, one viewport, no screen reader,
   no contrast measurement, no repeated timing.
+
+## 183. Tree ensembles run in process; the ONNX-door sentence is superseded, not edited (v0.14.0)
+
+- **Context**: `../architecture/ROADMAP-0.8-TO-0.13.md` §v0.11.0 states that *"tree ensembles cannot
+  be champion before v0.13.0. Not on merit — on plumbing. **There is no in-process implementation of
+  one among the five runtime dependencies**, so a gradient-boosted model can only enter through the
+  ONNX door."* The whole of v0.14.0's scope depends on whether that is true.
+- **What measurement changed**: nothing was measured, because nothing needed to be. The premise is
+  true and **the conclusion does not follow from it**. Principle 5 forbids *dependencies*, not
+  *implementations*. v0.9.0 wrote logistic regression in pure Python, without numpy, on the argument
+  that *"logistic regression over a handful of features is arithmetic"* — and a CART over three
+  continuous features is arithmetic too: a greedy split search over three sorted feature columns is
+  comparisons and sums. The sentence read a *packaging* constraint out of a premise about *packages*,
+  which is exactly the mistake its own last clause warns a future reader against.
+- **Options**: (a) edit the sentence in place; (b) delete it; (c) leave it and record a new entry
+  that supersedes it, plus an amendment box in the document, in the shape the document already
+  carries for the v0.8.0 correction.
+- **Choice**: **(c)**.
+- **Reason**: (a) and (b) both falsify the record. `../adr/README.md` states the rule for this log —
+  *"a later decision that supersedes an earlier one references it by number rather than editing it"* —
+  and `ROADMAP-0.8-TO-0.13.md` already follows the same rule for its own v0.8.0 correction, in a
+  blockquote that withdraws a sentence and leaves it visible. A reader who finds the original claim
+  cited in a gate document from three releases ago must be able to find the original claim.
+- **Consequence**: v0.14.0 ships `tree`, `forest` and `gradient_boosting` as branches of
+  `model_version.scorer_for`, in pure Python, with **zero** new runtime dependencies — five, as
+  since v0.2.0. `SUPPORTED_KINDS` grows from two to five.
+- **The half of the bullet that survives**: *"not on merit"*. The constraint was never a finding
+  about model families. It was not a finding about plumbing either.
+- **What this does to the cartridge**: the external cartridge stops being *"the only way a tree
+  ensemble can be champion"* and becomes *"the way a **customer's own** model can be champion"*.
+  That is still a good reason to build it, and it is a different reason.
+  `CARTRIDGE-0.15-DRAFT.md` must say so rather than inheriting a justification that has been
+  withdrawn.
+
+## 184. The chain is resequenced: the model family at v0.14.0, cartridge to v0.15.0, archetypes to v0.16.0 (v0.14.0)
+
+- **Context**: #183 makes three in-process model kinds buildable now. The release table in
+  `../architecture/ROADMAP-0.8-TO-0.13.md` had v0.14.0 as the external cartridge and v0.15.0 as
+  archetypes, and `tests/test_documentation.py::test_the_release_table_parses` pins the membership
+  **exactly** so that moving it is a deliberate act with an ADR beside it. This is that act.
+- **What measurement changed**: `seal.spend()` has existed in production code since v0.10.0 and its
+  query count is **0** — not by discipline in this instance, but because the branch that calls it is
+  unreachable on this corpus. Phase 0 §3 reproduced it: `asserting_bags = 0` against a floor of 50,
+  `asserting_incidents = 0` against a floor of 30, with a control corpus returning 2 and 1 474
+  through the same code so the zeros are properties of the corpus rather than of the query. **The
+  project has never observed a promotion happen.**
+- **Options**: (a) keep the cartridge at v0.14.0 and fold the in-process kinds into it;
+  (b) keep the cartridge at v0.14.0 and defer the in-process kinds; (c) insert the model family at
+  v0.14.0 and shift the cartridge and archetypes one place each.
+- **Choice**: **(c)**.
+- **Reason**: (a) is the worst of the three. It would put a second process, a preemption harness and
+  an amendment to *"ingestion is sacred"* in the same release as four new model kinds, and the two
+  risks are unrelated — a failure in either would contaminate the evidence for the other. (b) leaves
+  the chain's central claim untested for another release while the riskiest step is taken. (c) puts
+  the cheap proof first: **driving the chain end to end costs no new process, no new dependency and
+  no new trust surface**, and it means the cartridge arrives at a gate that has been watched to open.
+- **Consequence**: five documents are retagged — `ROADMAP-0.8-TO-0.13.md` (table, three sections,
+  one added *why-not-permuted* bullet), `SCORER-PLUGINS-0.13-DRAFT.md`, `CARTRIDGE-0.14-DRAFT.md`,
+  `ARCHETYPES-0.12-DRAFT.md` and `docs/README.md` — and
+  `tests/test_documentation.py::test_the_release_table_parses` grows from eight rows to nine.
+- **Subtlety — the filenames now misstate three releases, and they are still not renamed.**
+  `ARCHETYPES-0.12-DRAFT.md` governs v0.16.0, `SCORER-PLUGINS-0.13-DRAFT.md` and
+  `CARTRIDGE-0.14-DRAFT.md` govern v0.15.0, and `ROADMAP-0.8-TO-0.13.md` governs to v0.16.0.
+  `docs/ROADMAP.md`'s *"Found while building v0.12.0"* section already records this class for two of
+  them, with the reason: gates, security reviews and build reports cite these paths by name and are
+  records that are never rewritten, so a rename means updating those citations knowingly or
+  accepting dangling ones. This release makes the mismatch worse by one document and still does not
+  rename, because the reason has not changed and *"no fix inside a move"* applies to a resequencing
+  as much as to a refactor.
+
+## 185. Three model kinds ship in process, in pure Python; linear regression is refused (v0.14.0)
+
+- **Context**: DECISIONS #183 withdrew the claim that a tree ensemble can only reach the champion
+  slot through an ONNX cartridge. What replaces it has to say which kinds ship, and — equally — which
+  do not, so that a later release does not re-derive the refusal.
+- **Options**: (a) `tree` alone, the smallest step; (b) `tree`, `forest`, `gradient_boosting`;
+  (c) those three plus `linear`, so the family covers the obvious textbook set.
+- **Choice**: **(b)**. `model_version.SUPPORTED_KINDS` grows from two to five.
+- **Reason**: (a) would leave the interesting half of the claim untested — the whole point of #183 is
+  that an *ensemble* needs no cartridge, and a single tree does not exercise the ensemble path,
+  the seed, or the shrinkage. (b) exercises all three and costs one module each.
+- **Why linear regression is NOT built, recorded so nobody re-derives it**: the link decision is
+  binary. Ordinary least squares on a `{0, 1}` target gives an unbounded, uncalibrated score, so
+  `threshold` stops meaning anything and the reachability rules become arithmetic over a range with
+  no natural scale. `logistic` covers the same feature space with a bounded link, inherits the
+  per-term explainability contract for free, and **has existed since v0.9.0**. A fifth kind that is
+  a worse version of an existing one is a control an operator can only use to make the appliance
+  worse. It is a `ROADMAP.md` line with this reason beside it.
+- **Consequence**: `tree.py`, `forest.py`, `boosting.py`, `cart.py`, `attribution.py` and
+  `background.py` — six new modules, **zero** new runtime dependencies. Five, as since v0.2.0.
+- **Subtlety — what "in process" costs, measured rather than assumed.** Gate 0 premise 1 measured
+  that the champion scorer runs per candidate pair on the ingest path, so an in-process kind pays
+  its cost there. That is why `attribution.py` precomputes and why the admission filter's speed
+  ratio is the check that decides whether a kind competes at all — not a promise in this entry.
+
+## 186. `LinkScore` gains `basis` and `base_value`: a minor contract bump (v0.14.0)
+
+- **Context**: `TermContribution` means `contribution = weight · value`, and
+  `shadow_admission.admission` asserts that the contributions sum to the score. **A tree predicts a
+  leaf value, not a weighted sum.** Its per-feature attribution is a Shapley value, which is neither
+  a weight nor a weight times a value, and it sums to `score − base_value` rather than to `score`.
+- **Options**: (a) write the Shapley value into `TermContribution.weight`; (b) synthesise a weight
+  as `contribution / value`; (c) change `weight` to `float | None`; (d) add **optional** fields to
+  `LinkScore` naming the basis and the base value.
+- **Choice**: **(d)**. `basis` is `"weighted-sum"` or `"shapley"`; `base_value` defaults to `0.0`.
+- **Reason**: (a) is a lie in a field named `weight`. (b) is worse — a *plausible* number nobody can
+  detect as wrong, and undefined at `value == 0`. (c) changes an existing field's type, which
+  DECISIONS #49 classes as a **major** bump; every reader would have to be revisited for a change
+  that carries no new information. (d) is explicitly minor under #49, every pre-v0.14.0 scorer and
+  reader is unaffected, and it makes *"does `weight` mean anything here?"* a question the data
+  answers rather than a convention a reader has to know.
+- **Consequence**: the admission filter's explainability check becomes
+  `sum(contributions) + base_value == score` — **one expression that is correct for both bases**,
+  rather than a branch on kind. `TermContribution.weight` is written as `0.0` under a Shapley basis
+  and documented as undefined there. The console gates its weight column on `basis`.
+- **The cost, stated plainly**: this changes an existing guard during the release that needs it
+  changed, which is when a guard is least trustworthy. Phase 8 therefore demonstrates it red twice —
+  once by reverting the check to `sum == score` while a tree kind is active, and once by forcing a
+  non-zero model's base value to zero — each with a control that had to pass in both runs.
+
+## 187. Every kind owns its degeneracy rules; `model_version` owns the dispatch and the bounds (v0.14.0)
+
+- **Context**: v0.11.0 put the logistic rules inside `model_version.py`. With three more kinds and
+  fourteen more rules, that module would pass the 400-line guard and would also become the one place
+  a reader has to go to learn what any kind refuses.
+- **Options**: (a) keep every rule in `model_version.py` and split it by size; (b) a new
+  `model_rules.py` holding all nineteen; (c) each kind module owns its own rules, reached only
+  through `model_version.validate_document`.
+- **Choice**: **(c)**, and the logistic rules move to `challenger.py` so the arrangement is uniform.
+- **Reason**: (b) recreates the problem one file over and puts a kind's rules somewhere other than
+  its model. (c) puts each rule beside the thing it describes while keeping
+  `validate_document` the **single validation point** — a rule is unreachable except through it,
+  which is the property that mattered, and it was never *"the rules are textually inside that
+  function"*.
+- **The half that makes it safe**: `FEATURE_BOUNDS`, `MAX_ABS_COEFFICIENT` and `LOGIT_MARGIN` stay
+  in `model_version` and are passed to every validator **as arguments**. So each bound is written
+  down exactly once, and no kind module can import `model_version` — which is what makes the family
+  acyclic and is checked by `tests/test_layers.py`.
+- **Consequence**: `challenger.validate_logistic`, `tree.validate`, `forest.validate` and
+  `boosting.validate`. Nothing about the logistic five changed: same order, same cases, same
+  messages, and `tests/test_model_version.py` still drives them through `validate_document`.
+
+## 188. `forest` carries a seed, and the seed is inside `params_document` (v0.14.0)
+
+- **Context**: v0.9.0's directive 5 permits *"no RNG — or a fixed seed, argued in an ADR."* `forest`
+  is the only kind in this project that needs one: bagging draws rows with replacement.
+- **Choice**: a seed, recorded **in `params_document`** and therefore in `params_hash`, with the
+  draw expressed as a pure function rather than as a stream.
+- **Reason, in three parts, each of which had to hold**:
+  1. **In the document.** Two forests grown from the same rows with different seeds are different
+     models. A seed outside the document would let them share a fingerprint, and v0.11.0's
+     provenance would be fiction — exactly the failure `UI-0.13-DRAFT.md` §8 names for
+     hyperparameters generally.
+  2. **A function, not a generator.** Row `j` of tree `t`'s bag is `_draw(seed, t, j, n)`, a
+     SplitMix64 finaliser. There is no state to advance, so the bag cannot depend on how many times
+     anything was called before it — a property a stateful generator does not have and the reason a
+     reordered or resumed fit cannot silently differ.
+  3. **The draw order is documented and asserted.** Tree `t` draws `n` indices for `j = 0 … n−1`,
+     with replacement, then its `mtry` feature subset. Two fits with the same seed are byte-identical
+     across two processes; two fits with **different** seeds differ. **Both halves are tested**,
+     because only the pair proves the seed is doing anything — a test of the first alone passes
+     against an implementation that ignores the seed entirely.
+- **Not an LCG, and the reason is on this project's record.** `shadow_cv._Lcg` documents what a
+  power-of-two-modulus LCG's low bits cost once: a two-cluster bootstrap that alternated 0, 1, 0, 1
+  and reported a **zero-width interval** — *"a bootstrap reporting perfect precision because it
+  never resampled anything"*. A finaliser has no such structure in any bit range; the high half is
+  taken anyway.
+- **What `mtry` can and cannot do here, said on the screen as well**: with **three** features it
+  draws one or two of three, so almost all of a forest's diversity here comes from bagging. **A
+  forest on this feature set is close to a bagged tree**, and an operator choosing it should be told
+  that rather than left to infer it. `mtry` is drawn per tree rather than per node, so that
+  `cart.py` stays a pure function of its rows and the whole of the randomness lives in one module.
+
+## 189. The boosted kind is named `gradient_boosting`, never `xgboost` (v0.14.0)
+
+- **Context**: `UI-0.13-DRAFT.md` §8 anticipates *"XGBoost, random forest, decision trees"*. The
+  obvious name for the boosted kind is the one an operator would search for.
+- **Choice**: `gradient_boosting`.
+- **Reason**: XGBoost is a **specific algorithm** — second-order gradients, a regularised objective,
+  sparsity-aware split finding, weighted quantile sketches — and also a project name. What ships
+  here is first-order boosting with squared loss and constant shrinkage: the classic Friedman
+  formulation, not that one. A `model_version` row whose `kind` read `xgboost` would put a false
+  claim in the model registry and, through the `promotion.applied` action, in the **audit log** — a
+  hash-chained append-only record whose entire value is that what it says happened, happened. A
+  naming convenience is not worth spending that.
+- **Consequence**: the kind is `gradient_boosting` in the schema, the API, the console and the audit
+  log, and `tests/test_tree_kinds.py` asserts that no supported kind is called `xgboost`. The
+  console says *gradient boosting* and, where an operator might be looking for the other word, says
+  which algorithm this is.
+
+## 190. Attribution is exact marginal Shapley, tabulated per cell at registration (v0.14.0)
+
+- **Context**: `PREREGISTRATION-0.14.0.md` §3 registers **exact marginal (interventional) Shapley
+  values over the three features, by enumeration of all `2³ = 8` coalitions, against a fixed
+  background set**, with the base value the model's mean output over that set. Explainability is
+  contractual, so a kind that cannot decompose its own decision does not ship (plan §8.6).
+- **What the plan's cost sentence gets wrong, and what was done about it**: the plan says marginal
+  values *"cost eight evaluations"*. Against a 256-row background they cost **1 536** — six
+  non-trivial coalitions times the background — which at up to `MAX_CANDIDATES` (100) pairs per
+  activation is tens of milliseconds per trap on the path Gate 0 premise 1 measured. The plan is
+  ratified and **is not edited**; the discrepancy is carried to `SECURITY-REVIEW-0.14.0.md` as an
+  opinion for v0.15.0, which is where its own §10 directs one.
+- **Options**: (a) collapse the background to a single reference point, which really does cost eight
+  evaluations and is a different method from the one registered; (b) approximate by sampling the
+  background; (c) implement the registered method exactly and make it cheap by precomputation.
+- **Choice**: **(c)**.
+- **Reason**: (a) and (b) both change the registered method to fit an implementation budget, which
+  is the analysis-plan analogue of moving a floor after seeing the data. (c) changes nothing about
+  the numbers: two exact identities do the work — Shapley is **linear in the model**, so an ensemble
+  is the weighted sum of its trees' attributions; and a tree is **constant on the cells its own
+  thresholds cut**, so each cell's three contributions are computed once, at registration, and
+  scoring is three binary searches and a tuple read.
+- **Consequence**: `attribution.py` precomputes one table per member tree and the scorer sums them.
+  The score is **defined as** `base_value + Σφ` rather than derived separately, so
+  `sum(contributions) + base_value == score` holds with `==` rather than to a tolerance.
+  `MAX_CELLS_PER_TREE` refuses — never approximates — a model too large to tabulate, which is the
+  same statement `SUPPORTED_KINDS` makes: *this build does not understand that payload*.
+- **The background set is a shipped constant** (`background.py`), not a file read, because
+  `model_version` must stay pure, because `eval/` is not in the wheel, and because a constant can be
+  regenerated and compared — which `eval/background_gen.py --check` does and Gate 2 quotes.
+
+## 191. `scoring.py` splits: the contract moves to `scorer_contract.py` (v0.14.0)
+
+- **Context**: `scoring.py` was 394 lines against the 400-line guard. DECISIONS #186's two optional
+  fields and their explanation take it past.
+- **Options**: (a) trim the prose until it fits; (b) add it to `COHESION_EXEMPT`, which has a free
+  slot; (c) split.
+- **Choice**: **(c)**. Part VII.6 of the build prompt is *"Split, never exempt"*, and the seam was
+  already there.
+- **Reason**: (a) buys one release and pays for it by deleting the reasoning that makes the module
+  readable. (b) spends the escape hatch on a module that has an obvious split — `COHESION_EXEMPT`
+  means *"large because an invariant requires it"*, and no invariant requires the contract and the
+  default implementation to share a file.
+- **The seam**: `scorer_contract.py` answers *what must a scorer satisfy* and contains no
+  implementation at all — no arithmetic, no defaults, no fail-safe. `scoring.py` answers *what does
+  the built-in scorer compute, and what happens when a scorer misbehaves*. The dependency runs one
+  way and cannot cycle.
+- **Consequence**: every contract name is re-exported from `netcorenoc.scoring` with the
+  redundant-alias form, so **`correlate.py` is byte-identical** — which prime directive 1 requires
+  and Phase 8 verifies by hash.
+
+## 192. The feature vocabulary moves out of `challenger.py` into the contract (v0.14.0)
+
+- **Context**: `attribution.py` needs `FEATURE_NAMES` and `feature_vector` — the tree kinds build
+  their input through **the one place a feature vector is built**, which is what makes the
+  training/serving skew test a real test rather than a tautology. Importing them made
+  `tests/test_challenger.py::test_no_code_path_makes_the_challenger_the_active_scorer` fire.
+- **What that guard is for**: keeping a **shadow model** off the champion path. It fired on a module
+  that wanted two constants and a pure function.
+- **Options**: (a) add `attribution.py` to the guard's `allowed` set; (b) duplicate the three names;
+  (c) move them to `scorer_contract.py`, where every scorer can read them, and re-export from
+  `challenger.py` so no existing importer changes.
+- **Choice**: **(c)**.
+- **Reason**: (a) would say *"attribution is part of shadow mode"*, which is false — it is champion
+  path code — and a guard whose `allowed` list grows every time it inconveniences someone stops
+  meaning anything. (b) is a second source of truth for the one function whose whole purpose is that
+  there is only one of it. (c) is a **correction**: these names were never the challenger's. The
+  champion reads them; from v0.14.0 so do three more kinds. After the move, importing
+  `netcorenoc.challenger` really does mean reaching the challenger, which makes the guard *stronger*
+  rather than wider.
+- **Consequence**: `TAU0_S`, `FEATURE_NAMES` and `feature_vector` live in `scorer_contract.py`;
+  `challenger.py` re-exports all three with the redundant-alias form; `sigmoid` stays, because the
+  logistic link **is** the challenger's.
+
+## 193. The lower bound of the admission band is discrimination, not the clock (v0.14.0)
+
+- **Context**: `PREREGISTRATION-0.14.0.md` §4 registers it, and Gate 0 premise 4 measured why. The
+  failure being guarded against is a model that scores without raising, sums its contributions
+  correctly, and **writes not one link** — `model_version.py`'s own opening paragraph, made real.
+- **What was measured** (`../gates/v0.14.0-phase-0.md` §4): comparing like with like — the same code
+  path, only the numbers different — the degenerate-vs-working gap is **0.019 µs** in the additive
+  shape and **0.001 µs** in the logistic one, against **0.095 µs** of run-to-run spread on a single
+  unchanged arm. Over the same corpus the two produce **10 976 links and 0**.
+- **The correction this forces to the plan's own wording, recorded rather than edited**: the plan
+  says the degenerate model is *"the **fastest** model available"*. Measured like with like it is
+  not faster, and it is not slower — **the clock carries no signal about this failure in either
+  direction**. That is a *stronger* argument for the registered floor than the plan's, because
+  *"the degenerate model is fastest"* invites the reply *"then floor the clock from below"*. The
+  plan is ratified and is not edited; the correction is in Gate 0 §4 and in the security review.
+- **Choice**: **spread** (population standard deviation of the scores over the fixed probe set must
+  exceed `MIN_SCORE_SPREAD = 0.01`) **and decision** (at least one probe linked and at least one
+  not). Both **hardening-only**. An optional wall-clock floor exists as a **mechanism**-class
+  setting with a default of **zero**, and the surface says it is a proxy.
+- **Why the probe set is the attribution background**: a model is then admitted on the same
+  distribution it is explained on, and the release has one registered reference distribution rather
+  than two.
+- **Why "may never be the only lower bound in effect" is structural rather than a promise**: the two
+  discrimination checks have no off switch. A deployment that sets a wall-clock floor **adds** to
+  them; it cannot replace them, and `test_the_wall_clock_floor_is_off_by_default_and_is_never_the_only_lower_bound`
+  drives that by setting the clock floor to zero and observing a degenerate model still refused.
+- **Consequence, and it is the one that outlives this release**: for an in-process kind the plan's §2
+  rules inspect the parameters directly. **For a model whose parameters cannot be inspected —
+  v0.15.0's cartridge — a behavioural floor is the only form threshold-reachability can take.** This
+  is written to be that form, and §4.3 of the plan says v0.15.0 must not write a second one.
+
+## 194. Coverage: v0.14.0 registers a band before the measuring run, and reports against both (v0.14.0)
+
+- **Context**: ADR #181's band is 95.60–96.60 %, registered before v0.13.0's measuring run. Part
+  VII.10 forbids re-cutting it, and requires a **new** band derived from a measurement taken before
+  any v0.14.0 number is seen, because this release moves the denominator.
+- **What was measured first**: three consecutive `make coverage` runs on the **Gate-0 commit**
+  (`4aed642`, `git status --porcelain | wc -l` = 0, the working tree stashed for the purpose), before
+  one line of model code existed. 1428 tests each time. **96.03 %, 96.03 %, 96.05 %** — a spread of
+  **0.02 points**. Recorded in `../gates/v0.14.0-phase-0.md` §7, together with the fact that an
+  earlier triple was **discarded** for having been started against a tree that was still changing.
+- **Why the band is not cut to that spread**: v0.12.0's equivalent measurement gave a spread of
+  **0.11**. Two measurements of the same suite, an order of magnitude apart, mean the honest reading
+  is *"at most 0.11, often much less"* — and a band narrower than the measurement's own noise fails
+  for reasons that have nothing to do with the code, which is exactly what ADR #181 found about
+  #159's.
+- **What this release does to the denominator, in arithmetic, before any number was seen**: six new
+  `src/` modules (`scorer_contract`, `background`, `attribution`, `cart`, `tree`, `forest`,
+  `boosting`) plus the simulation package. The baseline total is 7 119 statements at 96.03 %. Adding
+  roughly 700 statements gives 7 819; if the new code is covered at 100 % the total rises to about
+  **96.4 %**, at 90 % it falls to about **95.5 %**, and at 85 % to about **95.0 %**. The new code is
+  validators and fits with many refusal branches, which are the branches a suite most often misses.
+- **The band, registered before the measuring run**: **95.30 % – 96.40 %**.
+- **Why that width**: the ceiling is where fully-covered new code lands, so a number above it would
+  mean the denominator did not move as predicted and deserves a look. The floor is below the 90 %
+  case and above the 85 % case, so **a whole module going untested fails the band** — which is the
+  test of whether a band is a band. 0.02–0.11 of measurement noise is negligible against it.
+- **Consequence**: Phase 8 reports the measured figure against **both** bands, #181's and this one,
+  and neither is re-cut afterwards.
+
+## 195. The promotion gate measures the candidate, not whatever is in shadow (v0.14.0, F59)
+
+- **Context**: v0.11.0's `routes_promotion._derived_inputs` computed the four named quantities
+  against `engine.shadow.scorer`, while `propose_promotion` activates the `model_version_id` the
+  **request** named. Nothing bound the two: no check that the candidate's parameters are the shadow
+  scorer's, and `params_hash` reaches `promotion.evaluate` only as a fold-materialisation key.
+- **How it was found**: by walking the chain. Phase 7 registered a `tree` artefact through the CLI
+  and proposed it over HTTP, and the verdict came back derived from an arm that had nothing to do
+  with the tree. Three releases of tests had not caught it because no test had ever proposed a
+  candidate that **differed** from the shadow scorer — which is what an end-to-end demonstration is
+  for.
+- **Why it matters more here than in most systems**: `PromotionIn` has no `verdict`, `metrics` or
+  `floors_met` field, and `routes_promotion.py`'s own docstring says why — *"the request body may
+  name a `model_version_id`; it may not assert a verdict."* Measuring a different model re-opens that
+  door from the other side, and in the worse direction: **a verdict about a model nobody measured
+  looks derived.** The `missing_run` guard bounds the damage — an artefact with no challenger run
+  behind it cannot be applied — but it checks that *a* run exists, not that the run fitted these
+  parameters.
+- **Decision**: the challenger arm is the scorer the candidate row describes, built by
+  `model_version.scorer_for` — **the** dispatch, and the same function `scorer_lifecycle` uses to
+  activate a row. One function, one document, so the model scored at the gate and the model that
+  would run after the pointer moves cannot differ.
+- **Why this release and not v0.15.0**: `scorer_for` covered two kinds before v0.14.0, so the gate
+  could not have loaded a `tree` candidate at all — part of why the gap survived. The release that
+  makes five kinds loadable is the release where the repair is even expressible. It also **cannot
+  change any verdict reported here**: the floors are unmet, so the verdict is
+  `INSUFFICIENT_EVIDENCE` whatever the metrics say, which removes the adaptive-selection objection
+  that would otherwise apply to changing a measurement after seeing a result.
+- **A candidate whose document will not load is refused, never substituted**: `ModelPayloadError`
+  becomes a 400 naming the reason, and no `promotion` row is written. Scoring *something else* and
+  returning a verdict would be the same defect wearing an error-handling hat.
+- **Demonstrated, not asserted**: reverting the one line turns
+  `test_the_gate_measures_the_candidate_and_not_whatever_is_in_shadow` and
+  `test_a_candidate_whose_document_will_not_load_is_refused_not_substituted` red with the other 15
+  tests in the file green as the control. The first uses a sentinel scorer that raises if it is ever
+  called, **and asserts the corpus supplied promoted pairs** — because a sentinel that is never
+  reached is a sentinel that always passes.
+
+## 196. The console reports what is DECIDING, not what is configured (v0.14.0, F60)
+
+- **Context**: `scorer_config` and `model_version` are mutually exclusive by a database CHECK, so
+  with a model version active there is no scorer configuration row. `routes_scorer._active_scorer()`
+  fell back to `scoring.default_scorer()` and `GET /api/scorer` published that fallback as
+  `scorer_id`, `params` and `params_hash`. The console rendered it under the heading **"Active
+  configuration"**, captioned *"What the running engine is grouping with right now."*
+- **What that means for an operator**: a promoted champion, and five weights on the screen that
+  decide nothing, under a heading asserting that they do. Nothing on the screen said otherwise.
+- **It predates the tree kinds.** A promoted `logistic` champion — reachable since v0.11.0 —
+  produced the same misreport. It survived two releases, one of them a console rewrite, because
+  nothing had ever been promoted: every corpus returned `INSUFFICIENT_EVIDENCE`, so
+  `active_model_version()` was always `None` and the fallback was never taken outside a unit test.
+- **Decision**: split the one function into two, because it had two meanings.
+  **`_tunable_scorer()`** is what the form edits; **`_running_scorer()`** is what the engine is
+  scoring with. `GET /api/scorer` publishes the running scorer's own identity — whatever kind it is
+  — plus a `running` block naming the active artefact: its id, kind, fingerprint, challenger run and
+  `params_document`. The console leads with **"What is deciding"** and labels the five weights
+  **"Configured parameters"**, marked inactive when they are.
+- **The weights are still shown, deliberately**: an admin may retune the stored configuration and
+  roll the model version back, and hiding the table would make that impossible to reason about. The
+  defect was not showing them; it was calling them active.
+- **`kind` is derived from the running scorer, never from the artefact row**, so a degraded fallback
+  reports `additive` — what is running — rather than the kind of an artefact that failed to load.
+  Reporting the intent of a load that failed is how a fail-safe becomes a second lie.
+- **Demonstrated**: reverting the four lines turns
+  `test_the_console_says_a_tree_is_deciding_and_not_five_additive_weights` red with 20 green,
+  and the control — `test_the_control_an_additive_champion_is_not_warned_about` — rules out a
+  console that warns unconditionally. The fixture fits, registers, activates and loads a real tree,
+  which is the four steps a promotion takes.

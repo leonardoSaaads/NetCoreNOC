@@ -1,12 +1,12 @@
 # Customer-supplied scorers — v0.13.0 draft (specification only, not implemented in v0.6.0)
 
-<!-- release-claim: v0.14.0 = external-cartridge -->
+<!-- release-claim: v0.15.0 = external-cartridge -->
 
 > ## ⚠ Resequenced 2026-07-31 (v0.7.4) — read this box first
 >
 > This document was written during **v0.6.0** as the **v0.8.0** specification, and was refined
 > during v0.7.0. It was `git mv`-d from its old name, SCORER-PLUGINS-0.8-DRAFT, and its elements retagged
-> `v0.14.0: planned` by v0.7.4. **The technical content below is unchanged** — the analysis, the
+> `v0.15.0: planned` by v0.7.4. **The technical content below is unchanged** — the analysis, the
 > ONNX determinism engineering, the threat-model entries and the R1–R5 refinements all stand. Only
 > the release changed.
 >
@@ -14,7 +14,7 @@
 > |---|---|---|
 > | Release | v0.8.0 | **v0.13.0** — see [`ROADMAP-0.8-TO-0.13.md`](ROADMAP-0.8-TO-0.13.md) |
 > | Why | — | **DECISIONS #93.** v0.8.0 is the operator-feedback dataset; customer models come *after* the champion/challenger framework they plug into, because building the riskiest surface before the framework that receives it inverts how this project has sequenced every release since v0.2.0. |
-> | §1 blessed ONNX path | tagged for v0.8.0 | **`v0.14.0: planned`** — unchanged in substance |
+> | §1 blessed ONNX path | tagged for v0.8.0 | **`v0.15.0: planned`** — unchanged in substance |
 > | §2 Python entry-point escape hatch | tagged for v0.8.0 | **REJECTED, not deferred** (DECISIONS #93). See the note on §2. |
 > | §R2 worker-process preemption harness | blocking prerequisite | **still a blocking prerequisite** |
 >
@@ -28,7 +28,7 @@
 
 This document specifies how **v0.13.0** will let an operator run a **customer-supplied model** as
 the link scorer, under the `LinkScorer` contract that **v0.6.0 ships**. **It implements nothing.**
-Every element below is tagged **`v0.14.0: planned`**.
+Every element below is tagged **`v0.15.0: planned`**.
 
 It supersedes the "pluggable" half of section 3 of `EXTENSIBILITY-0.6-DRAFT.md`. The resequencing
 is **DECISIONS #43**: customer models introduce a new runtime dependency (`onnxruntime`) and a new
@@ -56,7 +56,7 @@ labelled accordingly.
 
 ---
 
-## 1. The blessed ONNX path (`v0.14.0: planned`)
+## 1. The blessed ONNX path (`v0.15.0: planned`)
 
 ### Workflow
 
@@ -214,14 +214,14 @@ migration is additive and forward-only — the same discipline as `0003_entity.s
 
 ---
 
-# Refinement — recorded during v0.7.0 (still `v0.14.0: planned`, still implements nothing)
+# Refinement — recorded during v0.7.0 (still `v0.15.0: planned`, still implements nothing)
 
 v0.6.0 shipped the `LinkScorer` seam; v0.7.0 shipped governance. Both are now real code rather than
 a plan, so this section re-checks the specification above against what actually exists and records
 three things it could not record before: a **blocking prerequisite**, a **governance
 reconciliation**, and a **re-confirmation** that the shipped contract needs no breaking change.
 
-Nothing here is implemented. Every element remains **`v0.14.0: planned`**.
+Nothing here is implemented. Every element remains **`v0.15.0: planned`**.
 
 ## R1. The contract, re-confirmed against the shipped code
 

@@ -31,8 +31,9 @@ theme with a reason for its position in the chain, not a commitment to a date.
 | **v0.11.0** | **Champion/challenger** — the slow loop proposes a promotion with the evidence; an admin approves; the swap is one more immutable `scorer_config` row. | `champion-challenger` |
 | **v0.12.0** | **The instrument and the shape** — a DOM harness that executes `ui/app.js`, the invariants that survive a rewrite, and the architecture of the UI that replaces the current one. | `ui-harness` |
 | **v0.13.0** | **The UI** — sidebar navigation, per-role dashboards, the network graph, themes, the full admin surface. | `ui` |
-| **v0.14.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. | `external-cartridge` |
-| **v0.15.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. | `archetypes` |
+| **v0.14.0** | **The model family** — three more scorer kinds this appliance trains and runs itself, in process, and the first end-to-end drive of the whole evidence chain. | `model-family` |
+| **v0.15.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. | `external-cartridge` |
+| **v0.16.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. | `archetypes` |
 
 ---
 
@@ -62,6 +63,13 @@ brought earlier:
 * **v0.13.0 before v0.11.0** would put the riskiest element — a new runtime dependency and a new
   trust surface — in front of the framework that receives it and the evaluator that judges it. A
   customer model that cannot be evaluated cannot be promoted, so it would arrive with nowhere to go.
+* **The cartridge before the model family** (added by DECISIONS #184) would take the project's
+  riskiest step — a second process, a preemption harness, an amendment to *"ingestion is sacred"* —
+  while the whole chain behind it had still never been observed to work. Every release since v0.9.1
+  ended in `INSUFFICIENT_EVIDENCE`; `seal.spend()` existed in production code with a query count of
+  zero because the branch that calls it was unreachable. **Proving the chain end to end costs no new
+  process and no new trust surface**, and doing it first means the cartridge arrives at a gate that
+  has been seen to open rather than at one nobody has watched work.
 
 ---
 
@@ -180,6 +188,27 @@ agreement between the proposal and what admins actually approve.
   can only enter through the ONNX door, and that door opens in v0.13.0. Saying so here prevents a
   future reader mistaking a packaging constraint for a finding about model families.
 
+  > **Amended 2026-08-23 (v0.14.0) — DECISIONS #183 supersedes the second half of this bullet.**
+  > *"There is no in-process implementation of one among the five runtime dependencies"* is true and
+  > **does not imply what the bullet draws from it.** Principle 5 forbids *dependencies*, not
+  > *implementations*. v0.9.0 had already written logistic regression in pure Python on the argument
+  > that *"logistic regression over a handful of features is arithmetic"*; a CART over three
+  > continuous features is arithmetic too. **The ONNX door was never the only door — it was the only
+  > one anyone had considered.** v0.14.0 ships `tree`, `forest` and `gradient_boosting` in process,
+  > in pure Python, with zero new runtime dependencies.
+  >
+  > The bullet's *first* sentence survives intact and is worth keeping for its own sake: the
+  > constraint was never about merit. What changes is that it was not about plumbing either.
+  >
+  > **What this does to the cartridge's justification.** The external cartridge stops being *"the
+  > only way a tree ensemble can be champion"* and becomes *"the way a **customer's own** model can
+  > be champion"*. That is still a good reason and it is a different one;
+  > `CARTRIDGE-0.15-DRAFT.md` states it in those terms.
+  >
+  > The sentence above is **not edited**. A correction in this project is a new entry that
+  > supersedes, never a rewrite of the record — the same rule `../adr/README.md` states for the
+  > decision log and the same shape as the v0.8.0 correction in §v0.8.0 above.
+
 ---
 
 ## v0.12.0 — the instrument and the shape
@@ -229,13 +258,59 @@ then be executed. Three constraints travel with it and are not negotiable at bui
 
 ---
 
-## v0.14.0 — the external cartridge
+## v0.14.0 — the model family
 
-<!-- release-claim: v0.14.0 = external-cartridge -->
+<!-- release-claim: v0.14.0 = model-family -->
+
+**Three more scorer kinds this appliance trains and runs itself, in process — and the first release
+in which the whole evidence chain is driven end to end until a champion changes.**
+
+Added to this chain by **DECISIONS #184**, which resequenced the two releases below it. The reason
+is the amendment above: the sentence that put tree ensembles behind the cartridge was drawing a
+conclusion its own premise does not support, so the release that ships them needs no cartridge at
+all. `tree`, `forest` and `gradient_boosting` join `additive` and `logistic` as branches of
+`model_version.scorer_for`, in pure Python, with **zero** new runtime dependencies.
+
+Two things travel with it and neither is negotiable at build time:
+
+* **Explainability survives the change of model family.** A tree predicts a leaf value, not a
+  weighted sum, so `LinkScore.terms` needs a real attribution method rather than a plausible-looking
+  one. The feature vector has **three** positions, so exact Shapley by enumeration is `2³ = 8` model
+  evaluations — no approximation, no library, one module for all three kinds. What that costs is a
+  base value in `params_document` (and therefore in `params_hash`) and a **minor** contract bump
+  naming how a scorer's terms were derived, because a Shapley value in a field called `weight` would
+  be a lie in the field's own name.
+* **A lower bound on admission that is not the clock.** Phase 0 measured that the all-zero model —
+  which raises nothing, sums its contributions correctly, and silently stops the appliance
+  grouping — sits **inside the timing noise** of a working model of the same shape. The clock cannot
+  see the failure; the output distribution can. The discrimination floor generalises `MIN_WEIGHT_SUM`
+  from parameters to behaviour, which is also the only form threshold-reachability can take for
+  v0.15.0's cartridge, whose parameters are not inspectable at all.
+
+**The release's product is the second half of its theme, not the trees.** Every release since
+v0.9.1 has ended in `INSUFFICIENT_EVIDENCE` with `asserting_bags = 0` against a floor of 50 — as
+pre-registered in advance each time, and honestly. v0.14.0 drives a simulated network into a real
+appliance over real UDP until the corpus crosses the floors, the judge returns a verdict, the seal
+is spent for the first time in the project's history, and a champion changes.
+
+> **And that is the release's largest hazard.** A verdict on a corpus this release generated is a
+> **demonstration of the machinery** and is never a claim about model quality.
+> `../analysis/PREREGISTRATION-0.14.0.md` §5 and §6 fix, in
+> advance, what the simulation may and may not do — including that the generator's shape is not
+> changed after a verdict is seen, and that ten increments without the floors clearing is a
+> **successful** gate outcome.
+
+---
+
+## v0.15.0 — the external cartridge
+
+<!-- release-claim: v0.15.0 = external-cartridge -->
 
 **ONNX under the proven framework, behind the worker-process harness.**
 
-Customer-supplied models, resequenced here from v0.8.0 by **DECISIONS #93**. Specified in
+Customer-supplied models, resequenced here from v0.8.0 by **DECISIONS #93** and from v0.14.0 by
+**DECISIONS #184**. Its justification is **not** the one the amendment above withdrew: the cartridge
+is the door for a *customer's own* model, not the only door for a tree ensemble. Specified in
 [`SCORER-PLUGINS-0.13-DRAFT.md`](SCORER-PLUGINS-0.13-DRAFT.md), which was written as the v0.8.0
 specification during v0.6.0 and is retagged rather than rewritten — its technical analysis stands;
 only the release changed.
@@ -255,6 +330,10 @@ Two constraints travel with the resequencing and are not negotiable at build tim
   **must not use `pickle`**: a compromised worker returning a malicious pickle is remote code
   execution in the parent by the back door, which would turn the sandbox into a delivery mechanism.
 
+Reconciled and superseded by `CARTRIDGE-0.15-DRAFT.md`, written in
+v0.14.0, which also carries the amendment to principle 4 that admitting a bounded, measured cost on
+the ingestion path requires.
+
 ---
 
 ## What this document does not decide
@@ -263,17 +342,17 @@ Two constraints travel with the resequencing and are not negotiable at build tim
 * **v0.7.5.** It is not in this chain: it is a runtime-behaviour fix to the feedback *acquisition*
   path, specified in [`FEEDBACK-PATH-0.7.5-DRAFT.md`](FEEDBACK-PATH-0.7.5-DRAFT.md), and it is a
   prerequisite for v0.8.0 rather than a member of the sequence.
-* **Anything after v0.15.0.** `ROADMAP.md` keeps the unsequenced ideas, one line each, as it always
+* **Anything after v0.16.0.** `ROADMAP.md` keeps the unsequenced ideas, one line each, as it always
   has.
-* **Whether v0.15.0 happens at all.** Recorded above as *likely, review before committing*, which is
-  the honest state. It was resequenced out of v0.12.0 on evidence (DECISIONS #170), which is not
-  the same as being dropped.
+* **Whether v0.16.0 happens at all.** Recorded below as *likely, review before committing*, which is
+  the honest state. It was resequenced out of v0.12.0 on evidence (DECISIONS #170) and shifted one
+  place further by DECISIONS #184, neither of which is the same as being dropped.
 
 ---
 
-## v0.15.0 — archetypes
+## v0.16.0 — archetypes
 
-<!-- release-claim: v0.15.0 = archetypes -->
+<!-- release-claim: v0.16.0 = archetypes -->
 
 **Per-archetype weights — PON/access, transport/DWDM, IP core.** Marked ***likely, review before
 committing***.
@@ -295,5 +374,10 @@ corpus `k` ways: *a corpus that cannot decide one comparison cannot decide `k` o
 it makes every arm worse.* [`ARCHETYPES-0.12-DRAFT.md`](ARCHETYPES-0.12-DRAFT.md) is preserved and
 retagged to this release rather than deleted — its analysis stands and starts from exactly that
 fact. Its filename records when it was written, not what it governs; §0 of the document says so.
+
+**Shifted one place further by DECISIONS #184**, which inserted the model family at v0.14.0. Nothing
+about the argument above changes; what changes is that by the time this release is considered, four
+in-process model kinds exist rather than two, so *"one model per archetype"* multiplies a larger set
+and the corpus argument gets **stronger**, not weaker.
 
 ---

@@ -557,7 +557,14 @@ def test_the_admission_filter_runs_against_the_champion_too() -> None:
 
 
 def test_a_model_failing_any_check_does_not_compete() -> None:
-    """The filter's whole point: a model failing any check does not compete on quality at all."""
+    """The filter's whole point: a model failing any check does not compete on quality at all.
+
+    v0.14.0 adds the three lower-bound rows. The two discrimination halves are named separately
+    because `PREREGISTRATION-0.14.0.md` §4.2 requires the reason to say **which** half failed:
+    *"gives every pair a near-identical score"* and *"gives every pair the same answer"* are
+    different malfunctions with different repairs, and one message would send an operator to the
+    wrong one.
+    """
     champion = {"contract_version": "1.0", "p99_us": 2.0}
     for broken, expected in (
         ({"explainable": False}, "explainability"),
@@ -565,18 +572,103 @@ def test_a_model_failing_any_check_does_not_compete() -> None:
         ({"memory_stable": False}, "memory"),
         ({"contract_version": "2.0"}, "contract"),
         ({"p99_us": 1000.0}, "speed"),
+        ({"score_spread": 0.0}, "discrimination (spread)"),
+        ({"probes_linked": 256, "probes_unlinked": 0}, "discrimination (decision)"),
+        ({"probes_linked": 0, "probes_unlinked": 256}, "discrimination (decision)"),
+        ({"min_score_us": 5.0, "median_us": 0.4}, "wall clock (proxy)"),
     ):
         challenger = {
             "explainable": True,
             "deterministic": True,
             "memory_stable": True,
             "contract_version": "1.0",
+            "median_us": 1.0,
             "p99_us": 1.0,
             "budget_ratio": 10.0,
+            "score_spread": 0.25,
+            "min_score_spread": shadow_admission.MIN_SCORE_SPREAD,
+            "probes": 256,
+            "probes_linked": 100,
+            "probes_unlinked": 156,
+            "min_score_us": 0.0,
             **broken,
         }
         admitted, reasons = shadow_admission.verdict(challenger, champion)
-        assert not admitted and any(r.startswith(expected) for r in reasons), reasons
+        assert not admitted and any(r.startswith(expected) for r in reasons), (expected, reasons)
+
+
+def test_a_model_passing_every_check_competes() -> None:
+    """**The control.** A filter that refused everything would satisfy every row above and admit no
+    model at all — a worse defect than the ones they guard against, and invisible to a test that
+    only checks that bad input fails."""
+    champion = {"contract_version": "1.0", "p99_us": 2.0}
+    challenger = {
+        "explainable": True,
+        "deterministic": True,
+        "memory_stable": True,
+        "contract_version": "1.0",
+        "median_us": 1.0,
+        "p99_us": 1.0,
+        "budget_ratio": 10.0,
+        "score_spread": 0.25,
+        "min_score_spread": shadow_admission.MIN_SCORE_SPREAD,
+        "probes": 256,
+        "probes_linked": 100,
+        "probes_unlinked": 156,
+        "min_score_us": 0.0,
+    }
+    admitted, reasons = shadow_admission.verdict(challenger, champion)
+    assert admitted, reasons
+
+
+def test_the_wall_clock_floor_is_off_by_default_and_is_never_the_only_lower_bound() -> None:
+    """§4.2: the wall-clock lower bound is a **mechanism**-class setting with a default of zero, it
+    is a proxy, and it may never be the only lower bound in effect.
+
+    The last clause is structural rather than a promise: the two discrimination checks have no off
+    switch, so a deployment that sets a wall-clock floor **adds** to them and cannot replace them.
+    Asserted by driving the floor to zero and observing that a degenerate model is still refused.
+    """
+    assert shadow_admission.resolve_wall_clock_floor(None) == 0.0
+    assert shadow_admission.resolve_wall_clock_floor("not a number") == 0.0
+    assert shadow_admission.resolve_wall_clock_floor("-5") == 0.0
+    assert shadow_admission.resolve_wall_clock_floor("2.5") == 2.5
+
+    champion = {"contract_version": "1.0", "p99_us": 2.0}
+    degenerate = {
+        "explainable": True,
+        "deterministic": True,
+        "memory_stable": True,
+        "contract_version": "1.0",
+        "median_us": 1.0,
+        "p99_us": 1.0,
+        "budget_ratio": 10.0,
+        "score_spread": 0.0,
+        "min_score_spread": shadow_admission.MIN_SCORE_SPREAD,
+        "probes": 256,
+        "probes_linked": 0,
+        "probes_unlinked": 256,
+        "min_score_us": 0.0,  # the wall-clock floor is OFF
+    }
+    admitted, reasons = shadow_admission.verdict(degenerate, champion)
+    assert not admitted
+    assert any(r.startswith("discrimination") for r in reasons), reasons
+
+
+def test_the_discrimination_floor_may_be_raised_and_never_lowered() -> None:
+    """`resolved = the more demanding of (project floor, deployment policy)` — hardening-only.
+
+    Both directions, because only the pair proves the composition is `max` rather than
+    last-write-wins: a looser value must come back as the project floor, and a stricter one must be
+    accepted.
+    """
+    project = shadow_admission.MIN_SCORE_SPREAD
+    assert shadow_admission.resolve_spread_floor(None) == (project, None)
+    assert shadow_admission.resolve_spread_floor("0.5") == (0.5, None)  # stricter: accepted
+    assert shadow_admission.resolve_spread_floor("0.0")[0] == project  # looser: refused
+    assert shadow_admission.resolve_spread_floor("-1")[0] == project
+    resolved, warning = shadow_admission.resolve_spread_floor("nonsense")
+    assert resolved == project and warning is not None and "may only ever be raised" in warning
 
 
 # -- the report ---------------------------------------------------------------------------------

@@ -288,6 +288,53 @@ setting the sample rate to 1.0 does **not** give you every pair.
 Specified in
 [`docs/architecture/SHADOW-MODE-0.9-DRAFT.md`](docs/architecture/SHADOW-MODE-0.9-DRAFT.md).
 
+## The model family (v0.14.0)
+
+Five scorer kinds. `additive` is the five-number formula an admin tunes by hand; `logistic` is a
+coefficient vector fitted from labelled evidence; **`tree`, `forest` and `gradient_boosting` are
+trained and run by this appliance, in this process, in pure Python.**
+
+**No new dependency.** Five since v0.2.0, and three model kinds added zero. **No migration.** A model
+is a `model_version` row and that table has held an arbitrary parameter document since `0013`. Each
+kind is one branch in `model_version.scorer_for` and nothing at the call site: there is no plugin
+surface, no registry and no dynamic import, so *"which models can this appliance run"* stays a
+question the source answers.
+
+### Every decision decomposes exactly
+
+Each score comes with three contributions — one per feature — computed as **exact marginal
+(interventional) Shapley values** by enumerating all 2³ = 8 coalitions against a background set fixed
+at registration. `sum(contributions) + base_value == score`, exactly, and a model too large to
+tabulate is **refused rather than approximated**. That is a shipping condition: a kind that cannot
+explain its own decision is not a scorer this project runs.
+
+### Nothing is promoted without evidence, and evidence is counted, not argued
+
+Registering a model is not promoting one:
+
+```sh
+python -m netcorenoc promotion register --kind tree --params "$(cat model.json)"
+python -m netcorenoc promotion list      # every decision, refusals included
+```
+
+Registration prints, every time, that *"this is an ARTEFACT, not a promotion"*. There is **no HTTP
+route that creates a model version** — the thing that could put a new model in front of traffic is
+not reachable from the network. `POST /api/promotion` names a candidate and nothing else; the server
+re-derives the floors, the power condition, the seal, the metrics and the verdict, and a request has
+no field that could assert any of them.
+
+**On a corpus below the pre-registered floors it refuses, names every trigger that fired, and says
+what would have to change.** That is the expected outcome and it is not a fault. It is also this
+project's own outcome:
+[`docs/gates/v0.14.0-phase-7.md`](docs/gates/v0.14.0-phase-7.md) walks the whole chain into a real
+appliance over real UDP and reports a shortfall of 40 asserting bags and 20 asserting incidents,
+with the reason measured rather than guessed.
+
+Registered in advance in
+[`docs/analysis/PREREGISTRATION-0.14.0.md`](docs/analysis/PREREGISTRATION-0.14.0.md) — the kinds,
+their degeneracy rules, the attribution method, the corpus shape and the stopping rule, all fixed
+before any of them existed.
+
 ## Security (v0.2.0)
 
 Identity, role-based authorization, and a tamper-evident audit log. Accounts with three
@@ -392,8 +439,10 @@ the tree is [`docs/architecture/repo-map.md`](docs/architecture/repo-map.md).
 - **Zero configuration.** The user provides nothing but a trap destination.
 - **Structure emerges from the stream.** Devices, classes, raise/clear pairs, topology
   edges, and precedence statistics are learned, never declared.
-- **Explainability over sophistication.** Three numbers explain every link. No black
-  boxes.
+- **Explainability over sophistication.** Three numbers explain every link. No black boxes — and
+  since v0.14.0 that survives the arrival of tree ensembles: each of the five scorer kinds
+  decomposes its own decision into the same three contributions, **exactly**, and a model too large
+  to explain exactly is refused rather than approximated.
 - **Simplicity is a feature.** No brokers, no ORMs, no plugins, no frontend toolchain — and since
   v0.12.0 that last one is a **test** (`tests/test_build_step.py`) rather than an intention: no
   `package.json`, lockfile, bundler config or `node_modules` may exist in the tracked tree.

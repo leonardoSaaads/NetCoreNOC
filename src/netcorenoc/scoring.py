@@ -1,9 +1,15 @@
-"""The link-scoring seam: a versioned, swappable, explainable `LinkScorer`.
+"""The link-scoring seam: the built-in scorer, its bounds, and the fail-safe wrapper.
 
 The correlation link decision used to be an expression inlined in ``correlate.py``. Here it is
 the *default implementation of an interface*: :class:`AdditiveScorer` computes exactly what
-v0.5.0 computed, and :class:`LinkScorer` is the contract any future scorer (a retuned additive
-one, a customer ONNX model in v0.8.0) must satisfy.
+v0.5.0 computed, and :class:`~netcorenoc.scorer_contract.LinkScorer` is the contract any future
+scorer must satisfy.
+
+**The contract itself moved to `scorer_contract.py` in v0.14.0** (DECISIONS #191), at the 400-line
+guard and on a seam that was already there: that module answers *what must a scorer satisfy*, this
+one answers *what does the built-in scorer compute, and what happens when a scorer misbehaves*.
+Every contract name is re-exported below, so ``from netcorenoc.scoring import ...`` is unchanged for
+every existing importer — including ``correlate.py``, which this release may not touch by a byte.
 
 Three properties are load-bearing:
 
@@ -11,17 +17,12 @@ Three properties are load-bearing:
   computed in the same order (float addition is not associative), same strict ``> threshold``
   comparison. The eval gate proves it mechanically.
 * **Explainability is contractual.** Every scorer must return a per-term breakdown
-  (:class:`TermContribution`), so "why did it decide that?" can never regress. The default emits
-  the three terms the API and UI already show.
+  (:class:`~netcorenoc.scorer_contract.TermContribution`), so "why did it decide that?" can never
+  regress. The default emits the three terms the API and UI already show.
 * **Purity.** ``score()`` is pure, deterministic, side-effect-free and inference-only. That is
   the type-level statement that no scorer reaches the network, the disk, or the clock — which is
   what forecloses an external scoring criterion on the hot path (DECISIONS #44) rather than
   merely discouraging it.
-
-Contract versioning (DECISIONS #49): adding an *optional* field to :class:`LinkFeatures` or a
-term to :class:`LinkScore` is a **minor** bump; changing or removing an existing field is a
-**major** bump. A stored configuration whose declared major version this code does not support is
-refused at activation, never coerced.
 """
 
 from __future__ import annotations
@@ -31,11 +32,44 @@ import json
 import math
 import time
 from dataclasses import dataclass
-from typing import NamedTuple, Protocol, runtime_checkable
 
-# The contract version this code implements. Only the MAJOR component gates activation.
-CONTRACT_VERSION = "1.0"
-DEFAULT_SCORER_ID = "additive"
+# Re-exported with the redundant-alias form, which is the explicit "this is a re-export" spelling
+# both ruff and mypy understand. `correlate.py` imports every one of these from `netcorenoc.scoring`
+# and this release may not change one byte of it, so the names have to stay here whatever module
+# defines them (DECISIONS #191).
+from netcorenoc.scorer_contract import (
+    BASIS_SHAPLEY as BASIS_SHAPLEY,
+)
+from netcorenoc.scorer_contract import (
+    BASIS_WEIGHTED_SUM as BASIS_WEIGHTED_SUM,
+)
+from netcorenoc.scorer_contract import (
+    CONTRACT_VERSION as CONTRACT_VERSION,
+)
+from netcorenoc.scorer_contract import (
+    DEFAULT_SCORER_ID as DEFAULT_SCORER_ID,
+)
+from netcorenoc.scorer_contract import (
+    ContractVersionError as ContractVersionError,
+)
+from netcorenoc.scorer_contract import (
+    LinkFeatures as LinkFeatures,
+)
+from netcorenoc.scorer_contract import (
+    LinkScore as LinkScore,
+)
+from netcorenoc.scorer_contract import (
+    LinkScorer as LinkScorer,
+)
+from netcorenoc.scorer_contract import (
+    TermContribution as TermContribution,
+)
+from netcorenoc.scorer_contract import (
+    check_contract_version as check_contract_version,
+)
+from netcorenoc.scorer_contract import (
+    contract_major as contract_major,
+)
 
 # The coded defaults — the v0.5.0 constants, now the default scorer's dataclass defaults
 # (the P2 tidy promised in EXTENSIBILITY-0.6-DRAFT.md). `correlate.py` re-exports these names.
@@ -58,106 +92,6 @@ THRESHOLD_MARGIN = 0.01  # threshold must stay this far below the max achievable
 
 class ScorerParamsError(ValueError):
     """A parameter set that is out of bounds or degenerate. Never stored (§validation)."""
-
-
-class ContractVersionError(ValueError):
-    """A stored configuration declaring a major contract version this code does not implement."""
-
-
-class LinkFeatures(NamedTuple):
-    """Everything a scorer may see about one candidate pair, built once by the engine.
-
-    The first block is exactly what the v0.5.0 computation used. The second block is **reserved**:
-    every field is ``None`` in v0.6.0 and ignored by :class:`AdditiveScorer`. They exist so the
-    X.733 / 3GPP TS 32.111 features (deferred behind MIB enrichment) and v0.8.0's richer scorers
-    are additive, non-breaking extensions — populating one is a minor contract bump.
-
-    A ``NamedTuple`` rather than a frozen dataclass, for two reasons that both matter here. It is
-    *genuinely* immutable (a tuple, not a dataclass that raises on ``__setattr__``), which is the
-    guarantee the "pure, side-effect-free" contract needs; and it is built at C speed, which
-    matters because the engine constructs one **per candidate pair** — up to 100 per activated
-    alarm. A frozen dataclass costs ~2 µs per construction here; this costs ~0.4 µs. Appending an
-    optional field stays a minor contract bump either way (DECISIONS #49).
-    """
-
-    delta_t_s: float
-    class_i: int
-    class_j: int
-    class_affinity: float  # A[class_i, class_j]
-    ne_i: int
-    ne_j: int
-    entity_affinity: float  # E[ne_i, ne_j] (or the structural intra-NE value)
-
-    # Reserved for v0.7.0+ — None throughout v0.6.0.
-    severity_i: int | None = None
-    severity_j: int | None = None
-    topo_distance: float | None = None
-    probable_cause_i: str | None = None
-    probable_cause_j: str | None = None
-    event_type_i: str | None = None
-    event_type_j: str | None = None
-
-
-class TermContribution(NamedTuple):
-    """One explainable term of a link score: ``contribution = weight · value``."""
-
-    name: str
-    weight: float
-    value: float
-    contribution: float
-
-
-class LinkScore(NamedTuple):
-    """A scorer's verdict *and* its explanation. The breakdown is contractual, not optional.
-
-    ``terms`` is a tuple: a scorer hands out its explanation, it does not lend a mutable list
-    that a caller could edit under it."""
-
-    linked: bool
-    score: float
-    threshold: float
-    terms: tuple[TermContribution, ...]
-
-
-@runtime_checkable
-class LinkScorer(Protocol):
-    """The scoring contract. One default implementation ships; the rest is future work.
-
-    ``score`` must be pure, deterministic, side-effect-free and inference-only: no I/O, no clock,
-    no network, no mutation of the features or of the scorer.
-
-    ``scorer_id`` and ``contract_version`` are declared read-only so a frozen dataclass (the
-    default) and a property-backed wrapper both satisfy the protocol structurally — no base class
-    to inherit and no registry to edit, which is what lets v0.8.0 drop in an adapter without
-    touching ``src/netcorenoc/``.
-    """
-
-    @property
-    def scorer_id(self) -> str: ...
-
-    @property
-    def contract_version(self) -> str: ...
-
-    def score(self, features: LinkFeatures) -> LinkScore: ...
-
-    def params_fingerprint(self) -> str: ...
-
-
-def contract_major(version: str) -> int:
-    """The MAJOR component of a semver-ish contract version ('1.0' -> 1)."""
-    try:
-        return int(version.split(".", 1)[0])
-    except ValueError as exc:
-        raise ContractVersionError(f"malformed contract version {version!r}") from exc
-
-
-def check_contract_version(version: str) -> None:
-    """Refuse a configuration whose major contract version this code does not implement."""
-    if contract_major(version) != contract_major(CONTRACT_VERSION):
-        raise ContractVersionError(
-            f"scorer contract version {version!r} is not supported by this build "
-            f"(implements {CONTRACT_VERSION!r}); refusing to activate it"
-        )
 
 
 def validate_params(w_t: float, w_a: float, w_e: float, tau_s: float, threshold: float) -> None:

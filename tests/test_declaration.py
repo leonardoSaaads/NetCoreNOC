@@ -548,12 +548,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    # v0.13.0: 52 -> 88. Every one of the 36 new pairs is a **static UI module**
-    # (ADR #175): the console is now an ES module graph and each module is enumerated in
-    # `routes_static.STATIC_ASSETS` and in `declare.UNAUTHENTICATED_PATHS`. No `/api` route
-    # was added, removed or renamed by this release, which is the property this count is
-    # really guarding and which the assertion below states directly.
-    assert len(served) == 88, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.13.0: 52 -> 88. Every one of the 36 new pairs was a **static UI module** (ADR #175).
+    # v0.14.0: 88 -> 90, and both new pairs are static UI modules too — `app/views/model.js` and
+    # `app/views/verdict.js`. **No `/api` route was added, removed or renamed by this release**,
+    # which is the property this count is really guarding and which the assertion below states
+    # directly. Three new scorer kinds, a repaired promotion gate and two new screens changed the
+    # served API surface by exactly nothing.
+    assert len(served) == 90, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 44, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.13.0 adds no route — it adds "
@@ -604,12 +605,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     """
     _engine, _queue, app = await authutil.make_env(store)
     served = _live_routes(app)
-    # v0.13.0: 52 -> 88. Every one of the 36 new pairs is a **static UI module**
-    # (ADR #175): the console is now an ES module graph and each module is enumerated in
-    # `routes_static.STATIC_ASSETS` and in `declare.UNAUTHENTICATED_PATHS`. No `/api` route
-    # was added, removed or renamed by this release, which is the property this count is
-    # really guarding and which the assertion below states directly.
-    assert len(served) == 88, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.13.0: 52 -> 88. Every one of the 36 new pairs was a **static UI module** (ADR #175).
+    # v0.14.0: 88 -> 90, and both new pairs are static UI modules too — `app/views/model.js` and
+    # `app/views/verdict.js`. **No `/api` route was added, removed or renamed by this release**,
+    # which is the property this count is really guarding and which the assertion below states
+    # directly. Three new scorer kinds, a repaired promotion gate and two new screens changed the
+    # served API surface by exactly nothing.
+    assert len(served) == 90, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 44, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.13.0 adds no route — it adds "
