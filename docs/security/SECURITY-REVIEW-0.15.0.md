@@ -122,18 +122,23 @@ Self-contained; drives the shipped module and adds nothing to the repository.
 
 ```python
 # python - <<'EOF'   (from the repository root, with src/ importable)
-import sys; sys.path.insert(0, "src")
+import sys
+
+sys.path.insert(0, "src")
 from netcorenoc.learn import MIN_EDGE_N, STORM_ALARMS, Learner
-LEARN_CAP = 20                                    # engine.py:65
+
+LEARN_CAP = 20  # engine.py:65
+
 
 def burst(learner, n, class_id=1):
     window = []
     for k in range(n):
-        item = (class_id, k)                      # one distinct NE per alarm
-        storm = len(window) >= STORM_ALARMS       # correlate.py:326, BEFORE window.append
-        learner.observe_activation(item)          # engine.py:294 — never damped
-        learner.observe_pairs(item, window[-LEARN_CAP:], storm)   # engine.py:295
+        item = (class_id, k)  # one distinct NE per alarm
+        storm = len(window) >= STORM_ALARMS  # correlate.py:326, BEFORE window.append
+        learner.observe_activation(item)  # engine.py:294 — never damped
+        learner.observe_pairs(item, window[-LEARN_CAP:], storm)  # engine.py:295
         window.append(item)
+
 
 def rounds_to_trust(n, probe, limit=5000):
     learner = Learner()
@@ -142,9 +147,10 @@ def rounds_to_trust(n, probe, limit=5000):
         if learner.E.pair_mass(*probe) >= MIN_EDGE_N:
             return r
 
-print("40 alarms, sub-threshold pair :", rounds_to_trust(40,  (38, 39)))    # 5
+
+print("40 alarms, sub-threshold pair :", rounds_to_trust(40, (38, 39)))  # 5
 print("340 alarms, in-storm pair     :", rounds_to_trust(340, (300, 301)))  # 51
-print("340 alarms, EARLY pair        :", rounds_to_trust(340, (0, 1)))      # 5  <- §1.5
+print("340 alarms, EARLY pair        :", rounds_to_trust(340, (0, 1)))  # 5  <- §1.5
 # EOF
 ```
 
@@ -255,25 +261,32 @@ registered one by one row.
 
 ```python
 # python - <<'EOF'   (from the repository root, with src/ importable)
-import sys; sys.path.insert(0, "src")
+import sys
+
+sys.path.insert(0, "src")
 from netcorenoc.scoring import default_scorer
 from netcorenoc.shadow_admission import admission, probe_features, verdict, _discrimination
 
 probes, champion = probe_features(), default_scorer()
 samples = probes[:64]
 
-print("full 256 rows :", _discrimination(champion, probes)[1:])        # (255, 1)
-ok, why = verdict(admission(default_scorer(), samples, budget_ratio=3.0, probes=probes),
-                  admission(champion,         samples, budget_ratio=3.0, probes=probes))
-print("verdict       :", ok, why)                                      # True []   <- the control
+print("full 256 rows :", _discrimination(champion, probes)[1:])  # (255, 1)
+ok, why = verdict(
+    admission(default_scorer(), samples, budget_ratio=3.0, probes=probes),
+    admission(champion, samples, budget_ratio=3.0, probes=probes),
+)
+print("verdict       :", ok, why)  # True []   <- the control
 
 drop = next(i for i, f in enumerate(probes) if not champion.score(f).linked)
 reduced = [f for i, f in enumerate(probes) if i != drop]
 print("dropping row  :", drop, _discrimination(champion, reduced)[1:])  # 0 -> (255, 0)
-ok, why = verdict(admission(default_scorer(), samples, budget_ratio=3.0, probes=reduced),
-                  admission(champion,         samples, budget_ratio=3.0, probes=reduced))
-print("verdict       :", ok)                                           # False
-for r in why: print("   -", r)
+ok, why = verdict(
+    admission(default_scorer(), samples, budget_ratio=3.0, probes=reduced),
+    admission(champion, samples, budget_ratio=3.0, probes=reduced),
+)
+print("verdict       :", ok)  # False
+for r in why:
+    print("   -", r)
 # EOF
 ```
 
