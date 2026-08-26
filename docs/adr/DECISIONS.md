@@ -4648,3 +4648,165 @@ grouping**.
   and the control — `test_the_control_an_additive_champion_is_not_warned_about` — rules out a
   console that warns unconditionally. The fixture fits, registers, activates and loads a real tree,
   which is the four steps a promotion takes.
+
+# v0.15.0 — the repository
+
+*Ten entries, and every one of them changes a rule this project had written down as permanent. They
+are here rather than in a gate document because #197 is the entry that abolishes gate documents.
+From this release an entry is about six lines: decision, reason, release.*
+
+## 197. A release writes no gate document, no scope document, no build report and no security review (v0.15.0)
+
+- **Measured**: v0.14.0 alone produced 3 638 lines of record — 2 579 of gates across eight files,
+  plus a scope document, a build report, a security review and a pre-registration. Fourteen releases
+  of that is the 58 000 lines this release deletes. Without a change of convention the pile is back
+  in four releases.
+- **Decision**: findings go to `docs/findings.md`, five lines each; decisions go here, six lines
+  each; everything else is a commit message and a `CHANGELOG` line. Working notes during a build are
+  scratch files **outside** the repository.
+- **Reason**: the evidence chain lives in `tests/`, not in prose about `tests/`. A guard still goes
+  red when the defect is injected, and the demonstration can be re-run in thirty seconds; a document
+  describing that demonstration is commentary, and commentary is what accumulated.
+- **What this costs, stated plainly**: the *narrative* is gone. Why a guard was written the way it
+  was, and what was tried first, now survive only in the commit message and the test's own docstring
+  — which is why the docstrings in this repository are long and must stay that way.
+- **This release practises the rule it institutes**: it writes no gate document. Its report is a
+  message to the maintainer and a `CHANGELOG` entry.
+
+## 198. `docs/` is organised by what the reader is doing, not by which release produced it (v0.15.0)
+
+- **Context**: `docs/` held 62 310 lines in 253 files across seven directories, six of which were
+  named after the *producer* of the document (`gates/`, `scope/`, `releases/`) rather than the
+  question it answers. A stranger looking for "how do I configure this" had 253 files and no path.
+- **Decision**: one file per reader task at the top of `docs/` — install, configure, operate,
+  console, correlation, security, troubleshoot, architecture — plus an index, the open findings, the
+  decision log, the pre-registered analysis plans, and `docs/plans/` for releases that do not exist
+  yet.
+- **Reason**: it is the shape Zabbix, Grafana and Prometheus use, and the reason they use it is that
+  a reader knows what they are trying to do and does not know which release did it.
+- **No documentation build step**, and none is added: Markdown that renders on GitHub, no `mkdocs`,
+  no `sphinx`, no new dependency (principle 5 applies to documentation tooling too).
+
+## 199. The historical-document taxonomy is retired, and the guard that pinned it is rewritten (v0.15.0)
+
+- **Context**: `test_documentation.py`'s `HISTORICAL_DIRS = {scope, adr, gates, releases}` existed
+  because those directories held records that must never be rewritten to agree with a later
+  decision. Three of the four no longer exist.
+- **Decision**: the live-document set becomes **all of `docs/` except the decision log**, and
+  `test_the_historical_exclusion_is_exactly_the_record_taxonomy` is rewritten to assert the new,
+  smaller exclusion rather than the old one.
+- **Reason**: the exclusion was the guard's biggest risk when it named four directories; it is a
+  much smaller risk naming one. `DECISIONS.md` stays excluded for the original reason — it is the
+  record, and an entry that said what v0.6.0 believed is not a claim about what is true today.
+- **The rule that replaced it**: a record is not preserved by refusing to delete it. It is preserved
+  by the commit that contains it, which is `3ecf237` and is permanent. See `docs/record.md`.
+
+## 200. Principle 8 is replaced: the instrument precedes the change it measures (v0.15.0)
+
+- **Retired**: *"Spec now, implement later. Each version writes the next one's specification."*
+- **Adopted**: *"The instrument precedes the change it measures."* Build the guard before the thing
+  it guards; record the next release's **open questions**, as questions, not as prose.
+- **Reason**: the foresight in principle 8 was real and is this project's best pattern — v0.7.5
+  fixed the feedback acquisition path before v0.8.0 built the dataset on it, v0.9.2 fixed the
+  evidence boundary before v0.10.0 built the judge over it, v0.12.0 built a DOM harness before
+  v0.13.0 rewrote the UI. **None of that value came from the specification documents.** It came from
+  ordering. What the documents produced was volume: "each version writes the next one's
+  specification" is the sentence that made 62 000 lines feel obligatory.
+- **Principles 1–7 and 9 are unchanged.** They are engineering; each one has a test behind it.
+
+## 201. The decision log drops the entries no shipped code cites, and renumbers nothing (v0.15.0)
+
+- **Measured**: 196 entries; 113 cited from `src/`, 73 from `tests/`, **129 from either**, 67 from
+  neither. (The build brief predicted 118/76/138/58; the difference is reported in the release
+  notes and this measurement is the one acted on.)
+- **Decision**: delete the 67 no code cites; condense the 129 that survive to about six lines each —
+  decision, reason, release. **Renumber nothing.** Gaps in the sequence are free.
+- **Reason for not renumbering**: 129 citations in shipped `src/` and `tests/` name these numbers,
+  several of them in the form *"argued in #N rather than asserted"* where the argument is what the
+  docstring depends on. Renumbering means editing 129 references to fix a problem that does not
+  exist.
+- **The rule "append-only, never renumbered" is amended, not abandoned**: an entry may now be
+  *removed* when nothing cites it, and may be *condensed* when something does. It may still never be
+  renumbered, and a superseded entry is still superseded by a new one rather than rewritten.
+- **Guarded**: `tests/test_decisions.py::test_every_decision_cited_by_code_resolves` walks `src/`
+  and `tests/` for citations and fails on one that names a missing entry.
+
+## 202. The chain is resequenced: v0.15.0 is the repository (v0.15.0)
+
+- **Context**: the release table said v0.15.0 was the external cartridge. This release is not that,
+  and a table that disagrees with the release it governs is the exact defect
+  `test_documentation.py` exists to catch.
+- **Decision**: v0.15.0 is **the repository**; v0.15.1 the package tree; v0.15.2 the console's
+  defects; v0.15.3 the console designed; **v0.16.0** the external cartridge; **v0.17.0** archetypes.
+  Thirteen rows.
+- **Reason**: the cartridge is the project's riskiest step — a second process, a preemption harness,
+  an amendment to *"ingestion is sacred"* — and taking it while a stranger cannot find the install
+  instructions is the wrong order. Nothing in the cartridge's own argument (#93, #183, #184) moves.
+- **The v0.15.x series is a series, not a patch stream**: each of the three has a brief in
+  `docs/plans/` stating what it must decide, in questions.
+
+## 203. Forward specifications move to `docs/plans/` (v0.15.0)
+
+- **Decision**: `docs/architecture/` becomes `docs/plans/`, and `docs/architecture.md` is the
+  reader-facing description of what exists.
+- **Reason**: the two are different jobs and the old name was doing both. `docs/architecture.md`
+  beside a `docs/architecture/` directory is a tree a reader has to guess at; "what is built" and
+  "what is specified but not built" is a distinction worth putting in the path.
+- **It also fixes a recorded defect**: `ROADMAP-0.8-TO-0.13.md` has governed to v0.16.0 since #170
+  and its filename has said otherwise for three releases — the ROADMAP line *"two documents have
+  filenames that misstate the release they govern"*. It becomes `docs/plans/releases.md`, which
+  cannot go stale.
+- **`tests/test_documentation.py::ROADMAP_TABLE_DOC` and `test_structure.py`'s taxonomy move in the
+  same commit**, per the rule that a pinning test is updated by the commit that moves what it names.
+
+## 204. The pre-registration hashes' second home moves to `docs/record.md` (v0.15.0)
+
+- **Context**: `test_the_gate_records_the_same_hash` asserts each of the four pre-registration
+  SHA-256s appears in the gate document that first recorded it. All four gate documents are deleted
+  by #197.
+- **Decision**: the second home becomes `docs/record.md`. The four hashes are **copied, not
+  recomputed** — from `docs/gates/{v0.9.0-phase-1,v0.10.0-phase-0,v0.11.0-phase-0,v0.14.0-phase-0}.md`
+  at `3ecf237`, and each entry names the commit and the file it came from.
+- **Reason**: the two-sided discipline is what the guard is for — one hash alone could be edited
+  quietly in the same commit as the plan, two in different files make that an obviously deliberate
+  diff. The discipline survives the move; only the second file changes.
+- **The temporal claim is unaffected**: it never rested on the gate document existing, but on the
+  commit that ratified it, which is permanent. `v0.14.0-gate0`'s annotated tag message carries its
+  hash independently.
+- **The four plans in `docs/analysis/` are not touched.** They are a live control, not a record.
+
+## 205. The four derived fixtures become a loader (v0.15.0)
+
+- **Measured**: `tests/fixtures/{background_noise,fiber_cut,flapping_noise,olt_storm}.json` are
+  their `eval/corpus/` namesakes with the top-level `description` removed and `truth` dropped from
+  every event — 97 065 bytes of duplication that nothing derives and nothing keeps in step.
+- **The relation is exact in CONTENT and not in BYTES**, and that is worth recording because the
+  build brief predicted otherwise: three of the four re-render byte-for-byte at `indent=2`, and
+  `olt_storm.json` is the same 501 events serialised **compactly** (83 153 bytes against 128 253).
+  Parsed, all four are equal element for element. A byte-level "derivation" check would have failed
+  on one file and a build that trusted the prediction would have replaced it with the wrong bytes.
+- **Decision**: the loader returns **parsed events**, which is what every consumer wanted anyway —
+  `util.fixture_events` re-encodes them to the wire and `test_api.py` iterates them — so rendering
+  never enters it. The four files are deleted. `eval/corpus/` is untouched: `eval/harness.py` reads
+  `sorted(CORPUS_DIR.glob("*.json"))` and the frozen `c2e8a0ce…` depends on that directory's exact
+  contents.
+- **`make replay` points at `eval/corpus/fiber_cut.json` directly.** `replay_fixture` reads
+  `events`, `delay`, `source`, `trap_oid` and `varbinds` and ignores every other key, so the traps on
+  the wire are identical.
+- **Reason**: a copy that drifts is worse than a derivation that cannot. Verified by execution
+  against the four files **before** deleting them, with a control proving each half of the strip is
+  load-bearing — stripping only `description`, or only `truth`, reproduces none of them.
+
+## 206. Tags are kept, completed, and gate nothing (v0.15.0)
+
+- **Context**: the remote carries only `v0.12.0`; `v0.13.0`, `v0.14.0` and `v0.14.0-gate0` exist
+  locally. `docs/releases/TAG-RECOVERY.md` was a document about restoring them.
+- **Decision**: keep every existing tag, ship the three missing ones in the delivered `.git`, and
+  stop treating a tag as a precondition for anything. The recovery procedure becomes three commands
+  in `CONTRIBUTING.md`.
+- **Reason**: a tag is a convenience for finding a release. Nothing in `make qa`, the promotion gate
+  or the pre-registration guards reads one, and the one that carried real evidence —
+  `v0.14.0-gate0`'s message — carries it in the annotation, which travels with the tag object.
+- **History is never rewritten**: no force-push, no rebase of `main`, no retagging of an existing
+  commit to a different one. That is the only irreversible act available in this repository and it
+  is now the only preservation rule `CONTRIBUTING.md` states.
