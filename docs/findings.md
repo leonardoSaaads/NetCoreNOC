@@ -1,12 +1,13 @@
 # Open findings
 
-Every finding this project has issued and not closed. Five lines each: what it is, how to
-reproduce it, what the reproduction printed, and what is being done about it.
+Every finding this project has issued and not closed. Five bullets each: what it is, how to
+reproduce it, what the reproduction printed, why it matters or what would repair it, and its
+disposition.
 
 The series is continuous and is never renumbered. **F1–F55, F57, F59 and F60 are closed** — the
-reviews that issued and closed them are at commit `3ecf237` (see [`record.md`](record.md)).
-From v0.15.0 a finding is an entry here rather than a section in a per-release security review;
-the reason is [decision #197](adr/DECISIONS.md).
+reviews that issued and closed them are at commit `3ecf237` (see [`record.md`](record.md)). From
+v0.15.0 a finding is an entry here rather than a section in a per-release security review; the
+reason is [decision #197](adr/DECISIONS.md).
 
 Run every command below from the repository root with the virtualenv active.
 
@@ -103,13 +104,12 @@ Run every command below from the repository root with the virtualenv active.
   is set by whichever call was interrupted rather than by the code.
 - **Reproduce**: run `admission(AdditiveScorer(), probes, budget_ratio=r, probes=probes)` twice and
   take the ratio of the two `p99_us`, repeatedly. Found while sweeping F62.
-- **Measured**: over 250 paired runs of the **same class** at the production ratio
-  (`shadow_report.ADMISSION_BUDGET_RATIO = 10.0`): 0 refusals, ratio min `0.25`, median `1.01`, max
-  `3.66`. At `budget_ratio=3.0` the earlier F62 sweep produced **7 speed refusals in 256** paired
-  runs, none of which reproduced on immediate re-measurement. Control: a scorer with a 200 µs sleep
-  is refused at 10.0, so a speed refusal is reachable.
-- **Why it matters**: the headroom between the observed noise (3.66×) and the production budget
-  (10×) is a factor of 2.7, it is a property of the machine rather than of the model, and nothing
-  measures or pins it. A slower CI runner narrows it.
+- **Measured**: over 250 paired runs of the **same class** at the production ratio (10.0): 0
+  refusals, ratio min `0.25`, median `1.01`, max `3.66`. At `budget_ratio=3.0` the F62 sweep produced
+  **7 speed refusals in 256** paired runs, none of which reproduced on re-measurement. Control: a
+  scorer with a 200 µs sleep is refused at 10.0, so a speed refusal is reachable.
+- **Why it matters**: the headroom between the observed noise (3.66×) and the production budget (10×)
+  is a factor of 2.7, it is a property of the machine rather than of the model, and nothing measures
+  or pins it. A slower CI runner narrows it.
 - **Disposition**: open, issued not fixed. A median or a repeated-measures comparison would be a
   behaviour change to the promotion gate, which v0.15.0 does not make.
