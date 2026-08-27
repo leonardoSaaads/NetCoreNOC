@@ -72,7 +72,7 @@ but a figure that moves between runs should not be written down as though it did
   specification"* and is now **"the instrument precedes the change it measures"** (#200). The
   foresight was real and is kept; it never came from the documents, it came from the ordering.
 - **The cartridge moves from v0.15.0 to v0.16.0** (#202). Nothing in its own argument moves.
-- **`README.md`** 452 lines to 135; **`MIGRATION.md`** 1 410 to 123; this file 1 897 to 339.
+- **`README.md`** 452 lines to 135; **`MIGRATION.md`** 1 410 to 123; this file 1 897 to 338.
 - **`make replay`** replays `eval/corpus/fiber_cut.json`.
 
 ### The one number this release missed
@@ -97,9 +97,8 @@ hour for 200 lines. **The measurement stands as it is.**
 
 ### Fixed
 
-- **Nothing.** No fix inside a move: no `src/` file moves but the version string, and the five
-  open findings are issued,
-  not repaired. **Intentional behaviour changes: zero.**
+- **Nothing.** No fix inside a move: no file under `src/` moves but the version string, and all
+  five open findings are issued rather than repaired. **Intentional behaviour changes: zero.**
 
 ### Findings issued
 
