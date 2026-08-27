@@ -20,10 +20,14 @@ answer is nothing.
 docs/          ->  62 310 lines across 253 files  ->  5 206 across 24   (-91.65 %)
 src/           ->  165 files, ZERO differing by SHA-256 against v0.14.0
 make eval      ->  byte-identical: c2e8a0ce…8b9b6f26
-make qa        ->  1558 passed  (was 1554);  coverage 95.94-96.01 % over four runs
+make qa        ->  1558 passed  (was 1554);  coverage ~96 %, not deterministic
 runtime deps   ->  5, unchanged since v0.2.0.  dev deps unchanged
 migrations     ->  0.  routes, capabilities, audit actions, console: unchanged
 ```
+
+Coverage is quoted without a second decimal deliberately: five `make qa` runs on this tree gave
+95.92, 95.94, 95.99, 96.01 and 96.01 %. The gate floor is 85 %, so the variation decides nothing —
+but a figure that moves between runs should not be written down as though it did not.
 
 ### Removed
 
