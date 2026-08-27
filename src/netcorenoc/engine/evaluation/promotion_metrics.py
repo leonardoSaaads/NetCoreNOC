@@ -42,10 +42,10 @@ from collections import defaultdict
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc import shadow_assertions, shadow_eval
 from netcorenoc.census import resolve_identity
-from netcorenoc.promotion import QUANTITY_NAMES, Metrics, Quantity
-from netcorenoc.shadow_cv import Interval, cluster_bootstrap
+from netcorenoc.engine.evaluation import shadow_assertions, shadow_eval
+from netcorenoc.engine.evaluation.promotion import QUANTITY_NAMES, Metrics, Quantity
+from netcorenoc.engine.evaluation.shadow_cv import Interval, cluster_bootstrap
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.scorer_contract import LinkScorer

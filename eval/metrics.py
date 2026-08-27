@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Hashable, Sequence
 
-from netcorenoc.shadow_eval import over_merge_rate, under_merge_rate
+from netcorenoc.engine.evaluation.shadow_eval import over_merge_rate, under_merge_rate
 
 __all__ = [
     "adjusted_rand_index",

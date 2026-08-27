@@ -16,8 +16,8 @@ import ast
 from itertools import pairwise
 from pathlib import Path
 
-from netcorenoc import shadow_assertions, shadow_cv
-from netcorenoc.judge import Judgement, Trigger, Verdict, judge
+from netcorenoc.engine.evaluation import shadow_assertions, shadow_cv
+from netcorenoc.engine.evaluation.judge import Judgement, Trigger, Verdict, judge
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"

@@ -779,8 +779,8 @@ async def _routes_with_an_applied_promotion(store: Store) -> dict[str, Any]:
     `Interval`s, so a change to that shape breaks this fixture rather than leaving it green against
     a format nothing produces.
     """
-    from netcorenoc import promotion as promotion_module
-    from netcorenoc.shadow_cv import Interval
+    from netcorenoc.engine.evaluation import promotion as promotion_module
+    from netcorenoc.engine.evaluation.shadow_cv import Interval
 
     _engine, app = await uifixtures.corpus(store)
     metrics = promotion_module.Metrics(

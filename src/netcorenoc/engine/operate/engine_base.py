@@ -33,9 +33,9 @@ from typing import TYPE_CHECKING
 
 from netcorenoc.capture import Capture, RetentionPolicy
 from netcorenoc.correlate import Correlator
+from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.learn import Learner
 from netcorenoc.rootcause import Precedence
-from netcorenoc.shadow import Shadow
 from netcorenoc.store import Store
 from netcorenoc.varbind_profile import VarbindProfiler
 

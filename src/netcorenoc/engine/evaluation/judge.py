@@ -40,7 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from netcorenoc.shadow_cv import Power
+from netcorenoc.engine.evaluation.shadow_cv import Power
 
 __all__ = ["Judgement", "Trigger", "Verdict", "judge"]
 

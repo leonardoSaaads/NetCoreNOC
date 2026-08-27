@@ -681,7 +681,7 @@ def test_every_javascript_module_opens_with_a_block_comment() -> None:
 TRAP_PATH_HASHES: dict[str, str] = {
     "capture.py": "8676482c1965a97d3720b642e62451ecba8ed5317fae9f779ed1b30be47dea1e",
     "correlate.py": "48767428a93ab511e09a07e0c6d40c9d3c0fc39fee33ec95625b49be722a4845",
-    "engine/operate/engine.py": "cfd8bc06afd712fcaf34540fbd7637e53116cb1f829ae03188adfac5666318c2",
+    "engine/operate/engine.py": "97f7fea010823dbd9d1e66fd26089ab732b634bc879e47baf24b6859c9c96bc2",
     "learn.py": "7545e7d9d33563b9fa832ca5e958f0ef24337afc540f6c5b9ad1a91c7fcddf63",
     "receiver.py": "139611c9f69bf54e87d8099cbfa3eb4820355b2f758106c1866dc4bbc8bdb441",
 }
@@ -838,8 +838,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "1239dc6e66bea3a84c3b912d31c3003aa17395cca7fa2bf99a133b211f023d86"
-SRC_FILE_COUNT = 168
+SRC_TREE_DIGEST = "c2547c7b7b3fc127cc315ff469c805ca3c5a9752a9bfa8583baaac7bdef6483a"
+SRC_FILE_COUNT = 169
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

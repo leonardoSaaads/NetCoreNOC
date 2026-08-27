@@ -21,9 +21,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from netcorenoc import shadow_eval, training
+from netcorenoc import training
 from netcorenoc.challenger import FEATURE_NAMES, Coefficients
-from netcorenoc.judge import Judgement
+from netcorenoc.engine.evaluation import shadow_eval
+from netcorenoc.engine.evaluation.judge import Judgement
 from netcorenoc.seal import SealSummary
 
 __all__ = ["render"]

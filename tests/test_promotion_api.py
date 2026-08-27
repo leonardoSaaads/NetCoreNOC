@@ -16,11 +16,12 @@ import json
 
 import pytest
 
-from netcorenoc import challenger, model_version, promotion, seal
+from netcorenoc import challenger, model_version, seal
 from netcorenoc.api import create_app
 from netcorenoc.crosscutting import audit
+from netcorenoc.engine.evaluation import promotion
+from netcorenoc.engine.evaluation.shadow_cv import Interval, power_at
 from netcorenoc.main import Engine
-from netcorenoc.shadow_cv import Interval, power_at
 from netcorenoc.store import Store
 
 import authutil

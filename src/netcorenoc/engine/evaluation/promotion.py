@@ -40,9 +40,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from netcorenoc import seal
-from netcorenoc.evaluation_folds import materialise_folds
-from netcorenoc.judge import Judgement, Verdict, judge
-from netcorenoc.shadow_cv import Interval, Power
+from netcorenoc.engine.evaluation.evaluation_folds import materialise_folds
+from netcorenoc.engine.evaluation.judge import Judgement, Verdict, judge
+from netcorenoc.engine.evaluation.shadow_cv import Interval, Power
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.store import Store

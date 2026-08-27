@@ -343,9 +343,11 @@ async def test_exactly_one_code_path_can_spend_the_seal_and_it_is_the_promotion_
     assert summary.query_count == 0, "summarising the seal moved the query count"
     assert not summary.spent
 
+    # By basename: v0.15.1 gave every module a directory, and what this guard is about is which
+    # MODULE may spend the seal, not where the file sits.
     callers = sorted(
         {
-            str(path.relative_to(PKG))
+            path.name
             for path in sorted(PKG.rglob("*.py"))
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
             if isinstance(node, ast.Call)

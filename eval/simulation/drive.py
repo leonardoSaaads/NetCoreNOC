@@ -149,7 +149,7 @@ async def training_rows(store: Store) -> list[TrainingRow]:
     models, not between two ways of building a dataset.
     """
     from netcorenoc.census import resolve_identity
-    from netcorenoc.shadow import labelled_pair
+    from netcorenoc.engine.evaluation.shadow import labelled_pair
     from netcorenoc.training import derive
 
     # **`resolve_identity` first, and it is not optional.** It is what puts `incident` on each pair
