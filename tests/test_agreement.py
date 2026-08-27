@@ -20,10 +20,10 @@ import ast
 import asyncio
 from pathlib import Path
 
+from netcorenoc.engine.correlate.rootcause import Member
 from netcorenoc.engine.dataset.labels import LabelContext, LabelScope
 from netcorenoc.engine.report import agreement, agreement_report
 from netcorenoc.main import Engine
-from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
 
 EXPECTED = Path(__file__).parent / "fixtures" / "agreement-report.txt"

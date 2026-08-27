@@ -42,8 +42,12 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from netcorenoc import known_oids, severity
-from netcorenoc.correlate import Correlator, ScoredLink, WindowAlarm
+from netcorenoc import known_oids
+from netcorenoc.engine.correlate import severity
+from netcorenoc.engine.correlate.correlate import Correlator, ScoredLink, WindowAlarm
+from netcorenoc.engine.correlate.learn import STORM_ALARMS, STORM_DAMPING, Learner
+from netcorenoc.engine.correlate.rootcause import Member, Precedence
+from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler
 from netcorenoc.engine.dataset import capture as capture_mod
 from netcorenoc.engine.dataset.capture import Capture, LabelContext, RetentionPolicy
 from netcorenoc.engine.evaluation.shadow import Shadow
@@ -52,11 +56,8 @@ from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
 from netcorenoc.engine.operate.maintenance import MaintenanceMixin
 from netcorenoc.engine.operate.scorer_lifecycle import ScorerLifecycleMixin
 from netcorenoc.events import Fingerprint, QuarantinedPacket, TrapEvent
-from netcorenoc.learn import STORM_ALARMS, STORM_DAMPING, Learner
 from netcorenoc.receiver import MAX_INSTANCE_CHARS, QueueItem
-from netcorenoc.rootcause import Member, Precedence
 from netcorenoc.store import FeedbackResult, Store
-from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler
 
 log = logging.getLogger("netcorenoc")
 

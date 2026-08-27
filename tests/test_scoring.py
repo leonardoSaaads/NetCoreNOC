@@ -14,17 +14,15 @@ from __future__ import annotations
 import math
 import sqlite3
 import time
-from pathlib import Path
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from netcorenoc import scoring
-from netcorenoc.correlate import Correlator, WindowAlarm
-from netcorenoc.learn import Learner
-from netcorenoc.main import Engine
-from netcorenoc.scoring import (
+from netcorenoc.engine.correlate import scoring
+from netcorenoc.engine.correlate.correlate import Correlator, WindowAlarm
+from netcorenoc.engine.correlate.learn import Learner
+from netcorenoc.engine.correlate.scoring import (
     AdditiveScorer,
     ContractVersionError,
     LinkFeatures,
@@ -34,6 +32,7 @@ from netcorenoc.scoring import (
     ScorerParamsError,
     TermContribution,
 )
+from netcorenoc.main import Engine
 from netcorenoc.store import MIGRATIONS_DIR, Store
 
 import util
@@ -561,15 +560,30 @@ def test_f24_datagram_received_is_unchanged_and_touches_no_scoring() -> None:
 
 
 def test_f24_receiver_module_does_not_import_the_scoring_seam() -> None:
-    """A structural guard: the ingest module cannot reach scoring even indirectly by import."""
-    import inspect
+    """A structural guard: the ingest module cannot reach scoring even indirectly by import.
 
-    from netcorenoc import receiver
+    Read through `ast`, not as a substring of the source. Until v0.15.1 this looked for the text
+    `"netcorenoc.scoring"` — which stopped appearing anywhere the moment the module moved to
+    `netcorenoc.engine.correlate.scoring`, so all three assertions would have passed forever on a
+    receiver that imported every one of them. Its control is the next test.
+    """
+    reachable = util.imported_modules(util.module_path("receiver.py"))
+    for forbidden in ("scoring", "preview", "correlate"):
+        assert forbidden not in reachable, (
+            f"receiver.py imports {forbidden!r}. The ingest module may not reach the scoring seam, "
+            "even indirectly (F24)."
+        )
 
-    source = inspect.getsource(receiver)
-    assert "netcorenoc.scoring" not in source
-    assert "netcorenoc.preview" not in source
-    assert "netcorenoc.correlate" not in source
+
+def test_the_receiver_import_reader_would_notice_one() -> None:
+    """**The control.** A reader that found nothing would clear any receiver at all.
+
+    `correlate.py` imports both `learn` and `scoring`, so the same call applied there must come
+    back positive — and `receiver.py` must be seen to import *something*, or the walk is broken
+    rather than the module clean.
+    """
+    assert {"learn", "scoring"} <= util.imported_modules(util.module_path("correlate.py"))
+    assert util.imported_modules(util.module_path("receiver.py")), "receiver imports nothing at all"
 
 
 def test_f24_preview_module_never_imports_the_eval_harness() -> None:
@@ -579,7 +593,7 @@ def test_f24_preview_module_never_imports_the_eval_harness() -> None:
     it does not import `eval/`, and a substring check would trip over its own explanation."""
     import ast
 
-    source = (Path(__file__).resolve().parent.parent / "src/netcorenoc/preview.py").read_text()
+    source = util.module_path("preview.py").read_text(encoding="utf-8")
     imported: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):

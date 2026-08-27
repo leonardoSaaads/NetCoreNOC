@@ -16,10 +16,10 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+from netcorenoc.engine.correlate.rootcause import Member
 from netcorenoc.engine.dataset.labels import ClientFingerprint, Exclusion, LabelContext
 from netcorenoc.engine.report import bias, bias_report
 from netcorenoc.main import Engine
-from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
 
 EXPECTED = Path(__file__).parent / "fixtures" / "bias-report.txt"

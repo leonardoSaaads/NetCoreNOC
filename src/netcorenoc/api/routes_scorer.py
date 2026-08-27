@@ -17,12 +17,12 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import preview, scoring
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ScorerParamsIn, ScorerRollbackIn
 from netcorenoc.api.perimeter import _client_ip
 from netcorenoc.crosscutting import auth
+from netcorenoc.engine.correlate import preview, scoring
 from netcorenoc.engine.model import model_version
 
 MAX_SCORER_HISTORY = 50

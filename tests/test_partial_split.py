@@ -23,10 +23,10 @@ from typing import Any
 
 import pytest
 
+from netcorenoc.engine.correlate.learn import EPOCH_PAIR_CAP, SPLIT_PENALTY, Learner, _pair
+from netcorenoc.engine.correlate.rootcause import Member
 from netcorenoc.engine.dataset.capture import Exclusion, LabelContext
-from netcorenoc.learn import EPOCH_PAIR_CAP, SPLIT_PENALTY, Learner, _pair
 from netcorenoc.main import Engine
-from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
 
 import authutil

@@ -7,11 +7,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from netcorenoc import severity
+from netcorenoc.engine.correlate import severity
+from netcorenoc.engine.correlate.varbind_profile import VarbindProfiler
 from netcorenoc.events import TrapEvent, Varbind
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
-from netcorenoc.varbind_profile import VarbindProfiler
 
 import authutil
 

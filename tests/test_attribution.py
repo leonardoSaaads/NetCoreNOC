@@ -32,13 +32,13 @@ from pathlib import Path
 
 import pytest
 
+from netcorenoc.engine.correlate.scorer_contract import BASIS_SHAPLEY, LinkFeatures
 from netcorenoc.engine.model import attribution
 from netcorenoc.engine.model.background import (
     BACKGROUND,
     BACKGROUND_STRIDE,
     CORPUS_DISTINCT_VECTORS,
 )
-from netcorenoc.scorer_contract import BASIS_SHAPLEY, LinkFeatures
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INF = math.inf

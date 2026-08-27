@@ -34,13 +34,14 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc.correlate import (
+from netcorenoc.engine.correlate.correlate import (
     MAX_CANDIDATES,
     MAX_LINKS_PER_ALARM,
     WINDOW_S,
     CorrelationResult,
     WindowAlarm,
 )
+from netcorenoc.engine.correlate.scoring import LINK_THRESHOLD, LinkScore
 from netcorenoc.engine.dataset.labels import (
     MAX_CLIENT_MEMBERS,
     ClientFingerprint,
@@ -56,11 +57,10 @@ from netcorenoc.engine.dataset.retention_policy import (
     TIER_NAMES,
     RetentionPolicy,
 )
-from netcorenoc.scoring import LINK_THRESHOLD, LinkScore
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+    from netcorenoc.engine.correlate.learn import Learner
     from netcorenoc.events import TrapEvent
-    from netcorenoc.learn import Learner
     from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")

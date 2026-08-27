@@ -22,12 +22,12 @@ from typing import Any
 
 import pytest
 
-from netcorenoc import learn
+from netcorenoc.engine.correlate import learn
+from netcorenoc.engine.correlate.rootcause import Member
 from netcorenoc.engine.dataset import labels
 from netcorenoc.engine.dataset.capture import Exclusion, LabelContext, LabelScope
 from netcorenoc.engine.report import bias
 from netcorenoc.main import Engine
-from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
 
 import authutil

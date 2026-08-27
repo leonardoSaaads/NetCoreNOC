@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from netcorenoc.rootcause import Member
+from netcorenoc.engine.correlate.rootcause import Member
 from netcorenoc.store import Store
 
 import authutil

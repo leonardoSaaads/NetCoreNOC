@@ -48,14 +48,6 @@ LAYER_OF: dict[str, str] = {
     # engine — the domain. v0.15.1 gathered it into `engine/`, in six subpackages, so this one
     # entry classifies what 46 did (DECISIONS #207, #208).
     "engine": "engine",
-    "correlate": "engine",
-    "learn": "engine",
-    "scoring": "engine",
-    "rootcause": "engine",
-    "severity": "engine",
-    "varbind_profile": "engine",
-    "varbind_accum": "engine",
-    "preview": "engine",
     # v0.8.0. Engine-layer because it consumes a correlation decision and writes through the
     # data layer — a downward edge. It is NOT ingest: nothing here is reachable from
     # `receiver.datagram_received`, which is prime directive 1.
@@ -103,7 +95,6 @@ LAYER_OF: dict[str, str] = {
     # `scorer_contract` is the scoring **contract** split out of `scoring.py` at the 400-line guard
     # (DECISIONS #191). Classified `engine` beside `scoring`, not cross-cutting: it is the domain's
     # own vocabulary, and cross-cutting is for concerns every layer has.
-    "scorer_contract": "engine",
     # `background` is DATA — the registered attribution background set and nothing else. It imports
     # NOTHING from this package, so it cannot violate any direction, the same standing
     # `retention_policy` and `incidents` have.

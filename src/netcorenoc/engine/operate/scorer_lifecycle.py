@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import logging
 
-from netcorenoc import scoring
 from netcorenoc.crosscutting import audit
+from netcorenoc.engine.correlate import scoring
 from netcorenoc.engine.model import model_version
 from netcorenoc.engine.operate.engine_base import EngineBase
 

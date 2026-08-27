@@ -23,12 +23,13 @@ import asyncio
 import time
 from collections.abc import Callable
 
-from netcorenoc import __version__, severity
+from netcorenoc import __version__
 from netcorenoc.crosscutting import audit
+from netcorenoc.engine.correlate import severity
+from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE
 from netcorenoc.engine.dataset import census, seal
 from netcorenoc.engine.dataset.retention_policy import RETENTION_META_KEY, RetentionPolicy
 from netcorenoc.engine.operate.engine_base import EngineBase
-from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE
 
 MAINT_INTERVAL_S = 5.0
 # Train once every this many maintenance ticks. The fit reads the whole labelled corpus and runs a

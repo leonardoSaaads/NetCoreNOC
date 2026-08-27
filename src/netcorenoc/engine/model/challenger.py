@@ -63,16 +63,10 @@ import json
 import math
 from dataclasses import dataclass
 
-from netcorenoc.scorer_contract import (
-    FEATURE_NAMES as FEATURE_NAMES,
-)
-from netcorenoc.scorer_contract import (
-    TAU0_S as TAU0_S,
-)
-from netcorenoc.scorer_contract import (
-    feature_vector as feature_vector,
-)
-from netcorenoc.scoring import (
+from netcorenoc.engine.correlate.scorer_contract import FEATURE_NAMES as FEATURE_NAMES
+from netcorenoc.engine.correlate.scorer_contract import TAU0_S as TAU0_S
+from netcorenoc.engine.correlate.scorer_contract import feature_vector as feature_vector
+from netcorenoc.engine.correlate.scoring import (
     CONTRACT_VERSION,
     LinkFeatures,
     LinkScore,

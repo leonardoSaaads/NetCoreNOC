@@ -589,11 +589,8 @@ def test_f33_datagram_received_gained_nothing() -> None:
 
 
 def test_f33_engine_and_learning_are_untouched_by_governance() -> None:
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parent.parent / "src/netcorenoc"
     for module in ("main.py", "learn.py", "correlate.py", "scoring.py", "rootcause.py"):
-        source = (root / module).read_text(encoding="utf-8")
+        source = util.module_path(module).read_text(encoding="utf-8")
         for forbidden in ("resolve_capabilities", "visible_nes", "governance_policy"):
             assert forbidden not in source, (
                 f"{module} references {forbidden!r}: governance is HTTP-side only (F33)"

@@ -3,7 +3,7 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from netcorenoc.correlate import (
+from netcorenoc.engine.correlate.correlate import (
     LINK_THRESHOLD,
     MAX_LINKS_PER_ALARM,
     W_A,
@@ -13,7 +13,7 @@ from netcorenoc.correlate import (
     Correlator,
     WindowAlarm,
 )
-from netcorenoc.learn import MIN_EDGE_N, Learner
+from netcorenoc.engine.correlate.learn import MIN_EDGE_N, Learner
 
 
 def wa(alarm_id: int, class_id: int, device_id: int, ts: float) -> WindowAlarm:
@@ -202,8 +202,8 @@ def _engine_partition(alarms: list[WindowAlarm], learner: Learner) -> set[frozen
 
 
 def _preview_partition(alarms: list[WindowAlarm], learner: Learner) -> set[frozenset[int]]:
-    from netcorenoc import preview
-    from netcorenoc.scoring import default_scorer
+    from netcorenoc.engine.correlate import preview
+    from netcorenoc.engine.correlate.scoring import default_scorer
 
     snapshot = [
         preview.PreviewAlarm(a.alarm_id, a.class_id, a.device_id, a.entity_id, a.ts) for a in alarms
@@ -264,7 +264,7 @@ def test_preview_and_engine_share_one_selection_implementation() -> None:
     """
     import inspect
 
-    from netcorenoc import correlate, preview
+    from netcorenoc.engine.correlate import correlate, preview
 
     assert preview.PREVIEW_WINDOW_S is correlate.WINDOW_S
     assert preview.PREVIEW_MAX_CANDIDATES is correlate.MAX_CANDIDATES
@@ -277,7 +277,7 @@ def test_preview_and_engine_share_one_selection_implementation() -> None:
 
 def test_select_candidates_skips_tombstones_and_honours_the_window_and_cap() -> None:
     """The helper's own contract, including the one difference between its two callers."""
-    from netcorenoc.correlate import select_candidates
+    from netcorenoc.engine.correlate.correlate import select_candidates
 
     window = [wa(i, 1, 10, ts=1000.0 + i) for i in range(1, 11)]
 

@@ -29,8 +29,8 @@ import os
 import sys
 import time
 
-from netcorenoc import scoring
 from netcorenoc.crosscutting import audit
+from netcorenoc.engine.correlate import scoring
 from netcorenoc.engine.dataset import seal
 from netcorenoc.engine.evaluation import promotion
 from netcorenoc.engine.model import model_version

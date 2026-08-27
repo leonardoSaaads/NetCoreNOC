@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.crosscutting import auth, shaping
-from netcorenoc.learn import MIN_EDGE_N
+from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:

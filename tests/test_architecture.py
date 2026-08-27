@@ -18,6 +18,7 @@ import pytest
 from netcorenoc.store import Store
 
 import authutil
+import util
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"
@@ -695,9 +696,9 @@ def test_every_javascript_module_opens_with_a_block_comment() -> None:
 #: **When a later release legitimately changes one of these**, it updates this table in the same
 #: commit — the reviewable-line-in-a-diff discipline `UI_HASHES` has used since v0.11.0.
 TRAP_PATH_HASHES: dict[str, str] = {
-    "engine/dataset/capture.py": "38b90e794c0100d17dfb1edf5c09bd8437cc85b151221111fa3b27cce38c8f25",
-    "correlate.py": "48767428a93ab511e09a07e0c6d40c9d3c0fc39fee33ec95625b49be722a4845",
-    "engine/operate/engine.py": "e4b6be07e42d125a600edd5d36c5218583362f8b848ab202d537981f5502399d",
+    "capture.py": "cb62258083b6f920d26a5948f4ee0fd58af9f368347c598b13a8fbcebc3aa0b5",
+    "correlate.py": "b550497367232a99c3bc8814cab72dbcb665dcc29891c15b6a3e6eab68a11165",
+    "engine.py": "4198049636f1976dd9ff9bd47bdb3f98d050e86c2d64e427875982c7a9236b7c",
     "learn.py": "7545e7d9d33563b9fa832ca5e958f0ef24337afc540f6c5b9ad1a91c7fcddf63",
     "receiver.py": "139611c9f69bf54e87d8099cbfa3eb4820355b2f758106c1866dc4bbc8bdb441",
 }
@@ -718,7 +719,7 @@ TRAP_PATH_HASHES: dict[str, str] = {
 TRAP_PATH_BODY_HASHES: dict[str, str] = {
     "capture.py": "103c97353c1ad55560c4819ada8bf7adb89590a2af42b33f9f6a12c7afdc37a8",
     "correlate.py": "e2bfcf768b0073ce70ce47166dde8b4fc022a0b733f252e85466d32eedeaebda",
-    "engine/operate/engine.py": "d666eb915bb1b3ebc083d66d28f678ceaa86fc527a15206f18d86ad042a5bb5f",
+    "engine.py": "d666eb915bb1b3ebc083d66d28f678ceaa86fc527a15206f18d86ad042a5bb5f",
     "learn.py": "8d07a7b12aa1afe09b64e9a1e78cdb3094be3752881514a1bf61db807c2fb4ba",
     "receiver.py": "f8290c1b99a2803e519c10e247a8041896a1fd0dd9e7c6f4192ec455eacfd5d6",
 }
@@ -754,7 +755,7 @@ def test_the_trap_path_bodies_are_unchanged_by_the_move() -> None:
 
     moved = []
     for name, expected in sorted(TRAP_PATH_BODY_HASHES.items()):
-        path = next(p for p in PKG.rglob(name))
+        path = util.module_path(name)
         actual = hashlib.sha256(_body(path.read_text(encoding="utf-8")).encode("utf-8")).hexdigest()
         if actual != expected:
             moved.append(f"  {name}\n    pinned: {expected}\n    actual: {actual}")
@@ -801,7 +802,7 @@ def test_the_trap_path_is_byte_identical_to_the_release_this_one_branched_from()
 
     moved = []
     for name, expected in sorted(TRAP_PATH_HASHES.items()):
-        actual = hashlib.sha256((PKG / name).read_bytes()).hexdigest()
+        actual = hashlib.sha256(util.module_path(name).read_bytes()).hexdigest()
         if actual != expected:
             moved.append(f"  {name}\n    pinned: {expected}\n    actual: {actual}")
     assert not moved, (
@@ -822,15 +823,13 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
     the same hole `test_no_module_may_join_the_allowlist` closes for the size guard, and the same
     reason: a guard whose subject can be edited away is not a guard.
     """
-    assert set(TRAP_PATH_HASHES) == {
-        "engine/dataset/capture.py",
-        "correlate.py",
-        "engine/operate/engine.py",
-        "learn.py",
-        "receiver.py",
-    }, "the pinned set is no longer the five modules the build prompt names"
+    expected = {"capture.py", "correlate.py", "engine.py", "learn.py", "receiver.py"}
+    assert set(TRAP_PATH_HASHES) == expected, (
+        "the pinned set is no longer the five modules the build prompt names"
+    )
+    assert set(TRAP_PATH_BODY_HASHES) == expected, "the two tables must pin the same five modules"
     for name in TRAP_PATH_HASHES:
-        assert (PKG / name).is_file(), f"{name} is pinned and does not exist"
+        assert util.module_path(name).is_file(), f"{name} is pinned and does not exist"
 
 
 # --- "did any code move at all", as one reviewable line ----------------------------------------
@@ -854,8 +853,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "13529fef9028d24368f53ae3abd9f7ae76a8f72a55d1831b1fb0fbf43a5aa181"
-SRC_FILE_COUNT = 171
+SRC_TREE_DIGEST = "ed2e44ce9ae94c8b7302be092cfd1632746a439b1e01f9ff906130858a0b97e2"
+SRC_FILE_COUNT = 172
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

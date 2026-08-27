@@ -20,8 +20,8 @@ import time
 from dataclasses import dataclass
 from typing import Protocol
 
-from netcorenoc.correlate import MAX_CANDIDATES, WINDOW_S, select_candidates
-from netcorenoc.scoring import LinkFeatures, LinkScorer
+from netcorenoc.engine.correlate.correlate import MAX_CANDIDATES, WINDOW_S, select_candidates
+from netcorenoc.engine.correlate.scoring import LinkFeatures, LinkScorer
 
 MAX_PREVIEW_ALARMS = 5000  # bounded work: the newest N alarms, never the whole history
 PREVIEW_TIMEOUT_S = 5.0  # hard wall-clock budget; a partial answer is refused, not truncated

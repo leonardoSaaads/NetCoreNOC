@@ -21,45 +21,19 @@ from netcorenoc import known_oids
 # `MAX_DISPLAY_CHARS`, `tests/test_promotion.py` reads `ENTITY_PROMOTE_SCORE`, and
 # `tests/test_varbind_profile.py` imports `Accumulator`, `ENTITY_PROMOTE_OBS` and
 # `MAX_TRACKED_VALUES` (Phase 0's inventory). The split is invisible to all of them.
-from netcorenoc.varbind_accum import (
-    ENTITY_MAX_CARD_RATIO as ENTITY_MAX_CARD_RATIO,
-)
-from netcorenoc.varbind_accum import (
-    ENTITY_MIN_DISTINCT as ENTITY_MIN_DISTINCT,
-)
-from netcorenoc.varbind_accum import (
-    ENTITY_PROMOTE_OBS as ENTITY_PROMOTE_OBS,
-)
-from netcorenoc.varbind_accum import (
-    ENTITY_PROMOTE_SCORE as ENTITY_PROMOTE_SCORE,
-)
-from netcorenoc.varbind_accum import (
-    FD_MIN_PAIRS as FD_MIN_PAIRS,
-)
-from netcorenoc.varbind_accum import (
-    FD_THRESHOLD as FD_THRESHOLD,
-)
-from netcorenoc.varbind_accum import (
-    MAX_DISPLAY_CHARS as MAX_DISPLAY_CHARS,
-)
-from netcorenoc.varbind_accum import (
-    MAX_DISPLAY_VALUES as MAX_DISPLAY_VALUES,
-)
-from netcorenoc.varbind_accum import (
-    MAX_TRACKED_VALUES as MAX_TRACKED_VALUES,
-)
-from netcorenoc.varbind_accum import (
-    Accumulator as Accumulator,
-)
-from netcorenoc.varbind_accum import (
-    Candidate as Candidate,
-)
-from netcorenoc.varbind_accum import (
-    _CoOccur as _CoOccur,
-)
-from netcorenoc.varbind_accum import (
-    value_hash as value_hash,
-)
+from netcorenoc.engine.correlate.varbind_accum import ENTITY_MAX_CARD_RATIO as ENTITY_MAX_CARD_RATIO
+from netcorenoc.engine.correlate.varbind_accum import ENTITY_MIN_DISTINCT as ENTITY_MIN_DISTINCT
+from netcorenoc.engine.correlate.varbind_accum import ENTITY_PROMOTE_OBS as ENTITY_PROMOTE_OBS
+from netcorenoc.engine.correlate.varbind_accum import ENTITY_PROMOTE_SCORE as ENTITY_PROMOTE_SCORE
+from netcorenoc.engine.correlate.varbind_accum import FD_MIN_PAIRS as FD_MIN_PAIRS
+from netcorenoc.engine.correlate.varbind_accum import FD_THRESHOLD as FD_THRESHOLD
+from netcorenoc.engine.correlate.varbind_accum import MAX_DISPLAY_CHARS as MAX_DISPLAY_CHARS
+from netcorenoc.engine.correlate.varbind_accum import MAX_DISPLAY_VALUES as MAX_DISPLAY_VALUES
+from netcorenoc.engine.correlate.varbind_accum import MAX_TRACKED_VALUES as MAX_TRACKED_VALUES
+from netcorenoc.engine.correlate.varbind_accum import Accumulator as Accumulator
+from netcorenoc.engine.correlate.varbind_accum import Candidate as Candidate
+from netcorenoc.engine.correlate.varbind_accum import _CoOccur as _CoOccur
+from netcorenoc.engine.correlate.varbind_accum import value_hash as value_hash
 
 # -- constants (one block, one line each) -------------------------------------------------
 W_R, W_X, W_D = 0.35, 0.45, 0.20  # entity-score term weights (X decisive)

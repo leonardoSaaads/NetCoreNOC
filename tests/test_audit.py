@@ -8,10 +8,10 @@ import httpx
 import pytest
 
 from netcorenoc.api import create_app
-from netcorenoc.correlate import Correlator, WindowAlarm
 from netcorenoc.crosscutting import audit
+from netcorenoc.engine.correlate.correlate import Correlator, WindowAlarm
+from netcorenoc.engine.correlate.scoring import LinkFeatures, LinkScore
 from netcorenoc.main import Engine
-from netcorenoc.scoring import LinkFeatures, LinkScore
 from netcorenoc.store import Store
 
 import authutil

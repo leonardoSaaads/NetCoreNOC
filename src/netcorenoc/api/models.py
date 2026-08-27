@@ -22,8 +22,8 @@ from typing import Any, Literal
 import uvicorn
 from pydantic import BaseModel, Field
 
-from netcorenoc import scoring
 from netcorenoc.crosscutting import auth
+from netcorenoc.engine.correlate import scoring
 
 MAX_LABEL_CHARS = 120
 MAX_NOTE_CHARS = 500

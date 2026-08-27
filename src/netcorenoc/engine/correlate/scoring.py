@@ -37,39 +37,19 @@ from dataclasses import dataclass
 # both ruff and mypy understand. `correlate.py` imports every one of these from `netcorenoc.scoring`
 # and this release may not change one byte of it, so the names have to stay here whatever module
 # defines them (DECISIONS #191).
-from netcorenoc.scorer_contract import (
-    BASIS_SHAPLEY as BASIS_SHAPLEY,
-)
-from netcorenoc.scorer_contract import (
-    BASIS_WEIGHTED_SUM as BASIS_WEIGHTED_SUM,
-)
-from netcorenoc.scorer_contract import (
-    CONTRACT_VERSION as CONTRACT_VERSION,
-)
-from netcorenoc.scorer_contract import (
-    DEFAULT_SCORER_ID as DEFAULT_SCORER_ID,
-)
-from netcorenoc.scorer_contract import (
-    ContractVersionError as ContractVersionError,
-)
-from netcorenoc.scorer_contract import (
-    LinkFeatures as LinkFeatures,
-)
-from netcorenoc.scorer_contract import (
-    LinkScore as LinkScore,
-)
-from netcorenoc.scorer_contract import (
-    LinkScorer as LinkScorer,
-)
-from netcorenoc.scorer_contract import (
-    TermContribution as TermContribution,
-)
-from netcorenoc.scorer_contract import (
+from netcorenoc.engine.correlate.scorer_contract import BASIS_SHAPLEY as BASIS_SHAPLEY
+from netcorenoc.engine.correlate.scorer_contract import BASIS_WEIGHTED_SUM as BASIS_WEIGHTED_SUM
+from netcorenoc.engine.correlate.scorer_contract import CONTRACT_VERSION as CONTRACT_VERSION
+from netcorenoc.engine.correlate.scorer_contract import DEFAULT_SCORER_ID as DEFAULT_SCORER_ID
+from netcorenoc.engine.correlate.scorer_contract import ContractVersionError as ContractVersionError
+from netcorenoc.engine.correlate.scorer_contract import LinkFeatures as LinkFeatures
+from netcorenoc.engine.correlate.scorer_contract import LinkScore as LinkScore
+from netcorenoc.engine.correlate.scorer_contract import LinkScorer as LinkScorer
+from netcorenoc.engine.correlate.scorer_contract import TermContribution as TermContribution
+from netcorenoc.engine.correlate.scorer_contract import (
     check_contract_version as check_contract_version,
 )
-from netcorenoc.scorer_contract import (
-    contract_major as contract_major,
-)
+from netcorenoc.engine.correlate.scorer_contract import contract_major as contract_major
 
 # The coded defaults — the v0.5.0 constants, now the default scorer's dataclass defaults
 # (the P2 tidy promised in EXTENSIBILITY-0.6-DRAFT.md). `correlate.py` re-exports these names.

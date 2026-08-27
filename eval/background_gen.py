@@ -33,10 +33,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
+from netcorenoc.engine.correlate.scorer_contract import (  # noqa: E402
+    LinkFeatures,
+    LinkScore,
+    feature_vector,
+)
 from netcorenoc.events import TrapEvent  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.receiver import parse_trap  # noqa: E402
-from netcorenoc.scorer_contract import LinkFeatures, LinkScore, feature_vector  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
 import trap_replay  # noqa: E402

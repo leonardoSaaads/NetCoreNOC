@@ -13,8 +13,8 @@ import json
 
 import pytest
 
+from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 from netcorenoc.events import TrapEvent
-from netcorenoc.learn import MIN_EDGE_N
 from netcorenoc.main import IDLE_CLOSE_S, Engine
 from netcorenoc.receiver import QueueItem
 from netcorenoc.store import Store

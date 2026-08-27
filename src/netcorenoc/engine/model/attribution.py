@@ -63,8 +63,7 @@ from bisect import bisect_left
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from netcorenoc.engine.model.background import BACKGROUND
-from netcorenoc.scorer_contract import (
+from netcorenoc.engine.correlate.scorer_contract import (
     BASIS_SHAPLEY,
     FEATURE_NAMES,
     LinkFeatures,
@@ -72,6 +71,7 @@ from netcorenoc.scorer_contract import (
     TermContribution,
     feature_vector,
 )
+from netcorenoc.engine.model.background import BACKGROUND
 
 __all__ = [
     "FEATURE_COUNT",

@@ -26,8 +26,8 @@ from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from netcorenoc.engine.correlate.scoring import LinkFeatures
 from netcorenoc.engine.model.challenger import LogisticScorer, sigmoid
-from netcorenoc.scoring import LinkFeatures
 
 __all__ = [
     "CALIBRATION_BINS",

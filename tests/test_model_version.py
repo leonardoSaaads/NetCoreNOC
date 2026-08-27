@@ -17,7 +17,7 @@ import math
 
 import pytest
 
-from netcorenoc import scoring
+from netcorenoc.engine.correlate import scoring
 from netcorenoc.engine.model import challenger, model_version
 from netcorenoc.engine.model.model_version import KIND_ADDITIVE, KIND_LOGISTIC, ModelPayloadError
 

@@ -26,7 +26,14 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import scoring
+from netcorenoc.engine.correlate import scoring
+from netcorenoc.engine.correlate.scoring import (
+    AdditiveScorer,
+    LinkFeatures,
+    LinkScore,
+    LinkScorer,
+    SafeScorer,
+)
 from netcorenoc.engine.model.challenger import (
     CHALLENGER_SCORER_ID,
     FEATURE_NAMES,
@@ -37,7 +44,6 @@ from netcorenoc.engine.model.challenger import (
     sigmoid,
 )
 from netcorenoc.main import Engine
-from netcorenoc.scoring import AdditiveScorer, LinkFeatures, LinkScore, LinkScorer, SafeScorer
 from netcorenoc.store import Store
 
 import util
@@ -194,7 +200,7 @@ def test_the_score_is_byte_identical_across_two_processes() -> None:
         "import json,sys;"
         f"sys.path.insert(0, {str(REPO_ROOT / 'src')!r});"
         "from netcorenoc.engine.model.challenger import Coefficients, LogisticScorer;"
-        "from netcorenoc.scoring import LinkFeatures;"
+        "from netcorenoc.engine.correlate.scoring import LinkFeatures;"
         "s=LogisticScorer(Coefficients(-1.25,2.5,1.75,-0.5));"
         "f=LinkFeatures(delta_t_s=7.5,class_i=1,class_j=2,class_affinity=0.33,"
         "ne_i=10,ne_j=11,entity_affinity=0.66);"

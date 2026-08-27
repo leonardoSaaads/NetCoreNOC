@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from netcorenoc.rootcause import Member, Precedence
+from netcorenoc.engine.correlate.rootcause import Member, Precedence
 from netcorenoc.store import Store
 
 

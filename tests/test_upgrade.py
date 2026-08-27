@@ -85,7 +85,7 @@ async def test_v060_upgrade_preserves_grouping_and_seeds_provenance(tmp_path: Pa
     learned state and the audit chain survive, and the schema advances by exactly one.
     """
     import netcorenoc.store.lifecycle as store_mod
-    from netcorenoc.scoring import AdditiveScorer
+    from netcorenoc.engine.correlate.scoring import AdditiveScorer
 
     real_dir = store_mod.MIGRATIONS_DIR
 

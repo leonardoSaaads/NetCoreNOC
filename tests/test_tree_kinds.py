@@ -26,7 +26,8 @@ from typing import Any
 import pytest
 
 from modelfixtures import training_rows
-from netcorenoc import scoring
+from netcorenoc.engine.correlate import scoring
+from netcorenoc.engine.correlate.scorer_contract import BASIS_SHAPLEY, LinkFeatures
 from netcorenoc.engine.model import attribution, boosting, forest, model_version, tree
 from netcorenoc.engine.model.cart import LEAF
 from netcorenoc.engine.model.model_version import (
@@ -35,7 +36,6 @@ from netcorenoc.engine.model.model_version import (
     KIND_TREE,
     ModelPayloadError,
 )
-from netcorenoc.scorer_contract import BASIS_SHAPLEY, LinkFeatures
 
 import util
 

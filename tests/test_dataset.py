@@ -14,7 +14,9 @@ import time
 
 import pytest
 
-from netcorenoc.correlate import ScoredLink, WindowAlarm
+from netcorenoc.engine.correlate.correlate import ScoredLink, WindowAlarm
+from netcorenoc.engine.correlate.rootcause import Member
+from netcorenoc.engine.correlate.scoring import LinkScore, TermContribution
 from netcorenoc.engine.dataset.capture import Capture, RetentionPolicy
 from netcorenoc.engine.dataset.labels import (
     ClientFingerprint,
@@ -23,8 +25,6 @@ from netcorenoc.engine.dataset.labels import (
     member_digest,
 )
 from netcorenoc.main import Engine
-from netcorenoc.rootcause import Member
-from netcorenoc.scoring import LinkScore, TermContribution
 from netcorenoc.store import MAX_CLIENT_MEMBERS, Store
 
 import authutil
@@ -81,7 +81,7 @@ async def test_capture_is_bounded_by_max_candidates_per_activation(store: Store)
     This is the *construction* half of "bounded": the ingest path already lives under
     MAX_CANDIDATES, so capture adds no new unbounded work. The retention half is below.
     """
-    from netcorenoc.correlate import MAX_CANDIDATES
+    from netcorenoc.engine.correlate.correlate import MAX_CANDIDATES
 
     engine = Engine(store, asyncio.Queue())
     await engine.start()

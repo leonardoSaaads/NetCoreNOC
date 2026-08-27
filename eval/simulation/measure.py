@@ -33,10 +33,10 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
+from netcorenoc.engine.correlate.scorer_contract import LinkFeatures, LinkScore  # noqa: E402
 from netcorenoc.events import TrapEvent  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.receiver import parse_trap  # noqa: E402
-from netcorenoc.scorer_contract import LinkFeatures, LinkScore  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 from simulation.generator import (  # noqa: E402
     INCREMENT_INCIDENTS,

@@ -31,13 +31,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from netcorenoc.correlate import Correlator
+from netcorenoc.engine.correlate.correlate import Correlator
+from netcorenoc.engine.correlate.learn import Learner
+from netcorenoc.engine.correlate.rootcause import Precedence
+from netcorenoc.engine.correlate.varbind_profile import VarbindProfiler
 from netcorenoc.engine.dataset.capture import Capture, RetentionPolicy
 from netcorenoc.engine.evaluation.shadow import Shadow
-from netcorenoc.learn import Learner
-from netcorenoc.rootcause import Precedence
 from netcorenoc.store import Store
-from netcorenoc.varbind_profile import VarbindProfiler
 
 if TYPE_CHECKING:
     from netcorenoc.engine.operate.gaps import GapTracker

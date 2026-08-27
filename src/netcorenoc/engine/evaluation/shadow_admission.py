@@ -55,8 +55,8 @@ import math
 import time
 from typing import Any
 
+from netcorenoc.engine.correlate.scorer_contract import FEATURE_NAMES, TAU0_S, LinkFeatures
 from netcorenoc.engine.model.background import BACKGROUND
-from netcorenoc.scorer_contract import FEATURE_NAMES, TAU0_S, LinkFeatures
 
 __all__ = [
     "MIN_SCORE_SPREAD",

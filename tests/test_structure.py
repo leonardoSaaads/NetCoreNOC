@@ -69,10 +69,18 @@ SUBMODULES = [
     "crosscutting",
     "crosscutting.audit",
     "crosscutting.auth",
-    "correlate",
+    "engine.correlate",
+    "engine.correlate.correlate",
+    "engine.correlate.learn",
+    "engine.correlate.preview",
+    "engine.correlate.rootcause",
+    "engine.correlate.scorer_contract",
+    "engine.correlate.scoring",
+    "engine.correlate.severity",
+    "engine.correlate.varbind_accum",
+    "engine.correlate.varbind_profile",
     "events",
     "known_oids",
-    "learn",
     "engine",
     "engine.operate",
     "engine.operate.engine",
@@ -88,12 +96,9 @@ SUBMODULES = [
     "crosscutting.rbac.policy",
     "crosscutting.rbac.tables",
     "receiver",
-    "rootcause",
     "runner",
     "crosscutting.runtime",
-    "scoring",
     "crosscutting.settings",
-    "severity",
     # v0.7.4: `shaping` became a package (DECISIONS #95), on the same terms `api` and `store` did —
     # it keeps its name and its whole re-export surface, and every module inside it must resolve
     # from the **installed** package too.
@@ -129,8 +134,6 @@ SUBMODULES = [
     "store.situations",
     "store.state_clears",
     "store.types",
-    "varbind_accum",
-    "varbind_profile",
 ]
 
 

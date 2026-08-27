@@ -22,8 +22,8 @@ from collections.abc import Container, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from netcorenoc.learn import STORM_ALARMS, Learner
-from netcorenoc.scoring import (
+from netcorenoc.engine.correlate.learn import STORM_ALARMS, Learner
+from netcorenoc.engine.correlate.scoring import (
     LINK_THRESHOLD,
     TAU_S,
     W_A,
