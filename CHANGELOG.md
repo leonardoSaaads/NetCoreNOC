@@ -12,6 +12,73 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md), and for nineteen of twenty releases the
 answer is nothing.
 
+## [0.15.1] - 2026-08-27 — "the package tree"
+
+**The filesystem starts telling the truth about the architecture. No behaviour changes.**
+
+```
+src/netcorenoc/ root   ->  58 modules  ->  4   (__init__, __main__, main, runner: the entry surface)
+layers                 ->  a dict of 62 module names in a test  ->  5 directories on disk
+engine                 ->  46 modules in one bucket  ->  6 domains, ZERO cycles between them
+imports rewritten      ->  666 statements across src/, tests/, eval/ and tools/
+content census         ->  61 moved files, ZERO changed beyond their imports
+make eval              ->  byte-identical: c2e8a0ce…8b9b6f26
+make qa                ->  1576 passed (was 1558);  coverage 95.97 %
+runtime deps           ->  5, unchanged since v0.2.0.  dev deps unchanged
+migrations             ->  0.  routes, capabilities, audit actions, console: unchanged
+```
+
+The layer rule — *a layer may import downward and may import cross-cutting, never upward* — has
+been tested since v0.7.3 against a dictionary of module names kept in `tests/test_layers.py`. The
+disk was flat, so a module's layer was a **declaration**: a new module landed correctly only if its
+author remembered to add a line. It is now an **observation** (#207): five top-level directories,
+each one a layer, and a package root closed to everything but the four entry modules.
+
+`engine` held 46 of the 62 mapped modules, which is a true description of all of them and a useful
+description of none. It is six domains now — `correlate/`, `dataset/`, `model/`, `evaluation/`,
+`report/`, `operate/` — derived from the import graph rather than from the names (#208). Measured
+over the same 190 edges they form a **strict order with no cycles**; the grouping the plan sketched
+has nine.
+
+### The gate this release needed and did not have
+
+`tests/behaviour_identity.py` seeds four databases from `eval/corpus/fiber_cut.json` through the
+real ingest path at a fixed clock, drives every route the app registers as anonymous, viewer,
+editor and admin, and pins the result at
+`f2a74ae5bdde7c1bd615abc6516049b259c763e5887c917c53983c44ce47a9c7`. **That hash is unchanged from
+before the first `git mv` to after the last one.** In a release that is entirely moves, *"the tests
+pass"* is a weaker claim than *"the HTTP surface is unchanged"*, because the assertions were written
+against the same code that produces the shape.
+
+### Fixed
+
+- **F64** — `test_documentation.py` filtered `COMMENT` and `STRING`, and PEP 701 moved f-strings out
+  of `STRING` in Python 3.12, so every citation inside one has been invisible since. Exactly one
+  existed, `#176` in `test_security_ui.py`, and v0.15.0 deleted that entry *on the measurement this
+  blind spot corrupted*. The filter is widened and the entry restored (#215).
+- **Three guards that had stopped checking anything**, each found by the move rather than by review:
+  the seal-isolation guard read `node.module.split(".")[1]`, F24's receiver guard looked for
+  `"netcorenoc.scoring"` as a substring, and five more read modules at literal paths with
+  `if not path.exists(): continue`. All read `util.module_path` / `util.imported_modules` now, and
+  a missing module raises instead of skipping.
+
+### Changed
+
+- The module-size guard measures a module's **body**, not its imports (#218). A longer import path
+  wraps and had pushed `capture.py` from 398 lines to 402 — a package reorganisation consuming a
+  module's budget. `COHESION_EXEMPT_CEILING` for `engine.py` **falls** 580 → 545.
+- Two levels of package nesting where earned, never three (#210). It was one, never two, and the
+  guard that said so exists — contrary to the plan for this release, which reports finding none.
+- `from netcorenoc.correlate import …` is now `from netcorenoc.engine.correlate.correlate import …`,
+  with **no compatibility re-exports** (#213). `netcorenoc`, `netcorenoc.main`, `netcorenoc.api` and
+  `netcorenoc.store` are unchanged, so every documented entry point still resolves and
+  `python -m netcorenoc.main` still starts the correlator.
+
+### Known
+
+- **F65** — 67 module paths written in prose still name the pre-move import path. None is an import;
+  rewriting them inside a move release would forfeit the census that makes the move reviewable.
+
 ## [0.15.0] - 2026-08-27 — "the repository"
 
 **`docs/` stops being a warehouse. `src/` does not change.**

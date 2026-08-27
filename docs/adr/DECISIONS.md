@@ -1549,10 +1549,9 @@ From this release an entry is about six lines: decision, reason, release.*
   of. And `api/routes_static.py` and `store/types.py` locate `ui/` and `migrations/` as
   `Path(__file__).parent.parent / …`: moving either package changes a line that is not an import,
   and the alternative — moving the 47 UI files and 13 migrations too — is churn that buys no layer.
-- **The cost, stated**: the layer of `api/` and `store/` stays a declaration rather than an
-  observation, so the guard's table keeps **five directory rows** instead of none. That is five, not
-  62, and every one of them names a directory, so the property the release is for — a new module
-  lands in its layer by where it was saved — holds for every module in the tree.
+- **The cost, stated**: `api/` and `store/` are directories not named for their layer, so two of
+  the guard's five rows stay declarations. Five, not 62 — and every row names a directory, so the
+  property the release is for still holds for every module in the tree.
 
 ## 210. Two levels of nesting, and the guard says two rather than one
 
@@ -1576,10 +1575,9 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: in a release that is entirely moves, *"the tests pass"* is weaker than *"the HTTP
   surface is unchanged"*, because the assertions were written against the code that produces the
   shape. A role is included because a principal that renders differently is a behaviour.
-- **Canonicalisation is an enumerated substitution list, never a pattern over anything numeric** —
-  an over-broad canonicaliser passes the diff by deleting the evidence. Completeness is asserted by
-  running the harness twice on unmoved code and requiring byte identity, and its ability to fail is
-  demonstrated by a deliberate response change.
+- **Canonicalisation is an enumerated substitution list, never a pattern**: an over-broad one
+  passes the diff by deleting the evidence. Completeness is asserted by two runs in separate
+  processes; the ability to fail, by a deliberate response change.
 
 ## 212. `test_layers.py` becomes a directory check, and it changes last
 
@@ -1597,12 +1595,11 @@ From this release an entry is about six lines: decision, reason, release.*
   `from netcorenoc.engine.correlate.correlate import …`, with no compatibility re-export in any
   `__init__.py`. `netcorenoc`, `netcorenoc.main`, `netcorenoc.api` and `netcorenoc.store` are
   unchanged, so every documented entry point still resolves. (v0.15.1)
-- **Reason**: pre-alpha, zero users, and the only importers are in this repository — so the whole
-  cost of the break is one mechanical rewrite that `mypy --strict` and 1558 tests verify. A
-  re-export would make the old path work forever and the tree's truth optional, which is the defect
-  this release exists to remove. `test_structure.py::SUBMODULES` enumerates the new paths, so a path
-  that does not resolve from the **installed** package is a red test rather than a runtime import
-  error.
+- **Reason**: pre-alpha, zero users, and every importer is in this repository, so the whole cost
+  is one mechanical rewrite `mypy --strict` and the suite verify. A re-export would make the old
+  path work forever and the tree's truth optional — the defect this release exists to remove.
+  `test_structure.py::SUBMODULES` enumerates the new paths, so one that does not resolve from the
+  **installed** package is a red test rather than a runtime error.
 
 ## 214. The `src/` byte-pin is recomputed in every move commit, and is renamed to stop naming v0.14.0
 
@@ -1634,9 +1631,8 @@ From this release an entry is about six lines: decision, reason, release.*
   `ingest/{receiver,events,known_oids}.py` plus `crosscutting/{settings,logsetup,runtime}.py`, a
   transport, and — if it is to say anything about what it collected —
   `engine/correlate/{varbind_profile,varbind_accum}.py`. (v0.15.1)
-- **Reason**: this release owes the agent one thing, which is not to make it awkward, and the answer
-  falls out of #207 for free: `ingest/` is now a subtree with no import into `engine/`, `store/` or
-  `api/`, so *"just the wire parser"* is a directory rather than an archaeology exercise.
+- **Reason**: the release owes the agent one thing — not to make it awkward — and #207 answers it
+  for free: `ingest/` imports nothing above it, so *"just the wire parser"* is a directory.
 - **The finding, for whoever builds it**: `store.py` imports `events` and `known_oids`, so the
   vocabulary an agent would share is **already below the data layer** — a shared package boundary
   rather than a copied protocol, and that choice is therefore still open. The two profiler modules
@@ -1649,10 +1645,9 @@ From this release an entry is about six lines: decision, reason, release.*
   the risk order the brief specifies, which puts every trap-path module last. (v0.15.1)
 - **Reason**: **a package and a module of the same name cannot coexist.** The moment
   `src/netcorenoc/engine/` acquires an `__init__.py`, `import netcorenoc.engine` resolves to the
-  package and `engine.py` becomes unreachable — so `engine.py` has to move in whichever commit
-  creates `engine/`, and `operate/` is that commit. A namespace package does not help: it would
-  leave `netcorenoc.engine` resolving to the module, and `netcorenoc.engine.report` resolving to
-  nothing.
+  package and `engine.py` becomes unreachable — so it moves in whichever commit creates `engine/`,
+  and `operate/` is that commit. A namespace package does not help: `netcorenoc.engine` would
+  resolve to the module and `netcorenoc.engine.report` to nothing.
 - **What actually protects the trap path is the pin, not the ordering**: `TRAP_PATH_HASHES` moves
   with each file in the same commit, and its five values are unchanged for the whole release. The
   brief's ordering is a proxy for that discipline; where the two conflict, the discipline wins.

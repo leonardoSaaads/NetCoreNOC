@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.15.0"
+version = "0.15.1"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -102,7 +102,7 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # These modules call into pysnmp/pyasn1, which ship no type information.
-module = ["netcorenoc.receiver", "trap_replay", "harness"]
+module = ["netcorenoc.ingest.receiver", "trap_replay", "harness"]
 disallow_untyped_calls = false
 
 [tool.bandit]

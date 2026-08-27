@@ -115,8 +115,22 @@ Run every command below from the repository root with the virtualenv active.
 - **Why it matters**: the headroom between the observed noise (3.66×) and the production budget (10×)
   is a factor of 2.7, it is a property of the machine rather than of the model, and nothing measures
   or pins it. A slower CI runner narrows it.
+- **v0.15.1 adds a consequence F63 did not record: it makes a byte-frozen gate intermittently red.**
+  `test_shadow.py::test_the_report_is_deterministic_across_two_runs` compares two renderings of the
+  shadow report with the two measured durations blanked. The **admission verdict is not blanked**,
+  and it flips:
+
+      -           False
+      +            True
+      - - speed: p99 23.952us over the budget 21.990us (10.0x the champion's 2.199us)
+
+  A champion measured at 2.199 µs puts the budget at 21.99 µs, and the challenger's p99 came in at
+  23.952 µs — a refusal at the production ratio, which F63's own sweep did not produce in 250 paired
+  runs. **Measured**: 1 failure in 60 runs on the v0.15.1 tree and **4 in 60 on the v0.15.0 tree it
+  was built from**, so the package move neither caused it nor changed it; 60 report pairs rendered
+  in a single interpreter produced no difference at all, which is why it had not been seen.
 - **Disposition**: open, issued not fixed. A median or a repeated-measures comparison would be a
-  behaviour change to the promotion gate, which v0.15.0 does not make.
+  behaviour change to the promotion gate, which neither v0.15.0 nor v0.15.1 makes.
 
 ## F64 — the citation guard could not see inside an f-string, and it cost a decision entry
 
