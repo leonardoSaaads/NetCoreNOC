@@ -5,8 +5,10 @@ format and the rules that govern this file — about six lines an entry, numbere
 never renumbered, superseded by reference rather than by edit — are in [`README.md`](README.md).
 
 **v0.15.0 removed the 50 entries that no code and no live document cited, and condensed the 146 that
-survive** (#201). Nothing was renumbered: 135 citations in `src/` and `tests/` name these numbers,
-several as *"argued in #N rather than asserted"*. The full original text of every entry — deleted or
+survive** (#201). Nothing was renumbered: `src/` and `tests/` cite **130 distinct numbers in 295
+places**, several as *"argued in #N rather than asserted"*, and
+`tests/test_documentation.py::test_every_decision_number_cited_in_the_tree_resolves_to_an_entry`
+fails if one of them stops resolving. The full original text of every entry — deleted or
 condensed — is at commit `3ecf237`; [`../record.md`](../record.md) has the command, and it is worth
 using when an entry below reads as an assertion rather than an argument: the argument is there.
 

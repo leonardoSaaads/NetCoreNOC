@@ -17,7 +17,7 @@ answer is nothing.
 **`docs/` stops being a warehouse. `src/` is byte-identical.**
 
 ```
-docs/          ->  62 310 lines across 253 files  ->  5 204 across 24   (-91.65 %)
+docs/          ->  62 310 lines across 253 files  ->  5 206 across 24   (-91.65 %)
 src/           ->  165 files, ZERO differing by SHA-256 against v0.14.0
 make eval      ->  byte-identical: c2e8a0ce…8b9b6f26
 make qa        ->  1558 passed, coverage 96.01 %   (was 1554)
@@ -36,7 +36,8 @@ migrations     ->  0.  routes, capabilities, audit actions, console: unchanged
 - **291 lines of *"found while building vX"*** across eight sections of `ROADMAP.md`, which goes
   from 649 lines to 148 and is now open items only.
 - **50 decision entries no code and no live document cites**, measured rather than judged.
-  **Nothing was renumbered** — 135 citations in `src/` and `tests/` name these numbers.
+  **Nothing was renumbered** — `src/` and `tests/` cite 130 distinct decision numbers in 295
+  places, several as *"argued in #N rather than asserted"*.
 - **The four duplicated test fixtures** (`tests/fixtures/{background_noise,fiber_cut,flapping_noise,olt_storm}.json`).
 
 ### Added
@@ -72,23 +73,23 @@ migrations     ->  0.  routes, capabilities, audit actions, console: unchanged
 
 ### The one number this release missed
 
-The target was **under 5 000 lines of `docs/`** and the result is **5 204** — 204 over, a 91.65 %
-reduction rather than 92 %. Reported rather than closed by trimming something a reader needs,
-because the arithmetic says where the remaining lines are and neither holder is free:
+The target was **under 5 000 lines of `docs/`** and the result is **5206** — 206 over, a
+91.65 % reduction rather than 92 %. Reported rather than closed by trimming something a reader
+needs, because the arithmetic says where the remaining lines are and neither holder is free:
 
 ```
 docs/analysis/   1 455   four hash-pinned pre-registrations, untouchable by directive
-docs/adr/        1 511   156 entries at a measured mean of 6.1 content lines — the density
+docs/adr/        1 513   156 entries at a measured mean of 6.1 content lines — the density
                          the format claims. 468 of those lines are one heading and two blank
-                         separators per entry, and 135 citations in src/ forbid renumbering
+                         separators per entry, and 130 numbers cited from code forbid renumbering
 the rest         2 238   the eight-page manual, the roadmap, findings, record, and six plans
 ```
 
-Two levers exist and both are the maintainer's, not this release's. Collapsing the blank lines
-around each decision heading would save 312 lines and put the tree at 4 892 — it renders
-identically and makes the log materially harder to read, which is optimising the metric against
-the thing the metric exists to protect. Trimming the manual would trade a stranger's first hour
-for 200 lines. **The measurement stands as it is.**
+Two levers exist and both are the maintainer's, not this release's. Dropping the blank line above
+and below every decision heading would save those 468 lines and put the tree at **4 738** — it
+renders identically and makes the log materially harder to read, which is optimising the metric
+against the thing the metric exists to protect. Trimming the manual would trade a stranger's first
+hour for 200 lines. **The measurement stands as it is.**
 
 ### Fixed
 

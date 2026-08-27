@@ -19,7 +19,7 @@ a second copy would be the thing that goes stale. The reason is [decision #197](
 anywhere in this tree is a path at `3ecf237`.** That is the one reading rule, stated here once
 rather than by editing every citation.
 
-`src/netcorenoc/` alone carries about twenty-five, **deliberately not updated**: this release's
+`src/netcorenoc/` alone carries **44, across 32 files**, **deliberately not updated**: this release's
 strongest check is that every file under `src/` is byte-identical to v0.14.0 except the version
 string, and rewriting a docstring would forfeit it to fix a reference `git show` already resolves.
 The same applies in `tests/`, `tools/` and `eval/`, where a citation is provenance for a measurement
