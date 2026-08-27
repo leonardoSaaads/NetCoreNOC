@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING, Any
 # imported them from here since v0.9.0, and a split is not a reason to move a caller's import
 # (DECISIONS #155). **Split, never exempted**: the ceiling has not been raised, and
 # `DEBT_ALLOWLIST` is still empty.
-from netcorenoc.agreement_bags import SIZE_ORDER, Bag, load_bags, size_bucket
+from netcorenoc.engine.report.agreement_bags import SIZE_ORDER, Bag, load_bags, size_bucket
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.store import Store

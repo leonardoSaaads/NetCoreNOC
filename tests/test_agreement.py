@@ -20,7 +20,7 @@ import ast
 import asyncio
 from pathlib import Path
 
-from netcorenoc import agreement, agreement_report
+from netcorenoc.engine.report import agreement, agreement_report
 from netcorenoc.labels import LabelContext, LabelScope
 from netcorenoc.main import Engine
 from netcorenoc.rootcause import Member

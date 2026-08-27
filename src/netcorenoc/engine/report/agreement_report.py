@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from netcorenoc.agreement import MIN_INCIDENTS_FOR_INTERVAL, Rate
+from netcorenoc.engine.report.agreement import MIN_INCIDENTS_FOR_INTERVAL, Rate
 
 __all__ = ["render"]
 

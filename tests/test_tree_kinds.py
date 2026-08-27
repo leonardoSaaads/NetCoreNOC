@@ -36,6 +36,8 @@ from netcorenoc.model_version import (
 )
 from netcorenoc.scorer_contract import BASIS_SHAPLEY, LinkFeatures
 
+import util
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CV = scoring.CONTRACT_VERSION
 
@@ -554,7 +556,7 @@ def test_the_boosted_kind_is_not_called_xgboost() -> None:
     `model_version` row claiming otherwise would put a false statement in the audit log."""
     assert boosting.KIND == "gradient_boosting"
     assert "xgboost" not in model_version.SUPPORTED_KINDS
-    source = (REPO_ROOT / "src" / "netcorenoc" / "boosting.py").read_text(encoding="utf-8")
+    source = util.module_path("boosting.py").read_text(encoding="utf-8")
     assert "second-order" in source, "the reason the name differs is not recorded where it applies"
 
 
@@ -565,7 +567,7 @@ def test_the_tree_family_cannot_reach_the_store_the_clock_or_the_network() -> No
 
     forbidden = {"time", "socket", "random", "secrets", "sqlite3", "aiosqlite", "urllib", "http"}
     for name in ("tree", "forest", "boosting", "attribution", "background"):
-        source = (REPO_ROOT / "src" / "netcorenoc" / f"{name}.py").read_text(encoding="utf-8")
+        source = util.module_path(f"{name}.py").read_text(encoding="utf-8")
         imported = {
             alias.name.split(".")[0]
             for node in ast.walk(ast.parse(source))

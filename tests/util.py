@@ -119,3 +119,38 @@ async def drive(engine: Engine, queue: asyncio.Queue[QueueItem], events: list[Tr
     for item in events:
         queue.put_nowait(item)
     await run_engine_until(engine, queue, target)
+
+
+def module_path(name: str) -> Path:
+    """A runtime module's file, found by its **basename** anywhere under `src/netcorenoc`.
+
+    v0.15.1 moved 56 modules into layer and domain directories, and several guards name the ones
+    they cover as a list of basenames — which is what those lists are *about*: `shadow_render.py`
+    is a module, not a location. Resolving the basename keeps each list correct across the move
+    and across the next one.
+
+    **It raises rather than returning None**, and that is the point. Every one of those guards
+    read `PKG / name` and skipped with `if not path.exists(): continue`, so the move would have
+    left them green while checking nothing — the failure mode that is worse than a red test
+    because nobody looks at it. Ambiguity raises too: two modules with one basename would make
+    "which file did this guard read?" unanswerable.
+
+    `store/` and `api/` are **excluded**, because they are packages with their own naming space and
+    always were: `store/promotion.py` is the SQL behind `engine/evaluation/promotion.py`, and
+    `store/shadow.py` behind `engine/evaluation/shadow.py`. Every caller of this helper means the
+    engine-side module; a caller that means the store one names it by path, as they already do.
+    """
+    pkg = Path(__file__).resolve().parent.parent / "src" / "netcorenoc"
+    found = sorted(
+        p
+        for p in pkg.rglob(name)
+        if p.is_file() and p.relative_to(pkg).parts[0] not in ("store", "api")
+    )
+    if len(found) != 1:
+        raise AssertionError(
+            f"{name!r} resolves to {len(found)} file(s) under src/netcorenoc: "
+            f"{[str(p.relative_to(pkg)) for p in found]}. A guard that names a module which does "
+            "not exist is a guard that checks nothing; a name that matches two is a guard nobody "
+            "can read."
+        )
+    return found[0]

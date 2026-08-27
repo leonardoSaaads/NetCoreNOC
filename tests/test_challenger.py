@@ -40,6 +40,8 @@ from netcorenoc.main import Engine
 from netcorenoc.scoring import AdditiveScorer, LinkFeatures, LinkScore, LinkScorer, SafeScorer
 from netcorenoc.store import Store
 
+import util
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"
 
@@ -73,7 +75,7 @@ def test_scoring_py_gained_nothing() -> None:
     The seam's whole value is that a second implementation needs no edit there. A test that only
     checked the challenger existed would not notice the seam being quietly abandoned.
     """
-    source = (PKG / "scoring.py").read_text(encoding="utf-8")
+    source = util.module_path("scoring.py").read_text(encoding="utf-8")
     for forbidden in ("challenger", "logistic", "Coefficients", "shadow"):
         assert forbidden.lower() not in source.lower(), f"scoring.py mentions {forbidden!r}"
 
@@ -286,9 +288,14 @@ def test_no_code_path_makes_the_challenger_the_active_scorer() -> None:
     }
     offenders: list[str] = []
     for path in sorted(PKG.rglob("*.py")):
-        name = str(path.relative_to(PKG))
+        relative = path.relative_to(PKG)
+        name = str(relative)
         source = path.read_text(encoding="utf-8")
-        if name in allowed or name == "__init__.py":
+        # `allowed` names modules, and v0.15.1 gave every module a directory. Matched on the
+        # basename so the list stays a list of modules — but never for `store/` or `api/`, which
+        # have their own naming space: `store/shadow.py` must not inherit `shadow.py`'s exemption.
+        exempt = path.name in allowed and relative.parts[0] not in ("store", "api")
+        if exempt or path.name == "__init__.py":
             continue
         tree = ast.parse(source)
         for node in ast.walk(tree):
@@ -328,10 +335,7 @@ def test_the_shadow_modules_never_reach_the_active_scorer_or_the_learner() -> No
         # (DECISIONS #139's reasoning, applied again).
         "shadow_admission.py",
     ):
-        path = PKG / name
-        if not path.exists():
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(util.module_path(name).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute):
                 assert node.attr not in forbidden, f"{name} reaches `.{node.attr}`"

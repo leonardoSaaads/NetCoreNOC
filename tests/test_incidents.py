@@ -29,6 +29,8 @@ from netcorenoc.incidents import (
 )
 from netcorenoc.store import Store
 
+import util
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"
 
@@ -317,7 +319,7 @@ def test_both_consumers_resolve_identity_through_the_one_function() -> None:
     the challenger — and `shadow_report.collect` must each contain a call to `resolve_identity`.
     """
     for module, function in (("shadow.py", "train"), ("shadow_report.py", "collect")):
-        tree = ast.parse((PKG / module).read_text(encoding="utf-8"))
+        tree = ast.parse(util.module_path(module).read_text(encoding="utf-8"))
         target = [
             node
             for node in ast.walk(tree)
@@ -518,7 +520,10 @@ def test_all_four_consumers_resolve_identity_through_the_one_implementation() ->
         "store/shadow.py": ("merge_edges",),
     }
     for module, expected in consumers.items():
-        source = (PKG / module).read_text(encoding="utf-8")
+        # `store/shadow.py` is named by path: it is the SQL half, in a package with its own
+        # naming space, and `util.module_path` deliberately does not reach into it.
+        path = (PKG / module) if "/" in module else util.module_path(module)
+        source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
         names = {
             node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
@@ -561,7 +566,7 @@ async def test_the_bias_incident_count_is_over_labelled_situations_only(store: S
     every floor expressed in incidents — so an unlabelled situation must not enter it. The frozen
     fixture has none, so the report is blind to the difference; this fixture has one.
     """
-    from netcorenoc import bias
+    from netcorenoc.engine.report import bias
 
     async with store.lock:
         labelled = await store.create_situation(1_000.0, None)
@@ -583,7 +588,7 @@ async def test_agreement_bags_follow_a_real_merge_chain(store: Store) -> None:
     `resolve_all(ids, edges)` return the same thing and the byte-frozen report cannot tell them
     apart. Two hops here, so a one-hop reader and an edge-less reader both fail.
     """
-    from netcorenoc.agreement_bags import load_bags
+    from netcorenoc.engine.report.agreement_bags import load_bags
 
     async with store.lock:
         a = await store.create_situation(1_000.0, None)

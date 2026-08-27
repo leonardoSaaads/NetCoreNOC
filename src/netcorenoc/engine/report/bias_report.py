@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from netcorenoc.bias import pct
+from netcorenoc.engine.report.bias import pct
 
 __all__ = ["render"]
 

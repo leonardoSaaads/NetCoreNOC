@@ -24,6 +24,8 @@ import pytest
 from netcorenoc import seal
 from netcorenoc.store import Store
 
+import util
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"
 
@@ -125,10 +127,7 @@ def test_the_estimator_and_the_training_path_cannot_reach_the_seal() -> None:
     reported `engine.py` importing `netcorenoc.api` and it was the docstring saying it never must.
     """
     for module in ("shadow_cv.py", "training.py", "census.py", "shadow.py"):
-        path = PKG / module
-        if not path.is_file():
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(util.module_path(module).read_text(encoding="utf-8"))
         imported: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
@@ -182,7 +181,7 @@ def test_the_guard_would_notice_an_import() -> None:
     applied there must come back positive. Without this, a broken extractor would report every
     module clean.
     """
-    tree = ast.parse((PKG / "engine/operate/maintenance.py").read_text(encoding="utf-8"))
+    tree = ast.parse(util.module_path("maintenance.py").read_text(encoding="utf-8"))
     imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "netcorenoc":
@@ -369,7 +368,7 @@ def test_the_one_spend_is_guarded_by_the_floors_and_the_power_condition() -> Non
     `power.sufficient`. A behavioural test alone would pass against code that happened to short-
     circuit for an unrelated reason, and would go quiet the day that reason changed.
     """
-    tree = ast.parse((PKG / "promotion.py").read_text(encoding="utf-8"))
+    tree = ast.parse(util.module_path("promotion.py").read_text(encoding="utf-8"))
     parents: dict[ast.AST, ast.AST] = {}
     for parent in ast.walk(tree):
         for child in ast.iter_child_nodes(parent):

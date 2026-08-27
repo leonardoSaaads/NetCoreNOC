@@ -16,7 +16,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from netcorenoc import bias, bias_report
+from netcorenoc.engine.report import bias, bias_report
 from netcorenoc.labels import ClientFingerprint, Exclusion, LabelContext
 from netcorenoc.main import Engine
 from netcorenoc.rootcause import Member
