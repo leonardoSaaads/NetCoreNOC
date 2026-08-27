@@ -53,8 +53,8 @@ import math
 from collections.abc import Sequence
 from typing import NamedTuple
 
-from netcorenoc.attribution import FEATURE_COUNT, AttributionError
-from netcorenoc.training import TrainingRow
+from netcorenoc.engine.model.attribution import FEATURE_COUNT, AttributionError
+from netcorenoc.engine.model.training import TrainingRow
 
 __all__ = [
     "CRITERIA",

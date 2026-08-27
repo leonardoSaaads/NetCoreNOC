@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 from netcorenoc import scoring
-from netcorenoc.challenger import (
+from netcorenoc.engine.model.challenger import (
     CHALLENGER_SCORER_ID,
     FEATURE_NAMES,
     TAU0_S,
@@ -44,6 +44,11 @@ import util
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"
+
+#: The challenger's import path. Named once rather than written out at each of the four places
+#: below, because v0.15.1 made it three components longer and a guard that missed one of them
+#: would go on passing while checking three quarters of what it names.
+CHALLENGER_MODULE = "netcorenoc.engine.model.challenger"
 
 FITTED = Coefficients(intercept=-1.25, decay=2.5, class_affinity=1.75, entity_affinity=-0.5)
 
@@ -188,7 +193,7 @@ def test_the_score_is_byte_identical_across_two_processes() -> None:
     script = (
         "import json,sys;"
         f"sys.path.insert(0, {str(REPO_ROOT / 'src')!r});"
-        "from netcorenoc.challenger import Coefficients, LogisticScorer;"
+        "from netcorenoc.engine.model.challenger import Coefficients, LogisticScorer;"
         "from netcorenoc.scoring import LinkFeatures;"
         "s=LogisticScorer(Coefficients(-1.25,2.5,1.75,-0.5));"
         "f=LinkFeatures(delta_t_s=7.5,class_i=1,class_j=2,class_affinity=0.33,"
@@ -299,12 +304,12 @@ def test_no_code_path_makes_the_challenger_the_active_scorer() -> None:
             continue
         tree = ast.parse(source)
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "netcorenoc.challenger":
-                offenders.append(f"{name} imports netcorenoc.challenger")
+            if isinstance(node, ast.ImportFrom) and node.module == CHALLENGER_MODULE:
+                offenders.append(f"{name} imports {CHALLENGER_MODULE}")
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name == "netcorenoc.challenger":
-                        offenders.append(f"{name} imports netcorenoc.challenger")
+                    if alias.name == CHALLENGER_MODULE:
+                        offenders.append(f"{name} imports {CHALLENGER_MODULE}")
     assert not offenders, (
         "the challenger is reachable from a module that is not part of shadow mode:\n  "
         + "\n  ".join(offenders)

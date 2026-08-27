@@ -677,7 +677,8 @@ async def _routes_with_a_promoted_tree(store: Store) -> dict[str, Any]:
     from `GET /api/scorer` is what an operator with a promoted tree reads.
     """
     import modelfixtures
-    from netcorenoc import model_version, scoring, tree
+    from netcorenoc import scoring
+    from netcorenoc.engine.model import model_version, tree
 
     engine, app = await uifixtures.corpus(store)
     document = model_version.canonical_object(

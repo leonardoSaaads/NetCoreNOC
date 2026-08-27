@@ -63,7 +63,7 @@ from bisect import bisect_left
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from netcorenoc.background import BACKGROUND
+from netcorenoc.engine.model.background import BACKGROUND
 from netcorenoc.scorer_contract import (
     BASIS_SHAPLEY,
     FEATURE_NAMES,

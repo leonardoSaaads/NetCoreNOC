@@ -28,9 +28,9 @@ import math
 from collections.abc import Sequence
 from typing import Any
 
-from netcorenoc import attribution
-from netcorenoc.cart import CRITERIA, LEAF, Node, extremes, fit
-from netcorenoc.training import TrainingRow
+from netcorenoc.engine.model import attribution
+from netcorenoc.engine.model.cart import CRITERIA, LEAF, Node, extremes, fit
+from netcorenoc.engine.model.training import TrainingRow
 
 __all__ = [
     "KEYS",

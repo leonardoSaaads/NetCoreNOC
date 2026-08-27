@@ -26,7 +26,7 @@ from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from netcorenoc.challenger import LogisticScorer, sigmoid
+from netcorenoc.engine.model.challenger import LogisticScorer, sigmoid
 from netcorenoc.scoring import LinkFeatures
 
 __all__ = [

@@ -40,7 +40,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-from netcorenoc import model_version  # noqa: E402
+from netcorenoc.engine.model import model_version  # noqa: E402
 from simulation.appliance import Appliance, Http, Sender, from_wire  # noqa: E402
 from simulation.drive import fit_kind, training_rows  # noqa: E402
 from simulation.generator import generate  # noqa: E402

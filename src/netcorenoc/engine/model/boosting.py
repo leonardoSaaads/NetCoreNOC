@@ -35,9 +35,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from netcorenoc import attribution, tree
-from netcorenoc.cart import VARIANCE, Node, extremes, fit
-from netcorenoc.training import TrainingRow
+from netcorenoc.engine.model import attribution, tree
+from netcorenoc.engine.model.cart import VARIANCE, Node, extremes, fit
+from netcorenoc.engine.model.training import TrainingRow
 
 __all__ = [
     "DEFAULT_LEARNING_RATE",
@@ -104,7 +104,7 @@ async def _grow(
 
 
 def _predict(nodes: Sequence[Node], x: Sequence[float]) -> float:
-    from netcorenoc.cart import predict
+    from netcorenoc.engine.model.cart import predict
 
     return predict(nodes, x)
 

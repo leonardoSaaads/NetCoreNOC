@@ -29,9 +29,10 @@ import os
 import sys
 import time
 
-from netcorenoc import model_version, scoring, seal
+from netcorenoc import scoring, seal
 from netcorenoc.crosscutting import audit
 from netcorenoc.engine.evaluation import promotion
+from netcorenoc.engine.model import model_version
 from netcorenoc.engine.report import (
     agreement,
     agreement_report,

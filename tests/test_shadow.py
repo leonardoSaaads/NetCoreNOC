@@ -23,10 +23,11 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import census, training
-from netcorenoc.challenger import Coefficients, LogisticScorer
+from netcorenoc import census
 from netcorenoc.correlate import CorrelationResult, EvaluatedPair, WindowAlarm
 from netcorenoc.engine.evaluation import shadow, shadow_admission, shadow_eval
+from netcorenoc.engine.model import training
+from netcorenoc.engine.model.challenger import Coefficients, LogisticScorer
 from netcorenoc.engine.report import shadow_render, shadow_report
 from netcorenoc.main import Engine
 from netcorenoc.scoring import AdditiveScorer, LinkFeatures, LinkScore, TermContribution

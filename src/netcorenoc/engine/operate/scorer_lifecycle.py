@@ -32,8 +32,9 @@ from __future__ import annotations
 
 import logging
 
-from netcorenoc import model_version, scoring
+from netcorenoc import scoring
 from netcorenoc.crosscutting import audit
+from netcorenoc.engine.model import model_version
 from netcorenoc.engine.operate.engine_base import EngineBase
 
 log = logging.getLogger("netcorenoc")

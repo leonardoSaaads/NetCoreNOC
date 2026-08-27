@@ -40,9 +40,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from netcorenoc import attribution, tree
-from netcorenoc.cart import Node, extremes, fit
-from netcorenoc.training import TrainingRow
+from netcorenoc.engine.model import attribution, tree
+from netcorenoc.engine.model.cart import Node, extremes, fit
+from netcorenoc.engine.model.training import TrainingRow
 
 __all__ = [
     "DEFAULT_MTRY",

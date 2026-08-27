@@ -37,20 +37,14 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from netcorenoc.census import corpus_stats, resolve_identity
-from netcorenoc.challenger import (
+from netcorenoc.engine.model.challenger import (
     CHALLENGER_SCORER_ID,
     Coefficients,
     LogisticScorer,
     sigmoid,
 )
+from netcorenoc.engine.model.training import LabelledPair, assess, derive, fit, resolve_floors
 from netcorenoc.scoring import CONTRACT_VERSION, LinkFeatures
-from netcorenoc.training import (
-    LabelledPair,
-    assess,
-    derive,
-    fit,
-    resolve_floors,
-)
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.correlate import CorrelationResult, WindowAlarm

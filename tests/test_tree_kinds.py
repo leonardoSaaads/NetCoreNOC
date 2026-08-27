@@ -26,9 +26,10 @@ from typing import Any
 import pytest
 
 from modelfixtures import training_rows
-from netcorenoc import attribution, boosting, forest, model_version, scoring, tree
-from netcorenoc.cart import LEAF
-from netcorenoc.model_version import (
+from netcorenoc import scoring
+from netcorenoc.engine.model import attribution, boosting, forest, model_version, tree
+from netcorenoc.engine.model.cart import LEAF
+from netcorenoc.engine.model.model_version import (
     KIND_FOREST,
     KIND_GRADIENT_BOOSTING,
     KIND_TREE,
@@ -449,7 +450,7 @@ def _fit_in_a_subprocess(kind: str, hypers: dict[str, Any]) -> str:
         f"sys.path.insert(0, {str(REPO_ROOT / 'src')!r});"
         f"sys.path.insert(0, {str(REPO_ROOT / 'tests')!r});"
         "from modelfixtures import training_rows;"
-        "from netcorenoc import boosting, forest, model_version, tree;"
+        "from netcorenoc.engine.model import boosting, forest, model_version, tree;"
         f"kind={kind!r}; hypers={hypers!r};"
         "mod={'tree':tree,'forest':forest,'gradient_boosting':boosting}[kind];"
         "doc=asyncio.run(mod.fit_document(training_rows(), **hypers));"

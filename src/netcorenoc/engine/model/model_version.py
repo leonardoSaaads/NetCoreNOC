@@ -56,8 +56,9 @@ import json
 import math
 from typing import Any
 
-from netcorenoc import attribution, boosting, challenger, forest, scoring, tree
+from netcorenoc import scoring
 from netcorenoc.correlate import WINDOW_S
+from netcorenoc.engine.model import attribution, boosting, challenger, forest, tree
 
 __all__ = [
     "KIND_ADDITIVE",

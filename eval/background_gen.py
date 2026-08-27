@@ -139,7 +139,7 @@ def main() -> int:
         print(")")  # noqa: T201
         return 0
 
-    from netcorenoc import background
+    from netcorenoc.engine.model import background
 
     shipped_pairs = background.CORPUS_EVALUATED_PAIRS
     shipped_distinct = background.CORPUS_DISTINCT_VECTORS

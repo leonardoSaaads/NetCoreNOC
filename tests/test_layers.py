@@ -80,8 +80,6 @@ LAYER_OF: dict[str, str] = {
     # v0.9.0 — shadow mode. All engine-layer: the challenger consumes the same `LinkFeatures` the
     # correlator builds and writes downward through the data layer, exactly as `capture.py` does.
     # **None of them is ingest**, and none is reachable from `receiver.datagram_received`.
-    "challenger": "engine",
-    "training": "engine",
     # v0.10.0 — the honest judge. Engine-layer for the same reason the shadow modules are:
     # they consume stored evidence and read downward through the data layer, and none of them
     # is reachable from `receiver.datagram_received`.
@@ -102,7 +100,6 @@ LAYER_OF: dict[str, str] = {
     #
     # `model_version` is pure — it parses, validates and constructs, touching no store and no clock
     # — which is what lets the load path call it without acquiring anything.
-    "model_version": "engine",
     # Split out of `promotion.py` at the 400-line guard, onto a seam that was already there: this
     # answers to `DATA-LINEAGE.md` §4 and the gate answers to the pre-registration (DECISIONS #165).
     # v0.14.0 — the model family. Engine-layer for the reason every model module above is:
@@ -116,17 +113,11 @@ LAYER_OF: dict[str, str] = {
     # `background` is DATA — the registered attribution background set and nothing else. It imports
     # NOTHING from this package, so it cannot violate any direction, the same standing
     # `retention_policy` and `incidents` have.
-    "background": "engine",
     # `attribution` is pure arithmetic over that data plus the contract. `cart` is the shared fit.
     # The three kind modules own their own rules and documents (DECISIONS #187).
-    "attribution": "engine",
-    "cart": "engine",
-    "tree": "engine",
     # v0.14.0 — the four named quantities for both arms. Engine-layer beside `promotion`, and a
     # separate module for `evaluation_folds`' reason: the HTTP surface owns what a request may
     # assert (nothing) and this owns what the server derives.
-    "forest": "engine",
-    "boosting": "engine",
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire

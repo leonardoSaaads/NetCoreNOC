@@ -22,10 +22,11 @@ import json
 
 import pytest
 
-from netcorenoc import challenger, model_version, scoring
+from netcorenoc import scoring
 from netcorenoc.crosscutting import audit
+from netcorenoc.engine.model import challenger, model_version
+from netcorenoc.engine.model.model_version import KIND_ADDITIVE, KIND_LOGISTIC
 from netcorenoc.main import Engine
-from netcorenoc.model_version import KIND_ADDITIVE, KIND_LOGISTIC
 from netcorenoc.store import Store
 
 BASE = 1_700_000_000.0

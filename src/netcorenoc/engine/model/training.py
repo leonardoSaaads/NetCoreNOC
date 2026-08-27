@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from netcorenoc.census import CorpusStats
-from netcorenoc.challenger import Coefficients, feature_vector, sigmoid
+from netcorenoc.engine.model.challenger import Coefficients, feature_vector, sigmoid
 
 __all__ = [
     "ITERATIONS",
