@@ -22,7 +22,7 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.12.0** | **The instrument and the shape** — a DOM harness that executes the console, and the architecture of the UI that replaces it. **Shipped.** | `ui-harness` |
 | **v0.13.0** | **The UI** — sidebar navigation, per-role dashboards, the network graph, themes, the full admin surface. **Shipped.** | `ui` |
 | **v0.14.0** | **The model family** — three more scorer kinds this appliance trains and runs itself, in process, and the first end-to-end drive of the whole evidence chain. **Shipped.** | `model-family` |
-| **v0.15.0** | **The repository** — `docs/` stops being a warehouse, organised by what a reader is trying to do rather than by which release produced it. `src/` byte-identical, and a convention that stops the pile returning (#197). **Shipped.** | `repository` |
+| **v0.15.0** | **The repository** — `docs/` stops being a warehouse, organised by what a reader is trying to do rather than by which release produced it. `src/` unchanged but for the version string, and a convention that stops the pile returning (#197). **Shipped.** | `repository` |
 | **v0.15.1** | **The package tree** — 58 modules at the package root, a layer model enforced in a dictionary, and a filesystem that ignores it. [Brief](v0.15.1-package-tree.md). | `package-tree` |
 | **v0.15.2** | **The console repaired** — the detail panel, the narrow viewport, the icons, and the health numbers already being served and thrown away. [Brief](v0.15.2-console.md). | `console-repair` |
 | **v0.15.3** | **The console designed** — what v0.15.2 leaves undone. [Brief](v0.15.3-console-design.md). | `console-design` |

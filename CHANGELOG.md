@@ -14,7 +14,7 @@ answer is nothing.
 
 ## [0.15.0] - 2026-08-27 — "the repository"
 
-**`docs/` stops being a warehouse. `src/` is byte-identical.**
+**`docs/` stops being a warehouse. `src/` does not change.**
 
 ```
 docs/          ->  62 310 lines across 253 files  ->  5 206 across 24   (-91.65 %)
@@ -72,12 +72,12 @@ but a figure that moves between runs should not be written down as though it did
   specification"* and is now **"the instrument precedes the change it measures"** (#200). The
   foresight was real and is kept; it never came from the documents, it came from the ordering.
 - **The cartridge moves from v0.15.0 to v0.16.0** (#202). Nothing in its own argument moves.
-- **`README.md`** 452 lines to 135; **`MIGRATION.md`** 1 410 to 123; this file 1 897 to 332.
+- **`README.md`** 452 lines to 135; **`MIGRATION.md`** 1 410 to 123; this file 1 897 to 339.
 - **`make replay`** replays `eval/corpus/fiber_cut.json`.
 
 ### The one number this release missed
 
-The target was **under 5 000 lines of `docs/`** and the result is **5206** — 206 over, a
+The target was **under 5 000 lines of `docs/`** and the result is **5 206** — 206 over, a
 91.65 % reduction rather than 92 %. Reported rather than closed by trimming something a reader
 needs, because the arithmetic says where the remaining lines are and neither holder is free:
 
@@ -97,7 +97,8 @@ hour for 200 lines. **The measurement stands as it is.**
 
 ### Fixed
 
-- **Nothing.** No fix inside a move: `src/` is byte-identical and the five open findings are issued,
+- **Nothing.** No fix inside a move: no `src/` file moves but the version string, and the five
+  open findings are issued,
   not repaired. **Intentional behaviour changes: zero.**
 
 ### Findings issued
