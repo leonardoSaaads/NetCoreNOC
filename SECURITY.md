@@ -2,7 +2,7 @@
 
 NetCoreNOC takes security seriously. This document is the **coordinated vulnerability disclosure
 policy** — how to report a vulnerability and what to expect. If instead you are deploying or
-operating NetCoreNOC, see the [operator security & operations guide](docs/security/operations.md).
+operating NetCoreNOC, see the [operator security & operations guide](docs/security.md).
 
 ## Reporting a vulnerability
 
@@ -63,7 +63,7 @@ Please include, as far as you can:
   role is not a vulnerability).
 - The unauthenticated nature of SNMPv2c/v1 trap intake itself — this is a protocol property
   handled by the source allowlist and documented as accepted residual risk in
-  [`docs/security/threat-model.md`](docs/security/threat-model.md). A way to *bypass* the
+  [`docs/security.md`](docs/security.md). A way to *bypass* the
   allowlist, or to inject content past the defensive parser, **is** in scope.
 - Reports from automated scanners with no demonstrated impact, best-practice suggestions without
   a concrete vulnerability, and denial of service that merely requires flooding a trap listener
@@ -91,9 +91,9 @@ We gratefully credit reporters in advisories and release notes.
 
 ## Where the security work is documented
 
-- Threat model (STRIDE, per version): [`docs/security/threat-model.md`](docs/security/threat-model.md)
+- Threat model (STRIDE, per version): [`docs/security.md`](docs/security.md)
 - Security reviews (finding → fix → test, standards mapping):
-  [`docs/security/`](docs/security/) — `SECURITY-REVIEW-0.2.md`, `SECURITY-REVIEW-0.4.md`,
+  [`docs/security/`](docs/security.md) — `SECURITY-REVIEW-0.2.md`, `SECURITY-REVIEW-0.4.md`,
   `SECURITY-REVIEW-0.5.md`.
 - Machine-readable contact (RFC 9116): served by the running app at `/.well-known/security.txt`;
   the committed source is
