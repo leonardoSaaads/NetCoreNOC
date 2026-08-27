@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc.incidents import IncidentMap, resolve_all, stamp
+from netcorenoc.engine.dataset.incidents import IncidentMap, resolve_all, stamp
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.store import Store

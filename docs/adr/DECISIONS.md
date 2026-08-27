@@ -1658,3 +1658,18 @@ From this release an entry is about six lines: decision, reason, release.*
   brief's ordering is a proxy for that discipline; where the two conflict, the discipline wins.
 - **Measured**: three of the five pinned modules — `capture`, `correlate`, `learn` — still move in
   the last three commits. `engine` moves second and `receiver` last.
+
+## 218. The module-size guard counts a module's body, not its imports
+
+- **Decision**: `test_architecture._modules` measures lines that are **not import statements**.
+  `COHESION_EXEMPT_CEILING` for `engine.py` moves 580 -> 545, and it falls because the metric
+  changed rather than because the file did. Rejected: raising `MAX_MODULE_LINES`, which is changing
+  a rule to fit an outcome, and `DEBT_ALLOWLIST`, which must stay empty. (v0.15.1)
+- **Reason**: every moved module's import path gained two components, `ruff format` wraps what no
+  longer fits in 100 characters, and `capture.py` went from 398 lines to **402** — over a guard
+  about *"one noun or one decision"* — without a line of its substance changing. An import
+  statement cannot hold logic, so measuring the body loses nothing and stops a package
+  reorganisation from consuming a module's budget.
+- **Measured**: on the moved tree, exactly one module exceeds 400 body lines and it is `engine.py`,
+  which is permanently exempt. `learn.py` (393 body, 400 total) and `promotion.py` (391, 400) sit
+  on the line, so this is structural rather than one awkward file.

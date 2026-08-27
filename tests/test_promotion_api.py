@@ -16,9 +16,9 @@ import json
 
 import pytest
 
-from netcorenoc import seal
 from netcorenoc.api import create_app
 from netcorenoc.crosscutting import audit
+from netcorenoc.engine.dataset import seal
 from netcorenoc.engine.evaluation import promotion
 from netcorenoc.engine.evaluation.shadow_cv import Interval, power_at
 from netcorenoc.engine.model import challenger, model_version

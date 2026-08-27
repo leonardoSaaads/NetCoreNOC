@@ -31,13 +31,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from netcorenoc.engine.dataset.incidents import IncidentMap, resolve_all
 from netcorenoc.engine.report import bias_labels
 
 # The aggregate primitives live one module down, with the label aggregates that use them most
 # (DECISIONS #139). `pct` is re-exported because `bias_report` has imported it from here since
 # v0.8.0 and the split is not a reason to move a caller's import.
 from netcorenoc.engine.report.bias_labels import _rows, _scalar, distribution, pct
-from netcorenoc.incidents import IncidentMap, resolve_all
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
     from netcorenoc.store import Store

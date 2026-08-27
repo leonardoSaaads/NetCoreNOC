@@ -36,7 +36,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc.census import corpus_stats, resolve_identity
+from netcorenoc.engine.dataset.census import corpus_stats, resolve_identity
 from netcorenoc.engine.model.challenger import (
     CHALLENGER_SCORER_ID,
     Coefficients,

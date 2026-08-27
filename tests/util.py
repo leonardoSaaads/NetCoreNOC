@@ -154,3 +154,34 @@ def module_path(name: str) -> Path:
             "can read."
         )
     return found[0]
+
+
+def imported_modules(path: Path) -> set[str]:
+    """Every `netcorenoc` module name a file imports, by **basename**, read with `ast`.
+
+    Both halves of a dotted path count, because both forms name the same module after v0.15.1:
+    `from netcorenoc.engine.dataset import seal` names it as an alias, and
+    `from netcorenoc.engine.dataset.seal import summary` names it as the last component. A reader
+    that took `node.module.split(".")[1]` — which is what the guards here did while the package was
+    flat — now yields `engine` for both, and a *"this module must not import the seal"* guard built
+    on it would go on passing while checking nothing. Its control is what caught that.
+
+    Deliberately a **superset**: an alias that is a function rather than a submodule is included
+    too. Every caller asks "is X reachable from here", so erring wide errs strict.
+    """
+    import ast
+
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == "netcorenoc" or node.module.startswith("netcorenoc."):
+                found.update(alias.name for alias in node.names)
+                found.add(node.module.rsplit(".", 1)[-1])
+        elif isinstance(node, ast.Import):
+            found.update(
+                alias.name.rsplit(".", 1)[-1]
+                for alias in node.names
+                if alias.name.startswith("netcorenoc.")
+            )
+    found.discard("netcorenoc")
+    return found

@@ -31,8 +31,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from netcorenoc.capture import Capture, RetentionPolicy
 from netcorenoc.correlate import Correlator
+from netcorenoc.engine.dataset.capture import Capture, RetentionPolicy
 from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.learn import Learner
 from netcorenoc.rootcause import Precedence

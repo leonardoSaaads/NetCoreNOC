@@ -23,8 +23,8 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import census
 from netcorenoc.correlate import CorrelationResult, EvaluatedPair, WindowAlarm
+from netcorenoc.engine.dataset import census
 from netcorenoc.engine.evaluation import shadow, shadow_admission, shadow_eval
 from netcorenoc.engine.model import training
 from netcorenoc.engine.model.challenger import Coefficients, LogisticScorer

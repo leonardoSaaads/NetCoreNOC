@@ -42,10 +42,10 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from netcorenoc import capture as capture_mod
 from netcorenoc import known_oids, severity
-from netcorenoc.capture import Capture, LabelContext, RetentionPolicy
 from netcorenoc.correlate import Correlator, ScoredLink, WindowAlarm
+from netcorenoc.engine.dataset import capture as capture_mod
+from netcorenoc.engine.dataset.capture import Capture, LabelContext, RetentionPolicy
 from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.engine.operate.gaps import GapMixin, GapTracker

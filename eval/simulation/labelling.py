@@ -41,7 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 
-from netcorenoc.labels import Exclusion, LabelContext, LabelScope  # noqa: E402
+from netcorenoc.engine.dataset.labels import Exclusion, LabelContext, LabelScope  # noqa: E402
 from simulation.generator import generate  # noqa: E402
 
 if TYPE_CHECKING:  # pragma: no cover - type-only

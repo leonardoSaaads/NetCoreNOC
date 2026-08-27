@@ -14,9 +14,14 @@ import time
 
 import pytest
 
-from netcorenoc.capture import Capture, RetentionPolicy
 from netcorenoc.correlate import ScoredLink, WindowAlarm
-from netcorenoc.labels import ClientFingerprint, LabelContext, coverage, member_digest
+from netcorenoc.engine.dataset.capture import Capture, RetentionPolicy
+from netcorenoc.engine.dataset.labels import (
+    ClientFingerprint,
+    LabelContext,
+    coverage,
+    member_digest,
+)
 from netcorenoc.main import Engine
 from netcorenoc.rootcause import Member
 from netcorenoc.scoring import LinkScore, TermContribution

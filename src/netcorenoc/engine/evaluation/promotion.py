@@ -39,7 +39,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from netcorenoc import seal
+from netcorenoc.engine.dataset import seal
 from netcorenoc.engine.evaluation.evaluation_folds import materialise_folds
 from netcorenoc.engine.evaluation.judge import Judgement, Verdict, judge
 from netcorenoc.engine.evaluation.shadow_cv import Interval, Power

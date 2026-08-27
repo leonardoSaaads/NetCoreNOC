@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcorenoc import incidents
+from netcorenoc.engine.dataset import incidents
 from netcorenoc.engine.evaluation import evaluation_folds
 from netcorenoc.engine.evaluation.shadow_cv import FOLDS, REPEATS, assign_folds
 from netcorenoc.store import Store

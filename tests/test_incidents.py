@@ -18,8 +18,8 @@ import ast
 from itertools import pairwise
 from pathlib import Path
 
-from netcorenoc import census
-from netcorenoc.incidents import (
+from netcorenoc.engine.dataset import census
+from netcorenoc.engine.dataset.incidents import (
     MAX_CHAIN_DEPTH,
     IncidentMap,
     _cycle_members,

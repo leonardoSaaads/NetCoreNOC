@@ -149,7 +149,7 @@ async def training_rows(store: Store) -> list[TrainingRow]:
     are the rows the logistic challenger would have been fitted on — the comparison is between
     models, not between two ways of building a dataset.
     """
-    from netcorenoc.census import resolve_identity
+    from netcorenoc.engine.dataset.census import resolve_identity
     from netcorenoc.engine.evaluation.shadow import labelled_pair
     from netcorenoc.engine.model.training import derive
 
@@ -185,7 +185,7 @@ def params_hash_of(kind: str, payload: dict[str, Any]) -> str:
 
 async def census(store: Store) -> dict[str, int]:
     """The floors, with the judge's own expression. **Never a query written for a report.**"""
-    from netcorenoc import incidents
+    from netcorenoc.engine.dataset import incidents
 
     rows = await store.asserting_bag_rows()
     cursor = await store.conn.execute("SELECT id, merged_into FROM situation ORDER BY id")

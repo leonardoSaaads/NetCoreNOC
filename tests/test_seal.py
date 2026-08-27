@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import seal
+from netcorenoc.engine.dataset import seal
 from netcorenoc.store import Store
 
 import util
@@ -127,20 +127,7 @@ def test_the_estimator_and_the_training_path_cannot_reach_the_seal() -> None:
     reported `engine.py` importing `netcorenoc.api` and it was the docstring saying it never must.
     """
     for module in ("shadow_cv.py", "training.py", "census.py", "shadow.py"):
-        tree = ast.parse(util.module_path(module).read_text(encoding="utf-8"))
-        imported: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module == "netcorenoc":
-                    imported.update(alias.name for alias in node.names)
-                elif node.module.startswith("netcorenoc."):
-                    imported.add(node.module.split(".")[1])
-            elif isinstance(node, ast.Import):
-                imported.update(
-                    alias.name.split(".")[1]
-                    for alias in node.names
-                    if alias.name.startswith("netcorenoc.")
-                )
+        imported = util.imported_modules(util.module_path(module))
         assert "seal" not in imported, (
             f"{module} imports the seal. The estimator and the training path must be UNABLE to "
             "reach the sealed ids — if this becomes a convention rather than a structure, the "
@@ -168,7 +155,7 @@ def test_only_the_access_path_calls_the_one_expression_that_returns_the_membersh
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "sealed_incident_ids"
             ):
-                callers.append(str(path.relative_to(PKG)))
+                callers.append(path.name)
     assert callers == ["seal.py"], (
         f"the sealed membership is reachable from {callers}; only seal.spend may call it"
     )
@@ -181,11 +168,7 @@ def test_the_guard_would_notice_an_import() -> None:
     applied there must come back positive. Without this, a broken extractor would report every
     module clean.
     """
-    tree = ast.parse(util.module_path("maintenance.py").read_text(encoding="utf-8"))
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "netcorenoc":
-            imported.update(alias.name for alias in node.names)
+    imported = util.imported_modules(util.module_path("maintenance.py"))
     assert "seal" in imported, (
         "the import extractor found nothing where an import is known to exist, so the isolation "
         "guard above proves nothing"

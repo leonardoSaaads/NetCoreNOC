@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcorenoc import seal
+from netcorenoc.engine.dataset import seal
 from netcorenoc.engine.evaluation import promotion
 from netcorenoc.engine.evaluation.judge import Judgement, Trigger, Verdict
 from netcorenoc.engine.evaluation.promotion import Metrics, PromotionPathError, Quantity

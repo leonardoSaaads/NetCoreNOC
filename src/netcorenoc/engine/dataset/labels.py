@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 from netcorenoc.store.dataset import MAX_CLIENT_MEMBERS
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
-    from netcorenoc.capture import Capture
+    from netcorenoc.engine.dataset.capture import Capture
     from netcorenoc.store import FeedbackResult, Store
 
 __all__ = [

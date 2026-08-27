@@ -17,13 +17,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc import census
+from netcorenoc.engine.dataset import census
+from netcorenoc.engine.dataset.seal import summary as seal_summary
 from netcorenoc.engine.evaluation import judge as judge_mod
 from netcorenoc.engine.evaluation import shadow, shadow_admission, shadow_cv, shadow_eval
 from netcorenoc.engine.model import training
 from netcorenoc.engine.model.challenger import Coefficients, LogisticScorer
 from netcorenoc.scoring import AdditiveScorer, LinkFeatures
-from netcorenoc.seal import summary as seal_summary
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
     from netcorenoc.store import Store

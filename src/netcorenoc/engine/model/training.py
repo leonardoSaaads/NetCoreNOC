@@ -29,7 +29,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from netcorenoc.census import CorpusStats
+from netcorenoc.engine.dataset.census import CorpusStats
 from netcorenoc.engine.model.challenger import Coefficients, feature_vector, sigmoid
 
 __all__ = [

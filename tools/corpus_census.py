@@ -51,9 +51,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from netcorenoc import incidents
+from netcorenoc.engine.dataset import incidents
+from netcorenoc.engine.dataset.labels import Exclusion, LabelContext, LabelScope
 from netcorenoc.events import TrapEvent
-from netcorenoc.labels import Exclusion, LabelContext, LabelScope
 from netcorenoc.main import Engine
 from netcorenoc.receiver import parse_trap
 from netcorenoc.store import Store

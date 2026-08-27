@@ -41,7 +41,7 @@ from netcorenoc.correlate import (
     CorrelationResult,
     WindowAlarm,
 )
-from netcorenoc.labels import (
+from netcorenoc.engine.dataset.labels import (
     MAX_CLIENT_MEMBERS,
     ClientFingerprint,
     Exclusion,
@@ -51,7 +51,11 @@ from netcorenoc.labels import (
     record_label,
     server_bag,
 )
-from netcorenoc.retention_policy import RETENTION_META_KEY, TIER_NAMES, RetentionPolicy
+from netcorenoc.engine.dataset.retention_policy import (
+    RETENTION_META_KEY,
+    TIER_NAMES,
+    RetentionPolicy,
+)
 from netcorenoc.scoring import LINK_THRESHOLD, LinkScore
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
