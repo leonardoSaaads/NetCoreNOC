@@ -704,3 +704,91 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
     }, "the pinned set is no longer the five modules the build prompt names"
     for name in TRAP_PATH_HASHES:
         assert (PKG / name).is_file(), f"{name} is pinned and does not exist"
+
+
+# --- prime directive 2: v0.15.0 changes no src/ ------------------------------------------------
+#
+# v0.15.0's central claim is that a release which rewrites the documentation changes no code. The
+# claim was verified file by file while the release was built — 165 files, zero differing — and
+# then this was added, because a verification somebody ran once is not a property of the tree.
+# Principle 8: the instrument precedes the change it measures, and this instrument arrived late.
+
+#: SHA-256 over `src/` **as it stood at v0.14.0** (commit `3ecf237`), excluding
+#: `src/netcorenoc/__init__.py`, which carries the version string and is the one file a release is
+#: always allowed to touch. Computed over 164 files as
+#:
+#:     for each path in sorted order:  update(path); update(b"\0"); update(sha256(contents))
+#:
+#: — the path is hashed alongside the contents so that a RENAME moves the digest too. A digest over
+#: contents alone would let `learn.py` and `severity.py` swap names unnoticed.
+#:
+#: **When a release legitimately changes `src/`, it recomputes this in the same commit.** That is
+#: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
+#: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use.
+SRC_TREE_AT_V0_14_0 = "ccd6b302c35c18464fba55964edf65a9ff484c19dd59ecdd52bb708154999bc7"
+SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
+
+
+def _src_tree_digest() -> tuple[str, int]:
+    import hashlib
+
+    root = PKG.parent.parent  # …/src/netcorenoc -> …/src -> repo root
+    # Sorted by the POSIX string, not by Path, because Path ordering compares parts and would put
+    # `api/app.py` on the other side of `agreement.py`. The digest is order-sensitive by design,
+    # so the ordering is part of the pin and is stated rather than inherited from a comparison
+    # operator that could change between Python versions.
+    paths = sorted(
+        p.relative_to(root).as_posix()
+        for p in (root / "src").rglob("*")
+        if p.is_file() and _is_source(p)
+    )
+    digest = hashlib.sha256()
+    for relative in paths:
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(hashlib.sha256((root / relative).read_bytes()).digest())
+    return digest.hexdigest(), len(paths)
+
+
+def _is_source(path: Path) -> bool:
+    """Tracked source only. `__pycache__` and `*.egg-info` are build output that appears from
+    merely importing the package, and a guard that a test run can turn red by existing is noise."""
+    parts = path.parts
+    if any(part == "__pycache__" or part.endswith(".egg-info") for part in parts):
+        return False
+    if path.suffix == ".pyc":
+        return False
+    return bool(path.as_posix().split("/src/", 1)[-1] != "netcorenoc/__init__.py")
+
+
+def test_src_is_byte_identical_to_v0_14_0_except_the_version_string() -> None:
+    """v0.15.0's first non-negotiable, as a property of the tree rather than a claim in a document.
+
+    The exclusion is exactly one file and it is named, not globbed: `__init__.py` carries
+    `__version__` and nothing else a release changes. An exclusion pattern would be a hole.
+    """
+    actual, count = _src_tree_digest()
+    assert count == 164, (
+        f"{count} source files under src/ excluding the version file; v0.14.0 had 164. "
+        "A file was added or removed, which is a src/ change whatever its contents."
+    )
+    assert actual == SRC_TREE_AT_V0_14_0, (
+        f"src/ has moved.\n  pinned (v0.14.0): {SRC_TREE_AT_V0_14_0}\n"
+        f"  actual:           {actual}\n\n"
+        "v0.15.0 is a documentation release: every file under src/ except the version string is "
+        "byte-identical to v0.14.0. A later release that legitimately changes src/ recomputes "
+        "SRC_TREE_AT_V0_14_0 in the same commit, which makes the change reviewable."
+    )
+
+
+def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
+    """The control. Without it the test above passes on a digest that excluded everything, or on
+    one whose exclusion silently grew — and it asserts the version file is genuinely excluded, so
+    the bump this release makes is not being smuggled past a guard that never looked."""
+    from netcorenoc import __version__
+
+    root = PKG.parent.parent
+    assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
+    assert _is_source(PKG / "learn.py"), "an ordinary module must be included"
+    assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
+    assert __version__ == "0.15.0", "the one src/ change this release makes"
