@@ -706,6 +706,28 @@ def _citations_in(text: str) -> set[int]:
     return found
 
 
+def _citation_token_types() -> frozenset[int]:
+    """The token types a citation can live in — **including the f-string ones (F64)**.
+
+    PEP 701 (Python 3.12) stopped tokenizing f-strings as a single `STRING`: they arrive as
+    `FSTRING_START` / `FSTRING_MIDDLE` / `FSTRING_END` around ordinary tokens for the replacement
+    fields. This reader was written before that and filtered on `COMMENT` and `STRING` alone, so
+    **every citation inside an f-string was invisible to it** — silently, from the day the project
+    moved to 3.12. Exactly one existed, `#176` in `tests/test_security_ui.py`, and v0.15.0 deleted
+    that entry *because* the measurement of "what does the tree cite" could not see it.
+
+    The three names are resolved by `getattr` rather than named directly so this keeps working on
+    an interpreter that predates PEP 701, where the f-string is a `STRING` and already seen.
+    """
+    import tokenize
+
+    names = ("COMMENT", "STRING", "FSTRING_START", "FSTRING_MIDDLE", "FSTRING_END")
+    return frozenset(t for name in names if (t := getattr(tokenize, name, None)) is not None)
+
+
+CITATION_TOKENS = _citation_token_types()
+
+
 def _python_citations(path: Path) -> set[int]:
     """Comments and strings only, read through `tokenize`.
 
@@ -721,7 +743,7 @@ def _python_citations(path: Path) -> set[int]:
         source = handle.read()
     try:
         for token in tokenize.tokenize(io.BytesIO(source).readline):
-            if token.type in (tokenize.COMMENT, tokenize.STRING):
+            if token.type in CITATION_TOKENS:
                 found |= _citations_in(token.string)
     except (tokenize.TokenError, SyntaxError, IndentationError):  # pragma: no cover - not expected
         pytest.fail(f"{path} does not tokenize")
@@ -766,7 +788,9 @@ def test_the_citation_reader_sees_comments_and_strings_and_nothing_else(tmp_path
         'DOC = """a docstring citing #205"""\n'
         'COLOUR = "#0d3b50"\n'
         'RANGE = "#147-#149"\n'
-        'NOT_A_CITATION = "issue #1a"\n',
+        'NOT_A_CITATION = "issue #1a"\n'
+        "N = 2\n"
+        'FSTRING = f"an f-string citing #176 with {N} fields"\n',
         encoding="utf-8",
     )
     found = _python_citations(sample)
@@ -774,6 +798,11 @@ def test_the_citation_reader_sees_comments_and_strings_and_nothing_else(tmp_path
     assert found >= {147, 148, 149}, "a #low-#high range must expand"
     assert 0x0D not in found and 13 not in found, "a hex colour must not be read as a citation"
     assert 1 not in found, "'#1a' is not a citation"
+    # F64. The two lines above this one passed for the whole of Python 3.12; this one did not,
+    # because PEP 701 stopped tokenizing an f-string as a `STRING`. The controls are the point:
+    # a widened filter that was green from its first run has demonstrated nothing.
+    assert 176 in found, "a citation inside an f-string must be seen (F64)"
+    assert 2 not in found, "a replacement field's value is code, not a citation"
 
 
 def test_the_decision_heading_reader_finds_the_whole_log() -> None:

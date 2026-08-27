@@ -9,6 +9,10 @@ reviews that issued and closed them are at commit `3ecf237` (see [`record.md`](r
 v0.15.0 a finding is an entry here rather than a section in a per-release security review; the
 reason is [decision #197](adr/DECISIONS.md).
 
+A finding **issued and closed by the same release** keeps its entry, marked so in its disposition:
+the entry is where the reproduction and the measurement live, and deleting it the moment the fix
+lands would throw away the only record of what the guard could not see. F64 is the first.
+
 Run every command below from the repository root with the virtualenv active.
 
 ---
@@ -113,3 +117,37 @@ Run every command below from the repository root with the virtualenv active.
   or pins it. A slower CI runner narrows it.
 - **Disposition**: open, issued not fixed. A median or a repeated-measures comparison would be a
   behaviour change to the promotion gate, which v0.15.0 does not make.
+
+## F64 — the citation guard could not see inside an f-string, and it cost a decision entry
+
+- **What**: `tests/test_documentation.py::_python_citations` filtered `token.type in (COMMENT,
+  STRING)`. **PEP 701 (Python 3.12) moved f-strings out of `tokenize.STRING`** into
+  `FSTRING_START` / `FSTRING_MIDDLE` / `FSTRING_END`, so from the day this project moved to 3.12
+  every citation written inside an f-string was invisible to the guard that asserts a cited decision
+  still resolves — and to the measurement v0.15.0 used to decide which entries nothing cited.
+- **Reproduce**:
+  ```sh
+  python -c "
+  import sys, pathlib, tempfile; sys.path.insert(0, 'tests')
+  import test_documentation as td
+  d = pathlib.Path(tempfile.mkdtemp())
+  for label, src in {
+      'CONTROL  plain string': 'DOC = \"a string citing #176\"',
+      'CONTROL  comment     ': '# a comment citing #176',
+      'TREATMENT f-string   ': 'X = 1\nDOC = f\"citing #176 {X}\"',
+  }.items():
+      p = d / (label.split()[1] + label.split()[0] + '.py'); p.write_text(src)
+      print(label, '->', sorted(td._python_citations(p)))"
+  ```
+- **Measured**, before the fix: `CONTROL plain string -> [176]`, `CONTROL comment -> [176]`,
+  `TREATMENT f-string -> []`. Widening the filter over the whole tree surfaced exactly **one**
+  previously invisible citation — `#176` in `tests/test_security_ui.py`, in the f-string that builds
+  a failure message — and it did not resolve: v0.15.0 had deleted that entry, on the measurement
+  this blind spot corrupted.
+- **Why it matters**: the class, not the instance. A guard written against one version of a language
+  keeps reporting green after the language moves the thing it reads. The question that finds this is
+  *"what can my guard not see?"*, and it is not the question a passing test asks.
+- **Disposition**: **closed in v0.15.1** (#215). The filter is widened, the tokens are resolved by
+  `getattr` so the reader still works on an interpreter that predates PEP 701, decision #176 is
+  restored, and `test_the_citation_reader_sees_comments_and_strings_and_nothing_else` gained an
+  f-string case beside the two controls that always passed.
