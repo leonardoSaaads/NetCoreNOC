@@ -1,9 +1,8 @@
 # Where the old documentation went
 
 v0.15.0 deleted about 57 000 lines of `docs/` — the phase-gate evidence, the per-release scope
-documents, the build reports, the per-release security reviews, and the specification drafts for
-releases that have shipped. Nothing was lost. **Every deleted file is at commit `3ecf237` on `main`
-and will be there forever.**
+documents, the build reports, the security reviews, and the drafts for releases that have shipped.
+**Every deleted file is at commit `3ecf237` on `main` and will be there forever.**
 
 ```sh
 git show 3ecf237:docs/gates/v0.14.0-phase-7.md          # read one
@@ -13,6 +12,21 @@ git log --diff-filter=D --name-only v0.14.0..HEAD -- docs/   # what this release
 
 There is no ledger, no manifest and no index of removed files, deliberately: git already is one, and
 a second copy would be the thing that goes stale. The reason is [decision #197](adr/DECISIONS.md).
+
+## Reading a `docs/gates/…` citation in a docstring
+
+**A `docs/gates/`, `docs/scope/`, `docs/releases/` or `docs/security/SECURITY-REVIEW-…` path named
+anywhere in this tree is a path at `3ecf237`.** That is the one reading rule, stated here once
+rather than by editing every citation.
+
+`src/netcorenoc/` alone carries about twenty-five, **deliberately not updated**: this release's
+strongest check is that every file under `src/` is byte-identical to v0.14.0 except the version
+string, and rewriting a docstring would forfeit it to fix a reference `git show` already resolves.
+The same applies in `tests/`, `tools/` and `eval/`, where a citation is provenance for a measurement
+rather than a dependency on a file.
+
+Where a deleted document was a **runtime** dependency — a test that opened it and asserted on its
+contents — the test changed in the same commit that removed the file. There are four such places.
 
 **The only irreversible act in this repository is a force-push or a history rewrite of `main`.**
 That is the whole preservation rule, and it is in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
@@ -38,9 +52,16 @@ The temporal claim — that each plan was written before the results it governs 
 gate document. It rests on the ratifying commit, which changed nothing else and is permanent.
 `v0.14.0-gate0` carries its plan's hash in the tag's own annotation, independently of any file.
 
+## The simulated network's seed
+
+`PREREGISTRATION-0.14.0.md` §5.1 registers *"a fixed seed recorded in the gate"* without writing the
+number, so the gate document was the only place it existed outside the code. Same discipline, same
+move: the seed is **`20140000`**, copied from `docs/gates/v0.14.0-phase-6.md` §1 at `3ecf237`, and
+`tests/test_simulation.py::test_the_seed_is_the_registered_one` reads it here.
+
 ## The frozen `eval` output
 
 `python eval/harness.py | sha256sum` is
 `c2e8a0ced29d9edf986279d41089ddb68e18da65a46bdc7e9f04811e8b9b6f26` and has been since v0.7.0. It
-depends on the exact contents of `eval/corpus/`, which is why that directory is never edited to
-tidy it.
+depends on the exact contents of `eval/corpus/`, which is why that directory is never edited to tidy
+it.

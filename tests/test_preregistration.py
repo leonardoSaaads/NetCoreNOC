@@ -63,7 +63,18 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PREREGISTRATION = REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.9.0.md"
-GATE = REPO_ROOT / "docs" / "gates" / "v0.9.0-phase-1.md"
+
+# **v0.15.0: the second home moved** (DECISIONS #197, #204). Each hash used to live in the release's
+# phase-gate document as well as in this file. Those documents are deleted; the four hashes were
+# copied — not recomputed — from `docs/gates/{v0.9.0-phase-1,v0.10.0-phase-0,v0.11.0-phase-0,
+# v0.14.0-phase-0}.md` at `3ecf237` into `docs/record.md`, which names the source of each.
+#
+# **What the two-sided discipline is for is unchanged**, and it is worth restating because moving a
+# guard is exactly when its purpose gets lost: one home alone could be edited quietly in the same
+# commit as the plan it guards. Two, in different files with different reasons to exist, make that
+# an obviously deliberate diff. `docs/record.md` exists to say where the record went; a hash edited
+# there to match an edited plan is a change to that file's own claim about history.
+SECOND_HOME = REPO_ROOT / "docs" / "record.md"
 
 # Recorded in Phase 1, before any model was fitted. See docs/gates/v0.9.0-phase-1.md.
 PREREGISTRATION_SHA256 = "bb5bff851588837aa07f21c54b5301f7ada5fec3f8017a5ca4e9d7f7da2cbaef"
@@ -83,33 +94,33 @@ PREREGISTRATION_0_14_0_SHA256 = "5607328a573d9a3c78374e47ba11e6dcff76f07c023b3f2
 
 @dataclass(frozen=True)
 class Plan:
-    """One pre-registered plan, its recorded hash, and the gate document that recorded it."""
+    """One pre-registered plan, its recorded hash, and the file that records it a second time."""
 
     release: str
     path: Path
     sha256: str
-    gate: Path
+    second_home: Path
 
 
 PLANS: tuple[Plan, ...] = (
-    Plan("v0.9.0", PREREGISTRATION, PREREGISTRATION_SHA256, GATE),
+    Plan("v0.9.0", PREREGISTRATION, PREREGISTRATION_SHA256, SECOND_HOME),
     Plan(
         "v0.10.0",
         REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.10.0.md",
         PREREGISTRATION_0_10_0_SHA256,
-        REPO_ROOT / "docs" / "gates" / "v0.10.0-phase-0.md",
+        SECOND_HOME,
     ),
     Plan(
         "v0.11.0",
         REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.11.0.md",
         PREREGISTRATION_0_11_0_SHA256,
-        REPO_ROOT / "docs" / "gates" / "v0.11.0-phase-0.md",
+        SECOND_HOME,
     ),
     Plan(
         "v0.14.0",
         REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.14.0.md",
         PREREGISTRATION_0_14_0_SHA256,
-        REPO_ROOT / "docs" / "gates" / "v0.14.0-phase-0.md",
+        SECOND_HOME,
     ),
 )
 
@@ -159,18 +170,38 @@ def test_the_preregistration_has_not_been_edited(plan: Plan) -> None:
 
 
 @pytest.mark.parametrize("plan", PLANS, ids=_IDS)
-def test_the_gate_records_the_same_hash(plan: Plan) -> None:
-    """Each hash lives in two places on purpose: this constant, and the gate evidence.
+def test_the_second_home_records_the_same_hash(plan: Plan) -> None:
+    """Each hash lives in two places on purpose: this constant, and `docs/record.md`.
 
     One of them alone could be edited quietly in the same commit as the plan. Two, in different
     files with different reasons to exist, make that an obviously deliberate diff — the same
     two-sided discipline `DEBT_ALLOWLIST` uses (an entry may not be stale *and* may not be new).
     """
-    assert plan.gate.is_file(), f"{plan.gate} is missing"
-    assert plan.sha256 in plan.gate.read_text(encoding="utf-8"), (
-        f"{plan.gate.name} does not record the pre-registration's SHA-256. The gate evidence is "
-        "where the hash was first written down; if they disagree, one of them moved."
+    assert plan.second_home.is_file(), f"{plan.second_home} is missing"
+    assert plan.sha256 in plan.second_home.read_text(encoding="utf-8"), (
+        f"{plan.second_home.name} does not record {plan.path.name}'s SHA-256. It is the second "
+        "home the hash was moved to when the gate documents were deleted (DECISIONS #204); if the "
+        "two disagree, one of them moved."
     )
+
+
+def test_the_second_home_names_where_each_hash_came_from() -> None:
+    """The move must not quietly become a re-derivation.
+
+    `docs/record.md`'s hashes were **copied** out of the gate documents at `3ecf237`, not
+    recomputed from the plans — a recomputation would agree with whatever the plans say today,
+    which is the one thing this guard exists not to trust. So the record names the commit and the
+    gate document each hash came from, and that provenance is asserted rather than trusted.
+    """
+    text = SECOND_HOME.read_text(encoding="utf-8")
+    assert "3ecf237" in text, "the record does not name the commit the hashes were copied from"
+    for gate in (
+        "docs/gates/v0.9.0-phase-1.md",
+        "docs/gates/v0.10.0-phase-0.md",
+        "docs/gates/v0.11.0-phase-0.md",
+        "docs/gates/v0.14.0-phase-0.md",
+    ):
+        assert gate in text, f"the record does not name {gate} as a hash's origin"
 
 
 def test_the_plan_states_a_conclusion_for_every_registered_outcome() -> None:
