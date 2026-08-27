@@ -1460,14 +1460,24 @@ From this release an entry is about six lines: decision, reason, release.*
   and `olt_storm.json` is the same 501 events serialised compactly, so a byte-level check would have
   failed on one file and a build trusting the prediction would have replaced it with the wrong
   bytes.
+- **Measured, and it corrects the premise**: the derivation runs the *other* way at build time.
+  `eval/corpus_gen.py` reads the four fixtures and writes the corpus, and `make corpus` reproduces
+  the committed corpus byte-for-byte — so the fixtures are an input, not an output. Both copies are
+  the same stream in opposite roles, **with nothing guarding them against divergence**, and they are
+  replayed by different gates: the suite replays the fixture, `make eval` replays the corpus.
 - **Decision**: the loader returns **parsed events**, which is what every consumer wanted anyway —
   `util.fixture_events` re-encodes them to the wire and `test_api.py` iterates them — so rendering
-  never enters it. The four files are deleted. `eval/corpus/` is untouched: `eval/harness.py` reads
+  never enters it. The four files are deleted, and `corpus_gen`'s four relabel functions read the
+  corpus and recompute the labels over it. `eval/corpus/` is untouched: `eval/harness.py` reads
   `sorted(CORPUS_DIR.glob("*.json"))` and the frozen `c2e8a0ce…` depends on that directory's exact
   contents.
 - **Reason**: a copy that drifts is worse than a derivation that cannot. Verified by execution
   against the four files **before** deleting them, with a control proving each half of the strip is
   load-bearing — stripping only `description`, or only `truth`, reproduces none of them.
+- **The cost, stated**: those four relabel functions become a fixed point rather than a derivation
+  from an independent source. That is a smaller loss than it sounds, because the independent source
+  was a second copy of the same bytes that nothing compared; `make corpus` still rewrites the corpus
+  deterministically and still fails if the labelling logic changes.
 
 ## 206. Tags are kept, completed, and gate nothing (v0.15.0)
 

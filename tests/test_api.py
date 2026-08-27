@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import socket
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -224,7 +223,7 @@ async def test_end_to_end_udp_replay_to_http(
     engine_task = asyncio.create_task(engine.run())
     sender = trap_replay.Sender(("127.0.0.1", port))
     try:
-        for entry in json.loads((util.FIXTURES / "fiber_cut.json").read_text())["events"]:
+        for entry in util.scenario("fiber_cut.json")["events"]:
             sender.send(
                 entry["source"],
                 trap_replay.encode_trap(entry["trap_oid"], entry["varbinds"], "public", 1),

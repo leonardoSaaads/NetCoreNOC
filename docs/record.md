@@ -25,8 +25,23 @@ string, and rewriting a docstring would forfeit it to fix a reference `git show`
 The same applies in `tests/`, `tools/` and `eval/`, where a citation is provenance for a measurement
 rather than a dependency on a file.
 
-Where a deleted document was a **runtime** dependency — a test that opened it and asserted on its
-contents — the test changed in the same commit that removed the file. There are four such places.
+Where a deleted document was a **runtime** dependency — a test that *opened* it and asserted on its
+contents, rather than citing it — the test changed with the file. There are five such places, and
+each moved to the live document that now holds what the deleted one held:
+
+| Test | Read | Now reads |
+|---|---|---|
+| `test_preregistration.py` | the four hashes' second home in the phase gates | this page |
+| `test_simulation.py` | the registered seed in `v0.14.0-phase-6.md` | this page |
+| `test_documentation.py` | the release table in `ROADMAP-0.8-TO-0.13.md` | [`plans/releases.md`](plans/releases.md) |
+| `test_documentation.py` | a build report, for a claim's provenance | the release table, plus a red demonstration and its control |
+| `test_governance.py` | *"not tenant isolation"* in three deleted documents | [`security.md`](security.md), `README.md`, `MIGRATION.md` |
+
+The last one is the one that nearly slipped: it read `docs/scope/SCOPE-0.7.md`,
+`docs/architecture/DESIGN.md` and `docs/security/threat-model.md`, and the deletion left it red.
+That is the guard doing its job — the claim it protects is that an operator is told visibility
+scoping is not tenant isolation, and two of the three replacements had to be *written* rather than
+repointed.
 
 **The only irreversible act in this repository is a force-push or a history rewrite of `main`.**
 That is the whole preservation rule, and it is in [`CONTRIBUTING.md`](../CONTRIBUTING.md).

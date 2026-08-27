@@ -530,9 +530,11 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
 
     root = Path(__file__).resolve().parent.parent
     for relative in (
-        "docs/scope/SCOPE-0.7.md",
-        "docs/architecture/DESIGN.md",
-        "docs/security/threat-model.md",
+        # v0.15.0: SCOPE-0.7.md, DESIGN.md and security/threat-model.md are deleted (#197, #198).
+        # The control is that the limit is stated where an OPERATOR reads it, not that it is
+        # stated in seven files, so it follows the readers rather than being relaxed: the three
+        # deleted homes become the one page that replaced all of docs/security/.
+        "docs/security.md",
         "README.md",
         "MIGRATION.md",
         # v0.13.0: index.html is a mount point and carries no copy. The claim moved to the

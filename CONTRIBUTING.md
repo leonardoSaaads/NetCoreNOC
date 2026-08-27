@@ -132,7 +132,7 @@ git ls-remote --tags origin                                  # verify
 ## Commit and PR conventions
 
 - **Conventional Commits**, one logical change per commit: `fix(receiver): drop oversized varbind
-  before quarantine`, `docs(adr): record decision #207`. Types in use: `feat`, `fix`, `docs`,
+  before quarantine`, `docs(adr): record the next decision`. Types in use: `feat`, `fix`, `docs`,
   `refactor`, `test`, `chore`, `build`, `ci`.
 - **Branch off the default branch**, keep the branch focused, open a pull request, and fill in
   `.github/PULL_REQUEST_TEMPLATE.md`.

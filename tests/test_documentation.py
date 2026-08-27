@@ -677,3 +677,110 @@ def test_a_document_carrying_none_of_the_phrases_stays_green(
     )
     _drive_guard_over(doc, monkeypatch)
     test_the_recorded_contradiction_is_gone()  # must not raise
+
+
+# --- the decision citations resolve (#201) ---------------------------------------------------
+#
+# v0.15.0 dropped 50 entries from `DECISIONS.md` and renumbered nothing, on a measurement of which
+# numbers the tree cites. The measurement was made in a scratch script and then the entries were
+# deleted, which is the wrong order: principle 8 says the instrument precedes the change it
+# measures. This is the instrument, added in the same release, so that the next person to condense
+# the log cannot drop a cited entry quietly.
+
+_CITATION = re.compile(r"(?<![A-Za-z0-9])#(\d{1,3})(?![0-9A-Za-z])")
+_CITATION_RANGE = re.compile("#(\\d+)\\s*[-\u2013]\\s*#(\\d+)")  # ASCII hyphen or en dash
+_DECISION_HEADING = re.compile(r"^## (\d+)\. ", re.MULTILINE)
+
+
+def _decision_numbers() -> set[int]:
+    text = (DOCS / "adr" / "DECISIONS.md").read_text(encoding="utf-8")
+    return {int(n) for n in _DECISION_HEADING.findall(text)}
+
+
+def _citations_in(text: str) -> set[int]:
+    """Every `#N` in prose, with `#147-#149` expanded to the range it names."""
+    found = {int(n) for n in _CITATION.findall(text)}
+    for low, high in _CITATION_RANGE.findall(text):
+        if int(high) - int(low) < 60:  # a range, not two unrelated numbers on one line
+            found.update(range(int(low), int(high) + 1))
+    return found
+
+
+def _python_citations(path: Path) -> set[int]:
+    """Comments and strings only, read through `tokenize`.
+
+    Never the source text: a hex colour in a CSS-like literal is not a citation, and a regex over
+    raw bytes cannot tell it from one. `ast` would miss comments,
+    which is where most citations live, so this is the one tool that sees both and nothing else.
+    """
+    import io
+    import tokenize
+
+    found: set[int] = set()
+    with path.open("rb") as handle:
+        source = handle.read()
+    try:
+        for token in tokenize.tokenize(io.BytesIO(source).readline):
+            if token.type in (tokenize.COMMENT, tokenize.STRING):
+                found |= _citations_in(token.string)
+    except (tokenize.TokenError, SyntaxError, IndentationError):  # pragma: no cover - not expected
+        pytest.fail(f"{path} does not tokenize")
+    return found
+
+
+def _citing_files() -> list[tuple[Path, set[int]]]:
+    out: list[tuple[Path, set[int]]] = []
+    python = [
+        *sorted((REPO_ROOT / "src").rglob("*.py")),
+        *sorted((REPO_ROOT / "tests").rglob("*.py")),
+    ]
+    for path in python:
+        out.append((path, _python_citations(path)))
+    top_level = [REPO_ROOT / "README.md", REPO_ROOT / "CONTRIBUTING.md"]
+    for path in [*sorted(DOCS.rglob("*.md")), *top_level]:
+        out.append((path, _citations_in(path.read_text(encoding="utf-8"))))
+    return out
+
+
+def test_every_decision_number_cited_in_the_tree_resolves_to_an_entry() -> None:
+    """The guard decision #201 rests on. A citation naming a deleted entry is a dangling pointer
+    that no link checker can see, because `#154` is not a link."""
+    known = _decision_numbers()
+    dangling: dict[str, list[int]] = {}
+    for path, cited in _citing_files():
+        missing = sorted(n for n in cited if n not in known)
+        if missing:
+            dangling[str(path.relative_to(REPO_ROOT))] = missing
+    assert not dangling, (
+        "these files cite decision numbers that no longer resolve in docs/adr/DECISIONS.md; "
+        f"an entry may be removed ONLY when nothing cites it (#201): {dangling}"
+    )
+
+
+def test_the_citation_reader_sees_comments_and_strings_and_nothing_else(tmp_path: Path) -> None:
+    """The control. Without it the test above passes on a reader that finds no citations at all,
+    and on one that finds `#0d3b50` in a stylesheet."""
+    sample = tmp_path / "sample.py"
+    sample.write_text(
+        "# a comment citing #197\n"
+        'DOC = """a docstring citing #205"""\n'
+        'COLOUR = "#0d3b50"\n'
+        'RANGE = "#147-#149"\n'
+        'NOT_A_CITATION = "issue #1a"\n',
+        encoding="utf-8",
+    )
+    found = _python_citations(sample)
+    assert 197 in found and 205 in found, "a citation in a comment or a docstring must be seen"
+    assert found >= {147, 148, 149}, "a #low-#high range must expand"
+    assert 0x0D not in found and 13 not in found, "a hex colour must not be read as a citation"
+    assert 1 not in found, "'#1a' is not a citation"
+
+
+def test_the_decision_heading_reader_finds_the_whole_log() -> None:
+    """The other control: an empty `known` set would make the guard above fail loudly rather than
+    silently, but a reader that found only the FIRST entry would make it fail for the wrong reason,
+    and one that matched too loosely would make it unfailable."""
+    known = _decision_numbers()
+    assert len(known) > 100, f"only {len(known)} decision headings parsed; the reader is wrong"
+    assert {197, 201, 205} <= known, "the entries v0.15.0 added must parse"
+    assert 3 in known and max(known) >= 206

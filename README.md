@@ -48,6 +48,12 @@ alarm classes), **Evidence** (labelling, corpus, judge & promotion) and **Admini
 tokens, settings, link scorer, governance, quarantine, audit). A view you cannot use is not
 rendered — a viewer sees no `Administer` group at all.
 
+Four roles (`viewer`, `operator`, `editor`, `admin`) and an optional per-principal visibility scope
+narrow what a signed-in identity may see. **Visibility scoping is not tenant isolation**, and the
+distinction is load-bearing: correlation learns across the whole estate, so a scoped principal sees
+a filtered view of one shared engine rather than a private one.
+[`docs/security.md`](docs/security.md) states exactly what it does and does not give you.
+
 The screen the product exists for is **Situations**: dense cards that expand in place to show the
 probable root cause, the member alarms, and then *Why these were grouped* — one row per link with
 the score and **the three named terms, each with its number beside its bar**.
@@ -91,7 +97,7 @@ Start at [`docs/README.md`](docs/README.md).
 | [`docs/configure.md`](docs/configure.md) | Every environment variable and what it costs |
 | [`docs/correlation.md`](docs/correlation.md) | How two alarms come to be linked |
 | [`docs/console.md`](docs/console.md) | The views, and four things the console does not do |
-| [`docs/security.md`](docs/security.md) | The posture, the perimeter, RBAC, the audit chain |
+| [`docs/security.md`](docs/security.md) | The posture, the perimeter, RBAC, visibility scoping, the audit chain |
 | [`docs/troubleshoot.md`](docs/troubleshoot.md) | What breaks and what the symptom looks like |
 | [`docs/architecture.md`](docs/architecture.md) | The layers, the rules, and the three-phase design |
 | [`docs/findings.md`](docs/findings.md) | Every open finding, with a reproduction command |
