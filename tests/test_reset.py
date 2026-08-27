@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from netcorenoc.events import TrapEvent, Varbind
+from netcorenoc.ingest.events import TrapEvent, Varbind
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 

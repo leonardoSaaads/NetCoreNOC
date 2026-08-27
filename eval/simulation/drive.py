@@ -75,9 +75,9 @@ from netcorenoc.api.routes_promotion import (  # noqa: E402
 from netcorenoc.engine.correlate import scoring  # noqa: E402
 from netcorenoc.engine.model import boosting, forest, model_version, tree  # noqa: E402
 from netcorenoc.engine.model.training import TrainingRow  # noqa: E402
-from netcorenoc.events import TrapEvent  # noqa: E402
+from netcorenoc.ingest.events import TrapEvent  # noqa: E402
+from netcorenoc.ingest.receiver import parse_trap  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
-from netcorenoc.receiver import parse_trap  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 from simulation import diagnose  # noqa: E402
 from simulation.generator import INCREMENT_INCIDENTS, SEED, generate  # noqa: E402

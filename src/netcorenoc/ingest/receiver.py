@@ -19,8 +19,8 @@ from typing import Any
 from pyasn1.codec.ber import decoder
 from pysnmp.proto import api
 
-from netcorenoc import known_oids
-from netcorenoc.events import QuarantinedPacket, TrapEvent, Varbind
+from netcorenoc.ingest import known_oids
+from netcorenoc.ingest.events import QuarantinedPacket, TrapEvent, Varbind
 
 _PMOD = api.PROTOCOL_MODULES[api.SNMP_VERSION_2C]
 _V1MOD = api.PROTOCOL_MODULES[api.SNMP_VERSION_1]

@@ -8,8 +8,8 @@ import httpx
 
 from netcorenoc.api import create_app
 from netcorenoc.crosscutting import auth
+from netcorenoc.ingest.receiver import QueueItem
 from netcorenoc.main import Engine
-from netcorenoc.receiver import QueueItem
 from netcorenoc.store import Store
 
 PW = "correct horse battery staple"  # 28 chars, satisfies the 12-char policy

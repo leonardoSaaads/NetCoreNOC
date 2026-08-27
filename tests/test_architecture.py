@@ -696,11 +696,11 @@ def test_every_javascript_module_opens_with_a_block_comment() -> None:
 #: **When a later release legitimately changes one of these**, it updates this table in the same
 #: commit — the reviewable-line-in-a-diff discipline `UI_HASHES` has used since v0.11.0.
 TRAP_PATH_HASHES: dict[str, str] = {
-    "capture.py": "cb62258083b6f920d26a5948f4ee0fd58af9f368347c598b13a8fbcebc3aa0b5",
+    "capture.py": "71a531b44addaedc5fb2f365a134e05dc2bfb6d084bb6c22fdc01b1b7f844ec2",
     "correlate.py": "b550497367232a99c3bc8814cab72dbcb665dcc29891c15b6a3e6eab68a11165",
-    "engine.py": "4198049636f1976dd9ff9bd47bdb3f98d050e86c2d64e427875982c7a9236b7c",
-    "learn.py": "7545e7d9d33563b9fa832ca5e958f0ef24337afc540f6c5b9ad1a91c7fcddf63",
-    "receiver.py": "139611c9f69bf54e87d8099cbfa3eb4820355b2f758106c1866dc4bbc8bdb441",
+    "engine.py": "85cff6b1c05950c32ac9ec7b8ee1843e0fb3b2bce56f9575e447653059188b58",
+    "learn.py": "d3b6bf24b422795fed6a1f9c73ed4262bad668379872d8e27c69971368486a0c",
+    "receiver.py": "451886a5b70cf3839c9c03b4d9693d75776809963574b5386cbcc639243db891",
 }
 
 
@@ -717,11 +717,11 @@ TRAP_PATH_HASHES: dict[str, str] = {
 #: a permanent test for the five that matter most, so a later release cannot change a trap-path
 #: module's body while updating the raw hash in the same breath and call it a move.
 TRAP_PATH_BODY_HASHES: dict[str, str] = {
-    "capture.py": "103c97353c1ad55560c4819ada8bf7adb89590a2af42b33f9f6a12c7afdc37a8",
-    "correlate.py": "e2bfcf768b0073ce70ce47166dde8b4fc022a0b733f252e85466d32eedeaebda",
-    "engine.py": "d666eb915bb1b3ebc083d66d28f678ceaa86fc527a15206f18d86ad042a5bb5f",
-    "learn.py": "8d07a7b12aa1afe09b64e9a1e78cdb3094be3752881514a1bf61db807c2fb4ba",
-    "receiver.py": "f8290c1b99a2803e519c10e247a8041896a1fd0dd9e7c6f4192ec455eacfd5d6",
+    "capture.py": "3d4b1c23ee38e761a490ddcbeb5ae30aba90b526725fe137945debced368d9ab",
+    "correlate.py": "a46255038f440951a7b0f0505a691e74e0839960c61d0e640109385ab3ff08d7",
+    "engine.py": "789488173e6145ca00624de76b760826dd16ee7b9bff17a32e0515f30f3fd2d5",
+    "learn.py": "29f39ef06cec70e6030867221db7c695a346ffa9640747127ae1bf5c4508215c",
+    "receiver.py": "092572621c1a191fd66f7eacffea296b5f324e52578e498bd3128e27c847af96",
 }
 
 
@@ -739,9 +739,22 @@ def _body(source: str) -> str:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import | ast.ImportFrom):
             drop.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
-    return "\n".join(
-        line for number, line in enumerate(source.splitlines(), start=1) if number not in drop
-    )
+    # …and the blank lines the import block is separated by. Sorting an import into a different
+    # position moves a blank line with it — `varbind_profile.py` lost one when `known_oids` sorted
+    # past a comment — and a blank line BETWEEN imports is the import block's layout, not the
+    # module's substance. Only blanks touching a removed line go; one elsewhere in the file stays,
+    # which is what the control below asserts.
+    lines = source.splitlines()
+    changed = True
+    while changed:
+        changed = False
+        for number, line in enumerate(lines, start=1):
+            if line.strip() or number in drop:
+                continue
+            if (number - 1) in drop or (number + 1) in drop:
+                drop.add(number)
+                changed = True
+    return "\n".join(line for number, line in enumerate(lines, start=1) if number not in drop)
 
 
 def test_the_trap_path_bodies_are_unchanged_by_the_move() -> None:
@@ -789,6 +802,8 @@ def test_the_body_strip_is_load_bearing() -> None:
         "span the right instrument and a pattern the wrong one"
     )
     assert _body("VALUE = 1\n") == "VALUE = 1", "a file with no imports must survive intact"
+    # A blank line that is nowhere near an import is substance and must survive.
+    assert _body("A = 1\n\nB = 2\n") == "A = 1\n\nB = 2", "a blank line away from imports was eaten"
 
 
 def test_the_trap_path_is_byte_identical_to_the_release_this_one_branched_from() -> None:
@@ -853,8 +868,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "ed2e44ce9ae94c8b7302be092cfd1632746a439b1e01f9ff906130858a0b97e2"
-SRC_FILE_COUNT = 172
+SRC_TREE_DIGEST = "e393d5423ee5737e965eef05a60bf2fc087a7597f6535c16dbe7dae5901ff9ca"
+SRC_FILE_COUNT = 173
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

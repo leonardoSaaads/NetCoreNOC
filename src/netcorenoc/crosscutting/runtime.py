@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from netcorenoc.receiver import Network, parse_allowlist
+from netcorenoc.ingest.receiver import Network, parse_allowlist
 
 
 @dataclass

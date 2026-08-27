@@ -34,7 +34,7 @@ from netcorenoc.crosscutting import auth
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import LegacyTokenRemovedError, Settings, legacy_env_error
 from netcorenoc.engine.operate.engine import Engine
-from netcorenoc.receiver import QueueItem, start_receiver
+from netcorenoc.ingest.receiver import QueueItem, start_receiver
 from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")

@@ -97,9 +97,22 @@ def strip_imports(source: str) -> str:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import | ast.ImportFrom):
             drop.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
-    return "\n".join(
-        line for number, line in enumerate(source.splitlines(), start=1) if number not in drop
-    )
+    # …and the blank lines the import block is separated by. Sorting an import into a different
+    # position moves a blank line with it — `varbind_profile.py` lost one when `known_oids` sorted
+    # past a comment — and a blank line BETWEEN imports is the import block's layout, not the
+    # module's substance. Only blanks touching a removed line go; one elsewhere in the file stays,
+    # which is what the control below asserts.
+    lines = source.splitlines()
+    changed = True
+    while changed:
+        changed = False
+        for number, line in enumerate(lines, start=1):
+            if line.strip() or number in drop:
+                continue
+            if (number - 1) in drop or (number + 1) in drop:
+                drop.add(number)
+                changed = True
+    return "\n".join(line for number, line in enumerate(lines, start=1) if number not in drop)
 
 
 def digest(source: str) -> str:

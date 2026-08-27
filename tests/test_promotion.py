@@ -8,7 +8,7 @@ import asyncio
 import pytest
 
 from netcorenoc.engine.correlate import varbind_profile
-from netcorenoc.events import TrapEvent, Varbind
+from netcorenoc.ingest.events import TrapEvent, Varbind
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 

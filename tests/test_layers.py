@@ -40,78 +40,18 @@ STACK: list[str] = ["http", "engine", "data", "ingest"]
 CROSS_CUTTING = "cross-cutting"
 
 LAYER_OF: dict[str, str] = {
-    # http — the delivery layer, plus the process entry point (see the note below)
+    # http — the delivery layer, plus the process entry surface (see the note below)
     "api": "http",
     "main": "http",
     "runner": "http",
     "__main__": "http",
-    # engine — the domain. v0.15.1 gathered it into `engine/`, in six subpackages, so this one
-    # entry classifies what 46 did (DECISIONS #207, #208).
+    # engine — the domain, in six subpackages under `engine/` (DECISIONS #207, #208)
     "engine": "engine",
-    # v0.8.0. Engine-layer because it consumes a correlation decision and writes through the
-    # data layer — a downward edge. It is NOT ingest: nothing here is reachable from
-    # `receiver.datagram_received`, which is prime directive 1.
-    # The verdict side of the same feature. Split from `capture.py` by *path*, not by size:
-    # capture runs per activation on the ingest path, this runs per operator verdict.
-    # v0.8.1. The retention policy and its durable form. Split from `capture.py` by *size* — and
-    # unlike `labels.py` that is the honest reason, recorded as such (DECISIONS #113). Engine-layer
-    # and dependency-free: it imports nothing from this package, so it cannot violate any direction.
-    # The bias report reads the dataset and formats it. Engine-layer, not http: it is a CLI
-    # deliverable by design (§8.1) — a route would add HTTP surface to a scope bypass, and a
-    # deterministic CLI report can be a byte-for-byte gate where a UI card never could.
-    # v0.9.0. The champion-agreement report — the same compute/render seam, one layer up from the
-    # store and one below the CLI. Engine-layer for the reason `bias.py` is: a CLI deliverable by
-    # design (DECISIONS #115), because a route would add HTTP surface to a scope bypass and could
-    # never be a byte-for-byte gate.
-    # v0.10.1 (B1). Split from `agreement.py` when routing incident identity through
-    # `netcorenoc.incidents` took it past 400 lines: what a bag IS and how one is read,
-    # apart from what is measured over a set of them. Engine-layer for the same reason.
-    # v0.9.0 — shadow mode. All engine-layer: the challenger consumes the same `LinkFeatures` the
-    # correlator builds and writes downward through the data layer, exactly as `capture.py` does.
-    # **None of them is ingest**, and none is reachable from `receiver.datagram_received`.
-    # v0.10.0 — the honest judge. Engine-layer for the same reason the shadow modules are:
-    # they consume stored evidence and read downward through the data layer, and none of them
-    # is reachable from `receiver.datagram_received`.
-    #
-    # `incidents` is pure arithmetic over a mapping and imports NOTHING from this package, so
-    # it cannot violate any direction — the same standing `retention_policy` has.
-    # v0.11.0 — champion/challenger. Engine-layer for the reason every module above is: they
-    # consume stored evidence and read downward through the data layer, and none is reachable from
-    # `receiver.datagram_received`.
-    #
-    # **Exactly two new modules, and that is a scope rule rather than an outcome** (build prompt
-    # VII.6): one model-version module, one promotion module, and dispatch inside the
-    # `scorer_lifecycle` that already exists. No plugin registry, no adapter layer, no third module
-    # that would be v0.13.0 starting early.
-    #
-    # `model_version` is pure — it parses, validates and constructs, touching no store and no clock
-    # — which is what lets the load path call it without acquiring anything.
-    # Split out of `promotion.py` at the 400-line guard, onto a seam that was already there: this
-    # answers to `DATA-LINEAGE.md` §4 and the gate answers to the pre-registration (DECISIONS #165).
-    # v0.14.0 — the model family. Engine-layer for the reason every model module above is:
-    # they consume features the correlator built and none is reachable from
-    # `receiver.datagram_received`.
-    #
-    # `scorer_contract` is the scoring **contract** split out of `scoring.py` at the 400-line guard
-    # (DECISIONS #191). Classified `engine` beside `scoring`, not cross-cutting: it is the domain's
-    # own vocabulary, and cross-cutting is for concerns every layer has.
-    # `background` is DATA — the registered attribution background set and nothing else. It imports
-    # NOTHING from this package, so it cannot violate any direction, the same standing
-    # `retention_policy` and `incidents` have.
-    # `attribution` is pure arithmetic over that data plus the contract. `cart` is the shared fit.
-    # The three kind modules own their own rules and documents (DECISIONS #187).
-    # v0.14.0 — the four named quantities for both arms. Engine-layer beside `promotion`, and a
-    # separate module for `evaluation_folds`' reason: the HTTP surface owns what a request may
-    # assert (nothing) and this owns what the server derives.
     # data — one SQLite connection under one asyncio lock
     "store": "data",
     # ingest — the wire
-    "receiver": "ingest",
-    "events": "ingest",
-    "known_oids": "ingest",
-    # cross-cutting — every layer's concern, no layer's private concern. v0.15.1 gathered the
-    # five loose modules and the two packages into `crosscutting/`, so ONE entry now classifies
-    # what seven did: the layer is the directory (DECISIONS #207, #209).
+    "ingest": "ingest",
+    # cross-cutting — every layer's concern, no layer's private concern
     "crosscutting": "cross-cutting",
     "__init__": "cross-cutting",
 }
@@ -305,7 +245,7 @@ def test_cross_cutting_imports_only_cross_cutting() -> None:
     One known, recorded exception: `runtime.py` -> `receiver.py`, named in §1's violation table and
     on the ROADMAP, deferred (not this release's scope). It is listed rather than hidden.
     """
-    known = {("crosscutting", "receiver")}
+    known = {("crosscutting", "ingest")}
     violations: list[str] = []
     for key, path in _module_files():
         if _layer(key) != CROSS_CUTTING:

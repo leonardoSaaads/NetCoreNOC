@@ -12,8 +12,8 @@ import httpx
 import pytest
 
 from netcorenoc.api import create_app
+from netcorenoc.ingest.receiver import QueueItem
 from netcorenoc.main import Engine, Settings, run
-from netcorenoc.receiver import QueueItem
 from netcorenoc.store import Store
 
 import trap_replay
@@ -215,7 +215,7 @@ async def test_end_to_end_udp_replay_to_http(
     client: httpx.AsyncClient, engine_env: tuple[Engine, asyncio.Queue[QueueItem]]
 ) -> None:
     """The demo path: real trap PDUs over UDP, verified through the HTTP API."""
-    from netcorenoc.receiver import start_receiver
+    from netcorenoc.ingest.receiver import start_receiver
 
     engine, queue = engine_env
     transport, _receiver = await start_receiver(queue, "127.0.0.1", 0)

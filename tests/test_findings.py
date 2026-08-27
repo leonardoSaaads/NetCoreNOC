@@ -9,8 +9,9 @@ import logging
 
 import pytest
 
-from netcorenoc import main, receiver
+from netcorenoc import main
 from netcorenoc.crosscutting.logsetup import RedactionFilter, configure_logging
+from netcorenoc.ingest import receiver
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 

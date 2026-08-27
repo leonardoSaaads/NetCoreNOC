@@ -42,7 +42,6 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from netcorenoc import known_oids
 from netcorenoc.engine.correlate import severity
 from netcorenoc.engine.correlate.correlate import Correlator, ScoredLink, WindowAlarm
 from netcorenoc.engine.correlate.learn import STORM_ALARMS, STORM_DAMPING, Learner
@@ -55,8 +54,9 @@ from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
 from netcorenoc.engine.operate.maintenance import MaintenanceMixin
 from netcorenoc.engine.operate.scorer_lifecycle import ScorerLifecycleMixin
-from netcorenoc.events import Fingerprint, QuarantinedPacket, TrapEvent
-from netcorenoc.receiver import MAX_INSTANCE_CHARS, QueueItem
+from netcorenoc.ingest import known_oids
+from netcorenoc.ingest.events import Fingerprint, QuarantinedPacket, TrapEvent
+from netcorenoc.ingest.receiver import MAX_INSTANCE_CHARS, QueueItem
 from netcorenoc.store import FeedbackResult, Store
 
 log = logging.getLogger("netcorenoc")

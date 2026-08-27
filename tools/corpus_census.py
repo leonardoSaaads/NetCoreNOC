@@ -53,9 +53,9 @@ from typing import Any
 
 from netcorenoc.engine.dataset import incidents
 from netcorenoc.engine.dataset.labels import Exclusion, LabelContext, LabelScope
-from netcorenoc.events import TrapEvent
+from netcorenoc.ingest.events import TrapEvent
+from netcorenoc.ingest.receiver import parse_trap
 from netcorenoc.main import Engine
-from netcorenoc.receiver import parse_trap
 from netcorenoc.store import Store
 
 import trap_replay

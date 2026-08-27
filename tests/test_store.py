@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from netcorenoc.events import QuarantinedPacket
+from netcorenoc.ingest.events import QuarantinedPacket
 from netcorenoc.store import EdgeRow, Store
 
 import util

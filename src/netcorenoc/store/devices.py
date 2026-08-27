@@ -8,7 +8,7 @@ in-memory so the hot path does not re-query. The caches (``_device_ids``, ``_ne_
 
 from __future__ import annotations
 
-from netcorenoc import known_oids
+from netcorenoc.ingest import known_oids
 from netcorenoc.store.base import StoreBase
 from netcorenoc.store.types import TOUCH_INTERVAL_S
 

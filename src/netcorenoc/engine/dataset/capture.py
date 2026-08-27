@@ -60,7 +60,7 @@ from netcorenoc.engine.dataset.retention_policy import (
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.engine.correlate.learn import Learner
-    from netcorenoc.events import TrapEvent
+    from netcorenoc.ingest.events import TrapEvent
     from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")

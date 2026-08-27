@@ -9,7 +9,7 @@ from typing import Any
 
 from netcorenoc.engine.correlate import severity
 from netcorenoc.engine.correlate.varbind_profile import VarbindProfiler
-from netcorenoc.events import TrapEvent, Varbind
+from netcorenoc.ingest.events import TrapEvent, Varbind
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 

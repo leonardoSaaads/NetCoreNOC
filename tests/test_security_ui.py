@@ -17,9 +17,9 @@ import httpx
 import pytest
 
 from netcorenoc.api import CSP, UI_DIR, create_app
-from netcorenoc.events import Varbind
+from netcorenoc.ingest.events import Varbind
+from netcorenoc.ingest.receiver import QueueItem
 from netcorenoc.main import Engine
-from netcorenoc.receiver import QueueItem
 from netcorenoc.store import Store
 
 import apisource

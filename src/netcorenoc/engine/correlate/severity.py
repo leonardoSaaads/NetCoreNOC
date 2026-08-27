@@ -21,8 +21,8 @@ import statistics
 from dataclasses import dataclass
 from itertools import pairwise
 
-from netcorenoc import known_oids
 from netcorenoc.engine.correlate.varbind_profile import MAX_DISPLAY_CHARS, VarbindProfiler
+from netcorenoc.ingest import known_oids
 
 SEVERITY_MAX_DISTINCT = 8  # a severity field has a small range; more is an identifier or a count
 SEVERITY_MIN_OBS = 200  # observations of the varbind on the NE before it can be confirmed

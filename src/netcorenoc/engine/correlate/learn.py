@@ -18,7 +18,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from netcorenoc import known_oids
+from netcorenoc.ingest import known_oids
 from netcorenoc.store import EdgeRow, Store
 
 LAMBDA = 0.05  # forgetting factor per learning epoch (closed situation)

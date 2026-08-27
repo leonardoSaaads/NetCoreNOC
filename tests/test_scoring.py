@@ -549,7 +549,7 @@ def test_f24_datagram_received_is_unchanged_and_touches_no_scoring() -> None:
     score anything — asserted against its source so a future edit has to face this test."""
     import inspect
 
-    from netcorenoc import receiver
+    from netcorenoc.ingest import receiver
 
     source = inspect.getsource(receiver.TrapReceiver.datagram_received)
     for forbidden in ("scorer", "scoring", "score", "config", "await", "lock", "execute"):

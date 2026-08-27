@@ -557,11 +557,7 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
 
 
 def test_f33_receiver_does_not_import_the_governance_modules() -> None:
-    from pathlib import Path
-
-    source = (Path(__file__).resolve().parent.parent / "src/netcorenoc/receiver.py").read_text(
-        encoding="utf-8"
-    )
+    source = util.module_path("receiver.py").read_text(encoding="utf-8")
     for forbidden in ("rbac", "shaping", "governance"):
         assert forbidden not in source, f"receiver.py must not reference {forbidden!r} (F33)"
 
@@ -570,7 +566,7 @@ def test_f33_datagram_received_gained_nothing() -> None:
     """The v0.6.0 F24 assertion, extended with the governance identifiers."""
     import inspect
 
-    from netcorenoc.receiver import TrapReceiver
+    from netcorenoc.ingest.receiver import TrapReceiver
 
     source = inspect.getsource(TrapReceiver.datagram_received)
     for forbidden in (

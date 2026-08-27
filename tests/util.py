@@ -10,9 +10,9 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from netcorenoc.events import TrapEvent, Varbind
+from netcorenoc.ingest.events import TrapEvent, Varbind
+from netcorenoc.ingest.receiver import QueueItem, parse_trap
 from netcorenoc.main import Engine
-from netcorenoc.receiver import QueueItem, parse_trap
 
 import trap_replay
 

@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from netcorenoc import known_oids
-
 # Imported back from the extraction, and **re-exported** in the PEP 484 `as` form so every name
 # `varbind_profile` exported at v0.7.3 still resolves from here: `severity.py` reads
 # `MAX_DISPLAY_CHARS`, `tests/test_promotion.py` reads `ENTITY_PROMOTE_SCORE`, and
@@ -34,6 +32,7 @@ from netcorenoc.engine.correlate.varbind_accum import Accumulator as Accumulator
 from netcorenoc.engine.correlate.varbind_accum import Candidate as Candidate
 from netcorenoc.engine.correlate.varbind_accum import _CoOccur as _CoOccur
 from netcorenoc.engine.correlate.varbind_accum import value_hash as value_hash
+from netcorenoc.ingest import known_oids
 
 # -- constants (one block, one line each) -------------------------------------------------
 W_R, W_X, W_D = 0.35, 0.45, 0.20  # entity-score term weights (X decisive)

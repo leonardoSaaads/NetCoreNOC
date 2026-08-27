@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-from netcorenoc.events import QuarantinedPacket, TrapEvent
+from netcorenoc.ingest.events import QuarantinedPacket, TrapEvent
 from netcorenoc.store.devices import DeviceMixin
 from netcorenoc.store.types import IngestResult
 
