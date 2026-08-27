@@ -72,12 +72,18 @@ def test_every_increment_holds_the_quota_exactly() -> None:
 
 
 def test_the_seed_is_the_registered_one() -> None:
-    """§5.1: *"a fixed seed recorded in the gate"*. It is recorded in two places on purpose."""
+    """§5.1: *"a fixed seed recorded in the gate"*. It is recorded in two places on purpose.
+
+    **v0.15.0: the second place moved** (DECISIONS #197, #204). The gate documents are deleted; the
+    number was copied from `docs/gates/v0.14.0-phase-6.md` §1 at `3ecf237` into `docs/record.md`,
+    which is now the second file. What the guard is for is unchanged: one home alone could be edited
+    quietly in the same commit as the generator, two in different files make that a deliberate diff.
+    """
     assert SEED == 20_140_000
-    gate = REPO_ROOT / "docs" / "gates" / "v0.14.0-phase-6.md"
-    assert gate.is_file(), "the gate that records the seed is missing"
-    assert str(SEED) in gate.read_text(encoding="utf-8"), (
-        "the gate does not record the generator's seed; §5.1 requires it to"
+    record = REPO_ROOT / "docs" / "record.md"
+    assert record.is_file(), "the file that records the seed is missing"
+    assert str(SEED) in record.read_text(encoding="utf-8"), (
+        "docs/record.md does not record the generator's seed; §5.1 requires a second home for it"
     )
 
 

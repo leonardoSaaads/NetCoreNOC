@@ -1,12 +1,12 @@
 # Contributing to NetCoreNOC
 
-Thanks for your interest. NetCoreNOC is a **zero-configuration SNMP trap correlator** with a
-deliberately small surface: one Python 3.12 asyncio process, one SQLite (WAL) file, one static
-web UI, **no build step and no runtime dependencies beyond five libraries**. Contributions that
-keep it that small and legible are the easiest to accept.
+NetCoreNOC is a **zero-configuration SNMP trap correlator** with a deliberately small surface: one
+Python 3.12 asyncio process, one SQLite (WAL) file, one static web console, **no build step and no
+runtime dependencies beyond five libraries**. Contributions that keep it that small and legible are
+the easiest to accept.
 
-New here? Read the [repository map](docs/architecture/repo-map.md) and the
-[documentation index](docs/README.md) first.
+New here? Read [`docs/architecture.md`](docs/architecture.md) and
+[`docs/README.md`](docs/README.md).
 
 ## Development setup
 
@@ -14,140 +14,145 @@ Python **3.12+** is required.
 
 ```sh
 python3.12 -m venv .venv
-.venv/bin/pip install -e .[dev]
+.venv/bin/pip install -e ".[dev]"
+make qa        # lint + typecheck + dead code + bandit + tests(+coverage) + eval non-regression
+make security  # adds pip-audit (queries PyPI, so it is not in `qa`)
 ```
 
-Run the whole quality bar:
-
-```sh
-make qa        # lint + typecheck + dead-code + tests(+coverage) + eval non-regression
-make security  # bandit + pip-audit
-```
-
-Run the app locally (bind a high trap port so no privileges are needed):
+Run it locally on an unprivileged trap port:
 
 ```sh
 NETCORENOC_TRAP_PORT=1162 .venv/bin/python -m netcorenoc.main
 # the one-time bootstrap admin password prints to the console on first start
 ```
 
-## The quality bar (every change must keep `make qa` green)
+## The quality bar
 
-`make qa` is `lint typecheck deadcode test eval`; `make security` adds `bandit` and
-`pip-audit`. Concretely, a change must keep all of these green:
+`make qa` is `lint typecheck deadcode scan test eval`. Concretely, a change must keep all of these
+green:
 
-- **`ruff check` + `ruff format --check`** — lint and formatting (line length 100).
+- **`ruff check` + `ruff format --check`** — line length 100. **`ruff format` also formats Python
+  inside fenced `python` blocks in Markdown**, so a code example in the documentation is subject to
+  it. This has failed CI before.
 - **`mypy --strict`** — no type errors, no untyped defs.
-- **`pytest` with coverage ≥ 85%** — coverage must not fall below the current figure minus 3
-  points.
-- **`make eval` — non-regression.** The offline harness replays the labelled corpus and fails on
-  any regression in the gated metrics (`pairwise_f1`, `ari`, `entity_accuracy`) against the
-  frozen baseline.
-- **`bandit` + `pip-audit`** — no new security findings, no vulnerable dependency.
-- **Dead-code gate** — `vulture` over the package with a committed allowlist
-  (`vulture_allowlist.py`).
-- **Supply chain** — the vendored d3 SHA-256 in `src/netcorenoc/ui/vendor/CHECKSUMS.txt` must
-  match (`make checksums`).
-- **Structure + links** — `make linkcheck` (the `src/` layout guard and the documentation
-  link checker) stays green.
+- **`pytest` with coverage ≥ 85 %** — and it must not fall below the current figure minus 3 points.
+- **`make eval`** — the offline harness replays the labelled corpus and fails on any regression in
+  `pairwise_f1`, `ari` or `entity_accuracy` against the frozen baseline.
+- **`bandit`**, and **`pip-audit`** under `make security`.
+- **`vulture`** over the package with a committed allowlist.
+- **`make checksums`** — the vendored console asset against its pinned SHA-256.
+- **`make linkcheck`** — the `src/` layout guard and the documentation link checker.
 
-CI (`.github/workflows/ci.yml`) runs the same targets, but everything is reproducible locally —
-you never need CI to know whether your change passes.
+CI runs the same targets. Everything is reproducible locally; you never need CI to know whether your
+change passes. **Run the target, not the commands inside it** — a release once ran four of the five
+by hand and CI caught the fifth.
 
 ### If you touch a scored path, attach the `make eval` delta
 
-Any change to the ingestion/learning/correlation path (`receiver.py`, `correlate.py`,
-`learn.py`, `rootcause.py`, `severity.py`, `varbind_profile.py`, `store/alarms.py` and
-`store/situations.py` ingest, `engine.py`) can move the evaluation metrics. **Run `make eval` and paste the delta table in your
-PR.** A change that intends no behavioural change must show a byte-identical delta; a change that
-intends to improve a metric must show it and explain why it is correct, not metric-gaming.
+Any change to `receiver.py`, `correlate.py`, `learn.py`, `rootcause.py`, `severity.py`,
+`varbind_profile.py`, `store/alarms.py`, `store/situations.py` or `engine.py` can move the metrics.
+**Run `make eval` and paste the delta in your PR.** A change intending no behavioural change must
+show a byte-identical delta; a change intending to improve a metric must show it and explain why it
+is correct rather than metric-gaming.
 
 ## Hard constraints (a PR that violates one will not merge)
 
-- **Zero new runtime dependencies.** The shipped app imports only `pysnmp`, `aiosqlite`,
-  `fastapi`, `uvicorn`, `pydantic`. New dev/CI tooling goes in the `dev` extra (or a workflow)
-  and is justified with a `docs/adr/DECISIONS.md` entry.
-- **Same runtime identity.** One process, one SQLite file, one static UI, environment variables
+- **Zero new runtime dependencies.** The shipped app imports `pysnmp`, `aiosqlite`, `fastapi`,
+  `uvicorn`, `pydantic`, and nothing else. New dev tooling goes in the `dev` extra with a decision
+  entry justifying it. This covers documentation tooling too: no `mkdocs`, no `sphinx`.
+- **Same runtime identity.** One process, one SQLite file, one static console, environment variables
   only, no UI build step, no npm.
-- **Ingestion is sacred.** `receiver.datagram_received` gains no lock, no I/O, no `await` — and
-  the engine-side ingest path stays readable in one file. `engine.py` holds the batch lock and
-  every decision that reasons about it, deliberately and permanently; do not "tidy" it into
-  modules. The invariant is only auditable if that path can be read without following imports.
+- **Ingestion is sacred.** `receiver.datagram_received` gains no lock, no I/O, no `await`.
+  `engine.py` holds the batch lock and every decision that reasons about it, deliberately and
+  permanently — do not "tidy" it into modules. The invariant is only auditable if that path reads
+  without following imports.
 - **Imports go downward or sideways, never up.** `http` → `engine` → `data` → `ingest`, plus
-  cross-cutting from anywhere. `tests/test_layers.py` enforces it and its exemption list is empty.
-  The `Engine` may not import `netcorenoc.api`; the process runner may, which is what `runner.py`
-  is for.
-- **One `Store`, one connection, one `store.lock`.** The whole write discipline rests on it (F39).
-  `store.lock` is taken by *callers* — never inside a `Store` method — and a new store method must
-  assume its caller holds it. `tests/test_store_concurrency.py` is the control.
+  cross-cutting from anywhere. `tests/test_layers.py` enforces it and its exemption list is
+  **empty**.
+- **One `Store`, one connection, one `store.lock`**, taken by *callers* and never inside a `Store`
+  method. `tests/test_store_concurrency.py` is the control.
 - **Bounded memory everywhere.** Every accumulator keeps its cap and eviction, with a test.
-- **UI security discipline.** The UI is four files under a strict CSP; new DOM values go through
-  `textContent`/`esc()`, never `innerHTML`; no inline script/style, no CDN.
-- **Modules stay small and shallow.** A module owns one noun or one decision; over ~250 lines is a
-  smell and over **400 fails CI** (`tests/test_architecture.py`), with a shrink-only
-  `DEBT_ALLOWLIST` naming the release that owns each current offender — and, since v0.7.3, a
-  separate `COHESION_EXEMPT` for a module that is large because an **invariant** forbids splitting
-  it. The two are not interchangeable: debt carries an owner and a date, a cohesion exemption
-  carries neither, because there is no fix. `engine.py` is its only entry. One level of nesting
-  where it has been earned — today `src/netcorenoc/api/` and `src/netcorenoc/store/` — and never
-  two. No frameworks, plugin systems, or dynamic loading. The layer map and the placement rule are
-  in [`docs/architecture/MODULE-ARCHITECTURE.md`](docs/architecture/MODULE-ARCHITECTURE.md); its
-  §10 records the v0.7.4 targets, all of which shipped, with a v0.7.5 correction appended in place
-  to §10.1 (the declaration gate was **not** complete by construction — see F42).
+- **UI security discipline.** Strict CSP; new DOM values go through `textContent`/`esc()`, never
+  `innerHTML`; no inline script or style, no CDN.
+- **Modules stay small and shallow.** One noun or one decision; over ~250 lines is a smell and over
+  **400 fails CI**, with a shrink-only `DEBT_ALLOWLIST` (currently empty) and a separate
+  `COHESION_EXEMPT` whose only entry is `engine.py`. One level of package nesting where earned,
+  never two.
 - **A new route declares itself, or the process does not start.** Add its capability to
-  `rbac.ROUTE_PERMISSIONS` **and** its visibility posture to `rbac.ROUTE_SCOPE` (with a one-line
-  reason if it is `"unscoped"`), then register it through `DeclaredRoutes` like every other route.
-  `api/declare.py` refuses anything `rbac/` has not been told about, while the application is
-  being built. Since v0.7.5 it also refuses any route **shape** it cannot check: `include_router`,
-  `app.mount()` and `add_api_websocket_route` all fail `create_app`, because a shape the gate cannot
-  read is skipped rather than checked, and skipping is how F42 happened. `DeclaredRoutes` is *the*
-  registration path by design — a router carrying declarations would be a deliberate extension, not
-  a convenience. If you are changing the HTTP security boundary, the file to read is
+  `rbac.ROUTE_PERMISSIONS` **and** its visibility posture to `rbac.ROUTE_SCOPE`, then register it
+  through `DeclaredRoutes`. If you are changing the HTTP security boundary, read
   `src/netcorenoc/api/perimeter.py` — all of it, and nothing else.
-- **If you change `ui/app.js`, the test suite cannot check what you did.** There is no JavaScript
-  runtime in this repository, by design (DECISIONS #99), so every UI test asserts the *shape of the
-  source*. Behavioural changes are verified by hand — see
-  [`docs/gates/v0.7.5-manual-verification.md`](docs/gates/v0.7.5-manual-verification.md) for the
-  shape such a protocol takes, and write one for your change. A green suite is not evidence that the
-  browser does what you intended.
+- **If you change the console, open a browser.** The DOM harness executes the real module graph, and
+  it still cannot see whitespace and cannot see emptiness: v0.13.0 shipped six visual defects with
+  1428 tests green. A green suite is not evidence that the browser does what you intended.
 
-## Trap simulator and replay (test the engine end-to-end)
+## What a release writes, and what it does not
+
+**A release writes no gate document, no scope document, no build report and no security review.**
+That is decision #197, and it is the convention that replaced 62 000 lines of documentation with
+under 5 000.
+
+| It goes here | Not here |
+|---|---|
+| A finding → [`docs/findings.md`](docs/findings.md), **five lines**: what, reproduction command, measured output, disposition | a per-release security review |
+| A decision → [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md), **six lines**: decision, reason, release | a phase-gate document |
+| A specification for an unbuilt release → [`docs/plans/`](docs/plans/), as **measurements and open questions** | a scope document |
+| Anything else → a commit message and a `CHANGELOG` line | a build report |
+
+**Working notes during a build are scratch files outside the repository.**
+
+The decision log is **append-only in the sense that matters**: an entry is never renumbered, and a
+superseded decision is superseded by a new entry rather than rewritten. An entry that no code cites
+may be removed (#201); one that is cited may be condensed but keeps its number, because 129
+docstrings in `src/` and `tests/` name these numbers.
+
+## The one irreversible act
+
+> **The only irreversible act in this repository is a force-push or a history rewrite of `main`.**
+
+Everything else is recoverable. A deleted file is at the commit that held it; a bad decision is
+superseded by the next one; a wrong tag is moved. That is why deleting documentation is cheap, and
+why this project stopped preserving what git already preserves — see
+[`docs/record.md`](docs/record.md).
+
+**Never** `git push --force` to `main`, rebase it, amend a published commit, or retag an existing
+tag onto a different commit.
+
+### Tags
+
+Tags are a convenience for finding a release. Nothing gates on one. If a tag is missing from the
+remote:
+
+```sh
+git tag -a v0.14.0 <sha> -m "v0.14.0 — the model family"    # only if it does not exist
+git push origin v0.14.0
+git ls-remote --tags origin                                  # verify
+```
+
+## Commit and PR conventions
+
+- **Conventional Commits**, one logical change per commit: `fix(receiver): drop oversized varbind
+  before quarantine`, `docs(adr): record the next decision`. Types in use: `feat`, `fix`, `docs`,
+  `refactor`, `test`, `chore`, `build`, `ci`.
+- **Branch off the default branch**, keep the branch focused, open a pull request, and fill in
+  `.github/PULL_REQUEST_TEMPLATE.md`.
+- **Record ambiguity calls.** If your change resolves a genuine design ambiguity, add a numbered
+  entry to [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md) — context, choice, reason, in about six
+  lines. Never renumber an existing entry.
+
+## Trap simulator and replay
 
 With the app running on port 1162:
 
 ```sh
-make replay                 # replay the bundled fiber-cut fixture as real SNMP PDUs over UDP
-make sim SCENARIO=login_burst   # a declarative DSL scenario; python tools/trap_sim.py --list
-make loadtest               # 1000 traps/s for 60 s
+make replay                      # the bundled fibre-cut scenario as real SNMP PDUs over UDP
+make sim SCENARIO=login_burst    # a declarative scenario; python tools/trap_sim.py --list
+make loadtest                    # 1000 traps/s for 60 s
+make burst                       # 100 000 traps in one second
 ```
 
 The simulator and corpus tooling live under `eval/` and `tools/` and are **never imported by the
 runtime package**.
-
-## Commit and PR conventions
-
-- **Conventional Commits.** One logical change per commit, e.g.
-  `fix(receiver): drop oversized varbind before quarantine`,
-  `docs(adr): record decision #40`. Types in use: `feat`, `fix`, `docs`, `refactor`, `test`,
-  `chore`, `build`, `ci`.
-- **Branch + PR.** Branch off the default branch, keep the branch focused, and open a pull
-  request. Fill in `.github/PULL_REQUEST_TEMPLATE.md` — the checklist mirrors the quality bar
-  (`make qa` green, tests added, docs/CHANGELOG updated, no new runtime dependency, `make eval`
-  delta attached if a scored path changed).
-- **Record ambiguity calls.** If your change resolves a genuine design ambiguity, add a numbered
-  entry to `docs/adr/DECISIONS.md` (context → options → choice → reason). Never renumber existing
-  entries.
-
-## Where things live
-
-- **Architecture & rationale:** [`docs/architecture/DESIGN.md`](docs/architecture/DESIGN.md).
-- **Decisions:** [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md) (format:
-  [`docs/adr/README.md`](docs/adr/README.md)).
-- **Scope per version:** [`docs/scope/`](docs/scope/).
-- **Security:** [`docs/security/`](docs/security/) (threat model, reviews, operator guide); the
-  vulnerability disclosure policy is [`SECURITY.md`](SECURITY.md).
-- **Roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md) — everything out of the current scope is one
-  line here.
 
 ## Reporting a security vulnerability
 

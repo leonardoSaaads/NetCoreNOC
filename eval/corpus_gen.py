@@ -1,9 +1,9 @@
 """Deterministic generator for the labelled evaluation corpus.
 
-Run ``python eval/corpus_gen.py`` to (re)write ``eval/corpus/*.json``. The four scenarios
-that already existed as test fixtures are copied and annotated with ground truth; the six
-new ones are synthesised here. Everything is deterministic — no RNG, fixed ordering — so
-the committed JSON is reproducible from this file.
+Run ``python eval/corpus_gen.py`` to (re)write ``eval/corpus/*.json``. Four scenarios are
+read back out of the corpus and re-annotated with ground truth; the six new ones are
+synthesised here. Everything is deterministic — no RNG, fixed ordering — so the committed
+JSON is reproducible from this file, which is what ``make corpus`` checks.
 
 Ground-truth schema, per event, under a ``truth`` key:
 
@@ -25,7 +25,14 @@ from pathlib import Path
 from typing import Any
 
 CORPUS = Path(__file__).parent / "corpus"
-FIXTURES = Path(__file__).parent.parent / "tests" / "fixtures"
+# The four pre-existing scenarios are read back out of the corpus and relabelled in place. Until
+# v0.15.0 they were read from `tests/fixtures/`, which held the same event stream a second time
+# with `description` and every `truth` block removed — two copies nothing compared, replayed by
+# different gates. The copy is gone and the suite derives its unlabelled stream from these files
+# instead (`tests/util.scenario`, #205). `_write` rewrites `truth` and `description` wholesale, so
+# reading a labelled document here and reading an unlabelled one produce identical output; what
+# this file still proves on every `make corpus` is that the labelling below reproduces the
+# committed bytes.
 
 # Standard varbind that the instance heuristic and the profiler both skip.
 SYS_UPTIME = "1.3.6.1.2.1.1.3.0"
@@ -53,7 +60,7 @@ def _write(name: str, events: list[dict[str, Any]], description: str) -> None:
 def relabel_fiber_cut() -> None:
     """Two NEs, one fibre cut. Not proxied: each NE is its own level-0 entity, so the
     only varbind (port-1/1) is a constant and stays unpromoted — parity by construction."""
-    data = json.loads((FIXTURES / "fiber_cut.json").read_text())
+    data = json.loads((CORPUS / "fiber_cut.json").read_text())
     first = min(data["events"], key=lambda e: float(e["delay"]))
     for ev in data["events"]:
         ev["truth"] = {
@@ -68,7 +75,7 @@ def relabel_olt_storm() -> None:
     """One OLT, one uplink alarm and 500 ONU alarms. Each ONU appears in a single class,
     so its id never recurs across classes: the profiler correctly abstains and this
     scenario keeps v0.2.0 behaviour (grouping perfect, entity attribution to the NE)."""
-    data = json.loads((FIXTURES / "olt_storm.json").read_text())
+    data = json.loads((CORPUS / "olt_storm.json").read_text())
     first = min(data["events"], key=lambda e: float(e["delay"]))
     for ev in data["events"]:
         vb = ev.get("varbinds", [{}])
@@ -83,7 +90,7 @@ def relabel_olt_storm() -> None:
 
 def relabel_background_noise() -> None:
     """Unrelated singletons that must never merge (over-merge guard)."""
-    data = json.loads((FIXTURES / "background_noise.json").read_text())
+    data = json.loads((CORPUS / "background_noise.json").read_text())
     for i, ev in enumerate(data["events"]):
         ev["truth"] = {
             "situation_key": f"noise-{ev['source']}-{ev['trap_oid']}-{i}",
@@ -94,7 +101,7 @@ def relabel_background_noise() -> None:
 
 def relabel_flapping_noise() -> None:
     """A flapping link on one NE: every raise dedups to one alarm, one situation."""
-    data = json.loads((FIXTURES / "flapping_noise.json").read_text())
+    data = json.loads((CORPUS / "flapping_noise.json").read_text())
     for ev in data["events"]:
         ev["truth"] = {
             "situation_key": "flap-127.0.0.30-if7",

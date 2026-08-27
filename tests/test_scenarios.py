@@ -9,6 +9,7 @@ learning epoch, exactly as the scope prescribes.
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -245,3 +246,81 @@ async def test_confirm_feedback_reinforces(
         assert (await engine.apply_feedback(row["id"], "confirm", BASE + 11 * ROUND)).exists
     assert engine.learner.E.pair_mass(device_a, device_b) > mass_before * 0.9
     assert not (await engine.apply_feedback(999_999, "confirm", BASE)).exists
+
+
+# --- the scenario loader (#205) --------------------------------------------------------------
+#
+# Until v0.15.0 the four scenarios replayed above were stored twice: labelled in `eval/corpus/`,
+# and again unlabelled in `tests/fixtures/`. `eval/corpus_gen.py` generated the first from the
+# second, and nothing at all compared them — so an edit to one was invisible to the other until
+# somebody ran `make corpus`, and the two were replayed by different gates. `util.scenario`
+# derives the unlabelled stream at load time instead, and the four files are deleted. These are
+# the guards for the derivation, and each has a control, because an invariant that cannot fail is
+# not an invariant.
+
+
+def test_the_loader_returns_the_corpus_stream_without_its_labels() -> None:
+    for name in sorted(util.DERIVED_SCENARIOS):
+        raw = json.loads((util.CORPUS / name).read_text())
+        loaded = util.scenario(name)
+        assert "description" not in loaded, f"{name}: the corpus-only key survived the strip"
+        assert not any("truth" in event for event in loaded["events"]), (
+            f"{name}: ground truth reached a replay — the engine would be shown the answer"
+        )
+        assert loaded["name"] == raw["name"]
+        assert len(loaded["events"]) == len(raw["events"])
+
+
+def test_each_half_of_the_scenario_strip_is_load_bearing() -> None:
+    """The control for the test above: BOTH halves must do something on every scenario.
+
+    A strip whose halves are no-ops would pass the assertions above by accident — `description`
+    absent because the corpus never had one, `truth` absent because nothing labels these files.
+    So assert the corpus carries both, on every scenario, and that removing either one alone
+    leaves the other behind.
+    """
+    for name in sorted(util.DERIVED_SCENARIOS):
+        raw = json.loads((util.CORPUS / name).read_text())
+        assert "description" in raw, f"{name}: nothing for the first half of the strip to remove"
+        assert all("truth" in event for event in raw["events"]), (
+            f"{name}: nothing for the second half of the strip to remove"
+        )
+        only_description_removed = {k: v for k, v in raw.items() if k != "description"}
+        assert any("truth" in e for e in only_description_removed["events"])
+        only_truth_removed = dict(raw)
+        only_truth_removed["events"] = [
+            {k: v for k, v in e.items() if k != "truth"} for e in raw["events"]
+        ]
+        assert "description" in only_truth_removed
+        assert util.strip_labels(raw) != only_description_removed
+        assert util.strip_labels(raw) != only_truth_removed
+
+
+def test_the_loader_hands_out_a_fresh_document_every_call() -> None:
+    """A cached document a consumer mutated would poison every later test in the process."""
+    first = util.scenario("fiber_cut.json")
+    first["events"][0]["source"] = "0.0.0.0"
+    first["events"].append({"poisoned": True})
+    second = util.scenario("fiber_cut.json")
+    assert second["events"][0]["source"] != "0.0.0.0"
+    assert len(second["events"]) == len(first["events"]) - 1
+
+
+def test_the_loader_refuses_a_name_it_does_not_derive() -> None:
+    """`eval/corpus/` holds ten scenarios; only four were ever duplicated under tests/fixtures/,
+    and only those four are what this loader promises. A silent widening would let a test replay
+    a 672 KB corpus file by typo."""
+    assert (util.CORPUS / "camera_nvr.json").is_file()
+    with pytest.raises(KeyError):
+        util.scenario("camera_nvr.json")
+    with pytest.raises(KeyError):
+        util.scenario("fiber_cut")  # no extension
+
+
+def test_the_four_duplicated_fixtures_are_gone() -> None:
+    """The point of the change, asserted rather than assumed: a re-added copy is a copy again."""
+    for name in sorted(util.DERIVED_SCENARIOS):
+        assert not (util.FIXTURES / name).exists(), (
+            f"tests/fixtures/{name} is back; it is a second copy of eval/corpus/{name} that "
+            f"nothing compares (#205)"
+        )

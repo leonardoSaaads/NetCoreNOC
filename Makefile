@@ -82,7 +82,7 @@ run:
 # Replay the fiber-cut fixture against a locally running NetCoreNOC (port 1162 by default
 # so it works without privileges; export NETCORENOC_TRAP_PORT=1162 for the server too).
 replay:
-	$(PYTHON) tools/trap_replay.py tests/fixtures/fiber_cut.json --port $${NETCORENOC_TRAP_PORT:-1162}
+	$(PYTHON) tools/trap_replay.py eval/corpus/fiber_cut.json --port $${NETCORENOC_TRAP_PORT:-1162}
 
 # 1000 traps/s for 60 s against a locally running NetCoreNOC.
 loadtest:

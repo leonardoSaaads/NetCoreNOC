@@ -3,7 +3,7 @@
 
 Two modes:
 
-- Fixture replay: ``trap_replay.py tests/fixtures/fiber_cut.json`` reads a JSON fixture
+- Scenario replay: ``trap_replay.py eval/corpus/fiber_cut.json`` reads a JSON scenario
   (events with a ``delay`` offset in seconds, a ``source`` IP, a ``trap_oid`` and
   optional varbinds) and sends each event as a genuine trap PDU. Sources are simulated
   by binding secondary loopback addresses (127.0.0.x), so the receiver sees distinct
