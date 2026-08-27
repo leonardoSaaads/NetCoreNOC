@@ -11,26 +11,36 @@ unchanged since v0.2.0, and every model kind the appliance trains and runs was a
 sixth.
 
 ```
-UDP 162 ─▶ receiver ─▶ bounded queue ─▶ engine (batch loop) ─▶ store ─▶ SQLite
-                                            │
-                                            ├─ correlate / learn / scoring
-                                            ├─ rootcause / severity / varbind_profile
-                                            └─ capture (the feedback dataset)
+UDP 162 ─▶ ingest/receiver ─▶ bounded queue ─▶ engine/operate/engine ─▶ store/ ─▶ SQLite
+                                                     │
+                                                     ├─ engine/correlate/  correlate, learn, scoring
+                                                     ├─ engine/correlate/  rootcause, severity, profiler
+                                                     └─ engine/dataset/    capture (the feedback dataset)
 
-browser ──▶ api/ (perimeter ─▶ RBAC ─▶ handler) ─▶ store
+browser ─────▶ api/ (perimeter ─▶ RBAC ─▶ handler) ─▶ store/
 ```
 
 ## The five layers, and the one rule
 
-Four layers are a stack; the fifth is available to all of them.
+Four layers are a stack; the fifth is available to all of them. **Since v0.15.1 a layer is a
+directory**, so a module's layer is where it was saved rather than something a table has to
+remember (decision #207).
 
-| Layer | Holds | Owns |
+| Layer | Directory | Owns |
 |---|---|---|
 | **http** | `api/` — app, perimeter, context, models, `routes_*` | HTTP semantics, the security boundary, request and response shape. **No domain rule** |
-| **engine** | `engine`, `correlate`, `learn`, `scoring`, `rootcause`, `severity`, `varbind_profile`, `capture`, `labels`, … | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is |
-| **data** | `store/`, `migrations/` | One SQLite connection under one asyncio lock. **SQL lives here and nowhere else** |
-| **ingest** | `receiver`, `events`, `known_oids` | The wire: parse, allowlist, quarantine, the trap vocabulary |
-| **cross-cutting** | `rbac`, `shaping`, `auth`, `audit`, `runtime`, `logsetup` | Identity, authorization, visibility, attribution, config, logging |
+| **engine** | `engine/` — six subpackages, below | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is |
+| **data** | `store/`, with `migrations/` beside it | One SQLite connection under one asyncio lock. **SQL lives here and nowhere else** |
+| **ingest** | `ingest/` — `receiver`, `events`, `known_oids` | The wire: parse, allowlist, quarantine, the trap vocabulary |
+| **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `runtime`, `logsetup`, `settings` | Identity, authorization, visibility, attribution, config, logging |
+
+The package **root** holds four modules and no others: `__init__.py`, and the process entry surface
+`__main__.py`, `main.py` and `runner.py`. `python -m netcorenoc.main` is a public interface — the
+`Dockerfile`, the systemd unit, `flake.nix`, `docker-compose.yml` and the README all print it — so
+those did not move, and `test_layers.py::test_the_package_root_is_closed` keeps a fifth module out.
+`api/` and `store/` kept their names rather than becoming `http/` and `data/`, because both locate
+`ui/` and `migrations/` as `Path(__file__).parent.parent / …` and moving them would have been a
+content change inside a move (decision #209).
 
 > **A layer may import downward, and may import cross-cutting. Never upward.**
 
@@ -43,7 +53,24 @@ every module's imports and enforces it, and **its exemption list is empty**. Typ
 TYPE_CHECKING:`) are excluded — no runtime edge, no cycle.
 
 Between v0.7.2 and v0.7.3 this rule had a paragraph and no test, which is exactly why the one
-violation it had sat recorded and unfixed for a release.
+violation it had sat recorded and unfixed for a release. Between v0.7.3 and v0.15.1 it had a test
+and a filesystem that ignored it, so a new module landed in the right layer only if its author
+remembered to edit a dictionary in `tests/`.
+
+### The six domains inside `engine/`
+
+46 modules were one layer called `engine`, which is a true description of all of them and a useful
+description of none. The split is by what the imports actually do, and the six form a **strict
+order with no cycles between them** (decision #208):
+
+| Domain | Holds | Imports |
+|---|---|---|
+| `correlate/` | the correlation decision and its vocabulary — `correlate`, `learn`, `scoring`, `scorer_contract`, `rootcause`, `severity`, the varbind profiler, `preview` | no other domain |
+| `dataset/` | the feedback dataset — `capture`, `labels`, `census`, `incidents`, `seal`, `retention_policy` | `correlate` |
+| `model/` | the model family — `attribution`, `cart`, `tree`, `forest`, `boosting`, `challenger`, `training`, `model_version`, `background` | `correlate`, `dataset` |
+| `evaluation/` | shadow mode, the estimator, the judge, the folds, the promotion gate | `correlate`, `dataset`, `model` |
+| `report/` | the three deterministic CLI reports, compute and render | the four above; **nothing imports it but the CLI** |
+| `operate/` | the running appliance — `engine`, `engine_base`, `maintenance`, `gaps`, `scorer_lifecycle` | the four above; nothing imports it but the entry points |
 
 ## Where code goes
 
