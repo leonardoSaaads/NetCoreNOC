@@ -22,8 +22,8 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 import test_structure
-from netcorenoc import auth, rbac
 from netcorenoc.api.perimeter import Perimeter
+from netcorenoc.crosscutting import auth, rbac
 from netcorenoc.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

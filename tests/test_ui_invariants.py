@@ -33,7 +33,7 @@ import pytest
 
 import domdriver
 import uifixtures
-from netcorenoc import rbac
+from netcorenoc.crosscutting import rbac
 from netcorenoc.store import Store
 from test_dom_harness import dom_test
 
@@ -677,7 +677,8 @@ async def _routes_with_a_promoted_tree(store: Store) -> dict[str, Any]:
     from `GET /api/scorer` is what an operator with a promoted tree reads.
     """
     import modelfixtures
-    from netcorenoc import model_version, scoring, tree
+    from netcorenoc.engine.correlate import scoring
+    from netcorenoc.engine.model import model_version, tree
 
     engine, app = await uifixtures.corpus(store)
     document = model_version.canonical_object(
@@ -779,8 +780,8 @@ async def _routes_with_an_applied_promotion(store: Store) -> dict[str, Any]:
     `Interval`s, so a change to that shape breaks this fixture rather than leaving it green against
     a format nothing produces.
     """
-    from netcorenoc import promotion as promotion_module
-    from netcorenoc.shadow_cv import Interval
+    from netcorenoc.engine.evaluation import promotion as promotion_module
+    from netcorenoc.engine.evaluation.shadow_cv import Interval
 
     _engine, app = await uifixtures.corpus(store)
     metrics = promotion_module.Metrics(

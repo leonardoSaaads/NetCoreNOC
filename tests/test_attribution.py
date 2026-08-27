@@ -32,9 +32,13 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import attribution
-from netcorenoc.background import BACKGROUND, BACKGROUND_STRIDE, CORPUS_DISTINCT_VECTORS
-from netcorenoc.scorer_contract import BASIS_SHAPLEY, LinkFeatures
+from netcorenoc.engine.correlate.scorer_contract import BASIS_SHAPLEY, LinkFeatures
+from netcorenoc.engine.model import attribution
+from netcorenoc.engine.model.background import (
+    BACKGROUND,
+    BACKGROUND_STRIDE,
+    CORPUS_DISTINCT_VECTORS,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INF = math.inf
@@ -111,7 +115,7 @@ def test_every_background_row_is_inside_the_feature_bounds() -> None:
     A row outside them would mean the background and `FEATURE_BOUNDS` disagree about what a feature
     can be — and every threshold-reachability rule in the release is arithmetic over those bounds.
     """
-    from netcorenoc.model_version import ORDERED_BOUNDS
+    from netcorenoc.engine.model.model_version import ORDERED_BOUNDS
 
     for row in BACKGROUND:
         for feature, value in enumerate(row):
@@ -301,7 +305,7 @@ def test_the_attribution_is_byte_identical_across_two_processes() -> None:
     script = (
         "import json,sys,math;"
         f"sys.path.insert(0, {str(REPO_ROOT / 'src')!r});"
-        "from netcorenoc import attribution;"
+        "from netcorenoc.engine.model import attribution;"
         "INF=math.inf;"
         "L=[(0.10,((-INF,0.5),(-INF,INF),(-INF,INF))),"
         "(0.40,((0.5,INF),(-INF,INF),(-INF,0.5))),"

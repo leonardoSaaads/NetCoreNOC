@@ -23,19 +23,19 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import (
-    census,
-    shadow,
-    shadow_admission,
-    shadow_eval,
-    shadow_render,
-    shadow_report,
-    training,
+from netcorenoc.engine.correlate.correlate import CorrelationResult, EvaluatedPair, WindowAlarm
+from netcorenoc.engine.correlate.scoring import (
+    AdditiveScorer,
+    LinkFeatures,
+    LinkScore,
+    TermContribution,
 )
-from netcorenoc.challenger import Coefficients, LogisticScorer
-from netcorenoc.correlate import CorrelationResult, EvaluatedPair, WindowAlarm
+from netcorenoc.engine.dataset import census
+from netcorenoc.engine.evaluation import shadow, shadow_admission, shadow_eval
+from netcorenoc.engine.model import training
+from netcorenoc.engine.model.challenger import Coefficients, LogisticScorer
+from netcorenoc.engine.report import shadow_render, shadow_report
 from netcorenoc.main import Engine
-from netcorenoc.scoring import AdditiveScorer, LinkFeatures, LinkScore, TermContribution
 from netcorenoc.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -293,7 +293,7 @@ async def test_the_fit_is_byte_identical_across_two_processes(store: Store, tmp_
         "import asyncio, json, sys\n"
         f"sys.path.insert(0, {str(REPO_ROOT / 'src')!r})\n"
         "from netcorenoc.store import Store\n"
-        "from netcorenoc import shadow\n"
+        "from netcorenoc.engine.evaluation import shadow\n"
         "async def main():\n"
         f"    s = Store({db!r})\n"
         "    await s.open()\n"

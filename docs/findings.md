@@ -9,6 +9,10 @@ reviews that issued and closed them are at commit `3ecf237` (see [`record.md`](r
 v0.15.0 a finding is an entry here rather than a section in a per-release security review; the
 reason is [decision #197](adr/DECISIONS.md).
 
+A finding **issued and closed by the same release** keeps its entry, marked so in its disposition:
+the entry is where the reproduction and the measurement live, and deleting it the moment the fix
+lands would throw away the only record of what the guard could not see. F64 is the first.
+
 Run every command below from the repository root with the virtualenv active.
 
 ---
@@ -51,7 +55,7 @@ Run every command below from the repository root with the virtualenv active.
 - **Reproduce**:
   ```sh
   python -c "
-  from netcorenoc.learn import Learner, MIN_EDGE_N
+  from netcorenoc.engine.correlate.learn import Learner, MIN_EDGE_N
   def n_to_defeat(storm):
       lr, win = Learner(), []
       for i in range(1, 400):
@@ -80,8 +84,8 @@ Run every command below from the repository root with the virtualenv active.
 - **Reproduce**:
   ```sh
   python -c "
-  from netcorenoc.scoring import AdditiveScorer
-  from netcorenoc.shadow_admission import admission, probe_features, verdict
+  from netcorenoc.engine.correlate.scoring import AdditiveScorer
+  from netcorenoc.engine.evaluation.shadow_admission import admission, probe_features, verdict
   p = probe_features(); a = lambda ps: admission(AdditiveScorer(), ps, budget_ratio=1e9, probes=ps)
   print('full', verdict(a(p), a(p))[0], a(p)['probes_linked'], a(p)['probes_unlinked'])
   print('minus row 0', verdict(a(p[1:]), a(p[1:]))[0])"
@@ -111,5 +115,89 @@ Run every command below from the repository root with the virtualenv active.
 - **Why it matters**: the headroom between the observed noise (3.66×) and the production budget (10×)
   is a factor of 2.7, it is a property of the machine rather than of the model, and nothing measures
   or pins it. A slower CI runner narrows it.
+- **v0.15.1 adds a consequence F63 did not record: it makes a byte-frozen gate intermittently red.**
+  `test_shadow.py::test_the_report_is_deterministic_across_two_runs` compares two renderings of the
+  shadow report with the two measured durations blanked. The **admission verdict is not blanked**,
+  and it flips:
+
+      -           False
+      +            True
+      - - speed: p99 23.952us over the budget 21.990us (10.0x the champion's 2.199us)
+
+  A champion measured at 2.199 µs puts the budget at 21.99 µs, and the challenger's p99 came in at
+  23.952 µs — a refusal at the production ratio, which F63's own sweep did not produce in 250 paired
+  runs. **Measured**: 1 failure in 60 runs on the v0.15.1 tree and **4 in 60 on the v0.15.0 tree it
+  was built from**, so the package move neither caused it nor changed it; 60 report pairs rendered
+  in a single interpreter produced no difference at all, which is why it had not been seen.
 - **Disposition**: open, issued not fixed. A median or a repeated-measures comparison would be a
-  behaviour change to the promotion gate, which v0.15.0 does not make.
+  behaviour change to the promotion gate, which neither v0.15.0 nor v0.15.1 makes.
+
+## F64 — the citation guard could not see inside an f-string, and it cost a decision entry
+
+- **What**: `tests/test_documentation.py::_python_citations` filtered `token.type in (COMMENT,
+  STRING)`. **PEP 701 (Python 3.12) moved f-strings out of `tokenize.STRING`** into
+  `FSTRING_START` / `FSTRING_MIDDLE` / `FSTRING_END`, so from the day this project moved to 3.12
+  every citation written inside an f-string was invisible to the guard that asserts a cited decision
+  still resolves — and to the measurement v0.15.0 used to decide which entries nothing cited.
+- **Reproduce**:
+  ```sh
+  python -c "
+  import sys, pathlib, tempfile; sys.path.insert(0, 'tests')
+  import test_documentation as td
+  d = pathlib.Path(tempfile.mkdtemp())
+  for label, src in {
+      'CONTROL  plain string': 'DOC = \"a string citing #176\"',
+      'CONTROL  comment     ': '# a comment citing #176',
+      'TREATMENT f-string   ': 'X = 1\nDOC = f\"citing #176 {X}\"',
+  }.items():
+      p = d / (label.split()[1] + label.split()[0] + '.py'); p.write_text(src)
+      print(label, '->', sorted(td._python_citations(p)))"
+  ```
+- **Measured**, before the fix: `CONTROL plain string -> [176]`, `CONTROL comment -> [176]`,
+  `TREATMENT f-string -> []`. Widening the filter over the whole tree surfaced exactly **one**
+  previously invisible citation — `#176` in `tests/test_security_ui.py`, in the f-string that builds
+  a failure message — and it did not resolve: v0.15.0 had deleted that entry, on the measurement
+  this blind spot corrupted.
+- **Why it matters**: the class, not the instance. A guard written against one version of a language
+  keeps reporting green after the language moves the thing it reads. The question that finds this is
+  *"what can my guard not see?"*, and it is not the question a passing test asks.
+- **Disposition**: **closed in v0.15.1** (#215). The filter is widened, the tokens are resolved by
+  `getattr` so the reader still works on an interpreter that predates PEP 701, decision #176 is
+  restored, and `test_the_citation_reader_sees_comments_and_strings_and_nothing_else` gained an
+  f-string case beside the two controls that always passed.
+
+## F65 — 67 prose references still name a module by its pre-v0.15.1 import path
+
+- **What**: v0.15.1 moved 56 modules and rewrote every import that names one. It did **not** rewrite
+  the module paths written in prose — docstrings, comments and assertion messages — because prime
+  directive 1 for that release is that a move changes a file's imports and nothing else, and the
+  content census is what proves it did. So `varbind_profile.py`'s docstring still says
+  *"the other axis is `netcorenoc.shaping.scope`"* when the module is now
+  `netcorenoc.crosscutting.shaping.scope`, and 66 more like it.
+- **Reproduce**:
+  ```sh
+  python -c "
+  import io, pathlib, re, tokenize
+  moved = re.compile(r'netcorenoc\.(correlate|learn|scoring|capture|labels|census|incidents|seal|'
+                     r'shadow|promotion|judge|training|challenger|attribution|receiver|events|'
+                     r'known_oids|audit|auth|rbac|shaping|settings|runtime|logsetup|maintenance|'
+                     r'gaps|engine_base|preview|severity|rootcause|bias|agreement)\b')
+  n = 0
+  for root in ('src', 'tests', 'eval', 'tools'):
+      for p in sorted(pathlib.Path(root).rglob('*.py')):
+          if '__pycache__' in p.parts: continue
+          for t in tokenize.tokenize(io.BytesIO(p.read_bytes()).readline):
+              if t.type in (tokenize.COMMENT, tokenize.STRING): n += len(moved.findall(t.string))
+  print(n)"
+  ```
+- **Measured**: **67** — 49 in `src/`, 17 in `tests/`, 1 in `eval/`, 0 in `tools/`. None is an
+  import: `mypy --strict` passes over 214 files and the suite is green, so every one of them is a
+  sentence rather than a dependency.
+- **Why it matters**: it is the same shape as the `docs/gates/…` citations `record.md` covers, and
+  it has the same defence — no guard can see it. `test_documentation.py` checks decision numbers and
+  Markdown links; nothing checks that a module path in a docstring resolves. The honest options are
+  a guard that reads them (which would then have to be kept green through every future move) or a
+  reading rule stated once. This release proposes neither and measures the size of the problem.
+- **Disposition**: open, issued not fixed. Rewriting 67 docstrings inside a move release would
+  forfeit the census — the one property that makes the move reviewable — to fix references that
+  `git log --follow` already resolves.

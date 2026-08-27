@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import audit, auth
+from netcorenoc.crosscutting import audit, auth
 from netcorenoc.store import MIGRATIONS_DIR, Store
 
 
@@ -288,7 +288,7 @@ async def test_migrate_populated_v050_database_seeds_the_scorer_config(tmp_path:
     the coded defaults, and every existing situation truthfully backfilled to it — because those
     situations *were* formed by those parameters. The seed is what makes the upgrade
     grouping-neutral."""
-    from netcorenoc.scoring import AdditiveScorer
+    from netcorenoc.engine.correlate.scoring import AdditiveScorer
 
     db = str(tmp_path / "v050.db")
     _build_v050_db(db)

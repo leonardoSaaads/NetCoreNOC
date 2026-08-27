@@ -13,9 +13,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from netcorenoc.events import TrapEvent
+from netcorenoc.ingest.events import TrapEvent
+from netcorenoc.ingest.receiver import QueueItem, parse_trap
 from netcorenoc.main import Engine
-from netcorenoc.receiver import QueueItem, parse_trap
 from netcorenoc.store import Store
 
 import trap_replay

@@ -9,8 +9,9 @@ import logging
 
 import pytest
 
-from netcorenoc import main, receiver
-from netcorenoc.logsetup import RedactionFilter, configure_logging
+from netcorenoc import main
+from netcorenoc.crosscutting.logsetup import RedactionFilter, configure_logging
+from netcorenoc.ingest import receiver
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
@@ -186,7 +187,7 @@ async def test_legacy_api_token_is_removed_and_errors_at_startup(tmp_path: objec
 async def test_service_token_acts_as_its_role(store: Store) -> None:
     """The replacement for the legacy shared token: a named, revocable service token bound
     to a role, sent as a Bearer credential."""
-    from netcorenoc import auth
+    from netcorenoc.crosscutting import auth
 
     _engine, _queue, app = await authutil.make_env(store)
     async with store.lock:

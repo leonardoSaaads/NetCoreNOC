@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc import auth
+from netcorenoc.crosscutting import auth
 from netcorenoc.store import Store
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))

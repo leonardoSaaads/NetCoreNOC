@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from netcorenoc import auth, shaping
+from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.store import Store
 
 import authutil

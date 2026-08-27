@@ -1199,6 +1199,20 @@ using when an entry below reads as an assertion rather than an argument: the arg
 - **Reason**: serving a directory is a path-traversal surface and makes *"what does this appliance
   serve?"* unanswerable from the code — deleting a deny-by-default property to save typing.
 
+## 176. Routing resolves capability before construction, which is F53's structural repair
+
+- **Decision**: the router returns a **decision**, and only a `view` decision is ever turned into a
+  mounted component — rejecting both a check at the top of each of the 17 view loaders and a single
+  check in the router before dispatch. (v0.13.0)
+- **Reason**: a check is 17 chances to forget, or one thing a later refactor can reorder; a decision
+  makes the refusal a *different component*, so the real one is never constructed, its
+  `componentDidMount` never runs, and there is no request to suppress. **The zero is a decision, not
+  a dereference.** There is exactly one call site that mounts a decision (`shell.js`); a second
+  would be a second authorisation surface, which is the shape of F53.
+- **Restored in v0.15.1** (#215): v0.15.0 deleted this entry on a measurement of what the tree
+  cites, and the instrument could not see the one citation — an f-string in
+  `tests/test_security_ui.py`. Deleting it was therefore outside #201's own rule.
+
 ## 178. The hardening-only class is enforced where a write path exists, and named where none does
 
 - **What measurement changed**: **most hardening-only values have no write path at all** — they are
@@ -1489,3 +1503,168 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: a tag is a convenience for finding a release. Nothing in `make qa`, the promotion gate
   or the pre-registration guards reads one, and the one that carried real evidence —
   `v0.14.0-gate0`'s message — carries it in the annotation, which travels with the tag object.
+
+# v0.15.1 — the package tree
+
+## 207. Layer at the top, domains inside `engine/`
+
+- **Decision**: the top level of the package is the **layer**; the 46-module `engine` layer is
+  divided into six **domains** inside it. Rejected: layer-only, which moves the bucket into a folder
+  and renames the problem; domain-only, which abandons the one structural rule this project has
+  enforced since v0.7.3 and has a test for. (v0.15.1)
+- **Reason**: the rule survives *and* the bucket is broken, and the guard gets stronger rather than
+  weaker — `test_layers.py` stops being a 62-name dictionary somebody has to remember to edit and
+  becomes an observation about where a file was saved (#212). The cost accepted is depth: a module
+  path is now two components (`engine/model/attribution.py`) where it was one.
+- **Measured**: 46 of 62 mapped modules were `engine` — a layer holding 74 % of the tree describes
+  none of it. After the split the largest domain is nine modules.
+
+## 208. The six domains are derived from the import graph, and the derivation is what chose them
+
+- **Decision**: `correlate/` (9), `dataset/` (6), `model/` (9), `evaluation/` (9), `report/` (8),
+  `operate/` (5). Departures from the shape the brief sketched: `scorer_contract` joins `scoring` in
+  `correlate/`; `retention_policy` joins `capture` in `dataset/`; `scorer_lifecycle` is `operate/`,
+  not `model/`, because it is an `EngineBase` mixin; `shadow_render` and `shadow_report` join
+  `report/`, which is what the brief's own suspicion about `shadow_report` versus `agreement_report`
+  was pointing at; and the brief's `shadow/` and the promotion half of its `evidence/` are one
+  domain, `evaluation/`. (v0.15.1)
+- **Reason**: a domain boundary that the imports cross in both directions is a boundary the code
+  does not have. Grouping by name would have kept `shadow_report` away from the two report modules
+  it is a sibling of, and split the judge from the promotion gate that reads its verdict.
+- **Measured**: over the same 190 edges, the chosen partition has **zero** cycles between domains
+  and yields a strict order — `correlate` imports no other domain, then `dataset`, `model`,
+  `evaluation`, then `report` and `operate`, which nothing but the process entry points import. The
+  brief's sketch has **nine** cycles across five of its six groups.
+
+## 209. What is a layer directory, what stays at the package root, and what keeps its name
+
+- **Decision**: three layer directories are created — `engine/`, `ingest/`, `crosscutting/` — and
+  two existing packages **are** their layer and keep their names: `api/` is http, `store/` is data.
+  The package root holds exactly four modules, and they are the process entry surface:
+  `__init__.py`, `__main__.py`, `main.py`, `runner.py`. Rejected: `http/api/` and `data/store/`.
+  (v0.15.1)
+- **Reason**: `python -m netcorenoc.main` is a **public interface** — the `Dockerfile`,
+  `deploy/netcorenoc.service`, `flake.nix`, `docker-compose.yml`, `README.md` and the bug-report
+  template all print it — so moving `main.py` is a behaviour change, which this release makes none
+  of. And `api/routes_static.py` and `store/types.py` locate `ui/` and `migrations/` as
+  `Path(__file__).parent.parent / …`: moving either package changes a line that is not an import,
+  and the alternative — moving the 47 UI files and 13 migrations too — is churn that buys no layer.
+- **The cost, stated**: `api/` and `store/` are directories not named for their layer, so two of
+  the guard's five rows stay declarations. Five, not 62 — and every row names a directory, so the
+  property the release is for still holds for every module in the tree.
+
+## 210. Two levels of nesting, and the guard says two rather than one
+
+- **Decision**: `MODULE-ARCHITECTURE` §9's *"one level of nesting, where earned. Never two"* becomes
+  **two, where earned; never three**, and `test_the_package_is_at_most_one_level_deep` is renamed and
+  re-pinned to match. (v0.15.1)
+- **Reason**: the second level is exactly what #207 buys, and it is bounded by the same word —
+  *earned*: level one is the layer, level two is the domain, and there is no third thing a path is
+  allowed to say. Leaving the guard at one and exempting the tree would make the rule a comment.
+- **Note**: v0.15.1's brief states no such guard was found. It exists, at
+  `tests/test_architecture.py`; the rule it enforces is what made this a decision rather than an
+  oversight.
+
+## 211. The behaviour-identity harness records 90 routes against four principals, and pins the bytes
+
+- **Decision**: `tests/behaviour_identity.py`, driven by `tests/test_behaviour_identity.py`. It seeds
+  one database per principal from `eval/corpus/fiber_cut.json` through the real ingest path at a
+  fixed epoch, drives every route the app registers in registration order — reads and writes, the
+  static surface included — as anonymous, viewer, editor and admin, and emits one canonical document
+  whose SHA-256 is the gate figure. (v0.15.1)
+- **Reason**: in a release that is entirely moves, *"the tests pass"* is weaker than *"the HTTP
+  surface is unchanged"*, because the assertions were written against the code that produces the
+  shape. A role is included because a principal that renders differently is a behaviour.
+- **Canonicalisation is an enumerated substitution list, never a pattern**: an over-broad one
+  passes the diff by deleting the evidence. Completeness is asserted by two runs in separate
+  processes; the ability to fail, by a deliberate response change.
+
+## 212. `test_layers.py` becomes a directory check, and it changes last
+
+- **Decision**: the 62-entry `LAYER_OF` dictionary is replaced by a five-entry directory table, and
+  the replacement lands **after** every module has moved, in its own commit. No compatibility shim:
+  `LAYER_OF` is kept correct through every move commit and deleted in one. (v0.15.1)
+- **Reason**: changing a guard in the same commit as the thing it guards is the shape that hides a
+  mistake, and a shim would be a third state that nothing measures. Keeping the old dictionary
+  honest through 12 move commits costs one edited line per commit and means the layer rule is
+  enforced by a guard that predates the tree at every point in the release.
+
+## 213. The import paths break, and nothing re-exports the old ones
+
+- **Decision**: `from netcorenoc.correlate import …` becomes
+  `from netcorenoc.engine.correlate.correlate import …`, with no compatibility re-export in any
+  `__init__.py`. `netcorenoc`, `netcorenoc.main`, `netcorenoc.api` and `netcorenoc.store` are
+  unchanged, so every documented entry point still resolves. (v0.15.1)
+- **Reason**: pre-alpha, zero users, and every importer is in this repository, so the whole cost
+  is one mechanical rewrite `mypy --strict` and the suite verify. A re-export would make the old
+  path work forever and the tree's truth optional — the defect this release exists to remove.
+  `test_structure.py::SUBMODULES` enumerates the new paths, so one that does not resolve from the
+  **installed** package is a red test rather than a runtime error.
+
+## 214. The `src/` byte-pin is recomputed in every move commit, and is renamed to stop naming v0.14.0
+
+- **Decision**: `SRC_TREE_AT_V0_14_0` becomes `SRC_TREE_DIGEST` and is recomputed in each of the 12
+  move commits rather than once at the end. The digest hashes each path alongside its contents, so a
+  move already moves it. (v0.15.1)
+- **Reason**: recomputing once at the end would leave the strongest whole-tree guard checking a tree
+  that no longer exists for 11 commits — the `TRAP_PATH_HASHES` failure mode the brief names, at the
+  scale of the whole package. The rename is because the constant would otherwise assert a claim
+  about v0.14.0 that v0.15.1 has stopped making.
+
+## 215. The citation reader is widened to f-strings, and #176 is restored (F64)
+
+- **Decision**: `_python_citations` filters on `FSTRING_START` / `FSTRING_MIDDLE` / `FSTRING_END` as
+  well as `COMMENT` and `STRING`, and decision #176 — deleted by v0.15.0 — is restored, condensed.
+  (v0.15.1)
+- **Reason**: PEP 701 moved f-strings out of `tokenize.STRING` in Python 3.12, so a guard written
+  before that has been silently partial ever since. #201's rule is that an entry may be removed only
+  when nothing cites it; something did cite #176, in an f-string, and the instrument could not see
+  it. The deletion was therefore outside the rule that authorised it, and restoring the entry is the
+  repair — repointing the citation would delete the argument instead.
+- **Measured**: with the filter widened, the tree yields exactly **one** citation that was invisible
+  before, `#176` in `tests/test_security_ui.py`, and the resolve-guard goes red on it. Controls: the
+  same citation in a plain string and in a comment was seen both before and after.
+
+## 216. The smallest agent is nine modules, and eight of them are one subtree
+
+- **Decision**: named, not built. A `zabbix-agent`-shaped collector would be
+  `ingest/{receiver,events,known_oids}.py` plus `crosscutting/{settings,logsetup,runtime}.py`, a
+  transport, and — if it is to say anything about what it collected —
+  `engine/correlate/{varbind_profile,varbind_accum}.py`. (v0.15.1)
+- **Reason**: the release owes the agent one thing — not to make it awkward — and #207 answers it
+  for free: `ingest/` imports nothing above it, so *"just the wire parser"* is a directory.
+- **The finding, for whoever builds it**: `store.py` imports `events` and `known_oids`, so the
+  vocabulary an agent would share is **already below the data layer** — a shared package boundary
+  rather than a copied protocol, and that choice is therefore still open. The two profiler modules
+  are the part that is *not* a subtree: they sit in `correlate/`, which an agent would not have.
+
+## 217. `engine.py` moves in the first `engine/` commit, so the trap path cannot be last
+
+- **Decision**: the move order is `crosscutting/`, `engine/operate/`, `engine/report/`,
+  `engine/evaluation/`, `engine/model/`, `engine/dataset/`, `engine/correlate/`, `ingest/` — not
+  the risk order the brief specifies, which puts every trap-path module last. (v0.15.1)
+- **Reason**: **a package and a module of the same name cannot coexist.** The moment
+  `src/netcorenoc/engine/` acquires an `__init__.py`, `import netcorenoc.engine` resolves to the
+  package and `engine.py` becomes unreachable — so it moves in whichever commit creates `engine/`,
+  and `operate/` is that commit. A namespace package does not help: `netcorenoc.engine` would
+  resolve to the module and `netcorenoc.engine.report` to nothing.
+- **What actually protects the trap path is the pin, not the ordering**: `TRAP_PATH_HASHES` moves
+  with each file in the same commit, and its five values are unchanged for the whole release. The
+  brief's ordering is a proxy for that discipline; where the two conflict, the discipline wins.
+- **Measured**: three of the five pinned modules — `capture`, `correlate`, `learn` — still move in
+  the last three commits. `engine` moves second and `receiver` last.
+
+## 218. The module-size guard counts a module's body, not its imports
+
+- **Decision**: `test_architecture._modules` measures lines that are **not import statements**.
+  `COHESION_EXEMPT_CEILING` for `engine.py` moves 580 -> 545, and it falls because the metric
+  changed rather than because the file did. Rejected: raising `MAX_MODULE_LINES`, which is changing
+  a rule to fit an outcome, and `DEBT_ALLOWLIST`, which must stay empty. (v0.15.1)
+- **Reason**: every moved module's import path gained two components, `ruff format` wraps what no
+  longer fits in 100 characters, and `capture.py` went from 398 lines to **402** — over a guard
+  about *"one noun or one decision"* — without a line of its substance changing. An import
+  statement cannot hold logic, so measuring the body loses nothing and stops a package
+  reorganisation from consuming a module's budget.
+- **Measured**: on the moved tree, exactly one module exceeds 400 body lines and it is `engine.py`,
+  which is permanently exempt. `learn.py` (393 body, 400 total) and `promotion.py` (391, 400) sit
+  on the line, so this is structural rather than one awkward file.

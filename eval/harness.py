@@ -34,14 +34,14 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent / "tools"))
 sys.path.insert(0, str(HERE))
 
-from netcorenoc.events import QuarantinedPacket, TrapEvent  # noqa: E402
-from netcorenoc.main import Engine  # noqa: E402
-from netcorenoc.receiver import (  # noqa: E402
+from netcorenoc.ingest.events import QuarantinedPacket, TrapEvent  # noqa: E402
+from netcorenoc.ingest.receiver import (  # noqa: E402
     QueueItem,
     TrapParseError,
     parse_trap,
     quarantine_packet,
 )
+from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
 import metrics  # noqa: E402

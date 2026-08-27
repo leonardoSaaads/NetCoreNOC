@@ -26,15 +26,18 @@ from typing import Any
 import pytest
 
 from modelfixtures import training_rows
-from netcorenoc import attribution, boosting, forest, model_version, scoring, tree
-from netcorenoc.cart import LEAF
-from netcorenoc.model_version import (
+from netcorenoc.engine.correlate import scoring
+from netcorenoc.engine.correlate.scorer_contract import BASIS_SHAPLEY, LinkFeatures
+from netcorenoc.engine.model import attribution, boosting, forest, model_version, tree
+from netcorenoc.engine.model.cart import LEAF
+from netcorenoc.engine.model.model_version import (
     KIND_FOREST,
     KIND_GRADIENT_BOOSTING,
     KIND_TREE,
     ModelPayloadError,
 )
-from netcorenoc.scorer_contract import BASIS_SHAPLEY, LinkFeatures
+
+import util
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CV = scoring.CONTRACT_VERSION
@@ -447,7 +450,7 @@ def _fit_in_a_subprocess(kind: str, hypers: dict[str, Any]) -> str:
         f"sys.path.insert(0, {str(REPO_ROOT / 'src')!r});"
         f"sys.path.insert(0, {str(REPO_ROOT / 'tests')!r});"
         "from modelfixtures import training_rows;"
-        "from netcorenoc import boosting, forest, model_version, tree;"
+        "from netcorenoc.engine.model import boosting, forest, model_version, tree;"
         f"kind={kind!r}; hypers={hypers!r};"
         "mod={'tree':tree,'forest':forest,'gradient_boosting':boosting}[kind];"
         "doc=asyncio.run(mod.fit_document(training_rows(), **hypers));"
@@ -554,7 +557,7 @@ def test_the_boosted_kind_is_not_called_xgboost() -> None:
     `model_version` row claiming otherwise would put a false statement in the audit log."""
     assert boosting.KIND == "gradient_boosting"
     assert "xgboost" not in model_version.SUPPORTED_KINDS
-    source = (REPO_ROOT / "src" / "netcorenoc" / "boosting.py").read_text(encoding="utf-8")
+    source = util.module_path("boosting.py").read_text(encoding="utf-8")
     assert "second-order" in source, "the reason the name differs is not recorded where it applies"
 
 
@@ -565,7 +568,7 @@ def test_the_tree_family_cannot_reach_the_store_the_clock_or_the_network() -> No
 
     forbidden = {"time", "socket", "random", "secrets", "sqlite3", "aiosqlite", "urllib", "http"}
     for name in ("tree", "forest", "boosting", "attribution", "background"):
-        source = (REPO_ROOT / "src" / "netcorenoc" / f"{name}.py").read_text(encoding="utf-8")
+        source = util.module_path(f"{name}.py").read_text(encoding="utf-8")
         imported = {
             alias.name.split(".")[0]
             for node in ast.walk(ast.parse(source))

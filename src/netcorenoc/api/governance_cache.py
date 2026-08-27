@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from netcorenoc import rbac, shaping
+from netcorenoc.crosscutting import rbac, shaping
 
 
 class GovernancePolicies:

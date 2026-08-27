@@ -21,15 +21,8 @@ import asyncio
 import contextlib
 import signal
 
-from netcorenoc.engine import (
-    IDLE_CLOSE_S,
-    Engine,
-    FlapDetector,
-)
-from netcorenoc.gaps import GAP_CLOSE_S, GapTracker
-from netcorenoc.logsetup import configure_logging
-from netcorenoc.runner import Supervisor, operator_warnings, run
-from netcorenoc.settings import (
+from netcorenoc.crosscutting.logsetup import configure_logging
+from netcorenoc.crosscutting.settings import (
     ENV_PREFIX,
     LEGACY_ENV_PREFIX,
     LegacyEnvRemovedError,
@@ -39,6 +32,9 @@ from netcorenoc.settings import (
     legacy_env_names,
     read_env,
 )
+from netcorenoc.engine.operate.engine import IDLE_CLOSE_S, Engine, FlapDetector
+from netcorenoc.engine.operate.gaps import GAP_CLOSE_S, GapTracker
+from netcorenoc.runner import Supervisor, operator_warnings, run
 
 # The re-export surface, written down rather than inherited by accident: `mypy --strict` forbids
 # implicit re-export, which makes this list the explicit statement of what `netcorenoc.main` is.

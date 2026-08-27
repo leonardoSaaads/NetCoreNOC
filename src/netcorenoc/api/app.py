@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, FastAPI
 
-from netcorenoc import __version__, auth
+from netcorenoc import __version__
 from netcorenoc.api import (
     declare,
     routes_admin,
@@ -46,10 +46,11 @@ from netcorenoc.api.perimeter import (
     Perimeter,
     RateLimiter,
 )
+from netcorenoc.crosscutting import auth
 
 if TYPE_CHECKING:
+    from netcorenoc.crosscutting.runtime import RuntimeConfig
     from netcorenoc.main import Engine
-    from netcorenoc.runtime import RuntimeConfig
 
 
 def create_app(

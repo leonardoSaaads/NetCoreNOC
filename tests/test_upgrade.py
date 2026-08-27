@@ -12,8 +12,8 @@ import asyncio
 import sqlite3
 from pathlib import Path
 
-from netcorenoc import audit, shaping
 from netcorenoc.api import create_app
+from netcorenoc.crosscutting import audit, shaping
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
@@ -85,7 +85,7 @@ async def test_v060_upgrade_preserves_grouping_and_seeds_provenance(tmp_path: Pa
     learned state and the audit chain survive, and the schema advances by exactly one.
     """
     import netcorenoc.store.lifecycle as store_mod
-    from netcorenoc.scoring import AdditiveScorer
+    from netcorenoc.engine.correlate.scoring import AdditiveScorer
 
     real_dir = store_mod.MIGRATIONS_DIR
 
@@ -185,7 +185,7 @@ async def test_v070_upgrade_changes_no_behaviour(tmp_path: Path) -> None:
     did before. Governance changes nothing until an admin writes a policy.
     """
     import netcorenoc.store.lifecycle as store_mod
-    from netcorenoc import rbac
+    from netcorenoc.crosscutting import rbac
 
     real_dir = store_mod.MIGRATIONS_DIR
 

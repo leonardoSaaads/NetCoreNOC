@@ -18,6 +18,7 @@ import pytest
 from netcorenoc.store import Store
 
 import authutil
+import util
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"
@@ -80,7 +81,7 @@ COHESION_EXEMPT: dict[str, str] = {
     # whole ingest path has to be readable in one place — a reviewer must be able to confirm,
     # without following imports, that nothing on it takes a lock, does I/O, or awaits where it must
     # not. There is no release in which that stops being true, so there is nothing to schedule.
-    "engine.py": (
+    "engine/operate/engine.py": (
         "ingestion is sacred (MODULE-ARCHITECTURE.md §1): the batch lock and every decision that "
         "reasons about it stay in one file, because the invariant is only auditable if the ingest "
         "path can be read without following imports"
@@ -94,7 +95,11 @@ COHESION_EXEMPT: dict[str, str] = {
 # actually means is that invariant. The 38 lines are call sites and two attribute assignments;
 # every capture decision lives in `capture.py`. A raise without a compensating control is how a
 # ratchet becomes a comment, which is the failure this whole section exists to prevent.
-COHESION_EXEMPT_CEILING: dict[str, int] = {"engine.py": 580}
+#
+# v0.15.1: 580 -> 545, and it FELL because the metric changed rather than because the file did
+# (DECISIONS #218). `engine.py` is 569 lines, 24 of which are imports; the number here is now what
+# a reviewer has to read to audit the batch lock, which is what the exemption was always about.
+COHESION_EXEMPT_CEILING: dict[str, int] = {"engine/operate/engine.py": 545}
 
 # The invariant names a COHESION_EXEMPT reason may cite, taken from MODULE-ARCHITECTURE.md §1.
 # A reason that cites nothing in this set is an assertion nobody has had to defend.
@@ -102,10 +107,21 @@ NAMED_INVARIANTS = frozenset({"ingestion is sacred"})
 
 
 def _modules() -> dict[str, int]:
-    """Every ``.py`` under ``src/netcorenoc``, keyed by its package-relative path, with its
-    line count."""
+    """Every ``.py`` under ``src/netcorenoc``, keyed by its package-relative path, with the number
+    of lines that are **not import statements** (DECISIONS #218).
+
+    v0.15.1 made every moved module's import path two components longer, and `ruff format` wraps
+    what no longer fits in 100 characters. That pushed `capture.py` from 398 lines to 402 — over a
+    guard about *"one noun or one decision"* — without a line of its substance changing. Measuring
+    the body is the honest version of what this guard was always asking, and it means a package
+    reorganisation can never consume a module's budget. Nothing is lost: an import statement cannot
+    hold logic, so there is nowhere for size to hide.
+
+    `learn.py` and `promotion.py` sit at exactly 400 total lines, so this is structural rather than
+    a single awkward file.
+    """
     return {
-        str(path.relative_to(PKG)): len(path.read_text(encoding="utf-8").splitlines())
+        str(path.relative_to(PKG)): len(_body(path.read_text(encoding="utf-8")).splitlines())
         for path in sorted(PKG.rglob("*.py"))
     }
 
@@ -114,7 +130,7 @@ def test_modules_discovered() -> None:
     """Guard the guard: a glob that matched nothing would make every assertion below vacuous."""
     modules = _modules()
     assert len(modules) >= 20, modules
-    assert "rbac/tables.py" in modules
+    assert "crosscutting/rbac/tables.py" in modules
 
 
 def test_no_module_exceeds_the_size_guard() -> None:
@@ -302,14 +318,38 @@ def test_cohesion_exempt_modules_actually_need_the_exemption() -> None:
     )
 
 
-def test_the_package_is_at_most_one_level_deep() -> None:
-    """MODULE-ARCHITECTURE.md §9: one level of nesting, where earned. Never two."""
+#: The nesting budget, and what each level is allowed to say. Until v0.15.1 this was one level —
+#: "where earned, never two" — and it was earned twice, by `api/` and by `store/`. #207 spends the
+#: second level on the layer, so a path now reads `<layer>/<domain>/<module>.py` and there is no
+#: third thing it may say (DECISIONS #210).
+MAX_NESTING = 2
+
+
+def test_the_package_is_at_most_two_levels_deep() -> None:
+    """`architecture.md`: two levels of nesting, where earned. Never three.
+
+    The budget is spent, deliberately and completely: level one is the layer, level two is the
+    domain inside `engine/` (or the package inside `crosscutting/`). A third would be a directory
+    nobody can name — which is how a tree stops being a description and becomes a filing habit.
+    """
     deep = [
         str(path.relative_to(PKG))
         for path in PKG.rglob("*.py")
-        if len(path.relative_to(PKG).parts) > 2
+        if len(path.relative_to(PKG).parts) > MAX_NESTING + 1
     ]
-    assert not deep, f"modules nested more than one level deep: {deep}"
+    assert not deep, f"modules nested more than {MAX_NESTING} levels deep: {deep}"
+
+
+def test_the_nesting_budget_is_spent_rather_than_merely_available() -> None:
+    """The control on the guard above: a limit nothing reaches is a limit nobody has tested.
+
+    Without this, `MAX_NESTING` could be raised to any number and every assertion would still pass.
+    """
+    depths = {len(path.relative_to(PKG).parts) for path in PKG.rglob("*.py")}
+    assert max(depths) == MAX_NESTING + 1, (
+        f"the deepest module sits at {max(depths) - 1} level(s) of nesting and the budget is "
+        f"{MAX_NESTING}. A budget with headroom nothing uses is a number, not a rule."
+    )
 
 
 # --- the route-order parity baseline -----------------------------------------------------
@@ -518,7 +558,7 @@ def test_the_engine_holds_no_capture_logic() -> None:
     a bound relaxed the first time it was inconvenient. With it, the release ends with a *stronger*
     structural guarantee than it started with — the previous rule bounded size alone.
     """
-    source = (PKG / "engine.py").read_text(encoding="utf-8")
+    source = (PKG / "engine" / "operate" / "engine.py").read_text(encoding="utf-8")
     leaks = [needle for needle in _CAPTURE_LEAKS if needle in source]
     assert not leaks, (
         f"engine.py contains capture/persistence logic: {leaks}\n\n"
@@ -536,10 +576,11 @@ def test_the_capture_module_is_the_one_that_grew() -> None:
     `test_no_module_is_too_large` already enforces for both files.
     """
     modules = _modules()
-    assert "capture.py" in modules, "netcorenoc/capture.py is missing"
+    capture = "engine/dataset/capture.py"
+    assert capture in modules, f"{capture} is missing"
     assert "store/dataset.py" in modules, "netcorenoc/store/dataset.py is missing"
-    assert modules["capture.py"] > 100, "capture.py is too small to hold the capture logic"
-    assert "capture.py" not in COHESION_EXEMPT, "capture.py must live under the ordinary guard"
+    assert modules[capture] > 100, "capture.py is too small to hold the capture logic"
+    assert capture not in COHESION_EXEMPT, "capture.py must live under the ordinary guard"
 
 
 # --- the JavaScript module-size guard (v0.13.0) -------------------------------------------------
@@ -655,12 +696,114 @@ def test_every_javascript_module_opens_with_a_block_comment() -> None:
 #: **When a later release legitimately changes one of these**, it updates this table in the same
 #: commit — the reviewable-line-in-a-diff discipline `UI_HASHES` has used since v0.11.0.
 TRAP_PATH_HASHES: dict[str, str] = {
-    "capture.py": "8676482c1965a97d3720b642e62451ecba8ed5317fae9f779ed1b30be47dea1e",
-    "correlate.py": "48767428a93ab511e09a07e0c6d40c9d3c0fc39fee33ec95625b49be722a4845",
-    "engine.py": "07d0e2595e4a550c51e747448e2e34f65446dde4812d6800deccdfc4bbe2e13e",
-    "learn.py": "7545e7d9d33563b9fa832ca5e958f0ef24337afc540f6c5b9ad1a91c7fcddf63",
-    "receiver.py": "139611c9f69bf54e87d8099cbfa3eb4820355b2f758106c1866dc4bbc8bdb441",
+    "capture.py": "71a531b44addaedc5fb2f365a134e05dc2bfb6d084bb6c22fdc01b1b7f844ec2",
+    "correlate.py": "b550497367232a99c3bc8814cab72dbcb665dcc29891c15b6a3e6eab68a11165",
+    "engine.py": "85cff6b1c05950c32ac9ec7b8ee1843e0fb3b2bce56f9575e447653059188b58",
+    "learn.py": "d3b6bf24b422795fed6a1f9c73ed4262bad668379872d8e27c69971368486a0c",
+    "receiver.py": "451886a5b70cf3839c9c03b4d9693d75776809963574b5386cbcc639243db891",
 }
+
+
+#: The same five modules, hashed with **every import statement removed** — and unlike the table
+#: above, these do not change at all in v0.15.1.
+#:
+#: The brief for this release states that a move breaks the pin above "on path, not on content".
+#: That is not so, and the difference matters: a moved module's own imports are rewritten, so its
+#: bytes change too, and the pin above therefore has to be recomputed in each move commit. A pin
+#: that is recomputed is a pin that absorbs whatever else came with the change.
+#:
+#: So the claim v0.15.1 can actually make is this one: strip the imports and **nothing moved**.
+#: Same idea as `tools/evidence/move_census.py`, which makes it for all 56 moved files; here it is
+#: a permanent test for the five that matter most, so a later release cannot change a trap-path
+#: module's body while updating the raw hash in the same breath and call it a move.
+TRAP_PATH_BODY_HASHES: dict[str, str] = {
+    "capture.py": "3d4b1c23ee38e761a490ddcbeb5ae30aba90b526725fe137945debced368d9ab",
+    "correlate.py": "a46255038f440951a7b0f0505a691e74e0839960c61d0e640109385ab3ff08d7",
+    "engine.py": "789488173e6145ca00624de76b760826dd16ee7b9bff17a32e0515f30f3fd2d5",
+    "learn.py": "29f39ef06cec70e6030867221db7c695a346ffa9640747127ae1bf5c4508215c",
+    "receiver.py": "092572621c1a191fd66f7eacffea296b5f324e52578e498bd3128e27c847af96",
+}
+
+
+def _body(source: str) -> str:
+    """Source with every `import` / `from … import` statement removed, by `ast` span.
+
+    A second copy of `tools/evidence/move_census.py`'s `strip_imports`, deliberately: that one is
+    a release gate somebody runs, this one runs on every `make qa`, and a test that reached into
+    `tools/evidence/` to borrow eight lines would couple a permanent guard to a one-release script.
+    """
+    import ast
+
+    tree = ast.parse(source)
+    drop: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            drop.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    # …and the blank lines the import block is separated by. Sorting an import into a different
+    # position moves a blank line with it — `varbind_profile.py` lost one when `known_oids` sorted
+    # past a comment — and a blank line BETWEEN imports is the import block's layout, not the
+    # module's substance. Only blanks touching a removed line go; one elsewhere in the file stays,
+    # which is what the control below asserts.
+    lines = source.splitlines()
+    changed = True
+    while changed:
+        changed = False
+        for number, line in enumerate(lines, start=1):
+            if line.strip() or number in drop:
+                continue
+            if (number - 1) in drop or (number + 1) in drop:
+                drop.add(number)
+                changed = True
+    return "\n".join(line for number, line in enumerate(lines, start=1) if number not in drop)
+
+
+def test_the_trap_path_bodies_are_unchanged_by_the_move() -> None:
+    """**What v0.15.1 claims about the trap path**, and it is stronger than the raw pin.
+
+    The five modules' imports were rewritten and their paths changed. Everything else — every
+    decision on the ingest path, every line a reviewer would have to read to confirm the batch
+    lock is respected — is byte-identical to the tree this release started from.
+    """
+    import hashlib
+
+    moved = []
+    for name, expected in sorted(TRAP_PATH_BODY_HASHES.items()):
+        path = util.module_path(name)
+        actual = hashlib.sha256(_body(path.read_text(encoding="utf-8")).encode("utf-8")).hexdigest()
+        if actual != expected:
+            moved.append(f"  {name}\n    pinned: {expected}\n    actual: {actual}")
+    assert not moved, (
+        "a trap-path module changed beyond its imports:\n"
+        + "\n".join(moved)
+        + "\n\nA move rewrites imports and nothing else. If a later release legitimately changes "
+        "one of these bodies, it updates this table in the same commit — which is a reviewable "
+        "line in a diff rather than something that happened while the raw hash was being bumped."
+    )
+
+
+def test_the_body_strip_is_load_bearing() -> None:
+    """The control. A strip that removed everything, or nothing, would make the pin meaningless."""
+    sample = (
+        "import os\n"
+        "from x import (\n    y,\n    z,\n)\n"  # a parenthesised import, which spans four lines
+        "\n"
+        "VALUE = 1\n"
+        'PROSE = """this sentence contains the word import and is not one"""\n'
+    )
+    stripped = _body(sample).splitlines()
+    assert not [line for line in stripped if line.startswith(("import ", "from "))], (
+        f"the strip left an import statement behind: {stripped}"
+    )
+    assert "    y," not in stripped, "the strip stopped at the first line of a wrapped import"
+    assert "VALUE = 1" in stripped, "the strip removed code, not just imports"
+    # …and the half a line-based filter gets wrong: prose that merely says the word.
+    assert any("word import and is not one" in line for line in stripped), (
+        "the strip removed a string literal that mentions imports — which is what makes an `ast` "
+        "span the right instrument and a pattern the wrong one"
+    )
+    assert _body("VALUE = 1\n") == "VALUE = 1", "a file with no imports must survive intact"
+    # A blank line that is nowhere near an import is substance and must survive.
+    assert _body("A = 1\n\nB = 2\n") == "A = 1\n\nB = 2", "a blank line away from imports was eaten"
 
 
 def test_the_trap_path_is_byte_identical_to_the_release_this_one_branched_from() -> None:
@@ -674,7 +817,7 @@ def test_the_trap_path_is_byte_identical_to_the_release_this_one_branched_from()
 
     moved = []
     for name, expected in sorted(TRAP_PATH_HASHES.items()):
-        actual = hashlib.sha256((PKG / name).read_bytes()).hexdigest()
+        actual = hashlib.sha256(util.module_path(name).read_bytes()).hexdigest()
         if actual != expected:
             moved.append(f"  {name}\n    pinned: {expected}\n    actual: {actual}")
     assert not moved, (
@@ -695,37 +838,38 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
     the same hole `test_no_module_may_join_the_allowlist` closes for the size guard, and the same
     reason: a guard whose subject can be edited away is not a guard.
     """
-    assert set(TRAP_PATH_HASHES) == {
-        "capture.py",
-        "correlate.py",
-        "engine.py",
-        "learn.py",
-        "receiver.py",
-    }, "the pinned set is no longer the five modules the build prompt names"
+    expected = {"capture.py", "correlate.py", "engine.py", "learn.py", "receiver.py"}
+    assert set(TRAP_PATH_HASHES) == expected, (
+        "the pinned set is no longer the five modules the build prompt names"
+    )
+    assert set(TRAP_PATH_BODY_HASHES) == expected, "the two tables must pin the same five modules"
     for name in TRAP_PATH_HASHES:
-        assert (PKG / name).is_file(), f"{name} is pinned and does not exist"
+        assert util.module_path(name).is_file(), f"{name} is pinned and does not exist"
 
 
-# --- prime directive 2: v0.15.0 changes no src/ ------------------------------------------------
+# --- "did any code move at all", as one reviewable line ----------------------------------------
 #
-# v0.15.0's central claim is that a release which rewrites the documentation changes no code. The
-# claim was verified file by file while the release was built — 165 files, zero differing — and
-# then this was added, because a verification somebody ran once is not a property of the tree.
-# Principle 8: the instrument precedes the change it measures, and this instrument arrived late.
+# Installed in v0.15.0, whose central claim was that a release rewriting the documentation changes
+# no code. v0.15.1 changes `src/` in every one of its move commits, so the pin is **recomputed in
+# each of them** rather than once at the end — otherwise the strongest whole-tree guard this
+# project has would be checking a tree that no longer exists for eleven commits, which is the
+# `TRAP_PATH_HASHES` failure mode at the scale of the whole package (DECISIONS #214).
 
-#: SHA-256 over `src/` **as it stood at v0.14.0** (commit `3ecf237`), excluding
-#: `src/netcorenoc/__init__.py`, which carries the version string and is the one file a release is
-#: always allowed to touch. Computed over 164 files as
+#: SHA-256 over `src/`, excluding `src/netcorenoc/__init__.py`, which carries the version string
+#: and is the one file a release is always allowed to touch. Computed as
 #:
 #:     for each path in sorted order:  update(path); update(b"\0"); update(sha256(contents))
 #:
-#: — the path is hashed alongside the contents so that a RENAME moves the digest too. A digest over
-#: contents alone would let `learn.py` and `severity.py` swap names unnoticed.
+#: — the path is hashed alongside the contents, so a **move** moves the digest even when every byte
+#: of every file is unchanged, which is exactly what makes it the right guard for v0.15.1. A digest
+#: over contents alone would let `learn.py` and `severity.py` swap names unnoticed.
 #:
 #: **When a release legitimately changes `src/`, it recomputes this in the same commit.** That is
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
-#: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use.
-SRC_TREE_AT_V0_14_0 = "ccd6b302c35c18464fba55964edf65a9ff484c19dd59ecdd52bb708154999bc7"
+#: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
+#: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
+SRC_TREE_DIGEST = "e393d5423ee5737e965eef05a60bf2fc087a7597f6535c16dbe7dae5901ff9ca"
+SRC_FILE_COUNT = 173
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -761,23 +905,23 @@ def _is_source(path: Path) -> bool:
     return bool(path.as_posix().split("/src/", 1)[-1] != "netcorenoc/__init__.py")
 
 
-def test_src_is_byte_identical_to_v0_14_0_except_the_version_string() -> None:
-    """v0.15.0's first non-negotiable, as a property of the tree rather than a claim in a document.
+def test_src_is_byte_identical_to_the_pin_except_the_version_string() -> None:
+    """Every file under `src/`, by path and by content, against one recorded digest.
 
     The exclusion is exactly one file and it is named, not globbed: `__init__.py` carries
     `__version__` and nothing else a release changes. An exclusion pattern would be a hole.
     """
     actual, count = _src_tree_digest()
-    assert count == 164, (
-        f"{count} source files under src/ excluding the version file; v0.14.0 had 164. "
-        "A file was added or removed, which is a src/ change whatever its contents."
+    assert count == SRC_FILE_COUNT, (
+        f"{count} source files under src/ excluding the version file; the pin records "
+        f"{SRC_FILE_COUNT}. A file was added or removed, which is a src/ change whatever its "
+        "contents — and in a release of pure moves it is a defect."
     )
-    assert actual == SRC_TREE_AT_V0_14_0, (
-        f"src/ has moved.\n  pinned (v0.14.0): {SRC_TREE_AT_V0_14_0}\n"
-        f"  actual:           {actual}\n\n"
-        "v0.15.0 is a documentation release: every file under src/ except the version string is "
-        "byte-identical to v0.14.0. A later release that legitimately changes src/ recomputes "
-        "SRC_TREE_AT_V0_14_0 in the same commit, which makes the change reviewable."
+    assert actual == SRC_TREE_DIGEST, (
+        f"src/ has moved.\n  pinned:  {SRC_TREE_DIGEST}\n"
+        f"  actual:  {actual}\n\n"
+        "A release that legitimately changes src/ recomputes SRC_TREE_DIGEST in the same commit, "
+        "which makes the change one reviewable line of a diff instead of something that happened."
     )
 
 
@@ -789,6 +933,6 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
 
     root = PKG.parent.parent
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
-    assert _is_source(PKG / "learn.py"), "an ordinary module must be included"
+    assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.15.0", "the one src/ change this release makes"
+    assert __version__ == "0.15.1", "the version this release carries"

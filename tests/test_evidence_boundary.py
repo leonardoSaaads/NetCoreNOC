@@ -22,10 +22,12 @@ from typing import Any
 
 import pytest
 
-from netcorenoc import bias, labels, learn
-from netcorenoc.capture import Exclusion, LabelContext, LabelScope
+from netcorenoc.engine.correlate import learn
+from netcorenoc.engine.correlate.rootcause import Member
+from netcorenoc.engine.dataset import labels
+from netcorenoc.engine.dataset.capture import Exclusion, LabelContext, LabelScope
+from netcorenoc.engine.report import bias
 from netcorenoc.main import Engine
-from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
 
 import authutil
@@ -996,7 +998,7 @@ async def test_the_per_channel_total_is_derived_independently(store: Store) -> N
 async def test_the_disagreement_is_the_first_number_the_report_prints(store: Store) -> None:
     """The report must put it first, and must name both tiers in words a reader can follow without
     holding `EVIDENCE-BOUNDARY-0.9.2.md`."""
-    from netcorenoc import bias_report
+    from netcorenoc.engine.report import bias_report
 
     engine, _q, app = await authutil.make_env(store)
     sid, _alarms = await _situation(store, engine, 4)

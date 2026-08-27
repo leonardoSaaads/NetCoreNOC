@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+import util
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"
 sys.path.insert(0, str(REPO_ROOT / "eval"))
@@ -180,7 +182,7 @@ def test_no_promotion_path_module_mentions_a_ground_truth_field(word: str) -> No
     F51's `_SKIP_DIRS`, one release later.
     """
     for name in ("promotion.py", "judge.py", "shadow_cv.py", "evaluation_folds.py"):
-        source = (PKG / name).read_text(encoding="utf-8")
+        source = util.module_path(name).read_text(encoding="utf-8")
         assert word not in source, f"{name} mentions {word!r}"
 
 

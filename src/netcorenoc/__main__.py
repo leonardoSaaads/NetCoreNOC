@@ -29,16 +29,16 @@ import os
 import sys
 import time
 
-from netcorenoc import (
+from netcorenoc.crosscutting import audit
+from netcorenoc.engine.correlate import scoring
+from netcorenoc.engine.dataset import seal
+from netcorenoc.engine.evaluation import promotion
+from netcorenoc.engine.model import model_version
+from netcorenoc.engine.report import (
     agreement,
     agreement_report,
-    audit,
     bias,
     bias_report,
-    model_version,
-    promotion,
-    scoring,
-    seal,
     shadow_render,
     shadow_report,
 )

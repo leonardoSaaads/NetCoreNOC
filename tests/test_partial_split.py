@@ -23,10 +23,10 @@ from typing import Any
 
 import pytest
 
-from netcorenoc.capture import Exclusion, LabelContext
-from netcorenoc.learn import EPOCH_PAIR_CAP, SPLIT_PENALTY, Learner, _pair
+from netcorenoc.engine.correlate.learn import EPOCH_PAIR_CAP, SPLIT_PENALTY, Learner, _pair
+from netcorenoc.engine.correlate.rootcause import Member
+from netcorenoc.engine.dataset.capture import Exclusion, LabelContext
 from netcorenoc.main import Engine
-from netcorenoc.rootcause import Member
 from netcorenoc.store import Store
 
 import authutil
@@ -534,7 +534,7 @@ async def test_a_close_with_a_verdict_needs_feedback_write_as_well(store: Store)
     Refused rather than silently stripped of its verdict: dropping a judgement without saying so is
     the failure this release exists to end. Closing WITHOUT a verdict is unaffected.
     """
-    from netcorenoc import rbac
+    from netcorenoc.crosscutting import rbac
 
     engine, _queue, app = await authutil.make_env(store)
     sid, _alarms = await _situation(store, engine, 3)

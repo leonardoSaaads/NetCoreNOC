@@ -17,8 +17,9 @@ import math
 
 import pytest
 
-from netcorenoc import challenger, model_version, scoring
-from netcorenoc.model_version import KIND_ADDITIVE, KIND_LOGISTIC, ModelPayloadError
+from netcorenoc.engine.correlate import scoring
+from netcorenoc.engine.model import challenger, model_version
+from netcorenoc.engine.model.model_version import KIND_ADDITIVE, KIND_LOGISTIC, ModelPayloadError
 
 CV = scoring.CONTRACT_VERSION
 

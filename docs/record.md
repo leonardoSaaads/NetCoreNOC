@@ -46,6 +46,13 @@ repointed.
 **The only irreversible act in this repository is a force-push or a history rewrite of `main`.**
 That is the whole preservation rule, and it is in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
+**Four links inside `analysis/` point into the deleted directories and will never be repaired.**
+`PREREGISTRATION-0.9.0.md` names `../gates/v0.9.0-phase-1.md`, and the v0.10.0 and v0.11.0 plans name
+three specification drafts — and every one of those files is hash-pinned below, so editing a link
+would change the plan's SHA-256 and turn `tests/test_preregistration.py` red. A link inside an
+immutable document is a reference to the tree as it was; the reading rule above resolves it, and
+`tests/test_structure.py` forgives exactly those four and no others.
+
 ## The pre-registration hashes
 
 Four analysis plans in [`analysis/`](analysis/) are pinned by SHA-256 in

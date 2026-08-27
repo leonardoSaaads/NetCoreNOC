@@ -36,12 +36,15 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth, incidents, model_version, promotion, promotion_metrics, seal
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import PromotionIn
-from netcorenoc.scorer_contract import LinkScorer
-from netcorenoc.shadow_cv import power_at
+from netcorenoc.crosscutting import auth
+from netcorenoc.engine.correlate.scorer_contract import LinkScorer
+from netcorenoc.engine.dataset import incidents, seal
+from netcorenoc.engine.evaluation import promotion, promotion_metrics
+from netcorenoc.engine.evaluation.shadow_cv import power_at
+from netcorenoc.engine.model import model_version
 
 MAX_PROMOTION_HISTORY = 50
 

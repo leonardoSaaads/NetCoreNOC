@@ -8,9 +8,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from netcorenoc import known_oids
-from netcorenoc.events import TrapEvent, Varbind
-from netcorenoc.learn import StateClearLearner
+from netcorenoc.engine.correlate.learn import StateClearLearner
+from netcorenoc.ingest import known_oids
+from netcorenoc.ingest.events import TrapEvent, Varbind
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 

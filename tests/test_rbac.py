@@ -13,7 +13,8 @@ import asyncio
 import httpx
 import pytest
 
-from netcorenoc import api, audit, rbac
+from netcorenoc import api
+from netcorenoc.crosscutting import audit, rbac
 from netcorenoc.store import Store
 
 import authutil
@@ -251,7 +252,7 @@ def test_the_tables_are_re_exported_by_identity_not_by_copy(name: str) -> None:
     Shown to fail against a deliberately-copying `__init__.py` before being accepted — see
     `docs/gates/v0.7.4-phase-4.md` §2.
     """
-    from netcorenoc.rbac import tables
+    from netcorenoc.crosscutting.rbac import tables
 
     exported = getattr(rbac, name)
     owned = getattr(tables, name)

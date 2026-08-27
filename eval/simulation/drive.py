@@ -68,16 +68,17 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-from netcorenoc import boosting, forest, model_version, scoring, tree  # noqa: E402
 from netcorenoc.api.routes_promotion import (  # noqa: E402
     ASSERTING_BAGS_FLOOR,
     ASSERTING_INCIDENTS_FLOOR,
 )
-from netcorenoc.events import TrapEvent  # noqa: E402
+from netcorenoc.engine.correlate import scoring  # noqa: E402
+from netcorenoc.engine.model import boosting, forest, model_version, tree  # noqa: E402
+from netcorenoc.engine.model.training import TrainingRow  # noqa: E402
+from netcorenoc.ingest.events import TrapEvent  # noqa: E402
+from netcorenoc.ingest.receiver import parse_trap  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
-from netcorenoc.receiver import parse_trap  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
-from netcorenoc.training import TrainingRow  # noqa: E402
 from simulation import diagnose  # noqa: E402
 from simulation.generator import INCREMENT_INCIDENTS, SEED, generate  # noqa: E402
 from simulation.labelling import label_increment, truth_of  # noqa: E402
@@ -148,9 +149,9 @@ async def training_rows(store: Store) -> list[TrainingRow]:
     are the rows the logistic challenger would have been fitted on — the comparison is between
     models, not between two ways of building a dataset.
     """
-    from netcorenoc.census import resolve_identity
-    from netcorenoc.shadow import labelled_pair
-    from netcorenoc.training import derive
+    from netcorenoc.engine.dataset.census import resolve_identity
+    from netcorenoc.engine.evaluation.shadow import labelled_pair
+    from netcorenoc.engine.model.training import derive
 
     # **`resolve_identity` first, and it is not optional.** It is what puts `incident` on each pair
     # row, and `labelled_pair` reads that key: a `KeyError` here was the first version of this
@@ -184,7 +185,7 @@ def params_hash_of(kind: str, payload: dict[str, Any]) -> str:
 
 async def census(store: Store) -> dict[str, int]:
     """The floors, with the judge's own expression. **Never a query written for a report.**"""
-    from netcorenoc import incidents
+    from netcorenoc.engine.dataset import incidents
 
     rows = await store.asserting_bag_rows()
     cursor = await store.conn.execute("SELECT id, merged_into FROM situation ORDER BY id")

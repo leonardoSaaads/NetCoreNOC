@@ -16,10 +16,13 @@ import json
 
 import pytest
 
-from netcorenoc import audit, challenger, model_version, promotion, seal
 from netcorenoc.api import create_app
+from netcorenoc.crosscutting import audit
+from netcorenoc.engine.dataset import seal
+from netcorenoc.engine.evaluation import promotion
+from netcorenoc.engine.evaluation.shadow_cv import Interval, power_at
+from netcorenoc.engine.model import challenger, model_version
 from netcorenoc.main import Engine
-from netcorenoc.shadow_cv import Interval, power_at
 from netcorenoc.store import Store
 
 import authutil
@@ -82,7 +85,7 @@ async def _document_for(kind: str) -> str:
     that file already exercises in depth.
     """
     import modelfixtures
-    from netcorenoc import boosting, forest, tree
+    from netcorenoc.engine.model import boosting, forest, tree
 
     if kind == model_version.KIND_ADDITIVE:
         return model_version.canonical_document(

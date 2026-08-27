@@ -28,7 +28,7 @@ import bisect
 import math
 from itertools import pairwise
 
-from netcorenoc.shadow_cv import Z_ALPHA, minimum_detectable_difference
+from netcorenoc.engine.evaluation.shadow_cv import Z_ALPHA, minimum_detectable_difference
 
 # The registered base rate. §3.1's table is evaluated here and nowhere else varied.
 P = 0.70

@@ -23,7 +23,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from netcorenoc import audit, auth, rbac, shaping
+from netcorenoc.crosscutting import audit, auth, rbac, shaping
 from netcorenoc.store import Store
 
 import apisource
@@ -541,7 +541,7 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
         # module that renders the Governance screen, which is where an operator reads it — and
         # that is what this control is about, not which file it lives in.
         "src/netcorenoc/ui/app/views/governance.js",
-        "src/netcorenoc/shaping/__init__.py",
+        "src/netcorenoc/crosscutting/shaping/__init__.py",
     ):
         # Normalise typesetting before matching: strip Markdown/HTML emphasis and collapse
         # whitespace, so "**NOT** tenant isolation" and a line-wrapped "NOT tenant\n isolation"
@@ -557,11 +557,7 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
 
 
 def test_f33_receiver_does_not_import_the_governance_modules() -> None:
-    from pathlib import Path
-
-    source = (Path(__file__).resolve().parent.parent / "src/netcorenoc/receiver.py").read_text(
-        encoding="utf-8"
-    )
+    source = util.module_path("receiver.py").read_text(encoding="utf-8")
     for forbidden in ("rbac", "shaping", "governance"):
         assert forbidden not in source, f"receiver.py must not reference {forbidden!r} (F33)"
 
@@ -570,7 +566,7 @@ def test_f33_datagram_received_gained_nothing() -> None:
     """The v0.6.0 F24 assertion, extended with the governance identifiers."""
     import inspect
 
-    from netcorenoc.receiver import TrapReceiver
+    from netcorenoc.ingest.receiver import TrapReceiver
 
     source = inspect.getsource(TrapReceiver.datagram_received)
     for forbidden in (
@@ -589,11 +585,8 @@ def test_f33_datagram_received_gained_nothing() -> None:
 
 
 def test_f33_engine_and_learning_are_untouched_by_governance() -> None:
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parent.parent / "src/netcorenoc"
     for module in ("main.py", "learn.py", "correlate.py", "scoring.py", "rootcause.py"):
-        source = (root / module).read_text(encoding="utf-8")
+        source = util.module_path(module).read_text(encoding="utf-8")
         for forbidden in ("resolve_capabilities", "visible_nes", "governance_policy"):
             assert forbidden not in source, (
                 f"{module} references {forbidden!r}: governance is HTTP-side only (F33)"

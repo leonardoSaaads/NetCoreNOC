@@ -11,8 +11,8 @@ tree, which T4 refuses, so a fixture without structure would test the refusal ra
 
 from __future__ import annotations
 
-from netcorenoc.challenger import feature_vector
-from netcorenoc.training import TrainingRow
+from netcorenoc.engine.model.challenger import feature_vector
+from netcorenoc.engine.model.training import TrainingRow
 
 __all__ = ["DEFAULT_ROWS", "training_rows"]
 

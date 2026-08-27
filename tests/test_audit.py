@@ -7,11 +7,11 @@ import sqlite3
 import httpx
 import pytest
 
-from netcorenoc import audit
 from netcorenoc.api import create_app
-from netcorenoc.correlate import Correlator, WindowAlarm
+from netcorenoc.crosscutting import audit
+from netcorenoc.engine.correlate.correlate import Correlator, WindowAlarm
+from netcorenoc.engine.correlate.scoring import LinkFeatures, LinkScore
 from netcorenoc.main import Engine
-from netcorenoc.scoring import LinkFeatures, LinkScore
 from netcorenoc.store import Store
 
 import authutil
@@ -48,7 +48,7 @@ async def _drive_every_action(store: Store) -> tuple[Engine, httpx.AsyncClient]:
     await util.drive(engine, engine.queue, util.fixture_events("fiber_cut.json", BASE))
     # Also quarantine one malformed packet so the quarantine viewer has content.
     async with store.lock:
-        from netcorenoc.receiver import quarantine_packet
+        from netcorenoc.ingest.receiver import quarantine_packet
 
         await store.quarantine_packet(quarantine_packet("10.0.0.9", b"\x30\x05bad", "ber", BASE))
         await store.commit()

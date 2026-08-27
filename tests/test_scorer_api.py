@@ -10,8 +10,9 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from netcorenoc import preview, rbac, scoring
 from netcorenoc.api import create_app
+from netcorenoc.crosscutting import rbac
+from netcorenoc.engine.correlate import preview, scoring
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
@@ -441,7 +442,7 @@ async def test_f22_preview_is_bounded_by_a_wall_clock_budget(store: Store) -> No
         )
         for r in rows
     ]
-    from netcorenoc.learn import Learner
+    from netcorenoc.engine.correlate.learn import Learner
 
     with pytest.raises(preview.PreviewTimeoutError):
         preview.partition(alarms, scoring.AdditiveScorer(), Learner(), deadline=0.0)

@@ -18,10 +18,10 @@ from typing import Any
 from fastapi import Depends, FastAPI
 from fastapi.responses import StreamingResponse
 
-from netcorenoc import auth, rbac, shaping
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.learn import MIN_EDGE_N
+from netcorenoc.crosscutting import auth, rbac, shaping
+from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 
 SSE_HEARTBEAT_S = 15.0
 SSE_UPDATE_S = 2.0
