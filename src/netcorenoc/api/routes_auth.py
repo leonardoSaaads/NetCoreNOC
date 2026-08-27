@@ -13,11 +13,11 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 
-from netcorenoc import auth
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import LoginIn, PasswordIn
 from netcorenoc.api.perimeter import _client_ip
+from netcorenoc.crosscutting import auth
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:

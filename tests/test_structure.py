@@ -66,8 +66,9 @@ SUBMODULES = [
     "api.routes_promotion",
     "api.routes_scorer",
     "api.routes_static",
-    "audit",
-    "auth",
+    "crosscutting",
+    "crosscutting.audit",
+    "crosscutting.auth",
     "correlate",
     "events",
     "known_oids",
@@ -75,29 +76,29 @@ SUBMODULES = [
     "engine",
     "engine_base",
     "gaps",
-    "logsetup",
+    "crosscutting.logsetup",
     "main",
     "maintenance",
     # v0.7.4: `rbac` became a package (DECISIONS #96). `tables.py` is the single source of
     # authority; `__init__.py` re-exports it by identity, never by copy.
-    "rbac",
-    "rbac.policy",
-    "rbac.tables",
+    "crosscutting.rbac",
+    "crosscutting.rbac.policy",
+    "crosscutting.rbac.tables",
     "receiver",
     "rootcause",
     "runner",
-    "runtime",
+    "crosscutting.runtime",
     "scorer_lifecycle",
     "scoring",
-    "settings",
+    "crosscutting.settings",
     "severity",
     # v0.7.4: `shaping` became a package (DECISIONS #95), on the same terms `api` and `store` did —
     # it keeps its name and its whole re-export surface, and every module inside it must resolve
     # from the **installed** package too.
-    "shaping",
-    "shaping.fields",
-    "shaping.project",
-    "shaping.scope",
+    "crosscutting.shaping",
+    "crosscutting.shaping.fields",
+    "crosscutting.shaping.project",
+    "crosscutting.shaping.scope",
     # v0.7.3: `store` became a package (DECISIONS #88), on the same terms `api` did in v0.7.2 — it
     # keeps its name and its whole re-export surface, and every module inside it must resolve from
     # the **installed** package too, which is the F12 guarantee extended one level down.

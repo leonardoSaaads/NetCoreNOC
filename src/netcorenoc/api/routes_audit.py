@@ -13,9 +13,9 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Request, Response
 
-from netcorenoc import audit, auth
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
+from netcorenoc.crosscutting import audit, auth
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:

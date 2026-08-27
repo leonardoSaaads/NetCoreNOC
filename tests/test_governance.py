@@ -23,7 +23,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from netcorenoc import audit, auth, rbac, shaping
+from netcorenoc.crosscutting import audit, auth, rbac, shaping
 from netcorenoc.store import Store
 
 import apisource
@@ -541,7 +541,7 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
         # module that renders the Governance screen, which is where an operator reads it — and
         # that is what this control is about, not which file it lives in.
         "src/netcorenoc/ui/app/views/governance.js",
-        "src/netcorenoc/shaping/__init__.py",
+        "src/netcorenoc/crosscutting/shaping/__init__.py",
     ):
         # Normalise typesetting before matching: strip Markdown/HTML emphasis and collapse
         # whitespace, so "**NOT** tenant isolation" and a line-wrapped "NOT tenant\n isolation"

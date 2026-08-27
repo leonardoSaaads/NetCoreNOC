@@ -28,10 +28,10 @@ from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Route
 
-from netcorenoc import auth, rbac
 from netcorenoc.api import declare, routes_static
 from netcorenoc.api.app import create_app
 from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError, require_declaration
+from netcorenoc.crosscutting import auth, rbac
 from netcorenoc.store import Store
 
 import authutil

@@ -16,10 +16,11 @@ import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth, capture, shaping
+from netcorenoc import capture
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import CloseIn, FeedbackIn, LabelIn
+from netcorenoc.crosscutting import auth, shaping
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:

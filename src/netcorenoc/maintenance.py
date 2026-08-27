@@ -23,7 +23,8 @@ import asyncio
 import time
 from collections.abc import Callable
 
-from netcorenoc import __version__, audit, census, seal, severity
+from netcorenoc import __version__, census, seal, severity
+from netcorenoc.crosscutting import audit
 from netcorenoc.engine_base import EngineBase
 from netcorenoc.retention_policy import RETENTION_META_KEY, RetentionPolicy
 from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE

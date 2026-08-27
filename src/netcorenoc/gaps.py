@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from netcorenoc import audit
+from netcorenoc.crosscutting import audit
 from netcorenoc.engine_base import EngineBase
 from netcorenoc.store import Store
 

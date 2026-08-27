@@ -38,38 +38,20 @@ from __future__ import annotations
 # path", and the honest reading of that is every module-level name `shaping.py` had — not only the
 # thirteen the tree happens to reach today. Nothing outside this package uses them; if that stays
 # true they cost one line each, and if it stops being true nobody has to notice.
-from netcorenoc.shaping.fields import (
-    _COARSEN as _COARSEN,
-)
-from netcorenoc.shaping.fields import (
-    _DROP as _DROP,
-)
-from netcorenoc.shaping.fields import (
-    FIELD_RULES,
-    coarsen_ip,
-    shape,
-)
-from netcorenoc.shaping.fields import (
-    _allowed as _allowed,
-)
-from netcorenoc.shaping.fields import (
-    _rank as _rank,
-)
-from netcorenoc.shaping.project import (
-    _as_int as _as_int,
-)
-from netcorenoc.shaping.project import (
+from netcorenoc.crosscutting.shaping.fields import _COARSEN as _COARSEN
+from netcorenoc.crosscutting.shaping.fields import _DROP as _DROP
+from netcorenoc.crosscutting.shaping.fields import FIELD_RULES, coarsen_ip, shape
+from netcorenoc.crosscutting.shaping.fields import _allowed as _allowed
+from netcorenoc.crosscutting.shaping.fields import _rank as _rank
+from netcorenoc.crosscutting.shaping.project import _as_int as _as_int
+from netcorenoc.crosscutting.shaping.project import (
     filter_rows,
     project_graph,
     project_situation_detail,
 )
-from netcorenoc.shaping.scope import (
-    _ADDRESS_CHARS as _ADDRESS_CHARS,
-)
-from netcorenoc.shaping.scope import (
-    _GLOB_CHARS as _GLOB_CHARS,
-)
-from netcorenoc.shaping.scope import (
+from netcorenoc.crosscutting.shaping.scope import _ADDRESS_CHARS as _ADDRESS_CHARS
+from netcorenoc.crosscutting.shaping.scope import _GLOB_CHARS as _GLOB_CHARS
+from netcorenoc.crosscutting.shaping.scope import (
     DENY_ALL,
     UNRESTRICTED,
     Scope,
@@ -79,18 +61,10 @@ from netcorenoc.shaping.scope import (
     scope_policy_errors,
     visible_nes,
 )
-from netcorenoc.shaping.scope import (
-    _can_never_match as _can_never_match,
-)
-from netcorenoc.shaping.scope import (
-    _layers as _layers,
-)
-from netcorenoc.shaping.scope import (
-    _matches as _matches,
-)
-from netcorenoc.shaping.scope import (
-    _selector_lists as _selector_lists,
-)
+from netcorenoc.crosscutting.shaping.scope import _can_never_match as _can_never_match
+from netcorenoc.crosscutting.shaping.scope import _layers as _layers
+from netcorenoc.crosscutting.shaping.scope import _matches as _matches
+from netcorenoc.crosscutting.shaping.scope import _selector_lists as _selector_lists
 
 __all__ = [
     "DENY_ALL",

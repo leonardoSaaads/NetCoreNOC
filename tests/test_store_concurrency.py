@@ -38,8 +38,8 @@ from typing import Any
 import aiosqlite
 import pytest
 
-from netcorenoc import audit
 from netcorenoc.api.perimeter import Perimeter
+from netcorenoc.crosscutting import audit
 from netcorenoc.store import Store
 
 BASE = 1_700_000_000.0

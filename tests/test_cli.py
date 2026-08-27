@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 
 from netcorenoc import __main__ as cli
-from netcorenoc import audit
-from netcorenoc.logsetup import JsonFormatter
-from netcorenoc.runtime import RuntimeConfig
+from netcorenoc.crosscutting import audit
+from netcorenoc.crosscutting.logsetup import JsonFormatter
+from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.store import Store
 
 

@@ -32,7 +32,6 @@ import time
 from netcorenoc import (
     agreement,
     agreement_report,
-    audit,
     bias,
     bias_report,
     model_version,
@@ -42,6 +41,7 @@ from netcorenoc import (
     shadow_render,
     shadow_report,
 )
+from netcorenoc.crosscutting import audit
 from netcorenoc.main import legacy_env_error, legacy_env_names
 from netcorenoc.store import Store
 

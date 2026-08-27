@@ -10,8 +10,9 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from netcorenoc import preview, rbac, scoring
+from netcorenoc import preview, scoring
 from netcorenoc.api import create_app
+from netcorenoc.crosscutting import rbac
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 

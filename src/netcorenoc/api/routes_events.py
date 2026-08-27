@@ -18,9 +18,9 @@ from typing import Any
 from fastapi import Depends, FastAPI
 from fastapi.responses import StreamingResponse
 
-from netcorenoc import auth, rbac, shaping
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
+from netcorenoc.crosscutting import auth, rbac, shaping
 from netcorenoc.learn import MIN_EDGE_N
 
 SSE_HEARTBEAT_S = 15.0

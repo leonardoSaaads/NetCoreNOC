@@ -33,7 +33,7 @@ import pytest
 
 import domdriver
 import uifixtures
-from netcorenoc import rbac
+from netcorenoc.crosscutting import rbac
 from netcorenoc.store import Store
 from test_dom_harness import dom_test
 

@@ -96,7 +96,7 @@ async def test_csrf_valid_cookie_mutation_succeeds(store: Store) -> None:
 
 async def test_bearer_token_mutation_needs_no_csrf_header(store: Store) -> None:
     """Service tokens are not cookie credentials, so the CSRF gate does not apply to them."""
-    from netcorenoc import auth
+    from netcorenoc.crosscutting import auth
 
     _e, _q, app = await authutil.make_env(store)
     await _seed_label_target(store)

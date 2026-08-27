@@ -36,7 +36,7 @@ files.
 
 from __future__ import annotations
 
-from netcorenoc.rbac.policy import (
+from netcorenoc.crosscutting.rbac.policy import (
     CapabilityPolicy,
     capability_policy_errors,
     ceiling,
@@ -45,13 +45,9 @@ from netcorenoc.rbac.policy import (
     resolve_capabilities,
     role_allows,
 )
-from netcorenoc.rbac.policy import (
-    _subject_sets as _subject_sets,
-)
-from netcorenoc.rbac.tables import (
-    _CEILINGS as _CEILINGS,
-)
-from netcorenoc.rbac.tables import (
+from netcorenoc.crosscutting.rbac.policy import _subject_sets as _subject_sets
+from netcorenoc.crosscutting.rbac.tables import _CEILINGS as _CEILINGS
+from netcorenoc.crosscutting.rbac.tables import (
     AUDITED_DENIED_PERMISSIONS,
     PERMISSIONS,
     PUBLIC_ROUTES,

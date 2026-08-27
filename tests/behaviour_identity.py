@@ -49,7 +49,7 @@ from typing import Any
 
 import httpx
 
-from netcorenoc import auth
+from netcorenoc.crosscutting import auth
 from netcorenoc.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

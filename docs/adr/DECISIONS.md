@@ -1641,3 +1641,20 @@ From this release an entry is about six lines: decision, reason, release.*
   vocabulary an agent would share is **already below the data layer** — a shared package boundary
   rather than a copied protocol, and that choice is therefore still open. The two profiler modules
   are the part that is *not* a subtree: they sit in `correlate/`, which an agent would not have.
+
+## 217. `engine.py` moves in the first `engine/` commit, so the trap path cannot be last
+
+- **Decision**: the move order is `crosscutting/`, `engine/operate/`, `engine/report/`,
+  `engine/evaluation/`, `engine/model/`, `engine/dataset/`, `engine/correlate/`, `ingest/` — not
+  the risk order the brief specifies, which puts every trap-path module last. (v0.15.1)
+- **Reason**: **a package and a module of the same name cannot coexist.** The moment
+  `src/netcorenoc/engine/` acquires an `__init__.py`, `import netcorenoc.engine` resolves to the
+  package and `engine.py` becomes unreachable — so `engine.py` has to move in whichever commit
+  creates `engine/`, and `operate/` is that commit. A namespace package does not help: it would
+  leave `netcorenoc.engine` resolving to the module, and `netcorenoc.engine.report` resolving to
+  nothing.
+- **What actually protects the trap path is the pin, not the ordering**: `TRAP_PATH_HASHES` moves
+  with each file in the same commit, and its five values are unchanged for the whole release. The
+  brief's ordering is a proxy for that discipline; where the two conflict, the discipline wins.
+- **Measured**: three of the five pinned modules — `capture`, `correlate`, `learn` — still move in
+  the last three commits. `engine` moves second and `receiver` last.

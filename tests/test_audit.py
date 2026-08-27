@@ -7,9 +7,9 @@ import sqlite3
 import httpx
 import pytest
 
-from netcorenoc import audit
 from netcorenoc.api import create_app
 from netcorenoc.correlate import Correlator, WindowAlarm
+from netcorenoc.crosscutting import audit
 from netcorenoc.main import Engine
 from netcorenoc.scoring import LinkFeatures, LinkScore
 from netcorenoc.store import Store

@@ -82,7 +82,7 @@ from fastapi.routing import APIRoute
 from fastapi.types import DecoratedCallable
 from starlette.routing import Route
 
-from netcorenoc import rbac
+from netcorenoc.crosscutting import rbac
 
 
 class UndeclaredRouteError(RuntimeError):

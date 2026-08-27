@@ -42,27 +42,40 @@ GIT = "/usr/bin/git"
 #: tags, and a census whose baseline cannot be resolved is a census that quietly passes.
 BASELINE = "0089fc0"
 
-#: Where each module went. `old name -> new path under src/netcorenoc/`, and this table is the
-#: release's map: it is what `git mv` was driven from and what the census reads back.
-MOVES: dict[str, str] = {}
+#: The directories v0.15.1 created. A moved file's path at the baseline is its path today with one
+#: of these stripped — `crosscutting/rbac/tables.py` was `rbac/tables.py`, and
+#: `engine/report/bias.py` was `bias.py`. Declared rather than inferred: a rule that guessed the
+#: old path from the file name alone would look up `tables.py` at the package root, find nothing,
+#: and report a file it never actually compared.
+DESTINATIONS = (
+    "engine/correlate",
+    "engine/dataset",
+    "engine/evaluation",
+    "engine/model",
+    "engine/operate",
+    "engine/report",
+    "crosscutting",
+    "ingest",
+)
 
 
 def _load_moves() -> dict[str, str]:
-    """Derive the map from the tree itself, so it cannot drift from what actually moved.
-
-    Every `.py` under a layer directory whose name is not `__init__` is a file that came from the
-    package root — which is true for this release and asserted by the baseline lookup: a file that
-    was NOT at the root at `BASELINE` fails to resolve and is reported rather than skipped.
-    """
+    """`path at the baseline -> path today`, derived from the tree so it cannot drift from it."""
     out: dict[str, str] = {}
     pkg = ROOT / "src" / "netcorenoc"
     for path in sorted(pkg.rglob("*.py")):
-        rel = path.relative_to(pkg)
-        if len(rel.parts) < 2 or rel.stem == "__init__":
-            continue
-        if rel.parts[0] in ("api", "store", "migrations", "ui"):
-            continue  # never moved; they were already packages at the root
-        out[rel.stem] = rel.as_posix()
+        relative = path.relative_to(pkg).as_posix()
+        for destination in DESTINATIONS:
+            if not relative.startswith(destination + "/"):
+                continue
+            stripped = relative.removeprefix(destination + "/")
+            # A bare `__init__.py` directly under a destination is the marker this release created
+            # for that directory. Stripping the prefix would point it at the package root's own
+            # `__init__.py`, which resolves — and would be a comparison between two unrelated files
+            # reported as a defect. `crosscutting/rbac/__init__.py` is not this case: it strips to
+            # `rbac/__init__.py`, which is where it came from.
+            out[relative if stripped == "__init__.py" else stripped] = relative
+            break
     return out
 
 
@@ -95,26 +108,34 @@ def digest(source: str) -> str:
 
 def main(argv: list[str]) -> int:
     ref = argv[0] if argv else BASELINE
-    moves = MOVES or _load_moves()
+    moves = _load_moves()
     if not moves:
         sys.stdout.write("no moved modules found — the census would be vacuous\n")
         return 2
 
     exceptions: list[str] = []
     unresolved: list[str] = []
+    created: list[str] = []
     checked = 0
-    for name, new_relative in sorted(moves.items()):
-        old = _baseline(ref, f"src/netcorenoc/{name}.py")
+    for old_relative, new_relative in sorted(moves.items()):
+        old = _baseline(ref, f"src/netcorenoc/{old_relative}")
         if old is None:
-            unresolved.append(name)
+            # A package marker this release creates has no baseline and is not an exception; a
+            # module without one is a file that appeared during a release of pure moves, which is.
+            (created if new_relative.endswith("__init__.py") else unresolved).append(new_relative)
             continue
         new = (ROOT / "src" / "netcorenoc" / new_relative).read_text(encoding="utf-8")
         before, after = digest(old), digest(new)
         checked += 1
         if before != after:
-            exceptions.append(f"  {name}.py -> {new_relative}\n    was {before}\n    now {after}")
+            exceptions.append(
+                f"  {old_relative} -> {new_relative}\n    was {before}\n    now {after}"
+            )
 
-    sys.stdout.write(f"content census against {ref}: {checked} moved file(s) compared\n")
+    sys.stdout.write(
+        f"content census against {ref}: {checked} moved file(s) compared, "
+        f"{len(created)} package marker(s) created\n"
+    )
     if unresolved:
         sys.stdout.write(
             f"UNRESOLVED at the baseline ({len(unresolved)}): {', '.join(unresolved)}\n"

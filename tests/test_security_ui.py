@@ -41,7 +41,7 @@ async def engine_env(store: Store) -> tuple[Engine, asyncio.Queue[QueueItem]]:
 async def client(
     engine_env: tuple[Engine, asyncio.Queue[QueueItem]],
 ) -> AsyncIterator[httpx.AsyncClient]:
-    from netcorenoc import auth
+    from netcorenoc.crosscutting import auth
 
     store = engine_env[0].store
     async with store.lock:
@@ -276,7 +276,7 @@ def test_every_view_is_gated_on_a_capability_the_server_enforces() -> None:
     A capability the authorization map does not know cannot be held by anyone, so a view gated on
     one is either unreachable or — if the client's check were ever inverted — ungated.
     """
-    from netcorenoc import rbac
+    from netcorenoc.crosscutting import rbac
 
     for view_id, capabilities in registry_entries().items():
         assert capabilities, f"{view_id} declares an empty capability list"
@@ -298,7 +298,7 @@ def test_admin_views_are_gated_on_an_admin_ceiling_capability() -> None:
     `test_ui_invariants.py`. A green tick here is not that assertion and must never be reported as
     though it were.
     """
-    from netcorenoc import rbac
+    from netcorenoc.crosscutting import rbac
 
     entries = registry_entries()
     for view_id in ADMIN_VIEWS:
@@ -368,7 +368,7 @@ def view_writes() -> dict[str, set[tuple[str, str]]]:
     the declared `/api/users/{uid}/role`. A path this cannot resolve raises rather than being
     skipped: an unresolvable write is exactly the one that would slip through unchecked.
     """
-    from netcorenoc import rbac
+    from netcorenoc.crosscutting import rbac
 
     modules = ui_modules()
 
@@ -456,7 +456,7 @@ def test_mutating_controls_are_behind_capability_guards() -> None:
     principal who lacks them. `situations.js` is reachable by a **viewer** and writes
     `feedback.write`, so it must and does gate itself.
     """
-    from netcorenoc import rbac
+    from netcorenoc.crosscutting import rbac
 
     entries = registry_entries()
     modules = ui_modules()

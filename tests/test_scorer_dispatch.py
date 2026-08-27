@@ -22,7 +22,8 @@ import json
 
 import pytest
 
-from netcorenoc import audit, challenger, model_version, scoring
+from netcorenoc import challenger, model_version, scoring
+from netcorenoc.crosscutting import audit
 from netcorenoc.main import Engine
 from netcorenoc.model_version import KIND_ADDITIVE, KIND_LOGISTIC
 from netcorenoc.store import Store

@@ -51,7 +51,6 @@ LAYER_OF: dict[str, str] = {
     "maintenance": "engine",
     "gaps": "engine",
     "scorer_lifecycle": "engine",
-    "settings": "cross-cutting",
     "correlate": "engine",
     "learn": "engine",
     "scoring": "engine",
@@ -154,13 +153,10 @@ LAYER_OF: dict[str, str] = {
     "receiver": "ingest",
     "events": "ingest",
     "known_oids": "ingest",
-    # cross-cutting — every layer's concern, no layer's private concern
-    "rbac": "cross-cutting",
-    "shaping": "cross-cutting",
-    "auth": "cross-cutting",
-    "audit": "cross-cutting",
-    "runtime": "cross-cutting",
-    "logsetup": "cross-cutting",
+    # cross-cutting — every layer's concern, no layer's private concern. v0.15.1 gathered the
+    # five loose modules and the two packages into `crosscutting/`, so ONE entry now classifies
+    # what seven did: the layer is the directory (DECISIONS #207, #209).
+    "crosscutting": "cross-cutting",
     "__init__": "cross-cutting",
 }
 
@@ -353,7 +349,7 @@ def test_cross_cutting_imports_only_cross_cutting() -> None:
     One known, recorded exception: `runtime.py` -> `receiver.py`, named in §1's violation table and
     on the ROADMAP, deferred (not this release's scope). It is listed rather than hidden.
     """
-    known = {("runtime", "receiver")}
+    known = {("crosscutting", "receiver")}
     violations: list[str] = []
     for key, path in _module_files():
         if _layer(key) != CROSS_CUTTING:

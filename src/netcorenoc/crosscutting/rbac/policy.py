@@ -27,7 +27,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from netcorenoc.rbac.tables import (
+from netcorenoc.crosscutting.rbac.tables import (
     _CEILINGS,
     PERMISSIONS,
     RECOVERY_CAPABILITIES,

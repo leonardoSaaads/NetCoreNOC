@@ -15,9 +15,9 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 
-from netcorenoc import auth, shaping
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
+from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.learn import MIN_EDGE_N
 
 

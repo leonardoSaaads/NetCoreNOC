@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcorenoc import auth
+from netcorenoc.crosscutting import auth
 from netcorenoc.store import Store
 
 import authutil

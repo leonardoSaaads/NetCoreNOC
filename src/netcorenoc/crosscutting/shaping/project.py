@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from netcorenoc.shaping.scope import Scope
+from netcorenoc.crosscutting.shaping.scope import Scope
 
 
 def filter_rows(rows: list[dict[str, Any]], scope: Scope, *, ne_key: str) -> list[dict[str, Any]]:

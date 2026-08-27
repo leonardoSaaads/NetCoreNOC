@@ -19,10 +19,10 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth, rbac, shaping
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import PolicyIn
+from netcorenoc.crosscutting import auth, rbac, shaping
 
 MAX_POLICY_HISTORY = 50
 

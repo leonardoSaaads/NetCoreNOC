@@ -24,8 +24,8 @@ from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request, Response
 
-from netcorenoc import audit, auth, rbac, shaping
 from netcorenoc.api.governance_cache import GovernancePolicies
+from netcorenoc.crosscutting import audit, auth, rbac, shaping
 
 if TYPE_CHECKING:
     from netcorenoc.store import Store

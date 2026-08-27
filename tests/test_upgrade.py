@@ -12,8 +12,8 @@ import asyncio
 import sqlite3
 from pathlib import Path
 
-from netcorenoc import audit, shaping
 from netcorenoc.api import create_app
+from netcorenoc.crosscutting import audit, shaping
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
@@ -185,7 +185,7 @@ async def test_v070_upgrade_changes_no_behaviour(tmp_path: Path) -> None:
     did before. Governance changes nothing until an admin writes a policy.
     """
     import netcorenoc.store.lifecycle as store_mod
-    from netcorenoc import rbac
+    from netcorenoc.crosscutting import rbac
 
     real_dir = store_mod.MIGRATIONS_DIR
 

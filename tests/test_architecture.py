@@ -114,7 +114,7 @@ def test_modules_discovered() -> None:
     """Guard the guard: a glob that matched nothing would make every assertion below vacuous."""
     modules = _modules()
     assert len(modules) >= 20, modules
-    assert "rbac/tables.py" in modules
+    assert "crosscutting/rbac/tables.py" in modules
 
 
 def test_no_module_exceeds_the_size_guard() -> None:
@@ -302,14 +302,38 @@ def test_cohesion_exempt_modules_actually_need_the_exemption() -> None:
     )
 
 
-def test_the_package_is_at_most_one_level_deep() -> None:
-    """MODULE-ARCHITECTURE.md §9: one level of nesting, where earned. Never two."""
+#: The nesting budget, and what each level is allowed to say. Until v0.15.1 this was one level —
+#: "where earned, never two" — and it was earned twice, by `api/` and by `store/`. #207 spends the
+#: second level on the layer, so a path now reads `<layer>/<domain>/<module>.py` and there is no
+#: third thing it may say (DECISIONS #210).
+MAX_NESTING = 2
+
+
+def test_the_package_is_at_most_two_levels_deep() -> None:
+    """`architecture.md`: two levels of nesting, where earned. Never three.
+
+    The budget is spent, deliberately and completely: level one is the layer, level two is the
+    domain inside `engine/` (or the package inside `crosscutting/`). A third would be a directory
+    nobody can name — which is how a tree stops being a description and becomes a filing habit.
+    """
     deep = [
         str(path.relative_to(PKG))
         for path in PKG.rglob("*.py")
-        if len(path.relative_to(PKG).parts) > 2
+        if len(path.relative_to(PKG).parts) > MAX_NESTING + 1
     ]
-    assert not deep, f"modules nested more than one level deep: {deep}"
+    assert not deep, f"modules nested more than {MAX_NESTING} levels deep: {deep}"
+
+
+def test_the_nesting_budget_is_spent_rather_than_merely_available() -> None:
+    """The control on the guard above: a limit nothing reaches is a limit nobody has tested.
+
+    Without this, `MAX_NESTING` could be raised to any number and every assertion would still pass.
+    """
+    depths = {len(path.relative_to(PKG).parts) for path in PKG.rglob("*.py")}
+    assert max(depths) == MAX_NESTING + 1, (
+        f"the deepest module sits at {max(depths) - 1} level(s) of nesting and the budget is "
+        f"{MAX_NESTING}. A budget with headroom nothing uses is a number, not a rule."
+    )
 
 
 # --- the route-order parity baseline -----------------------------------------------------
@@ -706,26 +730,29 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
         assert (PKG / name).is_file(), f"{name} is pinned and does not exist"
 
 
-# --- prime directive 2: v0.15.0 changes no src/ ------------------------------------------------
+# --- "did any code move at all", as one reviewable line ----------------------------------------
 #
-# v0.15.0's central claim is that a release which rewrites the documentation changes no code. The
-# claim was verified file by file while the release was built — 165 files, zero differing — and
-# then this was added, because a verification somebody ran once is not a property of the tree.
-# Principle 8: the instrument precedes the change it measures, and this instrument arrived late.
+# Installed in v0.15.0, whose central claim was that a release rewriting the documentation changes
+# no code. v0.15.1 changes `src/` in every one of its move commits, so the pin is **recomputed in
+# each of them** rather than once at the end — otherwise the strongest whole-tree guard this
+# project has would be checking a tree that no longer exists for eleven commits, which is the
+# `TRAP_PATH_HASHES` failure mode at the scale of the whole package (DECISIONS #214).
 
-#: SHA-256 over `src/` **as it stood at v0.14.0** (commit `3ecf237`), excluding
-#: `src/netcorenoc/__init__.py`, which carries the version string and is the one file a release is
-#: always allowed to touch. Computed over 164 files as
+#: SHA-256 over `src/`, excluding `src/netcorenoc/__init__.py`, which carries the version string
+#: and is the one file a release is always allowed to touch. Computed as
 #:
 #:     for each path in sorted order:  update(path); update(b"\0"); update(sha256(contents))
 #:
-#: — the path is hashed alongside the contents so that a RENAME moves the digest too. A digest over
-#: contents alone would let `learn.py` and `severity.py` swap names unnoticed.
+#: — the path is hashed alongside the contents, so a **move** moves the digest even when every byte
+#: of every file is unchanged, which is exactly what makes it the right guard for v0.15.1. A digest
+#: over contents alone would let `learn.py` and `severity.py` swap names unnoticed.
 #:
 #: **When a release legitimately changes `src/`, it recomputes this in the same commit.** That is
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
-#: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use.
-SRC_TREE_AT_V0_14_0 = "ccd6b302c35c18464fba55964edf65a9ff484c19dd59ecdd52bb708154999bc7"
+#: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
+#: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
+SRC_TREE_DIGEST = "5a8c5a34a06a4e4de5deffd2abc5bf0f59d55c04cfeb2d66cdab6e0a16991578"
+SRC_FILE_COUNT = 165
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -761,23 +788,23 @@ def _is_source(path: Path) -> bool:
     return bool(path.as_posix().split("/src/", 1)[-1] != "netcorenoc/__init__.py")
 
 
-def test_src_is_byte_identical_to_v0_14_0_except_the_version_string() -> None:
-    """v0.15.0's first non-negotiable, as a property of the tree rather than a claim in a document.
+def test_src_is_byte_identical_to_the_pin_except_the_version_string() -> None:
+    """Every file under `src/`, by path and by content, against one recorded digest.
 
     The exclusion is exactly one file and it is named, not globbed: `__init__.py` carries
     `__version__` and nothing else a release changes. An exclusion pattern would be a hole.
     """
     actual, count = _src_tree_digest()
-    assert count == 164, (
-        f"{count} source files under src/ excluding the version file; v0.14.0 had 164. "
-        "A file was added or removed, which is a src/ change whatever its contents."
+    assert count == SRC_FILE_COUNT, (
+        f"{count} source files under src/ excluding the version file; the pin records "
+        f"{SRC_FILE_COUNT}. A file was added or removed, which is a src/ change whatever its "
+        "contents — and in a release of pure moves it is a defect."
     )
-    assert actual == SRC_TREE_AT_V0_14_0, (
-        f"src/ has moved.\n  pinned (v0.14.0): {SRC_TREE_AT_V0_14_0}\n"
-        f"  actual:           {actual}\n\n"
-        "v0.15.0 is a documentation release: every file under src/ except the version string is "
-        "byte-identical to v0.14.0. A later release that legitimately changes src/ recomputes "
-        "SRC_TREE_AT_V0_14_0 in the same commit, which makes the change reviewable."
+    assert actual == SRC_TREE_DIGEST, (
+        f"src/ has moved.\n  pinned:  {SRC_TREE_DIGEST}\n"
+        f"  actual:  {actual}\n\n"
+        "A release that legitimately changes src/ recomputes SRC_TREE_DIGEST in the same commit, "
+        "which makes the change one reviewable line of a diff instead of something that happened."
     )
 
 

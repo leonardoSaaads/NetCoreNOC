@@ -33,7 +33,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from netcorenoc.rbac import ROLE_RANK
+from netcorenoc.crosscutting.rbac import ROLE_RANK
 
 
 @dataclass(frozen=True)

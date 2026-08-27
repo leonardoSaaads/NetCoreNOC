@@ -63,8 +63,10 @@ violation it had sat recorded and unfixed for a release.
   large because an **invariant** forbids splitting it. The two are not interchangeable: debt carries
   an owner and a date, a cohesion exemption carries neither, because there is no fix.
   `engine.py` is `COHESION_EXEMPT`'s only entry, permanently.
-* One level of package nesting where it has been earned — `api/` and `store/` — and never two. No
-  frameworks, no plugin systems, no dynamic loading.
+* Two levels of package nesting where they have been earned, and never three: level one is the
+  **layer**, level two is the **domain** inside `engine/` (or the package inside `crosscutting/`).
+  A path says what layer a module is in and what part of the domain it belongs to, and there is no
+  third thing it is allowed to say. No frameworks, no plugin systems, no dynamic loading.
 
 ## Four invariants that outrank tidiness
 

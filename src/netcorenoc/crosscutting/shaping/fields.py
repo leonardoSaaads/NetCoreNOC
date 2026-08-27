@@ -22,7 +22,7 @@ from __future__ import annotations
 import ipaddress
 from typing import Any, overload
 
-from netcorenoc.rbac import ROLE_RANK
+from netcorenoc.crosscutting.rbac import ROLE_RANK
 
 # Minimum role that may see each protected field in full; below it the field is coarsened
 # (transform) or dropped (transform is None). Keys are matched by field name anywhere in a

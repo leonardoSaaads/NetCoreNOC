@@ -36,10 +36,11 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth, incidents, model_version, promotion, promotion_metrics, seal
+from netcorenoc import incidents, model_version, promotion, promotion_metrics, seal
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import PromotionIn
+from netcorenoc.crosscutting import auth
 from netcorenoc.scorer_contract import LinkScorer
 from netcorenoc.shadow_cv import power_at
 

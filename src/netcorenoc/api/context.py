@@ -34,13 +34,13 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
 
-from netcorenoc import auth, shaping
 from netcorenoc.api.governance_cache import GovernancePolicies
 from netcorenoc.api.perimeter import Perimeter, RateLimiter
+from netcorenoc.crosscutting import auth, shaping
 
 if TYPE_CHECKING:
+    from netcorenoc.crosscutting.runtime import RuntimeConfig
     from netcorenoc.main import Engine
-    from netcorenoc.runtime import RuntimeConfig
     from netcorenoc.store import Store
 
 

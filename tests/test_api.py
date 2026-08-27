@@ -34,7 +34,7 @@ async def engine_env(store: Store) -> tuple[Engine, asyncio.Queue[QueueItem]]:
 async def _seed_admin_token(store: Store, value: str = TOKEN) -> None:
     """The legacy shared token is gone (§5.8); the v0.2.0 API tests now authenticate with a
     real admin service token bound to the Bearer value."""
-    from netcorenoc import auth
+    from netcorenoc.crosscutting import auth
 
     async with store.lock:
         await store.create_token(auth.hash_token(value), "test", "admin", "adm", 0.0)
@@ -285,7 +285,7 @@ def free_port() -> int:
 
 async def test_main_run_serves_real_sockets(tmp_path: Path) -> None:
     """Smoke test of the single-process wiring: UDP trap in, HTTP API out."""
-    from netcorenoc import auth
+    from netcorenoc.crosscutting import auth
 
     db = str(tmp_path / "run.db")
     settings = Settings(
@@ -523,7 +523,7 @@ async def test_f39_a_failed_write_leaves_nothing_to_commit(
     that shared connection, and the **next commit from any other caller adopts it** — so the
     mutation lands, with no audit row, committed by someone else entirely.
     """
-    from netcorenoc import audit as audit_module
+    from netcorenoc.crosscutting import audit as audit_module
 
     engine, _queue = engine_env
     store = engine.store

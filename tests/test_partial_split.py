@@ -534,7 +534,7 @@ async def test_a_close_with_a_verdict_needs_feedback_write_as_well(store: Store)
     Refused rather than silently stripped of its verdict: dropping a judgement without saying so is
     the failure this release exists to end. Closing WITHOUT a verdict is unaffected.
     """
-    from netcorenoc import rbac
+    from netcorenoc.crosscutting import rbac
 
     engine, _queue, app = await authutil.make_env(store)
     sid, _alarms = await _situation(store, engine, 3)

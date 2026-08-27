@@ -12,11 +12,12 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from netcorenoc import auth, capture
+from netcorenoc import capture
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ConfigIn, RetentionIn, RoleIn, TokenIn, UserIn
-from netcorenoc.settings import Settings
+from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting.settings import Settings
 
 # The tier names, in `RetentionPolicy.as_key()` order, so the audit detail reads as a policy
 # rather than as an unlabelled tuple. Before and after are both captured. Imported from the module
