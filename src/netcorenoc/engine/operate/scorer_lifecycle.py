@@ -34,7 +34,7 @@ import logging
 
 from netcorenoc import model_version, scoring
 from netcorenoc.crosscutting import audit
-from netcorenoc.engine_base import EngineBase
+from netcorenoc.engine.operate.engine_base import EngineBase
 
 log = logging.getLogger("netcorenoc")
 

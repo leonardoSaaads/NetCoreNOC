@@ -46,14 +46,14 @@ from netcorenoc import capture as capture_mod
 from netcorenoc import known_oids, severity
 from netcorenoc.capture import Capture, LabelContext, RetentionPolicy
 from netcorenoc.correlate import Correlator, ScoredLink, WindowAlarm
-from netcorenoc.engine_base import EngineBase
+from netcorenoc.engine.operate.engine_base import EngineBase
+from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
+from netcorenoc.engine.operate.maintenance import MaintenanceMixin
+from netcorenoc.engine.operate.scorer_lifecycle import ScorerLifecycleMixin
 from netcorenoc.events import Fingerprint, QuarantinedPacket, TrapEvent
-from netcorenoc.gaps import GapMixin, GapTracker
 from netcorenoc.learn import STORM_ALARMS, STORM_DAMPING, Learner
-from netcorenoc.maintenance import MaintenanceMixin
 from netcorenoc.receiver import MAX_INSTANCE_CHARS, QueueItem
 from netcorenoc.rootcause import Member, Precedence
-from netcorenoc.scorer_lifecycle import ScorerLifecycleMixin
 from netcorenoc.shadow import Shadow
 from netcorenoc.store import FeedbackResult, Store
 from netcorenoc.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler

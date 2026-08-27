@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from netcorenoc.crosscutting import audit
-from netcorenoc.engine_base import EngineBase
+from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.store import Store
 
 GAP_CLOSE_S = 10.0  # an ingest gap closes after this long with no further drops (§5.6)

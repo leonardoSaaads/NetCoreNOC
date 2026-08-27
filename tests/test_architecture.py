@@ -80,7 +80,7 @@ COHESION_EXEMPT: dict[str, str] = {
     # whole ingest path has to be readable in one place — a reviewer must be able to confirm,
     # without following imports, that nothing on it takes a lock, does I/O, or awaits where it must
     # not. There is no release in which that stops being true, so there is nothing to schedule.
-    "engine.py": (
+    "engine/operate/engine.py": (
         "ingestion is sacred (MODULE-ARCHITECTURE.md §1): the batch lock and every decision that "
         "reasons about it stay in one file, because the invariant is only auditable if the ingest "
         "path can be read without following imports"
@@ -94,7 +94,7 @@ COHESION_EXEMPT: dict[str, str] = {
 # actually means is that invariant. The 38 lines are call sites and two attribute assignments;
 # every capture decision lives in `capture.py`. A raise without a compensating control is how a
 # ratchet becomes a comment, which is the failure this whole section exists to prevent.
-COHESION_EXEMPT_CEILING: dict[str, int] = {"engine.py": 580}
+COHESION_EXEMPT_CEILING: dict[str, int] = {"engine/operate/engine.py": 580}
 
 # The invariant names a COHESION_EXEMPT reason may cite, taken from MODULE-ARCHITECTURE.md §1.
 # A reason that cites nothing in this set is an assertion nobody has had to defend.
@@ -542,7 +542,7 @@ def test_the_engine_holds_no_capture_logic() -> None:
     a bound relaxed the first time it was inconvenient. With it, the release ends with a *stronger*
     structural guarantee than it started with — the previous rule bounded size alone.
     """
-    source = (PKG / "engine.py").read_text(encoding="utf-8")
+    source = (PKG / "engine" / "operate" / "engine.py").read_text(encoding="utf-8")
     leaks = [needle for needle in _CAPTURE_LEAKS if needle in source]
     assert not leaks, (
         f"engine.py contains capture/persistence logic: {leaks}\n\n"
@@ -681,10 +681,97 @@ def test_every_javascript_module_opens_with_a_block_comment() -> None:
 TRAP_PATH_HASHES: dict[str, str] = {
     "capture.py": "8676482c1965a97d3720b642e62451ecba8ed5317fae9f779ed1b30be47dea1e",
     "correlate.py": "48767428a93ab511e09a07e0c6d40c9d3c0fc39fee33ec95625b49be722a4845",
-    "engine.py": "07d0e2595e4a550c51e747448e2e34f65446dde4812d6800deccdfc4bbe2e13e",
+    "engine/operate/engine.py": "cfd8bc06afd712fcaf34540fbd7637e53116cb1f829ae03188adfac5666318c2",
     "learn.py": "7545e7d9d33563b9fa832ca5e958f0ef24337afc540f6c5b9ad1a91c7fcddf63",
     "receiver.py": "139611c9f69bf54e87d8099cbfa3eb4820355b2f758106c1866dc4bbc8bdb441",
 }
+
+
+#: The same five modules, hashed with **every import statement removed** — and unlike the table
+#: above, these do not change at all in v0.15.1.
+#:
+#: The brief for this release states that a move breaks the pin above "on path, not on content".
+#: That is not so, and the difference matters: a moved module's own imports are rewritten, so its
+#: bytes change too, and the pin above therefore has to be recomputed in each move commit. A pin
+#: that is recomputed is a pin that absorbs whatever else came with the change.
+#:
+#: So the claim v0.15.1 can actually make is this one: strip the imports and **nothing moved**.
+#: Same idea as `tools/evidence/move_census.py`, which makes it for all 56 moved files; here it is
+#: a permanent test for the five that matter most, so a later release cannot change a trap-path
+#: module's body while updating the raw hash in the same breath and call it a move.
+TRAP_PATH_BODY_HASHES: dict[str, str] = {
+    "capture.py": "103c97353c1ad55560c4819ada8bf7adb89590a2af42b33f9f6a12c7afdc37a8",
+    "correlate.py": "e2bfcf768b0073ce70ce47166dde8b4fc022a0b733f252e85466d32eedeaebda",
+    "engine/operate/engine.py": "d666eb915bb1b3ebc083d66d28f678ceaa86fc527a15206f18d86ad042a5bb5f",
+    "learn.py": "8d07a7b12aa1afe09b64e9a1e78cdb3094be3752881514a1bf61db807c2fb4ba",
+    "receiver.py": "f8290c1b99a2803e519c10e247a8041896a1fd0dd9e7c6f4192ec455eacfd5d6",
+}
+
+
+def _body(source: str) -> str:
+    """Source with every `import` / `from … import` statement removed, by `ast` span.
+
+    A second copy of `tools/evidence/move_census.py`'s `strip_imports`, deliberately: that one is
+    a release gate somebody runs, this one runs on every `make qa`, and a test that reached into
+    `tools/evidence/` to borrow eight lines would couple a permanent guard to a one-release script.
+    """
+    import ast
+
+    tree = ast.parse(source)
+    drop: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            drop.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    return "\n".join(
+        line for number, line in enumerate(source.splitlines(), start=1) if number not in drop
+    )
+
+
+def test_the_trap_path_bodies_are_unchanged_by_the_move() -> None:
+    """**What v0.15.1 claims about the trap path**, and it is stronger than the raw pin.
+
+    The five modules' imports were rewritten and their paths changed. Everything else — every
+    decision on the ingest path, every line a reviewer would have to read to confirm the batch
+    lock is respected — is byte-identical to the tree this release started from.
+    """
+    import hashlib
+
+    moved = []
+    for name, expected in sorted(TRAP_PATH_BODY_HASHES.items()):
+        path = next(p for p in PKG.rglob(name))
+        actual = hashlib.sha256(_body(path.read_text(encoding="utf-8")).encode("utf-8")).hexdigest()
+        if actual != expected:
+            moved.append(f"  {name}\n    pinned: {expected}\n    actual: {actual}")
+    assert not moved, (
+        "a trap-path module changed beyond its imports:\n"
+        + "\n".join(moved)
+        + "\n\nA move rewrites imports and nothing else. If a later release legitimately changes "
+        "one of these bodies, it updates this table in the same commit — which is a reviewable "
+        "line in a diff rather than something that happened while the raw hash was being bumped."
+    )
+
+
+def test_the_body_strip_is_load_bearing() -> None:
+    """The control. A strip that removed everything, or nothing, would make the pin meaningless."""
+    sample = (
+        "import os\n"
+        "from x import (\n    y,\n    z,\n)\n"  # a parenthesised import, which spans four lines
+        "\n"
+        "VALUE = 1\n"
+        'PROSE = """this sentence contains the word import and is not one"""\n'
+    )
+    stripped = _body(sample).splitlines()
+    assert not [line for line in stripped if line.startswith(("import ", "from "))], (
+        f"the strip left an import statement behind: {stripped}"
+    )
+    assert "    y," not in stripped, "the strip stopped at the first line of a wrapped import"
+    assert "VALUE = 1" in stripped, "the strip removed code, not just imports"
+    # …and the half a line-based filter gets wrong: prose that merely says the word.
+    assert any("word import and is not one" in line for line in stripped), (
+        "the strip removed a string literal that mentions imports — which is what makes an `ast` "
+        "span the right instrument and a pattern the wrong one"
+    )
+    assert _body("VALUE = 1\n") == "VALUE = 1", "a file with no imports must survive intact"
 
 
 def test_the_trap_path_is_byte_identical_to_the_release_this_one_branched_from() -> None:
@@ -722,7 +809,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
     assert set(TRAP_PATH_HASHES) == {
         "capture.py",
         "correlate.py",
-        "engine.py",
+        "engine/operate/engine.py",
         "learn.py",
         "receiver.py",
     }, "the pinned set is no longer the five modules the build prompt names"
@@ -751,8 +838,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "5a8c5a34a06a4e4de5deffd2abc5bf0f59d55c04cfeb2d66cdab6e0a16991578"
-SRC_FILE_COUNT = 165
+SRC_TREE_DIGEST = "b0ae79ebbb85f66e62bc2960bada81f7960690f482070294628a8c9360dc0f70"
+SRC_FILE_COUNT = 167
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

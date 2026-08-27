@@ -182,7 +182,7 @@ def test_the_guard_would_notice_an_import() -> None:
     applied there must come back positive. Without this, a broken extractor would report every
     module clean.
     """
-    tree = ast.parse((PKG / "maintenance.py").read_text(encoding="utf-8"))
+    tree = ast.parse((PKG / "engine/operate/maintenance.py").read_text(encoding="utf-8"))
     imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "netcorenoc":

@@ -45,12 +45,9 @@ LAYER_OF: dict[str, str] = {
     "main": "http",
     "runner": "http",
     "__main__": "http",
-    # engine — the domain
+    # engine — the domain. v0.15.1 gathered it into `engine/`, in six subpackages, so this one
+    # entry classifies what 46 did (DECISIONS #207, #208).
     "engine": "engine",
-    "engine_base": "engine",
-    "maintenance": "engine",
-    "gaps": "engine",
-    "scorer_lifecycle": "engine",
     "correlate": "engine",
     "learn": "engine",
     "scoring": "engine",
@@ -372,15 +369,17 @@ def test_the_engine_does_not_import_the_http_layer() -> None:
     process entry point that builds the HTTP server. v0.7.3 separates them. The entry point may
     reach up; the `Engine` may not — and after Phase 4 the `Engine` lives in `engine.py`.
     """
-    modules = dict(_module_files())
-    engine_side = [
-        name for name in ("engine", "maintenance", "gaps", "scorer_lifecycle") if name in modules
-    ]
-    for name in engine_side:
-        imported = {mod for mod, type_only in _imports(modules[name]) if not type_only}
+    engine_side = [(key, path) for key, path in _module_files() if key == "engine"]
+    assert len(engine_side) >= 5, (
+        f"only {len(engine_side)} file(s) under engine/; before v0.15.1 this test named four "
+        "modules by hand and it now covers the whole layer, so a small number means the walk "
+        "broke rather than that the layer shrank"
+    )
+    for _key, path in engine_side:
+        imported = {mod for mod, type_only in _imports(path) if not type_only}
         assert "api" not in imported, (
-            f"{name}.py imports netcorenoc.api — the Engine must not reach into the http layer. "
-            "The process runner may; that is what runner.py is for."
+            f"{path.relative_to(PKG)} imports netcorenoc.api — the Engine must not reach into the "
+            "http layer. The process runner may; that is what runner.py is for."
         )
 
 

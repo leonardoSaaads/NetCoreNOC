@@ -40,7 +40,7 @@ from netcorenoc.store import Store
 from netcorenoc.varbind_profile import VarbindProfiler
 
 if TYPE_CHECKING:
-    from netcorenoc.gaps import GapTracker
+    from netcorenoc.engine.operate.gaps import GapTracker
 
 
 class EngineBase:

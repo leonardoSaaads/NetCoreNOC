@@ -32,12 +32,8 @@ from netcorenoc.crosscutting.settings import (
     legacy_env_names,
     read_env,
 )
-from netcorenoc.engine import (
-    IDLE_CLOSE_S,
-    Engine,
-    FlapDetector,
-)
-from netcorenoc.gaps import GAP_CLOSE_S, GapTracker
+from netcorenoc.engine.operate.engine import IDLE_CLOSE_S, Engine, FlapDetector
+from netcorenoc.engine.operate.gaps import GAP_CLOSE_S, GapTracker
 from netcorenoc.runner import Supervisor, operator_warnings, run
 
 # The re-export surface, written down rather than inherited by accident: `mypy --strict` forbids
