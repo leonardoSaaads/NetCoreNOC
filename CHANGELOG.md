@@ -20,20 +20,21 @@ answer is nothing.
 docs/          ->  62 310 lines across 253 files  ->  5 204 across 24   (-91.65 %)
 src/           ->  165 files, ZERO differing by SHA-256 against v0.14.0
 make eval      ->  byte-identical: c2e8a0ce…8b9b6f26
-make qa        ->  1556 passed, coverage 96.01 %   (was 1554)
+make qa        ->  1558 passed, coverage 96.01 %   (was 1554)
 runtime deps   ->  5, unchanged since v0.2.0.  dev deps unchanged
 migrations     ->  0.  routes, capabilities, audit actions, console: unchanged
 ```
 
 ### Removed
 
-- **`docs/gates/`, `docs/scope/`, `docs/releases/BUILD-REPORT-*` and
-  `docs/security/SECURITY-REVIEW-*`** — 245 files, 51 702 lines, the working notes of fourteen
-  builds. One commit, because the four are a single strongly connected component of the internal
-  link graph and no ordering deletes them separately and stays green.
-- **`docs/architecture/`** — 21 files, ~5 900 lines. Eighteen were drafts for releases that have
+- **`docs/gates/`, `docs/scope/`, `docs/releases/` and `docs/security/`** — 242 files, 53 137
+  lines: 173 phase-gate files, 22 scope documents, 24 build reports and 23 security reviews. One
+  commit, because the four are a single strongly connected component of the internal link graph and
+  no ordering deletes them separately and stays green.
+- **`docs/architecture/`** — 21 files, 7 220 lines. Eighteen were drafts for releases that have
   since shipped; a draft for shipped code is a description written before the thing it describes.
-- **~460 lines of *"found while building vX"*** from `ROADMAP.md`, which is now open items only.
+- **291 lines of *"found while building vX"*** across eight sections of `ROADMAP.md`, which goes
+  from 649 lines to 148 and is now open items only.
 - **50 decision entries no code and no live document cites**, measured rather than judged.
   **Nothing was renumbered** — 135 citations in `src/` and `tests/` name these numbers.
 - **The four duplicated test fixtures** (`tests/fixtures/{background_noise,fiber_cut,flapping_noise,olt_storm}.json`).
@@ -66,7 +67,7 @@ migrations     ->  0.  routes, capabilities, audit actions, console: unchanged
   specification"* and is now **"the instrument precedes the change it measures"** (#200). The
   foresight was real and is kept; it never came from the documents, it came from the ordering.
 - **The cartridge moves from v0.15.0 to v0.16.0** (#202). Nothing in its own argument moves.
-- **`README.md`** 452 lines to 135; **`MIGRATION.md`** 1 410 to 123; this file 1 897 to 312.
+- **`README.md`** 452 lines to 135; **`MIGRATION.md`** 1 410 to 123; this file 1 897 to 332.
 - **`make replay`** replays `eval/corpus/fiber_cut.json`.
 
 ### The one number this release missed
@@ -77,10 +78,10 @@ because the arithmetic says where the remaining lines are and neither holder is 
 
 ```
 docs/analysis/   1 455   four hash-pinned pre-registrations, untouchable by directive
-docs/adr/        1 526   156 entries at a measured mean of 6.1 content lines — the density
+docs/adr/        1 511   156 entries at a measured mean of 6.1 content lines — the density
                          the format claims. 468 of those lines are one heading and two blank
                          separators per entry, and 135 citations in src/ forbid renumbering
-the rest        2 223   the eight-page manual, the roadmap, findings, record, and six plans
+the rest         2 238   the eight-page manual, the roadmap, findings, record, and six plans
 ```
 
 Two levers exist and both are the maintainer's, not this release's. Collapsing the blank lines

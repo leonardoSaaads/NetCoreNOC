@@ -9,9 +9,9 @@ of the failure this release exists to fix. The claim is corrected rather than th
 *"`MIN_INCIDENTS_FOR_INTERVAL = 10` is too permissive"* is an opinion, and the same sentence with
 `[33.3, 91.7]` in it is a work item.
 
-v0.15.0 removed about 460 lines of *"found while building vX"* sections (#197) — the working notes
-of fourteen builds. What was still live is below; the rest is at `3ecf237`
-([`record.md`](record.md)).
+v0.15.0 removed the eight *"found while building vX"* sections (#197) — 291 lines of working notes
+from v0.9.0 to v0.14.0 — taking this file from 649 lines to 148. What was still live is below; the
+rest is at `3ecf237` ([`record.md`](record.md)).
 
 ## Product
 
