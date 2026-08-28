@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import hmac as _hmac
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -314,3 +315,79 @@ async def test_an_unusable_allowlist_is_refused_before_it_can_be_stored(store: S
         assert good.status_code == 200, good.text
         async with store.lock:
             assert await store.get_meta("config.allowlist") == "10.20.0.0/16"
+
+
+@pytest.mark.parametrize(
+    ("env", "must_name"),
+    [
+        ({"HTTP_PORT": "99999"}, "outside the range of a TCP port"),
+        ({"TRAP_PORT": "0"}, "outside the range of a UDP port"),
+        ({"TLS_CERT": "/tmp/only-a-cert"}, "NETCORENOC_TLS_KEY is not"),  # nosec B108
+        ({"TLS_KEY": "/tmp/only-a-key"}, "NETCORENOC_TLS_CERT is not"),  # nosec B108
+        (
+            {"TLS_CERT": "/nonexistent/tls.crt", "TLS_KEY": "/nonexistent/tls.key"},
+            "cannot be read",
+        ),
+    ],
+)
+def test_a_setting_outside_its_bounds_is_refused_by_name(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], must_name: str
+) -> None:
+    """The other half of F69: a value that *parses* and still cannot be used.
+
+    A port out of range used to reach `sock.bind()` and come back as
+    `OverflowError: bind(): port must be 0-65535` from inside asyncio, **after** the appliance had
+    logged that it was listening. One TLS variable set without the other was worse than a plain
+    failure: `tls_enabled` needs both, so the appliance told admins it was serving plain HTTP while
+    uvicorn was handed the certificate and died on it.
+    """
+    from netcorenoc.crosscutting.settings import ENV_PREFIX, Settings, SettingsError
+
+    for suffix, value in env.items():
+        monkeypatch.setenv(f"{ENV_PREFIX}{suffix}", value)
+    with pytest.raises(SettingsError) as caught:
+        Settings.from_env()
+    assert must_name in str(caught.value), str(caught.value)
+
+
+def test_the_control_a_usable_tls_pair_and_an_in_range_port_are_accepted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Without this, `_tls` and `_port` could refuse unconditionally and every case above pass."""
+    from netcorenoc.crosscutting.settings import ENV_PREFIX, Settings
+
+    cert, key = tmp_path / "tls.crt", tmp_path / "tls.key"
+    cert.write_text("not a real certificate")
+    key.write_text("not a real key")
+    monkeypatch.setenv(f"{ENV_PREFIX}TLS_CERT", str(cert))
+    monkeypatch.setenv(f"{ENV_PREFIX}TLS_KEY", str(key))
+    monkeypatch.setenv(f"{ENV_PREFIX}HTTP_PORT", "65535")
+    monkeypatch.setenv(f"{ENV_PREFIX}TRAP_PORT", "1")
+    settings = Settings.from_env()
+    assert settings.tls_enabled and settings.http_port == 65535 and settings.trap_port == 1
+
+
+async def test_an_unopenable_database_names_the_variable_and_the_path(tmp_path: Path) -> None:
+    """`sqlite3.OperationalError: unable to open database file` names neither the setting nor the
+    path — and the path defaults to the **working directory**, which is how it goes wrong."""
+    from netcorenoc.crosscutting.settings import Settings, SettingsError
+    from netcorenoc.runner import run
+
+    missing = tmp_path / "no-such-directory" / "netcorenoc.db"
+    with pytest.raises(SettingsError) as caught:
+        await run(Settings(db_path=str(missing)))
+    message = str(caught.value)
+    assert "NETCORENOC_DB" in message and str(missing) in message, message
+    assert "working directory" in message, message
+
+
+def test_a_denied_trap_raises_a_warning_and_a_clean_receiver_does_not() -> None:
+    """F68's repair at the seam. The console renders `warnings` as a banner on every screen, so
+    this is the channel that reaches an operator without a log line per packet."""
+    from netcorenoc.ingest.receiver import ReceiverStats
+    from netcorenoc.runner import receiver_warnings
+
+    quiet = receiver_warnings(ReceiverStats(received=8, accepted=8), "10.0.0.0/8")
+    assert quiet == [], quiet  # CONTROL: nothing denied, nothing said
+    noisy = receiver_warnings(ReceiverStats(received=8, denied=8), "10.99.0.0/16")
+    assert len(noisy) == 1 and "8 trap(s) refused" in noisy[0] and "10.99.0.0/16" in noisy[0], noisy

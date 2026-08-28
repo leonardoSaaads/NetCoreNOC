@@ -6,6 +6,9 @@
 #   python -m vulture netcorenoc --make-whitelist > vulture_allowlist.py
 
 _.capture_signals  # unused method (netcorenoc/api/models.py)
+# A pydantic `@field_validator`: pydantic calls it by decorator registration, never by
+# name, so a static scan cannot see the call site. v0.15.2, F75.
+_._parses  # unused method (netcorenoc/api/models.py)
 security_headers  # unused function (netcorenoc/api/perimeter.py)
 healthz  # unused function (netcorenoc/api/routes_static.py)
 readyz  # unused function (netcorenoc/api/routes_static.py)
