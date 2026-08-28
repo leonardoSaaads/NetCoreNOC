@@ -399,3 +399,67 @@ def test_the_store_package_holds_exactly_the_expected_modules() -> None:
     expected = sorted(m.split(".", 1)[1] for m in SUBMODULES if m.startswith("store."))
     assert found == expected, f"store package contents changed: {found}"
     assert "_all" not in found, "the transitional store/_all.py must be deleted, not shipped"
+
+
+# --- v0.15.2: every place that declares a version is one the release check reads (F73, #230) -----
+
+
+def test_every_declared_version_is_one_the_release_check_reads() -> None:
+    """**The instrument, not the instance.**
+
+    `flake.nix` said `0.1.0` for fifteen releases while `tools/release_check.py` printed *"all
+    sources agree on version 0.15.1"* — the check read three files and the tree declared four. The
+    repair is not "add the fourth file": it is a guard that fails on the *fifth*, so the next
+    declaration cannot be invisible in the same way.
+
+    The search is over the tracked tree rather than a list, for the reason F51 records: a guard
+    scoped by a literal stops covering what the literal stops naming.
+    """
+    import re
+    import subprocess  # nosec B404 - `git ls-files` in this repository, no shell, no input
+
+    import release_check
+
+    tracked = subprocess.run(  # nosec B603 B607 - a fixed argv in this repository
+        ["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    read = {"pyproject.toml", "src/netcorenoc/__init__.py", "CHANGELOG.md", "flake.nix"}
+    # A declaration is a literal that looks like this project's own version, assigned to something
+    # called `version`. Documentation *about* a version is prose and is not an assignment.
+    pattern = re.compile(
+        r'(?:^|[^A-Za-z_])(?:__version__|version)\s*[=:]\s*["\']?(\d+\.\d+\.\d+)["\']?'
+    )
+    # Directories that hold a history rather than a declaration: the CHANGELOG's own past entries
+    # are in the file the check already reads, and `docs/` describes releases without building one.
+    # `ui/vendor/` is third-party bytes — d3 declares **its** version, which this project neither
+    # sets nor may change, and which `CHECKSUMS.txt` pins instead.
+    skip_prefixes = (
+        "docs/",
+        "tests/",
+        "eval/",
+        "tools/",
+        ".github/",
+        "src/netcorenoc/ui/vendor/",
+    )
+    declaring = set()
+    for relative in tracked:
+        if relative.startswith(skip_prefixes) or relative in read:
+            continue
+        path = REPO_ROOT / relative
+        if not path.is_file() or path.suffix in (".json", ".sql", ".png"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:  # pragma: no cover - no tracked binary declares a version
+            continue
+        if pattern.search(text):
+            declaring.add(relative)
+    assert not declaring, (
+        f"{sorted(declaring)} declare(s) a version that tools/release_check.py does not read. Add "
+        f"the file to the check and to `read` above, or the next release can be tagged with a "
+        f"version one of its artefacts disagrees with — which is exactly what F73 was."
+    )
+    # CONTROL: the check really does read four files, so the set above is not trivially satisfiable
+    # by a check that reads none.
+    assert set(release_check.main.__globals__) >= {"flake_version", "changelog_version"}
+    assert release_check.flake_version() == release_check.pyproject_version()

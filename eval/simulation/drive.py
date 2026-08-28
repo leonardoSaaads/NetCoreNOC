@@ -16,18 +16,17 @@
 
 ## What this module is, said plainly, because the difference matters
 
-`drive_http.py` is steps 1 and 3 **literally**: `python -m netcorenoc.main` in a subprocess, traps
-over a UDP socket, labels over TCP through the route, with a bearer token and an audit row. This
-module is the same loop **in process** — the same `parse_trap` on the same wire bytes, the same
-`engine.apply_feedback` the route calls, the same `Exclusion` reconciliation — and it exists because
-ten increments over a real socket is half an hour of wall clock: the receiver stamps a trap on
-**arrival**, so `spread_beyond_tau`'s 95-second gap is 95 seconds of real time and no time scale can
-compress it without changing the registered shape.
+This module is the loop **in process** — the same `parse_trap` on the same wire bytes, the same
+`engine.apply_feedback` the route calls, the same `Exclusion` reconciliation — and it is in process
+because ten increments over a real socket is half an hour of wall clock: the receiver stamps a trap
+on **arrival**, so `spread_beyond_tau`'s 95-second gap is 95 seconds of real time and no time scale
+can compress it without changing the registered shape.
 
-So the ten-increment census is this module's, the real-surface witness is `drive_http.py`'s, and
-`docs/gates/v0.14.0-phase-7.md` §2 **compares them** rather than asserting they agree. What this
-path does not exercise is the socket, the allowlist, the community tagging, authentication, RBAC,
-request validation, scope resolution and the audit row.
+What this path does not exercise is the socket, the allowlist, the community tagging,
+authentication, RBAC, request validation, scope resolution and the audit row. **v0.15.2**: those
+are `tests/test_operation.py`'s, which boots a real appliance over a real socket on a bounded
+scenario and runs on every `make qa`. `drive_http.py`, which ran the same increments over the real
+surfaces and which nothing ever ran, is deleted (DECISIONS #232).
 
 ## The two prohibitions, and where each is enforced
 

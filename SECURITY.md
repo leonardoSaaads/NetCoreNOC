@@ -93,7 +93,7 @@ We gratefully credit reporters in advisories and release notes.
 
 - Threat model (STRIDE, per version): [`docs/security.md`](docs/security.md)
 - Security reviews (finding → fix → test, standards mapping):
-  [`docs/security/`](docs/security.md) — `SECURITY-REVIEW-0.2.md`, `SECURITY-REVIEW-0.4.md`,
+  [`docs/security.md`](docs/security.md) — `SECURITY-REVIEW-0.2.md`, `SECURITY-REVIEW-0.4.md`,
   `SECURITY-REVIEW-0.5.md`.
 - Machine-readable contact (RFC 9116): served by the running app at `/.well-known/security.txt`;
   the committed source is

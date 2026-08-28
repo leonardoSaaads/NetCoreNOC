@@ -19,11 +19,27 @@ a second copy would be the thing that goes stale. The reason is [decision #197](
 anywhere in this tree is a path at `3ecf237`.** That is the one reading rule, stated here once
 rather than by editing every citation.
 
-`src/netcorenoc/` alone carries **44, across 32 files**, **deliberately not updated**: this release's
+`src/netcorenoc/` alone carries **44, across 32 files**, **deliberately not updated**: v0.15.0's
 strongest check is that every file under `src/` is byte-identical to v0.14.0 except the version
 string, and rewriting a docstring would forfeit it to fix a reference `git show` already resolves.
 The same applies in `tests/`, `tools/` and `eval/`, where a citation is provenance for a measurement
 rather than a dependency on a file.
+
+## Reading a `netcorenoc.<module>` path in a docstring
+
+**A `netcorenoc.<module>` path named in prose that does not resolve is a pre-v0.15.1 path, and
+`git log --follow` resolves it.** That is the second reading rule, stated here once for the same
+reason as the first and with the same defence: no guard can see these, and a guard that read module
+paths out of docstrings would have to be kept green through every future move — a standing cost paid
+to repair references that are already resolvable, and a second reason to edit a docstring during a
+refactor (decision #229).
+
+v0.15.1 moved 56 modules and rewrote every import that names one. It did not rewrite the paths
+written in *sentences*, because the release's own reviewability rested on a content census showing
+that a move changed a file's imports and nothing else. **Measured on this tree: 50** — 44 in `src/`,
+5 in `tests/`, 1 in `eval/`, 0 in `tools/`. None is an import; `mypy --strict` passes over the whole
+tree and the suite is green, so every one of them is a sentence rather than a dependency (F65, and
+F70 for why the figure moved from the 67 that finding first recorded).
 
 Where a deleted document was a **runtime** dependency — a test that *opened* it and asserted on its
 contents, rather than citing it — the test changed with the file. There are five such places, and

@@ -8,8 +8,12 @@ TCP with a real bearer token.
 
 `drive.py` drives the same loop **in process** — same parser, same `apply_feedback` — and is where
 the ten-increment census comes from, because ten increments over a real socket is half an hour of
-wall clock for a number that does not change. This module is the **witness** that the two agree:
-`drive_http.py` runs the first increments over the real surfaces and compares the census.
+wall clock for a number that does not change.
+
+**This module's live consumer since v0.15.2 is `tests/test_operation.py`**, which boots an appliance
+here and drives a bounded scenario over a real socket and over HTTP on every `make qa`. The
+ten-increment HTTP drive that used to live beside it, `drive_http.py`, was run by nothing and is
+deleted (DECISIONS #232).
 
 ## The one thing this host cannot do, stated rather than hidden
 

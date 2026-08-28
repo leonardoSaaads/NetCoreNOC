@@ -1,9 +1,16 @@
-"""Pre-tag release check: the version must agree across the three places that declare it.
+"""Pre-tag release check: the version must agree across the **four** places that declare it.
 
 Verifies that ``[project].version`` in ``pyproject.toml``, ``__version__`` in
-``src/netcorenoc/__init__.py``, and the top version heading in ``CHANGELOG.md`` are identical,
-so a release can never be tagged with a mismatched version. Exits non-zero (naming the mismatch)
-if they disagree.
+``src/netcorenoc/__init__.py``, the top version heading in ``CHANGELOG.md`` and ``version`` in
+``flake.nix`` are identical, so a release can never be tagged with a mismatched version. Exits
+non-zero (naming the mismatch) if they disagree.
+
+**``flake.nix`` was the fourth and it was not read** (F73). It declared ``0.1.0`` for fifteen
+releases while this check printed *"all sources agree on version 0.15.1"*, so a Nix user installed
+a package labelled with a version that had never existed. Adding the file without a guard would
+leave the *fifth* declaration equally invisible, so
+``tests/test_structure.py::test_every_declared_version_is_one_the_release_check_reads`` searches
+the tree for version declarations and fails on one this file does not read (DECISIONS #230).
 
     python tools/release_check.py
 """
@@ -31,6 +38,15 @@ def package_version() -> str:
     return match.group(1)
 
 
+def flake_version() -> str:
+    """``version = "X.Y.Z";`` inside `flake.nix`'s `buildPythonApplication`."""
+    text = (ROOT / "flake.nix").read_text(encoding="utf-8")
+    match = re.search(r'^\s*version\s*=\s*"([^"]+)"\s*;', text, re.MULTILINE)
+    if match is None:
+        raise SystemExit("could not find a version assignment in flake.nix")
+    return match.group(1)
+
+
 def changelog_version() -> str:
     """The first ``## [X.Y.Z]`` heading in CHANGELOG.md (an ``## [Unreleased]`` is skipped)."""
     for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines():
@@ -45,6 +61,7 @@ def main() -> int:
         "pyproject.toml": pyproject_version(),
         "src/netcorenoc/__init__.py": package_version(),
         "CHANGELOG.md": changelog_version(),
+        "flake.nix": flake_version(),
     }
     unique = set(versions.values())
     if len(unique) == 1:

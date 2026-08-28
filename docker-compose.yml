@@ -76,7 +76,7 @@ services:
     #     - ./tls/tls.key:/run/tls/tls.key:ro
     #
     # (Alternatively, front NetCoreNOC with a TLS reverse proxy and keep this listener plain
-    #  HTTP on an internal network — see docs/security/operations.md.)
+    #  HTTP on an internal network — see docs/security.md.)
 
 volumes:
   netcorenoc-data:
