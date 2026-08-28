@@ -373,3 +373,38 @@ Run every command below from the repository root with the virtualenv active.
   a refused value is a 422 naming the entry and nothing is stored. A database written by an older
   version is handled too — the startup refusal names the stored row and prints the SQL that clears
   it.
+
+## F76 — a corpus scenario fails its own stated requirement completely, and the aggregate hides it
+
+- **What**: `eval/corpus/dual_incident.json` describes itself as *"Two unrelated incidents overlap
+  in time on disjoint NEs; **must stay separate**."* They do not. A real appliance fed its sixteen
+  traps over a real UDP socket at their real 0.3 s gaps puts **all sixteen in one situation** inside
+  five seconds, merging both ground-truth incidents; the other three situations it formed are
+  absorbed and left with zero members. It is F61's arithmetic arriving at the product —
+  `MIN_EDGE_N` is cleared by **six** ordinary alarms, after which the entity-affinity term links
+  network elements that have nothing to do with each other.
+- **Reproduce**: `python -m pytest tests/test_operation.py` drives it end to end. For the offline
+  half, which is where the gate looks:
+  ```sh
+  python -c "
+  import asyncio, sys, pathlib; sys.path[:0] = ['eval', 'tools']
+  import harness
+  out = asyncio.run(harness.run_scenario(pathlib.Path('eval/corpus/dual_incident.json')))
+  print(harness._score(out['scored']))"
+  ```
+- **Measured**: this scenario alone scores `pairwise_f1 0.636`, **`ari 0.000`**, **`over_merge_rate
+  1.000`**, `under_merge_rate 0.000`. Every scored alarm carries `pred_sit dual_incident:sit1` while
+  its `truth_sit` is `incident_A` for two devices and `incident_B` for the other two. `make eval`
+  over the whole corpus reports `pairwise_f1 1.0000` and `over_merge_rate 0.0312`, and passes.
+- **Why it matters**: the numbers are not in disagreement — they are differently weighted. The
+  aggregate is pair-weighted and `pon_dying_gasp` contributes 1 051 of the corpus's events, so a
+  16-event scenario at `over_merge_rate 1.0` moves it by a rounding error. **A gate whose
+  aggregate can absorb a scenario that fails totally is a gate that cannot see a scenario.** The
+  frozen hash is doing its job; what is missing is a per-scenario floor, and inventing one is a
+  change to a gated artefact rather than a patch.
+- **Disposition**: open, issued not fixed, and **pinned by a test that asserts the wrong answer on
+  purpose** — `tests/test_operation.py::test_the_two_incidents_are_merged_into_one_situation_and_that_is_a_defect`,
+  whose failure message says to replace it with the purity assertion when the correlator is
+  repaired. Repairing it is F58/F61's disposition: *"the next release that touches the correlator
+  owns it, and should decide what `MIN_EDGE_N` is counting before changing either number."*
+  Doing it here would move `eval`'s frozen hash and the trap path in a release about neither.
