@@ -19,7 +19,6 @@ only advances on commit, so an interrupted drain leaves it consistent.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import time
@@ -89,6 +88,37 @@ class Supervisor:
         ]
 
 
+class HttpServerStartError(RuntimeError):
+    """The HTTP server could not start. Raised as an ordinary exception, deliberately (F66).
+
+    uvicorn calls ``sys.exit(STARTUP_FAILURE)`` when it cannot bind, and ``SystemExit`` is a
+    ``BaseException``: asyncio re-raises it out of ``run_until_complete`` rather than storing it on
+    the task, so the ``run()`` coroutine is never resumed and **every one of its ``finally`` blocks
+    is skipped** — including the store close. The interpreter then blocks forever in
+    ``threading._shutdown`` waiting on aiosqlite's non-daemon connection thread, which is what
+    "the appliance hangs when port 8080 is already in use" actually was.
+
+    Converting it here puts the failure back on the path every other startup error takes: it
+    propagates through ``asyncio.gather``, the cleanup runs, the store closes, the process exits
+    non-zero, and a supervisor restarts it.
+    """
+
+
+async def _serve_http(server: QuietServer, url: str) -> None:
+    """Run the HTTP server, and treat "it never started" as the failure it is.
+
+    The second half matters as much as the first: a uvicorn that logs a bind error and *returns*
+    would otherwise leave an appliance that ingests traps and serves no console, for as long as
+    nobody looks.
+    """
+    try:
+        await server.serve()
+    except SystemExit as exc:  # uvicorn's own startup failure, already logged by uvicorn
+        raise HttpServerStartError(f"the HTTP server could not start on {url}") from exc
+    if not server.started:
+        raise HttpServerStartError(f"the HTTP server exited without starting on {url}")
+
+
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
 
 
@@ -140,6 +170,20 @@ async def run(settings: Settings) -> None:
         )
     store = Store(settings.db_path)
     await store.open()
+    try:
+        await _serve(settings, store)
+    finally:
+        # **The store is closed on every exit path** (F66, DECISIONS #225). `aiosqlite` runs its
+        # connection on a **non-daemon** thread, so a store left open holds the interpreter alive
+        # after the exception has been printed — the process does not crash, it hangs, and every
+        # restart policy written for it (`Restart=on-failure`, `restart: unless-stopped`) is keyed
+        # on an exit that never comes. Measured: five ordinary misconfigurations, including "the
+        # HTTP port is already in use", survived SIGTERM and needed SIGKILL.
+        await store.close()
+
+
+async def _serve(settings: Settings, store: Store) -> None:
+    """Everything between an open store and a closed one. `run()` owns the store's lifetime."""
     community_key = await _community_key(store)
 
     # Config precedence: admin-saved meta values override env defaults (DESIGN v0.2).
@@ -201,8 +245,9 @@ async def run(settings: Settings) -> None:
             ssl_keyfile=settings.tls_key or None,
         )
     )
+    url = f"{scheme}://{settings.http_host}:{settings.http_port}/"
     log.info("listening for traps on %s:%d/udp", settings.trap_host, settings.trap_port)
-    log.info("web UI and API on %s://%s:%d/", scheme, settings.http_host, settings.http_port)
+    log.info("web UI and API on %s", url)
     tasks = [
         asyncio.create_task(supervisor.run("engine", engine.run)),
         asyncio.create_task(
@@ -211,7 +256,7 @@ async def run(settings: Settings) -> None:
                 lambda: engine.maintenance_loop(lambda: runtime.retention_days),
             )
         ),
-        asyncio.create_task(server.serve()),
+        asyncio.create_task(_serve_http(server, url)),
     ]
     try:
         await asyncio.gather(*tasks)
@@ -220,12 +265,16 @@ async def run(settings: Settings) -> None:
         server.should_exit = True
         for task in tasks:
             task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.gather(*tasks)
+        # `return_exceptions=True` rather than suppressing `CancelledError` (F66). A task that ended
+        # in an **exception** rather than a cancellation — uvicorn failing to bind, for instance —
+        # has that exception stored, and `gather` re-raises it here. Suppressing only
+        # `CancelledError` therefore let it escape the cleanup and skip everything below: the
+        # bounded drain, the final maintenance pass, and the store close in `run()`. The exception
+        # still reaches the caller, from the `try` above, which is where it belongs.
+        await asyncio.gather(*tasks, return_exceptions=True)
         # Graceful shutdown (§A.5): drain the traps still queued, then a final maintenance pass
         # (flushes the profiler and learned state). The audit chain only advances on commit, so
         # an interrupted drain leaves it consistent.
         await engine.drain(deadline_s=SHUTDOWN_DRAIN_S)
         await engine.maintenance(time.time(), runtime.retention_days)
-        await store.close()
         log.info("receiver stats: %s", receiver.stats)
