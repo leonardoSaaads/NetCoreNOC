@@ -190,14 +190,166 @@ Run every command below from the repository root with the virtualenv active.
               if t.type in (tokenize.COMMENT, tokenize.STRING): n += len(moved.findall(t.string))
   print(n)"
   ```
-- **Measured**: **67** — 49 in `src/`, 17 in `tests/`, 1 in `eval/`, 0 in `tools/`. None is an
+- **Measured**: **50** — 44 in `src/`, 5 in `tests/`, 1 in `eval/`, 0 in `tools/`. None is an
   import: `mypy --strict` passes over 214 files and the suite is green, so every one of them is a
-  sentence rather than a dependency.
+  sentence rather than a dependency. *(v0.15.2 corrects this bullet: it said 67, and the command
+  above prints 50 on the tree it was written against — see F70.)*
 - **Why it matters**: it is the same shape as the `docs/gates/…` citations `record.md` covers, and
   it has the same defence — no guard can see it. `test_documentation.py` checks decision numbers and
   Markdown links; nothing checks that a module path in a docstring resolves. The honest options are
   a guard that reads them (which would then have to be kept green through every future move) or a
   reading rule stated once. This release proposes neither and measures the size of the problem.
-- **Disposition**: open, issued not fixed. Rewriting 67 docstrings inside a move release would
-  forfeit the census — the one property that makes the move reviewable — to fix references that
-  `git log --follow` already resolves.
+- **Disposition**: **closed in v0.15.2** (#229): a reading rule in [`record.md`](record.md), stated
+  once, rather than a guard that every future move would have to be kept green through. Rewriting
+  the docstrings inside the move release would have forfeited the census — the one property that
+  made the move reviewable — to fix references that `git log --follow` already resolves.
+
+## F66 — a startup failure hangs the appliance instead of exiting
+
+- **What**: any exception between `Store.open()` and the end of `runner.run` leaves the store open,
+  and `aiosqlite`'s connection worker thread is **not a daemon** — so the process prints a traceback
+  and then never exits, ignoring `SIGTERM`. Two paths reach it: a failure before the `try:`
+  (`start_receiver`), and a failure inside it, because the `finally:` re-awaits the same tasks and
+  the already-failed one re-raises at `runner.py:224`, skipping the drain, the final maintenance
+  pass and `store.close()`. Under `Restart=on-failure` (the systemd unit) and
+  `restart: unless-stopped` (the compose file) a hung process is never restarted.
+- **Reproduce**: start the appliance with something ordinary wrong, send `SIGTERM`, and measure.
+  ```sh
+  # TREATMENT — anything already on the HTTP port
+  python -c "import socket,time;s=socket.socket();s.bind(('127.0.0.1',8097));s.listen(1);time.sleep(600)" &
+  NETCORENOC_DB=/tmp/f66.db NETCORENOC_HTTP_PORT=8097 \
+    timeout --signal=TERM --kill-after=20 12 python -m netcorenoc.main; echo "rc=$?"
+  # CONTROL — a refusal the design intends, which must exit at once
+  NETCORENOC_API_TOKEN=x timeout --signal=TERM --kill-after=20 12 python -m netcorenoc.main; echo "rc=$?"
+  ```
+- **Measured**: four treatments — HTTP port in use, trap port in use, `NETCORENOC_HTTP_PORT=99999`,
+  `NETCORENOC_ALLOWLIST=not-a-cidr` — all `rc=137` after **32.0 s**, i.e. they survived `SIGTERM`
+  and needed `SIGKILL`. `NETCORENOC_TLS_CERT` set without `NETCORENOC_TLS_KEY` is a fifth. Controls:
+  `NETCORENOC_API_TOKEN=x` exits `rc=1` in **0.5 s**; a clean start takes `SIGTERM` and exits in
+  12.1 s. A direct measurement shows the cause: an open `aiosqlite` connection leaves
+  `Thread-1 (_connection_worker_thread) daemon=False alive=True` after `asyncio.run` returns.
+- **Disposition**: **fixed in v0.15.2** (#225). `run()` closes the store on every exit path and the
+  `finally:` no longer re-raises a task's exception before the cleanup it guards.
+
+## F67 — every per-term link row is clipped at 390 px, and the pair is what is lost
+
+- **What**: `.linkrow` is a non-wrapping flex row — score, three fixed-pixel term bars, then the two
+  alarm names the link is between. At a phone width the names run past the row's box, which has no
+  `overflow-x` and no scrollable ancestor, so they are clipped and unreachable. A row reading
+  `0.65 T 0.30 A 0.00 E 0.35` with no pair is a decomposition of nothing.
+- **Reproduce**: sign in, open a situation, and measure `.linkrow` and `.linkpair` at both widths —
+  `scratchpad/clip.mjs` in the v0.15.2 build, or by hand in any browser's device toolbar at 390 px.
+- **Measured**: at 390x844, all **30** rows overflow by **51 px** and all **30** `.linkpair` boxes
+  fall right of the viewport, `scrollableAncestor: null`, page `scrollWidth == clientWidth == 390`
+  (so the page does not scroll to them either). Control at 1440x900: overflow **0 px**, **0** boxes
+  off-screen. The three term numbers stay on screen in both.
+- **Why it matters**: it is the opposite of what `plans/v0.15.2-console.md` §2 predicted. The
+  per-term contributions are **not** hidden on a phone — they render in `#work`, and the panel the
+  breakpoint hides never held them. What the breakpoint costs is nothing; what the row costs is the
+  identity of the pair.
+- **Disposition**: **fixed in v0.15.2** (#220): the row wraps below the breakpoint.
+
+## F68 — a wrong allowlist is invisible: no log line, no warning, no rendered counter
+
+- **What**: `receiver.denied` is the only evidence an operator has that their allowlist is refusing
+  their equipment. It is served by `/api/stats`, rendered by no screen, and logged nowhere; and the
+  `warnings` channel only fires when the allowlist is **empty**, so a wrong one is quieter than no
+  one at all. The appliance receives traffic, produces nothing, and says nothing.
+- **Reproduce**: two appliances, same traps, allowlists that differ only in whether they match.
+  ```sh
+  # CONTROL
+  NETCORENOC_ALLOWLIST=127.0.0.0/8  ... python -m netcorenoc.main
+  # TREATMENT
+  NETCORENOC_ALLOWLIST=10.99.0.0/16 ... python -m netcorenoc.main
+  # then, into each: python tools/trap_replay.py eval/corpus/fiber_cut.json --port <port> --time-scale 0
+  ```
+- **Measured**: control `{received: 8, accepted: 8, denied: 0}`, 2 devices, 8 alarms. Treatment
+  `{received: 8, accepted: 0, denied: 8}`, **0 devices, 0 alarms, `warnings: []`**. Log lines
+  emitted while the traps arrived: **0 in both arms**.
+- **Disposition**: **fixed in v0.15.2** (#222, #227): the counters reach the Overview, and a
+  non-zero `denied` raises an operator warning — a counter read on the maintenance pass, never a
+  line per packet (principle 4).
+
+## F69 — five environment variables fail with a traceback that never names them
+
+- **What**: `Settings.from_env` calls `int()` and `float()` on `NETCORENOC_TRAP_PORT`,
+  `NETCORENOC_HTTP_PORT`, `NETCORENOC_RETENTION_DAYS` and `NETCORENOC_AUDIT_RETENTION_DAYS`, and
+  `parse_allowlist` calls `ip_network` on `NETCORENOC_ALLOWLIST`. Each raises a bare `ValueError`
+  through 20 lines of traceback that names the value and never the variable. Setting a documented
+  variable to empty — which `.env.example` invites, since every line in it is an assignment an
+  operator edits — is one of the cases.
+- **Reproduce**: `NETCORENOC_RETENTION_DAYS= python -m netcorenoc.main`, and the same for the other
+  four; control with `NETCORENOC_API_TOKEN=x`, which is designed to refuse.
+- **Measured**: `ValueError: could not convert string to float: ''` /
+  `ValueError: invalid literal for int() with base 10: 'abc'` /
+  `ValueError: 'not-a-cidr' does not appear to be an IPv4 or IPv6 network`. The control prints
+  *"NETCORENOC_API_TOKEN (and the legacy OPTICORR_API_TOKEN) was removed in v0.3.0. Unset it and
+  issue a named service token instead…"* — the project already knows how to do this.
+- **Disposition**: **fixed in v0.15.2** (#226).
+
+## F70 — F65's own reproduction command does not produce F65's number
+
+- **What**: F65 records **67** pre-v0.15.1 module paths in prose, *"49 in `src/`, 17 in `tests/`"*.
+  Run verbatim on the tree it was written against, its command prints **50**.
+- **Reproduce**: the code block in F65, unmodified.
+- **Measured**: **50** — `src` 44, `tests` 5, `eval` 1, `tools` 0 — and the same at `3e5e874`,
+  `44a1893` and `aac8fca`, so no commit in that range moved it. F65's per-directory split is what
+  fails first: `tests/` is 5, not 17.
+- **Why it matters**: the class, not the instance. A finding's measurement is the part a later
+  release acts on, and this one would have sized a repair against a number nothing produces —
+  *incrementing a number is not measuring it*, one document over.
+- **Disposition**: **closed in v0.15.2**. F65's figure is corrected in place and the reading rule
+  #229 chooses is stated once, so the count stops being a number anyone has to maintain.
+
+## F71 — the console tells an operator to read a file that was deleted three releases ago
+
+- **What**: the Network graph screen renders, to the operator, *"Naming that is deliberate: see
+  `docs/gates/v0.13.0-phase-6.md`."* `docs/gates/` was deleted in v0.15.0. The reading rule in
+  `record.md` resolves such a citation for someone with the repository; it cannot help someone
+  looking at a screen. `.env.example` and `docker-compose.yml` name `docs/security/operations.md`
+  the same way, and `SECURITY.md`'s link text says `docs/security/` while the link goes to
+  `docs/security.md`.
+- **Reproduce**: `grep -rn 'docs/gates/\|docs/security/' src/netcorenoc/ui/ .env.example docker-compose.yml`
+  then `test -d docs/gates || echo ABSENT`.
+- **Measured**: 1 operator-visible citation (`graph.js:167`), 2 in shipped configuration files, 3 in
+  console source comments, and all four directories absent.
+- **Disposition**: **fixed in v0.15.2** for the operator-visible one and the two configuration
+  files; the source comments are covered by the reading rule (#229).
+
+## F72 — the timeline caption describes two encodings the timeline does not have
+
+- **What**: `views/timeline.js` tells the operator *"Raise marks sit above the axis in the alarm
+  colour and carry a triangular glyph in the table"* and *"Both encodings are present so neither
+  colour nor shape is load-bearing alone."* The table's `raise / clear` column renders the bare
+  string and no glyph; the drawing places every mark on its device's row rather than above or below
+  an axis; and `circle.tl-raise` and `circle.tl-clear` differ **only** in `fill`.
+- **Reproduce**: `grep -n 'tl-raise\|tl-clear' src/netcorenoc/ui/style.css` and read the `kind` cell
+  in `views/timeline.js`.
+- **Measured**: the two rules differ in one declaration each, both `fill`. The word *raise* or
+  *clear* does appear in the table, which is the accessible equivalent — so the fact is reachable
+  and only the caption is wrong.
+- **Disposition**: **fixed in v0.15.2**: the caption says what is actually encoded.
+
+## F73 — `flake.nix` declares version 0.1.0, and the release check does not read it
+
+- **What**: `flake.nix` builds `netcorenoc` with `version = "0.1.0"`. `tools/release_check.py`
+  compares `pyproject.toml`, `src/netcorenoc/__init__.py` and `CHANGELOG.md` — three of the four
+  places this repository writes its version down.
+- **Reproduce**: `grep -n 'version' flake.nix` beside `python tools/release_check.py`.
+- **Measured**: `flake.nix:16: version = "0.1.0";` while the check prints *"all sources agree on
+  version 0.15.1"*. Fifteen releases apart, and green.
+- **Disposition**: **fixed in v0.15.2** (#230): the version is corrected and the check reads four
+  files, with a test that goes red when a fifth declaration appears unchecked.
+
+## F74 — no release tag reachable from this repository except v0.12.0
+
+- **What**: `docs/record.md` resolves every deleted document through commit `3ecf237` and cites tag
+  `v0.14.0-gate0` as carrying a pre-registration hash *"in the tag's own annotation, independently
+  of any file"*. No such tag exists locally or on the remote.
+- **Reproduce**: `git tag -l` and `git ls-remote --tags origin`.
+- **Measured**: local tags: **none**. Remote: `v0.12.0` only. Every cited **commit** resolves —
+  `3ecf237`, `553b827`, `6b1c73a`, `78faace`, `4aed642` are all present in a full 207-commit
+  history — so the reading rule itself is sound and only the tag claim is not.
+- **Disposition**: open, not fixable from a build environment: a tag has to be pushed by the
+  maintainer. The commands are in `HANDOFF.md`. Recorded here so the claim in `record.md` is not
+  read as verified.
