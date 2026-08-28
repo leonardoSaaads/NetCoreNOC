@@ -75,26 +75,24 @@ Dark, light, or your system's preference; compact or comfortable density. Both a
 cookie that carries a theme name and nothing else. The sidebar is **one tab stop** with arrow-key
 navigation, and focus moves into the work area when you navigate.
 
-## Four things the console does not do
+## Two regions, and there used to be three
+
+The shell is a navigation sidebar and a work area. Until v0.15.2 there was a third — a 320-pixel
+detail panel — and **no view ever wrote to it**: it showed *"Select something to see its detail
+here."* on all seventeen screens, permanently, and was hidden outright below 760 px. It is removed
+rather than completed ([decision #219](adr/DECISIONS.md)), because what a selection would have
+shown is already in the expanded card, in place. The work area is 320 px wider on every screen.
+
+## Two things the console does not do
 
 Stated here rather than discovered:
 
-* **The detail panel is populated by one view of seventeen.** Clicking something in any view other
-  than Situations leaves the panel showing *"Select something to see its detail here."* This is a
-  defect, it is measured, and it is v0.15.2's first item —
-  [`plans/v0.15.2-console.md`](plans/v0.15.2-console.md).
-* **On a phone the detail panel does not exist at all.** The single breakpoint at 760 px hides it,
-  which puts the per-term contributions — the product's central claim — out of reach on a narrow
-  viewport. Same brief, same release.
-* **System health is measured and mostly not shown.** `/api/stats` returns eleven keys; the
-  **Overview** renders five of them plus p95 latency and an ingest-gap count. `queue_depth` and the
-  `receiver` counters — received, accepted, denied, quarantined, dropped — are served on every poll
-  and rendered **nowhere**, and there is no CPU, memory, uptime or trap rate at all. Zabbix and
-  Grafana both put this on the first screen an operator sees; here the numbers exist and the screen
-  does not. Also v0.15.2.
 * **The network graph is not keyboard-operable** and has no screen-reader equivalent beyond its
   label. Everything it shows is on the **Entities** screen as text, and the graph says so. No
   screen-reader testing has been performed.
+* **There is no CPU, memory or uptime figure**, because `/api/stats` does not serve one. What it
+  *does* serve is on the Overview since v0.15.2 — `queue_depth` and the five receiver counters,
+  plus a trap rate derived between two polls and labelled with the window it covers.
 
 ## How the console is tested
 

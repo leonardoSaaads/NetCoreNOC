@@ -1681,7 +1681,12 @@ From this release an entry is about six lines: decision, reason, release.*
   nothing in phase 1 has a second thing to say about a selection.
 - **Measured**: driven in Chromium as admin, editor and viewer over all 17 views, `#context` carries
   `context-idle` and the text *"Select something to see its detail here."* on **17 of 17** at
-  1440 px, at a computed width of 320 px. Expanding a situation card does not change it (F66).
+  1440 px, at a computed width of 320 px. Expanding a situation card does not change it.
+- **Note**: the served surface goes from 90 method/path pairs to **89**, so #211's figure is a
+  statement about v0.15.1's tree rather than a standing one. Removing one module is a deliberate
+  diff in five places — `routes_static.STATIC_ASSETS`, `declare.UNAUTHENTICATED_PATHS`,
+  `ROUTE_ORDER_BASELINE`, `UI_HASHES`/`UI_SIZES`, and the behaviour record — which is the
+  deny-by-default machinery working rather than five chores.
 
 ## 220. Below 760 px the repair is the link row, not the panel (v0.15.2)
 

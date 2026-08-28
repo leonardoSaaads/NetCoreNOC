@@ -165,16 +165,17 @@ turns the suite red. If you are seeing movement in a *live* report, it is your c
 
 ## The console
 
-### Clicking something shows *"Select something to see its detail here."*
+### There used to be a detail panel on the right and now there is not
 
-The detail panel is populated by the **Situations** view only. In the other sixteen views clicking
-does nothing. It is a known defect with a measurement behind it —
-[`plans/v0.15.2-console.md`](plans/v0.15.2-console.md).
+Removed in v0.15.2. No view ever wrote to it, so it read *"Select something to see its detail
+here."* on every screen — [decision #219](adr/DECISIONS.md). Everything a selection would have
+shown is in the expanded situation card, where it always was.
 
-### The detail panel is missing on a phone
+### On a phone, a link row's alarm names are cut off
 
-Below 760 px it is hidden by CSS, which puts the per-term contributions out of reach on a narrow
-viewport. Same brief, same release. Use a wider window until then.
+Fixed in v0.15.2 ([F67](findings.md)). Below 760 px the rows in *"Why these were grouped"* now wrap,
+so the score, the three term contributions **and** the pair each link is between are all readable.
+On an older build, turn the phone sideways.
 
 ### `make dom` prints "27 skipped"
 

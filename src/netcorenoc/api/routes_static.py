@@ -39,7 +39,6 @@ QUEUE_SATURATION = 0.9  # /readyz reports not-ready once the ingest queue passes
 _UI_MODULES = (
     "app.js",
     "app/api.js",
-    "app/context.js",
     "app/destructive.js",
     "app/dom.js",
     "app/format.js",
