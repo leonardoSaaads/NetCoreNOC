@@ -448,3 +448,28 @@ Run every command below from the repository root with the virtualenv active.
   own first paragraph, and this is what that sentence costs.
 - **Disposition**: **fixed in v0.15.2**. Still not covered by any test, for the reason `graph.js`
   states; the measurement above is the evidence, and a browser is what produced it.
+
+## F78 — MIGRATION.md's own row count has been one behind since v0.15.0
+
+- **What**: the sentence an upgrading operator reads first — *"Six of nineteen have an action; the
+  rest are start-the-new-binary"* — sits above a table of **twenty** rows.
+- **Reproduce**: parse the table rather than counting by eye, and compare against the sentence:
+
+  ```sh
+  python - <<'PY'
+  import re, pathlib
+  t = pathlib.Path("MIGRATION.md").read_text(encoding="utf-8")
+  rows = [l for l in t.splitlines() if re.match(r"^\|\s*v\d+\.\d+\.\d+\s*→", l)]
+  print(re.search(r"(\w+) of (\w+) have an action", " ".join(t.split())).group(0), "vs", len(rows))
+  PY
+  ```
+- **Measured**: the same probe run over **every commit that has ever touched the file** agrees at
+  each one from v0.5.0, where the sentence was written, until `47157c0` (*release: v0.15.0 — the
+  repository*), which added the twentieth row and left the sentence at nineteen. One commit, named
+  by bisect rather than by guess.
+- **Why it matters**: on its own, a wrong number in a sentence. What it demonstrates is that
+  **a release that adds a row does not re-read the paragraph above it** — and this release adds a
+  row too. A count nobody recomputes is a count that drifts once per release.
+- **Disposition**: **fixed in v0.15.2**, along with the row this release owes. Not guarded by a
+  test: the guard would have to know how many rows *ought* to exist, which is the same problem.
+  Stated here so the next release knows the sentence is one it has to change.

@@ -14,8 +14,10 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Six of nineteen have an
-action; the rest are start-the-new-binary.**
+Read only the rows between your version and the one you are installing. **Two of twenty-two ask you
+to do something; five more ask you to read a paragraph first. The other fifteen are
+start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
+until v0.15.2 — F78. It counts rows, not sections; recount it when you add one.)
 
 | From → to | What you must do |
 |---|---|
@@ -39,8 +41,10 @@ action; the rest are start-the-new-binary.**
 | v0.12.0 → v0.13.0 | Nothing. The console is new; **if you reverse-proxy it, see below** |
 | v0.13.0 → v0.14.0 | Nothing. Four scorer kinds exist; the additive one is still champion |
 | v0.14.0 → v0.15.0 | **Nothing at all.** Documentation only — `src/` is byte-identical |
+| v0.15.0 → v0.15.1 | Nothing — packaging and repository structure only |
+| v0.15.1 → v0.15.2 | Nothing, but **the console loses a panel and a bad setting now exits** — see below |
 
-## The six that need something
+## The two that need an action, and the five that need reading
 
 ### v0.3.0 — the shared API token is gone
 
@@ -100,6 +104,34 @@ What moved is `docs/`: 62 310 lines to about 5 200, organised by what a reader i
 Every deleted file is at commit `3ecf237` and [`docs/record.md`](docs/record.md) has the command.
 If you have a bookmark into `docs/gates/`, `docs/scope/`, `docs/releases/` or `docs/security/`, that
 page is the one to read.
+
+### v0.15.2 — nothing to change, but two things will look different
+
+**No configuration that started on v0.15.1 fails to start on v0.15.2.** Every setting this release
+learned to refuse by name was already a failure: an out-of-range port reached `bind()` and came back
+as an `OverflowError` from inside asyncio *after* the log said it was listening; one TLS variable
+without the other made the appliance report plain HTTP to admins while uvicorn was handed the
+certificate and died on it; an unreadable database or a malformed allowlist **hung**. What changed
+is the failure, not the set of things that fail:
+
+```
+NETCORENOC_HTTP_PORT=99999   before: hung, SIGKILL after 32.0s   now: exits 2 in 0.57s, naming it
+```
+
+If you supervise the process, that is the difference that reaches you. `deploy/netcorenoc.service`
+sets `Restart=on-failure`, so a misconfigured appliance that used to sit in `active (running)` doing
+nothing now exits and — at systemd's default start limit — stops in `failed`, which is the state you
+want it in. *Measured as a process exit code and duration on this project's CI container; not
+observed under systemd, which does not run as PID 1 there.*
+
+**The console's right-hand detail panel is gone** — 320 px on every screen. No view ever wrote to
+it (DECISIONS #219). Nothing you could previously read is now unreachable; the Overview gained the
+queue depth, the five receiver counters and a trap rate with its window named.
+
+One thing to check *before* you upgrade, if you ever saved an allowlist through **Administer →
+Configuration**: an unparseable entry used to be accepted with `200 {"status":"saved"}` and then
+stop the next boot (F75). It is now refused at save time with a `422`, and if one is already stored
+the refusal at startup names the entry and the shape it wanted instead of hanging.
 
 ## Downgrading
 
