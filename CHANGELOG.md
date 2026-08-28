@@ -9,13 +9,13 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md), and for nineteen of twenty releases the
-answer is nothing.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-two rows, two ask for an
+action, five ask you to read a paragraph, and fifteen are start-the-new-binary.
 
 ## [0.15.2] - 2026-08-28 — "the fine-toothed comb"
 
 **The product was installed six ways, booted, driven in a browser and fed real traps — and what
-that found was fixed.** Twelve findings, F66 to F77, every one reproduced by execution with a
+that found was fixed.** Thirteen findings, F66 to F78, every one reproduced by execution with a
 control before anything was changed.
 
 ```
@@ -31,7 +31,7 @@ the network graph      ->  1 of 4 nodes on canvas, r up to 80.7 px     ->  4 of 
 d3 (279 706 bytes)     ->  loaded on all 17 screens                    ->  on the 2 that draw
 an operation test      ->  295 lines nothing ran                       ->  9 tests, 17 s, in qa
 make eval              ->  byte-identical: c2e8a0ce…8b9b6f26
-make qa                ->  1608 passed (was 1576);  coverage 95.87 %
+make qa                ->  1613 passed (was 1576);  coverage 95.94 %
 runtime deps           ->  5, unchanged since v0.2.0.  migrations: 0
 ```
 
@@ -97,7 +97,9 @@ three of the four declarations (F73, #230). Three shipped files cited documents 
 one of them **on screen** (F71). The timeline's caption described two encodings it does not have
 (F72). F65's count was 50 and not 67 (F70), and it gets a reading rule rather than a guard (#229).
 F63's intermittent test goes from 1 failure in 60 to 0 in 60, with a control proving the speed
-check is still reachable.
+check is still reachable. `MIGRATION.md` gains the two rows it owed — v0.15.1 shipped without one —
+and the sentence above its table, which had said *"six of nineteen"* over twenty rows since
+v0.15.0, is recomputed rather than nudged (F78).
 
 ## [0.15.1] - 2026-08-27 — "the package tree"
 
