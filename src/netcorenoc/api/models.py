@@ -20,10 +20,11 @@ from collections.abc import Iterator
 from typing import Any, Literal
 
 import uvicorn
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.correlate import scoring
+from netcorenoc.ingest.receiver import parse_allowlist
 
 MAX_LABEL_CHARS = 120
 MAX_NOTE_CHARS = 500
@@ -147,9 +148,24 @@ class TokenIn(BaseModel):
     role: Literal["viewer", "editor", "admin"]
 
 
+# **`ConfigIn` carries no docstring, deliberately.** FastAPI publishes a model's docstring as its
+# schema `description` in `/openapi.json`, which this appliance serves **unauthenticated** — so a
+# docstring here is operator-facing documentation on a public surface. The reason the validator
+# below exists is a comment for that reason (F75): `POST /api/config` wrote `config.allowlist` into
+# `meta` and only then handed it to the live receiver, so an allowlist the parser refuses was
+# persisted, audited and answered `200 {"status":"saved"}`. The stored value overrides the
+# environment, so the *next* boot could not start — and the screen that would undo it was served by
+# the appliance that would not start. Parsing before the write means what reaches the store is a
+# value the receiver has already accepted.
 class ConfigIn(BaseModel):
     allowlist: str = Field(max_length=1024)
     retention_days: float = Field(gt=0, le=3650)
+
+    @field_validator("allowlist")
+    @classmethod
+    def _parses(cls, value: str) -> str:
+        parse_allowlist(value)  # raises ValueError, which pydantic renders as a 422 with the reason
+        return value
 
 
 class ScorerParamsIn(BaseModel):

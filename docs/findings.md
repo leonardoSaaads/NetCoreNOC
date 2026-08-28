@@ -353,3 +353,23 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: open, not fixable from a build environment: a tag has to be pushed by the
   maintainer. The commands are in `HANDOFF.md`. Recorded here so the claim in `record.md` is not
   read as verified.
+
+## F75 — an admin can store an allowlist that stops the appliance starting
+
+- **What**: `POST /api/config` wrote `config.allowlist` into `meta`, audited it, answered
+  `200 {"status":"saved"}` — and only then handed it to the live receiver, where `parse_allowlist`
+  refuses it. The stored value **overrides the environment**, so the next boot could not start; and
+  the Settings screen that would undo it is served by the appliance that will not start. The only
+  way back was editing SQLite by hand.
+- **Reproduce**: sign in as admin, `POST /api/config` with `{"allowlist": "not-a-cidr",
+  "retention_days": 7}`, read `meta`, then ask what the next boot's `parse_allowlist` would do.
+  Control: the same request with `10.0.0.0/8`.
+- **Measured**: treatment — `POST -> 200`, `stored config.allowlist: 'not-a-cidr'`, *"next boot: the
+  receiver would REFUSE"*. Control — `POST -> 200`, `stored: '10.0.0.0/8'`, *"next boot: the
+  receiver would START"*.
+- **Why it matters**: admin-only, so not a privilege boundary — but it is a one-request, irreversible
+  denial of service on the appliance's own console, reachable by a typo in a text box.
+- **Disposition**: **fixed in v0.15.2** (#226): `ConfigIn` parses the allowlist before the write, so
+  a refused value is a 422 naming the entry and nothing is stored. A database written by an older
+  version is handled too — the startup refusal names the stored row and prints the SQL that clears
+  it.

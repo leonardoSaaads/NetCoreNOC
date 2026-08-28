@@ -210,3 +210,107 @@ async def test_denied_admin_action_audited_as_user_update(store: Store) -> None:
     async with store.lock:
         rows = await store.audit_all()
     assert any(r["action"] == "user.update" and r["outcome"] == "denied" for r in rows)
+
+
+# -- F69 / F75: a setting that cannot be read names itself, and an unusable one is never stored ---
+
+
+@pytest.mark.parametrize(
+    ("variable", "value", "expects"),
+    [
+        ("TRAP_PORT", "", "UDP port"),
+        ("TRAP_PORT", "abc", "UDP port"),
+        ("HTTP_PORT", "", "TCP port"),
+        ("RETENTION_DAYS", "", "number of days"),
+        ("RETENTION_DAYS", "seven", "number of days"),
+        ("AUDIT_RETENTION_DAYS", "", "number of days"),
+    ],
+)
+def test_an_unreadable_setting_names_the_variable(
+    monkeypatch: pytest.MonkeyPatch, variable: str, value: str, expects: str
+) -> None:
+    """F69. The message must carry the variable, the value, and what was expected.
+
+    The bar is the one the project already meets twice: `NETCORENOC_API_TOKEN` and any `OPTICORR_*`
+    are refused by name with the replacement spelled out. These five were converted with a bare
+    `int()` / `float()` and produced `ValueError: invalid literal for int() with base 10: ''` —
+    a sentence about a value, in a process about to exit, with no way back to the setting.
+    """
+    from netcorenoc.crosscutting.settings import ENV_PREFIX, Settings, SettingsError
+
+    monkeypatch.setenv(f"{ENV_PREFIX}{variable}", value)
+    with pytest.raises(SettingsError) as caught:
+        Settings.from_env()
+    message = str(caught.value)
+    assert f"{ENV_PREFIX}{variable}" in message, message
+    assert repr(value) in message, message
+    assert expects in message, message
+
+
+def test_the_control_a_readable_setting_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without this, `from_env` could raise unconditionally and every case above would pass."""
+    from netcorenoc.crosscutting.settings import ENV_PREFIX, Settings
+
+    monkeypatch.setenv(f"{ENV_PREFIX}TRAP_PORT", "1162")
+    monkeypatch.setenv(f"{ENV_PREFIX}RETENTION_DAYS", "21.5")
+    settings = Settings.from_env()
+    assert settings.trap_port == 1162
+    assert settings.retention_days == 21.5
+
+
+def test_a_bad_allowlist_entry_is_named_with_the_shape_it_wanted() -> None:
+    """`ip_network`'s own message is about a value; an operator needs the shape and an example."""
+    from netcorenoc.ingest.receiver import parse_allowlist
+
+    with pytest.raises(ValueError) as caught:
+        parse_allowlist("10.0.0.0/8, not-a-cidr")
+    message = str(caught.value)
+    assert "'not-a-cidr'" in message, message
+    assert "10.20.0.0/16" in message, message  # an example of a good one
+    # CONTROL: a list of good entries parses, so the assertion above is about the bad entry.
+    assert parse_allowlist("10.0.0.0/8, 192.0.2.10") is not None
+
+
+def test_the_startup_refusal_names_which_home_holds_the_bad_allowlist() -> None:
+    """The stored override is the awkward branch: the screen that would fix it is served by the
+    appliance that will not start, so the message has to carry the way out."""
+    from netcorenoc.crosscutting.settings import SettingsError
+    from netcorenoc.runner import _check_allowlist
+
+    with pytest.raises(SettingsError) as from_env:
+        _check_allowlist("nope", stored=False)
+    assert "NETCORENOC_ALLOWLIST" in str(from_env.value)
+
+    with pytest.raises(SettingsError) as from_store:
+        _check_allowlist("nope", stored=True)
+    assert "config.allowlist" in str(from_store.value)
+    assert "NETCORENOC_ALLOWLIST" not in str(from_store.value)
+
+    _check_allowlist("10.0.0.0/8", stored=True)  # CONTROL: a good one is not refused
+    _check_allowlist("", stored=False)  # CONTROL: empty means accept all, and is not an error
+
+
+async def test_an_unusable_allowlist_is_refused_before_it_can_be_stored(store: Store) -> None:
+    """F75. `POST /api/config` wrote the value to `meta` and *then* handed it to the receiver, so an
+    allowlist the parser refuses was persisted and answered 200 — and because the stored value
+    overrides the environment, the next boot could not start.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    async with authutil.new_client(app) as client:
+        await authutil.login(client, "admin")
+        bad = await client.post(
+            "/api/config", json={"allowlist": "not-a-cidr", "retention_days": 7.0}
+        )
+        assert bad.status_code == 422, bad.text
+        assert "not-a-cidr" in bad.text
+        async with store.lock:
+            assert await store.get_meta("config.allowlist") is None, (
+                "the refused allowlist was stored anyway; the next boot would not start (F75)"
+            )
+        # CONTROL: a valid one is accepted and stored, so the assertion above is about the parse.
+        good = await client.post(
+            "/api/config", json={"allowlist": "10.20.0.0/16", "retention_days": 7.0}
+        )
+        assert good.status_code == 200, good.text
+        async with store.lock:
+            assert await store.get_meta("config.allowlist") == "10.20.0.0/16"

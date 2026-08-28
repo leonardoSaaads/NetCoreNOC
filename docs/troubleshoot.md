@@ -61,13 +61,29 @@ path, and oversized varbinds.
 
 ### The process will not start, naming a variable
 
-Two settings are hard startup errors rather than warnings:
+**Every setting that cannot be read refuses by name and exits 2**, in one line, with no traceback:
+
+```
+NETCORENOC_TRAP_PORT='' is not a whole number of a UDP port. Unset it to use the default (162), …
+NETCORENOC_ALLOWLIST is not usable: 'not-a-cidr' is not an IP address or CIDR network. …
+NETCORENOC_TLS_CERT is set and NETCORENOC_TLS_KEY is not. Built-in TLS needs both; …
+```
+
+Blanking a line in `.env` is the common way in. Two settings are refusals of a different kind — they
+are *removed*, and the error names the replacement:
 
 * `NETCORENOC_API_TOKEN` — removed in v0.3.0. Use service tokens.
 * any `OPTICORR_*` variable — the legacy prefix, removed in v0.6.0.
 
-The error names each variable and its replacement. It refuses rather than ignores because an ignored
-`OPTICORR_ALLOWLIST` would mean every source is accepted while you believed otherwise.
+All of them refuse rather than ignore, because an ignored `OPTICORR_ALLOWLIST` would mean every
+source is accepted while you believed otherwise.
+
+### The process printed a traceback and then did nothing
+
+Fixed in v0.15.2 ([F66](findings.md)). Before it, an ordinary misconfiguration — most often *the
+HTTP port is already in use* — left the process alive and unresponsive to `SIGTERM`, so
+`Restart=on-failure` and `restart: unless-stopped` never fired. If you see it on an older build,
+`SIGKILL` is the only way out; upgrading is the fix.
 
 ### Permission denied binding UDP 162
 

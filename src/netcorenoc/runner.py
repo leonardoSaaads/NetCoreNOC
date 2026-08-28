@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -31,9 +32,15 @@ import uvicorn
 from netcorenoc.api import QuietServer, create_app
 from netcorenoc.crosscutting import auth
 from netcorenoc.crosscutting.runtime import RuntimeConfig
-from netcorenoc.crosscutting.settings import LegacyTokenRemovedError, Settings, legacy_env_error
+from netcorenoc.crosscutting.settings import (
+    ENV_PREFIX,
+    LegacyTokenRemovedError,
+    Settings,
+    SettingsError,
+    legacy_env_error,
+)
 from netcorenoc.engine.operate.engine import Engine
-from netcorenoc.ingest.receiver import QueueItem, start_receiver
+from netcorenoc.ingest.receiver import QueueItem, parse_allowlist, start_receiver
 from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")
@@ -119,6 +126,27 @@ async def _serve_http(server: QuietServer, url: str) -> None:
         raise HttpServerStartError(f"the HTTP server exited without starting on {url}")
 
 
+def _check_allowlist(spec: str, *, stored: bool) -> None:
+    """Refuse an unparseable allowlist by name, and say which of its two homes holds it (F69).
+
+    The allowlist has two sources — the environment and an admin-saved `meta` row that overrides it
+    — and an operator staring at a traceback cannot tell which one produced the bad value. The
+    stored one is the awkward case, because the screen that would let them fix it is served by the
+    appliance that will not start; so that branch says where the value is and how to clear it.
+    """
+    try:
+        parse_allowlist(spec)
+    except ValueError as exc:
+        source = (
+            "the stored trap allowlist, saved from the Settings screen by an admin running a "
+            "version that did not validate it. Clear it and the environment default applies "
+            "again:  sqlite3 <NETCORENOC_DB> \"DELETE FROM meta WHERE key='config.allowlist'\""
+            if stored
+            else f"{ENV_PREFIX}ALLOWLIST"
+        )
+        raise SettingsError(f"{source} is not usable: {exc}") from exc
+
+
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
 
 
@@ -169,7 +197,18 @@ async def run(settings: Settings) -> None:
             "POST /api/tokens); send it as 'Authorization: Bearer <value>'. See MIGRATION.md."
         )
     store = Store(settings.db_path)
-    await store.open()
+    try:
+        await store.open()
+    except sqlite3.Error as exc:
+        # `sqlite3.OperationalError: unable to open database file` names neither the setting nor
+        # the path, and the path defaults to the **working directory** — so an operator who ran the
+        # appliance from somewhere unexpected cannot tell which file it wanted (F69).
+        await store.close()
+        raise SettingsError(
+            f"{ENV_PREFIX}DB={settings.db_path!r} could not be opened: {exc}. The path is relative "
+            f"to the working directory unless it is absolute, and its directory must exist and be "
+            f"writable by the process. See docs/configure.md."
+        ) from exc
     try:
         await _serve(settings, store)
     finally:
@@ -191,6 +230,7 @@ async def _serve(settings: Settings, store: Store) -> None:
     saved_ret = await store.get_meta("config.retention_days")
     effective_allowlist = saved_allow if saved_allow is not None else settings.allowlist
     effective_retention = float(saved_ret) if saved_ret is not None else settings.retention_days
+    _check_allowlist(effective_allowlist, stored=saved_allow is not None)
 
     queue: asyncio.Queue[QueueItem] = asyncio.Queue(maxsize=QUEUE_SIZE)
     transport, receiver = await start_receiver(

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import signal
 
 from netcorenoc.crosscutting.logsetup import configure_logging
@@ -28,13 +29,14 @@ from netcorenoc.crosscutting.settings import (
     LegacyEnvRemovedError,
     LegacyTokenRemovedError,
     Settings,
+    SettingsError,
     legacy_env_error,
     legacy_env_names,
     read_env,
 )
 from netcorenoc.engine.operate.engine import IDLE_CLOSE_S, Engine, FlapDetector
 from netcorenoc.engine.operate.gaps import GAP_CLOSE_S, GapTracker
-from netcorenoc.runner import Supervisor, operator_warnings, run
+from netcorenoc.runner import HttpServerStartError, Supervisor, operator_warnings, run
 
 # The re-export surface, written down rather than inherited by accident: `mypy --strict` forbids
 # implicit re-export, which makes this list the explicit statement of what `netcorenoc.main` is.
@@ -47,9 +49,11 @@ __all__ = [
     "Engine",
     "FlapDetector",
     "GapTracker",
+    "HttpServerStartError",
     "LegacyEnvRemovedError",
     "LegacyTokenRemovedError",
     "Settings",
+    "SettingsError",
     "Supervisor",
     "legacy_env_error",
     "legacy_env_names",
@@ -60,7 +64,28 @@ __all__ = [
 ]
 
 
+#: The startup refusals an operator is expected to read and act on, as opposed to the ones that
+#: mean this code is wrong. Each carries a sentence naming the setting and what to do about it, so
+#: printing the sentence and exiting 2 is more useful than twenty frames of traceback above it
+#: (F69). Anything not listed here still gets its full traceback, deliberately: an unexpected
+#: exception is a defect and the frames are the report.
+_OPERATOR_ERRORS = (
+    SettingsError,
+    LegacyEnvRemovedError,
+    LegacyTokenRemovedError,
+    HttpServerStartError,
+)
+
+
 def main() -> None:
+    try:
+        _main()
+    except _OPERATOR_ERRORS as exc:
+        logging.getLogger("netcorenoc").error("%s", exc)
+        raise SystemExit(2) from None
+
+
+def _main() -> None:
     settings = Settings.from_env()
     configure_logging(settings.log_json)
     loop_main = asyncio.new_event_loop()
