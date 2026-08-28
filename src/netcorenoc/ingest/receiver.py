@@ -56,9 +56,25 @@ class ReceiverStats:
 
 
 def parse_allowlist(spec: str) -> list[Network] | None:
-    """Comma-separated CIDRs/IPs; empty means allow all (zero-config default)."""
+    """Comma-separated CIDRs/IPs; empty means allow all (zero-config default).
+
+    A bad entry raises with **the entry named and an example of a good one** (F69). `ip_network`'s
+    own message — *"'not-a-cidr' does not appear to be an IPv4 or IPv6 network"* — is correct and
+    tells an operator who has never seen this code nothing about which setting produced it. The
+    callers add the setting's name; this adds the shape it wanted.
+    """
     entries = [e.strip() for e in spec.split(",") if e.strip()]
-    return [ipaddress.ip_network(e, strict=False) for e in entries] or None
+    out: list[Network] = []
+    for entry in entries:
+        try:
+            out.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError as exc:
+            raise ValueError(
+                f"{entry!r} is not an IP address or CIDR network. The trap allowlist is a "
+                f"comma-separated list of them, for example '10.20.0.0/16,192.0.2.10'; leave it "
+                f"empty to accept every source."
+            ) from exc
+    return out or None
 
 
 def _peek_version(data: bytes) -> int | None:
