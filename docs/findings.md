@@ -408,3 +408,32 @@ Run every command below from the repository root with the virtualenv active.
   repaired. Repairing it is F58/F61's disposition: *"the next release that touches the correlator
   owns it, and should decide what `MIN_EDGE_N` is counting before changing either number."*
   Doing it here would move `eval`'s frozen hash and the trap path in a release about neither.
+
+## F77 — the network graph pushed three of its four nodes off the canvas
+
+- **What**: three defects on the one screen no test executes. (1) A node's radius is
+  `7 + 2.5 * sqrt(active_alarms)` with **no ceiling**, so a device carrying a storm grows without
+  bound — and past `forceCollide(26)`'s own radius, which the layout then reasons with wrongly.
+  (2) The force simulation had **no centring force** at all: charge repels at -220, link pulls only
+  where an edge exists, collide only pushes apart, and nothing pulled toward the middle. (3) The
+  SVG has no `viewBox`, so a node outside the box is simply gone rather than scaled back in.
+- **Reproduce**: point a browser at the Network graph of an appliance carrying a busy device and
+  read every `circle`'s `r` and whether its box is inside `#graphwrap`.
+- **Measured**, on a 1 172 x 460 panel with four devices and ~1 400 active alarms:
+
+  | | radii (px) | nodes on canvas |
+  |---|---|---|
+  | before | 12, 12, **62.96**, **80.70** | **1 of 4** |
+  | + radius capped at 24 | 12, 12, 24, 24 | 1 of 4 |
+  | + a centring force | 12, 12, 24, 24 | 3 of 4 |
+  | + clamped to the box on each tick | 12, 12, 24, 24 | **4 of 4** |
+
+  The largest circle covered **3.79 %** of the canvas and now covers **0.34 %**. Each step was
+  measured on its own, which is how the second and third causes were found — capping the radius
+  alone changed nothing about the ejection.
+- **Why it matters**: it is the screen whose entire purpose is the relationships between elements,
+  and an operator saw one circle. It is also the screen the DOM harness substitutes a recording
+  double for, so **no assertion in this repository could have seen it** — `graph.js` says so in its
+  own first paragraph, and this is what that sentence costs.
+- **Disposition**: **fixed in v0.15.2**. Still not covered by any test, for the reason `graph.js`
+  states; the measurement above is the evidence, and a browser is what produced it.

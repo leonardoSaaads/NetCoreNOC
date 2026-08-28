@@ -379,6 +379,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/sidebar.js"),
     ("GET", "/app/store.js"),
     ("GET", "/app/theme.js"),
+    ("GET", "/app/vendor.js"),
     ("GET", "/app/views/account.js"),
     ("GET", "/app/views/audit.js"),
     ("GET", "/app/views/classes.js"),
@@ -867,8 +868,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "c25c2425f8063aa3d2c7edb7ef6a10a7595fb4ed5cd5f6e0b0527492a05c0755"
-SRC_FILE_COUNT = 172
+SRC_TREE_DIGEST = "d5291d9782d1a671a2a2c23768da2b50ee9ed39febfce87a7bbcd1b7456049fa"
+SRC_FILE_COUNT = 173
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

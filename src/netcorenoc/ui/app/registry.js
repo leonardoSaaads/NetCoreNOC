@@ -152,15 +152,3 @@ export const VIEWS = [
 ];
 
 export const DEFAULT_VIEW = "overview";
-
-/** Every capability this table gates on, for the test that checks them against `rbac`. */
-export function declaredCapabilities() {
-  const all = new Set();
-  for (const view of VIEWS) {
-    const declared = view.capability;
-    for (const capability of Array.isArray(declared) ? declared : [declared]) {
-      if (capability) all.add(capability);
-    }
-  }
-  return [...all].sort();
-}

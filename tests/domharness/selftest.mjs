@@ -211,16 +211,23 @@ export function runSelfTests() {
   });
 
   check("the shipped index.html parses into the mount point the console needs", () => {
-    // v0.13.0: the document is a mount point. It carries #root and the two script tags and
-    // nothing else — the screens are rendered, not declared — so this checks the two facts the
-    // harness actually depends on rather than eight ids that no longer exist.
+    // v0.13.0: the document is a mount point. It carries #root and the script tag and nothing
+    // else — the screens are rendered, not declared — so this checks the facts the harness
+    // actually depends on rather than eight ids that no longer exist.
+    //
+    // v0.15.2: **one** tag, not two. d3 was the other, and it made every screen pay 279 706 bytes
+    // for the two that draw with it; `app/vendor.js` fetches it when one of those mounts
+    // (DECISIONS #228). The harness is unaffected — it puts its recording double on the sandbox's
+    // global before any module evaluates, so `d3Ready()` finds `globalThis.d3` already there and
+    // never reaches for the document.
     const source = fs.readFileSync(path.join(import.meta.dirname, "..", "..",
       "src", "netcorenoc", "ui", "index.html"), "utf8");
     const d = documentFromHTML(source);
     assert(d.getElementById("root") !== null, "index.html parsed without #root");
     const scripts = d.querySelectorAll("script");
-    assert(scripts.length === 2, `expected two script tags, parsed ${scripts.length}`);
-    assert(scripts[1].getAttribute("type") === "module", "app.js is not loaded as a module");
+    assert(scripts.length === 1, `expected one script tag, parsed ${scripts.length}`);
+    assert(scripts[0].getAttribute("type") === "module", "app.js is not loaded as a module");
+    assert(scripts[0].getAttribute("src") === "/app.js", "the one script tag is not /app.js");
     // The old ids must be GONE, not merely unused. `#sidebar` was the work area and is the
     // collision draft §1.1 required this release to resolve; a document that still carried it
     // would let a guard match the old id and report that it had found navigation.

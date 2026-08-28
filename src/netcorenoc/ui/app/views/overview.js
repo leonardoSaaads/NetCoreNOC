@@ -16,7 +16,7 @@
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
-import { count, plural, relative, absolute, TIMEZONE } from "../format.js";
+import { plural, relative, absolute, TIMEZONE } from "../format.js";
 import { can, canEdit, scopeSummary } from "../session.js";
 import * as store from "../store.js";
 
@@ -288,5 +288,3 @@ class OnDemand extends Component {
     </section>`;
   }
 }
-
-void count;

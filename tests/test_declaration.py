@@ -554,7 +554,7 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # which is the property this count is really guarding and which the assertion below states
     # directly. Three new scorer kinds, a repaired promotion gate and two new screens changed the
     # served API surface by exactly nothing.
-    assert len(served) == 89, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 90, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 44, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.13.0 adds no route — it adds "
@@ -611,7 +611,7 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # which is the property this count is really guarding and which the assertion below states
     # directly. Three new scorer kinds, a repaired promotion gate and two new screens changed the
     # served API surface by exactly nothing.
-    assert len(served) == 89, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 90, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 44, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.13.0 adds no route — it adds "

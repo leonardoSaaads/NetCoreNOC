@@ -35,18 +35,16 @@
 </noscript>
 
 <!--
-  d3 stays a CLASSIC script and is loaded first, deliberately.
+  d3 is NOT loaded here (v0.15.2, DECISIONS #228).
 
-  It is a UMD bundle: loaded this way it defines the `d3` global, which `app/views/graph.js` reads
-  as `globalThis.d3`. A classic script runs before any module (modules are deferred), so the
-  global exists by the time the console boots. Importing d3 as an ES module would mean either a
-  bare specifier — an import map, which is an inline script the CSP forbids — or vendoring a
-  second copy of the same 279 706 bytes in a different module format.
+  It used to be a classic script on this line, so all seventeen screens paid 279 706 bytes for the
+  two that draw with it. `app/vendor.js` now appends the same same-origin element when the
+  graph or the timeline mounts, which the CSP's `script-src 'self'` permits and which introduces no
+  inline script. It stays a UMD bundle defining the `d3` global, vendored, checksummed and
+  licensed exactly as before; only the moment it is fetched has moved.
 
-  This is also the only screen d3 serves, and the only screen no test executes. See
-  `app/views/graph.js` and `docs/security/SECURITY-REVIEW-0.13.0.md`.
+  The graph is also the only screen no test executes — `app/views/graph.js` says so, in full.
 -->
-<script src="/vendor/d3.v7.min.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

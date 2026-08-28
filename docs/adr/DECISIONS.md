@@ -1828,3 +1828,34 @@ From this release an entry is about six lines: decision, reason, release.*
   the fifth file rather than following it.
 - **Measured**: F73 — `flake.nix` said `0.1.0` while the check printed *"all sources agree on
   version 0.15.1"*.
+
+## 231. What counts as broken presentation, and what waits for v0.15.3 (v0.15.2)
+
+- **Decision**: this release changes a rendered thing only when the current rendering **loses
+  information or states something false**. It fixed: a link row that clipped the pair it was about,
+  a caption promising two encodings the timeline does not have, a citation on screen to a document
+  deleted three releases ago, a node radius that grew past the layout's own collision radius, a
+  force graph with no centring force, and a spinner with no animation. It chose nothing about type,
+  spacing, colour or iconography.
+- **Reason**: #223 gives the identity to v0.15.3, and the hard cases needed a rule rather than a
+  feeling. *"Would an operator be misled, or unable to reach a fact?"* separates a clipped label
+  from a font size, and it is the same question the rest of this project asks about a number with
+  no window or a bar with no figure beside it.
+- **Measured**: the graph's four nodes went from **1 of 4** on canvas to **4 of 4**, and its largest
+  circle from 3.79 % of the panel to 0.34 % (F77). Nothing in the palette or the type scale moved.
+
+## 232. `drive_http.py` and `measure.py` are removed, not completed (v0.15.2)
+
+- **Decision**: delete `eval/simulation/drive_http.py` (295 lines) and `eval/simulation/measure.py`
+  (278). The rest of `eval/simulation/` stays — `generator`, `shapes`, `labelling`, `diagnose`,
+  `drive` and `appliance` are all reachable, and `appliance` is what `tests/test_operation.py`
+  boots.
+- **Reason**: **removal was chosen over completion, and the reason is that completing them is not
+  worth it.** `drive_http.py` is the end-to-end HTTP drive this release rebuilt as
+  `tests/test_operation.py`; keeping both leaves two implementations of one idea, one of which
+  nobody runs and which takes half an hour when they do. `measure.py` reported the generated
+  network's near-threshold pair distribution once, for a v0.14.0 gate document that v0.15.0
+  deleted; nothing consumes its output and no release is going to.
+- **Measured**: both are imported by **nothing** in the tree — not by `tests/`, not by `tools/`, not
+  by the other seven simulation modules. `eval/simulation/` goes from 9 modules and 2 254 lines to
+  7 and 1 681. `make eval` is byte-identical at `c2e8a0ce…`: neither file is on its path.

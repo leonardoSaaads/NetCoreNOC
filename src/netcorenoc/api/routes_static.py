@@ -51,6 +51,7 @@ _UI_MODULES = (
     "app/sidebar.js",
     "app/store.js",
     "app/theme.js",
+    "app/vendor.js",
     "app/views/account.js",
     "app/views/audit.js",
     "app/views/classes.js",
