@@ -22,6 +22,8 @@
 
 const state = {
   stats: null,
+  /** The derived trap rate, or null until two samples with a `receiver` block have arrived. */
+  trapRate: null,
   graph: null,
   situations: [],
   connection: "connecting",   // connecting | live | polling | error
@@ -33,6 +35,35 @@ const state = {
 };
 
 const subscribers = new Set();
+
+/* ---------- the trap rate, derived rather than served (DECISIONS #222) ---------- */
+
+/** The previous `{ received, at }`. `/api/stats` serves a counter; a rate is two of them. */
+let lastSample = null;
+
+/**
+ * Traps per second between the last two updates, with **the window it covers**.
+ *
+ * A rate with no window is a number nobody can act on: at a 2.5 s poll and a 30 s stream gap the
+ * same figure means different things, and the operator cannot tell which they are looking at. So
+ * `windowS` travels with it and the screen prints both.
+ *
+ * Three cases return null rather than a wrong number: the first sample (there is no window yet),
+ * a response with no `receiver` block (the appliance was built without `extra_stats`), and a
+ * counter that went **backwards**, which means the appliance restarted and the difference is not
+ * a rate.
+ */
+function deriveRate(next) {
+  const received = next && next.receiver ? next.receiver.received : null;
+  if (received === null || !Number.isFinite(received)) { lastSample = null; return null; }
+  const at = Date.now() / 1000;
+  const previous = lastSample;
+  lastSample = { received, at };
+  if (!previous) return null;
+  const windowS = at - previous.at;
+  if (!(windowS > 0) || received < previous.received) return null;
+  return { perSecond: (received - previous.received) / windowS, windowS };
+}
 
 export function get() { return state; }
 
@@ -47,7 +78,10 @@ function publish() {
 
 /** Apply a server-sent or polled update. Held cards keep the payload they were opened with. */
 export function applyUpdate(update) {
-  if (update.stats) state.stats = update.stats;
+  if (update.stats) {
+    state.trapRate = deriveRate(update.stats);
+    state.stats = update.stats;
+  }
   if (update.graph) state.graph = update.graph;
   if (update.situations) state.situations = update.situations;
   for (const sid of state.held.keys()) {
@@ -99,6 +133,8 @@ export function refreshHeld(sid, detail) {
 /** Sign-out and re-entry must not inherit a previous principal's open cards. */
 export function reset() {
   state.stats = null;
+  state.trapRate = null;
+  lastSample = null;
   state.graph = null;
   state.situations = [];
   state.connection = "connecting";

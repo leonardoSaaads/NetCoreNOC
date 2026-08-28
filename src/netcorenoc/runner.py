@@ -40,7 +40,12 @@ from netcorenoc.crosscutting.settings import (
     legacy_env_error,
 )
 from netcorenoc.engine.operate.engine import Engine
-from netcorenoc.ingest.receiver import QueueItem, parse_allowlist, start_receiver
+from netcorenoc.ingest.receiver import (
+    QueueItem,
+    ReceiverStats,
+    parse_allowlist,
+    start_receiver,
+)
 from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")
@@ -148,6 +153,30 @@ def _check_allowlist(spec: str, *, stored: bool) -> None:
 
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
+
+
+def receiver_warnings(stats: ReceiverStats, allowlist: str) -> list[str]:
+    """**A denied trap has to reach a human** (F68, DECISIONS #227).
+
+    Measured, an allowlist that refused every source produced 0 log lines, 0 warnings and 0
+    rendered counters, against a control that accepted all 8 traps — so an operator whose
+    allowlist is wrong watched the appliance receive traffic and produce nothing, in silence. The
+    `warnings` channel already exists, already reaches the banner above the work area on every
+    screen, and is already how the *empty* allowlist is reported; a wrong one was quieter than no
+    one at all.
+
+    A **counter read**, not a log line per packet. Principle 4: this is evaluated where the other
+    warnings are — per `/api/stats` request, off the trap path — and the receiver's own
+    `datagram_received` is untouched.
+    """
+    if not stats.denied:
+        return []
+    return [
+        f"{stats.denied} trap(s) refused: their source address is not in the trap allowlist "
+        f"({allowlist!r}). Denied datagrams are counted, never silently dropped — if your "
+        f"equipment is behind NAT or a relay, the allowlist must name the address the appliance "
+        f"actually sees."
+    ]
 
 
 def operator_warnings(allowlist: str, tls_enabled: bool, http_host: str) -> list[str]:
@@ -263,6 +292,7 @@ async def _serve(settings: Settings, store: Store) -> None:
         runtime=runtime,
         warnings=lambda: (
             operator_warnings(runtime.allowlist, settings.tls_enabled, settings.http_host)
+            + receiver_warnings(receiver.stats, runtime.allowlist)
             + engine.entity_cap_warnings()
             + engine.db_error_warnings()
             + engine.scorer_warning_list()
@@ -286,6 +316,20 @@ async def _serve(settings: Settings, store: Store) -> None:
         )
     )
     url = f"{scheme}://{settings.http_host}:{settings.http_port}/"
+    # **What an operator needs to know a boot did what they meant** (DECISIONS #227). The database
+    # path because it defaults to the *working directory* and is the whole of the state; the
+    # allowlist because an empty one accepts everything and a wrong one accepts nothing, and
+    # neither is visible from the outside; the retention because it decides what is deleted. The
+    # allowlist's entries are not printed — F9 records that the allowlist reveals security posture,
+    # and a count answers "did it load what I set" without publishing the estate's addressing.
+    log.info("database %s (schema version %d)", settings.db_path, await store.schema_version())
+    log.info(
+        "trap allowlist: %s; operational retention %g day(s)",
+        f"{len(parse_allowlist(effective_allowlist) or [])} network(s)"
+        if effective_allowlist.strip()
+        else "empty - every source is accepted",
+        effective_retention,
+    )
     log.info("listening for traps on %s:%d/udp", settings.trap_host, settings.trap_port)
     log.info("web UI and API on %s", url)
     tasks = [

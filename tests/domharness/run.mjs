@@ -132,6 +132,46 @@ const scenarios = {
     return { ...view(env), requests: requests(env), proof: proofOf(env) };
   },
 
+  /**
+   * Boot, then push two `/api/stats` payloads through the live store and read the health tiles.
+   *
+   * v0.15.2 puts `queue_depth` and the five receiver counters on the Overview and derives a trap
+   * rate **in the client** between two updates (DECISIONS #222). A rate derived from one sample is
+   * a rate that is always zero, and a tile that always reads `0.00 /s` is indistinguishable from a
+   * broken derivation — so this drives two, with a known gap, and reports what the screen says.
+   */
+  async health(params) {
+    const env = await boot(params);
+    const entry = [...env.modules.entries()].find(([file]) => file.endsWith("app/store.js"));
+    const store = entry[1].namespace;
+    const read = () => {
+      const tiles = [...env.document.querySelectorAll(".stat")];
+      const out = {};
+      for (const tile of tiles) {
+        const label = tile.querySelector(".stat-label");
+        const value = tile.querySelector(".stat-value");
+        const note = tile.querySelector(".stat-note");
+        if (label && value) {
+          out[label.textContent.trim()] = {
+            value: value.textContent.trim(),
+            note: note ? note.textContent.trim() : null,
+          };
+        }
+      }
+      return out;
+    };
+    env.navigate("#/overview");
+    await settle(env);
+    const samples = [];
+    for (const stats of params.samples ?? []) {
+      if (samples.length) env.advanceClock(params.advanceMs ?? 2500);
+      store.applyUpdate({ stats });
+      await settle(env);
+      samples.push({ tiles: read(), rate: store.get().trapRate });
+    }
+    return { samples, proof: proofOf(env) };
+  },
+
   /** Boot, optionally navigate, and dump the DOM. The gate documents quote `dump`. */
   async render(params) {
     const env = await boot(params);

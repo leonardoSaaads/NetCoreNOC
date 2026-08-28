@@ -29,10 +29,17 @@ import { Document, DomEvent, documentFromHTML } from "./dom.mjs";
 /** Fixed epoch for every run. Chosen once; changing it changes nothing but the rendered ages. */
 export const FIXED_NOW_MS = 1_700_000_000_000;
 
+// `__now` is a variable rather than a constant so a scenario can advance it by a **stated**
+// amount (`env.advanceClock`). Determinism is unchanged: nothing advances it unless a scenario
+// asks, and an advance is a literal in the scenario's parameters rather than elapsed wall time.
+// v0.15.2 needs it because the console derives the trap rate between two `/api/stats` updates,
+// and on a clock that cannot move, two samples are always zero seconds apart — which would make
+// "the rate is null" pass for a derivation that never worked.
 const CLOCK_PRELUDE = `
-  const __fixed = ${FIXED_NOW_MS};
+  let __now = ${FIXED_NOW_MS};
+  globalThis.__advanceClock = (ms) => { __now += ms; return __now; };
   const __RealDate = Date;
-  Date.now = () => __fixed;
+  Date.now = () => __now;
   Date.prototype.toLocaleString = function () { return this.toISOString(); };
   Date.prototype.toLocaleTimeString = function () { return this.toISOString().slice(11, 19); };
   Date.prototype.toLocaleDateString = function () { return this.toISOString().slice(0, 10); };
@@ -311,6 +318,8 @@ export function createEnvironment({ indexHtml, routes, dialogs = {}, cookies = {
   const env = {
     context, sandbox, document, network, eventSources, dialogCalls, d3Calls, timers,
     cookies: cookieJar, location, DomEvent, Document,
+    /** Move the pinned clock forward by a stated number of milliseconds. */
+    advanceClock(ms) { return sandbox.__advanceClock(ms); },
     /** Fire a window-level event the way the browser does (the router listens for `hashchange`). */
     emitWindow(type, detail = {}) {
       for (const handler of windowListeners.get(type) ?? []) handler({ type, ...detail });
