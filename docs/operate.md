@@ -105,6 +105,12 @@ Read it in this order:
   telling you honestly what they cost.
 * **`queue_depth` growing and not falling back** is the one number that means the appliance is not
   keeping up. See [`troubleshoot.md`](troubleshoot.md).
+* **`receiver.denied` above zero** means datagrams arrived and the allowlist refused them. It is
+  also a banner on every screen, naming the count and the allowlist that refused them.
+
+All of the above are on the **Overview**'s *System health* section since v0.15.2, with a trap rate
+derived between two polls and labelled with the window it covers. There is no CPU, memory or uptime
+figure, because the appliance does not measure one.
 
 ## 5. Reading a situation
 

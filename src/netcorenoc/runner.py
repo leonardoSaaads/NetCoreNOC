@@ -19,9 +19,9 @@ only advances on commit, so an interrupted drain leaves it consistent.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
+import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -32,9 +32,20 @@ import uvicorn
 from netcorenoc.api import QuietServer, create_app
 from netcorenoc.crosscutting import auth
 from netcorenoc.crosscutting.runtime import RuntimeConfig
-from netcorenoc.crosscutting.settings import LegacyTokenRemovedError, Settings, legacy_env_error
+from netcorenoc.crosscutting.settings import (
+    ENV_PREFIX,
+    LegacyTokenRemovedError,
+    Settings,
+    SettingsError,
+    legacy_env_error,
+)
 from netcorenoc.engine.operate.engine import Engine
-from netcorenoc.ingest.receiver import QueueItem, start_receiver
+from netcorenoc.ingest.receiver import (
+    QueueItem,
+    ReceiverStats,
+    parse_allowlist,
+    start_receiver,
+)
 from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")
@@ -89,7 +100,83 @@ class Supervisor:
         ]
 
 
+class HttpServerStartError(RuntimeError):
+    """The HTTP server could not start. Raised as an ordinary exception, deliberately (F66).
+
+    uvicorn calls ``sys.exit(STARTUP_FAILURE)`` when it cannot bind, and ``SystemExit`` is a
+    ``BaseException``: asyncio re-raises it out of ``run_until_complete`` rather than storing it on
+    the task, so the ``run()`` coroutine is never resumed and **every one of its ``finally`` blocks
+    is skipped** — including the store close. The interpreter then blocks forever in
+    ``threading._shutdown`` waiting on aiosqlite's non-daemon connection thread, which is what
+    "the appliance hangs when port 8080 is already in use" actually was.
+
+    Converting it here puts the failure back on the path every other startup error takes: it
+    propagates through ``asyncio.gather``, the cleanup runs, the store closes, the process exits
+    non-zero, and a supervisor restarts it.
+    """
+
+
+async def _serve_http(server: QuietServer, url: str) -> None:
+    """Run the HTTP server, and treat "it never started" as the failure it is.
+
+    The second half matters as much as the first: a uvicorn that logs a bind error and *returns*
+    would otherwise leave an appliance that ingests traps and serves no console, for as long as
+    nobody looks.
+    """
+    try:
+        await server.serve()
+    except SystemExit as exc:  # uvicorn's own startup failure, already logged by uvicorn
+        raise HttpServerStartError(f"the HTTP server could not start on {url}") from exc
+    if not server.started:
+        raise HttpServerStartError(f"the HTTP server exited without starting on {url}")
+
+
+def _check_allowlist(spec: str, *, stored: bool) -> None:
+    """Refuse an unparseable allowlist by name, and say which of its two homes holds it (F69).
+
+    The allowlist has two sources — the environment and an admin-saved `meta` row that overrides it
+    — and an operator staring at a traceback cannot tell which one produced the bad value. The
+    stored one is the awkward case, because the screen that would let them fix it is served by the
+    appliance that will not start; so that branch says where the value is and how to clear it.
+    """
+    try:
+        parse_allowlist(spec)
+    except ValueError as exc:
+        source = (
+            "the stored trap allowlist, saved from the Settings screen by an admin running a "
+            "version that did not validate it. Clear it and the environment default applies "
+            "again:  sqlite3 <NETCORENOC_DB> \"DELETE FROM meta WHERE key='config.allowlist'\""
+            if stored
+            else f"{ENV_PREFIX}ALLOWLIST"
+        )
+        raise SettingsError(f"{source} is not usable: {exc}") from exc
+
+
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"}
+
+
+def receiver_warnings(stats: ReceiverStats, allowlist: str) -> list[str]:
+    """**A denied trap has to reach a human** (F68, DECISIONS #227).
+
+    Measured, an allowlist that refused every source produced 0 log lines, 0 warnings and 0
+    rendered counters, against a control that accepted all 8 traps — so an operator whose
+    allowlist is wrong watched the appliance receive traffic and produce nothing, in silence. The
+    `warnings` channel already exists, already reaches the banner above the work area on every
+    screen, and is already how the *empty* allowlist is reported; a wrong one was quieter than no
+    one at all.
+
+    A **counter read**, not a log line per packet. Principle 4: this is evaluated where the other
+    warnings are — per `/api/stats` request, off the trap path — and the receiver's own
+    `datagram_received` is untouched.
+    """
+    if not stats.denied:
+        return []
+    return [
+        f"{stats.denied} trap(s) refused: their source address is not in the trap allowlist "
+        f"({allowlist!r}). Denied datagrams are counted, never silently dropped — if your "
+        f"equipment is behind NAT or a relay, the allowlist must name the address the appliance "
+        f"actually sees."
+    ]
 
 
 def operator_warnings(allowlist: str, tls_enabled: bool, http_host: str) -> list[str]:
@@ -139,7 +226,32 @@ async def run(settings: Settings) -> None:
             "POST /api/tokens); send it as 'Authorization: Bearer <value>'. See MIGRATION.md."
         )
     store = Store(settings.db_path)
-    await store.open()
+    try:
+        await store.open()
+    except sqlite3.Error as exc:
+        # `sqlite3.OperationalError: unable to open database file` names neither the setting nor
+        # the path, and the path defaults to the **working directory** — so an operator who ran the
+        # appliance from somewhere unexpected cannot tell which file it wanted (F69).
+        await store.close()
+        raise SettingsError(
+            f"{ENV_PREFIX}DB={settings.db_path!r} could not be opened: {exc}. The path is relative "
+            f"to the working directory unless it is absolute, and its directory must exist and be "
+            f"writable by the process. See docs/configure.md."
+        ) from exc
+    try:
+        await _serve(settings, store)
+    finally:
+        # **The store is closed on every exit path** (F66, DECISIONS #225). `aiosqlite` runs its
+        # connection on a **non-daemon** thread, so a store left open holds the interpreter alive
+        # after the exception has been printed — the process does not crash, it hangs, and every
+        # restart policy written for it (`Restart=on-failure`, `restart: unless-stopped`) is keyed
+        # on an exit that never comes. Measured: five ordinary misconfigurations, including "the
+        # HTTP port is already in use", survived SIGTERM and needed SIGKILL.
+        await store.close()
+
+
+async def _serve(settings: Settings, store: Store) -> None:
+    """Everything between an open store and a closed one. `run()` owns the store's lifetime."""
     community_key = await _community_key(store)
 
     # Config precedence: admin-saved meta values override env defaults (DESIGN v0.2).
@@ -147,6 +259,7 @@ async def run(settings: Settings) -> None:
     saved_ret = await store.get_meta("config.retention_days")
     effective_allowlist = saved_allow if saved_allow is not None else settings.allowlist
     effective_retention = float(saved_ret) if saved_ret is not None else settings.retention_days
+    _check_allowlist(effective_allowlist, stored=saved_allow is not None)
 
     queue: asyncio.Queue[QueueItem] = asyncio.Queue(maxsize=QUEUE_SIZE)
     transport, receiver = await start_receiver(
@@ -179,6 +292,7 @@ async def run(settings: Settings) -> None:
         runtime=runtime,
         warnings=lambda: (
             operator_warnings(runtime.allowlist, settings.tls_enabled, settings.http_host)
+            + receiver_warnings(receiver.stats, runtime.allowlist)
             + engine.entity_cap_warnings()
             + engine.db_error_warnings()
             + engine.scorer_warning_list()
@@ -201,8 +315,23 @@ async def run(settings: Settings) -> None:
             ssl_keyfile=settings.tls_key or None,
         )
     )
+    url = f"{scheme}://{settings.http_host}:{settings.http_port}/"
+    # **What an operator needs to know a boot did what they meant** (DECISIONS #227). The database
+    # path because it defaults to the *working directory* and is the whole of the state; the
+    # allowlist because an empty one accepts everything and a wrong one accepts nothing, and
+    # neither is visible from the outside; the retention because it decides what is deleted. The
+    # allowlist's entries are not printed — F9 records that the allowlist reveals security posture,
+    # and a count answers "did it load what I set" without publishing the estate's addressing.
+    log.info("database %s (schema version %d)", settings.db_path, await store.schema_version())
+    log.info(
+        "trap allowlist: %s; operational retention %g day(s)",
+        f"{len(parse_allowlist(effective_allowlist) or [])} network(s)"
+        if effective_allowlist.strip()
+        else "empty - every source is accepted",
+        effective_retention,
+    )
     log.info("listening for traps on %s:%d/udp", settings.trap_host, settings.trap_port)
-    log.info("web UI and API on %s://%s:%d/", scheme, settings.http_host, settings.http_port)
+    log.info("web UI and API on %s", url)
     tasks = [
         asyncio.create_task(supervisor.run("engine", engine.run)),
         asyncio.create_task(
@@ -211,7 +340,7 @@ async def run(settings: Settings) -> None:
                 lambda: engine.maintenance_loop(lambda: runtime.retention_days),
             )
         ),
-        asyncio.create_task(server.serve()),
+        asyncio.create_task(_serve_http(server, url)),
     ]
     try:
         await asyncio.gather(*tasks)
@@ -220,12 +349,16 @@ async def run(settings: Settings) -> None:
         server.should_exit = True
         for task in tasks:
             task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.gather(*tasks)
+        # `return_exceptions=True` rather than suppressing `CancelledError` (F66). A task that ended
+        # in an **exception** rather than a cancellation — uvicorn failing to bind, for instance —
+        # has that exception stored, and `gather` re-raises it here. Suppressing only
+        # `CancelledError` therefore let it escape the cleanup and skip everything below: the
+        # bounded drain, the final maintenance pass, and the store close in `run()`. The exception
+        # still reaches the caller, from the `try` above, which is where it belongs.
+        await asyncio.gather(*tasks, return_exceptions=True)
         # Graceful shutdown (§A.5): drain the traps still queued, then a final maintenance pass
         # (flushes the profiler and learned state). The audit chain only advances on commit, so
         # an interrupted drain leaves it consistent.
         await engine.drain(deadline_s=SHUTDOWN_DRAIN_S)
         await engine.maintenance(time.time(), runtime.retention_days)
-        await store.close()
         log.info("receiver stats: %s", receiver.stats)

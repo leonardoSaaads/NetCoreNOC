@@ -899,3 +899,109 @@ def test_the_assertion_count_did_not_go_down() -> None:
         f"this file now makes {count} assertions, down from {V0_12_0_ASSERTION_COUNT} at v0.12.0. "
         f"A selector rename may rewrite an assertion; it may not delete one."
     )
+
+
+# --- v0.15.2: the appliance measures itself and the console shows it (F68, DECISIONS #222) -------
+
+
+@dom_test
+async def test_the_health_tiles_render_what_api_stats_already_served(
+    routes: dict[str, Any],
+) -> None:
+    """`queue_depth` and the five receiver counters, on the screen an operator opens first.
+
+    Every one of these was served on every poll and rendered nowhere, which is the whole finding:
+    `receiver.denied` is the only evidence an operator has that their allowlist is refusing their
+    own equipment, and it had never been on a screen.
+    """
+    result = domdriver.run_scenario(
+        "health",
+        {
+            "routes": routes["admin"],
+            "samples": [
+                {
+                    "devices": 2,
+                    "classes": 3,
+                    "active_alarms": 4,
+                    "open_situations": 1,
+                    "quarantined": 0,
+                    "ingest_gaps": [],
+                    "open_ingest_gaps": [],
+                    "latency_p95_s": 0.01,
+                    "queue_depth": 7,
+                    "warnings": [],
+                    "receiver": {
+                        "received": 100,
+                        "accepted": 90,
+                        "denied": 6,
+                        "quarantined": 3,
+                        "dropped": 1,
+                    },
+                }
+            ],
+        },
+    )
+    tiles = result["samples"][0]["tiles"]
+    assert tiles["queue depth"]["value"] == "7", tiles
+    assert tiles["received"]["value"] == "100", tiles
+    assert tiles["accepted"]["value"] == "90", tiles
+    assert tiles["denied"]["value"] == "6", tiles
+    assert tiles["quarantined"]["value"] == "3", tiles
+    assert tiles["dropped"]["value"] == "1", tiles
+
+
+@dom_test
+async def test_the_trap_rate_is_derived_from_two_samples_and_names_its_window(
+    routes: dict[str, Any],
+) -> None:
+    """**A rate with no window is a number nobody can act on**, and a rate from one sample is zero.
+
+    The first update can only say it is waiting; the second carries a figure and the seconds it
+    covers. The harness's clock is a double, so the window is whatever it advances — the assertion
+    is that a window is *stated* and that the rate is derived from the difference, not that the
+    number is any particular one.
+    """
+
+    def stats(received: int) -> dict[str, Any]:
+        return {
+            "devices": 2,
+            "classes": 3,
+            "active_alarms": 4,
+            "open_situations": 1,
+            "quarantined": 0,
+            "ingest_gaps": [],
+            "open_ingest_gaps": [],
+            "latency_p95_s": 0.01,
+            "queue_depth": 0,
+            "warnings": [],
+            "receiver": {
+                "received": received,
+                "accepted": received,
+                "denied": 0,
+                "quarantined": 0,
+                "dropped": 0,
+            },
+        }
+
+    result = domdriver.run_scenario(
+        "health",
+        {"routes": routes["admin"], "samples": [stats(100), stats(160), stats(20)]},
+    )
+    first, second, third = result["samples"]
+
+    # One sample is not a rate, and the tile says so rather than showing a zero.
+    assert first["rate"] is None, first
+    assert first["tiles"]["trap rate"]["value"] == "—", first["tiles"]
+    assert "waiting" in first["tiles"]["trap rate"]["note"], first["tiles"]
+
+    # Two samples are. The window is stated on screen beside the figure.
+    assert second["rate"] is not None, second
+    assert second["rate"]["windowS"] > 0, second["rate"]
+    expected = 60 / second["rate"]["windowS"]
+    assert abs(second["rate"]["perSecond"] - expected) < 1e-9, second["rate"]
+    assert "over the last" in second["tiles"]["trap rate"]["note"], second["tiles"]
+    assert second["tiles"]["trap rate"]["value"].endswith("/s"), second["tiles"]
+
+    # A counter that went BACKWARDS is an appliance that restarted, not a negative rate.
+    assert third["rate"] is None, third
+    assert third["tiles"]["trap rate"]["value"] == "—", third["tiles"]

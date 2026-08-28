@@ -1,7 +1,8 @@
 # Installing NetCoreNOC
 
-Four routes. All of them give you the same thing: **one process, one SQLite file, one static web
-console**, with five Python dependencies and no build step. Pick by what you already run.
+Four routes, and a fifth way to try it with no equipment at all. All of them give you the same
+thing: **one process, one SQLite file, one static web console**, with five Python dependencies and
+no build step. Pick by what you already run.
 
 Python **3.12 or newer** is required everywhere.
 
@@ -82,8 +83,15 @@ somewhere deliberate.
 user, `ProtectSystem=strict`, `NoNewPrivileges`, and `AmbientCapabilities=CAP_NET_BIND_SERVICE` so
 the process can bind 162 without running as root.
 
+**The unit's `ExecStart` is `/opt/netcorenoc/.venv/bin/python`**, so install there rather than in
+the working directory the [pip](#pip) section uses — a unit pointing at a venv that does not exist
+fails to start, and `systemd-analyze verify` is what says so:
+
 ```sh
+sudo python3.12 -m venv /opt/netcorenoc/.venv
+sudo /opt/netcorenoc/.venv/bin/pip install .
 sudo cp deploy/netcorenoc.service /etc/systemd/system/
+systemd-analyze verify /etc/systemd/system/netcorenoc.service   # silence means it will start
 sudo systemctl daemon-reload && sudo systemctl enable --now netcorenoc
 journalctl -u netcorenoc | grep -i bootstrap     # the one-time admin password
 ```

@@ -122,7 +122,6 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # somebody adds.
         "/app.js",
         "/app/api.js",
-        "/app/context.js",
         "/app/destructive.js",
         "/app/dom.js",
         "/app/format.js",
@@ -135,6 +134,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/sidebar.js",
         "/app/store.js",
         "/app/theme.js",
+        "/app/vendor.js",
         "/app/views/account.js",
         "/app/views/audit.js",
         "/app/views/classes.js",

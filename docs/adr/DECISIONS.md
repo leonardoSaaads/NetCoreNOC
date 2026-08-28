@@ -1668,3 +1668,194 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: on the moved tree, exactly one module exceeds 400 body lines and it is `engine.py`,
   which is permanently exempt. `learn.py` (393 body, 400 total) and `promotion.py` (391, 400) sit
   on the line, so this is structural rather than one awkward file.
+
+## 219. The detail panel is removed, because no view populates it (v0.15.2)
+
+- **Decision**: `app/context.js`, the `#context` region, its stylesheet rules and the unused import
+  in `situations.js` are deleted. The shell becomes two regions. Rejected: populating it from
+  Situations, which would build a second home for facts the expanded card already shows in place.
+- **Reason**: the brief's reading is *"it belongs to Situations, and the shell should not render the
+  region on views that do not use it."* Measured, **no** view uses it, so that reading reduces to
+  not rendering it. `registry.js` states the rule this breaks — *"nothing here is a placeholder"* —
+  and a permanently empty third of the screen is one. Removal was chosen over completion because
+  nothing in phase 1 has a second thing to say about a selection.
+- **Measured**: driven in Chromium as admin, editor and viewer over all 17 views, `#context` carries
+  `context-idle` and the text *"Select something to see its detail here."* on **17 of 17** at
+  1440 px, at a computed width of 320 px. Expanding a situation card does not change it.
+- **Note**: the served surface goes from 90 method/path pairs to **89**, so #211's figure is a
+  statement about v0.15.1's tree rather than a standing one. Removing one module is a deliberate
+  diff in five places — `routes_static.STATIC_ASSETS`, `declare.UNAUTHENTICATED_PATHS`,
+  `ROUTE_ORDER_BASELINE`, `UI_HASHES`/`UI_SIZES`, and the behaviour record — which is the
+  deny-by-default machinery working rather than five chores.
+
+## 220. Below 760 px the repair is the link row, not the panel (v0.15.2)
+
+- **Decision**: the narrow-viewport rule that hid `.context` goes with the panel (#219), and the
+  per-term contributions are made readable at 390 px by letting `.linkrow` wrap. No drawer, no
+  second route, no inline expansion.
+- **Reason**: the constraint is that the per-term contributions must be reachable on any device the
+  operator has. They already were — they render in `#work`, not in the panel — so the drawer the
+  brief anticipated would have solved a problem this console does not have. What is actually broken
+  is narrower and cheaper: the row they sit in overflows and clips.
+- **Measured**: at 390x844 the *"Why these were grouped"* section exists, is visible, is inside
+  `#work`, and shows all 90 term numbers. Every one of the 30 `.linkrow` boxes overflows by 51 px
+  and all 30 `.linkpair` labels fall outside the viewport with no scrollable ancestor (F67). At
+  1440x900 the same measurement is 0 px and 0 labels.
+
+## 221. There is no icon system in this release, and the glyph set is stated rather than replaced (v0.15.2)
+
+- **Decision**: the 17 Unicode glyphs in `registry.js` stay, and no inline-SVG module is added.
+- **Reason**: choosing marks that read as one family is choosing what the product looks like, which
+  #223 gives to v0.15.3. Replacing 17 glyphs with 17 hand-drawn paths inside a repair release would
+  spend the release's whole visual budget on the half of the problem that is not broken: a glyph
+  renders, is announced correctly (each is `aria-hidden` beside a text label), and is legible.
+  Inline SVG in one module remains the right answer; it is the *when* that moves.
+- **Measured**: 2 `<svg>` elements in the console, both data surfaces. The glyphs are decorative in
+  every one of their 17 call sites — `nav-glyph` is `aria-hidden="true"` and carries a `nav-label`
+  beside it — so none of them is load-bearing for a screen reader today.
+
+## 222. System health renders what `/api/stats` already serves, and the route does not change (v0.15.2)
+
+- **Decision**: `queue_depth` and the five `receiver.*` counters go on the Overview. Trap rate is
+  derived in the client from `receiver.received` between two polls and is labelled with the window
+  it covers. `/api/stats` gains no key, so no declaration and no capability move.
+- **Reason**: the appliance already measures itself and the console throws the measurements away.
+  Rendering what is served is most of the value at none of the cost of a new route surface. CPU,
+  memory and uptime stay absent and are recorded as absent rather than added.
+- **Measured**: `/api/stats` returns 11 keys against a running appliance; the console rendered 7 of
+  them and `queue_depth` plus `receiver.{received,accepted,denied,quarantined,dropped}` reached no
+  screen. `receiver.denied` is the only signal an operator has that their allowlist is wrong (F68).
+
+## 223. v0.15.3 chooses what the product looks like; this release only fixes what is broken (v0.15.2)
+
+- **Decision**: no type scale, no spacing rhythm, no palette, no icon family, no rewritten prose.
+  This release changes presentation only where the current presentation loses information or
+  misstates a fact — a clipped label, a caption describing an encoding that is not there.
+- **Reason**: repairing four defects and choosing an identity are different jobs and doing both
+  means neither is reviewable. The rule that decides the boundary in a hard case: **ambiguity about
+  whether a change is presentation or identity resolves to identity**, and it waits.
+- **Measured**: `style.css` is 544 lines with **three** `@media` blocks, not the four
+  `plans/v0.15.2-console.md` §2 states — one system-preference, one layout breakpoint, one
+  reduced-motion. The fourth occurrence is inside a comment.
+
+## 224. An operation test boots a real appliance, and it lives in `tests/` (v0.15.2)
+
+- **Decision**: `tests/test_operation.py` drives a real `python -m netcorenoc.main` process — real
+  SNMPv2c PDUs over a real UDP socket, arriving over time; situations asserted against the
+  generator's ground truth; the console read over HTTP as a signed-in principal. It reuses
+  `eval/simulation/`'s appliance host and network generator rather than reimplementing them, and
+  `eval/simulation/` keeps them. Determinism is asserted on a **clock-free canonical projection**
+  of the outcome, never on wall-clock output.
+- **Reason**: `eval/simulation/drive_http.py` is already this test and nothing runs it; its
+  ten-increment loop is half an hour of wall clock, which is why. The repair is a bounded drive in
+  the suite, not a smaller reimplementation of a harness that works. `eval/` holds the frozen corpus
+  and the deterministic offline harness; a live drive of the appliance is a test, so it goes where
+  tests go.
+- **Measured**: `eval/simulation/` is 9 modules and 2 254 lines; `tests/test_simulation.py` is 308
+  lines and boots no appliance. `drive_http.py` (295 lines) and `measure.py` (278) are imported by
+  nothing in the tree.
+
+## 225. A failed startup exits; the store is closed on every path (v0.15.2)
+
+- **Decision**: `runner.run` opens the store inside a `try:` whose cleanup always closes it, and the
+  cleanup's `await asyncio.gather(*tasks)` no longer lets a failed task's exception skip the drain,
+  the final maintenance pass and `store.close()`. The original exception still propagates, so the
+  process still fails — it fails *and exits*.
+- **Reason**: an appliance that hangs is worse than one that crashes, because every restart policy
+  written for it (`Restart=on-failure`, `restart: unless-stopped`) is keyed on exit. Rejected:
+  making the `aiosqlite` thread a daemon, which would be reaching into a dependency to paper over a
+  cleanup path this code owns.
+- **Measured**: F66 — five treatments needed `SIGKILL` after 32.0 s; two controls exited in 0.5 s
+  and 12.1 s. After the repair, the same five exit on their own.
+
+## 226. An unreadable environment variable names itself (v0.15.2)
+
+- **Decision**: `Settings.from_env` reads each numeric variable through one helper that catches the
+  conversion error and re-raises a `SettingsError` naming the variable, the value it was given and
+  what it expects; `parse_allowlist` does the same for the entry it could not parse. One message
+  shape, the one `legacy_env_error` already uses.
+- **Reason**: the project's own rule is that a setting must never fail silently, and it built two
+  careful messages to honour it. Five variables were never given one, and an operator who blanks a
+  line in `.env` gets a 20-line traceback naming `''`.
+- **Measured**: F69. Five variables, five bare `ValueError`s; the two documented refusals name the
+  variable and its replacement.
+
+## 227. A denied trap reaches the operator as a counter and a warning, never as a log line (v0.15.2)
+
+- **Decision**: `receiver.denied > 0` raises an entry in `operator_warnings()` naming the count and
+  the configured allowlist, evaluated where the warnings already are — per request, off the trap
+  path. The receiver counters and `queue_depth` also render on the Overview (#222). No logging is
+  added to `datagram_received`.
+- **Reason**: principle 4. A counter incremented and reported is the right answer for anything that
+  happens per trap, and the console already renders `warnings` as a banner above the work area on
+  every screen — so the cheapest correct channel is the one that exists.
+- **Measured**: F68 — an allowlist that refuses every source produced 0 log lines, `warnings: []`,
+  and 0 rendered counters, in an arm whose control accepted all 8 traps.
+
+## 228. d3 loads when the graph does (v0.15.2)
+
+- **Decision**: the classic `<script src="/vendor/d3.v7.min.js">` leaves `index.html`; the two views
+  that use d3 request it on mount by appending a same-origin `<script>` and awaiting it. The asset
+  is still vendored, still checksummed, still licensed, still loaded from `'self'`.
+- **Reason**: the standing v0.13.0 decision was *keep d3*, and that stands — writing a force layout
+  is not this release's work. What was never decided is that **every** screen should pay for it.
+  This is the third option the brief offers: make the cost visible by making it fall where it is
+  incurred. The CSP is untouched: `script-src 'self'` permits a same-origin element, and no inline
+  script is introduced.
+- **Measured**: 279 706 bytes, 22x the two framework assets combined, on every cold load of all 17
+  screens; `typeof globalThis.d3 === "object"` on every view in the browser drive. Two of the 17
+  use it.
+
+## 229. F65 gets a reading rule, not a guard (v0.15.2)
+
+- **Decision**: `record.md` gains one sentence — a `netcorenoc.<module>` path in prose that does not
+  resolve is a pre-v0.15.1 path, and `git log --follow` resolves it — beside the rule it already
+  states for `docs/gates/…`. No guard is added.
+- **Reason**: a guard that read module paths out of docstrings would have to be kept green through
+  every future move, which is a standing cost paid to fix references that are already resolvable,
+  and it would be a second reason to edit a docstring during a refactor. The precedent is one file
+  up: the same shape, the same defence, the same answer.
+- **Measured**: 50 occurrences (F70), 44 of them in `src/`. Zero are imports — `mypy --strict`
+  passes over 214 files.
+
+## 230. `flake.nix` joins the version check (v0.15.2)
+
+- **Decision**: `tools/release_check.py` reads a fourth file, and `tests/test_structure.py` asserts
+  that every place in the tree declaring a project version is one the check reads.
+- **Reason**: the check exists so a release cannot be tagged with a mismatched version, and it was
+  blind to a quarter of the declarations for fifteen releases. Adding the file without the test
+  would leave the next declaration equally invisible; the test is the instrument, and it precedes
+  the fifth file rather than following it.
+- **Measured**: F73 — `flake.nix` said `0.1.0` while the check printed *"all sources agree on
+  version 0.15.1"*.
+
+## 231. What counts as broken presentation, and what waits for v0.15.3 (v0.15.2)
+
+- **Decision**: this release changes a rendered thing only when the current rendering **loses
+  information or states something false**. It fixed: a link row that clipped the pair it was about,
+  a caption promising two encodings the timeline does not have, a citation on screen to a document
+  deleted three releases ago, a node radius that grew past the layout's own collision radius, a
+  force graph with no centring force, and a spinner with no animation. It chose nothing about type,
+  spacing, colour or iconography.
+- **Reason**: #223 gives the identity to v0.15.3, and the hard cases needed a rule rather than a
+  feeling. *"Would an operator be misled, or unable to reach a fact?"* separates a clipped label
+  from a font size, and it is the same question the rest of this project asks about a number with
+  no window or a bar with no figure beside it.
+- **Measured**: the graph's four nodes went from **1 of 4** on canvas to **4 of 4**, and its largest
+  circle from 3.79 % of the panel to 0.34 % (F77). Nothing in the palette or the type scale moved.
+
+## 232. `drive_http.py` and `measure.py` are removed, not completed (v0.15.2)
+
+- **Decision**: delete `eval/simulation/drive_http.py` (295 lines) and `eval/simulation/measure.py`
+  (278). The rest of `eval/simulation/` stays — `generator`, `shapes`, `labelling`, `diagnose`,
+  `drive` and `appliance` are all reachable, and `appliance` is what `tests/test_operation.py`
+  boots.
+- **Reason**: **removal was chosen over completion, and the reason is that completing them is not
+  worth it.** `drive_http.py` is the end-to-end HTTP drive this release rebuilt as
+  `tests/test_operation.py`; keeping both leaves two implementations of one idea, one of which
+  nobody runs and which takes half an hour when they do. `measure.py` reported the generated
+  network's near-threshold pair distribution once, for a v0.14.0 gate document that v0.15.0
+  deleted; nothing consumes its output and no release is going to.
+- **Measured**: both are imported by **nothing** in the tree — not by `tests/`, not by `tools/`, not
+  by the other seven simulation modules. `eval/simulation/` goes from 9 modules and 2 254 lines to
+  7 and 1 681. `make eval` is byte-identical at `c2e8a0ce…`: neither file is on its path.

@@ -129,8 +129,19 @@ Run every command below from the repository root with the virtualenv active.
   runs. **Measured**: 1 failure in 60 runs on the v0.15.1 tree and **4 in 60 on the v0.15.0 tree it
   was built from**, so the package move neither caused it nor changed it; 60 report pairs rendered
   in a single interpreter produced no difference at all, which is why it had not been seen.
-- **Disposition**: open, issued not fixed. A median or a repeated-measures comparison would be a
-  behaviour change to the promotion gate, which neither v0.15.0 nor v0.15.1 makes.
+- **Disposition**: **the finding is open; its intermittent test is fixed in v0.15.2.** The finding
+  itself stands — a median or a repeated-measures comparison would be a behaviour change to the
+  promotion gate, and this release changes no promotion behaviour. What v0.15.2 removes is the
+  *flap*: `test_shadow.py`'s two rendering comparisons take a `pinned_scoring_clock` fixture that
+  pins `time.perf_counter_ns` for the 256 timed `score()` calls, so `p99_us` stops being a coin
+  toss between two identical scorers. `verdict()` still computes the refusal from the real values.
+  **Measured on this tree**: 1 failure in 60 runs before (*"speed: p99 32.182us over the budget
+  28.140us"*), **0 in 60 after**. Two things are deliberately not pinned:
+  `test_the_report_measures_timings_that_are_real` stays on the real clock, because a synthetic
+  counter would make the one test that asserts the timings are measurements vacuous; and
+  `test_the_pinned_clock_does_not_hide_a_refusal_that_is_real` is the control — a scorer that reads
+  the pinned counter forty extra times per call is still refused on speed, so the two tests above
+  are not green because the check became unreachable.
 
 ## F64 — the citation guard could not see inside an f-string, and it cost a decision entry
 
@@ -190,14 +201,275 @@ Run every command below from the repository root with the virtualenv active.
               if t.type in (tokenize.COMMENT, tokenize.STRING): n += len(moved.findall(t.string))
   print(n)"
   ```
-- **Measured**: **67** — 49 in `src/`, 17 in `tests/`, 1 in `eval/`, 0 in `tools/`. None is an
+- **Measured**: **50** — 44 in `src/`, 5 in `tests/`, 1 in `eval/`, 0 in `tools/`. None is an
   import: `mypy --strict` passes over 214 files and the suite is green, so every one of them is a
-  sentence rather than a dependency.
+  sentence rather than a dependency. *(v0.15.2 corrects this bullet: it said 67, and the command
+  above prints 50 on the tree it was written against — see F70.)*
 - **Why it matters**: it is the same shape as the `docs/gates/…` citations `record.md` covers, and
   it has the same defence — no guard can see it. `test_documentation.py` checks decision numbers and
   Markdown links; nothing checks that a module path in a docstring resolves. The honest options are
   a guard that reads them (which would then have to be kept green through every future move) or a
   reading rule stated once. This release proposes neither and measures the size of the problem.
-- **Disposition**: open, issued not fixed. Rewriting 67 docstrings inside a move release would
-  forfeit the census — the one property that makes the move reviewable — to fix references that
-  `git log --follow` already resolves.
+- **Disposition**: **closed in v0.15.2** (#229): a reading rule in [`record.md`](record.md), stated
+  once, rather than a guard that every future move would have to be kept green through. Rewriting
+  the docstrings inside the move release would have forfeited the census — the one property that
+  made the move reviewable — to fix references that `git log --follow` already resolves.
+
+## F66 — a startup failure hangs the appliance instead of exiting
+
+- **What**: any exception between `Store.open()` and the end of `runner.run` leaves the store open,
+  and `aiosqlite`'s connection worker thread is **not a daemon** — so the process prints a traceback
+  and then never exits, ignoring `SIGTERM`. Two paths reach it: a failure before the `try:`
+  (`start_receiver`), and a failure inside it, because the `finally:` re-awaits the same tasks and
+  the already-failed one re-raises at `runner.py:224`, skipping the drain, the final maintenance
+  pass and `store.close()`. Under `Restart=on-failure` (the systemd unit) and
+  `restart: unless-stopped` (the compose file) a hung process is never restarted.
+- **Reproduce**: start the appliance with something ordinary wrong, send `SIGTERM`, and measure.
+  ```sh
+  # TREATMENT — anything already on the HTTP port
+  python -c "import socket,time;s=socket.socket();s.bind(('127.0.0.1',8097));s.listen(1);time.sleep(600)" &
+  NETCORENOC_DB=/tmp/f66.db NETCORENOC_HTTP_PORT=8097 \
+    timeout --signal=TERM --kill-after=20 12 python -m netcorenoc.main; echo "rc=$?"
+  # CONTROL — a refusal the design intends, which must exit at once
+  NETCORENOC_API_TOKEN=x timeout --signal=TERM --kill-after=20 12 python -m netcorenoc.main; echo "rc=$?"
+  ```
+- **Measured**: four treatments — HTTP port in use, trap port in use, `NETCORENOC_HTTP_PORT=99999`,
+  `NETCORENOC_ALLOWLIST=not-a-cidr` — all `rc=137` after **32.0 s**, i.e. they survived `SIGTERM`
+  and needed `SIGKILL`. `NETCORENOC_TLS_CERT` set without `NETCORENOC_TLS_KEY` is a fifth. Controls:
+  `NETCORENOC_API_TOKEN=x` exits `rc=1` in **0.5 s**; a clean start takes `SIGTERM` and exits in
+  12.1 s. A direct measurement shows the cause: an open `aiosqlite` connection leaves
+  `Thread-1 (_connection_worker_thread) daemon=False alive=True` after `asyncio.run` returns.
+- **Disposition**: **fixed in v0.15.2** (#225). `run()` closes the store on every exit path and the
+  `finally:` no longer re-raises a task's exception before the cleanup it guards.
+
+## F67 — every per-term link row is clipped at 390 px, and the pair is what is lost
+
+- **What**: `.linkrow` is a non-wrapping flex row — score, three fixed-pixel term bars, then the two
+  alarm names the link is between. At a phone width the names run past the row's box, which has no
+  `overflow-x` and no scrollable ancestor, so they are clipped and unreachable. A row reading
+  `0.65 T 0.30 A 0.00 E 0.35` with no pair is a decomposition of nothing.
+- **Reproduce**: sign in, open a situation, and measure `.linkrow` and `.linkpair` at both widths —
+  `scratchpad/clip.mjs` in the v0.15.2 build, or by hand in any browser's device toolbar at 390 px.
+- **Measured**: at 390x844, all **30** rows overflow by **51 px** and all **30** `.linkpair` boxes
+  fall right of the viewport, `scrollableAncestor: null`, page `scrollWidth == clientWidth == 390`
+  (so the page does not scroll to them either). Control at 1440x900: overflow **0 px**, **0** boxes
+  off-screen. The three term numbers stay on screen in both.
+- **Why it matters**: it is the opposite of what `plans/v0.15.2-console.md` §2 predicted. The
+  per-term contributions are **not** hidden on a phone — they render in `#work`, and the panel the
+  breakpoint hides never held them. What the breakpoint costs is nothing; what the row costs is the
+  identity of the pair.
+- **Disposition**: **fixed in v0.15.2** (#220): the row wraps below the breakpoint.
+
+## F68 — a wrong allowlist is invisible: no log line, no warning, no rendered counter
+
+- **What**: `receiver.denied` is the only evidence an operator has that their allowlist is refusing
+  their equipment. It is served by `/api/stats`, rendered by no screen, and logged nowhere; and the
+  `warnings` channel only fires when the allowlist is **empty**, so a wrong one is quieter than no
+  one at all. The appliance receives traffic, produces nothing, and says nothing.
+- **Reproduce**: two appliances, same traps, allowlists that differ only in whether they match.
+  ```sh
+  # CONTROL
+  NETCORENOC_ALLOWLIST=127.0.0.0/8  ... python -m netcorenoc.main
+  # TREATMENT
+  NETCORENOC_ALLOWLIST=10.99.0.0/16 ... python -m netcorenoc.main
+  # then, into each: python tools/trap_replay.py eval/corpus/fiber_cut.json --port <port> --time-scale 0
+  ```
+- **Measured**: control `{received: 8, accepted: 8, denied: 0}`, 2 devices, 8 alarms. Treatment
+  `{received: 8, accepted: 0, denied: 8}`, **0 devices, 0 alarms, `warnings: []`**. Log lines
+  emitted while the traps arrived: **0 in both arms**.
+- **Disposition**: **fixed in v0.15.2** (#222, #227): the counters reach the Overview, and a
+  non-zero `denied` raises an operator warning — a counter read on the maintenance pass, never a
+  line per packet (principle 4).
+
+## F69 — five environment variables fail with a traceback that never names them
+
+- **What**: `Settings.from_env` calls `int()` and `float()` on `NETCORENOC_TRAP_PORT`,
+  `NETCORENOC_HTTP_PORT`, `NETCORENOC_RETENTION_DAYS` and `NETCORENOC_AUDIT_RETENTION_DAYS`, and
+  `parse_allowlist` calls `ip_network` on `NETCORENOC_ALLOWLIST`. Each raises a bare `ValueError`
+  through 20 lines of traceback that names the value and never the variable. Setting a documented
+  variable to empty — which `.env.example` invites, since every line in it is an assignment an
+  operator edits — is one of the cases.
+- **Reproduce**: `NETCORENOC_RETENTION_DAYS= python -m netcorenoc.main`, and the same for the other
+  four; control with `NETCORENOC_API_TOKEN=x`, which is designed to refuse.
+- **Measured**: `ValueError: could not convert string to float: ''` /
+  `ValueError: invalid literal for int() with base 10: 'abc'` /
+  `ValueError: 'not-a-cidr' does not appear to be an IPv4 or IPv6 network`. The control prints
+  *"NETCORENOC_API_TOKEN (and the legacy OPTICORR_API_TOKEN) was removed in v0.3.0. Unset it and
+  issue a named service token instead…"* — the project already knows how to do this.
+- **Disposition**: **fixed in v0.15.2** (#226).
+
+## F70 — F65's own reproduction command does not produce F65's number
+
+- **What**: F65 records **67** pre-v0.15.1 module paths in prose, *"49 in `src/`, 17 in `tests/`"*.
+  Run verbatim on the tree it was written against, its command prints **50**.
+- **Reproduce**: the code block in F65, unmodified.
+- **Measured**: **50** — `src` 44, `tests` 5, `eval` 1, `tools` 0 — and the same at `3e5e874`,
+  `44a1893` and `aac8fca`, so no commit in that range moved it. F65's per-directory split is what
+  fails first: `tests/` is 5, not 17.
+- **Why it matters**: the class, not the instance. A finding's measurement is the part a later
+  release acts on, and this one would have sized a repair against a number nothing produces —
+  *incrementing a number is not measuring it*, one document over.
+- **Disposition**: **closed in v0.15.2**. F65's figure is corrected in place and the reading rule
+  #229 chooses is stated once, so the count stops being a number anyone has to maintain.
+
+## F71 — the console tells an operator to read a file that was deleted three releases ago
+
+- **What**: the Network graph screen renders, to the operator, *"Naming that is deliberate: see
+  `docs/gates/v0.13.0-phase-6.md`."* `docs/gates/` was deleted in v0.15.0. The reading rule in
+  `record.md` resolves such a citation for someone with the repository; it cannot help someone
+  looking at a screen. `.env.example` and `docker-compose.yml` name `docs/security/operations.md`
+  the same way, and `SECURITY.md`'s link text says `docs/security/` while the link goes to
+  `docs/security.md`.
+- **Reproduce**: `grep -rn 'docs/gates/\|docs/security/' src/netcorenoc/ui/ .env.example docker-compose.yml`
+  then `test -d docs/gates || echo ABSENT`.
+- **Measured**: 1 operator-visible citation (`graph.js:167`), 2 in shipped configuration files, 3 in
+  console source comments, and all four directories absent.
+- **Disposition**: **fixed in v0.15.2** for the operator-visible one and the two configuration
+  files; the source comments are covered by the reading rule (#229).
+
+## F72 — the timeline caption describes two encodings the timeline does not have
+
+- **What**: `views/timeline.js` tells the operator *"Raise marks sit above the axis in the alarm
+  colour and carry a triangular glyph in the table"* and *"Both encodings are present so neither
+  colour nor shape is load-bearing alone."* The table's `raise / clear` column renders the bare
+  string and no glyph; the drawing places every mark on its device's row rather than above or below
+  an axis; and `circle.tl-raise` and `circle.tl-clear` differ **only** in `fill`.
+- **Reproduce**: `grep -n 'tl-raise\|tl-clear' src/netcorenoc/ui/style.css` and read the `kind` cell
+  in `views/timeline.js`.
+- **Measured**: the two rules differ in one declaration each, both `fill`. The word *raise* or
+  *clear* does appear in the table, which is the accessible equivalent — so the fact is reachable
+  and only the caption is wrong.
+- **Disposition**: **fixed in v0.15.2**: the caption says what is actually encoded.
+
+## F73 — `flake.nix` declares version 0.1.0, and the release check does not read it
+
+- **What**: `flake.nix` builds `netcorenoc` with `version = "0.1.0"`. `tools/release_check.py`
+  compares `pyproject.toml`, `src/netcorenoc/__init__.py` and `CHANGELOG.md` — three of the four
+  places this repository writes its version down.
+- **Reproduce**: `grep -n 'version' flake.nix` beside `python tools/release_check.py`.
+- **Measured**: `flake.nix:16: version = "0.1.0";` while the check prints *"all sources agree on
+  version 0.15.1"*. Fifteen releases apart, and green.
+- **Disposition**: **fixed in v0.15.2** (#230): the version is corrected and the check reads four
+  files, with a test that goes red when a fifth declaration appears unchecked.
+
+## F74 — no release tag reachable from this repository except v0.12.0
+
+- **What**: `docs/record.md` resolves every deleted document through commit `3ecf237` and cites tag
+  `v0.14.0-gate0` as carrying a pre-registration hash *"in the tag's own annotation, independently
+  of any file"*. No such tag exists locally or on the remote.
+- **Reproduce**: `git tag -l` and `git ls-remote --tags origin`.
+- **Measured**: local tags: **none**. Remote: `v0.12.0` only. Every cited **commit** resolves —
+  `3ecf237`, `553b827`, `6b1c73a`, `78faace`, `4aed642` are all present in a full 207-commit
+  history — so the reading rule itself is sound and only the tag claim is not.
+- **Disposition**: open, not fixable from a build environment: a tag has to be pushed by the
+  maintainer. The commands are in `HANDOFF.md`. Recorded here so the claim in `record.md` is not
+  read as verified.
+
+## F75 — an admin can store an allowlist that stops the appliance starting
+
+- **What**: `POST /api/config` wrote `config.allowlist` into `meta`, audited it, answered
+  `200 {"status":"saved"}` — and only then handed it to the live receiver, where `parse_allowlist`
+  refuses it. The stored value **overrides the environment**, so the next boot could not start; and
+  the Settings screen that would undo it is served by the appliance that will not start. The only
+  way back was editing SQLite by hand.
+- **Reproduce**: sign in as admin, `POST /api/config` with `{"allowlist": "not-a-cidr",
+  "retention_days": 7}`, read `meta`, then ask what the next boot's `parse_allowlist` would do.
+  Control: the same request with `10.0.0.0/8`.
+- **Measured**: treatment — `POST -> 200`, `stored config.allowlist: 'not-a-cidr'`, *"next boot: the
+  receiver would REFUSE"*. Control — `POST -> 200`, `stored: '10.0.0.0/8'`, *"next boot: the
+  receiver would START"*.
+- **Why it matters**: admin-only, so not a privilege boundary — but it is a one-request, irreversible
+  denial of service on the appliance's own console, reachable by a typo in a text box.
+- **Disposition**: **fixed in v0.15.2** (#226): `ConfigIn` parses the allowlist before the write, so
+  a refused value is a 422 naming the entry and nothing is stored. A database written by an older
+  version is handled too — the startup refusal names the stored row and prints the SQL that clears
+  it.
+
+## F76 — a corpus scenario fails its own stated requirement completely, and the aggregate hides it
+
+- **What**: `eval/corpus/dual_incident.json` describes itself as *"Two unrelated incidents overlap
+  in time on disjoint NEs; **must stay separate**."* They do not. A real appliance fed its sixteen
+  traps over a real UDP socket at their real 0.3 s gaps puts **all sixteen in one situation** inside
+  five seconds, merging both ground-truth incidents; the other three situations it formed are
+  absorbed and left with zero members. It is F61's arithmetic arriving at the product —
+  `MIN_EDGE_N` is cleared by **six** ordinary alarms, after which the entity-affinity term links
+  network elements that have nothing to do with each other.
+- **Reproduce**: `python -m pytest tests/test_operation.py` drives it end to end. For the offline
+  half, which is where the gate looks:
+  ```sh
+  python -c "
+  import asyncio, sys, pathlib; sys.path[:0] = ['eval', 'tools']
+  import harness
+  out = asyncio.run(harness.run_scenario(pathlib.Path('eval/corpus/dual_incident.json')))
+  print(harness._score(out['scored']))"
+  ```
+- **Measured**: this scenario alone scores `pairwise_f1 0.636`, **`ari 0.000`**, **`over_merge_rate
+  1.000`**, `under_merge_rate 0.000`. Every scored alarm carries `pred_sit dual_incident:sit1` while
+  its `truth_sit` is `incident_A` for two devices and `incident_B` for the other two. `make eval`
+  over the whole corpus reports `pairwise_f1 1.0000` and `over_merge_rate 0.0312`, and passes.
+- **Why it matters**: the numbers are not in disagreement — they are differently weighted. The
+  aggregate is pair-weighted and `pon_dying_gasp` contributes 1 051 of the corpus's events, so a
+  16-event scenario at `over_merge_rate 1.0` moves it by a rounding error. **A gate whose
+  aggregate can absorb a scenario that fails totally is a gate that cannot see a scenario.** The
+  frozen hash is doing its job; what is missing is a per-scenario floor, and inventing one is a
+  change to a gated artefact rather than a patch.
+- **Disposition**: open, issued not fixed, and **pinned by a test that asserts the wrong answer on
+  purpose** — `tests/test_operation.py::test_the_two_incidents_are_merged_into_one_situation_and_that_is_a_defect`,
+  whose failure message says to replace it with the purity assertion when the correlator is
+  repaired. Repairing it is F58/F61's disposition: *"the next release that touches the correlator
+  owns it, and should decide what `MIN_EDGE_N` is counting before changing either number."*
+  Doing it here would move `eval`'s frozen hash and the trap path in a release about neither.
+
+## F77 — the network graph pushed three of its four nodes off the canvas
+
+- **What**: three defects on the one screen no test executes. (1) A node's radius is
+  `7 + 2.5 * sqrt(active_alarms)` with **no ceiling**, so a device carrying a storm grows without
+  bound — and past `forceCollide(26)`'s own radius, which the layout then reasons with wrongly.
+  (2) The force simulation had **no centring force** at all: charge repels at -220, link pulls only
+  where an edge exists, collide only pushes apart, and nothing pulled toward the middle. (3) The
+  SVG has no `viewBox`, so a node outside the box is simply gone rather than scaled back in.
+- **Reproduce**: point a browser at the Network graph of an appliance carrying a busy device and
+  read every `circle`'s `r` and whether its box is inside `#graphwrap`.
+- **Measured**, on a 1 172 x 460 panel with four devices and ~1 400 active alarms:
+
+  | | radii (px) | nodes on canvas |
+  |---|---|---|
+  | before | 12, 12, **62.96**, **80.70** | **1 of 4** |
+  | + radius capped at 24 | 12, 12, 24, 24 | 1 of 4 |
+  | + a centring force | 12, 12, 24, 24 | 3 of 4 |
+  | + clamped to the box on each tick | 12, 12, 24, 24 | **4 of 4** |
+
+  The largest circle covered **3.79 %** of the canvas and now covers **0.34 %**. Each step was
+  measured on its own, which is how the second and third causes were found — capping the radius
+  alone changed nothing about the ejection.
+- **Why it matters**: it is the screen whose entire purpose is the relationships between elements,
+  and an operator saw one circle. It is also the screen the DOM harness substitutes a recording
+  double for, so **no assertion in this repository could have seen it** — `graph.js` says so in its
+  own first paragraph, and this is what that sentence costs.
+- **Disposition**: **fixed in v0.15.2**. Still not covered by any test, for the reason `graph.js`
+  states; the measurement above is the evidence, and a browser is what produced it.
+
+## F78 — MIGRATION.md's own row count has been one behind since v0.15.0
+
+- **What**: the sentence an upgrading operator reads first — *"Six of nineteen have an action; the
+  rest are start-the-new-binary"* — sits above a table of **twenty** rows.
+- **Reproduce**: parse the table rather than counting by eye, and compare against the sentence:
+
+  ```sh
+  python - <<'PY'
+  import re, pathlib
+  t = pathlib.Path("MIGRATION.md").read_text(encoding="utf-8")
+  rows = [l for l in t.splitlines() if re.match(r"^\|\s*v\d+\.\d+\.\d+\s*→", l)]
+  print(re.search(r"(\w+) of (\w+) have an action", " ".join(t.split())).group(0), "vs", len(rows))
+  PY
+  ```
+- **Measured**: the same probe run over **every commit that has ever touched the file** agrees at
+  each one from v0.5.0, where the sentence was written, until `47157c0` (*release: v0.15.0 — the
+  repository*), which added the twentieth row and left the sentence at nineteen. One commit, named
+  by bisect rather than by guess.
+- **Why it matters**: on its own, a wrong number in a sentence. What it demonstrates is that
+  **a release that adds a row does not re-read the paragraph above it** — and this release adds a
+  row too. A count nobody recomputes is a count that drifts once per release.
+- **Disposition**: **fixed in v0.15.2**, along with the row this release owes. Not guarded by a
+  test: the guard would have to know how many rows *ought* to exist, which is the same problem.
+  Stated here so the next release knows the sentence is one it has to change.

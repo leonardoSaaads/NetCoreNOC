@@ -16,7 +16,7 @@
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
-import { count, plural, relative, absolute, TIMEZONE } from "../format.js";
+import { plural, relative, absolute, TIMEZONE } from "../format.js";
 import { can, canEdit, scopeSummary } from "../session.js";
 import * as store from "../store.js";
 
@@ -88,6 +88,8 @@ export class Overview extends Component {
           : null}
       </div>
 
+      <${Health} stats=${stats} rate=${live.trapRate} />
+
       <${SectionHeading} title="Open situations"
         hint="Newest first. Open one to see the per-term contributions that produced each link." />
       ${situations.length
@@ -134,6 +136,62 @@ export class Overview extends Component {
       ${can("audit.read") ? html`<${AdminNotes} />` : null}
     </div>`;
   }
+}
+
+/**
+ * **Is the appliance keeping up, and is it hearing anything?** (DECISIONS #222, F68)
+ *
+ * Every number here was already served by `/api/stats` on every poll and rendered nowhere.
+ * `queue_depth` is *the* figure that says whether correlation is behind the wire, and
+ * `receiver.denied` is the only evidence an operator has that their allowlist is refusing their
+ * own equipment — measured, an allowlist that denied every trap produced no log line, no warning
+ * and no rendered counter, so the appliance received traffic, produced nothing, and said nothing.
+ *
+ * The trap rate is **derived in the client** between two polls rather than added to the route, and
+ * it prints the window it covers beside it, because a rate with no window is a number nobody can
+ * act on. Until a second sample arrives it says so instead of showing a zero.
+ *
+ * CPU, memory and uptime are genuinely absent from the API and are **not** invented here.
+ */
+function Health({ stats, rate }) {
+  const receiver = stats.receiver;
+  const depth = stats.queue_depth ?? 0;
+  return html`<section class="panel-block">
+    <${SectionHeading} title="System health"
+      hint=${"What the appliance knows about itself. Queue depth is the one number that means it " +
+             "is not keeping up: growing and not falling back is the signal to act on."} />
+    <div class="stat-row">
+      <${Stat} label="queue depth" value=${depth} tone=${depth ? "warn" : "quiet"}
+               note="traps waiting to be correlated"
+               title="Datagrams parsed and queued but not yet correlated. The trap path never
+                      blocks: under sustained overload the queue fills and overflow is counted as
+                      an ingest gap rather than silently lost." />
+      <${Stat} label="trap rate"
+               value=${rate ? `${rate.perSecond.toFixed(rate.perSecond < 10 ? 2 : 0)} /s` : "—"}
+               note=${rate
+                 ? `over the last ${rate.windowS.toFixed(1)} s`
+                 : "waiting for a second reading"}
+               title="Derived from receiver.received between the last two updates, in this browser.
+                      The appliance serves the counter; it does not serve a rate." />
+    </div>
+    ${receiver
+      ? html`<div class="stat-row">
+          <${Stat} label="received" value=${receiver.received} note="datagrams on the socket" />
+          <${Stat} label="accepted" value=${receiver.accepted} note="became alarms" />
+          <${Stat} label="denied" value=${receiver.denied}
+                   tone=${receiver.denied ? "alarm" : null}
+                   note=${receiver.denied ? "source not in the allowlist" : "allowlist refused none"} />
+          <${Stat} label="quarantined" value=${receiver.quarantined}
+                   tone=${receiver.quarantined ? "warn" : null}
+                   note="the parser refused them" />
+          <${Stat} label="dropped" value=${receiver.dropped}
+                   tone=${receiver.dropped ? "alarm" : null}
+                   note="queue full — an ingest gap" />
+        </div>`
+      : html`<p class="hint">This appliance is serving <code>/api/stats</code> without a
+          <code>receiver</code> block, so the socket counters are not available. That happens when
+          the API is built without the process runner — it is not a fault of the network.</p>`}
+  </section>`;
 }
 
 /** What an editor's labels have produced — the thing an editor has never been shown (draft §5.2). */
@@ -230,5 +288,3 @@ class OnDemand extends Component {
     </section>`;
   }
 }
-
-void count;

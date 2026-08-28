@@ -29,7 +29,6 @@ import { Loading, Empty, Failed, Badge, SeverityCell, DataTable, cell } from "..
 import { age, alarmName, deviceName, score, percent, plural, timeTitle } from "../format.js";
 import { canEdit } from "../session.js";
 import * as store from "../store.js";
-import { setContext } from "../context.js";
 
 export class Situations extends Component {
   constructor(props) {

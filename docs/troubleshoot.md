@@ -61,13 +61,29 @@ path, and oversized varbinds.
 
 ### The process will not start, naming a variable
 
-Two settings are hard startup errors rather than warnings:
+**Every setting that cannot be read refuses by name and exits 2**, in one line, with no traceback:
+
+```
+NETCORENOC_TRAP_PORT='' is not a whole number of a UDP port. Unset it to use the default (162), …
+NETCORENOC_ALLOWLIST is not usable: 'not-a-cidr' is not an IP address or CIDR network. …
+NETCORENOC_TLS_CERT is set and NETCORENOC_TLS_KEY is not. Built-in TLS needs both; …
+```
+
+Blanking a line in `.env` is the common way in. Two settings are refusals of a different kind — they
+are *removed*, and the error names the replacement:
 
 * `NETCORENOC_API_TOKEN` — removed in v0.3.0. Use service tokens.
 * any `OPTICORR_*` variable — the legacy prefix, removed in v0.6.0.
 
-The error names each variable and its replacement. It refuses rather than ignores because an ignored
-`OPTICORR_ALLOWLIST` would mean every source is accepted while you believed otherwise.
+All of them refuse rather than ignore, because an ignored `OPTICORR_ALLOWLIST` would mean every
+source is accepted while you believed otherwise.
+
+### The process printed a traceback and then did nothing
+
+Fixed in v0.15.2 ([F66](findings.md)). Before it, an ordinary misconfiguration — most often *the
+HTTP port is already in use* — left the process alive and unresponsive to `SIGTERM`, so
+`Restart=on-failure` and `restart: unless-stopped` never fired. If you see it on an older build,
+`SIGKILL` is the only way out; upgrading is the fix.
 
 ### Permission denied binding UDP 162
 
@@ -149,16 +165,17 @@ turns the suite red. If you are seeing movement in a *live* report, it is your c
 
 ## The console
 
-### Clicking something shows *"Select something to see its detail here."*
+### There used to be a detail panel on the right and now there is not
 
-The detail panel is populated by the **Situations** view only. In the other sixteen views clicking
-does nothing. It is a known defect with a measurement behind it —
-[`plans/v0.15.2-console.md`](plans/v0.15.2-console.md).
+Removed in v0.15.2. No view ever wrote to it, so it read *"Select something to see its detail
+here."* on every screen — [decision #219](adr/DECISIONS.md). Everything a selection would have
+shown is in the expanded situation card, where it always was.
 
-### The detail panel is missing on a phone
+### On a phone, a link row's alarm names are cut off
 
-Below 760 px it is hidden by CSS, which puts the per-term contributions out of reach on a narrow
-viewport. Same brief, same release. Use a wider window until then.
+Fixed in v0.15.2 ([F67](findings.md)). Below 760 px the rows in *"Why these were grouped"* now wrap,
+so the score, the three term contributions **and** the pair each link is between are all readable.
+On an older build, turn the phone sideways.
 
 ### `make dom` prints "27 skipped"
 

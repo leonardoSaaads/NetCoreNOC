@@ -170,7 +170,9 @@ def test_parse_allowlist() -> None:
     assert parse_allowlist(" , ") is None
     nets = parse_allowlist("10.0.0.0/24, 192.168.1.5")
     assert nets is not None and len(nets) == 2
-    with pytest.raises(ValueError, match="does not appear"):
+    # v0.15.2 (F69): the message was `ip_network`'s own — *"'not-an-ip' does not appear to be an
+    # IPv4 or IPv6 network"* — which names the value and not the setting or the shape it wanted.
+    with pytest.raises(ValueError, match="is not an IP address or CIDR network"):
         parse_allowlist("not-an-ip")
 
 

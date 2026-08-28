@@ -9,8 +9,97 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md), and for nineteen of twenty releases the
-answer is nothing.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-two rows, two ask for an
+action, five ask you to read a paragraph, and fifteen are start-the-new-binary.
+
+## [0.15.2] - 2026-08-28 — "the fine-toothed comb"
+
+**The product was installed six ways, booted, driven in a browser and fed real traps — and what
+that found was fixed.** Thirteen findings, F66 to F78, every one reproduced by execution with a
+control before anything was changed.
+
+```
+a failed startup       ->  hung, ignoring SIGTERM (32.0 s to SIGKILL)  ->  exits in ~1 s
+5 env variables        ->  a bare ValueError naming the value          ->  named, exit 2
+an unusable allowlist  ->  stored, 200 "saved", next boot cannot start ->  422, nothing written
+the detail panel       ->  "Select something…" on 17 of 17 screens     ->  removed (#219)
+a link row at 390 px   ->  51 px over, 30/30 pair labels clipped       ->  wraps, 0 clipped
+queue_depth, receiver  ->  served on every poll, rendered nowhere      ->  on the Overview
+a denied trap          ->  0 log lines, 0 warnings, 0 counters         ->  a banner naming it
+a first boot           ->  13 migrations applied, silently             ->  says so, and where
+the network graph      ->  1 of 4 nodes on canvas, r up to 80.7 px     ->  4 of 4, r <= 24
+d3 (279 706 bytes)     ->  loaded on all 17 screens                    ->  on the 2 that draw
+an operation test      ->  295 lines nothing ran                       ->  9 tests, 17 s, in qa
+make eval              ->  byte-identical: c2e8a0ce…8b9b6f26
+make qa                ->  1613 passed (was 1576);  coverage 95.94 %
+runtime deps           ->  5, unchanged since v0.2.0.  migrations: 0
+```
+
+### The startup nobody could stop
+
+`runner.run` opened the store and then did seventy lines of work outside any `try`; its cleanup
+re-raised a failed task's exception before reaching the close; and uvicorn calls `sys.exit()` when
+it cannot bind, which is a `BaseException` and leaves the event loop without resuming the
+coroutine. Any of the three left an `aiosqlite` connection open on a **non-daemon** thread, and the
+process then blocked in `threading._shutdown` after printing its traceback. Under
+`Restart=on-failure` and `restart: unless-stopped`, a hung process is never restarted.
+
+Measured with `timeout --signal=TERM --kill-after=20`, five ordinary misconfigurations — including
+*the HTTP port is already in use* — needed `SIGKILL` after 32.0 s. Controls: the two settings the
+design already refuses by name exited in 0.5 s. All five now exit (F66, #225).
+
+Every setting that cannot be read now names itself and exits 2, including the ports' range, both
+TLS variables, and `NETCORENOC_DB` (F69, #226). `POST /api/config` parses the allowlist **before**
+the write, so an admin can no longer store a value that stops the next boot (F75).
+
+### The console
+
+The detail panel was populated by **no view of seventeen** — `situations.js` imported `setContext`
+and never called it — so 320 px of every screen said *"Select something to see its detail here."*
+It is removed rather than completed (#219). The per-term contributions turned out **not** to be
+unreachable on a phone, as the brief predicted: they render in the work area. What was unreachable
+is the pair each row is about, clipped 51 px past a non-wrapping row (F67, #220).
+
+`queue_depth` and the five `receiver.*` counters are on the Overview, with a trap rate derived
+between two polls and labelled with the window it covers (#222). A denied trap raises a warning
+through the channel that already banners on every screen — a counter read, never a log line per
+packet (F68, #227). A boot says which database it opened and which migrations it applied.
+
+The Network graph had no centring force, an uncapped node radius and no `viewBox`: **one of four
+nodes was on the canvas** and the largest circle covered 3.79 % of it. Now four of four, and 0.34 %
+(F77). It is the screen the DOM harness substitutes a double for, so no test in this repository
+could have seen it (#231).
+
+### What was removed
+
+`app/context.js`, `router.situationHref`, `registry.declaredCapabilities`, an `overview.js`
+suppression for an import nobody used, and `eval/simulation/{drive_http,measure}.py` — 573 lines
+imported by nothing (#232). Removal was chosen over completion in each case, and each decision says
+so rather than calling a deletion a cleanup.
+
+### The operation test
+
+`tests/test_operation.py` boots `python -m netcorenoc.main`, sends sixteen real SNMPv2c PDUs from
+four bindable sources over a real socket at their real 0.3 s gaps, and reads the outcome back over
+HTTP as an admin and as a minted viewer token. Deterministic across two processes on a clock-free
+projection of what the appliance decided (#224).
+
+Driving it found **F76**: `dual_incident.json` says *"must stay separate"* and the two incidents
+merge inside five seconds. Offline the same scenario scores `over_merge_rate 1.000, ari 0.000`
+while `make eval` reports `pairwise_f1 1.0000` in aggregate and passes — a 16-event scenario is
+0.2 % of a corpus a 1 051-event storm dominates. The test pins the failure deliberately and its
+message says what to do when it goes red; repairing the correlator is F58/F61's disposition.
+
+### Also
+
+`flake.nix` had said `version = "0.1.0"` for fifteen releases and `tools/release_check.py` read
+three of the four declarations (F73, #230). Three shipped files cited documents deleted in v0.15.0,
+one of them **on screen** (F71). The timeline's caption described two encodings it does not have
+(F72). F65's count was 50 and not 67 (F70), and it gets a reading rule rather than a guard (#229).
+F63's intermittent test goes from 1 failure in 60 to 0 in 60, with a control proving the speed
+check is still reachable. `MIGRATION.md` gains the two rows it owed — v0.15.1 shipped without one —
+and the sentence above its table, which had said *"six of nineteen"* over twenty rows since
+v0.15.0, is recomputed rather than nudged (F78).
 
 ## [0.15.1] - 2026-08-27 — "the package tree"
 

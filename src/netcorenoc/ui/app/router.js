@@ -107,8 +107,5 @@ export function startRouting(onChange) {
   return () => globalThis.window.removeEventListener("hashchange", handler);
 }
 
-/** A deep link to one situation. Draft §2.4 requires a situation to be linkable. */
-export function situationHref(sid) { return `#/situations/${sid}`; }
-
 /** `canAll` re-exported so a caller resolving a view never reaches for a second predicate. */
 export { canAll };

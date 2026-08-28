@@ -1,4 +1,13 @@
-/* The three-region shell: sidebar, work area, context panel (draft §1).
+/* The two-region shell: sidebar and work area.
+ *
+ * ## It was three regions until v0.15.2, and the third was empty on every screen
+ *
+ * `#context` was a 320-pixel detail panel that **no view ever wrote to**: `setContext` was
+ * imported by `situations.js` and never called, so all seventeen screens rendered
+ * *"Select something to see its detail here."* permanently — measured in a browser as three
+ * roles, and hidden outright below 760 px. `registry.js` states the rule it broke: nothing in
+ * this console is a placeholder. Removal was chosen over completing it because the facts a
+ * selection would show are already in the expanded card, in place (DECISIONS #219).
  *
  * ## The `#sidebar` collision, resolved (draft §1.1, §V.1)
  *
@@ -8,7 +17,6 @@
  *
  *   * `#nav`     — the navigation sidebar (new; `sidebar.js`)
  *   * `#work`    — the work area, which is what `#sidebar` used to be
- *   * `#context` — the context panel (new; `context.js`)
  *
  * Nothing is called `sidebar` any more, so no guard can match the old id by accident and report
  * that it found navigation. `tests/domharness/selftest.mjs` and `tests/test_ui_invariants.py`
@@ -26,7 +34,6 @@
 
 import { html, Component, cx } from "./dom.js";
 import { Sidebar } from "./sidebar.js";
-import { ContextPanel, clearContext } from "./context.js";
 import { Refused, Unknown } from "./widgets.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
 import { session, scopeSummary } from "./session.js";
@@ -43,11 +50,7 @@ export class Shell extends Component {
   }
 
   componentDidMount() {
-    this.stopRouting = startRouting((fragment) => {
-      // A new address means the previous section's context entry is no longer about anything.
-      clearContext();
-      this.setState({ fragment });
-    });
+    this.stopRouting = startRouting((fragment) => this.setState({ fragment }));
     this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
   }
 
@@ -89,7 +92,6 @@ export class Shell extends Component {
           ${this.body(decision)}
         </main>
       </div>
-      <${ContextPanel} />
     </div>`;
   }
 

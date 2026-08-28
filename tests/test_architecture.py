@@ -367,7 +367,6 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/"),
     ("GET", "/app.js"),
     ("GET", "/app/api.js"),
-    ("GET", "/app/context.js"),
     ("GET", "/app/destructive.js"),
     ("GET", "/app/dom.js"),
     ("GET", "/app/format.js"),
@@ -380,6 +379,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/sidebar.js"),
     ("GET", "/app/store.js"),
     ("GET", "/app/theme.js"),
+    ("GET", "/app/vendor.js"),
     ("GET", "/app/views/account.js"),
     ("GET", "/app/views/audit.js"),
     ("GET", "/app/views/classes.js"),
@@ -700,7 +700,7 @@ TRAP_PATH_HASHES: dict[str, str] = {
     "correlate.py": "b550497367232a99c3bc8814cab72dbcb665dcc29891c15b6a3e6eab68a11165",
     "engine.py": "85cff6b1c05950c32ac9ec7b8ee1843e0fb3b2bce56f9575e447653059188b58",
     "learn.py": "d3b6bf24b422795fed6a1f9c73ed4262bad668379872d8e27c69971368486a0c",
-    "receiver.py": "451886a5b70cf3839c9c03b4d9693d75776809963574b5386cbcc639243db891",
+    "receiver.py": "c59ec7e98a95831f1eb2d76e0f3a9007aa129958abf82c896a63c22a1f181222",
 }
 
 
@@ -721,7 +721,7 @@ TRAP_PATH_BODY_HASHES: dict[str, str] = {
     "correlate.py": "a46255038f440951a7b0f0505a691e74e0839960c61d0e640109385ab3ff08d7",
     "engine.py": "789488173e6145ca00624de76b760826dd16ee7b9bff17a32e0515f30f3fd2d5",
     "learn.py": "29f39ef06cec70e6030867221db7c695a346ffa9640747127ae1bf5c4508215c",
-    "receiver.py": "092572621c1a191fd66f7eacffea296b5f324e52578e498bd3128e27c847af96",
+    "receiver.py": "99d43cdce8479277bcdc2aae17810b8b5118cfeb94d1840402638b7200ba3340",
 }
 
 
@@ -868,7 +868,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "e393d5423ee5737e965eef05a60bf2fc087a7597f6535c16dbe7dae5901ff9ca"
+SRC_TREE_DIGEST = "d5291d9782d1a671a2a2c23768da2b50ee9ed39febfce87a7bbcd1b7456049fa"
 SRC_FILE_COUNT = 173
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
@@ -935,4 +935,4 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.15.1", "the version this release carries"
+    assert __version__ == "0.15.2", "the version this release carries"

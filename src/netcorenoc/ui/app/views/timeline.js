@@ -5,12 +5,19 @@
  * beside it is not** — it is ordinary DOM, it carries the same information, and it is what a
  * keyboard or screen-reader operator reads. That pairing is deliberate: a drawing nobody can
  * verify should never be the only way to reach a fact.
+ *
+ * **v0.15.2 (F72): the caption used to describe two encodings that are not there.** It promised
+ * "a triangular glyph in the table" — the table renders the bare word — and that "both encodings
+ * are present so neither colour nor shape is load-bearing alone", when `circle.tl-raise` and
+ * `circle.tl-clear` differ in exactly one declaration and it is `fill`. The pairing that actually
+ * carries the fact is drawing-and-table, not colour-and-shape, and the caption now says that.
  */
 
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Loading, Empty, Failed, DataTable, TimeCell, cell } from "../widgets.js";
 import { plural } from "../format.js";
+import { d3Ready } from "../vendor.js";
 
 const LIMIT = 300;
 const HEIGHT = 240;
@@ -23,7 +30,10 @@ export class Timeline extends Component {
     this.reload = this.reload.bind(this);
   }
 
-  componentDidMount() { this.reload(); }
+  componentDidMount() {
+    d3Ready().then(() => this.draw());  // DECISIONS #228
+    this.reload();
+  }
   componentDidUpdate() { this.draw(); }
 
   async reload() {
@@ -93,9 +103,10 @@ export class Timeline extends Component {
     }));
 
     return html`<div class="timelineview">
-      <p class="hint">Alarms over time. Raise marks sit above the axis in the alarm colour and
-        carry a triangular glyph in the table; clear marks are in the quiet colour and are marked
-        "clear". Both encodings are present so neither colour nor shape is load-bearing alone.</p>
+      <p class="hint">Alarms over time, one row per device. <b>In the drawing a mark's kind is
+        encoded by colour alone</b> — raises in the alarm colour, clears in the quiet colour. The
+        table below carries the word instead, and it is what a colour-blind operator, a screen
+        reader, or anyone copying a fact into a ticket should read.</p>
       <svg id="timeline" role="img" ref=${(node) => { this.svgRef = node; }}
            aria-label=${`Timeline of ${plural(marks.length, "mark")}. The same marks are listed as text below.`}></svg>
       <p class="hint">The ${plural(Math.min(marks.length, 100), "most recent mark")}, as text:</p>

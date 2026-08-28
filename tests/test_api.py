@@ -71,10 +71,17 @@ async def test_index_serves_the_single_file_ui(client: httpx.AsyncClient) -> Non
     response = await client.get("/", headers={"Authorization": ""})
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    # v0.13.0: the document is a mount point. What it must still do is name the two scripts a
-    # browser has to fetch, by paths that exist on disk — no bundle, no manifest, no import map.
+    # v0.13.0: the document is a mount point. What it must still do is name the script a browser
+    # has to fetch, by a path that exists on disk — no bundle, no manifest, no import map.
+    #
+    # **v0.15.2 (DECISIONS #228): one script, not two.** d3 was the other, and it made every screen
+    # pay 279 706 bytes for the two that draw with it; `app/vendor.js` appends the same same-origin
+    # element when one of those mounts. That `/vendor/d3.v7.min.js` is still named *somewhere*, and
+    # that every named `src` is same-origin and on disk, is asserted by
+    # `test_build_step.py::test_the_ui_is_still_loaded_directly_by_the_browser` — which now checks
+    # every console file rather than this one document, and is red when `vendor.js` points at a CDN.
     assert "NetCoreNOC" in response.text
-    assert 'src="/vendor/d3.v7.min.js"' in response.text
+    assert 'src="/vendor/d3.v7.min.js"' not in response.text
     assert 'type="module" src="/app.js"' in response.text
     assert "importmap" not in response.text
 

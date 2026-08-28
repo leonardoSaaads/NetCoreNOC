@@ -8,6 +8,8 @@ keep ingesting even with a partly-damaged history DB.
 
 from __future__ import annotations
 
+import logging
+
 import aiosqlite
 
 from netcorenoc.store.base import StoreBase
@@ -18,6 +20,8 @@ from netcorenoc.store.types import MIGRATIONS_DIR
 # binding that matters: a caller substituting the directory (as `tests/test_upgrade.py` does, to
 # replay a schema frozen at an older version) must patch it here. Naming it in `__all__` makes that
 # a supported seam rather than an accident of import order.
+log = logging.getLogger("netcorenoc")
+
 __all__ = ["MIGRATIONS_DIR", "LifecycleMixin"]
 
 
@@ -33,15 +37,36 @@ class LifecycleMixin(StoreBase):
         await self._check_integrity()
 
     async def _migrate(self) -> None:
+        """Apply the pending scripts, and **say which** (DECISIONS #227).
+
+        `install.md` tells an operator that migrations are "forward-only, idempotent, and applied
+        at startup — there is no separate migration step". Measured on a first boot against an
+        empty database, the appliance applied all thirteen and logged nothing at all, so the one
+        thing an upgrade wants to see — *did the schema move, and how far* — was unobservable.
+        One line per applied script, and one summary line, both at `info`; a boot that applies
+        nothing says so at `debug` rather than adding noise to every restart.
+        """
         cur = await self.conn.execute("PRAGMA user_version")
         row = await cur.fetchone()
         current = int(row[0]) if row else 0
+        applied: list[str] = []
         for script in sorted(MIGRATIONS_DIR.glob("*.sql")):
             version = int(script.name.split("_", 1)[0])
             if version > current:
+                log.info("applying migration %s", script.name)
                 await self.conn.executescript(script.read_text())
                 await self.conn.execute(f"PRAGMA user_version={version}")
+                applied.append(script.name)
         await self.conn.commit()
+        if applied:
+            log.info(
+                "schema %d -> %d (%d migration(s) applied)",
+                current,
+                await self.schema_version(),
+                len(applied),
+            )
+        else:
+            log.debug("schema %d, no migrations pending", current)
 
     async def _check_integrity(self) -> None:
         """Startup integrity/FK check (F11). Records a warning on damage; never crashes."""

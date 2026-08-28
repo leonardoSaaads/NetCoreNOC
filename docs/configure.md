@@ -26,6 +26,12 @@ Two mechanisms, and the difference matters:
 | `NETCORENOC_AUDIT_RETENTION_DAYS` | `365` | Retention for the audit log. Pruning is admin-triggered only, never automatic |
 | `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging. Anything other than empty, `0`, `false` or `False` enables it |
 
+**Every one of them is validated at startup and refuses by name.** A port outside 1–65535, a
+retention that is not a number, an allowlist entry that is not a CIDR, a TLS path that cannot be
+read, or exactly one of the two TLS variables set: the process prints one sentence naming the
+variable and exits 2. An empty value is not the same as an unset one — `NETCORENOC_RETENTION_DAYS=`
+is a value, and it is refused.
+
 ### Two variables that are hard startup errors
 
 Setting either of these does not warn — the process **refuses to start** and names the replacement:
