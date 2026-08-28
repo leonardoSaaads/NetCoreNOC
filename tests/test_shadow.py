@@ -15,10 +15,12 @@ attention here as the first.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import re
 import subprocess  # nosec B404 - this interpreter, a literal script, no shell, no input
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -701,19 +703,75 @@ async def _report(store: Store) -> str:
         return shadow_render.render(await shadow_report.collect(store))
 
 
-async def test_the_report_is_deterministic_across_two_runs(store: Store) -> None:
+@pytest.fixture
+def pinned_scoring_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the clock `shadow_admission` measures with, for the two tests that compare renderings.
+
+    **F63, made deterministic without weakening anything.** `admission()` times 256 `score()` calls
+    with `time.perf_counter_ns()`, and `verdict()` refuses when
+    `challenger.p99 > champion.p99 * 10` — two order statistics measured in the same process
+    moments apart. `_stable` blanks the two *durations* in the rendered table; it does not blank the
+    **verdict derived from them**, so roughly one run in sixty flipped `True` to `False` and printed
+    a refusal like *"speed: p99 32.182us over the budget 28.140us"*. Reproduced on this tree:
+    **1 failure in 60 runs** of the two tests below, before this fixture existed.
+
+    What is pinned is the *noise*, not the assertion. F63's own measurement is that the ratio
+    between two identical scorers ranges 0.25 to 3.66 with a median of 1.01 — it is a property of
+    the machine rather than of the model, and it was never part of "the report renders identically
+    twice". `verdict()` still computes the refusal from the real `p99_us` values; those values just
+    stop being a coin toss.
+
+    **`test_the_report_measures_timings_that_are_real` deliberately does not use this**, because a
+    synthetic counter would make that test vacuous — it is the one place the timings are asserted to
+    be measurements, and it stays on the real clock.
+    """
+    counter = itertools.count(0, 1_000)  # 1 000 ns per reading -> every call times at 1.0 us
+    monkeypatch.setattr(time, "perf_counter_ns", lambda: next(counter))
+
+
+async def test_the_report_is_deterministic_across_two_runs(
+    store: Store, pinned_scoring_clock: None
+) -> None:
     await build_sufficient(store)
     await _train(store)
     assert _stable(await _report(store)) == _stable(await _report(store))
 
 
-async def test_the_report_matches_the_frozen_expectation(store: Store) -> None:
+async def test_the_report_matches_the_frozen_expectation(
+    store: Store, pinned_scoring_clock: None
+) -> None:
     """**The gate**, modulo the two measured durations. Read the diff before re-freezing."""
     await build_sufficient(store)
     await _train(store)
     actual = _stable(await _report(store))
     assert EXPECTED.exists(), f"missing frozen expectation: {EXPECTED}"
     assert actual == EXPECTED.read_text(encoding="utf-8")
+
+
+async def test_the_pinned_clock_does_not_hide_a_refusal_that_is_real(
+    store: Store, pinned_scoring_clock: None
+) -> None:
+    """**The control on the fixture.** Pinning the clock must remove the noise and not the check.
+
+    A scorer that is genuinely slower is still refused with the clock pinned, so the two tests above
+    are not passing because the speed check became unreachable.
+    """
+    from netcorenoc.engine.evaluation.shadow_admission import admission, probe_features, verdict
+
+    probes = probe_features()
+    fast = admission(AdditiveScorer(), probes, budget_ratio=10.0, probes=probes)
+
+    class Slow(AdditiveScorer):
+        def score(self, features: LinkFeatures) -> LinkScore:
+            for _ in range(40):  # 40 extra readings of the pinned counter per call
+                time.perf_counter_ns()
+            return super().score(features)
+
+    slow = admission(Slow(), probes, budget_ratio=10.0, probes=probes)
+    assert slow["p99_us"] > fast["p99_us"] * 10.0, (fast["p99_us"], slow["p99_us"])
+    assert verdict(fast, fast)[0] is True, "the control scorer must be admitted"
+    ok, reasons = verdict(slow, fast)
+    assert ok is False and any("speed" in reason for reason in reasons), reasons
 
 
 async def test_the_report_leads_with_insufficiency_when_the_corpus_is_short(

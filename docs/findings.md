@@ -129,8 +129,19 @@ Run every command below from the repository root with the virtualenv active.
   runs. **Measured**: 1 failure in 60 runs on the v0.15.1 tree and **4 in 60 on the v0.15.0 tree it
   was built from**, so the package move neither caused it nor changed it; 60 report pairs rendered
   in a single interpreter produced no difference at all, which is why it had not been seen.
-- **Disposition**: open, issued not fixed. A median or a repeated-measures comparison would be a
-  behaviour change to the promotion gate, which neither v0.15.0 nor v0.15.1 makes.
+- **Disposition**: **the finding is open; its intermittent test is fixed in v0.15.2.** The finding
+  itself stands — a median or a repeated-measures comparison would be a behaviour change to the
+  promotion gate, and this release changes no promotion behaviour. What v0.15.2 removes is the
+  *flap*: `test_shadow.py`'s two rendering comparisons take a `pinned_scoring_clock` fixture that
+  pins `time.perf_counter_ns` for the 256 timed `score()` calls, so `p99_us` stops being a coin
+  toss between two identical scorers. `verdict()` still computes the refusal from the real values.
+  **Measured on this tree**: 1 failure in 60 runs before (*"speed: p99 32.182us over the budget
+  28.140us"*), **0 in 60 after**. Two things are deliberately not pinned:
+  `test_the_report_measures_timings_that_are_real` stays on the real clock, because a synthetic
+  counter would make the one test that asserts the timings are measurements vacuous; and
+  `test_the_pinned_clock_does_not_hide_a_refusal_that_is_real` is the control — a scorer that reads
+  the pinned counter forty extra times per call is still refused on speed, so the two tests above
+  are not green because the check became unreachable.
 
 ## F64 — the citation guard could not see inside an f-string, and it cost a decision entry
 
