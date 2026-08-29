@@ -262,8 +262,11 @@ def test_the_release_table_parses() -> None:
     # table that disagrees with the release it governs is the exact defect this module exists to
     # catch, so it was caught here. The cartridge moved to v0.16.0 and archetypes to v0.17.0;
     # v0.15.1, v0.15.2 and v0.15.3 joined as a real series with briefs, not as patch numbers.
-    # Thirteen rows.
-    assert len(table) == 13, f"expected v0.8.0…v0.17.0, parsed {sorted(table)}"
+    # v0.15.3 resequenced it a fourth time (DECISIONS #249), on the same ground as the third: the
+    # table said v0.16.0 was the external cartridge, and the maintainer's brief for v0.15.3 states
+    # v0.16.0 is the situation lifecycle and v0.16.1 visualisation and search. The cartridge moved
+    # to v0.17.0 and archetypes to v0.18.0. Fifteen rows.
+    assert len(table) == 15, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -277,7 +280,9 @@ def test_the_release_table_parses() -> None:
         "v0.15.2",
         "v0.15.3",
         "v0.16.0",
+        "v0.16.1",
         "v0.17.0",
+        "v0.18.0",
     }
     claims = [claim for _theme, claim in table.values()]
     assert len(set(claims)) == len(claims), f"two releases share a claim key: {claims}"

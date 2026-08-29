@@ -15,6 +15,11 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 
 ## Product
 
+- **Two-factor authentication, required for admin accounts.** Not scheduled into a release, and
+  **the console says so on the sign-in card and the account screen** rather than implying it exists
+  (v0.15.3, #238). Today a password is the only factor this appliance has. Whatever ships must not
+  reintroduce F79's shape: a second factor an admin can lose is a second way to lock the appliance
+  out of itself, so enrolment and recovery are the same design question, not two.
 - **SNMPv3** — needs credentials, hence configuration, hence deliberately post-MVP.
 - **Export to ticketing systems** — phase 3 of the three-phase design ([`architecture.md`](architecture.md)).
 - **Automatic MIB enrichment** — readable names without any user obligation.

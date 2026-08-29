@@ -1,15 +1,15 @@
 # Archetypes — v0.17.0 draft (not implemented)
 
-<!-- release-claim: v0.17.0 = archetypes -->
+<!-- release-claim: v0.18.0 = archetypes -->
 
-**Implement none of this.** Every element below is tagged **`v0.17.0: planned`**.
+**Implement none of this.** Every element below is tagged **`v0.18.0: planned`**.
 
 Written during v0.11.0 **from what that release measured**, not from what it hoped, and resequenced
 twice since (#170, #184) on the measurement in §0 — which is this document's own opening argument
 rather than a later objection to it. Its evidentiary discipline is
 [`../analysis/PREREGISTRATION-0.11.0.md`](../analysis/PREREGISTRATION-0.11.0.md).
 
-## 0. The uncomfortable fact this draft starts from (`v0.17.0: planned`)
+## 0. The uncomfortable fact this draft starts from (`v0.18.0: planned`)
 
 **v0.11.0 built a promotion gate and it refused, on a corpus with `asserting_bags = 0` against a
 floor of 50.** Per-archetype weights mean **one model per archetype**, which means **splitting an
@@ -23,7 +23,7 @@ defined. It is **what evidence a per-archetype model needs before it may be eval
 the honest default is `asserting_bags ≥ 50` **per archetype**, not in total — a total floor would
 let one well-labelled archetype carry `k − 1` that nobody had labelled.
 
-## 1. What an archetype is: three candidates, none chosen here (`v0.17.0: planned`)
+## 1. What an archetype is: three candidates, none chosen here (`v0.18.0: planned`)
 
 | candidate | the partition | the obvious cost |
 |---|---|---|
@@ -35,7 +35,7 @@ let one well-labelled archetype carry `k − 1` that nobody had labelled.
 it: choosing an archetype from a property of the grouping the scorer produced is the imitation trap
 wearing a different hat.
 
-## 2. What is already in place, unchanged (`v0.17.0: planned`)
+## 2. What is already in place, unchanged (`v0.18.0: planned`)
 
 * **`model_version`** carries a **canonical JSON document**, so a per-archetype model is a document
   with more in it — **not a new column and not a migration** (#161).
@@ -48,7 +48,7 @@ wearing a different hat.
 * **The fold assignment is already materialised**; per-archetype folds are the same rotation, grouped
   by archetype, and an incident must stay wholly within one fold *and* one archetype.
 
-## 3. What the release must decide in advance (`v0.17.0: planned`)
+## 3. What the release must decide in advance (`v0.18.0: planned`)
 
 * **The floor, per archetype** (§0) — and whether an archetype below it falls back to the global model
   or is refused outright.
@@ -61,7 +61,7 @@ wearing a different hat.
 * **The detection threshold at `n/k`**, printed beside every per-archetype floor evaluation, because
   it bites much harder after a `k`-way split.
 
-## 4. What v0.11.0 recommends against, from what it measured (`v0.17.0: planned`)
+## 4. What v0.11.0 recommends against, from what it measured (`v0.18.0: planned`)
 
 1. **Do not ship archetypes before the corpus can decide one comparison.** The refusal is not a defect
    to route around; it is the measurement saying a `k`-way split has nothing to spend.

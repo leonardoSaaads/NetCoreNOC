@@ -20,9 +20,14 @@
  * ## Two-factor and recovery (V.3, DECISIONS #238)
  *
  * A sentence that is true is not a placeholder; a greyed-out control promising a mechanism nobody
- * has built is. So this screen **says** that 2FA does not exist yet, names the release, says it
- * will be required for admins, and says what an operator locked out today actually does. There is
- * no disabled button, no reserved region, and no mechanism behind any of it.
+ * has built is. So this screen **says** that 2FA does not exist yet, that it will be required for
+ * admins, and what an operator locked out today actually does. There is no disabled button, no
+ * reserved region, and no mechanism behind any of it.
+ *
+ * It names the ROADMAP rather than a version, and that is #250 amending #238. The first version
+ * said "v0.17.0", which the release table called `archetypes` and #249 then renamed
+ * `external-cartridge` — so the console would have promised a second factor in a release about
+ * ONNX. A version number nothing schedules is the empty placeholder wearing a date.
  */
 
 import { html, Component } from "./dom.js";
@@ -126,9 +131,9 @@ function SignInNotes() {
   return html`<div class="signin-notes">
     <p class="note-line">
       <${Icon} name="shield" /><span>
-        <b>Two-factor authentication is not available.</b>${" "}It arrives in v0.17.0 and will be${" "}
-        <b>required for admin accounts</b>. Until then a password is the only factor this
-        appliance has.</span>
+        <b>Two-factor authentication is not available.</b>${" "}It is on the roadmap and will
+        be${" "}<b>required for admin accounts</b> when it arrives. Until then a password is the
+        only factor this appliance has.</span>
     </p>
     <p class="note-line">
       <${Icon} name="info" /><span>

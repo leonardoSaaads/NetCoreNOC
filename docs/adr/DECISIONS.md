@@ -2114,3 +2114,35 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: the console is static ES modules served from disk and the package installs with
   `pip install -e`, so the edit loop is already *edit, reload* with **nothing to compile and no
   container to rebuild**. `watch` would add machinery to reach a state the project is already in.
+
+## 249. v0.16.0 is the situation lifecycle; the cartridge and archetypes each slip one (v0.15.3)
+
+- **Decision**: the release table becomes `v0.16.0 = situation-lifecycle`,
+  `v0.16.1 = visualisation-search`, `v0.17.0 = external-cartridge`, `v0.18.0 = archetypes`. The two
+  briefs that claimed the old numbers are re-tagged in the same commit, and the table's size guard
+  moves with them.
+- **Reason**: the table said v0.16.0 was the external cartridge and the maintainer's v0.15.3 brief
+  states, in its own release table, that v0.16.0 is the situation lifecycle and v0.16.1 is
+  visualisation and search. **The contradiction was found by the guard**, not by reading: writing
+  `docs/plans/v0.16.0-situation-lifecycle.md` — which Part IX of the brief requires — made
+  `test_every_release_claim_agrees_with_the_roadmap_table` go red immediately, which is the fourth
+  time that guard has caught a resequencing (#202 was the third). `cartridge.md` already argues it
+  should slip, so slipping it is the documented direction rather than a new opinion.
+- **Measured**: thirteen rows to fifteen. The resequencing changes no code and no schedule anyone
+  had committed to — the table's own §"What this document does not decide" says none of these
+  releases has a date.
+
+## 250. Two-factor is a roadmap item, and the console names the roadmap rather than a version (v0.15.3)
+
+- **Decision**: `docs/ROADMAP.md` gains 2FA as an unsequenced item; the sign-in card and the account
+  screen say it is not available and that it will be **required for admins**, without naming a
+  release. This **amends #238**, which named v0.17.0.
+- **Reason**: #238 argued that naming a release makes a declaration a commitment rather than an
+  apology, and that is right — but the release it named was `archetypes` in the table and became
+  `external-cartridge` under #249, so the console would have promised a second factor in a release
+  about ONNX. A version number nothing schedules is not a commitment; it is the empty placeholder
+  (#219) wearing a date. The roadmap is where this project keeps unsequenced commitments, and the
+  entry there carries the constraint the release will have to satisfy.
+- **Measured**: the roadmap entry names F79's shape as the design constraint — a second factor an
+  admin can lose is a second way to lock the appliance out of itself, so enrolment and recovery are
+  one question. The console's two declarations are unchanged in every other respect.

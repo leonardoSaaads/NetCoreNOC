@@ -85,9 +85,10 @@ export class Account extends Component {
       <${SectionHeading} title="Second factor" />
       <p class="note-line">
         <${Icon} name="shield" /><span>
-          <b>Not available yet.</b>${" "}Two-factor authentication arrives in v0.17.0 and will
-          be${" "}<b>required for admin accounts</b>. There is nothing to enrol here today, and
-          this appliance holds no secret, no recovery code and no address for you.</span>
+          <b>Not available yet.</b>${" "}Two-factor authentication is on the roadmap and will
+          be${" "}<b>required for admin accounts</b> when it arrives. There is nothing to enrol
+          here today, and this appliance holds no secret, no recovery code and no address for
+          you.</span>
       </p>
     </div>`;
   }

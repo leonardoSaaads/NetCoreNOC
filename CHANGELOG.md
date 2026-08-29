@@ -9,8 +9,142 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-two rows, two ask for an
-action, five ask you to read a paragraph, and fifteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-three rows, two ask for an
+action, six ask you to read a paragraph, and fifteen are start-the-new-binary.
+
+## [0.15.3] - 2026-08-29 — "the console: identity, responsiveness, and the door that could lock you out"
+
+**F79 first: a sole admin could demote itself and the appliance was gone.** Reproduced with a
+control and a restart before anything was changed, then repaired at both of its two causes.
+Everything else in this release is the console — an identity somebody chose, three widths instead
+of one, and a screen that answers *"is this grouping sound?"* before it answers anything else.
+
+```
+the sole admin        ->  demote self: 200, then 0 enabled admins forever  ->  400, refused
+a database with none  ->  bootstrap counted USERS, so never ran again      ->  counts admins, recovers
+the forced first pw   ->  one field, no confirm, no meter, no reveal       ->  all three, mismatch caught
+"other sessions"      ->  said unaffected; the route revokes them all      ->  says what it does
+17 Unicode glyphs     ->  four Unicode blocks, the font stack's weight     ->  17 drawn, one family
+the type scale        ->  ratios 1.09, 1.08, 1.23, 1.31                    ->  1.2, five steps
+spacing               ->  4, 8, 12, 18, 28 (two off their own grid)        ->  4/8/12/16/24/32
+Density               ->  a knob scaling one step of the type ramp         ->  removed, mechanism too
+the wordmark          ->  a <div>; clicking it did nothing                 ->  a link to Overview
+820 px                ->  byte-identical to 1440 px, no tablet at all      ->  its own layout
+the account screen    ->  30 elements 2 443 px off a 390 px phone          ->  0, at all 3 widths
+the timeline y axis   ->  every device label at x = -9, since v0.13.0      ->  0
+"why these grouped"   ->  30 rows of thousands, chosen by insertion order  ->  summary + all links
+the link threshold    ->  never served; the sentence printed without it    ->  served, margin shown
+touch targets         ->  3-5 per view under 24 px, at every width         ->  0-1, in running text
+console prose         ->  2 275 words rendered                             ->  2 004 (-12 %)
+make eval             ->  byte-identical: c2e8a0ce…8b9b6f26
+make qa               ->  1637 passed (was 1613);  coverage 95.89 %
+DOM tests executed    ->  31 (was 29).  runtime deps: 5.  migrations: 0
+```
+
+### The appliance cannot be locked out of itself (F79)
+
+Two independent defects composed into one lost environment. `POST /api/users/{uid}/role` checked
+that the user existed and nothing else, so an admin could set its own role to `viewer` while it was
+the only one — and the same route revokes the caller's sessions, so the operator was signed out
+mid-gesture. Then `auth.bootstrap_admin` guarded on `count_users() > 0` — **users, not admins** — so
+one second account stopped it ever running again. A restart did not help. There was no CLI recovery.
+The only remedy was deleting the database.
+
+One predicate now answers it for every transition that could cause the state, taking the transition
+as a parameter rather than existing three times, and the bootstrap counts the quantity its own name
+always implied. An operator locked out today restarts and reads the new password from the log.
+
+Two things the repair taught that were not in the brief. A **session** admin can never reach the
+deletion arm — self-deletion is refused and any other target leaves the caller — but an admin
+**service token** has no `user_id`, so it can delete the last account that can sign in and leave the
+appliance one revocation from having no administrator; that is why the count is over `user` rows.
+And **there is no disable route in this product**: `user.disabled` is read by `perform_login` and
+written by nothing, so rather than add a feature to make a guard testable, the predicate takes
+`disabling` and a structural test fails the day any module writes that column.
+
+### The password surface (F82, #240)
+
+The forced first change had one field, so the two entries could not disagree — a typo was committed
+rather than caught, with the bootstrap password already shown for the last time. It now has a
+confirmation refused before anything is sent, a length meter, and a keyboard-reachable reveal, from
+one module the account screen shares. The bounds are **served**: a `12` written into JavaScript
+would be a second source of truth about what a valid password is, and the meter measures length
+because length is the only rule the server has.
+
+F82 turned up while wiring it: the account screen said *"Other sessions are unaffected."* The route
+calls `revoke_user_sessions`, its own return says *"sign in again"*, and a test has asserted since
+v0.2.0 that both sessions die. The suite knew; the caption said the opposite for three releases.
+
+### Two-factor and recovery are declarations, not placeholders (#238)
+
+Visible on the sign-in card and the account screen, naming **v0.17.0** and that 2FA will be
+**required for admins**, with no control, no mechanism, and no region reserved on the other fifteen
+screens — which is the specific failure #219 recorded.
+
+### An identity somebody chose (#236, #243)
+
+Seventeen Unicode glyphs from four Unicode blocks become seventeen drawn marks on one grid: 24x24,
+1.5 stroke, `currentColor`, sized at 1em so an icon is the size of the text beside it. Drawn rather
+than acquired because the build-step guard rules out a package and the supply-chain guard would want
+a checksum and a licence for a vendored set. `tests/test_icons.py` fails in both directions, and it
+caught two flaws in **itself** first: it read every `name="…"` in the tree, so `<input
+name="username">` was reported as a missing icon, and it missed `name=${shown ? "eye-off" : "eye"}`,
+so two live icons read as unused.
+
+The type scale is 11/13/16/19/23 at a 1.2 ratio; spacing is a 4 px grid it actually sits on. Density
+is gone **with its mechanism** (#235, #45) — it scaled four spacing tokens and one step of the type
+ramp, so the two densities had different sets of relationships and one was chosen by nobody.
+
+### Three widths, measured as geometry (#237)
+
+    desktop 1440   sidebar 232x900 column, nav in 16 rows, work 1208 wide
+    tablet   820   sidebar 820x48 strip,   nav in  1 row,  work  820 wide
+    phone    390   sidebar 390x48 strip,   work 390, topbar wrapped to 126
+
+Text comparison could never have seen the difference and did not — the earlier pass reported the
+same words at 820 and 1440 while the layouts were identical, and again after they stopped being.
+Dense tables scroll with the **first column frozen**: dropping columns by priority was refused
+because an operator cannot tell a dropped column from an empty one, and cards everywhere was refused
+because the vertical scan is what the density is for.
+
+### "Why these were grouped", for a storm (#245, F84)
+
+It rendered `links.slice(0, 30)` — in a 400-trap storm, thirty rows chosen by insertion order. It
+now leads with a summary over **every** link: the weakest link and its margin over the threshold,
+the strongest, the count, and which of the three named terms is carrying the grouping. The per-link
+decomposition is one interaction away and **complete** when opened.
+
+The completeness guard was **green under injection first**: driven against the corpus's own sixteen
+links, reinstating the thirty-row cap changed nothing, so the assertion could not fail for the defect
+it names. The fixture is now grown past thirty from the real captured links.
+
+F84 was found by looking at the screen: the console has passed `detail.threshold` to this section
+since v0.13.0 and the route never sent it, so the sentence degraded to something grammatical with
+the only checkable number missing. `GET /api/situations/{sid}` now joins the configuration the
+situation names — not the active one, because the threshold this grouping cleared is a fact about
+when it was decided.
+
+### What a browser found that no assertion could
+
+F80, F83 and F84 were all found by opening the product, and none of them is visible to the DOM
+harness — it has no layout, substitutes a recording double for d3, and cannot see whitespace. That
+is now **seven** defects across two releases on screens the suite reports green. Two whitespace
+collapses in this release's own new copy were caught the same way.
+
+### Structure
+
+`crosscutting/administration.py` splits out of `auth.py`, which reached 409 lines against a 400
+guard with `DEBT_ALLOWLIST` empty and staying empty. Four modules under `views/` that were never
+views move to `views/parts/` — `registry.js` imports seventeen and the directory held twenty-one.
+**Nothing else moved**: a directory per tier would rename 15 static routes and rewrite 37 imports to
+encode a fact the import graph already states (#239).
+
+### Not in this release
+
+The situation lifecycle — states, self-clear, manual clear, merge, split, move, semantic naming —
+is v0.16.0, deliberately, because it is a schema and domain change. What was noticed while working
+inside `situations.js` is in [`docs/plans/v0.16.0-situation-lifecycle.md`](docs/plans/v0.16.0-situation-lifecycle.md)
+rather than half-built here.
 
 ## [0.15.2] - 2026-08-28 — "the fine-toothed comb"
 

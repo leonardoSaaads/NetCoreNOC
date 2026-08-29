@@ -1,8 +1,8 @@
 # The external cartridge — v0.16.0 (specification only, not implemented)
 
-<!-- release-claim: v0.16.0 = external-cartridge -->
+<!-- release-claim: v0.17.0 = external-cartridge -->
 
-**Implement none of this.** Every element below is tagged **`v0.16.0: planned`**.
+**Implement none of this.** Every element below is tagged **`v0.17.0: planned`**.
 
 Written during v0.14.0, moved to v0.16.0 by #202, and §2 argues it should slip again. The marker
 above is not quietly retagged to resolve that: [`releases.md`](releases.md) is the single source of
@@ -28,7 +28,7 @@ features is arithmetic.
 **So the honest question is not "how do we run a tree ensemble" — it is "what is actually out of
 reach in process, and is it worth a process boundary?"**
 
-## 1. What is actually out of reach (`v0.16.0: planned`)
+## 1. What is actually out of reach (`v0.17.0: planned`)
 
 Stated as a list, so that a future release has to argue against a specific entry rather than against
 a mood:
@@ -44,7 +44,7 @@ a mood:
 about the feature contract, the fourth about trust. Only the third is a dependency problem, and it
 is the one nobody has asked for.
 
-## 2. The opinion this release forms (`v0.16.0: planned`)
+## 2. The opinion this release forms (`v0.17.0: planned`)
 
 **Do not build the cartridge in v0.15.0.** Three reasons, in order of weight:
 
@@ -91,7 +91,7 @@ door.**
 That is the question v0.15.0 should answer in a document. It is not a question a subprocess protocol
 answers.
 
-## 3. What is inherited unchanged from the v0.14.0 draft (`v0.16.0: planned`)
+## 3. What is inherited unchanged from the v0.14.0 draft (`v0.17.0: planned`)
 
 §1 to §3 of `CARTRIDGE-0.14-DRAFT.md` stand. In particular:
 
@@ -112,7 +112,7 @@ answers.
 **v0.14.0 honoured all seven by not building it**, which is the cheapest way to honour a prohibition
 and the only one available to a release that was doing something else.
 
-## 4. What should happen instead, first (`v0.16.0: planned`)
+## 4. What should happen instead, first (`v0.17.0: planned`)
 
 An opinion, offered as one and not as a plan: **fix F58** or decide in writing that it is correct
 behaviour (see also [F61](../findings.md), which corrects its scope); **change a champion**, which
@@ -120,7 +120,7 @@ has never happened and needs a *new* pre-registration rather than an edit to the
 the behavioural-floor design** §2.3 describes, before any process boundary makes it urgent; and
 **then** decide whether the cartridge is worth building, with three fewer unknowns.
 
-## 4a. The worker-process preemption harness, which is a blocking prerequisite (`v0.16.0: planned`)
+## 4a. The worker-process preemption harness, which is a blocking prerequisite (`v0.17.0: planned`)
 
 Carried forward from the ONNX draft (`docs/architecture/SCORER-PLUGINS-0.13-DRAFT.md` §R2 at
 `3ecf237` — see [`../record.md`](../record.md)), because it governs whether the cartridge may be
@@ -161,7 +161,7 @@ confinement NetCoreNOC does not provide and will not claim. **A plugin is as tru
 who installed it** — which is why the ONNX path is the blessed one: data is a smaller thing to trust
 than code.
 
-## 5. What this draft must not become (`v0.16.0: planned`)
+## 5. What this draft must not become (`v0.17.0: planned`)
 
 **A reason not to ship models.** v0.14.0's whole lesson is that the ONNX door was believed to be the
 only door for two releases and was not, and the cost of that belief was two releases in which no
