@@ -11,6 +11,8 @@ import { html, Component } from "../dom.js";
 import { post } from "../api.js";
 import { SectionHeading } from "../widgets.js";
 import { session } from "../session.js";
+import { PasswordInput, PasswordMeter, pairProblem } from "../password.js";
+import { Icon } from "../icons.js";
 
 export class Account extends Component {
   constructor(props) {
@@ -21,10 +23,10 @@ export class Account extends Component {
 
   async submit(event) {
     event.preventDefault();
-    if (this.state.next !== this.state.confirm) {
-      this.setState({ outcome: { ok: false, message: "The two new passwords do not match." } });
-      return;
-    }
+    // One refusal, shared with the sign-in card, so the two screens say the same words about the
+    // same policy — and so a change to `MIN_PASSWORD` moves both.
+    const problem = pairProblem(this.state.next, this.state.confirm);
+    if (problem) { this.setState({ outcome: { ok: false, message: problem } }); return; }
     this.setState({ busy: true, outcome: null });
     try {
       await post("/api/password", {
@@ -33,7 +35,15 @@ export class Account extends Component {
       });
       this.setState({
         busy: false, current: "", next: "", confirm: "",
-        outcome: { ok: true, message: "Password changed. Other sessions are unaffected." },
+        // F82: this said "Other sessions are unaffected." The route calls
+        // `revoke_user_sessions(principal.user_id)`, which revokes EVERY session this account
+        // holds — the caller's included — and its own return says "sign in again". Driven: two
+        // sessions for one account, one changes the password, both go to 401.
+        outcome: {
+          ok: true,
+          message: "Password changed. Every session this account holds was signed out, "
+                   + "including this one — sign in again with the new password.",
+        },
       });
     } catch (error) {
       this.setState({
@@ -57,21 +67,28 @@ export class Account extends Component {
       </dl>
 
       <${SectionHeading} title="Change your password"
-        hint="The appliance requires 12–128 characters. It stores a hash and never the password." />
+        hint="It stores a hash and never the password. Changing it signs out every session this
+              account holds, including this one." />
       <form class="stack" onSubmit=${this.submit} autocomplete="off">
-        <label for="pwCurrent">Current password</label>
-        <input id="pwCurrent" type="password" autocomplete="current-password"
-               value=${this.state.current}
-               onInput=${(e) => this.setState({ current: e.target.value })} />
-        <label for="pwNext">New password</label>
-        <input id="pwNext" type="password" autocomplete="new-password" value=${this.state.next}
-               onInput=${(e) => this.setState({ next: e.target.value })} />
-        <label for="pwConfirm">New password again</label>
-        <input id="pwConfirm" type="password" autocomplete="new-password" value=${this.state.confirm}
-               onInput=${(e) => this.setState({ confirm: e.target.value })} />
+        <${PasswordInput} id="pwCurrent" label="Current password" autocomplete="current-password"
+          value=${this.state.current} onInput=${(v) => this.setState({ current: v })} />
+        <${PasswordInput} id="pwNext" label="New password" autocomplete="new-password"
+          describedBy="pwNext-meter" value=${this.state.next}
+          onInput=${(v) => this.setState({ next: v })} />
+        <${PasswordMeter} id="pwNext-meter" value=${this.state.next} />
+        <${PasswordInput} id="pwConfirm" label="New password again" autocomplete="new-password"
+          value=${this.state.confirm} onInput=${(v) => this.setState({ confirm: v })} />
         <button type="submit" disabled=${busy}>${busy ? "Changing…" : "Change password"}</button>
       </form>
       ${outcome ? html`<p class=${outcome.ok ? "ok-note" : "err"} role="alert">${outcome.message}</p>` : null}
+
+      <${SectionHeading} title="Second factor" />
+      <p class="note-line">
+        <${Icon} name="shield" /><span>
+          <b>Not available yet.</b>${" "}Two-factor authentication arrives in v0.17.0 and will
+          be${" "}<b>required for admin accounts</b>. There is nothing to enrol here today, and
+          this appliance holds no secret, no recovery code and no address for you.</span>
+      </p>
     </div>`;
   }
 }

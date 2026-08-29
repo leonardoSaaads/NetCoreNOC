@@ -506,6 +506,42 @@ pre.refusal-reason {
 .govjson { min-height: 160px; }
 .policy-editor { margin-top: var(--space-2); }
 
+/* ---------- the password surface (V.2) ---------- */
+
+.pw-field { margin-bottom: var(--space-2); }
+/* The reveal button sits INSIDE the field's box rather than beside it, so the input keeps the
+   full width the login card gives it and the control does not become a second column that wraps
+   away from what it reveals at narrow widths. */
+.pw-row { display: flex; align-items: stretch; gap: var(--space-1); }
+.pw-row input { flex: 1; min-width: 0; margin-bottom: 0; }
+.pw-reveal { flex: none; display: inline-flex; align-items: center; justify-content: center; }
+
+.pw-meter {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  font-size: var(--fs-xs); color: var(--fg-muted); margin: 0 0 var(--space-2);
+}
+.pw-track {
+  flex: none; width: 84px; height: 4px; border-radius: 2px;
+  background: var(--bg-sunken); border: 1px solid var(--line); overflow: hidden;
+}
+.pw-fill { display: block; height: 100%; background: var(--fg-dim); }
+/* The bar is never the only signal: `.pw-words` states the count and the bound in text beside it,
+   and the state changes the WORDS as well as the colour. Same rule as severity. */
+.pw-meter-short .pw-fill { background: var(--warn); }
+.pw-meter-ok .pw-fill { background: var(--quiet); }
+.pw-meter-ok .pw-words { color: var(--quiet); }
+.pw-meter-over .pw-fill { background: var(--alarm); width: 100% !important; }
+.pw-meter-over .pw-words { color: var(--alarm); }
+
+/* A declaration, not a control (V.3): an icon, a sentence, no affordance. */
+.signin-notes { margin-top: var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.note-line {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  font-size: var(--fs-sm); color: var(--fg-muted); margin: 0 0 var(--space-2); max-width: 70ch;
+}
+.note-line .icon-svg { flex: none; margin-top: 0.15em; color: var(--fg-dim); }
+.note-line b { color: var(--fg); font-weight: 600; }
+
 /* ---------- login + noscript ---------- */
 
 .login { display: flex; align-items: center; justify-content: center; height: 100vh; padding: var(--space-4); }

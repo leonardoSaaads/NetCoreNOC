@@ -7,7 +7,7 @@ import asyncio
 import httpx
 
 from netcorenoc.api import create_app
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import administration, auth
 from netcorenoc.ingest.receiver import QueueItem
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
@@ -20,7 +20,7 @@ ORIGIN = "http://netcorenoc.test"
 async def make_users(store: Store) -> None:
     """Bootstrap admin (forced-change) plus ready-to-use admin/editor/viewer accounts."""
     async with store.lock:
-        await auth.bootstrap_admin(store, 0.0)
+        await administration.bootstrap_admin(store, 0.0)
         for role, name in ROLE_USER.items():
             await store.create_user(name, auth.hash_password(PW), role, False, 0.0)
         await store.commit()

@@ -18,6 +18,24 @@ class AuthMixin(StoreBase):
         assert row is not None
         return int(row[0])
 
+    async def count_enabled_admins(self, *, excluding: int | None = None) -> int:
+        """Enabled admin accounts, optionally not counting one row (F79).
+
+        `excluding` is what makes this answer a question about a *proposed* state rather than the
+        current one: "how many enabled admins would remain if this user stopped being one" is the
+        same query with its own row taken out, so a role change, a deletion and a disable all ask
+        it the same way instead of each computing the remainder differently.
+        """
+        sql = "SELECT COUNT(*) FROM user WHERE role='admin' AND disabled=0"
+        params: tuple[int, ...] = ()
+        if excluding is not None:
+            sql += " AND id<>?"
+            params = (excluding,)
+        cur = await self.conn.execute(sql, params)
+        row = await cur.fetchone()
+        assert row is not None
+        return int(row[0])
+
     async def create_user(
         self, username: str, password_hash: str, role: str, must_change_password: bool, now: float
     ) -> int:

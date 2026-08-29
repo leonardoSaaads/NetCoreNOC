@@ -370,8 +370,14 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/destructive.js"),
     ("GET", "/app/dom.js"),
     ("GET", "/app/format.js"),
+    # v0.15.3: two static modules, in the alphabetical position `_UI_MODULES` gives them. Static
+    # asset order carries none of the matching semantics this baseline exists for — every one of
+    # these is a literal path with no template below it — but the list is pinned in full precisely
+    # so that a change here is a line in a diff rather than a silence.
+    ("GET", "/app/icons.js"),
     ("GET", "/app/login.js"),
     ("GET", "/app/parameters.js"),
+    ("GET", "/app/password.js"),
     ("GET", "/app/registry.js"),
     ("GET", "/app/router.js"),
     ("GET", "/app/session.js"),
@@ -868,8 +874,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "d5291d9782d1a671a2a2c23768da2b50ee9ed39febfce87a7bbcd1b7456049fa"
-SRC_FILE_COUNT = 173
+SRC_TREE_DIGEST = "134bd75847049d5d22cc4c0bda312981a11ac170a5f9e1f0abeaf818e59b1345"
+SRC_FILE_COUNT = 176
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

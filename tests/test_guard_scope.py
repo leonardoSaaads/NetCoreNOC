@@ -23,7 +23,7 @@ from starlette.requests import Request
 
 import test_structure
 from netcorenoc.api.perimeter import Perimeter
-from netcorenoc.crosscutting import auth, rbac
+from netcorenoc.crosscutting import administration, auth, rbac
 from netcorenoc.store import Store
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -72,7 +72,7 @@ async def _admin_session(store: Store) -> str:
     """
     now = time.time()
     async with store.lock:
-        await auth.bootstrap_admin(store, now)
+        await administration.bootstrap_admin(store, now)
         user = await store.create_user("adm", auth.hash_password("x" * 16), "admin", False, now)
         token = await auth.open_session(store, user, None, now)
         await store.commit()

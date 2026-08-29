@@ -38,8 +38,26 @@ disabled controls.
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | The hash-chained record of every change, and its verification state |
 
-**Your account** is reachable by address but not offered in navigation: it changes your own
-password and nothing else.
+**Your account** is reachable by address but not offered in navigation: it shows who the server
+says you are, and changes your own password.
+
+### Passwords, and the two things the appliance will not let you do
+
+Both password forms — the forced change at first sign-in and the change on **Your account** — ask
+twice, refuse a mismatch **before sending anything**, and offer a reveal control that is off by
+default and reachable from the keyboard. The length indicator beside the new-password field reports
+the bound the *server* enforces, served on `/api/me` and beside the forced-change demand; the
+console carries no copy of it. The rule is length and only length: 12–128 characters, no
+composition requirement, no expiry ([NIST SP 800-63B](https://pages.nist.gov/800-63-3/sp800-63b.html)).
+
+Changing your password **signs out every session the account holds, including the one you are
+using.** The screen says so before the click and after it.
+
+The appliance also refuses to remove its own last administrator — a role change, a deletion, and
+(when one exists) a disable are all refused while exactly one enabled admin remains. **Users** shows
+that account's role as locked rather than offering a control that would fail. If an appliance ends
+up with no admin anyway, [`troubleshoot.md`](troubleshoot.md) has the recovery; before v0.15.3 there
+was none (F79).
 
 ## The screen this product exists for
 

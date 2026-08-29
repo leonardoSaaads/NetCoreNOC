@@ -125,8 +125,13 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/destructive.js",
         "/app/dom.js",
         "/app/format.js",
+        # v0.15.3: the drawn icon family (#236) and the shared password surface (V.2). Both are
+        # fetched before any identity exists — the sign-in card imports them — so both are
+        # unauthenticated by necessity as well as by claim.
+        "/app/icons.js",
         "/app/login.js",
         "/app/parameters.js",
+        "/app/password.js",
         "/app/registry.js",
         "/app/router.js",
         "/app/session.js",

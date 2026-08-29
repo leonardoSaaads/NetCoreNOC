@@ -4,6 +4,14 @@
  * deleting the account and recreating it — which loses the account's identity in the audit log
  * and forces a password reset for a change that should be one click. It also **revokes that
  * user's sessions** server-side, which the screen says before the click rather than after.
+ *
+ * ## The last admin (F79, DECISIONS #233)
+ *
+ * When exactly one enabled admin remains, this screen stops offering the two controls that would
+ * remove it and says why. **That is an affordance and nothing else** — `routes_admin.py` refuses
+ * the request whatever this screen renders, and `tests/test_last_admin.py` is where that is
+ * proven. The value of doing it here is that an operator learns the rule before they lose their
+ * session to it, rather than from a 400 they read after being signed out.
  */
 
 import { html, Component } from "../dom.js";
@@ -14,6 +22,26 @@ import { session } from "../session.js";
 import { Destructive } from "../destructive.js";
 
 const ROLES = ["viewer", "editor", "admin"];
+
+const SOLE_ADMIN_NOTE = "the only admin";
+const SOLE_ADMIN_TITLE =
+  "This is the only enabled admin account. Promote or create another admin first — the appliance "
+  + "refuses this too, not only the console.";
+
+/**
+ * The id of the sole enabled admin, **as the server reported it** — never re-derived here.
+ *
+ * The first version of this filtered the list for `role === "admin" && !disabled`, and
+ * `tests/test_security_ui.py::test_no_module_re_derives_permissions_from_role_rank` refused it.
+ * The guard was right: that is a console working out from a role something the appliance already
+ * knows, which is F28's shape, and the correct answer was to have `GET /api/users` say. The rule
+ * holds as an absolute — a carve-out for "but this one is only cosmetic" is how the next one gets
+ * in — and the server is now the only place the predicate is written.
+ */
+export function lastEnabledAdminId(users) {
+  const sole = (users || []).find((u) => u.sole_admin);
+  return sole ? sole.id : null;
+}
 
 export class Users extends Loader {
   constructor(props) {
@@ -26,6 +54,7 @@ export class Users extends Loader {
 
   view(users) {
     const me = session();
+    const soleAdmin = lastEnabledAdminId(users);
     const columns = [
       { key: "username", label: "user" },
       { key: "role", label: "role" },
@@ -39,12 +68,15 @@ export class Users extends Loader {
         username: user.username === me.user
           ? html`<span>${user.username} <span class="muted">(you)</span></span>`
           : user.username,
-        role: cell(html`<td><${RoleControl} user=${user} onChanged=${this.reload} /></td>`),
+        role: cell(html`<td><${RoleControl} user=${user} sole=${user.id === soleAdmin}
+                                            onChanged=${this.reload} /></td>`),
         state: user.disabled ? "disabled" : "active",
         actions: cell(html`<td>${user.username === me.user
           ? html`<span class="muted" title="The appliance refuses this too, not only the console.">
               you cannot delete your own account</span>`
-          : html`<${DeleteUser} user=${user} onDone=${this.reload} />`}</td>`),
+          : user.id === soleAdmin
+            ? html`<span class="muted" title=${SOLE_ADMIN_TITLE}>${SOLE_ADMIN_NOTE}</span>`
+            : html`<${DeleteUser} user=${user} onDone=${this.reload} />`}</td>`),
       },
     }));
 
@@ -77,7 +109,16 @@ class RoleControl extends Component {
     }
   }
 
-  render({ user }, { pending, busy, error }) {
+  render({ user, sole }, { pending, busy, error }) {
+    // The one admin left keeps its role visible and loses the control that would remove it. A
+    // disabled <select> would be a control that silently does nothing (DECISIONS #45); this is the
+    // role as text plus the reason.
+    if (sole) {
+      return html`<div class="role-control">
+        <span class="role-tag">${user.role}</span>
+        <span class="muted" title=${SOLE_ADMIN_TITLE}>${SOLE_ADMIN_NOTE} — role locked</span>
+      </div>`;
+    }
     return html`<div class="role-control">
       <label class="visually-hidden" for=${`role-${user.id}`}>Role for ${user.username}</label>
       <select id=${`role-${user.id}`} value=${pending ?? user.role} disabled=${busy}

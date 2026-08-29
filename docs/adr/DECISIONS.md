@@ -1964,3 +1964,53 @@ From this release an entry is about six lines: decision, reason, release.*
   move 15 files, rename 15 static routes and rewrite 37 import statements to encode a fact the
   graph already states.** Rejected on that measurement (VII, "do not distribute files into pretty
   folders").
+
+## 240. The password policy is served, not restated in JavaScript (v0.15.3)
+
+- **Decision**: `auth.password_policy()` returns `{min, max, rule}` from the same constants
+  `validate_password` reads, and it travels on `/api/me` **and** on the login route's
+  `must_change_password` response. The console renders nothing at all until the server has said.
+  No new route.
+- **Reason**: V.2 asks for an indicator that reflects the policy the server actually enforces, and
+  a `12` written into `password.js` would be a second source of truth about what a valid password
+  is — the day `MIN_PASSWORD` moved, the sign-in card would confidently show the old bound. It goes
+  on the login response as well because the forced first change happens **before a session exists**,
+  so `/api/me` is not reachable at the one moment the console needs the numbers. Adding a route for
+  it was rejected: the client already makes this round trip, and VII.5 asks for a reason the
+  alternative was worse rather than a third endpoint.
+- **Measured**: `rule` is `"length"`, and that is the honest part — this project follows NIST
+  SP 800-63B and has **no composition requirement at all**. A meter asking for a digit and a symbol
+  would invent a rule the appliance does not enforce, which is the same defect as showing the wrong
+  minimum with the sign reversed. The served surface is unchanged at 44 `/api` pairs; two response
+  bodies changed shape and the behaviour record is where that is pinned.
+
+## 241. `GET /api/users` says which account is the sole admin; the console never works it out (v0.15.3)
+
+- **Decision**: each row carries `sole_admin`. The console reads it and renders a locked role and a
+  reason; it does not filter the list for `role === "admin"`.
+- **Reason**: the first version of the console change did filter, and
+  `test_security_ui.py::test_no_module_re_derives_permissions_from_role_rank` refused it. **The
+  guard was right and the code was wrong** — a console working out from a role something the
+  appliance already knows is F28's shape, and the fact that this particular derivation was only
+  cosmetic is exactly the argument that turns an absolute into a judgement call on every later
+  diff. The predicate now exists once, on the server, beside the refusal that enforces it.
+- **Measured**: one call site, one field, and the console module contains no comparison of a role
+  to a literal. The guard stays an absolute with no carve-out.
+
+## 242. `administration.py` — who may administer this appliance, in one module (v0.15.3)
+
+- **Decision**: split `crosscutting/administration.py` out of `auth.py`: the bootstrap, the recovery
+  naming, and `would_remove_last_admin`. Not re-exported from `auth` — call sites import the concern
+  they are using. `auth.py` keeps scrypt, the policy, the throttle, `Principal`, sessions, tokens
+  and the login flow.
+- **Reason**: the size guard fired at **409 lines** against a 400 ceiling, and `DEBT_ALLOWLIST` is
+  empty and stays empty (prime directive 10) — so the choice was to split or to argue for an
+  exemption, and there was no invariant to cite for one. The seam is the concept this release
+  created rather than an arbitrary cut: the bootstrap and the invariant are each other's
+  counterweight (one makes the lost state unreachable through the product, the other makes it
+  survivable when something outside the product creates it), and reading either alone leaves the
+  reasoning half-stated. A re-export in the `rbac/` style was rejected because the dependency runs
+  the other way — `administration` needs `auth.hash_password` — so it would be an import cycle.
+- **Measured**: `auth.py` 409 → 275 body lines, `administration.py` 118. The move is 9 files' import
+  lines and no behaviour: the record's only auth diffs are the two response shapes #240 and #241
+  name. `BOOTSTRAP_PASSWORD_CHARS` moved with it, because its name says which module owns it.

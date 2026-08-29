@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ConfigIn, RetentionIn, RoleIn, TokenIn, UserIn
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import administration, auth
 from netcorenoc.crosscutting.settings import Settings
 from netcorenoc.engine.dataset import capture
 
@@ -37,8 +37,21 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/users", dependencies=guarded)
     async def list_users() -> list[dict[str, Any]]:
+        """Accounts, each carrying whether it is **the** enabled admin (v0.15.3).
+
+        `sole_admin` is computed here rather than left for the console to derive, and that is the
+        same rule F28 set for capabilities: the client renders the answer the server gave, never a
+        second one it worked out from a role. `tests/test_security_ui.py` enforces it as an
+        absolute — no console module may compare a role to `"admin"` — and the first carve-out
+        would turn that guard into a judgement call on every future diff.
+
+        It is an affordance and not a control: the refusal is in `change_role` and `delete_user`.
+        """
         async with store.lock:
-            return await store.list_users()
+            rows = await store.list_users()
+            enabled_admins = [r for r in rows if r["role"] == "admin" and not r["disabled"]]
+        sole = enabled_admins[0]["id"] if len(enabled_admins) == 1 else None
+        return [{**row, "sole_admin": row["id"] == sole} for row in rows]
 
     @route.post("/api/users")
     async def create_user(
@@ -69,8 +82,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         uid: int, body: RoleIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
         async with write_txn():
-            if await store.get_user(uid) is None:
+            user = await store.get_user(uid)
+            if user is None:
                 raise HTTPException(status_code=404, detail="no such user")
+            # F79: the invariant, refused server-side. The console hides the control too, and that
+            # is an affordance — this is the control (principle 6, DECISIONS #233).
+            if await administration.would_remove_last_admin(store, user, new_role=body.role):
+                raise HTTPException(status_code=400, detail=administration.LAST_ADMIN_REFUSAL)
             await store.set_user_role(uid, body.role, time.time())
             await store.revoke_user_sessions(uid)  # role change revokes sessions
             await audit_row(
@@ -91,8 +109,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if principal.user_id == uid:
             raise HTTPException(status_code=400, detail="cannot delete your own account")
         async with write_txn():
-            if await store.get_user(uid) is None:
+            user = await store.get_user(uid)
+            if user is None:
                 raise HTTPException(status_code=404, detail="no such user")
+            # Self-deletion is already refused above; this is the case where an admin deletes
+            # ANOTHER admin that happens to be the last enabled one (F79).
+            if await administration.would_remove_last_admin(store, user, deleting=True):
+                raise HTTPException(status_code=400, detail=administration.LAST_ADMIN_REFUSAL)
             await store.revoke_user_sessions(uid)
             await store.delete_user(uid)
             await audit_row(

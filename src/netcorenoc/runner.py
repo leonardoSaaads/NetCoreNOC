@@ -30,7 +30,7 @@ from typing import Any
 import uvicorn
 
 from netcorenoc.api import QuietServer, create_app
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import administration
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import (
     ENV_PREFIX,
@@ -204,14 +204,23 @@ async def _community_key(store: Store) -> bytes:
     return bytes.fromhex(key_hex)
 
 
-def _print_bootstrap_banner(password: str) -> None:
-    """The single sanctioned place a secret is printed — once, at first startup (F3)."""
+def _print_bootstrap_banner(minted: administration.Bootstrap, *, recovery: bool) -> None:
+    """The single sanctioned place a secret is printed — once, at startup (F3).
+
+    **The username is printed from the row that was created, not restated here.** It said
+    ``username: admin`` until v0.15.3, which was true only while that name was the only one
+    possible; recovery takes `recovery-admin` when the demoted account still holds `admin` (#234),
+    and a banner naming an account nobody can sign in with would be worse than no banner.
+    """
     line = "=" * 70
+    occasion = "no enabled admin remained" if recovery else "first run"
     print(f"\n{line}", flush=True)  # noqa: T201
-    print("  NetCoreNOC bootstrap admin created (first run)", flush=True)  # noqa: T201
-    print("      username: admin", flush=True)  # noqa: T201
-    print(f"      password: {password}", flush=True)  # noqa: T201
+    print(f"  NetCoreNOC bootstrap admin created ({occasion})", flush=True)  # noqa: T201
+    print(f"      username: {minted.username}", flush=True)  # noqa: T201
+    print(f"      password: {minted.password}", flush=True)  # noqa: T201
     print("  Sign in and change this password immediately. It is shown ONCE.", flush=True)  # noqa: T201
+    if recovery:
+        print("  Then create a SECOND admin, so this cannot happen again.", flush=True)  # noqa: T201
     print(f"{line}\n", flush=True)  # noqa: T201
 
 
@@ -275,10 +284,13 @@ async def _serve(settings: Settings, store: Store) -> None:
     engine.dropped_provider = lambda: receiver.stats.dropped  # §5.6 queue-full gap source
     await engine.start()
 
-    bootstrap_password = await auth.bootstrap_admin(store, time.time())
+    # `existing_users` is read BEFORE the bootstrap, so the banner can tell a first run from a
+    # recovery (#234). After it, both look identical — an admin exists either way.
+    existing_users = await store.count_users()
+    minted = await administration.bootstrap_admin(store, time.time())
     await store.commit()
-    if bootstrap_password is not None:
-        _print_bootstrap_banner(bootstrap_password)
+    if minted is not None:
+        _print_bootstrap_banner(minted, recovery=existing_users > 0)
 
     def receiver_stats() -> dict[str, Any]:
         return {"receiver": asdict(receiver.stats)}

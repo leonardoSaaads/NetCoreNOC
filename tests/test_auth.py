@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import administration, auth
 from netcorenoc.store import Store
 
 import authutil
@@ -215,10 +215,13 @@ async def test_secure_cookie_when_tls_enabled(store: Store) -> None:
 
 async def test_bootstrap_admin_created_once(store: Store) -> None:
     async with store.lock:
-        password = await auth.bootstrap_admin(store, 0.0)
-        again = await auth.bootstrap_admin(store, 0.0)
+        minted = await administration.bootstrap_admin(store, 0.0)
+        again = await administration.bootstrap_admin(store, 0.0)
         await store.commit()
-    assert password is not None and len(password) == auth.BOOTSTRAP_PASSWORD_CHARS
+    # v0.15.3: the return carries the USERNAME as well, because recovery may not be able to take
+    # `admin` and the startup banner prints what was actually created rather than a constant.
+    assert minted is not None and len(minted.password) == administration.BOOTSTRAP_PASSWORD_CHARS
+    assert minted.username == "admin", "a clean database must still get the plain name"
     assert again is None  # never re-created, never re-printed
     async with store.lock:
         admin = await store.get_user_by_name("admin")
@@ -234,13 +237,26 @@ async def test_bootstrap_login_requires_password_change_then_grants_access(store
     engine = Engine(store, asyncio.Queue())
     await engine.start()
     async with store.lock:
-        bootstrap_pw = await auth.bootstrap_admin(store, 0.0)
+        minted = await administration.bootstrap_admin(store, 0.0)
         await store.commit()
-    assert bootstrap_pw is not None
+    assert minted is not None
+    bootstrap_pw = minted.password
     app = create_app(engine, rate_capacity=100000.0)
     async with authutil.new_client(app) as c:
         first = await c.post("/api/login", json={"username": "admin", "password": bootstrap_pw})
-        assert first.json() == {"must_change_password": True}  # session withheld until change
+        # The session is still withheld until the change, which is what this line is really about.
+        # v0.15.3 adds the password policy beside the demand, because this is the one moment the
+        # console needs the bounds and has no session to ask `/api/me` for them (#240). Asserted
+        # in full rather than by `.get(...)`, so a third key could not appear here unreviewed.
+        assert first.json() == {
+            "must_change_password": True,
+            "password_policy": {
+                "min": auth.MIN_PASSWORD,
+                "max": auth.MAX_PASSWORD,
+                "rule": "length",
+            },
+        }
+        assert "Set-Cookie" not in first.headers, "a session was minted before the change"
         changed = await c.post(
             "/api/login",
             json={

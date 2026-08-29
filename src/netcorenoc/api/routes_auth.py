@@ -72,7 +72,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(status_code=401, detail=outcome.message)
             if outcome.status == "must_change":
                 await store.commit()
-                return {"must_change_password": True}  # nosec B105 - response flag, not a secret
+                # The policy travels with the demand, because this is the one moment the console
+                # needs it and has no session to ask `/api/me` for (v0.15.3, DECISIONS #240). It
+                # states a bound this route already enforces and reveals nothing about the account.
+                return {
+                    "must_change_password": True,  # nosec B105 - response flag, not a secret
+                    "password_policy": auth.password_policy(),
+                }
             assert outcome.principal is not None and outcome.session_token is not None
             if body.new_password:
                 await audit_row(
@@ -131,6 +137,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "scoped": not scope.unrestricted,
                 "ne_count": None if scope.unrestricted else len(scope.ne_ids),
             },
+            "password_policy": auth.password_policy(),
         }
 
     @route.post("/api/password")

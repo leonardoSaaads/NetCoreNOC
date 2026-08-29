@@ -42,8 +42,13 @@ _UI_MODULES = (
     "app/destructive.js",
     "app/dom.js",
     "app/format.js",
+    # v0.15.3: `icons.js` is the drawn icon family that replaces seventeen Unicode glyphs (#236);
+    # `password.js` is the confirmation, length meter and reveal shared by the sign-in card and the
+    # account screen, so the two cannot drift about what a valid password is (V.2).
+    "app/icons.js",
     "app/login.js",
     "app/parameters.js",
+    "app/password.js",
     "app/registry.js",
     "app/router.js",
     "app/session.js",

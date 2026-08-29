@@ -17,6 +17,7 @@
  */
 
 let current = null;
+let policy = null;
 
 /** `{ user, role, capabilities: Set, scope, mustChangePassword }`, or null when signed out. */
 export function session() { return current; }
@@ -29,8 +30,25 @@ export function setSession(me) {
     scope: me.scope || { scoped: false, ne_count: null },
     mustChangePassword: !!me.must_change_password,
   };
+  if (me && me.password_policy) setPasswordPolicy(me.password_policy);
   return current;
 }
+
+/* The password policy the SERVER enforces, held here for the same reason `capabilities` is: so no
+ * screen carries a second copy of a rule the appliance owns (v0.15.3, DECISIONS #240). It arrives
+ * on `/api/me`, and — because the forced first change happens before any session exists — also on
+ * the `must_change_password` response from `/api/login`.
+ *
+ * `null` until the server has said, and every consumer renders nothing rather than guessing. A
+ * default of 12 here would be the second source of truth this exists to avoid. */
+export function setPasswordPolicy(next) {
+  policy = next && typeof next.min === "number" && typeof next.max === "number"
+    ? { min: next.min, max: next.max, rule: String(next.rule || "length") }
+    : null;
+  return policy;
+}
+
+export function passwordPolicy() { return policy; }
 
 /** THE question. One implementation, one call shape, no rank comparison anywhere. */
 export function can(capability) {
