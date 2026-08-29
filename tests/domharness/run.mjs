@@ -112,8 +112,12 @@ function cardFor(env, sid) {
   return { card, toggle: card.querySelector(".sit-toggle"), detail: card.querySelector(".detail") };
 }
 
+// `trim()` since v0.15.3, and it is a correction rather than a loosening. A button whose label is
+// preceded by an icon renders `" Confirm grouping"` — the leading space is markup whitespace no
+// operator can see, and matching on it made the selector sensitive to how the template happened to
+// wrap. What a scenario means by "the Confirm button" is the label, so that is what is compared.
 function buttonIn(node, prefix) {
-  const found = node.querySelectorAll("button").find((b) => b.textContent.startsWith(prefix));
+  const found = node.querySelectorAll("button").find((b) => b.textContent.trim().startsWith(prefix));
   if (!found) {
     throw new Error(
       `no button starting ${JSON.stringify(prefix)} in the rendered card ` +
@@ -235,7 +239,7 @@ const scenarios = {
       box.dispatchEvent(new env.DomEvent("change"));
       await settle(env);
     }
-    buttonIn(cardFor(env, params.sid).detail, params.button ?? "✗ Split")
+    buttonIn(cardFor(env, params.sid).detail, params.button ?? "Split")
       .dispatchEvent(new env.DomEvent("click"));
     await settle(env);
 
@@ -261,7 +265,7 @@ const scenarios = {
     await settle(env);
 
     const detailBefore = cardFor(env, params.sid).detail;
-    const splitBefore = buttonIn(detailBefore, "✗ Split");
+    const splitBefore = buttonIn(detailBefore, "Split");
     const boxes = detailBefore.querySelectorAll("input");
     for (const index of params.mark ?? []) {
       boxes[index].checked = true;

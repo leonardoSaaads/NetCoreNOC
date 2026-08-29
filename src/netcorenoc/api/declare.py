@@ -148,7 +148,6 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/governance.js",
         "/app/views/graph.js",
         "/app/views/labelling.js",
-        "/app/views/model.js",  # v0.14.0
         "/app/views/overview.js",
         "/app/views/promotion.js",
         "/app/views/quarantine.js",
@@ -158,10 +157,12 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/timeline.js",
         "/app/views/tokens.js",
         "/app/views/users.js",
-        "/app/views/verdict.js",  # v0.14.0
+        # v0.15.3: the four modules under `views/` that were never views (#239).
+        "/app/views/parts/facts.js",
+        "/app/views/parts/model.js",
+        "/app/views/parts/retention.js",
+        "/app/views/parts/verdict.js",
         "/app/widgets.js",
-        "/app/views/facts.js",
-        "/app/views/retention.js",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/d3.v7.min.js",
         "/vendor/htm-3.1.1.module.js",

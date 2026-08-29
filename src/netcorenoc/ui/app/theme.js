@@ -1,4 +1,4 @@
-/* Theme and density, persisted in a cookie.
+/* The theme, persisted in a cookie.
  *
  * ## Why a cookie and not `localStorage` (ADR #172, draft §9)
  *
@@ -22,11 +22,9 @@
  */
 
 const THEME_COOKIE = "ncn_theme";
-const DENSITY_COOKIE = "ncn_density";
 
-/** The closed sets. Anything else is not a preference, it is noise, and is discarded. */
+/** The closed set. Anything else is not a preference, it is noise, and is discarded. */
 export const THEMES = ["dark", "light", "system"];
-export const DENSITIES = ["compact", "comfortable"];
 
 function readCookie(name) {
   for (const pair of String(globalThis.document.cookie || "").split(";")) {
@@ -54,10 +52,6 @@ export function theme() {
   return validated(readCookie(THEME_COOKIE), THEMES, "system");
 }
 
-export function density() {
-  return validated(readCookie(DENSITY_COOKIE), DENSITIES, "compact");
-}
-
 /**
  * Push the current preferences onto the document root.
  *
@@ -71,16 +65,10 @@ export function apply() {
   const chosen = theme();
   if (chosen === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", chosen);
-  root.setAttribute("data-density", density());
 }
 
 export function setTheme(value) {
   writeCookie(THEME_COOKIE, validated(value, THEMES, "system"));
-  apply();
-}
-
-export function setDensity(value) {
-  writeCookie(DENSITY_COOKIE, validated(value, DENSITIES, "compact"));
   apply();
 }
 

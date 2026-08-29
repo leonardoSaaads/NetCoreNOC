@@ -2014,3 +2014,38 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: `auth.py` 409 → 275 body lines, `administration.py` 118. The move is 9 files' import
   lines and no behaviour: the record's only auth diffs are the two response shapes #240 and #241
   name. `BOOTSTRAP_PASSWORD_CHARS` moved with it, because its name says which module owns it.
+
+## 243. A 1.2 type scale from a 13 px body, and a 4 px spacing grid (v0.15.3)
+
+- **Decision**: five type steps at 11/13/16/19/23 px plus a shared 13 px body, and spacing at
+  4/8/12/16/24/32. 13 px stays the body size; what changed is the relationships between the sizes,
+  not the density.
+- **Reason**: the previous five were each chosen for one thing and their ratios were 1.09, 1.08,
+  1.23 and 1.31 — a caption one pixel from the body it labels, and a heading three ratios away from
+  the text under it. Spacing had the same problem in the other direction: 4, 8, 12, **18, 28** put
+  two of five steps off the 4 px grid, so components at two removes never lined up. Zabbix density
+  is about how much fits on a screen, not about how arbitrary the steps are.
+- **Measured**: new ratios 11/13 = 0.85, 13/16 = 1.23, 16/19 = 1.19, 19/23 = 1.21 — one scale
+  rather than four accidents. `style.css` goes from 41 custom properties to 43 (the brief's figure
+  of 30 was not reproducible). `--tap: 28px` is new and is the pointer floor F81 measured against:
+  the theme button was 29x23 and the situation permalink 18x17. **Not** the 44 px mobile figure —
+  this is a dense operations console and 44 px rows would halve what fits on a screen.
+
+## 244. The prose that left the console is the prose that was documentation (v0.15.3)
+
+- **Decision**: delete the paragraphs that were explaining the project to itself, keep the ones an
+  operator acts on. The largest single removal is the Overview's *"Reports that are not on any
+  screen"* panel — a five-row table of shell commands on the first screen an operator opens.
+- **Reason**: `docs/operate.md` lines 174–179 already list all five commands, and the Makefile
+  documents each at length, so this was a third copy on a dashboard; it is **deleted rather than
+  relocated**, which VII.6 asks for a reason for and that is the reason. What stayed is what the
+  design doc defends: an empty state that says what will fill the screen, the graph's statement
+  that it is not keyboard-operable, and *"a rate with no window is a number nobody can act on"*.
+  A release that deleted all of it would be worse than the current state.
+- **Measured**: **2 275 → 2 004 words** of rendered English, −12 %, by the method in the commit
+  message rather than an unstated one. `overview.js` 310 → 216, `promotion.js` 201 → 157,
+  `facts.js` 186 → 137. The v0.15.2 figure did not reproduce because its method was never stated;
+  this one is a script, and the first version of it **under-counted** — it matched `hint="…"` but
+  not the `hint=${"…" + "…"}` form this codebase also uses, so rewriting a concatenated hint as a
+  plain one made the count rise while the prose fell. Both baseline and result above are measured
+  with the corrected version, on both trees.

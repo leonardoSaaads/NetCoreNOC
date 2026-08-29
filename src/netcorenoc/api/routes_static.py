@@ -62,26 +62,28 @@ _UI_MODULES = (
     "app/views/classes.js",
     "app/views/corpus.js",
     "app/views/entities.js",
-    "app/views/facts.js",
     "app/views/governance.js",
     "app/views/graph.js",
     "app/views/labelling.js",
-    # v0.14.0: `model.js` renders what is DECIDING (the three classes of scorer, and the artefact
-    # behind a fitted one); `verdict.js` renders a promotion decision in every branch the gate can
-    # reach rather than only in the refusal. Both are split out of the screens that own them, at
-    # the seam those screens already had.
-    "app/views/model.js",
     "app/views/overview.js",
     "app/views/promotion.js",
     "app/views/quarantine.js",
-    "app/views/retention.js",
     "app/views/scorer.js",
     "app/views/settings.js",
     "app/views/situations.js",
     "app/views/timeline.js",
     "app/views/tokens.js",
     "app/views/users.js",
-    "app/views/verdict.js",
+    # `views/parts/` — modules under `views/` that are NOT views. `registry.js` imports seventeen
+    # screens; these four are imported by SIBLING views (`settings` takes facts and retention,
+    # `scorer` takes model, `promotion` takes verdict). They lived beside the screens until
+    # v0.15.3, when the import graph was read and the directory stopped saying something false
+    # (DECISIONS #239). `model.js` and `verdict.js` arrived in v0.14.0 at the seam their screens
+    # already had; `facts.js` and `retention.js` are the same shape, split out of `settings`.
+    "app/views/parts/facts.js",
+    "app/views/parts/model.js",
+    "app/views/parts/retention.js",
+    "app/views/parts/verdict.js",
     "app/widgets.js",
 )
 

@@ -26,7 +26,7 @@ import { Loader, Empty, DataTable, SectionHeading, Stat, TimeCell, cell } from "
 import { count, plural } from "../format.js";
 import { can } from "../session.js";
 import { Destructive } from "../destructive.js";
-import { Decision } from "./verdict.js";
+import { Decision } from "./parts/verdict.js";
 
 export class Promotion extends Loader {
   constructor(props) {
@@ -43,9 +43,8 @@ export class Promotion extends Loader {
     return html`<div class="promotionview">
       <section class="panel-block param-structural">
         <${SectionHeading} title="The sealed holdout"
-          hint=${"Displayed, never actionable. The query count is a property of what has been " +
-                 "read from the holdout — not a setting — and there is no control here because " +
-                 "there is no choice. That is what makes it a guarantee."} />
+          hint="Displayed, never actionable: the query count is a property of what has been read,
+                not a setting. There is no control because there is no choice." />
         <div class="stat-row">
           <${Stat} label="seal query count" value=${data.seal_query_count}
                    tone=${data.seal_query_count === 0 ? "quiet" : "warn"}
@@ -65,10 +64,8 @@ export class Promotion extends Loader {
       ${promotions.length
         ? html`<${DataTable} columns=${DECISION_COLUMNS} rows=${promotions.map(toDecision)} />
             <${Decision} row=${promotions[0]} />
-            <p class="hint">Expanded above: the most recent decision. Every decision carries the
-              same record — the four named quantities for both arms, the triggers, and what was
-              recorded as absent — and it is written at the moment the gate decides, never
-              recomputed afterwards.</p>`
+            <p class="hint">Expanded above: the most recent decision, written when the gate
+              decided and never recomputed.</p>`
         : html`<${Empty}
             title="No promotion has been proposed."
             will=${"Every proposal — applied or refused — is recorded here with its verdict, " +
@@ -196,9 +193,9 @@ class Propose extends Component {
 function ProposeControl({ candidate, onDone }) {
   return html`<${Destructive}
     title="Propose a promotion"
-    hint=${"The body names a candidate. **The server decides**: the floors, the power condition, " +
-           "the seal, the verdict and the metrics are all re-derived, and a client cannot assert " +
-           "any of them — the request model has no field for it."}
+    hint="The body names a candidate and nothing else. The server re-derives the floors, the power
+          condition, the seal, the verdict and the metrics; the request model has no field for any
+          of them."
     previewLabel="Propose model version…"
     confirmLabel=${`Propose model version #${candidate.id}`}
     consequence=${`If the gate accepts, the correlator's active model version changes and every ` +

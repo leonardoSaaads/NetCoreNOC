@@ -10,12 +10,6 @@
  * only ever REDEFINE tokens; no rule below them names a literal colour, so a theme cannot be half
  * applied.
  *
- * ## Density
- *
- * `data-density="compact"` is the default because operators scan hundreds of rows and these
- * products are dense for a reason. `comfortable` scales the spacing and row height tokens and
- * nothing else, so there is one layout rather than two.
- *
  * ## Severity is never colour alone
  *
  * Every severity carries a glyph and its text as well as its colour. A rule that set only a
@@ -24,21 +18,48 @@
  */
 
 :root {
-  /* spacing + radii + shadow + type scale */
+  /* ---- the type scale (DECISIONS #243) ----------------------------------------------
+   *
+   * A 1.2 ratio from a 13 px body, rounded to whole pixels, five steps. It replaces five
+   * numbers each chosen for one thing, whose ratios were 1.09, 1.08, 1.23 and 1.31 — a
+   * body a pixel from the caption above it, and a jump to the heading three times larger.
+   *
+   * 13 px stays the body because that is the density this product is for: Zabbix-dense
+   * tables an operator scans hundreds of rows in. The scale is what changed, not the size.
+   *
+   * Ratios, measured: 11/13 = 0.85, 13/16 = 1.23, 16/19 = 1.19, 19/23 = 1.21. */
+  --fs-xs: 11px;   /* captions, table headers, badges — never a sentence */
+  /* `sm` and `md` are the SAME STEP, deliberately. Five steps is what a 1.2 ratio gives between
+   * 11 and 23 px, and secondary text does not get a sixth invented for it — a hint is separated
+   * from body by colour (`--fg-muted`), which is a stronger signal than one pixel ever was. The
+   * name is kept because call sites should say which ROLE they mean, not which number. */
+  --fs-sm: 13px;   /* secondary text: hints, notes, the summary under a heading */
+  --fs-md: 13px;   /* body, and every table cell */
+  --fs-lg: 16px;   /* section headings (h2) */
+  --fs-xl: 19px;   /* screen headings (h1) and the figures on a stat tile */
+  --fs-2xl: 23px;  /* the one number a screen is about */
+
+  /* ---- spacing: a 4 px grid, every step a multiple of it -----------------------------
+   *
+   * Was 4, 8, 12, 18, 28 — the last two off the grid, which is why nothing lined up with
+   * anything at two removes. Now 4, 8, 12, 16, 24, 32: every gap is a multiple of the
+   * smallest, so a stack of three components sits on the same rhythm as one. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
-  --space-4: 18px;
-  --space-5: 28px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
   --radius-1: 4px;
   --radius-2: 8px;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 2px 8px rgba(0, 0, 0, 0.18);
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-md: 13px;
-  --fs-lg: 16px;
-  --fs-xl: 21px;
-  --row-h: 26px;
+  --row-h: 28px;
+  /* The pointer floor. Every interactive control is at least this on its short edge —
+   * the theme button measured 29x23 and the situation permalink 18x17 (F81). Not the
+   * 44 px iOS figure: this is a dense operations console and a 44 px row would halve
+   * what fits on a screen. 28 is the row height, so a control is a row. */
+  --tap: 28px;
   --nav-w: 232px;
   --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -130,14 +151,6 @@
   --shadow-1: 0 1px 2px rgba(20, 28, 40, 0.10), 0 2px 8px rgba(20, 28, 40, 0.08);
 }
 
-:root[data-density="comfortable"] {
-  --space-2: 10px;
-  --space-3: 16px;
-  --space-4: 24px;
-  --row-h: 34px;
-  --fs-md: 14px;
-}
-
 * { box-sizing: border-box; }
 
 html, body {
@@ -183,11 +196,39 @@ button, select, input, textarea {
   border-radius: var(--radius-1);
   padding: var(--space-1) var(--space-2);
 }
+/* The pointer floor (F81), applied where controls are made rather than per call site. */
+button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: var(--tap); }
 button { cursor: pointer; }
 button:hover:not(:disabled) { background: var(--bg-hover); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- action affordances: one primary per screen, secondaries visibly secondary ----
+ *
+ * The GitHub half of the brief, and it is about SHAPE rather than palette. Until now every
+ * button in this console was the same button: "Add user", "Cancel" and "Delete" were one
+ * grey rectangle, so a screen offered no answer to "what am I here to do".
+ *
+ * `.primary` is the one action a screen exists for. `.warn` names what it will destroy and
+ * is the only one that borrows the alarm colour. Everything else stays the default, which
+ * is what makes the primary readable — a screen where three buttons are primary has none. */
+button.primary {
+  background: var(--accent); color: var(--accent-fg);
+  border-color: var(--accent); font-weight: 600;
+}
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 button.warn { border-color: var(--alarm); color: var(--alarm); }
-button.icon { padding: var(--space-1) var(--space-2); line-height: 1; }
+button.warn:hover:not(:disabled) { background: var(--alarm-bg); }
+button.icon {
+  padding: var(--space-1); line-height: 1; min-width: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* A link that acts like a button gets the target size too — the `#1` permalink measured 18x17
+   and the identity link 32x19, which are pointer targets nobody on a phone can hit reliably.
+   Applied to the classes rather than to every `a`: a link inside a sentence is not a control,
+   and forcing 28 px on one would open gaps in running text for no gain. */
+a.tap, .who-name, .permalink, .mini-list a {
+  display: inline-flex; align-items: center; min-height: var(--tap);
+}
 textarea { width: 100%; font-family: var(--mono); }
 label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-bottom: var(--space-1); }
 
@@ -215,15 +256,26 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   overflow-y: auto;
   padding-bottom: var(--space-4);
 }
+/* A link since v0.15.3: it was a <div> and clicking the product's own name did nothing. */
 .brand {
   display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3);
   border-bottom: 1px solid var(--line);
   margin-bottom: var(--space-3);
+  color: var(--fg);
 }
+.brand:hover { background: var(--bg-hover); text-decoration: none; }
 .brand-mark { color: var(--accent); font-size: var(--fs-lg); }
 .brand-name { font-size: var(--fs-lg); letter-spacing: -0.01em; }
 .brand-name b { color: var(--accent); font-weight: 600; }
+
+/* ---------- icons (DECISIONS #236) ----------
+ *
+ * One rule, because the family is defined in the markup: 24x24 viewBox, 1.5 stroke,
+ * currentColor. Sized at 1em so an icon is the size of the text beside it and moves with the
+ * type scale rather than against it. `vertical-align` rather than flex, so an icon can sit
+ * inside a sentence without the sentence becoming a flex container. */
+.icon-svg { width: 1em; height: 1em; vertical-align: -0.13em; flex: none; }
 .nav-group { margin-bottom: var(--space-3); }
 .nav-heading {
   font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em;
@@ -242,7 +294,7 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   background: var(--bg-hover); color: var(--fg);
   border-left-color: var(--accent); font-weight: 600;
 }
-.nav-glyph { width: 1.1em; text-align: center; color: var(--fg-dim); }
+.nav-glyph { display: inline-flex; align-items: center; color: var(--fg-dim); font-size: var(--fs-lg); }
 .nav-item.active .nav-glyph { color: var(--accent); }
 .nav-label { flex: 1; }
 .nav-count {
@@ -370,6 +422,11 @@ td.sev { white-space: nowrap; }
   flex: 1; display: flex; align-items: center; gap: var(--space-2);
   background: none; border: 0; text-align: left; padding: var(--space-2) var(--space-3);
 }
+/* The chevron points right when the card is closed and down when it is open. `aria-expanded`
+   on the button is what assistive technology reads; this is the sighted half of the same fact,
+   and the card is not relying on either alone. */
+.sit-chevron { display: inline-flex; color: var(--fg-dim); transition: transform 0.12s ease; }
+.sit-chevron.open { transform: rotate(90deg); }
 .sid { font-family: var(--mono); font-weight: 600; }
 .age { margin-left: auto; color: var(--fg-muted); font-size: var(--fs-xs); }
 .permalink { font-size: var(--fs-xs); color: var(--fg-dim); }

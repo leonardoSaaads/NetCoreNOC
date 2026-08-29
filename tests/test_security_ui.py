@@ -592,14 +592,20 @@ def test_every_destructive_control_goes_through_one_component() -> None:
 
 
 def test_style_uses_design_tokens_both_themes_and_focus_states() -> None:
+    import re
+
     css = (UI_DIR / "style.css").read_text()
-    for token in ("--space-1:", "--radius-1:", "--shadow-1:", "--fs-md:"):
+    for token in ("--space-1:", "--radius-1:", "--shadow-1:", "--fs-md:", "--tap:"):
         assert token in css, token
     assert "@media (prefers-color-scheme: light)" in css  # the system preference still decides…
     assert '[data-theme="light"]' in css  # …and an explicit choice overrides it
-    assert '[data-density="comfortable"]' in css  # density is a first-class choice
+    # v0.15.3: the density switch is GONE, mechanism included (DECISIONS #235, #45). It scaled four
+    # spacing tokens and one step of the type ramp, so the two densities had different sets of
+    # relationships and one of them was chosen by nobody. Asserted absent rather than deleted from
+    # this file, because "the knob went and the mechanism stayed" is the failure #45 records.
+    assert "data-density" not in css, "the density mechanism is back without its decision"
     assert ":focus-visible" in css  # visible keyboard focus (accessibility)
-    assert "@media (max-width: 760px)" in css  # responsive to a narrow viewport
+    assert re.search(r"@media \(max-width: \d+px\)", css)  # responsive to a narrow viewport
     assert "prefers-reduced-motion" in css
     # still CSP-clean: no external origins, no @import of a remote sheet.
     assert "http://" not in css and "https://" not in css

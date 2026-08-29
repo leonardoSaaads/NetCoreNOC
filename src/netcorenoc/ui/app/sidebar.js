@@ -12,6 +12,12 @@
  * that parts of the product do not work, which is the same error as v0.9.1's unused `close`
  * channel with worse ergonomics (draft §2).
  *
+ * ## The wordmark is a link (v0.15.3)
+ *
+ * It was a `<div>`, so clicking the product's own name did nothing — the one place in a console
+ * every operator tries first. It goes to the Overview, and the destination comes from
+ * `registry.DEFAULT_VIEW` rather than a second `"#/overview"` written here.
+ *
  * ## Ordering is stable and never keyed on state
  *
  * A NOC operator builds muscle memory. Items are in registry order, always, whatever is alarming
@@ -29,6 +35,8 @@
 
 import { html, Component, cx } from "./dom.js";
 import { reachableViews } from "./router.js";
+import { Icon } from "./icons.js";
+import { DEFAULT_VIEW } from "./registry.js";
 
 /** Group id -> heading. Order here is order on screen. `null` group renders above the first. */
 export const GROUPS = [
@@ -106,11 +114,20 @@ export class Sidebar extends Component {
       if (inGroup.length) rendered.push(this.renderGroup(group, inGroup, activeId, focusIndex, counts));
     }
 
-    return html`<nav id="nav" class="sidebar" aria-label="Sections" onKeyDown=${this.onKeyDown}>
-      <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span>
-        <span class="brand-name">Net<b>CoreNOC</b></span></div>
-      ${rendered}
-    </nav>`;
+    // The brand is OUTSIDE the <nav>, and that placement is load-bearing rather than tidy.
+    // Inside it, the wordmark link joined `#nav a` — the roving-tabindex set — and the DOM
+    // harness measured the sidebar at two tab stops with the first ArrowDown landing on item 2.
+    // The accessibility floor says the nav is one tab stop; a link to the Overview is not one of
+    // the sections the arrow keys move between, so it belongs beside the navigation, not in it.
+    return html`<div class="sidebar">
+      <a class="brand" href=${`#/${DEFAULT_VIEW}`} title="Go to the Overview">
+        <span class="brand-mark" aria-hidden="true">◈</span>
+        <span class="brand-name">Net<b>CoreNOC</b></span>
+      </a>
+      <nav id="nav" class="nav" aria-label="Sections" onKeyDown=${this.onKeyDown}>
+        ${rendered}
+      </nav>
+    </div>`;
   }
 
   renderGroup(group, views, activeId, focusIndex, counts) {
@@ -131,7 +148,7 @@ export class Sidebar extends Component {
               ref=${(node) => { this.nodes[index] = node; }}
               onClick=${() => this.setState({ focusIndex: index })}
             >
-              <span class="nav-glyph" aria-hidden="true">${view.glyph}</span>
+              <span class="nav-glyph"><${Icon} name=${view.icon} /></span>
               <span class="nav-label">${view.label}</span>
               ${badge != null && badge > 0
                 ? html`<span class="nav-count" title=${`${badge} ${view.countNoun ?? "items"}`}>${badge}</span>`

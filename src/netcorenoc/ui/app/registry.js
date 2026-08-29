@@ -46,77 +46,78 @@ import { Account } from "./views/account.js";
  * `capability` what the server requires for the route this view reads; a list when several
  * `group`      which sidebar group, or null for the item above the first heading
  * `hidden`     reachable by address but not offered in navigation (the account screen)
- * `glyph`      a text mark beside the label — severity and section are encoded more than once
+ * `icon`       the name of a mark in `icons.js`, drawn beside the label. Never the only signal:
+ *              every call site renders it `aria-hidden` next to the text label
  */
 export const VIEWS = [
   {
-    id: "overview", label: "Overview", glyph: "◎", group: null,
+    id: "overview", label: "Overview", icon: "overview", group: null,
     capability: "stats.read", component: Overview,
     summary: "What is happening now, shaped by what your role can act on.",
   },
 
   /* ---------- Operations: what is broken now ---------- */
   {
-    id: "situations", label: "Situations", glyph: "◉", group: "operations",
+    id: "situations", label: "Situations", icon: "situations", group: "operations",
     capability: "situations.read", component: Situations, countNoun: "open situations",
     summary: "Correlated groups of alarms, and why each alarm was grouped.",
   },
   {
-    id: "graph", label: "Network graph", glyph: "⬡", group: "operations",
+    id: "graph", label: "Network graph", icon: "graph", group: "operations",
     capability: "graph.read", component: GraphView,
     summary: "Learned affinity between network elements.",
   },
   {
-    id: "timeline", label: "Timeline", glyph: "▤", group: "operations",
+    id: "timeline", label: "Timeline", icon: "timeline", group: "operations",
     capability: "timeline.read", component: Timeline,
     summary: "Raises and clears over time, per device.",
   },
   {
-    id: "entities", label: "Entities", glyph: "▢", group: "operations",
+    id: "entities", label: "Entities", icon: "entities", group: "operations",
     capability: "entities.read", component: Entities,
     summary: "What the appliance has learned about each network element, and the evidence.",
   },
   {
-    id: "classes", label: "Alarm classes", glyph: "≡", group: "operations",
+    id: "classes", label: "Alarm classes", icon: "classes", group: "operations",
     capability: "classes.read", component: Classes,
     summary: "Every trap type the appliance has learned, with no configuration.",
   },
 
   /* ---------- Evidence: what has been learned, and what is refused ---------- */
   {
-    id: "labelling", label: "Labelling", glyph: "✓", group: "evidence",
+    id: "labelling", label: "Labelling", icon: "labelling", group: "evidence",
     capability: ["situations.read", "feedback.write"], component: Labelling,
     summary: "Confirm or split a grouping, and see what your labels have produced.",
   },
   {
-    id: "corpus", label: "Corpus", glyph: "▦", group: "evidence",
+    id: "corpus", label: "Corpus", icon: "corpus", group: "evidence",
     capability: "config.read", component: Corpus,
     summary: "What capture costs in rows, and the three retention tiers.",
   },
   {
-    id: "promotion", label: "Judge & promotion", glyph: "⚖", group: "evidence",
+    id: "promotion", label: "Judge & promotion", icon: "promotion", group: "evidence",
     capability: "promotion.read", component: Promotion,
     summary: "What the gate decided, why it refused, and the seal's query count.",
   },
 
   /* ---------- Administer: the machine itself ---------- */
   {
-    id: "users", label: "Users", glyph: "◍", group: "administer",
+    id: "users", label: "Users", icon: "users", group: "administer",
     capability: "users.manage", component: Users,
     summary: "Accounts and their roles.",
   },
   {
-    id: "tokens", label: "Service tokens", glyph: "⚿", group: "administer",
+    id: "tokens", label: "Service tokens", icon: "tokens", group: "administer",
     capability: "tokens.manage", component: Tokens,
     summary: "Non-interactive credentials, shown once.",
   },
   {
-    id: "settings", label: "Settings", glyph: "⚙", group: "administer",
+    id: "settings", label: "Settings", icon: "settings", group: "administer",
     capability: "config.read", component: Settings,
     summary: "Every parameter, in three classes, with its precedence and its impact.",
   },
   {
-    id: "scorer", label: "Link scorer", glyph: "∿", group: "administer",
+    id: "scorer", label: "Link scorer", icon: "scorer", group: "administer",
     // What MOUNTING costs: the read, plus the write this screen exists for. The preview is a
     // separate capability (`scorer.preview`) and is gated on the control rather than here — a
     // stored policy can narrow one without the other, and a screen that demanded both to open
@@ -125,7 +126,7 @@ export const VIEWS = [
     summary: "The formula that decides which alarms group. Preview before you apply.",
   },
   {
-    id: "governance", label: "Governance", glyph: "⛨", group: "administer",
+    id: "governance", label: "Governance", icon: "governance", group: "administer",
     // BOTH reads, because the screen issues both on mount. Declaring only `rbac.read` would let a
     // principal narrowed to it alone mount the screen and then request `/api/scope`, which the
     // appliance refuses — a client leaking a 403 into every such operator's access log.
@@ -133,19 +134,19 @@ export const VIEWS = [
     summary: "Who may do what, and who may see which network elements.",
   },
   {
-    id: "quarantine", label: "Quarantine", glyph: "⚑", group: "administer",
+    id: "quarantine", label: "Quarantine", icon: "quarantine", group: "administer",
     capability: "quarantine.read", component: Quarantine,
     summary: "Datagrams the parser refused. Reading this list is audited.",
   },
   {
-    id: "audit", label: "Audit log", glyph: "⛓", group: "administer",
+    id: "audit", label: "Audit log", icon: "audit", group: "administer",
     capability: "audit.read", component: Audit,
     summary: "The hash-chained record of every change, and its verification state.",
   },
 
   /* ---------- reachable by address, not offered in navigation ---------- */
   {
-    id: "account", label: "Your account", glyph: "◐", group: null, hidden: true,
+    id: "account", label: "Your account", icon: "account", group: null, hidden: true,
     capability: "self.read", component: Account,
     summary: "Change your own password.",
   },

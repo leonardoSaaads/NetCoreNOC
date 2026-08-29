@@ -391,22 +391,23 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/classes.js"),
     ("GET", "/app/views/corpus.js"),
     ("GET", "/app/views/entities.js"),
-    ("GET", "/app/views/facts.js"),
     ("GET", "/app/views/governance.js"),
     ("GET", "/app/views/graph.js"),
     ("GET", "/app/views/labelling.js"),
-    ("GET", "/app/views/model.js"),  # v0.14.0
     ("GET", "/app/views/overview.js"),
     ("GET", "/app/views/promotion.js"),
     ("GET", "/app/views/quarantine.js"),
-    ("GET", "/app/views/retention.js"),
     ("GET", "/app/views/scorer.js"),
     ("GET", "/app/views/settings.js"),
     ("GET", "/app/views/situations.js"),
     ("GET", "/app/views/timeline.js"),
     ("GET", "/app/views/tokens.js"),
     ("GET", "/app/views/users.js"),
-    ("GET", "/app/views/verdict.js"),  # v0.14.0
+    # `views/parts/` — the four modules under `views/` that are not views (v0.15.3, #239).
+    ("GET", "/app/views/parts/facts.js"),
+    ("GET", "/app/views/parts/model.js"),
+    ("GET", "/app/views/parts/retention.js"),
+    ("GET", "/app/views/parts/verdict.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
@@ -874,7 +875,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "134bd75847049d5d22cc4c0bda312981a11ac170a5f9e1f0abeaf818e59b1345"
+SRC_TREE_DIGEST = "6b2ba903c90d2c6e0c954e6bf4d12d273c2add8ae41b4e077ece528741d95506"
 SRC_FILE_COUNT = 176
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

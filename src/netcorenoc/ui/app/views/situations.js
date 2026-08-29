@@ -24,6 +24,7 @@
  */
 
 import { html, Component, cx } from "../dom.js";
+import { Icon } from "../icons.js";
 import { get, post } from "../api.js";
 import { Loading, Empty, Failed, Badge, SeverityCell, DataTable, cell } from "../widgets.js";
 import { age, alarmName, deviceName, score, percent, plural, timeTitle } from "../format.js";
@@ -113,6 +114,8 @@ function SituationCard({ situation, onToggle }) {
     <div class="sit-head">
       <button type="button" class="sit-toggle" aria-expanded=${expanded ? "true" : "false"}
               aria-controls=${`sit-detail-${sid}`} onClick=${onToggle}>
+        <span class=${expanded ? "sit-chevron open" : "sit-chevron"}>
+          <${Icon} name="chevron" /></span>
         <span class="sid">#${sid}</span>
         <${Badge} tone=${situation.status === "open" ? "alarm" : "quiet"}>${situation.status}<//>
         <${Badge}>${plural(situation.alarm_count, "alarm")}<//>
@@ -217,13 +220,16 @@ class Detail extends Component {
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
 
       ${editable ? html`<div class="fb">
-        <button type="button" disabled=${this.state.sending}
-                onClick=${() => this.verdict("confirm")}>✓ Confirm grouping</button>
+        <button type="button" class="primary" disabled=${this.state.sending}
+                onClick=${() => this.verdict("confirm")}>
+          <${Icon} name="check" /> Confirm grouping
+        </button>
         <button type="button" class="warn" disabled=${this.state.sending}
                 onClick=${() => this.verdict("split")}>
+          <${Icon} name="cross" />${" "}
           ${this.state.marked.size
-            ? `✗ Split — ${plural(this.state.marked.size, "member")} marked as not belonging`
-            : "✗ Split (wrong grouping)"}
+            ? `Split — ${plural(this.state.marked.size, "member")} marked as not belonging`
+            : "Split (wrong grouping)"}
         </button>
         ${detail.status === "open" ? html`<button type="button" disabled=${this.state.sending}
                 onClick=${() => this.close()}>Close situation</button>` : null}

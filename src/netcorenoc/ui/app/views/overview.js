@@ -99,15 +99,14 @@ export class Overview extends Component {
               <span>${plural(s.alarm_count, "alarm")}</span>
               <span class="muted">${relative(s.updated_at)}</span>
             </li>`)}</ul>`
-        : html`<p class="hint">No open situations. Alarms are arriving but nothing has correlated
-            into a group — which is the appliance saying the estate is noisy rather than broken.</p>`}
+        : html`<p class="hint">No open situations — alarms are arriving, nothing has
+            correlated.</p>`}
 
       ${canEdit() ? html`<${EditorPanel} />` : null}
       ${can("promotion.read") ? html`<${OnDemand}
           title="Judge and promotion"
-          hint=${"What the promotion gate last decided, why it refused, and the sealed holdout's " +
-                 "query count. Read on request rather than on load: this project does not put an " +
-                 "unmeasured cost on the screen every operator lands on."}
+          hint=${"What the gate last decided, why it refused, and the seal's query count. Read " +
+                 "on request, not on load."}
           path="/api/promotion"
           render=${(data) => html`<div class="stat-row">
             <${Stat} label="model versions" value=${(data.model_versions || []).length} />
@@ -123,8 +122,7 @@ export class Overview extends Component {
           <p><a href="#/promotion">Open the full record →</a></p>`} />` : null}
       ${can("config.read") ? html`<${OnDemand}
           title="What capture is holding"
-          hint=${"The feedback corpus every evidence claim is built on, in rows. Deterministic " +
-                 "and cheap to read, but not free, so it is read when asked for."}
+          hint="The feedback corpus every evidence claim is built on, in rows. Read on request."
           path="/api/dataset/retention"
           render=${(data) => html`<div class="stat-row">
             ${Object.entries(data.stats || {}).slice(0, 5).map(([key, value]) => html`
@@ -132,8 +130,10 @@ export class Overview extends Component {
             <${Stat} label="capture" value=${data.capture_enabled ? "on" : "off"}
                      tone=${data.capture_enabled ? "quiet" : "warn"} />
           </div>
-          <p><a href="#/corpus">Open the corpus screen →</a></p>`} />` : null}
-      ${can("audit.read") ? html`<${AdminNotes} />` : null}
+          <p><a class="tap" href="#/corpus">Open the corpus screen →</a></p>`} />` : null}
+      ${can("audit.read") ? html`<p class="hint">Five offline reports have no screen and no HTTP
+        route, deliberately — showing them here would make this console a second implementation of
+        each number. They are listed in <code class="mono">docs/operate.md</code>.</p>` : null}
     </div>`;
   }
 }
@@ -188,9 +188,8 @@ function Health({ stats, rate }) {
                    tone=${receiver.dropped ? "alarm" : null}
                    note="queue full — an ingest gap" />
         </div>`
-      : html`<p class="hint">This appliance is serving <code>/api/stats</code> without a
-          <code>receiver</code> block, so the socket counters are not available. That happens when
-          the API is built without the process runner — it is not a fault of the network.</p>`}
+      : html`<p class="hint">No <code>receiver</code> block in <code>/api/stats</code>: the API is
+          running without the process runner, so there are no socket counters to show.</p>`}
   </section>`;
 }
 
@@ -209,42 +208,12 @@ class EditorPanel extends Component {
         <${Stat} label="singletons" value=${situations.length - splittable.length}
                  note="nothing to confirm or split" />
       </div>
-      <p class="hint">
-        How many of your labels have reached the pre-registered floors is computed by${" "}
-        <code>make shadow-report</code>, which runs offline over frozen inputs and is compared
-        byte-for-byte by a test. <b>This console displays such numbers and never recomputes
-        them</b> — a second implementation of the shadow verdict would be a second source of truth
-        for the figure four releases of evidence discipline rest on (draft §4). That report has no
-        HTTP route today; running it needs shell access to the appliance.
-      </p>
-      <p><a href="#/labelling">Open the labelling screen →</a></p>
+      <p class="hint">Whether your labels have reached the pre-registered floors is${" "}
+        <code>make shadow-report</code>, offline — this console shows numbers and never recomputes
+        them. See <code class="mono">docs/operate.md</code>.</p>
+      <p><a class="tap" href="#/labelling">Open the labelling screen →</a></p>
     </section>`;
   }
-}
-
-function AdminNotes() {
-  return html`<section class="panel-block">
-    <${SectionHeading} title="Reports that are not on any screen"
-      hint=${"Named rather than hidden. Each is a deterministic offline report over frozen " +
-             "inputs, several are byte-compared by tests, and none has an HTTP route — so this " +
-             "console cannot show them without becoming a second implementation of the number."} />
-    <${DataTableOfReports} />
-  </section>`;
-}
-
-function DataTableOfReports() {
-  const reports = [
-    ["make bias-report", "confirms vs splits, operator concentration, label latency, effective sample size"],
-    ["make agreement-report", "how well the built-in scorer already agrees with your operators, conditioned"],
-    ["make shadow-report", "the sufficiency verdict, the minimum detectable difference, the sealed holdout"],
-    ["make census", "what the promotion gate decides on this corpus, stated in advance"],
-    ["python -m netcorenoc audit verify", "walks the audit hash chain and reports the first broken link"],
-  ];
-  return html`<div class="table-scroll"><table class="data">
-    <thead><tr><th scope="col">command</th><th scope="col">what it says</th></tr></thead>
-    <tbody>${reports.map(([command, what]) => html`<tr key=${command}>
-      <td><code>${command}</code></td><td>${what}</td></tr>`)}</tbody>
-  </table></div>`;
 }
 
 /**

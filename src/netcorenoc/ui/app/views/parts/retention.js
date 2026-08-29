@@ -12,12 +12,12 @@
  * change are audited.
  */
 
-import { html, Component } from "../dom.js";
-import { post } from "../api.js";
-import { SectionHeading } from "../widgets.js";
-import { count } from "../format.js";
-import { Destructive } from "../destructive.js";
-import { MECHANISM } from "../parameters.js";
+import { html, Component } from "../../dom.js";
+import { post } from "../../api.js";
+import { SectionHeading } from "../../widgets.js";
+import { count } from "../../format.js";
+import { Destructive } from "../../destructive.js";
+import { MECHANISM } from "../../parameters.js";
 
 export class DatasetRetention extends Component {
   constructor(props) {

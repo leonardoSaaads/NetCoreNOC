@@ -277,7 +277,7 @@ async def test_a_confirm_never_carries_exclusions(routes: dict[str, Any]) -> Non
     sid, _ = uifixtures.largest_situation(routes["editor"])
     result = domdriver.run_scenario(
         "partialSplit",
-        {"routes": routes["editor"], "sid": sid, "mark": [1, 3], "button": "✓ Confirm"},
+        {"routes": routes["editor"], "sid": sid, "mark": [1, 3], "button": "Confirm"},
     )
     assert result["feedbackBody"]["verdict"] == "confirm"
     assert "excluded_ids" not in result["feedbackBody"], result["feedbackBody"]
