@@ -2049,3 +2049,53 @@ From this release an entry is about six lines: decision, reason, release.*
   not the `hint=${"…" + "…"}` form this codebase also uses, so rewriting a concatenated hint as a
   plain one made the count rise while the prose fell. Both baseline and result above are measured
   with the corrected version, on both trees.
+
+## 245. "Why these were grouped" answers the storm question first (v0.15.3)
+
+- **Decision**: a summary computed from **every** link — the weakest link and its margin over the
+  threshold, the strongest, the count, and which of the three named terms is carrying the grouping
+  — with the per-link decomposition behind one interaction and **complete** when opened. The
+  section moves to `views/parts/why.js`; `situations.js` was 356 body lines against a 400 guard.
+- **Reason**: it rendered `links.slice(0, 30)`. In a four-alarm situation that is the right screen;
+  in a 400-trap storm it is thirty rows chosen by insertion order, and an operator asking *"can I
+  trust this grouping?"* had to answer it from a sample nobody selected. The margin is the number
+  that answers it and it was not on the screen: a grouping whose weakest pair cleared by 0.01 is
+  one scorer nudge from falling apart, and one that cleared by 0.3 is not. **No verdict is
+  computed** — every figure is min, max or a mean over numbers the server already sent, because a
+  console that scored its own groupings would be a second scorer.
+- **Measured**: the completeness assertion is red under injection at **30 of 32 links** and green
+  after — but only after the fixture was grown. Driven against the corpus's own **16** links it
+  passed *with the thirty-row cap deliberately reinstated*, because 16 < 30 made the slice a no-op:
+  a guard that could not fail for the defect it names, found by injecting the defect rather than by
+  reading the test.
+
+## 246. The timeline's y axis had 30 px for a device name (F83, v0.15.3)
+
+- **Decision**: `PAD_LEFT = 82` as its own constant, and the tick text clipped to what it holds;
+  the full name stays in the table below, which the caption already points at.
+- **Reason**: `PAD = 30` was used for all four sides, and `d3.axisLeft` draws its labels to the
+  *left* of the axis. A pad alone would not have been enough either — a device label is operator
+  text of any length — so the pad fits an address and the label is clipped to it.
+- **Measured**: `127.0.0.2` rendered at **x = −9** at every width, six elements outside the
+  viewport at 390x844 with `document.scrollWidth == clientWidth`, so nothing scrolled and the axis
+  was unreadable. Zero after. **The second defect this release found on a d3 screen that no
+  assertion executes**, after v0.15.2's three — the pattern is now four for four, and both times a
+  browser is what saw it.
+
+## 247. The situation detail carries the threshold its links had to clear (F84, v0.15.3)
+
+- **Decision**: `GET /api/situations/{sid}` returns `threshold`, read from the scorer configuration
+  the situation names in `scorer_config_id` — **not** from the active one — and `None` when that
+  row is gone. No new route; the same additive shape as #240 and #241.
+- **Reason**: the console has been passing `detail.threshold` to "Why these were grouped" since
+  v0.13.0 and the route has never sent it, so the sentence *"every pair scored above the link
+  threshold of X"* has always printed without the X. A score with nothing to compare it against is
+  not a decomposition that can be checked, which is the whole of principle 2 — and the margin over
+  the threshold is the number #245's summary is built on, so the redesign would have shipped with
+  its best figure permanently absent. Reading the situation's OWN configuration rather than the
+  active one matters because an admin may have retuned or rolled back since: the threshold this
+  grouping cleared is a fact about when it was decided.
+- **Measured**: `curl /api/situations/1` on a live appliance returned nineteen keys and no
+  `threshold`; the console rendered "the threshold was not reported". Found by looking at the
+  screen, not by reading the route — the old copy degraded to a grammatical sentence with the
+  number missing, so nothing looked wrong.

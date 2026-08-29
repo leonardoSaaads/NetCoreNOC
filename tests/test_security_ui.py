@@ -605,7 +605,17 @@ def test_style_uses_design_tokens_both_themes_and_focus_states() -> None:
     # this file, because "the knob went and the mechanism stayed" is the failure #45 records.
     assert "data-density" not in css, "the density mechanism is back without its decision"
     assert ":focus-visible" in css  # visible keyboard focus (accessibility)
-    assert re.search(r"@media \(max-width: \d+px\)", css)  # responsive to a narrow viewport
+    # More than one layout breakpoint (#237). The shipped console had exactly one — `max-width:
+    # 760px` — so 820 px rendered byte-identically to 1440 px on every view of every role, and
+    # everything between 761 px and a NOC wall was the desktop layout stretched: a phone rule and
+    # a desktop, with no tablet at all. Asserted as a COUNT rather than as literal widths, because
+    # the widths are a design decision this test has no business pinning; what was missing is that
+    # the stylesheet reasoned about more than one.
+    layout = re.findall(r"@media \(max-width: (\d+)px\)", css)
+    assert len(layout) >= 2, (
+        f"the stylesheet reasons about {len(layout)} width(s): {layout}. One is the state v0.15.3 "
+        f"found, and no assertion here could see it — 820 px and 1440 px render the same words."
+    )
     assert "prefers-reduced-motion" in css
     # still CSP-clean: no external origins, no @import of a remote sheet.
     assert "http://" not in css and "https://" not in css

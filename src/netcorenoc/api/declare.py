@@ -162,6 +162,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/model.js",
         "/app/views/parts/retention.js",
         "/app/views/parts/verdict.js",
+        "/app/views/parts/why.js",
         "/app/widgets.js",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/d3.v7.min.js",

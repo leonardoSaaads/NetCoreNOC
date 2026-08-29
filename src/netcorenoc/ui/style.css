@@ -227,7 +227,12 @@ button.icon {
    Applied to the classes rather than to every `a`: a link inside a sentence is not a control,
    and forcing 28 px on one would open gaps in running text for no gain. */
 a.tap, .who-name, .permalink, .mini-list a {
-  display: inline-flex; align-items: center; min-height: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--tap); min-width: var(--tap); padding: 0 var(--space-1);
+  /* `flex: none` because these sit inside flex rows that would otherwise compress them: the
+     situation permalink measured 19 px wide with `min-height` already applied, so the height
+     was fixed and the width was not — half a repair reads as a whole one until it is measured. */
+  flex: none;
 }
 textarea { width: 100%; font-family: var(--mono); }
 label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-bottom: var(--space-1); }
@@ -442,6 +447,35 @@ td.sev { white-space: nowrap; }
 .flap { color: var(--warn); font-size: var(--fs-xs); }
 .fb { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-3) 0; }
 
+/* ---------- "why these were grouped": the summary, then the detail (V.6, #245) ----------
+ *
+ * The band changes the WORDS as well as the colour — a thin margin read off a border colour
+ * alone fails the same operator the severity rules are written for. */
+.soundness {
+  border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius-2);
+  background: var(--bg-sunken); padding: var(--space-3); margin-bottom: var(--space-3);
+}
+.soundness-thin { border-left-color: var(--warn); }
+.soundness-fair { border-left-color: var(--low); }
+.soundness-wide { border-left-color: var(--quiet); }
+.soundness-unknown { border-left-color: var(--line-strong); }
+.soundness .stat-row { margin-bottom: var(--space-2); }
+.soundness .stat { background: var(--bg-raised); }
+
+.carrying { border-top: 1px solid var(--line); padding-top: var(--space-2); }
+.term-means { list-style: none; margin: 0; padding: 0; }
+.term-means li {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  font-size: var(--fs-xs); color: var(--fg-muted); padding: var(--space-1) 0;
+}
+.term-mean-label { min-width: 22ch; }
+
+.link-detail-toggle {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: none; border: 0; padding: var(--space-1) 0; color: var(--accent);
+}
+.link-detail-toggle:hover { background: none; text-decoration: underline; }
+
 /* per-term contributions: a bar AND the number, never the bar alone */
 .why { margin-top: var(--space-3); }
 .links { list-style: none; margin: 0; padding: 0; }
@@ -613,16 +647,89 @@ pre.refusal-reason {
 .login-card button { width: 100%; margin-top: var(--space-2); }
 .noscript { max-width: 60ch; margin: 10vh auto; padding: var(--space-4); }
 
-/* ---------- narrow viewport ---------- */
+/* ================= THREE WIDTHS (DECISIONS #237) =================================
+ *
+ * The shipped console reasoned about **one** width — `max-width: 760px` — so 820 px
+ * rendered byte-identically to 1440 px on every view of every role, and everything
+ * between 761 px and a NOC wall was the desktop layout stretched. There was no tablet
+ * layout; there was a phone rule and a desktop.
+ *
+ *   >= 1100    the sidebar is a column
+ *   720-1099   the sidebar becomes a horizontal strip; the work area takes the width
+ *   < 720      single column; the widest tables become cards
+ *
+ * ## Dense tables at narrow widths: scroll with the first column frozen
+ *
+ * Three options were on the table and two are refused:
+ *
+ *   * **drop columns by priority** — refused. An operator cannot tell a column that was
+ *     dropped from one that is empty, and this console's tables carry evidence. A table
+ *     that silently drops columns is worse than one that scrolls.
+ *   * **cards everywhere** — refused. The vertical scan down a column of aligned numerals
+ *     is the whole reason these tables are dense; turning every one into cards destroys the
+ *     property the Zabbix half of the brief asks for.
+ *   * **horizontal scroll, first column frozen** — chosen. Every column stays reachable,
+ *     the row keeps its identity (device, or id) beside whatever the operator scrolled to,
+ *     and the scan survives. `.table-scroll` already existed; the frozen column is new.
+ *
+ * `.cards-below-720` is the one exception, applied by a view to a table whose rows are
+ * facts rather than a series — `kv` pairs, the account's capability list — where there is
+ * no column to scan and the cards are simply the same data reflowed.
+ */
 
-@media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; overflow: visible; }
-  .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
-  .nav-list { display: flex; flex-wrap: wrap; }
-  .nav-item { border-left: 0; border-bottom: 2px solid transparent; }
+/* ---------- tablet: 720-1099 ---------- */
+
+@media (max-width: 1099px) {
+  /* The sidebar stops being a column and becomes a strip above the work area. At 820 px a
+     232 px sidebar was 28 % of the viewport holding sixteen short labels. */
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .sidebar {
+    border-right: 0; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: 0 var(--space-3) 0 0; overflow-x: auto;
+  }
+  .brand { border-bottom: 0; margin-bottom: 0; flex: none; }
+  .nav { display: flex; gap: var(--space-3); min-width: 0; }
+  .nav-group { margin-bottom: 0; display: flex; align-items: center; gap: var(--space-2); }
+  /* The group headings become inline dividers rather than stacked labels: "Operations"
+     over four items reads as a heading; beside them it reads as a label, which is what a
+     horizontal strip needs. */
+  .nav-heading { padding: 0; margin: 0; white-space: nowrap; }
+  .nav-list { display: flex; gap: var(--space-1); }
+  .nav-item {
+    border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap;
+    padding: var(--space-1) var(--space-2);
+  }
   .nav-item.active { border-left-color: transparent; border-bottom-color: var(--accent); }
+  .work { padding: var(--space-3); }
+  /* A `max-content` first column is what put the account screen 2 443 px off a phone (F80);
+     it is wrong at every width below the desktop, not only at 390. */
+  .fact { grid-template-columns: 200px 1fr; }
+}
+
+/* ---------- phone: < 720 ---------- */
+
+@media (max-width: 719px) {
+  .shell { height: auto; overflow: visible; }
   .work { overflow: visible; padding: var(--space-3); }
+  .topbar { padding: var(--space-2) var(--space-3); }
   .fact { grid-template-columns: 1fr; }
+  /* F80: `max-content` sizes a grid column to its longest row UNWRAPPED, so the account
+     screen's capability list became one 2 443 px column with no scrollable ancestor —
+     thirty elements outside the viewport that did not scroll and could not be reached. */
+  .kv, .class-legend { grid-template-columns: 1fr; }
+  .kv dt, .class-legend dt { margin-top: var(--space-2); }
+  /* The frozen first column. `.table-scroll` already scrolled; what was missing is that the
+     row lost its identity as soon as it did. */
+  .table-scroll { overflow-x: auto; }
+  table.data th:first-child, table.data td:first-child {
+    position: sticky; left: 0; background: var(--bg); z-index: 1;
+  }
+  table.data tbody tr:hover td:first-child { background: var(--bg-hover); }
+  /* A long identifier — a 64-hex run id, a service-token value — cannot wrap on its own. */
+  code, .mono, pre { overflow-wrap: anywhere; }
+  .stat { min-width: 0; flex: 1 1 45%; }
+  .stat-row { gap: var(--space-2); }
   /* **The per-term contributions wrap rather than clip** (F67, DECISIONS #220).
      `.linkrow` is score + three fixed-width term bars + the pair the link is between. At 390 px
      every one of them overflowed its box by 51 px with no scrollable ancestor, so all 30 pair

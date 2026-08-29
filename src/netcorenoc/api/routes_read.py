@@ -110,6 +110,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with store.lock:
             detail = await store.situation_detail(sid)
             member_ne = await store.situation_member_ne(sid) if detail is not None else {}
+            # The threshold every link in THIS situation had to clear, read from the scorer
+            # configuration the situation was decided under rather than from the active one
+            # (F84, DECISIONS #247). Without it the console can show a score and not what it
+            # cleared, which is a decomposition that cannot be checked.
+            config = (
+                await store.get_scorer_config(int(detail["scorer_config_id"]))
+                if detail is not None and detail.get("scorer_config_id") is not None
+                else None
+            )
         if detail is not None:
             # Out-of-scope members are redacted to a count and their classes; a situation with no
             # visible member projects to None, which falls into the SAME not-found branch below —
@@ -126,6 +135,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 {"name": "class_affinity", "contribution": link["term_a"]},
                 {"name": "entity_affinity", "contribution": link["term_e"]},
             ]
+        # `None` when the configuration row is gone, never a default: a threshold the console
+        # guessed would be worse than one it says it does not have.
+        detail["threshold"] = float(config["threshold"]) if config is not None else None
         return shaping.shape(detail, principal.role)  # coarsen alarm device IPs below editor
 
     @route.get("/api/timeline")

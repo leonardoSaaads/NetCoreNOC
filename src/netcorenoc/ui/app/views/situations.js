@@ -25,9 +25,10 @@
 
 import { html, Component, cx } from "../dom.js";
 import { Icon } from "../icons.js";
+import { WhyGrouped } from "./parts/why.js";
 import { get, post } from "../api.js";
 import { Loading, Empty, Failed, Badge, SeverityCell, DataTable, cell } from "../widgets.js";
-import { age, alarmName, deviceName, score, percent, plural, timeTitle } from "../format.js";
+import { age, alarmName, deviceName, percent, plural, timeTitle } from "../format.js";
 import { canEdit } from "../session.js";
 import * as store from "../store.js";
 
@@ -287,77 +288,4 @@ function Members({ alarms, editable, marked, onMark }) {
   for (const row of rows) if (editable) row.cells.mark = cell(row.cells.mark);
   return html`<${DataTable} columns=${columns} rows=${rows}
     caption=${`${plural(alarms.length, "member alarm")} in this situation`} />`;
-}
-
-/**
- * **Why these alarms were grouped**, decomposed per link.
- *
- * Each row is one pair and its three named terms with the number each contributed. The bar is a
- * second encoding of the same numbers, never the only one — a bar alone cannot be read off a bad
- * monitor and cannot be copied into a ticket.
- *
- * The terms come from the scorer's own named list (`l.terms`), falling back to the legacy three
- * columns for an older response. Same numbers, one typed source (v0.6.0 §S2).
- */
-function WhyGrouped({ links, byId, threshold }) {
-  const shown = (links || []).slice(0, 30);
-  if (!shown.length) {
-    return html`<section class="why">
-      <h3>Why these were grouped</h3>
-      <p class="hint">This situation has one member, so there is no link to explain.</p>
-    </section>`;
-  }
-  return html`<section class="why">
-    <h3>Why these were grouped</h3>
-    <p class="hint">Every pair below scored above the link threshold${
-      threshold != null ? ` of ${score(threshold)}` : ""}. The score is the sum of three named
-      terms, and each term's contribution is shown so the decision can be checked rather than
-      trusted.</p>
-    <ol class="links">
-      ${shown.map((link, index) => html`<li class="linkrow" key=${index}>
-        <span class="linkscore" title="the sum of the three terms below">${score(link.score)}</span>
-        <${TermBar} link=${link} />
-        <span class="linkpair">
-          ${nameOf(byId, link.alarm_a)} <span aria-hidden="true">↔</span> ${nameOf(byId, link.alarm_b)}
-        </span>
-      </li>`)}
-    </ol>
-    ${links.length > shown.length
-      ? html`<p class="hint">${links.length - shown.length} further link(s) are not shown.</p>`
-      : null}
-  </section>`;
-}
-
-function nameOf(byId, alarmId) {
-  const alarm = byId.get(alarmId);
-  return alarm ? alarmName(alarm) : `alarm ${alarmId}`;
-}
-
-const TERM_KEY = { temporal: "t", class_affinity: "a", entity_affinity: "e" };
-const TERM_LABEL = {
-  temporal: "t — how close in time",
-  class_affinity: "A — how often these alarm classes co-occur",
-  entity_affinity: "E — how often these devices co-occur",
-};
-
-function termsOf(link) {
-  if (Array.isArray(link.terms) && link.terms.length) return link.terms;
-  return [
-    { name: "temporal", contribution: link.term_t },
-    { name: "class_affinity", contribution: link.term_a },
-    { name: "entity_affinity", contribution: link.term_e },
-  ];
-}
-
-function TermBar({ link }) {
-  const terms = termsOf(link);
-  const title = terms.map((t) => `${TERM_LABEL[t.name] ?? t.name}: ${score(t.contribution)}`).join("\n");
-  return html`<span class="terms" title=${title}>
-    ${terms.map((t) => html`<span class="term" key=${t.name}>
-      <span class=${cx("term-bar", `term-${TERM_KEY[t.name] ?? "t"}`)}
-            style=${{ width: `${Math.max(2, Math.round(120 * (t.contribution / 0.95)))}px` }}
-            aria-hidden="true"></span>
-      <span class="term-num">${(TERM_KEY[t.name] ?? "?").toUpperCase()} ${score(t.contribution)}</span>
-    </span>`)}
-  </span>`;
 }

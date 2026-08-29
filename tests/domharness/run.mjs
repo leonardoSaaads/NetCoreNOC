@@ -220,6 +220,53 @@ const scenarios = {
   },
 
   /**
+   * Expand a card and read "Why these were grouped" — before and after opening the detail.
+   *
+   * v0.15.3 (V.6, #245): the section used to render `links.slice(0, 30)` unconditionally. It now
+   * renders a summary computed from EVERY link, with the per-link decomposition behind one
+   * interaction and **complete** when opened. Both halves are measured here, because principle 2
+   * — the per-term contributions are reachable — is what this screen exists for and truncation is
+   * the way it silently stops being true.
+   */
+  async whyGrouped(params) {
+    const env = await boot(params);
+    env.navigate("#/situations");
+    await settle(env);
+    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+
+    const why = () => cardFor(env, params.sid).detail.querySelector(".why");
+    const rows = () => why().querySelectorAll(".linkrow");
+    const read = () => ({
+      rowCount: rows().length,
+      // Scoped to `.linkrow`: the summary's per-term MEANS carry `.term-num` too (deliberately —
+      // same rule, a bar is never alone), and counting both would conflate the two claims.
+      termNumbers: why().querySelectorAll(".linkrow .term-num").map((n) => n.textContent.trim()),
+      summaryText: (why().querySelector(".soundness")?.textContent ?? "")
+        .replace(/\s+/g, " ").trim(),
+      // `className`, not `classList`: this DOM's classList is not iterable, and reaching for one
+      // that is would be testing the harness rather than the console.
+      band: String(why().querySelector(".soundness")?.className ?? "")
+        .split(/\s+/).find((c) => c.startsWith("soundness-")) ?? null,
+      means: why().querySelectorAll(".term-mean-label").map((n) => n.textContent.trim()),
+    });
+
+    const closed = read();
+    const toggle = buttonIn(why(), "Show");
+    toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const opened = read();
+
+    return {
+      closed,
+      opened,
+      toggleLabel: toggle.textContent.replace(/\s+/g, " ").trim(),
+      expandedAttr: why().querySelector(".link-detail-toggle").getAttribute("aria-expanded"),
+      proof: proofOf(env),
+    };
+  },
+
+  /**
    * Expand a card, tick the members named by `mark` (indices into the alarm list), click Split.
    * Invariant 2 reads `feedbackBody`.
    */

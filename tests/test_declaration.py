@@ -551,16 +551,18 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # v0.13.0: 52 -> 88. Every one of the 36 new pairs was a **static UI module** (ADR #175).
     # v0.14.0: 88 -> 90, and both new pairs are static UI modules too — `app/views/model.js` and
     # `app/views/verdict.js`.
-    # v0.15.3: 90 -> 92, and both again are static UI modules — `app/icons.js` (the drawn icon
-    # family, #236) and `app/password.js` (the confirmation, meter and reveal the sign-in card and
-    # the account screen share, V.2). **No `/api` route was added, removed or renamed by this
+    # v0.15.3: 90 -> 93, and all three again are static UI modules — `app/icons.js` (the drawn
+    # icon family, #236), `app/password.js` (the confirmation, meter and reveal the sign-in card
+    # and the account screen share, V.2) and `app/views/parts/why.js` (the redesigned "Why these
+    # were grouped", V.6). The four `views/*.js` that became `views/parts/*.js` (#239) are a
+    # rename and net zero. **No `/api` route was added, removed or renamed by this
     # release either**, which is the property this count is really guarding and which the
     # assertion below states directly: a release that repaired the lockout, redrew the console and
     # made it responsive changed the served API surface by exactly nothing. What DID change is the
     # shape of two existing responses (`/api/me` and the login route gained `password_policy`;
     # `/api/users` rows gained `sole_admin`) — a body, not a path, and the behaviour-identity
     # record is where that is pinned.
-    assert len(served) == 92, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 93, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 44, (
         f"the /api surface moved: {len(api_pairs)} pairs. Neither v0.13.0 nor v0.15.3 adds a "
@@ -615,16 +617,18 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # v0.13.0: 52 -> 88. Every one of the 36 new pairs was a **static UI module** (ADR #175).
     # v0.14.0: 88 -> 90, and both new pairs are static UI modules too — `app/views/model.js` and
     # `app/views/verdict.js`.
-    # v0.15.3: 90 -> 92, and both again are static UI modules — `app/icons.js` (the drawn icon
-    # family, #236) and `app/password.js` (the confirmation, meter and reveal the sign-in card and
-    # the account screen share, V.2). **No `/api` route was added, removed or renamed by this
+    # v0.15.3: 90 -> 93, and all three again are static UI modules — `app/icons.js` (the drawn
+    # icon family, #236), `app/password.js` (the confirmation, meter and reveal the sign-in card
+    # and the account screen share, V.2) and `app/views/parts/why.js` (the redesigned "Why these
+    # were grouped", V.6). The four `views/*.js` that became `views/parts/*.js` (#239) are a
+    # rename and net zero. **No `/api` route was added, removed or renamed by this
     # release either**, which is the property this count is really guarding and which the
     # assertion below states directly: a release that repaired the lockout, redrew the console and
     # made it responsive changed the served API surface by exactly nothing. What DID change is the
     # shape of two existing responses (`/api/me` and the login route gained `password_policy`;
     # `/api/users` rows gained `sole_admin`) — a body, not a path, and the behaviour-identity
     # record is where that is pinned.
-    assert len(served) == 92, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 93, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 44, (
         f"the /api surface moved: {len(api_pairs)} pairs. Neither v0.13.0 nor v0.15.3 adds a "

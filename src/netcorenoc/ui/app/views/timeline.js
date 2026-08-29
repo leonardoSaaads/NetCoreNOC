@@ -22,6 +22,25 @@ import { d3Ready } from "../vendor.js";
 const LIMIT = 300;
 const HEIGHT = 240;
 const PAD = 30;
+/* The LEFT pad is its own number, and it is the F83 repair.
+ *
+ * `d3.axisLeft` draws its tick labels to the left of the axis, so a y axis translated by PAD=30
+ * had 30 px for a device name. `127.0.0.2` is about 55 px, which put every label at x=-9 — off the
+ * canvas, at every width, on the one screen no test executes. Measured in Chromium at 390x844: six
+ * elements outside the viewport, `document.scrollWidth == clientWidth`, so nothing scrolled and
+ * the axis was simply unreadable.
+ *
+ * A pad alone is not enough, because a device LABEL is operator text of any length. So the pad
+ * fits an address and the tick text is truncated to it; the full name is in the table below, which
+ * is where an operator who needs it is already told to look. */
+const PAD_LEFT = 82;
+const TICK_CHARS = 13;
+
+/** A y-axis tick label, clipped to what PAD_LEFT can hold. The full name is in the table. */
+function clipTick(name) {
+  const text = String(name);
+  return text.length <= TICK_CHARS ? text : `${text.slice(0, TICK_CHARS - 1)}…`;
+}
 
 export class Timeline extends Component {
   constructor(props) {
@@ -56,14 +75,15 @@ export class Timeline extends Component {
     const width = box.width || 640;
     const times = marks.map((m) => m.ts);
     const x = d3.scaleLinear()
-      .domain([Math.min(...times), Math.max(...times) + 1]).range([PAD, width - PAD]);
+      .domain([Math.min(...times), Math.max(...times) + 1]).range([PAD_LEFT, width - PAD]);
     const devices = [...new Set(marks.map((m) => m.device))];
     const y = d3.scalePoint().domain(devices).range([PAD, HEIGHT - PAD]).padding(0.5);
     const g = selection.attr("viewBox", `0 0 ${width} ${HEIGHT}`).append("g");
     g.append("g").attr("class", "axis").attr("transform", `translate(0,${HEIGHT - PAD})`)
       .call(d3.axisBottom(x).ticks(5)
         .tickFormat((t) => new Date(t * 1000).toLocaleTimeString()));
-    g.append("g").attr("class", "axis").attr("transform", `translate(${PAD},0)`).call(d3.axisLeft(y));
+    g.append("g").attr("class", "axis").attr("transform", `translate(${PAD_LEFT},0)`)
+      .call(d3.axisLeft(y).tickFormat(clipTick));
     g.selectAll("circle").data(marks).join("circle")
       .attr("cx", (m) => x(m.ts)).attr("cy", (m) => y(m.device)).attr("r", 4)
       .attr("class", (m) => (m.kind === "clear" ? "tl-clear" : "tl-raise"))

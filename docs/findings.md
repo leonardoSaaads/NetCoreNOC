@@ -571,3 +571,42 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: **fixed in v0.15.3**, in the same commit as V.2's password surface. Found by
   reading the route while wiring the strength meter, then confirmed by execution rather than filed
   from the reading.
+
+## F83 — the timeline's y axis had thirty pixels for a device name
+
+- **What**: `timeline.js` used one constant, `PAD = 30`, for all four sides of the SVG.
+  `d3.axisLeft` draws its tick labels to the **left** of the axis it is translated to, so every
+  device name had 30 px and needed about 55.
+- **Reproduce**: open the Timeline in a browser at any width and read the bounding box of every
+  `text` under `g.axis` against the viewport.
+- **Measured**, Chromium: `127.0.0.2` and `127.0.0.3` both at **x = −9**. At 390x844 that is six
+  elements outside the viewport with `document.scrollWidth == clientWidth`, so the page did not
+  scroll and the axis could not be read at all. After `PAD_LEFT = 82` and a clipped tick label:
+  **zero**, at 1440, 820 and 390 px.
+- **Why it matters**: the y axis is what makes the drawing a per-device timeline rather than a
+  scatter of dots. It is also **the second d3 screen defect this project has found by looking**,
+  after F77's three — and like those, no assertion in this repository could have seen it, because
+  the DOM harness substitutes a recording double for d3 and has no layout at all.
+- **Disposition**: **fixed in v0.15.3** (#246). Still not covered by a test, for the reason
+  `graph.js` and `timeline.js` both state in their own first paragraphs; the measurement above is
+  the evidence.
+
+## F84 — the threshold a situation's links had to clear was never served
+
+- **What**: `views/situations.js` has passed `threshold=${detail.threshold}` to "Why these were
+  grouped" since v0.13.0. `GET /api/situations/{sid}` has never returned that key. The screen's
+  own docstring lists *"the threshold the sum had to clear"* among the three things it provides.
+- **Reproduce**: read the payload rather than the code — `curl` the route on a live appliance and
+  look for the key.
+- **Measured**: nineteen keys returned, `threshold` not among them. The rendered sentence was
+  *"Every pair below scored above the link threshold."* — grammatical, complete-looking, and
+  missing the only number that makes it checkable. The value lives in `scorer_config.threshold`
+  and the situation row already names its configuration in `scorer_config_id`, so nothing had to
+  be computed: it had to be joined.
+- **Why it matters**: principle 2 is that an operator can check the grouping rather than trust it.
+  A score of `0.55` with no threshold beside it is a number to trust. It also silently disarmed
+  v0.15.3's own redesign, whose summary is built on the **margin** over that threshold — the
+  screen would have shipped saying "the threshold was not reported" on every situation.
+- **Disposition**: **fixed in v0.15.3** (#247), reading the configuration the situation names
+  rather than the active one. Found in a browser: the missing value degraded to a sentence that
+  read correctly, which is the failure mode a code review does not catch and a screen does.

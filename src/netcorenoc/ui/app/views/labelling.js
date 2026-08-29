@@ -69,11 +69,11 @@ export class Labelling extends Component {
         rows=${judgeable.map((s) => ({
           key: s.id,
           cells: {
-            id: html`<a href=${`#/situations/${s.id}`}>#${s.id}</a>`,
+            id: html`<a class="tap" href=${`#/situations/${s.id}`}>#${s.id}</a>`,
             members: s.alarm_count,
             status: html`<${Badge} tone=${s.status === "open" ? "alarm" : "quiet"}>${s.status}<//>`,
             updated: html`<span title=${timeTitle(s.updated_at)}>${relative(s.updated_at)}</span>`,
-            go: html`<a href=${`#/situations/${s.id}`}>judge it →</a>`,
+            go: html`<a class="tap" href=${`#/situations/${s.id}`}>judge it →</a>`,
           },
         }))} />` : html`<${Empty}
           title="Nothing is waiting for a verdict."
