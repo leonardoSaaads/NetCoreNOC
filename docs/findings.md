@@ -546,3 +546,28 @@ Run every command below from the repository root with the virtualenv active.
   Pointer reach was never measured, and this product is now claimed to work on a phone.
 - **Disposition**: **fixed in v0.15.3** (#236). One of the four controls — density — was removed
   rather than resized (#235).
+
+## F82 — the account screen told the operator the opposite of what the route does
+
+- **What**: after a successful `POST /api/password` the console rendered *"Password changed. Other
+  sessions are unaffected."* The route calls `store.revoke_user_sessions(principal.user_id)`, which
+  deletes **every** session that account holds — the caller's included — and its own return value
+  says `"password changed; sign in again"`. The console overwrote a true sentence with its negation.
+- **Reproduce**: open two sessions for one account, change the password from one, and ask `/api/me`
+  from both.
+- **Measured**:
+
+  ```
+  before: changer /api/me -> 200      other /api/me -> 200
+  POST /api/password      -> 200 {"status":"password changed; sign in again"}
+  after:  changer /api/me -> 401      other /api/me -> 401
+  ```
+
+- **Why it matters**: it is small in blast radius and large in what it says about how a caption gets
+  written. `tests/test_auth.py::test_password_change_revokes_all_sessions` has asserted **both**
+  sessions die since v0.2.0 — the suite knew, the route's own return string knew, and the screen
+  said the opposite for three releases. A caption is not covered by a test that asserts the
+  behaviour it describes, and nothing else was ever going to look.
+- **Disposition**: **fixed in v0.15.3**, in the same commit as V.2's password surface. Found by
+  reading the route while wiring the strength meter, then confirmed by execution rather than filed
+  from the reading.
