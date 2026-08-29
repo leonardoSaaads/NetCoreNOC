@@ -1859,3 +1859,108 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: both are imported by **nothing** in the tree — not by `tests/`, not by `tools/`, not
   by the other seven simulation modules. `eval/simulation/` goes from 9 modules and 2 254 lines to
   7 and 1 681. `make eval` is byte-identical at `c2e8a0ce…`: neither file is on its path.
+
+## 233. The last enabled admin is an invariant of the store, refused at the route (v0.15.3)
+
+- **Decision**: one predicate — *"at least one enabled admin exists"* — lives in
+  `crosscutting/auth.py` beside the password policy, is answered by one query
+  (`store.count_enabled_admins()`), and is enforced by every route that could falsify it: role
+  change and deletion today, disabling the day a disable route exists. The console also hides the
+  control, and that is an affordance, never the control itself (principle 6).
+- **Reason**: the alternative — a check written inline in each route — is how the two halves of F79
+  came to disagree in the first place. Putting the predicate in the store and the refusal at the
+  route keeps the HTTP shape (a 400 with a sentence) where HTTP concerns already live.
+- **Measured**: **there is no disable route and no `set_user_disabled` in the tree** — `disabled`
+  is read by `perform_login` and `get_session` and written by nothing. The brief asked for three
+  injections; two are transitions that exist. Adding a disable route to make the third injectable
+  would be adding a feature to test a guard, so the guard takes the transition as a parameter and
+  `test_auth_invariants` asserts by execution that no route can reach `user.disabled` at all.
+
+## 234. `bootstrap_admin` re-bootstraps when there is no admin, rather than when there are no users (v0.15.3)
+
+- **Decision**: guard on `count_enabled_admins() == 0`, not `count_users() > 0`, and give the
+  recovered account a free username (`admin`, else `recovery-admin`, else `recovery-admin-2`…) so
+  it cannot collide with the demoted one. A CLI recovery command was considered and rejected.
+- **Reason**: the function's own docstring said *"create the initial admin"* and its guard asked a
+  different question; this is that guard corrected, not a new mechanism. A CLI command needs the
+  locked-out operator to have shell access **and** to know the command exists, which is exactly what
+  the person in F79 does not have — they have a browser and a restart. Security cost, stated: an
+  attacker who can restart the process and read its log already owns the appliance, so minting an
+  admin on a database with none lowers no barrier that was still standing.
+- **Measured**: on the F79 database — two users, zero enabled admins — the shipped guard returns
+  `None` and the corrected one mints a password. **The operator who is locked out today restarts
+  the appliance and reads the new password from the log**; `docs/troubleshoot.md` says so.
+
+## 235. Density is removed with its mechanism, not just its button (v0.15.3)
+
+- **Decision**: delete the control (`shell.js`), the cookie and both accessors (`theme.js`), the
+  `:root[data-density="comfortable"]` block (`style.css`), the harness's three reports of it, and
+  the assertion that called it *"a first-class choice"*. One type scale, one spacing scale.
+- **Reason**: removal beat completion. `comfortable` moved four tokens and **one step of the type
+  ramp** (`--fs-md` 13→14), so the ratio to `--fs-lg` closed from 1.23 to 1.14 in one density and
+  nothing else moved with it — two different sets of relationships, one of them chosen by nobody.
+  DECISIONS #45 is why the mechanism goes too: a knob removed while its mechanism stays is worse
+  than either.
+- **Measured**: every reference, found by grep rather than memory — `style.css` (2), `theme.js`
+  (6), `shell.js` (5), `tests/domharness/run.mjs` (3), `tests/test_security_ui.py` (1),
+  `docs/console.md` (1). Nothing else in the tree reads `density()` or `data-density`.
+
+## 236. Icons are generated inline SVG in one module, and the set is exactly what renders (v0.15.3)
+
+- **Decision**: `ui/app/icons.js` exports one `Icon` component over a table of path data — 24x24
+  viewBox, 1.5 px stroke, `currentColor`, `stroke-linecap="round"`, no fill. Seventeen view icons,
+  the actions the console actually has, and nothing else. `aria-hidden` beside a text label at
+  every call site, exactly as the glyphs were.
+- **Reason**: `tests/test_build_step.py` rules out an icon package and `test_supply_chain.py` would
+  demand a checksum and a licence for a vendored set — which is the argument for *drawing* them
+  rather than acquiring them. The seventeen Unicode glyphs came from four blocks and rendered at
+  whatever weight the operator's font stack chose; they were never a family (#221).
+- **Measured**: `registry.js` had **zero `icon:` entries** and seventeen `glyph:` ones. A test walks
+  the module and the call sites and fails on an icon nobody renders, so the set cannot grow past
+  what is used (VII.3).
+
+## 237. Three widths, and dense tables scroll with the first column frozen (v0.15.3)
+
+- **Decision**: breakpoints at **1100 px** (below it the sidebar is a horizontal strip) and
+  **720 px** (below it single-column, cards for the widest tables). Dense tables get horizontal
+  scroll inside their own container with the first column sticky. Column-dropping and a card layout
+  for *every* table were both rejected.
+- **Reason**: a table that drops columns silently is worse than one that scrolls, because the
+  operator cannot tell a missing column from an empty one; and a card layout applied to all of them
+  destroys the vertical scan that is the whole reason these tables are dense. The frozen first
+  column keeps the row's identity — device, or id — beside whatever the operator scrolled to.
+- **Measured**: at 820 px the shipped console rendered **byte-identically to 1440 px** on every
+  view of every role, because `max-width: 760px` was the only width the stylesheet reasoned about.
+  Thirty-seven elements were outside the viewport at 390 px across three views (F80).
+
+## 238. Two-factor and recovery are declarations with a release named, and no mechanism (v0.15.3)
+
+- **Decision**: the sign-in card and the account screen carry a short, permanently visible
+  statement that two-factor authentication is not available, that **v0.17.0** brings it, and that it
+  will be **required for admins**. Recovery says what an operator does today: restart the appliance
+  and read the new password from its log (#234). No TOTP, no secret, no email, no schema, no
+  disabled control.
+- **Reason**: v0.13.0 refused *"coming soon"* panels and the detail panel then spent seventeen
+  screens holding a placeholder for a feature one view used (#219). A sentence that is true is not a
+  placeholder; a greyed-out button promising a mechanism that does not exist is. Naming the release
+  is what makes it a commitment rather than an apology.
+- **Measured**: the statement is two lines on two screens and reserves **no region on the other
+  fifteen**, which is the specific failure #219 recorded.
+
+## 239. `views/` holds views; the four modules in it that are not views move to `views/parts/` (v0.15.3)
+
+- **Decision**: move `facts.js`, `retention.js`, `model.js` and `verdict.js` into
+  `ui/app/views/parts/`. **Nothing else moves.** The other fifteen modules under `ui/app/` stay one
+  level deep.
+- **Reason**: derived from the import graph, not from a preference for folders. `registry.js`
+  imports seventeen modules from `views/` and the directory holds twenty-one; the other four are
+  imported by *sibling views* (`settings.js` takes `facts` and `retention`, `scorer.js` takes
+  `model`, `promotion.js` takes `verdict`) and are components, not screens. That is the one thing
+  the directory currently says that is false.
+- **Measured**: in-degree over the whole console. The fifteen top-level modules already separate
+  cleanly by it — `dom` 27, `widgets` 23, `format` 21, `api` 19, `session` 14 are the foundation;
+  `destructive` 8, `store` 6, `parameters` 4 the next tier; `shell`, `sidebar`, `login`,
+  `registry`, `router`, `theme`, `vendor` are the frame at 1–3 — and **a directory per tier would
+  move 15 files, rename 15 static routes and rewrite 37 import statements to encode a fact the
+  graph already states.** Rejected on that measurement (VII, "do not distribute files into pretty
+  folders").

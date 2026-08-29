@@ -473,3 +473,76 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: **fixed in v0.15.2**, along with the row this release owes. Not guarded by a
   test: the guard would have to know how many rows *ought* to exist, which is the same problem.
   Stated here so the next release knows the sentence is one it has to change.
+
+## F79 — the sole admin can demote itself and permanently lock the appliance
+
+- **What**: two independent defects that compose into a lockout. (1) `POST /api/users/{uid}/role`
+  checks that the user exists and nothing else, so an admin may set its own role to `viewer` while
+  it is the only admin; the same hole is in `DELETE /api/users/{uid}`, which refuses only
+  *self*-deletion. (2) `auth.bootstrap_admin` guards on `count_users() > 0` — **users, not
+  admins** — so once any non-admin account exists, a restart never re-bootstraps.
+- **Reproduce**: boot a clean appliance; create a second non-admin user (**the control** — it must
+  succeed, or a later refusal would be the endpoint being broken rather than the guard working);
+  demote the sole admin; then **restart the process**. Both halves are needed: without the restart
+  this is a bad interaction, not a lockout.
+- **Measured**, by execution on the v0.15.2 tree:
+
+  ```
+  CONTROL   POST /api/users  viewer u2        -> 200 {"id":2,"username":"u2","role":"viewer"}
+  TREATMENT POST /api/users/1/role  viewer    -> 200 {"status":"role changed"}
+  GET /api/users  (same session)              -> 401 authentication required
+  GET /api/me     (same session)              -> 401 authentication required
+  POST /api/login admin                       -> 200 role="viewer"
+  GET /api/users  as that principal           -> 403 insufficient role
+  -- restart, same database --
+  bootstrap_admin returned a password         -> False
+  users in the database    [('admin','viewer'), ('u2','viewer')]
+  ENABLED ADMINS REMAINING -> 0     count_users() = 2   <- what bootstrap_admin guards on
+  ```
+
+  The role change revokes the caller's sessions, which is correct in itself and is what turns a
+  recoverable mistake into an immediate one: the operator is signed out mid-gesture.
+- **Why it matters**: there is no CLI recovery command, and a restart does not help. The only
+  remedy on the shipped tree is deleting the database — every situation, every learned entity,
+  every audit row and the whole feedback dataset. The maintainer has lost an environment to it.
+- **Disposition**: **fixed in v0.15.3** (#233, #234). Both halves: a last-enabled-admin invariant
+  refused server-side wherever that could stop being true, and `bootstrap_admin` re-guarded on the
+  quantity it always meant.
+
+## F80 — the account screen runs 2 443 px off a 390 px phone
+
+- **What**: `.kv` is `grid-template-columns: max-content 1fr`, and the account screen puts the
+  principal's whole capability list in one `<dd>` of it. `max-content` is the *unwrapped* width of
+  the longest row, so the grid is sized to the capability list laid end to end and the column never
+  wraps. Thirty elements sit outside the viewport with no scrollable ancestor.
+- **Reproduce**: sign in as admin at 390x844 in a real browser, go to `#/account`, and read the
+  bounding box of every element against `document.documentElement.clientWidth`.
+- **Measured**, Chromium at 390x844:
+
+  | role | view | elements outside the viewport | worst right edge |
+  |---|---|---|---|
+  | admin | `account` | **30** | **2 833 px** (viewport 390) |
+  | viewer | `account` | 10 | 2 833 px |
+  | admin | `timeline` | 6 | left **−9 px** (y-axis labels clipped) |
+  | admin | `promotion` | 1 | 489 px (a 64-hex run id) |
+
+  `document.scrollWidth` equals `clientWidth` on every one of them, so **the page does not scroll
+  and the content is simply unreachable** — the same shape as F67, on a screen F67 did not look at.
+- **Why it matters**: it is the screen V.3 puts the two-factor and recovery declarations on, and
+  the screen an operator opens to change their password on the device in their hand.
+- **Disposition**: **fixed in v0.15.3** (#237). Not visible to the DOM harness, which has no
+  layout: found by a browser, as F67 and F77 were.
+
+## F81 — every interactive control in the top bar is below the touch-target floor
+
+- **What**: the theme button measures **29x23**, the density button **30x23**, the identity link
+  **32x19**, and the situation permalink **18x17** — at every width, phones included. Three to five
+  controls per view are under 24 px on their short edge.
+- **Reproduce**: at any width, measure `getBoundingClientRect()` of every `button`, `a[href]`,
+  `input`, `select` and `[tabindex]:not([tabindex="-1"])`.
+- **Measured**: 3 controls under 24 px on the leanest view, 5 on `overview` and `labelling`; the
+  count is identical at 1440, 820 and 390 px, so nothing about the narrow layout addresses it.
+- **Why it matters**: the accessibility floor v0.13.0 set is about *keyboard* reach and it holds.
+  Pointer reach was never measured, and this product is now claimed to work on a phone.
+- **Disposition**: **fixed in v0.15.3** (#236). One of the four controls — density — was removed
+  rather than resized (#235).
