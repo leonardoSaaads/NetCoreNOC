@@ -63,7 +63,8 @@ export class Account extends Component {
         <dt>user</dt><dd>${active.user}</dd>
         <dt>role</dt><dd><span class="role-tag">${active.role}</span></dd>
         <dt>capabilities</dt>
-        <dd>${[...active.capabilities].sort().map((c) => html`<code class="mono cap" key=${c}>${c}</code>`)}</dd>
+        <dd class="cap-list">${[...active.capabilities].sort()
+          .map((c) => html`<code class="mono cap" key=${c}>${c}</code>`)}</dd>
       </dl>
 
       <${SectionHeading} title="Change your password"

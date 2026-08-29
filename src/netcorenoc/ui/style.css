@@ -583,8 +583,18 @@ pre.refusal-reason {
 .inline-confirm { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); }
 .kv dt { color: var(--fg-muted); }
-.kv dd { margin: 0; }
-.cap { margin-right: var(--space-1); color: var(--fg-muted); }
+/* `min-width: 0` because a grid item defaults to `min-width: auto`, which refuses to shrink below
+   its content's min-content width. That is what actually put the account screen's capability list
+   2 443 px off a 390 px phone (F80): the column could not narrow, so the text never got the chance
+   to wrap. Fixing it here rather than with an aggressive `overflow-wrap` on the text is the
+   difference between wrapping at the spaces and breaking `classes.read` in half. */
+.kv dd { margin: 0; min-width: 0; }
+.cap { color: var(--fg-muted); }
+/* A wrapping FLEX row, not inline chips with a margin. The chips carry no whitespace between them
+   — only `margin-right` — so at 390 px the browser had no break opportunity in the whole run and
+   broke inside words: `classes.rea` / `d config.read`. As flex items each capability wraps as a
+   unit, which is what a reader needs from a list of identifiers. */
+.cap-list { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
 .mini-list { list-style: none; margin: 0 0 var(--space-3); padding: 0; }
 .mini-list li { display: flex; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
 .tokval { border: 1px solid var(--warn); background: var(--warn-bg); border-radius: var(--radius-2); padding: var(--space-3); margin-bottom: var(--space-3); }
@@ -726,8 +736,12 @@ pre.refusal-reason {
     position: sticky; left: 0; background: var(--bg); z-index: 1;
   }
   table.data tbody tr:hover td:first-child { background: var(--bg-hover); }
-  /* A long identifier — a 64-hex run id, a service-token value — cannot wrap on its own. */
-  code, .mono, pre { overflow-wrap: anywhere; }
+  /* A long identifier — a 64-hex run id — has no break opportunity in it and would otherwise
+     push the column wider than the viewport. `break-word`, not `anywhere`: `anywhere` breaks
+     eagerly and split the account screen's capability list mid-token (`classes.rea / d`), which
+     is harder to read than the overflow it was preventing. `break-word` breaks only a word that
+     genuinely does not fit, so a list of short names still wraps at its spaces. */
+  code, .mono, pre { overflow-wrap: break-word; }
   .stat { min-width: 0; flex: 1 1 45%; }
   .stat-row { gap: var(--space-2); }
   /* **The per-term contributions wrap rather than clip** (F67, DECISIONS #220).

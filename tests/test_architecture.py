@@ -876,7 +876,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "26c8881e7a1a4df5f37204fd78282ed273f8abde960f092381a8c8eb3aaf665f"
+SRC_TREE_DIGEST = "69b592cecd519ebd3a186c6a4f4378195a7535acbc3d3b8da99a84bfc1ad9545"
 SRC_FILE_COUNT = 177
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
