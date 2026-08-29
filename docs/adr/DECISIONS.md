@@ -2099,3 +2099,18 @@ From this release an entry is about six lines: decision, reason, release.*
   `threshold`; the console rendered "the threshold was not reported". Found by looking at the
   screen, not by reading the route — the old copy degraded to a grammatical sentence with the
   number missing, so nothing looked wrong.
+
+## 248. Docker's "Enable Watch" is answered in documentation, not with four lines of compose (v0.15.3)
+
+- **Decision**: no `develop:`/`watch:` section. `docker-compose.yml`'s header says why the button
+  does nothing and what to do instead — run the process directly, because there is no build step.
+- **Reason**: the finding is confirmed exactly as the brief stated it — 82 lines, no `develop:`,
+  no `watch:`, so the prompt is Docker Desktop's generic offer rather than a project feature. Given
+  the choice the brief offers, documentation wins on the merits and not on effort: this file is the
+  **hardened production recipe** (`read_only: true`, every capability dropped, no privilege
+  escalation), and `watch` is a development loop that syncs source into a running container —
+  which a read-only root filesystem exists to prevent. Adding it would mean either a second compose
+  file or relaxing the hardening in the one an operator deploys.
+- **Measured**: the console is static ES modules served from disk and the package installs with
+  `pip install -e`, so the edit loop is already *edit, reload* with **nothing to compile and no
+  container to rebuild**. `watch` would add machinery to reach a state the project is already in.
