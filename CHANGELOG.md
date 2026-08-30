@@ -9,8 +9,85 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-four rows, two ask for an
-action, six ask you to read a paragraph, and sixteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-five rows, two ask for an
+action, seven ask you to read a paragraph, and sixteen are start-the-new-binary.
+
+## [0.15.5] - 2026-08-30 — "three places the source and the screen disagreed"
+
+**All three were reported by someone using the console, and all three were invisible to the
+suite.** Nothing here is a server change: `src/netcorenoc/` moves only under `ui/`.
+
+```
+the login password field  ->  18 px wide (5 % of the row)      ->  298 px (90 %)
+the reveal button         ->  330 px (100 % of the row)        ->  28 px, and to the LEFT
+the two of them           ->  8 px out of vertical alignment   ->  0
+the password input        ->  spellcheck="true" in the DOM     ->  "false", as the source said
+the theme control         ->  1 click in 3 changed nothing     ->  every click changes it
+its label                 ->  "Theme: system." through 6       ->  names the state, every click
+                              clicks while the page flipped
+make eval                 ->  byte-identical: c2e8a0ce…8b9b6f26
+make qa                   ->  1643 passed (was 1640).  runtime deps: 5.  migrations: 0
+```
+
+### The reveal button took the whole row (F86)
+
+`.login-card input` and `.login-card button` — element selectors, descendant combinator — were
+written when the card held one input and one submit button, so *"every button in this card"* and
+*"the card's submit button"* named the same thing. v0.15.3 composed a `PasswordInput` into the
+card, and the selector reached its controls too. `width: 100%` on an item that is also `flex: none`
+is a base size with shrink factor 0: the reveal button claimed the row and would not give any back,
+and the field's `flex: 1` collapsed beside it. The 8 px was `margin-top` on one and `margin-bottom`
+on the other, neither meant for a row.
+
+**This is F85's shape in CSS** — a rule whose meaning silently widens every time the tree beneath
+it grows — and it sat four lines below a comment claiming *"the input keeps the full width the
+login card gives it"*, which the stylesheet had never delivered. `>` says what the rules always
+meant.
+
+The icon now sits to the **left** of the field, by `order: -1` rather than by reordering the
+markup. The button stays after the input in the DOM on purpose: tabbing out of the username box
+has to land in the password box, not on a toggle you did not ask for. Measured focus order is
+unchanged — username → password → reveal → submit.
+
+### The theme control had a dead click, and lied about its state (F87)
+
+Two causes, and the second is what made the first unreadable.
+
+**Three states, two appearances.** The ring was `dark → light → system → dark`. "system" is not an
+appearance, it is a deferral, and it always resolves to one of the two beside it — so one
+transition in three did nothing on screen. No ordering of three states over two appearances avoids
+that, so the control is now a toggle: it switches to whichever appearance you are not looking at.
+
+**And it never re-rendered.** `TopBar` read the theme from a cookie, which Preact cannot observe,
+and leaned on a `forceRepaint()` that called `store.setConnection(store.get().connection)` — a
+setter that returns early when the value is unchanged. It published nothing. Through six clicks the
+label read `Theme: system.` while the page went dark, light, dark, light; the only thing moving was
+`data-theme`, which is written straight to the document root and never goes through the framework.
+The helper also stamped a `data-theme-tick` attribute that **nothing has ever read**. Both are
+deleted, and the control is a class component holding its own state — Preact core is vendored
+without hooks (ADR #174), so state means a class.
+
+**One deliberate loss.** `system` is still what an absent cookie means, still the state a fresh
+install boots in, and still draws its own icon until the first click — but it is no longer a stop
+on the ring, so the control cannot return to it. Getting back to "follow the system" means clearing
+`ncn_theme`. Three states need a menu, and a menu is a design decision rather than a bug fix.
+
+### The appliance asked the browser to spell-check passwords (F88)
+
+`spellcheck` is an IDL **boolean**. Preact assigns the property, and the non-empty string `"false"`
+is truthy — so `spellcheck="false"` in every source file rendered `spellcheck="true"` in the DOM,
+on both password fields and the username field. Some browser builds send spell-checked text to a
+remote service. It was in the served HTML for two releases, and reading either the source or the
+DOM alone could not have told you: they disagreed. `spellcheck=${false}` is the fix, and the guard
+names `draggable` and `contenteditable` beside it because they carry the identical trap.
+
+### What the guards do differently now
+
+The existing theme test read only the **endpoint** state after a click, which can see neither
+defect — a dead click and a frozen label both leave a perfectly reasonable endpoint. The DOM
+harness now records a per-click **trail**, and the new assertion walks it. Each of the three new
+guards was demonstrated red under injection with a passing control, including one injection that
+re-freezes the label specifically.
 
 ## [0.15.4] - 2026-08-30 — "the wheel the container actually builds"
 

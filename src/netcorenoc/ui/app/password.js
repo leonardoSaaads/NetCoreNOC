@@ -63,8 +63,13 @@ export class PasswordInput extends Component {
     return html`<div class="pw-field">
       <label for=${id}>${label}</label>
       <div class="pw-row">
+        <!-- \`spellcheck=\${false}\`, the boolean, NOT the string "false" (F88). \`spellcheck\` is an
+             IDL boolean; Preact sets the property, and the non-empty string "false" coerces to
+             true — so the rendered attribute read \`spellcheck="true"\` and the browser was
+             offering to spell-check a password, which on some builds means sending it to a
+             remote service. Visible in the DOM the whole time; nothing was reading it. -->
         <input id=${id} type=${shown ? "text" : "password"} value=${value}
-               autocomplete=${autocomplete} autocapitalize="none" spellcheck="false"
+               autocomplete=${autocomplete} autocapitalize="none" spellcheck=${false}
                aria-describedby=${describedBy || null}
                onInput=${(e) => onInput(e.target.value)} />
         <button type="button" class="icon pw-reveal"

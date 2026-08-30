@@ -501,28 +501,38 @@ const scenarios = {
     };
   },
 
-  /** Boot with a cookie, toggle the theme, and report what was written back. */
+  /** Boot with a cookie, toggle the theme, and report what was written back.
+   *
+   * `trail` records the state AND the control's own label after every click, not just at the end
+   * (F87). Reporting only the final state is what let two defects hide here: a click that changed
+   * nothing on screen, and a label frozen at whatever it said on first render. Neither is visible
+   * unless something looks between the clicks. */
   async theme(params) {
     const env = await boot(params);
-    const before = {
+    const label = (b) => (b && b.getAttribute("aria-label")) ?? null;
+    const control = () => env.document.querySelectorAll("button")
+      .find((b) => (b.getAttribute("aria-label") ?? "").startsWith("Theme:")) ?? null;
+    const snapshot = () => ({
       theme: env.document.documentElement.getAttribute("data-theme"),
       density: env.document.documentElement.getAttribute("data-density"),
       cookie: env.cookies.value,
-    };
-    for (const label of params.click ?? []) {
+      control: label(control()),
+    });
+
+    const before = snapshot();
+    const trail = [before];
+    for (const wanted of params.click ?? []) {
       const button = env.document.querySelectorAll("button")
-        .find((b) => (b.getAttribute("aria-label") ?? "").startsWith(label));
-      if (!button) throw new Error(`no control whose aria-label starts ${JSON.stringify(label)}`);
+        .find((b) => (b.getAttribute("aria-label") ?? "").startsWith(wanted));
+      if (!button) throw new Error(`no control whose aria-label starts ${JSON.stringify(wanted)}`);
       button.dispatchEvent(new env.DomEvent("click"));
       await settle(env);
+      trail.push(snapshot());
     }
     return {
       before,
-      after: {
-        theme: env.document.documentElement.getAttribute("data-theme"),
-        density: env.document.documentElement.getAttribute("data-density"),
-        cookie: env.cookies.value,
-      },
+      after: snapshot(),
+      trail,
       cookiePairs: Object.fromEntries(env.cookies.raw),
       proof: proofOf(env),
     };

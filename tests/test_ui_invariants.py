@@ -636,6 +636,59 @@ async def test_the_theme_persists_without_localstorage_and_a_hostile_cookie_cann
 
 
 @dom_test
+async def test_every_click_of_the_theme_control_changes_what_is_on_the_screen(
+    routes: dict[str, Any],
+) -> None:
+    """**F87.** One click, one visible change — and the control has to say which state it is in.
+
+    The control cycled `dark -> light -> system -> dark`: three states through something that can
+    only ever show two appearances, so whichever of the two `system` resolved to, one click in
+    three changed nothing. Measured in Chromium at `prefers-color-scheme: light`, click 3 left the
+    page exactly as click 2 did, and an operator reasonably reports that switching takes two
+    clicks.
+
+    The second half is what made it unreadable. `TopBar` read the theme from a cookie, which Preact
+    cannot observe, and leaned on a `forceRepaint()` that called
+    `store.setConnection(store.get().connection)` — a setter that returns early when the value is
+    unchanged. It published nothing. Through six clicks the label read `Theme: system.` while the
+    page went dark, light, dark, light: the only thing moving was `data-theme`, written straight to
+    the document root, never through the framework.
+
+    So this asserts on the **trail**, not the endpoint. An assertion that only reads the final
+    state cannot see either defect, which is why the one above did not.
+    """
+
+    # No `matchMedia` in the harness, so "system" resolves the way the stylesheet resolves it when
+    # no `prefers-color-scheme` matches: light. Absent attribute therefore means light.
+    def appearance(step: dict[str, Any]) -> str:
+        return step["theme"] or "light"
+
+    run = domdriver.run_scenario("theme", {"routes": routes["admin"], "click": ["Theme:"] * 4})
+    trail = run["trail"]
+    assert len(trail) == 5, trail
+
+    seen = [appearance(step) for step in trail]
+    dead = [i for i in range(1, len(seen)) if seen[i] == seen[i - 1]]
+    assert not dead, (
+        f"click(s) {dead} changed nothing on screen — the appearance trail was {seen}. A control "
+        f"with more states than appearances always has a dead click somewhere in its ring."
+    )
+
+    # The control must name the state it is in, and it must move. Frozen is the F87 half that a
+    # colour assertion cannot see: the page can be flipping while the button lies about it.
+    labels = [step["control"] for step in trail]
+    assert all(labels), f"the theme control has no accessible label somewhere in {labels}"
+    assert len(set(labels)) > 1, (
+        f"the theme control's label never changed across four clicks: {labels[0]!r}. It is being "
+        f"rendered from state the framework cannot observe (F87)."
+    )
+    for step in trail[1:]:
+        assert step["theme"] and step["theme"] in step["control"], (
+            f"the label {step['control']!r} does not name the state {step['theme']!r} it is in"
+        )
+
+
+@dom_test
 async def test_every_destructive_control_states_its_consequence_before_it_can_be_used(
     routes: dict[str, Any],
 ) -> None:

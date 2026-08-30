@@ -127,7 +127,6 @@ function TopBar({ live, onSignOut }) {
   const active = session();
   const scope = scopeSummary();
   const connection = live.connection;
-  const chosenTheme = theme();
   return html`<header class="topbar">
     <div class="topbar-live">
       <span class=${cx("conn", `conn-${connection}`)} role="status"
@@ -141,11 +140,7 @@ function TopBar({ live, onSignOut }) {
         scoped: ${plural(scope.neCount, "NE", "NE")}</span>` : null}
       <span class="role-tag">${active.role}</span>
       <a class="who-name" href="#/account" title="Your account">${active.user}</a>
-      <button type="button" class="icon" title=${`Theme: ${chosenTheme}. Click to change.`}
-              aria-label=${`Theme: ${chosenTheme}. Change theme.`}
-              onClick=${() => { setTheme(nextTheme()); forceRepaint(); }}>
-        <${Icon} name=${THEME_ICON[chosenTheme]} />
-      </button>
+      <${ThemeButton} />
       <button type="button" onClick=${onSignOut}>Sign out</button>
     </div>
   </header>`;
@@ -161,13 +156,40 @@ const CONNECTION_TITLE = {
   error: "No updates are arriving. What is on screen may be out of date.",
 };
 const THEME_ICON = { dark: "moon", light: "sun", system: "auto" };
+const THEME_WORD = { dark: "dark", light: "light", system: "following the system" };
 
-/** The theme writes to the document root, which Preact does not observe. Nudge it. */
-function forceRepaint() {
-  store.setConnection(store.get().connection);
-  globalThis.document.documentElement.setAttribute(
-    "data-theme-tick", String((Number(globalThis.document.documentElement
-      .getAttribute("data-theme-tick")) || 0) + 1));
+/**
+ * The theme control, and it owns its own state (F87).
+ *
+ * It used to be markup inside `TopBar` reading `theme()` — a cookie — with a `forceRepaint()`
+ * helper to make Preact notice. That helper called `store.setConnection(store.get().connection)`,
+ * and `setConnection` returns early when the value is unchanged, so it **published nothing and
+ * re-rendered nothing**. The icon and the label were frozen at whatever they said on first render:
+ * measured in Chromium, the label read `Theme: system.` through six clicks while the page went
+ * dark, light, dark, light. Only `data-theme` moved, because `apply()` writes it straight to the
+ * document root and never goes through Preact at all.
+ *
+ * So the theme is held here instead of inferred from a cookie the framework cannot observe. A
+ * class component because this build vendors Preact **core** without hooks — `hooks.module.js`
+ * imports `"preact"`, a bare specifier needing an import map, and an import map is an inline
+ * `<script>` that `script-src 'self'` forbids (ADR #174).
+ */
+class ThemeButton extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { chosen: theme() };
+  }
+
+  render(_props, { chosen }) {
+    const next = nextTheme(chosen);
+    // Both halves stated, because the icon shows the state and the click changes it, and a label
+    // carrying only one of those leaves a screen-reader user guessing which it is.
+    const said = `Theme: ${THEME_WORD[chosen]}. Switch to ${THEME_WORD[next]}.`;
+    return html`<button type="button" class="icon" title=${said} aria-label=${said}
+            onClick=${() => { setTheme(next); this.setState({ chosen: theme() }); }}>
+      <${Icon} name=${THEME_ICON[chosen]} />
+    </button>`;
+  }
 }
 
 function LiveChips({ stats }) {
