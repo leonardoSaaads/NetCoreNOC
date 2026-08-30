@@ -2146,3 +2146,32 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: the roadmap entry names F79's shape as the design constraint — a second factor an
   admin can lose is a second way to lock the appliance out of itself, so enrolment and recovery are
   one question. The console's two declarations are unchanged in every other respect.
+
+## 251. One recursive package-data glob, and a guard that builds the artefact (F85, v0.15.4)
+
+- **Decision**: `package-data` becomes `ui/**/*` plus `ui/.well-known/*`, replacing six per-level
+  globs. Package-data patterns are expanded by one function, `_covered_by`, which uses `glob`
+  rather than `fnmatch`; both the coverage test and the guard on that test call it. A new test
+  builds a wheel from a context **derived from the Dockerfile's own `COPY` lines** and stripped as
+  `.dockerignore` strips it, and asserts every `STATIC_ASSETS` entry — and every UI file on disk —
+  is inside.
+- **Reason**: the per-level list is a rule that has to be re-obeyed every time the console grows a
+  directory, and v0.15.3 grew one and did not obey it — which is the same shape as F12, the defect
+  the list was introduced to fix. `**` cannot miss a level, so adding a directory stops being a
+  packaging decision. The second glob stays because `**` does not match a path component beginning
+  with a dot, and that was found by building a wheel and looking for `security.txt`, not by
+  reading the pattern.
+- **Measured**: with the per-level globs restored, the coverage guard and the artefact guard go red
+  naming exactly the five files, and the artefact guard quotes the contents of a real wheel; green
+  after. Reverting the matcher to `fnmatch` turns the coverage guard **and** its guard red — before
+  this release the latter restated a property of the standard library and would have stayed green
+  through exactly the state that shipped F85.
+- **What the first draft of this decision got wrong.** It named `src/netcorenoc.egg-info/` as *the*
+  masking mechanism. A 2x2 over the two files that can complete a wheel from `SOURCES.txt` shows
+  **either one alone is sufficient**, and the one that matters is `MANIFEST.in`: its `graft src` is
+  present in a clean clone with no editable install, so CI's wheels were complete too. The
+  Dockerfile does not copy it. `MANIFEST.in` keeps `graft src` — an sdist that cannot rebuild the
+  wheel is the worse defect — so the guard is what must build without it, and it now asserts the
+  absence of both files rather than merely arranging it.
+- `setuptools` moves into the dev extra because the artefact guard builds with `--no-isolation`, so
+  it needs no network; **runtime dependencies are unchanged at five**.

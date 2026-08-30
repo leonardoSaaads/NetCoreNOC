@@ -610,3 +610,81 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: **fixed in v0.15.3** (#247), reading the configuration the situation names
   rather than the active one. Found in a browser: the missing value degraded to a sentence that
   read correctly, which is the failure mode a code review does not catch and a screen does.
+
+## F85 — the container's console was missing five modules, and every test was green
+
+- **What**: `[tool.setuptools.package-data]` listed one glob per directory level — `ui/*.js`,
+  `ui/app/*.js`, `ui/app/views/*.js`. v0.15.3 added `ui/app/views/parts/` (#239) and did not add a
+  fourth line, so a wheel built the way the **Dockerfile** builds one carried the console minus
+  five modules. The container's first page load raised five
+  `RuntimeError: File at path … does not exist`, for `why.js`, `verdict.js`, `facts.js`,
+  `model.js` and `retention.js`.
+- **Why nothing caught it, which is the larger half.** `package-data` is not the only thing that
+  decides a wheel's contents: setuptools runs `egg_info` during every build, and
+  `include_package_data` then ships whatever `SOURCES.txt` ends up naming. **Two different files
+  will each complete a wheel that `package-data` leaves incomplete, and the container has
+  neither:**
+
+  1. **`MANIFEST.in`, whose `graft src` names every file under `src/`.** The Dockerfile copies
+     `pyproject.toml README.md LICENSE` and `src/` — *not* `MANIFEST.in`. So it is absent from the
+     image build and present in **every** build done in this repository, a clean clone and CI's
+     included. This is the mask that mattered, and the first draft of this finding missed it.
+  2. **`src/netcorenoc.egg-info/SOURCES.txt`**, left by `pip install -e` and excluded by
+     `.dockerignore`. Redundant with the first on a developer's machine; sufficient on its own.
+
+  So **every wheel built here was right and the one the container ran was wrong**, and v0.15.3's
+  own delivery check — install the wheel, boot it, fetch all 45 declared assets — passed at 45/45
+  while measuring a wheel no container can build.
+
+  And a third mask, independent of those two: **the guard that exists for exactly this used the
+  wrong matcher.** `test_all_ui_assets_are_covered_by_package_data_globs` matched with `fnmatch`,
+  whose `*` crosses `/`. Setuptools expands package-data with `glob`, whose `*` stops at a
+  separator.
+
+- **Reproduce**, as a 2x2 over the two completing files, with v0.15.3's globs held fixed. The
+  Dockerfile's `COPY` list decides the first column and `.dockerignore` the second, so the last
+  row is the container and the first three are every machine this project is developed on:
+
+  ```
+  MANIFEST.in  src/*.egg-info | ui/app/views/parts/*.js in the wheel   UI files
+  True         True           | 5/5                                    50
+  True         False          | 5/5                                    50
+  False        True           | 5/5                                    50
+  False        False          | 0/5                                    45   <- the container
+  ```
+
+  With `ui/**/*` in place all four rows are 5/5 and 50 files. **The first attempt at this
+  reproduction copied `MANIFEST.in` into the context and came out green**, which is the same
+  mistake as the one being investigated and is why the guard now asserts the file's absence
+  instead of merely arranging it.
+
+- **Blast radius, measured on the same globs rather than assumed.** `pip install .` from a source
+  checkout: 50/50, the checkout has `MANIFEST.in`. `pip install` of the sdist: 50/50 — the sdist
+  excludes `MANIFEST.in` but carries the `SOURCES.txt` that `graft src` produced, which completes
+  the wheel built from it. **Only the image build has neither**, so the container was the only
+  affected install and every other one was correct under v0.15.3.
+
+  And the matcher, directly:
+
+  ```
+  fnmatch("ui/app/views/parts/why.js", "ui/*.js")  -> True     <- what the guard believed
+  glob("ui/*.js")                                  -> 1 file, none of them under parts/
+  UI files setuptools would not ship: the five under ui/app/views/parts/
+  ```
+
+- **Why it matters**: this is **F12 again**, in the same file, guarded by a test written for F12.
+  F12 was *"a built wheel shipped only index.html"*; the fix was a glob per level, and a glob per
+  level is a rule that must be re-obeyed every time the tree grows — which is the same shape as
+  the defect. It also says something sharper about verification: `make qa` was green at 1637
+  tests, the release's own artefact check was green at 45/45, and both were measuring a wheel the
+  container never builds.
+- **Disposition**: **fixed in v0.15.4** (#251). One recursive glob replaces the per-level list; the
+  matcher now expands globs the way setuptools does, through one function both it and its
+  guard-on-a-guard call, so reverting it turns both red; and a new guard **builds a wheel from a
+  Docker-shaped context and looks inside it**, which is the only one of the three that does not
+  depend on reasoning about globs at all. That context is now derived from the Dockerfile's own
+  `COPY` lines rather than a hand-written list, and refuses to run if either completing file is in
+  it — the one way this guard could go quiet is somebody making its context "more realistic".
+
+  `MANIFEST.in` keeps `graft src`: an sdist that could not rebuild the wheel would be the worse
+  defect. What had to change is that the *guard* builds without it.

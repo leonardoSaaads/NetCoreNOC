@@ -9,8 +9,103 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-three rows, two ask for an
-action, six ask you to read a paragraph, and fifteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-four rows, two ask for an
+action, six ask you to read a paragraph, and sixteen are start-the-new-binary.
+
+## [0.15.4] - 2026-08-30 — "the wheel the container actually builds"
+
+**A packaging fix, and a lesson about what the tests were measuring.** v0.15.3 shipped a console
+that worked in every environment this project tests in and was missing five modules in the one it
+ships as. If you ran v0.15.3 in Docker, `docker compose up --build` is the whole upgrade; if you
+did not, nothing here changes behaviour.
+
+```
+a wheel built as the Dockerfile builds one  ->  console minus 5 modules, 5 RuntimeErrors on
+                                                first page load  ->  50 of 50 UI files
+package-data                                ->  one glob per directory level  ->  one recursive
+                                                glob (+ one line for the dotted dir `**` skips)
+the guard for exactly this (F12)            ->  matched with fnmatch, whose `*` crosses `/`
+                                            ->  glob, the matcher setuptools uses
+what verified a release                     ->  a wheel completed by MANIFEST.in's `graft src`,
+                                                which the image build never sees  ->  a wheel
+                                                built from a Docker-shaped context and read
+the guard on the glob guard                 ->  green in the exact state that shipped F85
+                                            ->  red; it drives the real expander now
+make eval                                   ->  byte-identical: c2e8a0ce…8b9b6f26
+make qa                                     ->  1640 passed (was 1637);  coverage 95.89 %
+migrations: 0.  src/netcorenoc/: unchanged except the version string
+```
+
+### Five modules that never reached the container (F85, #251)
+
+`[tool.setuptools.package-data]` listed `ui/*.js`, `ui/app/*.js`, `ui/app/views/*.js` — a line
+added each time the console grew a level. v0.15.3 added `ui/app/views/parts/` (#239) and did not
+add the fourth line, so the container's first page load raised five
+`RuntimeError: File at path … does not exist`, for `why.js`, `verdict.js`, `facts.js`, `model.js`
+and `retention.js`. A glob per level is a rule that must be re-obeyed every time the tree changes,
+which is the same shape as the defect it was introduced to fix. `ui/**/*` cannot miss a level, so
+adding a directory is no longer a packaging decision. (`**` does not match a path component
+beginning with a dot, so the RFC 9116 `ui/.well-known/security.txt` keeps its own line — found by
+building a wheel and looking for the file, not by reading the glob.)
+
+**Why nothing caught it is the larger half of this entry**, and it is not really about globs.
+`package-data` is not the only thing that decides a wheel's contents: setuptools runs `egg_info`
+during every build, and `include_package_data` ships whatever `SOURCES.txt` names. **Two different
+files each complete a wheel that `package-data` leaves incomplete, and the container has neither.**
+
+1. **`MANIFEST.in`, whose `graft src` names every file under `src/`.** The Dockerfile copies
+   `pyproject.toml README.md LICENSE` and `src/` and not this, so it is absent from the image build
+   and present in every build done in this repository — a clean clone and CI's included.
+2. **`src/netcorenoc.egg-info/SOURCES.txt`**, left by `pip install -e` and excluded by
+   `.dockerignore`. Redundant with the first here; sufficient on its own.
+
+So v0.15.3's own delivery check — install the wheel, boot it, fetch all 45 declared assets — was
+green at 45/45 while measuring a wheel no container can build. And a third mask, independent of
+those: **the F12 guard used a looser matcher than the tool it was speaking for.**
+`fnmatch("ui/app/views/parts/why.js", "ui/*.js")` is `True`; setuptools expands package-data with
+`glob`, whose `*` stops at a separator. The guard agreed with the packaging for the same reason a
+spell-checker agrees with a misspelling it also holds.
+
+Reproduced as a 2×2 over those two files with v0.15.3's globs held fixed. The last row is what
+`docker build` gets; the first three are every machine anyone develops this on:
+
+```
+MANIFEST.in  src/*.egg-info | parts modules in the wheel   UI files
+True         True           | 5/5                          50
+True         False          | 5/5                          50
+False        True           | 5/5                          50
+False        False          | 0/5                          45   <- the container
+```
+
+The first attempt at that reproduction copied `MANIFEST.in` into the context and came out green —
+the same mistake as the one under investigation, which is why the guard now **asserts** neither
+file is present rather than merely leaving them out.
+
+### Three guards, and only one of them reasons about globs
+
+Package-data patterns are now expanded by one function using `glob.glob(..., recursive=True)`, and
+the guard-on-the-guard drives **that function** with the F85 case rather than restating a property
+of `fnmatch` — so reverting the matcher turns both red. It did not before: in the exact state that
+shipped F85 (looser matcher, per-level globs) the guard-on-the-guard was green.
+
+The third is the one that would have caught F85 without anyone knowing what to suspect.
+`test_a_wheel_built_the_way_docker_builds_one_carries_every_declared_asset` builds a real wheel and
+reads it. Its context is derived from the Dockerfile's own `COPY` lines instead of a hand-written
+list, and it refuses to run if `MANIFEST.in` or an `.egg-info` is in it, because the one way this
+guard goes quiet is somebody making its context "more realistic". Each guard was demonstrated red
+against the per-level globs and green after.
+
+`MANIFEST.in` keeps `graft src`. An sdist that could not rebuild the wheel would be the worse
+defect; what had to change is that the guard builds without it.
+
+Verification for this release was done the same way: the wheel from a Docker-shaped context,
+installed into a clean virtualenv that has never seen `src/`, booted, and every declared asset
+fetched over HTTP from the installed package. 50 of 50 UI files in the wheel, 45 of 45 assets
+served 200, and the five F85 modules by name.
+
+**Nothing else is in this release.** `src/netcorenoc/` is byte-identical to v0.15.3 apart from the
+version string, and the behaviour record moves on exactly eight rows — `/healthz` and
+`/openapi.json` for each of the four principals, which are the two responses that carry it.
 
 ## [0.15.3] - 2026-08-29 — "the console: identity, responsiveness, and the door that could lock you out"
 
@@ -130,6 +225,16 @@ F80, F83 and F84 were all found by opening the product, and none of them is visi
 harness — it has no layout, substitutes a recording double for d3, and cannot see whitespace. That
 is now **seven** defects across two releases on screens the suite reports green. Two whitespace
 collapses in this release's own new copy were caught the same way.
+
+The same live pass found the F80 repair itself half-done, which is the last commit under this tag.
+`.kv dd` is a grid item, and a grid item's default `min-width: auto` refuses to shrink below its
+content's min-content width — so the column could not narrow and the capability chips never got the
+chance to wrap. That, not the text, is what put the account screen 2 443 px off a phone. Reaching
+for the text first was wrong twice: `overflow-wrap: anywhere` broke `classes.read` across two lines
+as `classes.rea` / `d`, and softening it to `break-word` stopped the wrapping entirely, because the
+chips carry no whitespace between them and the browser had no break opportunity in the whole run.
+The list is now a wrapping flex row with `min-width: 0` on the column; `break-word` stays for the
+case it is actually for, a 64-hex run id. That is where the `0, at all 3 widths` above comes from.
 
 ### Structure
 
