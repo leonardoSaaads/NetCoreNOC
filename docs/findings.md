@@ -688,3 +688,88 @@ Run every command below from the repository root with the virtualenv active.
 
   `MANIFEST.in` keeps `graft src`: an sdist that could not rebuild the wheel would be the worse
   defect. What had to change is that the *guard* builds without it.
+
+## F86 — the reveal button ate the password field, and the card's own CSS did it
+
+- **What**: on the sign-in card the password input rendered **18 px wide (5 % of the row)** while
+  the reveal button took **100 %**, and the two sat 8 px out of vertical alignment. An operator
+  could not see the password as they typed it.
+- **Cause**: `.login-card input` and `.login-card button` — element selectors, descendant
+  combinator — written when the card held exactly one input and one submit button, so "every
+  button in this card" and "the card's submit button" were the same set. v0.15.3 composed a
+  `PasswordInput` into the card: an input and a reveal button nested in `.pw-field > .pw-row`. The
+  descendant selector reached them. `width: 100%` on an item that is also `flex: none` is a base
+  size with **shrink factor 0**, so the button claimed the whole row and refused to give any back;
+  `.pw-row input`'s `flex: 1` (basis 0) collapsed to nothing beside it. The 8 px was `margin-top`
+  on the button against `margin-bottom` on the input, neither intended for a row.
+- **Measured** in Chromium at two widths, before and after:
+
+  ```
+                 input     button   misaligned   spellcheck
+  before  1440   18 px     330 px      8 px        "true"
+  before   390   18 px     308 px      8 px        "true"
+  after   1440  298 px      28 px      0 px        "false"
+  after    390  276 px      28 px      0 px        "false"
+  ```
+
+- **Why it matters, beyond the screen**: the stylesheet said the opposite of what it did. The
+  comment above `.pw-row` read *"the input keeps the full width the login card gives it"* — an
+  intention the CSS never delivered, sitting four lines from the rule that broke it. And the shape
+  is **F85's, in CSS**: a rule whose meaning silently widens every time the tree beneath it grows.
+  `>` says what it always meant and keeps saying it when the card grows again.
+- **Disposition**: **fixed in v0.15.5** (#252). `.login-card > input` / `.login-card > button`; the
+  reveal button carries `order: -1` so the icon sits to the left of the field as asked, while
+  staying **after** the input in the markup — tabbing out of the username box has to land in the
+  password box, not on a toggle. Guarded by
+  `test_no_card_styles_a_bare_element_it_does_not_own`, which is scoped to containers that compose
+  other components: a leaf styling its own single control is not the defect.
+
+## F87 — one click in three did nothing, and the control never said what it was
+
+- **What**: the theme control took two clicks to change the theme, and its label was wrong the
+  whole time.
+- **Two independent causes**, and the second is the one that made the first unreadable:
+
+  1. **Three states, two appearances.** The ring was `dark -> light -> system -> dark`. "system"
+     is not an appearance, it is a deferral, and it always resolves to one of the two beside it —
+     so one transition in every three was a no-op on screen. No ordering of three states over two
+     appearances avoids this.
+  2. **The control never re-rendered.** `TopBar` read the theme from a **cookie**, which Preact
+     cannot observe, and relied on `forceRepaint()` to nudge it. That helper called
+     `store.setConnection(store.get().connection)` — passing the setter its own current value, and
+     `setConnection` returns early when the value is unchanged. It published nothing. The icon and
+     the label were frozen at first render; the only thing moving was `data-theme`, which `apply()`
+     writes straight to the document root, never through the framework. The helper also stamped a
+     `data-theme-tick` attribute that **nothing has ever read** — not the CSS, not a test.
+
+- **Measured**, six clicks in Chromium at `prefers-color-scheme: light`:
+
+  ```
+  before   click 1 dark   click 2 light   click 3 light  <- dead   ... label: "Theme: system." throughout
+  after    click 1 dark   click 2 light   click 3 dark            label tracks the state, every click
+  ```
+
+- **Disposition**: **fixed in v0.15.5** (#252). The control is a toggle: `nextTheme` returns
+  whichever appearance the operator is **not** looking at, resolving "system" through
+  `prefers-color-scheme` first. It is now a class component holding its own state — Preact core is
+  vendored without hooks (ADR #174), so state means a class — and `forceRepaint` and its unread
+  attribute are deleted. `system` remains the default an absent cookie means, and its icon still
+  shows until the first click; it is no longer a stop on the ring, and returning to it means
+  clearing `ncn_theme`. **That is a deliberate loss**: three states need a menu, and a menu is a
+  design decision rather than a bug fix.
+
+## F88 — the password field asked the browser to spell-check the password
+
+- **What**: `<input type="password" … spellcheck="true">` in the shipped DOM, on both password
+  fields and the username field, while every source file said `spellcheck="false"`.
+- **Cause**: `spellcheck` is an IDL **boolean**. Preact assigns the property, and the non-empty
+  string `"false"` is truthy, so the property became `true` and the attribute reflected `"true"` —
+  the exact opposite of what the source said. Only `spellcheck=${false}`, the boolean, renders
+  `spellcheck="false"`.
+- **Why it matters**: spell-checking a password field means some browser builds send its contents
+  to a remote spell-check service. It is also the flattest possible illustration of this
+  repository's recurring lesson: **the source and the artefact disagreed, and reading either alone
+  could not tell you.** It was visible in the served HTML for two releases.
+- **Disposition**: **fixed in v0.15.5** (#252), and guarded by
+  `test_no_enumerated_dom_attribute_is_passed_as_the_string_false`, which names `draggable` and
+  `contenteditable` alongside it because they carry the identical trap.

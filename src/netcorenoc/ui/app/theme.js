@@ -72,7 +72,34 @@ export function setTheme(value) {
   apply();
 }
 
-/** Cycle dark -> light -> system -> dark. One control, three states, no menu. */
+/**
+ * What the operator is actually LOOKING at. "system" is not an appearance; it is a deferral, and
+ * it resolves through the OS setting to one of the two that are.
+ *
+ * Guarded because the DOM harness has no `matchMedia`: absent it, "system" reads as light, which
+ * is the same answer the stylesheet gives when no `prefers-color-scheme` matches.
+ */
+export function effective(chosen = theme()) {
+  if (chosen !== "system") return chosen;
+  const mq = globalThis.matchMedia && globalThis.matchMedia("(prefers-color-scheme: dark)");
+  return mq && mq.matches ? "dark" : "light";
+}
+
+/**
+ * The next theme is **whichever one the operator is not looking at** (F87).
+ *
+ * This cycled `dark -> light -> system -> dark`: three states through a control that can only
+ * ever show two appearances. Whenever `system` resolved to the state next to it in the ring — and
+ * it always resolves to one of them — one click in three changed nothing on screen. Measured in
+ * Chromium with `prefers-color-scheme: light`: click 1 dark, click 2 light, **click 3 light
+ * again**, and an operator reasonably reports that switching takes two clicks.
+ *
+ * No ordering of three states over two appearances avoids that, so the control is now a toggle and
+ * `system` is what it is: the default before anyone has chosen, still the value in `THEMES`, still
+ * what an absent cookie means, and still drawn with its own icon until the first click. What it is
+ * no longer is a stop on the ring. Returning to it means clearing `ncn_theme`; a control that
+ * offers three states needs a menu, and that is a design decision, not a bug fix.
+ */
 export function nextTheme(from = theme()) {
-  return THEMES[(THEMES.indexOf(from) + 1) % THEMES.length];
+  return effective(from) === "dark" ? "light" : "dark";
 }

@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of twenty-four ask
-you to do something; six more ask you to read a paragraph first. The other sixteen are
+Read only the rows between your version and the one you are installing. **Two of twenty-five ask
+you to do something; seven more ask you to read a paragraph first. The other sixteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did.)
 
@@ -45,6 +45,7 @@ until v0.15.2 — F78. It counts rows, not sections; recount it when you add one
 | v0.15.1 → v0.15.2 | Nothing, but **the console loses a panel and a bad setting now exits** — see below |
 | v0.15.2 → v0.15.3 | Nothing, but **the appliance now refuses to lose its last admin, and may mint one on boot** — see below |
 | v0.15.3 → v0.15.4 | Nothing — a packaging fix. **If you ran v0.15.3 in Docker, rebuild the image** (F85) |
+| v0.15.4 → v0.15.5 | Nothing, but **the theme control stops being a three-state ring** — see below |
 
 ## The two that need an action, and the five that need reading
 
@@ -106,6 +107,25 @@ What moved is `docs/`: 62 310 lines to about 5 200, organised by what a reader i
 Every deleted file is at commit `3ecf237` and [`docs/record.md`](docs/record.md) has the command.
 If you have a bookmark into `docs/gates/`, `docs/scope/`, `docs/releases/` or `docs/security/`, that
 page is the one to read.
+
+### v0.15.5 — the theme control is a toggle, and it cannot go back to "system"
+
+**Console only; no code, no schema, no API.** Three defects on screens an operator uses: the
+sign-in card's password field rendered 18 px wide because the reveal button had taken the whole row
+(F86), the password inputs were asking the browser to spell-check passwords (F88), and the theme
+control had a dead click and a label frozen on `Theme: system.` (F87).
+
+**The one thing that changes for you** is the third. The control cycled `dark → light → system`,
+and "system" always renders as one of the other two, so one click in three did nothing visible. It
+is now a straight toggle: one click, one change. **`system` is still the default** — a fresh
+install, and any browser with no `ncn_theme` cookie, still follows the operating system, and the
+control still draws its "auto" icon until the first click. What it can no longer do is *return* to
+system once you have chosen. If you want that back, clear the `ncn_theme` cookie for the console's
+origin. A control that offers three states needs a menu, and that is a design change rather than a
+bug fix, so it is not in a patch release.
+
+Nothing is stored, nothing migrates, and an existing `ncn_theme=dark` or `=light` cookie is
+honoured exactly as before.
 
 ### v0.15.4 — rebuild the image if you ran v0.15.3 in a container
 

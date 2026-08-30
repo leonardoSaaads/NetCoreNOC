@@ -92,7 +92,7 @@ export class Login extends Component {
 
         <label for="lu">Username</label>
         <input id="lu" name="username" autocomplete="username" autocapitalize="none"
-               spellcheck="false" value=${this.state.username}
+               spellcheck=${false} value=${this.state.username}
                onInput=${(e) => this.setState({ username: e.target.value })} />
 
         <${PasswordInput} id="lp" label="Password" autocomplete="current-password"

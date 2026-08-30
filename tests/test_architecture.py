@@ -876,7 +876,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "69b592cecd519ebd3a186c6a4f4378195a7535acbc3d3b8da99a84bfc1ad9545"
+SRC_TREE_DIGEST = "df3a01dc380cec4574d9a1a9654efe7c6c45b14c0a218906104172b48b630b6e"
 SRC_FILE_COUNT = 177
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
@@ -943,4 +943,4 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.15.4", "the version this release carries"
+    assert __version__ == "0.15.5", "the version this release carries"

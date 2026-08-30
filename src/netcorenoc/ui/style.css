@@ -610,12 +610,19 @@ pre.refusal-reason {
 /* ---------- the password surface (V.2) ---------- */
 
 .pw-field { margin-bottom: var(--space-2); }
-/* The reveal button sits INSIDE the field's box rather than beside it, so the input keeps the
-   full width the login card gives it and the control does not become a second column that wraps
-   away from what it reveals at narrow widths. */
+/* One row: the reveal control, then the field that fills whatever is left. The input carries
+   `flex: 1` (basis 0) and the button `flex: none`, so the field takes the row and the button takes
+   only itself — see `.login-card > input` below for the rule that used to break exactly this. */
 .pw-row { display: flex; align-items: stretch; gap: var(--space-1); }
 .pw-row input { flex: 1; min-width: 0; margin-bottom: 0; }
-.pw-reveal { flex: none; display: inline-flex; align-items: center; justify-content: center; }
+/* `order`, not DOM order, and the difference is load-bearing. The icon is asked to sit to the LEFT
+   of the field, but the button must stay AFTER the input in the markup: tabbing out of the
+   username field has to land in the password box, not on a toggle. Reversing the markup would put
+   a control the operator does not want yet between them, and they would type into nothing. */
+.pw-reveal {
+  flex: none; order: -1; width: auto; margin: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
 
 .pw-meter {
   display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
@@ -653,8 +660,18 @@ pre.refusal-reason {
 }
 .login-card h1 { font-size: var(--fs-xl); }
 .login-card h1 span { color: var(--accent); }
-.login-card input { width: 100%; margin-bottom: var(--space-2); }
-.login-card button { width: 100%; margin-top: var(--space-2); }
+/* DIRECT CHILDREN ONLY, and that is the whole of F86.
+   These two rules were written when the card held one input and one button, so naming the elements
+   and naming what they were meant the same thing. Then the card gained a composed
+   `PasswordInput` — an input and a reveal button nested inside `.pw-field > .pw-row` — and a
+   descendant selector reached them too. `width: 100%` on a `flex: none` item is a base size it
+   refuses to shrink below, so the reveal button claimed the entire row and the password field
+   rendered 18 px wide; `margin-top` on one side of the row and `margin-bottom` on the other put
+   them 8 px out of line. A selector that says "every button in this card" keeps acquiring meaning
+   every time the card grows, which is the same shape as F85's glob-per-level. `>` says what these
+   rules have always meant: the card's OWN field and the card's OWN submit button. */
+.login-card > input { width: 100%; margin-bottom: var(--space-2); }
+.login-card > button { width: 100%; margin-top: var(--space-2); }
 .noscript { max-width: 60ch; margin: 10vh auto; padding: var(--space-4); }
 
 /* ================= THREE WIDTHS (DECISIONS #237) =================================

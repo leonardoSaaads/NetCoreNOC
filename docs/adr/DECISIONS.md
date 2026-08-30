@@ -2175,3 +2175,42 @@ From this release an entry is about six lines: decision, reason, release.*
   absence of both files rather than merely arranging it.
 - `setuptools` moves into the dev extra because the artefact guard builds with `--no-isolation`, so
   it needs no network; **runtime dependencies are unchanged at five**.
+
+## 252. The theme control is a toggle, and a card styles only its own controls (F86, F87, F88, v0.15.5)
+
+- **Decision**: three repairs to the console, all of them where what the source said and what the
+  browser did had come apart.
+  1. `.login-card` styles its **direct children** (`>`), not every descendant element.
+  2. The theme control returns whichever appearance the operator is not looking at, and holds its
+     own state in a class component. `forceRepaint()` and its `data-theme-tick` attribute are
+     deleted.
+  3. `spellcheck` is passed as the boolean `false`, not the string `"false"`.
+- **Reason**:
+  - **F86.** `.login-card button { width: 100% }` was true of the card that existed when it was
+    written. A composed `PasswordInput` later put a second button inside, and `width: 100%` on a
+    `flex: none` item made it claim the row and refuse to shrink — the password field rendered
+    18 px wide. A selector that acquires new subjects as the tree grows is F85's shape in CSS;
+    `>` states the rule's actual meaning and keeps stating it.
+  - **F87.** Three states over two appearances guarantee a dead click, whatever the ordering — so
+    the ring becomes a toggle. `system` stays the default an absent cookie means and keeps its
+    icon until the first click, but stops being a stop on the ring. **This is a deliberate loss:**
+    the operator can no longer return to "follow the system" from the control, and doing that
+    properly needs a menu, which is a design decision and not a bug fix. Separately, the control
+    was rendering from a cookie the framework cannot observe, with a repaint helper that passed
+    `setConnection` its own current value — a setter that returns early on an unchanged value. It
+    published nothing, and the label was frozen through every click.
+  - **F88.** `spellcheck` is an IDL boolean; the truthy string `"false"` set it **true**, so the
+    appliance asked the browser to spell-check a password.
+- **Measured** in Chromium against a real appliance, before and after: the password field 18 px →
+  298 px at 1440 and 276 px at 390, the reveal button 330 px → 28 px, vertical misalignment 8 px →
+  0, `spellcheck` `"true"` → `"false"`; six theme clicks with one dead one and a frozen label →
+  eight clicks across both OS preferences, every one of them changing the appearance and the label
+  naming the state. Focus order is unchanged — username → password field → reveal → submit — which
+  is why the icon moves left by `order` and not by reordering the markup.
+- **Guarded**, each demonstrated red under injection with a passing control:
+  `test_no_card_styles_a_bare_element_it_does_not_own`,
+  `test_every_click_of_the_theme_control_changes_what_is_on_the_screen` (which asserts on the
+  per-click **trail**, because an endpoint assertion can see neither defect — the existing theme
+  test read only the endpoint and saw neither), and
+  `test_no_enumerated_dom_attribute_is_passed_as_the_string_false`.
+- No new dependency, no migration, no server change: `src/netcorenoc/` moves only under `ui/`.

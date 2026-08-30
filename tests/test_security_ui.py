@@ -622,6 +622,72 @@ def test_style_uses_design_tokens_both_themes_and_focus_states() -> None:
     assert "@import" not in css
 
 
+def test_no_card_styles_a_bare_element_it_does_not_own() -> None:
+    """**F86.** A container that styles `input` or `button` by element name is styling controls it
+    has not met yet.
+
+    `.login-card button { width: 100% }` was correct when the card held one button. Then the card
+    gained a composed `PasswordInput` — an input and a reveal button inside `.pw-field > .pw-row` —
+    and the descendant selector reached them too. `width: 100%` on a `flex: none` item is a base
+    size it will not shrink below, so **the reveal button took the whole row and the password field
+    rendered 18 px wide**, with the two 8 px out of line because one carried `margin-top` and the
+    other `margin-bottom`. An operator could not see the password they were typing.
+
+    This is F85's shape in CSS: a rule whose meaning silently widens every time the tree it sits
+    over grows. `>` fixes it by saying what the rule always meant — the card's OWN controls — and
+    keeps saying it when the card grows again.
+
+    Scoped to the containers that COMPOSE other components, which is where the widening happens.
+    Not the whole stylesheet: a bare `button` rule at the top level is the reset and is exactly
+    what it is for, and `.pw-row input` is a leaf component styling the one control it is built
+    from — it cannot acquire a second one without someone editing `password.js` to put it there.
+    """
+    import re
+
+    css = (UI_DIR / "style.css").read_text()
+    owners = ("login-card", "card")
+    offenders = []
+    for line in css.splitlines():
+        selector = line.split("{")[0]
+        if "{" not in line:
+            continue
+        for owner in owners:
+            # `.owner input` / `.owner button` — a DESCENDANT combinator (whitespace, no `>`).
+            if re.search(rf"\.{owner}\s+(input|button|select|textarea)\b", selector):
+                offenders.append(selector.strip())
+    assert not offenders, (
+        f"these style a bare form element as a DESCENDANT of a card, so they will capture the "
+        f"controls of any component composed into it (F86): {offenders}. Use `>` for the "
+        f"container's own controls, or give the control a class."
+    )
+    # CONTROL: the rules this is about still exist, so the guard is not passing because the
+    # stylesheet stopped styling the login card at all.
+    assert ".login-card > input" in css and ".login-card > button" in css, (
+        "the login card no longer styles its own field and submit button; re-derive this guard"
+    )
+
+
+def test_no_enumerated_dom_attribute_is_passed_as_the_string_false() -> None:
+    """**F88**, and it was visible in the shipped DOM the whole time.
+
+    `spellcheck` is an IDL **boolean**. Preact assigns the property, so `spellcheck="false"` —
+    a non-empty string — coerces to `true`, and the password field rendered `spellcheck="true"`.
+    The browser was offering to spell-check a password, which on some builds means sending it to a
+    remote service. The source said one thing and the DOM said the other, and reading either alone
+    could not tell you.
+
+    `false`, the boolean, is the only thing that renders `spellcheck="false"`. Same trap for
+    `draggable` and `contenteditable`, so all three are named here rather than the one that bit.
+    """
+    for name, source in ui_modules().items():
+        for attribute in ("spellcheck", "draggable", "contenteditable"):
+            assert f'{attribute}="false"' not in source, (
+                f'{name} passes {attribute}="false" as a STRING. Preact sets the property and a '
+                f'non-empty string is truthy, so this renders {attribute}="true" — the opposite '
+                f"of what it says. Write {attribute}=${{false}} (F88)."
+            )
+
+
 def test_the_ui_tree_is_exactly_what_is_declared() -> None:
     """DECISIONS #38's constraint, restated for a module graph (ADR #175).
 
