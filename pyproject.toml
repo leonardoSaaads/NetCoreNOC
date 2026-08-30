@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.15.3"
+version = "0.15.4"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -32,6 +32,12 @@ dev = [
     "pip-audit>=2.7",
     "vulture>=2.11",
     "build>=1.2",
+    # The build BACKEND, in the dev environment rather than only in `[build-system].requires`.
+    # `tests/test_supply_chain.py` builds a wheel the way the Dockerfile builds one (F85), and it
+    # does so with `--no-isolation` so the guard does not need the network — which means the
+    # backend has to already be importable here. A Python 3.12 venv ships no setuptools.
+    # Dev/CI tooling only: the runtime dependency list above is unchanged at five.
+    "setuptools>=69",
 ]
 
 [project.urls]
@@ -44,19 +50,25 @@ include = ["netcorenoc*"]
 [tool.setuptools.package-data]
 # Ship the whole static UI (F12): index.html alone left a built wheel serving a UI whose
 # app.js / style.css / vendored d3 all 404 — the Dockerfile does `pip install .`, so the
-# container UI was broken. Keep the CHECKSUMS.txt supply-chain pin alongside the vendored asset.
+# container UI was broken.
+#
+# **ONE RECURSIVE GLOB, not one glob per directory level (F85, DECISIONS #251).**
+#
+# This listed `ui/*.js`, `ui/app/*.js`, `ui/app/views/*.js` — a line added each time the console
+# grew a level. v0.15.3 added `ui/app/views/parts/` and did not add the fourth line, so a wheel
+# built the way the Dockerfile builds one carried the console minus five modules, and the
+# container's first page load raised five `RuntimeError: File at path … does not exist`.
+#
+# A glob per level is a rule that must be re-obeyed every time the tree changes, which is the
+# same shape as the thing it was guarding against. `**` cannot miss a level, so adding a
+# directory is no longer a packaging decision.
 netcorenoc = [
     "migrations/*.sql",
-    "ui/*.html",
-    "ui/*.js",
-    # v0.13.0: the console is an ES module graph (ADR #175). Two more globs, one per level, so a
-    # wheel carries every module the browser will ask for. F12 was a wheel that shipped index.html
-    # and nothing else; tests/test_supply_chain.py asserts every UI file matches a glob here.
-    "ui/app/*.js",
-    "ui/app/views/*.js",
-    "ui/*.css",
-    "ui/vendor/*",
-    "ui/.well-known/*",  # RFC 9116 security.txt, served by the app
+    "ui/**/*",  # every file under ui/, at any depth — see above
+    # `**` does NOT match a path component beginning with a dot, so the RFC 9116 security.txt
+    # needs its own line. Found by building a wheel and looking for it, not by reading the glob:
+    # `ui/**/*` alone shipped 49 UI files and left this one behind.
+    "ui/.well-known/*",
     "py.typed",
 ]
 

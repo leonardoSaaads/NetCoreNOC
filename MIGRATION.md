@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of twenty-three ask
-you to do something; six more ask you to read a paragraph first. The other fifteen are
+Read only the rows between your version and the one you are installing. **Two of twenty-four ask
+you to do something; six more ask you to read a paragraph first. The other sixteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did.)
 
@@ -44,6 +44,7 @@ until v0.15.2 — F78. It counts rows, not sections; recount it when you add one
 | v0.15.0 → v0.15.1 | Nothing — packaging and repository structure only |
 | v0.15.1 → v0.15.2 | Nothing, but **the console loses a panel and a bad setting now exits** — see below |
 | v0.15.2 → v0.15.3 | Nothing, but **the appliance now refuses to lose its last admin, and may mint one on boot** — see below |
+| v0.15.3 → v0.15.4 | Nothing — a packaging fix. **If you ran v0.15.3 in Docker, rebuild the image** (F85) |
 
 ## The two that need an action, and the five that need reading
 
@@ -105,6 +106,25 @@ What moved is `docs/`: 62 310 lines to about 5 200, organised by what a reader i
 Every deleted file is at commit `3ecf237` and [`docs/record.md`](docs/record.md) has the command.
 If you have a bookmark into `docs/gates/`, `docs/scope/`, `docs/releases/` or `docs/security/`, that
 page is the one to read.
+
+### v0.15.4 — rebuild the image if you ran v0.15.3 in a container
+
+**Packaging only; no code, no schema, no behaviour.** v0.15.3's wheel, when built the way the
+Dockerfile builds one, was missing five console modules — `views/parts/{why,verdict,facts,model,
+retention}.js` — so the container's first page load logged five
+`RuntimeError: File at path … does not exist` and those screens were broken. Nothing was wrong
+with the source or the git tree: one package-data glob was missing, and `MANIFEST.in` — which the
+image build does not receive and every other build does — had been quietly making up the
+difference (F85).
+
+`docker compose up --build` is the whole upgrade.
+
+**If you install any other way, you were not affected**, and that is measured rather than assumed:
+a `pip install .` from a source checkout and a `pip install` of the sdist both carried all fifty UI
+files under v0.15.3's globs, because the checkout has `MANIFEST.in` and the sdist carries the
+`SOURCES.txt` it produced. The container build is the one path that has neither. Upgrading is still
+worth doing — the guards that would have caught this are what v0.15.4 is — but nothing you are
+running is broken.
 
 ### v0.15.3 — nothing to change, but two behaviours are new
 
