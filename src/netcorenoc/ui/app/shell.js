@@ -35,9 +35,10 @@
 import { html, Component, cx } from "./dom.js";
 import { Sidebar } from "./sidebar.js";
 import { Refused, Unknown } from "./widgets.js";
+import { Icon } from "./icons.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
 import { session, scopeSummary } from "./session.js";
-import { theme, setTheme, nextTheme, density, setDensity } from "./theme.js";
+import { theme, setTheme, nextTheme } from "./theme.js";
 import * as store from "./store.js";
 import { plural } from "./format.js";
 
@@ -121,7 +122,7 @@ function WorkHeading({ decision, headingRef }) {
   </div>`;
 }
 
-/** Identity, scope, connection state, theme and density. Everything that is about the SESSION. */
+/** Identity, scope, connection state and theme. Everything that is about the SESSION. */
 function TopBar({ live, onSignOut }) {
   const active = session();
   const scope = scopeSummary();
@@ -143,12 +144,7 @@ function TopBar({ live, onSignOut }) {
       <button type="button" class="icon" title=${`Theme: ${chosenTheme}. Click to change.`}
               aria-label=${`Theme: ${chosenTheme}. Change theme.`}
               onClick=${() => { setTheme(nextTheme()); forceRepaint(); }}>
-        ${THEME_GLYPH[chosenTheme]}
-      </button>
-      <button type="button" class="icon" title=${`Density: ${density()}. Click to change.`}
-              aria-label=${`Density: ${density()}. Change density.`}
-              onClick=${() => { setDensity(density() === "compact" ? "comfortable" : "compact"); forceRepaint(); }}>
-        ${density() === "compact" ? "▤" : "▥"}
+        <${Icon} name=${THEME_ICON[chosenTheme]} />
       </button>
       <button type="button" onClick=${onSignOut}>Sign out</button>
     </div>
@@ -164,9 +160,9 @@ const CONNECTION_TITLE = {
   polling: "The update stream is unavailable; falling back to polling every 2.5 s.",
   error: "No updates are arriving. What is on screen may be out of date.",
 };
-const THEME_GLYPH = { dark: "◐", light: "◑", system: "◒" };
+const THEME_ICON = { dark: "moon", light: "sun", system: "auto" };
 
-/** Theme and density write to the document root, which Preact does not observe. Nudge it. */
+/** The theme writes to the document root, which Preact does not observe. Nudge it. */
 function forceRepaint() {
   store.setConnection(store.get().connection);
   globalThis.document.documentElement.setAttribute(
@@ -203,7 +199,7 @@ function Banners({ stats }) {
       (${[...new Set(openGaps.map((g) => g.reason))].join(", ")}).
     </div>` : null}
     ${warnings.length ? html`<div class="banner banner-warn" role="status">
-      <b>⚠ </b>${warnings.join("  •  ")}
+      <${Icon} name="warn" />${" "}${warnings.join("  •  ")}
     </div>` : null}
   </div>`;
 }

@@ -14,10 +14,10 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of twenty-two ask you
-to do something; five more ask you to read a paragraph first. The other fifteen are
+Read only the rows between your version and the one you are installing. **Two of twenty-three ask
+you to do something; six more ask you to read a paragraph first. The other fifteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
-until v0.15.2 — F78. It counts rows, not sections; recount it when you add one.)
+until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did.)
 
 | From → to | What you must do |
 |---|---|
@@ -43,6 +43,7 @@ until v0.15.2 — F78. It counts rows, not sections; recount it when you add one
 | v0.14.0 → v0.15.0 | **Nothing at all.** Documentation only — `src/` is byte-identical |
 | v0.15.0 → v0.15.1 | Nothing — packaging and repository structure only |
 | v0.15.1 → v0.15.2 | Nothing, but **the console loses a panel and a bad setting now exits** — see below |
+| v0.15.2 → v0.15.3 | Nothing, but **the appliance now refuses to lose its last admin, and may mint one on boot** — see below |
 
 ## The two that need an action, and the five that need reading
 
@@ -104,6 +105,24 @@ What moved is `docs/`: 62 310 lines to about 5 200, organised by what a reader i
 Every deleted file is at commit `3ecf237` and [`docs/record.md`](docs/record.md) has the command.
 If you have a bookmark into `docs/gates/`, `docs/scope/`, `docs/releases/` or `docs/security/`, that
 page is the one to read.
+
+### v0.15.3 — nothing to change, but two behaviours are new
+
+**No configuration that started on v0.15.2 fails to start on v0.15.3.** There is no migration; the
+schema is untouched. Two things behave differently and both are refusals or recoveries you want:
+
+* **The last enabled admin cannot be removed.** A role change or a deletion that would leave the
+  appliance with no admin account is refused with a 400 naming the way out. If you have automation
+  that demotes accounts, it can now get a 400 it did not get before — which is the point: the
+  request it was making would have locked the appliance (F79).
+* **A boot with no enabled admin mints one and prints the password once**, exactly as first boot
+  does, taking the name `admin` if it is free and `recovery-admin` if it is not. Before v0.15.3 a
+  database in that state was unrecoverable without deleting it. If your appliance has an admin —
+  and it does, or you could not read this — nothing prints and nothing changes.
+
+The console changes visibly: seventeen drawn icons in place of Unicode glyphs, a tablet layout that
+did not exist, and **the Density control is gone** (#235). If you had chosen `comfortable`, the
+`ncn_density` cookie is now ignored and can be deleted; there is one density.
 
 ### v0.15.2 — nothing to change, but two things will look different
 

@@ -24,8 +24,25 @@ requirements to satisfy and no expiry to work around.
 
 ### Locked out with no admin
 
-There is no recovery path that does not cost you the database: move the SQLite file aside and a new
-one gets a new bootstrap admin. Everything learned is in that file. Prevent it with a second admin.
+**Restart the appliance and read its log.** From v0.15.3 the boot mints a fresh admin whenever no
+*enabled admin account* remains, and prints the password once, exactly as first boot does:
+
+```
+netcorenoc  bootstrap admin created: username=admin password=…
+```
+
+It takes the name `admin` when that is free, and `recovery-admin` (then `recovery-admin-2`, …) when
+it is not — so an account demoted out of adminhood keeps its name, its history and its audit rows.
+Sign in, change the password when prompted, and create a second admin.
+
+Before v0.15.3 there was no recovery: `bootstrap_admin` counted *users* rather than *admins*, so any
+second account stopped it running again and moving the SQLite file aside — losing every situation,
+entity, audit row and label in it — was the only way back. That was **F79**, and the same release
+also made the state hard to reach: the appliance now refuses a role change or a deletion that would
+remove the last enabled admin.
+
+If a restart prints nothing, an enabled admin still exists — check `role` **and** `disabled` in the
+account list, because a disabled admin is not one.
 
 ## Traps
 

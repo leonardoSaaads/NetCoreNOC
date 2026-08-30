@@ -370,8 +370,14 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/destructive.js"),
     ("GET", "/app/dom.js"),
     ("GET", "/app/format.js"),
+    # v0.15.3: two static modules, in the alphabetical position `_UI_MODULES` gives them. Static
+    # asset order carries none of the matching semantics this baseline exists for — every one of
+    # these is a literal path with no template below it — but the list is pinned in full precisely
+    # so that a change here is a line in a diff rather than a silence.
+    ("GET", "/app/icons.js"),
     ("GET", "/app/login.js"),
     ("GET", "/app/parameters.js"),
+    ("GET", "/app/password.js"),
     ("GET", "/app/registry.js"),
     ("GET", "/app/router.js"),
     ("GET", "/app/session.js"),
@@ -385,22 +391,24 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/classes.js"),
     ("GET", "/app/views/corpus.js"),
     ("GET", "/app/views/entities.js"),
-    ("GET", "/app/views/facts.js"),
     ("GET", "/app/views/governance.js"),
     ("GET", "/app/views/graph.js"),
     ("GET", "/app/views/labelling.js"),
-    ("GET", "/app/views/model.js"),  # v0.14.0
     ("GET", "/app/views/overview.js"),
     ("GET", "/app/views/promotion.js"),
     ("GET", "/app/views/quarantine.js"),
-    ("GET", "/app/views/retention.js"),
     ("GET", "/app/views/scorer.js"),
     ("GET", "/app/views/settings.js"),
     ("GET", "/app/views/situations.js"),
     ("GET", "/app/views/timeline.js"),
     ("GET", "/app/views/tokens.js"),
     ("GET", "/app/views/users.js"),
-    ("GET", "/app/views/verdict.js"),  # v0.14.0
+    # `views/parts/` — the four modules under `views/` that are not views (v0.15.3, #239).
+    ("GET", "/app/views/parts/facts.js"),
+    ("GET", "/app/views/parts/model.js"),
+    ("GET", "/app/views/parts/retention.js"),
+    ("GET", "/app/views/parts/verdict.js"),
+    ("GET", "/app/views/parts/why.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
@@ -868,8 +876,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "d5291d9782d1a671a2a2c23768da2b50ee9ed39febfce87a7bbcd1b7456049fa"
-SRC_FILE_COUNT = 173
+SRC_TREE_DIGEST = "69b592cecd519ebd3a186c6a4f4378195a7535acbc3d3b8da99a84bfc1ad9545"
+SRC_FILE_COUNT = 177
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -935,4 +943,4 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.15.2", "the version this release carries"
+    assert __version__ == "0.15.3", "the version this release carries"

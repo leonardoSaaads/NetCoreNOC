@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from netcorenoc.crosscutting import audit, auth
+from netcorenoc.crosscutting import administration, audit
 from netcorenoc.store import MIGRATIONS_DIR, Store
 
 
@@ -92,9 +92,9 @@ async def test_migrate_populated_v010_database(tmp_path: Path) -> None:
 
         # Bootstrap admin can be created on the migrated DB.
         async with store.lock:
-            password = await auth.bootstrap_admin(store, 0.0)
+            minted = await administration.bootstrap_admin(store, 0.0)
             await store.commit()
-        assert password is not None
+        assert minted is not None and minted.username == "admin"
         async with store.lock:
             admin = await store.get_user_by_name("admin")
         assert admin is not None and admin["role"] == "admin"

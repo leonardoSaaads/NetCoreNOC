@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from netcorenoc.api import create_app
+from netcorenoc.crosscutting import administration
 from netcorenoc.ingest.receiver import QueueItem
 from netcorenoc.main import Engine, Settings, run
 from netcorenoc.store import Store
@@ -306,7 +307,7 @@ async def test_main_run_serves_real_sockets(tmp_path: Path) -> None:
     seed = Store(db)
     await seed.open()
     async with seed.lock:
-        await auth.bootstrap_admin(seed, 0.0)
+        await administration.bootstrap_admin(seed, 0.0)
         await seed.create_token(auth.hash_token(TOKEN), "smoke", "admin", "admin", 0.0)
         await seed.commit()
     await seed.close()

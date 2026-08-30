@@ -30,9 +30,9 @@
  * plan registered and no code derives.
  */
 
-import { html } from "../dom.js";
-import { DataTable, SectionHeading } from "../widgets.js";
-import { score } from "../format.js";
+import { html } from "../../dom.js";
+import { DataTable, SectionHeading } from "../../widgets.js";
+import { score } from "../../format.js";
 
 /** The four, in `promotion.QUANTITY_NAMES` order. Transcribed, not imported: see below. */
 const QUANTITIES = [

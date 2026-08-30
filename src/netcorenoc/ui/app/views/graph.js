@@ -195,11 +195,9 @@ export class GraphView extends Component {
     const graph = live.graph;
     const empty = !graph || !graph.nodes.length;
     return html`<div class="graphview">
-      <p class="hint">Every edge is a learned affinity between two network elements: how often
-        their alarms have appeared together. Nothing here was configured — the topology is
-        inferred from the trap stream. Opacity and thickness both encode the weight; a node's size
-        follows its active alarm count and stops growing at ${NODE_MAX_RADIUS} px, so one busy
-        device cannot hide the rest. Hover a node for its exact count.</p>
+      <p class="hint">An edge is a learned affinity — how often two elements' alarms appeared
+        together. Opacity and thickness both encode it; node size follows active alarms and stops
+        at ${NODE_MAX_RADIUS} px. Hover for exact counts.</p>
       ${empty ? html`<${Empty}
           title="No network elements yet."
           will=${"A node appears for each device the appliance hears from, and an edge appears " +
@@ -220,9 +218,8 @@ export class GraphView extends Component {
       </div>
       ${!empty ? html`<p class="hint">
         <b>This drawing is not keyboard-operable and has no screen-reader equivalent beyond its
-        label.</b> Everything it shows is also on the <a href="#/entities">Entities</a> screen as
-        text, which is where an operator who cannot use it should go. Saying so is deliberate: a
-        limit an operator can read is one they can work around.</p>` : null}
+        label.</b> Everything it shows is on <a class="tap" href="#/entities">Entities</a> as
+        text.</p>` : null}
     </div>`;
   }
 }

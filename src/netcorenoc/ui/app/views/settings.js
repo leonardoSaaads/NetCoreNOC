@@ -25,8 +25,8 @@ import { Loading, Failed, Partial, DataTable, SectionHeading } from "../widgets.
 import { can } from "../session.js";
 import { Destructive } from "../destructive.js";
 import { SETTINGS, MECHANISM, HARDENING, STRUCTURAL } from "../parameters.js";
-import { DatasetRetention } from "./retention.js";
-import { Hardening, Structural, RestartRequired } from "./facts.js";
+import { DatasetRetention } from "./parts/retention.js";
+import { Hardening, Structural, RestartRequired } from "./parts/facts.js";
 
 export class Settings extends Component {
   constructor(props) {

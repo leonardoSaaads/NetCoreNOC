@@ -26,8 +26,10 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.15.1** | **The package tree** — 58 modules at the package root, a layer model enforced in a dictionary, and a filesystem that ignores it. [Brief](v0.15.1-package-tree.md). | `package-tree` |
 | **v0.15.2** | **The console repaired** — the detail panel, the narrow viewport, the icons, and the health numbers already being served and thrown away. [Brief](v0.15.2-console.md). | `console-repair` |
 | **v0.15.3** | **The console designed** — what v0.15.2 leaves undone. [Brief](v0.15.3-console-design.md). | `console-design` |
-| **v0.16.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
-| **v0.17.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
+| **v0.16.0** | **The situation lifecycle** — states, self-clear, manual clear, operator merge/split/move, semantic naming, and the feedback each of those produces. [Brief](v0.16.0-situation-lifecycle.md). | `situation-lifecycle` |
+| **v0.16.1** | **Visualisation and search** — graph analytics, the timeline, entities and alarm classes. | `visualisation-search` |
+| **v0.17.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
+| **v0.18.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
 
 ## Why the order cannot be permuted
 
@@ -76,8 +78,10 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 <!-- release-claim: v0.15.1 = package-tree -->
 <!-- release-claim: v0.15.2 = console-repair -->
 <!-- release-claim: v0.15.3 = console-design -->
-<!-- release-claim: v0.16.0 = external-cartridge -->
-<!-- release-claim: v0.17.0 = archetypes -->
+<!-- release-claim: v0.16.0 = situation-lifecycle -->
+<!-- release-claim: v0.16.1 = visualisation-search -->
+<!-- release-claim: v0.17.0 = external-cartridge -->
+<!-- release-claim: v0.18.0 = archetypes -->
 
 ## What this document does not decide
 
@@ -87,6 +91,6 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
   `tests/test_documentation.py` exists to prevent.
 * **v0.7.5.** Not in this chain: a runtime-behaviour fix to the feedback acquisition path, a
   prerequisite for v0.8.0 rather than a member of the sequence.
-* **Anything after v0.17.0.** [`../ROADMAP.md`](../ROADMAP.md) keeps the unsequenced items.
+* **Anything after v0.18.0.** [`../ROADMAP.md`](../ROADMAP.md) keeps the unsequenced items.
 * **Whether v0.17.0 happens at all.** *Likely, review before committing.* It is the one release here
   that may reasonably be dropped.

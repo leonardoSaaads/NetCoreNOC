@@ -1859,3 +1859,290 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: both are imported by **nothing** in the tree — not by `tests/`, not by `tools/`, not
   by the other seven simulation modules. `eval/simulation/` goes from 9 modules and 2 254 lines to
   7 and 1 681. `make eval` is byte-identical at `c2e8a0ce…`: neither file is on its path.
+
+## 233. The last enabled admin is an invariant of the store, refused at the route (v0.15.3)
+
+- **Decision**: one predicate — *"at least one enabled admin exists"* — lives in
+  `crosscutting/auth.py` beside the password policy, is answered by one query
+  (`store.count_enabled_admins()`), and is enforced by every route that could falsify it: role
+  change and deletion today, disabling the day a disable route exists. The console also hides the
+  control, and that is an affordance, never the control itself (principle 6).
+- **Reason**: the alternative — a check written inline in each route — is how the two halves of F79
+  came to disagree in the first place. Putting the predicate in the store and the refusal at the
+  route keeps the HTTP shape (a 400 with a sentence) where HTTP concerns already live.
+- **Measured**: **there is no disable route and no `set_user_disabled` in the tree** — `disabled`
+  is read by `perform_login` and `get_session` and written by nothing. The brief asked for three
+  injections; two are transitions that exist. Adding a disable route to make the third injectable
+  would be adding a feature to test a guard, so the guard takes the transition as a parameter and
+  `test_auth_invariants` asserts by execution that no route can reach `user.disabled` at all.
+
+## 234. `bootstrap_admin` re-bootstraps when there is no admin, rather than when there are no users (v0.15.3)
+
+- **Decision**: guard on `count_enabled_admins() == 0`, not `count_users() > 0`, and give the
+  recovered account a free username (`admin`, else `recovery-admin`, else `recovery-admin-2`…) so
+  it cannot collide with the demoted one. A CLI recovery command was considered and rejected.
+- **Reason**: the function's own docstring said *"create the initial admin"* and its guard asked a
+  different question; this is that guard corrected, not a new mechanism. A CLI command needs the
+  locked-out operator to have shell access **and** to know the command exists, which is exactly what
+  the person in F79 does not have — they have a browser and a restart. Security cost, stated: an
+  attacker who can restart the process and read its log already owns the appliance, so minting an
+  admin on a database with none lowers no barrier that was still standing.
+- **Measured**: on the F79 database — two users, zero enabled admins — the shipped guard returns
+  `None` and the corrected one mints a password. **The operator who is locked out today restarts
+  the appliance and reads the new password from the log**; `docs/troubleshoot.md` says so.
+
+## 235. Density is removed with its mechanism, not just its button (v0.15.3)
+
+- **Decision**: delete the control (`shell.js`), the cookie and both accessors (`theme.js`), the
+  `:root[data-density="comfortable"]` block (`style.css`), the harness's three reports of it, and
+  the assertion that called it *"a first-class choice"*. One type scale, one spacing scale.
+- **Reason**: removal beat completion. `comfortable` moved four tokens and **one step of the type
+  ramp** (`--fs-md` 13→14), so the ratio to `--fs-lg` closed from 1.23 to 1.14 in one density and
+  nothing else moved with it — two different sets of relationships, one of them chosen by nobody.
+  DECISIONS #45 is why the mechanism goes too: a knob removed while its mechanism stays is worse
+  than either.
+- **Measured**: every reference, found by grep rather than memory — `style.css` (2), `theme.js`
+  (6), `shell.js` (5), `tests/domharness/run.mjs` (3), `tests/test_security_ui.py` (1),
+  `docs/console.md` (1). Nothing else in the tree reads `density()` or `data-density`.
+
+## 236. Icons are generated inline SVG in one module, and the set is exactly what renders (v0.15.3)
+
+- **Decision**: `ui/app/icons.js` exports one `Icon` component over a table of path data — 24x24
+  viewBox, 1.5 px stroke, `currentColor`, `stroke-linecap="round"`, no fill. Seventeen view icons,
+  the actions the console actually has, and nothing else. `aria-hidden` beside a text label at
+  every call site, exactly as the glyphs were.
+- **Reason**: `tests/test_build_step.py` rules out an icon package and `test_supply_chain.py` would
+  demand a checksum and a licence for a vendored set — which is the argument for *drawing* them
+  rather than acquiring them. The seventeen Unicode glyphs came from four blocks and rendered at
+  whatever weight the operator's font stack chose; they were never a family (#221).
+- **Measured**: `registry.js` had **zero `icon:` entries** and seventeen `glyph:` ones. A test walks
+  the module and the call sites and fails on an icon nobody renders, so the set cannot grow past
+  what is used (VII.3).
+
+## 237. Three widths, and dense tables scroll with the first column frozen (v0.15.3)
+
+- **Decision**: breakpoints at **1100 px** (below it the sidebar is a horizontal strip) and
+  **720 px** (below it single-column, cards for the widest tables). Dense tables get horizontal
+  scroll inside their own container with the first column sticky. Column-dropping and a card layout
+  for *every* table were both rejected.
+- **Reason**: a table that drops columns silently is worse than one that scrolls, because the
+  operator cannot tell a missing column from an empty one; and a card layout applied to all of them
+  destroys the vertical scan that is the whole reason these tables are dense. The frozen first
+  column keeps the row's identity — device, or id — beside whatever the operator scrolled to.
+- **Measured**: at 820 px the shipped console rendered **byte-identically to 1440 px** on every
+  view of every role, because `max-width: 760px` was the only width the stylesheet reasoned about.
+  Thirty-seven elements were outside the viewport at 390 px across three views (F80).
+
+## 238. Two-factor and recovery are declarations with a release named, and no mechanism (v0.15.3)
+
+- **Decision**: the sign-in card and the account screen carry a short, permanently visible
+  statement that two-factor authentication is not available, that **v0.17.0** brings it, and that it
+  will be **required for admins**. Recovery says what an operator does today: restart the appliance
+  and read the new password from its log (#234). No TOTP, no secret, no email, no schema, no
+  disabled control.
+- **Reason**: v0.13.0 refused *"coming soon"* panels and the detail panel then spent seventeen
+  screens holding a placeholder for a feature one view used (#219). A sentence that is true is not a
+  placeholder; a greyed-out button promising a mechanism that does not exist is. Naming the release
+  is what makes it a commitment rather than an apology.
+- **Measured**: the statement is two lines on two screens and reserves **no region on the other
+  fifteen**, which is the specific failure #219 recorded.
+
+## 239. `views/` holds views; the four modules in it that are not views move to `views/parts/` (v0.15.3)
+
+- **Decision**: move `facts.js`, `retention.js`, `model.js` and `verdict.js` into
+  `ui/app/views/parts/`. **Nothing else moves.** The other fifteen modules under `ui/app/` stay one
+  level deep.
+- **Reason**: derived from the import graph, not from a preference for folders. `registry.js`
+  imports seventeen modules from `views/` and the directory holds twenty-one; the other four are
+  imported by *sibling views* (`settings.js` takes `facts` and `retention`, `scorer.js` takes
+  `model`, `promotion.js` takes `verdict`) and are components, not screens. That is the one thing
+  the directory currently says that is false.
+- **Measured**: in-degree over the whole console. The fifteen top-level modules already separate
+  cleanly by it — `dom` 27, `widgets` 23, `format` 21, `api` 19, `session` 14 are the foundation;
+  `destructive` 8, `store` 6, `parameters` 4 the next tier; `shell`, `sidebar`, `login`,
+  `registry`, `router`, `theme`, `vendor` are the frame at 1–3 — and **a directory per tier would
+  move 15 files, rename 15 static routes and rewrite 37 import statements to encode a fact the
+  graph already states.** Rejected on that measurement (VII, "do not distribute files into pretty
+  folders").
+
+## 240. The password policy is served, not restated in JavaScript (v0.15.3)
+
+- **Decision**: `auth.password_policy()` returns `{min, max, rule}` from the same constants
+  `validate_password` reads, and it travels on `/api/me` **and** on the login route's
+  `must_change_password` response. The console renders nothing at all until the server has said.
+  No new route.
+- **Reason**: V.2 asks for an indicator that reflects the policy the server actually enforces, and
+  a `12` written into `password.js` would be a second source of truth about what a valid password
+  is — the day `MIN_PASSWORD` moved, the sign-in card would confidently show the old bound. It goes
+  on the login response as well because the forced first change happens **before a session exists**,
+  so `/api/me` is not reachable at the one moment the console needs the numbers. Adding a route for
+  it was rejected: the client already makes this round trip, and VII.5 asks for a reason the
+  alternative was worse rather than a third endpoint.
+- **Measured**: `rule` is `"length"`, and that is the honest part — this project follows NIST
+  SP 800-63B and has **no composition requirement at all**. A meter asking for a digit and a symbol
+  would invent a rule the appliance does not enforce, which is the same defect as showing the wrong
+  minimum with the sign reversed. The served surface is unchanged at 44 `/api` pairs; two response
+  bodies changed shape and the behaviour record is where that is pinned.
+
+## 241. `GET /api/users` says which account is the sole admin; the console never works it out (v0.15.3)
+
+- **Decision**: each row carries `sole_admin`. The console reads it and renders a locked role and a
+  reason; it does not filter the list for `role === "admin"`.
+- **Reason**: the first version of the console change did filter, and
+  `test_security_ui.py::test_no_module_re_derives_permissions_from_role_rank` refused it. **The
+  guard was right and the code was wrong** — a console working out from a role something the
+  appliance already knows is F28's shape, and the fact that this particular derivation was only
+  cosmetic is exactly the argument that turns an absolute into a judgement call on every later
+  diff. The predicate now exists once, on the server, beside the refusal that enforces it.
+- **Measured**: one call site, one field, and the console module contains no comparison of a role
+  to a literal. The guard stays an absolute with no carve-out.
+
+## 242. `administration.py` — who may administer this appliance, in one module (v0.15.3)
+
+- **Decision**: split `crosscutting/administration.py` out of `auth.py`: the bootstrap, the recovery
+  naming, and `would_remove_last_admin`. Not re-exported from `auth` — call sites import the concern
+  they are using. `auth.py` keeps scrypt, the policy, the throttle, `Principal`, sessions, tokens
+  and the login flow.
+- **Reason**: the size guard fired at **409 lines** against a 400 ceiling, and `DEBT_ALLOWLIST` is
+  empty and stays empty (prime directive 10) — so the choice was to split or to argue for an
+  exemption, and there was no invariant to cite for one. The seam is the concept this release
+  created rather than an arbitrary cut: the bootstrap and the invariant are each other's
+  counterweight (one makes the lost state unreachable through the product, the other makes it
+  survivable when something outside the product creates it), and reading either alone leaves the
+  reasoning half-stated. A re-export in the `rbac/` style was rejected because the dependency runs
+  the other way — `administration` needs `auth.hash_password` — so it would be an import cycle.
+- **Measured**: `auth.py` 409 → 275 body lines, `administration.py` 118. The move is 9 files' import
+  lines and no behaviour: the record's only auth diffs are the two response shapes #240 and #241
+  name. `BOOTSTRAP_PASSWORD_CHARS` moved with it, because its name says which module owns it.
+
+## 243. A 1.2 type scale from a 13 px body, and a 4 px spacing grid (v0.15.3)
+
+- **Decision**: five type steps at 11/13/16/19/23 px plus a shared 13 px body, and spacing at
+  4/8/12/16/24/32. 13 px stays the body size; what changed is the relationships between the sizes,
+  not the density.
+- **Reason**: the previous five were each chosen for one thing and their ratios were 1.09, 1.08,
+  1.23 and 1.31 — a caption one pixel from the body it labels, and a heading three ratios away from
+  the text under it. Spacing had the same problem in the other direction: 4, 8, 12, **18, 28** put
+  two of five steps off the 4 px grid, so components at two removes never lined up. Zabbix density
+  is about how much fits on a screen, not about how arbitrary the steps are.
+- **Measured**: new ratios 11/13 = 0.85, 13/16 = 1.23, 16/19 = 1.19, 19/23 = 1.21 — one scale
+  rather than four accidents. `style.css` goes from 41 custom properties to 43 (the brief's figure
+  of 30 was not reproducible). `--tap: 28px` is new and is the pointer floor F81 measured against:
+  the theme button was 29x23 and the situation permalink 18x17. **Not** the 44 px mobile figure —
+  this is a dense operations console and 44 px rows would halve what fits on a screen.
+
+## 244. The prose that left the console is the prose that was documentation (v0.15.3)
+
+- **Decision**: delete the paragraphs that were explaining the project to itself, keep the ones an
+  operator acts on. The largest single removal is the Overview's *"Reports that are not on any
+  screen"* panel — a five-row table of shell commands on the first screen an operator opens.
+- **Reason**: `docs/operate.md` lines 174–179 already list all five commands, and the Makefile
+  documents each at length, so this was a third copy on a dashboard; it is **deleted rather than
+  relocated**, which VII.6 asks for a reason for and that is the reason. What stayed is what the
+  design doc defends: an empty state that says what will fill the screen, the graph's statement
+  that it is not keyboard-operable, and *"a rate with no window is a number nobody can act on"*.
+  A release that deleted all of it would be worse than the current state.
+- **Measured**: **2 275 → 2 004 words** of rendered English, −12 %, by the method in the commit
+  message rather than an unstated one. `overview.js` 310 → 216, `promotion.js` 201 → 157,
+  `facts.js` 186 → 137. The v0.15.2 figure did not reproduce because its method was never stated;
+  this one is a script, and the first version of it **under-counted** — it matched `hint="…"` but
+  not the `hint=${"…" + "…"}` form this codebase also uses, so rewriting a concatenated hint as a
+  plain one made the count rise while the prose fell. Both baseline and result above are measured
+  with the corrected version, on both trees.
+
+## 245. "Why these were grouped" answers the storm question first (v0.15.3)
+
+- **Decision**: a summary computed from **every** link — the weakest link and its margin over the
+  threshold, the strongest, the count, and which of the three named terms is carrying the grouping
+  — with the per-link decomposition behind one interaction and **complete** when opened. The
+  section moves to `views/parts/why.js`; `situations.js` was 356 body lines against a 400 guard.
+- **Reason**: it rendered `links.slice(0, 30)`. In a four-alarm situation that is the right screen;
+  in a 400-trap storm it is thirty rows chosen by insertion order, and an operator asking *"can I
+  trust this grouping?"* had to answer it from a sample nobody selected. The margin is the number
+  that answers it and it was not on the screen: a grouping whose weakest pair cleared by 0.01 is
+  one scorer nudge from falling apart, and one that cleared by 0.3 is not. **No verdict is
+  computed** — every figure is min, max or a mean over numbers the server already sent, because a
+  console that scored its own groupings would be a second scorer.
+- **Measured**: the completeness assertion is red under injection at **30 of 32 links** and green
+  after — but only after the fixture was grown. Driven against the corpus's own **16** links it
+  passed *with the thirty-row cap deliberately reinstated*, because 16 < 30 made the slice a no-op:
+  a guard that could not fail for the defect it names, found by injecting the defect rather than by
+  reading the test.
+
+## 246. The timeline's y axis had 30 px for a device name (F83, v0.15.3)
+
+- **Decision**: `PAD_LEFT = 82` as its own constant, and the tick text clipped to what it holds;
+  the full name stays in the table below, which the caption already points at.
+- **Reason**: `PAD = 30` was used for all four sides, and `d3.axisLeft` draws its labels to the
+  *left* of the axis. A pad alone would not have been enough either — a device label is operator
+  text of any length — so the pad fits an address and the label is clipped to it.
+- **Measured**: `127.0.0.2` rendered at **x = −9** at every width, six elements outside the
+  viewport at 390x844 with `document.scrollWidth == clientWidth`, so nothing scrolled and the axis
+  was unreadable. Zero after. **The second defect this release found on a d3 screen that no
+  assertion executes**, after v0.15.2's three — the pattern is now four for four, and both times a
+  browser is what saw it.
+
+## 247. The situation detail carries the threshold its links had to clear (F84, v0.15.3)
+
+- **Decision**: `GET /api/situations/{sid}` returns `threshold`, read from the scorer configuration
+  the situation names in `scorer_config_id` — **not** from the active one — and `None` when that
+  row is gone. No new route; the same additive shape as #240 and #241.
+- **Reason**: the console has been passing `detail.threshold` to "Why these were grouped" since
+  v0.13.0 and the route has never sent it, so the sentence *"every pair scored above the link
+  threshold of X"* has always printed without the X. A score with nothing to compare it against is
+  not a decomposition that can be checked, which is the whole of principle 2 — and the margin over
+  the threshold is the number #245's summary is built on, so the redesign would have shipped with
+  its best figure permanently absent. Reading the situation's OWN configuration rather than the
+  active one matters because an admin may have retuned or rolled back since: the threshold this
+  grouping cleared is a fact about when it was decided.
+- **Measured**: `curl /api/situations/1` on a live appliance returned nineteen keys and no
+  `threshold`; the console rendered "the threshold was not reported". Found by looking at the
+  screen, not by reading the route — the old copy degraded to a grammatical sentence with the
+  number missing, so nothing looked wrong.
+
+## 248. Docker's "Enable Watch" is answered in documentation, not with four lines of compose (v0.15.3)
+
+- **Decision**: no `develop:`/`watch:` section. `docker-compose.yml`'s header says why the button
+  does nothing and what to do instead — run the process directly, because there is no build step.
+- **Reason**: the finding is confirmed exactly as the brief stated it — 82 lines, no `develop:`,
+  no `watch:`, so the prompt is Docker Desktop's generic offer rather than a project feature. Given
+  the choice the brief offers, documentation wins on the merits and not on effort: this file is the
+  **hardened production recipe** (`read_only: true`, every capability dropped, no privilege
+  escalation), and `watch` is a development loop that syncs source into a running container —
+  which a read-only root filesystem exists to prevent. Adding it would mean either a second compose
+  file or relaxing the hardening in the one an operator deploys.
+- **Measured**: the console is static ES modules served from disk and the package installs with
+  `pip install -e`, so the edit loop is already *edit, reload* with **nothing to compile and no
+  container to rebuild**. `watch` would add machinery to reach a state the project is already in.
+
+## 249. v0.16.0 is the situation lifecycle; the cartridge and archetypes each slip one (v0.15.3)
+
+- **Decision**: the release table becomes `v0.16.0 = situation-lifecycle`,
+  `v0.16.1 = visualisation-search`, `v0.17.0 = external-cartridge`, `v0.18.0 = archetypes`. The two
+  briefs that claimed the old numbers are re-tagged in the same commit, and the table's size guard
+  moves with them.
+- **Reason**: the table said v0.16.0 was the external cartridge and the maintainer's v0.15.3 brief
+  states, in its own release table, that v0.16.0 is the situation lifecycle and v0.16.1 is
+  visualisation and search. **The contradiction was found by the guard**, not by reading: writing
+  `docs/plans/v0.16.0-situation-lifecycle.md` — which Part IX of the brief requires — made
+  `test_every_release_claim_agrees_with_the_roadmap_table` go red immediately, which is the fourth
+  time that guard has caught a resequencing (#202 was the third). `cartridge.md` already argues it
+  should slip, so slipping it is the documented direction rather than a new opinion.
+- **Measured**: thirteen rows to fifteen. The resequencing changes no code and no schedule anyone
+  had committed to — the table's own §"What this document does not decide" says none of these
+  releases has a date.
+
+## 250. Two-factor is a roadmap item, and the console names the roadmap rather than a version (v0.15.3)
+
+- **Decision**: `docs/ROADMAP.md` gains 2FA as an unsequenced item; the sign-in card and the account
+  screen say it is not available and that it will be **required for admins**, without naming a
+  release. This **amends #238**, which named v0.17.0.
+- **Reason**: #238 argued that naming a release makes a declaration a commitment rather than an
+  apology, and that is right — but the release it named was `archetypes` in the table and became
+  `external-cartridge` under #249, so the console would have promised a second factor in a release
+  about ONNX. A version number nothing schedules is not a commitment; it is the empty placeholder
+  (#219) wearing a date. The roadmap is where this project keeps unsequenced commitments, and the
+  entry there carries the constraint the release will have to satisfy.
+- **Measured**: the roadmap entry names F79's shape as the design constraint — a second factor an
+  admin can lose is a second way to lock the appliance out of itself, so enrolment and recovery are
+  one question. The console's two declarations are unchanged in every other respect.

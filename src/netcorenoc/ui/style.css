@@ -10,12 +10,6 @@
  * only ever REDEFINE tokens; no rule below them names a literal colour, so a theme cannot be half
  * applied.
  *
- * ## Density
- *
- * `data-density="compact"` is the default because operators scan hundreds of rows and these
- * products are dense for a reason. `comfortable` scales the spacing and row height tokens and
- * nothing else, so there is one layout rather than two.
- *
  * ## Severity is never colour alone
  *
  * Every severity carries a glyph and its text as well as its colour. A rule that set only a
@@ -24,21 +18,48 @@
  */
 
 :root {
-  /* spacing + radii + shadow + type scale */
+  /* ---- the type scale (DECISIONS #243) ----------------------------------------------
+   *
+   * A 1.2 ratio from a 13 px body, rounded to whole pixels, five steps. It replaces five
+   * numbers each chosen for one thing, whose ratios were 1.09, 1.08, 1.23 and 1.31 — a
+   * body a pixel from the caption above it, and a jump to the heading three times larger.
+   *
+   * 13 px stays the body because that is the density this product is for: Zabbix-dense
+   * tables an operator scans hundreds of rows in. The scale is what changed, not the size.
+   *
+   * Ratios, measured: 11/13 = 0.85, 13/16 = 1.23, 16/19 = 1.19, 19/23 = 1.21. */
+  --fs-xs: 11px;   /* captions, table headers, badges — never a sentence */
+  /* `sm` and `md` are the SAME STEP, deliberately. Five steps is what a 1.2 ratio gives between
+   * 11 and 23 px, and secondary text does not get a sixth invented for it — a hint is separated
+   * from body by colour (`--fg-muted`), which is a stronger signal than one pixel ever was. The
+   * name is kept because call sites should say which ROLE they mean, not which number. */
+  --fs-sm: 13px;   /* secondary text: hints, notes, the summary under a heading */
+  --fs-md: 13px;   /* body, and every table cell */
+  --fs-lg: 16px;   /* section headings (h2) */
+  --fs-xl: 19px;   /* screen headings (h1) and the figures on a stat tile */
+  --fs-2xl: 23px;  /* the one number a screen is about */
+
+  /* ---- spacing: a 4 px grid, every step a multiple of it -----------------------------
+   *
+   * Was 4, 8, 12, 18, 28 — the last two off the grid, which is why nothing lined up with
+   * anything at two removes. Now 4, 8, 12, 16, 24, 32: every gap is a multiple of the
+   * smallest, so a stack of three components sits on the same rhythm as one. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
-  --space-4: 18px;
-  --space-5: 28px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
   --radius-1: 4px;
   --radius-2: 8px;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 2px 8px rgba(0, 0, 0, 0.18);
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-md: 13px;
-  --fs-lg: 16px;
-  --fs-xl: 21px;
-  --row-h: 26px;
+  --row-h: 28px;
+  /* The pointer floor. Every interactive control is at least this on its short edge —
+   * the theme button measured 29x23 and the situation permalink 18x17 (F81). Not the
+   * 44 px iOS figure: this is a dense operations console and a 44 px row would halve
+   * what fits on a screen. 28 is the row height, so a control is a row. */
+  --tap: 28px;
   --nav-w: 232px;
   --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -130,14 +151,6 @@
   --shadow-1: 0 1px 2px rgba(20, 28, 40, 0.10), 0 2px 8px rgba(20, 28, 40, 0.08);
 }
 
-:root[data-density="comfortable"] {
-  --space-2: 10px;
-  --space-3: 16px;
-  --space-4: 24px;
-  --row-h: 34px;
-  --fs-md: 14px;
-}
-
 * { box-sizing: border-box; }
 
 html, body {
@@ -183,11 +196,44 @@ button, select, input, textarea {
   border-radius: var(--radius-1);
   padding: var(--space-1) var(--space-2);
 }
+/* The pointer floor (F81), applied where controls are made rather than per call site. */
+button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: var(--tap); }
 button { cursor: pointer; }
 button:hover:not(:disabled) { background: var(--bg-hover); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- action affordances: one primary per screen, secondaries visibly secondary ----
+ *
+ * The GitHub half of the brief, and it is about SHAPE rather than palette. Until now every
+ * button in this console was the same button: "Add user", "Cancel" and "Delete" were one
+ * grey rectangle, so a screen offered no answer to "what am I here to do".
+ *
+ * `.primary` is the one action a screen exists for. `.warn` names what it will destroy and
+ * is the only one that borrows the alarm colour. Everything else stays the default, which
+ * is what makes the primary readable — a screen where three buttons are primary has none. */
+button.primary {
+  background: var(--accent); color: var(--accent-fg);
+  border-color: var(--accent); font-weight: 600;
+}
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 button.warn { border-color: var(--alarm); color: var(--alarm); }
-button.icon { padding: var(--space-1) var(--space-2); line-height: 1; }
+button.warn:hover:not(:disabled) { background: var(--alarm-bg); }
+button.icon {
+  padding: var(--space-1); line-height: 1; min-width: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* A link that acts like a button gets the target size too — the `#1` permalink measured 18x17
+   and the identity link 32x19, which are pointer targets nobody on a phone can hit reliably.
+   Applied to the classes rather than to every `a`: a link inside a sentence is not a control,
+   and forcing 28 px on one would open gaps in running text for no gain. */
+a.tap, .who-name, .permalink, .mini-list a {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--tap); min-width: var(--tap); padding: 0 var(--space-1);
+  /* `flex: none` because these sit inside flex rows that would otherwise compress them: the
+     situation permalink measured 19 px wide with `min-height` already applied, so the height
+     was fixed and the width was not — half a repair reads as a whole one until it is measured. */
+  flex: none;
+}
 textarea { width: 100%; font-family: var(--mono); }
 label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-bottom: var(--space-1); }
 
@@ -215,15 +261,26 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   overflow-y: auto;
   padding-bottom: var(--space-4);
 }
+/* A link since v0.15.3: it was a <div> and clicking the product's own name did nothing. */
 .brand {
   display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3);
   border-bottom: 1px solid var(--line);
   margin-bottom: var(--space-3);
+  color: var(--fg);
 }
+.brand:hover { background: var(--bg-hover); text-decoration: none; }
 .brand-mark { color: var(--accent); font-size: var(--fs-lg); }
 .brand-name { font-size: var(--fs-lg); letter-spacing: -0.01em; }
 .brand-name b { color: var(--accent); font-weight: 600; }
+
+/* ---------- icons (DECISIONS #236) ----------
+ *
+ * One rule, because the family is defined in the markup: 24x24 viewBox, 1.5 stroke,
+ * currentColor. Sized at 1em so an icon is the size of the text beside it and moves with the
+ * type scale rather than against it. `vertical-align` rather than flex, so an icon can sit
+ * inside a sentence without the sentence becoming a flex container. */
+.icon-svg { width: 1em; height: 1em; vertical-align: -0.13em; flex: none; }
 .nav-group { margin-bottom: var(--space-3); }
 .nav-heading {
   font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em;
@@ -242,7 +299,7 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   background: var(--bg-hover); color: var(--fg);
   border-left-color: var(--accent); font-weight: 600;
 }
-.nav-glyph { width: 1.1em; text-align: center; color: var(--fg-dim); }
+.nav-glyph { display: inline-flex; align-items: center; color: var(--fg-dim); font-size: var(--fs-lg); }
 .nav-item.active .nav-glyph { color: var(--accent); }
 .nav-label { flex: 1; }
 .nav-count {
@@ -370,6 +427,11 @@ td.sev { white-space: nowrap; }
   flex: 1; display: flex; align-items: center; gap: var(--space-2);
   background: none; border: 0; text-align: left; padding: var(--space-2) var(--space-3);
 }
+/* The chevron points right when the card is closed and down when it is open. `aria-expanded`
+   on the button is what assistive technology reads; this is the sighted half of the same fact,
+   and the card is not relying on either alone. */
+.sit-chevron { display: inline-flex; color: var(--fg-dim); transition: transform 0.12s ease; }
+.sit-chevron.open { transform: rotate(90deg); }
 .sid { font-family: var(--mono); font-weight: 600; }
 .age { margin-left: auto; color: var(--fg-muted); font-size: var(--fs-xs); }
 .permalink { font-size: var(--fs-xs); color: var(--fg-dim); }
@@ -384,6 +446,35 @@ td.sev { white-space: nowrap; }
 }
 .flap { color: var(--warn); font-size: var(--fs-xs); }
 .fb { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-3) 0; }
+
+/* ---------- "why these were grouped": the summary, then the detail (V.6, #245) ----------
+ *
+ * The band changes the WORDS as well as the colour — a thin margin read off a border colour
+ * alone fails the same operator the severity rules are written for. */
+.soundness {
+  border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius-2);
+  background: var(--bg-sunken); padding: var(--space-3); margin-bottom: var(--space-3);
+}
+.soundness-thin { border-left-color: var(--warn); }
+.soundness-fair { border-left-color: var(--low); }
+.soundness-wide { border-left-color: var(--quiet); }
+.soundness-unknown { border-left-color: var(--line-strong); }
+.soundness .stat-row { margin-bottom: var(--space-2); }
+.soundness .stat { background: var(--bg-raised); }
+
+.carrying { border-top: 1px solid var(--line); padding-top: var(--space-2); }
+.term-means { list-style: none; margin: 0; padding: 0; }
+.term-means li {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  font-size: var(--fs-xs); color: var(--fg-muted); padding: var(--space-1) 0;
+}
+.term-mean-label { min-width: 22ch; }
+
+.link-detail-toggle {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: none; border: 0; padding: var(--space-1) 0; color: var(--accent);
+}
+.link-detail-toggle:hover { background: none; text-decoration: underline; }
 
 /* per-term contributions: a bar AND the number, never the bar alone */
 .why { margin-top: var(--space-3); }
@@ -492,8 +583,18 @@ pre.refusal-reason {
 .inline-confirm { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); }
 .kv dt { color: var(--fg-muted); }
-.kv dd { margin: 0; }
-.cap { margin-right: var(--space-1); color: var(--fg-muted); }
+/* `min-width: 0` because a grid item defaults to `min-width: auto`, which refuses to shrink below
+   its content's min-content width. That is what actually put the account screen's capability list
+   2 443 px off a 390 px phone (F80): the column could not narrow, so the text never got the chance
+   to wrap. Fixing it here rather than with an aggressive `overflow-wrap` on the text is the
+   difference between wrapping at the spaces and breaking `classes.read` in half. */
+.kv dd { margin: 0; min-width: 0; }
+.cap { color: var(--fg-muted); }
+/* A wrapping FLEX row, not inline chips with a margin. The chips carry no whitespace between them
+   — only `margin-right` — so at 390 px the browser had no break opportunity in the whole run and
+   broke inside words: `classes.rea` / `d config.read`. As flex items each capability wraps as a
+   unit, which is what a reader needs from a list of identifiers. */
+.cap-list { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
 .mini-list { list-style: none; margin: 0 0 var(--space-3); padding: 0; }
 .mini-list li { display: flex; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
 .tokval { border: 1px solid var(--warn); background: var(--warn-bg); border-radius: var(--radius-2); padding: var(--space-3); margin-bottom: var(--space-3); }
@@ -505,6 +606,42 @@ pre.refusal-reason {
 .ts-rel { display: block; color: var(--fg-dim); font-size: var(--fs-xs); }
 .govjson { min-height: 160px; }
 .policy-editor { margin-top: var(--space-2); }
+
+/* ---------- the password surface (V.2) ---------- */
+
+.pw-field { margin-bottom: var(--space-2); }
+/* The reveal button sits INSIDE the field's box rather than beside it, so the input keeps the
+   full width the login card gives it and the control does not become a second column that wraps
+   away from what it reveals at narrow widths. */
+.pw-row { display: flex; align-items: stretch; gap: var(--space-1); }
+.pw-row input { flex: 1; min-width: 0; margin-bottom: 0; }
+.pw-reveal { flex: none; display: inline-flex; align-items: center; justify-content: center; }
+
+.pw-meter {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  font-size: var(--fs-xs); color: var(--fg-muted); margin: 0 0 var(--space-2);
+}
+.pw-track {
+  flex: none; width: 84px; height: 4px; border-radius: 2px;
+  background: var(--bg-sunken); border: 1px solid var(--line); overflow: hidden;
+}
+.pw-fill { display: block; height: 100%; background: var(--fg-dim); }
+/* The bar is never the only signal: `.pw-words` states the count and the bound in text beside it,
+   and the state changes the WORDS as well as the colour. Same rule as severity. */
+.pw-meter-short .pw-fill { background: var(--warn); }
+.pw-meter-ok .pw-fill { background: var(--quiet); }
+.pw-meter-ok .pw-words { color: var(--quiet); }
+.pw-meter-over .pw-fill { background: var(--alarm); width: 100% !important; }
+.pw-meter-over .pw-words { color: var(--alarm); }
+
+/* A declaration, not a control (V.3): an icon, a sentence, no affordance. */
+.signin-notes { margin-top: var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.note-line {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  font-size: var(--fs-sm); color: var(--fg-muted); margin: 0 0 var(--space-2); max-width: 70ch;
+}
+.note-line .icon-svg { flex: none; margin-top: 0.15em; color: var(--fg-dim); }
+.note-line b { color: var(--fg); font-weight: 600; }
 
 /* ---------- login + noscript ---------- */
 
@@ -520,16 +657,93 @@ pre.refusal-reason {
 .login-card button { width: 100%; margin-top: var(--space-2); }
 .noscript { max-width: 60ch; margin: 10vh auto; padding: var(--space-4); }
 
-/* ---------- narrow viewport ---------- */
+/* ================= THREE WIDTHS (DECISIONS #237) =================================
+ *
+ * The shipped console reasoned about **one** width — `max-width: 760px` — so 820 px
+ * rendered byte-identically to 1440 px on every view of every role, and everything
+ * between 761 px and a NOC wall was the desktop layout stretched. There was no tablet
+ * layout; there was a phone rule and a desktop.
+ *
+ *   >= 1100    the sidebar is a column
+ *   720-1099   the sidebar becomes a horizontal strip; the work area takes the width
+ *   < 720      single column; the widest tables become cards
+ *
+ * ## Dense tables at narrow widths: scroll with the first column frozen
+ *
+ * Three options were on the table and two are refused:
+ *
+ *   * **drop columns by priority** — refused. An operator cannot tell a column that was
+ *     dropped from one that is empty, and this console's tables carry evidence. A table
+ *     that silently drops columns is worse than one that scrolls.
+ *   * **cards everywhere** — refused. The vertical scan down a column of aligned numerals
+ *     is the whole reason these tables are dense; turning every one into cards destroys the
+ *     property the Zabbix half of the brief asks for.
+ *   * **horizontal scroll, first column frozen** — chosen. Every column stays reachable,
+ *     the row keeps its identity (device, or id) beside whatever the operator scrolled to,
+ *     and the scan survives. `.table-scroll` already existed; the frozen column is new.
+ *
+ * `.cards-below-720` is the one exception, applied by a view to a table whose rows are
+ * facts rather than a series — `kv` pairs, the account's capability list — where there is
+ * no column to scan and the cards are simply the same data reflowed.
+ */
 
-@media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; overflow: visible; }
-  .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
-  .nav-list { display: flex; flex-wrap: wrap; }
-  .nav-item { border-left: 0; border-bottom: 2px solid transparent; }
+/* ---------- tablet: 720-1099 ---------- */
+
+@media (max-width: 1099px) {
+  /* The sidebar stops being a column and becomes a strip above the work area. At 820 px a
+     232 px sidebar was 28 % of the viewport holding sixteen short labels. */
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .sidebar {
+    border-right: 0; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: 0 var(--space-3) 0 0; overflow-x: auto;
+  }
+  .brand { border-bottom: 0; margin-bottom: 0; flex: none; }
+  .nav { display: flex; gap: var(--space-3); min-width: 0; }
+  .nav-group { margin-bottom: 0; display: flex; align-items: center; gap: var(--space-2); }
+  /* The group headings become inline dividers rather than stacked labels: "Operations"
+     over four items reads as a heading; beside them it reads as a label, which is what a
+     horizontal strip needs. */
+  .nav-heading { padding: 0; margin: 0; white-space: nowrap; }
+  .nav-list { display: flex; gap: var(--space-1); }
+  .nav-item {
+    border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap;
+    padding: var(--space-1) var(--space-2);
+  }
   .nav-item.active { border-left-color: transparent; border-bottom-color: var(--accent); }
+  .work { padding: var(--space-3); }
+  /* A `max-content` first column is what put the account screen 2 443 px off a phone (F80);
+     it is wrong at every width below the desktop, not only at 390. */
+  .fact { grid-template-columns: 200px 1fr; }
+}
+
+/* ---------- phone: < 720 ---------- */
+
+@media (max-width: 719px) {
+  .shell { height: auto; overflow: visible; }
   .work { overflow: visible; padding: var(--space-3); }
+  .topbar { padding: var(--space-2) var(--space-3); }
   .fact { grid-template-columns: 1fr; }
+  /* F80: `max-content` sizes a grid column to its longest row UNWRAPPED, so the account
+     screen's capability list became one 2 443 px column with no scrollable ancestor —
+     thirty elements outside the viewport that did not scroll and could not be reached. */
+  .kv, .class-legend { grid-template-columns: 1fr; }
+  .kv dt, .class-legend dt { margin-top: var(--space-2); }
+  /* The frozen first column. `.table-scroll` already scrolled; what was missing is that the
+     row lost its identity as soon as it did. */
+  .table-scroll { overflow-x: auto; }
+  table.data th:first-child, table.data td:first-child {
+    position: sticky; left: 0; background: var(--bg); z-index: 1;
+  }
+  table.data tbody tr:hover td:first-child { background: var(--bg-hover); }
+  /* A long identifier — a 64-hex run id — has no break opportunity in it and would otherwise
+     push the column wider than the viewport. `break-word`, not `anywhere`: `anywhere` breaks
+     eagerly and split the account screen's capability list mid-token (`classes.rea / d`), which
+     is harder to read than the overflow it was preventing. `break-word` breaks only a word that
+     genuinely does not fit, so a list of short names still wraps at its spaces. */
+  code, .mono, pre { overflow-wrap: break-word; }
+  .stat { min-width: 0; flex: 1 1 45%; }
+  .stat-row { gap: var(--space-2); }
   /* **The per-term contributions wrap rather than clip** (F67, DECISIONS #220).
      `.linkrow` is score + three fixed-width term bars + the pair the link is between. At 390 px
      every one of them overflowed its box by 51 px with no scrollable ancestor, so all 30 pair

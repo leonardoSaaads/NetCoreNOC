@@ -11,19 +11,17 @@
  * finds no control learns something true: it is a guarantee, not a preference.
  */
 
-import { html } from "../dom.js";
-import { DataTable, SectionHeading, Empty } from "../widgets.js";
-import { plural, score } from "../format.js";
-import { HARDENING, STRUCTURAL, RESTART_REQUIRED } from "../parameters.js";
+import { html } from "../../dom.js";
+import { DataTable, SectionHeading, Empty } from "../../widgets.js";
+import { plural, score } from "../../format.js";
+import { HARDENING, STRUCTURAL, RESTART_REQUIRED } from "../../parameters.js";
 
 /** Hardening-only: the floors, where they are enforced, and which of them have a write path. */
 export function Hardening({ scorer }) {
   return html`<section class=${`panel-block param-${HARDENING}`}>
     <${SectionHeading} title="Hardening-only"
-      hint=${"resolved = max(project floor, deployment policy). You may make these stricter. " +
-             "A looser value is refused by this console before it is sent, and by the appliance " +
-             "if it is sent anyway — the console's refusal is an affordance, the appliance's is " +
-             "the control, and neither is the only one."} />
+      hint=${"resolved = max(project floor, deployment policy) — stricter only. A looser value " +
+             "is refused here before it is sent, and by the appliance if it is sent anyway."} />
     ${scorer ? html`<${DataTable}
       caption="The scorer's degeneracy bounds — enforced live, on the Link scorer screen"
       columns=${[
@@ -44,12 +42,10 @@ export function Hardening({ scorer }) {
       : html`<p class="hint">The scorer's bounds could not be read, so they are not shown rather
           than guessed.</p>`}
 
-    <p class="structural-note"><b>The pre-registered sufficiency floors have no write path in this
-      release.</b> <code>asserting_bags ≥ 50</code> and <code>asserting_incidents ≥ 30</code> are
-      constants in the promotion route. Giving a deployment a way to raise them would change the
-      promotion gate's inputs, which is evidence-chain work rather than console work, so this
-      release does not add a control that cannot work. It is a ROADMAP line, and the floors are
-      shown as facts below.</p>
+    <p class="structural-note"><b>The sufficiency floors have no write path.</b>
+      <code>asserting_bags ≥ 50</code> and <code>asserting_incidents ≥ 30</code> are constants in
+      the promotion route: changing them changes the gate's inputs. See
+      <code class="mono">docs/ROADMAP.md</code>.</p>
   </section>`;
 }
 
@@ -77,9 +73,8 @@ export function Structural({ config, scorer }) {
   ];
   return html`<section class=${`panel-block param-${STRUCTURAL}`}>
     <${SectionHeading} title="Structural — facts, not settings"
-      hint=${"These have no edit control because they are not choices. A greyed-out field would " +
-             "say “you may not”; these say “this is what is true”, and they " +
-             "are different sentences."} />
+      hint="No edit control, because these are not choices. A greyed-out field would say “you may
+            not”; these say “this is what is true”." />
     <dl class="facts">
       ${rows.map(([name, value, why]) => html`<div class="fact" key=${name}>
         <dt>${name}</dt>
@@ -105,10 +100,9 @@ export function RestartRequired({ config }) {
   }));
   return html`<section class=${`panel-block param-${STRUCTURAL}`}>
     <${SectionHeading} title="Read at startup — a change needs a restart"
-      hint=${"`Settings` is read once when the process starts and is never mutated afterwards. " +
-             "These are shown rather than made editable, because a form that accepted a new " +
-             "trap port and appeared to succeed — while the receiver kept listening on the old " +
-             "one — would be worse than no form: the operator would believe traps were arriving."} />
+      hint=${"Read once at process start and never mutated. Shown rather than editable: a form " +
+             "that accepted a new trap port while the receiver kept the old one would leave an " +
+             "operator believing traps were arriving."} />
     ${rows.length ? html`<${DataTable} columns=${[
       { key: "setting", label: "environment variable" },
       { key: "value", label: "value at startup" },

@@ -44,8 +44,6 @@ LOCKOUT_THRESHOLD = 5
 LOCKOUT_BASE_S = 1.0
 LOCKOUT_MAX_S = 15 * 60.0
 
-BOOTSTRAP_PASSWORD_CHARS = 20
-
 _DUMMY_SALT = b"\x00" * 16
 
 
@@ -113,6 +111,22 @@ def validate_password(password: str) -> str | None:
     if len(password) > MAX_PASSWORD:
         return f"password must be at most {MAX_PASSWORD} characters"
     return None
+
+
+def password_policy() -> dict[str, object]:
+    """The policy `validate_password` enforces, in the shape the console renders (v0.15.3).
+
+    **Served rather than restated.** V.2 asks the sign-in card for an indicator that reflects the
+    policy *the server actually enforces*; a `12` written into a JavaScript module would be a second
+    source of truth about what a valid password is, and the day `MIN_PASSWORD` moved the console
+    would confidently show the old bound. This is derived from the same constants
+    `validate_password` reads, so there is one.
+
+    `rule` is `"length"` and is the honest part: this project follows NIST SP 800-63B and has **no
+    composition requirement at all**. A meter that asked for a digit and a symbol would be inventing
+    a rule the appliance does not enforce, which is the same defect in the other direction.
+    """
+    return {"min": MIN_PASSWORD, "max": MAX_PASSWORD, "rule": "length"}
 
 
 # -- login throttle (in-memory, single process; DECISIONS v0.2 #15) ------------------
@@ -248,22 +262,7 @@ async def resolve_bearer(store: Store, token: str, now: float) -> Principal | No
     return None
 
 
-# -- bootstrap -----------------------------------------------------------------------
-
-
-async def bootstrap_admin(store: Store, now: float) -> str | None:
-    """Create the initial admin with a random password if no users exist; return it once."""
-    if await store.count_users() > 0:
-        return None
-    password = secrets.token_urlsafe(BOOTSTRAP_PASSWORD_CHARS)[:BOOTSTRAP_PASSWORD_CHARS]
-    await store.create_user(
-        username="admin",
-        password_hash=hash_password(password),
-        role="admin",
-        must_change_password=True,
-        now=now,
-    )
-    return password
+# -- the login flow ------------------------------------------------------------------
 
 
 @dataclass(frozen=True)

@@ -473,3 +473,140 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: **fixed in v0.15.2**, along with the row this release owes. Not guarded by a
   test: the guard would have to know how many rows *ought* to exist, which is the same problem.
   Stated here so the next release knows the sentence is one it has to change.
+
+## F79 — the sole admin can demote itself and permanently lock the appliance
+
+- **What**: two independent defects that compose into a lockout. (1) `POST /api/users/{uid}/role`
+  checks that the user exists and nothing else, so an admin may set its own role to `viewer` while
+  it is the only admin; the same hole is in `DELETE /api/users/{uid}`, which refuses only
+  *self*-deletion. (2) `auth.bootstrap_admin` guards on `count_users() > 0` — **users, not
+  admins** — so once any non-admin account exists, a restart never re-bootstraps.
+- **Reproduce**: boot a clean appliance; create a second non-admin user (**the control** — it must
+  succeed, or a later refusal would be the endpoint being broken rather than the guard working);
+  demote the sole admin; then **restart the process**. Both halves are needed: without the restart
+  this is a bad interaction, not a lockout.
+- **Measured**, by execution on the v0.15.2 tree:
+
+  ```
+  CONTROL   POST /api/users  viewer u2        -> 200 {"id":2,"username":"u2","role":"viewer"}
+  TREATMENT POST /api/users/1/role  viewer    -> 200 {"status":"role changed"}
+  GET /api/users  (same session)              -> 401 authentication required
+  GET /api/me     (same session)              -> 401 authentication required
+  POST /api/login admin                       -> 200 role="viewer"
+  GET /api/users  as that principal           -> 403 insufficient role
+  -- restart, same database --
+  bootstrap_admin returned a password         -> False
+  users in the database    [('admin','viewer'), ('u2','viewer')]
+  ENABLED ADMINS REMAINING -> 0     count_users() = 2   <- what bootstrap_admin guards on
+  ```
+
+  The role change revokes the caller's sessions, which is correct in itself and is what turns a
+  recoverable mistake into an immediate one: the operator is signed out mid-gesture.
+- **Why it matters**: there is no CLI recovery command, and a restart does not help. The only
+  remedy on the shipped tree is deleting the database — every situation, every learned entity,
+  every audit row and the whole feedback dataset. The maintainer has lost an environment to it.
+- **Disposition**: **fixed in v0.15.3** (#233, #234). Both halves: a last-enabled-admin invariant
+  refused server-side wherever that could stop being true, and `bootstrap_admin` re-guarded on the
+  quantity it always meant.
+
+## F80 — the account screen runs 2 443 px off a 390 px phone
+
+- **What**: `.kv` is `grid-template-columns: max-content 1fr`, and the account screen puts the
+  principal's whole capability list in one `<dd>` of it. `max-content` is the *unwrapped* width of
+  the longest row, so the grid is sized to the capability list laid end to end and the column never
+  wraps. Thirty elements sit outside the viewport with no scrollable ancestor.
+- **Reproduce**: sign in as admin at 390x844 in a real browser, go to `#/account`, and read the
+  bounding box of every element against `document.documentElement.clientWidth`.
+- **Measured**, Chromium at 390x844:
+
+  | role | view | elements outside the viewport | worst right edge |
+  |---|---|---|---|
+  | admin | `account` | **30** | **2 833 px** (viewport 390) |
+  | viewer | `account` | 10 | 2 833 px |
+  | admin | `timeline` | 6 | left **−9 px** (y-axis labels clipped) |
+  | admin | `promotion` | 1 | 489 px (a 64-hex run id) |
+
+  `document.scrollWidth` equals `clientWidth` on every one of them, so **the page does not scroll
+  and the content is simply unreachable** — the same shape as F67, on a screen F67 did not look at.
+- **Why it matters**: it is the screen V.3 puts the two-factor and recovery declarations on, and
+  the screen an operator opens to change their password on the device in their hand.
+- **Disposition**: **fixed in v0.15.3** (#237). Not visible to the DOM harness, which has no
+  layout: found by a browser, as F67 and F77 were.
+
+## F81 — every interactive control in the top bar is below the touch-target floor
+
+- **What**: the theme button measures **29x23**, the density button **30x23**, the identity link
+  **32x19**, and the situation permalink **18x17** — at every width, phones included. Three to five
+  controls per view are under 24 px on their short edge.
+- **Reproduce**: at any width, measure `getBoundingClientRect()` of every `button`, `a[href]`,
+  `input`, `select` and `[tabindex]:not([tabindex="-1"])`.
+- **Measured**: 3 controls under 24 px on the leanest view, 5 on `overview` and `labelling`; the
+  count is identical at 1440, 820 and 390 px, so nothing about the narrow layout addresses it.
+- **Why it matters**: the accessibility floor v0.13.0 set is about *keyboard* reach and it holds.
+  Pointer reach was never measured, and this product is now claimed to work on a phone.
+- **Disposition**: **fixed in v0.15.3** (#236). One of the four controls — density — was removed
+  rather than resized (#235).
+
+## F82 — the account screen told the operator the opposite of what the route does
+
+- **What**: after a successful `POST /api/password` the console rendered *"Password changed. Other
+  sessions are unaffected."* The route calls `store.revoke_user_sessions(principal.user_id)`, which
+  deletes **every** session that account holds — the caller's included — and its own return value
+  says `"password changed; sign in again"`. The console overwrote a true sentence with its negation.
+- **Reproduce**: open two sessions for one account, change the password from one, and ask `/api/me`
+  from both.
+- **Measured**:
+
+  ```
+  before: changer /api/me -> 200      other /api/me -> 200
+  POST /api/password      -> 200 {"status":"password changed; sign in again"}
+  after:  changer /api/me -> 401      other /api/me -> 401
+  ```
+
+- **Why it matters**: it is small in blast radius and large in what it says about how a caption gets
+  written. `tests/test_auth.py::test_password_change_revokes_all_sessions` has asserted **both**
+  sessions die since v0.2.0 — the suite knew, the route's own return string knew, and the screen
+  said the opposite for three releases. A caption is not covered by a test that asserts the
+  behaviour it describes, and nothing else was ever going to look.
+- **Disposition**: **fixed in v0.15.3**, in the same commit as V.2's password surface. Found by
+  reading the route while wiring the strength meter, then confirmed by execution rather than filed
+  from the reading.
+
+## F83 — the timeline's y axis had thirty pixels for a device name
+
+- **What**: `timeline.js` used one constant, `PAD = 30`, for all four sides of the SVG.
+  `d3.axisLeft` draws its tick labels to the **left** of the axis it is translated to, so every
+  device name had 30 px and needed about 55.
+- **Reproduce**: open the Timeline in a browser at any width and read the bounding box of every
+  `text` under `g.axis` against the viewport.
+- **Measured**, Chromium: `127.0.0.2` and `127.0.0.3` both at **x = −9**. At 390x844 that is six
+  elements outside the viewport with `document.scrollWidth == clientWidth`, so the page did not
+  scroll and the axis could not be read at all. After `PAD_LEFT = 82` and a clipped tick label:
+  **zero**, at 1440, 820 and 390 px.
+- **Why it matters**: the y axis is what makes the drawing a per-device timeline rather than a
+  scatter of dots. It is also **the second d3 screen defect this project has found by looking**,
+  after F77's three — and like those, no assertion in this repository could have seen it, because
+  the DOM harness substitutes a recording double for d3 and has no layout at all.
+- **Disposition**: **fixed in v0.15.3** (#246). Still not covered by a test, for the reason
+  `graph.js` and `timeline.js` both state in their own first paragraphs; the measurement above is
+  the evidence.
+
+## F84 — the threshold a situation's links had to clear was never served
+
+- **What**: `views/situations.js` has passed `threshold=${detail.threshold}` to "Why these were
+  grouped" since v0.13.0. `GET /api/situations/{sid}` has never returned that key. The screen's
+  own docstring lists *"the threshold the sum had to clear"* among the three things it provides.
+- **Reproduce**: read the payload rather than the code — `curl` the route on a live appliance and
+  look for the key.
+- **Measured**: nineteen keys returned, `threshold` not among them. The rendered sentence was
+  *"Every pair below scored above the link threshold."* — grammatical, complete-looking, and
+  missing the only number that makes it checkable. The value lives in `scorer_config.threshold`
+  and the situation row already names its configuration in `scorer_config_id`, so nothing had to
+  be computed: it had to be joined.
+- **Why it matters**: principle 2 is that an operator can check the grouping rather than trust it.
+  A score of `0.55` with no threshold beside it is a number to trust. It also silently disarmed
+  v0.15.3's own redesign, whose summary is built on the **margin** over that threshold — the
+  screen would have shipped saying "the threshold was not reported" on every situation.
+- **Disposition**: **fixed in v0.15.3** (#247), reading the configuration the situation names
+  rather than the active one. Found in a browser: the missing value degraded to a sentence that
+  read correctly, which is the failure mode a code review does not catch and a screen does.

@@ -25,7 +25,7 @@ import { get, post } from "../api.js";
 import { Loader, DataTable, SectionHeading, TimeCell, Loading, Failed, cell } from "../widgets.js";
 import { score, count, plural } from "../format.js";
 import { scorerRefusals } from "../parameters.js";
-import { Running } from "./model.js";
+import { Running } from "./parts/model.js";
 import { can } from "../session.js";
 import { Destructive } from "../destructive.js";
 

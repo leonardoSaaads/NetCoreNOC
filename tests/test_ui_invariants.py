@@ -277,7 +277,7 @@ async def test_a_confirm_never_carries_exclusions(routes: dict[str, Any]) -> Non
     sid, _ = uifixtures.largest_situation(routes["editor"])
     result = domdriver.run_scenario(
         "partialSplit",
-        {"routes": routes["editor"], "sid": sid, "mark": [1, 3], "button": "✓ Confirm"},
+        {"routes": routes["editor"], "sid": sid, "mark": [1, 3], "button": "Confirm"},
     )
     assert result["feedbackBody"]["verdict"] == "confirm"
     assert "excluded_ids" not in result["feedbackBody"], result["feedbackBody"]
@@ -1005,3 +1005,118 @@ async def test_the_trap_rate_is_derived_from_two_samples_and_names_its_window(
     # A counter that went BACKWARDS is an appliance that restarted, not a negative rate.
     assert third["rate"] is None, third
     assert third["tiles"]["trap rate"]["value"] == "—", third["tiles"]
+
+
+# --- v0.15.3: "why these were grouped" answers the storm question (V.6, DECISIONS #245) ---------
+
+#: The cap the old implementation applied: `links.slice(0, 30)`.
+OLD_LINK_CAP = 30
+
+
+def _routes_with_links_past_the_old_cap(
+    table: dict[str, Any], sid: int
+) -> tuple[dict[str, Any], int]:
+    """The captured detail for `sid`, with its link list grown past `OLD_LINK_CAP`.
+
+    **Why this exists, and it is the whole point of the test below.** The fiber-cut corpus produces
+    a situation with **16** links, and the first version of the completeness assertion drove that:
+    it passed, and it passed *with the thirty-row cap deliberately reinstated*, because 16 < 30
+    made `slice(0, 30)` a no-op. A guard that cannot fail for the defect it names is F53's shape
+    and F62's — a property holding by accident of the fixture — and it had to be found by injecting
+    the defect rather than by reading the test.
+
+    Only the **count** is synthetic. Every link is a copy of a real link from the real route, with
+    the real term shape, so what is under test is exactly the quantity the cap acted on. Growing
+    the corpus instead would move `make eval`'s frozen hash, which is a trap-path change in a
+    console release.
+    """
+    import copy
+
+    padded = dict(table)
+    detail = copy.deepcopy(table[f"/api/situations/{sid}"]["json"])
+    real = detail["links"]
+    assert real, "the captured situation has no links at all"
+    while len(detail["links"]) <= OLD_LINK_CAP:
+        detail["links"] = detail["links"] + copy.deepcopy(real)
+    padded[f"/api/situations/{sid}"] = {"status": 200, "json": detail}
+    return padded, len(detail["links"])
+
+
+@dom_test
+async def test_the_grouping_summary_is_computed_from_every_link_not_from_thirty(
+    routes: dict[str, Any],
+) -> None:
+    """**The redesign's first half.** The summary must aggregate the whole link set.
+
+    The old section rendered `links.slice(0, 30)` and nothing else, so an operator in a storm read
+    thirty rows chosen by insertion order and drew a conclusion from a sample nobody selected. What
+    they actually need first is *"is this grouping sound?"*, and that is a property of every link:
+    the weakest one, its margin over the threshold, and which of the three named terms is carrying
+    the grouping.
+
+    What this does NOT cover: whether the arithmetic is the right arithmetic. It is min, max and a
+    mean per term, and it is checked by reading `views/parts/why.js` — a test that recomputed it
+    here would be a second implementation of the thing under test.
+    """
+    sid, count = uifixtures.largest_situation(routes["editor"])
+    assert count >= 4, "the corpus must offer a situation with several links"
+    result = domdriver.run_scenario("whyGrouped", {"routes": routes["editor"], "sid": sid})
+
+    closed = result["closed"]
+    assert closed["summaryText"], "no summary rendered at all"
+    for label in ("weakest link", "strongest link", "above the threshold"):
+        assert label in closed["summaryText"], (
+            f"the summary does not report {label!r}: {closed['summaryText']!r}"
+        )
+    # All three named terms are reported as means, so "which term is carrying this" is answerable
+    # without opening anything.
+    assert len(closed["means"]) == 3, closed["means"]
+    assert closed["band"] in {
+        "soundness-thin",
+        "soundness-fair",
+        "soundness-wide",
+        "soundness-unknown",
+    }, closed["band"]
+
+
+@dom_test
+async def test_the_per_term_decomposition_is_one_interaction_away_and_complete(
+    routes: dict[str, Any],
+) -> None:
+    """**Principle 2, restated against the redesign — and the assertion that matters.**
+
+    > The operator must be able to answer *"why did the system group these alarms?"* without
+    > leaving the screen.
+
+    Two properties, and the second is the one a redesign could quietly lose:
+
+      * the decomposition is **behind one interaction** — closed by default, so a storm does not
+        open thousands of rows nobody asked for;
+      * it is **complete when opened**. The old version capped at thirty and printed a line saying
+        how many it had hidden, which means the per-term contributions of link thirty-one onwards
+        were unreachable on any device at all. A cap is how this screen stops carrying the
+        product's central claim while still looking like it does.
+
+    The fixture is grown past thirty on purpose — see `_routes_with_links_past_the_old_cap`.
+    With the corpus's own sixteen this assertion passed **with the cap reinstated**, which is
+    the exact failure mode Appendix B calls a property that holds by accident.
+    """
+    sid, _ = uifixtures.largest_situation(routes["editor"])
+    padded, total = _routes_with_links_past_the_old_cap(routes["editor"], sid)
+    result = domdriver.run_scenario("whyGrouped", {"routes": padded, "sid": sid})
+
+    assert result["closed"]["rowCount"] == 0, (
+        f"{result['closed']['rowCount']} link rows rendered before the operator asked for them"
+    )
+    assert result["expandedAttr"] == "true", "the toggle does not report its state"
+    assert result["opened"]["rowCount"] == total, (
+        f"opened the decomposition and got {result['opened']['rowCount']} of {total} links. "
+        f"A truncated decomposition is principle 2 stopping being true without saying so."
+    )
+    # Every row carries all three terms as NUMBERS, not only as bars.
+    assert len(result["opened"]["termNumbers"]) == total * 3, (
+        f"expected {total * 3} term figures, got {len(result['opened']['termNumbers'])}"
+    )
+    assert all(any(ch.isdigit() for ch in figure) for figure in result["opened"]["termNumbers"]), (
+        result["opened"]["termNumbers"][:6]
+    )

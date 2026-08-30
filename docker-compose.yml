@@ -11,6 +11,23 @@
 # retention, etc. `.env` is git-ignored and is the ONLY place secrets belong — never the image
 # or this file. With no .env, NetCoreNOC starts with its zero-config defaults (and warns admins
 # in the UI about the empty allowlist / missing TLS).
+#
+# ## Docker Desktop's "Enable Watch" button does nothing here, and that is deliberate
+#
+# There is no `develop:` section and no `watch:` key in this file, so Compose has nothing to
+# watch; the prompt is Docker's generic offer, not a feature of this project (v0.15.3, #248).
+# It is not an omission. This file is the **hardened production recipe** — `read_only: true`,
+# every capability dropped, no privilege escalation — and `watch` is a development loop that
+# syncs source into a running container, which a read-only root filesystem exists to prevent.
+#
+# To develop, run the process directly. There is no build step to wait for:
+#
+#     pip install -e ".[dev]"
+#     make run                     # python -m netcorenoc.main
+#
+# The console is static ES modules served from disk, so editing `src/netcorenoc/ui/**` and
+# reloading the browser is the whole edit loop — nothing to compile, nothing to sync, and no
+# container to rebuild.
 
 services:
   netcorenoc:

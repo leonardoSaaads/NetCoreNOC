@@ -40,9 +40,9 @@
  * it too. It needed a release whose subject was the model family to be noticed.
  */
 
-import { html } from "../dom.js";
-import { SectionHeading, DataTable } from "../widgets.js";
-import { score, count, absolute, relative, timeTitle } from "../format.js";
+import { html } from "../../dom.js";
+import { SectionHeading, DataTable } from "../../widgets.js";
+import { score, count, absolute, relative, timeTitle } from "../../format.js";
 
 /** Kinds fitted from labelled evidence. Nothing here is typed by an admin. */
 const FITTED = ["logistic", "tree", "forest", "gradient_boosting"];

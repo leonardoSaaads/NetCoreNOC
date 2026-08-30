@@ -592,14 +592,30 @@ def test_every_destructive_control_goes_through_one_component() -> None:
 
 
 def test_style_uses_design_tokens_both_themes_and_focus_states() -> None:
+    import re
+
     css = (UI_DIR / "style.css").read_text()
-    for token in ("--space-1:", "--radius-1:", "--shadow-1:", "--fs-md:"):
+    for token in ("--space-1:", "--radius-1:", "--shadow-1:", "--fs-md:", "--tap:"):
         assert token in css, token
     assert "@media (prefers-color-scheme: light)" in css  # the system preference still decides…
     assert '[data-theme="light"]' in css  # …and an explicit choice overrides it
-    assert '[data-density="comfortable"]' in css  # density is a first-class choice
+    # v0.15.3: the density switch is GONE, mechanism included (DECISIONS #235, #45). It scaled four
+    # spacing tokens and one step of the type ramp, so the two densities had different sets of
+    # relationships and one of them was chosen by nobody. Asserted absent rather than deleted from
+    # this file, because "the knob went and the mechanism stayed" is the failure #45 records.
+    assert "data-density" not in css, "the density mechanism is back without its decision"
     assert ":focus-visible" in css  # visible keyboard focus (accessibility)
-    assert "@media (max-width: 760px)" in css  # responsive to a narrow viewport
+    # More than one layout breakpoint (#237). The shipped console had exactly one — `max-width:
+    # 760px` — so 820 px rendered byte-identically to 1440 px on every view of every role, and
+    # everything between 761 px and a NOC wall was the desktop layout stretched: a phone rule and
+    # a desktop, with no tablet at all. Asserted as a COUNT rather than as literal widths, because
+    # the widths are a design decision this test has no business pinning; what was missing is that
+    # the stylesheet reasoned about more than one.
+    layout = re.findall(r"@media \(max-width: (\d+)px\)", css)
+    assert len(layout) >= 2, (
+        f"the stylesheet reasons about {len(layout)} width(s): {layout}. One is the state v0.15.3 "
+        f"found, and no assertion here could see it — 820 px and 1440 px render the same words."
+    )
     assert "prefers-reduced-motion" in css
     # still CSP-clean: no external origins, no @import of a remote sheet.
     assert "http://" not in css and "https://" not in css
