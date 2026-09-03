@@ -71,13 +71,15 @@ immutable document is a reference to the tree as it was; the reading rule above 
 
 ## The pre-registration hashes
 
-Four analysis plans in [`analysis/`](analysis/) are pinned by SHA-256 in
+Five analysis plans in [`analysis/`](analysis/) are pinned by SHA-256 in
 `tests/test_preregistration.py`. Each hash lives in **two** files on purpose: one alone could be
 edited quietly in the same commit as the plan it guards; two make that an obviously deliberate diff.
 The second home used to be the release's phase-gate document. Those are deleted, so it is this
 section — [decision #204](adr/DECISIONS.md).
 
-The hashes below were **copied, not recomputed**, from the gate documents at `3ecf237`.
+The first four hashes were **copied, not recomputed**, from the gate documents at `3ecf237`. There
+is no gate document for the fifth: v0.15.0 deleted the directory, so `v0.16.0`'s hash was recorded
+here and in the annotated tag, and this section is the only second home it has ever had.
 
 | Plan | SHA-256 | Ratified in | Recorded at `3ecf237` in |
 |---|---|---|---|
@@ -85,10 +87,12 @@ The hashes below were **copied, not recomputed**, from the gate documents at `3e
 | `PREREGISTRATION-0.10.0.md` | `c03aef0181554c0c71482e57d03677f25964c3a5ac20a7bf1b1d74bff1ba1e01` | `6b1c73a` | `docs/gates/v0.10.0-phase-0.md` §4 |
 | `PREREGISTRATION-0.11.0.md` | `e011ee6ad2367d44f2ede14cad7b072df598298f91ecc1a405744358b589d449` | `78faace` | `docs/gates/v0.11.0-phase-0.md` §1 |
 | `PREREGISTRATION-0.14.0.md` | `5607328a573d9a3c78374e47ba11e6dcff76f07c023b3f2e8174b6feed4d219f` | `4aed642`, tag `v0.14.0-gate0` | `docs/gates/v0.14.0-phase-0.md` §6 |
+| `PREREGISTRATION-0.16.0.md` | `81aadc3b7a0695c0a6221a8302fb4e4e591f800a1cceeb89e6a52cca8ecca448` | `b00d231`, tag `v0.16.0-gate0` | — (the gates are deleted; see above) |
 
 The temporal claim — that each plan was written before the results it governs — never rested on the
 gate document. It rests on the ratifying commit, which changed nothing else and is permanent.
-`v0.14.0-gate0` carries its plan's hash in the tag's own annotation, independently of any file.
+`v0.14.0-gate0` and `v0.16.0-gate0` each carry their plan's hash in the tag's own annotation,
+independently of any file.
 
 ## The simulated network's seed
 

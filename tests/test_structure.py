@@ -294,14 +294,19 @@ def test_markdown_files_discovered() -> None:
 def test_the_immutable_exemption_is_derived_from_the_hash_guard() -> None:
     """The exemption's membership is not a list in this file, and must never become one.
 
-    `test_preregistration.PLANS` is what makes these four documents uneditable. Keying the
+    `test_preregistration.PLANS` is what makes these five documents uneditable. Keying the
     exemption on it means a document can only become exempt by having its SHA-256 pinned — so
     "this link may dangle" and "this file may not change" are the same fact, stated once.
+
+    The count moves when a plan is ratified, and moving it is the whole cost of adding one: v0.16.0
+    is the fifth. It is asserted **exactly** rather than as a minimum, because a `>=` here would let
+    a release retire an earlier plan's exemption while adding its own and stay green — the same
+    retirement `test_preregistration.test_every_plan_is_guarded` exists to make visible.
     """
     import test_preregistration
 
     exempt = _immutable_documents()
-    assert len(exempt) == 4, f"expected the four pinned plans, got {sorted(exempt)}"
+    assert len(exempt) == 5, f"expected the five pinned plans, got {sorted(exempt)}"
     assert exempt == {plan.path.resolve() for plan in test_preregistration.PLANS}
     for path in exempt:
         assert path.is_relative_to(REPO_ROOT / "docs" / "analysis")
