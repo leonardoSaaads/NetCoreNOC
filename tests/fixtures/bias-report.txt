@@ -231,6 +231,8 @@ legacy_capture                                   1
 close                                            1
 organic                                          4
 unrecorded                                       1
+-- operator gestures (v0.16.0) --------------------------------
+producing training rows                          0
 
 -- membership divergence -------------------------------------
 labels carrying a client report                  1

@@ -235,7 +235,7 @@ class Recorder:
                 concrete = concrete.replace("{" + name + "}", value)
         if "{" in concrete:  # a path parameter nothing in the seed can fill
             return
-        body = REQUEST_BODIES.get((method, path))
+        body = dynamic_body(path, targets) or REQUEST_BODIES.get((method, path))
         if (method, path) in NOT_DRIVEN:
             self.lines.append(f"{self.role:9} {method:6} {path:34} not-driven (see NOT_DRIVEN)")
             return
@@ -291,9 +291,23 @@ async def _targets(store: Store) -> dict[str, str]:
         situations = await store.list_situations(None, 50)
         nes = await store.list_ne()
         users = await store.list_users()
+        members = (
+            await store.situation_member_ids(min(int(s["id"]) for s in situations))
+            if situations
+            else []
+        )
     out: dict[str, str] = {}
     if situations:
         out["sid"] = str(min(int(s["id"]) for s in situations))
+        # v0.16.0. The second situation, for a `move` and a `merge` — both name **two** of them,
+        # which is why they are two routes rather than one (DECISIONS #255). The highest id rather
+        # than "the other one", so the value is defined however many the seed forms.
+        out["sid2"] = str(max(int(s["id"]) for s in situations))
+    if members:
+        # `POST /api/alarms/{aid}/clear` names an alarm, not a situation. Resolved from the seed
+        # like every other target here: a literal would make the route 404 and the record would
+        # then pin the perimeter rather than the handler.
+        out["aid"] = str(min(members))
     if nes:
         out["ne_id"] = str(min(int(n["id"]) for n in nes))
     # The viewer account, never the acting principal except on the viewer pass — where every route
@@ -365,6 +379,24 @@ REQUEST_BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/scope"): {"clear": True, "note": "harness"},
     ("POST", "/api/audit/prune"): {"before": EPOCH - 86400},
 }
+
+
+#: v0.16.0. Bodies that name ids the seed produced, so the three restructuring gestures reach their
+#: **handler** rather than stopping at a 422 from the request model. A static dict cannot hold them
+#: — the ids are resolved from the seeded database, exactly as the path targets are — so the two
+#: sources are composed at request time and this one wins where both have a key.
+def dynamic_body(path: str, targets: dict[str, str]) -> dict[str, Any] | None:
+    """The body for a route whose payload names a seeded id, or `None`."""
+    sid2, aid = targets.get("sid2"), targets.get("aid")
+    if path == "/api/situations/{sid}/move" and sid2 and aid:
+        return {"alarm_id": int(aid), "to_situation_id": int(sid2), "confidence": 0.8}
+    if path == "/api/situations/{sid}/merge" and sid2:
+        return {"from_situation_id": int(sid2), "confidence": 0.8}
+    if path == "/api/situations/{sid}/split" and aid:
+        return {"alarm_ids": [int(aid)], "confidence": 0.8}
+    if path == "/api/situations/{sid}/name":
+        return {"name": "harness"}
+    return None
 
 
 # --- the frozen clock ----------------------------------------------------------------------

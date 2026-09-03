@@ -408,6 +408,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/model.js"),
     ("GET", "/app/views/parts/retention.js"),
     ("GET", "/app/views/parts/verdict.js"),
+    ("GET", "/app/views/parts/lifecycle.js"),
+    ("GET", "/app/views/parts/members.js"),
     ("GET", "/app/views/parts/why.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
@@ -428,6 +430,15 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/entities"),
     ("GET", "/api/entities/{ne_id}"),
     ("GET", "/api/state-clears"),
+    # v0.16.0: the five operator gestures — the three that assert something about a grouping, then
+    # the two that assert nothing about one, which is the seam the two modules are split on. Before
+    # the operate routes so the behaviour record drives them on a LIVE situation rather than after
+    # `close` has resolved it; ordering is free here because every path is a distinct literal.
+    ("POST", "/api/situations/{sid}/move"),
+    ("POST", "/api/situations/{sid}/merge"),
+    ("POST", "/api/situations/{sid}/split"),
+    ("POST", "/api/situations/{sid}/name"),
+    ("POST", "/api/alarms/{aid}/clear"),
     ("POST", "/api/entities/{ne_id}/reset"),
     ("POST", "/api/profiles/{ne_id}/reset"),
     ("POST", "/api/situations/{sid}/feedback"),
@@ -507,14 +518,20 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
 
     `/api/situations` must stay above `/api/situations/{sid}` and `/api/scorer/preview` above the
     bare `POST /api/scorer`; a template that moves above its literal silently changes behaviour.
-    v0.13.0 touched no `/api` route and neither does v0.14.0 — three scorer kinds, a repaired
-    promotion gate and two new screens moved the served API surface by exactly nothing. This states
-    that as a fact rather than as an intention.
+    v0.13.0 touched no `/api` route and neither did v0.14.0 or v0.15.3 — three scorer kinds, a
+    repaired promotion gate, two new screens and a redrawn console moved the served API surface by
+    exactly nothing.
+
+    **v0.16.0 moves it, by five**, and the ordering property is what makes that safe to state:
+    every new path is `/api/situations/{sid}/<literal>` or `/api/alarms/{aid}/clear`, and each sits
+    *below* the bare `GET /api/situations/{sid}` it extends — so none can shadow a handler, which is
+    the property this test actually protects. The count is asserted exactly, not as a minimum: five
+    is the number DECISIONS #255 and #260 argue for, and a sixth would be a route nobody decided on.
     """
     _engine, _queue, app = await authutil.make_env(store)
     live = [entry for entry in route_order(app) if entry[1].startswith("/api")]
     assert live == API_ORDER_BASELINE
-    assert len(live) == 44, f"the /api surface is {len(live)} pairs; v0.13.0 adds no route"
+    assert len(live) == 49, f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five"
 
 
 async def test_route_order_baseline_has_no_duplicates(store: Store) -> None:
@@ -876,8 +893,13 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: the point rather than an inconvenience: it turns "did any code move" into one reviewable line of
 #: a diff, the discipline `TRAP_PATH_HASHES` and `UI_HASHES` already use. The name carried
 #: `_AT_V0_14_0` until v0.15.1, which is a claim this release stopped making.
-SRC_TREE_DIGEST = "df3a01dc380cec4574d9a1a9654efe7c6c45b14c0a218906104172b48b630b6e"
-SRC_FILE_COUNT = 177
+#:
+#: v0.16.0: 177 -> 190 files. Thirteen added, none removed, none moved — one migration, two store
+#: modules, two API route modules, four engine modules, one crosscutting module and two console
+#: parts. The digest and the count move together in the commits that add them, which is what keeps
+#: the line reviewable rather than absorbing whatever else came with the change.
+SRC_TREE_DIGEST = "45b6fbecdb7935a2487dc0d4e90668f1dd5a6c36b813bf885d86188c8b157e45"
+SRC_FILE_COUNT = 190
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
