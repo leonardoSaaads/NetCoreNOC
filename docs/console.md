@@ -72,6 +72,42 @@ beside its bar**: temporal, class affinity, entity affinity. You can answer *"wh
 group these alarms?"* without leaving the screen.
 [`correlation.md`](correlation.md#reading-a-breakdown) is how to read one.
 
+## Working a situation (v0.16.0)
+
+A card carries **three states**, and the tabs above the list are those states: **new** (the
+correlator formed it and nobody has looked), **open** (an operator has touched it), **resolved**
+(it is finished, and `resolution` says why — `operator`, `self_cleared`, `idle`, `merged`,
+`manual_clear`). *"The network fixed it"* and *"nobody looked at it for an hour"* are different
+facts and the console now says which.
+
+**A card leaves the New tab the moment you gesture on it.** That is the state machine working, not
+the card vanishing: it is on Open, and on Any.
+
+Five operations sit under **Restructure this situation**, and each is a statement:
+
+| control | what it says | what it teaches |
+|---|---|---|
+| **Move** an alarm to another situation | it does not belong here, and it belongs there | a negative pair against the members it left, and a positive against the ones it joined |
+| **Merge** another situation into this one | these are one incident | the cross pairs, from the two memberships as they were |
+| **Split marked members out** | these members do not belong with the rest | a negative pair for each marked member against each unmarked one |
+| **Save** a name | nothing about the grouping | nothing |
+| **clear**, beside a member alarm | this ALARM is stale | nothing |
+
+The last two are the release's central distinction. A hand-clear is a fact about an alarm's
+lifecycle, not about whether the grouping was right, so it carries **no confidence control** and
+reaches the correlator through nothing.
+
+**How sure are you?** The slider is on the card because a gesture is evidence, and evidence that
+cannot say how sure it was is evidence you cannot weigh later. It shows three things at once: the
+percentage you chose, the weight it produces (`0.6 + 0.4 x c`, so 80 % counts at 92 %), and, below
+50 %, a warning that the action will still happen and will teach nothing. Your confidence is stored
+**per gesture and per operator**, exactly as you gave it — it is never folded into a weight at rest,
+so a later release can check whether your stated 0.8 corresponds to being right eight times in ten.
+
+**What has been done to this situation** is the card's third section: every gesture, its actor, its
+confidence and its age, appended and never edited. The situation's `id` is still its identity and
+its permalink still works; a name is a label on top of it.
+
 ## Settings — three classes, and one has no controls
 
 *Mechanism* is yours to set, with the cost stated beside it. *Hardening-only* you may make stricter

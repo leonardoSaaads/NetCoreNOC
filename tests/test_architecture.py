@@ -898,7 +898,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: modules, two API route modules, four engine modules, one crosscutting module and two console
 #: parts. The digest and the count move together in the commits that add them, which is what keeps
 #: the line reviewable rather than absorbing whatever else came with the change.
-SRC_TREE_DIGEST = "e6a78c4450a4c96dbb9a32791fe3bb4b06653f6f6eb5330e3db8f143d33e276b"
+SRC_TREE_DIGEST = "fcce89763d2f8532d05f49ddf30e2e7aa96391f4549b83aed1b2025c54002652"
 SRC_FILE_COUNT = 190
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
@@ -965,4 +965,4 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.15.5", "the version this release carries"
+    assert __version__ == "0.16.0", "the version this release carries"
