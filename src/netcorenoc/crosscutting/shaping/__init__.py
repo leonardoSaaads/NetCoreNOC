@@ -14,6 +14,11 @@ seam as two axes; the AST showed three parts, and §10.2 is superseded in place:
 * :mod:`~netcorenoc.shaping.scope` — **which rows**. The stored, admin-managed visibility policy,
   and :func:`~netcorenoc.shaping.scope.visible_nes`, the one decision site. The F35 invariant lives
   there, with the code that depends on it.
+* :mod:`~netcorenoc.shaping.naming` — **the situation's derived name**, and the reason it is here
+  rather than in the store: `store/situations.py` computes it from the full membership and
+  :mod:`~netcorenoc.shaping.project` recomputes it from the membership a restricted or
+  below-editor reader can see. Two implementations would be a scope leak waiting to happen, so
+  there is one function and the projection is a different *input* (v0.16.0, DECISIONS #257).
 * :mod:`~netcorenoc.shaping.project` — **applying a resolved scope to a response body**. Not a
   third *axis* but the **consumer** of the other two: each function takes a `Scope` produced by the
   scope axis and returns a body, which is the field axis's subject. Forcing it into either side
@@ -43,6 +48,11 @@ from netcorenoc.crosscutting.shaping.fields import _DROP as _DROP
 from netcorenoc.crosscutting.shaping.fields import FIELD_RULES, coarsen_ip, shape
 from netcorenoc.crosscutting.shaping.fields import _allowed as _allowed
 from netcorenoc.crosscutting.shaping.fields import _rank as _rank
+from netcorenoc.crosscutting.shaping.naming import (
+    MAX_NAME_CHARS,
+    NO_MEMBERS,
+    derive_situation_name,
+)
 from netcorenoc.crosscutting.shaping.project import _as_int as _as_int
 from netcorenoc.crosscutting.shaping.project import (
     filter_rows,
@@ -69,10 +79,13 @@ from netcorenoc.crosscutting.shaping.scope import _selector_lists as _selector_l
 __all__ = [
     "DENY_ALL",
     "FIELD_RULES",
+    "MAX_NAME_CHARS",
+    "NO_MEMBERS",
     "UNRESTRICTED",
     "Scope",
     "ScopePolicy",
     "coarsen_ip",
+    "derive_situation_name",
     "filter_rows",
     "is_scopable",
     "parse_scope_policy",

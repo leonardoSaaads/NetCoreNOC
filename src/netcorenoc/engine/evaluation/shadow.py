@@ -240,8 +240,14 @@ class Shadow:
                 raw_rate = await store.get_meta(SAMPLE_META_KEY)
                 bags = await store.labelled_bags()
                 raw_pairs = await store.labelled_pairs()
-                identity = await resolve_identity(store, bags, raw_pairs)
+                # v0.16.0: the positive assertions the label surface has no shape for — a move's
+                # destination half and a merge's cross pairs. Stamped through the SAME incident
+                # map as the labelled pairs, so a gesture and a verdict on one incident cannot be
+                # counted as two.
+                raw_gestures = await store.gesture_positive_pairs()
+                identity = await resolve_identity(store, bags, raw_pairs + raw_gestures)
                 pairs = [labelled_pair(row) for row in raw_pairs]
+                pairs += [gesture_pair(row) for row in raw_gestures]
                 capture_run = await store.latest_capture_run()
             self.sample_rate = _sample_rate(raw_rate)
             floors, warning = resolve_floors(raw_floors)
@@ -341,4 +347,37 @@ def labelled_pair(row: dict[str, Any]) -> LabelledPair:
         incumbent_linked=bool(int(row["incumbent_linked"])),
         evaluated_at=float(row["evaluated_at"]),
         label_at=float(row["label_at"]),
+        # v0.16.0. `None` for every label written before this release and for every verdict posted
+        # without one: *not reported*, which shrinks nothing.
+        confidence=None if row.get("confidence") is None else float(row["confidence"]),
+    )
+
+
+def gesture_pair(row: dict[str, Any]) -> LabelledPair:
+    """One row of `store.gesture_positive_pairs` as the typed record training consumes.
+
+    **Always `confirm`**, because the two gestures this reads — a `move`'s destination half and a
+    `merge`'s cross pairs — assert their pairs POSITIVE and assert nothing else. The negative half
+    of a move arrives through `labelled_pairs`, as a `split` on the source situation with the moved
+    alarm marked, so the two halves of one gesture enter the derivation as two bags and each
+    contributes exactly one unit of mass. That is the design effect applied to a gesture rather
+    than to a pair, which is `PREREGISTRATION-0.16.0.md` §2's whole requirement.
+
+    `source="gesture"` is what keeps the bags apart: `feedback.id` and `situation_event.id` are
+    disjoint id spaces that both start at 1, and bucketing on the id alone would merge a label's
+    bag with an event's.
+    """
+    return LabelledPair(
+        pair_id=int(row["pair_id"]),
+        feedback_id=int(row["event_id"]),
+        verdict="confirm",
+        incident=int(row["incident"]),
+        delta_t_s=float(row["delta_t_s"]),
+        class_affinity=float(row["class_affinity"]),
+        entity_affinity=float(row["entity_affinity"]),
+        incumbent_linked=bool(int(row["incumbent_linked"])),
+        evaluated_at=float(row["evaluated_at"]),
+        label_at=float(row["label_at"]),
+        source="gesture",
+        confidence=None if row.get("confidence") is None else float(row["confidence"]),
     )

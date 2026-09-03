@@ -131,12 +131,25 @@ async def collect(store: Store) -> dict[str, Any]:
     # and not captured. Gate 0 §3 measured this as UNMEASURABLE on any corpus this repository can
     # construct — the corpus labels every situation by construction, and none of its closes came
     # from an operator — so this counts it from the day the release ships, for v0.10.0's benefit.
+    #
+    # **v0.16.0 — the same population, spelled against the new state machine.** `closed` was a
+    # `status` value covering an operator's close, the idle sweep and a self-clear alike; it is now
+    # `resolved` with the reason in `resolution`, and `resolved` additionally absorbs `merged`. So
+    # the predicate that preserves this population EXACTLY is `resolved` minus the merges — which
+    # is what `resolution != 'merged'` says, `unattributed` included, because every historical
+    # `closed` row migration `0014` rewrote landed there (DECISIONS #253).
+    #
+    # This report **could** now ask the sharper question these three lines have always meant —
+    # *"situations an operator closed"*, `resolution = 'operator'` — and deliberately does not.
+    # `tests/test_bias.py` compares this output byte for byte, the count is the one v0.10.0 was
+    # given, and narrowing a measured population inside a feature release is the fix-inside-a-
+    # feature this project refuses. It is a `docs/plans/v0.16.1-visualisation.md` line.
     out["situations_closed"] = await _scalar(
-        store, "SELECT COUNT(*) FROM situation WHERE status='closed'"
+        store, "SELECT COUNT(*) FROM situation WHERE status='resolved' AND resolution!='merged'"
     )
     out["closed_with_verdict"] = await _scalar(
         store,
-        "SELECT COUNT(*) FROM situation s WHERE s.status='closed' "
+        "SELECT COUNT(*) FROM situation s WHERE s.status='resolved' AND s.resolution!='merged' "
         "AND EXISTS (SELECT 1 FROM feedback f WHERE f.situation_id = s.id)",
     )
     out["closed_without_verdict"] = int(out["situations_closed"] or 0) - int(
@@ -237,6 +250,16 @@ async def collect(store: Store) -> dict[str, Any]:
         "GROUP BY c ORDER BY c",
     )
     out["acquisition"] = {str(r["c"]): int(r["n"]) for r in channels}
+    # **v0.16.0: the operator's gestures, counted per channel and never blended** (DECISIONS #126,
+    # `PREREGISTRATION-0.16.0.md` §2). `acquisition` above counts LABELS, and three of this
+    # release's five gestures deliberately write none — a merge because a `confirm` on the merged
+    # situation would over-assert, a zombie clear and a rename because they say nothing about a
+    # grouping at all. Counting only labels would therefore report that most of the release's
+    # gestures never happened. These two lines are the population the census reads.
+    out["gestures"] = await store.event_counts_by_channel()
+    out["gestures_with_training_rows"] = await _scalar(
+        store, "SELECT COUNT(*) FROM situation_event WHERE produces_training_rows = 1"
+    )
 
     # -- server/client membership divergence -------------------------------------------------
     out["client_reported"] = await _scalar(

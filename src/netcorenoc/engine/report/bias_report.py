@@ -274,6 +274,12 @@ def render(m: dict[str, Any]) -> str:
     add("-- acquisition channel ---------------------------------------")
     for key in sorted(m["acquisition"]):
         add(f"{key:<38}{m['acquisition'][key]:>12}")
+    # v0.16.0. Beside the labels rather than mixed into them: a gesture and a label are different
+    # units, and three of the five gestures write no label at all.
+    add("-- operator gestures (v0.16.0) --------------------------------")
+    for key in sorted(m["gestures"]):
+        add(f"{key:<38}{m['gestures'][key]:>12}")
+    add(f"{'producing training rows':<38}{m['gestures_with_training_rows']:>12}")
     add("")
 
     add("-- membership divergence -------------------------------------")
