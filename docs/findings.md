@@ -773,3 +773,91 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: **fixed in v0.15.5** (#252), and guarded by
   `test_no_enumerated_dom_attribute_is_passed_as_the_string_false`, which names `draggable` and
   `contenteditable` alongside it because they carry the identical trap.
+
+## F89 — the second move out of a situation records its event and loses its label
+
+- **What**: `feedback` is `UNIQUE (situation_id, verdict)` (F36). A `move` writes its negative half
+  through `engine.apply_feedback` as a `split` carrying the departed alarm, so the **first** move
+  out of a situation inserts a label and every later one inserts nothing. The gesture is recorded
+  in full — `situation_event`, both membership snapshots, the confidence, the provenance — and the
+  corpus grows by one row where the operator made two assertions.
+- **Measured** (`tests/test_lifecycle.py`, two moves out of one situation):
+
+  ```
+  gesture 1   situation_event +1   feedback +1   feedback_id recorded on the event
+  gesture 2   situation_event +1   feedback +0   feedback_id NULL
+  ```
+
+- **Why it matters**: `asserting_bags` is the quantity this release exists to move, and it counts
+  labels. A busy operator restructuring one storm five times contributes one asserting bag, not
+  five, so the census under-counts exactly the population that works hardest.
+- **Disposition**: **open, not repaired in v0.16.0**, and the reason is a trade rather than a
+  schedule. The second move asserts about a *different* bag — the first move changed it — so the
+  fix is not "drop the unique index" but "decide what a bag's identity is when membership mutates",
+  which is an analytical question and §10 of `PREREGISTRATION-0.16.0.md` sends it to v0.16.1.
+  Loosening a measured invariant inside a feature release trades a bound this project has held
+  since v0.7.1 for an unmeasured one. Stated at the two call sites that lose the label
+  (`api/routes_lifecycle.py`, `engine/dataset/gestures.py`) rather than left to be discovered.
+
+## F90 — the judge reconstructs the marked set positionally, from live membership
+
+- **What**: `engine/evaluation/promotion_metrics.py::_asserting_bags` rebuilds the operator's
+  marked set as `members[:excluded_reconciled]` — the first *n* alarm ids of the situation's
+  **current** membership — while the ids the operator actually marked are stored, verbatim, in
+  `feedback_exclusion`. Its docstring states the premise that would make this sound
+  (*"the positions are the first `excluded_reconciled` members the server itself reconciled"*);
+  `Exclusion.marked_positions` returns the positions where the marked ids **occur**, which is not a
+  prefix and was never claimed to be. Second half of the same defect: the bag is read from
+  `situation_alarm` (live) rather than `feedback_member(source='server')` (the snapshot the label
+  was captured against), and `store.situation_members` has no `ORDER BY` while this reader has
+  `ORDER BY alarm_id`, so the two orders are not even the same order.
+- **Reproduce**: one bag of eight, two members marked, once high and once low. The control is the
+  low case — if it disagreed too, the probe would be measuring the harness.
+
+  ```
+  PROBE   bag [1..8]  operator marked [7, 8]   judge reconstructed [1, 2]   agree False
+  CONTROL bag [1..8]  operator marked [1, 2]   judge reconstructed [1, 2]   agree True
+  ```
+
+- **Why it matters**: `AssertingBag.marked` is the input to `asserted_negative_respected_rate`, the
+  fourth named quantity of `PREREGISTRATION-0.10.0.md` §2.6(d) and an input to the promotion gate.
+  A wrong marked set does not make that quantity noisy — it makes it a measurement of **different
+  pairs than the operator asserted**, and it will read as a rate rather than as an error. It has
+  been invisible since v0.9.1 for the reason this release exists: `asserting_bags = 0`, so nothing
+  has ever reached it. **v0.16.0 is what makes it reachable.**
+- **Disposition**: **open, deliberately not fixed here.** Repairing a promotion-gate input inside a
+  feature release is exactly the fix-inside-a-feature this project forbids, and the repair is not
+  one line: it has to decide which bag a label is judged against once membership mutates, which is
+  F89's question again from the other end. It is the **first item** of
+  `docs/plans/v0.16.1-visualisation.md`, and until it is fixed no promotion decision should be read
+  from `asserted_negative_respected_rate` on a corpus containing gesture-acquired bags.
+
+## F91 — the behaviour record drops a route it cannot address, without saying so
+
+- **What**: `tests/behaviour_identity.py::_request` substitutes path parameters from the seeded
+  database and then `if "{" in concrete: return` — the route is skipped with **no line in the
+  record**. The harness already has a mechanism for naming what it does not drive (`NOT_DRIVEN`
+  writes a `not-driven` line); this branch bypasses it.
+- **Measured**, `tests/fixtures/behaviour-identity.txt` as shipped:
+
+  ```
+  admin      100 rows
+  editor      99 rows      missing: DELETE /api/tokens/{tid}
+  viewer      99 rows      missing: DELETE /api/tokens/{tid}
+  anonymous   99 rows      missing: DELETE /api/tokens/{tid}
+  ```
+
+  Only `admin` can mint a token, so for the other three principals `self.token_id` is `None`, the
+  path stays unfilled, and the route leaves no trace.
+- **Why it matters**: the record's whole claim is *every route × four principals*. For this route it
+  covers one, and the gap is indistinguishable from a route that does not exist. **An
+  authorization change on `DELETE /api/tokens/{tid}` for a viewer, an editor or an anonymous caller
+  would not move this file** — which is the one thing the record is for. The failure is the shape
+  Appendix B names: a guard that stopped guarding, and a count that reads as coverage.
+- **Disposition**: open. Not repaired in v0.16.0 because the repair changes the record for every
+  principal — three new lines, each a 401/403 that has never been pinned — and a release that
+  changes the record in a way it did not cause cannot then attribute its own diffs. The v0.16.0
+  gestures are unaffected: `sid`, `sid2` and `aid` are all fillable from the seed for every
+  principal, which is why all five new routes appear in all four records. The fix is one line
+  (append a line naming the unfillable parameter instead of returning) plus a regenerated record,
+  and it belongs to the release that owns the record rather than to one that is adding routes to it.

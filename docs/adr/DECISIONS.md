@@ -2349,3 +2349,54 @@ From this release an entry is about six lines: decision, reason, release.*
   badge is the whole of the mitigation. That is the trade #173 already accepted; nothing here makes
   it worse, and the new gestures fail loudly rather than silently when the situation has resolved —
   a move out of a resolved situation is a 409, not a silent no-op.
+
+## 259. `engine.py` is byte-identical; the close derives its own reason (v0.16.0)
+
+- **Decision**: `engine/operate/engine.py` is not edited by this release. `TRAP_PATH_HASHES` and
+  `TRAP_PATH_BODY_HASHES` are unchanged. Everything the state machine needs on the engine side is
+  reached without touching it:
+  - `store.create_situation` writes `status='new'` (the engine calls it unchanged);
+  - `store.close_situation` **derives** `self_cleared` or `idle` from whether the bag still holds an
+    active member, instead of taking the reason as a parameter;
+  - the in-memory membership fix-ups the four operator gestures need are free functions in
+    `engine/operate/membership.py` taking the engine, not a new mixin on it;
+  - `new` -> `open` promotion happens in the routes, which already hold the store.
+- **Reason**: the brief's Part V.6 names five modules the trap path must keep byte-identical and
+  `engine.py` is not among them — but `TRAP_PATH_BODY_HASHES` names five and `engine.py` **is**, in
+  place of `scoring.py`. The two lists disagree. Holding the stricter reading satisfies both, and it
+  buys the strongest claim this release can make: a release that added a state machine, an append-only
+  event log, five operator operations and four capabilities changed **no byte** of the file that
+  carries *"ingestion is sacred"*.
+- **Why deriving is not a compromise.** `_close_situation` calls the store on both paths with
+  `(sid, ts)`, and what tells the two apart — whether any member is still active — is in the database
+  at the instant of the call, which is the only instant at which it is still true. Passing it in
+  would have made the ingest path *say* what it already *demonstrates*.
+- **Trade-off accepted**: an empty bag would answer `all_cleared` True, so the derivation guards on
+  the member count and an empty situation resolves as `idle`. That is Appendix B's *"an invariant
+  that cannot fail"* met head-on: `SUM(status='active') = 0` is true of every empty set, and the
+  guard is what stops it meaning *"the network fixed itself"* about a situation with nothing in it.
+- **Honest limit**: a situation the idle sweep reaches whose members all happen to be cleared is
+  recorded `self_cleared`. It is the right answer — the alarms did clear — and it is reachable only
+  when a clear did not travel through `_handle_clear`.
+
+## 260. A rename is a label, so it reuses `label.write` (v0.16.0)
+
+- **Decision**: `POST /api/situations/{sid}/name` is a **fifth route** and does **not** add a fifth
+  capability: it requires `label.write`, the capability that already governs naming a device and
+  naming an alarm class. Supersedes nothing in #255 and #256; it extends the route count from four
+  to five and leaves the capability count at 34.
+- **Reason**: naming a device, naming an alarm class and naming a situation are one power — an
+  operator who may put a word on a network element may put one on an incident. Part VIII's rule that
+  ambiguity about whether a gesture needs its own capability resolves to *"it does"* is about
+  distinct **powers**, and a fifth capability here would express a distinction nobody would ever
+  configure. The three restructuring capabilities exist because a merge changes what every later
+  label refers to; a name changes nothing but a heading.
+- **Why not extend `POST /api/labels` with `kind: "situation"`.** That was the closer alternative
+  and it was rejected on storage and on scope: `label` is keyed `(kind, target_id)` and the name
+  belongs in `situation.operator_name`, beside `derived_name`, which is where the two-column
+  distinction lives; and the scope decision for a situation is `situation_in_scope` — a membership
+  test — rather than `scope.allows_ne`. One route with two storage backends and two scope rules is
+  the overloaded route #255 refuses, one level down.
+- **Trade-off**: an operator granted `label.write` for device names also gains the power to name
+  situations, and a deployment cannot separate them. Accepted: the alternative is a capability whose
+  only purpose is to be separable.
