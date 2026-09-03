@@ -196,7 +196,7 @@ function Health({ stats, rate }) {
 /** What an editor's labels have produced — the thing an editor has never been shown (draft §5.2). */
 class EditorPanel extends Component {
   render() {
-    const situations = store.get().situations || [];
+    const situations = (store.get().situations || []).filter((s) => s.status !== "resolved");
     const splittable = situations.filter((s) => s.alarm_count >= 2);
     return html`<section class="panel-block">
       <${SectionHeading} title="Your labelling"
