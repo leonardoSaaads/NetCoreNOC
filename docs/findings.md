@@ -861,3 +861,29 @@ Run every command below from the repository root with the virtualenv active.
   principal, which is why all five new routes appear in all four records. The fix is one line
   (append a line naming the unfillable parameter instead of returning) plus a regenerated record,
   and it belongs to the release that owns the record rather than to one that is adding routes to it.
+
+## F92 — the promotion-path guard names four modules, and the path has five
+
+- **What**: `tests/test_simulation.py::test_no_promotion_path_module_mentions_a_ground_truth_field`
+  scans a hand-written tuple — `promotion.py`, `judge.py`, `shadow_cv.py`, `evaluation_folds.py` —
+  and calls it *"the four modules the gate actually reads"*. It is not:
+  `engine/evaluation/promotion_metrics.py` computes all four of the named quantities the gate reads
+  and is not scanned. The list has been hand-maintained since v0.14.0 and a module added to the
+  promotion path afterwards joins it only if somebody remembers.
+- **Measured**, as this release's eighth mandatory injection. The same defect, injected twice:
+
+  ```
+  promotion_metrics.py  + "# situation_key, the generator's own truth key"   3 passed  <- not seen
+  promotion.py          + "Injected: situation_key, …"                        1 failed  <- seen
+  ```
+
+- **Why it matters**: the guard exists because the simulator knows every event's correct
+  `situation_key`, and a label the machine produced may not judge the machine
+  (`PREREGISTRATION-0.14.0.md` §1). Its companion, `test_no_runtime_module_can_reach_the_simulator`,
+  parses the whole tree and is unaffected — so an *import* is still caught everywhere. What escapes
+  is the case this second test exists for: a truth field copy-pasted into a promotion-path module
+  that imports nothing.
+- **Disposition**: open. Not repaired here because the honest repair is not adding one filename —
+  it is deriving the module set from the promotion path rather than listing it, which is a change to
+  a v0.14.0 guard inside a release that is about something else. Recorded with the injection that
+  found it so the next release can start from a measurement.

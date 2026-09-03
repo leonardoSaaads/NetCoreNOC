@@ -236,13 +236,19 @@ def test_nothing_that_decides_imports_the_provenance_module() -> None:
         for path in sorted((PKG / area).rglob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module:
-                    name = node.module
+                # **Every name the statement binds, and the module it binds them from.** The first
+                # version of this guard read `node.module` alone and survived its own Phase 6
+                # injection: `from netcorenoc.engine.dataset import provenance` puts the package in
+                # `module` and the forbidden name in `names`, which is the idiom this tree uses for
+                # a sibling and therefore the exact import a violation would be written as. A guard
+                # that only sees the form nobody writes is Appendix B's guard that stopped guarding.
+                if isinstance(node, ast.ImportFrom):
+                    names = [f"{node.module or ''}.{a.name}" for a in node.names]
                 elif isinstance(node, ast.Import):
-                    name = node.names[0].name
+                    names = [a.name for a in node.names]
                 else:
                     continue
-                if "dataset.provenance" in name:
+                if any("dataset.provenance" in name for name in names):
                     offenders.append(f"{path.relative_to(PKG)}:{node.lineno}")
     assert not offenders, (
         "bag provenance reached a module that fits, scores or judges:\n  "
