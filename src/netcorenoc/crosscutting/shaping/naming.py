@@ -36,9 +36,10 @@ function and the projection is a different *input*, not a different rule.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
-__all__ = ["NO_MEMBERS", "derive_situation_name"]
+__all__ = ["NO_MEMBERS", "coarsen_situation_name", "derive_situation_name"]
 
 #: What an empty bag is called. A real state: a situation whose members have all been moved away by
 #: an operator still exists, still has a history, and still needs a heading.
@@ -100,3 +101,28 @@ def derive_situation_name(
     else:
         name = f"Storm -> {unique[0]} and {devices - 1} more"
     return name[:MAX_NAME_CHARS]
+
+
+def coarsen_situation_name(name: Any, coarsen: Callable[[Any], Any]) -> Any:
+    """A derived name with every address in it coarsened, for a reader below `editor`.
+
+    **The field axis's half of the same leak the scope axis handles by recomputation.** Every other
+    address a viewer receives is coarsened to its network — `ip`, `device_ip`, `device` — and a name
+    the server built *out of* those addresses had been carrying them past that rule intact:
+    `Storm -> 127.0.0.2` served to a principal who is shown `127.0.0.0/24` everywhere else. Caught
+    by `tests/test_shaping.py::test_sse_stream_graph_is_shaped_for_viewer`, which asserts on the
+    stream's raw text rather than on a field, and is therefore the only guard that could see it.
+
+    Written against the **token**, not against the grammar: every whitespace-separated word that
+    parses as an address is coarsened and everything else passes through unchanged. A later release
+    that adds a fifth name form cannot reintroduce the leak by changing the separators, which a
+    grammar-aware version would allow — the guard would still be green and the name would still
+    carry an address.
+
+    `coarsen` is passed in rather than imported: `fields.py` owns what coarsening *means* and this
+    module owns what a name *is*, and the import would run the wrong way (`fields` already imports
+    nothing from here, and this package's layering keeps it that way).
+    """
+    if not isinstance(name, str) or not name:
+        return name
+    return " ".join(str(coarsen(token)) for token in name.split(" "))

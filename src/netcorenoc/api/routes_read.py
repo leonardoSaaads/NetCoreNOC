@@ -99,16 +99,20 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 None if scope.unrestricted else scope.ne_ids,
             )
             if scope.unrestricted:
-                return rows
+                # **v0.16.0: shaped, which this route did not have to be before.** Until `0014` a
+                # situation row carried an id, a status, two timestamps and two counts — not one
+                # protected field, so `shape()` had nothing to do and was not called.
+                # `derived_name` is built from device addresses, and `fields.py`'s rule is that an
+                # endpoint returning a protected field passes its body through. The stream beside
+                # this route always did; this route now does too.
+                return shaping.shape(rows, principal.role)
             members = await store.situation_member_nes([int(r["id"]) for r in rows])
         out: list[dict[str, Any]] = []
         for row in rows:
-            member_nes = members.get(int(row["id"]), [])
-            shown = sum(1 for ne_id in member_nes if scope.allows_ne(ne_id))
-            if not shown:
-                continue  # nothing of this situation is yours: it is not listed at all
-            out.append({**row, "alarm_count": shown, "redacted_count": len(member_nes) - shown})
-        return out
+            projected = shaping.project_situation_row(row, members.get(int(row["id"]), []), scope)
+            if projected is not None:
+                out.append(projected)
+        return shaping.shape(out, principal.role)
 
     @route.get("/api/situations/{sid}")
     async def situation(sid: int, principal: auth.Principal = Depends(security)) -> dict[str, Any]:

@@ -51,6 +51,7 @@ from netcorenoc.crosscutting.shaping.fields import _rank as _rank
 from netcorenoc.crosscutting.shaping.naming import (
     MAX_NAME_CHARS,
     NO_MEMBERS,
+    coarsen_situation_name,
     derive_situation_name,
 )
 from netcorenoc.crosscutting.shaping.project import _as_int as _as_int
@@ -58,6 +59,7 @@ from netcorenoc.crosscutting.shaping.project import (
     filter_rows,
     project_graph,
     project_situation_detail,
+    project_situation_row,
 )
 from netcorenoc.crosscutting.shaping.scope import _ADDRESS_CHARS as _ADDRESS_CHARS
 from netcorenoc.crosscutting.shaping.scope import _GLOB_CHARS as _GLOB_CHARS
@@ -85,12 +87,14 @@ __all__ = [
     "Scope",
     "ScopePolicy",
     "coarsen_ip",
+    "coarsen_situation_name",
     "derive_situation_name",
     "filter_rows",
     "is_scopable",
     "parse_scope_policy",
     "project_graph",
     "project_situation_detail",
+    "project_situation_row",
     "scope_policy_errors",
     "shape",
     "visible_nes",

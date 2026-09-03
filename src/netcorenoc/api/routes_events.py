@@ -90,15 +90,19 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 stats_out.update(extra_stats())
             if not scope.unrestricted:
                 graph_out = shaping.project_graph(graph_out, scope)
-                scoped_sits = []
-                for row in sits:
-                    member_nes = members.get(int(row["id"]), [])
-                    shown = sum(1 for ne_id in member_nes if scope.allows_ne(ne_id))
-                    if shown:
-                        scoped_sits.append(
-                            {**row, "alarm_count": shown, "redacted_count": len(member_nes) - shown}
+                # The same projection `GET /api/situations` uses, through the same function
+                # (v0.16.0): the stream and the polled list had this written out twice and
+                # identically, which is one copy too many for a redaction rule.
+                sits = [
+                    projected
+                    for row in sits
+                    if (
+                        projected := shaping.project_situation_row(
+                            row, members.get(int(row["id"]), []), scope
                         )
-                sits = scoped_sits
+                    )
+                    is not None
+                ]
             # Shape the live stream by the subscriber's role, exactly like the polled endpoints.
             payload = {
                 "stats": stats_out,
