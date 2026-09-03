@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.situations import LIVE
 
 
 class GovernanceMixin(StoreBase):
@@ -123,7 +124,9 @@ class GovernanceMixin(StoreBase):
                 "SELECT COUNT(DISTINCT s.id) FROM situation s "
                 "JOIN situation_alarm sa ON sa.situation_id=s.id "
                 "JOIN alarm a ON a.id=sa.alarm_id "
-                f"WHERE s.status='open' AND a.ne_id IN ({ne_marks})",  # nosec B608 - placeholders only
+                # v0.16.0: `new` is live too, so a scoped operator's count means what it always
+                # meant — situations that have not left — rather than only the triaged ones.
+                f"WHERE s.{LIVE} AND a.ne_id IN ({ne_marks})",  # nosec B608 - placeholders only
             ),
         ):
             cur = await self.conn.execute(sql, ne_args)

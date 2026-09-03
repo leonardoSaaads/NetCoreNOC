@@ -214,7 +214,7 @@ class DatasetMixin(StoreBase):
         `situation` shell `prune()` retained for that label is collected by the next ordinary
         operational sweep, which is why nothing here touches `situation`.
         """
-        counts = {"pairs": 0, "observations": 0, "labels": 0}
+        counts = {"pairs": 0, "observations": 0, "labels": 0, "events": 0}
         cur = await self.conn.execute(
             "DELETE FROM dataset_pair WHERE lifecycle='dataset' AND evaluated_at < ? RETURNING id",
             (cutoff,),
@@ -231,6 +231,20 @@ class DatasetMixin(StoreBase):
             "DELETE FROM feedback WHERE created_at < ? RETURNING id", (cutoff,)
         )
         counts["labels"] = len(list(await cur.fetchall()))
+        # **v0.16.0: the operator-gesture history, at the same bound and for the same reason.**
+        # `situation_event` is append-only *within its retention tier* — nothing edits a row and
+        # nothing deletes one on the operational schedule — and this is the outer bound of the
+        # data's life, the one path that may remove a human's record. It goes last, after the rows
+        # it justifies, exactly as `feedback` does: a crash mid-sweep leaves features without their
+        # gesture, which the report already counts, rather than a gesture whose evidence is gone.
+        # `situation_event_member` follows by `ON DELETE CASCADE`.
+        # Guarded by the schema probe for `prune`'s reason: this runs on the maintenance loop, and
+        # `tests/test_upgrade.py` drives that loop against a schema frozen before this release.
+        if self._has_lifecycle:
+            cur = await self.conn.execute(
+                "DELETE FROM situation_event WHERE at < ? RETURNING id", (cutoff,)
+            )
+            counts["events"] = len(list(await cur.fetchall()))
         return counts
 
     async def orphaned_promoted_pairs(self) -> int:

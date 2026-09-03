@@ -34,7 +34,26 @@ class LifecycleMixin(StoreBase):
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._conn.execute("PRAGMA busy_timeout=5000")
         await self._migrate()
+        await self._probe_schema()
         await self._check_integrity()
+
+    async def _probe_schema(self) -> None:
+        """Which optional columns this database actually has (v0.16.0).
+
+        One `PRAGMA` after the migrations, so the answer is about the schema this process will
+        run against rather than about the one it shipped with. `tests/test_upgrade.py` runs the
+        **current** store against a migration directory frozen at an older version — which is what
+        makes "the migration changes behaviour and the code does not" checkable — so every write
+        path that names a v0.16.0 column has to know whether the column is there.
+
+        Stated as a probe rather than learned from a caught `OperationalError`: a close, a merge
+        and every situation this release creates all touch these columns, so the exception form
+        would pay a caught error per process per path and would infer the schema from a failure
+        instead of asking.
+        """
+        cur = await self.conn.execute("PRAGMA table_info(situation)")
+        columns = {str(row[1]) for row in await cur.fetchall()}
+        self._has_lifecycle = "resolution" in columns
 
     async def _migrate(self) -> None:
         """Apply the pending scripts, and **say which** (DECISIONS #227).

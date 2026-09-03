@@ -49,6 +49,15 @@ class StoreBase:
     # what `tests/test_upgrade.py` relies on to prove the migration changes behaviour and the code
     # does not — the same reason `create_situation` tolerates a schema without `scorer_config_id`.
     _has_merged_into: bool | None
+    # v0.16.0: does `situation` carry `resolution` (migration 0014)? Resolved **once, at
+    # `open()`**, from `PRAGMA table_info` — not lazily from a caught `OperationalError` like
+    # `_has_merged_into` above. The difference is deliberate: `merged_into` learns from a failure
+    # on a rare path (four merges across the whole eval corpus), while every close, every merge and
+    # every situation this release creates would have to learn it, and a probe that costs one query
+    # at startup is cheaper and states the question instead of inferring it from an exception.
+    # `False` is what lets the identical store code run against the schema-13 database
+    # `tests/test_upgrade.py` builds.
+    _has_lifecycle: bool
 
     @property
     def conn(self) -> aiosqlite.Connection:
