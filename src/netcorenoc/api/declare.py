@@ -162,6 +162,9 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/model.js",
         "/app/views/parts/retention.js",
         "/app/views/parts/verdict.js",
+        # v0.16.0: the operator gestures, their confidence control and the history list.
+        "/app/views/parts/lifecycle.js",
+        "/app/views/parts/members.js",
         "/app/views/parts/why.js",
         "/app/widgets.js",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.

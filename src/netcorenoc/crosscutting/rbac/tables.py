@@ -55,6 +55,18 @@ PERMISSIONS: dict[str, str] = {
     "feedback.write": "editor",
     "label.write": "editor",
     "situation.close": "editor",
+    # v0.16.0 (DECISIONS #256). **Four capabilities, not one**, and not `feedback.write` either.
+    # `feedback.write` is the power to *record an opinion*; these are the power to *restructure the
+    # record*. A merge mutates `situation_alarm` and changes what every later label refers to, and
+    # an editor who may say "this grouping is wrong" is not obviously an editor who may rewrite it.
+    # `resolve_capabilities` is `ceiling ∩ policy`, so four capabilities let a deployment grant
+    # labelling without restructuring — a configuration one capability makes unreachable.
+    "situation.move": "editor",
+    "situation.merge": "editor",
+    "situation.split": "editor",
+    # A zombie clear is a fact about an ALARM, not about a grouping, and its capability says so:
+    # `alarm.clear`, not `situation.clear` (`PREREGISTRATION-0.16.0.md` §1).
+    "alarm.clear": "editor",
     # administer (admin only)
     "users.manage": "admin",
     "entity.reset": "admin",  # v0.3.0: reset an NE's learned entity key (audited)
@@ -106,6 +118,14 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/situations/{sid}/feedback"): "feedback.write",
     ("POST", "/api/labels"): "label.write",
     ("POST", "/api/situations/{sid}/close"): "situation.close",
+    ("POST", "/api/situations/{sid}/move"): "situation.move",
+    ("POST", "/api/situations/{sid}/merge"): "situation.merge",
+    ("POST", "/api/situations/{sid}/split"): "situation.split",
+    # A rename is a **label**, so it reuses `label.write` rather than inventing a fifth capability
+    # (DECISIONS #260): naming a device, naming an alarm class and naming a situation are one power.
+    # It gets its own ROUTE because the storage and the scope decision are the situation's.
+    ("POST", "/api/situations/{sid}/name"): "label.write",
+    ("POST", "/api/alarms/{aid}/clear"): "alarm.clear",
     ("GET", "/api/users"): "users.manage",
     ("POST", "/api/users"): "users.manage",
     ("DELETE", "/api/users/{uid}"): "users.manage",
@@ -187,6 +207,13 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/situations/{sid}/feedback"): "scoped",
     ("POST", "/api/labels"): "scoped",
     ("POST", "/api/situations/{sid}/close"): "scoped",
+    # All five name a network element and all five are below `admin`, so all five are the write
+    # perimeter F34 established. Move and merge name **two** situations and check both.
+    ("POST", "/api/situations/{sid}/move"): "scoped",
+    ("POST", "/api/situations/{sid}/merge"): "scoped",
+    ("POST", "/api/situations/{sid}/split"): "scoped",
+    ("POST", "/api/situations/{sid}/name"): "scoped",
+    ("POST", "/api/alarms/{aid}/clear"): "scoped",
     ("GET", "/api/users"): "admin_only",
     ("POST", "/api/users"): "admin_only",
     ("DELETE", "/api/users/{uid}"): "admin_only",

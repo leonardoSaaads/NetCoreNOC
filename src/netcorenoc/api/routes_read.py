@@ -71,10 +71,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/situations")
     async def situations(
         principal: auth.Principal = Depends(security),
-        status: Literal["open", "closed", "merged"] | None = None,
+        status: Literal["new", "open", "resolved"] | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Situations with at least one in-scope member; counts are of visible members only.
+
+        **v0.16.0: the three states the console's three tabs render** (migration `0014`,
+        DECISIONS #253, #254). `closed` and `merged` are gone as *statuses* — both are `resolved`,
+        and `resolution` says which — so a client that still asks for one gets a 422 naming the
+        three values rather than an empty list, which is the honest answer to a filter that no
+        longer exists.
 
         `alarm_count` is the number this reader can actually see, with `redacted_count` naming how
         many they cannot — the same honest split as the detail view (DECISIONS #59). Reporting the

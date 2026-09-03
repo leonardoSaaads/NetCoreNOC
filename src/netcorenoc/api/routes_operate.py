@@ -20,7 +20,7 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import CloseIn, FeedbackIn, LabelIn
 from netcorenoc.crosscutting import auth, shaping
-from netcorenoc.engine.dataset import capture
+from netcorenoc.engine.dataset import capture, gestures
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -74,41 +74,22 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def label_context(
         sid: int, scope: shaping.Scope, body: FeedbackIn | CloseIn, channel: str
     ) -> capture.LabelContext:
-        """Everything a verdict records except the verdict, built once for both routes that write
-        one. Two copies of this would be two chances for a label acquired through `close` to differ
-        from one acquired on a card in some way nobody intended — and the whole value of the channel
-        column depends on the two being **identical apart from the channel**.
+        """The verdict's provenance. **v0.16.0: the body of this moved to `AppContext`**, which is
+        where its third and fourth callers are — a `move` and an `operator_split` write a label
+        through exactly this path, and a label acquired through a restructuring gesture must be
+        identical to one acquired on a card apart from its channel.
 
-        `scope` is the one the caller's 404 decision already used, so the record cannot disagree
-        with the decision that produced it.
+        This wrapper stays so the two handlers below keep their call sites, and it is the whole of
+        what remains here: it unpacks a request model the context deliberately does not know about.
         """
-        # v0.9.2 (F47): ONE read, and both scope facts derived from it. `hidden_member_ids` reuses
-        # the same `situation_member_ne` + `scope.allows_ne` pair the 404 decision used, so the
-        # count of hidden members and the identity of the hidden members are one answer rather than
-        # two that can drift (DECISIONS #137).
-        hidden = await ctx.perimeter.hidden_member_ids(sid, scope)
-        return capture.LabelContext(
-            # v0.8.0 §5.5: the scope fingerprint. A scoped editor labels a **partial view** and
-            # cannot say which part, so without this the label is uninterpretable — and the noise is
-            # *systematic*, because it correlates with the policy, so it does not average out.
-            capture.LabelScope(
-                policy_id=ctx.governance.scope_id,
-                restricted=not scope.unrestricted,
-                redacted_members=len(hidden),
-                hidden_members=hidden,
-            ),
-            # §5.4b: the client's report, bounded and never rejected. `accept` can only truncate,
-            # and records that it did. No id here is looked up, compared, or validated.
-            capture.ClientFingerprint.accept(body.member_ids, body.updated_at)
-            if body.member_ids is not None
-            else None,
-            # v0.9.1: **which members do not belong**, under the identical discipline — bounded,
-            # never rejected, never used to validate the existence of anything. Absence means "the
-            # operator marked nothing", which is a plain `split`, and never a guess.
-            capture.Exclusion.accept(body.excluded_ids, body.remainder_together)
-            if body.excluded_ids is not None
-            else None,
+        return await ctx.label_context(
+            sid,
+            scope,
             channel,
+            member_ids=body.member_ids,
+            updated_at=body.updated_at,
+            excluded_ids=body.excluded_ids,
+            remainder_together=body.remainder_together,
         )
 
     @route.post("/api/situations/{sid}/feedback")
@@ -132,6 +113,31 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 role=principal.role,
                 label=label,
             )
+            # v0.16.0 (DECISIONS #254): a verdict is an operator looking at a situation, so it
+            # promotes `new` to `open`. Here rather than inside `apply_feedback` because
+            # `engine/operate/engine.py` is byte-identical through this release (#259), and
+            # because the promotion is a *console* fact rather than a learning one — it must not
+            # sit on the same path as the learned-state effect F36 bounds.
+            if recorded.exists:
+                await store.promote_situation(sid, time.time())
+                # **The verdict is an operator gesture and is recorded as one.** Without this row
+                # `situation_event` would hold four of the five gestures and the census would
+                # report that most labelling never happened — and the bag provenance a verdict's
+                # training rows are entitled to (§5) would exist for a move and not for a confirm.
+                # The snapshot is taken here rather than before `apply_feedback` because a verdict
+                # changes no membership: the bag is the same on both sides of the call.
+                await gestures.record(
+                    store,
+                    gestures.Gesture(
+                        kind="verdict",
+                        situation_id=sid,
+                        at=time.time(),
+                        actor=principal.ref,
+                        role=principal.role,
+                        feedback_id=recorded.id if recorded.inserted else None,
+                    ),
+                    await gestures.snapshot(store, sid),
+                )
             if recorded.exists and recorded.inserted:
                 await audit_row(
                     request,
@@ -234,6 +240,21 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     label=label,
                 )
             if closed:
+                # An operator's close is a gesture too, and `resolution='operator'` is the fact
+                # that distinguishes it from the idle sweep. Recorded whether or not it carried a
+                # verdict: the population that closes WITHOUT judging is the one v0.9.1 wanted
+                # counted, and until now nothing recorded it as an event.
+                await gestures.record(
+                    store,
+                    gestures.Gesture(
+                        kind="operator_close",
+                        situation_id=sid,
+                        at=time.time(),
+                        actor=principal.ref,
+                        role=principal.role,
+                    ),
+                    await gestures.snapshot(store, sid),
+                )
                 await audit_row(
                     request,
                     principal,

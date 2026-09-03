@@ -84,6 +84,8 @@ _UI_MODULES = (
     "app/views/parts/model.js",
     "app/views/parts/retention.js",
     "app/views/parts/verdict.js",
+    "app/views/parts/lifecycle.js",
+    "app/views/parts/members.js",
     "app/views/parts/why.js",
     "app/widgets.js",
 )
