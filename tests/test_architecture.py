@@ -898,7 +898,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: modules, two API route modules, four engine modules, one crosscutting module and two console
 #: parts. The digest and the count move together in the commits that add them, which is what keeps
 #: the line reviewable rather than absorbing whatever else came with the change.
-SRC_TREE_DIGEST = "45b6fbecdb7935a2487dc0d4e90668f1dd5a6c36b813bf885d86188c8b157e45"
+SRC_TREE_DIGEST = "e6a78c4450a4c96dbb9a32791fe3bb4b06653f6f6eb5330e3db8f143d33e276b"
 SRC_FILE_COUNT = 190
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

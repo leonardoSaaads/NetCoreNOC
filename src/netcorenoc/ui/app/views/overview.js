@@ -34,7 +34,10 @@ export class Overview extends Component {
 
   render(_props, { live }) {
     const stats = live.stats;
-    const situations = live.situations || [];
+    // The panel below is titled "Open situations" and the store now holds all three states, so the
+    // filter is here rather than in the transport — the same expression the sidebar count and the
+    // labelling panel use, for the same reason (DECISIONS #254).
+    const situations = (live.situations || []).filter((s) => s.status !== "resolved");
     const scope = scopeSummary();
 
     // **A spinner is not an error state, and a monitoring console must not confuse them.**

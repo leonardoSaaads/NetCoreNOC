@@ -64,8 +64,19 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 graph_out = await store.graph_snapshot(min_edge_n=MIN_EDGE_N)
                 # F38 applies to the stream too: truncating globally would make a scoped
                 # subscriber's live list a function of traffic they cannot see.
+                # **v0.16.0: `None`, not `"open"`.** The correlator now creates a situation as
+                # `new` and only an operator's gesture promotes it to `open` (DECISIONS #254), so
+                # a stream that asked for `"open"` published an EMPTY list on a console whose
+                # header — served by `stats.open_situations`, which counts both — said two. Found
+                # in a browser, because nothing else looks at this route: `/api/events` is in the
+                # behaviour record's `NOT_DRIVEN` set (a stream has no single response to hash),
+                # and the DOM harness captures route payloads rather than the stream.
+                #
+                # The resolved ones are dropped where the tabs are, not here: the console's three
+                # tabs need all three states, and a filter in the transport would make one of them
+                # unreachable for a reason no reader of `situations.js` could see.
                 sits = await store.list_situations(
-                    "open", 50, None if scope.unrestricted else scope.ne_ids
+                    None, 50, None if scope.unrestricted else scope.ne_ids
                 )
                 members = (
                     {}
