@@ -107,7 +107,8 @@ async def test_situations_with_explanations_and_root(
     client: httpx.AsyncClient, engine_env: tuple[Engine, asyncio.Queue[QueueItem]]
 ) -> None:
     await replay_fiber(engine_env)
-    listed = (await client.get("/api/situations", params={"status": "open"})).json()
+    # v0.16.0: a situation the correlator formed and nobody has triaged is `new` (DECISIONS #254).
+    listed = (await client.get("/api/situations", params={"status": "new"})).json()
     assert len(listed) == 1 and listed[0]["alarm_count"] == 8
     detail = (await client.get(f"/api/situations/{listed[0]['id']}")).json()
     assert len(detail["alarms"]) == 8
@@ -248,7 +249,7 @@ async def test_end_to_end_udp_replay_to_http(
         engine_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await engine_task
-    listed = (await client.get("/api/situations", params={"status": "open"})).json()
+    listed = (await client.get("/api/situations", params={"status": "new"})).json()
     assert sum(row["alarm_count"] for row in listed) == 8
 
 
@@ -450,7 +451,7 @@ async def test_f36_closing_a_situation_still_ticks_the_epoch(
     engine, _queue = engine_env
     await replay_fiber(engine_env)
     sid = next(
-        s["id"] for s in (await client.get("/api/situations")).json() if s["status"] == "open"
+        s["id"] for s in (await client.get("/api/situations")).json() if s["status"] == "new"
     )
     before = engine.learner.A.epoch
     async with engine.store.lock:

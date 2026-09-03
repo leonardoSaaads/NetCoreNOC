@@ -37,7 +37,7 @@ def _events(doc: dict[str, Any], base_ts: float) -> list[TrapEvent]:
 
 
 async def _open_situations(store: Store) -> list[dict[str, Any]]:
-    return await store.list_situations("open", 100)
+    return await store.list_situations("new", 100)
 
 
 async def test_coordinated_login_burst_groups_into_one_situation(store: Store) -> None:

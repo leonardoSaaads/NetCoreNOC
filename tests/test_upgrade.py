@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from netcorenoc.api import create_app
 from netcorenoc.crosscutting import audit, shaping
@@ -21,6 +22,45 @@ import authutil
 import util
 
 BASE = 1_700_000_000.0
+
+#: The columns migration `0014` adds to a situation listing (v0.16.0).
+_LIFECYCLE_KEYS = ("resolution", "derived_name", "operator_name")
+
+#: What `0014` writes for each pre-v0.16.0 `status`, and the whole of DECISIONS #253 as a table.
+#: `merged` is the one historical value that is knowable exactly, because `merge_situations` is
+#: what wrote it; `closed` conflated an operator's close with the idle sweep and nothing recorded
+#: which, so it becomes a marker that says so rather than a guess that reads like a fact.
+_EXPECTED_RESOLUTION = {"open": None, "merged": "merged", "closed": "unattributed"}
+
+
+def _without_lifecycle(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A listing projected back to its pre-v0.16.0 shape.
+
+    Used where a guard compares a listing read on an **older schema** with one read after the
+    upgrade: the release adds three columns, so the whole-row comparison would fail for exactly the
+    reason the guard is not about. The added keys are asserted separately at each call site, so
+    nothing is dropped from the claim — it is split into two.
+    """
+    return [{k: v for k, v in row.items() if k not in _LIFECYCLE_KEYS} for row in rows]
+
+
+def _through_0014(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A pre-v0.16.0 listing, put through migration `0014`'s **stated** rule (DECISIONS #253).
+
+    The point of asserting against this rather than against the raw `before` list: `0014` genuinely
+    rewrites `status` for every situation that had already left, so a guard comparing raw rows
+    would go red for the one change the release is *about*. Restating the rule here and comparing
+    against its output keeps the guard strict — a migration that mapped `merged` to anything else,
+    or that touched an `open` row, still fails — while letting the intended rewrite through.
+
+        open   -> open
+        merged -> resolved   (exact: `merge_situations` itself wrote that status)
+        closed -> resolved   (and `resolution` becomes `unattributed`, which the caller checks)
+    """
+    return [
+        {**row, "status": "resolved"} if row["status"] in ("merged", "closed") else dict(row)
+        for row in rows
+    ]
 
 
 async def test_populated_db_learned_state_and_audit_chain_survive_reopen(tmp_path: Path) -> None:
@@ -53,7 +93,9 @@ async def test_populated_db_learned_state_and_audit_chain_survive_reopen(tmp_pat
     device_a = await store1.device_id("127.0.0.2", BASE)
     device_b = await store1.device_id("127.0.0.3", BASE)
     edges_before = (await store1.graph_snapshot(min_edge_n=0))["edges"]
-    situations_before = await store1.list_situations("open", 100)
+    # v0.16.0: the correlator creates `new` (DECISIONS #254). `new` rather than `None` so the
+    # comparison below still asserts that the *state* survives a reopen and not merely the rows.
+    situations_before = await store1.list_situations("new", 100)
     version_before = await store1.schema_version()
     assert edges_before and situations_before  # the scenario actually learned/grouped something
     await store1.close()
@@ -69,7 +111,7 @@ async def test_populated_db_learned_state_and_audit_chain_survive_reopen(tmp_pat
     # 3) Verify survival across the reopen.
     assert await store2.list_ne() == nes_before  # NEs intact
     assert (await store2.graph_snapshot(min_edge_n=0))["edges"] == edges_before  # learned edges
-    assert await store2.list_situations("open", 100) == situations_before  # situations survive
+    assert await store2.list_situations("new", 100) == situations_before  # situations survive
     assert engine2.learner.device_affinity(device_a, device_b) > 0  # matrix reloaded into memory
     assert (await audit.verify_chain(store2)).ok  # the chain still verifies across the upgrade
     await store2.close()
@@ -321,7 +363,7 @@ async def test_v071_upgrade_changes_no_behaviour_except_the_three_documented_cha
         before_edges = (await old.graph_snapshot(min_edge_n=0))["edges"]
         before_stats = await old.stats()
         before_situations = await old.list_situations(None, 500)
-        before_open = await old.list_situations("open", 500)
+        before_open = await old.list_situations("new", 500)
         before_marks = await old.timeline_marks(1000)
         before_epoch = (engine_old.learner.A.epoch, engine_old.learner.E.epoch)
         assert before_partition and before_edges and before_marks
@@ -348,8 +390,21 @@ async def test_v071_upgrade_changes_no_behaviour_except_the_three_documented_cha
         assert await new.active_governance_ids() == {}  # still no policy: nothing is scoped
 
         # Change 3 (F38): the SQL changed, so the UNRESTRICTED result set is asserted unchanged.
-        assert await new.list_situations(None, 500) == before_situations
-        assert await new.list_situations("open", 500) == before_open
+        #
+        # **v0.16.0 makes the listing wider**, so the comparison is over the columns that existed
+        # on both sides rather than over the whole row. That is not a loosening: the three new keys
+        # are asserted separately below, and comparing whole rows would have made this guard fail
+        # for the one reason it is not about — a column the release deliberately added.
+        after = await new.list_situations(None, 500)
+        assert _without_lifecycle(after) == _through_0014(before_situations)
+        assert _without_lifecycle(await new.list_situations("new", 500)) == before_open
+        # The three new keys are present; the two NAMES are empty on a migrated database, because
+        # `0014` derives none — a name is written when membership changes, and a migration changes
+        # no membership (DECISIONS #257). `resolution` is the decision-1 rewrite, checked by value.
+        for listed, was in zip(after, before_situations, strict=True):
+            assert set(listed) - set(was) == {"resolution", "derived_name", "operator_name"}
+            assert listed["derived_name"] is None and listed["operator_name"] is None
+            assert listed["resolution"] == _EXPECTED_RESOLUTION[was["status"]]
         assert await new.timeline_marks(1000) == before_marks
         # …and `ne_id` is used for filtering only; it never reaches a rendered mark.
         assert all(
@@ -486,7 +541,7 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 13
+        assert await new.schema_version() == Store.latest_schema_version() == 14
         assert new.integrity_warnings == []
 
         # Asserted BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -509,7 +564,13 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
         assert await partition_of(new) == before_partition
         assert (await new.graph_snapshot(min_edge_n=0))["edges"] == before_edges
         assert await new.stats() == before_stats
-        assert await new.list_situations(None, 500) == before_situations
+        # v0.16.0: three columns wider, and `0014` rewrites the status of everything that had
+        # already left. `_through_0014` states that rule so the guard stays strict about
+        # everything else (DECISIONS #253); the added keys are dropped by `_without_lifecycle`
+        # and checked by value in the v0.15.5 upgrade guard at the bottom of this file.
+        assert _without_lifecycle(await new.list_situations(None, 500)) == _through_0014(
+            before_situations
+        )
         assert (engine_new.learner.A.epoch, engine_new.learner.E.epoch) == before_epoch
 
         # First boot still writes no shadow row: capture opened a run, the challenger did not.
@@ -618,7 +679,7 @@ async def test_v091_upgrade_applies_0010_and_leaves_existing_labels_plain(tmp_pa
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 13
+        assert await new.schema_version() == Store.latest_schema_version() == 14
         assert new.integrity_warnings == []
 
         # Asked BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -818,7 +879,7 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 13
+        assert await new.schema_version() == Store.latest_schema_version() == 14
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0011"
 
         # **The derivation.** Three ids reported, two of them members of the server's own bag.
@@ -964,7 +1025,7 @@ async def test_v0100_upgrade_applies_0012_and_seeds_nothing(tmp_path: Path) -> N
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 13
+        assert await new.schema_version() == Store.latest_schema_version() == 14
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0012"
 
         # **Nothing is seeded.** Three empty tables, and that is the claim.
@@ -1124,7 +1185,7 @@ async def test_v0101_upgrade_applies_0013_and_seeds_nothing(tmp_path: Path) -> N
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 13
+        assert await new.schema_version() == Store.latest_schema_version() == 14
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0013"
 
         # **Nothing is seeded.** Three empty tables, and that is the claim.
@@ -1232,3 +1293,167 @@ async def test_the_active_pointer_admits_exactly_one_of_the_two(store: Store) ->
         except sqlite3.IntegrityError:
             continue
         raise AssertionError(f"the schema permitted {label}")
+
+
+async def test_v0155_upgrade_applies_0014_and_attributes_nothing_it_cannot(tmp_path: Path) -> None:
+    """Phase 1 (v0.16.0): a live **v0.15.5** database upgrades in place and gains two empty tables.
+
+    Three claims, and the third is this migration's own.
+
+    **Nothing is seeded.** `situation_event` and `situation_event_member` are empty afterwards on
+    every database, and a migrated appliance behaves at first boot exactly as it did before: capture
+    of an operator gesture begins when an operator makes one, never when a script runs.
+
+    **The data survives.** Grouping, learned edges, the label corpus and the audit chain are
+    compared across the migration rather than counted, because a migration that dropped a row while
+    keeping the count would pass a count.
+
+    **And the part with no precedent: `status` is REWRITTEN, and the rewrite may not invent a
+    reason.** `merged` becomes `resolved` + `resolution='merged'`, which is exact — that statement
+    is what wrote the value being replaced. `closed` becomes `resolved` + `resolution =
+    'unattributed'`, because before this release `closed` meant an operator's close **or** the idle
+    sweep and no column distinguished them (DECISIONS #253). Writing `idle` there would be a guess
+    about content where `0008`'s one permitted data write is explicitly a marker about provenance.
+    The assertion below is that **no row gained a `resolution` the old schema could have
+    justified**,
+    which is the claim, rather than that some rows changed.
+    """
+    import netcorenoc.store.lifecycle as store_mod
+
+    real_dir = store_mod.MIGRATIONS_DIR
+
+    class _FrozenAtV13:
+        """The migration directory as a v0.15.5 install saw it: `0014` does not exist yet."""
+
+        def glob(self, pattern: str) -> list[Path]:
+            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 13]
+
+    db = str(tmp_path / "v0155-live.db")
+    store_mod.MIGRATIONS_DIR = _FrozenAtV13()  # type: ignore[assignment]
+    try:
+        old = Store(db)
+        await old.open()
+        assert await old.schema_version() == 13, "the fixture is not a genuine v0.15.5 database"
+        engine_old = Engine(old, asyncio.Queue())
+        await engine_old.start()
+        await util.drive(engine_old, engine_old.queue, util.fixture_events("fiber_cut.json", BASE))
+        await engine_old.maintenance(BASE + 10, retention_days=365.0)
+        sids = [int(row["id"]) for row in await old.list_situations(None, 500)]
+        assert sids, "the fixture formed no situation to migrate"
+        async with old.lock:
+            # One of each pre-v0.16.0 status, so the migration has all three cases to answer.
+            # Written through the store's own methods where one exists, and by hand where the
+            # release removed the only writer of the value: nothing writes `status='closed'` any
+            # more, and a fixture that used the new writer would be testing the new schema against
+            # itself rather than an upgrade.
+            await old.conn.execute(
+                "UPDATE situation SET status='closed', closed_at=? WHERE id=?", (BASE + 5, sids[0])
+            )
+            if len(sids) > 1:
+                await old.conn.execute(
+                    "UPDATE situation SET status='merged', closed_at=?, merged_into=? WHERE id=?",
+                    (BASE + 5, sids[0], sids[1]),
+                )
+            await engine_old.apply_feedback(
+                sids[0], "confirm", BASE + 20, principal_ref="alice", role="editor"
+            )
+            await old.commit()
+        before_status = await _status_counts(old)
+        before_labels = [
+            dict(r)
+            for r in await (
+                await old.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, coverage FROM feedback "
+                    "ORDER BY id"
+                )
+            ).fetchall()
+        ]
+        before_partition = await _partition(old)
+        before_edges = (await old.graph_snapshot(min_edge_n=0))["edges"]
+        before_chain = (await audit.verify_chain(old)).final_hash
+        assert before_labels and before_partition and before_edges
+        assert before_status["closed"] >= 1, "the fixture has no unattributable close to migrate"
+        await old.close()
+    finally:
+        store_mod.MIGRATIONS_DIR = real_dir
+
+    new = Store(db)
+    await new.open()
+    try:
+        assert await new.schema_version() == Store.latest_schema_version() == 14
+        assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0014"
+
+        # **Nothing is seeded.** Two empty tables, and that is the claim.
+        for table in ("situation_event", "situation_event_member"):
+            cur = await new.conn.execute(f"SELECT COUNT(*) FROM {table}")  # nosec B608
+            row = await cur.fetchone()
+            assert row is not None and int(row[0]) == 0, f"0014 seeded {table}"
+
+        # The decision-1 rewrite, counted on both sides. Every `open` stays `open` and gains no
+        # reason; every row that had left becomes `resolved` and gains exactly one.
+        after = await _status_counts(new)
+        assert after.get("open", 0) == before_status.get("open", 0)
+        assert after.get("new", 0) == 0, "0014 invented a `new` situation"
+        assert after.get("resolved", 0) == before_status.get("closed", 0) + before_status.get(
+            "merged", 0
+        )
+        cur = await new.conn.execute(
+            "SELECT COALESCE(resolution, '(none)'), COUNT(*) FROM situation GROUP BY 1 ORDER BY 1"
+        )
+        resolutions = {str(r[0]): int(r[1]) for r in await cur.fetchall()}
+        assert resolutions.get("merged", 0) == before_status.get("merged", 0)
+        assert resolutions.get("unattributed", 0) == before_status.get("closed", 0)
+        # **The claim, stated as a prohibition.** Only two values may appear on a migrated
+        # database, and neither is one the old schema could have justified: `idle`, `operator`,
+        # `self_cleared` and `manual_clear` are facts nothing recorded before this release, so a
+        # migration that wrote one would have invented it.
+        assert set(resolutions) <= {"(none)", "merged", "unattributed"}, resolutions
+        # No name is derived by a migration: a name is written where membership changes, and this
+        # changed none (DECISIONS #257).
+        cur = await new.conn.execute(
+            "SELECT COUNT(*) FROM situation WHERE derived_name IS NOT NULL "
+            "OR operator_name IS NOT NULL"
+        )
+        row = await cur.fetchone()
+        assert row is not None and int(row[0]) == 0, "0014 wrote a name"
+
+        # The data is intact.
+        assert await _partition(new) == before_partition
+        assert (await new.graph_snapshot(min_edge_n=0))["edges"] == before_edges
+        assert [
+            dict(r)
+            for r in await (
+                await new.conn.execute(
+                    "SELECT id, situation_id, verdict, member_count, coverage FROM feedback "
+                    "ORDER BY id"
+                )
+            ).fetchall()
+        ] == before_labels
+        verified = await audit.verify_chain(new)
+        assert verified.ok and verified.final_hash == before_chain
+    finally:
+        await new.close()
+
+
+async def _partition(store: Store) -> set[frozenset[int]]:
+    """Every situation's membership, as a set of member sets — grouping without the ids.
+
+    The module-level twin of the nested `partition_of` the earlier upgrade guards define inside
+    themselves. Written here rather than reached into, because a helper defined inside another
+    test's body is that test's, and importing it would couple two guards that are meant to be
+    independent readings of the same property.
+    """
+    cur = await store.conn.execute(
+        "SELECT situation_id, alarm_id FROM situation_alarm ORDER BY situation_id, alarm_id"
+    )
+    groups: dict[int, set[int]] = {}
+    for sid, alarm in await cur.fetchall():
+        groups.setdefault(int(sid), set()).add(int(alarm))
+    return {frozenset(members) for members in groups.values()}
+
+
+async def _status_counts(store: Store) -> dict[str, int]:
+    cur = await store.conn.execute(
+        "SELECT status, COUNT(*) FROM situation GROUP BY status ORDER BY status"
+    )
+    return {str(row[0]): int(row[1]) for row in await cur.fetchall()}

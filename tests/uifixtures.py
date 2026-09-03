@@ -56,7 +56,7 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("self.read", "/api/me"),
     ("stats.read", "/api/stats"),
     ("graph.read", "/api/graph"),
-    ("situations.read", "/api/situations?limit=50&status=open"),
+    ("situations.read", "/api/situations?limit=50"),
     ("timeline.read", "/api/timeline?limit=300"),
     ("entities.read", "/api/entities"),
     ("entities.read", "/api/state-clears"),
@@ -113,7 +113,7 @@ async def capture(app: Any, role: str, *, hostile_label: str | None = None) -> d
 
 
 async def _capture_situations(client: httpx.AsyncClient, routes: dict[str, Any]) -> None:
-    listing = routes.get("/api/situations?limit=50&status=open")
+    listing = routes.get("/api/situations?limit=50")
     if listing is None:
         return
     for situation in listing["json"]:
@@ -123,6 +123,11 @@ async def _capture_situations(client: httpx.AsyncClient, routes: dict[str, Any])
             routes[f"/api/situations/{sid}"] = {"status": 200, "json": detail.json()}
         routes[f"POST /api/situations/{sid}/feedback"] = {"status": 200, "json": {"ok": True}}
         routes[f"POST /api/situations/{sid}/close"] = {"status": 200, "json": {"ok": True}}
+        # v0.16.0: the four gestures a situation card can send. Stubbed 200s, exactly as the two
+        # above are — the harness records what the console POSTS, and the server's own behaviour is
+        # `tests/test_api.py`'s subject.
+        for gesture in ("move", "merge", "split", "name"):
+            routes[f"POST /api/situations/{sid}/{gesture}"] = {"status": 200, "json": {"ok": True}}
 
 
 async def _label_everything(app: Any, label: str) -> None:
@@ -146,7 +151,7 @@ async def _label_everything(app: Any, label: str) -> None:
 
 def largest_situation(routes: dict[str, Any]) -> tuple[int, int]:
     """The (sid, member count) of the biggest captured situation — the one worth splitting."""
-    listing = routes["/api/situations?limit=50&status=open"]["json"]
+    listing = routes["/api/situations?limit=50"]["json"]
     best = max(listing, key=lambda s: s["alarm_count"])
     return best["id"], best["alarm_count"]
 

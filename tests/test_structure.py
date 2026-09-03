@@ -57,10 +57,12 @@ SUBMODULES = [
     "api.models",
     "api.perimeter",
     "api.routes_admin",
+    "api.routes_annotate",
     "api.routes_audit",
     "api.routes_auth",
     "api.routes_events",
     "api.routes_governance",
+    "api.routes_lifecycle",
     "api.routes_operate",
     "api.routes_read",
     "api.routes_promotion",
@@ -89,6 +91,7 @@ SUBMODULES = [
     "engine.operate.engine_base",
     "engine.operate.gaps",
     "engine.operate.maintenance",
+    "engine.operate.membership",
     "engine.operate.scorer_lifecycle",
     "crosscutting.logsetup",
     "main",
@@ -105,6 +108,7 @@ SUBMODULES = [
     # from the **installed** package too.
     "crosscutting.shaping",
     "crosscutting.shaping.fields",
+    "crosscutting.shaping.naming",
     "crosscutting.shaping.project",
     "crosscutting.shaping.scope",
     # v0.7.3: `store` became a package (DECISIONS #88), on the same terms `api` did in v0.7.2 — it
@@ -125,6 +129,7 @@ SUBMODULES = [
     "store.lifecycle",
     "store.promotion",
     "store.read_models",
+    "store.restructure",
     "store.retention",
     "store.scoring_config",
     # v0.9.0: shadow mode's SQL. A separate module from `store.dataset` because that file is at
@@ -132,6 +137,7 @@ SUBMODULES = [
     # owns what the challenger read and wrote back.
     "store.seal",
     "store.shadow",
+    "store.situation_events",
     "store.situations",
     "store.state_clears",
     "store.types",

@@ -87,14 +87,20 @@ async def test_situation_lifecycle_and_merge(store: Store) -> None:
     detail = await store.situation_detail(s1)
     assert detail is not None and len(detail["links"]) == 1
     assert detail["links"][0]["term_a"] == 0.3
+    # v0.16.0: `merged` moved from `status` to `resolution` — the one historical value migration
+    # `0014` could map exactly, because this statement is what wrote it (DECISIONS #253).
     merged = await store.situation_detail(s2)
-    assert merged is not None and merged["status"] == "merged"
+    assert merged is not None
+    assert merged["status"] == "resolved" and merged["resolution"] == "merged"
     assert not await store.all_cleared(s1)
     await store.set_root(s1, a.alarm_id)
     await store.close_situation(s1, ts=4.0)
     detail = await store.situation_detail(s1)
     assert detail is not None
-    assert detail["status"] == "closed" and detail["root_alarm_id"] == a.alarm_id
+    assert detail["status"] == "resolved" and detail["root_alarm_id"] == a.alarm_id
+    # Both members are still active, so the appliance did not close this because the network
+    # fixed itself: the sweep timed it out, and `resolution` is what says which (DECISIONS #259).
+    assert detail["resolution"] == "idle"
 
 
 async def test_idle_open_situations(store: Store) -> None:
@@ -149,9 +155,10 @@ async def test_labels_and_read_models(store: Store) -> None:
     assert {n["ip"] for n in graph["nodes"]} == {"10.0.0.1", "10.0.0.2"}
     assert len(graph["edges"]) == 1
     assert (await store.graph_snapshot(min_edge_n=7.0))["edges"] == []
-    listed = await store.list_situations(status="open", limit=10)
+    # The correlator creates `new`, not `open` (DECISIONS #254).
+    listed = await store.list_situations(status="new", limit=10)
     assert listed[0]["id"] == s1 and listed[0]["alarm_count"] == 2
-    assert await store.list_situations(status="closed", limit=10) == []
+    assert await store.list_situations(status="resolved", limit=10) == []
     classes = await store.list_classes()
     assert {c["oid"] for c in classes} == {util.CIENA_TRAP, util.HUAWEI_TRAP}
     stats = await store.stats()

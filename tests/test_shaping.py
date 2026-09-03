@@ -108,7 +108,8 @@ async def test_situation_detail_device_ip_shaped_by_role(
     app = await _seed_topology(store)
     client = await authutil.client_as(app, role)
     try:
-        sid = (await client.get("/api/situations", params={"status": "open"})).json()[0]["id"]
+        # v0.16.0: the correlator creates `new` (DECISIONS #254).
+        sid = (await client.get("/api/situations", params={"status": "new"})).json()[0]["id"]
         alarms = (await client.get(f"/api/situations/{sid}")).json()["alarms"]
         ips = {a["device_ip"] for a in alarms}
         if coarsened:
