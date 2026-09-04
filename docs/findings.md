@@ -854,13 +854,13 @@ Run every command below from the repository root with the virtualenv active.
   authorization change on `DELETE /api/tokens/{tid}` for a viewer, an editor or an anonymous caller
   would not move this file** — which is the one thing the record is for. The failure is the shape
   Appendix B names: a guard that stopped guarding, and a count that reads as coverage.
-- **Disposition**: open. Not repaired in v0.16.0 because the repair changes the record for every
-  principal — three new lines, each a 401/403 that has never been pinned — and a release that
-  changes the record in a way it did not cause cannot then attribute its own diffs. The v0.16.0
-  gestures are unaffected: `sid`, `sid2` and `aid` are all fillable from the seed for every
-  principal, which is why all five new routes appear in all four records. The fix is one line
-  (append a line naming the unfillable parameter instead of returning) plus a regenerated record,
-  and it belongs to the release that owns the record rather than to one that is adding routes to it.
+- **Disposition**: **FIXED in v0.16.1**, in its own commit and before any other diff in that
+  release, so the three lines it adds are attributable to it and to nothing else. The branch now
+  appends `not-driven (unfilled: tid)` rather than returning, and the record moved from
+  `33fe1bc0b3193dcf694843c9305e93a085151114df82fe3f3c6ddf9cb2992f05` to
+  `9b5a6e75d4d141e86b8fb28a07c65d78cdebd94b63058e0608dcb8e3283499d3` by **exactly three lines**,
+  one per principal that cannot mint a token — which is the measurement above, arriving as a diff.
+  The entry is kept, per this file's own rule: it is where the reproduction lives.
 
 ## F92 — the promotion-path guard names four modules, and the path has five
 
