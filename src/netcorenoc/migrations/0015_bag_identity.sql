@@ -1,0 +1,74 @@
+-- 0015: the bag key (v0.16.1). One column and one index swap, and it exists because
+-- `PREREGISTRATION-0.16.1.md` §2 registered a bag's identity before this file was written.
+--
+-- Forward-only, applying cleanly onto a populated v0.16.0 database (schema v14). It seeds nothing,
+-- deletes nothing, and rewrites no row's meaning: the ADD COLUMN gives every existing row the
+-- sentinel below and touches no other column.
+--
+-- ---------------------------------------------------------------------------------------------
+-- WHY IT EXISTS, IN ONE MEASUREMENT (F89).
+--
+-- `feedback` was `UNIQUE (situation_id, verdict)` since `0007`, which bounded one situation's
+-- influence on learned state at two applications however many times anyone posted. v0.16.0 made
+-- `move` and `operator_split` write their negative half through that same surface, and measured:
+--
+--     gesture 1   situation_event +1   feedback +1   feedback_id recorded on the event
+--     gesture 2   situation_event +1   feedback +0   feedback_id NULL
+--
+-- A busy operator restructuring one storm five times contributes ONE asserting bag, not five, so
+-- the census under-counts exactly the population that works hardest — and `asserting_bags` is
+-- registered (`PREREGISTRATION-0.16.0.md` §2) to count a GESTURE.
+--
+-- LOOSENING THE INDEX IS NOT THE FIX AND IS NOT WHAT THIS IS. The second move asserts about a
+-- DIFFERENT BAG, because the first one changed it. So the key becomes what a bag actually is.
+-- ---------------------------------------------------------------------------------------------
+--
+-- WHAT `bag_key` IS. A SHA-256 over the situation's member ids as a SET -- sorted, deduplicated --
+-- at the instant of the label. `store/feedback.py::bag_key` is the one expression that produces
+-- it and the migration below writes none, which is deliberate: a digest this file computed and a
+-- digest the application computes would be two implementations of one meaning, and the day they
+-- disagreed nothing would go red.
+--
+-- ORDER IS PART OF THE RECORD AND NOT PART OF THE IDENTITY. `feedback.member_digest` is a digest
+-- over the ORDERED bag and it stays exactly as it is: the order is what the operator saw, and
+-- collapsing it would discard an observation (`0008`'s first rule). The same alarms in a different
+-- order are the same GROUPING, so an operator who asserts about them twice has asserted once --
+-- and a key over the ordered digest would let a correlator that merely re-ordered a bag
+-- manufacture a second assertion out of one human decision, which is F36's defect wearing this
+-- release's clothes.
+--
+-- THE SENTINEL, AND WHY IT IS A VALUE RATHER THAN NULL.
+--
+--     bag_key = ''   -- this row's bag identity was never computed (written before 0015)
+--
+-- `0011`'s three-state precedent, in one fewer state. NULL would be the honest spelling of
+-- "unknown", and it is refused here for a mechanical reason that matters more: SQLite treats NULLs
+-- as DISTINCT in a UNIQUE index, so every legacy row would become individually unbounded and the
+-- old two-column guarantee would evaporate on upgrade -- the exact opposite of what this migration
+-- is for. With `''`:
+--
+--   * among legacy rows the old bound is preserved EXACTLY -- at most one per (situation, verdict),
+--     which is what `0007`'s index guaranteed and what the DELETE above it had already enforced;
+--   * no digest can ever equal `''`, so a legacy row never claims to be the same bag as anything;
+--   * a NEW label on a situation that already carries a legacy one inserts, and that is the
+--     intended new behaviour rather than an upgrade artefact -- the legacy row's bag identity is
+--     unknown, and an unknown may not silently absorb a fresh, fully-keyed assertion.
+--
+-- NOT NULL WITH A DEFAULT is what makes the backfill the ALTER itself: SQLite fills every existing
+-- row with the default in one statement, so there is no UPDATE here to get wrong, and no window in
+-- which the column exists and the index does not yet hold.
+ALTER TABLE feedback ADD COLUMN bag_key TEXT NOT NULL DEFAULT '';
+
+-- -- the index swap ------------------------------------------------------------------------------
+--
+-- The three-column index is created BEFORE the two-column one is dropped, so there is no instant
+-- at which `feedback` is unconstrained. Both orders are safe inside `executescript`'s implicit
+-- transaction; this one is safe even if a reader is told otherwise.
+--
+-- The new index is a strict WIDENING of the old: every pair the old index refused, the new one
+-- also refuses unless the bag differs. Nothing that was rejected becomes accepted without a
+-- membership change having happened in between.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_situation_verdict_bag
+    ON feedback (situation_id, verdict, bag_key);
+
+DROP INDEX IF EXISTS idx_feedback_situation_verdict;

@@ -1,9 +1,15 @@
 """The label row and everything hanging off it, and the device/class label table.
 
 Both original halves carry a v0.7.1 finding: F36 (feedback is at most once per
-``(situation, verdict)``, so its influence on learned state is bounded) and F37 (a label may only
-name a target that exists, and a missing target answers the same 404 an out-of-scope one does, so
-the fix cannot re-introduce the existence oracle F34 closes).
+``(situation, verdict, bag)``, so its influence on learned state is bounded) and F37 (a label may
+only name a target that exists, and a missing target answers the same 404 an out-of-scope one does,
+so the fix cannot re-introduce the existence oracle F34 closes).
+
+**v0.16.1 widened F36's key by one column and did not weaken it.** ``bag_key`` — a digest over the
+member *set* at the instant of the label — is what makes the second correction of one situation a
+second assertion rather than a lost one (F89), and what keeps N identical posts a single one.
+``PREREGISTRATION-0.16.1.md`` §2 is the argument and migration ``0015`` is the schema; this module
+holds the only expression that computes the key.
 
 **v0.9.1 (DECISIONS #128): the label row's children moved here from `dataset.py`** — the bag, the
 annotations, the situation's open time, and this release's exclusion set. They were only ever over
@@ -18,10 +24,37 @@ the HTTP write path. That is the same seam `labels.py` was split from `capture.p
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from netcorenoc.store.base import StoreBase
 from netcorenoc.store.types import FeedbackResult
+
+#: The `bag_key` of a row written before `0015` — *"this row's bag identity was never computed"*.
+#: A real value with a stated meaning rather than NULL, so the unique index needs no `COALESCE` and
+#: `ON CONFLICT` can name three plain columns. It is `excluded_reconciled_source`'s three-state
+#: precedent in one fewer state: no digest can ever equal it, so a legacy row never claims to be
+#: the same bag as anything, and among legacy rows themselves the old two-column bound is preserved
+#: exactly — at most one per `(situation_id, verdict)`, which is what the old index guaranteed.
+UNKEYED_BAG = ""
+
+
+def bag_key(alarm_ids: list[int]) -> str:
+    """A bag's **identity**: a digest over its member ids as a SET.
+
+    `PREREGISTRATION-0.16.1.md` §2. Order is part of the *record* — `member_digest` keeps it, over
+    the ordered bag, because the order is what the operator saw. Order is not part of the
+    *identity*: the same alarms in a different order are the same grouping, and an operator who
+    asserts about them twice has asserted once. **Sorted and deduplicated**, so a correlator that
+    re-orders a bag cannot manufacture a second assertion out of one.
+
+    Deliberately **not** `labels.member_digest`. Two digests over one bag that disagreed by
+    accident would be a silent inconsistency; two that disagree *by construction*, over different
+    quantities, with different names, are two facts. The store may not import from the engine
+    (`tests/test_layers.py`), and that constraint agrees with the design here rather than fighting
+    it: the identity is the store's, the observation is the engine's.
+    """
+    return hashlib.sha256(",".join(str(a) for a in sorted(set(alarm_ids))).encode()).hexdigest()
 
 
 def _check_reconciled(fields: dict[str, Any]) -> None:
@@ -61,14 +94,33 @@ class FeedbackMixin(StoreBase):
         principal_ref: str | None = None,
         role: str | None = None,
     ) -> FeedbackResult:
-        """Record one verdict, **at most once per (situation, verdict)** (v0.7.1, F36).
+        """Record one verdict, **at most once per (situation, verdict, bag)** (F36, then F89).
 
         v0.7.0 inserted unconditionally, so N identical posts wrote N rows and drove N learning
         effects — each of which advanced the global forgetting epoch. The `UNIQUE` index added by
         migration `0007` makes the repeat a no-op at the storage layer, and the returned
         :class:`FeedbackResult` is what lets `Engine.apply_feedback` apply the learning effect
-        **only** on a genuine insert. A situation has two possible verdicts, so its total influence
-        on the learned state is bounded at two applications however many times anyone posts.
+        **only** on a genuine insert.
+
+        **v0.16.1 (F89): the key gains the bag** (`PREREGISTRATION-0.16.1.md` §2, migration
+        `0015`). `UNIQUE (situation_id, verdict)` meant the *second* `move` out of one situation
+        recorded its event and no second label — and the second move asserts about a **different
+        bag**, because the first one changed it. So the key is what a bag actually is: the
+        situation, the verdict, and the member **set** at the instant of the label.
+
+        **F36's measured defect stays fixed exactly where F36 measured it.** N identical posts have
+        one `bag_key` and still insert once. What inserts a second row is a post about a bag that
+        has changed, which is a different assertion rather than a repeat of one. The bound this
+        trades away is named in the amendment and not discovered here: the cap on one situation's
+        influence moves from *two applications* to *one per verdict per distinct membership*. Still
+        bounded, still monotone in operator acts, no longer a constant.
+
+        The key is derived from `situation_alarm` — **the persisted membership, which is this
+        layer's own** — rather than from the caller's bag, so `engine.apply_feedback` is
+        byte-identical and its call site did not have to learn about identity. That the two can
+        never disagree is not assumed: `tests/test_bag_identity.py` asserts, over the real write
+        path, that every row's `bag_key` is the set digest of the `feedback_member(source='server')`
+        snapshot the same verdict recorded.
 
         `principal_ref` / `role` attribute the row. They are nullable because rows written before
         `0007` have no author and inventing one would be worse than admitting none.
@@ -76,11 +128,29 @@ class FeedbackMixin(StoreBase):
         cur = await self.conn.execute("SELECT 1 FROM situation WHERE id=?", (situation_id,))
         if await cur.fetchone() is None:
             return FeedbackResult(exists=False, inserted=False)
-        cur = await self.conn.execute(
-            "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, role) "
-            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (situation_id, verdict) DO NOTHING RETURNING id",
-            (situation_id, verdict, ts, principal_ref, role),
-        )
+        if not self._has_bag_key:
+            # A database that has not been migrated past `0014` still carries `0007`'s two-column
+            # index, and this statement is byte-identical to what v0.16.0 issued. The probe is at
+            # `open()` rather than here for the reason `_has_lifecycle`'s is (DECISIONS #250): this
+            # runs on every verdict and every gesture, and a caught `OperationalError` per call
+            # would infer the schema from a failure instead of asking once.
+            cur = await self.conn.execute(
+                "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, role) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT (situation_id, verdict) DO NOTHING RETURNING id",
+                (situation_id, verdict, ts, principal_ref, role),
+            )
+        else:
+            cur = await self.conn.execute(
+                "SELECT alarm_id FROM situation_alarm WHERE situation_id=?", (situation_id,)
+            )
+            key = bag_key([int(r[0]) for r in await cur.fetchall()])
+            cur = await self.conn.execute(
+                "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, role, "
+                "bag_key) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (situation_id, verdict, bag_key) DO NOTHING RETURNING id",
+                (situation_id, verdict, ts, principal_ref, role, key),
+            )
         row = await cur.fetchone()
         # v0.8.0 returns the id as well. `RETURNING id` was already there — v0.7.1 only tested it
         # for None-ness — so this reads a value the statement always produced and discarded.
@@ -235,6 +305,35 @@ class FeedbackMixin(StoreBase):
     async def feedback_exclusion(self, feedback_id: int) -> list[int]:
         cur = await self.conn.execute(
             "SELECT alarm_id FROM feedback_exclusion WHERE feedback_id=? ORDER BY position",
+            (feedback_id,),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]
+
+    async def reconciled_marks(self, feedback_id: int) -> list[int]:
+        """**The ids the operator actually marked**, reconciled against the bag (v0.16.1, F90).
+
+        `excluded_reconciled` is the *count* of this set and has been stored since `0011`; the set
+        itself was never readable, so `promotion_metrics._asserting_bags` rebuilt it as
+        `members[:excluded_reconciled]` — a positional prefix of **live** membership. Measured, on
+        a bag of eight marked `[7, 8]`: the judge reconstructed `[1, 2]`, and four of the twelve
+        pairs it measured were pairs the operator had asserted.
+
+        **The same expression `reconciliation_drift` recomputes the count from**, returning the ids
+        instead of counting them, so the count and the set cannot drift apart — F46's property, one
+        level down. `DISTINCT` for `0011`'s reason: `feedback_exclusion`'s primary key is
+        `(feedback_id, position)`, so a client that sent `[5, 5, 5]` has three evidence rows and
+        **one** mark. Ordered by `alarm_id` so the reconstruction is deterministic; the set is what
+        carries meaning and the order is only so two runs agree.
+
+        A mark that named nothing in the bag contributes nothing here and is still recorded
+        verbatim next door — the join is where the untrusted half meets the trusted one, and it is
+        deliberately silent (`labels.Exclusion.marked_positions`, the same intersection).
+        """
+        cur = await self.conn.execute(
+            "SELECT DISTINCT x.alarm_id FROM feedback_exclusion x "
+            "JOIN feedback_member m ON m.feedback_id = x.feedback_id "
+            " AND m.alarm_id = x.alarm_id AND m.source = 'server' "
+            "WHERE x.feedback_id = ? ORDER BY x.alarm_id",
             (feedback_id,),
         )
         return [int(r[0]) for r in await cur.fetchall()]

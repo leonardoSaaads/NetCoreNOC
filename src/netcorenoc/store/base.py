@@ -58,6 +58,10 @@ class StoreBase:
     # `False` is what lets the identical store code run against the schema-13 database
     # `tests/test_upgrade.py` builds.
     _has_lifecycle: bool
+    # v0.16.1: does `feedback` carry `bag_key` (migration 0015)? Resolved by the same probe, for
+    # the same reason — `add_feedback` runs on every verdict and every gesture, so inferring the
+    # schema from an exception would pay a caught error on the busiest write path there is.
+    _has_bag_key: bool
 
     @property
     def conn(self) -> aiosqlite.Connection:

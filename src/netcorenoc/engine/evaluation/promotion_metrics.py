@@ -130,38 +130,83 @@ def _components_for(
     return out
 
 
+def _hidden(members: list[int], marked: frozenset[int], hidden: int, blind: int) -> frozenset[int]:
+    """The members the labeller could not observe. **Arbitrary in identity, exact in arithmetic.**
+
+    `PREREGISTRATION-0.16.1.md` §1's stated limitation, and the honest half of it is the first
+    word. *Which* members a scoped labeller could not see is **not recorded** — `LabelScope.
+    hidden_members` is transient by construction (v0.9.2, DECISIONS #137) and only the two counts
+    survive — so no reader can recover the identities and none is invented here.
+
+    What the counts DO determine is the shape: `blind` of the hidden members are marked and
+    `hidden - blind` of them are not, so `observable_pairs()` returns exactly the
+    `(m - b) · ((n - m) - (h - b))` that `PREREGISTRATION-0.10.0.md` §2.4 registers and
+    `tests/test_evidence_boundary_observable.py` re-derives by brute force. The previous
+    reconstruction took the **last `h` members** of live membership, which put zero hidden members
+    inside the marked set whatever `excluded_reconciled_out_of_scope` said — correct only where
+    that column was 0, and silently understating the count everywhere else.
+
+    The residual is a finding rather than a repair (F93): the *count* is now right and the
+    *selection* is still arbitrary, which is a limit of what `0011` chose to store and cannot be
+    fixed by a reader.
+    """
+    if not hidden:
+        return frozenset()
+    marked_ids = [a for a in members if a in marked]
+    rest_ids = [a for a in members if a not in marked]
+    return frozenset(marked_ids[:blind] + rest_ids[: max(hidden - blind, 0)])
+
+
 async def _asserting_bags(
     store: Store, incident_of: Mapping[int, int]
 ) -> tuple[list[shadow_assertions.AssertingBag], dict[int, list[int]]]:
-    """The asserting bags, built from the **server-derived** columns only (F46).
+    """The asserting bags, built from the **server-derived** columns only (F46), against the
+    **membership captured at the gesture** (F90, `PREREGISTRATION-0.16.1.md` §1).
 
-    `excluded_reconciled` rather than `excluded_count`, and the marked set is recovered from the
-    bag's own member order — `Exclusion.marked_positions` is what wrote the count, so the positions
-    are the first `excluded_reconciled` members the server itself reconciled.
+    Two reads, and both of them are stored evidence that no later mutation touches (`0008`'s first
+    rule):
+
+    * **the bag** is `feedback_member(source='server')`, ordered by `position` — the snapshot the
+      label was captured against. It was `situation_alarm`, which is **live**: a `move` labels the
+      source situation *before* removing the alarm, so the judge read a bag of `k - 1` that no
+      longer contained the very member the operator had marked, ordered by `alarm_id` while
+      `store.situation_members` has no `ORDER BY` at all.
+    * **the marked set** is `feedback_exclusion ∩ that snapshot`, through `reconciled_marks` — the
+      same expression `reconciliation_drift` recomputes `excluded_reconciled` from. It was
+      `members[:excluded_reconciled]`, a positional prefix, on the premise that
+      `Exclusion.marked_positions` returns a prefix. It returns the positions where the marked ids
+      **occur**, which is not a prefix and was never claimed to be. Measured on a bag of eight
+      marked `[7, 8]`: reconstructed `[1, 2]`, and 4 of the 12 pairs measured were pairs the
+      operator asserted. The control — the same bag marked `[1, 2]` — agreed, which is what
+      distinguished a broken judge from a broken probe.
+
+    A wrong marked set does not make the fourth named quantity noisy. It makes it a measurement of
+    **different pairs than the operator asserted**, and it reads as a rate rather than as an error.
     """
     rows = await store.asserting_bag_rows()
     out: list[shadow_assertions.AssertingBag] = []
     members_of: dict[int, list[int]] = {}
     for row in rows:
+        feedback_id = int(row["feedback_id"])
         situation = int(row["situation_id"])
-        cursor = await store.conn.execute(
-            "SELECT alarm_id FROM situation_alarm WHERE situation_id=? ORDER BY alarm_id",
-            (situation,),
-        )
-        members = [int(r[0]) for r in await cursor.fetchall()]
-        marked_count = int(row["excluded_reconciled"])
-        hidden_count = int(row["scope_redacted_members"] or 0)
+        members = await store.feedback_members(feedback_id, "server")
+        marked = frozenset(await store.reconciled_marks(feedback_id))
         out.append(
             shadow_assertions.AssertingBag(
-                feedback_id=int(row["feedback_id"]),
+                feedback_id=feedback_id,
                 incident=incident_of.get(situation, situation),
                 members=tuple(members),
-                marked=frozenset(members[:marked_count]),
-                hidden=frozenset(members[len(members) - hidden_count :] if hidden_count else []),
+                marked=marked,
+                hidden=_hidden(
+                    members,
+                    marked,
+                    int(row["scope_redacted_members"] or 0),
+                    int(row["excluded_reconciled_out_of_scope"] or 0),
+                ),
                 coverage=str(row["coverage"]),
             )
         )
-        members_of[int(row["feedback_id"])] = members
+        members_of[feedback_id] = members
     return out, members_of
 
 

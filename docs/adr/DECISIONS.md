@@ -2400,3 +2400,60 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Trade-off**: an operator granted `label.write` for device names also gains the power to name
   situations, and a deployment cannot separate them. Accepted: the alternative is a capability whose
   only purpose is to be separable.
+
+## 261. A bag's identity is its member SET; its order is the record (v0.16.1)
+
+- **Decision**: `feedback` is keyed `(situation_id, verdict, bag_key)`, where `bag_key` is a
+  SHA-256 over the situation's member ids **sorted and deduplicated** at the instant of the label.
+  `member_digest` — the digest over the *ordered* bag — is unchanged and keeps its own meaning.
+  Registered in `PREREGISTRATION-0.16.1.md` §2 before any code was written; migration `0015`
+  implements it. Widens #68's key rather than replacing it.
+- **Reason**: F89 lost the second correction of one situation, and the second correction asserts
+  about a bag the first one changed. Order is what the operator *saw* and belongs to the record;
+  the same alarms in a different order are the same *grouping*, so a key over the ordered digest
+  would let a correlator that merely re-ordered a bag manufacture a second assertion out of one
+  human decision — F36's defect in this release's clothes.
+- **Trade-off accepted**: the cap on one situation's influence on learned state moves from **two
+  applications** to **one per verdict per distinct membership**. Still bounded and still monotone
+  in operator acts — each increment needs a membership change *and* a further POST — but no longer
+  a constant. A release that finds it too loose bounds memberships; it does not drop the identity.
+- **Measured**: two moves out of one situation recorded `feedback +1` then `feedback +0` before;
+  `+1` then `+1` after. The control — a third post with the bag unchanged — still records `+0`.
+
+## 262. The bag key is derived by the store, and a test is what makes that safe (v0.16.1)
+
+- **Decision**: `store.add_feedback` computes `bag_key` itself from `situation_alarm` rather than
+  taking it from the caller, so `engine/operate/engine.py` is **byte-identical** and its
+  `COHESION_EXEMPT_CEILING` of 545 is untouched.
+- **Reason**: the alternative was to read the bag in `apply_feedback` before the insert and pass
+  the digest down, which costs two lines in the one file this project has agreed to keep readable
+  in a single pass (#121, #108) and would have needed a ceiling raise. The identity of a bag is a
+  fact about stored membership, which is this layer's own subject; the *observation* of a bag —
+  order included — stays the engine's.
+- **The compensating control, because a ratchet without one is a comment**: `feedback_member
+  (source='server')` is written by the engine from `capture.server_bag`, which prefers **engine
+  state** for a live situation, while the key comes from the store's own table. "They can never
+  disagree" is therefore a claim, and `tests/test_bag_identity.py::test_every_labels_key_is_the_
+  set_digest_of_its_own_recorded_snapshot` asserts it over the real HTTP write path on bags the
+  correlator formed. If the two readings ever diverge, that test — not a production number — is
+  what says so.
+- **Trade-off**: one extra `SELECT` per verdict on the HTTP write path. Accepted: it is thousands
+  of times rarer than the ingest path, and the alternative was inferring the schema from an
+  exception on the same path (see #263).
+
+## 263. A schema probe at `open()`, not an `OperationalError` per write (v0.16.1)
+
+- **Decision**: `Store._has_bag_key` is answered once by `PRAGMA table_info(feedback)` after the
+  migrations, exactly as `_has_lifecycle` is (#250). On a database frozen below `0015`,
+  `add_feedback` issues the v0.16.0 statement byte-for-byte.
+- **Reason**: `tests/test_upgrade.py` runs the **current** store against a frozen migration
+  directory, which is what makes *"the migration changes behaviour and the code does not"*
+  checkable at all. Without the probe that fixture does not fail — it **hangs**, because the
+  `OperationalError` escapes into a started engine whose task nobody cancels, which is Appendix B's
+  *"a red that was a hang"* and cost this release ten minutes of a `SIGKILL` bisect.
+- **Trade-off**: one branch on the busiest write path in the API layer, and a second probe query at
+  startup. Accepted for the reason #250 accepted the first: a caught exception per call infers the
+  schema from a failure instead of asking once.
+- **Measured**: six of twelve `test_upgrade.py` tests hung before the probe; twelve pass after it,
+  and the six pinned literals moved from `latest_schema_version() == 14` to `== 15`, which is this
+  release's only intended diff in that file.

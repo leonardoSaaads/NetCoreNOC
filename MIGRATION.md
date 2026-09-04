@@ -14,10 +14,11 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of twenty-five ask
-you to do something; seven more ask you to read a paragraph first. The other sixteen are
+Read only the rows between your version and the one you are installing. **Two of twenty-seven ask
+you to do something; eight more ask you to read a paragraph first. The other seventeen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
-until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did.)
+until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
+v0.16.0 did not add its row at all — F94 — so v0.16.1 adds both.)
 
 | From → to | What you must do |
 |---|---|
@@ -46,8 +47,10 @@ until v0.15.2 — F78. It counts rows, not sections; recount it when you add one
 | v0.15.2 → v0.15.3 | Nothing, but **the appliance now refuses to lose its last admin, and may mint one on boot** — see below |
 | v0.15.3 → v0.15.4 | Nothing — a packaging fix. **If you ran v0.15.3 in Docker, rebuild the image** (F85) |
 | v0.15.4 → v0.15.5 | Nothing, but **the theme control stops being a three-state ring** — see below |
+| v0.15.5 → v0.16.0 | Nothing, but **every situation status you have ever seen is renamed** — see below |
+| v0.16.0 → v0.16.1 | Nothing. `0015` widens one index; **no situation regroups and no verdict changes** |
 
-## The two that need an action, and the five that need reading
+## The two that need an action, and the six that need reading
 
 ### v0.3.0 — the shared API token is gone
 
@@ -126,6 +129,50 @@ bug fix, so it is not in a patch release.
 
 Nothing is stored, nothing migrates, and an existing `ncn_theme=dark` or `=light` cookie is
 honoured exactly as before.
+
+### v0.16.0 — every situation status you have ever seen is renamed
+
+**This row was missing until v0.16.1 added it (F94), so read it even if you upgraded already.**
+
+Migration `0014` widens `situation.status` from `open | closed | merged` to `new | open |
+resolved`, and the console's tabs follow. Nothing regroups: the correlator's decisions, the
+learned state, the labels and the audit chain are untouched, and no situation gains or loses a
+member. What changes is the vocabulary an operator reads, and one rewrite of history:
+
+* **`open` stays `open`**, and every situation the correlator creates from now on starts as
+  **`new`** — *nobody has looked at this yet*. On an untriaged appliance that is most of them, so
+  the Situations screen opens on the New tab.
+* **`merged` becomes `resolved` with `resolution = merged`.** Exact: `merge_situations` is what
+  wrote that status, so nothing is inferred.
+* **`closed` becomes `resolved` with `resolution = unattributed`.** `closed` conflated an
+  operator's close with the idle sweep and nothing recorded which, so the migration says *"this
+  one cannot be attributed"* rather than guessing (DECISIONS #253). Historical rows are the only
+  ones that carry it; every close from v0.16.0 onward records its own reason.
+
+**A client that still asks `GET /api/situations?status=closed` gets a 422 naming the three values**
+rather than an empty list, which is the honest answer to a filter that no longer exists. If you
+script against that route, that is the one thing to change.
+
+The release also adds five operator gestures — move, merge, split, manual clear, rename — each
+behind its own capability, and **every one of them ships switched off**: no role holds them until
+an admin grants them.
+
+### v0.16.1 — one index widens, and nothing you can see moves
+
+**No action.** Migration `0015` adds `feedback.bag_key` and replaces the two-column unique index on
+`(situation_id, verdict)` with a three-column one that includes it. Existing rows are filled with a
+sentinel that keeps the old bound exactly, so nothing you have already recorded changes meaning and
+no situation regroups.
+
+What it changes is what happens the *second* time an operator corrects the same situation. Before
+this release the second correction recorded its event and no label, so a busy operator's repeated
+work contributed one row rather than several (F89). It now records its own label when the
+membership has actually changed — and a repeated post about an **unchanged** bag still records
+once, which is the v0.7.1 bound that stops N identical posts driving N learning effects.
+
+The same release repairs how the promotion judge reads those labels (F90). **No verdict this
+appliance has ever returned changes**: the gate still refuses on the corpus floors, which no
+number here moves.
 
 ### v0.15.4 — rebuild the image if you ran v0.15.3 in a container
 

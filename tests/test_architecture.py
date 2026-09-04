@@ -898,8 +898,12 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: modules, two API route modules, four engine modules, one crosscutting module and two console
 #: parts. The digest and the count move together in the commits that add them, which is what keeps
 #: the line reviewable rather than absorbing whatever else came with the change.
-SRC_TREE_DIGEST = "fcce89763d2f8532d05f49ddf30e2e7aa96391f4549b83aed1b2025c54002652"
-SRC_FILE_COUNT = 190
+#:
+#: v0.16.1: 190 -> 191 files. One added — `migrations/0015_bag_identity.sql` — none removed, none
+#: moved. The other `src/` diffs in this release are edits to files that already existed, and the
+#: digest moves with them in the commit that makes each one.
+SRC_TREE_DIGEST = "1e92fbfef4d707bdd4afc7fbef73a041c333a8da46a2af67fe315dd7ca4c2b76"
+SRC_FILE_COUNT = 191
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

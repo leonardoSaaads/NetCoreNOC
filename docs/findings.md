@@ -791,13 +791,15 @@ Run every command below from the repository root with the virtualenv active.
 - **Why it matters**: `asserting_bags` is the quantity this release exists to move, and it counts
   labels. A busy operator restructuring one storm five times contributes one asserting bag, not
   five, so the census under-counts exactly the population that works hardest.
-- **Disposition**: **open, not repaired in v0.16.0**, and the reason is a trade rather than a
-  schedule. The second move asserts about a *different* bag — the first move changed it — so the
-  fix is not "drop the unique index" but "decide what a bag's identity is when membership mutates",
-  which is an analytical question and §10 of `PREREGISTRATION-0.16.0.md` sends it to v0.16.1.
-  Loosening a measured invariant inside a feature release trades a bound this project has held
-  since v0.7.1 for an unmeasured one. Stated at the two call sites that lose the label
-  (`api/routes_lifecycle.py`, `engine/dataset/gestures.py`) rather than left to be discovered.
+- **Disposition**: **FIXED in v0.16.1**, and by answering the question rather than by dropping the
+  index. `PREREGISTRATION-0.16.1.md` §2, ratified before the repair, registers a bag's identity as
+  `(situation_id, verdict, bag_key)` where `bag_key` is a digest over the member **set**; migration
+  `0015` adds the column and widens the index. The second move now records its own label, and the
+  same reproduction with the bag left **unchanged** between the two posts still records one — so
+  F36's measured defect (N identical posts, N learning effects) stays fixed exactly where F36
+  measured it. Both directions are in `tests/test_bag_identity.py`. The bound traded away is named
+  in the amendment rather than discovered later: the cap on one situation's influence moves from
+  *two applications* to *one per verdict per distinct membership*.
 
 ## F90 — the judge reconstructs the marked set positionally, from live membership
 
@@ -825,12 +827,14 @@ Run every command below from the repository root with the virtualenv active.
   pairs than the operator asserted**, and it will read as a rate rather than as an error. It has
   been invisible since v0.9.1 for the reason this release exists: `asserting_bags = 0`, so nothing
   has ever reached it. **v0.16.0 is what makes it reachable.**
-- **Disposition**: **open, deliberately not fixed here.** Repairing a promotion-gate input inside a
-  feature release is exactly the fix-inside-a-feature this project forbids, and the repair is not
-  one line: it has to decide which bag a label is judged against once membership mutates, which is
-  F89's question again from the other end. It is the **first item** of
-  `docs/plans/v0.16.1-visualisation.md`, and until it is fixed no promotion decision should be read
-  from `asserted_negative_respected_rate` on a corpus containing gesture-acquired bags.
+- **Disposition**: **FIXED in v0.16.1**, under `PREREGISTRATION-0.16.1.md` §1, ratified first. The
+  bag is `feedback_member(source='server')` ordered by `position`; the marked set is
+  `store.reconciled_marks` — `feedback_exclusion ∩ that snapshot` — which is the same expression
+  `reconciliation_drift` recomputes the stored count from, so the count and the set cannot drift
+  apart. Re-measured after the repair: **overlap 12 of 12**, and the control (the same bag marked
+  low) agrees as it did before, which is what distinguishes a repaired judge from a broken probe.
+  The residual limitation — that *which* members a scoped labeller could not observe was never
+  recorded — is **F93**, not this.
 
 ## F91 — the behaviour record drops a route it cannot address, without saying so
 
@@ -887,3 +891,55 @@ Run every command below from the repository root with the virtualenv active.
   it is deriving the module set from the promotion path rather than listing it, which is a change to
   a v0.14.0 guard inside a release that is about something else. Recorded with the injection that
   found it so the next release can start from a measurement.
+
+## F93 — which members a scoped labeller could not see is a count, so the judge picks the pair set
+
+- **What**: `AssertingBag.hidden` needs alarm **ids**; the corpus stores only two counts —
+  `scope_redacted_members` (how many the labeller could not observe) and
+  `excluded_reconciled_out_of_scope` (how many of the *marks* were about one of those). The
+  identities were deliberately never stored: `LabelScope.hidden_members` is transient by
+  construction (v0.9.2, DECISIONS #137). So any reader has to *choose* which members were hidden,
+  and `observable_pairs()` then enumerates a pair set that depends on the choice.
+- **Reproduce**: a six-member bag, two marks, three hidden, one mark blind — §10's own measured
+  case. The registered count is `(m − b) · ((n − m) − (h − b)) = 2`; the *identities* of those two
+  pairs are not determined by anything stored, and two readers choosing differently would compute
+  the same denominator over different numerators.
+- **Measured**, on the reconstruction v0.16.1 replaced: it took the **last `h` members** of the
+  bag as hidden, which puts zero hidden members inside the marked set whatever
+  `excluded_reconciled_out_of_scope` records — so it computed `m · (n − m − h)` and agreed with
+  the registered expression only where that column was 0. v0.16.1's `_hidden` honours `b` and the
+  count is now exact; the selection is still arbitrary.
+- **Why it matters**: `asserted_negative_respected_rate` is `kept / len(pairs)`. The denominator
+  is now right for every row. The numerator counts pairs whose ends were **chosen** rather than
+  recorded, so on a bag with a restricted scope the rate is one of several defensible values. It
+  is a smaller error than F90 — the pairs are all genuinely `marked × rest` — and it is not zero.
+- **Disposition**: open, and **not repaired by inventing a column**. Recording the hidden ids is a
+  schema change to `0011`'s evidence boundary and an analytical decision about whether a redaction
+  may leave a per-member trace on a label row — the redaction deliberately carries no alarm id
+  (F47), and a table that recorded which ids were withheld would be the same disclosure written
+  down. It belongs to a release that owns the evidence boundary, with a plan.
+
+## F94 — MIGRATION.md has no row for the release that changed the state machine
+
+- **What**: the upgrade table ends at `v0.15.4 → v0.15.5`. v0.16.0 added migration `0014`, renamed
+  every situation status an operator sees (`open | closed | merged` → `new | open | resolved`) and
+  rewrote `resolution` for every historical row — and the one document an operator reads before
+  upgrading says nothing about it.
+- **Reproduce**:
+  ```sh
+  grep -c '^| v' MIGRATION.md          # 25
+  grep -n 'v0.16.0' MIGRATION.md       # nothing in the table
+  ```
+- **Measured**: 25 rows, the last naming v0.15.5, against a tree at v0.16.0 with fifteen
+  migrations. The prose above the table — *"Two of twenty-five ask you to do something"* — was
+  arithmetically correct, which is why nothing looked wrong: **the count matched the rows, and the
+  rows were a release behind.**
+- **Why it matters**: this is F78 recurring one release later, and F78's own repair added the
+  sentence *"it counts rows, not sections; recount it when you add one"* — which counts what is
+  present and cannot notice what is absent. A guard that checks a table against `docs/plans/
+  releases.md` would; none exists.
+- **Disposition**: **the two missing rows are added in v0.16.1** (v0.16.0's and this release's) and
+  the arithmetic is restated. The *guard* is not written here: deriving the table's membership from
+  the release chain is a change to `tests/test_documentation.py`'s subject, and this release's
+  claim-marker check already owns that seam — recorded so the next release starts from a
+  measurement rather than from a third recurrence.

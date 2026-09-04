@@ -607,9 +607,10 @@ async def _two_situations(store: Store, app: object) -> tuple[int, int, int]:
     * two, so the source still holds a member after the move and the negative half asserts a real
       pair rather than an empty product;
     * out of the *new* situation, because `operator_split` writes its `split` label against the
-      **original** — and `feedback` is `UNIQUE (situation_id, verdict)`, so a move out of that same
-      situation would find the row already there and record no label of its own (F89). Using the
-      untouched side is what lets this helper serve a test about the move rather than about F36.
+      **original** — so a move out of that same situation would be a second assertion about a bag
+      the split had just changed, and this helper would then be exercising v0.16.1's bag key (F89)
+      rather than the move. Using the untouched side keeps the subject the move.
+      `tests/test_bag_identity.py` is where the second-assertion case is asserted deliberately.
     """
     rows = await live_situations(store)
     sid = int(rows[0]["id"])
