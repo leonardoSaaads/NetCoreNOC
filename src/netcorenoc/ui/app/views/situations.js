@@ -63,10 +63,22 @@ export class Situations extends Component {
 
   componentDidMount() {
     this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
-    // A deep link (#/situations/12) opens that card, which is what makes a situation shareable
-    // during an incident (draft §2.4, §3).
+    /* A deep link (#/situations/12) opens that card, which is what makes a situation shareable
+     * during an incident (draft §2.4, §3).
+     *
+     * **It is pinned as well, and that is F97.** This screen opens on the New tab (DECISIONS
+     * #254), so a permalink to a situation in any other state expanded a card the list did not
+     * contain and the operator was shown an unremarkable tab with nothing in it — no card, no
+     * error, no explanation. Measured in the v0.16.1 live pass with a control: the same link to a
+     * `new` situation rendered the card expanded; to an `open` one it rendered nothing at all.
+     * The link is the operator asking for THIS situation, so the pin is exactly the right
+     * mechanism — the card appears where they are, its badge says which state it is in, and
+     * collapsing it or choosing a tab releases it like any other pin. */
     const deepLink = Number(this.props.params[0]);
-    if (deepLink) this.open(deepLink);
+    if (deepLink) {
+      this.setState({ pinned: new Set(this.state.pinned).add(deepLink) });
+      this.open(deepLink);
+    }
     if (this.state.filter.trim()) this.search(this.state.filter.trim());
   }
 
@@ -82,6 +94,17 @@ export class Situations extends Component {
     const needle = text.trim();
     if (!needle) { this.setState({ results: null, searching: false, searchError: null }); return; }
     this.timer = setTimeout(() => this.search(needle), SEARCH_DEBOUNCE_MS);
+  }
+
+  /* Choosing a tab RELEASES every pin, and that is not the same act as gesturing.
+   *
+   * The pin exists so a card does not move out from under an operator who just acted on it
+   * (DECISIONS #267). Picking a tab is the operator asking for a different list — found in the
+   * v0.16.1 live pass, where a card pinned in "New" was still on screen after switching to
+   * "Open", so it appeared in both. A courtesy that outlives the thing it was a courtesy about
+   * is a second, private notion of state, which is exactly what #267 refused to build. */
+  pickTab(value) {
+    this.setState({ status: value, pinned: new Set() }, () => this.refresh());
   }
 
   /** Re-run the current search, which is what a gesture inside a search result needs. */
@@ -107,26 +130,21 @@ export class Situations extends Component {
     }
   }
 
-  /** Re-fetch a card the operator has just changed, and re-freeze the hold on the new payload.
+  /* Re-fetch a card the operator just changed, re-freeze the hold, and **keep the card where they
+   * are looking** (ADR #173, DECISIONS #267).
    *
    * A gesture the operator made is the one case where the held card SHOULD move: they changed it,
    * so showing them what they changed it to is not a state change arriving underneath a click. The
-   * hold's whole purpose is that an update they did not ask for cannot move the grouping they are
-   * judging (ADR #173), and `refreshHeld` is the existing name for exactly this — "the card was
-   * re-fetched deliberately (the operator asked)". */
-  /* Re-fetch the card, and **keep it where the operator is looking** (DECISIONS #267).
+   * hold's whole purpose is that an update they did NOT ask for cannot move the grouping they are
+   * judging, and `refreshHeld` is the existing name for exactly this.
    *
-   * The first gesture on a card promotes the situation from `new` to `open`, which is correct
-   * (DECISIONS #254) and means the card leaves the tab it was opened from — the default tab, on an
-   * untriaged appliance, which is where an operator does most of their work. Measured in the
-   * v0.16.0 live pass and recorded in that release's brief §5: *"the card an operator is working
-   * on disappears from the default tab"*.
-   *
-   * The tab does NOT follow the card, because the tab is what the operator chose and moving it
-   * under them is the same class of surprise. The card is pinned to the list it is already in
-   * until they collapse it, and its badge still says `open`, so nothing is hidden — the state
-   * changed and the card says so where they are already reading. The pin is per visit and lives
-   * nowhere: reopening the screen shows the true membership of the tab.
+   * The pin is the same argument about the LIST. The first gesture promotes `new` to `open`
+   * (DECISIONS #254), so the card leaves the tab it was opened from — the default tab, which on an
+   * untriaged appliance is where an operator does most of their work. Measured in the v0.16.0 live
+   * pass and recorded in that release's brief §5. The tab does not follow the card, because the tab
+   * is what the operator chose; the card stays until they collapse it or pick a different tab, and
+   * its badge still says `open`, so nothing is hidden. The pin lives nowhere: it is state on this
+   * component for the length of a visit.
    */
   async reopen(sid) {
     try { store.refreshHeld(sid, await get(`/api/situations/${sid}`)); }
@@ -181,7 +199,7 @@ export class Situations extends Component {
             class=${cx("tab", status === value && "tab-on")}
             aria-selected=${status === value ? "true" : "false"}
             aria-controls="sits" title=${hint}
-            onClick=${() => this.setState({ status: value }, () => this.refresh())}>${label}</button>`)}
+            onClick=${() => this.pickTab(value)}>${label}</button>`)}
       </div>
 
       ${query ? html`<p class="hint search-note">${SEARCH_NOTE}</p>` : null}

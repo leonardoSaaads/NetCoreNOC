@@ -907,7 +907,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: guard) and `ui/favicon.svg` (F96 — `img-src 'self'` forbids the data: URI that would otherwise
 #: be a one-line fix). The other `src/` diffs are edits to files that already existed, and the
 #: digest moves with them in the commit that makes each one.
-SRC_TREE_DIGEST = "def73c09103083f7c685764d8d318041104f76eb359b61ecf833766b554f5696"
+SRC_TREE_DIGEST = "1dfbae39eb5dd4899534c8b2a6dfaf9a2a9c41303de005a2004a3984e31952d7"
 SRC_FILE_COUNT = 193
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

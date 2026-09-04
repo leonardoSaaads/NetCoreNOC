@@ -1004,3 +1004,29 @@ Run every command below from the repository root with the virtualenv active.
   served from this origin through the same compile-time allowlist as every other asset, linked from
   `index.html`. The CSP is unchanged — `tests/test_security_ui.py::test_csp_is_unchanged_and_
   forbids_inline` still asserts that not one directive moved.
+
+## F97 — a permalink to a situation the default tab excludes renders nothing at all
+
+- **What**: `views/situations.js` opens on the **New** tab (DECISIONS #254) and a deep link
+  (`#/situations/12`) calls `store.expand(sid)`. The card is expanded in the store and the list is
+  filtered by tab, so a permalink to a situation in any state but `new` expanded a card the list
+  did not contain: **no card, no error, no explanation** — an ordinary-looking New tab with the
+  linked situation absent. The permalink exists to be *"shareable during an incident"*, and the
+  most shareable situation is the one somebody has already touched, which is exactly the one that
+  is no longer `new`.
+- **Reproduce**, in a browser, with a control — a fresh context per case, because a hash-only
+  navigation does not remount the screen and would hide it:
+  ```
+  CONTROL (status new)       #/situations/30 -> card present=True,  expanded=['30']
+  TREATMENT (status open)    #/situations/31 -> card present=False, expanded=[]
+  ```
+- **Why it matters**: it is silent. Every assertion in this repository passes — the DOM harness
+  drives views from captured payloads and never follows a permalink to a situation whose state
+  disagrees with the tab, and no API is wrong. This is the sixth consecutive release in which a
+  defect was visible only in a browser, and the seventh entry in this file whose reproduction is a
+  screenshot rather than a stack trace.
+- **Disposition**: **FIXED in v0.16.1**, and by the mechanism this release had already built for a
+  neighbouring reason: a deep-linked situation is **pinned** (DECISIONS #267), so it appears where
+  the operator is, carries its own state badge, and is released by collapsing it or choosing a
+  tab. Introduced in v0.16.0 with the tabs; found here because a browser was driven, which is the
+  only reason it was found at all.

@@ -2536,6 +2536,11 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Why not "let the card linger for N seconds"**: a timer is a second, invisible piece of state
   whose expiry an operator cannot predict, and the card would then vanish mid-sentence. Collapse
   is a thing they do.
+- **Amended by its own live pass, before it shipped**: choosing a tab releases every pin too. The
+  first implementation kept them, and Chromium showed a card pinned in "New" still on screen after
+  a switch to "Open" — present in both lists at once. Picking a tab is the operator asking for a
+  different list, which is not the act the pin is a courtesy about. A courtesy that outlives its
+  reason is the second, private notion of state this entry refused to build.
 
 ## 268. The timeline gains two filters and no gesture (v0.16.1)
 
