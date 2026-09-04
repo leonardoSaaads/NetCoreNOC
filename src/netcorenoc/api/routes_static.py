@@ -87,6 +87,9 @@ _UI_MODULES = (
     "app/views/parts/lifecycle.js",
     "app/views/parts/members.js",
     "app/views/parts/why.js",
+    # v0.16.1: the situation card, split out when the server-side search pushed
+    # `views/situations.js` over the module-graph guard (DECISIONS #265).
+    "app/views/parts/card.js",
     "app/widgets.js",
 )
 
@@ -100,6 +103,12 @@ STATIC_ASSETS = {
     **dict.fromkeys(_UI_MODULES, "application/javascript"),
     **dict.fromkeys(_VENDOR_ASSETS, "application/javascript"),
     "style.css": "text/css",
+    # v0.16.1 (F96): the console's own icon, served from this origin. Every page load asked for
+    # `/favicon.ico` and got a 404 — trivial, and NOT trivially fixable, because the obvious
+    # one-line repair is a `data:` URI in `index.html` and this appliance's CSP says
+    # `img-src 'self'`. A browser fetches a favicon as an image, so that repair would have traded
+    # a 404 for a silent CSP violation. An asset from this origin is what the policy permits.
+    "favicon.svg": "image/svg+xml",
     # RFC 9116 machine-readable security contact. Static, public, unauthenticated, additive to
     # this allowlist (not a new dynamic surface); it is served under the same CSP/security-headers
     # middleware and shipped in the package (ui/.well-known/security.txt).

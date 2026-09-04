@@ -302,11 +302,11 @@ async def _label_the_negative(
       recorded in full, and it produces no training row. Nothing is written here at all — no label,
       and therefore no learning effect either, because an operator who says they are unsure should
       not move the appliance's learned state.
-    * **F36's bound**: `feedback` is `UNIQUE (situation_id, verdict)`, so a *second* move out of
-      the same situation records its event and no second label. That is a real loss and F89 in
-      `docs/findings.md` carries it; it is not repaired here, because the second move asserts about
-      a bag the first one changed, and loosening a measured invariant inside a feature release is
-      the wrong trade.
+    * **A repeat about an unchanged bag** (F36's bound, kept): the key is
+      `(situation_id, verdict, bag_key)` since `0015`, so a *second* gesture whose bag has actually
+      changed records its own label — which is F89's repair — while N identical posts about one
+      unchanged bag still record once. `PREREGISTRATION-0.16.1.md` §2 registered which of the two
+      a gesture is before the code decided it.
     """
     if not confidence_rules.admits(confidence):
         return None

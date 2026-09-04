@@ -512,6 +512,24 @@ circle.tl-clear { fill: var(--quiet); }
 .axis text { fill: var(--fg-muted); font-size: 10px; }
 .axis path, .axis line { stroke: var(--line); }
 
+/* ---------- v0.16.1: the search note and the inline name form ---------- */
+
+/* A search result is a snapshot, and the note that says so is the whole of the mitigation for
+   that trade — the same role the held card's marker plays one level down. It reads as an aside
+   rather than as an alarm, because nothing is wrong: the operator asked for it. */
+.search-note {
+  border-left: 3px solid var(--line-strong);
+  padding-left: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* Naming an alarm class, in the row it names. Wraps rather than overflows: this sits in the last
+   column of a table that already scrolls horizontally, and a control that pushed the scroll
+   further would be unreachable exactly where it is needed. */
+.inline-form { display: inline-flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
+.inline-form input { min-width: 7rem; max-width: 14rem; }
+.inline-form .err { flex-basis: 100%; font-size: var(--fs-xs); }
+
 /* ---------- panels, parameter classes, destructive ---------- */
 
 .panel-block {

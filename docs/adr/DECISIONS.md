@@ -2400,3 +2400,225 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Trade-off**: an operator granted `label.write` for device names also gains the power to name
   situations, and a deployment cannot separate them. Accepted: the alternative is a capability whose
   only purpose is to be separable.
+
+## 261. A bag's identity is its member SET; its order is the record (v0.16.1)
+
+- **Decision**: `feedback` is keyed `(situation_id, verdict, bag_key)`, where `bag_key` is a
+  SHA-256 over the situation's member ids **sorted and deduplicated** at the instant of the label.
+  `member_digest` — the digest over the *ordered* bag — is unchanged and keeps its own meaning.
+  Registered in `PREREGISTRATION-0.16.1.md` §2 before any code was written; migration `0015`
+  implements it. Widens #68's key rather than replacing it.
+- **Reason**: F89 lost the second correction of one situation, and the second correction asserts
+  about a bag the first one changed. Order is what the operator *saw* and belongs to the record;
+  the same alarms in a different order are the same *grouping*, so a key over the ordered digest
+  would let a correlator that merely re-ordered a bag manufacture a second assertion out of one
+  human decision — F36's defect in this release's clothes.
+- **Trade-off accepted**: the cap on one situation's influence on learned state moves from **two
+  applications** to **one per verdict per distinct membership**. Still bounded and still monotone
+  in operator acts — each increment needs a membership change *and* a further POST — but no longer
+  a constant. A release that finds it too loose bounds memberships; it does not drop the identity.
+- **Measured**: two moves out of one situation recorded `feedback +1` then `feedback +0` before;
+  `+1` then `+1` after. The control — a third post with the bag unchanged — still records `+0`.
+
+## 262. The bag key is derived by the store, and a test is what makes that safe (v0.16.1)
+
+- **Decision**: `store.add_feedback` computes `bag_key` itself from `situation_alarm` rather than
+  taking it from the caller, so `engine/operate/engine.py` is **byte-identical** and its
+  `COHESION_EXEMPT_CEILING` of 545 is untouched.
+- **Reason**: the alternative was to read the bag in `apply_feedback` before the insert and pass
+  the digest down, which costs two lines in the one file this project has agreed to keep readable
+  in a single pass (#121, #108) and would have needed a ceiling raise. The identity of a bag is a
+  fact about stored membership, which is this layer's own subject; the *observation* of a bag —
+  order included — stays the engine's.
+- **The compensating control, because a ratchet without one is a comment**: `feedback_member
+  (source='server')` is written by the engine from `capture.server_bag`, which prefers **engine
+  state** for a live situation, while the key comes from the store's own table. "They can never
+  disagree" is therefore a claim, and `tests/test_bag_identity.py::test_every_labels_key_is_the_
+  set_digest_of_its_own_recorded_snapshot` asserts it over the real HTTP write path on bags the
+  correlator formed. If the two readings ever diverge, that test — not a production number — is
+  what says so.
+- **Trade-off**: one extra `SELECT` per verdict on the HTTP write path. Accepted: it is thousands
+  of times rarer than the ingest path, and the alternative was inferring the schema from an
+  exception on the same path (see #263).
+
+## 263. A schema probe at `open()`, not an `OperationalError` per write (v0.16.1)
+
+- **Decision**: `Store._has_bag_key` is answered once by `PRAGMA table_info(feedback)` after the
+  migrations, exactly as `_has_lifecycle` is (#250). On a database frozen below `0015`,
+  `add_feedback` issues the v0.16.0 statement byte-for-byte.
+- **Reason**: `tests/test_upgrade.py` runs the **current** store against a frozen migration
+  directory, which is what makes *"the migration changes behaviour and the code does not"*
+  checkable at all. Without the probe that fixture does not fail — it **hangs**, because the
+  `OperationalError` escapes into a started engine whose task nobody cancels, which is Appendix B's
+  *"a red that was a hang"* and cost this release ten minutes of a `SIGKILL` bisect.
+- **Trade-off**: one branch on the busiest write path in the API layer, and a second probe query at
+  startup. Accepted for the reason #250 accepted the first: a caught exception per call infers the
+  schema from a failure instead of asking once.
+- **Measured**: six of twelve `test_upgrade.py` tests hung before the probe; twelve pass after it,
+  and the six pinned literals moved from `latest_schema_version() == 14` to `== 15`, which is this
+  release's only intended diff in that file.
+
+## 264. The promotion path is derived from the import graph, bounded by one package (v0.16.1)
+
+- **Decision**: `test_no_promotion_path_module_mentions_a_ground_truth_field` walks out from
+  `api/routes_promotion.py` and scans every `engine/evaluation/` module the import graph reaches,
+  instead of the four-name tuple it carried since v0.14.0. Four became seven (F92).
+- **Reason**: a guard that lists what it checks stops checking whatever is added next. v0.14.0's
+  list called itself *"the four modules the gate actually reads"* and `promotion_metrics.py` —
+  which computes **all four** of the named quantities the gate reads — was not among them.
+  Appendix B names this shape first, and v0.15.1 found three more instances of it.
+- **Why the walk is bounded at `engine/evaluation/` rather than unbounded**: **measured** — the
+  unrestricted closure from the entry point is 112 modules, four of which mention `entity_key` as
+  a legitimate domain term (`store/entities.py` and three under `engine/operate/`). An unbounded
+  guard could never be green, so it would be deleted or exempted, which is worse than a bounded
+  one that is honest about its edge. The boundary is a named constant with that number beside it.
+- **Trade-off accepted**: a promotion-path module placed **outside** `engine/evaluation/` still
+  escapes this guard, exactly as it escaped the list. Its companion,
+  `test_no_runtime_module_can_reach_the_simulator`, parses the whole tree and catches any *import*
+  everywhere; what remains uncovered is a truth field copy-pasted into a module that imports
+  nothing and lives elsewhere. Named here rather than left to be discovered a third time.
+
+## 265. The situation card is a `views/parts/` module; the screen is the list (v0.16.1)
+
+- **Decision**: `SituationCard`, `Detail` and `situationName` move from `views/situations.js` to
+  `views/parts/card.js`. The screen keeps the list, the three tabs and the search box.
+- **Reason**: the server-side search took `situations.js` to 411 lines and 20 224 bytes, over the
+  400-line rule *and* over the module-graph guard's ceiling (a third of the 52 738-byte file
+  v0.13.0 replaced). The honest repair to a module that is over budget is not to write less prose
+  in it — it is to notice it had been two things for a while. The seam is the one the file already
+  had: one half **finds** a situation, the other **judges** one. `views/parts/members.js` was cut
+  out of the same file for the same reason a release earlier (#239's seam, applied again).
+- **Trade-off**: one more static asset — the allowlist, the route-order baseline, the hash table,
+  the size table and four lines of the behaviour record all move with it. Accepted: that ripple is
+  the cost of the guard being real, and it is the same ripple `members.js` paid.
+- **Measured**: 411 lines / 20 224 bytes → 213 / 10 465 and 234 / 11 473. Both halves under both
+  ceilings, and no module in the console is now the old single file renamed.
+
+## 266. The search is a parameter on the route that already lists situations (v0.16.1)
+
+- **Decision**: `GET /api/situations?q=` rather than a `/api/search`. The match is a **query**
+  filter in `store._search_clause`, over the operator's name, the derived name, the device
+  address, the device label, the trap OID, the class name and the alarm instance.
+- **Reason**: the answer is a list of situations, scoped and shaped by rules this handler already
+  applies. A second route would have had to restate the scope predicate, the redaction, the
+  `LIMIT`-after-filter rule and the shaping pass — four chances to disagree with the listing about
+  what a principal may see. A client-side filter was the other alternative and cannot work: the
+  device, the OID and the instance are on the **detail** payload, and what is not loaded cannot be
+  searched however clever the predicate.
+- **A field is matched only where the requester would be shown it**, and the gate is derived:
+  `shaping.sees_raw_addresses` reads `FIELD_RULES["ip"]`, so below editor the raw address and the
+  derived name are not in the predicate at all. Matching them would let a viewer confirm by typing
+  what the console coarsens on the way out — the shaping axis undone through a text box, which is
+  a different failure from the scope one and needs its own guard.
+- **Trade-off accepted**: a viewer cannot search by address, and there is no message on screen
+  saying why. Stated in the empty state's *"only the ones your account is shown"* rather than as a
+  per-field explanation, because naming which fields were withheld would itself describe the
+  policy to someone the policy applies to.
+- **Measured**: the two refusals are demonstrated red with controls in `tests/test_search.py` —
+  a scoped editor finding a hidden member's device, and a viewer finding a coarsened address —
+  each beside a principal who legitimately finds the same situation.
+
+## 267. The tab does not follow the card; the card stays while it is open (v0.16.1)
+
+- **Decision**: a card the operator has gestured on remains in the list they are looking at until
+  they collapse it, even after the gesture moves it out of that tab. The **tab does not change**,
+  the badge still says `open`, and the pin lives in the screen's own state for the length of the
+  visit — nowhere else, and never on the server.
+- **Reason**: DECISIONS #254 makes the first gesture promote `new` → `open`, which is right and
+  means the card leaves the default tab an untriaged appliance is full of. Measured in v0.16.0's
+  live pass and recorded in that release's brief §5: *"the card an operator is working on
+  disappears from the default tab"*. Moving the **tab** instead would be the same surprise wearing
+  the other hat — the tab is what the operator chose.
+- **Trade-off accepted**: for as long as the card is open, the list shows one row the tab's own
+  predicate excludes. It is visibly `open`, it is the row the operator is reading, and collapsing
+  releases both the pin and the held payload together — so the two notions of "I am working on
+  this" have one lifetime rather than two.
+- **Why not "let the card linger for N seconds"**: a timer is a second, invisible piece of state
+  whose expiry an operator cannot predict, and the card would then vanish mid-sentence. Collapse
+  is a thing they do.
+- **Amended by its own live pass, before it shipped**: choosing a tab releases every pin too. The
+  first implementation kept them, and Chromium showed a card pinned in "New" still on screen after
+  a switch to "Open" — present in both lists at once. Picking a tab is the operator asking for a
+  different list, which is not the act the pin is a courtesy about. A courtesy that outlives its
+  reason is the second, private notion of state this entry refused to build.
+
+## 268. The timeline gains two filters and no gesture (v0.16.1)
+
+- **Decision**: `GET /api/timeline` takes `ne_id`, `since` and `until`, all applied in SQL. The
+  screen gains **no gesture at all**, and that is the registered answer rather than an omission.
+- **Reason (the gesture)**: `PREREGISTRATION-0.16.0.md` §1 extends the `incumbent_linked`
+  prohibition to *any signal that is not an assertion about a grouping*, naming the alarm lifecycle
+  explicitly. A raise and a clear are facts about an **alarm**. A "this is wrong" control on a
+  timeline mark would be exactly the prohibited signal in a new shape, and Part VII rule 5's
+  *"none, and here is why"* is the honest answer.
+- **Reason (the key)**: the element filter names an element by `ne_id` — the same key the scope
+  predicate uses — and **not** by the rendered `device` string the marks carry. Two elements can
+  share a label, so filtering on the display string would be v0.7.0's defect asked for on purpose
+  (F35, DECISIONS #67). That is why a mark now carries `ne_id`: the console cannot filter by a key
+  it is not given, and an NE id discloses nothing new — `/api/entities` has served it to viewers
+  since v0.5.0.
+- **Trade-off**: the timeline response shape changes for the first time since v0.7.1, and
+  `tests/test_upgrade.py`'s "three documented changes" became four. The count left that test's
+  name in the same commit, which is F92's lesson applied to a test name.
+- **Measured**: with a busy neighbour and `limit=1`, a query filter returns the asked-for element's
+  marks and a render filter returns **nothing** — which reads on screen as *"this element is
+  quiet"*. `tests/test_timeline.py` pins both directions.
+
+## 269. `by user:2` becomes `by alice`, and `FIELD_RULES` decides who is told (v0.16.1)
+
+- **Decision**: `situation_events` returns `actor_name` beside `actor` — the username if that
+  account still exists, `NULL` if it does not or if the actor was a service token. `actor` is
+  unchanged and remains the record. The name carries a `FIELD_RULES` entry at `editor`, so a viewer
+  receives the reference.
+- **Reason**: the reference is correct, unforgeable and useless to a human reading their own work
+  (v0.16.1 brief §5). Resolving it raises two questions and both are answered rather than avoided:
+  a **deleted account** falls back to the reference and never to an invented name — `0011`'s rule
+  that unknown is not a value you may fill in, applied to a person — and **who may read it** is
+  decided by the one module that owns field-level authorization, not by a condition in a query.
+- **Why `editor` and not `admin`**: an editor is who makes gestures and reads their own history,
+  which is the entire reason the name exists. `admin` would have resolved the question by deleting
+  it.
+- **Why dropped rather than coarsened**: half a username is not a weaker fact, it is a puzzle. The
+  reference is already beside it and is a complete answer to *who*.
+- **Trade-off accepted**: an editor learns the usernames of other operators who have acted on
+  situations they can see. That is narrower than the roster (`GET /api/users` stays admin-only) and
+  is the minimum an incident history has to disclose to be an incident history.
+
+## 270. The graph's analytics were already on the wire (v0.16.1)
+
+- **Decision**: "which elements alarm most" and "which relationships are strongest" are rendered
+  from `active_alarms`, `weight` and `n` — three numbers `/api/graph` has served since v0.13.0 —
+  computed in the client. **No route was added, and no charting library** (Part VII rules 1 and 2).
+- **Reason**: v0.15.2 found `/api/stats` serving eleven keys while the console rendered five, and
+  this is the same finding on a different route: the drawing encoded `active_alarms` as a radius
+  that **saturates at 24 px** (F77) and `weight` as an opacity, so the screen answered both
+  questions in quantities that cannot be read off. The numbers were being thrown away.
+- **`n` is shown beside `weight` and that is not decoration**: a pair seen six times can already
+  reach an affinity of 0.83 (F61, measured), so a table printing the score alone would present a
+  claim from six observations and one from hundreds as the same fact.
+- **The graph gains no new gesture kind.** An assertion that two *elements* are unrelated is not in
+  `PREREGISTRATION-0.16.0.md` §2's registered map, and inventing one to satisfy decision 1 is what
+  Part VII rule 5 forbids. What it gains is that its **existing** gesture — renaming a device,
+  `label.write`, double-click only since v0.13.0 — is now a button in a table, so it is reachable
+  from a keyboard for the first time on a screen whose own caption said it was not.
+- **Measured**: the tables are ordinary DOM, so the harness executes them —
+  `tests/test_ui_invariants.py` now asserts both, with a control on an empty graph. The drawing
+  itself is still not covered and the file still says so.
+
+## 271. Entities and alarm classes both survive, and one of them was missing its verb (v0.16.1)
+
+- **Decision**: neither screen is deleted or merged (decision 4). `views/classes.js` gains the
+  control its own caption has promised since v0.13.0; `views/entities.js` is unchanged.
+- **Reason — entities**: the brief's §12 calls it a duplicate of the graph. It is the graph's
+  **only** keyboard-operable form — the drawing says so itself — and it carries the varbind
+  profiler, which is the product's explainability claim one level below correlation and appears
+  nowhere else. Deleting it would delete the only accessible path to the network view.
+- **Reason — alarm classes**: *"a list with no statistics"* was the charge, and the answer is not
+  statistics. The screen said *"a label you set here is cosmetic"* and **there was no control to
+  set one**: `POST /api/labels {kind: "class"}` was reachable from no screen in this console. A
+  screen that describes an action it does not offer is worse than one that offers nothing.
+- **No statistics were added**, and that is Part VII rule 4 rather than an oversight: nothing
+  serves a per-class alarm count, and the choice was between inventing a route for a number nobody
+  named a question for and leaving it. Recorded as an open question rather than built.
+- **No new capability**: naming a class is `label.write`, the same power that renames a device and
+  names a situation (DECISIONS #260), and the screen gates its own control with `can()`.

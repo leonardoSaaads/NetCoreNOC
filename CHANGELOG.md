@@ -9,8 +9,85 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-five rows, two ask for an
-action, seven ask you to read a paragraph, and sixteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-seven rows, two ask for an
+action, eight ask you to read a paragraph, and seventeen are start-the-new-binary.
+
+## [0.16.1] - 2026-09-04 — "the judge reads what the operator asserted, and then the screens learn a verb"
+
+v0.16.0 moved `asserting_bags` off zero for the first time since v0.9.1. This release opens by
+proving that the number is being read correctly, because it was not.
+
+```
+F90  the judge's marked set     members[:n] of LIVE membership  ->  feedback_exclusion ∩ snapshot
+     measured, bag of 8 marked [7,8]:  reconstructed [1,2]      ->  [7,8]
+     pairs asserted / measured / overlap:  12 / 12 / 4          ->  12 / 12 / 12
+F89  the second correction      event recorded, label lost      ->  its own label, keyed on the bag
+migrations             0014 -> 0015      (one; bag_key, and the index it widens)
+census (--gestures)    10 / 10 / 2 222 / 1 050   unchanged, exactly as §4.1 predicted
+capabilities             34 -> 34        no gesture was invented to fill a screen
+runtime dependencies      5 -> 5         no npm, no build step, no bundler, CSP unchanged
+console                  41 -> 42 modules, 6 349 -> 6 719 lines, three directories
+make eval                byte-identical: c2e8a0ce…8b9b6f26
+```
+
+**F90 first, and not as a courtesy to the schedule.** `_asserting_bags` rebuilt the operator's
+marked set as a positional prefix of the situation's *live* membership while the ids they actually
+marked sat unread in `feedback_exclusion` — so two thirds of the pairs feeding
+`asserted_negative_respected_rate`, one of the four quantities the promotion gate reads, were
+asserted by nobody. It did not read as an error. It read as a rate. Every day it stayed open, every
+gesture an operator made was producing evidence the gate would misread.
+
+**F89 is the same question from the other end**, and both are answered once, in
+[`PREREGISTRATION-0.16.1.md`](docs/analysis/PREREGISTRATION-0.16.1.md), ratified in a commit that
+changes nothing else and pinned beside the other five. A bag's identity is its member **set**, so
+the second correction of one situation is a second assertion — and three identical posts about an
+unchanged bag still record once, which is exactly where F36 measured its defect in v0.7.1.
+
+**Then the four screens, and two of them were told "none, and here is why".** A raise and a clear
+are facts about an *alarm*; `PREREGISTRATION-0.16.0.md` §1 forbids letting one do the work of a
+measurement about a grouping, so the timeline gains no gesture. An assertion that two *elements* are
+unrelated is not in that plan's registered map, so the graph gains none either — what it gains is
+that the gesture it already had, renaming a device, stopped being double-click-only on a screen
+whose own caption said it was not keyboard-operable.
+
+- **The search box asks the server** — `GET /api/situations?q=`, a parameter on the route that
+  already lists situations rather than a route of its own (#266). It finds a situation by the name
+  an operator gave it, by the derived name, by the device, by the trap OID and by the instance —
+  and **only the ones that principal is shown**: a scoped editor cannot find a situation by the
+  address of a member the redaction hides, and a viewer cannot confirm an address the console
+  coarsens for them. Both refusals are demonstrated red with controls, and both were re-confirmed
+  in a browser.
+- **The timeline filters by element and by window, in SQL** (#268). The element is an `ne_id` — the
+  key the scope predicate uses — never the rendered `device` string, because two elements can share
+  a label and v0.7.0 already proved what that costs (F35). Measured: with a busy neighbour and
+  `limit=1`, a query filter answers and a render filter returns nothing, which on screen reads as
+  *"this element is quiet"*.
+- **The graph answers its two questions from numbers already on the wire** (#270). `active_alarms`,
+  `weight` and `n` have been served since v0.13.0 and were encoded as a radius that saturates at
+  24 px and an opacity. **No route was added**; the tables are ordinary DOM, so the harness executes
+  them — part of the one screen with no behavioural coverage, closed.
+- **Alarm classes gains the control its own caption promised since v0.13.0** (#271): it said a label
+  set here is cosmetic and there was no way to set one. Entities is kept unchanged and the reason is
+  not that it exists — it is the graph's only keyboard-operable form and the only home of the
+  varbind profiler.
+- **`by user:2` becomes `by alice`** where the server will say so (#269). A deleted account falls
+  back to the reference and never to an invented name, and `FIELD_RULES` decides who is told.
+- **The card an operator is working on stops leaving the default tab** (#267), and a permalink to a
+  situation that tab excludes stops rendering nothing at all (F97).
+
+**Guards, not features.** F91's behaviour record no longer drops a route it cannot address — three
+lines, one per principal that cannot mint a token. F92's promotion-path guard listed four modules
+and the path had five; it is now **derived** from the import graph and covers seven, bounded at
+`engine/evaluation/` for a measured reason (the unrestricted closure is 112 modules, four of which
+name `entity_key` legitimately). F95: a UI guard attributed a write by a one-level filename scan and
+lost the five gestures when the card moved one directory deeper.
+
+**Six findings issued** — F93 (the hidden members of a scoped label are a count, not a set),
+F94 (`MIGRATION.md` had no row for v0.16.0), F95, F96 (`/favicon.ico`'s 404, whose one-line fix is
+forbidden by this appliance's own CSP), F97 — and four closed: F89, F90, F91, F92.
+
+**The verdict is still `INSUFFICIENT_EVIDENCE`.** No number this release touches moves a floor, and
+§4.4 of the amendment says so in advance.
 
 ## [0.16.0] - 2026-09-03 — "a situation is something you can work, and every gesture is evidence"
 

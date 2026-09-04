@@ -791,13 +791,15 @@ Run every command below from the repository root with the virtualenv active.
 - **Why it matters**: `asserting_bags` is the quantity this release exists to move, and it counts
   labels. A busy operator restructuring one storm five times contributes one asserting bag, not
   five, so the census under-counts exactly the population that works hardest.
-- **Disposition**: **open, not repaired in v0.16.0**, and the reason is a trade rather than a
-  schedule. The second move asserts about a *different* bag — the first move changed it — so the
-  fix is not "drop the unique index" but "decide what a bag's identity is when membership mutates",
-  which is an analytical question and §10 of `PREREGISTRATION-0.16.0.md` sends it to v0.16.1.
-  Loosening a measured invariant inside a feature release trades a bound this project has held
-  since v0.7.1 for an unmeasured one. Stated at the two call sites that lose the label
-  (`api/routes_lifecycle.py`, `engine/dataset/gestures.py`) rather than left to be discovered.
+- **Disposition**: **FIXED in v0.16.1**, and by answering the question rather than by dropping the
+  index. `PREREGISTRATION-0.16.1.md` §2, ratified before the repair, registers a bag's identity as
+  `(situation_id, verdict, bag_key)` where `bag_key` is a digest over the member **set**; migration
+  `0015` adds the column and widens the index. The second move now records its own label, and the
+  same reproduction with the bag left **unchanged** between the two posts still records one — so
+  F36's measured defect (N identical posts, N learning effects) stays fixed exactly where F36
+  measured it. Both directions are in `tests/test_bag_identity.py`. The bound traded away is named
+  in the amendment rather than discovered later: the cap on one situation's influence moves from
+  *two applications* to *one per verdict per distinct membership*.
 
 ## F90 — the judge reconstructs the marked set positionally, from live membership
 
@@ -825,12 +827,14 @@ Run every command below from the repository root with the virtualenv active.
   pairs than the operator asserted**, and it will read as a rate rather than as an error. It has
   been invisible since v0.9.1 for the reason this release exists: `asserting_bags = 0`, so nothing
   has ever reached it. **v0.16.0 is what makes it reachable.**
-- **Disposition**: **open, deliberately not fixed here.** Repairing a promotion-gate input inside a
-  feature release is exactly the fix-inside-a-feature this project forbids, and the repair is not
-  one line: it has to decide which bag a label is judged against once membership mutates, which is
-  F89's question again from the other end. It is the **first item** of
-  `docs/plans/v0.16.1-visualisation.md`, and until it is fixed no promotion decision should be read
-  from `asserted_negative_respected_rate` on a corpus containing gesture-acquired bags.
+- **Disposition**: **FIXED in v0.16.1**, under `PREREGISTRATION-0.16.1.md` §1, ratified first. The
+  bag is `feedback_member(source='server')` ordered by `position`; the marked set is
+  `store.reconciled_marks` — `feedback_exclusion ∩ that snapshot` — which is the same expression
+  `reconciliation_drift` recomputes the stored count from, so the count and the set cannot drift
+  apart. Re-measured after the repair: **overlap 12 of 12**, and the control (the same bag marked
+  low) agrees as it did before, which is what distinguishes a repaired judge from a broken probe.
+  The residual limitation — that *which* members a scoped labeller could not observe was never
+  recorded — is **F93**, not this.
 
 ## F91 — the behaviour record drops a route it cannot address, without saying so
 
@@ -854,13 +858,13 @@ Run every command below from the repository root with the virtualenv active.
   authorization change on `DELETE /api/tokens/{tid}` for a viewer, an editor or an anonymous caller
   would not move this file** — which is the one thing the record is for. The failure is the shape
   Appendix B names: a guard that stopped guarding, and a count that reads as coverage.
-- **Disposition**: open. Not repaired in v0.16.0 because the repair changes the record for every
-  principal — three new lines, each a 401/403 that has never been pinned — and a release that
-  changes the record in a way it did not cause cannot then attribute its own diffs. The v0.16.0
-  gestures are unaffected: `sid`, `sid2` and `aid` are all fillable from the seed for every
-  principal, which is why all five new routes appear in all four records. The fix is one line
-  (append a line naming the unfillable parameter instead of returning) plus a regenerated record,
-  and it belongs to the release that owns the record rather than to one that is adding routes to it.
+- **Disposition**: **FIXED in v0.16.1**, in its own commit and before any other diff in that
+  release, so the three lines it adds are attributable to it and to nothing else. The branch now
+  appends `not-driven (unfilled: tid)` rather than returning, and the record moved from
+  `33fe1bc0b3193dcf694843c9305e93a085151114df82fe3f3c6ddf9cb2992f05` to
+  `9b5a6e75d4d141e86b8fb28a07c65d78cdebd94b63058e0608dcb8e3283499d3` by **exactly three lines**,
+  one per principal that cannot mint a token — which is the measurement above, arriving as a diff.
+  The entry is kept, per this file's own rule: it is where the reproduction lives.
 
 ## F92 — the promotion-path guard names four modules, and the path has five
 
@@ -883,7 +887,160 @@ Run every command below from the repository root with the virtualenv active.
   parses the whole tree and is unaffected — so an *import* is still caught everywhere. What escapes
   is the case this second test exists for: a truth field copy-pasted into a promotion-path module
   that imports nothing.
-- **Disposition**: open. Not repaired here because the honest repair is not adding one filename —
-  it is deriving the module set from the promotion path rather than listing it, which is a change to
-  a v0.14.0 guard inside a release that is about something else. Recorded with the injection that
-  found it so the next release can start from a measurement.
+- **Disposition**: **FIXED in v0.16.1**, by deriving rather than by adding a filename.
+  `promotion_path_modules()` walks out from `api/routes_promotion.py` — the module that computes
+  the derived inputs and returns the verdict — and keeps every `engine/evaluation/` module the
+  import graph reaches. Four became **seven**: `promotion_metrics.py`, `shadow_assertions.py` and
+  `shadow_eval.py` join the original four, and a module added to the path afterwards joins without
+  anyone remembering.
+- **Why the walk stops at `engine/evaluation/`**, measured rather than assumed: the unrestricted
+  transitive closure from the entry point is **112 modules**, and four of them mention `entity_key`
+  legitimately — `store/entities.py` and three `engine/operate/` modules, where an entity key is a
+  real domain concept and not the simulator's truth field. A guard over that set could never be
+  green, which is exactly why the original was hand-written. The boundary is named in the test and
+  the 112 is the reason it exists.
+- A companion guard asserts the derivation is non-empty and names `promotion.py` and
+  `promotion_metrics.py` by hand — the vacuity trap `test_the_preregistration_exists` exists for,
+  applied to a walk that could silently return the empty set.
+
+## F93 — which members a scoped labeller could not see is a count, so the judge picks the pair set
+
+- **What**: `AssertingBag.hidden` needs alarm **ids**; the corpus stores only two counts —
+  `scope_redacted_members` (how many the labeller could not observe) and
+  `excluded_reconciled_out_of_scope` (how many of the *marks* were about one of those). The
+  identities were deliberately never stored: `LabelScope.hidden_members` is transient by
+  construction (v0.9.2, DECISIONS #137). So any reader has to *choose* which members were hidden,
+  and `observable_pairs()` then enumerates a pair set that depends on the choice.
+- **Reproduce**: a six-member bag, two marks, three hidden, one mark blind — §10's own measured
+  case. The registered count is `(m − b) · ((n − m) − (h − b)) = 2`; the *identities* of those two
+  pairs are not determined by anything stored, and two readers choosing differently would compute
+  the same denominator over different numerators.
+- **Measured**, on the reconstruction v0.16.1 replaced: it took the **last `h` members** of the
+  bag as hidden, which puts zero hidden members inside the marked set whatever
+  `excluded_reconciled_out_of_scope` records — so it computed `m · (n − m − h)` and agreed with
+  the registered expression only where that column was 0. v0.16.1's `_hidden` honours `b` and the
+  count is now exact; the selection is still arbitrary.
+- **Why it matters**: `asserted_negative_respected_rate` is `kept / len(pairs)`. The denominator
+  is now right for every row. The numerator counts pairs whose ends were **chosen** rather than
+  recorded, so on a bag with a restricted scope the rate is one of several defensible values. It
+  is a smaller error than F90 — the pairs are all genuinely `marked × rest` — and it is not zero.
+- **Disposition**: open, and **not repaired by inventing a column**. Recording the hidden ids is a
+  schema change to `0011`'s evidence boundary and an analytical decision about whether a redaction
+  may leave a per-member trace on a label row — the redaction deliberately carries no alarm id
+  (F47), and a table that recorded which ids were withheld would be the same disclosure written
+  down. It belongs to a release that owns the evidence boundary, with a plan.
+
+## F94 — MIGRATION.md has no row for the release that changed the state machine
+
+- **What**: the upgrade table ends at `v0.15.4 → v0.15.5`. v0.16.0 added migration `0014`, renamed
+  every situation status an operator sees (`open | closed | merged` → `new | open | resolved`) and
+  rewrote `resolution` for every historical row — and the one document an operator reads before
+  upgrading says nothing about it.
+- **Reproduce**:
+  ```sh
+  grep -c '^| v' MIGRATION.md          # 25
+  grep -n 'v0.16.0' MIGRATION.md       # nothing in the table
+  ```
+- **Measured**: 25 rows, the last naming v0.15.5, against a tree at v0.16.0 with fifteen
+  migrations. The prose above the table — *"Two of twenty-five ask you to do something"* — was
+  arithmetically correct, which is why nothing looked wrong: **the count matched the rows, and the
+  rows were a release behind.**
+- **Why it matters**: this is F78 recurring one release later, and F78's own repair added the
+  sentence *"it counts rows, not sections; recount it when you add one"* — which counts what is
+  present and cannot notice what is absent. A guard that checks a table against `docs/plans/
+  releases.md` would; none exists.
+- **Disposition**: **the two missing rows are added in v0.16.1** (v0.16.0's and this release's) and
+  the arithmetic is restated. The *guard* is not written here: deriving the table's membership from
+  the release chain is a change to `tests/test_documentation.py`'s subject, and this release's
+  claim-marker check already owns that seam — recorded so the next release starts from a
+  measurement rather than from a third recurrence.
+
+## F95 — a UI guard attributed a write by filename, and the situation card moved
+
+- **What**: `tests/test_security_ui.py::view_writes` decided which screen owns a component module
+  by looking for `from "./{stem}.js"` — a **one-level, same-directory** import. It also built
+  `component_sources` by concatenating every module under `app/views/` whose source contained the
+  substring `from "./`, which is nearly all of them: the guard read as total and was total by
+  accident rather than by derivation.
+- **Reproduce**: split a writing component one directory deeper than its screen. v0.16.1 did
+  exactly that, moving the situation card to `views/parts/card.js`:
+  ```sh
+  python -m pytest -q tests/test_security_ui.py
+  ```
+- **Measured**:
+  ```
+  app/views/parts/lifecycle.js issues writes but is neither a registry view nor imported by one,
+  so no capability governs it. A write nothing owns is a write nothing gates.
+  ```
+  `situations.js` imports `./parts/card.js` and `card.js` imports `./lifecycle.js`, so the
+  one-level scan found no owner for the module that issues **all five** operator gestures.
+- **Why it matters**: it failed loudly here, which is the good case. The bad case is the mirror
+  image and it was reachable: two of the three guards beside it read
+  `views/situations.js` **by name** and asserted about the held card and the labelling payload
+  contract — both of which moved. A guard keyed on a filename passes green on a file that no
+  longer contains what it is asserting about, which is Appendix B's first trap in a third place.
+- **The first repair widened it too far, and the injection that found that is this release's**:
+  walking *every* local import made a screen's composed source reach `app/session.js`, where
+  `can()` is **defined** — so every writing screen appeared to gate itself because a utility three
+  hops away contained the string. Measured: deleting `classes.js`'s own `can("label.write")` left
+  the whole suite **green**, which is the same class of defect one repair later.
+
+  ```
+  UI-5 injection, first repair   `const editable = true;`   56 passed   <- not seen
+  UI-5 injection, bounded walk   `const editable = true;`   1 failed    <- seen
+  ```
+
+- **Disposition**: **FIXED in v0.16.1.** Ownership is the transitive closure of the import graph
+  from each registry view, resolved by path and **bounded at `app/views/`**: a screen gates itself
+  in its own module or in a part it owns, and a helper it imports gates nothing.
+  `composed_source(view_id)` is what the three source-shape guards read. Issued as a finding rather
+  than absorbed into the card split, because the defect is older than the split and would have
+  outlived it — and the second measurement above is kept because a repair that had to be repaired
+  is the more useful half of the record.
+
+## F96 — `/favicon.ico` 404s on every page load, and the one-line fix is CSP-forbidden
+
+- **What**: `index.html` declared no icon, so every browser asked for `/favicon.ico` and the
+  appliance answered 404. Present at v0.15.5 and at v0.16.0; recorded in
+  `docs/plans/v0.16.1-visualisation.md` §5 as *"harmless, pre-existing"*.
+- **Reproduce**: load the console with the network panel open, or
+  ```sh
+  curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/favicon.ico   # 404
+  ```
+- **Measured**: one 404 per page load, per browser tab, forever. Harmless, and it is the kind of
+  line that trains an operator to ignore the network panel.
+- **Why it is not the one-liner it looks like**: the obvious repair is
+  `<link rel="icon" href="data:image/svg+xml,…">`, and **this appliance's CSP forbids it**. A
+  browser fetches a favicon as an image, `CSP` declares `img-src 'self'`, and a `data:` URI is not
+  `'self'` — so that repair trades a 404 for a silent CSP violation and an icon that never appears.
+  Nothing about the 404 says this, which is why it survived two releases as *"trivial"*.
+- **Disposition**: **FIXED in v0.16.1**, as the only thing the policy permits: `ui/favicon.svg`,
+  served from this origin through the same compile-time allowlist as every other asset, linked from
+  `index.html`. The CSP is unchanged — `tests/test_security_ui.py::test_csp_is_unchanged_and_
+  forbids_inline` still asserts that not one directive moved.
+
+## F97 — a permalink to a situation the default tab excludes renders nothing at all
+
+- **What**: `views/situations.js` opens on the **New** tab (DECISIONS #254) and a deep link
+  (`#/situations/12`) calls `store.expand(sid)`. The card is expanded in the store and the list is
+  filtered by tab, so a permalink to a situation in any state but `new` expanded a card the list
+  did not contain: **no card, no error, no explanation** — an ordinary-looking New tab with the
+  linked situation absent. The permalink exists to be *"shareable during an incident"*, and the
+  most shareable situation is the one somebody has already touched, which is exactly the one that
+  is no longer `new`.
+- **Reproduce**, in a browser, with a control — a fresh context per case, because a hash-only
+  navigation does not remount the screen and would hide it:
+  ```
+  CONTROL (status new)       #/situations/30 -> card present=True,  expanded=['30']
+  TREATMENT (status open)    #/situations/31 -> card present=False, expanded=[]
+  ```
+- **Why it matters**: it is silent. Every assertion in this repository passes — the DOM harness
+  drives views from captured payloads and never follows a permalink to a situation whose state
+  disagrees with the tab, and no API is wrong. This is the sixth consecutive release in which a
+  defect was visible only in a browser, and the seventh entry in this file whose reproduction is a
+  screenshot rather than a stack trace.
+- **Disposition**: **FIXED in v0.16.1**, and by the mechanism this release had already built for a
+  neighbouring reason: a deep-linked situation is **pinned** (DECISIONS #267), so it appears where
+  the operator is, carries its own state badge, and is released by collapsing it or choosing a
+  tab. Introduced in v0.16.0 with the tabs; found here because a browser was driven, which is the
+  only reason it was found at all.

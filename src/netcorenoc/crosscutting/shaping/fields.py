@@ -44,6 +44,12 @@ FIELD_RULES: dict[str, tuple[str, str]] = {
     # `127.0.0.2` two fields away. `operator_name` is deliberately absent: it is free text a person
     # typed, like a device label, and a label passes through (see `device` above).
     "derived_name": ("editor", _COARSEN),
+    # v0.16.1: the gesture history's actor, resolved to a username. The `actor` reference beside
+    # it is unshaped and stays — it is the record, and it is what a viewer sees instead. Dropped
+    # rather than coarsened because half a username is not a weaker fact, it is a puzzle; and
+    # `editor` rather than `admin` because an editor is who makes gestures and reads their own
+    # history, which is the whole reason the name exists (DECISIONS #269).
+    "actor_name": ("editor", _DROP),
     "source_ip": ("admin", _DROP),  # who connected from where (audit / session detail)
     "community_tag": ("editor", _DROP),  # SNMP community grouping tag (F4)
 }
@@ -55,6 +61,22 @@ def _rank(role: str | None) -> int:
 
 def _allowed(role: str | None, min_role: str) -> bool:
     return _rank(role) >= ROLE_RANK[min_role]
+
+
+def sees_raw_addresses(role: str | None) -> bool:
+    """May this role be shown a device address in full? (v0.16.1)
+
+    **Derived from `FIELD_RULES`, never restated.** A search that matched on `device.ip` for a role
+    whose responses coarsen it would be a shaping oracle: the requester cannot see the fourth octet
+    on any screen, and typing it and getting a hit would confirm it just as well as rendering it.
+    So the search's address clauses are gated on this, and the day `ip`'s minimum role moves, the
+    search moves with it — which is the difference between a rule and a copy of a rule.
+
+    `operator_name` and a device *label* are deliberately **not** gated: both are free text a
+    person typed, both pass through `shape` unchanged for every role, and the whole point of the
+    v0.16.1 search is that an operator who has just named a situation can find it by that name.
+    """
+    return _allowed(role, FIELD_RULES["ip"][0])
 
 
 def coarsen_ip(value: Any) -> Any:

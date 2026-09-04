@@ -233,7 +233,20 @@ class Recorder:
         for name, value in {**targets, "tid": self.token_id}.items():
             if value is not None:
                 concrete = concrete.replace("{" + name + "}", value)
-        if "{" in concrete:  # a path parameter nothing in the seed can fill
+        if "{" in concrete:
+            # **v0.16.1 (F91): named, never skipped.** This branch used to `return`, so a route the
+            # seed cannot address left NO LINE AT ALL — and an absent line is indistinguishable
+            # from a route that does not exist. `DELETE /api/tokens/{tid}` was absent from three of
+            # the four records, so an authorization change on it for a viewer, an editor or an
+            # anonymous caller would not have moved this file, which is the one thing it is for.
+            # The harness already had the mechanism — `NOT_DRIVEN` writes a `not-driven` line —
+            # and this branch bypassed it. The unfilled parameter is named in the record rather
+            # than in this comment, so a reader of the record can see WHY the route was not driven
+            # and a later seed that can fill it produces a visible diff.
+            unfilled = ",".join(part.split("}")[0] for part in concrete.split("{")[1:])
+            self.lines.append(
+                f"{self.role:9} {method:6} {path:34} not-driven (unfilled: {unfilled})"
+            )
             return
         body = dynamic_body(path, targets) or REQUEST_BODIES.get((method, path))
         if (method, path) in NOT_DRIVEN:

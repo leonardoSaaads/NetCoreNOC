@@ -115,3 +115,6 @@ class Store(
         # Answered by `open()` from `PRAGMA table_info(situation)`. `False` until then, which is
         # the fail-safe direction: a store nobody opened writes no lifecycle column.
         self._has_lifecycle: bool = False
+        # Likewise, from `PRAGMA table_info(feedback)`. `False` until then, which is the fail-safe
+        # direction: a store nobody opened writes no bag key and keeps `0007`'s two-column bound.
+        self._has_bag_key: bool = False

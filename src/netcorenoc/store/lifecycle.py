@@ -54,6 +54,12 @@ class LifecycleMixin(StoreBase):
         cur = await self.conn.execute("PRAGMA table_info(situation)")
         columns = {str(row[1]) for row in await cur.fetchall()}
         self._has_lifecycle = "resolution" in columns
+        # v0.16.1, migration `0015`. Same probe, same reason, one table over: `add_feedback` is on
+        # the write path of every verdict and every gesture, so it may not learn the schema from a
+        # caught `OperationalError` either. `False` means the two-column key of `0007` is still the
+        # one in force, which is exactly right for a database that has not been migrated.
+        cur = await self.conn.execute("PRAGMA table_info(feedback)")
+        self._has_bag_key = "bag_key" in {str(row[1]) for row in await cur.fetchall()}
 
     async def _migrate(self) -> None:
         """Apply the pending scripts, and **say which** (DECISIONS #227).

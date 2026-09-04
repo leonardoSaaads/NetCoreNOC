@@ -206,16 +206,24 @@ export class NameField extends Component {
 
 /* What has been done to this situation, and by whom.
  *
- * Four columns and no more, because the server sends four: the row also carries member digests and
+ * Five columns and no more, because the server sends five: the row also carries member digests and
  * a peer situation id, and a scoped reader must not learn either from a history panel. See
- * `store/situation_events.py::situation_events`. */
+ * `store/situation_events.py::situation_events`.
+ *
+ * **v0.16.1: `by user:2` became `by alice`, where the server was willing to say so.** The actor is
+ * a principal reference — correct, unforgeable, and unhelpful to a human reading their own work.
+ * `actor_name` is the username *if the account still exists* and is withheld from a viewer by
+ * `FIELD_RULES`, so this renders whichever the server sent and never guesses: a deleted account
+ * and a service token both fall back to the reference, which is the honest answer rather than
+ * "unknown", because the reference is still exactly who did it. */
 export function History({ events }) {
   return html`<section class="history">
     <h3>What has been done to this situation</h3>
     <ol class="history-list">
       ${events.map((e, index) => html`<li key=${index}>
         <span class="history-kind">${e.kind.replace("_", " ")}</span>
-        ${e.actor ? html`<span class="muted">${" by "}${e.actor}</span>` : null}
+        ${e.actor ? html`<span class="muted" title=${e.actor_name ? e.actor : ACTOR_TITLE}
+                         >${" by "}${e.actor_name || e.actor}</span>` : null}
         ${e.confidence != null
           ? html`<span class="muted">${` at ${percent(e.confidence)} confidence`}</span>` : null}
         <span class="age" title=${timeTitle(e.at)}>${age(e.at)}</span>
@@ -223,6 +231,12 @@ export function History({ events }) {
     </ol>
   </section>`;
 }
+
+/** Shown where the console has only the reference: an account that is gone, a token, or a viewer
+ * whose responses withhold the name. Never "unknown" — the reference IS who did it. */
+const ACTOR_TITLE =
+  "The principal that made this change. A name is shown where the account still exists and your " +
+  "role is shown it; otherwise the reference stands, and it is the record either way.";
 
 /** What a resolved situation says about **why** it left. */
 export const RESOLUTION_TEXT = {

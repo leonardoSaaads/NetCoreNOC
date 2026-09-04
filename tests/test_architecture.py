@@ -411,11 +411,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/lifecycle.js"),
     ("GET", "/app/views/parts/members.js"),
     ("GET", "/app/views/parts/why.js"),
+    ("GET", "/app/views/parts/card.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
+    ("GET", "/favicon.svg"),
     ("GET", "/.well-known/security.txt"),
     ("POST", "/api/login"),
     ("POST", "/api/logout"),
@@ -898,8 +900,15 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: modules, two API route modules, four engine modules, one crosscutting module and two console
 #: parts. The digest and the count move together in the commits that add them, which is what keeps
 #: the line reviewable rather than absorbing whatever else came with the change.
-SRC_TREE_DIGEST = "fcce89763d2f8532d05f49ddf30e2e7aa96391f4549b83aed1b2025c54002652"
-SRC_FILE_COUNT = 190
+#:
+#: v0.16.1: 190 -> 193 files. Three added, none removed, none moved:
+#: `migrations/0015_bag_identity.sql` (the bag key), `ui/app/views/parts/card.js` (the situation
+#: card, split out when the server-side search pushed `views/situations.js` over the module-graph
+#: guard) and `ui/favicon.svg` (F96 — `img-src 'self'` forbids the data: URI that would otherwise
+#: be a one-line fix). The other `src/` diffs are edits to files that already existed, and the
+#: digest moves with them in the commit that makes each one.
+SRC_TREE_DIGEST = "64a5120ce742395c625ed9e32ffde9d7c8a77d8ca61472de799f84d9a0e55e43"
+SRC_FILE_COUNT = 193
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -965,4 +974,4 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.0", "the version this release carries"
+    assert __version__ == "0.16.1", "the version this release carries"

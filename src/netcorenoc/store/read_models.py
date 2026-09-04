@@ -59,57 +59,141 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
             out[name] = int(row[0])
         return out
 
+    def _search_clause(
+        self, query: str | None, *, addresses: bool, scope_ids: list[int] | None
+    ) -> tuple[str, list[Any]]:
+        """The v0.16.1 search, **as a query filter**, or `("", [])` when nothing was asked.
+
+        `docs/plans/v0.16.1-visualisation.md` §5: the console's box filtered on
+        `` `#${s.id} ${s.status}` `` — id and status only — so an operator who had just named a
+        situation *"fibre cut, Ridgeway ring"* could not find it by that name.
+
+        **Two rules govern every clause below, and both are older than this release.**
+
+        *Scope is a query filter.* The alarm-side match carries the **same** `ne_id IN (…)`
+        predicate the listing does, so a situation with one in-scope member and one out-of-scope
+        member — which a scoped viewer legitimately receives, redacted — cannot be *found* by the
+        address of the member they may not see. Without that clause the search would be an
+        existence oracle over exactly the population scoping exists to hide: F35 and F38 arriving
+        through a text box (DECISIONS #67, #72).
+
+        *A field is matched only where the requester would be shown it.* `addresses` comes from
+        `shaping.sees_raw_addresses`, which reads `FIELD_RULES["ip"]`, so below editor the raw
+        address and the server-derived name — both coarsened on the way out — are simply not in
+        the predicate. An operator name and a device **label** always are: they are free text a
+        person typed, `shape` passes them through for every role, and finding a situation by the
+        name an operator just gave it is the case this release exists for.
+
+        `LIKE` with an explicit `ESCAPE`, and the caller's `%` and `_` escaped rather than
+        stripped: a search for `10.1.2_4` must look for that string and not for any character
+        there. `LOWER` is SQLite's, so folding is ASCII-only — an accented operator name matches
+        only its own case, which is stated here rather than discovered.
+        """
+        if not query:
+            return "", []
+        escaped = query.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        needle = f"%{escaped}%"
+        member_columns = [
+            "LOWER(COALESCE(a3.instance, ''))",
+            "LOWER(c3.oid)",
+            "LOWER(COALESCE(cl3.label, c3.name, ''))",
+            "LOWER(COALESCE(dl3.label, ''))",
+        ]
+        head_columns = ["LOWER(COALESCE(s.operator_name, ''))"] if self._has_lifecycle else []
+        if addresses:
+            member_columns.append("LOWER(d3.ip)")
+            if self._has_lifecycle:
+                head_columns.append("LOWER(COALESCE(s.derived_name, ''))")
+        like = " OR ".join(f"{column} LIKE ? ESCAPE '\\'" for column in member_columns)
+        heads = "".join(f"{column} LIKE ? ESCAPE '\\' OR " for column in head_columns)
+        scope = f"AND a3.ne_id IN ({','.join('?' * len(scope_ids))}) " if scope_ids else ""
+        args: list[Any] = [needle] * len(head_columns)
+        args.extend(scope_ids or [])
+        args.extend([needle] * len(member_columns))
+        return (
+            f" AND ({heads}EXISTS (SELECT 1 FROM situation_alarm sa3 "  # nosec B608
+            "JOIN alarm a3 ON a3.id=sa3.alarm_id "
+            "JOIN alarm_class c3 ON c3.id=a3.class_id "
+            "JOIN device d3 ON d3.id=a3.device_id "
+            "LEFT JOIN label dl3 ON dl3.kind='device' AND dl3.target_id=d3.id "
+            "LEFT JOIN label cl3 ON cl3.kind='class' AND cl3.target_id=c3.id "
+            f"WHERE sa3.situation_id=s.id {scope}AND ({like})))",  # nosec B608 - placeholders only
+            args,
+        )
+
     async def list_situations(
-        self, status: str | None, limit: int, ne_ids: frozenset[int] | None = None
+        self,
+        status: str | None,
+        limit: int,
+        ne_ids: frozenset[int] | None = None,
+        query: str | None = None,
+        *,
+        match_addresses: bool = True,
     ) -> list[dict[str, Any]]:
-        """Recent situations, newest first.
+        """Recent situations, newest first, optionally narrowed by a **query-side** text search.
 
         **v0.7.1 (F38): `LIMIT` bounds the *filtered* set, not the global one.** v0.7.0 truncated
         over the global ordering and let the caller filter afterwards, so a scoped principal's own
         open incidents disappeared from their list whenever a noisy neighbour they cannot see was
-        busy — and the returned count varied with out-of-scope volume, which is the aggregate oracle
-        F32 claims is closed.
+        busy — and the returned count varied with out-of-scope volume, which is the aggregate
+        oracle F32 claims is closed. **The same rule governs `query`**: it narrows *before* the
+        `LIMIT`, so a search can never answer "nothing" because the page that would have matched
+        was truncated first.
 
-        `ne_ids=None` is the unrestricted case and runs the **unmodified v0.7.0 SQL**, so parity is
-        by construction rather than by inspection. `ne_ids` empty means "exactly nothing" and is
-        answered without a query. See :data:`MAX_SCOPE_PARAMS` for the bound on the scoped branch.
+        `ne_ids=None` **with no query** runs the **unmodified v0.7.0 SQL**, so parity for the
+        common case is by construction rather than by inspection. `ne_ids` empty means "exactly
+        nothing" and is answered without a query. See :data:`MAX_SCOPE_PARAMS` for the bound on the
+        scoped branch and :meth:`_search_clause` for what the search may match.
         """
         where, args = ("WHERE s.status=?", [status]) if status else ("", [])
+        # `_lifecycle_columns` is one of two literals chosen by the schema probe; no value from
+        # outside this class reaches it, and every user value below is a bound parameter.
+        head = (
+            f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see above
+            "s.created_at, s.updated_at, s.root_alarm_id, "
+            "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
+            "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
+        )
+        tail = "GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?"
         if ne_ids is None:
+            search, search_args = self._search_clause(
+                query, addresses=match_addresses, scope_ids=None
+            )
+            # `WHERE 1=1` only where a search exists and a status filter does not, so the
+            # no-search call is byte-identical to v0.7.0's statement.
+            opener = where or ("WHERE 1=1" if search else "")
             cur = await self.conn.execute(
-                f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see below
-                "s.created_at, s.updated_at, s.root_alarm_id, "
-                "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
-                "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
-                # nosec B608 - `where` is a fixed literal, values are bound parameters
-                f"{where} GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?",
-                (*args, limit),
+                # nosec B608 - `where`, `opener` and `search` are fixed literals built from
+                # constants in this method; every value is a bound parameter
+                f"{head}{opener}{search} {tail}",  # nosec B608
+                (*args, *search_args, limit),
             )
             return [dict(r) for r in await cur.fetchall()]
         if not ne_ids:
             return []
         if len(ne_ids) > MAX_SCOPE_PARAMS:
             # Too many ids to bind. Fetch unbounded and filter here rather than truncating the id
-            # list, which would silently answer a different question than the one asked.
-            rows = await self.list_situations(status, -1)
+            # list, which would silently answer a different question than the one asked. **The
+            # search travels with it**: dropping `query` here would make a very large scope the one
+            # shape in which the text filter stopped being a query filter.
+            rows = await self.list_situations(
+                status, -1, None, query, match_addresses=match_addresses
+            )
             members = await self.situation_member_nes([int(r["id"]) for r in rows])
             keep = [r for r in rows if any(n in ne_ids for n in members.get(int(r["id"]), []))]
             return keep[:limit]
-        marks = ",".join("?" * len(ne_ids))
+        bound = sorted(ne_ids)
+        marks = ",".join("?" * len(bound))
+        search, search_args = self._search_clause(query, addresses=match_addresses, scope_ids=bound)
         scoped = f"{where} AND " if where else "WHERE "
         cur = await self.conn.execute(
-            f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see below
-            "s.created_at, s.updated_at, s.root_alarm_id, "
-            "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
-            "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
             # A situation is listed when **at least one** member is in scope — the same predicate
             # `project_situation_detail` uses, so the list and the detail can never disagree.
             # nosec B608 - `scoped` is a fixed literal; `marks` is only "?" placeholders
-            f"{scoped}EXISTS (SELECT 1 FROM situation_alarm sa2 "  # nosec B608
-            f"JOIN alarm a2 ON a2.id=sa2.alarm_id "  # nosec B608
-            f"WHERE sa2.situation_id=s.id AND a2.ne_id IN ({marks})) "  # nosec B608
-            "GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?",
-            (*args, *sorted(ne_ids), limit),
+            f"{head}{scoped}EXISTS (SELECT 1 FROM situation_alarm sa2 "  # nosec B608
+            "JOIN alarm a2 ON a2.id=sa2.alarm_id "
+            f"WHERE sa2.situation_id=s.id AND a2.ne_id IN ({marks})){search} {tail}",  # nosec B608
+            (*args, *bound, *search_args, limit),
         )
         return [dict(r) for r in await cur.fetchall()]
 
@@ -182,7 +266,13 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
         return [dict(r) for r in await cur.fetchall()]
 
     async def timeline_marks(
-        self, limit: int, ne_ids: frozenset[int] | None = None
+        self,
+        limit: int,
+        ne_ids: frozenset[int] | None = None,
+        *,
+        device_ne_id: int | None = None,
+        since: float | None = None,
+        until: float | None = None,
     ) -> list[dict[str, Any]]:
         """Recent alarms as raise/clear marks over time (for the UI timeline view).
 
@@ -194,8 +284,22 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
         scoped principal's marks a function of traffic they cannot see (F38). **A display string is
         never an authorization key.**
 
-        `ne_id` is selected for the filter only and never reaches a mark, so the rendered response
-        is byte-identical to v0.7.0. `ne_ids=None` runs the unmodified v0.7.0 SQL.
+        **v0.16.1 adds two narrowing filters, and neither is a display string either.**
+
+        * `device_ne_id` is an **NE id**, the same key the scope predicate uses — deliberately not
+          the rendered `device` string the console shows. Sending that string back would make the
+          v0.7.0 defect a feature request: two elements can carry one label, so a filter on it
+          would silently union them. It is `AND`ed with the scope, so it can only ever *narrow*
+          what the principal was already allowed to see; a scoped principal naming an NE outside
+          their scope gets an empty answer through the same predicate that hides it.
+        * `since` / `until` bound the window, in SQL, so `LIMIT` bounds the **filtered** set. A row
+          survives if either of its marks falls in the range; the mark expansion below then emits
+          only the marks that do, because a cleared alarm raised before the window is one mark
+          inside it and not two.
+
+        `ne_id` now **does** reach the mark, which is the one intentional shape change here: the
+        console needs an identifier to filter by that is not a display string, and an NE id is
+        already public — `/api/entities` has served it to viewers since v0.5.0.
         """
         select = (
             "SELECT a.first_seen, a.cleared_at, a.ne_id, COALESCE(dl.label, d.ip) AS device, "
@@ -204,38 +308,61 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
             "LEFT JOIN label dl ON dl.kind='device' AND dl.target_id=d.id "
             "LEFT JOIN label cl ON cl.kind='class' AND cl.target_id=c.id "
         )
+        narrow: list[str] = []
+        narrow_args: list[Any] = []
+        if device_ne_id is not None:
+            narrow.append("a.ne_id=?")
+            narrow_args.append(device_ne_id)
+        if since is not None:
+            narrow.append("(a.first_seen >= ? OR a.cleared_at >= ?)")
+            narrow_args.extend((since, since))
+        if until is not None:
+            narrow.append("(a.first_seen <= ? OR a.cleared_at <= ?)")
+            narrow_args.extend((until, until))
+        extra = "".join(f"AND {clause} " for clause in narrow)
         rows: list[Any]
         if ne_ids is None:
+            # `WHERE 1=1` only when something narrows, so the unfiltered call stays the v0.7.0
+            # statement it has been since the finding that produced it.
+            head = f"{select}WHERE 1=1 {extra}" if extra else select
             cur = await self.conn.execute(
-                f"{select}ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - literal + bound values
-                (limit,),
+                f"{head}ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - literal + bound values
+                (*narrow_args, limit),
             )
             rows = list(await cur.fetchall())
         elif not ne_ids:
             rows = []
         elif len(ne_ids) > MAX_SCOPE_PARAMS:
-            # See MAX_SCOPE_PARAMS: filter here rather than truncate the bound id list.
-            cur = await self.conn.execute(f"{select}ORDER BY a.last_seen DESC")  # nosec B608
+            # See MAX_SCOPE_PARAMS: filter here rather than truncate the bound id list. The
+            # narrowing clauses stay in the query — only the scope set is too large to bind.
+            head = f"{select}WHERE 1=1 {extra}" if extra else select
+            cur = await self.conn.execute(  # nosec B608 - literal + bound values
+                f"{head}ORDER BY a.last_seen DESC",  # nosec B608
+                tuple(narrow_args),
+            )
             rows = [r for r in await cur.fetchall() if r["ne_id"] in ne_ids][:limit]
         else:
             marks_sql = ",".join("?" * len(ne_ids))
             cur = await self.conn.execute(
-                f"{select}WHERE a.ne_id IN ({marks_sql}) ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - placeholders only
-                (*sorted(ne_ids), limit),
+                f"{select}WHERE a.ne_id IN ({marks_sql}) {extra}"  # nosec B608 - placeholders only
+                "ORDER BY a.last_seen DESC LIMIT ?",
+                (*sorted(ne_ids), *narrow_args, limit),
             )
             rows = list(await cur.fetchall())
         marks: list[dict[str, Any]] = []
         for r in rows:
-            marks.append(
-                {"ts": r["first_seen"], "device": r["device"], "class": r["class"], "kind": "raise"}
-            )
-            if r["cleared_at"] is not None:
+            for when, kind in ((r["first_seen"], "raise"), (r["cleared_at"], "clear")):
+                if when is None:
+                    continue
+                if (since is not None and when < since) or (until is not None and when > until):
+                    continue
                 marks.append(
                     {
-                        "ts": r["cleared_at"],
+                        "ts": when,
+                        "ne_id": r["ne_id"],
                         "device": r["device"],
                         "class": r["class"],
-                        "kind": "clear",
+                        "kind": kind,
                     }
                 )
         marks.sort(key=lambda m: m["ts"])

@@ -27,7 +27,7 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.15.2** | **The console repaired** — the detail panel, the narrow viewport, the icons, and the health numbers already being served and thrown away. [Brief](v0.15.2-console.md). | `console-repair` |
 | **v0.15.3** | **The console designed** — what v0.15.2 leaves undone. [Brief](v0.15.3-console-design.md). | `console-design` |
 | **v0.16.0** | **The situation lifecycle** — states, self-clear, manual clear, operator merge/split/move, semantic naming, and the feedback each of those produces. [Brief](v0.16.0-situation-lifecycle.md). | `situation-lifecycle` |
-| **v0.16.1** | **Visualisation and search** — graph analytics, the timeline, entities and alarm classes. | `visualisation-search` |
+| **v0.16.1** | **Visualisation and search** — the judge's input repaired first, then graph analytics, the timeline, entities and alarm classes. [Brief](v0.16.1-visualisation.md). **Shipped.** | `visualisation-search` |
 | **v0.17.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
 | **v0.18.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
 

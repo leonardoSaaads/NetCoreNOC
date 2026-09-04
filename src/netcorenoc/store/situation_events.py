@@ -204,7 +204,7 @@ class SituationEventMixin(StoreBase):
         return [int(row[0]) for row in await cur.fetchall()]
 
     async def situation_events(self, situation_id: int) -> list[dict[str, Any]]:
-        """One situation's history, oldest first. **The four columns the console renders.**
+        """One situation's history, oldest first. **The five columns the console renders.**
 
         Both directions: a `move` is recorded on the situation the alarm **left**, and the
         destination's history would otherwise say nothing about an alarm that arrived by an
@@ -219,10 +219,25 @@ class SituationEventMixin(StoreBase):
 
         The full row is `situation_event` itself and is read by the census and the dataset reports,
         which are `admin`-only and emit aggregates.
+
+        **v0.16.1 adds a fifth column, and it is a display name rather than an identity.** The
+        history said `by user:2` — correct, unforgeable, and unhelpful to a human reading their own
+        work (`docs/plans/v0.16.1-visualisation.md` §5). `actor` is unchanged and stays the record;
+        `actor_name` is the username **if that account still exists**, and `NULL` if it does not or
+        if the actor was a service token. A deleted account therefore falls back to the reference
+        rather than to an invented name, which is `0011`'s rule that *unknown is not a value you
+        may fill in*, applied to a person.
+
+        Who may **read** the name is not decided here: `shaping.FIELD_RULES` owns field-level
+        authorization and now carries `actor_name`, so a viewer receives the reference and an
+        editor receives the name. One decision site, and the day that rule moves the history moves
+        with it (DECISIONS #269).
         """
         cur = await self.conn.execute(
-            "SELECT kind, at, actor, confidence FROM situation_event "
-            "WHERE situation_id=? OR peer_situation_id=? ORDER BY at, id",
+            "SELECT e.kind, e.at, e.actor, e.confidence, "
+            "       (SELECT u.username FROM user u WHERE 'user:' || u.id = e.actor) AS actor_name "
+            "FROM situation_event e "
+            "WHERE e.situation_id=? OR e.peer_situation_id=? ORDER BY e.at, e.id",
             (situation_id, situation_id),
         )
         return [dict(row) for row in await cur.fetchall()]

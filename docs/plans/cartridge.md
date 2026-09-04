@@ -170,3 +170,39 @@ repeating the error with a different noun.
 
 The test is the one v0.14.0 passed: **can it run in five dependencies, be inspected by its own
 degeneracy rules, and decompose its own decision exactly?** If yes, it does not need this document.
+
+---
+
+## 6. What v0.16.1 learned that this plan has to hold (`v0.17.0: planned`)
+
+Refreshed from measurements rather than from opinion, and the first item is the one that matters
+most to a release whose whole subject is **a challenger**.
+
+* **The gate's fourth quantity was measuring pairs nobody asserted, until now.** F90: the judge
+  rebuilt the operator's marked set as a positional prefix of *live* membership, so on a bag of
+  eight marked `[7, 8]` it measured `[1, 2]` and **4 of 12 pairs overlapped what the operator had
+  said**. `asserted_negative_respected_rate` is one of the four named quantities a promotion is
+  decided by. A cartridge release proposes a challenger *to that gate*; every judgement it would
+  have received before v0.16.1 would have been a comparison of two arms against a third thing.
+  It is repaired and the repair is pre-registered (`PREREGISTRATION-0.16.1.md` §1), so this plan
+  no longer has to carry the caveat — but a reader of this document who skips that one will not
+  know why the gate is trustworthy now and was not before.
+* **The corpus is still not close.** `asserting_bags` 10 against a floor of 50 and
+  `asserting_incidents` 10 against 30, unchanged by this release *by prediction* (§4.1). Nothing
+  about a cartridge moves those, and §2's argument that this release should slip again is
+  strengthened rather than weakened: **a mechanism for loading models the gate cannot yet judge
+  is a mechanism for loading models nobody can promote.**
+* **A second correction of one situation is now evidence.** F89's repair keys a bag on its member
+  **set**, so the operator who restructures one storm five times contributes five assertions
+  rather than one. That is the only corpus-growth mechanism this project has that does not require
+  changing `eval/corpus/`, and it grows with *operator effort* rather than with releases — which
+  is what a plan waiting on a floor should be counting on.
+* **One limitation a promotion-gate release must read before it promotes.** F93: *which* members
+  a scoped labeller could not observe was never recorded, only how many. The observable-pair count
+  is now exact; the *selection* is still arbitrary on any bag captured under a restricted scope. A
+  release that promotes on `asserted_negative_respected_rate` is promoting on a rate whose
+  denominator is right and whose numerator is one of several defensible values for that population.
+  Repairing it is a change to `0011`'s evidence boundary and needs a plan of its own.
+
+**Nothing above changes §3's boundary or §4's harness.** The cartridge specification is unamended;
+what changed is what a reader now knows about the gate on the other side of it.

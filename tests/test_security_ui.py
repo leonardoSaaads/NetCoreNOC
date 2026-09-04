@@ -360,6 +360,77 @@ def test_capability_is_resolved_before_anything_is_constructed() -> None:
         assert "resolve(" not in source, path.name
 
 
+def _local_imports(name: str, source: str) -> set[str]:
+    """The console modules `name` imports, as paths relative to `UI_DIR`.
+
+    Resolved by **path** rather than by basename. v0.16.1 is what made the difference matter:
+    `views/situations.js` imports `./parts/card.js` and `views/parts/card.js` imports
+    `./lifecycle.js`, so a one-level `from "./{stem}.js"` scan attributed `lifecycle.js` to a
+    module that is not a registry view and concluded that nothing owned its writes.
+    """
+    here = (UI_DIR / name).parent
+    out: set[str] = set()
+    for specifier in re.findall(r'^import\s[^;]*?from\s+"([^"]+)"', source, re.MULTILINE):
+        if not specifier.startswith("."):
+            continue
+        resolved = (here / specifier).resolve()
+        if resolved.is_file():
+            out.add(str(resolved.relative_to(UI_DIR)))
+    return out
+
+
+def component_owners() -> dict[str, set[str]]:
+    """`{module: {registry view ids that reach it}}` — **transitively, within `app/views/`**.
+
+    A module that is not itself a view (`parts/retention.js`, `parts/card.js`) is a component of
+    whichever screens import it, directly or through another component, and its writes are
+    attributed to every one of them. **Skipping it would be how a write escapes a guard that looks
+    total** — the section that deletes the feedback corpus lives in exactly such a module, and the
+    situation card's five gestures now live two hops from their screen.
+
+    **The walk stops at `app/views/`, and that boundary is the guard rather than a convenience.**
+    v0.16.1's first version of this function followed every local import, so a screen's "composed
+    source" reached `app/session.js` — where `can()` is *defined* — and every writing screen then
+    appeared to gate itself because a utility three hops away contained the string. Measured by
+    injection: deleting `classes.js`'s own `can("label.write")` left the whole suite **green**. A
+    screen gates itself in its own module or in a part it owns; a helper it imports does not gate
+    anything.
+    """
+    modules = ui_modules()
+    reachable: dict[str, set[str]] = {name: set() for name in modules}
+    for view_id in _registry_ids():
+        entry = f"app/views/{view_id}.js"
+        if entry not in modules:
+            continue
+        seen: set[str] = set()
+        queue = [entry]
+        while queue:
+            current = queue.pop()
+            if current in seen or current not in modules or not current.startswith("app/views/"):
+                continue
+            seen.add(current)
+            queue.extend(_local_imports(current, modules[current]))
+        for name in seen - {entry}:
+            reachable[name].add(view_id)
+    return reachable
+
+
+def composed_source(view_id: str) -> str:
+    """A screen's source **plus every module it composes**, transitively.
+
+    Three source-shape guards below read "the situations screen". Until v0.16.1 that was one file;
+    the card, the held payload and the labelling contract now live in `views/parts/card.js`, and a
+    guard keyed on a filename would have gone green on a file that no longer contains what it is
+    asserting about. Derived from the same import graph `component_owners` walks, so a further
+    split moves nothing here either.
+    """
+    modules = ui_modules()
+    owners = component_owners()
+    parts = [modules.get(f"app/views/{view_id}.js", "")]
+    parts.extend(source for name, source in modules.items() if view_id in owners.get(name, set()))
+    return "".join(parts)
+
+
 def view_writes() -> dict[str, set[tuple[str, str]]]:
     """`{view id: {(METHOD, templated path)}}` — every mutating route each screen can issue.
 
@@ -372,19 +443,7 @@ def view_writes() -> dict[str, set[tuple[str, str]]]:
 
     modules = ui_modules()
 
-    # Which registry view each view-module belongs to. A module that is not itself a view
-    # (`retention.js`, `facts.js`) is a component of the one that imports it, and its writes are
-    # attributed there. **Skipping it instead would be how a write escapes a guard that looks
-    # total** — the section that deletes the feedback corpus lives in exactly such a module.
-    owners: dict[str, set[str]] = {}
-    for name in modules:
-        if not name.startswith("app/views/"):
-            continue
-        stem = name.removeprefix("app/views/").removesuffix(".js")
-        owners.setdefault(name, set())
-        for other, other_source in modules.items():
-            if other.startswith("app/views/") and f'from "./{stem}.js"' in other_source:
-                owners[name].add(other.removeprefix("app/views/").removesuffix(".js"))
+    owners = component_owners()
 
     writes: dict[str, set[tuple[str, str]]] = {}
     for name, source in modules.items():
@@ -459,23 +518,17 @@ def test_mutating_controls_are_behind_capability_guards() -> None:
     from netcorenoc.crosscutting import rbac
 
     entries = registry_entries()
-    modules = ui_modules()
     writes = view_writes()
     # A view's own gates plus those of every component module it composes.
-    component_sources = {
-        view_id: "".join(
-            source
-            for name, source in modules.items()
-            if name.startswith("app/views/")
-            and (name.endswith(f"/{view_id}.js") or 'from "./' in source)
-        )
-        for view_id in writes
-    }
+    # Derived from the import graph rather than from a filename heuristic: v0.16.1 moved the
+    # situation card two hops from its screen, and the old scan attributed every module whose
+    # source merely contained `from "./` to every writing view — total by accident.
+    component_sources = {view_id: composed_source(view_id) for view_id in writes}
     assert len(writes) >= 6, f"only {len(writes)} writing views found; this scan is not scanning"
 
     for view_id, routes in sorted(writes.items()):
         declared = set(entries[view_id])
-        source = modules[f"app/views/{view_id}.js"] + component_sources.get(view_id, "")
+        source = component_sources.get(view_id, "")
         gated_in_screen = "canEdit" in source or "can(" in source
         for route in sorted(routes):
             required = rbac.ROUTE_PERMISSIONS[route]
@@ -532,7 +585,9 @@ def test_the_held_card_freezes_the_payload_and_says_so() -> None:
     something false for as long as the card stayed shut.
     """
     store = (UI_DIR / "app" / "store.js").read_text(encoding="utf-8")
-    situations = (UI_DIR / "app" / "views" / "situations.js").read_text(encoding="utf-8")
+    # The screen AND everything it composes: v0.16.1 moved the card to `views/parts/card.js`, and
+    # a guard keyed on a filename would have gone green on a file that no longer holds the marker.
+    situations = composed_source("situations")
     assert "export function expand(" in store and "export function collapse(" in store
     assert "export function heldDetail(" in store
     # Collapsing must clear BOTH the hold and the withheld count, in `collapse`.
@@ -555,7 +610,11 @@ def test_the_labelling_payload_contract_is_unchanged() -> None:
     `excluded_ids` is sent only with a split, and only when something was marked. Omitting it means
     "the operator marked nothing", which is a plain split — never an empty list.
     """
-    situations = (UI_DIR / "app" / "views" / "situations.js").read_text(encoding="utf-8")
+    situations = composed_source("situations")
+    assert "async verdict(kind)" in situations, (
+        "the verdict path is not in the situations screen or anything it composes; this guard "
+        "would otherwise assert about a file that no longer holds the contract"
+    )
     verdict = situations.split("async verdict(kind)", 1)[1].split("\n  }", 1)[0]
     assert 'kind === "split" && this.state.marked.size' in verdict, (
         "excluded_ids is no longer conditional on BOTH a split and a non-empty mark set"
@@ -699,7 +758,16 @@ def test_the_ui_tree_is_exactly_what_is_declared() -> None:
     from netcorenoc.api.routes_static import STATIC_ASSETS
 
     top_level = {p.name for p in UI_DIR.iterdir()}
-    assert top_level - {".well-known"} == {"index.html", "app.js", "style.css", "app", "vendor"}
+    # v0.16.1 adds `favicon.svg` — served from this origin because `img-src 'self'` forbids the
+    # `data:` URI that would otherwise be the one-line repair for the /favicon.ico 404 (F96).
+    assert top_level - {".well-known"} == {
+        "index.html",
+        "app.js",
+        "style.css",
+        "favicon.svg",
+        "app",
+        "vendor",
+    }
 
     on_disk = {str(p.relative_to(UI_DIR)) for p in UI_DIR.rglob("*.js") if "vendor" not in p.parts}
     served = {name for name in STATIC_ASSETS if name.endswith(".js") and "vendor/" not in name}

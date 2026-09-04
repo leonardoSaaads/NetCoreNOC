@@ -37,14 +37,18 @@ That is also what makes the census move without the judge changing. `Store.asser
 untouched, and it now sees more rows because there are more gestures whose assertion has the shape
 it counts.
 
-## The one limitation, stated rather than worked around
+## The limitation v0.16.0 stated, and how v0.16.1 answered it
 
-`feedback` is `UNIQUE (situation_id, verdict)` — F36's bound, which caps a situation's total
-influence on learned state at two applications however many times anyone posts. **A second move out
-of the same situation therefore records its event and no second label.** That is a real loss and it
-is not repaired here: F36 is deliberate, the second move asserts about a *different* bag (the first
-one changed it), and loosening the index inside a feature release would trade a measured invariant
-for an unmeasured one. `docs/findings.md` F89 carries it.
+`feedback` was `UNIQUE (situation_id, verdict)` — F36's bound — so **a second move out of the same
+situation recorded its event and no second label** (F89). v0.16.0 declined to loosen the index,
+because the second move asserts about a *different* bag (the first one changed it) and the question
+"what is a bag's identity once its membership moves" is analytical rather than mechanical.
+
+`PREREGISTRATION-0.16.1.md` §2 answers it and migration `0015` implements it: the key is
+`(situation_id, verdict, bag_key)`, where `bag_key` is a digest over the member **set** at the
+instant of the label. A second gesture on a **changed** bag now records its own label; a repeated
+post about an **unchanged** one still records once, which is exactly where F36 measured its defect.
+`store/feedback.py::add_feedback` is the one place that decides it.
 """
 
 from __future__ import annotations

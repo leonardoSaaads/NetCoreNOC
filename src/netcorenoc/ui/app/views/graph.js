@@ -30,12 +30,15 @@
  */
 
 import { html, Component } from "../dom.js";
-import { Empty } from "../widgets.js";
-import { plural } from "../format.js";
+import { Empty, DataTable, SectionHeading } from "../widgets.js";
+import { count, plural, score } from "../format.js";
 import { canEdit } from "../session.js";
 import { post } from "../api.js";
 import * as store from "../store.js";
 import { d3Ready } from "../vendor.js";
+
+/** How many rows each derived table shows. Enough to answer the question, short enough to read. */
+const TOP_N = 10;
 
 const NODE_BASE_RADIUS = 7;
 /* **The radius is capped at the collision radius** (F77, v0.15.2).
@@ -217,11 +220,106 @@ export class GraphView extends Component {
         </div>
       </div>
       ${!empty ? html`<p class="hint">
-        <b>This drawing is not keyboard-operable and has no screen-reader equivalent beyond its
-        label.</b> Everything it shows is on <a class="tap" href="#/entities">Entities</a> as
-        text.</p>` : null}
+        <b>The drawing itself is not keyboard-operable and has no screen-reader equivalent beyond
+        its label.</b> The two tables below carry what it encodes, as text, and the rename it
+        offers on double-click is a button there. Everything about an element is on
+        <a class="tap" href="#/entities">Entities</a>.</p>` : null}
+
+      ${!empty ? html`<${Busiest} nodes=${graph.nodes} onRename=${(n) => this.rename(n)} />` : null}
+      ${!empty ? html`<${Strongest} graph=${graph} />` : null}
     </div>`;
   }
 }
 
 function displayName(node) { return node.label || node.ip; }
+
+/**
+ * Which elements are alarming most. **Derived from the payload this screen already had.**
+ *
+ * `/api/graph` has served `active_alarms` on every node since v0.13.0 and the drawing has encoded
+ * it in a radius ever since — a radius that is *capped* at 24 px (F77), so the one screen that
+ * answers "which host is worst" answered it in a quantity that saturates. The number was on the
+ * wire and thrown away, which is exactly what v0.15.2 found on `/api/stats`: eleven keys served,
+ * five rendered. **No new route was needed and none was added** (Part VII rule 2).
+ *
+ * It is also where the graph's one gesture becomes reachable. Renaming a device was double-click
+ * only — not keyboard-operable, on a screen whose own caption said so — and `label.write` is the
+ * capability it needs, the same one the situation name uses (DECISIONS #260). **No new gesture is
+ * invented here** (Part VII rule 5): the graph shows learned affinities between elements, and an
+ * assertion that two elements are unrelated is not in `PREREGISTRATION-0.16.0.md` §2's registered
+ * map. The grouping an operator can correct is a *situation*, so each row links to the search that
+ * finds this element's situations, where the five registered gestures live.
+ */
+export function Busiest({ nodes, onRename }) {
+  const rows = [...nodes]
+    .filter((node) => node.active_alarms > 0)
+    .sort((a, b) => b.active_alarms - a.active_alarms || String(a.id).localeCompare(String(b.id)))
+    .slice(0, TOP_N);
+  if (!rows.length) return null;
+  const editable = canEdit();
+  return html`<section class="panel-block">
+    <${SectionHeading} title="Elements alarming most"
+      hint=${"The exact counts the drawing can only approximate: a node's radius stops growing " +
+             "at 24 px, so a storm and a busy hour look alike there and do not here."} />
+    <${DataTable} columns=${[
+      { key: "device", label: "element" },
+      { key: "vendor", label: "vendor", title: "inferred from the enterprise arc of the OID" },
+      { key: "alarms", label: "active alarms", numeric: true },
+      { key: "act", label: "" },
+    ]} rows=${rows.map((node) => ({
+      key: node.id,
+      tone: "alarm",
+      cells: {
+        device: displayName(node),
+        vendor: node.vendor || "unknown",
+        alarms: count(node.active_alarms),
+        act: html`<a class="tap" href=${`#/situations?q=${encodeURIComponent(displayName(node))}`}
+                     title="Find this element's situations, where a grouping can be corrected"
+                  >situations</a>${editable ? html` <button type="button" class="tap"
+                     onClick=${() => onRename(node)}>rename</button>` : null}`,
+      },
+    }))} />
+  </section>`;
+}
+
+/**
+ * Which relationships are strongest — the maintainer's second question, in the words they used:
+ * *"if a host's alarms always affect another, show that relationship."*
+ *
+ * `weight` is the learned affinity and `n` is the co-occurrence mass behind it, and **both were
+ * already on every edge** the drawing renders as opacity and thickness. Two encodings of one
+ * number, and no way to read the number.
+ *
+ * `n` is shown beside the weight rather than folded into it, and that is not decoration: a pair
+ * seen six times can reach an affinity of 0.83 (F61, measured), so a strong-looking edge with a
+ * small `n` is a claim from very little evidence. A table that printed the affinity alone would
+ * present those two as the same fact.
+ */
+export function Strongest({ graph }) {
+  const named = new Map(graph.nodes.map((node) => [node.id, displayName(node)]));
+  const rows = [...graph.edges]
+    .filter((edge) => named.has(edge.a_id) && named.has(edge.b_id))
+    .sort((a, b) => b.weight - a.weight || b.n - a.n)
+    .slice(0, TOP_N);
+  if (!rows.length) return null;
+  return html`<section class="panel-block">
+    <${SectionHeading} title="Strongest learned relationships"
+      hint=${"How often two elements' alarms have appeared together, as a number rather than as " +
+             "an opacity. Evidence is the second column and it is not optional: a pair seen a " +
+             "handful of times can already score highly, and that is a weaker claim than the " +
+             "same score over hundreds of observations."} />
+    <${DataTable} columns=${[
+      { key: "pair", label: "pair" },
+      { key: "weight", label: "affinity", numeric: true },
+      { key: "n", label: "evidence (n)", numeric: true,
+        title: "co-occurrence mass; an edge is not drawn at all below the learned minimum" },
+    ]} rows=${rows.map((edge) => ({
+      key: `${edge.a_id}-${edge.b_id}`,
+      cells: {
+        pair: `${named.get(edge.a_id)} ↔ ${named.get(edge.b_id)}`,
+        weight: score(edge.weight),
+        n: score(edge.n),
+      },
+    }))} />
+  </section>`;
+}

@@ -23,8 +23,6 @@ from pathlib import Path
 
 import pytest
 
-import util
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PKG = REPO_ROOT / "src" / "netcorenoc"
 sys.path.insert(0, str(REPO_ROOT / "eval"))
@@ -171,19 +169,118 @@ def test_no_runtime_module_can_reach_the_simulator() -> None:
     )
 
 
+#: Where the promotion gate is entered. `routes_promotion.py` is the HTTP surface that computes the
+#: derived inputs and returns the verdict, so *"the modules the gate reads"* is a question about
+#: what it imports rather than about what anyone remembered to write down.
+PROMOTION_ENTRY = PKG / "api" / "routes_promotion.py"
+
+#: The package the derivation closes over. It is a boundary rather than a convenience, and the
+#: reason is measurable: the unrestricted transitive closure from `routes_promotion.py` is **112
+#: modules** and four of them mention `entity_key` legitimately — `store/entities.py` and the three
+#: `engine/operate/` modules, where an entity key is a real domain concept and not the simulator's
+#: truth field. A guard over that set could never be green, which is precisely why the original was
+#: hand-written. `engine/evaluation/` is the package whose job is *deciding*, and a module added to
+#: the promotion path inside it joins this set without anyone remembering.
+PROMOTION_PACKAGE = "netcorenoc.engine.evaluation"
+
+
+def _module_file(dotted: str) -> Path | None:
+    """The file behind a dotted `netcorenoc.*` name, or None if it is not a module in this tree."""
+    candidate = PKG.parent / (dotted.replace(".", "/") + ".py")
+    if candidate.is_file():
+        return candidate
+    package = PKG.parent / dotted.replace(".", "/") / "__init__.py"
+    return package if package.is_file() else None
+
+
+def _internal_imports(path: Path) -> set[str]:
+    """Every `netcorenoc.*` name a module imports, module and attribute alike.
+
+    `from netcorenoc.engine.evaluation import shadow_assertions, shadow_eval` names two modules as
+    *attributes*, so both spellings are collected and `_module_file` decides which resolve.
+    """
+    out: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom) and node.module and "netcorenoc" in node.module:
+            out.add(node.module)
+            out.update(f"{node.module}.{alias.name}" for alias in node.names)
+        elif isinstance(node, ast.Import):
+            out.update(a.name for a in node.names if a.name.startswith("netcorenoc"))
+    return out
+
+
+def promotion_path_modules() -> list[Path]:
+    """**The promotion path, derived from the path** (v0.16.1, F92).
+
+    Walk out from `routes_promotion.py` and keep every `engine/evaluation/` module reachable
+    through the import graph. Returned sorted, so a failure names files in a stable order.
+
+    The hand-written tuple this replaces listed `promotion.py`, `judge.py`, `shadow_cv.py` and
+    `evaluation_folds.py` and called them *"the four modules the gate actually reads"*. It was
+    five: `promotion_metrics.py` computes **all four** of the named quantities the gate reads and
+    was not scanned, which the v0.16.0 review measured by injecting a truth field into it and
+    watching three tests pass. It is seven. A list of what a guard checks stops checking whatever
+    is added next, and v0.15.1 found three more of the same shape.
+    """
+    seen: set[str] = set()
+    queue = [
+        name for name in _internal_imports(PROMOTION_ENTRY) if name.startswith(PROMOTION_PACKAGE)
+    ]
+    while queue:
+        dotted = queue.pop()
+        if dotted in seen or _module_file(dotted) is None:
+            continue
+        seen.add(dotted)
+        queue.extend(
+            name
+            for name in _internal_imports(_module_file(dotted))  # type: ignore[arg-type]
+            if name.startswith(PROMOTION_PACKAGE) and name not in seen
+        )
+    files = {_module_file(name) for name in seen}
+    return sorted(p for p in files if p is not None)
+
+
+def test_the_promotion_path_is_derived_and_covers_what_the_list_missed() -> None:
+    """Guard the guard, twice over — an empty walk would make every assertion below vacuous.
+
+    A derivation is only better than a list if it actually walks. Two anchors are asserted by name:
+    `promotion.py`, without which the walk found nothing, and **`promotion_metrics.py`**, which is
+    the module F92 measured escaping. Their presence is what distinguishes a derivation that works
+    from one that returns the empty set — `test_the_preregistration_exists`'s vacuity trap, in the
+    file that exists because of it.
+    """
+    found = {path.name for path in promotion_path_modules()}
+    assert "promotion.py" in found, "the walk from routes_promotion.py reached nothing"
+    assert "promotion_metrics.py" in found, (
+        "promotion_metrics.py computes all four named quantities the gate reads and is still not "
+        "on the derived path (F92)"
+    )
+    assert found >= {"promotion.py", "judge.py", "shadow_cv.py", "evaluation_folds.py"}, (
+        "the derived set must be a superset of the hand-written tuple it replaced, or this is a "
+        "different guard wearing the same name"
+    )
+    assert len(found) >= 5, f"the derived promotion path is implausibly small: {sorted(found)}"
+
+
 @pytest.mark.parametrize("word", ["situation_key", "entity_key", "is_root"])
 def test_no_promotion_path_module_mentions_a_ground_truth_field(word: str) -> None:
-    """The belt to the previous test's braces: the four modules the gate actually reads must not
-    even name the simulator's truth fields, so a copy-paste of one would be a failing diff.
+    """The belt to the previous test's braces: no module the gate reads may even **name** the
+    simulator's truth fields, so a copy-paste of one would be a failing diff.
+
+    **v0.16.1 (F92): the set is derived from the path, not listed.** It listed four modules and the
+    path had five; the missing one computed every quantity the gate reads. The list had been
+    hand-maintained since v0.14.0, and a module added afterwards joined it only if somebody
+    remembered — which is the failure mode Appendix B names first and v0.15.1 found three
+    instances of.
 
     The three names are the DSL's own `truth` keys. The bare word *truth* is deliberately **not**
     among them: `judge.py` uses "truthiness" in a paragraph about `Verdict` being an enum, and a
     substring check that fired on that would be a guard nobody could keep green — the shape of
     F51's `_SKIP_DIRS`, one release later.
     """
-    for name in ("promotion.py", "judge.py", "shadow_cv.py", "evaluation_folds.py"):
-        source = util.module_path(name).read_text(encoding="utf-8")
-        assert word not in source, f"{name} mentions {word!r}"
+    for path in promotion_path_modules():
+        source = path.read_text(encoding="utf-8")
+        assert word not in source, f"{path.relative_to(PKG)} mentions {word!r}"
 
 
 # -- the loop's discipline (v0.14.0, Phase 7) ----------------------------------------------------
