@@ -20,6 +20,12 @@ from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 
+#: The longest needle `GET /api/situations?q=` will honour. Bounded rather than rejected, like every
+#: other untrusted string on this API: a 4 KB query string would otherwise reach `LIKE` and be
+#: scanned against every alarm of every listed situation. 100 characters is longer than any device
+#: address, OID or operator name this console renders, so the bound cannot cut a real search short.
+MAX_SEARCH_CHARS = 100
+
 
 def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the read routes on `app`."""
@@ -73,8 +79,21 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         principal: auth.Principal = Depends(security),
         status: Literal["new", "open", "resolved"] | None = None,
         limit: int = 100,
+        q: str | None = None,
     ) -> list[dict[str, Any]]:
         """Situations with at least one in-scope member; counts are of visible members only.
+
+        **v0.16.1: `q` searches, and it is a query filter** (`store._search_clause`). A parameter
+        on the route that already lists situations rather than a `/api/search` of its own: the
+        answer is a list of situations, shaped and scoped by the rules this handler already
+        applies, and a second route would have had to restate every one of them. It matches the
+        operator's name, the derived name, the device, the OID and the instance — and each of
+        those **only where this principal would be shown it**, which is what stops a search box
+        from becoming an oracle across either axis.
+
+        Bounded at `MAX_SEARCH_CHARS` and never rejected, in the same spirit as every other
+        untrusted string this API accepts. A `q` that is empty or whitespace is *no search*, not a
+        search for nothing.
 
         **v0.16.0: the three states the console's three tabs render** (migration `0014`,
         DECISIONS #253, #254). `closed` and `merged` are gone as *statuses* — both are `resolved`,
@@ -92,11 +111,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         busy — and the returned count varied with out-of-scope volume (DECISIONS #72).
         """
         scope = await scope_for(principal)
+        needle = (q or "").strip()[:MAX_SEARCH_CHARS] or None
         async with store.lock:
             rows = await store.list_situations(
                 status,
                 min(max(limit, 1), 500),
                 None if scope.unrestricted else scope.ne_ids,
+                needle,
+                # Derived from `FIELD_RULES["ip"]`, never restated: a role whose responses coarsen
+                # an address may not confirm one by typing it (`shaping.sees_raw_addresses`).
+                match_addresses=shaping.sees_raw_addresses(principal.role),
             )
             if scope.unrestricted:
                 # **v0.16.0: shaped, which this route did not have to be before.** Until `0014` a

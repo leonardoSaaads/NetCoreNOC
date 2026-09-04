@@ -2477,3 +2477,43 @@ From this release an entry is about six lines: decision, reason, release.*
   `test_no_runtime_module_can_reach_the_simulator`, parses the whole tree and catches any *import*
   everywhere; what remains uncovered is a truth field copy-pasted into a module that imports
   nothing and lives elsewhere. Named here rather than left to be discovered a third time.
+
+## 265. The situation card is a `views/parts/` module; the screen is the list (v0.16.1)
+
+- **Decision**: `SituationCard`, `Detail` and `situationName` move from `views/situations.js` to
+  `views/parts/card.js`. The screen keeps the list, the three tabs and the search box.
+- **Reason**: the server-side search took `situations.js` to 411 lines and 20 224 bytes, over the
+  400-line rule *and* over the module-graph guard's ceiling (a third of the 52 738-byte file
+  v0.13.0 replaced). The honest repair to a module that is over budget is not to write less prose
+  in it — it is to notice it had been two things for a while. The seam is the one the file already
+  had: one half **finds** a situation, the other **judges** one. `views/parts/members.js` was cut
+  out of the same file for the same reason a release earlier (#239's seam, applied again).
+- **Trade-off**: one more static asset — the allowlist, the route-order baseline, the hash table,
+  the size table and four lines of the behaviour record all move with it. Accepted: that ripple is
+  the cost of the guard being real, and it is the same ripple `members.js` paid.
+- **Measured**: 411 lines / 20 224 bytes → 213 / 10 465 and 234 / 11 473. Both halves under both
+  ceilings, and no module in the console is now the old single file renamed.
+
+## 266. The search is a parameter on the route that already lists situations (v0.16.1)
+
+- **Decision**: `GET /api/situations?q=` rather than a `/api/search`. The match is a **query**
+  filter in `store._search_clause`, over the operator's name, the derived name, the device
+  address, the device label, the trap OID, the class name and the alarm instance.
+- **Reason**: the answer is a list of situations, scoped and shaped by rules this handler already
+  applies. A second route would have had to restate the scope predicate, the redaction, the
+  `LIMIT`-after-filter rule and the shaping pass — four chances to disagree with the listing about
+  what a principal may see. A client-side filter was the other alternative and cannot work: the
+  device, the OID and the instance are on the **detail** payload, and what is not loaded cannot be
+  searched however clever the predicate.
+- **A field is matched only where the requester would be shown it**, and the gate is derived:
+  `shaping.sees_raw_addresses` reads `FIELD_RULES["ip"]`, so below editor the raw address and the
+  derived name are not in the predicate at all. Matching them would let a viewer confirm by typing
+  what the console coarsens on the way out — the shaping axis undone through a text box, which is
+  a different failure from the scope one and needs its own guard.
+- **Trade-off accepted**: a viewer cannot search by address, and there is no message on screen
+  saying why. Stated in the empty state's *"only the ones your account is shown"* rather than as a
+  per-field explanation, because naming which fields were withheld would itself describe the
+  policy to someone the policy applies to.
+- **Measured**: the two refusals are demonstrated red with controls in `tests/test_search.py` —
+  a scoped editor finding a hidden member's device, and a viewer finding a coarsened address —
+  each beside a principal who legitimately finds the same situation.

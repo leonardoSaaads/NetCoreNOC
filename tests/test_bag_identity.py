@@ -175,9 +175,7 @@ async def test_a_mark_that_named_nothing_in_the_bag_reconciles_to_nothing(store:
         ghost = max(alarms) + 9_000
         fid = await _asserting_label(store, sid, alarms, [alarms[3], ghost])
         # `excluded_reconciled` is what the server derived; the client reported two.
-        await store.annotate_feedback(
-            fid, member_count=4, excluded_count=2, excluded_reconciled=1
-        )
+        await store.annotate_feedback(fid, member_count=4, excluded_count=2, excluded_reconciled=1)
         await store.commit()
 
     assert await store.feedback_exclusion(fid) == [alarms[3], ghost], "the report is verbatim"

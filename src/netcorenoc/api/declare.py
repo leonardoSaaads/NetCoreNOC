@@ -166,6 +166,9 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/lifecycle.js",
         "/app/views/parts/members.js",
         "/app/views/parts/why.js",
+        # v0.16.1: the situation card, split out when the server-side search pushed
+        # `views/situations.js` over the module-graph guard (DECISIONS #265).
+        "/app/views/parts/card.js",
         "/app/widgets.js",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/d3.v7.min.js",

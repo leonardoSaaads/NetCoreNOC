@@ -59,57 +59,140 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
             out[name] = int(row[0])
         return out
 
+    def _search_clause(
+        self, query: str | None, *, addresses: bool, scope_ids: list[int] | None
+    ) -> tuple[str, list[Any]]:
+        """The v0.16.1 search, **as a query filter**, or `("", [])` when nothing was asked.
+
+        `docs/plans/v0.16.1-visualisation.md` §5: the console's box filtered on
+        `` `#${s.id} ${s.status}` `` — id and status only — so an operator who had just named a
+        situation *"fibre cut, Ridgeway ring"* could not find it by that name.
+
+        **Two rules govern every clause below, and both are older than this release.**
+
+        *Scope is a query filter.* The alarm-side match carries the **same** `ne_id IN (…)`
+        predicate the listing does, so a situation with one in-scope member and one out-of-scope
+        member — which a scoped viewer legitimately receives, redacted — cannot be *found* by the
+        address of the member they may not see. Without that clause the search would be an
+        existence oracle over exactly the population scoping exists to hide: F35 and F38 arriving
+        through a text box (DECISIONS #67, #72).
+
+        *A field is matched only where the requester would be shown it.* `addresses` comes from
+        `shaping.sees_raw_addresses`, which reads `FIELD_RULES["ip"]`, so below editor the raw
+        address and the server-derived name — both coarsened on the way out — are simply not in
+        the predicate. An operator name and a device **label** always are: they are free text a
+        person typed, `shape` passes them through for every role, and finding a situation by the
+        name an operator just gave it is the case this release exists for.
+
+        `LIKE` with an explicit `ESCAPE`, and the caller's `%` and `_` escaped rather than
+        stripped: a search for `10.1.2_4` must look for that string and not for any character
+        there. `LOWER` is SQLite's, so folding is ASCII-only — an accented operator name matches
+        only its own case, which is stated here rather than discovered.
+        """
+        if not query:
+            return "", []
+        escaped = query.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        needle = f"%{escaped}%"
+        member_columns = [
+            "LOWER(COALESCE(a3.instance, ''))",
+            "LOWER(c3.oid)",
+            "LOWER(COALESCE(cl3.label, c3.name, ''))",
+            "LOWER(COALESCE(dl3.label, ''))",
+        ]
+        head_columns = ["LOWER(COALESCE(s.operator_name, ''))"] if self._has_lifecycle else []
+        if addresses:
+            member_columns.append("LOWER(d3.ip)")
+            if self._has_lifecycle:
+                head_columns.append("LOWER(COALESCE(s.derived_name, ''))")
+        like = " OR ".join(f"{column} LIKE ? ESCAPE '\\'" for column in member_columns)
+        heads = "".join(f"{column} LIKE ? ESCAPE '\\' OR " for column in head_columns)
+        scope = f"AND a3.ne_id IN ({','.join('?' * len(scope_ids))}) " if scope_ids else ""
+        args: list[Any] = [needle] * len(head_columns)
+        args.extend(scope_ids or [])
+        args.extend([needle] * len(member_columns))
+        return (
+            f" AND ({heads}EXISTS (SELECT 1 FROM situation_alarm sa3 "  # nosec B608
+            "JOIN alarm a3 ON a3.id=sa3.alarm_id "
+            "JOIN alarm_class c3 ON c3.id=a3.class_id "
+            "JOIN device d3 ON d3.id=a3.device_id "
+            "LEFT JOIN label dl3 ON dl3.kind='device' AND dl3.target_id=d3.id "
+            "LEFT JOIN label cl3 ON cl3.kind='class' AND cl3.target_id=c3.id "
+            f"WHERE sa3.situation_id=s.id {scope}AND ({like})))",  # nosec B608 - placeholders only
+            args,
+        )
+
     async def list_situations(
-        self, status: str | None, limit: int, ne_ids: frozenset[int] | None = None
+        self,
+        status: str | None,
+        limit: int,
+        ne_ids: frozenset[int] | None = None,
+        query: str | None = None,
+        *,
+        match_addresses: bool = True,
     ) -> list[dict[str, Any]]:
-        """Recent situations, newest first.
+        """Recent situations, newest first, optionally narrowed by a **query-side** text search.
 
         **v0.7.1 (F38): `LIMIT` bounds the *filtered* set, not the global one.** v0.7.0 truncated
         over the global ordering and let the caller filter afterwards, so a scoped principal's own
         open incidents disappeared from their list whenever a noisy neighbour they cannot see was
-        busy — and the returned count varied with out-of-scope volume, which is the aggregate oracle
-        F32 claims is closed.
+        busy — and the returned count varied with out-of-scope volume, which is the aggregate
+        oracle F32 claims is closed. **The same rule governs `query`**: it narrows *before* the
+        `LIMIT`, so a search can never answer "nothing" because the page that would have matched
+        was truncated first.
 
-        `ne_ids=None` is the unrestricted case and runs the **unmodified v0.7.0 SQL**, so parity is
-        by construction rather than by inspection. `ne_ids` empty means "exactly nothing" and is
-        answered without a query. See :data:`MAX_SCOPE_PARAMS` for the bound on the scoped branch.
+        `ne_ids=None` **with no query** runs the **unmodified v0.7.0 SQL**, so parity for the
+        common case is by construction rather than by inspection. `ne_ids` empty means "exactly
+        nothing" and is answered without a query. See :data:`MAX_SCOPE_PARAMS` for the bound on the
+        scoped branch and :meth:`_search_clause` for what the search may match.
         """
         where, args = ("WHERE s.status=?", [status]) if status else ("", [])
+        head = (
+            "SELECT s.id, s.status, "
+            f"{self._lifecycle_columns}"
+            "s.created_at, s.updated_at, s.root_alarm_id, "
+            "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
+            "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
+        )
+        tail = "GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?"
         if ne_ids is None:
+            search, search_args = self._search_clause(
+                query, addresses=match_addresses, scope_ids=None
+            )
+            # `WHERE 1=1` only where a search exists and a status filter does not, so the
+            # no-search call is byte-identical to v0.7.0's statement.
+            opener = where or ("WHERE 1=1" if search else "")
             cur = await self.conn.execute(
-                f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see below
-                "s.created_at, s.updated_at, s.root_alarm_id, "
-                "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
-                "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
-                # nosec B608 - `where` is a fixed literal, values are bound parameters
-                f"{where} GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?",
-                (*args, limit),
+                # nosec B608 - `where`, `opener` and `search` are fixed literals built from
+                # constants in this method; every value is a bound parameter
+                f"{head}{opener}{search} {tail}",  # nosec B608
+                (*args, *search_args, limit),
             )
             return [dict(r) for r in await cur.fetchall()]
         if not ne_ids:
             return []
         if len(ne_ids) > MAX_SCOPE_PARAMS:
             # Too many ids to bind. Fetch unbounded and filter here rather than truncating the id
-            # list, which would silently answer a different question than the one asked.
-            rows = await self.list_situations(status, -1)
+            # list, which would silently answer a different question than the one asked. **The
+            # search travels with it**: dropping `query` here would make a very large scope the one
+            # shape in which the text filter stopped being a query filter.
+            rows = await self.list_situations(
+                status, -1, None, query, match_addresses=match_addresses
+            )
             members = await self.situation_member_nes([int(r["id"]) for r in rows])
             keep = [r for r in rows if any(n in ne_ids for n in members.get(int(r["id"]), []))]
             return keep[:limit]
-        marks = ",".join("?" * len(ne_ids))
+        bound = sorted(ne_ids)
+        marks = ",".join("?" * len(bound))
+        search, search_args = self._search_clause(query, addresses=match_addresses, scope_ids=bound)
         scoped = f"{where} AND " if where else "WHERE "
         cur = await self.conn.execute(
-            f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see below
-            "s.created_at, s.updated_at, s.root_alarm_id, "
-            "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
-            "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
             # A situation is listed when **at least one** member is in scope — the same predicate
             # `project_situation_detail` uses, so the list and the detail can never disagree.
             # nosec B608 - `scoped` is a fixed literal; `marks` is only "?" placeholders
-            f"{scoped}EXISTS (SELECT 1 FROM situation_alarm sa2 "  # nosec B608
-            f"JOIN alarm a2 ON a2.id=sa2.alarm_id "  # nosec B608
-            f"WHERE sa2.situation_id=s.id AND a2.ne_id IN ({marks})) "  # nosec B608
-            "GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?",
-            (*args, *sorted(ne_ids), limit),
+            f"{head}{scoped}EXISTS (SELECT 1 FROM situation_alarm sa2 "  # nosec B608
+            "JOIN alarm a2 ON a2.id=sa2.alarm_id "
+            f"WHERE sa2.situation_id=s.id AND a2.ne_id IN ({marks})){search} {tail}",  # nosec B608
+            (*args, *bound, *search_args, limit),
         )
         return [dict(r) for r in await cur.fetchall()]
 

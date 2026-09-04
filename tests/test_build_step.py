@@ -386,6 +386,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/graph.js": "d45144dd8ec7a72ce168e25386a19864bfbd00344c230572326f8b11f2e27a26",
     "app/views/labelling.js": "f4700fc88921415127605c524cd8d3d8442eea40e7239cffb9473ccf950a97a0",
     "app/views/overview.js": "8bc8c4e0d6ae23f7556be27b50ec72c5ed37afe9d8aa03ae5ae2bbfebd6b1e87",
+    "app/views/parts/card.js": ("7e278b56712edb41802022982e324797fa4baf0ca0cd818fe581d6c282ac8b34"),
     "app/views/parts/facts.js": "0abf2daabe89c2b6f50a03a4c960ec966056e4ccc853311a1e03addc6bce672b",
     "app/views/parts/lifecycle.js": (
         "9c5c08946ec14623c047488754881f2997e4d428337c4179b111f94c9d41e915"
@@ -405,7 +406,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/quarantine.js": "04ed768d8180e7d3182086e8dd12c69c8a497196bfb0086ea5023e34a5470b5b",
     "app/views/scorer.js": "7174739dca46ba17645c35ccd1663fe41e27280e54460b3ef8aa3c176029fad2",
     "app/views/settings.js": "87ecd031c5ab16f549223f5fdaf6711ae8ae97b12aa65f643b21f998a256584d",
-    "app/views/situations.js": "fb8e1836caeb20e54cd63f0c3acef659b60e5aeb0517fc2c4324e3a5158369e2",
+    "app/views/situations.js": "da9bbb10006e4807e5cb8c0e802eb43bed9fe92bff5009984633c5854a3808db",
     "app/views/timeline.js": "a784afb37bfd17d434b72c935cd5f470b200b212a025146cabc4f2c8117a7992",
     "app/views/tokens.js": "f1195d816ebc5e2a9a431d9d618c05299b4497eb60d8a26774be2edb99fbb676",
     "app/views/users.js": "c3fc89f35a09b0c4c748c609d3d45777842f877a59ef88dfdd70ef9a4ea31b19",
@@ -454,6 +455,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/graph.js": 11_463,
     "app/views/labelling.js": 5_327,
     "app/views/overview.js": 13_804,
+    "app/views/parts/card.js": 11_473,
     "app/views/parts/facts.js": 6_328,
     "app/views/parts/lifecycle.js": 11_030,
     "app/views/parts/members.js": 3_984,
@@ -465,7 +467,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/quarantine.js": 2_247,
     "app/views/scorer.js": 12_818,
     "app/views/settings.js": 11_331,
-    "app/views/situations.js": 16_247,
+    "app/views/situations.js": 10_465,
     "app/views/timeline.js": 6_307,
     "app/views/tokens.js": 5_104,
     "app/views/users.js": 8_994,

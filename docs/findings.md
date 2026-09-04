@@ -954,3 +954,32 @@ Run every command below from the repository root with the virtualenv active.
   the release chain is a change to `tests/test_documentation.py`'s subject, and this release's
   claim-marker check already owns that seam — recorded so the next release starts from a
   measurement rather than from a third recurrence.
+
+## F95 — a UI guard attributed a write by filename, and the situation card moved
+
+- **What**: `tests/test_security_ui.py::view_writes` decided which screen owns a component module
+  by looking for `from "./{stem}.js"` — a **one-level, same-directory** import. It also built
+  `component_sources` by concatenating every module under `app/views/` whose source contained the
+  substring `from "./`, which is nearly all of them: the guard read as total and was total by
+  accident rather than by derivation.
+- **Reproduce**: split a writing component one directory deeper than its screen. v0.16.1 did
+  exactly that, moving the situation card to `views/parts/card.js`:
+  ```sh
+  python -m pytest -q tests/test_security_ui.py
+  ```
+- **Measured**:
+  ```
+  app/views/parts/lifecycle.js issues writes but is neither a registry view nor imported by one,
+  so no capability governs it. A write nothing owns is a write nothing gates.
+  ```
+  `situations.js` imports `./parts/card.js` and `card.js` imports `./lifecycle.js`, so the
+  one-level scan found no owner for the module that issues **all five** operator gestures.
+- **Why it matters**: it failed loudly here, which is the good case. The bad case is the mirror
+  image and it was reachable: two of the three guards beside it read
+  `views/situations.js` **by name** and asserted about the held card and the labelling payload
+  contract — both of which moved. A guard keyed on a filename passes green on a file that no
+  longer contains what it is asserting about, which is Appendix B's first trap in a third place.
+- **Disposition**: **FIXED in v0.16.1.** Ownership is now the transitive closure of the import
+  graph from each registry view, resolved by path; `composed_source(view_id)` is what the three
+  source-shape guards read. Issued as a finding rather than absorbed into the card split, because
+  the defect is older than the split and would have outlived it.

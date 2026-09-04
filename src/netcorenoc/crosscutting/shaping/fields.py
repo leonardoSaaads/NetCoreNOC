@@ -57,6 +57,22 @@ def _allowed(role: str | None, min_role: str) -> bool:
     return _rank(role) >= ROLE_RANK[min_role]
 
 
+def sees_raw_addresses(role: str | None) -> bool:
+    """May this role be shown a device address in full? (v0.16.1)
+
+    **Derived from `FIELD_RULES`, never restated.** A search that matched on `device.ip` for a role
+    whose responses coarsen it would be a shaping oracle: the requester cannot see the fourth octet
+    on any screen, and typing it and getting a hit would confirm it just as well as rendering it.
+    So the search's address clauses are gated on this, and the day `ip`'s minimum role moves, the
+    search moves with it — which is the difference between a rule and a copy of a rule.
+
+    `operator_name` and a device *label* are deliberately **not** gated: both are free text a
+    person typed, both pass through `shape` unchanged for every role, and the whole point of the
+    v0.16.1 search is that an operator who has just named a situation can find it by that name.
+    """
+    return _allowed(role, FIELD_RULES["ip"][0])
+
+
 def coarsen_ip(value: Any) -> Any:
     """An IP → its /24 (v4) or /48 (v6) network; a non-IP string (a label) is returned as-is."""
     if not isinstance(value, str) or not value:

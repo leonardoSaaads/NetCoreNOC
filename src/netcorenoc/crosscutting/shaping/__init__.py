@@ -45,7 +45,12 @@ from __future__ import annotations
 # true they cost one line each, and if it stops being true nobody has to notice.
 from netcorenoc.crosscutting.shaping.fields import _COARSEN as _COARSEN
 from netcorenoc.crosscutting.shaping.fields import _DROP as _DROP
-from netcorenoc.crosscutting.shaping.fields import FIELD_RULES, coarsen_ip, shape
+from netcorenoc.crosscutting.shaping.fields import (
+    FIELD_RULES,
+    coarsen_ip,
+    sees_raw_addresses,
+    shape,
+)
 from netcorenoc.crosscutting.shaping.fields import _allowed as _allowed
 from netcorenoc.crosscutting.shaping.fields import _rank as _rank
 from netcorenoc.crosscutting.shaping.naming import (
@@ -96,6 +101,7 @@ __all__ = [
     "project_situation_detail",
     "project_situation_row",
     "scope_policy_errors",
+    "sees_raw_addresses",
     "shape",
     "visible_nes",
 ]
