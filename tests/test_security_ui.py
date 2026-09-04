@@ -380,13 +380,21 @@ def _local_imports(name: str, source: str) -> set[str]:
 
 
 def component_owners() -> dict[str, set[str]]:
-    """`{module: {registry view ids that reach it}}` — **transitively**, over the import graph.
+    """`{module: {registry view ids that reach it}}` — **transitively, within `app/views/`**.
 
     A module that is not itself a view (`parts/retention.js`, `parts/card.js`) is a component of
     whichever screens import it, directly or through another component, and its writes are
     attributed to every one of them. **Skipping it would be how a write escapes a guard that looks
     total** — the section that deletes the feedback corpus lives in exactly such a module, and the
     situation card's five gestures now live two hops from their screen.
+
+    **The walk stops at `app/views/`, and that boundary is the guard rather than a convenience.**
+    v0.16.1's first version of this function followed every local import, so a screen's "composed
+    source" reached `app/session.js` — where `can()` is *defined* — and every writing screen then
+    appeared to gate itself because a utility three hops away contained the string. Measured by
+    injection: deleting `classes.js`'s own `can("label.write")` left the whole suite **green**. A
+    screen gates itself in its own module or in a part it owns; a helper it imports does not gate
+    anything.
     """
     modules = ui_modules()
     reachable: dict[str, set[str]] = {name: set() for name in modules}
@@ -398,7 +406,7 @@ def component_owners() -> dict[str, set[str]]:
         queue = [entry]
         while queue:
             current = queue.pop()
-            if current in seen or current not in modules:
+            if current in seen or current not in modules or not current.startswith("app/views/"):
                 continue
             seen.add(current)
             queue.extend(_local_imports(current, modules[current]))

@@ -979,10 +979,24 @@ Run every command below from the repository root with the virtualenv active.
   `views/situations.js` **by name** and asserted about the held card and the labelling payload
   contract — both of which moved. A guard keyed on a filename passes green on a file that no
   longer contains what it is asserting about, which is Appendix B's first trap in a third place.
-- **Disposition**: **FIXED in v0.16.1.** Ownership is now the transitive closure of the import
-  graph from each registry view, resolved by path; `composed_source(view_id)` is what the three
-  source-shape guards read. Issued as a finding rather than absorbed into the card split, because
-  the defect is older than the split and would have outlived it.
+- **The first repair widened it too far, and the injection that found that is this release's**:
+  walking *every* local import made a screen's composed source reach `app/session.js`, where
+  `can()` is **defined** — so every writing screen appeared to gate itself because a utility three
+  hops away contained the string. Measured: deleting `classes.js`'s own `can("label.write")` left
+  the whole suite **green**, which is the same class of defect one repair later.
+
+  ```
+  UI-5 injection, first repair   `const editable = true;`   56 passed   <- not seen
+  UI-5 injection, bounded walk   `const editable = true;`   1 failed    <- seen
+  ```
+
+- **Disposition**: **FIXED in v0.16.1.** Ownership is the transitive closure of the import graph
+  from each registry view, resolved by path and **bounded at `app/views/`**: a screen gates itself
+  in its own module or in a part it owns, and a helper it imports gates nothing.
+  `composed_source(view_id)` is what the three source-shape guards read. Issued as a finding rather
+  than absorbed into the card split, because the defect is older than the split and would have
+  outlived it — and the second measurement above is kept because a repair that had to be repaired
+  is the more useful half of the record.
 
 ## F96 — `/favicon.ico` 404s on every page load, and the one-line fix is CSP-forbidden
 
