@@ -26,16 +26,21 @@
 import { html, Component, cx } from "../dom.js";
 import { Icon } from "../icons.js";
 import { WhyGrouped } from "./parts/why.js";
+import { History, NameField, RESOLUTION_TEXT, Restructure } from "./parts/lifecycle.js";
 import { get, post } from "../api.js";
-import { Loading, Empty, Failed, Badge, SeverityCell, DataTable, cell } from "../widgets.js";
+import { Loading, Empty, Failed, Badge } from "../widgets.js";
 import { age, alarmName, deviceName, percent, plural, timeTitle } from "../format.js";
+import { Members } from "./parts/members.js";
 import { canEdit } from "../session.js";
 import * as store from "../store.js";
 
 export class Situations extends Component {
   constructor(props) {
     super(props);
-    this.state = { live: store.get(), filter: "", status: "open" };
+    // v0.16.0: `new` is what the correlator creates and what an untriaged appliance is full of,
+    // so it is the state this screen opens on. `open` would have shown an empty list on a working
+    // appliance the moment this release shipped (DECISIONS #254).
+    this.state = { live: store.get(), filter: "", status: "new" };
   }
 
   componentDidMount() {
@@ -47,6 +52,18 @@ export class Situations extends Component {
   }
 
   componentWillUnmount() { if (this.unsubscribe) this.unsubscribe(); }
+
+  /** Re-fetch a card the operator has just changed, and re-freeze the hold on the new payload.
+   *
+   * A gesture the operator made is the one case where the held card SHOULD move: they changed it,
+   * so showing them what they changed it to is not a state change arriving underneath a click. The
+   * hold's whole purpose is that an update they did not ask for cannot move the grouping they are
+   * judging (ADR #173), and `refreshHeld` is the existing name for exactly this — "the card was
+   * re-fetched deliberately (the operator asked)". */
+  async reopen(sid) {
+    try { store.refreshHeld(sid, await get(`/api/situations/${sid}`)); }
+    catch (error) { store.refreshHeld(sid, { __error: error }); }
+  }
 
   async open(sid) {
     if (store.isExpanded(sid)) { store.collapse(sid); return; }
@@ -71,41 +88,56 @@ export class Situations extends Component {
         <label class="visually-hidden" for="fltText">Search situations</label>
         <input id="fltText" placeholder="search by id or status" value=${filter}
                onInput=${(e) => this.setState({ filter: e.target.value })} />
-        <label class="visually-hidden" for="fltStatus">Status</label>
-        <select id="fltStatus" value=${status}
-                onChange=${(e) => this.setState({ status: e.target.value })}>
-          <option value="open">open</option>
-          <option value="closed">closed</option>
-          <option value="merged">merged</option>
-          <option value="">any status</option>
-        </select>
         <span class="filter-count">${plural(rows.length, "situation")}</span>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Situation state">
+        ${TABS.map(([value, label, hint]) => html`<button key=${value} type="button" role="tab"
+            id=${`tab-${value || "any"}`}
+            class=${cx("tab", status === value && "tab-on")}
+            aria-selected=${status === value ? "true" : "false"}
+            aria-controls="sits" title=${hint}
+            onClick=${() => this.setState({ status: value })}>${label}</button>`)}
       </div>
 
       ${live.situations === null ? html`<${Loading} label="Reading situations" />` : null}
       ${rows.length === 0 ? html`<${Empty}
-          title=${query || status !== "open"
+          title=${query || status !== "new"
             ? "No situations match this filter."
             : "The network is quiet."}
-          will=${query || status !== "open"
+          will=${query || status !== "new"
             ? "Clearing the filter will show everything the appliance currently holds."
             : "Situations appear here the moment two or more alarms correlate. Nothing has to be " +
               "configured first: the appliance learns alarm classes, network elements and their " +
               "affinities from the trap stream itself."}
-          meanwhile=${query || status !== "open"
+          meanwhile=${query || status !== "new"
             ? null
             : "Point your devices' trap destination at this appliance. The Alarm classes screen " +
               "fills in as soon as the first trap arrives, before any grouping happens."} />` : null}
 
-      <div id="sits" class="cards">
+      <div id="sits" class="cards" role="tabpanel"
+           aria-labelledby=${`tab-${status || "any"}`}>
         ${rows.map((s) => html`<${SituationCard} key=${s.id} situation=${s}
-                                                 onToggle=${() => this.open(s.id)} />`)}
+                                                 onToggle=${() => this.open(s.id)}
+                                                 onChanged=${() => this.reopen(s.id)} />`)}
       </div>
     </div>`;
   }
 }
 
-function SituationCard({ situation, onToggle }) {
+/* The three states the schema now has, and the fourth entry that is not a state.
+ *
+ * `new` leads because it is what the correlator creates and what an untriaged appliance is full of
+ * (DECISIONS #254). The titles say what each state MEANS rather than repeating its name: "open" and
+ * "new" are not self-explanatory to somebody who has just been handed the console. */
+const TABS = [
+  ["new", "New", "Formed by the correlator, and nobody has looked at it yet"],
+  ["open", "Open", "An operator has touched it: judged, moved, merged, split or named it"],
+  ["resolved", "Resolved", "It has left — and the card says why"],
+  ["", "Any", "Every situation this appliance currently holds"],
+];
+
+function SituationCard({ situation, onToggle, onChanged }) {
   const sid = situation.id;
   const expanded = store.isExpanded(sid);
   const withheld = store.withheldCount(sid);
@@ -118,7 +150,14 @@ function SituationCard({ situation, onToggle }) {
         <span class=${expanded ? "sit-chevron open" : "sit-chevron"}>
           <${Icon} name="chevron" /></span>
         <span class="sid">#${sid}</span>
-        <${Badge} tone=${situation.status === "open" ? "alarm" : "quiet"}>${situation.status}<//>
+        ${situationName(situation)
+          ? html`<span class=${cx("sit-name", situation.operator_name && "sit-name-operator")}
+                       title=${NAME_TITLE[situation.operator_name ? "operator" : "derived"]}
+                 >${situationName(situation)}</span>` : null}
+        <${Badge} tone=${situation.status === "resolved" ? "quiet" : "alarm"}>${situation.status}<//>
+        ${situation.status === "resolved" && situation.resolution
+          ? html`<${Badge} tone="quiet" title=${RESOLUTION_TEXT[situation.resolution] ?? ""}
+                 >${situation.resolution.replace("_", " ")}<//>` : null}
         <${Badge}>${plural(situation.alarm_count, "alarm")}<//>
         ${situation.redacted_count ? html`<${Badge} tone="redacted" title=${SCOPE_TITLE}>
           +${situation.redacted_count} outside your scope<//>` : null}
@@ -130,10 +169,22 @@ function SituationCard({ situation, onToggle }) {
          title="A link to this situation alone, shareable during the incident">link</a>
     </div>
     <div id=${`sit-detail-${sid}`} class="detail" hidden=${!expanded}>
-      ${expanded ? html`<${Detail} sid=${sid} detail=${detail} withheld=${withheld} />` : null}
+      ${expanded ? html`<${Detail} sid=${sid} detail=${detail} withheld=${withheld}
+                                  onChanged=${onChanged} />` : null}
     </div>
   </article>`;
 }
+
+/** An operator's own name if there is one, else the server's projection of the membership. */
+export function situationName(situation) {
+  return situation.operator_name || situation.derived_name || "";
+}
+
+const NAME_TITLE = {
+  operator: "A name an operator gave this situation. The id above it is still the identity.",
+  derived: "Derived from this situation's members and recomputed when they change. An operator " +
+           "can override it, and no model proposes one.",
+};
 
 const HELD_TITLE =
   "This card is frozen while you have it open, so the grouping you are judging cannot change " +
@@ -176,6 +227,18 @@ class Detail extends Component {
     }
   }
 
+  async clearAlarm(alarmId) {
+    if (this.state.sending) return;
+    this.setState({ sending: true, outcome: null });
+    try {
+      await post(`/api/alarms/${alarmId}/clear`, {});
+      this.setState({ sending: false, outcome: { ok: true, kind: "clear" } });
+      this.props.onChanged();
+    } catch (error) {
+      this.setState({ sending: false, outcome: { ok: false, error } });
+    }
+  }
+
   async close() {
     const { sid } = this.props;
     this.setState({ sending: true });
@@ -200,6 +263,11 @@ class Detail extends Component {
       ${withheld > 0 ? html`<p class="held-note">${
         `Frozen while open — ${plural(withheld, "update")} withheld. Collapse to resume.`}</p>` : null}
 
+      ${detail.status === "resolved" ? html`<p class="resolution-note">
+        <${Icon} name="info" />${" Resolved: "}
+        ${RESOLUTION_TEXT[detail.resolution] ?? "the appliance did not record why"}.
+      </p>` : null}
+
       ${root ? html`<p class="root">${"Probable root: "}
         <b>${alarmName(root)}</b>${" on "}<b>${deviceName(root)}</b>
         ${detail.root_confidence != null
@@ -216,7 +284,8 @@ class Detail extends Component {
 
       <${Members} alarms=${detail.alarms} editable=${editable}
                   marked=${this.state.marked}
-                  onMark=${(id, on) => this.toggleMark(id, on)} />
+                  onMark=${(id, on) => this.toggleMark(id, on)}
+                  onClear=${(id) => this.clearAlarm(id)} />
 
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
 
@@ -232,9 +301,19 @@ class Detail extends Component {
             ? `Split — ${plural(this.state.marked.size, "member")} marked as not belonging`
             : "Split (wrong grouping)"}
         </button>
-        ${detail.status === "open" ? html`<button type="button" disabled=${this.state.sending}
+        ${detail.status !== "resolved" ? html`<button type="button" disabled=${this.state.sending}
                 onClick=${() => this.close()}>Close situation</button>` : null}
       </div>` : null}
+
+      ${editable && detail.status !== "resolved" ? html`<${Restructure}
+          sid=${sid} marked=${this.state.marked} post=${post}
+          onDone=${() => this.props.onChanged()} />` : null}
+
+      ${editable ? html`<${NameField} sid=${sid} post=${post}
+          operatorName=${detail.operator_name} derivedName=${detail.derived_name}
+          onDone=${() => this.props.onChanged()} />` : null}
+
+      ${detail.events && detail.events.length ? html`<${History} events=${detail.events} />` : null}
 
       ${this.state.outcome ? html`<p class=${this.state.outcome.ok ? "ok-note" : "err"} role="status">
         ${this.state.outcome.ok
@@ -249,43 +328,6 @@ const OUTCOME_TEXT = {
   confirm: "Recorded: this grouping is correct. Every pair in it is now an asserted positive.",
   split: "Recorded: this grouping is wrong. Only the members you marked are asserted negative.",
   close: "Closed.",
+  clear: "Cleared. That alarm was stale; this says nothing about the grouping and the correlator " +
+         "learns nothing from it.",
 };
-
-function Members({ alarms, editable, marked, onMark }) {
-  const columns = [
-    ...(editable ? [{ key: "mark", label: "", title: "tick the members that do NOT belong" }] : []),
-    { key: "device", label: "device" },
-    { key: "class", label: "class" },
-    { key: "instance", label: "instance" },
-    { key: "severity", label: "severity" },
-    { key: "count", label: "count", numeric: true },
-    { key: "state", label: "state" },
-  ];
-  const rows = alarms.map((a, index) => ({
-    key: a.id,
-    cells: {
-      // The accessible name is POSITIONAL, not the device and class names.
-      //
-      // Embedding them read better until the escaping invariant measured it: an operator label is
-      // attacker-influenced text, and putting it in an attribute means a screen reader announces
-      // whatever arrived in a trap. `setAttribute` makes it inert as markup, so this is not an
-      // XSS — it is the same string reaching a second sink that the F1 discipline never covered,
-      // and "inert" is not the same as "appropriate to read aloud". Position is also simply
-      // clearer than a 200-character name.
-      mark: html`<td><input type="checkbox" checked=${marked.has(a.id)}
-        aria-label=${`Mark member ${index + 1} of ${alarms.length} as not belonging`}
-        onChange=${(e) => onMark(a.id, e.target.checked)} /></td>`,
-      device: deviceName(a),
-      class: html`<span>${alarmName(a)}${a.is_flapping
-        ? html`<span class="flap" title="This alarm is flapping"> ~flapping</span>` : null}</span>`,
-      instance: a.instance || "—",
-      severity: cell(html`<${SeverityCell} alarm=${a} />`),
-      count: a.count,
-      state: a.status,
-    },
-  }));
-  // The mark column is a <td> already; hand it through verbatim.
-  for (const row of rows) if (editable) row.cells.mark = cell(row.cells.mark);
-  return html`<${DataTable} columns=${columns} rows=${rows}
-    caption=${`${plural(alarms.length, "member alarm")} in this situation`} />`;
-}

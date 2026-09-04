@@ -27,10 +27,12 @@ from netcorenoc import __version__
 from netcorenoc.api import (
     declare,
     routes_admin,
+    routes_annotate,
     routes_audit,
     routes_auth,
     routes_events,
     routes_governance,
+    routes_lifecycle,
     routes_operate,
     routes_promotion,
     routes_read,
@@ -101,6 +103,18 @@ def create_app(
     routes_static.register(app, ctx)
     routes_auth.register(app, ctx)
     routes_read.register(app, ctx)
+    # v0.16.0: the five operator gestures, split across two modules on whether they assert
+    # anything about a grouping — the distinction `PREREGISTRATION-0.16.0.md` §1 turns into a
+    # prohibition, expressed in the module tree rather than only in a docstring.
+    #
+    # **Registered before `routes_operate`**, and the reason is the behaviour record rather than
+    # the router: `tests/behaviour_identity.py` drives every route in registration order against
+    # one database, so a `close` driven first leaves every gesture after it answering 409 on a
+    # resolved situation. That is a true response and a weak pin — it would not catch a regression
+    # in any of the three handlers. Ordering is free here (every path is a distinct literal and
+    # none can shadow another), so it is chosen to make the record say more.
+    routes_lifecycle.register(app, ctx)
+    routes_annotate.register(app, ctx)
     routes_operate.register(app, ctx)
     routes_admin.register(app, ctx)
     routes_scorer.register(app, ctx)

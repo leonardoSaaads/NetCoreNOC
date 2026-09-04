@@ -360,7 +360,7 @@ def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
 #: by a release that added three scorer kinds — which is the property this table exists to make
 #: visible at a glance rather than to be argued.
 UI_HASHES: dict[str, str] = {
-    "app.js": "36bb65da9e1f9cb30d9090663e89a6055c4e6cde5c901f1300951ffcd8b8d0df",
+    "app.js": "426f5fc2e948536a3b337a874c6dcc090f8e2714af74740c864db965a9a10bfd",
     "app/api.js": "186f79e412a22550a061bc7fd0354a97398e41a153d60c1d19f8e9f03965e977",
     "app/destructive.js": "51994f0640e3e170061ec0f9bea068f7b3fff7348ca153ffb00d64cfb11838e0",
     "app/dom.js": "b0e279c902ae6f76a902dbc24bb8595d6936aff13f46354870120c4fe42b119b",
@@ -372,7 +372,7 @@ UI_HASHES: dict[str, str] = {
     "app/registry.js": "38114bfebf5692f13f234013599665f7df3a40aaf7081dc53f824e91c0eb4720",
     "app/router.js": "5abc5927a6e355c1271f4e9cf6295e4211441bdac5e3b38d287c32536e83bb4e",
     "app/session.js": "4d78e2ace8974ba3ce63aae9be06f3b1730f19784c25b7cb7ddc4c194401449f",
-    "app/shell.js": "69221461fc39cf5afd84746f5c5afc9e5447da7e25a5f8760129d660d7965ae5",
+    "app/shell.js": "3f59f7494d9e312b501e9fb3f551c41d92c05d3d41e06419c17df662563fd9db",
     "app/sidebar.js": "6b6ff6de214c0e9f8ede7d58781fbea42fa7b24e6fe0eecab49803f5ada72ac3",
     "app/store.js": "f6e89eccffe17ebf4a66b853b77a118a925924bee8c8b31b9fdcacfe042f7b40",
     "app/theme.js": "b4761826dbb504312490e0737a1ce6f4573e1efc8b5de8bc48d0988743a2299d",
@@ -384,9 +384,15 @@ UI_HASHES: dict[str, str] = {
     "app/views/entities.js": "964108e4c45ae09e3e164aa0cf18c4e274c4240ed4b1bea3d19e8d9e5ff93463",
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
     "app/views/graph.js": "d45144dd8ec7a72ce168e25386a19864bfbd00344c230572326f8b11f2e27a26",
-    "app/views/labelling.js": "eea205367f5942fc39dc3b14825d9f61797dd9d9cd063555a1c4a15e843446c2",
-    "app/views/overview.js": "ce81b09e977b4eae5cfc19ef589d9e73089e23620ba64d76f431bfddcfc76377",
+    "app/views/labelling.js": "f4700fc88921415127605c524cd8d3d8442eea40e7239cffb9473ccf950a97a0",
+    "app/views/overview.js": "8bc8c4e0d6ae23f7556be27b50ec72c5ed37afe9d8aa03ae5ae2bbfebd6b1e87",
     "app/views/parts/facts.js": "0abf2daabe89c2b6f50a03a4c960ec966056e4ccc853311a1e03addc6bce672b",
+    "app/views/parts/lifecycle.js": (
+        "9c5c08946ec14623c047488754881f2997e4d428337c4179b111f94c9d41e915"
+    ),
+    "app/views/parts/members.js": (
+        "c04a834e1f579fca2b392541860a6f49d35efeee6390028c69e57e550c6701b2"
+    ),
     "app/views/parts/model.js": "c30966786ff8e78e8c326b3b0206fe171298e86ef784b0841d68999ef068e81d",
     "app/views/parts/retention.js": (
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
@@ -399,7 +405,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/quarantine.js": "04ed768d8180e7d3182086e8dd12c69c8a497196bfb0086ea5023e34a5470b5b",
     "app/views/scorer.js": "7174739dca46ba17645c35ccd1663fe41e27280e54460b3ef8aa3c176029fad2",
     "app/views/settings.js": "87ecd031c5ab16f549223f5fdaf6711ae8ae97b12aa65f643b21f998a256584d",
-    "app/views/situations.js": "159f9d0263ee84922c1815a7c0986d82a149f07becbb1680e85a498eae767aef",
+    "app/views/situations.js": "fb8e1836caeb20e54cd63f0c3acef659b60e5aeb0517fc2c4324e3a5158369e2",
     "app/views/timeline.js": "a784afb37bfd17d434b72c935cd5f470b200b212a025146cabc4f2c8117a7992",
     "app/views/tokens.js": "f1195d816ebc5e2a9a431d9d618c05299b4497eb60d8a26774be2edb99fbb676",
     "app/views/users.js": "c3fc89f35a09b0c4c748c609d3d45777842f877a59ef88dfdd70ef9a4ea31b19",
@@ -422,7 +428,7 @@ UI_HASHES: dict[str, str] = {
 #: Byte sizes, recorded beside the hashes because a size is the figure a reader can check by eye.
 #: `app.js` went from **52 738 bytes in one file** to an entry point plus 36 modules.
 UI_SIZES: dict[str, int] = {
-    "app.js": 5_163,
+    "app.js": 5_540,
     "app/api.js": 3_424,
     "app/destructive.js": 4_152,
     "app/dom.js": 2_142,
@@ -434,7 +440,7 @@ UI_SIZES: dict[str, int] = {
     "app/registry.js": 7_468,
     "app/router.js": 5_035,
     "app/session.js": 3_482,
-    "app/shell.js": 10_046,
+    "app/shell.js": 10_341,
     "app/sidebar.js": 7_485,
     "app/store.js": 5_484,
     "app/theme.js": 4_951,
@@ -446,9 +452,11 @@ UI_SIZES: dict[str, int] = {
     "app/views/entities.js": 9_000,
     "app/views/governance.js": 10_218,
     "app/views/graph.js": 11_463,
-    "app/views/labelling.js": 5_108,
-    "app/views/overview.js": 13_455,
+    "app/views/labelling.js": 5_327,
+    "app/views/overview.js": 13_804,
     "app/views/parts/facts.js": 6_328,
+    "app/views/parts/lifecycle.js": 11_030,
+    "app/views/parts/members.js": 3_984,
     "app/views/parts/model.js": 10_290,
     "app/views/parts/retention.js": 5_003,
     "app/views/parts/verdict.js": 8_420,
@@ -457,7 +465,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/quarantine.js": 2_247,
     "app/views/scorer.js": 12_818,
     "app/views/settings.js": 11_331,
-    "app/views/situations.js": 13_822,
+    "app/views/situations.js": 16_247,
     "app/views/timeline.js": 6_307,
     "app/views/tokens.js": 5_104,
     "app/views/users.js": 8_994,

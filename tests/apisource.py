@@ -39,6 +39,10 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes_static.py",
     "routes_auth.py",
     "routes_read.py",
+    # v0.16.0: the five operator gestures, in the order `create_app` registers them — the three
+    # that assert something about a grouping, then the two that assert nothing about one.
+    "routes_lifecycle.py",
+    "routes_annotate.py",
     "routes_operate.py",
     "routes_admin.py",
     "routes_scorer.py",

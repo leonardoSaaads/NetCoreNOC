@@ -39,11 +39,11 @@ from netcorenoc.store.learned import LearnedMixin
 from netcorenoc.store.lifecycle import LifecycleMixin
 from netcorenoc.store.promotion import PromotionMixin
 from netcorenoc.store.read_models import ReadModelsMixin
+from netcorenoc.store.restructure import RestructureMixin
 from netcorenoc.store.retention import RetentionMixin
 from netcorenoc.store.scoring_config import ScoringConfigMixin
 from netcorenoc.store.seal import SealMixin
 from netcorenoc.store.shadow import ShadowMixin
-from netcorenoc.store.situations import SituationMixin
 from netcorenoc.store.state_clears import StateClearMixin
 from netcorenoc.store.types import (
     MAX_SCOPE_PARAMS,
@@ -82,7 +82,11 @@ class Store(
     ReadModelsMixin,
     GovernanceMixin,
     FeedbackMixin,
-    SituationMixin,
+    # v0.16.0. `RestructureMixin` inherits `SituationMixin`, which inherits `SituationEventMixin`
+    # — the third sibling-inheritance edge in this package (DECISIONS #88). Listed most-derived
+    # first so the MRO resolves each name to the real method rather than to a base that does not
+    # have it.
+    RestructureMixin,
     LearnedMixin,
     AlarmMixin,
     DeviceMixin,
@@ -108,3 +112,6 @@ class Store(
         # it per batch; API handlers take it per request.
         self.lock = asyncio.Lock()
         self._has_merged_into: bool | None = None
+        # Answered by `open()` from `PRAGMA table_info(situation)`. `False` until then, which is
+        # the fail-safe direction: a store nobody opened writes no lifecycle column.
+        self._has_lifecycle: bool = False

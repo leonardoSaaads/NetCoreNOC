@@ -34,7 +34,10 @@ export class Overview extends Component {
 
   render(_props, { live }) {
     const stats = live.stats;
-    const situations = live.situations || [];
+    // The panel below is titled "Open situations" and the store now holds all three states, so the
+    // filter is here rather than in the transport — the same expression the sidebar count and the
+    // labelling panel use, for the same reason (DECISIONS #254).
+    const situations = (live.situations || []).filter((s) => s.status !== "resolved");
     const scope = scopeSummary();
 
     // **A spinner is not an error state, and a monitoring console must not confuse them.**
@@ -196,7 +199,7 @@ function Health({ stats, rate }) {
 /** What an editor's labels have produced — the thing an editor has never been shown (draft §5.2). */
 class EditorPanel extends Component {
   render() {
-    const situations = store.get().situations || [];
+    const situations = (store.get().situations || []).filter((s) => s.status !== "resolved");
     const splittable = situations.filter((s) => s.alarm_count >= 2);
     return html`<section class="panel-block">
       <${SectionHeading} title="Your labelling"

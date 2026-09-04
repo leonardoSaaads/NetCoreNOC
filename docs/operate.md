@@ -162,6 +162,36 @@ Use them. A confirm on a grouping where every pair fell on the same side of the 
 no decision and teaches nothing; a confirm on a *mixed* bag does. Roughly an eighth of labelled bags
 are mixed, and they are where the value is.
 
+### 6.1 Correcting it is stronger than judging it (v0.16.0)
+
+**Confirm** and **Split** judge a grouping the appliance produced. **Moving an alarm corrects one**,
+and it says two things at once: this alarm does not belong here, and it belongs *there*. That is the
+strongest evidence this appliance can be given, and until v0.16.0 there was no way to give it.
+
+Five gestures, and what each one asserts:
+
+* **move** — a negative pair against every member it left, and a positive against every member it
+  joined;
+* **merge** — the cross pairs between the two memberships as they stood when you merged them;
+* **split marked members out** — a negative for each marked member against each unmarked one;
+* **rename** — nothing about the grouping. It is a label on an id that does not change;
+* **clear an alarm by hand** — that the ALARM is stale, and nothing whatever about the grouping.
+
+The last one matters more than it looks. A zombie alarm that never cleared is an alarm-lifecycle
+fact; letting it reach the link scorer would be a signal about one question doing the work of a
+measurement about another, which is the mistake this project has spent six releases not making.
+So a hand-clear carries no confidence, produces no training row, and is recorded in full.
+
+**Say how sure you are.** Every restructuring gesture carries a confidence you set on the card. It
+is stored per gesture and per operator exactly as you gave it, and it shrinks that gesture's weight
+by at most 20 % (`0.6 + 0.4 x c`). **Below 50 % the action still happens and teaches nothing** —
+you are running the network, not labelling it, and the card says so before you commit.
+
+There is one bound worth knowing: a situation contributes **one** labelled bag per verdict, so a
+second move out of the same situation is recorded in full and adds no second label
+(`docs/findings.md` F89). Restructuring five situations once teaches more than restructuring one
+situation five times.
+
 ## 7. Running it alongside your existing NMS
 
 It only needs a **copy** of the traps, so you can run it in parallel with whatever you have today

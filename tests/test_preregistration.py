@@ -28,6 +28,15 @@ generator until the verdict comes out well is adaptive selection with reality as
 unlike a model's tuning it would be recorded nowhere. The hash is what makes "the shape was fixed
 first" checkable.
 
+**v0.16.0 adds a fifth, and all five govern corpora this release reads or produces.**
+`PREREGISTRATION-0.16.0.md` registers what each of five operator gestures asserts and at what
+granularity, that the floors do not move because a new channel exists, how operator confidence
+enters, and that bag provenance is recorded and not consumed. It is pinned beside the other four
+rather than in place of any: this release *feeds* the corpus v0.9.0's plan governs, is judged by
+v0.10.0's verdict states, refuses against v0.11.0's floors, and shares a tree with the simulator
+v0.14.0's plan constrains. All five are load-bearing at once, which is the literal reason this
+table has only ever grown.
+
 This is the discipline the frozen `eval` baseline already applies to an *output*, applied instead to
 a *claim*. `tests/test_eval.py` fails when the correlator's behaviour drifts; this fails when the
 standard the correlator is being judged against drifts.
@@ -91,6 +100,11 @@ PREREGISTRATION_0_11_0_SHA256 = "e011ee6ad2367d44f2ede14cad7b072df598298f91ecc1a
 # carries the annotated tag `v0.14.0-gate0`. See docs/gates/v0.14.0-phase-0.md §6.
 PREREGISTRATION_0_14_0_SHA256 = "5607328a573d9a3c78374e47ba11e6dcff76f07c023b3f2e8174b6feed4d219f"
 
+# Recorded in Gate 0, before any v0.16.0 code existed, in a commit that changed nothing else and
+# carries the annotated tag `v0.16.0-gate0`. Its second home is `docs/record.md`, which is where
+# the gate documents' half of the two-sided discipline went (DECISIONS #204).
+PREREGISTRATION_0_16_0_SHA256 = "81aadc3b7a0695c0a6221a8302fb4e4e591f800a1cceeb89e6a52cca8ecca448"
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -122,6 +136,12 @@ PLANS: tuple[Plan, ...] = (
         PREREGISTRATION_0_14_0_SHA256,
         SECOND_HOME,
     ),
+    Plan(
+        "v0.16.0",
+        REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.16.0.md",
+        PREREGISTRATION_0_16_0_SHA256,
+        SECOND_HOME,
+    ),
 )
 
 _IDS = [plan.release for plan in PLANS]
@@ -142,9 +162,9 @@ def test_every_plan_is_guarded() -> None:
     v0.9.0's guard while adding its own and stay green, which is the shape of the retirement this
     test exists to make visible. Adding a plan is meant to require editing this line.
     """
-    assert len(PLANS) == 4, f"expected all four plans to be pinned, found {_IDS}"
-    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0", "v0.14.0"]
-    assert len({plan.sha256 for plan in PLANS}) == 4, "no two plans may share one hash"
+    assert len(PLANS) == 5, f"expected all five plans to be pinned, found {_IDS}"
+    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0", "v0.14.0", "v0.16.0"]
+    assert len({plan.sha256 for plan in PLANS}) == 5, "no two plans may share one hash"
 
 
 @pytest.mark.parametrize("plan", PLANS, ids=_IDS)
@@ -381,3 +401,59 @@ def test_the_0_14_0_plan_keeps_the_generator_prohibitions_and_the_stopping_rule(
     # §3 — the attribution method and the contract consequence it forces.
     assert "exact marginal (interventional) Shapley values" in text
     assert "sum(contributions) + base_value == score" in text
+
+
+def test_the_0_16_0_plan_keeps_the_alarm_lifecycle_prohibition_and_the_gesture_unit() -> None:
+    """v0.16.0's §1, §2 and §4 — the three claims a lifecycle release would be worthless without.
+
+    Deliberately **not** the same assertions as the four above, for the reason those tests' own
+    docstrings give: a structural check weak enough to pass every plan is a formality. What is
+    asserted here is what makes a corpus fed by *operator gestures* honest rather than inflated.
+
+    * **The alarm-lifecycle prohibition is registered, by name, as an extension of
+      `incumbent_linked`'s.** A manual clear of a zombie alarm and a self-clear are facts about an
+      alarm; letting either produce a link-training row would be a signal about a different question
+      doing the work of a measurement about this one. It is the mistake this release is most likely
+      to make, and a plan that did not name it would let the build make it silently.
+    * **`asserting_bags` counts a GESTURE, not a pair.** One merge of two 200-member situations
+      yields 40 000 cross pairs from one human decision. A census that counted pairs would move from
+      0 to a triumphant number by changing its unit, which §7.3 registers in advance as the thing to
+      suspect before celebrating.
+    * **The confidence multiplier, its floor, and the fact that it is never folded into a stored
+      weight.** `m(c) = 0.6 + 0.4c` is a convention chosen with no calibration data, and it is
+      registered precisely so it cannot be re-chosen later to suit a result.
+    """
+    text = (REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.16.0.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## 7. What will be concluded under each outcome" in text
+    outcomes = [line for line in text.splitlines() if line.startswith("**7.")]
+    assert len(outcomes) == 6, f"§7 enumerates {len(outcomes)} outcomes, not the registered 6"
+
+    # §1 — the inherited invariant, and the extension this release exists to respect.
+    assert "may be computed against `incumbent_linked`" in text
+    assert (
+        "**The same prohibition extends, for the same reason, to any signal that is not an "
+        "assertion about\n> a grouping.**" in text
+    ), "the alarm-lifecycle prohibition is not registered as an extension of the same invariant"
+    assert "they produce **no link-training row**" in text
+
+    # §2 — the unit, which is what stops a design effect from looking like evidence.
+    assert "`asserting_bags` counts a gesture, not a pair." in text
+    assert "increments it\n> by **one**" in text
+    assert "never pooled over pairs" in text
+
+    # §4 — the multiplier, its floor, and where it may never be applied.
+    assert "m(c) = 0.6 + 0.4" in text
+    assert "confidence < 0.50 produces no training row" in text
+    assert "folded into a stored `weight`" in text
+
+    # §5 — recorded and not consumed, which is the one a build is most tempted to "improve".
+    assert (
+        "**Registered: neither enters any model, any metric that decides, or any floor, in "
+        "v0.16.0.**" in text
+    )
+
+    # §3 and §8 — the floors do not move, whatever the census says.
+    assert "**No floor is lowered because a new channel exists.**" in text
+    assert "**No floor is lowered.**" in text

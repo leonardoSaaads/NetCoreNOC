@@ -20,12 +20,24 @@ from netcorenoc.store import Store
 import authutil
 
 # Concrete substitutions for templated path params (ids chosen to not exist).
-PARAMS = {"{sid}": "999999", "{uid}": "999999", "{tid}": "999999"}
+PARAMS = {"{sid}": "999999", "{uid}": "999999", "{tid}": "999999", "{aid}": "999999"}
 # Minimal valid bodies so business validation never masks the authorization outcome.
 BODIES: dict[tuple[str, str], dict[str, object]] = {
     ("POST", "/api/password"): {"old_password": "x" * 12, "new_password": "y" * 12},
     ("POST", "/api/situations/{sid}/feedback"): {"verdict": "confirm"},
     ("POST", "/api/labels"): {"kind": "device", "id": 1, "label": "x"},
+    # v0.16.0. The five operator gestures. Ids that do not exist, and a confidence above the
+    # registered floor: the probe must reach the authorization decision and stop there, so the
+    # bodies are valid in shape and impossible in fact.
+    ("POST", "/api/situations/{sid}/move"): {
+        "alarm_id": 999999,
+        "to_situation_id": 999998,
+        "confidence": 0.9,
+    },
+    ("POST", "/api/situations/{sid}/merge"): {"from_situation_id": 999998, "confidence": 0.9},
+    ("POST", "/api/situations/{sid}/split"): {"alarm_ids": [999999], "confidence": 0.9},
+    ("POST", "/api/situations/{sid}/name"): {"name": "probe"},
+    ("POST", "/api/alarms/{aid}/clear"): {},
     ("POST", "/api/users"): {"username": "probe", "password": "probe-pw-1234", "role": "viewer"},
     ("POST", "/api/users/{uid}/role"): {"role": "viewer"},
     ("POST", "/api/tokens"): {"name": "probe", "role": "viewer"},
@@ -332,6 +344,14 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         "feedback.write": "editor",
         "label.write": "editor",
         "situation.close": "editor",
+        # v0.16.0 (DECISIONS #256): four powers, four capabilities. `feedback.write` records an
+        # opinion; these restructure the record, and `ceiling ∩ policy` lets a deployment grant one
+        # without the other only because they are separate names.
+        "situation.move": "editor",
+        "situation.merge": "editor",
+        "situation.split": "editor",
+        # A zombie clear is a fact about an ALARM, and the capability's name says so.
+        "alarm.clear": "editor",
         # administer (admin only)
         "users.manage": "admin",
         "entity.reset": "admin",

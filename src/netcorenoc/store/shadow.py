@@ -55,7 +55,13 @@ class ShadowMixin(StoreBase):
         return {int(r[0]): int(r[1]) for r in await cur.fetchall()}
 
     async def pre_v080_merges(self) -> int:
-        """Situations merged before `0008` existed: `status='merged'` with **no destination**.
+        """Situations merged before `0008` existed: merged with **no destination**.
+
+        **v0.16.0: the same population, addressed through the column that now carries the fact.**
+        `merged` was a `status` value and is now a `resolution`; migration `0014` rewrote every row
+        in place, so this counts exactly the rows it counted before — asserted by
+        `tests/test_upgrade.py`, which compares the count across the migration rather than trusting
+        that the rewrite was faithful.
 
         Unrecoverable by construction — the destination was never written and no migration can
         reconstruct one — so such a situation *looks* independent and is not, and **no column
@@ -64,7 +70,7 @@ class ShadowMixin(StoreBase):
         trigger above 10 % of `asserting_incidents`.
         """
         cur = await self.conn.execute(
-            "SELECT COUNT(*) FROM situation WHERE status = 'merged' AND merged_into IS NULL"
+            "SELECT COUNT(*) FROM situation WHERE resolution = 'merged' AND merged_into IS NULL"
         )
         row = await cur.fetchone()
         assert row is not None
@@ -89,11 +95,19 @@ class ShadowMixin(StoreBase):
         """
         legacy = 1 if include_legacy else 0
         cur = await self.conn.execute(
+            # v0.16.0: `e.confidence` — **one column added by a LEFT JOIN**, and nothing else about
+            # this query moves. The confidence an operator stated lives on `situation_event`, in its
+            # own column, and is reached here through the label row the gesture produced. A LEFT
+            # JOIN because most labels have no event (every one written before this release) and
+            # `NULL` there means *not reported*, which `confidence.multiplier` turns into 1.0 —
+            # the status quo, unshrunk. The row count cannot change: a partial UNIQUE index on
+            # `situation_event.feedback_id` admits at most one event per label.
             "SELECT p.id AS pair_id, p.delta_t_s, p.class_affinity, p.entity_affinity, "
             "       p.incumbent_linked, p.evaluated_at, p.situation_id, p.alarm_a, p.alarm_b, "
-            "       f.id AS feedback_id, f.verdict, f.created_at AS label_at "
+            "       f.id AS feedback_id, f.verdict, f.created_at AS label_at, e.confidence "
             "FROM dataset_pair p "
             "JOIN feedback f ON f.situation_id = p.situation_id "
+            "LEFT JOIN situation_event e ON e.feedback_id = f.id "
             "WHERE p.lifecycle = 'dataset' "
             "  AND (f.capture_provenance = 'current' OR ?) "
             "  AND f.id = (SELECT f2.id FROM feedback f2 "

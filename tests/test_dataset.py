@@ -1205,7 +1205,14 @@ async def test_lowering_the_training_window_destroys_nothing(store: Store) -> No
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["bound"] == "audit" and body["training_deletes"] == 0
-    assert body["deleted"] == {"pairs": 0, "observations": 0, "labels": 0}, body["deleted"]
+    # v0.16.0 adds `events`: the audit tier is the one path that may remove an operator's recorded
+    # gesture, and a preview that did not say so would understate what a reduction destroys.
+    assert body["deleted"] == {
+        "pairs": 0,
+        "observations": 0,
+        "labels": 0,
+        "events": 0,
+    }, body["deleted"]
 
     cur = await store.conn.execute("SELECT COUNT(*) FROM feedback WHERE id=?", (fid,))
     assert int((await cur.fetchone())[0]) == 1, "narrowing the training window destroyed a label"  # type: ignore[index]

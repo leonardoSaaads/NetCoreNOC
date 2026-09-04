@@ -206,7 +206,7 @@ def _drive(tmp: Path, name: str) -> Drive:
         # those would put empty tuples in the projection. Admin because `shaping.shape` coarsens a
         # device address to its /24 below editor — which is the visibility model working, and is
         # asserted separately below rather than silently flattening the projection.
-        for row in sorted(admin.get("/api/situations?status=open"), key=lambda s: int(s["id"])):
+        for row in sorted(admin.get("/api/situations?status=new"), key=lambda s: int(s["id"])):
             detail = admin.get(f"/api/situations/{row['id']}")
             out.details.append(detail)
             out.projection.append(tuple(sorted(_member_key(a) for a in detail["alarms"])))
@@ -214,7 +214,7 @@ def _drive(tmp: Path, name: str) -> Drive:
 
         # RBAC and visibility on the live surface, not on a constructed request: a viewer token
         # reading over TCP, through the same perimeter a browser meets.
-        for row in viewer.get("/api/situations?status=open"):
+        for row in viewer.get("/api/situations?status=new"):
             detail = viewer.get(f"/api/situations/{row['id']}")
             out.viewer_devices |= {str(a["device_ip"]) for a in detail["alarms"]}
         for path in ("/api/users", "/api/audit"):

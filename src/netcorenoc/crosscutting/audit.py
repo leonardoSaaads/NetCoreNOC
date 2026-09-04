@@ -60,6 +60,16 @@ ACTIONS: frozenset[str] = frozenset(
         "feedback",
         "label.set",
         "situation.close",
+        # v0.16.0 — the five operator gestures. Five actions rather than one `situation.restructure`
+        # for the reason there are five routes (DECISIONS #255): an auditor asking *"who moved an
+        # alarm out of this incident, and when"* must not have to read a details blob to find out
+        # which kind of restructuring a row records. `alarm.clear` is named for its object, because
+        # a zombie clear is a fact about an ALARM and not about a grouping.
+        "situation.move",
+        "situation.merge",
+        "situation.split",
+        "situation.name",
+        "alarm.clear",
         "prune.manual",
         # sensitive reads
         "quarantine.read",

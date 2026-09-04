@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from netcorenoc.crosscutting.shaping.naming import derive_situation_name
 from netcorenoc.crosscutting.shaping.scope import Scope
 
 
@@ -19,6 +20,35 @@ def filter_rows(rows: list[dict[str, Any]], scope: Scope, *, ne_key: str) -> lis
     if scope.unrestricted:
         return rows
     return [row for row in rows if scope.allows_ne(_as_int(row.get(ne_key)))]
+
+
+def project_situation_row(
+    row: dict[str, Any], member_nes: list[int | None], scope: Scope
+) -> dict[str, Any] | None:
+    """One row of the situations LIST for a scoped reader, or **None** if none of it is visible.
+
+    Both callers of the list — `GET /api/situations` and the SSE stream — had this expression
+    written out separately and identically; it is here once because v0.16.0 gave it a third
+    responsibility and two copies of a redaction rule is one copy too many.
+
+    **`derived_name` is dropped when anything is redacted, not recomputed.** The name is built from
+    the addresses of the members, and this row carries no membership to rebuild it from — the list
+    query returns a count, not a bag. Recomputing would mean a second query per list to fetch
+    addresses the reader may see; dropping says exactly as much as `redacted_count` already says,
+    and the console falls back to `#id`, which is the situation's identity anyway (DECISIONS #59:
+    redact to a count, never to a different identity).
+
+    A row with **no** redacted members keeps its name: every address in it belongs to a device this
+    reader can already see, and the field axis coarsens it for a role below `editor`.
+    """
+    shown = sum(1 for ne_id in member_nes if scope.allows_ne(ne_id))
+    if not shown:
+        return None  # nothing of this situation is yours: it is not listed at all
+    redacted = len(member_nes) - shown
+    out = {**row, "alarm_count": shown, "redacted_count": redacted}
+    if redacted:
+        out["derived_name"] = None
+    return out
 
 
 def _as_int(value: Any) -> int | None:
@@ -92,6 +122,14 @@ def project_situation_detail(
         and _as_int(link.get("alarm_b")) in visible_ids
     ]
     out = {**detail, "alarms": visible, "links": links}
+    if hidden:
+        # **Recomputed, not dropped** — here, unlike on the list, the visible membership is in
+        # hand, so the reader gets a true name for the part of the situation that is theirs
+        # instead of a name built partly from devices they may not see. One function, a different
+        # input (DECISIONS #257): a second implementation is how the two would come to disagree.
+        out["derived_name"] = derive_situation_name(
+            [str(alarm.get("device_ip") or "") for alarm in visible], len(visible)
+        )
     # The root hint names an alarm; suppress it when that alarm is one the reader may not see.
     if _as_int(out.get("root_alarm_id")) not in visible_ids:
         out["root_alarm_id"] = None

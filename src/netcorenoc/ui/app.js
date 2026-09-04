@@ -108,7 +108,11 @@ async function poll() {
     const [stats, graph, situations] = await Promise.all([
       get("/api/stats"),
       get("/api/graph"),
-      get("/api/situations?limit=50&status=open"),
+      // v0.16.0: **no status filter.** Three tabs filter this page client-side, so asking the
+      // server for one state would leave two of them empty — and `open` would empty the DEFAULT
+      // tab, because the correlator creates `new` (DECISIONS #254). Still bounded at 50; every
+      // consumer that means "live" now says so rather than relying on the fetch to have meant it.
+      get("/api/situations?limit=50"),
     ]);
     store.applyUpdate({ stats, graph, situations });
     if (!stream) store.setConnection("polling");

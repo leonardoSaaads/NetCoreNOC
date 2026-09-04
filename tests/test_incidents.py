@@ -373,7 +373,9 @@ async def test_resolve_identity_stamps_bags_and_pairs_from_one_map(store: Store)
         a = await store.create_situation(1_000.0, None)
         b = await store.create_situation(1_001.0, None)
         await store.conn.execute(
-            "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?", (b, a)
+            "UPDATE situation SET merged_into = ?, status = 'resolved', resolution = 'merged' "
+            "WHERE id = ?",
+            (b, a),
         )
         await store.commit()
     bags = [{"situation_id": a}]
@@ -385,15 +387,25 @@ async def test_resolve_identity_stamps_bags_and_pairs_from_one_map(store: Store)
 
 
 async def test_pre_v080_merges_are_counted_rather_than_assumed_absent(store: Store) -> None:
-    """§3.3. A situation merged before `0008` carries `status='merged'` and **no destination**, so
-    it looks independent and is not — and no column distinguishes it from one that is."""
+    """§3.3. A situation merged before `0008` carries no destination, so it looks independent and
+    is not — and no column distinguishes it from one that is.
+
+    **v0.16.0: the fixture writes the value migration `0014` would have written.** `merged` moved
+    from `status` to `resolution`, and the migration rewrote every historical row in place
+    (DECISIONS #253); a fixture still writing the old `status` would be constructing a database no
+    upgrade path can produce, and the guard would then pass or fail on a shape that does not exist.
+    `tests/test_upgrade.py` is what proves the rewrite itself was faithful."""
     async with store.lock:
         orphan = await store.create_situation(1_000.0, None)
         keeper = await store.create_situation(1_001.0, None)
         merged = await store.create_situation(1_002.0, None)
-        await store.conn.execute("UPDATE situation SET status = 'merged' WHERE id = ?", (orphan,))
         await store.conn.execute(
-            "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?",
+            "UPDATE situation SET status = 'resolved', resolution = 'merged' WHERE id = ?",
+            (orphan,),
+        )
+        await store.conn.execute(
+            "UPDATE situation SET merged_into = ?, status = 'resolved', resolution = 'merged' "
+            "WHERE id = ?",
             (keeper, merged),
         )
         await store.commit()

@@ -12,6 +12,86 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-five rows, two ask for an
 action, seven ask you to read a paragraph, and sixteen are start-the-new-binary.
 
+## [0.16.0] - 2026-09-03 — "a situation is something you can work, and every gesture is evidence"
+
+`asserting_bags` has been **0** since v0.9.1, against a registered floor of 50, and six releases of
+evidence machinery have had nothing to count. The reason was never the machinery: a console that
+offers `Confirm` and `Split` collects judgements about groupings and nothing else, while the thing
+an operator actually does — moving an alarm that is in the wrong situation — was not expressible.
+This release makes it expressible, and records it.
+
+```
+asserting_bags           0  ->  10        (floor 50; tools/corpus_census.py --gestures)
+asserting_incidents      0  ->  10        (floor 30)
+asserted_negative_pairs  0  ->  2 222     (1 050 of them from one 1 051-alarm storm)
+situation.status         open|closed|merged  ->  new|open|resolved + resolution
+capabilities            30  ->  34
+migrations             0013 ->  0014      (one, additive, forward-only)
+runtime dependencies     5  ->  5         no npm, no build step, no bundler, CSP unchanged
+make eval                byte-identical:  c2e8a0ce…8b9b6f26
+make qa                  1 696 passed (was 1 643); 32 DOM; mypy 227 files; coverage 95.74 %
+```
+
+**The verdict is still `INSUFFICIENT_EVIDENCE`**, which `PREREGISTRATION-0.16.0.md` §7 registers in
+advance as an outcome rather than a failure. What changed is that the quantity is no longer
+structurally zero — and the reason it is 10 rather than 41 is stated in
+[`docs/plans/v0.16.1-visualisation.md`](docs/plans/v0.16.1-visualisation.md) §4 rather than left for
+someone to infer.
+
+### Five operations, and a distinction that is the whole release
+
+**move**, **merge** and **split** say something about a **grouping**. **rename** and **clear an
+alarm by hand** say something else — a label, and an alarm's lifecycle — and they reach the link
+scorer through nothing at all. A zombie clear becoming a grouping signal would be the
+`incumbent_linked` mistake in a new register, and two tests fail if a training row ever appears for
+one (#254, #256, #259, #260).
+
+Every gesture records its **membership snapshot**, so a bag is judged against what the operator was
+looking at rather than against what it became. Every restructuring gesture carries a **confidence**
+the operator sets on the card: stored per gesture and per actor, exactly as given, shrinking that
+gesture's weight by at most 20 % (`m(c) = 0.6 + 0.4c`), applied at derivation and **never folded
+into a stored weight**. Below 0.50 the action happens and produces no training row — the card says
+so before you commit.
+
+### Three states instead of one word
+
+`closed` meant five different things. It is now `resolved` plus a `resolution` — `operator`,
+`self_cleared`, `idle`, `merged`, `manual_clear` — and a historical close that nobody recorded a
+reason for becomes `unattributed` rather than being given one it did not earn (#253). Situations
+start `new`; the first operator gesture makes them `open` (#254).
+
+Names are **two columns**: one the appliance derives from membership and recomputes when membership
+changes, one the operator writes. **No model proposes a name in this release**, and the guard is
+that exactly one statement in the tree writes `operator_name`.
+
+### The defect only a browser could find
+
+`GET /api/events` — the stream every screen reads — still asked for situations with
+`status = 'open'`. After `0014` the correlator creates them as `new`, so the stream published an
+**empty list** while the header beside it said two. The behaviour record does not drive the stream,
+the DOM harness feeds views from captured payloads rather than from it, and every API test asks
+`/api/situations` directly and was right all along. Found in Chromium at three widths, in the live
+pass, on the last day. **F91** is the same shape one layer up.
+
+### The derived name was a protected field and was not treated as one
+
+`derived_name` is built from device addresses. A viewer shown `127.0.0.0/24` for a device on the
+graph was shown `Storm -> 127.0.0.2` beside it, `GET /api/situations` passed its body through no
+shaping at all — correctly, until this release gave the row its first protected field — and a
+**scoped** reader's list carried a name built partly from devices outside their scope. Caught by
+`test_sse_stream_graph_is_shaped_for_viewer`, which asserts on the stream's raw text and is the only
+guard that could see an address hiding inside a composite string. The name is now coarsened by the
+field axis, dropped on the list and **recomputed from the visible members** on the detail.
+
+### Four findings, none of them fixed here
+
+**F89** a second move out of one situation loses its label to F36's unique index. **F90** the
+promotion judge reconstructs an operator's marked set positionally, from live membership — measured
+with a control, invisible since v0.9.1 because nothing reached it, and reachable now. **F91** the
+behaviour record silently drops a route it cannot address: `DELETE /api/tokens/{tid}` is missing
+from three of four principals. **F92** the promotion-path guard names four modules and the path has
+five. A defect found inside a feature release is an entry, not a patch.
+
 ## [0.15.5] - 2026-08-30 — "three places the source and the screen disagreed"
 
 **All three were reported by someone using the console, and all three were invisible to the

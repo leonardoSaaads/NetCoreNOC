@@ -23,14 +23,19 @@ arithmetic, so they change no number.
 from __future__ import annotations
 
 import asyncio
-import json
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from netcorenoc.engine.dataset.census import CorpusStats
+from netcorenoc.engine.model import confidence
 from netcorenoc.engine.model.challenger import Coefficients, feature_vector, sigmoid
+from netcorenoc.engine.model.sufficiency import PROJECT_FLOORS as PROJECT_FLOORS
+from netcorenoc.engine.model.sufficiency import Floors as Floors
+from netcorenoc.engine.model.sufficiency import Sufficiency as Sufficiency
+from netcorenoc.engine.model.sufficiency import assess as assess
+from netcorenoc.engine.model.sufficiency import resolve_floors as resolve_floors
 
 __all__ = [
     "ITERATIONS",
@@ -50,6 +55,10 @@ __all__ = [
 # `CorpusStats` moved to `census.py` in v0.10.0 — "what the labelled corpus contains" is that
 # module's whole subject, and this one had reached its 400-line budget. Re-exported here
 # because `assess()` takes one and every caller since v0.9.0 has imported it from this module.
+#
+# **v0.16.0: the sufficiency half moved to `sufficiency.py` for the same reason**, and the same
+# re-export rule applies. The seam: `derive` and `fit` below are arithmetic over rows, while the
+# floors, a deployment's hardening of them and the two-valued verdict are policy.
 __all__ += ["CorpusStats"]
 
 DAY_S = 86400.0
@@ -84,133 +93,6 @@ MAX_TRAINING_ROWS = 8000
 
 
 @dataclass(frozen=True)
-class Floors:
-    """The sufficiency bar. Pre-registered §5.2, and a deployment may only make it harder."""
-
-    split_bags: int = 50
-    mixed_bags: int = 20
-    operators: int = 3
-    top_operator_share_pct: float = 60.0
-    incidents: int = 30
-
-    def as_dict(self) -> dict[str, float]:
-        return {
-            "split_bags": self.split_bags,
-            "mixed_bags": self.mixed_bags,
-            "operators": self.operators,
-            "top_operator_share_pct": self.top_operator_share_pct,
-            "incidents": self.incidents,
-        }
-
-    def to_json(self) -> str:
-        return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
-
-
-# Ten `split` bags per free parameter. The challenger has four free parameters — three features and
-# an intercept — so the events-per-variable convention gives forty. **Fifty is kept**, the number
-# registered when the plan expected five parameters: `resolved = the more demanding of` runs
-# monotone toward evidence, and lowering a floor because the model got simpler is the move
-# DECISIONS #114 exists to forbid. `challenger.py`'s docstring records why the fourth feature could
-# not be built.
-PROJECT_FLOORS = Floors()
-
-
-def resolve_floors(stored: str | None) -> tuple[Floors, str | None]:
-    """`(resolved floors, warning)` — the project floor, hardened by a deployment policy.
-
-    **A deployment may raise a requirement and can never lower one**, including by setting it to
-    zero, to null, or by omitting it. "Harder" is resolved per threshold with its direction
-    declared: every count is a minimum so the larger value wins, and the operator-concentration
-    ceiling is a maximum so the *smaller* value wins.
-
-    An unreadable value falls back to the **project floors as a whole** and returns a warning —
-    never a partial reconstruction, the same discipline DECISIONS #111 applies to retention, and
-    for the same reason: a policy that cannot be parsed must not become a policy that admits more
-    than the shipped default would.
-    """
-    if stored is None:
-        return PROJECT_FLOORS, None
-    warning = (
-        "The stored evidence-floor policy (config.evidence_floors) could not be read and was "
-        "ignored; the shipped project floors are in effect. A floor may only ever be made harder."
-    )
-    try:
-        payload = json.loads(stored)
-        if not isinstance(payload, dict):
-            raise ValueError("not an object")
-        return (
-            Floors(
-                split_bags=max(PROJECT_FLOORS.split_bags, int(payload.get("split_bags", 0))),
-                mixed_bags=max(PROJECT_FLOORS.mixed_bags, int(payload.get("mixed_bags", 0))),
-                operators=max(PROJECT_FLOORS.operators, int(payload.get("operators", 0))),
-                # A CEILING: harder means lower, so the minimum wins.
-                top_operator_share_pct=min(
-                    PROJECT_FLOORS.top_operator_share_pct,
-                    float(payload.get("top_operator_share_pct", 100.0)),
-                ),
-                incidents=max(PROJECT_FLOORS.incidents, int(payload.get("incidents", 0))),
-            ),
-            None,
-        )
-    except (ValueError, TypeError):
-        return PROJECT_FLOORS, warning
-
-
-@dataclass(frozen=True)
-class Sufficiency:
-    """The verdict, the floors that were missed, and how long until they would be met."""
-
-    ok: bool
-    unmet: tuple[str, ...] = ()
-    projections: dict[str, str] = field(default_factory=dict)
-
-    def to_json(self) -> str:
-        return json.dumps(
-            {"unmet": list(self.unmet), "projections": self.projections},
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-
-
-def _projection(shortfall: int, observed: int, span_days: float) -> str:
-    """`"about N.N months"`, or **`undefined`**.
-
-    *"Not enough yet"* is not actionable; *"about seven months at the current rate"* is. But a rate
-    needs a span, and a corpus whose labels all arrived at one instant has none — extrapolating
-    from it would be a fabricated number, and this release does not print one.
-    """
-    if span_days <= 0.0 or observed <= 0:
-        return "undefined (no measurable labelling rate yet)"
-    per_day = observed / span_days
-    return f"about {shortfall / per_day / MONTH_DAYS:.1f} months at the current rate"
-
-
-def assess(stats: CorpusStats, floors: Floors) -> Sufficiency:
-    """Evaluate the corpus against the resolved floors. **Ambiguity resolves to "insufficient".**"""
-    unmet: list[str] = []
-    projections: dict[str, str] = {}
-    checks: tuple[tuple[str, int, int], ...] = (
-        ("split_bags", stats.split_bags, floors.split_bags),
-        ("mixed_bags", stats.mixed_bags, floors.mixed_bags),
-        ("incidents", stats.incidents, floors.incidents),
-        ("operators", stats.operators, floors.operators),
-    )
-    for name, observed, floor in checks:
-        if observed < floor:
-            unmet.append(f"{name}: {observed} < {floor}")
-            projections[name] = _projection(floor - observed, observed, stats.span_days)
-    if stats.operators and stats.top_operator_share_pct > floors.top_operator_share_pct:
-        unmet.append(
-            f"top_operator_share_pct: {stats.top_operator_share_pct:.1f} > "
-            f"{floors.top_operator_share_pct:.1f}"
-        )
-        projections["top_operator_share_pct"] = (
-            "undefined (concentration falls only when another operator labels)"
-        )
-    return Sufficiency(ok=not unmet, unmet=tuple(unmet), projections=projections)
-
-
-@dataclass(frozen=True)
 class LabelledPair:
     """One promoted pair, carrying the bag it belongs to. What the store hands training."""
 
@@ -224,6 +106,22 @@ class LabelledPair:
     incumbent_linked: bool
     evaluated_at: float
     label_at: float
+    # v0.16.0. Two additive fields, both defaulted so every existing constructor is unchanged.
+    #
+    # `source` names which record this pair's bag came from, and it exists because the two id
+    # spaces are disjoint but not distinguishable: `feedback.id` and `situation_event.id` both start
+    # at 1, and bucketing on the id alone would silently merge a label's bag with an event's. The
+    # bucket key is the PAIR, which is what makes "every bag contributes exactly one unit of mass"
+    # still true across both.
+    source: str = "feedback"
+    # The operator's stated confidence, or `None` for a gesture that reported none — which is every
+    # label written before this release, and is why `m(None) = 1.0` (see `confidence.py`).
+    confidence: float | None = None
+
+    @property
+    def bag(self) -> tuple[str, int]:
+        """The bucket this pair belongs to: **one human decision**, whatever its row count."""
+        return self.source, self.feedback_id
 
 
 @dataclass(frozen=True)
@@ -256,19 +154,32 @@ def derive(pairs: list[LabelledPair], policy: str) -> tuple[list[TrainingRow], d
     contributes exactly one unit of mass** whatever its size, then class balancing so the two
     derived classes carry equal total weight. Returns the rows and a diagnostic document.
     """
-    by_bag: dict[int, list[LabelledPair]] = {}
-    for pair in sorted(pairs, key=lambda p: (p.feedback_id, p.pair_id)):
+    by_bag: dict[tuple[str, int], list[LabelledPair]] = {}
+    dropped_below_floor = 0
+    for pair in sorted(pairs, key=lambda p: (p.source, p.feedback_id, p.pair_id)):
         if policy == "B" and pair.verdict != "confirm":
             continue
-        bucket = by_bag.setdefault(pair.feedback_id, [])
+        # **The registered confidence floor** (`PREREGISTRATION-0.16.0.md` §4): a gesture below it
+        # produces **no training row**. The action still happened and its event is recorded in full
+        # — the operator is running the network, not labelling it — and it contributes nothing here.
+        #
+        # The gate is here as well as at capture time, and the duplication is deliberate: the route
+        # refuses to write a *label* below the floor, and this refuses to derive a *row* from one.
+        # A corpus that arrived by another path — an upgrade, a restore, a future channel — is
+        # governed by the plan either way, and `tests/test_evidence_boundary.py` injects a row below
+        # the floor to prove this half exists rather than assuming the first half covers it.
+        if not confidence.admits(pair.confidence):
+            dropped_below_floor += 1
+            continue
+        bucket = by_bag.setdefault(pair.bag, [])
         if len(bucket) < MAX_PAIRS_PER_BAG:
             bucket.append(pair)
 
     # The overall ceiling: keep the NEWEST bags whole rather than truncating every bag a little,
     # so a bag is either fully represented (up to the per-bag cap) or absent — a half-represented
     # bag would carry one unit of mass over an arbitrary fraction of its pairs.
-    order = sorted(by_bag, key=lambda fid: (-by_bag[fid][0].label_at, fid))
-    kept: list[int] = []
+    order = sorted(by_bag, key=lambda bag: (-by_bag[bag][0].label_at, bag))
+    kept: list[tuple[str, int]] = []
     budget = MAX_TRAINING_ROWS
     for fid in order:
         if len(by_bag[fid]) <= budget:
@@ -277,15 +188,23 @@ def derive(pairs: list[LabelledPair], policy: str) -> tuple[list[TrainingRow], d
     kept.sort()
 
     rows: list[TrainingRow] = []
+    multipliers: list[float] = []
     for fid in kept:
         bucket = by_bag[fid]
         w_bag = 1.0 / len(bucket)
         y = 1.0 if bucket[0].verdict == "confirm" else 0.0
         for pair in bucket:
+            # **The composition, in the order the plan registers it**: the design-effect correction
+            # `1/len(bucket)`, then the confidence multiplier `m(c) = 0.6 + 0.4c`, then the class
+            # balance below. Applied **at derivation** and never folded into a stored `weight` —
+            # `TrainingRow.weight` already carries two meanings and a third would make all three
+            # unrecoverable, which is why `situation_event.confidence` is its own column.
+            factor = confidence.multiplier(pair.confidence)
+            multipliers.append(factor)
             rows.append(
                 TrainingRow(
                     y=y,
-                    weight=w_bag,
+                    weight=w_bag * factor,
                     x=feature_vector(pair.delta_t_s, pair.class_affinity, pair.entity_affinity),
                 )
             )
@@ -307,6 +226,19 @@ def derive(pairs: list[LabelledPair], policy: str) -> tuple[list[TrainingRow], d
         "positive_mass": round(positive, 6),
         "negative_mass": round(negative, 6),
         "single_class": positive == 0.0 or negative == 0.0,
+        # v0.16.0: **the composition is recorded**, which is the plan's own requirement rather
+        # than a convenience. A run whose confidence multipliers were all 1.0 and one whose
+        # operators averaged 0.7 produce different models from the same corpus, and without these
+        # three numbers the difference is invisible in the run row.
+        "bags_by_source": {
+            source: sum(1 for s, _ in kept if s == source)
+            for source in sorted({s for s, _ in kept})
+        },
+        "rows_dropped_below_confidence_floor": dropped_below_floor,
+        "confidence_multiplier_mean": (
+            round(sum(multipliers) / len(multipliers), 6) if multipliers else 1.0
+        ),
+        "confidence_multiplier_min": round(min(multipliers), 6) if multipliers else 1.0,
     }
     return balanced, diagnostics
 

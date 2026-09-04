@@ -102,6 +102,82 @@ class LabelIn(BaseModel):
     label: str = Field(min_length=1, max_length=MAX_LABEL_CHARS)
 
 
+# -- v0.16.0: the operator's five gestures ------------------------------------------------------
+#
+# **Confidence is required on the three that assert something about a grouping and absent from the
+# two that do not**, and that asymmetry is the release's central distinction expressed in the
+# request surface. `PREREGISTRATION-0.16.0.md` §4 registers a confidence on every gesture that
+# produces a training row; §1 registers that a zombie clear produces none. Asking an operator how
+# sure they are that an alarm is stale would be collecting a number with nowhere to go, and a field
+# that is recorded and can never matter is the placeholder rule (#219) in a request model.
+#
+# The bound is the shape only: `0.0 <= confidence <= 1.0`. **The floor of 0.50 is not enforced
+# here.** A gesture below it is a legal request that happens and is recorded in full — the operator
+# is running the network, not labelling it — and what it does not do is produce a training row.
+# Refusing it at the boundary would make the plan's *"the action still happens"* untrue.
+
+
+class MoveIn(BaseModel):
+    """Move one alarm out of this situation and into another. **The release's product.**
+
+    The only gesture that yields a negative and a positive from one action at pair granularity:
+    `alarm_id` against the members it leaves is asserted negative, and against the members it joins
+    positive. Both situations are named, so both are scope-checked.
+    """
+
+    alarm_id: int = Field(ge=1)
+    to_situation_id: int = Field(ge=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class MergeIn(BaseModel):
+    """Merge another situation into this one. Every cross pair is asserted positive."""
+
+    from_situation_id: int = Field(ge=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class SplitIn(BaseModel):
+    """Split the named members out of this situation into a new one.
+
+    Every cross pair between the departing members and the remainder is asserted negative, **and
+    nothing else** — the pairs within each half stay unknown, which is DECISIONS #124's reading of
+    a marked split and is what the label this writes records.
+
+    `max_length` is a parse bound rather than a validation of meaning, the same reasoning
+    `FeedbackIn.excluded_ids` carries: it exists to stop an unbounded parse, and the semantic bound
+    is `MAX_CLIENT_MEMBERS` inside `Exclusion.accept`, which truncates and records that it did.
+    """
+
+    alarm_ids: list[int] = Field(min_length=1, max_length=4096)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class ClearIn(BaseModel):
+    """Hand-clear a zombie alarm. **Carries no confidence, and that is the point.**
+
+    A zombie clear is a fact about an *alarm's lifecycle*, not about a grouping, so it produces no
+    link-training row whatever the operator's certainty. A confidence field here would be a number
+    with nowhere to go, and offering one would suggest the gesture teaches the correlator something.
+    It teaches it nothing, deliberately (`PREREGISTRATION-0.16.0.md` §1).
+
+    The model exists — rather than the route taking no body — so that a later release adding a
+    reason code has somewhere to put it without changing the route's shape.
+    """
+
+
+class NameIn(BaseModel):
+    """An operator's own name for a situation, or `null` to withdraw it.
+
+    Written to `situation.operator_name`, which is a **different column** from `derived_name`: a
+    derived name is a projection of membership and evidence of nothing, an operator's name is a
+    label and carries provenance. **No model proposes one** — a model writing "fibre cut" above a
+    grouping an operator is about to judge contaminates that judgement.
+    """
+
+    name: str | None = Field(default=None, max_length=MAX_LABEL_CHARS)
+
+
 class RetentionIn(BaseModel):
     """The three dataset retention tiers (v0.8.0 §7).
 

@@ -315,7 +315,7 @@ async def test_an_sse_update_mid_gesture_does_not_destroy_the_click_target(
     sid, _ = uifixtures.largest_situation(routes["editor"])
     members = uifixtures.member_ids(routes["editor"], sid)
     update = {
-        "situations": routes["editor"]["/api/situations?limit=50&status=open"]["json"],
+        "situations": routes["editor"]["/api/situations?limit=50"]["json"],
         "stats": routes["editor"]["/api/stats"]["json"],
         "graph": routes["editor"]["/api/graph"]["json"],
     }
@@ -347,7 +347,7 @@ async def test_a_held_card_says_it_is_stale_while_it_is_held(routes: dict[str, A
     What this does NOT cover: that the operator reads it or acts on it.
     """
     sid, _ = uifixtures.largest_situation(routes["editor"])
-    update = {"situations": routes["editor"]["/api/situations?limit=50&status=open"]["json"]}
+    update = {"situations": routes["editor"]["/api/situations?limit=50"]["json"]}
     result = domdriver.run_scenario(
         "sseDuringGesture", {"routes": routes["editor"], "sid": sid, "mark": [], "update": update}
     )

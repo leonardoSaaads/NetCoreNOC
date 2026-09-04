@@ -1302,6 +1302,14 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/situations/{sid}/feedback"): "async def feedback(",
         ("POST", "/api/labels"): "async def set_label(",
         ("POST", "/api/situations/{sid}/close"): "async def close_situation(",
+        # v0.16.0: the five operator gestures. All five name a network element and all five
+        # are below `admin`, so all five are inside the perimeter F34 established — and the
+        # first two name **two** situations each, which is why they check twice.
+        ("POST", "/api/situations/{sid}/move"): "async def move_alarm(",
+        ("POST", "/api/situations/{sid}/merge"): "async def merge_situations(",
+        ("POST", "/api/situations/{sid}/split"): "async def split_situation(",
+        ("POST", "/api/situations/{sid}/name"): "async def name_situation(",
+        ("POST", "/api/alarms/{aid}/clear"): "async def clear_alarm(",
     }
     unprotected: list[str] = []
     for (method, path), capability in sorted(rbac.ROUTE_PERMISSIONS.items()):

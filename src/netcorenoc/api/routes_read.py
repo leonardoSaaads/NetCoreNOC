@@ -71,10 +71,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/situations")
     async def situations(
         principal: auth.Principal = Depends(security),
-        status: Literal["open", "closed", "merged"] | None = None,
+        status: Literal["new", "open", "resolved"] | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Situations with at least one in-scope member; counts are of visible members only.
+
+        **v0.16.0: the three states the console's three tabs render** (migration `0014`,
+        DECISIONS #253, #254). `closed` and `merged` are gone as *statuses* — both are `resolved`,
+        and `resolution` says which — so a client that still asks for one gets a 422 naming the
+        three values rather than an empty list, which is the honest answer to a filter that no
+        longer exists.
 
         `alarm_count` is the number this reader can actually see, with `redacted_count` naming how
         many they cannot — the same honest split as the detail view (DECISIONS #59). Reporting the
@@ -93,16 +99,20 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 None if scope.unrestricted else scope.ne_ids,
             )
             if scope.unrestricted:
-                return rows
+                # **v0.16.0: shaped, which this route did not have to be before.** Until `0014` a
+                # situation row carried an id, a status, two timestamps and two counts — not one
+                # protected field, so `shape()` had nothing to do and was not called.
+                # `derived_name` is built from device addresses, and `fields.py`'s rule is that an
+                # endpoint returning a protected field passes its body through. The stream beside
+                # this route always did; this route now does too.
+                return shaping.shape(rows, principal.role)
             members = await store.situation_member_nes([int(r["id"]) for r in rows])
         out: list[dict[str, Any]] = []
         for row in rows:
-            member_nes = members.get(int(row["id"]), [])
-            shown = sum(1 for ne_id in member_nes if scope.allows_ne(ne_id))
-            if not shown:
-                continue  # nothing of this situation is yours: it is not listed at all
-            out.append({**row, "alarm_count": shown, "redacted_count": len(member_nes) - shown})
-        return out
+            projected = shaping.project_situation_row(row, members.get(int(row["id"]), []), scope)
+            if projected is not None:
+                out.append(projected)
+        return shaping.shape(out, principal.role)
 
     @route.get("/api/situations/{sid}")
     async def situation(sid: int, principal: auth.Principal = Depends(security)) -> dict[str, Any]:

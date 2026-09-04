@@ -278,7 +278,10 @@ const scenarios = {
     await settle(env);
 
     const detail = cardFor(env, params.sid).detail;
-    const boxes = detail.querySelectorAll("input");
+    // v0.16.0: `input` alone no longer means "a member checkbox". The card also carries the
+    // confidence range, two situation-id number fields and the name text field, so the selector
+    // says which inputs it means rather than relying on the card having only one kind.
+    const boxes = detail.querySelectorAll('input[type="checkbox"]');
     for (const index of params.mark ?? []) {
       const box = boxes[index];
       if (!box) throw new Error(`no member checkbox at index ${index} (${boxes.length} rendered)`);

@@ -2214,3 +2214,189 @@ From this release an entry is about six lines: decision, reason, release.*
   test read only the endpoint and saw neither), and
   `test_no_enumerated_dom_attribute_is_passed_as_the_string_false`.
 - No new dependency, no migration, no server change: `src/netcorenoc/` moves only under `ui/`.
+
+## 253. An unattributable historical `closed` becomes `resolved` / `unattributed` (v0.16.0)
+
+- **Decision**: `0014` maps `status='open'` → `open`; `status='merged'` → `resolved` with
+  `resolution='merged'`; `status='closed'` → `resolved` with **`resolution='unattributed'`**, a
+  value that means *"this situation left before v0.16.0 and nothing recorded why"*.
+- **Reason**: today `closed` conflates operator-closed and idle-swept, and no column distinguishes
+  them. Writing `idle` would be a **guess about content** where `0008`'s one permitted data write is
+  explicitly a **marker about provenance** — the same distinction that made `legacy_capture` a
+  marker rather than a verdict on a label's quality. `merged` is different in kind: it is knowable
+  exactly, because `merge_situations` itself wrote it.
+- **Trade-off**: a sixth `resolution` value that every reader must handle, forever, for rows nobody
+  will write again. Accepted, because an operator auditing two months later must be able to tell
+  *"nobody looked at it"* from *"we do not know"*, and a value that says "unknown" is the only
+  honest way to say so.
+- **Correction to the brief**: Part IV.3 asks for *"a fifth value meaning 'before this release,
+  unknown'"* while Part V.1 already registers five (`operator | self_cleared | idle | merged |
+  manual_clear`). It is the **sixth**. The count is the brief's; the decision is unaffected.
+- **Measured** (Phase 1, on a populated v0.15.5 database driven through the eval corpus): the
+  counts of each `status` before the migration and of each `(status, resolution)` after it are
+  recorded by `test_upgrade.py::test_v0155_upgrade_applies_0014_and_attributes_nothing_it_cannot`,
+  which asserts the two agree row for row and that no row gained a `resolution` the old schema
+  could have justified.
+
+## 254. The correlator creates `new`; the first operator gesture makes it `open` (v0.16.0)
+
+- **Decision**: `create_situation` writes `status='new'`. A situation becomes `open` on the **first
+  operator gesture that names it** — a verdict, a close that carries one, a move, a merge, an
+  operator split, a manual clear or a rename. No timer, no member count, no age.
+- **Reason**: `new` means *"nobody has looked at this"* and `open` means *"an operator is working
+  it"*, which is what the three tabs are for. Every alternative criterion is a threshold — five
+  members, ten minutes — that nothing in this repository has measured, and a threshold chosen to
+  look reasonable is the placeholder rule (#219) wearing a number.
+- **Trade-off**: on a busy appliance almost every situation is `new` and the `Open` tab is small.
+  That is the true statement about a NOC that has not triaged, and a tab that filled itself would
+  be reporting the passage of time as operator attention.
+- **Consequence, declared**: `stats.open_situations` now counts `status IN ('new','open')` — the
+  live population, which is what the number has always meant. Counting `open` alone would have
+  reported zero on a working appliance the moment this release shipped. Every other reader of
+  `status='open'` (the idle sweep, engine-state reload, scope resolution) is widened the same way
+  and for the same reason.
+- **Measured** (Phase 2): the eval corpus forms 41 situations under the census's replay, and the
+  count of each `status` after the replay, after one verdict, and after the idle sweep is asserted
+  by `test_store.py::test_the_three_states_are_each_reachable_and_each_reached_once`.
+
+## 255. Four routes, one per gesture, rather than one overloaded restructure route (v0.16.0)
+
+- **Decision**: `POST /api/situations/{sid}/move`, `POST /api/situations/{sid}/merge`,
+  `POST /api/situations/{sid}/split`, `POST /api/alarms/{aid}/clear`. A self-clear is not an
+  operator gesture and gets no route.
+- **Reason**: the alternative — one `POST …/{sid}/restructure` carrying an `operation` field —
+  needs one declaration, one capability and one `ROUTE_SCOPE` entry, and that is exactly its
+  defect. These four differ in **who may do them** (#256), in **what they assert**
+  (`PREREGISTRATION-0.16.0.md` §2 gives each its own row), in **which objects they name** (move and
+  merge name *two* situations, so the scope decision is two `situation_in_scope` calls, not one),
+  and in **what they audit**. One route would give one answer to four different questions and the
+  authorization table would say `situation.restructure` where four powers live.
+- **Trade-off**: four route declarations, four capabilities, four audit actions and four
+  behaviour-record entries instead of one. Accepted: every one of those is a line a reviewer can
+  read, and the overloaded route's saving is exactly the review it avoids.
+- **`/api/alarms/{aid}/clear` is not under `/api/situations`** because a zombie clear is a fact
+  about an **alarm**, not about a grouping — the distinction `PREREGISTRATION-0.16.0.md` §1 turns
+  into a prohibition. Putting it under a situation would put the alarm-lifecycle gesture in the
+  correlation namespace, which is the misreading the plan exists to prevent, expressed as a URL.
+
+## 256. Each restructuring gesture gets its own capability (v0.16.0)
+
+- **Decision**: four new capabilities, all `editor`: `situation.move`, `situation.merge`,
+  `situation.split`, `alarm.clear`. **30 → 34.**
+- **Reason**: `feedback.write` is the power to *record an opinion*; these are the power to
+  *restructure the record*. A merge mutates `situation_alarm` and changes what every later label
+  refers to; an editor who may say "this grouping is wrong" is not obviously an editor who may
+  rewrite it. Part VIII resolves the ambiguity to *"it does"*, and `resolve_capabilities` is
+  `ceiling ∩ policy`, so four capabilities let a deployment grant labelling without restructuring —
+  a configuration one capability makes unreachable.
+- **Trade-off**: four rows in three tables rather than one, and an admin has more to read. Accepted
+  for the reason `situation.close` was already distinct from `feedback.write` (#126's neighbour):
+  the split is what makes least privilege expressible at all.
+- **Measured** (Phase 3): the authorization matrix's capability and route counts before and after
+  are asserted by `test_rbac.py`, whose fail-closed sweep already covers every registered route as
+  each of the four principals — so the four new routes are covered by construction rather than by a
+  test somebody remembered to add.
+
+## 257. The derived name is a projection of MEMBERSHIP alone, refreshed where membership changes
+     (v0.16.0)
+
+- **Decision**: `situation.derived_name` is stored, and it is written by the same statement group
+  that changes `situation_alarm` — `create_situation`, `add_alarm_to_situation`, `merge_situations`
+  and the three restructuring operations, and nowhere else. Its value is a function of the member
+  count and the **distinct device addresses** of the members, and of nothing else:
+
+  ```
+  0 members                         -> "(no members)"
+  1 device,  1 member               -> "10.0.0.1"
+  1 device,  n > 1                  -> "Storm -> 10.0.0.1"
+  2 devices, 2 members              -> "10.0.0.1 <-> 10.0.0.2"
+  otherwise                         -> "Storm -> 10.0.0.1 and 3 more"
+  ```
+- **Reason**: *"a stored name that goes stale is worse than none"*, so staleness has to be
+  structurally impossible rather than promised. Deriving on read would satisfy that too, but the
+  column is required (Part V.1) and a name that survives its members being pruned is the reason —
+  a resolved situation keeps its name after retention has collected the alarms it was derived from,
+  and at that point it can no longer be recomputed, which is `0008`'s rule 1 exactly.
+- **Why not the root alarm.** `set_root` runs on **every activation** and the root moves, so a name
+  that named the root would either go stale or cost a rewrite per trap. Membership is the coarser
+  input and it is the one that changes rarely.
+- **Why the address and never an operator label.** A device label is free text an operator typed;
+  putting it inside a server-derived name would put operator-influenced text into a field the
+  console renders beside an operator's *own* name, and the two would be indistinguishable. The
+  address is validated at ingest.
+- **Trade-off**: one aggregate query per membership change, on the batch lock. Its cost is
+  **measured in Phase 2** against the two largest corpus scenarios and against the 100 000-trap
+  burst guard, and reported with the release; a name that cost the ingest path more than the
+  budget allows would have to become a read-time derivation instead.
+- **`operator_name` is a separate column and is never written by the server.** A model does not
+  propose one in this release (Part I.2), and the guard that says so is
+  `test_no_model_output_reaches_operator_name`.
+
+## 258. A card that self-cleared while held shows the change, does not apply it, and records the
+     verdict against the membership the operator saw (v0.16.0)
+
+- **Decision**: the answer Part IV.3 §6 settles, implemented by **reuse and not by a second
+  mechanism**: the held card keeps its frozen payload (#173), a badge says the situation resolved
+  underneath it, and any verdict it sends is recorded against `feedback_member` with
+  `source='server'` taken at the instant of the gesture — F46's repair, F48's demonstration,
+  unchanged.
+- **Reason**: the alternative is a second reconciliation path for "the state changed while you were
+  deciding", and two paths that must agree about what the operator saw are two chances to disagree.
+  `record_label` already writes the server's own bag at verdict time; `situation_event` writes the
+  same ordered, positional, server-authoritative shape for the gestures that have no `feedback`
+  row. There is one snapshot rule in the tree and it now has two writers, not two rules.
+- **Trade-off**: the operator can act on a card that is up to one poll interval behind, and the
+  badge is the whole of the mitigation. That is the trade #173 already accepted; nothing here makes
+  it worse, and the new gestures fail loudly rather than silently when the situation has resolved —
+  a move out of a resolved situation is a 409, not a silent no-op.
+
+## 259. `engine.py` is byte-identical; the close derives its own reason (v0.16.0)
+
+- **Decision**: `engine/operate/engine.py` is not edited by this release. `TRAP_PATH_HASHES` and
+  `TRAP_PATH_BODY_HASHES` are unchanged. Everything the state machine needs on the engine side is
+  reached without touching it:
+  - `store.create_situation` writes `status='new'` (the engine calls it unchanged);
+  - `store.close_situation` **derives** `self_cleared` or `idle` from whether the bag still holds an
+    active member, instead of taking the reason as a parameter;
+  - the in-memory membership fix-ups the four operator gestures need are free functions in
+    `engine/operate/membership.py` taking the engine, not a new mixin on it;
+  - `new` -> `open` promotion happens in the routes, which already hold the store.
+- **Reason**: the brief's Part V.6 names five modules the trap path must keep byte-identical and
+  `engine.py` is not among them — but `TRAP_PATH_BODY_HASHES` names five and `engine.py` **is**, in
+  place of `scoring.py`. The two lists disagree. Holding the stricter reading satisfies both, and it
+  buys the strongest claim this release can make: a release that added a state machine, an append-only
+  event log, five operator operations and four capabilities changed **no byte** of the file that
+  carries *"ingestion is sacred"*.
+- **Why deriving is not a compromise.** `_close_situation` calls the store on both paths with
+  `(sid, ts)`, and what tells the two apart — whether any member is still active — is in the database
+  at the instant of the call, which is the only instant at which it is still true. Passing it in
+  would have made the ingest path *say* what it already *demonstrates*.
+- **Trade-off accepted**: an empty bag would answer `all_cleared` True, so the derivation guards on
+  the member count and an empty situation resolves as `idle`. That is Appendix B's *"an invariant
+  that cannot fail"* met head-on: `SUM(status='active') = 0` is true of every empty set, and the
+  guard is what stops it meaning *"the network fixed itself"* about a situation with nothing in it.
+- **Honest limit**: a situation the idle sweep reaches whose members all happen to be cleared is
+  recorded `self_cleared`. It is the right answer — the alarms did clear — and it is reachable only
+  when a clear did not travel through `_handle_clear`.
+
+## 260. A rename is a label, so it reuses `label.write` (v0.16.0)
+
+- **Decision**: `POST /api/situations/{sid}/name` is a **fifth route** and does **not** add a fifth
+  capability: it requires `label.write`, the capability that already governs naming a device and
+  naming an alarm class. Supersedes nothing in #255 and #256; it extends the route count from four
+  to five and leaves the capability count at 34.
+- **Reason**: naming a device, naming an alarm class and naming a situation are one power — an
+  operator who may put a word on a network element may put one on an incident. Part VIII's rule that
+  ambiguity about whether a gesture needs its own capability resolves to *"it does"* is about
+  distinct **powers**, and a fifth capability here would express a distinction nobody would ever
+  configure. The three restructuring capabilities exist because a merge changes what every later
+  label refers to; a name changes nothing but a heading.
+- **Why not extend `POST /api/labels` with `kind: "situation"`.** That was the closer alternative
+  and it was rejected on storage and on scope: `label` is keyed `(kind, target_id)` and the name
+  belongs in `situation.operator_name`, beside `derived_name`, which is where the two-column
+  distinction lives; and the scope decision for a situation is `situation_in_scope` — a membership
+  test — rather than `scope.allows_ne`. One route with two storage backends and two scope rules is
+  the overloaded route #255 refuses, one level down.
+- **Trade-off**: an operator granted `label.write` for device names also gains the power to name
+  situations, and a deployment cannot separate them. Accepted: the alternative is a capability whose
+  only purpose is to be separable.

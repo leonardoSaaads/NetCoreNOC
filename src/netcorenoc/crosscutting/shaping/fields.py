@@ -23,16 +23,27 @@ import ipaddress
 from typing import Any, overload
 
 from netcorenoc.crosscutting.rbac import ROLE_RANK
+from netcorenoc.crosscutting.shaping.naming import coarsen_situation_name
 
 # Minimum role that may see each protected field in full; below it the field is coarsened
 # (transform) or dropped (transform is None). Keys are matched by field name anywhere in a
 # (possibly nested) response body.
 _COARSEN = "coarsen"
 _DROP = "drop"
+
+#: Fields whose value CONTAINS addresses rather than being one. They take the same rule and a
+#: different coarsener, and the set is named here so a reader of `FIELD_RULES` can see at a glance
+#: which entries are not a bare address.
+_COMPOSITE = frozenset({"derived_name"})
 FIELD_RULES: dict[str, tuple[str, str]] = {
     "ip": ("editor", _COARSEN),  # device / NE address on graph + entity views
     "device_ip": ("editor", _COARSEN),  # alarm rows in a situation detail
     "device": ("editor", _COARSEN),  # timeline marks (label-or-ip; a label passes through)
+    # v0.16.0: the server-derived situation name is BUILT from device addresses, so it needs the
+    # same rule they have — otherwise `Storm -> 127.0.0.2` carries past a rule that coarsens
+    # `127.0.0.2` two fields away. `operator_name` is deliberately absent: it is free text a person
+    # typed, like a device label, and a label passes through (see `device` above).
+    "derived_name": ("editor", _COARSEN),
     "source_ip": ("admin", _DROP),  # who connected from where (audit / session detail)
     "community_tag": ("editor", _DROP),  # SNMP community grouping tag (F4)
 }
@@ -82,7 +93,14 @@ def shape(obj: Any, role: str | None) -> Any:
             if not _allowed(role, min_role):
                 if action == _DROP:
                     continue  # omit the field entirely for this role
-                out[key] = coarsen_ip(value)
+                # A composite field carries addresses INSIDE a string, so coarsening it means
+                # coarsening each address in it; `coarsen_ip` alone returns such a string
+                # unchanged, which is exactly how v0.16.0's derived name leaked one.
+                out[key] = (
+                    coarsen_situation_name(value, coarsen_ip)
+                    if key in _COMPOSITE
+                    else coarsen_ip(value)
+                )
                 continue
         out[key] = shape(value, role) if isinstance(value, (dict, list)) else value
     return out

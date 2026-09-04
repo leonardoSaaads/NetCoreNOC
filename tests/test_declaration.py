@@ -562,12 +562,19 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # shape of two existing responses (`/api/me` and the login route gained `password_policy`;
     # `/api/users` rows gained `sole_admin`) — a body, not a path, and the behaviour-identity
     # record is where that is pinned.
-    assert len(served) == 93, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.16.0: 93 -> 100. **Five of the seven are `/api` routes** — the first release since
+    # v0.13.0 to add one at all. Move, merge, operator-split, name and the zombie clear: five
+    # gestures, five routes, five declarations rather than one overloaded route that would need
+    # none of them (DECISIONS #255, #260). The other two are static UI modules,
+    # `app/views/parts/lifecycle.js` (the gestures, their confidence control and the history list)
+    # and `app/views/parts/members.js` (the member table, split out when the situations view
+    # reached the module-graph guard).
+    assert len(served) == 100, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 44, (
-        f"the /api surface moved: {len(api_pairs)} pairs. Neither v0.13.0 nor v0.15.3 adds a "
-        f"route — they add static module paths only, and a change here means something else "
-        f"happened."
+    assert len(api_pairs) == 49, (
+        f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
+        f"operator's five gestures — and v0.13.0/v0.14.0/v0.15.3 added none at all. A change "
+        f"here means something else happened."
     )
     for _method, path in served:
         route = next(r for r in app.routes if getattr(r, "path", None) == path)  # type: ignore[attr-defined]
@@ -628,12 +635,19 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # shape of two existing responses (`/api/me` and the login route gained `password_policy`;
     # `/api/users` rows gained `sole_admin`) — a body, not a path, and the behaviour-identity
     # record is where that is pinned.
-    assert len(served) == 93, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.16.0: 93 -> 100. **Five of the seven are `/api` routes** — the first release since
+    # v0.13.0 to add one at all. Move, merge, operator-split, name and the zombie clear: five
+    # gestures, five routes, five declarations rather than one overloaded route that would need
+    # none of them (DECISIONS #255, #260). The other two are static UI modules,
+    # `app/views/parts/lifecycle.js` (the gestures, their confidence control and the history list)
+    # and `app/views/parts/members.js` (the member table, split out when the situations view
+    # reached the module-graph guard).
+    assert len(served) == 100, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 44, (
-        f"the /api surface moved: {len(api_pairs)} pairs. Neither v0.13.0 nor v0.15.3 adds a "
-        f"route — they add static module paths only, and a change here means something else "
-        f"happened."
+    assert len(api_pairs) == 49, (
+        f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
+        f"operator's five gestures — and v0.13.0/v0.14.0/v0.15.3 added none at all. A change "
+        f"here means something else happened."
     )
     paths = {path for _method, path in served}
     for public in declare.UNAUTHENTICATED_PATHS:
@@ -712,7 +726,7 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
 
 # --- the postures, checked against observed behaviour ------------------------------------
 
-_CONCRETE = {"{sid}": "1", "{ne_id}": "1", "{uid}": "1", "{tid}": "1"}
+_CONCRETE = {"{sid}": "1", "{ne_id}": "1", "{uid}": "1", "{tid}": "1", "{aid}": "1"}
 
 
 def _concrete(path: str) -> str:
@@ -764,7 +778,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # correlator's arithmetic names no network element.
     assert len(ADMIN_ONLY) == 25, len(ADMIN_ONLY)
     assert len(UNSCOPED) == 6, UNSCOPED
-    assert len(SCOPED) == 12, SCOPED
+    # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
+    # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
+    # widened by exactly the routes this release adds.
+    assert len(SCOPED) == 17, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -784,6 +801,17 @@ async def _status(client: httpx.AsyncClient, method: str, path: str) -> int:
 _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/situations/{sid}/feedback"): {"verdict": "confirm"},
     ("POST", "/api/labels"): {"kind": "device", "id": 1, "label": "x"},
+    # v0.16.0. The five gestures, in shapes that pass validation so the *posture* is what is
+    # observed rather than a 422 from the request model.
+    ("POST", "/api/situations/{sid}/move"): {
+        "alarm_id": 1,
+        "to_situation_id": 2,
+        "confidence": 0.9,
+    },
+    ("POST", "/api/situations/{sid}/merge"): {"from_situation_id": 2, "confidence": 0.9},
+    ("POST", "/api/situations/{sid}/split"): {"alarm_ids": [1], "confidence": 0.9},
+    ("POST", "/api/situations/{sid}/name"): {"name": "x"},
+    ("POST", "/api/alarms/{aid}/clear"): {},
     ("POST", "/api/users"): {"username": "x", "password": "x" * 14, "role": "viewer"},
     ("POST", "/api/users/{uid}/role"): {"role": "viewer"},
     ("POST", "/api/tokens"): {"name": "t", "role": "viewer"},
@@ -845,6 +873,14 @@ SCOPED_TARGETED = [
     ("POST", "/api/situations/{sid}/feedback"),
     ("POST", "/api/labels"),
     ("POST", "/api/situations/{sid}/close"),
+    # v0.16.0: all five gestures name a resource, so all five are the targeted form — an
+    # out-of-scope target takes the same 404 a nonexistent one does. `move` and `merge` name
+    # **two** situations and check both, which is why they cannot be one route (DECISIONS #255).
+    ("POST", "/api/situations/{sid}/move"),
+    ("POST", "/api/situations/{sid}/merge"),
+    ("POST", "/api/situations/{sid}/split"),
+    ("POST", "/api/situations/{sid}/name"),
+    ("POST", "/api/alarms/{aid}/clear"),
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 
@@ -867,8 +903,20 @@ async def test_scoped_routes_404_an_out_of_scope_target(
     body = dict(_BODIES.get(route) or {})
     if path == "/api/labels":
         body = {"kind": "device", "id": out_of_scope_ne["device"], "label": "x"}
-    concrete = path.replace("{sid}", str(out_of_scope_ne["situation"])).replace(
-        "{ne_id}", str(out_of_scope_ne["ne"])
+    if path == "/api/situations/{sid}/move":
+        body = {
+            "alarm_id": out_of_scope_ne["alarm"],
+            "to_situation_id": out_of_scope_ne["situation"],
+            "confidence": 0.9,
+        }
+    if path == "/api/situations/{sid}/split":
+        body = {"alarm_ids": [out_of_scope_ne["alarm"]], "confidence": 0.9}
+    if path == "/api/situations/{sid}/merge":
+        body = {"from_situation_id": out_of_scope_ne["situation"], "confidence": 0.9}
+    concrete = (
+        path.replace("{sid}", str(out_of_scope_ne["situation"]))
+        .replace("{ne_id}", str(out_of_scope_ne["ne"]))
+        .replace("{aid}", str(out_of_scope_ne["alarm"]))
     )
     client = await authutil.client_as(app, "editor")
     try:
@@ -990,8 +1038,13 @@ async def _out_of_scope_ids(store: Store, engine: Any, queue: Any) -> dict[str, 
         for s in situations
         if members.get(int(s["id"])) and set(members[int(s["id"])]) == {hidden_ne}
     )
+    async with store.lock:
+        hidden_members = await store.situation_member_ids(hidden_situation)
     return {
         "ne": hidden_ne,
         "situation": hidden_situation,
         "device": devices.get("192.168.50.1", hidden_ne),
+        # v0.16.0: `POST /api/alarms/{aid}/clear` names an alarm rather than a situation, so the
+        # out-of-scope estate has to hand back one of those too.
+        "alarm": hidden_members[0],
     }

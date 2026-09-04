@@ -79,7 +79,12 @@ export class Shell extends Component {
     const decision = this.decision();
     const live = this.state.live;
     const activeId = decision.kind === "view" ? decision.view.id : null;
-    const counts = { situations: (live.situations || []).length };
+    // The sidebar badge has always meant "situations that have not left", and it still does:
+    // v0.16.0 split that population into `new` and `open`, so the filter names what it excludes
+    // rather than what it includes (DECISIONS #254).
+    const counts = {
+      situations: (live.situations || []).filter((s) => s.status !== "resolved").length,
+    };
 
     return html`<div id="app" class="shell">
       <${Sidebar} capabilities=${active.capabilities} activeId=${activeId}

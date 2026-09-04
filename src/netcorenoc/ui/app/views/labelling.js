@@ -34,7 +34,9 @@ export class Labelling extends Component {
   componentWillUnmount() { if (this.unsubscribe) this.unsubscribe(); }
 
   render(_props, { live }) {
-    const all = live.situations || [];
+    // A resolved situation can still be labelled, but it is not what an operator works through:
+    // this queue is the live population, which is what it has always shown.
+    const all = (live.situations || []).filter((s) => s.status !== "resolved");
     const judgeable = all.filter((s) => s.alarm_count >= 2);
     const singletons = all.length - judgeable.length;
 
@@ -71,7 +73,7 @@ export class Labelling extends Component {
           cells: {
             id: html`<a class="tap" href=${`#/situations/${s.id}`}>#${s.id}</a>`,
             members: s.alarm_count,
-            status: html`<${Badge} tone=${s.status === "open" ? "alarm" : "quiet"}>${s.status}<//>`,
+            status: html`<${Badge} tone=${s.status === "resolved" ? "quiet" : "alarm"}>${s.status}<//>`,
             updated: html`<span title=${timeTitle(s.updated_at)}>${relative(s.updated_at)}</span>`,
             go: html`<a class="tap" href=${`#/situations/${s.id}`}>judge it →</a>`,
           },

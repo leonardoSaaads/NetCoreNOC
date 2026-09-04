@@ -163,3 +163,16 @@ _.scorer_model_version_id  # set on every load path (netcorenoc/scorer_lifecycle
 document_for  # the inverse of scorer_for (netcorenoc/model_version.py)
 get_promotion  # unused function (netcorenoc/api/routes_promotion.py)
 propose_promotion  # unused function (netcorenoc/api/routes_promotion.py)
+# --- v0.16.0, the situation lifecycle ---------------------------------------------------------
+# The five operator gestures' route handlers, registered by decorator exactly like every other
+# handler above. `move_alarm` and `merge_situations` are NOT listed: each shares its name with a
+# `Store` method the routes call, and vulture matches by name — so listing them would silence the
+# store method too, which is the failure mode the v0.9.1 block at line 110 records.
+clear_alarm  # unused function (netcorenoc/api/routes_annotate.py)
+name_situation  # unused function (netcorenoc/api/routes_annotate.py)
+split_situation  # unused function (netcorenoc/api/routes_lifecycle.py)
+# `Store.event_members` is the ordered-snapshot accessor, the exact counterpart of
+# `feedback_members` at line 114 and listed for the identical reason: the training join reads the
+# snapshot through SQL, so nothing in `src/` calls this by name — and it is the only way to read a
+# gesture's bag back without that join, which is the surface a reader and the tests need.
+event_members

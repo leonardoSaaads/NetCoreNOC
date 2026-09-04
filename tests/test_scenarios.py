@@ -61,11 +61,11 @@ async def test_fiber_cut_cold_start_groups_per_device_until_evidence_accrues(
     engine, queue = engine_env
     events = util.fixture_events("fiber_cut.json", BASE)
     await util.drive(engine, queue, events[:4])
-    listed = await store.list_situations(status="open", limit=100)
+    listed = await store.list_situations(status="new", limit=100)
     assert len(listed) == 2  # one per NE while the E edge is still untrusted
     assert {row["alarm_count"] for row in listed} == {2}
     await util.drive(engine, queue, events[4:])
-    listed = await store.list_situations(status="open", limit=100)
+    listed = await store.list_situations(status="new", limit=100)
     assert len(listed) == 1 and listed[0]["alarm_count"] == 8
 
 
@@ -86,7 +86,7 @@ async def test_fiber_cut_after_training_collapses_to_one_situation(
     assert any({e.a_id, e.b_id} == {device_a, device_b} and e.weight > 0.9 for e in device_edges)
 
     await util.drive(engine, queue, util.fixture_events("fiber_cut.json", BASE + 10 * ROUND))
-    listed = await store.list_situations(status="open", limit=100)
+    listed = await store.list_situations(status="new", limit=100)
     assert len(listed) == 1
     detail = await store.situation_detail(listed[0]["id"])
     assert detail is not None and len(detail["alarms"]) == 8
@@ -114,7 +114,7 @@ async def test_background_noise_does_not_merge_into_the_fiber_cut(
         key=lambda e: e.ts,
     )
     await util.drive(engine, queue, mixed)
-    listed = await store.list_situations(status="open", limit=100)
+    listed = await store.list_situations(status="new", limit=100)
     fiber_oids = {LOS, LOF, "1.3.6.1.4.1.1271.2.1.3", "1.3.6.1.4.1.1271.2.1.4"}
     fiber_sits, noise_sits = [], []
     for row in listed:
@@ -136,7 +136,7 @@ async def test_olt_storm_collapses_to_one_situation_with_damped_learning(
 ) -> None:
     engine, queue = engine_env
     await util.drive(engine, queue, util.fixture_events("olt_storm.json", BASE))
-    listed = await store.list_situations(status="open", limit=100)
+    listed = await store.list_situations(status="new", limit=100)
     assert len(listed) == 1 and listed[0]["alarm_count"] == 501
 
     # The probable root is the uplink alarm, not one of the 500 symptoms.
@@ -217,7 +217,7 @@ async def test_split_feedback_measurably_reduces_affinity(
     engine, queue = engine_env
     await train_fiber_cut(engine, queue, store)
     await util.drive(engine, queue, util.fixture_events("fiber_cut.json", BASE + 10 * ROUND))
-    listed = await store.list_situations(status="open", limit=10)
+    listed = await store.list_situations(status="new", limit=10)
     sid = listed[0]["id"]
     device_a = await store.device_id("127.0.0.2", BASE)
     device_b = await store.device_id("127.0.0.3", BASE)
@@ -237,7 +237,7 @@ async def test_confirm_feedback_reinforces(
     engine, queue = engine_env
     await train_fiber_cut(engine, queue, store, rounds=1)
     await util.drive(engine, queue, util.fixture_events("fiber_cut.json", BASE + 10 * ROUND))
-    listed = await store.list_situations(status="open", limit=10)
+    listed = await store.list_situations(status="new", limit=10)
     device_a = await store.device_id("127.0.0.2", BASE)
     device_b = await store.device_id("127.0.0.3", BASE)
     mass_before = engine.learner.E.pair_mass(device_a, device_b)

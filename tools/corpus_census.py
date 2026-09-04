@@ -51,6 +51,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from netcorenoc.api import create_app
+from netcorenoc.crosscutting import auth
 from netcorenoc.engine.dataset import incidents
 from netcorenoc.engine.dataset.labels import Exclusion, LabelContext, LabelScope
 from netcorenoc.ingest.events import TrapEvent
@@ -76,6 +78,15 @@ OPERATORS = ("alice", "bob", "carol")
 SPLIT_EVERY = 3
 SCOPE_EVERY = 5
 CONTROL_MIN_MEMBERS = 4
+
+# The v0.16.0 arm's operator. A real account, signing in over the real login route, because the
+# gestures are routes and a route resolves scope and capability from a principal.
+CENSUS_ORIGIN = "http://netcorenoc.census"
+CENSUS_EDITOR = "census-editor"
+CENSUS_PASSWORD = "correct horse battery staple"  # nosec B105 - a fixture account in a dev tool
+#: Above the registered floor of 0.50, so the gesture produces a training row. A census run at a
+#: confidence below it would measure the floor rather than the corpus.
+CENSUS_CONFIDENCE = 0.8
 
 # The registered floors, so the verdict this file prints is the plan's and not a fresh opinion.
 ASSERTING_BAGS_FLOOR = 50
@@ -107,8 +118,16 @@ async def _drain(engine: Engine, queue: asyncio.Queue[Any], target: int) -> None
             await task
 
 
-async def replay(store: Store) -> tuple[Engine, list[int]]:
-    """Every corpus scenario through one engine, an hour of synthetic time apart."""
+async def replay(store: Store, on_scenario: Any = None) -> tuple[Engine, list[int]]:
+    """Every corpus scenario through one engine, an hour of synthetic time apart.
+
+    `on_scenario`, when given, is awaited after each scenario has drained and **before** the
+    maintenance pass that may close what it formed. That is the only moment at which a
+    restructuring gesture is possible at all: a gesture on a resolved situation is refused by
+    design (DECISIONS #254), and after the final maintenance pass 39 of this corpus's 41 situations
+    are resolved. A census that gestured at the end would measure that refusal and call it a
+    corpus.
+    """
     queue: asyncio.Queue[Any] = asyncio.Queue()
     engine = Engine(store, queue)
     await engine.start()
@@ -120,6 +139,8 @@ async def replay(store: Store) -> tuple[Engine, list[int]]:
             queue.put_nowait(item)
         await _drain(engine, queue, target)
         now = max([now, *(event.ts for event in events)])
+        if on_scenario is not None:
+            await on_scenario()
         await engine.maintenance(now + 1.0, retention_days=NO_PRUNE_DAYS)
     await engine.maintenance(now + 2.0, retention_days=NO_PRUNE_DAYS)
     cur = await store.conn.execute("SELECT id FROM situation ORDER BY id")
@@ -155,6 +176,62 @@ async def label_all(engine: Engine, store: Store, situations: list[int], *, cont
                 role="editor",
                 label=label,
             )
+
+
+async def restructure_live(store: Store, client: Any, done: set[int]) -> dict[str, int]:
+    """**v0.16.0's arm**: an operator working the console, through the real routes.
+
+    One `move` out of every **live** situation that has a member to spare, into the live situation
+    beside it, at the confidence a careful operator would give. Nothing here is a labelling task:
+    it is the gesture an operator makes to fix their console, and `PREREGISTRATION-0.16.0.md` §2 is
+    the claim that the gesture is evidence.
+
+    **Through HTTP, not through the store.** A census that called `store.move_alarm` would count a
+    corpus no operator could produce and would miss every decision the route makes — the confidence
+    floor, the scope check, the label. The declared policy above writes labels server-side because
+    it predates the routes; this arm cannot, because the route *is* what is being measured.
+
+    **Called between scenarios, not at the end**, and `done` carries the situations already
+    restructured across those calls. Both are the same correction: after the replay's last
+    maintenance pass 39 of this corpus's 41 situations are resolved and a gesture on a resolved
+    situation is refused, so an end-of-run arm measures the refusal. F36 is the other bound — a
+    second move out of one situation records no second label — so a situation is gestured once.
+
+    Returns the outcome histogram rather than a count, because a run whose gestures were refused
+    must say *how*: a zero with no status codes beside it is the measurement this repository has
+    been caught by before.
+    """
+    cur = await store.conn.execute(
+        "SELECT id FROM situation WHERE status IN ('new','open') ORDER BY id"
+    )
+    live = [int(row[0]) for row in await cur.fetchall()]
+    outcomes: dict[str, int] = {}
+    for index, sid in enumerate(live):
+        if sid in done or len(live) < 2:
+            continue
+        destination = live[index - 1] if index else live[-1]
+        cur = await store.conn.execute(
+            "SELECT alarm_id FROM situation_alarm WHERE situation_id=? ORDER BY alarm_id", (sid,)
+        )
+        bag = [int(row[0]) for row in await cur.fetchall()]
+        if len(bag) < 2:
+            # Moving a situation's only member empties it, which is a different act with a
+            # different meaning. Counted rather than skipped silently.
+            outcomes["one-member situation"] = outcomes.get("one-member situation", 0) + 1
+            continue
+        response = await client.post(
+            f"/api/situations/{sid}/move",
+            json={
+                "alarm_id": bag[0],
+                "to_situation_id": destination,
+                "confidence": CENSUS_CONFIDENCE,
+            },
+        )
+        key = f"{response.status_code}"
+        outcomes[key] = outcomes.get(key, 0) + 1
+        if response.status_code == 200:
+            done.add(sid)
+    return outcomes
 
 
 async def census(store: Store, tag: str) -> dict[str, int]:
@@ -228,11 +305,42 @@ async def census(store: Store, tag: str) -> dict[str, int]:
     return figures
 
 
-async def run(*, control: bool, tag: str) -> dict[str, int]:
+async def run(*, control: bool, tag: str, gestures: bool = False) -> dict[str, int]:
     store = Store(":memory:")
     await store.open()
+    outcomes: dict[str, int] = {}
     try:
-        engine, situations = await replay(store)
+        if not gestures:
+            engine, situations = await replay(store)
+        else:
+            import httpx  # a dev dependency; `tools/` is not shipped in the wheel
+
+            async with store.lock:
+                await store.create_user(
+                    CENSUS_EDITOR, auth.hash_password(CENSUS_PASSWORD), "editor", False, BASE
+                )
+                await store.commit()
+            engine = Engine(store, asyncio.Queue())
+            app = create_app(engine, rate_capacity=100_000.0)
+            done: set[int] = set()
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url=CENSUS_ORIGIN,
+                headers={"X-NetCoreNOC-Client": "ui", "Origin": CENSUS_ORIGIN},
+            ) as client:
+                signed_in = await client.post(
+                    "/api/login",
+                    json={"username": CENSUS_EDITOR, "password": CENSUS_PASSWORD},
+                )
+                if signed_in.status_code != 200:  # pragma: no cover - a broken fixture
+                    raise SystemExit(f"the census operator could not sign in: {signed_in.text}")
+
+                async def between_scenarios() -> None:
+                    for key, count in (await restructure_live(store, client, done)).items():
+                        outcomes[key] = outcomes.get(key, 0) + count
+
+                engine, situations = await replay(store, between_scenarios)
+            print(f"  [gesture arm] move outcomes  : {dict(sorted(outcomes.items()))}")
         await label_all(engine, store, situations, control=control)
         return await census(store, tag)
     finally:
@@ -240,12 +348,24 @@ async def run(*, control: bool, tag: str) -> dict[str, int]:
 
 
 async def main() -> int:
+    # `--gestures` adds a THIRD run and changes nothing about the first two, so `make census` is
+    # byte-identical to what it printed at v0.15.5 and the release's before/after comparison is a
+    # comparison of two runs of one program rather than of two programs.
+    with_gestures = "--gestures" in sys.argv[1:]
+
     real = await run(control=False, tag="THE REAL CORPUS (the declared mechanical policy)")
     print()
     control = await run(
         control=True, tag="THE CONTROL (same policy; a split of >= 4 also marks its first two)"
     )
     print()
+    if with_gestures:
+        await run(
+            control=False,
+            gestures=True,
+            tag="THE SAME CORPUS, WITH v0.16.0's GESTURES DRIVEN THROUGH THE ROUTES",
+        )
+        print()
 
     bags_met = real["asserting_bags"] >= ASSERTING_BAGS_FLOOR
     incidents_met = real["asserting_incidents"] >= ASSERTING_INCIDENTS_FLOOR

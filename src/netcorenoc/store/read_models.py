@@ -4,6 +4,10 @@ Inherits :class:`GovernanceMixin` because :meth:`list_situations`'s over-cap bra
 :meth:`situation_member_nes` to filter in Python rather than truncating a bound id list. That is
 the second of the two sibling-inheritance edges in this package (DECISIONS #88).
 
+**v0.16.0 adds a second edge here**, to :class:`SituationEventMixin`, for the same reason and with
+the same discipline: :meth:`situation_detail` serves a situation's gesture history, and a stub that
+resolved instead of the real method would be a silent empty list rather than a loud failure.
+
 Every scoped read here is a v0.7.1 finding: F38 (``LIMIT`` bounds the *filtered* set, never the
 global one) and F35 (the scope filter is on ``ne_id`` in SQL — a display string is never an
 authorization key). ``ne_ids=None`` runs the unmodified v0.7.0 SQL, so parity is by construction.
@@ -15,17 +19,38 @@ import hashlib
 from typing import Any
 
 from netcorenoc.store.governance import GovernanceMixin
+from netcorenoc.store.situation_events import SituationEventMixin
+from netcorenoc.store.situations import LIVE
 from netcorenoc.store.types import MAX_SCOPE_PARAMS
 
 
-class ReadModelsMixin(GovernanceMixin):
+class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
+    @property
+    def _lifecycle_columns(self) -> str:
+        """The v0.16.0 situation columns, or nothing on a schema that predates them.
+
+        A **literal chosen by the schema probe**, never by a caller: the string is one of two
+        constants and no value from outside this class reaches it. It exists because
+        `tests/test_upgrade.py` drives the current store against a migration directory frozen at an
+        older version — the property that makes "the migration changes behaviour and the code does
+        not" checkable — and a listing that named `resolution` unconditionally would raise there.
+
+        `situation_detail` needs no such guard: it is `SELECT *`, which is exactly the shape that
+        adapts to whichever columns the schema has.
+        """
+        return "s.resolution, s.derived_name, s.operator_name, " if self._has_lifecycle else ""
+
     async def stats(self) -> dict[str, int]:
         out: dict[str, int] = {}
         for name, sql in (
             ("devices", "SELECT COUNT(*) FROM device"),
             ("classes", "SELECT COUNT(*) FROM alarm_class"),
             ("active_alarms", "SELECT COUNT(*) FROM alarm WHERE status='active'"),
-            ("open_situations", "SELECT COUNT(*) FROM situation WHERE status='open'"),
+            # v0.16.0 (DECISIONS #254): the LIVE population, `new` and `open` alike. The
+            # correlator creates `new`, so counting `open` alone would have reported zero on a
+            # working appliance the moment this release shipped — and this number has always
+            # meant "situations that have not left", which is what it still means.
+            ("open_situations", f"SELECT COUNT(*) FROM situation WHERE {LIVE}"),  # nosec B608
             ("quarantined", "SELECT COUNT(*) FROM quarantine"),
         ):
             cur = await self.conn.execute(sql)
@@ -52,7 +77,8 @@ class ReadModelsMixin(GovernanceMixin):
         where, args = ("WHERE s.status=?", [status]) if status else ("", [])
         if ne_ids is None:
             cur = await self.conn.execute(
-                "SELECT s.id, s.status, s.created_at, s.updated_at, s.root_alarm_id, "
+                f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see below
+                "s.created_at, s.updated_at, s.root_alarm_id, "
                 "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
                 "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
                 # nosec B608 - `where` is a fixed literal, values are bound parameters
@@ -72,7 +98,8 @@ class ReadModelsMixin(GovernanceMixin):
         marks = ",".join("?" * len(ne_ids))
         scoped = f"{where} AND " if where else "WHERE "
         cur = await self.conn.execute(
-            "SELECT s.id, s.status, s.created_at, s.updated_at, s.root_alarm_id, "
+            f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see below
+            "s.created_at, s.updated_at, s.root_alarm_id, "
             "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
             "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
             # A situation is listed when **at least one** member is in scope — the same predicate
@@ -110,7 +137,27 @@ class ReadModelsMixin(GovernanceMixin):
             (situation_id,),
         )
         links = [dict(r) for r in await cur.fetchall()]
-        return {**dict(head), "alarms": alarms, "links": links}
+        # v0.16.0: links whose two endpoints are **not both current members** are filtered out.
+        # A `link` records what the correlator computed and an operator move does not delete one —
+        # the arithmetic is still true — but a link to an alarm that has left is not a statement
+        # about *this* bag, and rendering it would name a member the card does not list. Before this
+        # release the two sets could not disagree, because only the correlator moved rows, so this
+        # filter changes no existing response.
+        member_ids = {int(alarm["id"]) for alarm in alarms}
+        links = [
+            link
+            for link in links
+            if int(link["alarm_a"]) in member_ids and int(link["alarm_b"]) in member_ids
+        ]
+        return {
+            **dict(head),
+            "alarms": alarms,
+            "links": links,
+            # What happened to this situation, and who did it. Four columns, deliberately — see
+            # `situation_events`: the row carries member digests and a peer situation id, and a
+            # scoped reader must not learn either from a history panel.
+            "events": await self.situation_events(situation_id),
+        }
 
     async def graph_snapshot(self, min_edge_n: float) -> dict[str, Any]:
         cur = await self.conn.execute(

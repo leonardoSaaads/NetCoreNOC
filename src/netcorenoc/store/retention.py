@@ -41,8 +41,12 @@ class RetentionMixin(StoreBase):
         """
         cutoff = now - retention_s
         counts: dict[str, int] = {}
+        # v0.16.0: `closed` and `merged` were two `status` values and are now one — `resolved`,
+        # with the reason in `resolution`. The set this sweep collects is unchanged: everything
+        # that has left. Migration `0014` rewrote both values in place, so a database upgraded
+        # mid-retention-window is collected on the same schedule it would have been.
         cur = await self.conn.execute(
-            "SELECT id FROM situation WHERE status IN ('closed','merged') AND closed_at < ?",
+            "SELECT id FROM situation WHERE status='resolved' AND closed_at < ?",
             (cutoff,),
         )
         gone = [int(r[0]) for r in await cur.fetchall()]
@@ -59,9 +63,27 @@ class RetentionMixin(StoreBase):
                 gone,
             )
             # No `DELETE FROM feedback` here. See the docstring: that line was F44.
+            #
+            # **v0.16.0 adds the second shell-retaining reason, for F44's reason exactly.**
+            # `situation_event` is the append-only record of every operator gesture and it carries
+            # no foreign key, precisely so history outlives its subject — but an event whose
+            # `situation_id` names a row this sweep deleted is an event nothing can join. So a
+            # situation carrying an event keeps its one row, like a situation carrying a label, and
+            # both shells are collected by the ordinary later pass once the **audit sweep**
+            # (`prune_dataset_audit`) has removed what was holding them.
+            # The `situation_event` clause is emitted only where the table exists. `prune` runs on
+            # the maintenance loop, which `tests/test_upgrade.py` drives against a schema frozen
+            # before this release — and a sweep that raised there would take the whole loop with it,
+            # which is the one thing an operational sweep may never do.
+            events = (
+                "AND id NOT IN (SELECT situation_id FROM situation_event) "
+                if self._has_lifecycle
+                else ""
+            )
             cur = await self.conn.execute(
                 f"DELETE FROM situation WHERE id IN ({marks}) "  # nosec B608
-                "AND id NOT IN (SELECT situation_id FROM feedback) RETURNING id",
+                "AND id NOT IN (SELECT situation_id FROM feedback) "
+                f"{events}RETURNING id",  # nosec B608 - a literal chosen by the probe above
                 gone,
             )
             # The count is what was actually collected, not what was eligible: a labelled
