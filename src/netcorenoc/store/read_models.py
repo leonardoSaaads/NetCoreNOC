@@ -146,9 +146,10 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
         scoped branch and :meth:`_search_clause` for what the search may match.
         """
         where, args = ("WHERE s.status=?", [status]) if status else ("", [])
+        # `_lifecycle_columns` is one of two literals chosen by the schema probe; no value from
+        # outside this class reaches it, and every user value below is a bound parameter.
         head = (
-            "SELECT s.id, s.status, "
-            f"{self._lifecycle_columns}"
+            f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see above
             "s.created_at, s.updated_at, s.root_alarm_id, "
             "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
             "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
