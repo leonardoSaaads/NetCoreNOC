@@ -37,6 +37,16 @@ v0.10.0's verdict states, refuses against v0.11.0's floors, and shares a tree wi
 v0.14.0's plan constrains. All five are load-bearing at once, which is the literal reason this
 table has only ever grown.
 
+**v0.16.1 adds a sixth, and it is the first that is an AMENDMENT rather than a plan.**
+`PREREGISTRATION-0.16.1.md` answers what a bag's identity is once its membership changes — which
+membership a label is judged against, whether two gestures on one situation are one label or two,
+what happens to the bags already acquired, and which numbers the repair is predicted to move. It is
+pinned exactly like a plan and for a stronger reason than the others: it is the document the F90
+repair *implements*, so a build able to edit it after running the census would be choosing the bag
+key to suit the number it produced. That it amends v0.16.0 rather than replacing it is asserted
+too — an amendment that quietly relaxed the plan it amends would be the one failure this table
+cannot otherwise see.
+
 This is the discipline the frozen `eval` baseline already applies to an *output*, applied instead to
 a *claim*. `tests/test_eval.py` fails when the correlator's behaviour drifts; this fails when the
 standard the correlator is being judged against drifts.
@@ -105,6 +115,12 @@ PREREGISTRATION_0_14_0_SHA256 = "5607328a573d9a3c78374e47ba11e6dcff76f07c023b3f2
 # the gate documents' half of the two-sided discipline went (DECISIONS #204).
 PREREGISTRATION_0_16_0_SHA256 = "81aadc3b7a0695c0a6221a8302fb4e4e591f800a1cceeb89e6a52cca8ecca448"
 
+# Recorded in Gate 0, before any v0.16.1 repair existed, in a commit that changed nothing else and
+# carries the annotated tag `v0.16.1-gate0`. **An amendment, and pinned exactly like a plan**: it
+# is the document the F90/F89 repair implements, so a build that could edit it after seeing the
+# census would be choosing the bag key to suit the number it produced.
+PREREGISTRATION_0_16_1_SHA256 = "acaf5f8afdef58950333856d6118532a1548572c6179070457f569f126a618c1"
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -142,6 +158,12 @@ PLANS: tuple[Plan, ...] = (
         PREREGISTRATION_0_16_0_SHA256,
         SECOND_HOME,
     ),
+    Plan(
+        "v0.16.1",
+        REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.16.1.md",
+        PREREGISTRATION_0_16_1_SHA256,
+        SECOND_HOME,
+    ),
 )
 
 _IDS = [plan.release for plan in PLANS]
@@ -162,9 +184,9 @@ def test_every_plan_is_guarded() -> None:
     v0.9.0's guard while adding its own and stay green, which is the shape of the retirement this
     test exists to make visible. Adding a plan is meant to require editing this line.
     """
-    assert len(PLANS) == 5, f"expected all five plans to be pinned, found {_IDS}"
-    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0", "v0.14.0", "v0.16.0"]
-    assert len({plan.sha256 for plan in PLANS}) == 5, "no two plans may share one hash"
+    assert len(PLANS) == 6, f"expected all six plans to be pinned, found {_IDS}"
+    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0", "v0.14.0", "v0.16.0", "v0.16.1"]
+    assert len({plan.sha256 for plan in PLANS}) == 6, "no two plans may share one hash"
 
 
 @pytest.mark.parametrize("plan", PLANS, ids=_IDS)
@@ -457,3 +479,49 @@ def test_the_0_16_0_plan_keeps_the_alarm_lifecycle_prohibition_and_the_gesture_u
     # §3 and §8 — the floors do not move, whatever the census says.
     assert "**No floor is lowered because a new channel exists.**" in text
     assert "**No floor is lowered.**" in text
+
+
+def test_the_0_16_1_amendment_keeps_the_snapshot_the_bag_key_and_the_prediction() -> None:
+    """v0.16.1's §1, §2 and §4 — the three claims a repair of the judge's input rests on.
+
+    Deliberately **not** the same assertions as the five above, for the reason those tests' own
+    docstrings give: a structural check weak enough to pass every plan is a formality. And this one
+    is an **amendment**, so it carries one assertion none of the others needs — that it did not
+    quietly amend the plan it amends.
+
+    * **A label is judged against the captured snapshot**, never live membership, and the marked
+      set comes from `feedback_exclusion` rather than from a position. That is F90, and a document
+      that stated it loosely would let the repair reintroduce it under a different index.
+    * **The bag key is over the member SET**, and the bound it trades away is named. A build that
+      keyed on the ordered digest would insert a second row every time the correlator re-ordered a
+      bag, which is F36's defect wearing this release's clothes.
+    * **§4 predicts, in advance, that no census figure moves.** A repair whose predicted direction
+      is written down afterwards is a prediction that cannot fail, and this is the one section of
+      the amendment that becomes worthless the instant it is edited.
+    """
+    text = (REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.16.1.md").read_text(
+        encoding="utf-8"
+    )
+
+    # §1 — the snapshot, and the marked set that is not a prefix.
+    assert "never `situation_alarm`, which is\n> live" in text
+    assert "never a positional prefix of anything" in text
+
+    # §2 — the identity is the set, and the trade is stated rather than discovered.
+    assert "a bag's identity is `(situation_id, verdict, bag_key)`" in text
+    assert "member ids as a SET" in text
+    assert "The bound this trades away, stated rather than discovered:" in text
+    assert "registers that it counts a\n> **gesture**, not a pair" in text, (
+        "the amendment does not restate v0.16.0's registered unit, so nothing stops the key from "
+        "silently changing what the census counts"
+    )
+
+    # §4 — the predictions, made before the repair ran.
+    assert "predicted before it is run" in text
+    assert "**Predicted: 10, 10, 2 222, 1 050" in text
+    assert "rises by exactly one" in text
+    assert "no predicted direction" in text
+
+    # §5 — the one thing an amendment must promise: that it amended nothing it did not name.
+    assert "Nothing in `PREREGISTRATION-0.16.0.md` is amended.**" in text
+    assert "`0015` carries `bag_key` and nothing else.**" in text
