@@ -304,22 +304,27 @@ async def test_v070_upgrade_changes_no_behaviour(tmp_path: Path) -> None:
         await new.close()
 
 
-async def test_v071_upgrade_changes_no_behaviour_except_the_three_documented_changes(
+async def test_v071_upgrade_changes_no_behaviour_except_the_documented_changes(
     tmp_path: Path,
 ) -> None:
     """Gate 4.2 (v0.7.1): a live v0.7.0 database upgrades in place and, with **no governance
-    policy**, every route answers exactly as it did — with three documented exceptions.
+    policy**, every route answers exactly as it did — with the documented exceptions.
 
-    The exceptions are each a defect fix, each has a `DECISIONS.md` entry, and each is asserted
-    explicitly below rather than described:
+    The exceptions are each a defect fix or a named release decision, each has a `DECISIONS.md`
+    entry, and each is asserted explicitly below rather than described:
 
     1. a label write to a target that does not exist now returns **404** (F37, DECISIONS #70);
     2. a repeated **identical** feedback verdict is now a **no-op** (F36, DECISIONS #68);
     3. a list endpoint applies its `LIMIT` after filtering (F38, DECISIONS #72) — invisible here,
        because an unrestricted scope filters nothing, so the unrestricted result set is asserted
-       byte-identical to the v0.7.0 query.
+       byte-identical to the v0.7.0 query;
+    4. a timeline mark carries `ne_id` (v0.16.1, DECISIONS #268), because the element filter names
+       an element by the key the scope predicate uses rather than by a display string.
 
-    Any fourth difference at empty policy is a defect in this release's work.
+    Any difference at empty policy that is not on this list is a defect in the release that
+    introduced it. **The count left the name in v0.16.1**: a test called "the three documented
+    changes" has to be renamed the first time there are four, which is F92's lesson applied to a
+    test name rather than to a tuple of modules.
     """
     import netcorenoc.store.lifecycle as store_mod
 
@@ -406,10 +411,18 @@ async def test_v071_upgrade_changes_no_behaviour_except_the_three_documented_cha
             assert listed["derived_name"] is None and listed["operator_name"] is None
             assert listed["resolution"] == _EXPECTED_RESOLUTION[was["status"]]
         assert await new.timeline_marks(1000) == before_marks
-        # …and `ne_id` is used for filtering only; it never reaches a rendered mark.
+        # **v0.16.1: a mark now carries `ne_id`, and that is the fourth documented change.**
+        # It used to be selected for the scope filter and dropped, so the rendered mark was
+        # byte-identical to v0.7.0's. The element filter this release adds has to name an element
+        # by the **same key the scope predicate uses** rather than by the rendered `device` string
+        # — sending that string back would be F35 asked for on purpose — and the console cannot
+        # filter by a key the marks do not carry. It discloses nothing new: `/api/entities` has
+        # served NE ids to viewers since v0.5.0 (DECISIONS #268).
         assert all(
-            set(m) == {"ts", "device", "class", "kind"} for m in await new.timeline_marks(50)
+            set(m) == {"ts", "ne_id", "device", "class", "kind"}
+            for m in await new.timeline_marks(50)
         )
+        assert all(m["ne_id"] is not None for m in await new.timeline_marks(50))
 
         await authutil.make_users(new)
         app = create_app(engine_new, rate_capacity=100000.0)

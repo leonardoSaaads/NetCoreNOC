@@ -572,10 +572,12 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # v0.16.1: 100 -> 101. **Exactly one, and it is a static UI module**, not an `/api` route:
     # `app/views/parts/card.js`, the situation card, split out when the server-side search pushed
     # `views/situations.js` over the same module-graph guard that produced `members.js` a release
-    # earlier (DECISIONS #265). The search itself is a **query parameter on a route that already
-    # exists** — `GET /api/situations?q=` — so the /api surface is unchanged at 49, which is the
-    # property this pair of assertions is really for.
-    assert len(served) == 101, f"the served surface moved: {len(served)} method/path pairs"
+    # earlier (DECISIONS #265) — and `/favicon.svg`, which every page load had been asking for as
+    # `/favicon.ico` and getting a 404 (F96). **Neither is an `/api` route**: the search is a query
+    # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
+    # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
+    # pair of assertions is really for.
+    assert len(served) == 102, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 49, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
@@ -651,10 +653,12 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # v0.16.1: 100 -> 101. **Exactly one, and it is a static UI module**, not an `/api` route:
     # `app/views/parts/card.js`, the situation card, split out when the server-side search pushed
     # `views/situations.js` over the same module-graph guard that produced `members.js` a release
-    # earlier (DECISIONS #265). The search itself is a **query parameter on a route that already
-    # exists** — `GET /api/situations?q=` — so the /api surface is unchanged at 49, which is the
-    # property this pair of assertions is really for.
-    assert len(served) == 101, f"the served surface moved: {len(served)} method/path pairs"
+    # earlier (DECISIONS #265) — and `/favicon.svg`, which every page load had been asking for as
+    # `/favicon.ico` and getting a 404 (F96). **Neither is an `/api` route**: the search is a query
+    # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
+    # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
+    # pair of assertions is really for.
+    assert len(served) == 102, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 49, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "

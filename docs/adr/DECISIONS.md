@@ -2517,3 +2517,103 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: the two refusals are demonstrated red with controls in `tests/test_search.py` —
   a scoped editor finding a hidden member's device, and a viewer finding a coarsened address —
   each beside a principal who legitimately finds the same situation.
+
+## 267. The tab does not follow the card; the card stays while it is open (v0.16.1)
+
+- **Decision**: a card the operator has gestured on remains in the list they are looking at until
+  they collapse it, even after the gesture moves it out of that tab. The **tab does not change**,
+  the badge still says `open`, and the pin lives in the screen's own state for the length of the
+  visit — nowhere else, and never on the server.
+- **Reason**: DECISIONS #254 makes the first gesture promote `new` → `open`, which is right and
+  means the card leaves the default tab an untriaged appliance is full of. Measured in v0.16.0's
+  live pass and recorded in that release's brief §5: *"the card an operator is working on
+  disappears from the default tab"*. Moving the **tab** instead would be the same surprise wearing
+  the other hat — the tab is what the operator chose.
+- **Trade-off accepted**: for as long as the card is open, the list shows one row the tab's own
+  predicate excludes. It is visibly `open`, it is the row the operator is reading, and collapsing
+  releases both the pin and the held payload together — so the two notions of "I am working on
+  this" have one lifetime rather than two.
+- **Why not "let the card linger for N seconds"**: a timer is a second, invisible piece of state
+  whose expiry an operator cannot predict, and the card would then vanish mid-sentence. Collapse
+  is a thing they do.
+
+## 268. The timeline gains two filters and no gesture (v0.16.1)
+
+- **Decision**: `GET /api/timeline` takes `ne_id`, `since` and `until`, all applied in SQL. The
+  screen gains **no gesture at all**, and that is the registered answer rather than an omission.
+- **Reason (the gesture)**: `PREREGISTRATION-0.16.0.md` §1 extends the `incumbent_linked`
+  prohibition to *any signal that is not an assertion about a grouping*, naming the alarm lifecycle
+  explicitly. A raise and a clear are facts about an **alarm**. A "this is wrong" control on a
+  timeline mark would be exactly the prohibited signal in a new shape, and Part VII rule 5's
+  *"none, and here is why"* is the honest answer.
+- **Reason (the key)**: the element filter names an element by `ne_id` — the same key the scope
+  predicate uses — and **not** by the rendered `device` string the marks carry. Two elements can
+  share a label, so filtering on the display string would be v0.7.0's defect asked for on purpose
+  (F35, DECISIONS #67). That is why a mark now carries `ne_id`: the console cannot filter by a key
+  it is not given, and an NE id discloses nothing new — `/api/entities` has served it to viewers
+  since v0.5.0.
+- **Trade-off**: the timeline response shape changes for the first time since v0.7.1, and
+  `tests/test_upgrade.py`'s "three documented changes" became four. The count left that test's
+  name in the same commit, which is F92's lesson applied to a test name.
+- **Measured**: with a busy neighbour and `limit=1`, a query filter returns the asked-for element's
+  marks and a render filter returns **nothing** — which reads on screen as *"this element is
+  quiet"*. `tests/test_timeline.py` pins both directions.
+
+## 269. `by user:2` becomes `by alice`, and `FIELD_RULES` decides who is told (v0.16.1)
+
+- **Decision**: `situation_events` returns `actor_name` beside `actor` — the username if that
+  account still exists, `NULL` if it does not or if the actor was a service token. `actor` is
+  unchanged and remains the record. The name carries a `FIELD_RULES` entry at `editor`, so a viewer
+  receives the reference.
+- **Reason**: the reference is correct, unforgeable and useless to a human reading their own work
+  (v0.16.1 brief §5). Resolving it raises two questions and both are answered rather than avoided:
+  a **deleted account** falls back to the reference and never to an invented name — `0011`'s rule
+  that unknown is not a value you may fill in, applied to a person — and **who may read it** is
+  decided by the one module that owns field-level authorization, not by a condition in a query.
+- **Why `editor` and not `admin`**: an editor is who makes gestures and reads their own history,
+  which is the entire reason the name exists. `admin` would have resolved the question by deleting
+  it.
+- **Why dropped rather than coarsened**: half a username is not a weaker fact, it is a puzzle. The
+  reference is already beside it and is a complete answer to *who*.
+- **Trade-off accepted**: an editor learns the usernames of other operators who have acted on
+  situations they can see. That is narrower than the roster (`GET /api/users` stays admin-only) and
+  is the minimum an incident history has to disclose to be an incident history.
+
+## 270. The graph's analytics were already on the wire (v0.16.1)
+
+- **Decision**: "which elements alarm most" and "which relationships are strongest" are rendered
+  from `active_alarms`, `weight` and `n` — three numbers `/api/graph` has served since v0.13.0 —
+  computed in the client. **No route was added, and no charting library** (Part VII rules 1 and 2).
+- **Reason**: v0.15.2 found `/api/stats` serving eleven keys while the console rendered five, and
+  this is the same finding on a different route: the drawing encoded `active_alarms` as a radius
+  that **saturates at 24 px** (F77) and `weight` as an opacity, so the screen answered both
+  questions in quantities that cannot be read off. The numbers were being thrown away.
+- **`n` is shown beside `weight` and that is not decoration**: a pair seen six times can already
+  reach an affinity of 0.83 (F61, measured), so a table printing the score alone would present a
+  claim from six observations and one from hundreds as the same fact.
+- **The graph gains no new gesture kind.** An assertion that two *elements* are unrelated is not in
+  `PREREGISTRATION-0.16.0.md` §2's registered map, and inventing one to satisfy decision 1 is what
+  Part VII rule 5 forbids. What it gains is that its **existing** gesture — renaming a device,
+  `label.write`, double-click only since v0.13.0 — is now a button in a table, so it is reachable
+  from a keyboard for the first time on a screen whose own caption said it was not.
+- **Measured**: the tables are ordinary DOM, so the harness executes them —
+  `tests/test_ui_invariants.py` now asserts both, with a control on an empty graph. The drawing
+  itself is still not covered and the file still says so.
+
+## 271. Entities and alarm classes both survive, and one of them was missing its verb (v0.16.1)
+
+- **Decision**: neither screen is deleted or merged (decision 4). `views/classes.js` gains the
+  control its own caption has promised since v0.13.0; `views/entities.js` is unchanged.
+- **Reason — entities**: the brief's §12 calls it a duplicate of the graph. It is the graph's
+  **only** keyboard-operable form — the drawing says so itself — and it carries the varbind
+  profiler, which is the product's explainability claim one level below correlation and appears
+  nowhere else. Deleting it would delete the only accessible path to the network view.
+- **Reason — alarm classes**: *"a list with no statistics"* was the charge, and the answer is not
+  statistics. The screen said *"a label you set here is cosmetic"* and **there was no control to
+  set one**: `POST /api/labels {kind: "class"}` was reachable from no screen in this console. A
+  screen that describes an action it does not offer is worse than one that offers nothing.
+- **No statistics were added**, and that is Part VII rule 4 rather than an oversight: nothing
+  serves a per-class alarm count, and the choice was between inventing a route for a number nobody
+  named a question for and leaving it. Recorded as an open question rather than built.
+- **No new capability**: naming a class is `label.write`, the same power that renames a device and
+  names a situation (DECISIONS #260), and the screen gates its own control with `can()`.

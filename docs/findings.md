@@ -983,3 +983,24 @@ Run every command below from the repository root with the virtualenv active.
   graph from each registry view, resolved by path; `composed_source(view_id)` is what the three
   source-shape guards read. Issued as a finding rather than absorbed into the card split, because
   the defect is older than the split and would have outlived it.
+
+## F96 — `/favicon.ico` 404s on every page load, and the one-line fix is CSP-forbidden
+
+- **What**: `index.html` declared no icon, so every browser asked for `/favicon.ico` and the
+  appliance answered 404. Present at v0.15.5 and at v0.16.0; recorded in
+  `docs/plans/v0.16.1-visualisation.md` §5 as *"harmless, pre-existing"*.
+- **Reproduce**: load the console with the network panel open, or
+  ```sh
+  curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/favicon.ico   # 404
+  ```
+- **Measured**: one 404 per page load, per browser tab, forever. Harmless, and it is the kind of
+  line that trains an operator to ignore the network panel.
+- **Why it is not the one-liner it looks like**: the obvious repair is
+  `<link rel="icon" href="data:image/svg+xml,…">`, and **this appliance's CSP forbids it**. A
+  browser fetches a favicon as an image, `CSP` declares `img-src 'self'`, and a `data:` URI is not
+  `'self'` — so that repair trades a 404 for a silent CSP violation and an icon that never appears.
+  Nothing about the 404 says this, which is why it survived two releases as *"trivial"*.
+- **Disposition**: **FIXED in v0.16.1**, as the only thing the policy permits: `ui/favicon.svg`,
+  served from this origin through the same compile-time allowlist as every other asset, linked from
+  `index.html`. The CSP is unchanged — `tests/test_security_ui.py::test_csp_is_unchanged_and_
+  forbids_inline` still asserts that not one directive moved.

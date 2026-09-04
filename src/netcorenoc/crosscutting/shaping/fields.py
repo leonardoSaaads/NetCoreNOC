@@ -44,6 +44,12 @@ FIELD_RULES: dict[str, tuple[str, str]] = {
     # `127.0.0.2` two fields away. `operator_name` is deliberately absent: it is free text a person
     # typed, like a device label, and a label passes through (see `device` above).
     "derived_name": ("editor", _COARSEN),
+    # v0.16.1: the gesture history's actor, resolved to a username. The `actor` reference beside
+    # it is unshaped and stays — it is the record, and it is what a viewer sees instead. Dropped
+    # rather than coarsened because half a username is not a weaker fact, it is a puzzle; and
+    # `editor` rather than `admin` because an editor is who makes gestures and reads their own
+    # history, which is the whole reason the name exists (DECISIONS #269).
+    "actor_name": ("editor", _DROP),
     "source_ip": ("admin", _DROP),  # who connected from where (audit / session detail)
     "community_tag": ("editor", _DROP),  # SNMP community grouping tag (F4)
 }

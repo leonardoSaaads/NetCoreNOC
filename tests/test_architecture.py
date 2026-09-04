@@ -417,6 +417,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
+    ("GET", "/favicon.svg"),
     ("GET", "/.well-known/security.txt"),
     ("POST", "/api/login"),
     ("POST", "/api/logout"),
@@ -900,13 +901,14 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: parts. The digest and the count move together in the commits that add them, which is what keeps
 #: the line reviewable rather than absorbing whatever else came with the change.
 #:
-#: v0.16.1: 190 -> 192 files. Two added, none removed, none moved:
-#: `migrations/0015_bag_identity.sql` (the bag key) and `ui/app/views/parts/card.js` (the situation
+#: v0.16.1: 190 -> 193 files. Three added, none removed, none moved:
+#: `migrations/0015_bag_identity.sql` (the bag key), `ui/app/views/parts/card.js` (the situation
 #: card, split out when the server-side search pushed `views/situations.js` over the module-graph
-#: guard). The other `src/` diffs are edits to files that already existed, and the digest moves
-#: with them in the commit that makes each one.
-SRC_TREE_DIGEST = "e746ea693a6c8e83749e98d80f318138563208d95ac7f74c368b5a2b8046a600"
-SRC_FILE_COUNT = 192
+#: guard) and `ui/favicon.svg` (F96 — `img-src 'self'` forbids the data: URI that would otherwise
+#: be a one-line fix). The other `src/` diffs are edits to files that already existed, and the
+#: digest moves with them in the commit that makes each one.
+SRC_TREE_DIGEST = "def73c09103083f7c685764d8d318041104f76eb359b61ecf833766b554f5696"
+SRC_FILE_COUNT = 193
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

@@ -176,19 +176,37 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/timeline")
     async def timeline(
-        limit: int = 300, principal: auth.Principal = Depends(security)
+        limit: int = 300,
+        ne_id: int | None = None,
+        since: float | None = None,
+        until: float | None = None,
+        principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
-        """Recent raise/clear marks.
+        """Recent raise/clear marks, optionally narrowed to one element and one window.
 
         **v0.7.1 (F35 + F38):** the scope filter lives in the query and is keyed on `ne_id`. v0.7.0
         truncated globally and then compared the *rendered* `device` string — `COALESCE(label, ip)`
         — against the scope's address and label sets, which made a non-unique display string an
         authorization key (DECISIONS #67, #72).
+
+        **v0.16.1: the two filters an operator asked for, and both are query filters.** `ne_id`
+        names an element by the **same key the scope predicate uses** rather than by the `device`
+        string the marks render — sending that string back would make v0.7.0's defect a feature,
+        because two elements can share a label. `since` and `until` bound the window in SQL, so
+        `limit` bounds the *filtered* set rather than a page that was truncated first.
+
+        Neither can widen anything: both are `AND`ed with the scope, so a principal asking for an
+        element outside their scope receives an empty answer through the predicate that hides it,
+        which is the same non-answer they would get for an element that does not exist.
         """
         scope = await scope_for(principal)
         async with store.lock:
             marks = await store.timeline_marks(
-                min(max(limit, 1), 1000), None if scope.unrestricted else scope.ne_ids
+                min(max(limit, 1), 1000),
+                None if scope.unrestricted else scope.ne_ids,
+                device_ne_id=ne_id,
+                since=since,
+                until=until,
             )
         return {"marks": shaping.shape(marks, principal.role)}  # coarsen device IPs below editor
 

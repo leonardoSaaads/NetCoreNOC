@@ -46,13 +46,18 @@ export class Situations extends Component {
     // so it is the state this screen opens on. `open` would have shown an empty list on a working
     // appliance the moment this release shipped (DECISIONS #254).
     this.state = {
+      // A deep-linked search: `#/situations?q=10.1.0.1`. The router has parsed a query string
+      // since v0.13.0 and nothing used one; the graph's tables link here, so an operator reading
+      // "this element alarms most" reaches its situations in one click rather than by retyping.
+      filter: (props.query && props.query.get("q")) || "",
       live: store.get(),
-      filter: "",
       status: "new",
       // null = not searching, the live list is what is rendered. An array = a server answer.
       results: null,
       searching: false,
       searchError: null,
+      // The cards this operator has gestured on since arriving. **DECISIONS #267.**
+      pinned: new Set(),
     };
   }
 
@@ -62,6 +67,7 @@ export class Situations extends Component {
     // during an incident (draft §2.4, §3).
     const deepLink = Number(this.props.params[0]);
     if (deepLink) this.open(deepLink);
+    if (this.state.filter.trim()) this.search(this.state.filter.trim());
   }
 
   componentWillUnmount() {
@@ -108,16 +114,39 @@ export class Situations extends Component {
    * hold's whole purpose is that an update they did not ask for cannot move the grouping they are
    * judging (ADR #173), and `refreshHeld` is the existing name for exactly this — "the card was
    * re-fetched deliberately (the operator asked)". */
+  /* Re-fetch the card, and **keep it where the operator is looking** (DECISIONS #267).
+   *
+   * The first gesture on a card promotes the situation from `new` to `open`, which is correct
+   * (DECISIONS #254) and means the card leaves the tab it was opened from — the default tab, on an
+   * untriaged appliance, which is where an operator does most of their work. Measured in the
+   * v0.16.0 live pass and recorded in that release's brief §5: *"the card an operator is working
+   * on disappears from the default tab"*.
+   *
+   * The tab does NOT follow the card, because the tab is what the operator chose and moving it
+   * under them is the same class of surprise. The card is pinned to the list it is already in
+   * until they collapse it, and its badge still says `open`, so nothing is hidden — the state
+   * changed and the card says so where they are already reading. The pin is per visit and lives
+   * nowhere: reopening the screen shows the true membership of the tab.
+   */
   async reopen(sid) {
     try { store.refreshHeld(sid, await get(`/api/situations/${sid}`)); }
     catch (error) { store.refreshHeld(sid, { __error: error }); }
+    this.setState({ pinned: new Set(this.state.pinned).add(sid) });
     // A search answer is a snapshot, so a gesture made inside one has to be asked for again or the
     // row beside the card would keep the status, the name and the count it had before the gesture.
     this.refresh();
   }
 
   async open(sid) {
-    if (store.isExpanded(sid)) { store.collapse(sid); return; }
+    if (store.isExpanded(sid)) {
+      // Collapsing releases the hold AND the pin: the card goes back to the tab it belongs to,
+      // which is what makes the pin a courtesy rather than a second, private notion of state.
+      store.collapse(sid);
+      const pinned = new Set(this.state.pinned);
+      pinned.delete(sid);
+      this.setState({ pinned });
+      return;
+    }
     // Expand FIRST with no payload so the card shows its own loading state in place, then hold
     // the payload when it lands. v0.7.4 emptied the container before the round trip and a click
     // in that window hit nothing.
@@ -126,14 +155,16 @@ export class Situations extends Component {
     catch (error) { store.refreshHeld(sid, { __error: error }); }
   }
 
-  render(_props, { live, filter, status, results, searching, searchError }) {
+  render(_props, { live, filter, status, results, searching, searchError, pinned }) {
     const query = filter.trim();
     // A search answers with the rows the SERVER matched; without one, the live list, filtered by
-    // the tab. The id is still matched here, and only here: `#12` is a fact about the console's
-    // own rendering, not about anything the server stores.
+    // the tab — plus any card this operator has gestured on, which stays where they are looking
+    // until they collapse it (DECISIONS #267).
     const rows = query
       ? results || []
-      : (live.situations || []).filter((s) => !status || s.status === status);
+      : (live.situations || []).filter(
+          (s) => !status || s.status === status || (pinned.has(s.id) && store.isExpanded(s.id)),
+        );
 
     return html`<div class="situations">
       <div class="filters" role="search">

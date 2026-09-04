@@ -176,3 +176,10 @@ split_situation  # unused function (netcorenoc/api/routes_lifecycle.py)
 # snapshot through SQL, so nothing in `src/` calls this by name — and it is the only way to read a
 # gesture's bag back without that join, which is the surface a reader and the tests need.
 event_members
+# --- v0.16.1, the bag key ----------------------------------------------------------------------
+# `UNKEYED_BAG` is the sentinel migration `0015` writes into every pre-existing `feedback` row, and
+# the only place `src/` needs it is the DEFAULT clause of a SQL statement, which vulture cannot
+# read. It is a named constant rather than a bare `""` for the reason `0011`'s three-state columns
+# are: a sentinel with a meaning belongs beside the code that would otherwise repeat the literal,
+# and `tests/test_bag_identity.py` asserts against the name so the two cannot drift.
+UNKEYED_BAG  # the pre-0015 sentinel (netcorenoc/store/feedback.py)

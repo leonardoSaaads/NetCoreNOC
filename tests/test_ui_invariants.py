@@ -1173,3 +1173,74 @@ async def test_the_per_term_decomposition_is_one_interaction_away_and_complete(
     assert all(any(ch.isdigit() for ch in figure) for figure in result["opened"]["termNumbers"]), (
         result["opened"]["termNumbers"][:6]
     )
+
+
+# --- v0.16.1: the graph's text half, which IS executed -------------------------------------------
+
+
+def _with_edges(captured: dict[str, Any]) -> dict[str, Any]:
+    """The captured graph payload with one learned edge between two real nodes.
+
+    The corpus's own graph has **no** edges: `MIN_EDGE_N = 5.0` and the fixture's traffic never
+    clears it. Asserting the affinity table against that fixture would assert nothing — the same
+    accident `_routes_with_links_past_the_old_cap` exists to avoid one screen over — so the edge
+    is supplied, with the two numbers the table reads and nothing else.
+    """
+    graph = captured["/api/graph"]["json"]
+    nodes = graph["nodes"]
+    assert len(nodes) >= 2, "the fixture must offer two elements to draw an edge between"
+    edges = [{"a_id": nodes[0]["id"], "b_id": nodes[1]["id"], "weight": 0.91, "n": 240.0}]
+    return {**captured, "/api/graph": {"status": 200, "json": {**graph, "edges": edges}}}
+
+
+@dom_test
+async def test_the_graph_screen_answers_its_two_questions_in_ordinary_dom(
+    routes: dict[str, Any],
+) -> None:
+    """**Part of the graph's coverage gap, closed** (§V.7).
+
+    `tests/domharness/env.mjs` substitutes d3 with a recording double, so nothing about node
+    placement, edge rendering, zoom, drag or the simulation is asserted anywhere in this
+    repository — and `views/graph.js` has said so at the top since v0.13.0. That does not change
+    here and the file still says it.
+
+    What changes is that the screen's two answers are no longer *only* in the drawing. "Which
+    elements alarm most" and "which relationships are strongest" are rendered as tables, from
+    `active_alarms`, `weight` and `n` — three numbers `/api/graph` has served since v0.13.0 and
+    the console encoded as a radius and an opacity and then discarded. **Tables the harness can
+    execute**, which is why this test exists at all and why no route was added to produce them.
+
+    What this does NOT cover: the drawing, still. And the numbers' correctness against a live
+    appliance — this asserts the screen renders what the payload carries, not that the payload is
+    right.
+    """
+    result = domdriver.run_scenario(
+        "render", {"routes": _with_edges(routes["editor"]), "navigate": "#/graph"}
+    )
+    dump = result["dump"]
+    assert "Elements alarming most" in dump, "the busiest-element table is not on the screen"
+    assert "Strongest learned relationships" in dump, "the affinity table is not on the screen"
+    # `n` beside the weight, because a strong-looking edge over six observations is a weaker claim
+    # than the same score over hundreds (F61) and a table that hid it would say they were equal.
+    assert "evidence (n)" in dump, "the affinity is shown without the evidence behind it"
+    # The rename the drawing offered only on double-click is now a button, so the one gesture this
+    # screen has is reachable from a keyboard for the first time.
+    assert "rename" in dump, "the graph's only gesture is still double-click-only"
+
+
+@dom_test
+async def test_the_graph_tables_are_absent_when_there_is_nothing_to_rank(
+    routes: dict[str, Any],
+) -> None:
+    """**The control.** A table that renders unconditionally would say "nothing alarms most" on a
+    quiet appliance, which is a sentence, not a fact.
+
+    Driven with an empty graph payload rather than by hoping the fixture is quiet: the assertion
+    above would otherwise be satisfiable by a screen that always prints both headings.
+    """
+    quiet = {**routes["editor"], "/api/graph": {"status": 200, "json": {"nodes": [], "edges": []}}}
+    result = domdriver.run_scenario("render", {"routes": quiet, "navigate": "#/graph"})
+    dump = result["dump"]
+    assert "Elements alarming most" not in dump
+    assert "Strongest learned relationships" not in dump
+    assert "No network elements yet" in dump, "the empty state is what should be there instead"

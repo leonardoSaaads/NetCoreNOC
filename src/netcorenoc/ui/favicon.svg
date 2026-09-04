@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img"
+     aria-label="NetCoreNOC">
+  <!-- The console's own brand mark. Served from this origin because the CSP's `img-src 'self'`
+       forbids a `data:` URI, which is why the obvious one-line repair for the /favicon.ico 404
+       does not work here (F96). No text, no external reference, no script. -->
+  <rect width="32" height="32" rx="6" fill="#0d1117"/>
+  <path d="M16 6 L24 16 L16 26 L8 16 Z" fill="none" stroke="#4a9eff" stroke-width="2.5"
+        stroke-linejoin="round"/>
+  <circle cx="16" cy="16" r="2.5" fill="#4a9eff"/>
+</svg>

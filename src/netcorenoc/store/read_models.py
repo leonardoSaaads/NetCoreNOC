@@ -265,7 +265,13 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
         return [dict(r) for r in await cur.fetchall()]
 
     async def timeline_marks(
-        self, limit: int, ne_ids: frozenset[int] | None = None
+        self,
+        limit: int,
+        ne_ids: frozenset[int] | None = None,
+        *,
+        device_ne_id: int | None = None,
+        since: float | None = None,
+        until: float | None = None,
     ) -> list[dict[str, Any]]:
         """Recent alarms as raise/clear marks over time (for the UI timeline view).
 
@@ -277,8 +283,22 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
         scoped principal's marks a function of traffic they cannot see (F38). **A display string is
         never an authorization key.**
 
-        `ne_id` is selected for the filter only and never reaches a mark, so the rendered response
-        is byte-identical to v0.7.0. `ne_ids=None` runs the unmodified v0.7.0 SQL.
+        **v0.16.1 adds two narrowing filters, and neither is a display string either.**
+
+        * `device_ne_id` is an **NE id**, the same key the scope predicate uses — deliberately not
+          the rendered `device` string the console shows. Sending that string back would make the
+          v0.7.0 defect a feature request: two elements can carry one label, so a filter on it
+          would silently union them. It is `AND`ed with the scope, so it can only ever *narrow*
+          what the principal was already allowed to see; a scoped principal naming an NE outside
+          their scope gets an empty answer through the same predicate that hides it.
+        * `since` / `until` bound the window, in SQL, so `LIMIT` bounds the **filtered** set. A row
+          survives if either of its marks falls in the range; the mark expansion below then emits
+          only the marks that do, because a cleared alarm raised before the window is one mark
+          inside it and not two.
+
+        `ne_id` now **does** reach the mark, which is the one intentional shape change here: the
+        console needs an identifier to filter by that is not a display string, and an NE id is
+        already public — `/api/entities` has served it to viewers since v0.5.0.
         """
         select = (
             "SELECT a.first_seen, a.cleared_at, a.ne_id, COALESCE(dl.label, d.ip) AS device, "
@@ -287,38 +307,61 @@ class ReadModelsMixin(GovernanceMixin, SituationEventMixin):
             "LEFT JOIN label dl ON dl.kind='device' AND dl.target_id=d.id "
             "LEFT JOIN label cl ON cl.kind='class' AND cl.target_id=c.id "
         )
+        narrow: list[str] = []
+        narrow_args: list[Any] = []
+        if device_ne_id is not None:
+            narrow.append("a.ne_id=?")
+            narrow_args.append(device_ne_id)
+        if since is not None:
+            narrow.append("(a.first_seen >= ? OR a.cleared_at >= ?)")
+            narrow_args.extend((since, since))
+        if until is not None:
+            narrow.append("(a.first_seen <= ? OR a.cleared_at <= ?)")
+            narrow_args.extend((until, until))
+        extra = "".join(f"AND {clause} " for clause in narrow)
         rows: list[Any]
         if ne_ids is None:
+            # `WHERE 1=1` only when something narrows, so the unfiltered call stays the v0.7.0
+            # statement it has been since the finding that produced it.
+            head = f"{select}WHERE 1=1 {extra}" if extra else select
             cur = await self.conn.execute(
-                f"{select}ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - literal + bound values
-                (limit,),
+                f"{head}ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - literal + bound values
+                (*narrow_args, limit),
             )
             rows = list(await cur.fetchall())
         elif not ne_ids:
             rows = []
         elif len(ne_ids) > MAX_SCOPE_PARAMS:
-            # See MAX_SCOPE_PARAMS: filter here rather than truncate the bound id list.
-            cur = await self.conn.execute(f"{select}ORDER BY a.last_seen DESC")  # nosec B608
+            # See MAX_SCOPE_PARAMS: filter here rather than truncate the bound id list. The
+            # narrowing clauses stay in the query — only the scope set is too large to bind.
+            head = f"{select}WHERE 1=1 {extra}" if extra else select
+            cur = await self.conn.execute(  # nosec B608 - literal + bound values
+                f"{head}ORDER BY a.last_seen DESC",  # nosec B608
+                tuple(narrow_args),
+            )
             rows = [r for r in await cur.fetchall() if r["ne_id"] in ne_ids][:limit]
         else:
             marks_sql = ",".join("?" * len(ne_ids))
             cur = await self.conn.execute(
-                f"{select}WHERE a.ne_id IN ({marks_sql}) ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - placeholders only
-                (*sorted(ne_ids), limit),
+                f"{select}WHERE a.ne_id IN ({marks_sql}) {extra}"  # nosec B608 - placeholders only
+                "ORDER BY a.last_seen DESC LIMIT ?",
+                (*sorted(ne_ids), *narrow_args, limit),
             )
             rows = list(await cur.fetchall())
         marks: list[dict[str, Any]] = []
         for r in rows:
-            marks.append(
-                {"ts": r["first_seen"], "device": r["device"], "class": r["class"], "kind": "raise"}
-            )
-            if r["cleared_at"] is not None:
+            for when, kind in ((r["first_seen"], "raise"), (r["cleared_at"], "clear")):
+                if when is None:
+                    continue
+                if (since is not None and when < since) or (until is not None and when > until):
+                    continue
                 marks.append(
                     {
-                        "ts": r["cleared_at"],
+                        "ts": when,
+                        "ne_id": r["ne_id"],
                         "device": r["device"],
                         "class": r["class"],
-                        "kind": "clear",
+                        "kind": kind,
                     }
                 )
         marks.sort(key=lambda m: m["ts"])

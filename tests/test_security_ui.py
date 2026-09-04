@@ -750,7 +750,16 @@ def test_the_ui_tree_is_exactly_what_is_declared() -> None:
     from netcorenoc.api.routes_static import STATIC_ASSETS
 
     top_level = {p.name for p in UI_DIR.iterdir()}
-    assert top_level - {".well-known"} == {"index.html", "app.js", "style.css", "app", "vendor"}
+    # v0.16.1 adds `favicon.svg` — served from this origin because `img-src 'self'` forbids the
+    # `data:` URI that would otherwise be the one-line repair for the /favicon.ico 404 (F96).
+    assert top_level - {".well-known"} == {
+        "index.html",
+        "app.js",
+        "style.css",
+        "favicon.svg",
+        "app",
+        "vendor",
+    }
 
     on_disk = {str(p.relative_to(UI_DIR)) for p in UI_DIR.rglob("*.js") if "vendor" not in p.parts}
     served = {name for name in STATIC_ASSETS if name.endswith(".js") and "vendor/" not in name}
