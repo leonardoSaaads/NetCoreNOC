@@ -2457,3 +2457,23 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: six of twelve `test_upgrade.py` tests hung before the probe; twelve pass after it,
   and the six pinned literals moved from `latest_schema_version() == 14` to `== 15`, which is this
   release's only intended diff in that file.
+
+## 264. The promotion path is derived from the import graph, bounded by one package (v0.16.1)
+
+- **Decision**: `test_no_promotion_path_module_mentions_a_ground_truth_field` walks out from
+  `api/routes_promotion.py` and scans every `engine/evaluation/` module the import graph reaches,
+  instead of the four-name tuple it carried since v0.14.0. Four became seven (F92).
+- **Reason**: a guard that lists what it checks stops checking whatever is added next. v0.14.0's
+  list called itself *"the four modules the gate actually reads"* and `promotion_metrics.py` —
+  which computes **all four** of the named quantities the gate reads — was not among them.
+  Appendix B names this shape first, and v0.15.1 found three more instances of it.
+- **Why the walk is bounded at `engine/evaluation/` rather than unbounded**: **measured** — the
+  unrestricted closure from the entry point is 112 modules, four of which mention `entity_key` as
+  a legitimate domain term (`store/entities.py` and three under `engine/operate/`). An unbounded
+  guard could never be green, so it would be deleted or exempted, which is worse than a bounded
+  one that is honest about its edge. The boundary is a named constant with that number beside it.
+- **Trade-off accepted**: a promotion-path module placed **outside** `engine/evaluation/` still
+  escapes this guard, exactly as it escaped the list. Its companion,
+  `test_no_runtime_module_can_reach_the_simulator`, parses the whole tree and catches any *import*
+  everywhere; what remains uncovered is a truth field copy-pasted into a module that imports
+  nothing and lives elsewhere. Named here rather than left to be discovered a third time.

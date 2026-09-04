@@ -887,10 +887,21 @@ Run every command below from the repository root with the virtualenv active.
   parses the whole tree and is unaffected — so an *import* is still caught everywhere. What escapes
   is the case this second test exists for: a truth field copy-pasted into a promotion-path module
   that imports nothing.
-- **Disposition**: open. Not repaired here because the honest repair is not adding one filename —
-  it is deriving the module set from the promotion path rather than listing it, which is a change to
-  a v0.14.0 guard inside a release that is about something else. Recorded with the injection that
-  found it so the next release can start from a measurement.
+- **Disposition**: **FIXED in v0.16.1**, by deriving rather than by adding a filename.
+  `promotion_path_modules()` walks out from `api/routes_promotion.py` — the module that computes
+  the derived inputs and returns the verdict — and keeps every `engine/evaluation/` module the
+  import graph reaches. Four became **seven**: `promotion_metrics.py`, `shadow_assertions.py` and
+  `shadow_eval.py` join the original four, and a module added to the path afterwards joins without
+  anyone remembering.
+- **Why the walk stops at `engine/evaluation/`**, measured rather than assumed: the unrestricted
+  transitive closure from the entry point is **112 modules**, and four of them mention `entity_key`
+  legitimately — `store/entities.py` and three `engine/operate/` modules, where an entity key is a
+  real domain concept and not the simulator's truth field. A guard over that set could never be
+  green, which is exactly why the original was hand-written. The boundary is named in the test and
+  the 112 is the reason it exists.
+- A companion guard asserts the derivation is non-empty and names `promotion.py` and
+  `promotion_metrics.py` by hand — the vacuity trap `test_the_preregistration_exists` exists for,
+  applied to a walk that could silently return the empty set.
 
 ## F93 — which members a scoped labeller could not see is a count, so the judge picks the pair set
 
