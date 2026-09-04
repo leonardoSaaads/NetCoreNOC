@@ -117,6 +117,28 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 - The measured console defects are sequenced into v0.15.2:
   [`plans/v0.15.2-console.md`](plans/v0.15.2-console.md).
 
+## Open after v0.16.1 — asked, and answered with "not here"
+
+- **Per-class alarm statistics.** *"Alarm classes is a list with no statistics"* was v0.16.1's
+  decision-4 charge and the screen survived without any: nothing serves a per-class count, and the
+  choice was between adding a route for a number **nobody named a question for** and leaving it
+  (#271, Part VII rule 4). The question a release should answer first is which class is noisy
+  *right now* versus which has been noisy *this week*, because those are different routes.
+- **`d3.v7.min.js` is 279 706 bytes for two views**, and v0.16.1 reconsidered it rather than
+  re-deferring it silently. It stays, and the reason changed: the graph's two questions are now
+  answered in **ordinary DOM tables** the harness executes, so the drawing is the ornament and the
+  text is the instrument. That makes removing d3 cheaper than it has ever been — the screen would
+  lose a picture and keep every fact — and it is still a release's worth of force-layout work
+  nobody has asked for. Reconsider again the first time the graph needs a feature d3 must provide.
+- **The hidden members of a scoped label are a count, not a set** (F93). The observable-pair count
+  is exact; the pair *selection* is arbitrary on any bag captured under a restriction. Repairing it
+  means recording which ids were withheld, which is a change to `0011`'s evidence boundary and an
+  analytical decision about whether a redaction may leave a per-member trace — a plan, not a patch.
+- **`MIGRATION.md`'s table is not derived from the release chain** (F94). v0.16.0 shipped without a
+  row and the prose above the table was arithmetically correct about the rows that were there, so
+  nothing looked wrong. `tests/test_documentation.py` already checks release claims against
+  `plans/releases.md`; the table is the next thing that could be.
+
 ## Deliberately out — rejections, so nobody re-litigates them by accident
 
 - **True multi-tenant isolation** (#59) — the thing visibility scoping explicitly is **not**. It would

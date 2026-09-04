@@ -13,7 +13,7 @@
         python = pkgs.python312;
         netcorenoc = python.pkgs.buildPythonApplication {
           pname = "netcorenoc";
-          version = "0.16.0";  # checked by tools/release_check.py (F73)
+          version = "0.16.1";  # checked by tools/release_check.py (F73)
           pyproject = true;
           src = ./.;
           build-system = [ python.pkgs.setuptools ];
