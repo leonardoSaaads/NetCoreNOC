@@ -47,6 +47,14 @@ key to suit the number it produced. That it amends v0.16.0 rather than replacing
 too — an amendment that quietly relaxed the plan it amends would be the one failure this table
 cannot otherwise see.
 
+**v0.16.2 adds a seventh, and it is the first whose registered decision is a REFUSAL.**
+`PREREGISTRATION-0.16.2.md` registers that promoting a situation to `open` does **not** record a
+`confirm`, and splits the one implicit action into two explicit ones. Every other plan here
+registers what will be *done* or *concluded*; this one registers what will not be counted. That
+makes the guard load-bearing in a direction the others are not: the edit it prevents is the single
+edit that would make `asserting_bags` rise, and a corpus that has refused promotion for four
+releases is exactly the corpus where that temptation is strongest.
+
 This is the discipline the frozen `eval` baseline already applies to an *output*, applied instead to
 a *claim*. `tests/test_eval.py` fails when the correlator's behaviour drifts; this fails when the
 standard the correlator is being judged against drifts.
@@ -121,6 +129,14 @@ PREREGISTRATION_0_16_0_SHA256 = "81aadc3b7a0695c0a6221a8302fb4e4e591f800a1cceeb8
 # census would be choosing the bag key to suit the number it produced.
 PREREGISTRATION_0_16_1_SHA256 = "acaf5f8afdef58950333856d6118532a1548572c6179070457f569f126a618c1"
 
+# Recorded in Gate 0, before any v0.16.2 repair existed, in a commit that changed nothing else and
+# carries the annotated tag `v0.16.2-gate0`. **The second amendment, and the first whose registered
+# decision is a refusal**: it says that promoting a situation to `open` does NOT record a `confirm`.
+# A build able to edit it after running the census could relax that refusal in the one direction
+# that makes `asserting_bags` rise — which is precisely the outcome §2.1 rejects and §4.3 says to
+# treat with suspicion.
+PREREGISTRATION_0_16_2_SHA256 = "a7fcbfac95eb72ee6fe4f12b6a82d8f94fb6627c7314d8b7c54ab8dccbf6c465"
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -164,6 +180,12 @@ PLANS: tuple[Plan, ...] = (
         PREREGISTRATION_0_16_1_SHA256,
         SECOND_HOME,
     ),
+    Plan(
+        "v0.16.2",
+        REPO_ROOT / "docs" / "analysis" / "PREREGISTRATION-0.16.2.md",
+        PREREGISTRATION_0_16_2_SHA256,
+        SECOND_HOME,
+    ),
 )
 
 _IDS = [plan.release for plan in PLANS]
@@ -184,9 +206,9 @@ def test_every_plan_is_guarded() -> None:
     v0.9.0's guard while adding its own and stay green, which is the shape of the retirement this
     test exists to make visible. Adding a plan is meant to require editing this line.
     """
-    assert len(PLANS) == 6, f"expected all six plans to be pinned, found {_IDS}"
-    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0", "v0.14.0", "v0.16.0", "v0.16.1"]
-    assert len({plan.sha256 for plan in PLANS}) == 6, "no two plans may share one hash"
+    assert len(PLANS) == 7, f"expected all seven plans to be pinned, found {_IDS}"
+    assert _IDS == ["v0.9.0", "v0.10.0", "v0.11.0", "v0.14.0", "v0.16.0", "v0.16.1", "v0.16.2"]
+    assert len({plan.sha256 for plan in PLANS}) == 7, "no two plans may share one hash"
 
 
 @pytest.mark.parametrize("plan", PLANS, ids=_IDS)
