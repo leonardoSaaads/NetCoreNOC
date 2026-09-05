@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import socket
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -118,6 +119,51 @@ async def test_situations_with_explanations_and_root(
         assert {"score", "term_t", "term_a", "term_e"} <= link.keys()
     assert (await client.get("/api/situations/424242")).status_code == 404
     assert (await client.get("/api/situations", params={"status": "bogus"})).status_code == 422
+
+
+async def test_a_situation_that_is_idle_and_still_burning_is_marked_stale(
+    client: httpx.AsyncClient,
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]],
+    store: Store,
+) -> None:
+    """`stale` on the list row (v0.16.2, DECISIONS #274), with a control on each axis.
+
+    The mark the console badges for the population the idle sweep used to resolve out of every live
+    view. This suite replays at `BASE = 2_000_000.0`, so the situation the fibre cut forms is
+    already an eternity old by the wall clock the route reads — which is the treatment arm, and
+    also a check that the route reads a clock at all.
+
+    Both controls are load-bearing and each moves one axis:
+
+      * touch the same situation to **now** and the mark clears — so the field is not just
+        "has an active alarm";
+      * a situation just as old whose alarms have all **cleared** is never marked — so it is not
+        just "is old".
+    """
+    await replay_fiber(engine_env)
+    listed = (await client.get("/api/situations")).json()
+    assert listed and all("stale" in row for row in listed), "the field is not served at all"
+    burning = int(listed[0]["id"])
+    assert listed[0]["stale"] is True, "an idle situation with a live alarm is not marked"
+
+    async with store.lock:
+        cleared_sid = await store.create_situation(BASE, None)
+        cleared_alarm = await store.ingest(util.event(device="10.5.5.5", ts=BASE))
+        await store.add_alarm_to_situation(cleared_sid, cleared_alarm.alarm_id)
+        await store.conn.execute(
+            "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?",
+            (BASE + 1.0, cleared_alarm.alarm_id),
+        )
+        await store.touch_situation(cleared_sid, BASE)
+        await store.commit()
+    rows = {int(r["id"]): r for r in (await client.get("/api/situations")).json()}
+    assert rows[cleared_sid]["stale"] is False, "a bag with nothing active was marked stale"
+
+    async with store.lock:
+        await store.touch_situation(burning, time.time())
+        await store.commit()
+    rows = {int(r["id"]): r for r in (await client.get("/api/situations")).json()}
+    assert rows[burning]["stale"] is False, "a situation touched just now is still marked stale"
 
 
 async def test_graph_exposes_learned_topology(

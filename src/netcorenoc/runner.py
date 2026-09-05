@@ -308,6 +308,11 @@ async def _serve(settings: Settings, store: Store) -> None:
             + engine.entity_cap_warnings()
             + engine.db_error_warnings()
             + engine.scorer_warning_list()
+            # v0.16.2 (DECISIONS #275). A situation nobody has touched for an hour while one of
+            # its alarms is still on. The sweep no longer resolves those — it used to, which was
+            # the defect this release is named for — so the operator is told instead, through the
+            # channel that already carries seven other degradations.
+            + engine.stale_situation_warnings()
             # v0.9.0: shadow mode degrades loudly. A training failure, an unreadable floor policy
             # or a truncated sample all reach the operator through the channel that already exists.
             + engine.shadow.warnings()

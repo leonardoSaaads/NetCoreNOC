@@ -124,6 +124,9 @@ SUBMODULES = [
     "store.entities",
     "store.feedback",
     "store.governance",
+    # v0.16.2: the idle population, split out of `store.situations` when the critical repair
+    # pushed that module past the 400-line guard (DECISIONS #274).
+    "store.idle",
     "store.ingest_gaps",
     "store.learned",
     "store.lifecycle",

@@ -1256,6 +1256,13 @@ async def test_f38_truncation_is_applied_after_the_scope_filter(store: Store) ->
         await viewer.aclose()
 
 
+#: What `GET /api/situations` adds to a store row and no scope decision touches (v0.16.2,
+#: DECISIONS #274). Named here rather than tolerated by a loose comparison: F38's parity claim is
+#: that the **unscoped** path is untouched, and a comparison that ignored unknown keys would keep
+#: passing while the route quietly grew a scoped one.
+ROUTE_DERIVED_KEYS = {"stale"}
+
+
 async def test_f38_the_unrestricted_result_set_is_unchanged(store: Store) -> None:
     """The parity half of F38: filtering moves into SQL, so the unscoped path must be untouched."""
     engine, queue, app = await authutil.make_env(store)
@@ -1266,7 +1273,16 @@ async def test_f38_the_unrestricted_result_set_is_unchanged(store: Store) -> Non
             direct = await store.list_situations(None, 500)
             open_only = await store.list_situations("open", 500)
             marks = await store.timeline_marks(1000)
-        assert direct == (await admin.get("/api/situations?limit=500")).json()
+        served = (await admin.get("/api/situations?limit=500")).json()
+        # The route derives `stale` from the clock and the one idle predicate; every other key is
+        # the store's row, unchanged. Asserted as an exact key difference so a second derived
+        # field cannot arrive unnoticed.
+        assert [set(r) - set(d) for r, d in zip(served, direct, strict=True)] == [
+            ROUTE_DERIVED_KEYS for _ in direct
+        ]
+        assert direct == [
+            {k: v for k, v in row.items() if k not in ROUTE_DERIVED_KEYS} for row in served
+        ]
         assert [r["id"] for r in open_only] == [
             r["id"] for r in (await admin.get("/api/situations?status=open&limit=500")).json()
         ]

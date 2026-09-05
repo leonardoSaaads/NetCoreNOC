@@ -907,8 +907,13 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: guard) and `ui/favicon.svg` (F96 — `img-src 'self'` forbids the data: URI that would otherwise
 #: be a one-line fix). The other `src/` diffs are edits to files that already existed, and the
 #: digest moves with them in the commit that makes each one.
-SRC_TREE_DIGEST = "64a5120ce742395c625ed9e32ffde9d7c8a77d8ca61472de799f84d9a0e55e43"
-SRC_FILE_COUNT = 193
+#:
+#: v0.16.2: 193 -> 194 files. One added, none removed, none moved: `store/idle.py`, which is
+#: `situations.py`'s four idle-population queries after the critical repair pushed that module to
+#: 415 lines against the 400-line guard (DECISIONS #274). **No migration**: the idle-but-active
+#: situation is derived, so `0015` is still the head of the schema.
+SRC_TREE_DIGEST = "e5083b1744b2fd309ea080fb90e7965ff020147511d70ed64c66351f5d875ee0"
+SRC_FILE_COUNT = 194
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

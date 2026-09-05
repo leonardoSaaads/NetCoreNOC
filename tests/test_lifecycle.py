@@ -83,16 +83,83 @@ async def test_the_correlator_creates_new_and_a_gesture_makes_it_open(store: Sto
     )
 
 
+async def test_the_sweep_partitions_the_idle_population(store: Store) -> None:
+    """**The critical repair** (v0.16.2, DECISIONS #274). Three arms, two of them controls.
+
+    The fibre-cut replay leaves live situations whose alarms are still active. Driven an hour
+    forward, the maintenance sweep used to resolve every one of them — removing a burning incident
+    from every live view, and, because a repeating trap increments an existing alarm rather than
+    raising a new one, from every view it could return to.
+
+    The two controls are what make this a measurement of the rule rather than of the clock: a
+    situation that is **fresh** and active must be untouched for the obvious reason, and one that is
+    **stale with everything cleared** must still be resolved — without that arm, a sweep that had
+    simply stopped working would score green here.
+    """
+    engine, _queue, _app = await seeded(store)
+    live = await live_situations(store)
+    assert len(live) == 1, f"the replay formed {len(live)} live situations, not the expected one"
+    burning = int(live[0]["id"])
+    now = BASE + IDLE_CLOSE_S + 60
+    async with store.lock:
+        # The two arms the fibre-cut replay does not supply, built through the store's own writes.
+        # `quiet` is stale with every member cleared — the one shape #259 says reaches the sweep
+        # already cleared, because the clear did not travel through `_handle_clear`.
+        quiet = await store.create_situation(BASE, None)
+        stale_alarm = await store.ingest(util.event(device="10.4.4.3", ts=BASE))
+        await store.add_alarm_to_situation(quiet, stale_alarm.alarm_id)
+        await store.conn.execute(
+            "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?",
+            (BASE + 10.0, stale_alarm.alarm_id),
+        )
+        await store.touch_situation(quiet, BASE)
+        # `fresh` is live, still active, and touched a moment ago.
+        fresh = await store.create_situation(now - 10.0, None)
+        raised = await store.ingest(util.event(device="10.4.4.4", ts=now - 10.0))
+        await store.add_alarm_to_situation(fresh, raised.alarm_id)
+        await store.touch_situation(fresh, now - 10.0)
+        await store.commit()
+
+    await engine.maintenance(now, retention_days=3650.0)
+
+    rows = {int(r["id"]): r for r in await store.list_situations(None, 200)}
+    assert rows[burning]["status"] in ("new", "open"), (
+        "the sweep resolved a situation that still holds an active alarm"
+    )
+    assert rows[burning]["resolution"] is None
+    assert (rows[quiet]["status"], rows[quiet]["resolution"]) == ("resolved", "self_cleared"), (
+        "the sweep stopped resolving a situation whose alarms had all cleared"
+    )
+    assert rows[fresh]["status"] in ("new", "open") and rows[fresh]["resolution"] is None
+
+    # The idle-but-active state is REACHABLE, which is what stops it being a state that does not
+    # exist, and the count the operator warning reports is derived from the same expression.
+    async with store.lock:
+        assert burning in await store.idle_active_situations(now - IDLE_CLOSE_S)
+        assert fresh not in await store.idle_active_situations(now - IDLE_CLOSE_S)
+    await engine._observe_idle_active(now)
+    warnings = engine.stale_situation_warnings()
+    assert warnings and "still" in warnings[0], warnings
+    assert str(engine._idle_active_count) in warnings[0]
+
+
 async def test_the_idle_sweep_and_the_self_clear_are_distinguishable(store: Store) -> None:
     """Phase 2's claim, and the reason `resolution` exists at all (DECISIONS #253, #259).
 
-    Before this release both wrote `closed` and **no column distinguished them**. The two are
-    driven here through the two paths that actually produce them — the maintenance sweep, and a
-    clear trap that empties a situation — rather than by calling the store twice with different
-    arguments, because what is being asserted is that the *engine's* two paths land on two values.
+    Before v0.16.0 both wrote `closed` and **no column distinguished them**. The two are driven here
+    through the paths that actually produce them rather than by calling the store twice with
+    different arguments, because what is being asserted is that the *engine's* paths land on two
+    values.
+
+    **v0.16.2 narrows `idle` to the empty bag** (DECISIONS #274): the sweep no longer resolves a
+    situation holding an active alarm, so the value it used to write for a burning one is a value
+    it can no longer write. The empty-bag arm below is what keeps `idle` reachable at all, and
+    `test_an_empty_situation_resolves_as_idle_and_never_as_self_cleared` is its dedicated guard.
     """
     engine, queue, _app = await seeded(store)
-    idle = int((await live_situations(store))[0]["id"])
+    async with store.lock:
+        idle = await store.create_situation(BASE, None)
+        await store.commit()
     await engine.maintenance(BASE + IDLE_CLOSE_S + 60, retention_days=3650.0)
     row = await store.situation_detail(idle)
     assert row is not None

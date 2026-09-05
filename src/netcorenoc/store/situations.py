@@ -28,13 +28,29 @@ from netcorenoc.store.situation_events import SituationEventMixin
 #: The two live states. A situation that has not left is `new` (nobody has looked at it) or `open`
 #: (an operator is working it), and **every reader that used to ask for `open` asks for both** —
 #: the idle sweep, the engine's state reload, the scope resolution and the `open_situations` stat.
-#: Counting `open` alone would have reported zero on a working appliance the moment this release
+#: Counting `open` alone would have reported zero on a working appliance the moment v0.16.0
 #: shipped, because the correlator creates `new` (DECISIONS #254).
 #:
 #: Written as a SQL fragment rather than assembled per call site: one literal, no placeholders to
 #: get wrong, and `tests/test_store.py::test_every_live_situation_query_uses_the_one_fragment`
-#: reads this module to assert nothing spells it out a second time.
+#: reads the runtime package to assert nothing spells it out a second time. **That guard was cited
+#: from v0.16.0 and did not exist until v0.16.2 wrote it** (F101).
+#:
 LIVE = "status IN ('new','open')"
+
+#: **One member is still on.** The predicate `all_cleared` answers for a single situation, written
+#: as a correlated subquery so the same question can be asked of a whole population in one
+#: statement — which is exactly what the idle sweep needed and never asked (v0.16.2, #274).
+#:
+#: `situation.id` is named rather than aliased, so this fragment composes into any statement whose
+#: outer table is `situation`. Written once here for `LIVE`'s reason: one literal, no placeholders
+#: to get wrong, and `tests/test_store.py::test_the_active_member_predicate_agrees_with_all_cleared`
+#: drives both forms over the same fixtures and asserts they never disagree — because two
+#: expressions of one question are two chances to answer it differently.
+HAS_ACTIVE = (
+    "EXISTS (SELECT 1 FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
+    "WHERE sa.situation_id=situation.id AND a.status='active')"
+)
 
 
 class SituationMixin(SituationEventMixin):
@@ -200,6 +216,28 @@ class SituationMixin(SituationEventMixin):
         answers True for an empty bag, and *"nothing was active"* is not *"the alarms cleared"* —
         that is the invariant Appendix B warns about, an expression that cannot come out false for
         one of its inputs.
+
+        ## v0.16.2 — the invariant is in the statement (DECISIONS #274)
+
+        **`open` → `resolved` requires that no member is still active**, and `AND NOT {HAS_ACTIVE}`
+        is where that is enforced: on the one UPDATE that performs the appliance's own close, so a
+        call site added in a later release cannot reach the transition around it. The idle sweep
+        already asks the store for the right population, and this is what makes that a second line
+        of defence rather than the only one.
+
+        **It binds this method and not `manual_close_situation`.** An operator closing a situation
+        whose alarms are still on has taken responsibility for it and the row records
+        `resolution='operator'` saying so. Forbidding it would leave one way to close such a
+        situation — hand-clearing every member first — and that would **manufacture `manual_clear`
+        facts about alarms nobody cleared**, contaminating the one record
+        `PREREGISTRATION-0.16.0.md` §1 puts outside the link-training path. A silent appliance and a
+        deliberate human are different actors and this invariant is about the first.
+
+        **Declared consequence**: `resolution='idle'` now denotes only an **empty** bag. A bag with
+        members that all cleared resolves `self_cleared` as it always did, and a bag with an active
+        member no longer resolves here at all — so the value the sweep used to write for a burning
+        situation is one the sweep can no longer write. `_close_reason` is unchanged, which is what
+        keeps `self_cleared` meaning what v0.16.0 built it to mean.
         """
         if not self._has_lifecycle:
             await self.conn.execute(
@@ -210,7 +248,7 @@ class SituationMixin(SituationEventMixin):
             return
         await self.conn.execute(
             "UPDATE situation SET status='resolved', resolution=?, closed_at=?, updated_at=? "
-            f"WHERE id=? AND {LIVE}",  # nosec B608 - `LIVE` is a module literal
+            f"WHERE id=? AND {LIVE} AND NOT {HAS_ACTIVE}",  # nosec B608 - module literals
             (await self._close_reason(situation_id), ts, ts, situation_id),
         )
 
@@ -268,29 +306,6 @@ class SituationMixin(SituationEventMixin):
             "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, ts),
         )
-
-    async def idle_open_situations(self, cutoff: float) -> list[int]:
-        """Live situations nobody has touched since `cutoff`. **`new` counts as live.**
-
-        A situation the correlator opened and nobody triaged is exactly what the sweep is for, so
-        widening this to both live states preserves the sweep's meaning rather than changing it
-        (DECISIONS #254).
-        """
-        cur = await self.conn.execute(
-            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ?",  # nosec B608
-            (cutoff,),
-        )
-        return [int(r[0]) for r in await cur.fetchall()]
-
-    async def all_cleared(self, situation_id: int) -> bool:
-        cur = await self.conn.execute(
-            "SELECT COUNT(*) FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
-            "WHERE sa.situation_id=? AND a.status='active'",
-            (situation_id,),
-        )
-        row = await cur.fetchone()
-        assert row is not None
-        return int(row[0]) == 0
 
     async def open_situation_members(self) -> list[dict[str, Any]]:
         """Members of all **live** situations, for rebuilding engine state at startup.
