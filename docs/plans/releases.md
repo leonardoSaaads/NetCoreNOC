@@ -28,6 +28,11 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.15.3** | **The console designed** — what v0.15.2 leaves undone. [Brief](v0.15.3-console-design.md). | `console-design` |
 | **v0.16.0** | **The situation lifecycle** — states, self-clear, manual clear, operator merge/split/move, semantic naming, and the feedback each of those produces. [Brief](v0.16.0-situation-lifecycle.md). | `situation-lifecycle` |
 | **v0.16.1** | **Visualisation and search** — the judge's input repaired first, then graph analytics, the timeline, entities and alarm classes. [Brief](v0.16.1-visualisation.md). **Shipped.** | `visualisation-search` |
+| **v0.16.2** | **The critical repairs** — a situation holding a live alarm stops leaving the live view, promotion stops being an implicit assertion, and severity becomes legible without reading. | `critical-repairs` |
+| **v0.16.3** | **The operator's declaration** — naming an NE, naming an alarm class, declaring a severity, and propagating all three. | `operator-declaration` |
+| **v0.16.4** | **The console's shell** — navigation, the situation cards, the members table, and the timezone the console already computes and does not always show. | `console-shell` |
+| **v0.16.5** | **The evidence screens** — overview graphs, health, the map, a configurable timeline, and the model metrics beside the grouping they explain. | `evidence-screens` |
+| **v0.16.6** | **Maintenance windows** — a planned-work declaration, and the composed severity/time filters that read it. | `maintenance-windows` |
 | **v0.17.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
 | **v0.18.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
 
@@ -60,6 +65,28 @@ code:
   promotion gate refused on this project's own corpus with `asserting_bags = 0` against a floor of
   50, and per-archetype weights mean splitting an already-insufficient corpus `k` ways.
 
+### The v0.16 block, and why it is five releases rather than one
+
+* **v0.16.2 first, because a defect that hides an active alarm outranks every feature behind it.**
+  The idle sweep resolved a situation that still held a live alarm, and a repeating trap increments
+  an existing alarm rather than forming a new situation — so the symptom of that defect is the
+  absence of a symptom. Nothing that renders a situation is worth building above a view a situation
+  can silently leave.
+* **v0.16.3 after v0.16.2, on the severity numbers rather than on preference.** The declaration
+  exists because the appliance's *learned* severity needs `SEVERITY_MIN_OBS = 200` observations and
+  `SEVERITY_MIN_CLOSED = 50` closed alarms per NE before it will commit to one, and v0.16.2
+  measured what that means on a real corpus. An operator declaration is what fills the gap the
+  measurement describes; declaring it before the gap was measured would have been a feature looking
+  for a reason.
+* **v0.16.5 and v0.16.6 after v0.16.3**, and the dependency is on the declaration rather than on the
+  screens: a severity filter and a per-severity health panel both read a severity that, today,
+  resolves for almost nothing. Building either first would produce a screen whose every row says
+  *unknown* and no way to tell a broken screen from an honest one.
+* **v0.16.4 anywhere after v0.16.2**, because it is the one member of the block with no evidence
+  dependency at all — it is shape, not signal. It is placed third because the declaration of
+  v0.16.3 needs somewhere to live, and a shell built after the thing it must hold is a shell built
+  once.
+
 ## The claims
 
 Each row above is claimed here, one marker per line. The table's own document must claim every row
@@ -80,6 +107,11 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 <!-- release-claim: v0.15.3 = console-design -->
 <!-- release-claim: v0.16.0 = situation-lifecycle -->
 <!-- release-claim: v0.16.1 = visualisation-search -->
+<!-- release-claim: v0.16.2 = critical-repairs -->
+<!-- release-claim: v0.16.3 = operator-declaration -->
+<!-- release-claim: v0.16.4 = console-shell -->
+<!-- release-claim: v0.16.5 = evidence-screens -->
+<!-- release-claim: v0.16.6 = maintenance-windows -->
 <!-- release-claim: v0.17.0 = external-cartridge -->
 <!-- release-claim: v0.18.0 = archetypes -->
 

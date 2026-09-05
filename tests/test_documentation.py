@@ -266,7 +266,13 @@ def test_the_release_table_parses() -> None:
     # table said v0.16.0 was the external cartridge, and the maintainer's brief for v0.15.3 states
     # v0.16.0 is the situation lifecycle and v0.16.1 visualisation and search. The cartridge moved
     # to v0.17.0 and archetypes to v0.18.0. Fifteen rows.
-    assert len(table) == 15, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
+    #
+    # v0.16.2 EXTENDS it for the first time without permuting it (DECISIONS #272): the maintainer
+    # planned v0.16.3 to v0.16.6 and asked for the chain to be in the repository rather than in a
+    # brief, so five rows join and none moves. That is the difference this line records — the four
+    # edits above each moved a release that was already here, and this one adds releases that were
+    # only ever described in a prompt. Twenty rows.
+    assert len(table) == 20, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -281,6 +287,11 @@ def test_the_release_table_parses() -> None:
         "v0.15.3",
         "v0.16.0",
         "v0.16.1",
+        "v0.16.2",
+        "v0.16.3",
+        "v0.16.4",
+        "v0.16.5",
+        "v0.16.6",
         "v0.17.0",
         "v0.18.0",
     }

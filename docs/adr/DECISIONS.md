@@ -2622,3 +2622,24 @@ From this release an entry is about six lines: decision, reason, release.*
   named a question for and leaving it. Recorded as an open question rather than built.
 - **No new capability**: naming a class is `label.write`, the same power that renames a device and
   names a situation (DECISIONS #260), and the screen gates its own control with `can()`.
+
+# v0.16.2 — the critical repairs
+
+## 272. The release chain lives in the table, and five rows join it without one moving (v0.16.2)
+
+- **Decision**: `docs/plans/releases.md` gains rows for v0.16.2 through v0.16.6 and no existing row
+  moves. The five are described there in one line each plus a dependency argument; none gets a
+  brief, and the detail of an unbuilt release stays out of this document exactly as that document's
+  own §"What this document does not decide" requires.
+- **Reason**: the maintainer planned five releases and they existed only in a prompt. A chain whose
+  next five links live outside the repository is a chain `tests/test_documentation.py` cannot check,
+  and the guard it enforces — one answer to *"what is release X"* — is worth nothing over releases
+  the table does not name.
+- **Why an extension rather than a resequence**: the four previous edits to that table each moved a
+  release already in it (#170, #184, #202, #249). This one adds releases that were never in it, so
+  no claim key changes and no shipped row is touched. `test_the_release_table_parses` records the
+  difference in the same comment that records the four permutations.
+- **Trade-off accepted**: the table is now twenty rows and reads as a schedule rather than a chain.
+  The alternative — five brief documents for five unbuilt releases — is the pile #197 deleted 57 000
+  lines to prevent, and a brief for a release nobody has started is a draft that goes stale before it
+  is read.
