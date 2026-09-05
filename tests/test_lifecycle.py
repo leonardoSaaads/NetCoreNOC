@@ -721,3 +721,102 @@ async def _label_count(store: Store) -> int:
     row = await cur.fetchone()
     assert row is not None
     return int(row[0])
+
+
+# --- v0.16.2: promotion and assertion are two actions (PREREGISTRATION-0.16.2.md §2.2) ------
+
+
+async def test_a_bare_promotion_promotes_and_asserts_nothing(store: Store) -> None:
+    """**The action the amendment registers, and the one the appliance did not have.**
+
+    `POST /api/situations/{sid}/promote` moves `new` -> `open` and records **no** `feedback` row,
+    **no** `situation_event`, and no bag. Its durable record is the audit row, which is
+    hash-chained and is therefore the stronger of the two records rather than the weaker
+    (DECISIONS #273).
+
+    The control is the sibling action in the same test: `verdict: "confirm"` on a second situation
+    promotes it **and** writes a label. Without that arm this test would also pass against an
+    appliance whose labelling had stopped working entirely, which is the shape §4.2 warns about
+    from the other direction.
+    """
+    _engine, _queue, app = await seeded(store)
+    sid = int((await live_situations(store))[0]["id"])
+    labels_before = await _label_count(store)
+    events_before = len(await store.situation_events(sid))
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        response = await client.post(f"/api/situations/{sid}/promote", json={})
+        assert response.status_code == 200, response.text
+        assert response.json() == {"status": "promoted"}
+        # Idempotent: the second call is a no-op that still answers 200, because the operator's
+        # action is already on record (F36's reading of a repeat, applied to a gesture that
+        # stores nothing).
+        assert (await client.post(f"/api/situations/{sid}/promote", json={})).status_code == 200
+    finally:
+        await client.aclose()
+
+    row = await store.situation_detail(sid)
+    assert row is not None and row["status"] == "open", "the promotion did not promote"
+    assert await _label_count(store) == labels_before, (
+        "a bare promotion wrote a label. §2.1 rejects promotion-as-confirm precisely because it "
+        "manufactures assertions that mean 'I needed this out of my way'."
+    )
+    assert len(await store.situation_events(sid)) == events_before, (
+        "a bare promotion wrote a situation_event; its record is the audit row"
+    )
+    cur = await store.conn.execute(
+        "SELECT action, object_id, details FROM audit_log WHERE action='situation.promote'"
+    )
+    audited = [dict(r) for r in await cur.fetchall()]
+    assert [r["object_id"] for r in audited] == [str(sid), str(sid)]
+    # **Both clicks are on the record, and the chain says which one moved it.** That is what the
+    # `from` field is for: without it the two rows would be indistinguishable, and §2.2's
+    # requirement — that a reader two months later can tell what happened — would hold for the
+    # affirmation and not for this.
+    assert [r["details"] for r in audited] == ['{"from":"new"}', '{"from":"open"}'], audited
+
+
+async def test_a_move_does_not_promote_the_destination(store: Store) -> None:
+    """**Decision 1** (DECISIONS #273): six of seven promotions survive; this is the seventh.
+
+    An operator moving an alarm read the situation they took it *out* of. The destination is an id
+    they typed — this console offers no picker, deliberately — so promoting it claimed somebody had
+    looked at a situation nobody had opened, and moved its card out of the **New** tab, which is
+    where the operator who has not looked at it would find it.
+
+    The subject's promotion is the control, in the same request: if it did not fire, this test
+    would pass against a build that had simply stopped promoting anything.
+    """
+    _engine, _queue, app = await seeded(store)
+    subject = int((await live_situations(store))[0]["id"])
+    members = await store.situation_member_ids(subject)
+    assert len(members) >= 2
+    async with store.lock:
+        destination = await store.create_situation(BASE, None)
+        other = await store.ingest(util.event(device="10.6.6.6", ts=BASE))
+        await store.add_alarm_to_situation(destination, other.alarm_id)
+        await store.commit()
+    # `engine.members` is deliberately NOT primed: `membership.moved` skips a destination the
+    # engine does not hold, and priming it would be this test asserting against its own fixture.
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        response = await client.post(
+            f"/api/situations/{subject}/move",
+            json={
+                "alarm_id": members[0],
+                "to_situation_id": destination,
+                "confidence": SURE,
+            },
+        )
+        assert response.status_code == 200, response.text
+    finally:
+        await client.aclose()
+
+    rows = {int(r["id"]): r for r in await store.list_situations(None, 200)}
+    assert rows[subject]["status"] == "open", "the subject was not promoted (the control)"
+    assert rows[destination]["status"] == "new", (
+        "the move promoted the situation the alarm was moved INTO. Nobody read it; its id was "
+        "typed, and promoting it hides the card from the tab that exists to surface it."
+    )

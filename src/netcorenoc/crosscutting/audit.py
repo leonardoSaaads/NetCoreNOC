@@ -70,6 +70,14 @@ ACTIONS: frozenset[str] = frozenset(
         "situation.split",
         "situation.name",
         "alarm.clear",
+        # v0.16.2 — promotion WITHOUT judging (`PREREGISTRATION-0.16.2.md` §2.2, DECISIONS #273).
+        # **This row is the whole durable record of a bare promotion**, and that is deliberate:
+        # the event kinds are a `CHECK` on `situation_event.kind`, and widening one in SQLite is a
+        # rebuild of a table `situation_event_member` references `ON DELETE CASCADE`. The plan
+        # requires a reader two months later to tell an affirmation from a bare promotion — one
+        # has a `feedback` row and a `verdict` event, the other has this and neither — and the
+        # hash chain makes this the stronger of the two records, not the weaker.
+        "situation.promote",
         "prune.manual",
         # sensitive reads
         "quarantine.read",

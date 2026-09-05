@@ -89,6 +89,80 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
         return {"status": "named"}
 
+    @route.post("/api/situations/{sid}/promote")
+    async def promote_situation(
+        sid: int, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, str]:
+        """**Work this without judging it**: `new` -> `open`, and assert nothing.
+
+        `PREREGISTRATION-0.16.2.md` §2.2, the second of the two actions it registers. The first is
+        `POST /api/situations/{sid}/feedback` with `verdict: "confirm"` — *"this grouping is
+        correct"*, which promotes **and** records the assertion under `m(c)` and the floor. This one
+        promotes and records **no training row, no acquisition channel and no bag**.
+
+        ## Why the split exists, and why this route is the cheap half of it
+
+        The alternative was that promotion simply *is* a `confirm`: one line of code, and
+        `asserting_bags` rises with every triage. §2.1 rejects it on the failure mode rather than on
+        taste — an operator required to promote in order to work a situation will promote to get on
+        with the shift, and the appliance would then record, at scale, `confirm` assertions meaning
+        *"I needed this out of my way"*. That is **impatience wearing evidence's name**, and it is
+        indistinguishable from judgement in every column the corpus stores.
+        `PREREGISTRATION-0.9.0.md` §1 has already measured what such a population produces: 99.8 %
+        accuracy from a model that always predicts link.
+
+        ## What it does NOT write, and why that is load-bearing
+
+        No `situation_event`. The event kinds are a `CHECK` constraint on `situation_event.kind`
+        (`0014`), and widening a `CHECK` in SQLite is a table rebuild — of a table
+        `situation_event_member` references `ON DELETE CASCADE`, under `PRAGMA foreign_keys=ON`, in
+        a migration runner that uses `executescript`. The failure mode of getting that wrong is the
+        **silent deletion of every membership snapshot the corpus holds**, which is a far worse
+        trade than the one this release is making. So the durable record of a bare promotion is the
+        **audit row** below: hash-chained, actor-attributed, and immutable in a way
+        `situation_event` is not. §2.2 requires that a reader two months later can tell an
+        affirmation from a bare promotion, and they can: one has a `feedback` row and a `verdict`
+        event, the other has an audit row and neither.
+
+        **A bare promotion is not weak evidence in this release** (§2.3). It is not a training row
+        of any weight. Whether it should become one is an open question for a later release, to be
+        decided when there are enough of them to look at.
+
+        Idempotent: `promote_situation` is `WHERE status='new'`, so a second call is a no-op that
+        still answers 200 — the operator's action is already on record, which is F36's reading of a
+        repeat applied to a gesture that stores nothing.
+        """
+        scope = await scope_for(principal)
+        if not await situation_in_scope(sid, scope):
+            await audit_scope_denial(request, principal, "situation.promote", "situation", str(sid))
+            raise HTTPException(status_code=404, detail="no such situation")
+        async with write_txn():
+            cur = await store.conn.execute("SELECT status FROM situation WHERE id=?", (sid,))
+            row = await cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="no such situation")
+            if str(row[0]) == "resolved":
+                # The same 409 every other gesture answers for a resolved situation: it exists and
+                # is visible, and it is no longer in the state this action needs. Reopening is a
+                # decision nobody has made (DECISIONS #254).
+                raise HTTPException(
+                    status_code=409, detail="that situation has resolved; reload the card"
+                )
+            await store.promote_situation(sid, time.time())
+            await audit_row(
+                request,
+                principal,
+                "situation.promote",
+                "ok",
+                object_type="situation",
+                object_id=str(sid),
+                # The status the situation was IN, so a reader can tell the promotion that moved it
+                # from the second click that did nothing — which is the distinction §2.2 asks the
+                # record to carry, and the only one this row could otherwise lose.
+                details={"from": str(row[0])},
+            )
+        return {"status": "promoted"}
+
     @route.post("/api/alarms/{aid}/clear")
     async def clear_alarm(
         aid: int,

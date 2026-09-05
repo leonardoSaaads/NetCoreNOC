@@ -140,6 +140,19 @@ class Detail extends Component {
     }
   }
 
+  async promote() {
+    const { sid } = this.props;
+    if (this.state.sending) return;
+    this.setState({ sending: true, outcome: null });
+    try {
+      await post(`/api/situations/${sid}/promote`, {});
+      this.setState({ sending: false, outcome: { ok: true, kind: "promote" } });
+      this.props.onChanged();
+    } catch (error) {
+      this.setState({ sending: false, outcome: { ok: false, error } });
+    }
+  }
+
   async close() {
     const { sid } = this.props;
     this.setState({ sending: true });
@@ -190,6 +203,13 @@ class Detail extends Component {
 
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
 
+      ${editable && detail.status === "new" ? html`<div class="fb">
+        <button type="button" disabled=${this.state.sending} title=${PROMOTE_TITLE}
+                onClick=${() => this.promote()}>
+          <${Icon} name="chevron" /> Start working this
+        </button>
+      </div>` : null}
+
       ${editable ? html`<div class="fb">
         <button type="button" class="primary" disabled=${this.state.sending}
                 onClick=${() => this.verdict("confirm")}>
@@ -225,7 +245,12 @@ class Detail extends Component {
   }
 }
 
+const PROMOTE_TITLE =
+  "Moves this to Open so the shift can see somebody has it. It records nothing about whether " +
+  "the grouping is right — Confirm is how you say that.";
+
 const OUTCOME_TEXT = {
+  promote: "Open, and yours. Nothing was recorded about whether the grouping is right.",
   confirm: "Recorded: this grouping is correct. Every pair in it is now an asserted positive.",
   split: "Recorded: this grouping is wrong. Only the members you marked are asserted negative.",
   close: "Closed.",

@@ -386,7 +386,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/graph.js": "157e8212e3705af5bd9083d878a0964103af6cc79b22726ae4900f31020db1bd",
     "app/views/labelling.js": "f4700fc88921415127605c524cd8d3d8442eea40e7239cffb9473ccf950a97a0",
     "app/views/overview.js": "8bc8c4e0d6ae23f7556be27b50ec72c5ed37afe9d8aa03ae5ae2bbfebd6b1e87",
-    "app/views/parts/card.js": "7e278b56712edb41802022982e324797fa4baf0ca0cd818fe581d6c282ac8b34",
+    "app/views/parts/card.js": "348d6b570d4a82663eb4dfbbf7cc7891ab5681b7d11d2da005cf574383bafb0e",
     "app/views/parts/facts.js": "0abf2daabe89c2b6f50a03a4c960ec966056e4ccc853311a1e03addc6bce672b",
     "app/views/parts/lifecycle.js": (
         "9db1abe2d2466d6d3dfad1a5d48bac644d61b1bed2b491fc1553a35be1ed4746"
@@ -456,7 +456,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/graph.js": 16_717,
     "app/views/labelling.js": 5_327,
     "app/views/overview.js": 13_804,
-    "app/views/parts/card.js": 11_473,
+    "app/views/parts/card.js": 12_463,
     "app/views/parts/facts.js": 6_328,
     "app/views/parts/lifecycle.js": 12_070,
     "app/views/parts/members.js": 3_984,

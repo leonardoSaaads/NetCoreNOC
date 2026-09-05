@@ -352,6 +352,9 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         "situation.split": "editor",
         # A zombie clear is a fact about an ALARM, and the capability's name says so.
         "alarm.clear": "editor",
+        # v0.16.2 (DECISIONS #273): the weakest write this API has. It moves `new` -> `open` and
+        # records no opinion, so it is NOT `feedback.write` — which is the power to record one.
+        "situation.promote": "editor",
         # administer (admin only)
         "users.manage": "admin",
         "entity.reset": "admin",

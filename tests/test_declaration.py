@@ -577,12 +577,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
     # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
     # pair of assertions is really for.
-    assert len(served) == 102, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 103, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 49, (
+    assert len(api_pairs) == 50, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
-        f"operator's five gestures — and v0.13.0/v0.14.0/v0.15.3 added none at all. A change "
-        f"here means something else happened."
+        f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
+        f"and v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else "
+        f"happened."
     )
     for _method, path in served:
         route = next(r for r in app.routes if getattr(r, "path", None) == path)  # type: ignore[attr-defined]
@@ -658,12 +659,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
     # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
     # pair of assertions is really for.
-    assert len(served) == 102, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 103, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 49, (
+    assert len(api_pairs) == 50, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
-        f"operator's five gestures — and v0.13.0/v0.14.0/v0.15.3 added none at all. A change "
-        f"here means something else happened."
+        f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
+        f"and v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else "
+        f"happened."
     )
     paths = {path for _method, path in served}
     for public in declare.UNAUTHENTICATED_PATHS:
@@ -797,7 +799,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
-    assert len(SCOPED) == 17, SCOPED
+    #
+    # v0.16.2: 17 -> 18. `POST …/promote` names a situation and its capability is below `admin`,
+    # so it is the same perimeter for the same reason (DECISIONS #273).
+    assert len(SCOPED) == 18, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -828,6 +833,7 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/situations/{sid}/split"): {"alarm_ids": [1], "confidence": 0.9},
     ("POST", "/api/situations/{sid}/name"): {"name": "x"},
     ("POST", "/api/alarms/{aid}/clear"): {},
+    ("POST", "/api/situations/{sid}/promote"): {},
     ("POST", "/api/users"): {"username": "x", "password": "x" * 14, "role": "viewer"},
     ("POST", "/api/users/{uid}/role"): {"role": "viewer"},
     ("POST", "/api/tokens"): {"name": "t", "role": "viewer"},
@@ -897,6 +903,8 @@ SCOPED_TARGETED = [
     ("POST", "/api/situations/{sid}/split"),
     ("POST", "/api/situations/{sid}/name"),
     ("POST", "/api/alarms/{aid}/clear"),
+    # v0.16.2: the bare promotion names one situation, so it is targeted for the same reason.
+    ("POST", "/api/situations/{sid}/promote"),
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 

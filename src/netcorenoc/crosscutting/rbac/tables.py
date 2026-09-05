@@ -67,6 +67,14 @@ PERMISSIONS: dict[str, str] = {
     # A zombie clear is a fact about an ALARM, not about a grouping, and its capability says so:
     # `alarm.clear`, not `situation.clear` (`PREREGISTRATION-0.16.0.md` §1).
     "alarm.clear": "editor",
+    # v0.16.2 (`PREREGISTRATION-0.16.2.md` §2.2, DECISIONS #273). **The weakest write this API
+    # has**: it moves a situation from `new` to `open` and changes nothing else — no label, no
+    # training row, no membership. Its own capability rather than `feedback.write` for #256's
+    # reason exactly: `feedback.write` is the power to record an OPINION, and the whole point of
+    # this action is that it records none. Separating them lets a deployment grant "you may pick
+    # up work" without "you may teach the correlator", which is a real shift arrangement — a
+    # junior triager — that one capability makes unreachable.
+    "situation.promote": "editor",
     # administer (admin only)
     "users.manage": "admin",
     "entity.reset": "admin",  # v0.3.0: reset an NE's learned entity key (audited)
@@ -126,6 +134,10 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     # It gets its own ROUTE because the storage and the scope decision are the situation's.
     ("POST", "/api/situations/{sid}/name"): "label.write",
     ("POST", "/api/alarms/{aid}/clear"): "alarm.clear",
+    # v0.16.2: promotion WITHOUT judging. `PREREGISTRATION-0.16.2.md` §2.2 registers it as one of
+    # two distinct actions, and the other one is `POST …/feedback` with `verdict: confirm`, which
+    # already existed and already asserts.
+    ("POST", "/api/situations/{sid}/promote"): "situation.promote",
     ("GET", "/api/users"): "users.manage",
     ("POST", "/api/users"): "users.manage",
     ("DELETE", "/api/users/{uid}"): "users.manage",
@@ -214,6 +226,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/situations/{sid}/split"): "scoped",
     ("POST", "/api/situations/{sid}/name"): "scoped",
     ("POST", "/api/alarms/{aid}/clear"): "scoped",
+    ("POST", "/api/situations/{sid}/promote"): "scoped",
     ("GET", "/api/users"): "admin_only",
     ("POST", "/api/users"): "admin_only",
     ("DELETE", "/api/users/{uid}"): "admin_only",

@@ -1326,6 +1326,10 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/situations/{sid}/split"): "async def split_situation(",
         ("POST", "/api/situations/{sid}/name"): "async def name_situation(",
         ("POST", "/api/alarms/{aid}/clear"): "async def clear_alarm(",
+        # v0.16.2: the bare promotion. It writes one column and asserts nothing, and it is inside
+        # the perimeter for exactly the reason every other one is — it names a situation, and its
+        # capability is below `admin` (DECISIONS #273).
+        ("POST", "/api/situations/{sid}/promote"): "async def promote_situation(",
     }
     unprotected: list[str] = []
     for (method, path), capability in sorted(rbac.ROUTE_PERMISSIONS.items()):

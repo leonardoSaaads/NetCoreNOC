@@ -440,6 +440,11 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/situations/{sid}/merge"),
     ("POST", "/api/situations/{sid}/split"),
     ("POST", "/api/situations/{sid}/name"),
+    # v0.16.2: the bare promotion, registered in `routes_annotate.py` between the rename and the
+    # zombie clear because that is where it belongs on the modules' own seam — it asserts nothing
+    # about a grouping. A distinct literal below `GET /api/situations/{sid}`, so it shadows nothing
+    # (DECISIONS #273).
+    ("POST", "/api/situations/{sid}/promote"),
     ("POST", "/api/alarms/{aid}/clear"),
     ("POST", "/api/entities/{ne_id}/reset"),
     ("POST", "/api/profiles/{ne_id}/reset"),
@@ -533,7 +538,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     _engine, _queue, app = await authutil.make_env(store)
     live = [entry for entry in route_order(app) if entry[1].startswith("/api")]
     assert live == API_ORDER_BASELINE
-    assert len(live) == 49, f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five"
+    assert len(live) == 50, (
+        f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five and v0.16.2 exactly one"
+    )
 
 
 async def test_route_order_baseline_has_no_duplicates(store: Store) -> None:
@@ -547,7 +554,7 @@ async def test_route_order_baseline_has_no_duplicates(store: Store) -> None:
 
 @pytest.mark.parametrize("entry", ROUTE_ORDER_BASELINE, ids=lambda e: f"{e[0]} {e[1]}")
 def test_every_baseline_route_is_uniquely_named(entry: tuple[str, str]) -> None:
-    """The baseline itself is well-formed: 48 distinct entries, no accidental repetition."""
+    """The baseline itself is well-formed: every entry distinct, no accidental repetition."""
     assert ROUTE_ORDER_BASELINE.count(entry) == 1
 
 
@@ -912,7 +919,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `situations.py`'s four idle-population queries after the critical repair pushed that module to
 #: 415 lines against the 400-line guard (DECISIONS #274). **No migration**: the idle-but-active
 #: situation is derived, so `0015` is still the head of the schema.
-SRC_TREE_DIGEST = "6ffd8ffb007798d77cc4b5586c3b3cde6e1f0f4c5563c780407d138133ba1d28"
+SRC_TREE_DIGEST = "0c0080df410c20a73bac0c42f794b837290769d3c94e0617c6280c9f5980e2b2"
 SRC_FILE_COUNT = 194
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
