@@ -73,8 +73,9 @@ class IdleMixin(StoreBase):
         a fixture where both halves are non-empty.
         """
         cur = await self.conn.execute(
-            # nosec B608 - `LIVE` and `HAS_ACTIVE` are module literals; `cutoff` is bound
-            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ? AND NOT {HAS_ACTIVE}",
+            # `LIVE` and `HAS_ACTIVE` are module literals; `cutoff` is a bound parameter. The
+            # suppression sits on the line bandit REPORTS, not the one above it (v0.16.1, c40f0ff).
+            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ? AND NOT {HAS_ACTIVE}",  # nosec B608
             (cutoff,),
         )
         return [int(r[0]) for r in await cur.fetchall()]
@@ -98,8 +99,8 @@ class IdleMixin(StoreBase):
         them.
         """
         cur = await self.conn.execute(
-            # nosec B608 - `LIVE` and `HAS_ACTIVE` are module literals; `cutoff` is bound
-            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ? AND {HAS_ACTIVE}",
+            # Same fragments, sign flipped; same suppression, on the reported line.
+            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ? AND {HAS_ACTIVE}",  # nosec B608
             (cutoff,),
         )
         return [int(r[0]) for r in await cur.fetchall()]

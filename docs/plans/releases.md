@@ -87,6 +87,42 @@ code:
   v0.16.3 needs somewhere to live, and a shell built after the thing it must hold is a shell built
   once.
 
+## What v0.16.2 measured, and which block needs it
+
+A release's own measurements belong where the release that will *spend* them can find them.
+These were taken by v0.16.2 and are reproducible commands, not quoted numbers — the reason
+`tools/corpus_census.py` exists rather than a figure in a Markdown file.
+
+**For v0.16.3 — `python tools/evidence/severity_census.py`.** All ten corpus scenarios through one
+live appliance, with the maintenance sweep that confirms a severity field:
+
+| | |
+|---|---|
+| alarms | 2 252 |
+| alarms with a resolved severity | **0** |
+| NEs with a confirmed severity field | **0** |
+| NEs clearing `SEVERITY_MIN_OBS = 200` | 6 |
+| closed alarms against `SEVERITY_MIN_CLOSED = 50` | **1** |
+
+The sixth row is the control and it is what makes the zero mean something: the observation floor
+*is* reachable on this corpus, so the zero is not *"no severity-shaped varbind exists"*. The
+binding constraint is the ordinality test, which validates a candidate ranking against **closed
+alarm lifetimes**, and the corpus closes one alarm in 2 252. That is a corpus question before it is
+a threshold question, and it is the gap an operator declaration fills.
+
+**For v0.16.5 and v0.16.6 — the same table.** A severity filter and a per-severity health panel
+both read a field that resolves for nothing. Either would render a screen whose every row says
+*unknown*, with no way to tell a broken screen from an honest one.
+
+**For v0.16.4 — F103.** The member checkbox renders 13 × 13 px at every width, because the
+tap-target floor's own selector excludes checkboxes. It is the control that decides which members a
+partial split marks, and the repair belongs with the shell, where the row height, the checkbox
+column and the touch floor are one decision.
+
+**Also open for v0.16.3**: F99 (an integer severity rank above 4 has no place on the five bands)
+and F100 (48 alarm classes on the corpus, 2 with a name, 46 with a vendor — so an operator reads a
+raw OID 96 % of the time while the vendor sits one column away).
+
 ## The claims
 
 Each row above is claimed here, one marker per line. The table's own document must claim every row

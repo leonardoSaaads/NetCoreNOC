@@ -60,6 +60,7 @@ export function SituationCard({ situation, onToggle, onChanged }) {
           ? html`<${Badge} tone="quiet" title=${RESOLUTION_TEXT[situation.resolution] ?? ""}
                  >${situation.resolution.replace("_", " ")}<//>` : null}
         <${Badge}>${plural(situation.alarm_count, "alarm")}<//>
+        ${situation.stale ? html`<${Badge} tone="stale" title=${STALE_TITLE}>stale<//>` : null}
         ${situation.redacted_count ? html`<${Badge} tone="redacted" title=${SCOPE_TITLE}>
           +${situation.redacted_count} outside your scope<//>` : null}
         ${expanded && withheld > 0 ? html`<${Badge} tone="held" title=${HELD_TITLE}>
@@ -87,6 +88,9 @@ const NAME_TITLE = {
            "can override it, and no model proposes one.",
 };
 
+const STALE_TITLE =
+  "Nobody has touched this for over an hour and one of its alarms is still active. The appliance " +
+  "will not resolve it while an alarm is on; it is waiting for a person.";
 const HELD_TITLE =
   "This card is frozen while you have it open, so the grouping you are judging cannot change " +
   "under your click. It may not reflect the last few seconds. Collapse it to resume live updates.";

@@ -1214,3 +1214,33 @@ Run every command below from the repository root with the virtualenv active.
   third, demonstrated red by restoring the `store/types.py` form with the repaired tree as its
   control. One `.parent` is still allowed: a module's own directory is a fact about the file, not a
   count of steps to somewhere else.
+
+## F103 — the tap-target floor excludes the one control an operator ticks most
+
+- **What**: `style.css:247` reads
+  `button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: var(--tap); }`.
+  F81 installed `--tap: 28px` with the rule *"every interactive control is at least this on its
+  short edge"*, and the selector excludes exactly the control that rule matters most for: the
+  **member checkbox** in a situation's card, which is what decides the `excluded_ids` a partial
+  split sends. Measured in a browser at 390 px, each renders **13 × 13 px** — less than a quarter
+  of the floor's area, in a column of eight, in the gesture whose whole contract is that the
+  appliance records only pairs a human actually marked.
+- **Reproduce**, in a browser as an editor at 390 px, expanding any situation card:
+  ```js
+  [...document.querySelectorAll('input[type="checkbox"]')]
+    .map(e => e.getBoundingClientRect())
+    .map(r => `${Math.round(r.width)}x${Math.round(r.height)}`)
+  ```
+- **Measured**: `["13x13", "13x13", "13x13", "13x13", "13x13", "13x13", "13x13", "13x13"]` at all
+  three widths, for the editor. A viewer is offered no checkboxes at all, which is why the
+  measurement is role-specific.
+- **Why it matters**: a mis-tick on a 13 px target is not a cosmetic annoyance — it writes a human
+  judgement about a pair no human judged, which is exactly what
+  `test_ui_invariants.py::test_a_partial_split_sends_exactly_the_marked_ids_and_no_others` exists
+  to protect and cannot see. That guard asserts the client sends **what was ticked**; it says
+  nothing about whether the operator could tick what they meant. Found in a browser, which is the
+  eighth consecutive release in which that sentence is true.
+- **Disposition**: open, **not fixed here**. Part VII rule 2 confines this release's console work to
+  the severity pill, and the repair is a hit-area rule that belongs with v0.16.4's shell — where
+  the row height, the checkbox column and the touch floor are one decision rather than three.
+  Issued in v0.16.2.

@@ -114,13 +114,23 @@ class MaintenanceMixin(EngineBase):
         Silent at zero, which is the ordinary state: a warning list that always holds an entry is a
         warning list nobody reads.
         """
-        if not self._idle_active_count:
-            return []
         n = self._idle_active_count
+        if not n:
+            return []
+        subject = "1 situation" if n == 1 else f"{n} situations"
+        # Written as two whole sentences rather than assembled from inflected fragments. The first
+        # attempt read "1 situation … They are still open", which is the kind of seam an operator
+        # notices and a test does not.
+        rest = (
+            "It is still open and is marked stale in the console; the idle sweep will not resolve "
+            "it while an alarm is on."
+            if n == 1
+            else "They are still open and are marked stale in the console; the idle sweep will "
+            "not resolve them while an alarm is on."
+        )
+        verb = "holds" if n == 1 else "hold"
         return [
-            f"{n} situation{'s' if n != 1 else ''} nobody has touched for over an hour still "
-            f"hold{'' if n != 1 else 's'} an active alarm. They are still open and are marked "
-            "stale in the console; the idle sweep will not resolve them while an alarm is on."
+            f"{subject} nobody has touched for over an hour still {verb} an active alarm. {rest}"
         ]
 
     async def _seal_once(self, now: float) -> None:

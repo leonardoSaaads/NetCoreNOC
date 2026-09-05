@@ -477,6 +477,13 @@ td.sev { white-space: nowrap; }
 .badge-alarm { border-color: var(--alarm); color: var(--alarm); }
 .badge-quiet { border-color: var(--quiet); color: var(--quiet); }
 .badge-redacted, .badge-held, .badge-scope { border-color: var(--warn); color: var(--warn); cursor: help; }
+/* v0.16.2: idle for over an hour with an alarm still on. FILLED rather than outlined, because it
+ * is the one badge on this line that means "somebody should look at this now" — the others say
+ * what the card is, and this one says what it needs (DECISIONS #274). */
+.badge-stale {
+  background: var(--warn); color: var(--bg); border-color: var(--warn);
+  font-weight: 600; cursor: help;
+}
 
 /* ---------- situations ---------- */
 

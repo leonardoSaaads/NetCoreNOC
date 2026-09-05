@@ -920,7 +920,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: 415 lines against the 400-line guard (DECISIONS #274), and `api/routes/__init__.py`, which is
 #: the package the twelve `routes_*.py` modules moved into (DECISIONS #278). **No migration**: the
 #: idle-but-active situation is derived, so `0015` is still the head of the schema.
-SRC_TREE_DIGEST = "81ce931053721785ffd45e4e7984cf6e910dc194fcfddfe7cabb8971916c1280"
+SRC_TREE_DIGEST = "bed72c84eff30badccdd39f35ce2a9404657a41aebad0e0f38b876c17262b0b1"
 SRC_FILE_COUNT = 195
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

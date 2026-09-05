@@ -2784,3 +2784,23 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Trade-off accepted**: twelve renames and every path-pinning reference updated in the same commit.
   Nothing else changes; `MODULE_ORDER` keeps registration order, which is what makes the scanning
   guards' slices mean what they meant.
+
+## 279. A Hypothesis profile, because the coverage figure was a property of the search (v0.16.2)
+
+- **Decision**: `tests/conftest.py` registers and loads one profile — `derandomize=True`,
+  `database=None` — and nothing else about the suite changes.
+- **Reason**: no profile was registered anywhere in this project, so Hypothesis ran with a random
+  seed and a persistent example database. A property test explored different inputs on different
+  runs and replayed a shrunk failure on any machine that had one cached, so different branches
+  executed and the coverage percentage moved. **The instability was in the search, not in the
+  suite** — which is why the v0.16.1 handoff (95.90 / 95.94 / 95.96 on one tree) and the reviewer
+  who got 95.88 three times running were both reporting honestly.
+- **Trade-off accepted**: a derandomised search stops accumulating coverage of the *input* space
+  across runs, which is a real loss. It is taken because a property that fails only on one
+  machine's cached example is one nobody can act on, and because a release cannot compare its
+  coverage to the last one's if the number is a function of what the last run happened to draw.
+- **Measured**: 169 property-driven tests across four modules pass under the profile, and the
+  release's two coverage runs are reported in the handoff against exactly this configuration.
+- **Not decided here**: whether `max_examples` should move. The one test that sets it
+  (`test_governance.py`, 250) keeps its own setting, because a profile that silently overrode a
+  deliberate per-test budget would be the placeholder rule (#219) in a new register.
