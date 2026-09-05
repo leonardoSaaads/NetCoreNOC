@@ -14,11 +14,12 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of twenty-seven ask
-you to do something; eight more ask you to read a paragraph first. The other seventeen are
+Read only the rows between your version and the one you are installing. **Two of twenty-eight ask
+you to do something; nine more ask you to read a paragraph first. The other seventeen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
-v0.16.0 did not add its row at all — F94 — so v0.16.1 adds both.)
+v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
+read-a-paragraph row: it applies no migration and still changes what your existing situations do.)
 
 | From → to | What you must do |
 |---|---|
@@ -49,6 +50,7 @@ v0.16.0 did not add its row at all — F94 — so v0.16.1 adds both.)
 | v0.15.4 → v0.15.5 | Nothing, but **the theme control stops being a three-state ring** — see below |
 | v0.15.5 → v0.16.0 | Nothing, but **every situation status you have ever seen is renamed** — see below |
 | v0.16.0 → v0.16.1 | Nothing. `0015` widens one index; **no situation regroups and no verdict changes** |
+| v0.16.1 → v0.16.2 | Nothing to run — **no migration** — but situations that were being closed will stop being closed. Read below |
 
 ## The two that need an action, and the six that need reading
 
@@ -173,6 +175,48 @@ once, which is the v0.7.1 bound that stops N identical posts driving N learning 
 The same release repairs how the promotion judge reads those labels (F90). **No verdict this
 appliance has ever returned changes**: the gate still refuses on the corpus floors, which no
 number here moves.
+
+### v0.16.2 — situations you were used to seeing closed will stay open
+
+**Nothing to run: this release applies no migration.** What changes is what the appliance does on
+its own, and it is the point of the release.
+
+The idle sweep closed every live situation nobody had touched for an hour. It never asked whether
+any of that situation's alarms were **still active** — and because a repeating trap increments an
+existing alarm's `count` rather than raising a new one, a situation closed that way never came back
+into a live view, no matter what the network did afterwards. **The symptom of the defect was the
+absence of a symptom**, which is why an appliance that has been running for months may have been
+quietly hiding live incidents from you.
+
+After this release:
+
+* the sweep resolves only what is **quiet** — an idle situation whose alarms have all cleared, or
+  one with no members at all;
+* an idle situation that still holds an active alarm **stays open**, carries a **stale** badge in
+  the console, and is counted in a warning on `/api/stats` and the Overview screen;
+* `resolution='idle'` narrows to the empty bag. A bag whose members all cleared still records
+  `self_cleared`; nothing already recorded changes meaning.
+
+**What you will notice on the first run.** Your open-situation count may rise, once, and stay
+higher. That is not a regression and nothing is being created: those situations existed, they were
+being resolved out from under you, and the number you had was the wrong one. Anything on that list
+with a stale badge is an incident nobody has looked at while something is still broken — start
+there.
+
+**A situation that never resolves is never pruned**, so its membership rows are retained while an
+alarm in it is on. That is the same trade: retention follows the incident, and an incident that is
+still burning is not history.
+
+Two new things an operator can do, neither of which is switched on by default:
+
+* **`POST /api/situations/{sid}/promote`** — "I am working this", which moves a situation from
+  **New** to **Open** and records *no* opinion about whether the grouping is right. It needs the
+  new `situation.promote` capability (35 in total now); grant it to whoever triages.
+* Confirming a grouping is unchanged and is still the only way to say the grouping is correct.
+
+**One behaviour you may have scripted against**: `GET /api/situations` rows now carry a `stale`
+boolean, and moving an alarm no longer promotes the situation it was moved **into** — only the one
+it was moved out of.
 
 ### v0.15.4 — rebuild the image if you ran v0.15.3 in a container
 

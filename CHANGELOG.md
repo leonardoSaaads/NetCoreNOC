@@ -12,6 +12,88 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-seven rows, two ask for an
 action, eight ask you to read a paragraph, and seventeen are start-the-new-binary.
 
+## [0.16.2] - 2026-09-05 — "a situation with a live alarm stops disappearing"
+
+The idle sweep closed a situation that was still burning, and because a repeating trap increments
+an existing alarm rather than raising a new one, nothing put it back. **The symptom of the defect
+was the absence of a symptom.**
+
+```
+the sweep, four arms at one clock       before                    after
+  stale, 2 ACTIVE members               resolved / idle           NOT selected, still live
+  fresh, 2 ACTIVE members  (control)    not selected              not selected
+  stale, 2 cleared members (control)    resolved / self_cleared   resolved / self_cleared
+  stale, EMPTY bag         (control)    resolved / idle           resolved / idle
+  replay after the sweep                alarm active, count 1->2, and the situation is LIVE
+
+census (--gestures)    10 / 10 / 2 222  ->  16 / 16 / 2 227
+  attributed: the census was re-run AT the repair commit and reads 16 there already. The
+  promotion split moved it by ZERO — §4.1, the branch the plan predicted. §4.3's three checks
+  are each verified rather than asserted, in the commit that made the change.
+capabilities             34 -> 35        `situation.promote`, and it ships switched off
+migrations             0015 -> 0015      NONE; the idle-but-active situation is DERIVED
+runtime dependencies      5 -> 5         no npm, no build step, no bundler, CSP unchanged
+plans pinned              6 -> 7         PREREGISTRATION-0.16.2.md, ratified before any repair
+make eval                byte-identical: c2e8a0ce…8b9b6f26
+make qa                  1 759 passed (was 1 741); 35 DOM (was 34); mypy 235 files
+coverage                 95.89 % TWICE, module table byte-identical — see #279
+```
+
+### The critical repair (#274, #275)
+
+`open` → `resolved` now requires that no member is still active, and the invariant is on the
+`UPDATE` itself, not only in the caller — so a call site added later cannot reach the transition
+around it. It binds the **appliance's** close and not the operator's: forbidding a human to close a
+burning situation would leave one way to do it, hand-clearing every member first, which
+manufactures `manual_clear` facts about alarms nobody cleared.
+
+The other half of the population — live, untouched, still burning — is **derived, never stored**,
+because staleness is a function of `now` and a column would be a cached clock reading. One
+expression feeds both readers: an operator warning through the channel that already carries seven
+degradations, and a `stale` badge on the card. `engine.py` is byte-identical.
+
+### Promotion and assertion are two actions (#273, `PREREGISTRATION-0.16.2.md`)
+
+Promoting a situation is **not** a `confirm`. §2.1 rejects that on the failure mode rather than on
+taste: an operator required to promote in order to work a situation will promote to get on with the
+shift, and the appliance would record, at scale, agreement that means *"I needed this out of my
+way"*. `POST …/promote` is the explicit action that asserts nothing; `Confirm` is unchanged and is
+still the only way to say a grouping is right. Six of the seven implicit promotions survive; the
+one that goes is the move's **destination**, whose id was typed and which nobody had read.
+
+### The severity pill (#276, #277)
+
+A filled badge, five bands, five distinct glyphs, and a luminosity ladder so the order survives
+deuteranopia. `critical` and `major` shared the glyph `▲` while sitting two hue-steps apart, which
+made two adjacent bands one encoding. **`indeterminate` stops rendering as `low`** — the
+vocabulary's own word for *"I do not know how serious this is"* was being shown as a level. No
+MEDIUM is invented: no token maps to one.
+
+Measured, and it is why v0.16.3 exists: **0 of 2 252 corpus alarms resolve a severity at all**, and
+the binding floor is `SEVERITY_MIN_CLOSED = 50` against a corpus that closes **one** alarm.
+
+### `api/routes/` (#278), and six findings
+
+Twelve route modules move, derived from the import graph — twelve of twelve import the machinery
+and none imports another. The behaviour record is the gate and it holds: not one `/api` route
+changed.
+
+```
+F98   apisource.py globbed the API package NON-recursively behind a floor its own machinery
+      cleared alone (74 398 vs 60 000). The move would have emptied the corpus four guards read
+      and left all four green. Fixed with the move.
+F99   an integer severity rank above 4 has no place on the five bands.       open, v0.16.3
+F100  48 alarm classes, 2 with a name, 46 with a vendor — an operator reads a raw OID 96 % of the
+      time while the vendor sits one column away. (The brief said these columns are never
+      written; measured, that is wrong.)                                     open, v0.16.3
+F101  five of twenty test citations in `src/` named a test that does not exist, including the
+      guard `LIVE` had claimed since v0.16.0. Written, repointed, and guarded.
+F102  two runtime paths were a count of `.parent`s; moving one repointed the console at a
+      directory that does not exist and every static route answered 500.      fixed, guarded
+F103  the member checkbox is 13 x 13 px because `--tap`'s selector excludes checkboxes.
+      Found in a browser.                                                    open, v0.16.4
+```
+
 ## [0.16.1] - 2026-09-04 — "the judge reads what the operator asserted, and then the screens learn a verb"
 
 v0.16.0 moved `asserting_bags` off zero for the first time since v0.9.1. This release opens by
