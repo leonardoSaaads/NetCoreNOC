@@ -1141,3 +1141,44 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: open, **not fixed here and deliberately not**. Two repairs are available — put the
   vendor into `alarmName`, or let an operator name the class — and choosing between them is exactly
   v0.16.3's question. Fixing the cheap one first would settle it by accident. Issued in v0.16.2.
+
+## F101 — five of twenty test citations in `src/` named a test that does not exist
+
+- **What**: a module that claims a property is checked cites the guard by name —
+  `` `tests/test_store.py::test_x` `` — twenty times across `src/netcorenoc`. **Five of those
+  twenty resolved to nothing.** The worst is `store/situations.py`, whose comment on `LIVE` has
+  said since v0.16.0 that `tests/test_store.py::test_every_live_situation_query_uses_the_one_
+  fragment` *"reads this module to assert nothing spells it out a second time"*. No such test
+  existed anywhere in the tree, so the single-source property was a promise wearing a guarantee's
+  clothes for two releases. Two more named the right test in the wrong file, one named a test that
+  had been renamed, and one was correct but **wrapped across a line break** mid-identifier, so no
+  reader and no tool could follow it.
+- **Reproduce**:
+  ```sh
+  python -c "
+  import ast, re
+  from pathlib import Path
+  cite = re.compile(r'tests/(test_[a-z0-9_]+)\.py::(test_[A-Za-z0-9_]+)')
+  for p in sorted(Path('src/netcorenoc').rglob('*.py')):
+      for mod, name in cite.findall(p.read_text()):
+          f = Path('tests') / f'{mod}.py'
+          names = {n.name for n in ast.walk(ast.parse(f.read_text()))
+                   if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)} if f.is_file() else set()
+          if name not in names:
+              print('DANGLING', p, mod, name)"
+  ```
+- **Measured**, on the v0.16.1 tree: five dangling — `store/situations.py` (the `LIVE` guard, which
+  never existed), `store/situation_events.py` × 2 (both live in other modules under other names),
+  `engine/model/confidence.py` (wrong file *and* wrong name), and
+  `crosscutting/rbac/tables.py` (correct, wrapped across two lines).
+- **Why it matters**: it is #201's dangling-decision-pointer in a second register, and worse. A
+  decision citation that dangles points at missing *reasoning*; a test citation that dangles points
+  at a missing *check*, and a reader who follows it finds nothing while the property goes on being
+  assumed. This is precisely the shape Appendix B calls *"where you write 'a test that guarantees
+  X', ask whether you would know how to write that test"*.
+- **Disposition**: **FIXED in v0.16.2.** The two guards `situations.py` promised are written; the
+  three misdirected citations are repointed at the tests that exist; the wrapped one is reflowed.
+  And `tests/test_documentation.py::test_every_test_cited_in_src_resolves_to_a_test_that_exists`
+  is the sibling of the decision-citation guard, so the next one fails at review rather than
+  surviving two releases — demonstrated red by a citation to a test that does not exist, with the
+  restored tree as its control.

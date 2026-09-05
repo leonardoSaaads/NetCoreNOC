@@ -912,7 +912,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `situations.py`'s four idle-population queries after the critical repair pushed that module to
 #: 415 lines against the 400-line guard (DECISIONS #274). **No migration**: the idle-but-active
 #: situation is derived, so `0015` is still the head of the schema.
-SRC_TREE_DIGEST = "e5083b1744b2fd309ea080fb90e7965ff020147511d70ed64c66351f5d875ee0"
+SRC_TREE_DIGEST = "6ffd8ffb007798d77cc4b5586c3b3cde6e1f0f4c5563c780407d138133ba1d28"
 SRC_FILE_COUNT = 194
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

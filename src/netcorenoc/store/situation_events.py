@@ -43,8 +43,8 @@ class SituationEventMixin(StoreBase):
         **Called by the statement group that changed the membership, and by nothing else**
         (DECISIONS #257). That is what makes "never stale" structural rather than promised: there
         is no path that changes `situation_alarm` without passing through a caller of this, and
-        `tests/test_store.py::test_the_derived_name_agrees_with_the_membership_after_every_mutation`
-        drives all six of them and compares.
+        `tests/test_lifecycle.py::test_the_derived_name_tracks_membership_and_cannot_go_stale`
+        drives one of them through its route and recomputes every name in the tree afterwards.
 
         One aggregate query, and it reads **device addresses** rather than labels — an operator's
         device label is free text, and folding it into a name the server computed would make an
@@ -91,7 +91,7 @@ class SituationEventMixin(StoreBase):
         caller turns into the same 404 an out-of-scope one takes.
 
         No model reaches this method, in this release or through any path it adds
-        (`tests/test_store.py::test_no_server_derivation_ever_reaches_operator_name`). A model
+        (`tests/test_gesture_boundary.py::test_no_server_derivation_reaches_operator_name`). A model
         writing *"fibre cut"* above a grouping the operator is about to judge contaminates that
         judgement, which is the `incumbent_linked` mistake in a new register.
         """

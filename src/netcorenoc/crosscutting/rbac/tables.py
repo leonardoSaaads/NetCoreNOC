@@ -21,8 +21,8 @@ operand. See `policy.py` for the full statement of that guarantee.
 **The prose is not decoration.** DECISIONS #87 records that `ROUTE_SCOPE` pushed `rbac.py` past the
 400-line guard and that neither the table nor its justifications could be traded away to get under
 it — splitting is the fix that keeps both. Every ``"unscoped"`` justification comment travels with
-its entry, and `tests/test_declaration.py::test_every_unscoped_declaration_carries_a_written_
-justification` reads **this file** to assert it.
+its entry, and this file is read to assert it by
+`tests/test_declaration.py::test_every_unscoped_declaration_carries_a_written_justification`.
 
 The three module-level ``assert`` statements below are assertions *about these tables*, evaluated at
 import. They live here, with what they constrain: an assertion separated from its table stops
