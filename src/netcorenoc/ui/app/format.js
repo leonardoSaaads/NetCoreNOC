@@ -58,25 +58,53 @@ export function timeTitle(epochSeconds) {
 
 /* ---------- severity ---------- */
 
+/**
+ * The four bands the appliance can place an element on, and one it cannot (DECISIONS #276).
+ *
+ * **Five vocabulary ranks, five bands, and no MEDIUM.** `known_oids.SEVERITY_VOCAB` normalises
+ * `critical=0, major=1, minor=2, warning=3, indeterminate=4, cleared=4`. Ranks 0-3 are placements
+ * on a scale and get a band each; **rank 4 is not a placement** — `indeterminate` is the
+ * vocabulary's own word for *"I do not know how serious this is"* — so it renders as UNKNOWN
+ * carrying that word, beside a never-learned severity and visibly distinct from it by its text.
+ *
+ * Until v0.16.2 ranks 3 and 4 were folded into `low`, which said *"not very serious"* about an
+ * element that had said nothing of the kind. That is the defect this module's own header already
+ * names for the blank cell — *"a blank would read as 'no severity' rather than 'not learned
+ * yet'"* — and the same argument condemns the fold.
+ *
+ * **A MEDIUM is not invented.** No token in the bundled vocabulary maps to one, and the two ways
+ * to produce a band are to rename `minor` — a word no NE emits and no MIB carries — or to add a
+ * band nothing can reach. A badge that can show a level the appliance cannot produce is worse
+ * than one that shows four.
+ *
+ * **Each glyph is a distinct SHAPE.** `critical` and `major` both drew `▲` until this release, and
+ * they are the pair that also collides on hue under deuteranopia: two adjacent bands sharing a
+ * glyph and two hue-steps of red-orange are one encoding, not the three the rule requires.
+ */
 const SEVERITIES = [
   { rank: 0, key: "crit", glyph: "▲", label: "critical" },
-  { rank: 1, key: "major", glyph: "▲", label: "major" },
-  { rank: 2, key: "minor", glyph: "◆", label: "minor" },
+  { rank: 1, key: "major", glyph: "◆", label: "major" },
+  { rank: 2, key: "minor", glyph: "●", label: "minor" },
+  { rank: 3, key: "low", glyph: "▬", label: "low" },
 ];
-const LOW = { key: "low", glyph: "▬", label: "low" };
 const UNKNOWN = { key: "unknown", glyph: "?", label: "unknown" };
 
 /**
- * `{ key, glyph, label, known }` for an alarm.
+ * `{ key, glyph, label, known, text }` for an alarm.
  *
  * `known` is `false` when the appliance has not learned a severity for this element — which is a
  * true statement about a zero-config product on its first day, and is displayed as such rather
  * than as an empty cell or a default of "minor".
+ *
+ * A rank the bands do not cover — rank 4, and the arbitrary integers an `int`-kind severity field
+ * produces (F99) — renders as UNKNOWN with the element's **own word** as its text. It is the
+ * honest answer: the appliance has a value and cannot place it on this scale. What an arbitrary
+ * integer scale *should* map to is v0.16.3's question about the same field.
  */
 export function severity(alarm) {
   if (alarm.severity == null) return { ...UNKNOWN, known: false, text: "unknown" };
   const rank = alarm.severity_rank;
-  const found = SEVERITIES.find((entry) => entry.rank === rank) ?? LOW;
+  const found = SEVERITIES.find((entry) => entry.rank === rank) ?? UNKNOWN;
   return { ...found, known: true, text: String(alarm.severity), rank };
 }
 

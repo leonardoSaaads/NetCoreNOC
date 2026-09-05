@@ -65,9 +65,73 @@ class MaintenanceMixin(EngineBase):
             await asyncio.sleep(MAINT_INTERVAL_S)
             tick += 1
             await self.maintenance(time.time(), retention_provider(), tick)
+            # v0.16.2: **after** the sweep, so this counts what the sweep could not resolve rather
+            # than what it was about to. See `_observe_idle_active`.
+            await self._observe_idle_active(time.time())
             if self.shadow.enabled and tick % TRAIN_EVERY_TICKS == 0:
                 await self.shadow.train(self.store, time.time(), self.store.lock)
                 await self._seal_once(time.time())
+
+    async def _observe_idle_active(self, now: float) -> None:
+        """Count the situations the sweep just refused to resolve (v0.16.2, DECISIONS #275).
+
+        A situation that is live, that nobody has touched for `IDLE_CLOSE_S`, and that still holds
+        an **active** alarm. Until this release the sweep resolved exactly this population, which
+        removed a burning incident from every live view and — because a repeating trap increments
+        an existing alarm rather than raising a new one — from every view it could ever return to.
+        The sweep now leaves them alone, and leaving them alone silently would be the same defect
+        with a smaller radius: an operator would still not be told.
+
+        **Here rather than in `maintenance()`** for prime directive 4's reason: `engine.py` carries
+        *"ingestion is sacred"* and its bytes are pinned by `TRAP_PATH_HASHES`. `maintenance_loop`
+        left that file in v0.9.0 (DECISIONS #121) and already runs at the one point in the periodic
+        path that is outside the lock, which is where a second lock acquisition belongs.
+
+        Recorded as a **count**, not a list: the warning names how many and the console names which,
+        and both read `store.idle_active_situations` — one expression, so the two cannot disagree.
+
+        **The import is function-local and that is not a style choice.** `IDLE_CLOSE_S` is defined
+        at `engine.py:67`, *after* the line that imports this module, so a module-level import here
+        raises `ImportError` on a cold start rather than at review time. Moving the constant would
+        edit the pinned file. The threshold is read from the one place that defines it, at the one
+        moment it can be.
+        """
+        from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
+
+        async with self.store.lock:
+            self._idle_active_count = len(
+                await self.store.idle_active_situations(now - IDLE_CLOSE_S)
+            )
+
+    def stale_situation_warnings(self) -> list[str]:
+        """The operator warning, through the channel that already carries seven others.
+
+        *"Nobody has touched this in an hour and an alarm is still on"* is the most actionable
+        sentence this appliance can produce, and `runner.py` composes it into the same list that
+        carries *"the trap allowlist is empty"* to `/api/stats`. Building a second mechanism for
+        the most important message would be an argument against the first one.
+
+        Silent at zero, which is the ordinary state: a warning list that always holds an entry is a
+        warning list nobody reads.
+        """
+        n = self._idle_active_count
+        if not n:
+            return []
+        subject = "1 situation" if n == 1 else f"{n} situations"
+        # Written as two whole sentences rather than assembled from inflected fragments. The first
+        # attempt read "1 situation … They are still open", which is the kind of seam an operator
+        # notices and a test does not.
+        rest = (
+            "It is still open and is marked stale in the console; the idle sweep will not resolve "
+            "it while an alarm is on."
+            if n == 1
+            else "They are still open and are marked stale in the console; the idle sweep will "
+            "not resolve them while an alarm is on."
+        )
+        verb = "holds" if n == 1 else "hold"
+        return [
+            f"{subject} nobody has touched for over an hour still {verb} an active alarm. {rest}"
+        ]
 
     async def _seal_once(self, now: float) -> None:
         """Cut the sealed holdout, once, ever. **Off the batch lock, and it cannot fail upward.**

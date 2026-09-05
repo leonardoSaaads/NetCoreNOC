@@ -888,7 +888,7 @@ Run every command below from the repository root with the virtualenv active.
   is the case this second test exists for: a truth field copy-pasted into a promotion-path module
   that imports nothing.
 - **Disposition**: **FIXED in v0.16.1**, by deriving rather than by adding a filename.
-  `promotion_path_modules()` walks out from `api/routes_promotion.py` — the module that computes
+  `promotion_path_modules()` walks out from `api/routes/promotion.py` — the module that computes
   the derived inputs and returns the verdict — and keeps every `engine/evaluation/` module the
   import graph reaches. Four became **seven**: `promotion_metrics.py`, `shadow_assertions.py` and
   `shadow_eval.py` join the original four, and a module added to the path afterwards joins without
@@ -1044,3 +1044,203 @@ Run every command below from the repository root with the virtualenv active.
   the operator is, carries its own state badge, and is released by collapsing it or choosing a
   tab. Introduced in v0.16.0 with the tabs; found here because a browser was driven, which is the
   only reason it was found at all.
+
+## F98 — the API source corpus is a non-recursive glob behind a floor a subset already clears
+
+- **What**: `tests/apisource.py` gives four text-scanning guards their corpus — F28 (no role
+  comparison outside `rbac.py`), F34 (every mutating route below admin resolves scope), F39 (every
+  mutating handler reaches the transaction helper) and the scorer-panel caveat. It builds that
+  corpus from `PKG_DIR.glob("*.py")`, which does **not** descend, and asserts only that the result
+  exceeds `MIN_SOURCE_CHARS = 60_000`. The seven non-route modules under `api/` are 74 640
+  characters on their own, so moving the twelve route modules into a subdirectory would have
+  dropped every route from the corpus and left all four guards green over source containing no
+  routes at all. `MODULE_ORDER`'s "an unplaced module is an error" check does not see it either: it
+  compares against the same non-recursive glob, so a module that moved out of the glob's reach is
+  not unplaced, it is invisible.
+- **Reproduce**, on the v0.16.1 tree:
+  ```sh
+  python -c "
+  from pathlib import Path
+  import netcorenoc.api
+  d = Path(netcorenoc.api.__file__).resolve().parent
+  flat = [p for p in d.glob('*.py') if not p.name.startswith('routes_')]
+  print('machinery only:', sum(len(p.read_text()) for p in flat), 'chars; floor is 60000')"
+  ```
+- **Measured**: `machinery only: 74398 chars; floor is 60000`. The floor is cleared by 24 % with
+  every route module absent.
+- **Why it matters**: it is F92's shape one level up — a guard whose *scope* is written as a path
+  expression that a legitimate refactor silently narrows. The four guards it feeds are the
+  perimeter's text-level guarantees, and the release that moves the routes is exactly the release
+  that would have retired them without one assertion going red.
+- **Disposition**: **FIXED in v0.16.2** (DECISIONS #278), in the commit that moves the routes: the
+  walk is `rglob`, and the floor is raised to a figure the machinery alone cannot clear. Found by
+  reading every guard that names `api/` before moving anything, which is the only reason it was
+  found — no test could see it.
+
+## F99 — an integer severity above rank 4 renders as `low`, with no upper bound
+
+- **What**: `engine/correlate/severity.py::_candidate_ranks` returns `kind="int"` with the varbind's
+  **raw integer** as the rank when the values are not in the bundled vocabulary, bounded only by
+  `SEVERITY_MAX_DISTINCT = 8` distinct values. Nothing constrains the magnitude, so an NE whose
+  severity varbind reads 10, 20, 30 produces `severity_rank` 10, 20 and 30. `ui/app/format.js`
+  matches ranks 0-2 by name and sends everything else to the `LOW` band, so all three render as
+  *low* — including whichever one the appliance ranked most severe.
+- **Reproduce**:
+  ```sh
+  python -c "
+  from netcorenoc.engine.correlate.severity import _candidate_ranks
+  print(_candidate_ranks({'10': 4, '20': 4, '30': 4}))"
+  ```
+- **Measured**: `('int', {'10': 10, '20': 20, '30': 30})` — ranks 10, 20 and 30, all three of which
+  the console renders identically.
+- **Why it matters**: a vendor that numbers severity 1-10 rather than by the bundled tokens gets a
+  console that says every alarm is low, and the appliance's own ordering — which it validated
+  against observed lifetimes before committing to it — is discarded at the last step. It is not
+  reachable on any corpus scenario (0 of 2 252 alarms resolve a severity at all), which is why it
+  has never been seen.
+- **Disposition**: open, unfixed, and **deliberately so**. The repair is a normalisation from an
+  arbitrary integer scale onto the five rendered bands, and deciding what that normalisation is —
+  linear, rank-order, or an operator declaration — is v0.16.3's question about the same field.
+  Issued in v0.16.2 (DECISIONS #276).
+
+## F100 — an operator sees a raw OID for 46 of the 48 alarm classes a real corpus produces
+
+- **What**: `alarm_class.name` is written from `known_oids.trap_name(oid)`, which answers only for
+  the **standard** traps, and `alarm_class.vendor` from `known_oids.vendor_of(oid)`, which answers
+  for any enterprise OID. `ui/app/format.js::alarmName` reads
+  `class_label || class_name || class_oid` — the operator's label, then the standard-trap name, then
+  the OID. There is no `class_label` until an operator writes one and no `class_name` for a vendor
+  trap, so the third term is what an operator actually reads, and the vendor the appliance **has
+  already resolved** appears nowhere in that chain.
+- **Reproduce**: replay all ten corpus scenarios through a live appliance and read the table:
+  ```sh
+  python -c "
+  import asyncio, sys; sys.path[:0] = ['tests', 'src', 'tools']
+  from pathlib import Path
+  from netcorenoc.store import Store
+  import authutil, corpus_census, util
+  async def main():
+      store = Store('.demos/f100.db'); await store.open()
+      engine, queue, _ = await authutil.make_env(store)
+      for i, p in enumerate(sorted(Path('eval/corpus').glob('*.json'))):
+          await util.drive(engine, queue, corpus_census.scenario_events(p, 1.7e9 + i * 3600))
+      async with store.lock:
+          cur = await store.conn.execute('SELECT vendor, name FROM alarm_class')
+          rows = await cur.fetchall()
+      print(len(rows), sum(r[1] is not None for r in rows), sum(r[0] is not None for r in rows))
+      await store.close()
+  asyncio.run(main())"
+  ```
+- **Measured**: **48 classes, 2 with a name, 46 with a vendor.** The two named are `linkDown` and
+  `linkUp`. Every other class — Ciena, Huawei, Juniper, ZTE, Nokia, Cisco, Arista, H3C, Axis,
+  Alcatel-Lucent — renders in the console as `1.3.6.1.4.1.2011.5.104.1`.
+- **Why it matters**: it is not a storage defect and the columns are not unwritten — **that reading
+  was checked and is wrong**, which is why this entry exists in this shape. It is a *fallback* whose
+  last resort is reached 96 % of the time while a human-readable fact the appliance already holds
+  sits one column away and is served to a different screen.
+- **Disposition**: open, **not fixed here and deliberately not**. Two repairs are available — put the
+  vendor into `alarmName`, or let an operator name the class — and choosing between them is exactly
+  v0.16.3's question. Fixing the cheap one first would settle it by accident. Issued in v0.16.2.
+
+## F101 — five of twenty test citations in `src/` named a test that does not exist
+
+- **What**: a module that claims a property is checked cites the guard by name —
+  `` `tests/test_store.py::test_x` `` — twenty times across `src/netcorenoc`. **Five of those
+  twenty resolved to nothing.** The worst is `store/situations.py`, whose comment on `LIVE` has
+  said since v0.16.0 that `tests/test_store.py::test_every_live_situation_query_uses_the_one_
+  fragment` *"reads this module to assert nothing spells it out a second time"*. No such test
+  existed anywhere in the tree, so the single-source property was a promise wearing a guarantee's
+  clothes for two releases. Two more named the right test in the wrong file, one named a test that
+  had been renamed, and one was correct but **wrapped across a line break** mid-identifier, so no
+  reader and no tool could follow it.
+- **Reproduce**:
+  ```sh
+  python -c "
+  import ast, re
+  from pathlib import Path
+  cite = re.compile(r'tests/(test_[a-z0-9_]+)\.py::(test_[A-Za-z0-9_]+)')
+  for p in sorted(Path('src/netcorenoc').rglob('*.py')):
+      for mod, name in cite.findall(p.read_text()):
+          f = Path('tests') / f'{mod}.py'
+          names = {n.name for n in ast.walk(ast.parse(f.read_text()))
+                   if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)} if f.is_file() else set()
+          if name not in names:
+              print('DANGLING', p, mod, name)"
+  ```
+- **Measured**, on the v0.16.1 tree: five dangling — `store/situations.py` (the `LIVE` guard, which
+  never existed), `store/situation_events.py` × 2 (both live in other modules under other names),
+  `engine/model/confidence.py` (wrong file *and* wrong name), and
+  `crosscutting/rbac/tables.py` (correct, wrapped across two lines).
+- **Why it matters**: it is #201's dangling-decision-pointer in a second register, and worse. A
+  decision citation that dangles points at missing *reasoning*; a test citation that dangles points
+  at a missing *check*, and a reader who follows it finds nothing while the property goes on being
+  assumed. This is precisely the shape Appendix B calls *"where you write 'a test that guarantees
+  X', ask whether you would know how to write that test"*.
+- **Disposition**: **FIXED in v0.16.2.** The two guards `situations.py` promised are written; the
+  three misdirected citations are repointed at the tests that exist; the wrapped one is reflowed.
+  And `tests/test_documentation.py::test_every_test_cited_in_src_resolves_to_a_test_that_exists`
+  is the sibling of the decision-citation guard, so the next one fails at review rather than
+  surviving two releases — demonstrated red by a citation to a test that does not exist, with the
+  restored tree as its control.
+
+## F102 — two runtime paths were written as a count of `.parent`s, and moving a module broke one
+
+- **What**: `api/routes_static.py` resolved the console's directory as
+  `Path(__file__).parent.parent / "ui"`, with a comment from v0.7.2 explaining that the package
+  split *"gains one `.parent` to resolve to the same directory"*. v0.16.2 moved that module one
+  level deeper into `api/routes/` (DECISIONS #278), and the expression silently repointed at
+  `src/netcorenoc/api/ui/` — a directory that does not exist. **Every static route answered 500 and
+  the console did not load at all.** `store/types.py` computed `MIGRATIONS_DIR` the same way, from
+  the same v0.7.3 reasoning, and was still correct only because nothing had moved it yet.
+- **Reproduce**, on the v0.16.1 tree, without moving anything:
+  ```sh
+  python -c "
+  from pathlib import Path
+  import netcorenoc.api.routes_static as s
+  print('would resolve to', Path(s.__file__).parent.parent.parent / 'ui', 'if this module moved one level deeper')
+  print('actual UI dir:  ', s.UI_DIR, s.UI_FILE.is_file())"
+  ```
+- **Measured**: two such expressions in the runtime package, and no others. After the move, eight
+  tests in `test_security_ui.py`, four in `test_behaviour_identity.py` and the whole static surface
+  went red with `FileNotFoundError: .../api/ui/index.html`.
+- **Why it matters**: a relative-parent count is a path written as a **number**, and it is wrong
+  the moment the module moves — which is exactly when nobody is looking at it. Nothing in the move
+  itself could see it: the imports all resolved, `mypy --strict` was clean, and only driving the
+  real server found it. That is the same shape as F85 (the container's console missing five modules
+  while every test was green).
+- **Disposition**: **FIXED in v0.16.2.** Both resolve from `netcorenoc.__file__` — the package's own
+  location, which is right from anywhere in the tree — and
+  `tests/test_architecture.py::test_no_runtime_path_is_derived_by_counting_parents` refuses the
+  third, demonstrated red by restoring the `store/types.py` form with the repaired tree as its
+  control. One `.parent` is still allowed: a module's own directory is a fact about the file, not a
+  count of steps to somewhere else.
+
+## F103 — the tap-target floor excludes the one control an operator ticks most
+
+- **What**: `style.css:247` reads
+  `button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: var(--tap); }`.
+  F81 installed `--tap: 28px` with the rule *"every interactive control is at least this on its
+  short edge"*, and the selector excludes exactly the control that rule matters most for: the
+  **member checkbox** in a situation's card, which is what decides the `excluded_ids` a partial
+  split sends. Measured in a browser at 390 px, each renders **13 × 13 px** — less than a quarter
+  of the floor's area, in a column of eight, in the gesture whose whole contract is that the
+  appliance records only pairs a human actually marked.
+- **Reproduce**, in a browser as an editor at 390 px, expanding any situation card:
+  ```js
+  [...document.querySelectorAll('input[type="checkbox"]')]
+    .map(e => e.getBoundingClientRect())
+    .map(r => `${Math.round(r.width)}x${Math.round(r.height)}`)
+  ```
+- **Measured**: `["13x13", "13x13", "13x13", "13x13", "13x13", "13x13", "13x13", "13x13"]` at all
+  three widths, for the editor. A viewer is offered no checkboxes at all, which is why the
+  measurement is role-specific.
+- **Why it matters**: a mis-tick on a 13 px target is not a cosmetic annoyance — it writes a human
+  judgement about a pair no human judged, which is exactly what
+  `test_ui_invariants.py::test_a_partial_split_sends_exactly_the_marked_ids_and_no_others` exists
+  to protect and cannot see. That guard asserts the client sends **what was ticked**; it says
+  nothing about whether the operator could tick what they meant. Found in a browser, which is the
+  eighth consecutive release in which that sentence is true.
+- **Disposition**: open, **not fixed here**. Part VII rule 2 confines this release's console work to
+  the severity pill, and the repair is a hit-area rule that belongs with v0.16.4's shell — where
+  the row height, the checkbox column and the touch floor are one decision rather than three.
+  Issued in v0.16.2.

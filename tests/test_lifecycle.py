@@ -83,16 +83,83 @@ async def test_the_correlator_creates_new_and_a_gesture_makes_it_open(store: Sto
     )
 
 
+async def test_the_sweep_partitions_the_idle_population(store: Store) -> None:
+    """**The critical repair** (v0.16.2, DECISIONS #274). Three arms, two of them controls.
+
+    The fibre-cut replay leaves live situations whose alarms are still active. Driven an hour
+    forward, the maintenance sweep used to resolve every one of them — removing a burning incident
+    from every live view, and, because a repeating trap increments an existing alarm rather than
+    raising a new one, from every view it could return to.
+
+    The two controls are what make this a measurement of the rule rather than of the clock: a
+    situation that is **fresh** and active must be untouched for the obvious reason, and one that is
+    **stale with everything cleared** must still be resolved — without that arm, a sweep that had
+    simply stopped working would score green here.
+    """
+    engine, _queue, _app = await seeded(store)
+    live = await live_situations(store)
+    assert len(live) == 1, f"the replay formed {len(live)} live situations, not the expected one"
+    burning = int(live[0]["id"])
+    now = BASE + IDLE_CLOSE_S + 60
+    async with store.lock:
+        # The two arms the fibre-cut replay does not supply, built through the store's own writes.
+        # `quiet` is stale with every member cleared — the one shape #259 says reaches the sweep
+        # already cleared, because the clear did not travel through `_handle_clear`.
+        quiet = await store.create_situation(BASE, None)
+        stale_alarm = await store.ingest(util.event(device="10.4.4.3", ts=BASE))
+        await store.add_alarm_to_situation(quiet, stale_alarm.alarm_id)
+        await store.conn.execute(
+            "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?",
+            (BASE + 10.0, stale_alarm.alarm_id),
+        )
+        await store.touch_situation(quiet, BASE)
+        # `fresh` is live, still active, and touched a moment ago.
+        fresh = await store.create_situation(now - 10.0, None)
+        raised = await store.ingest(util.event(device="10.4.4.4", ts=now - 10.0))
+        await store.add_alarm_to_situation(fresh, raised.alarm_id)
+        await store.touch_situation(fresh, now - 10.0)
+        await store.commit()
+
+    await engine.maintenance(now, retention_days=3650.0)
+
+    rows = {int(r["id"]): r for r in await store.list_situations(None, 200)}
+    assert rows[burning]["status"] in ("new", "open"), (
+        "the sweep resolved a situation that still holds an active alarm"
+    )
+    assert rows[burning]["resolution"] is None
+    assert (rows[quiet]["status"], rows[quiet]["resolution"]) == ("resolved", "self_cleared"), (
+        "the sweep stopped resolving a situation whose alarms had all cleared"
+    )
+    assert rows[fresh]["status"] in ("new", "open") and rows[fresh]["resolution"] is None
+
+    # The idle-but-active state is REACHABLE, which is what stops it being a state that does not
+    # exist, and the count the operator warning reports is derived from the same expression.
+    async with store.lock:
+        assert burning in await store.idle_active_situations(now - IDLE_CLOSE_S)
+        assert fresh not in await store.idle_active_situations(now - IDLE_CLOSE_S)
+    await engine._observe_idle_active(now)
+    warnings = engine.stale_situation_warnings()
+    assert warnings and "still" in warnings[0], warnings
+    assert str(engine._idle_active_count) in warnings[0]
+
+
 async def test_the_idle_sweep_and_the_self_clear_are_distinguishable(store: Store) -> None:
     """Phase 2's claim, and the reason `resolution` exists at all (DECISIONS #253, #259).
 
-    Before this release both wrote `closed` and **no column distinguished them**. The two are
-    driven here through the two paths that actually produce them — the maintenance sweep, and a
-    clear trap that empties a situation — rather than by calling the store twice with different
-    arguments, because what is being asserted is that the *engine's* two paths land on two values.
+    Before v0.16.0 both wrote `closed` and **no column distinguished them**. The two are driven here
+    through the paths that actually produce them rather than by calling the store twice with
+    different arguments, because what is being asserted is that the *engine's* paths land on two
+    values.
+
+    **v0.16.2 narrows `idle` to the empty bag** (DECISIONS #274): the sweep no longer resolves a
+    situation holding an active alarm, so the value it used to write for a burning one is a value
+    it can no longer write. The empty-bag arm below is what keeps `idle` reachable at all, and
+    `test_an_empty_situation_resolves_as_idle_and_never_as_self_cleared` is its dedicated guard.
     """
     engine, queue, _app = await seeded(store)
-    idle = int((await live_situations(store))[0]["id"])
+    async with store.lock:
+        idle = await store.create_situation(BASE, None)
+        await store.commit()
     await engine.maintenance(BASE + IDLE_CLOSE_S + 60, retention_days=3650.0)
     row = await store.situation_detail(idle)
     assert row is not None
@@ -654,3 +721,102 @@ async def _label_count(store: Store) -> int:
     row = await cur.fetchone()
     assert row is not None
     return int(row[0])
+
+
+# --- v0.16.2: promotion and assertion are two actions (PREREGISTRATION-0.16.2.md §2.2) ------
+
+
+async def test_a_bare_promotion_promotes_and_asserts_nothing(store: Store) -> None:
+    """**The action the amendment registers, and the one the appliance did not have.**
+
+    `POST /api/situations/{sid}/promote` moves `new` -> `open` and records **no** `feedback` row,
+    **no** `situation_event`, and no bag. Its durable record is the audit row, which is
+    hash-chained and is therefore the stronger of the two records rather than the weaker
+    (DECISIONS #273).
+
+    The control is the sibling action in the same test: `verdict: "confirm"` on a second situation
+    promotes it **and** writes a label. Without that arm this test would also pass against an
+    appliance whose labelling had stopped working entirely, which is the shape §4.2 warns about
+    from the other direction.
+    """
+    _engine, _queue, app = await seeded(store)
+    sid = int((await live_situations(store))[0]["id"])
+    labels_before = await _label_count(store)
+    events_before = len(await store.situation_events(sid))
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        response = await client.post(f"/api/situations/{sid}/promote", json={})
+        assert response.status_code == 200, response.text
+        assert response.json() == {"status": "promoted"}
+        # Idempotent: the second call is a no-op that still answers 200, because the operator's
+        # action is already on record (F36's reading of a repeat, applied to a gesture that
+        # stores nothing).
+        assert (await client.post(f"/api/situations/{sid}/promote", json={})).status_code == 200
+    finally:
+        await client.aclose()
+
+    row = await store.situation_detail(sid)
+    assert row is not None and row["status"] == "open", "the promotion did not promote"
+    assert await _label_count(store) == labels_before, (
+        "a bare promotion wrote a label. §2.1 rejects promotion-as-confirm precisely because it "
+        "manufactures assertions that mean 'I needed this out of my way'."
+    )
+    assert len(await store.situation_events(sid)) == events_before, (
+        "a bare promotion wrote a situation_event; its record is the audit row"
+    )
+    cur = await store.conn.execute(
+        "SELECT action, object_id, details FROM audit_log WHERE action='situation.promote'"
+    )
+    audited = [dict(r) for r in await cur.fetchall()]
+    assert [r["object_id"] for r in audited] == [str(sid), str(sid)]
+    # **Both clicks are on the record, and the chain says which one moved it.** That is what the
+    # `from` field is for: without it the two rows would be indistinguishable, and §2.2's
+    # requirement — that a reader two months later can tell what happened — would hold for the
+    # affirmation and not for this.
+    assert [r["details"] for r in audited] == ['{"from":"new"}', '{"from":"open"}'], audited
+
+
+async def test_a_move_does_not_promote_the_destination(store: Store) -> None:
+    """**Decision 1** (DECISIONS #273): six of seven promotions survive; this is the seventh.
+
+    An operator moving an alarm read the situation they took it *out* of. The destination is an id
+    they typed — this console offers no picker, deliberately — so promoting it claimed somebody had
+    looked at a situation nobody had opened, and moved its card out of the **New** tab, which is
+    where the operator who has not looked at it would find it.
+
+    The subject's promotion is the control, in the same request: if it did not fire, this test
+    would pass against a build that had simply stopped promoting anything.
+    """
+    _engine, _queue, app = await seeded(store)
+    subject = int((await live_situations(store))[0]["id"])
+    members = await store.situation_member_ids(subject)
+    assert len(members) >= 2
+    async with store.lock:
+        destination = await store.create_situation(BASE, None)
+        other = await store.ingest(util.event(device="10.6.6.6", ts=BASE))
+        await store.add_alarm_to_situation(destination, other.alarm_id)
+        await store.commit()
+    # `engine.members` is deliberately NOT primed: `membership.moved` skips a destination the
+    # engine does not hold, and priming it would be this test asserting against its own fixture.
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        response = await client.post(
+            f"/api/situations/{subject}/move",
+            json={
+                "alarm_id": members[0],
+                "to_situation_id": destination,
+                "confidence": SURE,
+            },
+        )
+        assert response.status_code == 200, response.text
+    finally:
+        await client.aclose()
+
+    rows = {int(r["id"]): r for r in await store.list_situations(None, 200)}
+    assert rows[subject]["status"] == "open", "the subject was not promoted (the control)"
+    assert rows[destination]["status"] == "new", (
+        "the move promoted the situation the alarm was moved INTO. Nobody read it; its id was "
+        "typed, and promoting it hides the card from the tab that exists to surface it."
+    )

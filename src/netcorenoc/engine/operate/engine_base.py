@@ -87,6 +87,16 @@ class EngineBase:
     # Shadow mode (v0.9.0), read by `maintenance_loop`. The `Shadow` object owns the challenger and
     # every decision about it; the engine only holds it and calls it.
     shadow: Shadow
+    # v0.16.2. How many live situations the last sweep refused to resolve because one of their
+    # alarms is still active (DECISIONS #275). Written by `MaintenanceMixin._observe_idle_active`
+    # and read by `stale_situation_warnings`, both in `maintenance.py`.
+    #
+    # **A class-level default rather than an `__init__` assignment**, for the reason
+    # `scorer_model_version_id` gives one entry above: `Engine.__init__` is in `engine.py`, whose
+    # bytes are pinned by `TRAP_PATH_HASHES`, so a release that may not touch that file cannot
+    # assign there. The default is only ever read by an `Engine` whose maintenance loop has not run
+    # a pass, and zero is the right answer for it — it has observed nothing, and reports nothing.
+    _idle_active_count: int = 0
 
     if TYPE_CHECKING:  # pragma: no cover - declaration only; no runtime attribute exists
 

@@ -169,13 +169,13 @@ def test_no_runtime_module_can_reach_the_simulator() -> None:
     )
 
 
-#: Where the promotion gate is entered. `routes_promotion.py` is the HTTP surface that computes the
+#: Where the promotion gate is entered. `routes/promotion.py` is the HTTP surface that computes the
 #: derived inputs and returns the verdict, so *"the modules the gate reads"* is a question about
 #: what it imports rather than about what anyone remembered to write down.
-PROMOTION_ENTRY = PKG / "api" / "routes_promotion.py"
+PROMOTION_ENTRY = PKG / "api" / "routes" / "promotion.py"
 
 #: The package the derivation closes over. It is a boundary rather than a convenience, and the
-#: reason is measurable: the unrestricted transitive closure from `routes_promotion.py` is **112
+#: reason is measurable: the unrestricted transitive closure from `routes/promotion.py` is **112
 #: modules** and four of them mention `entity_key` legitimately — `store/entities.py` and the three
 #: `engine/operate/` modules, where an entity key is a real domain concept and not the simulator's
 #: truth field. A guard over that set could never be green, which is precisely why the original was
@@ -212,7 +212,7 @@ def _internal_imports(path: Path) -> set[str]:
 def promotion_path_modules() -> list[Path]:
     """**The promotion path, derived from the path** (v0.16.1, F92).
 
-    Walk out from `routes_promotion.py` and keep every `engine/evaluation/` module reachable
+    Walk out from `routes/promotion.py` and keep every `engine/evaluation/` module reachable
     through the import graph. Returned sorted, so a failure names files in a stable order.
 
     The hand-written tuple this replaces listed `promotion.py`, `judge.py`, `shadow_cv.py` and
@@ -313,7 +313,7 @@ def test_the_loop_reads_the_servers_floors_and_never_its_own() -> None:
     success after the server's had moved, which is the class of defect `census()`'s own docstring
     calls "a query written for a report" one level down.
     """
-    from netcorenoc.api import routes_promotion
+    from netcorenoc.api.routes import promotion as routes_promotion
     from simulation import drive
 
     assert drive.FLOORS == {

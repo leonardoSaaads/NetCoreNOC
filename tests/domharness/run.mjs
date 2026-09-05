@@ -304,6 +304,38 @@ const scenarios = {
   },
 
   /**
+   * Expand a card and read back every severity pill the members table rendered.
+   *
+   * v0.16.2. The accessibility rule `format.js` has documented since v0.13.0 is that a severity
+   * carries a colour AND a glyph AND its text; this is what makes it checkable at the DOM rather
+   * than in prose. The caller doctors the captured payload so every band is on screen at once —
+   * a real corpus resolves no severity at all, which is a fact about the corpus and not a reason
+   * to leave four of the five bands unrendered by any test.
+   */
+  async severityBands(params) {
+    const env = await boot(params);
+    env.navigate("#/situations");
+    await settle(env);
+    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const cells = [...cardFor(env, params.sid).detail.querySelectorAll("td.sev")];
+    return {
+      cells: cells.map((td) => {
+        const pill = td.querySelector(".sev-pill");
+        return {
+          classes: pill ? (pill.getAttribute("class") ?? "") : "",
+          glyph: pill ? (pill.querySelector(".sev-glyph")?.textContent ?? "") : "",
+          text: pill ? (pill.querySelector(".sev-text")?.textContent ?? "") : "",
+          // The whole cell's text, so a pill that dropped its word but kept a `title=` is not
+          // mistaken for one that renders it: a tooltip is not a rendering.
+          cellText: td.textContent.replace(/\s+/g, " ").trim(),
+        };
+      }),
+      proof: proofOf(env),
+    };
+  },
+
+  /**
    * The v0.7.5 defect, re-created as an observation: hold the Split button the operator is
    * aiming at, let a server-sent update arrive, and only then click it.
    */

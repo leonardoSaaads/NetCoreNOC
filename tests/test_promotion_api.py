@@ -313,7 +313,7 @@ async def test_the_applied_path_moves_the_pointer_and_records_before_and_after(
     a field would be evidence the boundary had been breached rather than that the path works.
     """
     await _sufficient_corpus(store)
-    from netcorenoc.api import routes_promotion
+    from netcorenoc.api.routes import promotion as routes_promotion
 
     # Patched on the ROUTE's binding, deliberately: that is the one the handler calls, and the
     # substitute still goes through the real `power_at` — only its `n` and observed difference are
@@ -383,7 +383,7 @@ async def test_a_better_verdict_with_no_challenger_run_is_still_refused(
     """The third refusal, reached through the route: the evidence permits it and the artefact
     cannot be traced. **`registering is not promoting`, enforced.**"""
     await _sufficient_corpus(store)
-    from netcorenoc.api import routes_promotion
+    from netcorenoc.api.routes import promotion as routes_promotion
 
     # Patched on the ROUTE's binding, deliberately: that is the one the handler calls, and the
     # substitute still goes through the real `power_at` — only its `n` and observed difference are
@@ -563,7 +563,7 @@ async def test_every_supported_kind_can_be_scored_by_the_gate(store: Store) -> N
     `SUPPORTED_KINDS` rather than over a list written here, so a sixth kind added without a branch
     fails rather than silently falling through.
     """
-    from netcorenoc.api.routes_promotion import _candidate_scorer
+    from netcorenoc.api.routes.promotion import _candidate_scorer
 
     assert len(model_version.SUPPORTED_KINDS) == 5
     for kind in sorted(model_version.SUPPORTED_KINDS):

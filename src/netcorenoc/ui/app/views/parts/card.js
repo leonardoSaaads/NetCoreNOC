@@ -60,6 +60,7 @@ export function SituationCard({ situation, onToggle, onChanged }) {
           ? html`<${Badge} tone="quiet" title=${RESOLUTION_TEXT[situation.resolution] ?? ""}
                  >${situation.resolution.replace("_", " ")}<//>` : null}
         <${Badge}>${plural(situation.alarm_count, "alarm")}<//>
+        ${situation.stale ? html`<${Badge} tone="stale" title=${STALE_TITLE}>stale<//>` : null}
         ${situation.redacted_count ? html`<${Badge} tone="redacted" title=${SCOPE_TITLE}>
           +${situation.redacted_count} outside your scope<//>` : null}
         ${expanded && withheld > 0 ? html`<${Badge} tone="held" title=${HELD_TITLE}>
@@ -87,6 +88,9 @@ const NAME_TITLE = {
            "can override it, and no model proposes one.",
 };
 
+const STALE_TITLE =
+  "Nobody has touched this for over an hour and one of its alarms is still active. The appliance " +
+  "will not resolve it while an alarm is on; it is waiting for a person.";
 const HELD_TITLE =
   "This card is frozen while you have it open, so the grouping you are judging cannot change " +
   "under your click. It may not reflect the last few seconds. Collapse it to resume live updates.";
@@ -134,6 +138,19 @@ class Detail extends Component {
     try {
       await post(`/api/alarms/${alarmId}/clear`, {});
       this.setState({ sending: false, outcome: { ok: true, kind: "clear" } });
+      this.props.onChanged();
+    } catch (error) {
+      this.setState({ sending: false, outcome: { ok: false, error } });
+    }
+  }
+
+  async promote() {
+    const { sid } = this.props;
+    if (this.state.sending) return;
+    this.setState({ sending: true, outcome: null });
+    try {
+      await post(`/api/situations/${sid}/promote`, {});
+      this.setState({ sending: false, outcome: { ok: true, kind: "promote" } });
       this.props.onChanged();
     } catch (error) {
       this.setState({ sending: false, outcome: { ok: false, error } });
@@ -190,6 +207,13 @@ class Detail extends Component {
 
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
 
+      ${editable && detail.status === "new" ? html`<div class="fb">
+        <button type="button" disabled=${this.state.sending} title=${PROMOTE_TITLE}
+                onClick=${() => this.promote()}>
+          <${Icon} name="chevron" /> Start working this
+        </button>
+      </div>` : null}
+
       ${editable ? html`<div class="fb">
         <button type="button" class="primary" disabled=${this.state.sending}
                 onClick=${() => this.verdict("confirm")}>
@@ -225,7 +249,12 @@ class Detail extends Component {
   }
 }
 
+const PROMOTE_TITLE =
+  "Moves this to Open so the shift can see somebody has it. It records nothing about whether " +
+  "the grouping is right — Confirm is how you say that.";
+
 const OUTCOME_TEXT = {
+  promote: "Open, and yours. Nothing was recorded about whether the grouping is right.",
   confirm: "Recorded: this grouping is correct. Every pair in it is now an asserted positive.",
   split: "Recorded: this grouping is wrong. Only the members you marked are asserted negative.",
   close: "Closed.",

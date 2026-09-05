@@ -28,7 +28,7 @@ remember (decision #207).
 
 | Layer | Directory | Owns |
 |---|---|---|
-| **http** | `api/` — app, perimeter, context, models, `routes_*` | HTTP semantics, the security boundary, request and response shape. **No domain rule** |
+| **http** | `api/` — app, perimeter, context, models, and `api/routes/` | HTTP semantics, the security boundary, request and response shape. **No domain rule** |
 | **engine** | `engine/` — six subpackages, below | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is |
 | **data** | `store/`, with `migrations/` beside it | One SQLite connection under one asyncio lock. **SQL lives here and nowhere else** |
 | **ingest** | `ingest/` — `receiver`, `events`, `known_oids` | The wire: parse, allowlist, quarantine, the trap vocabulary |

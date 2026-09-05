@@ -11,6 +11,7 @@ The two `unscoped` routes here are `/api/classes` and `/api/state-clears`; both 
 
 from __future__ import annotations
 
+import time
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -19,6 +20,7 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
+from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
 
 #: The longest needle `GET /api/situations?q=` will honour. Bounded rather than rejected, like every
 #: other untrusted string on this API: a 4 KB query string would otherwise reach `LIKE` and be
@@ -109,9 +111,25 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         *filtered* set. v0.7.0 truncated globally and filtered afterwards, so a scoped viewer's own
         open incidents vanished from their list whenever a noisy neighbour they cannot see was
         busy — and the returned count varied with out-of-scope volume (DECISIONS #72).
+
+        **v0.16.2: every row carries `stale`** (DECISIONS #274). True when this situation is live,
+        nobody has touched it for `IDLE_CLOSE_S`, and one of its alarms is **still active** — the
+        population the idle sweep used to resolve out of every live view while it was burning. It
+        is **derived here and stored nowhere**, because staleness is a function of `now` and a
+        column holding it would be a cached clock reading.
+
+        The threshold is imported from the module that defines it and the predicate is
+        `store.idle_active_situations`, the same expression the maintenance pass counts for its
+        operator warning. A console that compared `updated_at` against a number of its own would
+        be a second implementation of a server constant, which `lifecycle.js` already refuses to be
+        for `m(c)`.
+
+        **It discloses nothing.** The id set is unscoped, and it is used only to mark rows this
+        caller has already been shown — never to add one.
         """
         scope = await scope_for(principal)
         needle = (q or "").strip()[:MAX_SEARCH_CHARS] or None
+        stale_cutoff = time.time() - IDLE_CLOSE_S
         async with store.lock:
             rows = await store.list_situations(
                 status,
@@ -122,6 +140,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 # an address may not confirm one by typing it (`shaping.sees_raw_addresses`).
                 match_addresses=shaping.sees_raw_addresses(principal.role),
             )
+            rows = await store.with_idle_active(rows, stale_cutoff)
             if scope.unrestricted:
                 # **v0.16.0: shaped, which this route did not have to be before.** Until `0014` a
                 # situation row carried an id, a status, two timestamps and two counts — not one

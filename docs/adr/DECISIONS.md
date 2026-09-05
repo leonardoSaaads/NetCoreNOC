@@ -1546,7 +1546,7 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: `python -m netcorenoc.main` is a **public interface** — the `Dockerfile`,
   `deploy/netcorenoc.service`, `flake.nix`, `docker-compose.yml`, `README.md` and the bug-report
   template all print it — so moving `main.py` is a behaviour change, which this release makes none
-  of. And `api/routes_static.py` and `store/types.py` locate `ui/` and `migrations/` as
+  of. And `api/routes/static.py` and `store/types.py` locate `ui/` and `migrations/` as
   `Path(__file__).parent.parent / …`: moving either package changes a line that is not an import,
   and the alternative — moving the 47 UI files and 13 migrations too — is churn that buys no layer.
 - **The cost, stated**: `api/` and `store/` are directories not named for their layer, so two of
@@ -2461,7 +2461,7 @@ From this release an entry is about six lines: decision, reason, release.*
 ## 264. The promotion path is derived from the import graph, bounded by one package (v0.16.1)
 
 - **Decision**: `test_no_promotion_path_module_mentions_a_ground_truth_field` walks out from
-  `api/routes_promotion.py` and scans every `engine/evaluation/` module the import graph reaches,
+  `api/routes/promotion.py` and scans every `engine/evaluation/` module the import graph reaches,
   instead of the four-name tuple it carried since v0.14.0. Four became seven (F92).
 - **Reason**: a guard that lists what it checks stops checking whatever is added next. v0.14.0's
   list called itself *"the four modules the gate actually reads"* and `promotion_metrics.py` —
@@ -2622,3 +2622,185 @@ From this release an entry is about six lines: decision, reason, release.*
   named a question for and leaving it. Recorded as an open question rather than built.
 - **No new capability**: naming a class is `label.write`, the same power that renames a device and
   names a situation (DECISIONS #260), and the screen gates its own control with `can()`.
+
+# v0.16.2 — the critical repairs
+
+## 272. The release chain lives in the table, and five rows join it without one moving (v0.16.2)
+
+- **Decision**: `docs/plans/releases.md` gains rows for v0.16.2 through v0.16.6 and no existing row
+  moves. The five are described there in one line each plus a dependency argument; none gets a
+  brief, and the detail of an unbuilt release stays out of this document exactly as that document's
+  own §"What this document does not decide" requires.
+- **Reason**: the maintainer planned five releases and they existed only in a prompt. A chain whose
+  next five links live outside the repository is a chain `tests/test_documentation.py` cannot check,
+  and the guard it enforces — one answer to *"what is release X"* — is worth nothing over releases
+  the table does not name.
+- **Why an extension rather than a resequence**: the four previous edits to that table each moved a
+  release already in it (#170, #184, #202, #249). This one adds releases that were never in it, so
+  no claim key changes and no shipped row is touched. `test_the_release_table_parses` records the
+  difference in the same comment that records the four permutations.
+- **Trade-off accepted**: the table is now twenty rows and reads as a schedule rather than a chain.
+  The alternative — five brief documents for five unbuilt releases — is the pile #197 deleted 57 000
+  lines to prevent, and a brief for a release nobody has started is a draft that goes stale before it
+  is read.
+
+## 273. Six of the seven promotions survive; the move's DESTINATION is the one that goes (v0.16.2)
+
+- **Decision** (`PREREGISTRATION-0.16.2.md` §2.2, decision 1): `store.promote_situation` keeps six of
+  its seven call sites — the verdict, the move's **subject**, the merge's subject, the split's
+  subject, the rename and the manual clear — and loses `routes/lifecycle.py`'s second call, which
+  promoted the situation an alarm was moved **into**.
+- **Reason**: `open` means *"an operator is working it"* (#254). The other six name a situation the
+  operator was **looking at**; the destination of a move is an **id they typed**. `lifecycle.js`
+  offers no picker deliberately — the id is what an operator pastes from a chat during an incident —
+  so the destination is the one situation in the estate that a gesture promotes without anybody
+  having read it.
+- **The harm is concrete, not theoretical**: promotion moves a card out of the **New** tab, which is
+  where the operator who has *not* looked at it would find it. The gesture was therefore hiding a
+  situation from the queue that exists to surface it — a smaller relative of the defect this release
+  is named for.
+- **Why the merge is not symmetrical**: `operator_merge` **resolves** the peer (`resolution='merged'`),
+  so a merge has no live second situation to promote and no second call site to decide about.
+- **Not changed**: the new situation an `operator_split` creates stays `new`. Adding a promotion
+  there would be adding an implicit one in the release that removes one, and §2.2 is explicit that a
+  restructuring gesture says the *previous* grouping was wrong and not that the result is right.
+- **Measured, before the change**: `tools/corpus_census.py --gestures` reports `asserting_bags 10`,
+  `asserting_incidents 10`, `asserted_negative_pairs 2 222` (1 050 from one bag) — the plan's §0
+  figures, reproduced on this tree. A bare promotion writes no label, so removing one is predicted
+  to move none of them: `PREREGISTRATION-0.16.2.md` §4.1, the expected branch, and §4.3 says what to
+  do if the number rises instead.
+
+## 274. The idle-but-active situation is DERIVED, and a stored flag would be a cached clock (v0.16.2)
+
+- **Decision** (decision 2): a situation that is live, untouched since the cutoff and still holding an
+  active alarm stays `status='open'`/`'new'` and is **derived** at read time. No fourth status, no
+  column, **no migration `0016`**.
+- **Reason**: staleness is a function of `now`. A stored flag is a cache of a clock reading and is
+  wrong between every pair of sweeps — it would say `stale=0` for the 3 599 seconds after a pass and
+  be a lie for most of them. Deriving it makes the answer correct at the instant it is asked, which
+  is the only instant it is asked.
+- **Why not a fourth status**: Part VII's rule, and the arithmetic behind it — `LIVE` is read by the
+  sweep, the engine's state reload, the scope resolution, the `open_situations` stat and three
+  console tabs. A fourth value is six readers' worth of work to express a fact that `updated_at` and
+  `situation_alarm.status` already carry between them.
+- **Reachability, which is the risk this decision takes on**: a derived state nothing computes does
+  not exist. `store.idle_active_situations` is the one expression, it is served through
+  `/api/stats`, and `test_lifecycle.py::test_the_sweep_partitions_the_idle_population` asserts the
+  two halves are disjoint and that **both are non-empty** on the same fixture — a partition with an
+  empty arm is the failure this guard is written against.
+- **Trade-off accepted**: two `SELECT id` statements per maintenance pass where there was one, over
+  the population the sweep already scanned and under the lock it already holds. The pass runs every
+  five seconds and off the ingest path, so the cost is paid where this project has always been
+  willing to pay it.
+
+## 275. The sweep raises the warning it already has a channel for, and writes no audit row (v0.16.2)
+
+- **Decision** (decision 3): after each maintenance pass, `MaintenanceMixin` counts the live
+  situations that are idle **and** still hold an active alarm and exposes them through
+  `engine.stale_situation_warnings()`, which `runner.py` composes into the operator-warning list
+  beside the seven that are already there. No audit row, and no new mechanism.
+- **Reason**: *"nobody has touched this in an hour and an alarm is still on"* is the most actionable
+  sentence this appliance can produce, and the channel that carries *"the trap allowlist is empty"*
+  and *"shadow training failed"* to `/api/stats` is exactly the right one. Building a second
+  mechanism for the most important message would be the argument against the first one.
+- **Why not an audit row**: the pass runs every five seconds for the life of the appliance. A row per
+  pass is 17 280 rows a day recording that nothing changed, and the audit chain is a record of
+  **actions**, not of observations — `entity.promote` and `severity.confirm` are written when the
+  appliance *decides* something, which is the discriminator.
+- **Why not in `engine.py`**: prime directive 4 — the trap path's hashes are unchanged, so the count
+  is taken in `maintenance_loop`, which left `engine.py` in v0.9.0 (#121) and is the point that
+  already runs after the pass has released the lock. `_idle_active_count` is a class-level default on
+  `EngineBase` for the reason `scorer_model_version_id` is (#254's neighbour): `Engine.__init__` is
+  in the file that may not change.
+- **Measured**: the warning is derived from the same expression the sweep partitions on, so the
+  number in the warning and the situations the console badges cannot disagree.
+
+## 276. `warning` is LOW, `indeterminate` is UNKNOWN, and MEDIUM is not invented (v0.16.2)
+
+- **Decision** (decision 4): five vocabulary ranks map to **five** rendered bands, not four.
+  `critical`→CRITICAL, `major`→MAJOR, `minor`→MINOR, `warning` (rank 3)→LOW, and **rank 4**
+  (`indeterminate`, `cleared`)→UNKNOWN. An alarm with no learned severity is UNKNOWN too, and the two
+  are distinguished by their text, which is the element's own word or the absence of one.
+- **Reason — the collapse that was wrong.** `format.js` folded ranks 3 and 4 into LOW, so an element
+  that reported `indeterminate` — the vocabulary's own word for *"I do not know how serious this
+  is"* — was rendered as *"low"*. That is a claim about seriousness the element never made, and it
+  is the same defect the module's own docstring already names for the blank cell: *"a blank would
+  read as 'no severity' rather than 'not learned yet'."* Applied consistently, it condemns the
+  collapse.
+- **MEDIUM is not introduced.** The maintainer's scale names one and `SEVERITY_VOCAB` has no token
+  that maps to it. The two ways to produce one are to rename `minor` — inventing a word no NE emits
+  and no MIB carries — or to add a band nothing can reach. A badge that can display a level the
+  appliance cannot produce is worse than one that displays four.
+- **What an operator sees**, stated because the question was asked that way: `warning` renders as a
+  **LOW** band carrying the word *warning*; `indeterminate` renders as an **UNKNOWN** band carrying
+  the word *indeterminate*, visibly the same band as a never-learned severity and visibly a different
+  cell from it.
+- **Measured**: on the whole labelled corpus, 0 of 2 252 alarms resolve a severity at all
+  (`tools/evidence/severity_census.py`), so every band above is reachable today only through the
+  console's own fixtures. That is the measurement, not an excuse: it is why v0.16.3 exists.
+- **Honest limit, recorded rather than fixed**: for a `kind='int'` severity candidate the rank is the
+  raw integer, so ranks above 4 exist and fall into LOW with no upper bound. Nothing in the corpus
+  produces one; F99.
+
+## 277. Filled pills, ordered by luminosity, and the glyphs stop repeating (v0.16.2)
+
+- **Decision** (decision 5): `SeverityCell` renders a filled, rounded badge. Five bands, each with
+  its own fill, its own ink, its own **distinct** glyph and its text — the rule `format.js` has
+  documented since v0.13.0, now true of the glyph as well.
+- **Reason the glyphs changed**: `critical` and `major` both rendered `▲`. Two adjacent bands that
+  share a glyph AND sit two hue-steps apart on the red-orange axis are one encoding, not three, and
+  they are the exact pair that collides under deuteranopia. They are now `▲` and `◆`, with `●` for
+  minor, `▬` for low and `?` for unknown — five shapes no two of which are confusable at 11 px.
+- **The luminosity ladder, which is the accessibility rule made mechanical**: the fills descend in
+  weight from a deep saturated red at CRITICAL to a light neutral at UNKNOWN, so the ordering
+  survives when hue does not. Colour, glyph and text are three encodings and any one of them alone
+  carries the rank.
+- **Why the fill is a token pair and not a filter over the existing colour**: the existing `--alarm`,
+  `--major`, `--minor`, `--low` and `--unknown` are **text** colours chosen to be legible ON the
+  background. Reusing one as a fill would put ink on a colour that was never picked to hold it, and
+  the two themes would fail in opposite directions.
+- **Trade-off accepted**: ten new custom properties per theme block, which is the one exception Part
+  VII rule 3 allows. No icon set, no design tokens beyond the severity colours.
+
+## 278. `api/routes/`, derived from the import graph, and the guard that would have gone quiet (v0.16.2)
+
+- **Decision** (decision 6): the twelve `routes_*.py` modules move to `api/routes/` and drop the
+  prefix — `api/routes/read.py`, `api/routes/lifecycle.py`. The seven that remain at `api/` are the
+  machinery every route consumes: `app`, `context`, `declare`, `models`, `perimeter`,
+  `governance_cache`, `__init__`. The HTTP surface is unchanged and the behaviour record is the gate.
+- **Reason, derived rather than chosen**: v0.15.1's method is to read the import graph, and it gives
+  exactly **one** boundary here. Every route module imports `context`, `declare` and `models`; the
+  machinery imports no route module except `app.py`, which assembles them; and **no route module
+  imports another** — measured, twelve of twelve. A functional five-way split (read / operate /
+  model / administer / public) would be a grouping the code does not exhibit, and five directories
+  averaging 2.4 files is worse navigation than one list of twelve.
+- **What the move found, which is the reason it earned its place**: `tests/apisource.py` — the corpus
+  four text-scanning guards read (F28, F34, F39, and the scorer caveat) — globs `PKG_DIR.glob("*.py")`,
+  **non-recursively**, and asserts the concatenation exceeds `MIN_SOURCE_CHARS = 60 000`. The seven
+  machinery modules alone are 74 640 characters, so a move into a subdirectory would have dropped
+  every route module from the corpus and left all four guards passing over source that contains no
+  routes. Both halves are repaired in the move's own commit: the walk is recursive, and the floor is
+  raised to a figure a subset cannot clear. F98.
+- **Trade-off accepted**: twelve renames and every path-pinning reference updated in the same commit.
+  Nothing else changes; `MODULE_ORDER` keeps registration order, which is what makes the scanning
+  guards' slices mean what they meant.
+
+## 279. A Hypothesis profile, because the coverage figure was a property of the search (v0.16.2)
+
+- **Decision**: `tests/conftest.py` registers and loads one profile — `derandomize=True`,
+  `database=None` — and nothing else about the suite changes.
+- **Reason**: no profile was registered anywhere in this project, so Hypothesis ran with a random
+  seed and a persistent example database. A property test explored different inputs on different
+  runs and replayed a shrunk failure on any machine that had one cached, so different branches
+  executed and the coverage percentage moved. **The instability was in the search, not in the
+  suite** — which is why the v0.16.1 handoff (95.90 / 95.94 / 95.96 on one tree) and the reviewer
+  who got 95.88 three times running were both reporting honestly.
+- **Trade-off accepted**: a derandomised search stops accumulating coverage of the *input* space
+  across runs, which is a real loss. It is taken because a property that fails only on one
+  machine's cached example is one nobody can act on, and because a release cannot compare its
+  coverage to the last one's if the number is a function of what the last run happened to draw.
+- **Measured**: 169 property-driven tests across four modules pass under the profile, and the
+  release's two coverage runs are reported in the handoff against exactly this configuration.
+- **Not decided here**: whether `max_examples` should move. The one test that sets it
+  (`test_governance.py`, 250) keeps its own setting, because a profile that silently overrode a
+  deliberate per-test budget would be the placeholder rule (#219) in a new register.

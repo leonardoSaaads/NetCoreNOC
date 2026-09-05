@@ -43,6 +43,7 @@ name. The release table moved with them, from `architecture/ROADMAP-0.8-TO-0.13.
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -266,7 +267,13 @@ def test_the_release_table_parses() -> None:
     # table said v0.16.0 was the external cartridge, and the maintainer's brief for v0.15.3 states
     # v0.16.0 is the situation lifecycle and v0.16.1 visualisation and search. The cartridge moved
     # to v0.17.0 and archetypes to v0.18.0. Fifteen rows.
-    assert len(table) == 15, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
+    #
+    # v0.16.2 EXTENDS it for the first time without permuting it (DECISIONS #272): the maintainer
+    # planned v0.16.3 to v0.16.6 and asked for the chain to be in the repository rather than in a
+    # brief, so five rows join and none moves. That is the difference this line records — the four
+    # edits above each moved a release that was already here, and this one adds releases that were
+    # only ever described in a prompt. Twenty rows.
+    assert len(table) == 20, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -281,6 +288,11 @@ def test_the_release_table_parses() -> None:
         "v0.15.3",
         "v0.16.0",
         "v0.16.1",
+        "v0.16.2",
+        "v0.16.3",
+        "v0.16.4",
+        "v0.16.5",
+        "v0.16.6",
         "v0.17.0",
         "v0.18.0",
     }
@@ -818,3 +830,94 @@ def test_the_decision_heading_reader_finds_the_whole_log() -> None:
     assert len(known) > 100, f"only {len(known)} decision headings parsed; the reader is wrong"
     assert {197, 201, 205} <= known, "the entries v0.15.0 added must parse"
     assert 3 in known and max(known) >= 206
+
+
+# --- v0.16.2: a cited TEST must exist, for #201's reason one register over (F101) -----------
+
+#: `tests/test_x.py::test_name`, on one line. A citation split across a line break is not matched
+#: and is refused by `test_no_test_citation_is_split_across_a_line_break` below — an identifier
+#: broken in half is one no reader can follow to its test and no guard can resolve.
+_TEST_CITATION = re.compile(r"tests/(test_[a-z0-9_]+)\.py::(test_[A-Za-z0-9_]+)")
+
+
+def _cited_tests() -> dict[tuple[str, str], list[str]]:
+    """`{(module, test): [files citing it]}`, over the tree that makes claims about tests."""
+    out: dict[tuple[str, str], list[str]] = {}
+    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        for match in _TEST_CITATION.finditer(text):
+            key = (match[1], match[2])
+            out.setdefault(key, []).append(str(path.relative_to(REPO_ROOT)))
+    return out
+
+
+def _test_names(module: str) -> set[str] | None:
+    """Every `def test_*` in one test module, or None if the module does not exist."""
+    path = REPO_ROOT / "tests" / f"{module}.py"
+    if not path.is_file():
+        return None
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+
+def test_every_test_cited_in_src_resolves_to_a_test_that_exists() -> None:
+    """**A module that says "this guard asserts X" must be pointing at a guard.**
+
+    The exact sibling of `test_every_decision_number_cited_in_the_tree_resolves_to_an_entry`, and
+    it exists because the same dangling-pointer failure had already happened in the other register
+    and nothing could see it. Measured when this was written (F101): **five of twenty citations in
+    `src/` named a test that did not exist**, including `LIVE`'s in `store/situations.py`, which
+    claimed since v0.16.0 that a guard read the module to assert the fragment was written once.
+    No such guard existed anywhere in the tree.
+
+    That is worse than an ordinary stale comment. A citation of this shape is a claim that a
+    property is *checked*, and a reader who follows it finds nothing while the property goes on
+    being assumed — which is exactly how a promise comes to be mistaken for a guarantee.
+    """
+    cited = _cited_tests()
+    dangling: dict[str, list[str]] = {}
+    for (module, name), citers in sorted(cited.items()):
+        names = _test_names(module)
+        if names is None:
+            for citer in citers:
+                dangling.setdefault(citer, []).append(f"tests/{module}.py does not exist")
+        elif name not in names:
+            for citer in citers:
+                dangling.setdefault(citer, []).append(f"tests/{module}.py has no {name}")
+    assert not dangling, (
+        "these modules cite a test that does not exist. A citation of this shape claims the "
+        "property beside it is CHECKED; a reader who follows it and finds nothing has been told "
+        f"a guarantee where there is a promise (F101):\n  {dangling}"
+    )
+
+
+def test_no_test_citation_is_split_across_a_line_break() -> None:
+    """The control on the reader, and a real defect in its own right.
+
+    `crosscutting/rbac/tables.py` wrapped a citation mid-identifier, so the guard above could not
+    resolve it and a reader could not follow it. Without this test the reader would simply not
+    match such a citation — silently, which is the failure mode the guard exists to end.
+    """
+    split = []
+    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.rstrip()
+            if stripped.endswith(".py::") or (
+                _TEST_CITATION.search(stripped)
+                and stripped.endswith("_")
+                and stripped.rstrip("_").endswith(_TEST_CITATION.findall(stripped)[-1][1][:-1])
+            ):
+                split.append(f"{path.relative_to(REPO_ROOT)}:{lineno}")
+    assert not split, f"a test citation is broken across a line break: {split}"
+
+
+def test_the_test_citation_reader_finds_the_citations_that_are_there() -> None:
+    """Guard the guard: a regex that matched nothing would make both tests above vacuous."""
+    cited = _cited_tests()
+    assert len(cited) >= 15, f"only {len(cited)} test citations found in src/; the reader is wrong"
+    assert ("test_store", "test_every_live_situation_query_uses_the_one_fragment") in cited
+    assert all(module.startswith("test_") for module, _ in cited)

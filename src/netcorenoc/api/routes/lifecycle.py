@@ -124,8 +124,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     status_code=409, detail="that alarm is no longer in this situation"
                 )
             membership.moved(engine, body.alarm_id, sid, body.to_situation_id)
+            # **The subject only** (v0.16.2, DECISIONS #273). The operator read *this* situation
+            # and took an alarm out of it, so `open` — *"an operator is working it"* (#254) — is
+            # true of it. The destination is an **id they typed**: this module offers no picker,
+            # deliberately, because the id is what an operator pastes from a chat during an
+            # incident. Promoting it claimed somebody had looked at a situation nobody had opened,
+            # and moved its card out of the **New** tab, which is where the operator who has not
+            # looked at it would find it.
             await store.promote_situation(sid, now)
-            await store.promote_situation(body.to_situation_id, now)
             await gestures.record(
                 store,
                 gestures.Gesture(

@@ -28,9 +28,10 @@ from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Route
 
-from netcorenoc.api import declare, routes_static
+from netcorenoc.api import declare
 from netcorenoc.api.app import create_app
 from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError, require_declaration
+from netcorenoc.api.routes import static as routes_static
 from netcorenoc.crosscutting import auth, rbac
 from netcorenoc.store import Store
 
@@ -97,7 +98,7 @@ def test_the_gate_is_the_only_registration_path() -> None:
     """No raw `@app.<verb>` decorator anywhere under `netcorenoc/api/`.
 
     The discipline is only a discipline if there is no way round it. `add_api_route` is the one
-    remaining non-decorator registration and it is confined to `routes_static.py`, where it serves
+    remaining non-decorator registration and it is confined to `routes/static.py`, where it serves
     a compile-time allowlist of non-`/api` files — see the test below.
     """
     offenders = [
@@ -133,11 +134,11 @@ def test_add_api_route_is_confined_to_the_static_asset_allowlist() -> None:
 async def _create_app_with(store: Store, sabotage: Any) -> object:
     """Build a real app through `create_app`, with `sabotage(app)` run during registration.
 
-    The extra route is added from inside `routes_events.register` — the last `register()` call —
+    The extra route is added from inside `routes/events.py::register` — the last `register()` call —
     so it is present on the application *before* `create_app` returns, which is the only way to
     test that the post-hoc assertion fires where it is claimed to fire rather than in a test.
     """
-    from netcorenoc.api import routes_events
+    from netcorenoc.api.routes import events as routes_events
 
     original = routes_events.register
 
@@ -233,7 +234,7 @@ def test_f41_a_non_api_path_outside_the_allowlist_is_refused(path: str) -> None:
     assert "UNAUTHENTICATED_PATHS" in str(excinfo.value)
 
 
-# The public surface, derived from what `routes_static.py` serves plus the health endpoints and
+# The public surface, derived from what `routes/static.py` serves plus the health endpoints and
 # FastAPI's schema route — deliberately **not** from `declare.UNAUTHENTICATED_PATHS`. Parametrising
 # over the allowlist would make the test vacuous if the allowlist were ever emptied, and it would
 # also make this file uncollectable against a tree that predates the constant, which is how the
@@ -258,9 +259,9 @@ def test_f41_every_currently_served_public_path_is_still_accepted(path: str) -> 
 
 
 def test_f41_the_allowlist_matches_what_is_actually_served() -> None:
-    """The allowlist is *asserted against* `routes_static.py`, so the two cannot diverge.
+    """The allowlist is *asserted against* `routes/static.py`, so the two cannot diverge.
 
-    `declare.py` cannot import `routes_static.py` — that module registers through this one, and the
+    `declare.py` cannot import `routes/static.py` — that module registers through this one, and the
     import would be circular — so the derivation is checked here instead of performed there. Adding
     a static asset without listing it fails; listing a path that is not served fails too.
     """
@@ -577,12 +578,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
     # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
     # pair of assertions is really for.
-    assert len(served) == 102, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 103, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 49, (
+    assert len(api_pairs) == 50, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
-        f"operator's five gestures — and v0.13.0/v0.14.0/v0.15.3 added none at all. A change "
-        f"here means something else happened."
+        f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
+        f"and v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else "
+        f"happened."
     )
     for _method, path in served:
         route = next(r for r in app.routes if getattr(r, "path", None) == path)  # type: ignore[attr-defined]
@@ -658,12 +660,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
     # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
     # pair of assertions is really for.
-    assert len(served) == 102, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 103, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 49, (
+    assert len(api_pairs) == 50, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
-        f"operator's five gestures — and v0.13.0/v0.14.0/v0.15.3 added none at all. A change "
-        f"here means something else happened."
+        f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
+        f"and v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else "
+        f"happened."
     )
     paths = {path for _method, path in served}
     for public in declare.UNAUTHENTICATED_PATHS:
@@ -797,7 +800,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
-    assert len(SCOPED) == 17, SCOPED
+    #
+    # v0.16.2: 17 -> 18. `POST …/promote` names a situation and its capability is below `admin`,
+    # so it is the same perimeter for the same reason (DECISIONS #273).
+    assert len(SCOPED) == 18, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -828,6 +834,7 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/situations/{sid}/split"): {"alarm_ids": [1], "confidence": 0.9},
     ("POST", "/api/situations/{sid}/name"): {"name": "x"},
     ("POST", "/api/alarms/{aid}/clear"): {},
+    ("POST", "/api/situations/{sid}/promote"): {},
     ("POST", "/api/users"): {"username": "x", "password": "x" * 14, "role": "viewer"},
     ("POST", "/api/users/{uid}/role"): {"role": "viewer"},
     ("POST", "/api/tokens"): {"name": "t", "role": "viewer"},
@@ -897,6 +904,8 @@ SCOPED_TARGETED = [
     ("POST", "/api/situations/{sid}/split"),
     ("POST", "/api/situations/{sid}/name"),
     ("POST", "/api/alarms/{aid}/clear"),
+    # v0.16.2: the bare promotion names one situation, so it is targeted for the same reason.
+    ("POST", "/api/situations/{sid}/promote"),
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 

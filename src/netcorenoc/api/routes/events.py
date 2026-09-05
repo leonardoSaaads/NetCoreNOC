@@ -22,6 +22,7 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.crosscutting import auth, rbac, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
+from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
 
 SSE_HEARTBEAT_S = 15.0
 SSE_UPDATE_S = 2.0
@@ -78,6 +79,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 sits = await store.list_situations(
                     None, 50, None if scope.unrestricted else scope.ne_ids
                 )
+                # v0.16.2: the same `stale` mark `GET /api/situations` adds, from the same
+                # expression (DECISIONS #274). The console refreshes the polled list from this
+                # stream, so a badge that appeared on one and not the other would read as the
+                # situation having changed rather than as the transport disagreeing with itself.
+                sits = await store.with_idle_active(sits, time.time() - IDLE_CLOSE_S)
                 members = (
                     {}
                     if scope.unrestricted

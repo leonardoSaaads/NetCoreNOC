@@ -971,6 +971,15 @@ async def _labelled_and_aged(store: Store) -> tuple[int, int, list[int]]:
         "created_at) VALUES (?, ?, ?, 0.9, 0.3, 0.3, 0.3, ?)",
         (sid, ids[0][0], ids[1][0], TS),
     )
+    # **v0.16.2 (DECISIONS #274): the members are cleared before the close.** The appliance's own
+    # close now refuses a situation that still holds an active alarm, which is the repair — so a
+    # fixture that wants a CLOSED situation has to produce one the same way the network does. It
+    # was closing a burning situation and calling the result closed, which is exactly the state
+    # this release stopped being reachable.
+    for alarm_id, _class_id, _device_id in ids:
+        await store.conn.execute(
+            "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?", (TS + 15.0, alarm_id)
+        )
     await store.close_situation(sid, TS + 20.0)
     return sid, recorded.id, [t[0] for t in ids]
 
@@ -1257,9 +1266,18 @@ async def test_the_whole_life_of_a_label(store: Store) -> None:
     promoted = int((await cur.fetchone())[0])  # type: ignore[index]
     assert promoted > 0, "the verdict promoted nothing"
 
-    # 3. Close it, then age past the OPERATIONAL retention. This is F44's boundary: the verdict and
-    #    its bag survive, and the situation's operational data is collected.
+    # 3. Clear it, close it, then age past the OPERATIONAL retention. This is F44's boundary: the
+    #    verdict and its bag survive, and the situation's operational data is collected.
+    #
+    #    **The clear is v0.16.2's (DECISIONS #274) and it is not scaffolding.** The appliance's own
+    #    close refuses a situation that still holds an active alarm, so a label's life reaches this
+    #    step only after the network stopped emitting — which is what actually happens, and what
+    #    this test asserted was happening while closing a burning situation.
     async with store.lock:
+        for alarm_id in await store.situation_member_ids(sid):
+            await store.conn.execute(
+                "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?", (TS + 15.0, alarm_id)
+            )
         await engine._close_situation(sid, TS + 20.0)
         await store.commit()
     await engine.maintenance(now=TS + 20.0 + 30.0 * 86400.0, retention_days=7.0, tick=0)

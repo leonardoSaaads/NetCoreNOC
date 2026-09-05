@@ -94,20 +94,71 @@ async def test_situation_lifecycle_and_merge(store: Store) -> None:
     assert merged["status"] == "resolved" and merged["resolution"] == "merged"
     assert not await store.all_cleared(s1)
     await store.set_root(s1, a.alarm_id)
+    # **v0.16.2 (DECISIONS #274): the appliance's own close REFUSES here.** Both members are still
+    # active, and `open -> resolved` requires that none is. Until this release this call resolved
+    # the situation and recorded `idle`, which removed a live alarm from every live view — the
+    # defect that release is named for. The invariant is in the UPDATE's own WHERE clause, so this
+    # is a no-op rather than a caller's omission.
     await store.close_situation(s1, ts=4.0)
     detail = await store.situation_detail(s1)
     assert detail is not None
-    assert detail["status"] == "resolved" and detail["root_alarm_id"] == a.alarm_id
-    # Both members are still active, so the appliance did not close this because the network
-    # fixed itself: the sweep timed it out, and `resolution` is what says which (DECISIONS #259).
-    assert detail["resolution"] == "idle"
+    assert detail["root_alarm_id"] == a.alarm_id
+    assert (detail["status"], detail["resolution"]) == ("new", None), (
+        "the appliance resolved a situation that still holds an active alarm"
+    )
+    # The control, in the same test and against the same row: clear both members and the identical
+    # call resolves it. Without this arm the assertion above would also pass against a
+    # `close_situation` that had simply stopped working.
+    for alarm_id in (a.alarm_id, b.alarm_id):
+        await store.conn.execute(
+            "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?", (5.0, alarm_id)
+        )
+    await store.close_situation(s1, ts=6.0)
+    detail = await store.situation_detail(s1)
+    assert detail is not None
+    assert (detail["status"], detail["resolution"]) == ("resolved", "self_cleared")
 
 
 async def test_idle_open_situations(store: Store) -> None:
-    s1 = await store.create_situation(ts=100.0)
-    s2 = await store.create_situation(ts=100.0)
-    await store.touch_situation(s2, ts=500.0)
-    assert await store.idle_open_situations(cutoff=400.0) == [s1]
+    """**What the sweep may resolve**: live, untouched, and holding nothing that is still on.
+
+    Four arms, and two of them are controls. Without the fresh one this measures `updated_at`
+    rather than the rule; without the cleared one a sweep that had simply stopped working would
+    score green.
+    """
+    stale_active = await store.create_situation(ts=100.0)
+    fresh_active = await store.create_situation(ts=100.0)
+    stale_cleared = await store.create_situation(ts=100.0)
+    empty = await store.create_situation(ts=100.0)
+    for sid, device, active in (
+        (stale_active, "10.0.0.1", True),
+        (fresh_active, "10.0.0.2", True),
+        (stale_cleared, "10.0.0.3", False),
+    ):
+        raised = await store.ingest(util.event(device=device, ts=100.0))
+        await store.add_alarm_to_situation(sid, raised.alarm_id)
+        if not active:
+            await store.conn.execute(
+                "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?",
+                (100.0, raised.alarm_id),
+            )
+    await store.touch_situation(stale_active, ts=100.0)
+    await store.touch_situation(stale_cleared, ts=100.0)
+    await store.touch_situation(empty, ts=100.0)
+    await store.touch_situation(fresh_active, ts=500.0)
+
+    resolvable = await store.idle_open_situations(cutoff=400.0)
+    active_and_idle = await store.idle_active_situations(cutoff=400.0)
+    assert resolvable == [stale_cleared, empty]
+    assert active_and_idle == [stale_active]
+    # Disjoint, and neither is empty: a partition with an unreachable arm is a state that does not
+    # exist, which is the risk DECISIONS #274 takes on by deriving rather than storing.
+    assert not set(resolvable) & set(active_and_idle)
+    assert resolvable and active_and_idle
+    # And together they are exactly the idle live population — asserted against `all_cleared`,
+    # which is the method that answered this question all along and that the old query never asked.
+    for sid in (stale_active, stale_cleared, empty):
+        assert (sid in resolvable) is await store.all_cleared(sid)
 
 
 async def test_feedback_requires_existing_situation(store: Store) -> None:
@@ -189,3 +240,88 @@ async def test_prune_bounds_growth(store: Store) -> None:
     assert (await store.stats())["open_situations"] == 1
     counts = await store.prune(now=100_000.0, retention_s=1_000.0)
     assert counts == {"situations": 0, "alarms": 0, "quarantine": 0}
+
+
+# --- the two SQL fragments, and the guards their comments promise -------------------------
+
+
+#: The runtime package. `util.module_path` deliberately excludes `store/` and `api/`, so this
+#: guard resolves the root the way `tests/apisource.py` does — from the imported package — rather
+#: than by a path written as text, which is what F92 and F98 are each about.
+def _runtime_sources() -> list[tuple[Path, str]]:
+    """Every runtime module's text. Walked, never listed — F92's lesson and F98's."""
+    import netcorenoc
+
+    pkg = Path(netcorenoc.__file__).resolve().parent
+    return [(p, p.read_text(encoding="utf-8")) for p in sorted(pkg.rglob("*.py"))]
+
+
+def test_every_live_situation_query_uses_the_one_fragment() -> None:
+    """`LIVE` is written once and nothing spells it out a second time.
+
+    **This guard was cited by `store/situations.py` from v0.16.0 and did not exist** (F101). The
+    comment on `LIVE` said this module is read to assert the fragment is not restated; nothing
+    read it, so the single-source claim was a promise rather than a property for two releases.
+
+    Spelling the states out a second time is not a style complaint. `LIVE` is what a v0.16.0
+    reader had to widen in six places at once when the correlator started creating `new`, and a
+    seventh copy is the one that gets missed — which would silently exclude every untriaged
+    situation from whichever query held it.
+    """
+    from netcorenoc.store import situations
+
+    spelled = [
+        (path, text.count(situations.LIVE))
+        for path, text in _runtime_sources()
+        if situations.LIVE in text
+    ]
+    assert len(spelled) == 1, (
+        f"the live-state fragment is written in more than one module: {spelled}"
+    )
+    path, count = spelled[0]
+    assert path.name == "situations.py", path
+    assert count == 1, (
+        f"{path.name} writes the live-state fragment {count} times. It is a module constant so "
+        "that there is one of it; a second copy is the one a later release forgets to widen."
+    )
+
+
+async def test_the_active_member_predicate_agrees_with_all_cleared(store: Store) -> None:
+    """`HAS_ACTIVE` and `all_cleared` are two expressions of one question (v0.16.2, #274).
+
+    The correlated subquery answers it for a population and the method answers it for a row, and
+    they are separate SQL. Two expressions of one question are two chances to answer it
+    differently — which is the shape of the defect this release repairs, one level down: the sweep
+    had a method that answered its question and asked a query that did not.
+
+    Driven over every arm that distinguishes them, **including the empty bag**, which is the input
+    that makes `all_cleared` answer True about a situation nothing ever cleared.
+    """
+    from netcorenoc.store.situations import HAS_ACTIVE
+
+    empty = await store.create_situation(ts=1.0)
+    active = await store.create_situation(ts=1.0)
+    cleared = await store.create_situation(ts=1.0)
+    mixed = await store.create_situation(ts=1.0)
+    for sid, device, on in (
+        (active, "10.1.0.1", True),
+        (cleared, "10.1.0.2", False),
+        (mixed, "10.1.0.3", True),
+        (mixed, "10.1.0.4", False),
+    ):
+        raised = await store.ingest(util.event(device=device, ts=1.0))
+        await store.add_alarm_to_situation(sid, raised.alarm_id)
+        if not on:
+            await store.conn.execute(
+                "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?", (2.0, raised.alarm_id)
+            )
+    cur = await store.conn.execute(
+        f"SELECT id FROM situation WHERE {HAS_ACTIVE}"  # nosec B608 - module literal
+    )
+    by_fragment = {int(r[0]) for r in await cur.fetchall()}
+    for sid in (empty, active, cleared, mixed):
+        assert (sid in by_fragment) is not await store.all_cleared(sid), (
+            f"the fragment and all_cleared disagree about situation {sid}"
+        )
+    # Both answers are exercised, or the agreement above is agreement about one case.
+    assert by_fragment == {active, mixed}

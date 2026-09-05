@@ -5,13 +5,17 @@ validated, severity stays unknown (NULL) — a fabricated severity is worse than
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
+import domdriver
+import uifixtures
 from netcorenoc.engine.correlate import severity
 from netcorenoc.engine.correlate.varbind_profile import VarbindProfiler
 from netcorenoc.ingest.events import TrapEvent, Varbind
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
+from test_dom_harness import dom_test
 
 import authutil
 
@@ -183,3 +187,117 @@ def test_normalize_maps_vocab_and_integers_and_rejects_junk() -> None:
     assert severity.normalize("minor") == ("minor", 2)
     assert severity.normalize("3") == ("3", 3)
     assert severity.normalize("not-a-severity") == (None, None)
+
+
+# --- v0.16.2: what the CONSOLE does with what the appliance learned ------------------------
+
+#: One alarm per band, in `SEVERITY_VOCAB`'s own tokens plus the two the console must not place.
+#: `warning` is rank 3 and IS a placement; `indeterminate` is rank 4 and is not; a `None` severity
+#: is the never-learned case, which a zero-config appliance is in on its first day.
+BANDS: list[tuple[str | None, int | None, str]] = [
+    ("critical", 0, "sev-crit"),
+    ("major", 1, "sev-major"),
+    ("minor", 2, "sev-minor"),
+    ("warning", 3, "sev-low"),
+    ("indeterminate", 4, "sev-unknown"),
+    (None, None, "sev-unknown"),
+]
+
+
+def _with_bands(routes: dict[str, Any], sid: int) -> dict[str, Any]:
+    """The captured payload with one alarm per band, so every band is on screen at once.
+
+    A real corpus resolves **no** severity — 0 of 2 252 alarms, measured by
+    `tools/evidence/severity_census.py` — which is a fact about the corpus and about the floors
+    `severity.py` refuses below. It is not a reason to leave four of the five bands unrendered by
+    any test in this repository.
+    """
+    import copy
+
+    doctored = copy.deepcopy(routes)
+    alarms = doctored[f"/api/situations/{sid}"]["json"]["alarms"]
+    assert len(alarms) >= len(BANDS), f"the corpus situation has {len(alarms)} members"
+    for alarm, (value, rank, _band) in zip(alarms, BANDS, strict=False):
+        alarm["severity"] = value
+        alarm["severity_rank"] = rank
+    return doctored
+
+
+@dom_test
+async def test_every_severity_band_carries_a_glyph_and_text_not_only_colour(
+    store: Store,
+) -> None:
+    """**The accessibility rule, at the DOM** (DECISIONS #276, #277).
+
+    `format.js` has documented since v0.13.0 that every severity carries a colour AND a glyph AND
+    its text, *"because colour alone fails for a colour-blind operator and on a bad monitor at
+    3 a.m."* Nothing checked it. This drives the real console over a real capture and reads back
+    what the members table rendered, for **every band including `unknown`** — a badge that carries
+    colour alone fails here, which is the whole reason it exists.
+
+    Three properties, and each is a different way the pill could quietly stop being three
+    encodings:
+
+    * every pill carries a non-empty **glyph** and a non-empty **word**;
+    * the glyphs are distinct **shapes** — `critical` and `major` both drew `▲` until this release,
+      which made two adjacent bands one encoding rather than three, and they are the pair that also
+      collides on hue under deuteranopia;
+    * the word is in the cell's own **text**, not only in a `title=`, because a tooltip is not a
+      rendering.
+    """
+    routes = await uifixtures.all_routes(store)
+    sid, count = uifixtures.largest_situation(routes["editor"])
+    assert count >= len(BANDS)
+    result = domdriver.run_scenario(
+        "severityBands", {"routes": _with_bands(routes["editor"], sid), "sid": sid}
+    )
+    cells = result["cells"][: len(BANDS)]
+    assert len(cells) == len(BANDS), f"the members table rendered {len(cells)} severity cells"
+
+    glyphs: list[str] = []
+    for cell, (value, _rank, band) in zip(cells, BANDS, strict=True):
+        assert band in cell["classes"].split(), f"{value!r} rendered as {cell['classes']!r}"
+        assert cell["glyph"].strip(), f"{value!r} rendered no glyph — colour alone"
+        assert cell["text"].strip(), f"{value!r} rendered no text — colour alone"
+        assert cell["text"].strip() in cell["cellText"], (
+            f"{value!r}'s word is not in the cell's text; a title= is not a rendering"
+        )
+        glyphs.append(cell["glyph"].strip())
+
+    # `warning` is a placement on the scale and `indeterminate` is not, and they must not look the
+    # same: rendering the vocabulary's own word for "I do not know" as *low* is a claim about
+    # seriousness the element never made (DECISIONS #276).
+    assert cells[3]["classes"] != cells[4]["classes"], (
+        "`warning` and `indeterminate` render as the same band"
+    )
+    # The never-learned case shares `unknown`'s band and must still be distinguishable by its word.
+    assert cells[4]["text"].strip() != cells[5]["text"].strip(), (
+        "a learned `indeterminate` and a never-learned severity render identically"
+    )
+    assert len(set(glyphs[:4])) == 4, f"two placed bands share a glyph: {glyphs[:4]}"
+
+
+def test_only_one_module_renders_a_severity() -> None:
+    """**One component, every severity surface** (DECISIONS #277), enforced rather than intended.
+
+    V.3's reason for the component is that *two screens disagreeing about what `major` looks like*
+    is the defect it exists to prevent — and today there is exactly one consumer, which is when a
+    rule like this is cheapest to install and most likely to be forgotten. A second screen that
+    wanted a severity would reach for the class, not the component, because the class is what a
+    reader sees in the stylesheet.
+
+    The stylesheet is where the bands are *defined* and is not scanned; the assertion is that no
+    module **emits** one except the module that owns the pill.
+    """
+    import netcorenoc
+
+    root = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    emitters = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.js")
+        if "sev-" in path.read_text(encoding="utf-8")
+    )
+    assert emitters == ["widgets.js"], (
+        f"modules other than widgets.js emit a severity class: {emitters}. The pill is one "
+        "component so that two screens cannot disagree about what `major` looks like."
+    )

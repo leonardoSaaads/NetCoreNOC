@@ -34,6 +34,7 @@ from netcorenoc.store.devices import DeviceMixin
 from netcorenoc.store.entities import EntityMixin
 from netcorenoc.store.feedback import FeedbackMixin
 from netcorenoc.store.governance import GovernanceMixin
+from netcorenoc.store.idle import IdleMixin
 from netcorenoc.store.ingest_gaps import IngestGapMixin
 from netcorenoc.store.learned import LearnedMixin
 from netcorenoc.store.lifecycle import LifecycleMixin
@@ -87,6 +88,11 @@ class Store(
     # first so the MRO resolves each name to the real method rather than to a base that does not
     # have it.
     RestructureMixin,
+    # v0.16.2. The idle predicate and the two queries that partition on it (DECISIONS #274). Below
+    # `RestructureMixin` because nothing in it overrides a name; it is four methods and two SQL
+    # fragments over `StoreBase`, and it is a sibling rather than a base of `SituationMixin` so the
+    # lifecycle writes and the population reads stay separable.
+    IdleMixin,
     LearnedMixin,
     AlarmMixin,
     DeviceMixin,

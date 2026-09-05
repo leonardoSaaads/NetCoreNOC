@@ -71,7 +71,7 @@ immutable document is a reference to the tree as it was; the reading rule above 
 
 ## The pre-registration hashes
 
-Six analysis plans in [`analysis/`](analysis/) are pinned by SHA-256 in
+Seven analysis plans in [`analysis/`](analysis/) are pinned by SHA-256 in
 `tests/test_preregistration.py`. Each hash lives in **two** files on purpose: one alone could be
 edited quietly in the same commit as the plan it guards; two make that an obviously deliberate diff.
 The second home used to be the release's phase-gate document. Those are deleted, so it is this
@@ -89,6 +89,7 @@ is no gate document for the fifth or the sixth: v0.15.0 deleted the directory, s
 | `PREREGISTRATION-0.14.0.md` | `5607328a573d9a3c78374e47ba11e6dcff76f07c023b3f2e8174b6feed4d219f` | `4aed642`, tag `v0.14.0-gate0` | `docs/gates/v0.14.0-phase-0.md` §6 |
 | `PREREGISTRATION-0.16.0.md` | `81aadc3b7a0695c0a6221a8302fb4e4e591f800a1cceeb89e6a52cca8ecca448` | `b00d231`, tag `v0.16.0-gate0` | — (the gates are deleted; see above) |
 | `PREREGISTRATION-0.16.1.md` | `acaf5f8afdef58950333856d6118532a1548572c6179070457f569f126a618c1` | `2302dfd`, tag `v0.16.1-gate0` | — (the gates are deleted; see above) |
+| `PREREGISTRATION-0.16.2.md` | `a7fcbfac95eb72ee6fe4f12b6a82d8f94fb6627c7314d8b7c54ab8dccbf6c465` | `c730f71`, tag `v0.16.2-gate0` | — (the gates are deleted; see above) |
 
 The temporal claim — that each plan was written before the results it governs — never rested on the
 gate document. It rests on the ratifying commit, which changed nothing else and is permanent.

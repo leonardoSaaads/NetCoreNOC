@@ -24,21 +24,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import Depends, FastAPI
 
 from netcorenoc import __version__
-from netcorenoc.api import (
-    declare,
-    routes_admin,
-    routes_annotate,
-    routes_audit,
-    routes_auth,
-    routes_events,
-    routes_governance,
-    routes_lifecycle,
-    routes_operate,
-    routes_promotion,
-    routes_read,
-    routes_scorer,
-    routes_static,
-)
+from netcorenoc.api import declare, routes
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.perimeter import (
     PREVIEW_RATE_CAPACITY,
@@ -100,28 +86,28 @@ def create_app(
 
     # Registration order is v0.7.1's declaration order, and it is behaviour: see the module
     # docstring. Do not sort these.
-    routes_static.register(app, ctx)
-    routes_auth.register(app, ctx)
-    routes_read.register(app, ctx)
+    routes.static.register(app, ctx)
+    routes.auth.register(app, ctx)
+    routes.read.register(app, ctx)
     # v0.16.0: the five operator gestures, split across two modules on whether they assert
     # anything about a grouping — the distinction `PREREGISTRATION-0.16.0.md` §1 turns into a
     # prohibition, expressed in the module tree rather than only in a docstring.
     #
-    # **Registered before `routes_operate`**, and the reason is the behaviour record rather than
+    # **Registered before `routes/operate.py`**, and the reason is the behaviour record rather than
     # the router: `tests/behaviour_identity.py` drives every route in registration order against
     # one database, so a `close` driven first leaves every gesture after it answering 409 on a
     # resolved situation. That is a true response and a weak pin — it would not catch a regression
     # in any of the three handlers. Ordering is free here (every path is a distinct literal and
     # none can shadow another), so it is chosen to make the record say more.
-    routes_lifecycle.register(app, ctx)
-    routes_annotate.register(app, ctx)
-    routes_operate.register(app, ctx)
-    routes_admin.register(app, ctx)
-    routes_scorer.register(app, ctx)
-    routes_promotion.register(app, ctx)
-    routes_governance.register(app, ctx)
-    routes_audit.register(app, ctx)
-    routes_events.register(app, ctx)
+    routes.lifecycle.register(app, ctx)
+    routes.annotate.register(app, ctx)
+    routes.operate.register(app, ctx)
+    routes.admin.register(app, ctx)
+    routes.scorer.register(app, ctx)
+    routes.promotion.register(app, ctx)
+    routes.governance.register(app, ctx)
+    routes.audit.register(app, ctx)
+    routes.events.register(app, ctx)
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the
     # better error; this re-checks the *result*, so a route registered by any other path — an
