@@ -27,7 +27,10 @@ import netcorenoc.api
 
 PKG_DIR = Path(netcorenoc.api.__file__).resolve().parent
 
-# Infrastructure first, then the nine route groups in the order `create_app` registers them.
+# Infrastructure first, then the twelve route groups in the order `create_app` registers them.
+#
+# **v0.16.2: paths relative to the package, not bare basenames** (DECISIONS #278, F98). The route
+# modules moved to `api/routes/`, and the walk below moved with them — see `modules()`.
 MODULE_ORDER: tuple[str, ...] = (
     "__init__.py",
     "context.py",
@@ -36,30 +39,46 @@ MODULE_ORDER: tuple[str, ...] = (
     "perimeter.py",
     "declare.py",
     "app.py",
-    "routes_static.py",
-    "routes_auth.py",
-    "routes_read.py",
+    "routes/__init__.py",
+    "routes/static.py",
+    "routes/auth.py",
+    "routes/read.py",
     # v0.16.0: the five operator gestures, in the order `create_app` registers them — the three
     # that assert something about a grouping, then the two that assert nothing about one.
-    "routes_lifecycle.py",
-    "routes_annotate.py",
-    "routes_operate.py",
-    "routes_admin.py",
-    "routes_scorer.py",
-    "routes_promotion.py",
-    "routes_governance.py",
-    "routes_audit.py",
-    "routes_events.py",
+    "routes/lifecycle.py",
+    "routes/annotate.py",
+    "routes/operate.py",
+    "routes/admin.py",
+    "routes/scorer.py",
+    "routes/promotion.py",
+    "routes/governance.py",
+    "routes/audit.py",
+    "routes/events.py",
 )
 
-# `api.py` was 79 179 bytes at v0.7.1. A concatenation that lost most of it would make every
-# scanning assertion vacuous, so the floor is asserted rather than assumed.
-MIN_SOURCE_CHARS = 60_000
+#: **The floor a subset must not be able to clear** (F98).
+#:
+#: It was 60 000, chosen when `api.py` was 79 179 bytes in one file — and by v0.16.1 the seven
+#: NON-route modules were 74 398 characters on their own. So a walk that lost every route module
+#: would still have cleared the floor by 24 %, and all four scanning guards would have gone on
+#: passing over a corpus containing no routes at all. That is exactly the move v0.16.2 makes, and
+#: it is why both halves are repaired here rather than only the walk: a floor a subset can clear
+#: is not a floor.
+#:
+#: 150 000 is above the machinery (74 398) plus any one route module, and comfortably below the
+#: real total, so it fails on a walk that lost the routes and does not fail on an ordinary edit.
+MIN_SOURCE_CHARS = 150_000
 
 
 def modules() -> list[Path]:
-    """Every ``.py`` in the package, in `MODULE_ORDER`. Raises on one that is not placed."""
-    present = {path.name for path in PKG_DIR.glob("*.py")}
+    """Every ``.py`` in the package **and its subpackages**, in `MODULE_ORDER`.
+
+    **`rglob`, not `glob`** (F98). The non-recursive walk this used until v0.16.2 would have
+    dropped all twelve route modules the moment they moved into `api/routes/` — silently, because
+    the unplaced-module check below compares against the same walk, so a module out of the walk's
+    reach is not *unplaced*, it is *invisible*.
+    """
+    present = {str(path.relative_to(PKG_DIR)) for path in PKG_DIR.rglob("*.py")}
     unplaced = sorted(present - set(MODULE_ORDER))
     if unplaced:
         raise AssertionError(

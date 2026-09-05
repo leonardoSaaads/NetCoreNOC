@@ -13,15 +13,23 @@ from pathlib import Path
 from fastapi import FastAPI, Response
 from fastapi.responses import FileResponse
 
+import netcorenoc
 from netcorenoc import __version__
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 
-# v0.7.2: `api` is a package one level below `netcorenoc`, so the UI lives one directory further
-# up than it did when this was `netcorenoc/api.py`. The extra `.parent` is a consequence of the
-# move, not a change to what is served: the resolved path is byte-identical to v0.7.1's, and
-# `tests/test_security_txt.py` / `tests/test_deploy.py` assert the served files from it.
-UI_DIR = Path(__file__).parent.parent / "ui"
+# **Resolved from the PACKAGE, not by counting `.parent`s** (v0.16.2, DECISIONS #278).
+#
+# v0.7.2 wrote `Path(__file__).parent.parent / "ui"` when `api` became a package, and v0.16.2 moved
+# this module one directory deeper into `api/routes/` — which silently repointed the console at
+# `api/ui/`, a directory that does not exist. Every static route answered 500 and the console did
+# not load at all. It was caught, but only because the behaviour record and eight UI tests drive
+# the real server; nothing in the move itself could see it.
+#
+# A relative-parent count is a path written as a number, and it is wrong the moment the module
+# moves. `netcorenoc.__file__` is the package's own location, so this is right from anywhere in
+# the tree — the same reasoning `tools/evidence/render_drive.py` records for `ROOT`.
+UI_DIR = Path(netcorenoc.__file__).resolve().parent / "ui"
 UI_FILE = UI_DIR / "index.html"
 QUEUE_SATURATION = 0.9  # /readyz reports not-ready once the ingest queue passes this fraction
 

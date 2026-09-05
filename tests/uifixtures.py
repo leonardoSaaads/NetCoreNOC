@@ -126,7 +126,7 @@ async def _capture_situations(client: httpx.AsyncClient, routes: dict[str, Any])
         # v0.16.0: the four gestures a situation card can send. Stubbed 200s, exactly as the two
         # above are — the harness records what the console POSTS, and the server's own behaviour is
         # `tests/test_api.py`'s subject.
-        for gesture in ("move", "merge", "split", "name"):
+        for gesture in ("move", "merge", "split", "name", "promote"):
             routes[f"POST /api/situations/{sid}/{gesture}"] = {"status": 200, "json": {"ok": True}}
 
 

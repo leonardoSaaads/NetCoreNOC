@@ -67,7 +67,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-from netcorenoc.api.routes_promotion import (  # noqa: E402
+from netcorenoc.api.routes.promotion import (  # noqa: E402
     ASSERTING_BAGS_FLOOR,
     ASSERTING_INCIDENTS_FLOOR,
 )

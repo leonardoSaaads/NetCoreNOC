@@ -110,7 +110,7 @@ async def test_static_assets_served_with_correct_types(client: httpx.AsyncClient
     v0.13.0: the console is a module graph, so this walks the whole declared set rather than the
     three files v0.12.0 shipped. A module that is declared and 404s is a console that half-loads.
     """
-    from netcorenoc.api.routes_static import STATIC_ASSETS
+    from netcorenoc.api.routes.static import STATIC_ASSETS
 
     for asset, media_type in STATIC_ASSETS.items():
         response = await client.get(f"/{asset}")
@@ -755,7 +755,7 @@ def test_the_ui_tree_is_exactly_what_is_declared() -> None:
     stricter in the way that matters: the tree is not merely small, it is **enumerated**, and the
     set on disk must equal the set the appliance serves.
     """
-    from netcorenoc.api.routes_static import STATIC_ASSETS
+    from netcorenoc.api.routes.static import STATIC_ASSETS
 
     top_level = {p.name for p in UI_DIR.iterdir()}
     # v0.16.1 adds `favicon.svg` — served from this origin because `img-src 'self'` forbids the

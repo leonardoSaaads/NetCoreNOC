@@ -10,11 +10,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-# `store.py` computed this as `Path(__file__).parent / "migrations"`. The file moved one level
-# down into the package, so the expression gains one `.parent` to resolve to the same directory.
-# This is the only module-level text this split changes, and it is verified in the Phase 3 gate
-# evidence by comparing the resolved path against the pre-split value.
-MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+import netcorenoc
+
+# **Resolved from the PACKAGE, not by counting `.parent`s** (v0.16.2, F102).
+#
+# v0.7.3 wrote `Path(__file__).parent.parent` when `store.py` became a package, noting that "the
+# expression gains one `.parent` to resolve to the same directory". That is a path written as a
+# NUMBER, and it is wrong the moment the module moves — which is exactly what happened to the only
+# other one of these in the runtime package this release, when `routes_static.py` moved into
+# `api/routes/` and silently repointed the console at a directory that does not exist.
+#
+# This one was still correct. It is changed anyway, because "correct until somebody moves the
+# file" is the property the guard
+# `tests/test_architecture.py::test_no_runtime_path_is_derived_by_counting_parents` now refuses.
+MIGRATIONS_DIR = Path(netcorenoc.__file__).resolve().parent / "migrations"
 
 TOUCH_INTERVAL_S = 5.0  # cadence for cosmetic last_seen updates on cached rows
 

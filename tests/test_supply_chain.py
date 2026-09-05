@@ -205,7 +205,7 @@ def test_the_served_module_set_equals_the_module_set_on_disk() -> None:
     """ADR #175: the appliance serves an **enumerated** set, and enumeration only helps if it is
     complete. Both directions: a module on disk that is not served is a console that half-loads;
     a module served that is not on disk is a 404 waiting for a browser to find it."""
-    from netcorenoc.api.routes_static import STATIC_ASSETS
+    from netcorenoc.api.routes.static import STATIC_ASSETS
 
     on_disk = {str(p.relative_to(UI)) for p in UI.rglob("*.js")}
     served = {name for name in STATIC_ASSETS if name.endswith(".js")}
@@ -305,7 +305,7 @@ def test_a_wheel_built_the_way_docker_builds_one_carries_every_declared_asset(
     import sys
     import zipfile
 
-    from netcorenoc.api.routes_static import STATIC_ASSETS
+    from netcorenoc.api.routes.static import STATIC_ASSETS
 
     context = tmp_path / "ctx"
     _docker_build_context(context)
@@ -344,7 +344,7 @@ def test_a_wheel_built_the_way_docker_builds_one_carries_every_declared_asset(
     assert len(STATIC_ASSETS) > 40, (
         f"only {len(STATIC_ASSETS)} assets declared; this asserts little"
     )
-    assert "netcorenoc/api/routes_static.py" in members, "the wheel has no code in it at all"
+    assert "netcorenoc/api/routes/static.py" in members, "the wheel has no code in it at all"
     # And the UI must arrive whole, not merely as far as the allowlist reaches: CHECKSUMS.txt and
     # the vendored licences are shipped and audited, and no route serves them.
     on_disk = {

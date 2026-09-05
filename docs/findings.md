@@ -888,7 +888,7 @@ Run every command below from the repository root with the virtualenv active.
   is the case this second test exists for: a truth field copy-pasted into a promotion-path module
   that imports nothing.
 - **Disposition**: **FIXED in v0.16.1**, by deriving rather than by adding a filename.
-  `promotion_path_modules()` walks out from `api/routes_promotion.py` — the module that computes
+  `promotion_path_modules()` walks out from `api/routes/promotion.py` — the module that computes
   the derived inputs and returns the verdict — and keeps every `engine/evaluation/` module the
   import graph reaches. Four became **seven**: `promotion_metrics.py`, `shadow_assertions.py` and
   `shadow_eval.py` join the original four, and a module added to the path afterwards joins without
@@ -1182,3 +1182,35 @@ Run every command below from the repository root with the virtualenv active.
   is the sibling of the decision-citation guard, so the next one fails at review rather than
   surviving two releases — demonstrated red by a citation to a test that does not exist, with the
   restored tree as its control.
+
+## F102 — two runtime paths were written as a count of `.parent`s, and moving a module broke one
+
+- **What**: `api/routes_static.py` resolved the console's directory as
+  `Path(__file__).parent.parent / "ui"`, with a comment from v0.7.2 explaining that the package
+  split *"gains one `.parent` to resolve to the same directory"*. v0.16.2 moved that module one
+  level deeper into `api/routes/` (DECISIONS #278), and the expression silently repointed at
+  `src/netcorenoc/api/ui/` — a directory that does not exist. **Every static route answered 500 and
+  the console did not load at all.** `store/types.py` computed `MIGRATIONS_DIR` the same way, from
+  the same v0.7.3 reasoning, and was still correct only because nothing had moved it yet.
+- **Reproduce**, on the v0.16.1 tree, without moving anything:
+  ```sh
+  python -c "
+  from pathlib import Path
+  import netcorenoc.api.routes_static as s
+  print('would resolve to', Path(s.__file__).parent.parent.parent / 'ui', 'if this module moved one level deeper')
+  print('actual UI dir:  ', s.UI_DIR, s.UI_FILE.is_file())"
+  ```
+- **Measured**: two such expressions in the runtime package, and no others. After the move, eight
+  tests in `test_security_ui.py`, four in `test_behaviour_identity.py` and the whole static surface
+  went red with `FileNotFoundError: .../api/ui/index.html`.
+- **Why it matters**: a relative-parent count is a path written as a **number**, and it is wrong
+  the moment the module moves — which is exactly when nobody is looking at it. Nothing in the move
+  itself could see it: the imports all resolved, `mypy --strict` was clean, and only driving the
+  real server found it. That is the same shape as F85 (the container's console missing five modules
+  while every test was green).
+- **Disposition**: **FIXED in v0.16.2.** Both resolve from `netcorenoc.__file__` — the package's own
+  location, which is right from anywhere in the tree — and
+  `tests/test_architecture.py::test_no_runtime_path_is_derived_by_counting_parents` refuses the
+  third, demonstrated red by restoring the `store/types.py` form with the repaired tree as its
+  control. One `.parent` is still allowed: a module's own directory is a fact about the file, not a
+  count of steps to somewhere else.

@@ -56,18 +56,18 @@ SUBMODULES = [
     "api.governance_cache",
     "api.models",
     "api.perimeter",
-    "api.routes_admin",
-    "api.routes_annotate",
-    "api.routes_audit",
-    "api.routes_auth",
-    "api.routes_events",
-    "api.routes_governance",
-    "api.routes_lifecycle",
-    "api.routes_operate",
-    "api.routes_read",
-    "api.routes_promotion",
-    "api.routes_scorer",
-    "api.routes_static",
+    "api.routes.admin",
+    "api.routes.annotate",
+    "api.routes.audit",
+    "api.routes.auth",
+    "api.routes.events",
+    "api.routes.governance",
+    "api.routes.lifecycle",
+    "api.routes.operate",
+    "api.routes.read",
+    "api.routes.promotion",
+    "api.routes.scorer",
+    "api.routes.static",
     "crosscutting",
     "crosscutting.audit",
     "crosscutting.auth",
@@ -393,7 +393,15 @@ def test_the_api_package_holds_exactly_the_expected_modules() -> None:
     import netcorenoc.api
 
     pkg = Path(netcorenoc.api.__file__).resolve().parent
-    found = sorted(p.stem for p in pkg.glob("*.py") if p.stem != "__init__")
+    # **`rglob`, not `glob`** (v0.16.2, DECISIONS #278). The twelve route modules moved into
+    # `api/routes/`, and a non-recursive walk would have declared the package *smaller* rather
+    # than *rearranged* — which is F98's failure one file over, and is why this walk moved in the
+    # same commit as `tests/apisource.py`'s.
+    found = sorted(
+        str(p.relative_to(pkg).with_suffix("")).replace("/", ".")
+        for p in pkg.rglob("*.py")
+        if p.stem != "__init__"
+    )
     expected = sorted(m.split(".", 1)[1] for m in SUBMODULES if m.startswith("api."))
     assert found == expected, f"api package contents changed: {found}"
 

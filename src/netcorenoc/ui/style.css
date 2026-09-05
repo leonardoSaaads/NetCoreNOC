@@ -89,6 +89,27 @@
   --term-t: #4a9eff;
   --term-a: #b57bff;
   --term-e: #4cc38a;
+
+  /* ---- the severity pills (DECISIONS #277) -------------------------------------------
+   *
+   * A FILL and an INK per band, not a text colour: `--alarm` and the four beside it were
+   * chosen to be legible ON the page background, and reusing one as a fill would put text on
+   * a colour nobody picked to hold it.
+   *
+   * **Ordered by luminosity, not only by hue.** `critical` and `major` sit two steps apart on
+   * the red-orange axis and are the pair that collides under deuteranopia, so the ladder
+   * descends in weight from a deep saturated red to a light neutral — an operator who cannot
+   * separate the hues still reads the order, and the glyph and the word carry the rest. */
+  --sev-crit-fill: #a01d12;
+  --sev-crit-ink: #ffe9e6;
+  --sev-major-fill: #c8620a;
+  --sev-major-ink: #fff3e4;
+  --sev-minor-fill: #d8b02a;
+  --sev-minor-ink: #221a00;
+  --sev-low-fill: #35617f;
+  --sev-low-ink: #e6f2fb;
+  --sev-unknown-fill: #2b323d;
+  --sev-unknown-ink: #a8b2be;
 }
 
 /* System preference decides only when no explicit choice is stamped. */
@@ -119,6 +140,19 @@
     --term-a: #6b34c2;
     --term-e: #1a7a4c;
     --shadow-1: 0 1px 2px rgba(20, 28, 40, 0.10), 0 2px 8px rgba(20, 28, 40, 0.08);
+
+    /* The same ladder, re-derived for a light ground: the fills darken and the inks invert
+     * where they must, so the luminosity ORDER is preserved rather than the literal colours. */
+    --sev-crit-fill: #a3170b;
+    --sev-crit-ink: #fff1ef;
+    --sev-major-fill: #b4600a;
+    --sev-major-ink: #fff6ea;
+    --sev-minor-fill: #f0d264;
+    --sev-minor-ink: #2e2400;
+    --sev-low-fill: #cfe0ec;
+    --sev-low-ink: #123c58;
+    --sev-unknown-fill: #e6e9ee;
+    --sev-unknown-ink: #5a6472;
   }
 }
 
@@ -149,6 +183,19 @@
   --term-a: #6b34c2;
   --term-e: #1a7a4c;
   --shadow-1: 0 1px 2px rgba(20, 28, 40, 0.10), 0 2px 8px rgba(20, 28, 40, 0.08);
+
+  /* The light ladder again, so the explicit choice wins over the system setting in BOTH
+   * directions — the rule this stylesheet's header states, applied to the pills. */
+  --sev-crit-fill: #a3170b;
+  --sev-crit-ink: #fff1ef;
+  --sev-major-fill: #b4600a;
+  --sev-major-ink: #fff6ea;
+  --sev-minor-fill: #f0d264;
+  --sev-minor-ink: #2e2400;
+  --sev-low-fill: #cfe0ec;
+  --sev-low-ink: #123c58;
+  --sev-unknown-fill: #e6e9ee;
+  --sev-unknown-ink: #5a6472;
 }
 
 * { box-sizing: border-box; }
@@ -398,11 +445,27 @@ tr.row-quiet { color: var(--fg-muted); }
 
 td.sev { white-space: nowrap; }
 .sev-glyph { font-family: var(--mono); margin-right: var(--space-1); }
-.sev-crit { color: var(--alarm); font-weight: 600; }
-.sev-major { color: var(--major); }
-.sev-minor { color: var(--minor); }
-.sev-low { color: var(--low); }
-.sev-unknown { color: var(--unknown); font-style: italic; }
+
+/* The pill: filled, rounded, and read at a glance rather than parsed (DECISIONS #277). It is an
+ * inline-flex so the glyph and the word share one baseline at 11 px, and it never wraps — a
+ * severity broken across two lines is the opposite of what a badge is for. */
+.sev-pill {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  min-height: 18px; padding: 0 var(--space-2);
+  border-radius: 999px; font-size: var(--fs-xs); font-weight: 600;
+  letter-spacing: 0.03em; text-transform: uppercase; white-space: nowrap;
+}
+.sev-pill .sev-glyph { margin-right: 0; }
+.sev-crit { background: var(--sev-crit-fill); color: var(--sev-crit-ink); }
+.sev-major { background: var(--sev-major-fill); color: var(--sev-major-ink); }
+.sev-minor { background: var(--sev-minor-fill); color: var(--sev-minor-ink); }
+.sev-low { background: var(--sev-low-fill); color: var(--sev-low-ink); }
+/* The one band that is not a placement on the scale, and it says so by not being solid: a dashed
+ * outline rather than a fill, because a filled pill would read as a level. */
+.sev-unknown {
+  background: var(--sev-unknown-fill); color: var(--sev-unknown-ink);
+  border: 1px dashed var(--line-strong); font-weight: 500;
+}
 
 /* ---------- badges ---------- */
 

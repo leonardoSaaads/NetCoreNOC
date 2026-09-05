@@ -440,7 +440,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/situations/{sid}/merge"),
     ("POST", "/api/situations/{sid}/split"),
     ("POST", "/api/situations/{sid}/name"),
-    # v0.16.2: the bare promotion, registered in `routes_annotate.py` between the rename and the
+    # v0.16.2: the bare promotion, registered in `routes/annotate.py` between the rename and the
     # zombie clear because that is where it belongs on the modules' own seam — it asserts nothing
     # about a grouping. A distinct literal below `GET /api/situations/{sid}`, so it shadows nothing
     # (DECISIONS #273).
@@ -915,12 +915,13 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: be a one-line fix). The other `src/` diffs are edits to files that already existed, and the
 #: digest moves with them in the commit that makes each one.
 #:
-#: v0.16.2: 193 -> 194 files. One added, none removed, none moved: `store/idle.py`, which is
+#: v0.16.2: 193 -> 195 files. Two added, none removed, **twelve moved**: `store/idle.py`, which is
 #: `situations.py`'s four idle-population queries after the critical repair pushed that module to
-#: 415 lines against the 400-line guard (DECISIONS #274). **No migration**: the idle-but-active
-#: situation is derived, so `0015` is still the head of the schema.
-SRC_TREE_DIGEST = "0c0080df410c20a73bac0c42f794b837290769d3c94e0617c6280c9f5980e2b2"
-SRC_FILE_COUNT = 194
+#: 415 lines against the 400-line guard (DECISIONS #274), and `api/routes/__init__.py`, which is
+#: the package the twelve `routes_*.py` modules moved into (DECISIONS #278). **No migration**: the
+#: idle-but-active situation is derived, so `0015` is still the head of the schema.
+SRC_TREE_DIGEST = "81ce931053721785ffd45e4e7984cf6e910dc194fcfddfe7cabb8971916c1280"
+SRC_FILE_COUNT = 195
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -987,3 +988,39 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
     assert __version__ == "0.16.1", "the version this release carries"
+
+
+def test_no_runtime_path_is_derived_by_counting_parents() -> None:
+    """**A path written as a number is wrong the moment the module moves** (v0.16.2, F102).
+
+    Two module-level constants in the runtime package resolved a directory by walking up a fixed
+    number of `.parent`s from `__file__`. One of them broke in this release: `routes_static.py`
+    moved into `api/routes/` and its `Path(__file__).parent.parent / "ui"` silently repointed the
+    console at `api/ui/`, a directory that does not exist. Every static route answered 500 and the
+    console did not load — caught only because the behaviour record and eight UI tests drive the
+    real server, and by nothing in the move itself.
+
+    Both now resolve from `netcorenoc.__file__`, which is the package's own location and is right
+    from anywhere in the tree. This is what stops the third one being written.
+
+    **One `.parent` is allowed**: `Path(__file__).parent` is *this module's own directory*, which
+    is a fact about the file rather than a count of steps to somewhere else, and it stays correct
+    under a move because it moves with it.
+    """
+    import re
+
+    offenders: list[str] = []
+    pattern = re.compile(r"__file__\s*\)?(?:\.resolve\(\))?(?:\s*\.\s*parents?\b[^\n]*){2,}")
+    for path in sorted(PKG.rglob("*.py")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#") or '"' in stripped.split("__file__")[0]:
+                continue  # a comment, or the constant quoted inside a docstring explaining it
+            if pattern.search(line) or (".parents[" in line and "__file__" in line):
+                offenders.append(f"{path.relative_to(PKG)}:{lineno}: {stripped}")
+    assert not offenders, (
+        "runtime module(s) deriving a path by counting `.parent`s from `__file__`:\n  "
+        + "\n  ".join(offenders)
+        + "\n\nResolve from `netcorenoc.__file__` instead: a count is wrong the moment the module "
+        "moves, which is what happened to `routes/static.py` in v0.16.2 (F102)."
+    )

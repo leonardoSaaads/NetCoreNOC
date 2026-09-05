@@ -1546,7 +1546,7 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: `python -m netcorenoc.main` is a **public interface** — the `Dockerfile`,
   `deploy/netcorenoc.service`, `flake.nix`, `docker-compose.yml`, `README.md` and the bug-report
   template all print it — so moving `main.py` is a behaviour change, which this release makes none
-  of. And `api/routes_static.py` and `store/types.py` locate `ui/` and `migrations/` as
+  of. And `api/routes/static.py` and `store/types.py` locate `ui/` and `migrations/` as
   `Path(__file__).parent.parent / …`: moving either package changes a line that is not an import,
   and the alternative — moving the 47 UI files and 13 migrations too — is churn that buys no layer.
 - **The cost, stated**: `api/` and `store/` are directories not named for their layer, so two of
@@ -2461,7 +2461,7 @@ From this release an entry is about six lines: decision, reason, release.*
 ## 264. The promotion path is derived from the import graph, bounded by one package (v0.16.1)
 
 - **Decision**: `test_no_promotion_path_module_mentions_a_ground_truth_field` walks out from
-  `api/routes_promotion.py` and scans every `engine/evaluation/` module the import graph reaches,
+  `api/routes/promotion.py` and scans every `engine/evaluation/` module the import graph reaches,
   instead of the four-name tuple it carried since v0.14.0. Four became seven (F92).
 - **Reason**: a guard that lists what it checks stops checking whatever is added next. v0.14.0's
   list called itself *"the four modules the gate actually reads"* and `promotion_metrics.py` —
@@ -2648,7 +2648,7 @@ From this release an entry is about six lines: decision, reason, release.*
 
 - **Decision** (`PREREGISTRATION-0.16.2.md` §2.2, decision 1): `store.promote_situation` keeps six of
   its seven call sites — the verdict, the move's **subject**, the merge's subject, the split's
-  subject, the rename and the manual clear — and loses `routes_lifecycle.py`'s second call, which
+  subject, the rename and the manual clear — and loses `routes/lifecycle.py`'s second call, which
   promoted the situation an alarm was moved **into**.
 - **Reason**: `open` means *"an operator is working it"* (#254). The other six name a situation the
   operator was **looking at**; the destination of a move is an **id they typed**. `lifecycle.js`

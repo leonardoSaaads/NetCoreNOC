@@ -150,15 +150,31 @@ export function Badge({ tone, title, children }) {
   return html`<span class=${cx("badge", tone && `badge-${tone}`)} title=${title}>${children}</span>`;
 }
 
-export function SeverityCell({ alarm }) {
+/**
+ * **The severity pill. One component, every severity surface** (DECISIONS #277).
+ *
+ * A filled badge an operator recognises without reading it, and it still carries all three
+ * encodings the rule requires: the **fill** (a luminosity ladder, so the ordering survives when
+ * hue does not), a **glyph** whose shape is distinct from every other band's, and the element's
+ * own **text**. Any one of the three carries the rank alone.
+ *
+ * `tests/test_ui_invariants.py::test_every_severity_band_carries_a_glyph_and_text_not_only_colour`
+ * drives every band including `unknown` and fails on a badge that carries colour alone.
+ */
+export function SeverityBadge({ alarm }) {
   const s = severityOf(alarm);
   const title = s.known
     ? `severity ${s.text} (rank ${s.rank})`
     : "This element's severity has not been learned yet. It is not a default — nothing has been " +
       "assumed about how serious this alarm is.";
-  return html`<td class=${cx("sev", `sev-${s.key}`)} title=${title}>
+  return html`<span class=${cx("sev-pill", `sev-${s.key}`)} title=${title}>
     <span class="sev-glyph" aria-hidden="true">${s.glyph}</span><span class="sev-text">${s.text}</span>
-  </td>`;
+  </span>`;
+}
+
+/** The pill in a table cell. The wrapper exists so `DataTable` can insert it verbatim. */
+export function SeverityCell({ alarm }) {
+  return html`<td class="sev"><${SeverityBadge} alarm=${alarm} /></td>`;
 }
 
 /**
