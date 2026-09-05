@@ -1044,3 +1044,100 @@ Run every command below from the repository root with the virtualenv active.
   the operator is, carries its own state badge, and is released by collapsing it or choosing a
   tab. Introduced in v0.16.0 with the tabs; found here because a browser was driven, which is the
   only reason it was found at all.
+
+## F98 — the API source corpus is a non-recursive glob behind a floor a subset already clears
+
+- **What**: `tests/apisource.py` gives four text-scanning guards their corpus — F28 (no role
+  comparison outside `rbac.py`), F34 (every mutating route below admin resolves scope), F39 (every
+  mutating handler reaches the transaction helper) and the scorer-panel caveat. It builds that
+  corpus from `PKG_DIR.glob("*.py")`, which does **not** descend, and asserts only that the result
+  exceeds `MIN_SOURCE_CHARS = 60_000`. The seven non-route modules under `api/` are 74 640
+  characters on their own, so moving the twelve route modules into a subdirectory would have
+  dropped every route from the corpus and left all four guards green over source containing no
+  routes at all. `MODULE_ORDER`'s "an unplaced module is an error" check does not see it either: it
+  compares against the same non-recursive glob, so a module that moved out of the glob's reach is
+  not unplaced, it is invisible.
+- **Reproduce**, on the v0.16.1 tree:
+  ```sh
+  python -c "
+  from pathlib import Path
+  import netcorenoc.api
+  d = Path(netcorenoc.api.__file__).resolve().parent
+  flat = [p for p in d.glob('*.py') if not p.name.startswith('routes_')]
+  print('machinery only:', sum(len(p.read_text()) for p in flat), 'chars; floor is 60000')"
+  ```
+- **Measured**: `machinery only: 74398 chars; floor is 60000`. The floor is cleared by 24 % with
+  every route module absent.
+- **Why it matters**: it is F92's shape one level up — a guard whose *scope* is written as a path
+  expression that a legitimate refactor silently narrows. The four guards it feeds are the
+  perimeter's text-level guarantees, and the release that moves the routes is exactly the release
+  that would have retired them without one assertion going red.
+- **Disposition**: **FIXED in v0.16.2** (DECISIONS #278), in the commit that moves the routes: the
+  walk is `rglob`, and the floor is raised to a figure the machinery alone cannot clear. Found by
+  reading every guard that names `api/` before moving anything, which is the only reason it was
+  found — no test could see it.
+
+## F99 — an integer severity above rank 4 renders as `low`, with no upper bound
+
+- **What**: `engine/correlate/severity.py::_candidate_ranks` returns `kind="int"` with the varbind's
+  **raw integer** as the rank when the values are not in the bundled vocabulary, bounded only by
+  `SEVERITY_MAX_DISTINCT = 8` distinct values. Nothing constrains the magnitude, so an NE whose
+  severity varbind reads 10, 20, 30 produces `severity_rank` 10, 20 and 30. `ui/app/format.js`
+  matches ranks 0-2 by name and sends everything else to the `LOW` band, so all three render as
+  *low* — including whichever one the appliance ranked most severe.
+- **Reproduce**:
+  ```sh
+  python -c "
+  from netcorenoc.engine.correlate.severity import _candidate_ranks
+  print(_candidate_ranks({'10': 4, '20': 4, '30': 4}))"
+  ```
+- **Measured**: `('int', {'10': 10, '20': 20, '30': 30})` — ranks 10, 20 and 30, all three of which
+  the console renders identically.
+- **Why it matters**: a vendor that numbers severity 1-10 rather than by the bundled tokens gets a
+  console that says every alarm is low, and the appliance's own ordering — which it validated
+  against observed lifetimes before committing to it — is discarded at the last step. It is not
+  reachable on any corpus scenario (0 of 2 252 alarms resolve a severity at all), which is why it
+  has never been seen.
+- **Disposition**: open, unfixed, and **deliberately so**. The repair is a normalisation from an
+  arbitrary integer scale onto the five rendered bands, and deciding what that normalisation is —
+  linear, rank-order, or an operator declaration — is v0.16.3's question about the same field.
+  Issued in v0.16.2 (DECISIONS #276).
+
+## F100 — an operator sees a raw OID for 46 of the 48 alarm classes a real corpus produces
+
+- **What**: `alarm_class.name` is written from `known_oids.trap_name(oid)`, which answers only for
+  the **standard** traps, and `alarm_class.vendor` from `known_oids.vendor_of(oid)`, which answers
+  for any enterprise OID. `ui/app/format.js::alarmName` reads
+  `class_label || class_name || class_oid` — the operator's label, then the standard-trap name, then
+  the OID. There is no `class_label` until an operator writes one and no `class_name` for a vendor
+  trap, so the third term is what an operator actually reads, and the vendor the appliance **has
+  already resolved** appears nowhere in that chain.
+- **Reproduce**: replay all ten corpus scenarios through a live appliance and read the table:
+  ```sh
+  python -c "
+  import asyncio, sys; sys.path[:0] = ['tests', 'src', 'tools']
+  from pathlib import Path
+  from netcorenoc.store import Store
+  import authutil, corpus_census, util
+  async def main():
+      store = Store('.demos/f100.db'); await store.open()
+      engine, queue, _ = await authutil.make_env(store)
+      for i, p in enumerate(sorted(Path('eval/corpus').glob('*.json'))):
+          await util.drive(engine, queue, corpus_census.scenario_events(p, 1.7e9 + i * 3600))
+      async with store.lock:
+          cur = await store.conn.execute('SELECT vendor, name FROM alarm_class')
+          rows = await cur.fetchall()
+      print(len(rows), sum(r[1] is not None for r in rows), sum(r[0] is not None for r in rows))
+      await store.close()
+  asyncio.run(main())"
+  ```
+- **Measured**: **48 classes, 2 with a name, 46 with a vendor.** The two named are `linkDown` and
+  `linkUp`. Every other class — Ciena, Huawei, Juniper, ZTE, Nokia, Cisco, Arista, H3C, Axis,
+  Alcatel-Lucent — renders in the console as `1.3.6.1.4.1.2011.5.104.1`.
+- **Why it matters**: it is not a storage defect and the columns are not unwritten — **that reading
+  was checked and is wrong**, which is why this entry exists in this shape. It is a *fallback* whose
+  last resort is reached 96 % of the time while a human-readable fact the appliance already holds
+  sits one column away and is served to a different screen.
+- **Disposition**: open, **not fixed here and deliberately not**. Two repairs are available — put the
+  vendor into `alarmName`, or let an operator name the class — and choosing between them is exactly
+  v0.16.3's question. Fixing the cheap one first would settle it by accident. Issued in v0.16.2.
