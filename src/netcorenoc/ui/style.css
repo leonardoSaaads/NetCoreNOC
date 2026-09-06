@@ -719,6 +719,9 @@ table.members th:first-child, table.members td:first-child { width: 44px; }
    ordinary buttons on hover. A cell holding three primary-looking controls reads as three things
    to do; it is one thing to do, three times. */
 .row-actions .declare-open { color: var(--accent); background: none; border-color: transparent; }
+/* The verb is quiet and the NOUN is what an operator scans for: three controls in one cell, and
+   what distinguishes them is the thing each declares, not the fact that all three declare. */
+.declare-noun { font-weight: 600; }
 .row-actions .declare-open:hover { background: var(--bg-hover); border-color: var(--line-strong); }
 
 /* ---------- v0.16.4: what is already on record (DECISIONS #291) --------------------------

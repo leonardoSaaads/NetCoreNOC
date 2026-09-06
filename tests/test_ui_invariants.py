@@ -1498,7 +1498,7 @@ async def test_a_declaration_can_be_withdrawn_from_the_row_that_made_it(
     result = domdriver.run_scenario(
         "withdraw", {"routes": doctored, "sid": sid, "control": "ne", "row": 0}
     )
-    assert result["openerLabel"] == "Edit", result["openerLabel"]
+    assert result["openerLabel"].startswith("Edit"), result["openerLabel"]
     assert result["deletePaths"] == [f"/api/labels/ne/{ne_id}"], result["deletePaths"]
     assert result["posts"] == [], "withdrawing a declaration also wrote one"
 
@@ -1506,7 +1506,16 @@ async def test_a_declaration_can_be_withdrawn_from_the_row_that_made_it(
         "declare",
         {"routes": routes["editor"], "sid": sid, "control": "ne", "row": 0, "value": "x"},
     )
-    assert plain["openerLabel"] == "Declare", plain["openerLabel"]
+    assert plain["openerLabel"].startswith("Declare"), plain["openerLabel"]
+    # **And it names WHAT it declares** (v0.16.4). Three of these share one actions cell since
+    # DECISIONS #293, and three buttons reading `Declare` are three controls an operator cannot
+    # tell apart. Every one was reachable and above the touch floor and still unusable, which is
+    # the difference between "reachable" and "identifiable" — found by looking at the rendered
+    # card, because nothing here measured the second.
+    assert plain["openerLabel"] != "Declare", (
+        "the declaration opener does not say what it declares; in one cell with two others that "
+        "makes three identical controls"
+    )
     assert plain["deletePaths"] == []
 
 

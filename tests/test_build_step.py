@@ -389,7 +389,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/overview.js": "d7059021aa35b6da39d7775570b500c7f100fbcbd7c16b31e7bbd58603989614",
     "app/views/parts/card.js": "ee4cc5d51a27b19f70259e3a5e61df623e53f6c6101f103cebe404d90748013b",
     "app/views/parts/declare.js": (
-        "a672d580030e71b1cd9fc358129a0fde7d7f63647699af901fb35b386da932f0"
+        "55d42568d7358eebb67d1e8c2b8138ac71676ec5fac45057663683772611f297"
     ),
     "app/views/parts/facts.js": "2befcc9ed54b18d57de942f3f9583e00a0a39170bb2b45d68b29933881858f12",
     "app/views/parts/finder.js": "b0652368970a0631d24987c4d1a4dd92b40affe833d1d7959db2a3933fc03274",
@@ -419,7 +419,7 @@ UI_HASHES: dict[str, str] = {
     "app/widgets.js": "abe9f6d9342f0335ead13cef4061b54ace36f31e28b0d92308918c96a3561e21",
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "73f4206c6fa3dc1ae5ff0476f56c1c29e93e6bc38e2510c50311e96a1f833c1d",
-    "style.css": "e448d9d4b9e53fd90eea44a4e479aca4a6a9d4fb49fb92c2559b4fa028cc59b3",
+    "style.css": "f4d6a4775508cf45f6414466f4dcb590d2901b031026f9f520b722f84c345829",
     "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
     "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
     "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
@@ -463,7 +463,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/labelling.js": 5_327,
     "app/views/overview.js": 14_432,
     "app/views/parts/card.js": 6_140,
-    "app/views/parts/declare.js": 11_307,
+    "app/views/parts/declare.js": 11_975,
     "app/views/parts/facts.js": 6_340,
     "app/views/parts/lifecycle.js": 13_509,
     "app/views/parts/members.js": 8_897,
@@ -482,7 +482,7 @@ UI_SIZES: dict[str, int] = {
     "app/widgets.js": 11_923,
     "favicon.svg": 608,
     "index.html": 2_159,
-    "style.css": 59_529,
+    "style.css": 59_757,
     "vendor/CHECKSUMS.txt": 2_039,
     "vendor/d3.LICENSE": 764,
     "vendor/d3.v7.min.js": 279_706,
