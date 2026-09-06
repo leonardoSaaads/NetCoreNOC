@@ -14,12 +14,13 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of twenty-eight ask
-you to do something; nine more ask you to read a paragraph first. The other seventeen are
+Read only the rows between your version and the one you are installing. **Two of twenty-nine ask
+you to do something; ten more ask you to read a paragraph first. The other seventeen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
-read-a-paragraph row: it applies no migration and still changes what your existing situations do.)
+read-a-paragraph row: it applies no migration and still changes what your existing situations do.
+v0.16.3 adds another: `0016` runs itself, and the names you already set come with it.)
 
 | From → to | What you must do |
 |---|---|
@@ -51,6 +52,7 @@ read-a-paragraph row: it applies no migration and still changes what your existi
 | v0.15.5 → v0.16.0 | Nothing, but **every situation status you have ever seen is renamed** — see below |
 | v0.16.0 → v0.16.1 | Nothing. `0015` widens one index; **no situation regroups and no verdict changes** |
 | v0.16.1 → v0.16.2 | Nothing to run — **no migration** — but situations that were being closed will stop being closed. Read below |
+| v0.16.2 → v0.16.3 | Nothing to run. `0016` moves the names you already set and **they start appearing on Entities**. Read below |
 
 ## The two that need an action, and the six that need reading
 
@@ -282,6 +284,38 @@ One thing to check *before* you upgrade, if you ever saved an allowlist through 
 Configuration**: an unparseable entry used to be accepted with `200 {"status":"saved"}` and then
 stop the next boot (F75). It is now refused at save time with a `422`, and if one is already stored
 the refusal at startup names the entry and the shape it wanted instead of hanging.
+
+### v0.16.3 — the names you already set start appearing where you expected them
+
+**Nothing to run.** Migration `0016` applies itself at startup, like every one before it, and it
+touches no alarm, no situation and no learned state.
+
+**Every device name you have ever set is carried over, keyed on the address rather than on an id.**
+If you renamed a host on the Network Graph and then found the Entities screen still showing its IP,
+that was a real defect and not your mistake: the name was written against one table and the screen
+read another. It is one record now, and the name you set months ago appears on the Entities screen,
+on the graph and on every situation row from the first boot after the upgrade — no re-entry, no
+action.
+
+**Three things you can now tell the appliance**, all from the row where the trap appears:
+
+* what a piece of equipment is called;
+* what a kind of trap means — and where you have not said, the row shows the vendor the appliance
+  resolved from the OID rather than the bare OID it used to show;
+* how serious a kind of trap is, from the five severities the console renders.
+
+**Nothing you declare overwrites what the appliance learned.** Both are kept, the console marks
+which one it is showing, and *Clear* puts the learned value back. None of it teaches the correlator
+anything, so no grouping changes and no verdict changes.
+
+**Two things worth knowing before you upgrade.**
+
+* **If you drive the API yourself**, `POST /api/labels` no longer accepts `{"kind": "device"}` — it
+  is `"ne"` — and answers **422** rather than 200. This is the only breaking request change in the
+  release. `"class"` is unchanged, and `"severity"` is new.
+* **A viewer sees less than they did, deliberately.** An address typed *inside* a name — `core-sw
+  at 10.1.2.77` — is now coarsened to `10.1.2.0/24` for anyone below `editor`, exactly as the
+  address field beside it always was. It was leaking; it is not any more.
 
 ## Downgrading
 

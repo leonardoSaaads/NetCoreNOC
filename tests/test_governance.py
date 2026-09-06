@@ -967,16 +967,18 @@ async def test_f30_sse_ends_when_the_streaming_capability_is_revoked(store: Stor
 async def _two_device_estate(store: Store) -> dict[str, int]:
     """Two NEs on different /24s, each with a device row, so labels and scope have real targets.
 
-    Returns ``{ip: device_id}``. The `ne` and `device` ids coincide here for the same reason they
-    do in production — both tables are seeded from the same address — which is exactly the
-    artefact `list_ne_for_scope()` joins on `ip` to avoid depending on.
+    Returns ``{ip: ne_id}`` — **the NE, not the device** (v0.16.3, DECISIONS #281). The two ids
+    coincide here for the same reason they do in production, both tables being seeded from the
+    same address, and that coincidence is exactly what a test must not spend: `POST /api/labels`
+    names an NE and `scope.allows_ne` is asked about an NE, so the NE is what this returns.
+    `list_ne_for_scope()` joins on `ip` to avoid the same artefact.
     """
     out: dict[str, int] = {}
     async with store.lock:
         for ip in ("10.0.0.1", "192.168.50.1"):
-            out[ip] = await store.device_id(ip, BASE)
-            ne_id = await store.ne_id(ip, BASE)
-            await store.entity_level0(ne_id, ip, BASE)
+            await store.device_id(ip, BASE)
+            out[ip] = await store.ne_id(ip, BASE)
+            await store.entity_level0(out[ip], ip, BASE)
         await store.commit()
     return out
 
@@ -997,7 +999,8 @@ async def test_f34_scope_is_enforced_on_the_editor_write_routes(store: Store) ->
     editor = await authutil.client_as(app, "editor")
     try:
         sid = (await admin.get("/api/situations")).json()[0]["id"]
-        device_id = (await admin.get("/api/graph")).json()["nodes"][0]["id"]
+        # The NE, which is what a label names. A graph node id is a DEVICE id (DECISIONS #281).
+        device_id = (await admin.get("/api/entities")).json()[0]["id"]
         # Scope the editor to a range that matches nothing in the fixture.
         resp = await _write_policy(
             admin, "scope", {"version": 1, "roles": {"editor": ["203.0.113.0/24"]}}
@@ -1017,9 +1020,7 @@ async def test_f34_scope_is_enforced_on_the_editor_write_routes(store: Store) ->
         # Out-of-scope and nonexistent must be one code path: same status, same body.
         assert feedback.json() == missing.json()
 
-        label = await editor.post(
-            "/api/labels", json={"kind": "device", "id": device_id, "label": "x"}
-        )
+        label = await editor.post("/api/labels", json={"kind": "ne", "id": device_id, "label": "x"})
         assert label.status_code == 404, (
             f"a scoped editor labelled an out-of-scope device: {label.status_code} {label.text}"
         )
@@ -1051,12 +1052,13 @@ async def test_f34_an_in_scope_editor_can_still_write(store: Store) -> None:
         # everything must behave exactly like no scope at all for writes.
         await _write_policy(admin, "scope", {"version": 1, "roles": {"editor": sorted(detail_ips)}})
         sid = (await admin.get("/api/situations")).json()[0]["id"]
-        device_id = (await admin.get("/api/graph")).json()["nodes"][0]["id"]
+        # The NE, which is what a label names. A graph node id is a DEVICE id (DECISIONS #281).
+        device_id = (await admin.get("/api/entities")).json()[0]["id"]
         assert (
             await editor.post(f"/api/situations/{sid}/feedback", json={"verdict": "confirm"})
         ).status_code == 200
         assert (
-            await editor.post("/api/labels", json={"kind": "device", "id": device_id, "label": "y"})
+            await editor.post("/api/labels", json={"kind": "ne", "id": device_id, "label": "y"})
         ).status_code == 200
         assert (await editor.post(f"/api/situations/{sid}/close")).status_code == 200
     finally:
@@ -1079,7 +1081,7 @@ async def test_f35_an_editor_cannot_widen_their_own_scope_with_a_label(store: St
         assert (
             await admin.post(
                 "/api/labels",
-                json={"kind": "device", "id": devices["10.0.0.1"], "label": "core-1"},
+                json={"kind": "ne", "id": devices["10.0.0.1"], "label": "core-1"},
             )
         ).status_code == 200
         # Stored **directly**, because since v0.7.1 the API rejects a label glob at write time
@@ -1094,7 +1096,7 @@ async def test_f35_an_editor_cannot_widen_their_own_scope_with_a_label(store: St
         # The escalation: label the NE the editor may NOT see so it matches the in-scope glob.
         await editor.post(
             "/api/labels",
-            json={"kind": "device", "id": devices["192.168.50.1"], "label": "core-pwned"},
+            json={"kind": "ne", "id": devices["192.168.50.1"], "label": "core-pwned"},
         )
 
         after = (await editor.get("/api/me")).json()["scope"]
@@ -1153,7 +1155,7 @@ async def test_f35_a_colliding_label_does_not_leak_an_out_of_scope_timeline(stor
     editor = await authutil.client_as(app, "editor")
     try:
         await admin.post(
-            "/api/labels", json={"kind": "device", "id": devices["10.0.0.1"], "label": "POP-SUL"}
+            "/api/labels", json={"kind": "ne", "id": devices["10.0.0.1"], "label": "POP-SUL"}
         )
         await _write_policy(admin, "scope", {"version": 1, "roles": {"editor": ["10.0.0.0/24"]}})
         before = len((await editor.get("/api/timeline")).json()["marks"])
@@ -1162,7 +1164,7 @@ async def test_f35_a_colliding_label_does_not_leak_an_out_of_scope_timeline(stor
         # Collide: give the out-of-scope NE the in-scope NE's display string.
         await editor.post(
             "/api/labels",
-            json={"kind": "device", "id": devices["192.168.50.1"], "label": "POP-SUL"},
+            json={"kind": "ne", "id": devices["192.168.50.1"], "label": "POP-SUL"},
         )
 
         after = len((await editor.get("/api/timeline")).json()["marks"])
@@ -1317,6 +1319,9 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
     handlers = {
         ("POST", "/api/situations/{sid}/feedback"): "async def feedback(",
         ("POST", "/api/labels"): "async def set_label(",
+        # v0.16.3: withdrawing a declaration names the same NE making one names, so
+        # it is inside the same perimeter for the same reason (DECISIONS #284).
+        ("DELETE", "/api/labels/{kind}/{target_id}"): "async def clear_label(",
         ("POST", "/api/situations/{sid}/close"): "async def close_situation(",
         # v0.16.0: the five operator gestures. All five name a network element and all five
         # are below `admin`, so all five are inside the perimeter F34 established — and the

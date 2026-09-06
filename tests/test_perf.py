@@ -57,7 +57,7 @@ async def test_ingestion_lossless_with_concurrent_authed_audited_api(store: Stor
             r = await admin.get("/api/stats")
             api_latencies.append(time.perf_counter() - t0)
             assert r.status_code == 200
-            lab = await admin.post("/api/labels", json={"kind": "device", "id": 1, "label": "x"})
+            lab = await admin.post("/api/labels", json={"kind": "ne", "id": 1, "label": "x"})
             assert lab.status_code == 200
             label_writes += 1
             await asyncio.sleep(0)

@@ -57,9 +57,8 @@ async def _drive_every_action(store: Store) -> tuple[Engine, httpx.AsyncClient]:
     admin = await authutil.client_as(app, "admin")  # login.ok
     sid = (await admin.get("/api/situations")).json()[0]["id"]
     await admin.post(f"/api/situations/{sid}/feedback", json={"verdict": "confirm"})  # feedback
-    await admin.post(
-        "/api/labels", json={"kind": "device", "id": 1, "label": "core-1"}
-    )  # label.set
+    await admin.post("/api/labels", json={"kind": "ne", "id": 1, "label": "core-1"})  # label.set
+    await admin.delete("/api/labels/ne/1")  # label.clear
     made = await admin.post(
         "/api/users", json={"username": "temp", "password": "temp-pw-123456", "role": "viewer"}
     )
@@ -149,6 +148,10 @@ EXPECTED_ACTIONS = {
     "config.change",
     "feedback",
     "label.set",
+    # v0.16.3: withdrawing a declaration is its own action rather than a `label.set` carrying a
+    # flag, so an auditor asking who removed an operator's severity does not have to read a
+    # details blob to find out that a row recorded a removal (DECISIONS #284).
+    "label.clear",
     "situation.close",
     "prune.manual",
     "quarantine.read",

@@ -1244,3 +1244,95 @@ Run every command below from the repository root with the virtualenv active.
   the severity pill, and the repair is a hit-area rule that belongs with v0.16.4's shell — where
   the row height, the checkbox column and the touch floor are one decision rather than three.
   Issued in v0.16.2.
+
+## F104 — an operator-declared name carries a raw address past the field-shaping axis
+
+- **What**: `FIELD_RULES` coarsens `ip`, `device_ip`, `device` and `derived_name` below `editor`,
+  and its own comment records why a label is exempt — *"free text a person typed, like a device
+  label, and a label passes through"*. That is true of where the string **came from** and false of
+  what it **contains**. `device_label`, `class_label` and `operator_name` have no rule at all, so an
+  editor who names a device after its address hands every viewer the fourth octet the same response
+  coarsens two fields away. It is commit `8609962` — *"the derived name carried a raw address past
+  both shaping axes"* — in the declared register, and worse, because a declared name is arbitrary
+  text rather than a name the appliance composed.
+- **Reproduce**: replay one corpus scenario, declare a label containing the device's address, and
+  read the body as a viewer:
+  ```sh
+  python -c "
+  import asyncio, sys; sys.path[:0] = ['tests', 'src', 'tools']
+  from pathlib import Path
+  from netcorenoc.store import Store
+  import authutil, corpus_census, util
+  async def main():
+      store = Store('.demos/f104.db'); await store.open()
+      engine, queue, app = await authutil.make_env(store)
+      p = sorted(Path('eval/corpus').glob('*.json'))[0]
+      await util.drive(engine, queue, corpus_census.scenario_events(p, 1.7e9))
+      async with store.lock:
+          cur = await store.conn.execute('SELECT id, ip FROM device ORDER BY id LIMIT 1')
+          dev = dict(await cur.fetchone())
+          cur = await store.conn.execute('SELECT id FROM situation LIMIT 1')
+          sid = int((await cur.fetchone())[0])
+      ed = await authutil.client_as(app, 'editor')
+      await ed.post('/api/labels', json={'kind': 'device', 'id': dev['id'],
+                                         'label': f\"core-sw at {dev['ip']}\"})
+      v = await authutil.client_as(app, 'viewer')
+      print('viewer, situation:', dev['ip'] in (await v.get(f'/api/situations/{sid}')).text)
+      print('viewer, graph:    ', dev['ip'] in (await v.get('/api/graph')).text)
+      await store.close()
+  asyncio.run(main())"
+  ```
+- **Measured**: `True` and `True` — the viewer receives `device_ip: "127.0.0.0/24"` and
+  `device_label: "core-sw at 127.0.0.10"` in the same body. **Control**: with the label deleted,
+  both read `False`, so it is the declaration carrying the address and not a broken coarsener.
+  `operator_name` leaks identically on `GET /api/situations` and `GET /api/situations/{sid}`.
+- **Why it matters**: this release puts declared text on four screens, so a hole that existed on two
+  endpoints was about to exist on all of them. The rule it breaks is not a new one — v0.16.1
+  established that a string *containing* addresses needs the same rule the addresses have, and
+  `coarsen_situation_name` was written for exactly this and applied to exactly one field.
+- **Disposition**: **FIXED in v0.16.3** (DECISIONS #287). All four declared-text fields join
+  `_COMPOSITE` under `("editor", _COARSEN)`, demonstrated red by removing the rule with the
+  repaired tree as its control.
+
+## F105 — two screens render a vendor column that nothing has ever written
+
+- **What**: `device.vendor` and `ne.vendor` are declared in `0001` and `0003`, and the only writers
+  of either row insert them as a literal `NULL` — `store/devices.py::device_id` and `::ne_id` both
+  say `VALUES (?, NULL, ?, ?)`, and no `UPDATE` anywhere sets the column. Two screens render it
+  anyway: `views/graph.js:266` gives the busiest-devices table a **vendor** column titled *"inferred
+  from the enterprise arc of the OID"*, and `views/entities.js:81` prints `ne.vendor` beside the
+  element's name. The tooltip is the giveaway — an enterprise arc is a property of a **trap OID**,
+  which is `alarm_class.vendor`, a different table. The text was copied from the screen where it is
+  true to a screen where the column it describes is never populated.
+- **Reproduce**: replay all ten corpus scenarios and count:
+  ```sh
+  python -c "
+  import asyncio, sys; sys.path[:0] = ['tests', 'src', 'tools']
+  from pathlib import Path
+  from netcorenoc.store import Store
+  import authutil, corpus_census, util
+  async def main():
+      store = Store('.demos/f105.db'); await store.open()
+      engine, queue, _ = await authutil.make_env(store)
+      for i, p in enumerate(sorted(Path('eval/corpus').glob('*.json'))):
+          await util.drive(engine, queue, corpus_census.scenario_events(p, 1.7e9 + i * 3600))
+      async with store.lock:
+          for t in ('device', 'ne'):
+              cur = await store.conn.execute(
+                  f'SELECT COUNT(*), COUNT(vendor) FROM {t}')  # nosec
+              print(t, await cur.fetchone())
+      await store.close()
+  asyncio.run(main())"
+  ```
+- **Measured**: `device (25, 0)` and `ne (25, 0)` — 25 rows each, **zero** with a vendor, after
+  2 252 alarms across 48 classes and every scenario the corpus has. `alarm_class.vendor`, by
+  contrast, resolves for 46 of 48.
+- **Why it matters**: it is a column an operator can read as *"the appliance could not identify this
+  device"* when the truth is *"nothing ever tried"*, which is the exact failure `format.js`'s own
+  header forbids for severity — *"a blank cell would read as 'no severity' rather than 'not learned
+  yet'"*. It is also the shape F84 had: a field served to a screen that no writer fills.
+- **Disposition**: open, **not fixed here**. Two repairs exist — infer an NE vendor (from the
+  enterprise arcs of the traps it sends, which is real work and a correlation question) or delete
+  the column and the two renders — and this release has no measurement that decides between them.
+  Deleting a rendered column is v0.16.4's shell work, where the graph's tables and the entity card
+  are one decision. Issued in v0.16.3.

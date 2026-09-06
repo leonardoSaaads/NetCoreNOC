@@ -32,8 +32,6 @@
 import { html, Component } from "../dom.js";
 import { Empty, DataTable, SectionHeading } from "../widgets.js";
 import { count, plural, score } from "../format.js";
-import { canEdit } from "../session.js";
-import { post } from "../api.js";
 import * as store from "../store.js";
 import { d3Ready } from "../vendor.js";
 
@@ -132,15 +130,13 @@ export class GraphView extends Component {
         .call(globalThis.d3.drag()
           .on("start", (_e, d) => { this.sim.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
           .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
-          .on("end", (_e, d) => { this.sim.alphaTarget(0); d.fx = null; d.fy = null; }))
-        .on("dblclick", (_e, d) => { if (canEdit()) this.rename(d); }));
+          .on("end", (_e, d) => { this.sim.alphaTarget(0); d.fx = null; d.fy = null; })));
     selection
       .attr("r", (d) => Math.min(NODE_MAX_RADIUS, NODE_BASE_RADIUS + 2.5 * Math.sqrt(d.active_alarms)))
       .attr("class", (d) => `node ${d.active_alarms > 0 ? "alarm" : "ok"}`);
     selection.selectAll("title").remove();
     selection.append("title").text((d) =>
-      `${displayName(d)}\n${d.vendor || "unknown vendor"}\n${plural(d.active_alarms, "active alarm")}`
-      + (canEdit() ? "\ndouble-click to rename" : ""));
+      `${displayName(d)}\n${d.vendor || "unknown vendor"}\n${plural(d.active_alarms, "active alarm")}`);
 
     this.labelLayer.selectAll("text").data(nodes, (d) => d.id)
       .join("text").attr("class", "node-label").text(displayName);
@@ -187,13 +183,6 @@ export class GraphView extends Component {
       .attr("x2", (d) => d.target.x).attr("y2", (d) => d.target.y);
   }
 
-  async rename(node) {
-    const label = globalThis.prompt("Rename device (cosmetic label):", displayName(node));
-    if (label === null || !label.trim()) return;
-    try { await post("/api/labels", { kind: "device", id: node.id, label: label.trim() }); }
-    catch (error) { globalThis.alert(`Rename failed — ${error.detail || error.message}`); }
-  }
-
   render(_props, { live }) {
     const graph = live.graph;
     const empty = !graph || !graph.nodes.length;
@@ -221,11 +210,11 @@ export class GraphView extends Component {
       </div>
       ${!empty ? html`<p class="hint">
         <b>The drawing itself is not keyboard-operable and has no screen-reader equivalent beyond
-        its label.</b> The two tables below carry what it encodes, as text, and the rename it
-        offers on double-click is a button there. Everything about an element is on
-        <a class="tap" href="#/entities">Entities</a>.</p>` : null}
+        its label.</b> The two tables below carry what it encodes, as text. Everything about an
+        element is on <a class="tap" href="#/entities">Entities</a>, and an element is named from
+        the situation it appears in.</p>` : null}
 
-      ${!empty ? html`<${Busiest} nodes=${graph.nodes} onRename=${(n) => this.rename(n)} />` : null}
+      ${!empty ? html`<${Busiest} nodes=${graph.nodes} />` : null}
       ${!empty ? html`<${Strongest} graph=${graph} />` : null}
     </div>`;
   }
@@ -242,21 +231,26 @@ function displayName(node) { return node.label || node.ip; }
  * wire and thrown away, which is exactly what v0.15.2 found on `/api/stats`: eleven keys served,
  * five rendered. **No new route was needed and none was added** (Part VII rule 2).
  *
- * It is also where the graph's one gesture becomes reachable. Renaming a device was double-click
- * only — not keyboard-operable, on a screen whose own caption said so — and `label.write` is the
- * capability it needs, the same one the situation name uses (DECISIONS #260). **No new gesture is
- * invented here** (Part VII rule 5): the graph shows learned affinities between elements, and an
- * assertion that two elements are unrelated is not in `PREREGISTRATION-0.16.0.md` §2's registered
- * map. The grouping an operator can correct is a *situation*, so each row links to the search that
- * finds this element's situations, where the five registered gestures live.
+ * **v0.16.3 removed the rename from this screen**, and that is a repair rather than a loss. It was
+ * here because there was nowhere else — a `globalThis.prompt` on double-click, then a button in
+ * this table — and it wrote `label(kind='device', target_id=node.id)` while the Entities screen
+ * read the `ne` table, so the name an operator gave a host was invisible on the screen built to
+ * describe that host. An element is now named where the operator already is: the row in a
+ * situation's member table, the same place its class and its severity are declared. This screen
+ * **reads** what was declared there, which is the propagation the release exists to build.
+ *
+ * **No new gesture is invented here** (Part VII rule 5): the graph shows learned affinities between
+ * elements, and an assertion that two elements are unrelated is not in
+ * `PREREGISTRATION-0.16.0.md` §2's registered map. The grouping an operator can correct is a
+ * *situation*, so each row links to the search that finds this element's situations, where the
+ * five registered gestures — and now the three declarations — live.
  */
-export function Busiest({ nodes, onRename }) {
+export function Busiest({ nodes }) {
   const rows = [...nodes]
     .filter((node) => node.active_alarms > 0)
     .sort((a, b) => b.active_alarms - a.active_alarms || String(a.id).localeCompare(String(b.id)))
     .slice(0, TOP_N);
   if (!rows.length) return null;
-  const editable = canEdit();
   return html`<section class="panel-block">
     <${SectionHeading} title="Elements alarming most"
       hint=${"The exact counts the drawing can only approximate: a node's radius stops growing " +
@@ -274,9 +268,8 @@ export function Busiest({ nodes, onRename }) {
         vendor: node.vendor || "unknown",
         alarms: count(node.active_alarms),
         act: html`<a class="tap" href=${`#/situations?q=${encodeURIComponent(displayName(node))}`}
-                     title="Find this element's situations, where a grouping can be corrected"
-                  >situations</a>${editable ? html` <button type="button" class="tap"
-                     onClick=${() => onRename(node)}>rename</button>` : null}`,
+                     title="Find this element's situations, where it is named and its grouping corrected"
+                  >situations</a>`,
       },
     }))} />
   </section>`;

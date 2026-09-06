@@ -203,7 +203,8 @@ class Detail extends Component {
       <${Members} alarms=${detail.alarms} editable=${editable}
                   marked=${this.state.marked}
                   onMark=${(id, on) => this.toggleMark(id, on)}
-                  onClear=${(id) => this.clearAlarm(id)} />
+                  onClear=${(id) => this.clearAlarm(id)}
+                  onDeclared=${() => this.props.onChanged()} />
 
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
 

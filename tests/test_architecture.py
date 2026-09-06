@@ -409,6 +409,9 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/retention.js"),
     ("GET", "/app/views/parts/verdict.js"),
     ("GET", "/app/views/parts/lifecycle.js"),
+    # v0.16.3: the three declaration controls, split out of the member row for the same
+    # module-graph reason `members.js` and `card.js` were (DECISIONS #281-#285).
+    ("GET", "/app/views/parts/declare.js"),
     ("GET", "/app/views/parts/members.js"),
     ("GET", "/app/views/parts/why.js"),
     ("GET", "/app/views/parts/card.js"),
@@ -450,6 +453,9 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/profiles/{ne_id}/reset"),
     ("POST", "/api/situations/{sid}/feedback"),
     ("POST", "/api/labels"),
+    # v0.16.3: the revert, registered beside the write it undoes. A distinct verb on a distinct
+    # literal prefix, so it shadows nothing and nothing shadows it (DECISIONS #284).
+    ("DELETE", "/api/labels/{kind}/{target_id}"),
     ("POST", "/api/situations/{sid}/close"),
     ("GET", "/api/users"),
     ("POST", "/api/users"),
@@ -534,12 +540,18 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     *below* the bare `GET /api/situations/{sid}` it extends — so none can shadow a handler, which is
     the property this test actually protects. The count is asserted exactly, not as a minimum: five
     is the number DECISIONS #255 and #260 argue for, and a sixth would be a route nobody decided on.
+
+    **v0.16.3 moves it by one**, and the same property makes it safe:
+    `DELETE /api/labels/{kind}/{target_id}` is a distinct verb on a prefix no other route uses, so
+    it can neither shadow a handler nor be shadowed by one. It exists because a declaration that
+    cannot be undone is a declaration nobody makes (DECISIONS #284).
     """
     _engine, _queue, app = await authutil.make_env(store)
     live = [entry for entry in route_order(app) if entry[1].startswith("/api")]
     assert live == API_ORDER_BASELINE
-    assert len(live) == 50, (
-        f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five and v0.16.2 exactly one"
+    assert len(live) == 51, (
+        f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one "
+        f"and v0.16.3 exactly one"
     )
 
 
@@ -920,8 +932,15 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: 415 lines against the 400-line guard (DECISIONS #274), and `api/routes/__init__.py`, which is
 #: the package the twelve `routes_*.py` modules moved into (DECISIONS #278). **No migration**: the
 #: idle-but-active situation is derived, so `0015` is still the head of the schema.
-SRC_TREE_DIGEST = "bed72c84eff30badccdd39f35ce2a9404657a41aebad0e0f38b876c17262b0b1"
-SRC_FILE_COUNT = 195
+#: v0.16.3: 195 -> 198 files. Three added, none removed, none moved:
+#: `migrations/0016_operator_declaration.sql` (the operator's declaration, and the two stored
+#: derivations it drops), `store/situation_reads.py` — `read_models.py`'s one cohesive cluster
+#: after the release pushed that module to 508 lines against the 400-line guard, taking both of
+#: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
+#: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
+#: for the same module-graph reason `members.js` and `card.js` were.
+SRC_TREE_DIGEST = "501d2838a03d97de9aebbefd6d3ec98af963ec021103535e8994aca90d062e92"
+SRC_FILE_COUNT = 198
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -987,7 +1006,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.2", "the version this release carries"
+    assert __version__ == "0.16.3", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

@@ -578,13 +578,19 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
     # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
     # pair of assertions is really for.
-    assert len(served) == 103, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # v0.16.3: 103 -> 105. Two, and each is exactly one thing: `app/views/parts/declare.js`, the
+    # three declaration controls, split out for the same module-graph reason `members.js` and
+    # `card.js` were; and `DELETE /api/labels/{kind}/{target_id}`, the only /api route this
+    # release adds.
+    assert len(served) == 105, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 50, (
+    assert len(api_pairs) == 51, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
-        f"and v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else "
-        f"happened."
+        f"v0.16.3 adds exactly one, `DELETE /api/labels/{{kind}}/{{target_id}}` — the revert, "
+        f"without which a declaration is one nobody makes (DECISIONS #284) — and "
+        f"v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else happened."
     )
     for _method, path in served:
         route = next(r for r in app.routes if getattr(r, "path", None) == path)  # type: ignore[attr-defined]
@@ -660,13 +666,19 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
     # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
     # pair of assertions is really for.
-    assert len(served) == 103, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # v0.16.3: 103 -> 105. Two, and each is exactly one thing: `app/views/parts/declare.js`, the
+    # three declaration controls, split out for the same module-graph reason `members.js` and
+    # `card.js` were; and `DELETE /api/labels/{kind}/{target_id}`, the only /api route this
+    # release adds.
+    assert len(served) == 105, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 50, (
+    assert len(api_pairs) == 51, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
-        f"and v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else "
-        f"happened."
+        f"v0.16.3 adds exactly one, `DELETE /api/labels/{{kind}}/{{target_id}}` — the revert, "
+        f"without which a declaration is one nobody makes (DECISIONS #284) — and "
+        f"v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else happened."
     )
     paths = {path for _method, path in served}
     for public in declare.UNAUTHENTICATED_PATHS:
@@ -745,7 +757,17 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
 
 # --- the postures, checked against observed behaviour ------------------------------------
 
-_CONCRETE = {"{sid}": "1", "{ne_id}": "1", "{uid}": "1", "{tid}": "1", "{aid}": "1"}
+_CONCRETE = {
+    "{sid}": "1",
+    "{ne_id}": "1",
+    "{uid}": "1",
+    "{tid}": "1",
+    "{aid}": "1",
+    # v0.16.3: `DELETE /api/labels/{kind}/{target_id}`. The kind is the NE one, because that is
+    # the scoped half of the route — a class and a severity are kinds of trap and are not scoped.
+    "{kind}": "ne",
+    "{target_id}": "1",
+}
 
 
 def _concrete(path: str) -> str:
@@ -803,7 +825,11 @@ def test_the_three_postures_are_all_populated() -> None:
     #
     # v0.16.2: 17 -> 18. `POST …/promote` names a situation and its capability is below `admin`,
     # so it is the same perimeter for the same reason (DECISIONS #273).
-    assert len(SCOPED) == 18, SCOPED
+    #
+    # v0.16.3: 18 -> 19. Withdrawing a declaration names the same thing making one names, so it
+    # takes the same posture — an out-of-scope NE 404s exactly as it does on the POST
+    # (DECISIONS #284).
+    assert len(SCOPED) == 19, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -822,7 +848,7 @@ async def _status(client: httpx.AsyncClient, method: str, path: str) -> int:
 
 _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/situations/{sid}/feedback"): {"verdict": "confirm"},
-    ("POST", "/api/labels"): {"kind": "device", "id": 1, "label": "x"},
+    ("POST", "/api/labels"): {"kind": "ne", "id": 1, "label": "x"},
     # v0.16.0. The five gestures, in shapes that pass validation so the *posture* is what is
     # observed rather than a 422 from the request model.
     ("POST", "/api/situations/{sid}/move"): {
@@ -895,6 +921,8 @@ SCOPED_TARGETED = [
     ("GET", "/api/entities/{ne_id}"),
     ("POST", "/api/situations/{sid}/feedback"),
     ("POST", "/api/labels"),
+    # v0.16.3: withdrawing one is targeted for the same reason making one is.
+    ("DELETE", "/api/labels/{kind}/{target_id}"),
     ("POST", "/api/situations/{sid}/close"),
     # v0.16.0: all five gestures name a resource, so all five are the targeted form — an
     # out-of-scope target takes the same 404 a nonexistent one does. `move` and `merge` name
@@ -927,7 +955,7 @@ async def test_scoped_routes_404_an_out_of_scope_target(
     method, path = route
     body = dict(_BODIES.get(route) or {})
     if path == "/api/labels":
-        body = {"kind": "device", "id": out_of_scope_ne["device"], "label": "x"}
+        body = {"kind": "ne", "id": out_of_scope_ne["ne"], "label": "x"}
     if path == "/api/situations/{sid}/move":
         body = {
             "alarm_id": out_of_scope_ne["alarm"],
@@ -942,6 +970,8 @@ async def test_scoped_routes_404_an_out_of_scope_target(
         path.replace("{sid}", str(out_of_scope_ne["situation"]))
         .replace("{ne_id}", str(out_of_scope_ne["ne"]))
         .replace("{aid}", str(out_of_scope_ne["alarm"]))
+        .replace("{kind}", "ne")
+        .replace("{target_id}", str(out_of_scope_ne["ne"]))
     )
     client = await authutil.client_as(app, "editor")
     try:

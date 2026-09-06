@@ -164,6 +164,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/verdict.js",
         # v0.16.0: the operator gestures, their confidence control and the history list.
         "/app/views/parts/lifecycle.js",
+        "/app/views/parts/declare.js",
         "/app/views/parts/members.js",
         "/app/views/parts/why.js",
         # v0.16.1: the situation card, split out when the server-side search pushed

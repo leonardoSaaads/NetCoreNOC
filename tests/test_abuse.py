@@ -37,19 +37,21 @@ async def _login_admin(client: httpx.AsyncClient) -> None:
     assert resp.status_code == 200, resp.text
 
 
-LABEL = {"kind": "device", "id": 1, "label": "x"}
+LABEL = {"kind": "ne", "id": 1, "label": "x"}
 
 
 async def _seed_label_target(store: Store) -> None:
-    """Create device id 1 so a label write has a real target.
+    """Create NE id 1 so a label write has a real target.
 
     v0.7.1 (F37) rejects a label write to a target that does not exist, and `make_env` drives no
-    traps, so device 1 did not exist. The two CSRF tests below assert **200** because they are
-    about the CSRF gate, not about label semantics — so they are given a real device rather than
-    having their assertion weakened (DECISIONS #70).
+    traps, so NE 1 did not exist. The two CSRF tests below assert **200** because they are about
+    the CSRF gate, not about label semantics — so they are given a real element rather than having
+    their assertion weakened (DECISIONS #70). It is the **NE** since v0.16.3: that is what a label
+    names, and the device id beside it is a different key that happens to agree (#281).
     """
     async with store.lock:
-        assert await store.device_id("10.0.0.1", BASE) == LABEL["id"]
+        await store.device_id("10.0.0.1", BASE)
+        assert await store.ne_id("10.0.0.1", BASE) == LABEL["id"]
         await store.commit()
 
 
@@ -139,8 +141,8 @@ async def test_hostile_label_renders_inert_json_on_the_shaped_viewer_path(store:
     engine, queue, app = await authutil.make_env(store)
     await util.drive(engine, queue, [util.event(device="10.5.5.5", ts=BASE)])
     async with store.lock:
-        dev = await store.device_id("10.5.5.5", BASE)
-        await store.set_label("device", dev, xss, BASE)
+        ne = await store.ne_id("10.5.5.5", BASE)
+        await store.set_label("ne", ne, xss, BASE)
         await store.commit()
     viewer = await authutil.client_as(app, "viewer")
     try:

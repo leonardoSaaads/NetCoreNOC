@@ -45,6 +45,7 @@ from netcorenoc.store.retention import RetentionMixin
 from netcorenoc.store.scoring_config import ScoringConfigMixin
 from netcorenoc.store.seal import SealMixin
 from netcorenoc.store.shadow import ShadowMixin
+from netcorenoc.store.situation_reads import SituationReadsMixin
 from netcorenoc.store.state_clears import StateClearMixin
 from netcorenoc.store.types import (
     MAX_SCOPE_PARAMS,
@@ -81,6 +82,7 @@ class Store(
     StateClearMixin,
     EntityMixin,
     ReadModelsMixin,
+    SituationReadsMixin,
     GovernanceMixin,
     FeedbackMixin,
     # v0.16.0. `RestructureMixin` inherits `SituationMixin`, which inherits `SituationEventMixin`
@@ -124,3 +126,4 @@ class Store(
         # Likewise, from `PRAGMA table_info(feedback)`. `False` until then, which is the fail-safe
         # direction: a store nobody opened writes no bag key and keeps `0007`'s two-column bound.
         self._has_bag_key: bool = False
+        self._has_label_qualifier: bool = False

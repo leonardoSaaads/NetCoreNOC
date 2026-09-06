@@ -60,6 +60,12 @@ class LifecycleMixin(StoreBase):
         # one in force, which is exactly right for a database that has not been migrated.
         cur = await self.conn.execute("PRAGMA table_info(feedback)")
         self._has_bag_key = "bag_key" in {str(row[1]) for row in await cur.fetchall()}
+        # v0.16.3, migration `0016`. Same probe, one more table: `label` gained `qualifier` and its
+        # equipment kind became `ne` in one step, and every read model that resolves a declaration
+        # names both. `False` means `0001`'s two-column key and `kind='device'` are still in force,
+        # which is exactly right for a database that has not been migrated.
+        cur = await self.conn.execute("PRAGMA table_info(label)")
+        self._has_label_qualifier = "qualifier" in {str(row[1]) for row in await cur.fetchall()}
 
     async def _migrate(self) -> None:
         """Apply the pending scripts, and **say which** (DECISIONS #227).

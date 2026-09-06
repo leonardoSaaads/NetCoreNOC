@@ -8,7 +8,6 @@ in-memory so the hot path does not re-query. The caches (``_device_ids``, ``_ne_
 
 from __future__ import annotations
 
-from netcorenoc.ingest import known_oids
 from netcorenoc.store.base import StoreBase
 from netcorenoc.store.types import TOUCH_INTERVAL_S
 
@@ -86,13 +85,15 @@ class DeviceMixin(StoreBase):
                     "UPDATE alarm_class SET last_seen=? WHERE id=?", (ts, cached)
                 )
             return cached
-        vendor = known_oids.vendor_of(oid)
-        name = known_oids.trap_name(oid)
+        # v0.16.3: the row no longer carries `name` or `vendor`. Both were
+        # `known_oids.trap_name(oid)` and `known_oids.vendor_of(oid)` written beside the `oid` they
+        # were computed from — identical to a fresh call for 48 of 48 classes on a real corpus, so
+        # a stored derivation by `0008`'s first rule, and `0016` drops them. The trap path does two
+        # fewer table lookups per new class as a side effect (DECISIONS #280).
         cur = await self.conn.execute(
-            "INSERT INTO alarm_class (oid, vendor, name, first_seen, last_seen) "
-            "VALUES (?, ?, ?, ?, ?) "
+            "INSERT INTO alarm_class (oid, first_seen, last_seen) VALUES (?, ?, ?) "
             "ON CONFLICT (oid) DO UPDATE SET last_seen=excluded.last_seen RETURNING id",
-            (oid, vendor, name, ts, ts),
+            (oid, ts, ts),
         )
         row = await cur.fetchone()
         assert row is not None

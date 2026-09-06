@@ -35,15 +35,36 @@ async def test_clear_and_reraise_reactivates(store: Store) -> None:
     assert reraise.activated and reraise.alarm_id == r.alarm_id and reraise.count == 2
 
 
-async def test_vendor_resolved_on_class_and_device_rows(store: Store) -> None:
+async def test_class_vendor_and_name_are_derived_from_the_oid_not_stored_beside_it(
+    store: Store,
+) -> None:
+    """v0.16.3: the same two facts, **served** rather than stored (DECISIONS #280).
+
+    This asserted `SELECT vendor, name FROM alarm_class` until `0016` dropped both columns as
+    stored derivations — identical to `trap_name(oid)` / `vendor_of(oid)` for 48 of 48 classes on
+    a real corpus, with the `oid` they came from in the same row. The property that mattered was
+    never that the values were in a column; it was that a reader gets them, so that is what is
+    checked, and it now holds without a writer having to remember.
+
+    The `device` half of the old name is deliberately gone: `device.vendor` is never written by
+    anything and never was (F105).
+    """
     await store.ingest(util.event(trap_oid=util.HUAWEI_TRAP, ts=1.0))
-    cur = await store.conn.execute("SELECT vendor, name FROM alarm_class")
-    row = await cur.fetchone()
-    assert row is not None and row["vendor"] == "Huawei" and row["name"] is None
+    by_oid = {r["oid"]: r for r in await store.list_classes()}
+    assert by_oid[util.HUAWEI_TRAP]["vendor"] == "Huawei"
+    assert by_oid[util.HUAWEI_TRAP]["name"] is None  # a vendor trap has no standard name
+
     await store.ingest(util.event(trap_oid="1.3.6.1.6.3.1.1.5.3", ts=2.0))
-    cur = await store.conn.execute("SELECT name FROM alarm_class WHERE name IS NOT NULL")
-    row = await cur.fetchone()
-    assert row is not None and row["name"] == "linkDown"
+    by_oid = {r["oid"]: r for r in await store.list_classes()}
+    assert by_oid["1.3.6.1.6.3.1.1.5.3"]["name"] == "linkDown"
+    assert by_oid["1.3.6.1.6.3.1.1.5.3"]["vendor"] is None  # not an enterprise arc
+
+    cur = await store.conn.execute("PRAGMA table_info(alarm_class)")
+    columns = {str(r[1]) for r in await cur.fetchall()}
+    assert not columns & {"name", "vendor"}, (
+        f"alarm_class still stores {sorted(columns & {'name', 'vendor'})} — both are pure "
+        "functions of the `oid` in the same row, which is what `0008`'s first rule forbids."
+    )
 
 
 async def test_quarantine_persists_raw(store: Store) -> None:
@@ -190,7 +211,9 @@ async def test_feedback_requires_existing_situation(store: Store) -> None:
 async def test_labels_and_read_models(store: Store) -> None:
     a = await store.ingest(util.event(device="10.0.0.1", ts=1.0))
     b = await store.ingest(util.event(device="10.0.0.2", trap_oid=util.HUAWEI_TRAP, ts=2.0))
-    await store.set_label("device", a.device_id, "core-router-1", ts=3.0)
+    # v0.16.3: `ne`, and keyed on the alarm's OWN ne id rather than on its device id — the
+    # two agree on every database anyone has and nothing makes them (DECISIONS #281).
+    await store.set_label("ne", await store.ne_id("10.0.0.1", 1.0), "core-router-1", ts=3.0)
     await store.set_label("class", a.class_id, "LOS", ts=3.0)
     s1 = await store.create_situation(ts=3.0)
     await store.add_alarm_to_situation(s1, a.alarm_id)

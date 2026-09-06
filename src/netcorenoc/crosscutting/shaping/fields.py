@@ -34,16 +34,55 @@ _DROP = "drop"
 #: Fields whose value CONTAINS addresses rather than being one. They take the same rule and a
 #: different coarsener, and the set is named here so a reader of `FIELD_RULES` can see at a glance
 #: which entries are not a bare address.
-_COMPOSITE = frozenset({"derived_name"})
+#:
+#: **v0.16.3 (F104): declared text is composite too.** The rules below reasoned that a label is
+#: *"free text a person typed, and a label passes through"*. That is true of where the string came
+#: **from** and false of what it **contains**: an editor may type an address that the very same
+#: response coarsens two fields away. Measured — a viewer receiving `device_ip: "127.0.0.0/24"`
+#: and `device_label: "core-sw at 127.0.0.10"` in one body, on two endpoints — and it is commit
+#: `8609962`'s defect in the declared register, on a release that puts declared text on four
+#: screens (DECISIONS #287).
+#: The set is **every field whose value can contain text an operator typed**, not only the ones
+#: this release added. `device` is here for the same reason and was already wrong: it is
+#: `COALESCE(label, ip)` on a timeline mark, so `coarsen_ip` alone returned the labelled case
+#: unchanged. Excluding `class` — the composed class name — because a class label happens to be an
+#: unlikely place for an address would be a rule with a hole shaped like an argument.
+_COMPOSITE = frozenset(
+    {
+        "derived_name",
+        "operator_name",
+        "device",
+        "device_label",
+        "class",
+        "class_label",
+        "label",
+    }
+)
 FIELD_RULES: dict[str, tuple[str, str]] = {
     "ip": ("editor", _COARSEN),  # device / NE address on graph + entity views
     "device_ip": ("editor", _COARSEN),  # alarm rows in a situation detail
     "device": ("editor", _COARSEN),  # timeline marks (label-or-ip; a label passes through)
     # v0.16.0: the server-derived situation name is BUILT from device addresses, so it needs the
     # same rule they have — otherwise `Storm -> 127.0.0.2` carries past a rule that coarsens
-    # `127.0.0.2` two fields away. `operator_name` is deliberately absent: it is free text a person
-    # typed, like a device label, and a label passes through (see `device` above).
+    # `127.0.0.2` two fields away.
     "derived_name": ("editor", _COARSEN),
+    # v0.16.3 (F104). `operator_name` was deliberately absent here, on the reasoning that it is
+    # *"free text a person typed, like a device label, and a label passes through"*. Measured, that
+    # reasoning is about the string's ORIGIN and the rule is about its CONTENT: an editor typing
+    # `storm on 127.0.0.10` hands a viewer the octet the same body coarsens. The four declared-text
+    # fields below take the composite coarsener `derived_name` already has, so what shaping hides
+    # stays hidden and what it does not — the name itself — survives (DECISIONS #287).
+    "operator_name": ("editor", _COARSEN),
+    "device_label": ("editor", _COARSEN),
+    "class_label": ("editor", _COARSEN),
+    "class": ("editor", _COARSEN),  # the composed class name (timeline, state clears)
+    "label": ("editor", _COARSEN),  # the declaration itself: NE (graph, entities) and class
+    # v0.16.3 (F106). **The entity tree's own key.** `0003` defines a level-0 entity as the NE
+    # itself with `key = its IP`, so `/api/entities` handed a viewer `ip: "127.0.0.0/24"` and
+    # `entities[0].key: "127.0.0.2"` **in the same object**. Deeper keys are varbind discriminator
+    # values — an `ifIndex`, a slot — and `coarsen_ip` returns anything that is not an address
+    # unchanged, so this rule bites exactly at the level where the key IS an address.
+    "key": ("editor", _COARSEN),
     # v0.16.1: the gesture history's actor, resolved to a username. The `actor` reference beside
     # it is unshaped and stays — it is the record, and it is what a viewer sees instead. Dropped
     # rather than coarsened because half a username is not a weaker fact, it is a puzzle; and
@@ -77,6 +116,25 @@ def sees_raw_addresses(role: str | None) -> bool:
     v0.16.1 search is that an operator who has just named a situation can find it by that name.
     """
     return _allowed(role, FIELD_RULES["ip"][0])
+
+
+def contains_address(text: str) -> bool:
+    """Does this string carry an address token? (v0.16.3, DECISIONS #287)
+
+    **The other half of coarsening declared text.** Once a label an editor typed is coarsened for a
+    viewer, matching the *stored* label in a search would hand that viewer back the octet the
+    rendering just hid: they type `10.1.2.77`, the `LIKE` hits the raw column, and a situation comes
+    back. That is the shaping oracle `sees_raw_addresses` exists to refuse, arriving through a
+    column nobody thought of as an address.
+
+    So the search gates its label clauses on this exactly as it gates `d3.ip` on the role. A
+    viewer can still search a label by its *name*, which is the whole point of the v0.16.1 search;
+    what they cannot do is use one as a lookup table for the address inside it.
+
+    Token-wise, like `coarsen_situation_name`, and for the same reason: a grammar-aware version
+    would let the next name form slip past it.
+    """
+    return any(coarsen_ip(token) != token for token in text.split(" "))
 
 
 def coarsen_ip(value: Any) -> Any:

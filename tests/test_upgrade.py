@@ -429,16 +429,17 @@ async def test_v071_upgrade_changes_no_behaviour_except_the_documented_changes(
         admin = await authutil.client_as(app, "admin")
         try:
             sid = (await admin.get("/api/situations")).json()[0]["id"]
-            device_id = (await admin.get("/api/graph")).json()["nodes"][0]["id"]
+            # v0.16.3: a label names an NE, so the id comes from `/api/entities`. A graph node's id
+            # is a **device** id; the two agree here, and taking the one the route is documented
+            # against is the difference between a test that passes and one that checks (#281).
+            ne_id = (await admin.get("/api/entities")).json()[0]["id"]
 
             # Change 1 (F37): a nonexistent target is now 404; a real one is unchanged at 200.
             assert (
-                await admin.post("/api/labels", json={"kind": "device", "id": 900001, "label": "x"})
+                await admin.post("/api/labels", json={"kind": "ne", "id": 900001, "label": "x"})
             ).status_code == 404
             assert (
-                await admin.post(
-                    "/api/labels", json={"kind": "device", "id": device_id, "label": "core-1"}
-                )
+                await admin.post("/api/labels", json={"kind": "ne", "id": ne_id, "label": "core-1"})
             ).status_code == 200
 
             # Change 2 (F36): the repeat still answers 200 but records and applies nothing.
@@ -554,7 +555,7 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 15
+        assert await new.schema_version() == Store.latest_schema_version() == 16
         assert new.integrity_warnings == []
 
         # Asserted BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -692,7 +693,7 @@ async def test_v091_upgrade_applies_0010_and_leaves_existing_labels_plain(tmp_pa
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 15
+        assert await new.schema_version() == Store.latest_schema_version() == 16
         assert new.integrity_warnings == []
 
         # Asked BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -892,7 +893,7 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 15
+        assert await new.schema_version() == Store.latest_schema_version() == 16
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0011"
 
         # **The derivation.** Three ids reported, two of them members of the server's own bag.
@@ -1038,7 +1039,7 @@ async def test_v0100_upgrade_applies_0012_and_seeds_nothing(tmp_path: Path) -> N
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 15
+        assert await new.schema_version() == Store.latest_schema_version() == 16
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0012"
 
         # **Nothing is seeded.** Three empty tables, and that is the claim.
@@ -1198,7 +1199,7 @@ async def test_v0101_upgrade_applies_0013_and_seeds_nothing(tmp_path: Path) -> N
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 15
+        assert await new.schema_version() == Store.latest_schema_version() == 16
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0013"
 
         # **Nothing is seeded.** Three empty tables, and that is the claim.
@@ -1393,7 +1394,7 @@ async def test_v0155_upgrade_applies_0014_and_attributes_nothing_it_cannot(tmp_p
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 15
+        assert await new.schema_version() == Store.latest_schema_version() == 16
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0014"
 
         # **Nothing is seeded.** Two empty tables, and that is the claim.

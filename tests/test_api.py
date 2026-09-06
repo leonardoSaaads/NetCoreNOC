@@ -219,11 +219,12 @@ async def test_labels_are_cosmetic_and_persisted(
 ) -> None:
     engine, _ = engine_env
     await replay_fiber(engine_env)
-    device_a = await engine.store.device_id("127.0.0.2", BASE)
+    # The NE, not the device: `kind='ne'` since v0.16.3 (DECISIONS #281).
+    ne_a = await engine.store.ne_id("127.0.0.2", BASE)
     sid = (await client.get("/api/situations")).json()[0]["id"]
     first_class = (await client.get(f"/api/situations/{sid}")).json()["alarms"][0]
     response = await client.post(
-        "/api/labels", json={"kind": "device", "id": device_a, "label": "dwdm-core-1"}
+        "/api/labels", json={"kind": "ne", "id": ne_a, "label": "dwdm-core-1"}
     )
     assert response.status_code == 200
     cur = await engine.store.conn.execute(
@@ -538,11 +539,9 @@ async def test_f37_a_label_write_to_a_nonexistent_target_is_rejected(
     await replay_fiber(engine_env)
     store = engine_env[0].store
     for target in range(900000, 900005):
-        resp = await client.post(
-            "/api/labels", json={"kind": "device", "id": target, "label": "ghost"}
-        )
+        resp = await client.post("/api/labels", json={"kind": "ne", "id": target, "label": "ghost"})
         assert resp.status_code == 404, (
-            f"a label was written to nonexistent device {target}: {resp.status_code} {resp.text}"
+            f"a label was written to nonexistent NE {target}: {resp.status_code} {resp.text}"
         )
     missing_class = await client.post(
         "/api/labels", json={"kind": "class", "id": 900000, "label": "ghost"}
@@ -556,12 +555,17 @@ async def test_f37_a_label_write_to_a_nonexistent_target_is_rejected(
 async def test_f37_label_writes_to_real_targets_still_work(
     engine_env: tuple[Engine, asyncio.Queue[QueueItem]], client: httpx.AsyncClient
 ) -> None:
-    """The existence check must not break the feature it guards."""
+    """The existence check must not break the feature it guards.
+
+    The NE id comes from `/api/entities` and not from a graph node, which is a **device** id.
+    They are equal on every database anyone has; taking the one the route is documented against
+    is the difference between a test that passes and a test that checks (DECISIONS #281).
+    """
     await replay_fiber(engine_env)
-    device_id = (await client.get("/api/graph")).json()["nodes"][0]["id"]
+    ne_id = (await client.get("/api/entities")).json()[0]["id"]
     class_id = (await client.get("/api/classes")).json()[0]["id"]
     assert (
-        await client.post("/api/labels", json={"kind": "device", "id": device_id, "label": "core"})
+        await client.post("/api/labels", json={"kind": "ne", "id": ne_id, "label": "core"})
     ).status_code == 200
     assert (
         await client.post("/api/labels", json={"kind": "class", "id": class_id, "label": "LOS"})

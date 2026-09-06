@@ -59,6 +59,11 @@ ACTIONS: frozenset[str] = frozenset(
         # operation
         "feedback",
         "label.set",
+        # v0.16.3: withdrawing a declaration is its own action rather than a `label.set` carrying a
+        # flag, for the reason the five gestures are five actions (DECISIONS #255): an auditor
+        # asking *"who took the operator's severity off this alarm class"* must not have to read a
+        # details blob to find out that a row recorded a removal.
+        "label.clear",
         "situation.close",
         # v0.16.0 — the five operator gestures. Five actions rather than one `situation.restructure`
         # for the reason there are five routes (DECISIONS #255): an auditor asking *"who moved an

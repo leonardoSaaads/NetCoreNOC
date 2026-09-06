@@ -69,9 +69,14 @@ async def test_f1_hostile_strings_survive_the_ingest_path_as_json(
         varbinds=[Varbind(oid="1.3.6.1.4.1.9.9.1", kind="OctetString", value=XSS)],
     )
     await util.drive(engine, queue, [hostile])
-    # Operator label is the other F1 vector.
-    dev_id = await engine.store.device_id("10.0.0.9", 1.0)
-    r = await client.post("/api/labels", json={"kind": "device", "id": dev_id, "label": XSS})
+    # Operator label is the other F1 vector — and since v0.16.3 it is three of them, because a
+    # declaration is now made from the situation row and reaches four screens. All three take the
+    # same path, so all three are driven here (`kind='ne'`, DECISIONS #281).
+    ne_id = await engine.store.ne_id("10.0.0.9", 1.0)
+    r = await client.post("/api/labels", json={"kind": "ne", "id": ne_id, "label": XSS})
+    assert r.status_code == 200
+    class_id = (await client.get("/api/classes")).json()[0]["id"]
+    r = await client.post("/api/labels", json={"kind": "class", "id": class_id, "label": XSS})
     assert r.status_code == 200
 
     sid = (await client.get("/api/situations")).json()[0]["id"]
@@ -82,6 +87,7 @@ async def test_f1_hostile_strings_survive_the_ingest_path_as_json(
     # The payload round-trips as a plain string value: it is data, not markup.
     assert alarm["instance"] == XSS
     assert alarm["device_label"] == XSS
+    assert alarm["class_label"] == XSS
     # In the raw JSON body the dangerous characters are JSON-escaped, so no HTML tag can
     # break out of the response even if a client mishandled the content-type.
     assert "<script>" in resp.text or "\\u003cscript\\u003e" in resp.text  # tolerate either encoder

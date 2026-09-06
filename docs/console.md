@@ -108,6 +108,31 @@ so a later release can check whether your stated 0.8 corresponds to being right 
 confidence and its age, appended and never edited. The situation's `id` is still its identity and
 its permalink still works; a name is a label on top of it.
 
+## Telling the appliance what you already know
+
+The appliance starts knowing nothing about your network and learns it from the trap stream. Three
+things it cannot infer, and until v0.16.3 had nowhere for you to write down, are declared from the
+member row itself — the row where the trap appears, while you are looking at it:
+
+* **which equipment this is.** The name appears on this row, on **Entities**, and on the **Network
+  Graph**, because all three read the same record. It is a label, not a rename: correlation is
+  keyed on the address and is unaffected.
+* **what this trap means.** The name appears on every alarm of that class, on **Alarm Classes**,
+  and on the timeline. Where you have not named one, the row shows the vendor the appliance
+  resolved from the OID's enterprise arc, beside the OID — a vendor is not a name, so it never
+  takes the name's place.
+* **how serious it is.** Per kind of trap, from the five severities the appliance renders.
+
+**What you declare wins, and what the appliance learned is kept.** The pill marks a declared
+severity and names the learned one in its tooltip, and *Clear* puts the appliance's own value back.
+Nothing you declare here teaches the correlator anything: a name is not a claim about which alarms
+belong together, and a severity is a claim about a kind of trap rather than about a link.
+
+**One interruption, and only one.** If the appliance has *learned* a severity here — which takes
+200 observations and 50 closed alarms whose lifetimes confirmed the ordering — and your declaration
+is two or more steps away from it, the row asks you to confirm and shows you what it learned.
+Cancel writes nothing. Anything closer than two steps is saved without a word.
+
 ## Settings — three classes, and one has no controls
 
 *Mechanism* is yours to set, with the cost stated beside it. *Hardening-only* you may make stricter

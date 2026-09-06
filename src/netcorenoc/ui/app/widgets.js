@@ -163,12 +163,21 @@ export function Badge({ tone, title, children }) {
  */
 export function SeverityBadge({ alarm }) {
   const s = severityOf(alarm);
-  const title = s.known
-    ? `severity ${s.text} (rank ${s.rank})`
-    : "This element's severity has not been learned yet. It is not a default — nothing has been " +
-      "assumed about how serious this alarm is.";
+  // **Which value is in use, and what the other one says** (v0.16.3, DECISIONS #284). A declared
+  // severity wins and the learned one is never overwritten, so the pill marks the declaration and
+  // names the appliance's own judgement beside it — the disagreement is the evidence.
+  const title = !s.known
+    ? "This element's severity has not been learned yet. It is not a default — nothing has been " +
+      "assumed about how serious this alarm is."
+    : s.declared
+      ? `severity ${s.text} (rank ${s.rank}), declared by an operator. ` +
+        (s.learned == null
+          ? "The appliance has not learned a severity for this alarm class."
+          : `The appliance learned ${s.learned}.`)
+      : `severity ${s.text} (rank ${s.rank}), learned by the appliance`;
   return html`<span class=${cx("sev-pill", `sev-${s.key}`)} title=${title}>
     <span class="sev-glyph" aria-hidden="true">${s.glyph}</span><span class="sev-text">${s.text}</span>
+    ${s.declared ? html`<span class="sev-mark" aria-label="declared by an operator">*</span>` : null}
   </span>`;
 }
 

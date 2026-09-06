@@ -76,7 +76,12 @@ function NeCard({ ne, open, onToggle }) {
     <div class="sit-head">
       <button type="button" class="sit-toggle" aria-expanded=${open ? "true" : "false"}
               onClick=${onToggle}>
+        <!-- v0.16.3: this line rendered \`ne.label\` for three releases and \`/api/entities\` never
+             served the field, so the fallback to the address was permanent — the whole of *"I
+             renamed the host and nothing changed in Entities"*. \`list_ne\` joins the label now,
+             and the marker says which value is in use (DECISIONS #281, #284). -->
         <span class="sid">${ne.label || ne.ip}</span>
+        ${ne.label ? html`<span class="muted">(declared)</span>` : null}
         <${Badge}>${plural(ne.entity_count, "entity", "entities")}<//>
         ${ne.vendor ? html`<span class="age">${ne.vendor}</span>` : null}
       </button>

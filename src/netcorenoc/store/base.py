@@ -62,8 +62,39 @@ class StoreBase:
     # the same reason — `add_feedback` runs on every verdict and every gesture, so inferring the
     # schema from an exception would pay a caught error on the busiest write path there is.
     _has_bag_key: bool
+    # v0.16.3: does `label` carry `qualifier` (migration 0016)? One probe answers for the whole of
+    # that migration's change to the table, because `0016` renamed the equipment kind from
+    # `device` to `ne` in the same step that widened the primary key — so a schema that has the
+    # column has the kind, and one that has neither has neither.
+    _has_label_qualifier: bool
 
     @property
     def conn(self) -> aiosqlite.Connection:
         assert self._conn is not None, "Store.open() not called"
         return self._conn
+
+    def _label_join(self, alias: str, kind: str, target: str, legacy_target: str = "") -> str:
+        """One `LEFT JOIN label`, in the shape the schema on disk actually has (v0.16.3).
+
+        **A literal chosen by the schema probe**, never by a caller: both branches are fixed
+        strings and only `alias`/`target`, which every call site passes as its own SQL identifier,
+        vary. The same discipline `_lifecycle_columns` uses, and for the same reason —
+        `tests/test_upgrade.py` drives the current store against a migration directory frozen at
+        an older version, and a join naming `qualifier` unconditionally would raise there.
+
+        `legacy_target` is the pre-`0016` target expression for the equipment kind, where the row
+        was keyed on `device.id` rather than on `ne.id`. It is given rather than derived, because
+        deriving it would mean assuming those two ids agree — which they do on every database
+        anyone has, and which is exactly the coincidence `0016` exists to stop depending on
+        (DECISIONS #281).
+        """
+        if self._has_label_qualifier:
+            return (
+                f"LEFT JOIN label {alias} ON {alias}.kind='{kind}' "
+                f"AND {alias}.target_id={target} AND {alias}.qualifier='' "
+            )
+        legacy_kind = "device" if kind == "ne" else kind
+        on = legacy_target or target
+        return (
+            f"LEFT JOIN label {alias} ON {alias}.kind='{legacy_kind}' AND {alias}.target_id={on} "
+        )

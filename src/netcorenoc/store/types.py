@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import netcorenoc
+from netcorenoc.ingest import known_oids
 
 # **Resolved from the PACKAGE, not by counting `.parent`s** (v0.16.2, F102).
 #
@@ -35,6 +36,23 @@ TOUCH_INTERVAL_S = 5.0  # cadence for cosmetic last_seen updates on cached rows
 # is slower but still correct. An estate with more than this many NEs inside a single scope is far
 # outside the design point of a one-file SQLite appliance.
 MAX_SCOPE_PARAMS = 30_000
+
+
+def class_display(label: str | None, oid: str) -> str:
+    """What to call an alarm class, in one place: **declared, then derived, then the OID.**
+
+    The same precedence `ui/app/format.js::alarmName` applies to the three fields a read model
+    serves separately. It exists here because two reads — :meth:`timeline_marks` and
+    :meth:`list_state_clears` — serve one composed *string* rather than the components, and they
+    wrote the rule out twice as `COALESCE(cl.label, c.name, c.oid)`. One of those copies was going
+    to drift (v0.16.3, DECISIONS #280).
+
+    The middle term is a **call**, not a column. `alarm_class.name` held
+    ``known_oids.trap_name(oid)`` for 48 of 48 rows on a real corpus, which makes it a stored
+    derivation of the `oid` beside it, and `0008`'s rule is *derive what can be derived*. `0016`
+    drops the column; this is where its value comes from now.
+    """
+    return label or known_oids.trap_name(oid) or oid
 
 
 @dataclass(frozen=True)

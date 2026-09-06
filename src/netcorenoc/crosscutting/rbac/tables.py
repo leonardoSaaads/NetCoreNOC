@@ -125,6 +125,10 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/profiles/{ne_id}/reset"): "profile.reset",
     ("POST", "/api/situations/{sid}/feedback"): "feedback.write",
     ("POST", "/api/labels"): "label.write",
+    # Withdrawing a declaration is the same power as making one (DECISIONS #284): the derived
+    # value it falls back to was never overwritten, so this restores a state the appliance
+    # already held rather than destroying one it did not.
+    ("DELETE", "/api/labels/{kind}/{target_id}"): "label.write",
     ("POST", "/api/situations/{sid}/close"): "situation.close",
     ("POST", "/api/situations/{sid}/move"): "situation.move",
     ("POST", "/api/situations/{sid}/merge"): "situation.merge",
@@ -218,6 +222,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/profiles/{ne_id}/reset"): "admin_only",
     ("POST", "/api/situations/{sid}/feedback"): "scoped",
     ("POST", "/api/labels"): "scoped",
+    ("DELETE", "/api/labels/{kind}/{target_id}"): "scoped",
     ("POST", "/api/situations/{sid}/close"): "scoped",
     # All five name a network element and all five are below `admin`, so all five are the write
     # perimeter F34 established. Move and merge name **two** situations and check both.

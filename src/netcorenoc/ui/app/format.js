@@ -90,22 +90,102 @@ const SEVERITIES = [
 const UNKNOWN = { key: "unknown", glyph: "?", label: "unknown" };
 
 /**
- * `{ key, glyph, label, known, text }` for an alarm.
+ * The highest vocabulary rank, and therefore the top of the scale an integer field is mapped onto.
+ * Derived from `SEVERITIES` rather than written as `3`, so a band added later moves the ceiling
+ * with it — F92's lesson, in one constant.
+ */
+const MAX_RANK = Math.max(...SEVERITIES.map((entry) => entry.rank));
+
+/**
+ * The top of `known_oids.SEVERITY_VOCAB`, which is one step **above** the last rendered band:
+ * `indeterminate` and `cleared` both rank 4, and rank 4 is deliberately not a placement — it is
+ * the vocabulary's own word for *"I do not know how serious this is"*, so it renders as UNKNOWN.
  *
- * `known` is `false` when the appliance has not learned a severity for this element — which is a
- * true statement about a zero-config product on its first day, and is displayed as such rather
- * than as an empty cell or a default of "minor".
+ * It is the line between the two scales. A rank at or below it came from a bundled token and
+ * means what that token means; a rank above it can only have come from `_candidate_ranks`'
+ * `int` kind, where the number is a vendor's own and means nothing until it is ordered against
+ * the others (F99). `tests/test_severity.py` pins this constant against `SEVERITY_VOCAB` itself,
+ * so the two languages cannot drift apart silently.
+ */
+const VOCAB_MAX_RANK = 4;
+
+/**
+ * Place an arbitrary integer rank on the rendered bands (**F99's repair**, v0.16.3).
  *
- * A rank the bands do not cover — rank 4, and the arbitrary integers an `int`-kind severity field
- * produces (F99) — renders as UNKNOWN with the element's **own word** as its text. It is the
- * honest answer: the appliance has a value and cannot place it on this scale. What an arbitrary
- * integer scale *should* map to is v0.16.3's question about the same field.
+ * `severity.py::_candidate_ranks` returns `kind="int"` with the varbind's **raw integer** as the
+ * rank whenever the observed values are not bundled tokens, bounded only by
+ * `SEVERITY_MAX_DISTINCT = 8` distinct values and not at all in magnitude. A vendor that numbers
+ * severity 10, 20, 30 produced ranks 10, 20 and 30 — and every one of them fell off the end of
+ * `SEVERITIES` and rendered as the same `unknown` pill. **Three severities the appliance had
+ * validated against observed lifetimes, collapsed into one band at the last step.**
+ *
+ * *(F99 as issued says they render as `low`. That was true until v0.16.2's pill moved out-of-band
+ * ranks to UNKNOWN in the same release the finding was written in; the entry is corrected there.
+ * The defect survives either way — the ordering the appliance proved is discarded.)*
+ *
+ * **Rank-order, not linear.** `{10, 20, 30}` maps to `{0, 1, 2}` and so does `{1, 5, 900}`: what
+ * `confirm_ordinality` validated is the **order** of the values, never the distance between them,
+ * so a linear scaling would render a spacing the evidence never supported. The ranks present are
+ * sorted and spread across the bands most-severe first, which is the direction the vocabulary
+ * uses. With more distinct values than bands the deepest ones share the last band — at most 8
+ * values against 4 bands, so at most five share one.
+ *
+ * `ranks` is the field's whole observed set, which the caller has because every alarm row carries
+ * its own; with only one rank in hand the mapping is *this value is the most severe I have seen*,
+ * which is the honest reading of a single observation.
+ *
+ * **The whole field is placed, or none of it is** — `applies` asks whether the *set* leaves the
+ * vocabulary's range, not whether one value does. A field reading `{1, 4, 7}` is a vendor's own
+ * numbering and all three are placed by order; a lone rank 4 is `indeterminate` and is left where
+ * the vocabulary put it. Deciding value by value would render two members of one scale on two
+ * different scales.
+ */
+function placeInteger(rank, ranks) {
+  const scale = [...new Set([...(ranks ?? []), rank])].sort((a, b) => a - b);
+  const index = scale.indexOf(rank);
+  return Math.min(index, MAX_RANK);
+}
+
+function placementApplies(rank, ranks) {
+  return Math.max(rank, ...(ranks ?? [])) > VOCAB_MAX_RANK;
+}
+
+/**
+ * `{ key, glyph, label, known, text, declared }` for an alarm.
+ *
+ * **The declared wins and the learned is kept** (v0.16.3, DECISIONS #284). Precedence is decided
+ * here, at read time, because the appliance's own judgement is never overwritten: a declaration
+ * and 200 observations disagreeing is evidence, and an overwrite spends it. `declared` says which
+ * value the pill is showing so the screen can mark it, and `learned` carries the other one so the
+ * pill's `title` can name it without a second request.
+ *
+ * `known` is `false` when neither exists — a true statement about a zero-config product on its
+ * first day, displayed as such rather than as an empty cell or a default of "minor".
+ *
+ * Rank 4 still renders as UNKNOWN carrying its own word: `indeterminate` is the vocabulary's term
+ * for *"I do not know how serious this is"*, which is a placement on no scale. An integer rank
+ * outside 0-`MAX_RANK` is placed by `placeInteger` rather than discarded (F99).
  */
 export function severity(alarm) {
-  if (alarm.severity == null) return { ...UNKNOWN, known: false, text: "unknown" };
-  const rank = alarm.severity_rank;
+  const declared = alarm.declared_severity != null;
+  const value = declared ? alarm.declared_severity : alarm.severity;
+  if (value == null) return { ...UNKNOWN, known: false, text: "unknown", declared: false };
+  const raw = declared ? alarm.declared_severity_rank : alarm.severity_rank;
+  // A declared severity is a vocabulary token by construction — the route refuses anything else —
+  // so only a learned `int`-kind rank can land outside the bands.
+  const rank =
+    !declared && typeof raw === "number" && placementApplies(raw, alarm.severity_ranks)
+      ? placeInteger(raw, alarm.severity_ranks)
+      : raw;
   const found = SEVERITIES.find((entry) => entry.rank === rank) ?? UNKNOWN;
-  return { ...found, known: true, text: String(alarm.severity), rank };
+  return {
+    ...found,
+    known: true,
+    text: String(value),
+    rank,
+    declared,
+    learned: alarm.severity ?? null,
+  };
 }
 
 /* ---------- numbers ---------- */
@@ -145,4 +225,21 @@ export function alarmName(alarm) {
 }
 export function deviceName(alarm) {
   return alarm.device_label || alarm.device_ip;
+}
+
+/**
+ * The vendor, **only when the name above fell through to the raw OID** (v0.16.3, DECISIONS #282).
+ *
+ * A vendor is not a name, so it never enters `alarmName`'s chain: appending it there would put
+ * `Huawei` in the slot the whole chain reserves for what a trap *means*, and an operator reading a
+ * name column would be told a manufacturer instead. Beside the OID it says exactly what is true —
+ * *this is an unnamed Huawei trap, here is its OID*.
+ *
+ * Measured on a ten-scenario corpus: 48 classes, **2 with a standard-trap name, 46 with a vendor,
+ * 0 declared.** So this reaches 46 of the 46 rows that would otherwise read as a bare OID, and it
+ * is not a substitute for the 46 names that are still missing until an operator writes one.
+ */
+export function classVendor(alarm) {
+  if (alarm.class_label || alarm.class_name) return null;
+  return alarm.class_vendor || null;
 }
