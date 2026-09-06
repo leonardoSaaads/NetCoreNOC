@@ -170,6 +170,9 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # v0.16.1: the situation card, split out when the server-side search pushed
         # `views/situations.js` over the module-graph guard (DECISIONS #265).
         "/app/views/parts/card.js",
+        # v0.16.4: the judgement surface, split out when the state-dependent action surface pushed
+        # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
+        "/app/views/parts/judge.js",
         # v0.16.1: the console icon (F96). `img-src 'self'` forbids a data: URI.
         "/favicon.svg",
         "/app/widgets.js",

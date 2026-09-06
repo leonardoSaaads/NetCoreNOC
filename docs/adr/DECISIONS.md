@@ -3079,6 +3079,15 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Trade-off accepted**: three declarations behind one cell is one more click than three cells were,
   on rows an operator declares on rarely and scans constantly. Every one stays reachable at every
   width above the tap floor, which is directive 2 and does not bend.
+- **What the change measured, after**: eleven columns to **eight**; the editor's table from 942 px
+  to **717 px**, so the overflow at 390 px falls from 602 to 377 and at **820 px reaches zero** —
+  the member table fits a tablet for the first time. Controls below the 28 px floor: **72 to 0**.
+- **F109, found by the same measurement and fixed here**: #237's frozen first column keeps the
+  row's identity *"beside whatever the operator scrolled to"*, and the first column is the mark
+  checkbox for an editor. Scrolled fully right at 390 px, a viewer's frozen cell read
+  `127.0.0.0/24` and an editor's read **nothing at all**. The member table now freezes the mark and
+  the device, with the mark column at a declared 44 px so the second offset is a number this
+  stylesheet knows rather than one it hopes for.
 
 ## 294. One timestamp format, the browser's zone, and the offset always visible (v0.16.4)
 

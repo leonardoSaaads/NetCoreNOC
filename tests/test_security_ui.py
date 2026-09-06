@@ -582,6 +582,27 @@ def test_the_client_refusal_is_never_the_only_refusal() -> None:
     assert "never a control" in session_module or "affordance" in session_module
 
 
+def _enclosing_interpolation(source: str, at: int) -> int:
+    """Where the `${…}` containing `source[at]` begins.
+
+    Walks backwards tracking nesting, so an inner interpolation between the opener and the point
+    of interest is stepped over rather than mistaken for it. Returns 0 when there is no enclosing
+    one, which makes the caller's slice the whole prefix — a guard that then still has to find its
+    condition, rather than one that silently passes on an empty window.
+    """
+    depth = 0
+    index = at
+    while index > 1:
+        index -= 1
+        if source[index] == "}":
+            depth += 1
+        elif source[index - 1 : index + 1] == "${":
+            if depth == 0:
+                return index - 1
+            depth -= 1
+    return 0
+
+
 def test_the_held_card_freezes_the_payload_and_says_so() -> None:
     """§5.1-§5.3 in their v0.13.0 form (ADR #173). **Shape of the source, not behaviour.**
 
@@ -604,7 +625,15 @@ def test_the_held_card_freezes_the_payload_and_says_so() -> None:
     at = situations.index("held while open")
     # Look BACK from the marker to the condition that emits it. Anchoring on a single line would
     # make this test a statement about where a line break falls, which is not the property.
-    guard = situations[max(0, at - 200) : at]
+    #
+    # **v0.16.4: back to the ENCLOSING interpolation, not back a fixed number of bytes.** The
+    # window was 200 characters, and it went red when this release put the withheld count into the
+    # badge's `title` — pushing the marker past the window while the guard it is looking for
+    # stayed exactly where it was. A byte count is a statement about how much prose sits between
+    # two things; the `${…}` that emits the marker is the structure, so that is the anchor, found
+    # by walking back through the nesting rather than by taking the nearest `${`, which is an
+    # inner one.
+    guard = situations[_enclosing_interpolation(situations, at) : at]
     assert "expanded &&" in guard and "withheld > 0" in guard, (
         f"the staleness marker is not guarded by (expanded AND withheld): {guard!r}"
     )

@@ -560,6 +560,49 @@ td.sev { white-space: nowrap; }
 .flap { color: var(--warn); font-size: var(--fs-xs); }
 .fb { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-3) 0; }
 
+/* ---------- v0.16.4: the member row's actions cell (DECISIONS #293) ----------------------
+ *
+ * Eleven columns became eight. The three declarations and the hand-clear share this one cell,
+ * and it **wraps** rather than widening: it is the last column of a table that already scrolls
+ * horizontally, and a cell that pushed the scroll further would put the controls furthest from
+ * the operator exactly where the viewport is smallest.
+ *
+ * The clear is separated by a rule rather than sitting flush against the other three, because it
+ * is a different kind of statement: the declarations say what a thing IS, and the clear says an
+ * ALARM was stale and asserts nothing about the grouping. Three buttons in a row that all looked
+ * alike would invite the confusion `PREREGISTRATION-0.16.0.md` turns into a prohibition. */
+.row-actions { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
+/* The mark column is a fixed 44 px — 28 px of control plus the cell's own padding — so the
+   frozen offset below is a number this stylesheet knows rather than one it hopes for. */
+table.members th:first-child, table.members td:first-child { width: 44px; }
+.row-clear {
+  margin-left: var(--space-2); padding-left: var(--space-2);
+  border-left: 1px solid var(--line-strong); border-radius: 0;
+  background: none; border-top: 0; border-right: 0; border-bottom: 0;
+  color: var(--accent);
+}
+.row-clear:hover:not(:disabled) { background: none; text-decoration: underline; }
+/* The declaration openers sit three-in-a-row here, so they are quiet by default and become
+   ordinary buttons on hover. A cell holding three primary-looking controls reads as three things
+   to do; it is one thing to do, three times. */
+.row-actions .declare-open { color: var(--accent); background: none; border-color: transparent; }
+.row-actions .declare-open:hover { background: var(--bg-hover); border-color: var(--line-strong); }
+
+/* ---------- v0.16.4: what is already on record (DECISIONS #291) --------------------------
+ *
+ * A judged situation states its judgement and puts the grouping controls one click away. It is a
+ * quiet block, not a warning: nothing is wrong — the operator already did this — and the point is
+ * that the primary surface stops inviting them to assert the same thing twice. */
+.judged {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  border: 1px solid var(--line); border-left: 3px solid var(--quiet);
+  border-radius: var(--radius-2); background: var(--bg-sunken);
+  padding: var(--space-2) var(--space-3); margin: var(--space-3) 0;
+}
+.judged-note { display: flex; align-items: baseline; gap: var(--space-1); flex-wrap: wrap; margin: 0; flex: 1; }
+.judged-note .icon-svg { color: var(--quiet); }
+.judged-note .age { margin-left: 0; }
+
 /* ---------- "why these were grouped": the summary, then the detail (V.6, #245) ----------
  *
  * The band changes the WORDS as well as the colour — a thin margin read off a border colour
@@ -893,6 +936,21 @@ pre.refusal-reason {
     position: sticky; left: 0; background: var(--bg); z-index: 1;
   }
   table.data tbody tr:hover td:first-child { background: var(--bg-hover); }
+  /* **F109: for an editor the first column is a checkbox, and a checkbox is not an identity.**
+     #237 froze the first column so the row keeps its identity beside whatever the operator
+     scrolled to. Measured at 390 px, scrolled fully right: a viewer's frozen cell read
+     `127.0.0.0/24`; an editor's read nothing at all, with `1` and `active` beside it. So the
+     member table freezes the mark AND the device, and the second offset is the first's declared
+     44 px rather than a guess. */
+  table.members th:nth-child(2), table.members td:nth-child(2) {
+    position: sticky; left: 44px; background: var(--bg); z-index: 1;
+    box-shadow: 1px 0 var(--line);
+  }
+  table.members tbody tr:hover td:nth-child(2) { background: var(--bg-hover); }
+  /* The actions cell is the widest column at 390 px (276 of 909). Wrapping it into a block of
+     four rather than a line of four is what keeps the rest of the row reachable without a longer
+     scroll; the row grows taller, which a phone has and a phone does not have width. */
+  .row-actions { max-width: 9rem; }
   /* A long identifier — a 64-hex run id — has no break opportunity in it and would otherwise
      push the column wider than the viewport. `break-word`, not `anywhere`: `anywhere` breaks
      eagerly and split the account screen's capability list mid-token (`classes.rea / d`), which

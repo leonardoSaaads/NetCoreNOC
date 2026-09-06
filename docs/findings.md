@@ -1435,3 +1435,36 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: **FIXED in v0.16.4** (DECISIONS #297). `componentDidUpdate` re-reads
   `params[0]`, pins and opens it, using `Loader`'s existing route-key comparison rather than a
   second one. Demonstrated red by removing the hook, with the repaired tree as its control.
+
+## F109 — the frozen column keeps the row's identity for a viewer and is blank for an editor
+
+- **What**: DECISIONS #237 chose horizontal scroll with the first column frozen over dropping
+  columns and over cards, on the stated ground that *"the row keeps its identity (device, or id)
+  beside whatever the operator scrolled to"*. The rule is implemented as
+  `table.data th:first-child, table.data td:first-child { position: sticky; left: 0 }` — the
+  **first** column, whatever it happens to be. In a situation's member table the first column is
+  the mark checkbox for an editor and the device for a viewer, so the guarantee holds for the role
+  that cannot act and fails for the role that can. It is the same shape as F103: a rule written for
+  a column, applied to a position.
+- **Reproduce**, in a browser at 390 px, expanding a situation card as each role, scrolling the
+  member table fully right and reading what is left at the frozen edge:
+  ```js
+  const t = [...document.querySelectorAll('table.data')].find(t =>
+    [...t.querySelectorAll('thead th')].some(th => th.textContent.trim() === 'instance'));
+  t.parentElement.scrollLeft = t.parentElement.scrollWidth;
+  [...t.querySelectorAll('tbody tr:first-child td')]
+    .filter(td => getComputedStyle(td).position === 'sticky')
+    .map(td => td.textContent.trim())
+  ```
+- **Measured**, before: `viewer -> ["127.0.0.0/24"]` and `editor -> [""]`, with `1` and `active`
+  the cells beside the editor's blank one. **The viewer is the control** — same table, same width,
+  same release, and it reads correctly — so the failure is the first column's *identity*, not the
+  freezing.
+- **Why it matters**: an editor at a phone width is the operator this release exists for, and the
+  row they are acting on is the one whose identity disappears. Marking a checkbox that names no
+  device is the same hazard F103 named from the other end: a human judgement recorded about a pair
+  the human could not identify.
+- **Disposition**: **FIXED in v0.16.4** (DECISIONS #293). The member table freezes the mark **and**
+  the device below 720 px, the mark column takes a declared 44 px so the second column's offset is
+  a number rather than a guess, and the editor's frozen edge now reads `127.0.0.2`. Issued and
+  closed by the release that measured it.

@@ -202,11 +202,16 @@ export function SeverityCell({ alarm }) {
  * A dense table. `columns` is `[{ key, label, numeric?, title? }]`; `rows` is a list of objects
  * with a `key` and a `cells` map. Numeric columns are right-aligned and tabular-figured so a
  * column of counts can be scanned vertically, which is the whole reason these products are dense.
+ *
+ * `kind` names a table whose *layout* differs from the default, and there is exactly one: the
+ * member table, whose first column is a checkbox rather than the row's identity (F109). It is a
+ * class on the element, not a set of options here — a table that took layout parameters would
+ * become the place every screen's layout is written, which is the opposite of one vocabulary.
  */
-export function DataTable({ columns, rows, caption, empty }) {
+export function DataTable({ columns, rows, caption, empty, kind }) {
   if (!rows.length && empty) return empty;
   return html`<div class="table-scroll">
-    <table class="data">
+    <table class=${cx("data", kind)}>
       ${caption ? html`<caption>${caption}</caption>` : null}
       <thead><tr>${columns.map((c) => html`
         <th key=${c.key} scope="col" class=${cx(c.numeric && "num")} title=${c.title}>${c.label}</th>`)}

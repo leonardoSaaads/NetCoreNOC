@@ -583,7 +583,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # three declaration controls, split out for the same module-graph reason `members.js` and
     # `card.js` were; and `DELETE /api/labels/{kind}/{target_id}`, the only /api route this
     # release adds.
-    assert len(served) == 105, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # v0.16.4: 105 -> 106, and it is **one static module and no /api route at all**.
+    # `app/views/parts/judge.js` is the judgement surface, split out of `card.js` when the
+    # state-dependent action surface took that file past the module-graph guard — the same reason,
+    # for the fourth time (DECISIONS #291, #293). The /api surface is unchanged at 51, which is the
+    # property this pair of assertions is really for: a release about layout must not grow the
+    # server's contract.
+    assert len(served) == 106, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 51, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
@@ -671,7 +678,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # three declaration controls, split out for the same module-graph reason `members.js` and
     # `card.js` were; and `DELETE /api/labels/{kind}/{target_id}`, the only /api route this
     # release adds.
-    assert len(served) == 105, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # v0.16.4: 105 -> 106, and it is **one static module and no /api route at all**.
+    # `app/views/parts/judge.js` is the judgement surface, split out of `card.js` when the
+    # state-dependent action surface took that file past the module-graph guard — the same reason,
+    # for the fourth time (DECISIONS #291, #293). The /api surface is unchanged at 51, which is the
+    # property this pair of assertions is really for: a release about layout must not grow the
+    # server's contract.
+    assert len(served) == 106, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 51, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "

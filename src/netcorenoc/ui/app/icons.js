@@ -83,6 +83,13 @@ const ICONS = {
   info: { d: ["M12 11v5"], c: [[12, 12, 8.5], [12, 8, 0.6]] },
   shield: { d: ["M12 3.5 20 6v6c0 4.2-3.2 7.4-8 8.5-4.8-1.1-8-4.3-8-8.5V6l8-2.5Z", "M12 9v4"],
             c: [[12, 15.8, 0.6]] },
+
+  // -- v0.16.4: the shell's own marks ---------------------------------------------------
+  //
+  // Each replaces a word the control now says for itself. The chain is the situation permalink,
+  // which read `link` beside a `#41` an operator could already see.
+  link: { d: ["M10 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1",
+              "M14 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1"] },
 };
 
 /** Every name this module can draw. Read by `tests/test_icons.py`, never for dispatch. */

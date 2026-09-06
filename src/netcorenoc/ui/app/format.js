@@ -56,6 +56,41 @@ export function timeTitle(epochSeconds) {
   return `${absolute(epochSeconds)} (${TIMEZONE}) — ${relative(epochSeconds)}`;
 }
 
+/* ---------- what has been asserted about a grouping ---------- */
+
+/**
+ * The gesture kinds that assert something about a **grouping** (v0.16.4, DECISIONS #291).
+ *
+ * A **mirror** of `store/situation_events.py::ASSERTING_KINDS`, not a second opinion:
+ * `tests/test_ui_invariants.py::test_the_console_and_the_store_agree_on_which_gestures_assert`
+ * reads both files and fails if they diverge. The literal lives there because that is where the
+ * prohibition is enforced — `PREREGISTRATION-0.16.0.md` §1 extends `incumbent_linked`'s rule to
+ * any signal that is not an assertion about a grouping — and it is needed here because the card's
+ * action surface turns on whether a judgement is already on record.
+ *
+ * `rename`, `manual_clear`, `self_clear`, `idle_close` and `operator_close` are deliberately
+ * absent. Each of them **promotes** a situation to `open` and none of them says anything about
+ * whether the alarms belong together, which is precisely why `open` is the wrong fact to key an
+ * action surface on (v0.16.2's promotion/affirmation split).
+ */
+export const ASSERTING_KINDS = new Set(["verdict", "move", "merge", "operator_split"]);
+
+/**
+ * Has this situation already been judged, and by whom?
+ *
+ * Returns `null` when no asserting gesture is on record — the ordinary state of a `new` situation,
+ * and of an `open` one that was promoted or renamed and nothing more. Otherwise the most recent
+ * asserting event, so the card can say what was recorded rather than only that something was.
+ */
+export function lastJudgement(events) {
+  let latest = null;
+  for (const event of events ?? []) {
+    if (!ASSERTING_KINDS.has(event.kind)) continue;
+    if (latest === null || (event.at ?? 0) >= (latest.at ?? 0)) latest = event;
+  }
+  return latest;
+}
+
 /* ---------- severity ---------- */
 
 /**

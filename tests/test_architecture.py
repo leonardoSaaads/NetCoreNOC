@@ -415,6 +415,9 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/members.js"),
     ("GET", "/app/views/parts/why.js"),
     ("GET", "/app/views/parts/card.js"),
+    # v0.16.4: the judgement surface, split out of `card.js` when the state-dependent action
+    # surface took that file over the module-graph guard (DECISIONS #291, #293).
+    ("GET", "/app/views/parts/judge.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
@@ -939,8 +942,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
 #: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
 #: for the same module-graph reason `members.js` and `card.js` were.
-SRC_TREE_DIGEST = "b6d0f68bd09aa54d3dce00c9298554cd269c662b93fd0e129075507a21637f71"
-SRC_FILE_COUNT = 198
+SRC_TREE_DIGEST = "11e66847ca4ff094c045a377264a5a062e93825b715a1cdf558dc7b71a9d2b34"
+SRC_FILE_COUNT = 199
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

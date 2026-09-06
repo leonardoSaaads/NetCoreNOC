@@ -281,7 +281,12 @@ const scenarios = {
     // v0.16.0: `input` alone no longer means "a member checkbox". The card also carries the
     // confidence range, two situation-id number fields and the name text field, so the selector
     // says which inputs it means rather than relying on the card having only one kind.
-    const boxes = detail.querySelectorAll('input[type="checkbox"]');
+    //
+    // v0.16.4: **and it says which part of the table it means.** The mark column's header now
+    // carries a select-all, so `input[type="checkbox"]` inside the card includes one control that
+    // is not a member — and taking it as index 0 shifted every mark by one row, which is exactly
+    // the shape invariant 2 exists to refuse. `tbody` is the rows.
+    const boxes = detail.querySelectorAll('tbody input[type="checkbox"]');
     for (const index of params.mark ?? []) {
       const box = boxes[index];
       if (!box) throw new Error(`no member checkbox at index ${index} (${boxes.length} rendered)`);
@@ -358,6 +363,87 @@ const scenarios = {
       });
     }
     return { steps, proof: proofOf(env) };
+  },
+
+  /**
+   * Expand a card and report **what an operator can do on it** (v0.16.4, DECISIONS #291).
+   *
+   * Not what it displays: which controls are on the page, whether the judged disclosure is closed
+   * over them, and — when `params.adjust` — the same list again after it is opened. The caller
+   * doctors `events` to put the situation in each of the states the decision names, because a
+   * corpus replay makes no gestures and would leave three of the four unreachable.
+   */
+  async actionSurface(params) {
+    // Reached by its PERMALINK rather than by the list plus a click: this screen opens on the New
+    // tab (DECISIONS #254), so a situation in any other state is not in the list to click on, and
+    // the permalink pins it there (F97's repair, doing exactly the job it was built for).
+    const env = await boot({ ...params, hash: `#/situations/${params.sid}` });
+    await settle(env);
+    const read = () => {
+      const detail = cardFor(env, params.sid).detail;
+      return {
+        judged: detail.querySelector(".judged-note")?.textContent.replace(/\s+/g, " ").trim() ?? null,
+        adjust: Boolean(detail.querySelector(".judged button")),
+        grouping: detail.querySelectorAll(".fb button").map((b) => b.textContent.trim()),
+        restructure: Boolean(detail.querySelector(".lifecycle")),
+        nameField: Boolean(detail.querySelector("#lcName")),
+        marks: detail.querySelectorAll('tbody input[type="checkbox"]').length,
+        selectAll: Boolean(detail.querySelector('thead input[type="checkbox"]')),
+        clears: detail.querySelectorAll("button.row-clear").length,
+        declares: detail.querySelectorAll(".row-actions .declare-open").length,
+      };
+    };
+    const before = read();
+    let after = null;
+    if (params.adjust && before.adjust) {
+      cardFor(env, params.sid).detail.querySelector(".judged button")
+        .dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+      after = read();
+    }
+    return { before, after, proof: proofOf(env) };
+  },
+
+  /**
+   * Tick the mark column's header and report what the split then sends (v0.16.4).
+   *
+   * One corpus situation holds 1 051 members; a partial split over it is not a gesture anybody
+   * completes one checkbox at a time. The assertion that matters is not that boxes appear ticked
+   * — it is that the ids in the request are **exactly** the membership, which is invariant 2's
+   * contract reached through a new control.
+   */
+  async markAll(params) {
+    const env = await boot(params);
+    env.navigate("#/situations");
+    await settle(env);
+    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const header = cardFor(env, params.sid).detail.querySelector('thead input[type="checkbox"]');
+    if (!header) throw new Error("the mark column's header carries no select-all");
+    header.checked = true;
+    header.dispatchEvent(new env.DomEvent("change"));
+    await settle(env);
+    const ticked = cardFor(env, params.sid).detail
+      .querySelectorAll('tbody input[type="checkbox"]').filter((b) => b.checked).length;
+
+    buttonIn(cardFor(env, params.sid).detail, "Split").dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const post = env.network.requests.find((r) => r.method === "POST" && r.path.includes("/feedback"));
+
+    // …and untick, because a control that only goes one way is half a control.
+    const header2 = cardFor(env, params.sid).detail.querySelector('thead input[type="checkbox"]');
+    header2.checked = false;
+    header2.dispatchEvent(new env.DomEvent("change"));
+    await settle(env);
+    const afterUntick = cardFor(env, params.sid).detail
+      .querySelectorAll('tbody input[type="checkbox"]').filter((b) => b.checked).length;
+
+    return {
+      ticked,
+      afterUntick,
+      feedbackBody: post?.body ?? null,
+      proof: proofOf(env),
+    };
   },
 
   /**
@@ -521,7 +607,10 @@ const scenarios = {
 
     const detailBefore = cardFor(env, params.sid).detail;
     const splitBefore = buttonIn(detailBefore, "Split");
-    const boxes = detailBefore.querySelectorAll("input");
+    // v0.16.4: `tbody`, and the same correction as `partialSplit` above — the mark column's
+    // header now carries a select-all, so a card-wide `input` scan takes a control that is not a
+    // member as index 0 and every mark lands one row late.
+    const boxes = detailBefore.querySelectorAll('tbody input[type="checkbox"]');
     for (const index of params.mark ?? []) {
       boxes[index].checked = true;
       boxes[index].dispatchEvent(new env.DomEvent("change"));

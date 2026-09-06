@@ -1757,3 +1757,201 @@ async def test_a_permalink_followed_from_inside_situations_opens_the_card_it_nam
         f"cards expanded are {steps[1]['expanded']}. That is F108."
     )
     assert steps[2]["expanded"] == [], "leaving the screen did not take the cards with it"
+
+
+def _in_state(
+    captured: dict[str, Any], sid: int, *, status: str, events: list[Any]
+) -> dict[str, Any]:
+    """The captured detail payload put into one of the four states DECISIONS #291 names.
+
+    A corpus replay makes no gestures and closes nothing, so three of the four are unreachable on
+    real data — the same reason `severityBands` doctors severities and `_with_history` doctors
+    events. Only the two fields the decision turns on are moved; everything else is the server's.
+    """
+    detail = captured[f"/api/situations/{sid}"]["json"]
+    listing = [
+        {**row, "status": status} if row["id"] == sid else row
+        for row in captured["/api/situations?limit=50"]["json"]
+    ]
+    return {
+        **captured,
+        "/api/situations?limit=50": {"status": 200, "json": listing},
+        f"/api/situations/{sid}": {
+            "status": 200,
+            "json": {**detail, "status": status, "events": events},
+        },
+    }
+
+
+JUDGEMENT = [
+    {
+        "kind": "verdict",
+        "at": 1_700_000_300.0,
+        "actor": "user:2",
+        "actor_name": "admin",
+        "confidence": None,
+    }
+]
+NOT_A_JUDGEMENT = [
+    # Every one of these PROMOTES a situation to `open` and none of them says anything about
+    # whether the alarms belong together. If the card keyed on the status it would treat this as
+    # judged, which is the reading DECISIONS #291 rejects.
+    {
+        "kind": "rename",
+        "at": 1_700_000_100.0,
+        "actor": "user:2",
+        "actor_name": "admin",
+        "confidence": None,
+    },
+    {
+        "kind": "manual_clear",
+        "at": 1_700_000_200.0,
+        "actor": "user:2",
+        "actor_name": "admin",
+        "confidence": None,
+    },
+]
+
+
+def test_the_console_and_the_store_agree_on_which_gestures_assert() -> None:
+    """**The mirror, checked** (DECISIONS #291).
+
+    `format.js::ASSERTING_KINDS` decides whether a card treats a situation as judged, and the
+    literal it mirrors lives in `store/situation_events.py`, where the prohibition is enforced.
+    Two copies of a set is how one of them comes to be wrong; this reads both files, so the day
+    they diverge is the day this fails rather than the day an operator is offered a gesture the
+    appliance no longer counts.
+    """
+    import netcorenoc
+    from netcorenoc.store.situation_events import ASSERTING_KINDS
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui"
+    source = (ui / "app" / "format.js").read_text(encoding="utf-8")
+    match = re.search(r"ASSERTING_KINDS = new Set\(\[([^\]]*)\]\)", source, re.S)
+    assert match, "format.js no longer mirrors ASSERTING_KINDS in a form this can read"
+    mirrored = set(re.findall(r'"([a-z_]+)"', match.group(1)))
+    assert mirrored == set(ASSERTING_KINDS), (
+        f"the console counts {sorted(mirrored)} as asserting and the store counts "
+        f"{sorted(ASSERTING_KINDS)}. One of them is wrong about what a gesture means."
+    )
+
+
+@dom_test
+async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_it_in(
+    routes: dict[str, Any],
+) -> None:
+    """**DECISIONS #291, and the property it must not break: nothing is removed.**
+
+    The maintainer's ask was that a judged situation stop offering Confirm and Split as though
+    nothing had happened. The answer is a disclosure, not a deletion — and the difference is what
+    this asserts. Four states:
+
+      * `new`, unjudged — the full triage surface, unchanged;
+      * `open` promoted or renamed but **not judged** — the same surface, because `open` means an
+        operator is working it and says nothing about the grouping (v0.16.2's split);
+      * `open` **judged** — the same controls, one click behind `Adjust the grouping`, with what
+        was already recorded stated above it;
+      * `resolved` — verdicts stay (the server answers 200), restructuring is absent (**409**).
+
+    What this does NOT cover: that the disclosure is discoverable. That is a browser question and
+    the live pass is where it is answered.
+    """
+    sid, _count = uifixtures.largest_situation(routes["editor"])
+    editor = routes["editor"]
+
+    # "Start working this" is the promote and belongs to `new` alone; every other control in the
+    # `.fb` row is a statement about the GROUPING, and those are what the disclosure folds.
+    def judging(state: dict[str, Any]) -> list[str]:
+        return [b for b in state["grouping"] if b != "Start working this"]
+
+    fresh = domdriver.run_scenario(
+        "actionSurface", {"routes": _in_state(editor, sid, status="new", events=[]), "sid": sid}
+    )["before"]
+    assert fresh["judged"] is None and fresh["adjust"] is False
+    assert "Confirm grouping" in fresh["grouping"], fresh["grouping"]
+    assert "Start working this" in fresh["grouping"], "a new situation offers no promote"
+    assert fresh["restructure"] and fresh["nameField"] and fresh["selectAll"]
+    assert fresh["marks"] > 0 and fresh["declares"] >= 3 * fresh["marks"]
+
+    # `open`, promoted or renamed, nothing judged. Identical to `new` but for the promote button,
+    # and THAT is the reading of `open` the decision turns on.
+    promoted = domdriver.run_scenario(
+        "actionSurface",
+        {"routes": _in_state(editor, sid, status="open", events=NOT_A_JUDGEMENT), "sid": sid},
+    )["before"]
+    assert promoted["judged"] is None, (
+        f"a rename and a hand-clear were read as a judgement: {promoted['judged']!r}. Neither "
+        f"asserts anything about the grouping, which is why the surface keys on the gesture and "
+        f"not on the status."
+    )
+    assert judging(promoted) == judging(fresh), (promoted["grouping"], fresh["grouping"])
+    assert "Start working this" not in promoted["grouping"], "an open situation offers a promote"
+    assert promoted["restructure"] is True
+
+    # `open`, judged: folded, and then unfolded to exactly the same controls.
+    judged = domdriver.run_scenario(
+        "actionSurface",
+        {
+            "routes": _in_state(editor, sid, status="open", events=JUDGEMENT),
+            "sid": sid,
+            "adjust": True,
+        },
+    )
+    assert judged["before"]["judged"], "a judged situation does not say what was recorded"
+    assert "admin" in judged["before"]["judged"], judged["before"]["judged"]
+    assert judged["before"]["adjust"] is True
+    assert judged["before"]["grouping"] == [], (
+        f"the grouping controls are still open on a judged situation: "
+        f"{judged['before']['grouping']}"
+    )
+    assert judging(judged["after"]) == judging(fresh), (
+        f"Adjust does not restore the same controls: {judged['after']['grouping']} vs "
+        f"{fresh['grouping']}. Nothing may be REMOVED by this decision, only folded."
+    )
+    assert judged["after"]["restructure"] is True
+    # The marks and the declarations are never folded: they are how a split is composed, and a
+    # declaration is not a judgement about the grouping at all.
+    for state in (fresh, promoted, judged["before"]):
+        assert state["marks"] == fresh["marks"] and state["selectAll"]
+        assert state["declares"] == fresh["declares"]
+        assert state["nameField"]
+
+    # `resolved`: the verdicts the server accepts, and none of the three it refuses with 409.
+    resolved = domdriver.run_scenario(
+        "actionSurface",
+        {
+            "routes": _in_state(editor, sid, status="resolved", events=JUDGEMENT),
+            "sid": sid,
+            "adjust": True,
+        },
+    )
+    assert resolved["after"]["restructure"] is False, (
+        "the restructure block is offered on a resolved situation; the server answers 409 to all "
+        "three of its gestures, so the console would be offering what will be refused"
+    )
+    assert "Confirm grouping" in resolved["after"]["grouping"], resolved["after"]["grouping"]
+    assert not any("Close" in b for b in resolved["after"]["grouping"]), (
+        f"Close is offered on a situation that has already closed: {resolved['after']['grouping']}"
+    )
+
+
+@dom_test
+async def test_the_mark_column_header_marks_and_clears_every_row(routes: dict[str, Any]) -> None:
+    """**"A way to clear every row at once"**, and it is invariant 2's contract through a new door.
+
+    Measured: one corpus situation holds **1 051** members. Ticking them one at a time is not a
+    gesture anybody completes, so the mark column's header ticks and clears the lot — and the
+    thing that must stay true is that the ids the split then sends are **exactly** the membership
+    and nothing else, which is what
+    `test_a_partial_split_sends_exactly_the_marked_ids_and_no_others` protects for the manual path.
+    """
+    sid, count = uifixtures.largest_situation(routes["editor"])
+    members = uifixtures.member_ids(routes["editor"], sid)
+    result = domdriver.run_scenario("markAll", {"routes": routes["editor"], "sid": sid})
+    assert result["ticked"] == count, f"{result['ticked']} of {count} rows were marked"
+    assert result["feedbackBody"]["excluded_ids"] == members, (
+        "select-all sent something other than the membership, in the order the card renders it"
+    )
+    # CONTROL: the same control the other way. A select-all that cannot be undone leaves an
+    # operator who mis-clicked with 1 051 checkboxes to untick.
+    assert result["afterUntick"] == 0, f"{result['afterUntick']} rows are still marked after untick"
