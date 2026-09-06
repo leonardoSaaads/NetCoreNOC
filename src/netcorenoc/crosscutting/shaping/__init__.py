@@ -48,6 +48,7 @@ from netcorenoc.crosscutting.shaping.fields import _DROP as _DROP
 from netcorenoc.crosscutting.shaping.fields import (
     FIELD_RULES,
     coarsen_ip,
+    contains_address,
     sees_raw_addresses,
     shape,
 )
@@ -93,6 +94,7 @@ __all__ = [
     "ScopePolicy",
     "coarsen_ip",
     "coarsen_situation_name",
+    "contains_address",
     "derive_situation_name",
     "filter_rows",
     "is_scopable",
