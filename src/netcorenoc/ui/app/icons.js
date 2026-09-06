@@ -86,10 +86,16 @@ const ICONS = {
 
   // -- v0.16.4: the shell's own marks ---------------------------------------------------
   //
-  // Each replaces a word the control now says for itself. The chain is the situation permalink,
-  // which read `link` beside a `#41` an operator could already see.
+  // Four, and each replaces a word the control now says for itself. The chain is the situation
+  // permalink, which read `link` beside a `#41` an operator could already see; the bell is the
+  // warnings the banner strip used to spend a row on; the pulse is the health control; and the
+  // panel is the sidebar's collapse.
   link: { d: ["M10 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1",
               "M14 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1"] },
+  bell: { d: ["M6 9.5a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 13.5 6 9.5Z",
+              "M10 18.5a2 2 0 0 0 4 0"] },
+  pulse: { d: ["M3 12h3.5l2-5 3.5 10 2.5-5H21"] },
+  panel: { d: ["M4 5.5h16v13H4v-13Z", "M10 5.5v13"] },
 };
 
 /** Every name this module can draw. Read by `tests/test_icons.py`, never for dispatch. */

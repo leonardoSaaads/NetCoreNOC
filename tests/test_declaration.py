@@ -584,13 +584,16 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # `card.js` were; and `DELETE /api/labels/{kind}/{target_id}`, the only /api route this
     # release adds.
     #
-    # v0.16.4: 105 -> 106, and it is **one static module and no /api route at all**.
+    # v0.16.4: 105 -> 108, and all three are **static modules with no /api route between them**.
     # `app/views/parts/judge.js` is the judgement surface, split out of `card.js` when the
     # state-dependent action surface took that file past the module-graph guard — the same reason,
-    # for the fourth time (DECISIONS #291, #293). The /api surface is unchanged at 51, which is the
-    # property this pair of assertions is really for: a release about layout must not grow the
-    # server's contract.
-    assert len(served) == 106, f"the served surface moved: {len(served)} method/path pairs"
+    # for the fourth time (DECISIONS #291, #293) — `app/notices.js` is the top bar's bell and
+    # health control, which replaced four counter chips (#288, #289), and `views/parts/finder.js`
+    # is the search, the tabs and the count cards, split out when they became one block. The /api
+    # surface is
+    # unchanged at 51, which is the property this pair of assertions is really for: a release
+    # about layout must not grow the server's contract.
+    assert len(served) == 108, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 51, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
@@ -679,13 +682,16 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # `card.js` were; and `DELETE /api/labels/{kind}/{target_id}`, the only /api route this
     # release adds.
     #
-    # v0.16.4: 105 -> 106, and it is **one static module and no /api route at all**.
+    # v0.16.4: 105 -> 108, and all three are **static modules with no /api route between them**.
     # `app/views/parts/judge.js` is the judgement surface, split out of `card.js` when the
     # state-dependent action surface took that file past the module-graph guard — the same reason,
-    # for the fourth time (DECISIONS #291, #293). The /api surface is unchanged at 51, which is the
-    # property this pair of assertions is really for: a release about layout must not grow the
-    # server's contract.
-    assert len(served) == 106, f"the served surface moved: {len(served)} method/path pairs"
+    # for the fourth time (DECISIONS #291, #293) — `app/notices.js` is the top bar's bell and
+    # health control, which replaced four counter chips (#288, #289), and `views/parts/finder.js`
+    # is the search, the tabs and the count cards, split out when they became one block. The /api
+    # surface is
+    # unchanged at 51, which is the property this pair of assertions is really for: a release
+    # about layout must not grow the server's contract.
+    assert len(served) == 108, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 51, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "

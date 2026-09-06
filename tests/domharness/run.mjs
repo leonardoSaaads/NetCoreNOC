@@ -366,6 +366,76 @@ const scenarios = {
   },
 
   /**
+   * The top bar's two disclosures, and the sidebar's two states (v0.16.4, #288-#290).
+   *
+   * Opens each panel, reads what it holds, closes it with Escape, and toggles the sidebar — all
+   * through the events a browser raises, because every one of these is a control whose *state* is
+   * the thing under test and none of them is visible in the markup at rest.
+   */
+  async shellControls(params) {
+    const env = await boot(params);
+    const q = (sel) => env.document.querySelector(sel);
+    const read = (id) => {
+      const panel = env.document.getElementById(id);
+      return {
+        open: panel ? !panel.hasAttribute("hidden") : null,
+        label: panel?.getAttribute("aria-label") ?? null,
+        text: panel?.textContent.replace(/\s+/g, " ").trim() ?? null,
+        links: (panel?.querySelectorAll("a") ?? []).map((a) => a.getAttribute("href")),
+        items: (panel?.querySelectorAll(".notice-text") ?? [])
+          .map((n) => n.textContent.replace(/\s+/g, " ").trim()),
+        // The health panel's row LABELS: what it claims to measure, as distinct from the prose
+        // beside them saying what it cannot.
+        figures: (panel?.querySelectorAll("dt") ?? []).map((d) => d.textContent.trim()),
+      };
+    };
+    const press = async (sel) => {
+      const node = q(sel);
+      if (!node) throw new Error(`no control matching ${sel}`);
+      node.dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+    };
+
+    const out = { chips: env.document.querySelectorAll(".chip").length };
+    out.bellClosed = read("noticePanel");
+    await press('button[aria-controls="noticePanel"]');
+    out.bellOpen = read("noticePanel");
+    // A second press closes it. Escape does too — `notices.js` registers a document `keydown`
+    // listener for it — and that path is driven in the browser rather than here, because this
+    // harness's document has no key-event dispatch and a test that pretended otherwise would be
+    // measuring the harness.
+    await press('button[aria-controls="noticePanel"]');
+    out.bellReclosed = read("noticePanel");
+
+    await press('button[aria-controls="healthPanel"]');
+    out.healthOpen = read("healthPanel");
+
+    const navItems = () => env.document.querySelectorAll(".nav-item").map((a) => {
+      const label = a.querySelector(".nav-label");
+      return {
+        label: a.getAttribute("aria-label"),
+        text: label?.textContent ?? null,
+        // HOW the label is hidden, which is the whole difference between a screen-reader operator
+        // being able to use a collapsed rail and not. `.visually-hidden` clips; `display: none`
+        // removes it from the tree, and no test here has a layout engine to tell them apart —
+        // so the technique is a class in the DOM rather than a rule in a stylesheet.
+        clipped: (label?.getAttribute("class") ?? "").split(/\s+/).includes("visually-hidden"),
+      };
+    });
+    out.navExpanded = { items: navItems(), shell: q("#app")?.getAttribute("class") };
+    await press("button.nav-toggle");
+    out.navCollapsed = {
+      items: navItems(),
+      shell: q("#app")?.getAttribute("class"),
+      cookie: String(env.document.cookie ?? ""),
+      expandedAttr: q("button.nav-toggle")?.getAttribute("aria-expanded"),
+    };
+    await press("button.nav-toggle");
+    out.navReexpanded = { shell: q("#app")?.getAttribute("class") };
+    return { ...out, proof: proofOf(env) };
+  },
+
+  /**
    * Expand a card and report **what an operator can do on it** (v0.16.4, DECISIONS #291).
    *
    * Not what it displays: which controls are on the page, whether the judged disclosure is closed

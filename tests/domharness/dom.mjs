@@ -100,6 +100,17 @@ class DomNode {
     return n === this.ownerDocument || n === this.ownerDocument?.documentElement;
   }
 
+  /** `Node.contains`: is `other` this node or a descendant of it?
+   *
+   * Added in v0.16.4 because the top bar's disclosures ask it — *"was this click outside me?"* is
+   * how a popover closes, and the alternative to a real `contains` is product code contorted
+   * around a harness gap. A node contains itself, which is what the DOM says and what the
+   * closing rule needs: a click on the opener is inside. */
+  contains(other) {
+    for (let n = other; n; n = n.parentNode) if (n === this) return true;
+    return false;
+  }
+
   appendChild(child) {
     // A node that already has a parent MOVES. `renderSituations` re-appends a harvested detail
     // node, and if this cloned instead of moved the v0.7.5 invariant would pass for the wrong

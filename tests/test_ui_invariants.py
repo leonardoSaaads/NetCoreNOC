@@ -1955,3 +1955,142 @@ async def test_the_mark_column_header_marks_and_clears_every_row(routes: dict[st
     # CONTROL: the same control the other way. A select-all that cannot be undone leaves an
     # operator who mis-clicked with 1 051 checkboxes to untick.
     assert result["afterUntick"] == 0, f"{result['afterUntick']} rows are still marked after untick"
+
+
+def _with_warnings(captured: dict[str, Any]) -> dict[str, Any]:
+    """The captured `/api/stats` carrying the warnings a misconfigured appliance really raises.
+
+    **Taken from `runner.py`'s own producers, never typed here.** The bell's link is derived by
+    matching a warning's text against the parameter table, so a guard written against a paraphrase
+    would pass over a rewording that broke the real thing. These are the strings the appliance
+    emits with no allowlist, no TLS and a denied datagram — the three that resolve — beside one
+    that names no parameter at all, which is the case the no-link branch exists for.
+    """
+    from netcorenoc.ingest.receiver import ReceiverStats
+    from netcorenoc.runner import Supervisor, operator_warnings, receiver_warnings
+
+    supervisor = Supervisor()
+    supervisor.crashes["engine"] = 2
+    supervisor.last_error["engine"] = "OSError"
+    warnings = [
+        *operator_warnings("", tls_enabled=False, http_host="0.0.0.0"),  # nosec B104 - a fixture
+        *receiver_warnings(ReceiverStats(denied=3), "10.0.0.0/8"),
+        *supervisor.warnings(),
+    ]
+    stats = captured["/api/stats"]["json"]
+    return {**captured, "/api/stats": {"status": 200, "json": {**stats, "warnings": warnings}}}
+
+
+@dom_test
+async def test_the_top_bar_holds_the_warnings_and_the_health_it_used_to_spend_a_row_on(
+    routes: dict[str, Any],
+) -> None:
+    """**DECISIONS #288 and #289**, driven rather than described.
+
+    Four counter chips left the top bar and two disclosures arrived. Neither is a new mechanism —
+    the warnings already interrupted and every health figure was already served — and what this
+    asserts is the part that is new: that the bell **holds** them, that a warning naming a
+    parameter carries a link to it and one that does not carries none, and that the health panel
+    shows only figures `/api/stats` measures.
+
+    What this does NOT cover: that 360 px of chrome became 94, or that the panel stays inside the
+    viewport. Those are layout, this harness has no layout engine, and the browser measurements in
+    the release notes are the evidence for them.
+    """
+    result = domdriver.run_scenario("shellControls", {"routes": _with_warnings(routes["admin"])})
+
+    assert result["chips"] == 0, (
+        f"{result['chips']} counter chips are still in the top bar. All four moved: two to the "
+        f"Situations screen as filters, two to the Overview's 'learned' row."
+    )
+    assert result["bellClosed"]["open"] is False, "the bell's panel is open before it is pressed"
+    assert result["bellOpen"]["open"] is True, "pressing the bell opened nothing"
+    assert result["bellReclosed"]["open"] is False, "a second press did not close the bell"
+
+    items = result["bellOpen"]["items"]
+    assert items, "the bell holds no warnings on a fixture whose /api/stats carries some"
+    links = result["bellOpen"]["links"]
+    assert all(href == "#/settings" for href in links), links
+    # The fraction, not the fact. A warning naming a parameter links; one that does not renders as
+    # text with no affordance, and BOTH halves are the decision.
+    assert 0 < len(links) <= len(items), (
+        f"{len(links)} of {len(items)} warnings carry a link. Zero would mean the derivation is "
+        f"dead; one per warning would mean it links things it cannot resolve."
+    )
+
+    health = result["healthOpen"]
+    assert health["open"] is True
+    assert set(health["figures"]) >= {"queue depth", "p95 latency", "trap rate"}, health["figures"]
+    # **Every figure it shows is one `/api/stats` serves.** Asserted over the row LABELS rather
+    # than over the panel's text, because the panel also carries the sentence saying CPU, memory
+    # and disk are not measured — and a guard that could not tell a figure from a disclaimer would
+    # have to choose between failing on the honest sentence and passing on an invented number.
+    served = {"queue depth", "p95 latency", "trap rate", "refused", "dropped"}
+    assert set(health["figures"]) <= served, (
+        f"the health control shows {sorted(set(health['figures']) - served)}, which "
+        f"`/api/stats` does not serve. There is no psutil, no `resource` and no /proc read in "
+        f"src/, so a host figure here would be invented (DECISIONS #289)."
+    )
+    assert "not measured by this appliance" in health["text"], (
+        "the health control shows four numbers and does not say which it cannot show; an operator "
+        "asking 'is the box out of memory' deserves the answer rather than silence"
+    )
+
+
+@dom_test
+async def test_a_collapsed_sidebar_keeps_every_label_in_the_accessible_tree(
+    routes: dict[str, Any],
+) -> None:
+    """**DECISIONS #290, and the accessibility floor it must not lower.**
+
+    A collapsed sidebar is icon-only *by definition*, so the accessible name is the whole of its
+    usability for a screen-reader user — and the v0.13.0 floor's rule that every icon in this
+    console is decoration beside a text label is the one rule a collapsed rail cannot keep as
+    written. What keeps its intent is that the label is still **in the tree**: hidden by clipping,
+    never by `display: none`, and repeated in `aria-label` with the badge's meaning spelled out.
+
+    The state persists in a cookie, following the theme (ADR #172), because
+    `tests/test_security_ui.py` asserts `localStorage` appears nowhere in this console and a first
+    carve-out turns an absolute into a judgement call.
+    """
+    result = domdriver.run_scenario("shellControls", {"routes": routes["admin"]})
+
+    expanded, collapsed = result["navExpanded"], result["navCollapsed"]
+    assert "nav-collapsed" not in (expanded["shell"] or ""), expanded["shell"]
+    assert "nav-collapsed" in (collapsed["shell"] or ""), (
+        f"pressing the toggle did not collapse the shell: {collapsed['shell']!r}"
+    )
+    assert "nav-collapsed" not in (result["navReexpanded"]["shell"] or ""), (
+        "the toggle collapses and does not expand; two states need a toggle, not a ratchet"
+    )
+    assert collapsed["expandedAttr"] == "false", (
+        f"aria-expanded is {collapsed['expandedAttr']!r} on a collapsed sidebar"
+    )
+    assert "ncn_nav=collapsed" in collapsed["cookie"], (
+        f"the state did not persist to the cookie: {collapsed['cookie']!r}"
+    )
+
+    # Every item keeps its text in the DOM, and gains an explicit name when it is not painted.
+    assert len(collapsed["items"]) == len(expanded["items"]) > 0
+    for item in collapsed["items"]:
+        assert item["text"], "a collapsed item dropped its label from the tree entirely"
+        assert item["label"], (
+            "a collapsed item is icon-only with no accessible name, which makes it unusable for a "
+            "screen-reader operator — the one thing a collapsed rail must not do"
+        )
+        assert item["text"] in item["label"], (item["text"], item["label"])
+        assert item["clipped"], (
+            "a collapsed label is hidden by something other than `.visually-hidden`. The class is "
+            "this console's one implementation of 'hidden from the eye, kept in the tree'; a "
+            "second one is how `display: none` gets in, and that removes the label from the "
+            "accessible tree where no test in this repository could see it."
+        )
+    # CONTROL: expanded items need no `aria-label`, because the label is on screen beside the icon.
+    assert all(item["label"] is None for item in expanded["items"]), (
+        "an expanded item carries an aria-label, which would override the visible text a sighted "
+        "and a screen-reader operator are meant to share"
+    )
+    assert not any(item["clipped"] for item in expanded["items"]), (
+        "an expanded item's label is clipped, so the sidebar is icons at a width that has room "
+        "for words"
+    )

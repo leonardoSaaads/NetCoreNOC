@@ -105,6 +105,8 @@ class GovernanceMixin(StoreBase):
                 "classes": 0,
                 "active_alarms": 0,
                 "open_situations": 0,
+                "new_situations": 0,
+                "working_situations": 0,
                 "quarantined": 0,
             }
         ne_marks = ",".join("?" * len(ne_ids))
@@ -127,6 +129,24 @@ class GovernanceMixin(StoreBase):
                 # v0.16.0: `new` is live too, so a scoped operator's count means what it always
                 # meant — situations that have not left — rather than only the triaged ones.
                 f"WHERE s.{LIVE} AND a.ne_id IN ({ne_marks})",  # nosec B608 - placeholders only
+            ),
+            # v0.16.4: the same population split by status, and scoped by the same rule — a
+            # situation counts when it has at least one visible member. Leaving these global while
+            # `open_situations` beside them is scoped would be the volume oracle this docstring
+            # describes, reintroduced one key along.
+            (
+                "new_situations",
+                "SELECT COUNT(DISTINCT s.id) FROM situation s "
+                "JOIN situation_alarm sa ON sa.situation_id=s.id "
+                "JOIN alarm a ON a.id=sa.alarm_id "
+                f"WHERE s.status='new' AND a.ne_id IN ({ne_marks})",  # nosec B608 - placeholders only
+            ),
+            (
+                "working_situations",
+                "SELECT COUNT(DISTINCT s.id) FROM situation s "
+                "JOIN situation_alarm sa ON sa.situation_id=s.id "
+                "JOIN alarm a ON a.id=sa.alarm_id "
+                f"WHERE s.status='open' AND a.ne_id IN ({ne_marks})",  # nosec B608 - placeholders only
             ),
         ):
             cur = await self.conn.execute(sql, ne_args)

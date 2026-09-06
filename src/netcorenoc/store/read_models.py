@@ -34,6 +34,13 @@ class ReadModelsMixin(StoreBase):
             # working appliance the moment this release shipped — and this number has always
             # meant "situations that have not left", which is what it still means.
             ("open_situations", f"SELECT COUNT(*) FROM situation WHERE {LIVE}"),  # nosec B608
+            # v0.16.4: the two halves of that population, **counted rather than derived**.
+            # The console's Situations screen shows them as cards, and the live list it holds is
+            # capped at 50 rows — so counting the statuses there would report a floor and call it
+            # a count, which is exactly the invented number decision 2 refuses one screen over.
+            # Two more `COUNT(*)` over the same small table, on a route that already runs five.
+            ("new_situations", "SELECT COUNT(*) FROM situation WHERE status='new'"),
+            ("working_situations", "SELECT COUNT(*) FROM situation WHERE status='open'"),
             ("quarantined", "SELECT COUNT(*) FROM quarantine"),
         ):
             cur = await self.conn.execute(sql)

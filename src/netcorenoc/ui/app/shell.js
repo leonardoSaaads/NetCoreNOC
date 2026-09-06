@@ -38,16 +38,26 @@ import { Refused, Unknown } from "./widgets.js";
 import { Icon } from "./icons.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
 import { session, scopeSummary } from "./session.js";
-import { theme, setTheme, nextTheme } from "./theme.js";
+import { theme, setTheme, nextTheme, navState, setNavState, nextNavState } from "./theme.js";
+import { Bell, Health } from "./notices.js";
 import * as store from "./store.js";
 import { plural } from "./format.js";
 
 export class Shell extends Component {
   constructor(props) {
     super(props);
-    this.state = { fragment: currentFragment(), live: store.get() };
+    // The sidebar's state is held here rather than read from the cookie at each render, for F87's
+    // reason one control over: a preference the framework cannot observe is a control that does
+    // not repaint. The cookie is where it PERSISTS; this is where it lives (DECISIONS #290).
+    this.state = { fragment: currentFragment(), live: store.get(), nav: navState() };
     this.headingRef = null;
     this.lastViewId = null;
+  }
+
+  toggleNav() {
+    const next = nextNavState(this.state.nav);
+    setNavState(next);
+    this.setState({ nav: next });
   }
 
   componentDidMount() {
@@ -86,11 +96,13 @@ export class Shell extends Component {
       situations: (live.situations || []).filter((s) => s.status !== "resolved").length,
     };
 
-    return html`<div id="app" class="shell">
+    return html`<div id="app" class=${cx("shell", `nav-${this.state.nav}`)}>
       <${Sidebar} capabilities=${active.capabilities} activeId=${activeId}
-                  counts=${counts} onNavigate=${navigate} />
+                  counts=${counts} collapsed=${this.state.nav === "collapsed"}
+                  onNavigate=${navigate} />
       <div class="main">
-        <${TopBar} live=${live} onSignOut=${this.props.onSignOut} />
+        <${TopBar} live=${live} onSignOut=${this.props.onSignOut}
+                   nav=${this.state.nav} onNav=${() => this.toggleNav()} />
         <${Banners} stats=${live.stats} />
         <main id="work" class="work" tabindex="-1">
           <${WorkHeading} decision=${decision}
@@ -127,18 +139,39 @@ function WorkHeading({ decision, headingRef }) {
   </div>`;
 }
 
-/** Identity, scope, connection state and theme. Everything that is about the SESSION. */
-function TopBar({ live, onSignOut }) {
+/**
+ * The session, and the two things an operator acts on from anywhere (v0.16.4, #288, #289).
+ *
+ * **The four counters are gone.** `devices`, `classes`, `active alarms` and `open situations` were
+ * a strip of numbers nobody acts on from a chrome bar — every one is on the Overview, and the two
+ * that matter during an incident are now cards on Situations, where the work is. Measured, they
+ * cost the phone dearly: the top bar wrapped onto **four rows, 126 px**, and with the nav strip and
+ * the banners **360 px of an 844 px viewport** were spent before the work area began.
+ *
+ * What arrives is a **bell** and a **health control**: two icons, each a disclosure, each holding
+ * something an operator does something about. Neither is a new mechanism — the warnings already
+ * interrupted and every health figure was already served — and that is the point.
+ */
+function TopBar({ live, onSignOut, nav, onNav }) {
   const active = session();
   const scope = scopeSummary();
   const connection = live.connection;
+  const collapsed = nav === "collapsed";
   return html`<header class="topbar">
     <div class="topbar-live">
+      <button type="button" class="icon nav-toggle"
+              aria-expanded=${collapsed ? "false" : "true"} aria-controls="nav"
+              title=${collapsed ? NAV_TITLE.expand : NAV_TITLE.collapse}
+              aria-label=${collapsed ? NAV_TITLE.expand : NAV_TITLE.collapse}
+              onClick=${onNav}>
+        <${Icon} name="panel" />
+      </button>
       <span class=${cx("conn", `conn-${connection}`)} role="status"
             title=${CONNECTION_TITLE[connection]}>
         <span class="conn-dot" aria-hidden="true"></span>${CONNECTION_LABEL[connection]}
       </span>
-      ${live.stats ? html`<${LiveChips} stats=${live.stats} />` : null}
+      <${Bell} stats=${live.stats} />
+      <${Health} stats=${live.stats} rate=${live.trapRate} />
     </div>
     <div class="topbar-who">
       ${scope ? html`<span class="badge badge-scope" title=${scope.title}>
@@ -150,6 +183,11 @@ function TopBar({ live, onSignOut }) {
     </div>
   </header>`;
 }
+
+const NAV_TITLE = {
+  collapse: "Collapse the navigation to icons",
+  expand: "Expand the navigation to labels",
+};
 
 const CONNECTION_LABEL = {
   connecting: "connecting", live: "live", polling: "polling", error: "no updates",
@@ -197,36 +235,29 @@ class ThemeButton extends Component {
   }
 }
 
-function LiveChips({ stats }) {
-  const chips = [
-    ["devices", stats.devices],
-    ["classes", stats.classes],
-    ["active alarms", stats.active_alarms],
-    ["open situations", stats.open_situations],
-  ];
-  return html`<span class="chips">${chips.map(([label, value]) => html`
-    <span class="chip" key=${label}><b>${value}</b>${label}</span>`)}</span>`;
-}
-
 /**
- * The two banners that must interrupt whatever screen the operator is on.
+ * The one banner that must interrupt whatever screen the operator is on.
  *
  * An ingest gap means traps are being dropped **right now** and is the single most operationally
  * urgent thing this appliance can say, so it is not a chip on one screen — it is above the work
- * area on every screen. Unchanged in meaning from v0.12.0; moved so it is not tied to Situations.
+ * area on every screen. Unchanged in meaning from v0.12.0.
+ *
+ * **The warning strip left in v0.16.4, and the bell is where it went.** It was a row of every
+ * warning joined by bullets — measured at 187 px of an 844 px phone, unreadable at that width, and
+ * with nowhere to return to once it scrolled away. The bell holds the same list, keeps each
+ * warning on its own line, and gives the ones that name a parameter a link to it (DECISIONS #288).
+ * The gap stays here **as well as** in the bell: a panel an operator has to open is the wrong home
+ * for the sentence *"traps are being lost now"*.
  */
 function Banners({ stats }) {
   if (!stats) return null;
   const openGaps = stats.open_ingest_gaps || [];
-  const warnings = stats.warnings || [];
+  if (!openGaps.length) return null;
   return html`<div class="banners">
-    ${openGaps.length ? html`<div class="banner banner-urgent" role="alert">
+    <div class="banner banner-urgent" role="alert">
       <b>Ingest gap — dropping traps now.</b>
       ${` ${openGaps.reduce((n, g) => n + (g.dropped || 0), 0)} event(s) lost `}
       (${[...new Set(openGaps.map((g) => g.reason))].join(", ")}).
-    </div>` : null}
-    ${warnings.length ? html`<div class="banner banner-warn" role="status">
-      <${Icon} name="warn" />${" "}${warnings.join("  •  ")}
-    </div>` : null}
+    </div>
   </div>`;
 }

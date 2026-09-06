@@ -61,6 +61,9 @@
    * what fits on a screen. 28 is the row height, so a control is a row. */
   --tap: 28px;
   --nav-w: 232px;
+  /* Collapsed: one 28 px control plus the item's own padding on each side. Derived from `--tap`
+     rather than chosen, so the day the touch floor moves the collapsed rail moves with it. */
+  --nav-w-collapsed: calc(var(--tap) + 2 * var(--space-3));
   --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 
@@ -308,6 +311,11 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   height: 100vh;
   overflow: hidden;
 }
+/* **The retractable sidebar** (v0.16.4, DECISIONS #290). Collapsed is icons; expanded is labels.
+   One custom property carries the width, so the grid, the items and the brand all move together
+   and no rule has to know the other's number. Above 1100 px only: below it the sidebar is already
+   a horizontal strip and there is nothing to retract. */
+.shell.nav-collapsed { grid-template-columns: var(--nav-w-collapsed) minmax(0, 1fr); }
 .main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .work { flex: 1; overflow: auto; padding: var(--space-4); min-width: 0; }
 .work:focus-visible { outline-offset: -3px; }
@@ -371,6 +379,37 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   border-radius: 999px; padding: 0 var(--space-2);
 }
 
+/* ---------- the collapsed sidebar (DECISIONS #290) ----------------------------------------
+ *
+ * **`.visually-hidden`, never `display: none`.** A collapsed item is icon-only by definition, so
+ * the label is the whole of its usability for a screen-reader user and it stays in the accessible
+ * tree. The v0.13.0 floor — *"every icon is decoration beside a text label"* — is the one rule a
+ * collapsed rail cannot keep as written, and this is what keeps its intent: the label is still
+ * there, it is just not painted.
+ *
+ * The group headings go entirely, because a heading over icons names nothing a reader can see and
+ * the `aria-labelledby` on each list still carries it. The badge shrinks to a dot on the icon: the
+ * number does not fit, and *"there is something here"* is what a 44 px rail can honestly say —
+ * the count is in the item's `aria-label` and its `title`. */
+/* The labels are hidden by the markup carrying `.visually-hidden`, not by a rule here: one
+   implementation of *"hidden from the eye, kept in the accessible tree"*, and a class a test can
+   see. The wordmark's text is the same case. */
+.sidebar-collapsed .brand-name { position: absolute; width: 1px; height: 1px; margin: -1px;
+  padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.sidebar-collapsed .nav-heading { display: none; }
+.sidebar-collapsed .nav-item { justify-content: center; padding: var(--space-1) var(--space-3); }
+.sidebar-collapsed .brand { justify-content: center; padding: var(--space-3) 0; }
+.sidebar-collapsed .nav-count {
+  position: absolute; margin-left: 1.1em; margin-top: -1em;
+  min-width: 8px; height: 8px; padding: 0; border-radius: 50%;
+  background: var(--accent); border-color: var(--accent);
+  color: transparent; overflow: hidden;
+}
+/* The opener lives in the top bar rather than in the sidebar: at 1099 px and below the sidebar is
+   a horizontal strip with no room for it, and a control that disappeared at a breakpoint would be
+   a control an operator learns not to rely on. */
+.nav-toggle { flex: none; }
+
 /* ---------- top bar ---------- */
 
 .topbar {
@@ -386,14 +425,67 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 .conn-live .conn-dot { background: var(--quiet); }
 .conn-polling .conn-dot { background: var(--warn); }
 .conn-error .conn-dot { background: var(--alarm); }
-.chips { display: inline-flex; gap: var(--space-2); flex-wrap: wrap; }
-.chip {
-  display: inline-flex; align-items: baseline; gap: var(--space-1);
-  font-size: var(--fs-xs); color: var(--fg-muted);
-  background: var(--bg-sunken); border: 1px solid var(--line);
-  border-radius: var(--radius-1); padding: 0 var(--space-2);
+/* ---------- the two disclosures in the top bar (DECISIONS #288, #289) ---------------------
+ *
+ * The four counter chips left here. What replaces them is two icon buttons and the panels they
+ * open — anchored to the bar rather than pushed into the flow, because a panel that reflowed the
+ * top bar would move the control the operator just pressed out from under their finger.
+ *
+ * `min(24rem, calc(100vw - 2 * var(--space-3)))` is the whole of the phone accommodation: the
+ * panel is as wide as it wants up to 24rem, and never wider than the viewport minus a margin, so
+ * at 390 px it is a readable column rather than something that scrolls sideways. */
+.disclosure { position: relative; }
+.disclosure-open { position: relative; }
+.disclosure-alarm { color: var(--alarm); }
+.disclosure-warn { color: var(--warn); }
+.disclosure-badge {
+  position: absolute; top: 0; right: 0;
+  min-width: 14px; height: 14px; padding: 0 3px;
+  border-radius: 999px; background: var(--alarm); color: var(--bg);
+  font-family: var(--mono); font-size: 9px; line-height: 14px; text-align: center;
 }
-.chip b { color: var(--fg); font-family: var(--mono); }
+/* **Anchored to the TOP BAR, not to the 28 px button.** Measured at 390 px with the panel
+   anchored to its own opener: `right: 0` on a control sitting 100 px from the left edge put the
+   panel's left edge at **-238 px** — 366 px of warnings, entirely off the screen, on the width
+   this release exists for. The containing block is `.topbar`, so `100%` is a width the panel can
+   be clamped against and both edges are inside it by construction at every width.
+
+   The bell opens from the left and the health control from the right, so the two never sit on top
+   of each other — though only one is ever open: pressing the second opener is a click outside the
+   first, which is what closes it. */
+.topbar { position: relative; }
+.disclosure-panel {
+  position: absolute; top: 100%; z-index: 30;
+  left: var(--space-3); right: auto;
+  width: min(24rem, calc(100% - 2 * var(--space-3)));
+  max-height: min(60vh, 30rem); overflow-y: auto;
+  background: var(--bg-raised); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-2); box-shadow: var(--shadow-1);
+  padding: var(--space-3);
+}
+#healthPanel { left: auto; right: var(--space-3); }
+.disclosure-panel[hidden] { display: none; }
+.disclosure-title {
+  font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-muted); margin: 0 0 var(--space-2);
+}
+.notice-list { list-style: none; margin: 0; padding: 0; }
+.notice-list li {
+  display: flex; align-items: flex-start; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
+}
+.notice-list li:last-child { border-bottom: 0; }
+.notice-list .icon-svg { flex: none; margin-top: 0.15em; color: var(--warn); }
+.notice-urgent .icon-svg { color: var(--alarm); }
+.notice-text { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.health-state {
+  font-size: var(--fs-lg); font-weight: 600; margin: 0 0 var(--space-2);
+}
+.health-ok { color: var(--quiet); }
+.health-behind { color: var(--warn); }
+.health-dropping { color: var(--alarm); }
+.health-kv { font-size: var(--fs-sm); }
+.health-kv dt { font-variant-numeric: tabular-nums; }
 .role-tag {
   font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em;
   border: 1px solid var(--line-strong); border-radius: var(--radius-1);
@@ -508,8 +600,43 @@ td.sev { white-space: nowrap; }
 
 /* ---------- situations ---------- */
 
-.filters { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
-.filter-count { color: var(--fg-muted); font-size: var(--fs-xs); }
+/* ---------- the search and the tabs (v0.16.4, item 5) --------------------------------------
+ *
+ * The maintainer: *"too small, crowded, and touching the table."* Measured — the field was its
+ * browser default width beside a count, and the tab row sat 12 px above the first card with
+ * nothing between them, so at a glance the tabs read as part of the first situation rather than as
+ * a filter over all of them.
+ *
+ * Three changes and no new control: the field **takes the row** (`flex: 1`, up to 34rem so it does
+ * not become a 1 400 px input on a NOC wall); the tabs are a **grouped segmented control** with a
+ * shared border, which is what makes four buttons read as one choice; and the whole block sits in
+ * a bordered header with space under it. */
+.filters {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.filters input[type="search"] { flex: 1 1 14rem; min-width: 0; max-width: 34rem; }
+.filter-count { color: var(--fg-muted); font-size: var(--fs-xs); flex: none; }
+.finder {
+  border: 1px solid var(--line); border-radius: var(--radius-2);
+  background: var(--bg-raised); padding: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.finder .filters:last-child { margin-bottom: 0; }
+/* A segmented control: one border around four buttons, so they read as one choice rather than as
+   four separate things to press. `overflow: hidden` is what lets the outer radius clip the ends. */
+.tabs {
+  display: inline-flex; flex-wrap: wrap;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-1); overflow: hidden;
+}
+.tab {
+  border: 0; border-right: 1px solid var(--line-strong); border-radius: 0;
+  background: var(--bg-raised); color: var(--fg-muted);
+  padding: var(--space-1) var(--space-3); white-space: nowrap;
+}
+.tab:last-child { border-right: 0; }
+.tab-on { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.tab-on:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
 .cards { display: flex; flex-direction: column; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
 .sit { border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised); }
 .sit.expanded { border-color: var(--line-strong); box-shadow: var(--shadow-1); }
@@ -711,6 +838,13 @@ circle.tl-clear { fill: var(--quiet); }
 .stat-value { font-family: var(--mono); font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
 .stat-label { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .stat-note { font-size: var(--fs-xs); color: var(--fg-dim); }
+/* A tile that FILTERS is a button (v0.16.4, item 3). It has to look like the tiles beside it and
+   behave like the control it is: the same box, plus a pointer, a hover and a pressed state that
+   `aria-pressed` carries for anyone not looking at it. */
+.stat-filter { text-align: left; font: inherit; cursor: pointer; }
+.stat-filter:hover { background: var(--bg-hover); }
+.stat-on { border-color: var(--accent); box-shadow: inset 0 -2px var(--accent); }
+.count-cards { margin-bottom: var(--space-3); }
 .stat-alarm .stat-value { color: var(--alarm); }
 .stat-warn .stat-value { color: var(--warn); }
 .stat-quiet .stat-value { color: var(--quiet); }
@@ -891,8 +1025,15 @@ pre.refusal-reason {
 
 @media (max-width: 1099px) {
   /* The sidebar stops being a column and becomes a strip above the work area. At 820 px a
-     232 px sidebar was 28 % of the viewport holding sixteen short labels. */
-  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+     232 px sidebar was 28 % of the viewport holding sixteen short labels.
+     **`.shell.nav-collapsed` is named here too, and driving it is what found the reason.** That
+     rule narrows the first grid COLUMN, which is right above 1100 px and catastrophic below it:
+     the strip is the first column, so collapsing squeezed the whole navigation into 52 px and put
+     fifteen of sixteen items behind a scroll nobody would find. Its specificity beats a bare
+     `.shell` inside a media query, so it has to be answered by name. What collapsing still does
+     below 1100 is the useful half — the items become icons, and the strip's scrollable run goes
+     from 16 x 109 px to 16 x 52 px. */
+  .shell, .shell.nav-collapsed { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .sidebar {
     border-right: 0; border-bottom: 1px solid var(--line);
     display: flex; align-items: center; gap: var(--space-3);

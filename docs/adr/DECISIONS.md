@@ -2960,10 +2960,14 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Why no link rather than a link to something**: an ingest gap, a crashed background task and a
   stale situation have no setting that resolves them. A control that navigates somewhere unhelpful
   teaches an operator that the bell's links are noise, which costs the three that work.
-- **Measured**: the eight warning producers `runner.py` composes yield two whose text names a
-  parameter (`Trap allowlist`, `NETCORENOC_TLS_CERT`) out of the nine strings this appliance can
-  emit. Both resolve; the other seven render as text. Reported as a fraction rather than as
-  *"linking works"*.
+- **Measured, and it corrects this entry's own first draft.** Predicted two of nine; driven
+  against `warningTarget` in a browser with one representative string from every producer
+  `runner.py` composes, it is **3 of 10**: the empty allowlist and the missing TLS certificate,
+  plus the denied-trap warning, whose repaired F107 wording names the allowlist by label where the
+  old one named it by value. The other seven — a crashed background task, the entity cap, a
+  storage error, a stale situation, shadow training, degraded capture, a broken audit chain —
+  resolve to nothing and render as text. Reported as a fraction rather than as *"linking works"*;
+  the seven are the reason the no-link case had to be designed rather than assumed away.
 - **Trade-off accepted**: a warning whose wording changes to stop naming its parameter silently
   loses its link. That is a weaker failure than a stale pair table, which keeps a link and points
   it at the wrong place.
