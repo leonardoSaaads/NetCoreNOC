@@ -2942,3 +2942,211 @@ From this release an entry is about six lines: decision, reason, release.*
   keeps what it does not, and it reuses the coarsener that already exists.
 - **Trade-off accepted**: a viewer may see `core-sw at 127.0.0.0/24`, which is a name nobody typed.
   That is the same trade `derived_name` already makes, and it is the honest one.
+
+# v0.16.4 — the console's shell
+
+## 288. The bell holds the warnings the banner already carries, and its link is derived (v0.16.4)
+
+- **Decision** (decision 1): the navbar gains a bell holding **every** entry of `stats.warnings`
+  plus each open ingest gap. The banner above the work area keeps the ingest gap and loses the
+  warning strip — one home, not two. A warning links to Settings when its text names a parameter
+  the console already knows about; one that names none renders as text with **no link and no
+  affordance**.
+- **How the link is derived rather than listed**: `parameters.js` already holds `SETTINGS` and
+  `RESTART_REQUIRED` — label, key and environment variable — because the Settings screen renders
+  them. `warningTarget` asks whether a warning's text contains a parameter's label or its
+  environment variable. Add a parameter and its warnings link themselves; delete one and the link
+  disappears. A pair table written here would be Appendix B's guard that lists what it checks.
+- **Why no link rather than a link to something**: an ingest gap, a crashed background task and a
+  stale situation have no setting that resolves them. A control that navigates somewhere unhelpful
+  teaches an operator that the bell's links are noise, which costs the three that work.
+- **Measured**: the eight warning producers `runner.py` composes yield two whose text names a
+  parameter (`Trap allowlist`, `NETCORENOC_TLS_CERT`) out of the nine strings this appliance can
+  emit. Both resolve; the other seven render as text. Reported as a fraction rather than as
+  *"linking works"*.
+- **Trade-off accepted**: a warning whose wording changes to stop naming its parameter silently
+  loses its link. That is a weaker failure than a stale pair table, which keeps a link and points
+  it at the wrong place.
+
+## 289. The health control shows the four numbers something measures, and invents none (v0.16.4)
+
+- **Decision** (decision 2): the navbar's health control shows **queue depth**, **p95 latency**,
+  the **derived trap rate** with its window, and the **receiver's denied/dropped counters**, with
+  one summary word derived from them. CPU, RAM, disk and the ten-minute sparkline are **deferred to
+  v0.16.5**, which is the release that owns a stored series.
+- **Reason**: `/api/stats` already serves every number above and the console already renders them
+  on one screen — the shape that made v0.15.2's health work cheap twice. A host figure has no
+  source: `psutil` is a dependency and directive 9 forbids it, `/proc` is Linux-only and would put
+  a platform assumption in a product that has none, and `resource.getrusage` measures this process
+  rather than the host an operator is asking about.
+- **Measured**: `grep -rn "psutil\|import resource\|getrusage\|/proc/" src/` returns **nothing** —
+  so the alternative is not "read what is there", it is "add a source". A health control that
+  invents a number is worse than one showing four true ones.
+- **Trade-off accepted**: an operator asking *"is the box out of memory"* still cannot answer it
+  here. The honest reply is that this appliance has never measured that, and the control says which
+  four things it does measure rather than implying it measures the machine.
+
+## 290. The sidebar's state is a cookie, because the theme's already is (v0.16.4)
+
+- **Decision** (decision 3): `ncn_nav`, `SameSite=Strict`, `Path=/`, one year, holding a value from
+  the closed set `{"expanded", "collapsed"}` and validated on read. Below 1100 px the sidebar is a
+  horizontal strip and the preference is not read at all.
+- **Reason**: `tests/test_security_ui.py` asserts `"localStorage" not in app_js`, and v0.15.3
+  settled the identical question for the theme (ADR #172). Inventing a second persistence mechanism
+  for a second preference is how a console comes to have two answers to *"where do preferences
+  live"*. The threat model is the theme's, unchanged: a hostile cookie can at worst select a
+  supported sidebar state.
+- **Why not a per-user row**: a schema question, a migration and a round trip, for a preference
+  that is per-**device** rather than per-account — the same operator wants it collapsed on their
+  phone and expanded on the wall. Directive 10 prefers zero migrations and this one would be wrong
+  even if it were free.
+- **Measured**: at 390 px the shell spends **360 px of an 844 px viewport** before the work area
+  starts — a 48 px nav strip, a 126 px top bar wrapped onto four rows, and 187 px of banners. 43 %
+  of the phone, on the screen an operator opens first.
+
+## 291. Every gesture stays in every status; what moves is prominence, keyed on JUDGED (v0.16.4)
+
+- **Decision** (decision 4): no gesture is removed from any status. The card derives
+  `judged` — whether this situation's history already contains a kind in `ASSERTING_KINDS` — and a
+  judged situation puts Confirm/Split and the restructure block behind one **Adjust the grouping**
+  disclosure that names what was already recorded, by whom and when. An unjudged one renders them
+  as it does today.
+- **Correcting the brief.** §I.4 says *"the restructure block renders the same on every status."*
+  Measured in a browser, it does not: `card.js` already gates it on `detail.status !== "resolved"`,
+  and Close is already hidden there too. What is true is that `new` and `open` are identical and
+  that a judged situation looks exactly like an unjudged one.
+- **Why `judged` and not `status`.** `open` means *"an operator is working it"* (#254) and is
+  reachable by a **rename** or a bare promote, neither of which asserts anything about the
+  grouping — v0.16.2 registered that promoting and affirming are two acts. Hiding Confirm under
+  `open` would break the ordinary path (promote, investigate, then judge) for the sake of a status
+  that does not mean what the brief reads it as.
+- **What `resolved` offers, settled by measurement rather than by preference.** The server accepts
+  a verdict on a resolved situation (`confirm` **200**, `split` **200**) and refuses all three
+  restructuring gestures (`operator_split`, `merge`, `move` — **409**, *"that situation has
+  resolved; reload the card"*). Control, the same calls on a live situation: **200**. The console
+  therefore keeps confirm and split there and keeps merge/move hidden — it agrees with the server
+  instead of inventing a second rule.
+- **What this forecloses, stated**: nothing on the evidence side — the review path is the live path,
+  one click behind a disclosure. On the correction side, an operator reviewing history still cannot
+  re-shape a resolved grouping; reopening is a decision nobody has made (#254) and it is a ROADMAP
+  line, not a side effect of a click. Also measured: a confirm on a resolved situation leaves
+  `status = resolved`, because `promote_situation` is `WHERE status='new'`.
+- **`ASSERTING_KINDS` is mirrored, not restated**: `situation_events.py` holds the literal and
+  `format.js` holds its mirror, with a guard that reads both files and fails if they disagree.
+
+## 292. F105: the vendor column is deleted, because deriving one is a different question (v0.16.4)
+
+- **Decision** (decision 5): `device.vendor` and `ne.vendor` stop being read. The graph's
+  busiest-elements table loses its **vendor** column, the entity card loses `ne.vendor`, and the
+  three reads that select the column stop selecting it. `device_vendor` — served on every alarm row
+  and rendered by nothing — goes with them.
+- **Reason**: the tooltip was the tell. *"Inferred from the enterprise arc of the OID"* describes
+  `alarm_class`, a different table; it was copied from the screen where it is true. An operator
+  reads an empty vendor as *"the appliance could not identify this device"* when the truth is
+  *"nothing ever tried"* — the exact failure `format.js`'s own header forbids for severity.
+- **Measured, after replaying all ten corpus scenarios**: `device (25, 0)` and `ne (25, 0)` — 25
+  rows each, **zero** vendors, after **2 252** alarms. **Control**: the same replay's 48 alarm
+  classes resolve a vendor from their enterprise arc for **46**. So the appliance can derive a
+  vendor *for a trap*; it has never had one *for a device*.
+- **Why not derive it**: an NE's vendor from the enterprise arcs of the traps it sends is a
+  correlation question — which arc wins when an NE emits three vendors' traps, and what a wrong
+  answer costs a grouping. That is not shell work, and inventing it here would be a feature hidden
+  in a layout release. **ROADMAP**, with the measurement above as its starting point.
+- **No migration.** The columns stay in the schema unread. Dropping them is an `ALTER` on the two
+  busiest tables to remove two always-NULL columns, and directive 10 prefers zero — the cost of the
+  defect is what an operator *reads*, and nothing reads them now.
+
+## 293. One actions cell, and the columns an operator scans stay columns (v0.16.4)
+
+- **Decision** (decision 6): the member row's three declaration controls and the hand-clear collapse
+  into **one trailing actions cell**; the mark checkbox keeps its own leading column and reaches the
+  tap floor; the frozen-updates count becomes a symbol. An editor's row goes from **eleven** columns
+  to **six** — the six a viewer already has, plus mark and actions.
+- **Correcting the brief.** §I.3 and `releases.md` both say *"nine columns for an editor"*. Measured
+  in a browser at all three widths it is **eleven**: `mark, device, nameNe, class, nameClass,
+  instance, severity, declareSev, count, state, clear`. Nine was true before v0.16.3 added the third
+  declaration column, and the note was written from the earlier count.
+- **Measured, the reason it matters**: at 390 px the editor's table is **942 px** wide in a **340 px**
+  box — **602 px** of horizontal scroll. At 820 px it is still **172 px** over. A viewer's six-column
+  table overflows by 270 px at 390 and fits at 820, so the whole of the difference is the five
+  editor-only columns.
+- **What was rejected, and why**: *dropping columns by priority* — refused by #237 and still refused:
+  an operator cannot tell a dropped column from an empty one, and these carry evidence. *A card
+  layout below a breakpoint* — refused: the vertical scan down aligned numerals is why these tables
+  are dense, and `.cards-below-720` exists for tables whose rows are facts, which this one's are not.
+  *A second table for the editor's controls* — refused: it separates the control from the row it is
+  about, which is the whole reason v0.16.3 put it there.
+- **Trade-off accepted**: three declarations behind one cell is one more click than three cells were,
+  on rows an operator declares on rarely and scans constantly. Every one stays reachable at every
+  width above the tap floor, which is directive 2 and does not bend.
+
+## 294. One timestamp format, the browser's zone, and the offset always visible (v0.16.4)
+
+- **Decision** (decision 7): every absolute timestamp renders `YYYY-MM-DD HH:MM:SS ±HH:MM` — the
+  browser's zone, with its **offset from UTC in the text**, not only in a `title`. The IANA zone
+  name stays in the `title` and is stated once, visibly, in the shell. Relative forms (*"4m ago"*)
+  and the `.age` badges are zone-free by nature and are unchanged. No operator-chosen zone.
+- **Measured**: nine timestamp surfaces render a time today and **zero** name a zone in visible
+  text. `TIMEZONE` is referenced in exactly one place — an `overview.js` `title=` — so even there it
+  is hover-only, which on the phone half of this release means it does not exist.
+- **Why a fixed, sortable format rather than `toLocaleString()`**: the operator is correlating this
+  console against a syslog in another window. `9/6/2026, 2:32:07 PM` and `06/09/2026 14:32:07` are
+  the same instant written two ways by two browsers, and neither says which. An ISO-shaped stamp
+  with an explicit offset is one string, comparable by eye and by sort.
+- **Why the browser's zone and not a preference**: a chosen zone is a per-user row, a migration and
+  a settings surface, for a value the browser already knows correctly. Naming the offset removes the
+  ambiguity that the ask is actually about; choosing a different zone is a convenience on top of it.
+  **ROADMAP.**
+- **Trade-off accepted**: six characters per timestamp in dense tables. Taken, because an unlabelled
+  `14:32:07` is the single cheapest way to make two windows disagree by an hour during an incident.
+
+## 295. The replay surface is a make target and one documented line (v0.16.4)
+
+- **Decision** (decision 8): `make replay` gains a `SCENARIO` variable defaulting to `fiber_cut`,
+  `make replay-list` prints what is available, and `docs/operate.md` carries the one-liner. No
+  harness, no scenario DSL wrapper, no container.
+- **Reason**: `make replay` already existed and was pinned to one fixture, so an operator who wanted
+  a different scenario had to know `eval/corpus/` exists, that its files are JSON, and that
+  `tools/trap_replay.py` takes a path. The gap the maintainer named is knowing the tree, and a
+  variable plus a listing target closes exactly that.
+- **Why not more**: `eval/scenario_dsl.py` and `tests/test_operation.py` already exist and the ask
+  is ergonomics. Part VII rule 4 forbids the framework, and a wrapper around two tools that already
+  work would be a third thing to keep in step with both.
+- **Measured**: ten corpus scenarios and three DSL scenarios are reachable today; before this
+  change one of the thirteen had a make target.
+
+## 296. The allowlist warning names how many entries, not which (v0.16.4, F107)
+
+- **Decision**: `receiver_warnings` says *"the trap allowlist (N entr(y|ies))"* instead of
+  interpolating the allowlist, and points at Settings, where an admin who may act on it reads the
+  value. The text is otherwise unchanged and the warning still fires on the same condition.
+- **Reason**: `stats.read` is a **viewer** capability and the warning list passes through no
+  shaping, so the estate's management prefixes reached every reader whose graph is coarsened to
+  `/24` in the same session. F9 records that the allowlist reveals security posture and #227 already
+  settled the identical question for the boot banner — *"a count answers 'did it load what I set'
+  without publishing the estate's addressing"*. The same sentence decides this.
+- **Why not shape the warning instead**: `coarsen_situation_name` is whitespace-token-wise and an
+  allowlist is one comma-joined token; making the coarsener comma-aware would widen a rule that
+  every other caller relies on being narrow. Removing what should never have been published is
+  smaller than teaching a coarsener a new grammar.
+- **Measured**: viewer receives `graph ip: 127.0.0.0/24` and, before the change, the literal
+  `10.20.30.0/24,192.168.77.5` in `stats.warnings` of the same session. **Control**: with
+  `denied = 0` the string is absent, so it is the warning and not the coarsener.
+- **Not fixed here**: the stale-situation count is computed over the whole estate and reaches a
+  scoped viewer unchanged — F32's oracle through the same unshaped key. It is a per-scope count
+  taken where the sweep runs, which is engine work; **F107**, open.
+
+## 297. The Situations screen re-reads its route, using the comparison that already exists (v0.16.4)
+
+- **Decision** (F108): `Situations.componentDidUpdate` compares `JSON.stringify(props.params)` with
+  the previous render's and, when it changed, pins and opens the newly named situation — the same
+  route-key comparison `widgets.Loader` has used since v0.13.0, not a second one.
+- **Reason**: a hash change inside one view is a same-document navigation, so the component is not
+  remounted and the deep link was read once and never again. Measured: the address bar reads
+  `#/situations/41` while the card for 38 is the one still open, silently.
+- **Why the existing comparison rather than a new field**: `Loader.routeKey` is the registered
+  answer to *"did the route's parameters change"* and it is one line away. Writing a second one is
+  how two screens come to disagree about what a route change is.
+- **Trade-off accepted**: the pin set grows by one entry per permalink followed in a visit, which is
+  what #267 already specifies — a card an operator asked for stays where they are looking until they
+  collapse it or pick a tab.

@@ -1336,3 +1336,102 @@ Run every command below from the repository root with the virtualenv active.
   the column and the two renders — and this release has no measurement that decides between them.
   Deleting a rendered column is v0.16.4's shell work, where the graph's tables and the entity card
   are one decision. Issued in v0.16.3.
+
+## F107 — the warning banner carries the trap allowlist to every viewer, past the shaping axis
+
+- **What**: `/api/stats` computes every enumerating counter over the in-scope set so that
+  out-of-scope activity *"cannot move a scoped viewer's numbers and become a volume oracle"* — the
+  handler's own comment, F32's rule. `out["warnings"] = all_warnings()` is then appended **after**
+  that reasoning and passes through no shaping at all. `runner.receiver_warnings` interpolates the
+  allowlist verbatim (`f"...not in the trap allowlist ({allowlist!r})"`), `stats.read` is a
+  **viewer** capability, and the console renders the list in a banner above the work area on every
+  screen. It is commit `8609962`'s shape once more — a string *containing* addresses reaching a role
+  the coarsener protects two keys away — and F9 already records that the allowlist reveals security
+  posture, which is why `_print_bootstrap_banner` prints a **count** and not the entries.
+- **Reproduce**: one scenario replayed, an allowlist set, three denied datagrams, then read
+  `/api/stats` and `/api/graph` as each role in the same session:
+  ```sh
+  python - <<'PY'
+  import asyncio, sys; sys.path[:0] = ['tests', 'src', 'tools']
+  from pathlib import Path
+  from netcorenoc.api import create_app
+  from netcorenoc.ingest.receiver import ReceiverStats
+  from netcorenoc.main import Engine
+  from netcorenoc.runner import receiver_warnings
+  from netcorenoc.store import Store
+  import authutil, corpus_census, util
+  ALLOWLIST = "10.20.30.0/24,192.168.77.5"
+  async def main():
+      store = Store('.demos/f107.db'); await store.open()
+      queue = asyncio.Queue(); engine = Engine(store, queue); await engine.start()
+      await authutil.make_users(store)
+      p = sorted(Path('eval/corpus').glob('*.json'))[0]
+      await util.drive(engine, queue, corpus_census.scenario_events(p, 1.7e9))
+      stats = ReceiverStats(); stats.denied = 3
+      app = create_app(engine, warnings=lambda: receiver_warnings(stats, ALLOWLIST))
+      for role in ('viewer', 'editor', 'admin'):
+          c = await authutil.client_as(app, role)
+          body = (await c.get('/api/stats')).json()
+          graph = (await c.get('/api/graph')).json()
+          ips = sorted({n['ip'] for n in graph.get('nodes', []) if n.get('ip')})[:1]
+          print(role, 'allowlist in body:',
+                any(ALLOWLIST in w for w in body.get('warnings', [])), '| graph ip:', ips)
+          await c.aclose()
+      stats.denied = 0
+      c = await authutil.client_as(app, 'viewer')
+      print('control (denied=0):',
+            any(ALLOWLIST in w for w in (await c.get('/api/stats')).json()['warnings']))
+      await store.close()
+  asyncio.run(main())
+  PY
+  ```
+- **Measured**: `viewer allowlist in body: True | graph ip: ['127.0.0.0/24']`, and the same `True`
+  for editor and admin. **Control**: with `denied = 0` the warning is not produced and the string is
+  absent (`False`) — so it is the warning carrying the addresses, not a broken coarsener. The
+  viewer is shown `127.0.0.0/24` for a device it can see and, in the same session, the estate's real
+  management prefixes in prose.
+- **Why it matters**: v0.16.4 gives the warning list a **permanent home** — a bell an operator opens
+  on any screen — so a string that was a transient banner becomes a surface. Directive 6 binds any
+  new control that renders operator text to the shaping axis, and this is text the axis never saw.
+  `coarsen_situation_name` cannot help: it is whitespace-token-wise and `'10.20.30.0/24,192.168.77.5'`
+  is one token with quotes and a comma.
+- **Second half, recorded and NOT fixed**: `stale_situation_warnings` counts idle-active situations
+  over the **whole estate** and reaches a scoped viewer unchanged, so the number moves with activity
+  that reader may not see — F32's volume oracle through the same unshaped key. The repair is a
+  per-scope count taken where the sweep already runs, which is engine work rather than shell work.
+- **Disposition**: **the disclosure half is FIXED in v0.16.4** — the warning names the allowlist's
+  **entry count** instead of its entries, following `_print_bootstrap_banner`'s own precedent
+  (#227), demonstrated red by restoring the interpolation with the repaired tree as its control. The
+  oracle half is **open**; issued in v0.16.4.
+
+## F108 — a permalink followed from inside Situations changes the address and opens nothing
+
+- **What**: `views/situations.js` reads its deep link once, in `componentDidMount`. A hash change
+  from `#/situations/38` to `#/situations/41` is a same-document navigation: the router publishes
+  the new fragment, `resolve()` returns the same view id, the component instance survives, and
+  `componentDidMount` does not run again. The address bar says `#/situations/41`, the card for 41
+  stays closed, and the card for 38 stays open. `widgets.Loader` has had the repair since v0.13.0 —
+  `componentDidUpdate(previous) { if (this.routeKey(previous) !== this.routeKey(this.props)) …}` —
+  and this screen does not use it. Appendix B's *"a method one call away from being used"*.
+- **Reproduce**, in a browser as an editor, with three ids that exist:
+  ```js
+  const open = () => [...document.querySelectorAll('.sit.expanded')].map(e => e.dataset.sid);
+  // A, the control: a FULL load of the address.
+  location.hash = '#/situations/38'; location.reload();
+  // …then, without reloading:
+  location.hash = '#/situations/41';           // B
+  // …and again, leaving the screen first:
+  location.hash = '#/overview'; location.hash = '#/situations/41';   // C
+  ```
+  reading `open()` after each.
+- **Measured**: `A -> ['38']`, `B -> ['38']` with `location.hash === '#/situations/41'`,
+  `C -> ['41']`. So the address is honoured on a load and after a remount and ignored in between,
+  which is the one case that happens during an incident: an operator already on Situations pastes a
+  colleague's link.
+- **Why it matters**: the permalink is the sharing mechanism — `card.js` calls it *"a link to this
+  situation alone, shareable during the incident"* — and F97 already repaired the other half of it
+  (a link to a situation the default tab excludes). This is the same promise broken by a different
+  mechanism, and it is silent: no error, no empty state, just the previous card.
+- **Disposition**: **FIXED in v0.16.4** (DECISIONS #297). `componentDidUpdate` re-reads
+  `params[0]`, pins and opens it, using `Loader`'s existing route-key comparison rather than a
+  second one. Demonstrated red by removing the hook, with the repaired tree as its control.
