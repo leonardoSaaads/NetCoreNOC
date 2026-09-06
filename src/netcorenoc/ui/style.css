@@ -456,6 +456,11 @@ td.sev { white-space: nowrap; }
   letter-spacing: 0.03em; text-transform: uppercase; white-space: nowrap;
 }
 .sev-pill .sev-glyph { margin-right: 0; }
+/* The declaration mark (v0.16.3). A fourth encoding on the pill, and deliberately not a fifth
+ * colour: the four fills are the luminosity ladder that carries the RANK, and reusing that channel
+ * to also carry the PROVENANCE would make two facts share one signal. `*` is inside the pill so it
+ * cannot separate from what it qualifies, and the pill's `title` says it in words. */
+.sev-pill .sev-mark { font-weight: 700; opacity: 0.75; margin-left: -1px; }
 .sev-crit { background: var(--sev-crit-fill); color: var(--sev-crit-ink); }
 .sev-major { background: var(--sev-major-fill); color: var(--sev-major-ink); }
 .sev-minor { background: var(--sev-minor-fill); color: var(--sev-minor-ink); }
@@ -593,12 +598,21 @@ circle.tl-clear { fill: var(--quiet); }
   margin-bottom: var(--space-3);
 }
 
-/* Naming an alarm class, in the row it names. Wraps rather than overflows: this sits in the last
-   column of a table that already scrolls horizontally, and a control that pushed the scroll
-   further would be unreachable exactly where it is needed. */
+/* Naming a thing, in the row it names. Wraps rather than overflows: this sits in a column of a
+   table that already scrolls horizontally, and a control that pushed the scroll further would be
+   unreachable exactly where it is needed. */
 .inline-form { display: inline-flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
 .inline-form input { min-width: 7rem; max-width: 14rem; }
 .inline-form .err { flex-basis: 100%; font-size: var(--fs-xs); }
+
+/* The three declarations (v0.16.3). Narrower than the class-name form they share a component with,
+   because three of these sit in one member row beside a checkbox, a severity pill and a clear. */
+.declare input, .declare select { min-width: 5.5rem; max-width: 9rem; }
+/* The disagreement, **as an element on the page** rather than a native dialog: it is styleable at
+   390 px, reachable by the keyboard, and visible to the DOM harness — which a `confirm()` is not,
+   and that is how eight consecutive releases shipped a control no test could see. It takes the
+   whole row so the evidence is read before the button beside it is pressed again. */
+.declare-warn { flex-basis: 100%; margin: var(--space-1) 0 0; font-size: var(--fs-xs); }
 
 /* ---------- panels, parameter classes, destructive ---------- */
 

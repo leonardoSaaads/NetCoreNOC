@@ -1223,9 +1223,18 @@ async def test_the_graph_screen_answers_its_two_questions_in_ordinary_dom(
     # `n` beside the weight, because a strong-looking edge over six observations is a weaker claim
     # than the same score over hundreds (F61) and a table that hid it would say they were equal.
     assert "evidence (n)" in dump, "the affinity is shown without the evidence behind it"
-    # The rename the drawing offered only on double-click is now a button, so the one gesture this
-    # screen has is reachable from a keyboard for the first time.
-    assert "rename" in dump, "the graph's only gesture is still double-click-only"
+    # **v0.16.3: the rename is gone from this screen, and the assertion is inverted rather than
+    # deleted.** It lived here because there was nowhere else, and it wrote
+    # `label(kind='device', target_id=node.id)` while Entities read the `ne` table — so the name an
+    # operator gave a host was invisible on the screen built to describe that host. An element is
+    # named from the row in a situation's member table now, with its class and its severity
+    # (DECISIONS #281). A screen that offers a control cannot un-offer it silently, so this says so.
+    assert "rename" not in dump.lower(), (
+        "the graph still offers a rename. The declaration moved to the situation's member row, "
+        "where the operator already is and where all three declarations are made together."
+    )
+    # …and it still links to where the element's situations are, which is where the naming went.
+    assert "situations" in dump, "the graph no longer points at where an element is worked on"
 
 
 @dom_test
@@ -1244,3 +1253,281 @@ async def test_the_graph_tables_are_absent_when_there_is_nothing_to_rank(
     assert "Elements alarming most" not in dump
     assert "Strongest learned relationships" not in dump
     assert "No network elements yet" in dump, "the empty state is what should be there instead"
+
+
+# --- v0.16.3: the three declarations, and the one interruption they may cause -------------------
+
+
+def _declaring(
+    routes: dict[str, Any], sid: int, *, learned: tuple[str, int] | None
+) -> dict[str, Any]:
+    """The captured editor payload with a learned severity on every member, and none declared.
+
+    A real corpus resolves no severity at all — 0 of 2 252 alarms — which is a fact about the
+    corpus and about the floors `severity.py` refuses below. It is not a reason to leave the
+    interruption rule undriven by any test.
+    """
+    import copy
+
+    doctored = copy.deepcopy(routes)
+    for alarm in doctored[f"/api/situations/{sid}"]["json"]["alarms"]:
+        alarm["severity"], alarm["severity_rank"] = learned or (None, None)
+        alarm["severity_ranks"] = [] if learned is None else [learned[1]]
+        alarm["declared_severity"] = alarm["declared_severity_rank"] = None
+    return doctored
+
+
+@dom_test
+async def test_each_declaration_sends_exactly_the_kind_and_target_it_names(
+    routes: dict[str, Any],
+) -> None:
+    """**One mechanism, three times**, driven end to end from the row the operator is looking at.
+
+    Every declaration goes through `POST /api/labels`, and each names the id of the thing it is
+    about: the alarm's NE, the alarm's class, the alarm's class again for the severity. A control
+    that sent the wrong id would still be a 200, which is why the id is asserted against the
+    payload the row actually rendered from rather than against a constant.
+    """
+    sid, _ = uifixtures.largest_situation(routes["editor"])
+    alarm = routes["editor"][f"/api/situations/{sid}"]["json"]["alarms"][0]
+
+    named = domdriver.run_scenario(
+        "declare",
+        {"routes": routes["editor"], "sid": sid, "control": "ne", "row": 0, "value": "CORE-SW-01"},
+    )
+    assert named["posts"] == [{"kind": "ne", "id": alarm["ne_id"], "label": "CORE-SW-01"}]
+    assert not named["warned"], "naming an element raised a severity disagreement"
+
+    klass = domdriver.run_scenario(
+        "declare",
+        {"routes": routes["editor"], "sid": sid, "control": "class", "row": 0, "value": "LOS"},
+    )
+    assert klass["posts"] == [{"kind": "class", "id": alarm["class_id"], "label": "LOS"}]
+
+    sev = domdriver.run_scenario(
+        "declare",
+        {
+            "routes": routes["editor"],
+            "sid": sid,
+            "control": "severity",
+            "row": 0,
+            "value": "critical",
+        },
+    )
+    assert sev["posts"] == [{"kind": "severity", "id": alarm["class_id"], "label": "critical"}]
+
+
+@dom_test
+async def test_a_viewer_is_offered_no_declaration_control_at_all(routes: dict[str, Any]) -> None:
+    """The controls exist only for a principal who holds `label.write`.
+
+    The same shape as the member checkbox: a viewer is not shown a control whose request would be
+    refused, so the console never invites an action it knows will fail.
+    """
+    sid, _ = uifixtures.largest_situation(routes["viewer"])
+    with pytest.raises(domdriver.HarnessError, match="no declaration control"):
+        domdriver.run_scenario(
+            "declare",
+            {"routes": routes["viewer"], "sid": sid, "control": "ne", "row": 0, "value": "x"},
+        )
+
+
+@dom_test
+async def test_the_disagreement_prompt_fires_on_two_steps_and_not_on_one(
+    routes: dict[str, Any],
+) -> None:
+    """**§I.4's rule, with the control that makes it a rule rather than a dialog** (#285).
+
+    The prompt appears only when the appliance's severity is **confirmed** — writing
+    `alarm.severity` at all means it passed both of `severity.py`'s gates — and the declared rank
+    is two or more steps away on the 0-4 vocabulary scale.
+
+    Three arms, and the middle one is the whole point: *the same control, the same click, a
+    one-step difference, and no interruption*. A prompt that fired on every declaration would be
+    dismissed unread, and then it would be worth nothing on the one occasion it matters.
+    """
+    sid, _ = uifixtures.largest_situation(routes["editor"])
+    learned_minor = _declaring(routes["editor"], sid, learned=("minor", 2))
+
+    two_steps = domdriver.run_scenario(
+        "declare",
+        {
+            "routes": learned_minor,
+            "sid": sid,
+            "control": "severity",
+            "row": 0,
+            "value": "critical",
+            "anyway": True,
+        },
+    )
+    assert two_steps["warned"], "a 2-step disagreement raised no confirmation"
+    assert "minor" in two_steps["warnText"], two_steps["warnText"]
+
+    one_step = domdriver.run_scenario(
+        "declare",
+        {"routes": learned_minor, "sid": sid, "control": "severity", "row": 0, "value": "major"},
+    )
+    assert not one_step["warned"], "a 1-step disagreement interrupted the operator"
+    assert one_step["posts"] == [
+        {"kind": "severity", "id": one_step["posts"][0]["id"], "label": "major"}
+    ]
+
+    # Nothing learned at all: the appliance holds no opinion, so it can contradict none.
+    silent = domdriver.run_scenario(
+        "declare",
+        {
+            "routes": _declaring(routes["editor"], sid, learned=None),
+            "sid": sid,
+            "control": "severity",
+            "row": 0,
+            "value": "critical",
+        },
+    )
+    assert not silent["warned"], "an unlearned severity was treated as a contradiction"
+    assert len(silent["posts"]) == 1
+
+
+@dom_test
+async def test_cancelling_the_disagreement_writes_nothing_and_confirming_writes_once(
+    routes: dict[str, Any],
+) -> None:
+    """**A cancel does not write** (#285), and its control is the confirm beside it.
+
+    The brief reads a declined disagreement as *"kept, with the disagreement recorded"*. A
+    confirmation that saved regardless is not a confirmation — it is a notification wearing a
+    dialog's clothes, and the second one an operator meets is dismissed unread. What is recorded
+    is recorded server-side, on the declarations that land.
+    """
+    sid, _ = uifixtures.largest_situation(routes["editor"])
+    learned_minor = _declaring(routes["editor"], sid, learned=("minor", 2))
+    params = {
+        "routes": learned_minor,
+        "sid": sid,
+        "control": "severity",
+        "row": 0,
+        "value": "critical",
+    }
+
+    cancelled = domdriver.run_scenario("declare", {**params, "anyway": False})
+    assert cancelled["warned"]
+    assert cancelled["posts"] == [], f"a cancelled declaration was written: {cancelled['posts']}"
+
+    confirmed = domdriver.run_scenario("declare", {**params, "anyway": True})
+    assert len(confirmed["posts"]) == 1, confirmed["posts"]
+    assert confirmed["posts"][0]["label"] == "critical"
+
+
+@dom_test
+async def test_an_integer_learned_rank_never_raises_the_disagreement_prompt(
+    routes: dict[str, Any],
+) -> None:
+    """F99's scale is not the declaration's scale, so it holds no comparable opinion (#285).
+
+    A vendor numbering severity 10, 20, 30 would otherwise be "10 steps" from every declaration an
+    operator could make, and the prompt would fire on all of them — which is precisely the failure
+    mode §I.4 exists to avoid. The control is the vocabulary arm in the test above, where the same
+    two-step comparison does interrupt.
+    """
+    sid, _ = uifixtures.largest_situation(routes["editor"])
+    result = domdriver.run_scenario(
+        "declare",
+        {
+            "routes": _declaring(routes["editor"], sid, learned=("30", 30)),
+            "sid": sid,
+            "control": "severity",
+            "row": 0,
+            "value": "critical",
+        },
+    )
+    assert not result["warned"], "an out-of-scale learned rank was compared against a token"
+    assert len(result["posts"]) == 1
+
+
+@dom_test
+async def test_a_declaration_can_be_withdrawn_from_the_row_that_made_it(
+    routes: dict[str, Any],
+) -> None:
+    """**A declaration that cannot be undone is a declaration nobody will make** (#284).
+
+    The revert is driven rather than described: the control offers `Clear` only when a declaration
+    is in force, and it sends a DELETE naming the same kind and target the POST named. The control
+    is the opener's own label — `Edit` when something is declared, `Declare` when nothing is — so
+    a screen that offered `Clear` unconditionally would be visible here.
+    """
+    import copy
+
+    sid, _ = uifixtures.largest_situation(routes["editor"])
+    doctored = copy.deepcopy(routes["editor"])
+    alarms = doctored[f"/api/situations/{sid}"]["json"]["alarms"]
+    for alarm in alarms:
+        alarm["device_label"] = "CORE-SW-01"
+    ne_id = alarms[0]["ne_id"]
+
+    result = domdriver.run_scenario(
+        "withdraw", {"routes": doctored, "sid": sid, "control": "ne", "row": 0}
+    )
+    assert result["openerLabel"] == "Edit", result["openerLabel"]
+    assert result["deletePaths"] == [f"/api/labels/ne/{ne_id}"], result["deletePaths"]
+    assert result["posts"] == [], "withdrawing a declaration also wrote one"
+
+    plain = domdriver.run_scenario(
+        "declare",
+        {"routes": routes["editor"], "sid": sid, "control": "ne", "row": 0, "value": "x"},
+    )
+    assert plain["openerLabel"] == "Declare", plain["openerLabel"]
+    assert plain["deletePaths"] == []
+
+
+@dom_test
+async def test_every_declaration_control_clears_the_tap_floor_at_all_three_widths(
+    routes: dict[str, Any],
+) -> None:
+    """**F103's lesson, applied to what this release added.**
+
+    The tap floor's selector was `button, select, input:not([type="checkbox"]):not([type="radio"])`
+    and the one control an operator ticks most was excluded from it, at 13x13 px. So the question
+    for four new controls is not *"is there a floor"* but *"does the floor's selector cover what I
+    added"* — which is checked against the stylesheet's own rule rather than against a number
+    copied out of it.
+
+    Each declaration control is a `button`, a `select` or an `input[type=text]`, and every one of
+    those three is inside that selector. A control introduced as a `div` with a click handler, or
+    as a checkbox, would fail here.
+    """
+    import re
+    from pathlib import Path
+
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui"
+    css = (ui / "style.css").read_text(encoding="utf-8")
+    floor = re.search(r"^([^\n{]*)\{\s*min-height: var\(--tap\);", css, re.M)
+    assert floor is not None, "the stylesheet no longer states a tap-target floor at all"
+    covered = {part.strip().split(":")[0].split("[")[0] for part in floor.group(1).split(",")}
+    assert {"button", "select", "input"} <= covered, (
+        f"the tap floor covers {sorted(covered)}; the declaration controls are buttons, a select "
+        f"and text inputs, and a control the floor's selector excludes is exactly F103"
+    )
+
+    # Every element in `declare.js` that carries a handler — which is what "interactive" means at
+    # the DOM, and what a `<div onClick>` would fail. Derived from the source rather than listed,
+    # so a control added later is measured rather than assumed.
+    source = (ui / "app" / "views" / "parts" / "declare.js").read_text(encoding="utf-8")
+    #
+    # `onSubmit` is deliberately not in the set: a form is a container, and the event is raised by
+    # a control inside it that this same scan already covers. Every other handler here is one a
+    # finger lands on directly, which is what a touch-target floor is about.
+    interactive = {
+        tag
+        for tag, body in re.findall(r"<(\w+)((?:[^<>]|\$\{[^}]*\})*?)>", source, re.S)
+        if re.search(r"\bon(Click|Change|Input|KeyDown)=", body)
+    }
+    assert interactive, "no interactive control was found in declare.js; the scan matched nothing"
+    assert interactive <= covered, (
+        f"declare.js makes {sorted(interactive - covered)} interactive, and the tap floor's "
+        f"selector covers {sorted(covered)}. A control outside it is below the touch target at "
+        f"every width, which is exactly F103."
+    )
+    assert 'type="checkbox"' not in source, (
+        "a declaration control is a checkbox, which is the one shape the tap floor excludes (F103)"
+    )

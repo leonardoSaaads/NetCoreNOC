@@ -301,3 +301,116 @@ def test_only_one_module_renders_a_severity() -> None:
         f"modules other than widgets.js emit a severity class: {emitters}. The pill is one "
         "component so that two screens cannot disagree about what `major` looks like."
     )
+
+
+# --- the declaration, at the DOM (v0.16.3) ------------------------------------------------------
+
+
+#: An alarm whose class carries a **declared** severity, and whose learned one is still there.
+#: Precedence is a read-time decision, so the two live side by side and the pill picks (#284).
+def _with_declaration(
+    routes: dict[str, Any], sid: int, *, learned: tuple[str, int] | None, declared: str | None
+) -> dict[str, Any]:
+    import copy
+
+    from netcorenoc.ingest import known_oids
+
+    doctored = copy.deepcopy(routes)
+    for alarm in doctored[f"/api/situations/{sid}"]["json"]["alarms"]:
+        alarm["severity"], alarm["severity_rank"] = learned or (None, None)
+        alarm["severity_ranks"] = [] if learned is None else [learned[1]]
+        alarm["declared_severity"] = declared
+        alarm["declared_severity_rank"] = (
+            None if declared is None else known_oids.severity_rank(declared)
+        )
+    return doctored
+
+
+@dom_test
+async def test_a_declared_severity_renders_in_the_pill_and_is_marked_as_declared(
+    store: Store,
+) -> None:
+    """**The declared wins, and the screen says which value is in use** (DECISIONS #284).
+
+    Both arms run against the same alarm and differ only in whether a declaration exists, so this
+    measures the precedence rather than the rendering: without the control arm, a pill that had
+    simply started showing `critical` for everything would pass.
+    """
+    routes = await uifixtures.all_routes(store)
+    sid, _ = uifixtures.largest_situation(routes["editor"])
+
+    declared = domdriver.run_scenario(
+        "severityBands",
+        {
+            "routes": _with_declaration(
+                routes["editor"], sid, learned=("minor", 2), declared="critical"
+            ),
+            "sid": sid,
+        },
+    )
+    cell = declared["cells"][0]
+    assert "sev-crit" in cell["classes"].split(), cell["classes"]
+    assert "critical" in cell["cellText"], cell["cellText"]
+    assert "*" in cell["cellText"], "the pill does not mark the value as declared"
+
+    learned_only = domdriver.run_scenario(
+        "severityBands",
+        {
+            "routes": _with_declaration(routes["editor"], sid, learned=("minor", 2), declared=None),
+            "sid": sid,
+        },
+    )
+    control = learned_only["cells"][0]
+    assert "sev-minor" in control["classes"].split(), control["classes"]
+    assert "*" not in control["cellText"], "a learned severity is marked as if declared"
+
+
+@dom_test
+async def test_an_integer_rank_above_the_vocabulary_no_longer_renders_as_one_band(
+    store: Store,
+) -> None:
+    """**F99, at the DOM.** Three severities the appliance validated, three different pills.
+
+    `severity.py::_candidate_ranks` returns `kind="int"` with the varbind's raw integer as the
+    rank, bounded in count and not in magnitude, so a vendor numbering severity 10/20/30 wrote
+    ranks 10, 20 and 30 — every one of which fell off the end of the bands and rendered as the
+    same `unknown` pill. The ordering was validated against observed lifetimes and then discarded
+    at the last step.
+
+    The control is in the same test: the bundled vocabulary is unchanged by the repair, and rank 4
+    is still UNKNOWN, because `indeterminate` is a placement on no scale rather than a low one.
+    """
+    import copy
+
+    routes = await uifixtures.all_routes(store)
+    sid, count = uifixtures.largest_situation(routes["editor"])
+    assert count >= 4
+
+    doctored = copy.deepcopy(routes["editor"])
+    alarms = doctored[f"/api/situations/{sid}"]["json"]["alarms"]
+    for alarm, value in zip(alarms, (10, 20, 30), strict=False):
+        alarm["severity"], alarm["severity_rank"] = str(value), value
+        alarm["severity_ranks"] = [10, 20, 30]
+        alarm["declared_severity"] = alarm["declared_severity_rank"] = None
+    result = domdriver.run_scenario("severityBands", {"routes": doctored, "sid": sid})
+    bands = [c["classes"].split()[-1] for c in result["cells"][:3]]
+    assert len(set(bands)) == 3, f"three validated severities render as {bands}"
+    assert bands[0] == "sev-crit", f"the most severe is not the most severe band: {bands}"
+    for cell, shown in zip(result["cells"][:3], ("10", "20", "30"), strict=False):
+        assert shown in cell["cellText"], (
+            f"the element's own value {shown!r} is not on screen: {cell['cellText']!r}"
+        )
+
+    control = domdriver.run_scenario(
+        "severityBands",
+        {
+            "routes": _with_declaration(
+                routes["editor"], sid, learned=("indeterminate", 4), declared=None
+            ),
+            "sid": sid,
+        },
+    )
+    assert "sev-unknown" in control["cells"][0]["classes"].split(), (
+        "rank 4 was placed on the scale; `indeterminate` is the vocabulary's word for "
+        "'I do not know how serious this is', which is a placement on no scale at all"
+    )

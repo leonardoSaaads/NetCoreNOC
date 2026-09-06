@@ -336,6 +336,124 @@ const scenarios = {
   },
 
   /**
+   * Make one declaration from a member row, and report what the click actually sent.
+   *
+   * v0.16.3. `params.control` is `"ne"`, `"class"` or `"severity"`; `params.row` is the member
+   * index; `params.value` is what the operator types or selects. The scenario opens the editor,
+   * sets the value, presses Save — and, when the disagreement warning appears, either presses the
+   * button again (`params.anyway`) or presses Cancel.
+   *
+   * **Why the warning is driven here and not asserted in prose**: it is an element on the page
+   * precisely so this is possible. A `globalThis.confirm()` would be invisible to this harness,
+   * which is how eight consecutive releases shipped a console defect no test could see.
+   */
+  async declare(params) {
+    const env = await boot(params);
+    env.navigate("#/situations");
+    await settle(env);
+    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+
+    const column = { ne: 0, class: 1, severity: 2 };
+    const rowNode = cardFor(env, params.sid).detail.querySelectorAll("tbody tr")[params.row ?? 0];
+    if (!rowNode) throw new Error(`no member row at index ${params.row ?? 0}`);
+    const openers = rowNode.querySelectorAll("button.declare-open");
+    const opener = openers[column[params.control]];
+    if (!opener) {
+      throw new Error(
+        `no declaration control for ${params.control} (saw ${openers.length} on the row)`,
+      );
+    }
+    const openerLabel = opener.textContent.trim();
+    opener.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+
+    const form = rowNode.querySelector("form.declare");
+    if (!form) throw new Error("the declaration editor did not open");
+    // The harness DOM takes one simple selector at a time — deliberately, so an unrecognised
+    // one cannot match nothing quietly. Two queries rather than a comma group.
+    const field = form.querySelector("input") ?? form.querySelector("select");
+    field.value = params.value;
+    field.dispatchEvent(new env.DomEvent("input"));
+    field.dispatchEvent(new env.DomEvent("change"));
+    await settle(env);
+
+    // The editor is a `<form onSubmit=…>` and its Save is `type="submit"`, so the gesture is a
+    // submit rather than a click: this DOM does not synthesise one from the other, deliberately —
+    // an implicit submit is browser behaviour and pretending to have it would be a fiction the
+    // harness told the test. The button's label is still read, because it is what the operator
+    // sees change when the confirmation appears.
+    const saveLabel = buttonIn(form, "Save").textContent.trim();
+    form.dispatchEvent(new env.DomEvent("submit"));
+    await settle(env);
+
+    // The warning, if it appeared. `warned` is what the interruption rule is measured by.
+    const warnNode = rowNode.querySelector(".declare-warn");
+    const warned = Boolean(warnNode);
+    let confirmLabel = null;
+    if (warned) {
+      const live = rowNode.querySelector("form.declare");
+      confirmLabel = buttonIn(live, "Declare anyway").textContent.trim();
+      if (params.anyway) {
+        live.dispatchEvent(new env.DomEvent("submit"));
+      } else {
+        buttonIn(live, "Cancel").dispatchEvent(new env.DomEvent("click"));
+      }
+      await settle(env);
+    }
+
+    const posts = env.network.requests.filter(
+      (r) => r.method === "POST" && r.path === "/api/labels",
+    );
+    const deletes = env.network.requests.filter(
+      (r) => r.method === "DELETE" && r.path.startsWith("/api/labels/"),
+    );
+    return {
+      openerLabel,
+      saveLabel,
+      confirmLabel,
+      warned,
+      warnText: warnNode ? warnNode.textContent.replace(/\s+/g, " ").trim() : null,
+      posts: posts.map((r) => r.body),
+      deletePaths: deletes.map((r) => r.path),
+      requests: requests(env),
+      proof: proofOf(env),
+    };
+  },
+
+  /**
+   * Withdraw a declaration that is already in force: open the editor and press `Clear`.
+   *
+   * **A declaration that cannot be undone is a declaration nobody will make**, so the revert is
+   * driven rather than described.
+   */
+  async withdraw(params) {
+    const env = await boot(params);
+    env.navigate("#/situations");
+    await settle(env);
+    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const column = { ne: 0, class: 1, severity: 2 };
+    const rowNode = cardFor(env, params.sid).detail.querySelectorAll("tbody tr")[params.row ?? 0];
+    const opener = rowNode.querySelectorAll("button.declare-open")[column[params.control]];
+    const openerLabel = opener.textContent.trim();
+    opener.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const form = rowNode.querySelector("form.declare");
+    buttonIn(form, "Clear").dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    return {
+      openerLabel,
+      deletePaths: env.network.requests
+        .filter((r) => r.method === "DELETE")
+        .map((r) => r.path),
+      posts: env.network.requests.filter((r) => r.method === "POST").map((r) => r.path),
+      requests: requests(env),
+      proof: proofOf(env),
+    };
+  },
+
+  /**
    * The v0.7.5 defect, re-created as an observation: hold the Split button the operator is
    * aiming at, let a server-sent update arrive, and only then click it.
    */

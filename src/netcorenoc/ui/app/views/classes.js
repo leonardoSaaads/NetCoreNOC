@@ -33,7 +33,7 @@
 
 import { html, Component } from "../dom.js";
 import { get, post } from "../api.js";
-import { Loader, Empty, DataTable } from "../widgets.js";
+import { Loader, Empty, DataTable, SeverityBadge } from "../widgets.js";
 import { count, plural } from "../format.js";
 import { can } from "../session.js";
 
@@ -62,17 +62,27 @@ export class Classes extends Loader {
       { key: "name", label: "class", title: "the operator label if one was set, else what was inferred" },
       { key: "oid", label: "trap OID" },
       { key: "vendor", label: "vendor", title: "inferred from the enterprise arc of the OID" },
+      { key: "severity", label: "severity",
+        title: "the severity an operator declared for this kind of trap" },
     ];
     if (editable) columns.push({ key: "act", label: "" });
     const rows = classes.map((c) => ({
       key: c.id,
       cells: {
         id: count(c.id),
+        // **Which value is in use, on the row** (DECISIONS #284). A declared name wins and the
+        // derived one is still there; saying so is what makes the declaration revertible in the
+        // operator's head as well as in the database.
         name: c.label
-          ? html`<span>${c.label} <span class="muted">(labelled)</span></span>`
+          ? html`<span>${c.label} <span class="muted">(declared)</span></span>`
           : (c.name || "—"),
         oid: html`<code class="mono">${c.oid}</code>`,
         vendor: c.vendor || "unknown",
+        severity: c.severity
+          ? html`<${SeverityBadge} alarm=${{ severity: null, severity_rank: null,
+                                             declared_severity: c.severity,
+                                             declared_severity_rank: c.severity_rank }} />`
+          : html`<span class="muted">not declared</span>`,
         act: editable
           ? html`<${ClassName} klass=${c} onDone=${() => this.reload()} />`
           : null,
