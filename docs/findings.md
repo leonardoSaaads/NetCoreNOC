@@ -1240,10 +1240,17 @@ Run every command below from the repository root with the virtualenv active.
   to protect and cannot see. That guard asserts the client sends **what was ticked**; it says
   nothing about whether the operator could tick what they meant. Found in a browser, which is the
   eighth consecutive release in which that sentence is true.
-- **Disposition**: open, **not fixed here**. Part VII rule 2 confines this release's console work to
-  the severity pill, and the repair is a hit-area rule that belongs with v0.16.4's shell — where
-  the row height, the checkbox column and the touch floor are one decision rather than three.
-  Issued in v0.16.2.
+- **Disposition**: **FIXED in v0.16.4**. The exclusion is deleted: `input[type="checkbox"]` and
+  `input[type="radio"]` now take `--tap` on **both** edges, and the member checkbox measures
+  **28 × 28 px** at all three widths. The more useful half of the repair is the guard.
+  `test_ui_invariants.py::test_every_declaration_control_clears_the_tap_floor_at_all_three_widths`
+  **passed over these 13 px controls in v0.16.2 and v0.16.3**, because the normaliser that read the
+  floor's selector flattened `input:not([type="checkbox"]):not([type="radio"])` down to `input` and
+  reported inputs covered — the exclusion that *was* the defect was the exact substring it threw
+  away. The reading now lives in `tap_floor_tags`, which refuses to count any part carrying a
+  negation: the question is *"does the floor reach every control of this kind"*, and any `:not(`
+  means the honest answer is no. Demonstrated red by restoring the exclusion, with the repaired
+  tree as its control. Issued in v0.16.2, fixed in the release that owns the shell.
 
 ## F104 — an operator-declared name carries a raw address past the field-shaping axis
 
@@ -1331,11 +1338,16 @@ Run every command below from the repository root with the virtualenv active.
   device"* when the truth is *"nothing ever tried"*, which is the exact failure `format.js`'s own
   header forbids for severity — *"a blank cell would read as 'no severity' rather than 'not learned
   yet'"*. It is also the shape F84 had: a field served to a screen that no writer fills.
-- **Disposition**: open, **not fixed here**. Two repairs exist — infer an NE vendor (from the
-  enterprise arcs of the traps it sends, which is real work and a correlation question) or delete
-  the column and the two renders — and this release has no measurement that decides between them.
-  Deleting a rendered column is v0.16.4's shell work, where the graph's tables and the entity card
-  are one decision. Issued in v0.16.3.
+- **Disposition**: **FIXED in v0.16.4** (DECISIONS #292), by deletion. The measurement that decided
+  between the two repairs is the one this finding lacked: **25 elements and 0 vendors after 2 252
+  alarms**, because no writer has ever set the column since v0.1.0 — so inferring a vendor is a new
+  correlation feature and not a repair. `vendor` leaves `/api/graph` nodes, `/api/entities` and
+  `/api/entities/{ne_id}`, and `device_vendor` leaves every alarm row of `/api/situations/{sid}`;
+  the four server-side projections that fed them are gone with the renders. **The columns stay in
+  the schema**, so nothing is dropped and nothing needs backfilling. This finding also **understated
+  itself**: it named two render sites and there were **three** — the graph node's SVG `<title>`
+  printed *"unknown vendor"* on hover for every node ever drawn, which no assertion reached because
+  the DOM harness substitutes a double for d3. Issued in v0.16.3.
 
 ## F107 — the warning banner carries the trap allowlist to every viewer, past the shaping axis
 
