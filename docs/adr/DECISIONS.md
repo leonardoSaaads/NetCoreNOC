@@ -2804,3 +2804,141 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Not decided here**: whether `max_examples` should move. The one test that sets it
   (`test_governance.py`, 250) keeps its own setting, because a profile that silently overrode a
   deliberate per-test budget would be the placeholder rule (#219) in a new register.
+
+# v0.16.3 — the operator's declaration
+
+## 280. The class name has one home, and the loser is settled by `0008`'s own rule (v0.16.3)
+
+- **Decision** (decision 1): `alarm_class.name` and `alarm_class.vendor` are **dropped**. The
+  declared class name lives in `label`; the derived one is computed at read time from
+  `known_oids.trap_name(oid)`, and the vendor from `known_oids.vendor_of(oid)`.
+- **Reason**: the brief asks which of two homes readers use, and the count is a tie — both are read
+  by exactly `list_classes`, `situation_detail` and `format.js::alarmName`. The tie breaks on
+  `0008`'s registered storage rule instead: *store what cannot be recomputed, derive what can*. Both
+  columns are **pure functions of `oid`, which is in the same row**, so both are stored derivations
+  and have been since `0001`. What an operator types cannot be recomputed; that is the difference,
+  and it is the only one that matters.
+- **Measured**: on a ten-scenario replay, stored `name == trap_name(oid)` for **48/48** classes and
+  stored `vendor == vendor_of(oid)` for **48/48**. Dropping them changes no served value today, and
+  stops the stored copy going stale the day `IANA_ENTERPRISES` gains an entry.
+- **Trade-off accepted**: two reads that composed the precedence in SQL (`timeline_marks`,
+  `list_state_clears`) now compose it in Python through one function, `types.class_display`. Two
+  `COALESCE(cl.label, c.name, c.oid)` copies become one implementation, which is the point.
+- **Not decided here**: `alarm_class` keeps `first_seen`/`last_seen`; they record observation, not
+  derivation.
+
+## 281. `kind='ne'`, because `device.id == ne.id` is a coincidence and not a contract (v0.16.3)
+
+- **Decision** (decision 2): `label.kind` gains **`ne`** and loses **`device`**. `0016` migrates
+  every `device` row **by address** — `label ⋈ device.id ⋈ ne.ip` — never by id. Every reader joins
+  `kind='ne'`, and `POST /api/labels {kind:"device"}` is refused (422) rather than aliased.
+- **Reason**: Entities reads `ne` and the console wrote `label(kind='device', target_id=device.id)`,
+  so a name written from the graph was invisible on Entities forever. A join fix would work **only
+  while the two ids coincide**, and nothing makes them: no foreign key, no shared key, two
+  independent `AUTOINCREMENT` sequences, and one migration (`0003`) that preserved ids on a
+  backfill. That is F53's shape — a property that holds by accident — and the release that relies
+  on it is not the one that breaks.
+- **Measured**: `device.id == ne.id` for **25/25** addresses on a populated corpus database, and
+  `sqlite_sequence` shows `device` and `ne` both at 25. The coincidence is real; the contract is
+  absent. Migrating by address is correct either way.
+- **Trade-off accepted**: one breaking request-shape change on a pre-alpha appliance with one
+  client, declared in the behaviour-change list. The alternative — accepting `device` as an alias
+  for `ne` — keeps two names for one concept, which is the thing being removed.
+- **What it also repairs**: `POST /api/labels` already asked `scope.allows_ne(body.id)` about a
+  **device** id. Under `kind='ne'` that call is correct by construction rather than by coincidence.
+
+## 282. A vendor is not a name, so it does not enter the name chain (v0.16.3)
+
+- **Decision** (decision 3): `format.js::alarmName` is unchanged — `class_label || class_name ||
+  class_oid`. A new `classVendor(alarm)` returns the vendor **only when the name chain fell through
+  to the raw OID**, and the class cell renders it as a subordinate, muted qualifier beside the OID.
+- **Reason**: appending the vendor inside `alarmName` would make `Huawei` occupy a slot the whole
+  chain reserves for a *name*, and an operator reading a name column would be told a manufacturer
+  when the appliance still does not know what the trap means. Rendering it beside the OID says
+  exactly what is true: *this is an unnamed Huawei trap, here is its OID*.
+- **Measured**: 48 classes, **2 named, 46 vendored, 0 declared**. So the qualifier reaches 46 of the
+  46 rows that would otherwise be a bare OID, and the *name* is still absent for 46 until an
+  operator declares one. Both halves are reported; the first alone would be the triumphant number
+  Appendix B warns about.
+- **Trade-off accepted**: the class cell holds two strings where it held one. It is two strings on
+  the rows that had the least information, and one on the rows that had a name.
+
+## 283. Severity is declared per class, with the key already wide enough for the refinement (v0.16.3)
+
+- **Decision** (decision 4): `label` gains `qualifier TEXT NOT NULL DEFAULT ''` and its primary key
+  becomes `(kind, target_id, qualifier)`. A severity declaration is
+  `kind='severity', target_id=<class id>, qualifier='', label=<vocabulary token>`.
+- **How class + varbind arrives without a second migration**: the later release writes
+  `qualifier=<varbind OID>` into the column and the key that already admit it, and the read becomes
+  *longest matching qualifier wins* — code, not schema. Nothing is repurposed: `''` means
+  *"the whole class"* today and still means it then.
+- **Reason the value is a vocabulary token and not a rank**: `known_oids.severity_rank(token)` is a
+  pure function, so `0008` says derive it. It also means a declared severity can never land outside
+  the five rendered bands, which is the half of F99 a declaration is allowed to solve.
+- **Trade-off accepted**: SQLite cannot widen a primary key in place, so `0016` rebuilds `label`
+  (create, copy, drop, rename). It is additive in effect — every existing row survives with
+  `qualifier=''` — and it is the one table in the schema small enough for that to be free.
+
+## 284. The declared wins, both are kept, and it can be taken back (v0.16.3)
+
+- **Decision** (decision 5): precedence is a **read-time** decision. The learned severity is written
+  and read exactly as before; a declaration is a separate row that the read prefers. Every response
+  carrying a declared severity also carries the learned one, so the pill can mark which is in use
+  and name the other in its `title`. A declaration is withdrawn with
+  `DELETE /api/labels/{kind}/{target_id}` (`label.write`, the POST's scope rule).
+- **Reason for a route rather than an empty-string POST**: `LabelIn.label` is `min_length=1`, and
+  relaxing it so `""` means *delete* would make a mistyped save destroy a declaration silently. A
+  declaration that cannot be undone is one nobody makes; a declaration undone by accident is worse.
+- **Reason the learned value is never overwritten**: an operator and 200 observations disagreeing is
+  the cheapest evidence this project can buy, and an overwrite spends it. Directive 4.
+- **Trade-off accepted**: one new route and one more row in the authorization matrix, against a
+  gesture the operator can reverse without an admin.
+
+## 285. The disagreement prompt interrupts on two steps, and a cancel does not write (v0.16.3)
+
+- **Decision** (decision 6): the confirmation appears **only** when the row's learned
+  `severity_rank` is non-null, **is itself inside the 0–4 vocabulary scale**, and differs from the
+  declared rank by **≥ 2**. Confirm writes the declaration; **cancel does not write it**.
+- **Correcting the brief**: §IV.2 reads the decline as *"kept, with the disagreement recorded"*. A
+  cancel that writes anyway is not a confirmation — it is a notification wearing a dialog's
+  clothes, and the second one an operator meets is dismissed unread. The prompt is rare by
+  construction precisely so that it can afford to mean something.
+- **Where the disagreement is recorded**: server-side and without trusting the client. A
+  `kind='severity'` write records `declared_rank` and the distinct learned ranks of that class's
+  alarms in its `label.set` audit row. No training row — decision 286.
+- **Why an out-of-scale learned rank does not prompt**: F99's integer scale (ranks 10, 20, 30) is
+  not the declaration's scale, so the appliance holds no *comparable* opinion and has nothing to
+  interrupt with. The guard is `|declared − learned| ≥ 2` **on 0–4**, not on whatever integers a
+  vendor chose.
+- **Measured**: on the corpus, **0 of 2 252** alarms resolve a severity at all, so the prompt is
+  unreachable there. It is rare by construction and the measurement says so rather than the design.
+
+## 286. A declaration asserts nothing about a grouping (v0.16.3)
+
+- **Decision** (decision 7): no declaration — name or severity — produces a training row, and
+  `PREREGISTRATION-0.16.0.md` §2's gesture-to-assertion map is **unamended**.
+- **Reason**: a name is not a claim about which alarms belong together, and a severity is a claim
+  about a *kind of trap* rather than about a *link*. Part VIII's rule resolves the ambiguity the
+  same way, and the conservative reading costs nothing that a later release cannot add.
+- **Trade-off accepted**: the appliance learns nothing from an operator's severity, which is a real
+  loss and the right one — the alternative is inventing an assertion the preregistration never
+  declared, which is the failure mode that document exists to prevent.
+
+## 287. Declared text is shaped, because a name an operator chose can carry an address (v0.16.3)
+
+- **Decision** (decision 8, F104): `device_label`, `class_label`, `ne_label` and `operator_name`
+  join `_COMPOSITE` and take `("editor", _COARSEN)`. Each address token inside the string is
+  coarsened by `coarsen_situation_name`, exactly as `derived_name` has been since v0.16.1.
+- **Reason**: `FIELD_RULES` reasons that *"a label is free text a person typed, and a label passes
+  through"*. That is true of the string's **origin** and false of its **content**: an editor may
+  type an address a viewer's own response coarsens two fields away. It is commit `8609962`'s defect
+  in the declared register, and this release puts declared text on four screens.
+- **Measured**: with a device declared `core-sw at 127.0.0.10`, a **viewer** receives
+  `device_ip: "127.0.0.0/24"` and `device_label: "core-sw at 127.0.0.10"` in the same body, on
+  `GET /api/situations/{sid}` and `GET /api/graph`. Control: with the declaration removed, the raw
+  address appears in neither. `operator_name` leaks identically on the list and the detail.
+- **Why coarsened rather than dropped**: dropping loses the operator's name for every viewer to
+  hide an address most names do not contain. Coarsening removes exactly what shaping hides and
+  keeps what it does not, and it reuses the coarsener that already exists.
+- **Trade-off accepted**: a viewer may see `core-sw at 127.0.0.0/24`, which is a name nobody typed.
+  That is the same trade `derived_name` already makes, and it is the honest one.
