@@ -365,15 +365,16 @@ UI_HASHES: dict[str, str] = {
     "app/destructive.js": "51994f0640e3e170061ec0f9bea068f7b3fff7348ca153ffb00d64cfb11838e0",
     "app/dom.js": "b0e279c902ae6f76a902dbc24bb8595d6936aff13f46354870120c4fe42b119b",
     "app/format.js": "441d130bf7f6257124f8a2ca5c0573915ca3918a0ede8960f9f8cc40bb770db4",
+    "app/health.js": "cab0ad1d18cfedf52d5c546e98b4659d424bc3392d213618800505e8c723d47a",
     "app/icons.js": "bca6a442d593b20549197ade2231b887b821f72d0355c4b69c4160d2d44e1c98",
     "app/login.js": "ee936acd5ec82c2299416c9c87e594ab954b42dad137db4e8662eb6eded104fc",
-    "app/notices.js": "bdd481caeee3cc2516280200f3aa0bb04171ca9db07edefa95d4b42a1218636b",
+    "app/notices.js": "01b6937821ee048a64369966f8247843f4327fef55cb41218d84347633877dec",
     "app/parameters.js": "e661fcc6136f849f565a16c1326a786b0a149c9553d64115e9a591da9fc2545d",
     "app/password.js": "6c85d8111fcaa2da415910744064c84e41adf5db57fc953cad9f1f14543ec11d",
     "app/registry.js": "38114bfebf5692f13f234013599665f7df3a40aaf7081dc53f824e91c0eb4720",
     "app/router.js": "5abc5927a6e355c1271f4e9cf6295e4211441bdac5e3b38d287c32536e83bb4e",
     "app/session.js": "4d78e2ace8974ba3ce63aae9be06f3b1730f19784c25b7cb7ddc4c194401449f",
-    "app/shell.js": "82f21540eb88591f60a4dd9abee605d4f7b63626b496fd57fe96852aff5fb24f",
+    "app/shell.js": "ee698932858da28345c7592382532815ef1b2bea0d841556ff807848d091b59e",
     "app/sidebar.js": "8625e151e0ec4d15f4d64c1d16eace797e4341e5c8361694f9bad371d3536bfe",
     "app/store.js": "f6e89eccffe17ebf4a66b853b77a118a925924bee8c8b31b9fdcacfe042f7b40",
     "app/theme.js": "ace76aa649fbcfa88a9702b4f2febc15fce5eeea3cc510e593fe75ef1d4f378e",
@@ -387,13 +388,16 @@ UI_HASHES: dict[str, str] = {
     "app/views/graph.js": "0bf9dfdbfb72fff6b66c7bbce9bbf7e1c35b8755695ab33bea31d36e21c4a3e6",
     "app/views/labelling.js": "f4700fc88921415127605c524cd8d3d8442eea40e7239cffb9473ccf950a97a0",
     "app/views/overview.js": "d7059021aa35b6da39d7775570b500c7f100fbcbd7c16b31e7bbd58603989614",
+    "app/views/parts/bulkclear.js": (
+        "2c3b484d2a010c1b9a7b48bb6fb9eeab1b056c28111e8d55e052c872e45a2867"
+    ),
     "app/views/parts/card.js": "ee4cc5d51a27b19f70259e3a5e61df623e53f6c6101f103cebe404d90748013b",
     "app/views/parts/declare.js": (
         "55d42568d7358eebb67d1e8c2b8138ac71676ec5fac45057663683772611f297"
     ),
     "app/views/parts/facts.js": "2befcc9ed54b18d57de942f3f9583e00a0a39170bb2b45d68b29933881858f12",
     "app/views/parts/finder.js": "b0652368970a0631d24987c4d1a4dd92b40affe833d1d7959db2a3933fc03274",
-    "app/views/parts/judge.js": "b31de76729dda8c3d2eb5978b2c8caab4c2483221bfbf95935a4277d50a2580b",
+    "app/views/parts/judge.js": "fe63d1a56e3e63ddb4fc8bff07fdbb806136eb137277d52f16aa83e5eb7445b4",
     "app/views/parts/lifecycle.js": (
         "a7c0a01b71795a048fad96956dc6280c0cd9e0a2b5db39893a029de4f9b23dbf"
     ),
@@ -419,7 +423,7 @@ UI_HASHES: dict[str, str] = {
     "app/widgets.js": "abe9f6d9342f0335ead13cef4061b54ace36f31e28b0d92308918c96a3561e21",
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "73f4206c6fa3dc1ae5ff0476f56c1c29e93e6bc38e2510c50311e96a1f833c1d",
-    "style.css": "f4d6a4775508cf45f6414466f4dcb590d2901b031026f9f520b722f84c345829",
+    "style.css": "b292c925672003a5c560eb5c21007325c37ef540c413b5abb36f4620c40ba87d",
     "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
     "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
     "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
@@ -441,14 +445,16 @@ UI_SIZES: dict[str, int] = {
     "app/destructive.js": 4_152,
     "app/dom.js": 2_142,
     "app/format.js": 16_964,
+    "app/health.js": 7_585,
     "app/icons.js": 7_222,
     "app/login.js": 7_137,
+    "app/notices.js": 12_205,
     "app/parameters.js": 10_264,
     "app/password.js": 5_442,
     "app/registry.js": 7_468,
     "app/router.js": 5_035,
     "app/session.js": 3_482,
-    "app/shell.js": 13_239,
+    "app/shell.js": 14_096,
     "app/sidebar.js": 9_434,
     "app/store.js": 5_484,
     "app/theme.js": 6_575,
@@ -462,9 +468,12 @@ UI_SIZES: dict[str, int] = {
     "app/views/graph.js": 16_931,
     "app/views/labelling.js": 5_327,
     "app/views/overview.js": 14_432,
+    "app/views/parts/bulkclear.js": 3_112,
     "app/views/parts/card.js": 6_140,
     "app/views/parts/declare.js": 11_975,
     "app/views/parts/facts.js": 6_340,
+    "app/views/parts/finder.js": 6_220,
+    "app/views/parts/judge.js": 17_092,
     "app/views/parts/lifecycle.js": 13_509,
     "app/views/parts/members.js": 8_897,
     "app/views/parts/model.js": 10_290,
@@ -482,7 +491,7 @@ UI_SIZES: dict[str, int] = {
     "app/widgets.js": 11_923,
     "favicon.svg": 608,
     "index.html": 2_159,
-    "style.css": 59_757,
+    "style.css": 70_440,
     "vendor/CHECKSUMS.txt": 2_039,
     "vendor/d3.LICENSE": 764,
     "vendor/d3.v7.min.js": 279_706,
@@ -541,4 +550,25 @@ def test_the_one_file_became_a_module_graph_and_no_module_is_the_old_file_rename
     )
     assert modules["app.js"] < 6_000, (
         f"the entry point is {modules['app.js']} bytes; it should boot and nothing else"
+    )
+
+
+def test_the_two_ui_pins_cover_exactly_the_same_files() -> None:
+    """`UI_SIZES` and `UI_HASHES` must describe the same file set, and this is what says so.
+
+    **A pin whose membership can shrink in silence is not a pin.** v0.16.4 added three UI modules
+    and the size pin never learned about them: the helper that regenerates it intersected the fresh
+    list against the keys already present — a fix for a rebuild that had dropped entries — which
+    also made it structurally incapable of gaining any. Nothing failed, because every test over
+    `UI_SIZES` iterates `UI_SIZES`. Five files were outside it by the time anyone looked.
+
+    The hash pin answers *"did this change?"* and the size pin answers *"by how much?"*, and the
+    second is the one a reviewer scans to see whether a UI diff is the size its commit message
+    claims. Neither can do its job over a subset nobody chose.
+    """
+    assert set(UI_SIZES) == set(UI_HASHES), (
+        "the two UI pins have drifted apart.\n"
+        f"  hashed but not sized: {sorted(set(UI_HASHES) - set(UI_SIZES))}\n"
+        f"  sized but not hashed: {sorted(set(UI_SIZES) - set(UI_HASHES))}\n"
+        "Regenerate both over the whole tree; never filter one against the other's keys."
     )

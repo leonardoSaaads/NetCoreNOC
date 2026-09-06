@@ -378,6 +378,11 @@ class Element extends DomNode {
 const HANDLER_EVENTS = [
   "click", "input", "change", "submit", "keydown", "keyup",
   "focus", "blur", "focusin", "focusout", "dblclick", "mousedown", "mouseup",
+  // v0.16.5: the health control opens on hover (DECISIONS #303). Adding these is what tripwire (5)
+  // above exists to force — without them Preact's `onMouseEnter` prop landed on a capitalised type
+  // nothing dispatches, the panel rendered perfectly and responded to nothing, and every markup
+  // assertion still passed. The harness refused to boot instead, which is the whole point of it.
+  "mouseenter", "mouseleave",
 ];
 for (const type of HANDLER_EVENTS) {
   Object.defineProperty(Element.prototype, `on${type}`, {

@@ -12,6 +12,77 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty rows, two ask for an
 action, eleven ask you to read a paragraph, and seventeen are start-the-new-binary.
 
+## [0.16.5] - 2026-09-06 — "the shell, corrected"
+
+Six things the maintainer found by using v0.16.4's console. One of them was a defect of mine that
+no guard in this repository could see, and it is the reason this release exists.
+
+```
+                                            before        after
+  notification panel width, every width      26 px        338 px
+  its notice text box                         0 px        291 px
+  scrollHeight inside a 388 px panel       7 732 px       no scrolling needed
+  a visible way to dismiss it                 none        an X in the header
+  distance from bell to account name        723 px          0 px (same group)
+  health panel text                    320 chars/49 words  157 chars, 3 meters
+  host metrics shown                            0          3, measured
+  member checkbox drawn / hit area        28 / 28 px     18 / 28 px (mouse)
+  clearing a 12-member situation        12 presses       1, with a confirmation
+```
+
+### Fixed
+
+* **F111 — the disclosure panels rendered 26 px wide at every width.** v0.16.4 added
+  `.topbar { position: relative }` to anchor them and left `.disclosure { position: relative }` two
+  rules above; only the nearer ancestor can be the containing block, so `100%` resolved against the
+  28 px opener. Every warning wrapped to about one character per line, 7 732 px of scrollHeight
+  inside a 388 px box. **The comment beside the rule asserted the anchor was `.topbar`** — a claim
+  written in the same commit and never checked against a rendered box. Neither guard nor live pass
+  could see it: the harness has no layout engine, and a 26 px panel overflows nothing.
+
+### Added
+
+* **CPU, memory and storage in the health control**, each with a two-hour sparkline (#300).
+  v0.16.4 refused these because reading them was believed to need `psutil`. **It does not**:
+  `/proc/stat` differenced, the cgroup's `memory.max` or `/proc/meminfo`, and `os.statvfs` on the
+  database's filesystem. The dependency count is still **five**. The cgroup is read first, because
+  inside the 512 MiB container v0.16.4's compose file defines, `/proc/meminfo` reports the host's
+  16 GiB. #289's rule survives intact: an unreadable metric renders `—` and says "not measured",
+  never `0%`, and a gap in a series **breaks** the sparkline rather than being drawn through.
+* **A bulk hand-clear** — `POST /api/alarms/clear` (#301). The largest corpus situation holds
+  1 051 members and the gesture was one button per row. Its set is named by `situation_id` and
+  **derived on the server** from the members the caller can already see; a list of alarm ids would
+  have been an existence oracle. It stays in the alarm namespace because a clear is a fact about an
+  alarm's lifecycle, which is the rule `annotate.clear_alarm` has always stated.
+* **A visible dismiss on both disclosures.** Escape, a second press and a click outside all worked
+  in v0.16.4 and not one of them was visible.
+* **Hover on the health control** (#303), behind `(hover: hover) and (pointer: fine)` with a 120 ms
+  open and a 260 ms close delay. The bell keeps click only: a glance is not the same gesture as
+  acting on a warning.
+
+### Changed
+
+* **The bell and the health control moved to the right-hand group**, beside the account controls.
+  At 1440 px they sat 723 px from the account name, in the strip where the appliance says what it
+  is doing rather than where the operator's own controls live.
+* **The checkbox tick is 18 px and its hit area is still 28** (#302). F103's repair fixed the
+  target and overshot the glyph. `appearance: none` and a drawn box, because a native control at
+  `appearance: auto` discards padding — measured, after the obvious `content-box` approach gave a
+  hit area of 18×28.
+* **The health panel's four correlation counters became one secondary line.** They did not leave.
+
+### Behaviour changes, three
+
+1. **`GET /api/stats` gains a `resources` block** when the process runner is present: current CPU,
+   memory and storage plus three 24-point series. Additive; absent without the runner, and the
+   panel says so rather than showing zeros.
+2. **`POST /api/alarms/clear` is new.** The `/api` surface moves 51 → 52.
+3. **`alarm.clear_all` is a new audit action**, one row per batch **in addition to** the unchanged
+   `alarm.clear` row per alarm — so "who cleared this alarm" is answered by the same query it
+   always was.
+
+No migration. Findings: **F111** issued and closed.
+
 ## [0.16.4] - 2026-09-06 — "the console's shell"
 
 The screens were built; what surrounds them was not. This release is about the chrome an operator

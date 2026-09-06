@@ -1515,3 +1515,40 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: **FIXED in v0.16.4**. Four sites take an explicit `${" "}`; the guard is
   demonstrated red by removing one and green with it. Issued and closed by the release that
   scanned for it.
+
+## F111 — the disclosure panels render 26 px wide at every width, and the fix's own comment says otherwise
+
+- **What**: `style.css` gives `.disclosure-panel` `width: min(24rem, calc(100% - 2 * var(--space-3)))`
+  under a comment reading *"The containing block is `.topbar`, so `100%` is a width the panel can be
+  clamped against"*. It is not. `.disclosure` — the wrapper two rules above — also carries
+  `position: relative`, and an absolutely positioned box resolves percentages against the **nearest**
+  positioned ancestor. That is the 28 px opener, so the expression computes to `min(384px, 4px)` and
+  the panel renders **26 px wide**. Every warning wraps to roughly one character per line.
+- **Reproduce**, in a browser at any width, as any role, pressing the bell:
+  ```js
+  const p = document.querySelector("#noticePanel");
+  ({ width: p.getBoundingClientRect().width,
+     scrollH: p.scrollHeight, clientH: p.clientHeight,
+     anchor: (() => { for (let n = p.parentElement; n; n = n.parentElement)
+       if (getComputedStyle(n).position !== "static") return n.className; })() });
+  ```
+- **Measured**, Chromium at 390, 820 and 1440 px — **identical at all three**: panel `26 x 390`,
+  the notice text box `0 px` wide and up to `4 259 px` tall, `scrollHeight 7 732` inside
+  `clientHeight 388`, anchor `disclosure`. The three warnings the demo appliance raises are 79, 119
+  and 271 characters and not one of them is readable.
+- **Why it matters, and why nothing caught it**: this is v0.16.4's flagship control and its whole
+  purpose is that warnings an operator could previously only glimpse in a banner are now somewhere
+  they can return to and read. `test_ui_invariants` has no layout engine and never could see it.
+  The live pass measured control sizes and viewport overflow — and **a 26 px panel overflows
+  nothing**, so it came back clean. The comment asserting the anchor was written in the same commit
+  as the rule and the assertion was never checked against a rendered box. It is the shape Appendix B
+  warns about, with the brief replaced by my own note: *a claim that measurement refutes*.
+- **Disposition**: **FIXED in v0.16.5** (DECISIONS #300's release, no decision of its own — a defect
+  repaired, not a choice made). `.disclosure` is `position: static`; `.topbar` is the anchor it was
+  always documented to be; both panels open from the bar's right edge. Guarded by
+  `test_ui_invariants.py::test_the_disclosure_panel_is_anchored_to_the_bar_and_not_to_its_own_opener`,
+  which asserts over the **rule** rather than a rendered width — no element between the panel and
+  `.topbar` may be positioned — because that is the part a headless harness can check. Demonstrated
+  red by restoring `position: relative` on `.disclosure`, with the repaired tree as its control.
+  Measured after: panel **338 px**, text box **291 px**, nothing clipped, no scrolling needed.
+  Issued and closed by the release that was told to look at it.

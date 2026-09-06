@@ -24,12 +24,13 @@ state the gesture needs.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.models import ClearIn, NameIn
+from netcorenoc.api.models import BulkClearIn, ClearIn, NameIn
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.dataset import gestures
 from netcorenoc.engine.dataset.provenance import BagProvenance
@@ -237,3 +238,103 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 details={"situation_id": sid},
             )
         return {"status": "cleared"}
+
+    @route.post("/api/alarms/clear")
+    async def clear_alarms(
+        body: BulkClearIn,
+        request: Request,
+        principal: auth.Principal = Depends(security),
+    ) -> dict[str, Any]:
+        """Hand-clear every active member of one situation, in one transaction.
+
+        **Why it exists.** The zombie clear was one button per row, and one situation in the shipped
+        corpus holds **1 051** members. A client-side loop over the single-clear route is not a
+        design, it is 1 051 requests, 1 051 transactions and a partial result whenever one of them
+        fails; v0.16.4 left the gesture out rather than ship that, and recorded the debt.
+
+        **Why it is not `/api/situations/{sid}/clear`.** `clear_alarm` above states the rule: a
+        clear is a fact about an *alarm's lifecycle* and putting it in the correlation namespace
+        would express, as a URL, the misreading `PREREGISTRATION-0.16.0.md` §1 exists to prevent.
+        Bulk does not change what the gesture means, so it does not get to change where it lives.
+        The situation is in the **body**, as the name of a set of alarms.
+
+        **What it records is exactly N single clears.** The same `manual_clear` gesture per alarm,
+        the same `membership.cleared`, the same promotion, the same resolution when the last member
+        goes, and one audit row per alarm plus one for the batch. Nothing about the training data
+        can tell this route from the other one, which is the property that lets it exist at all:
+        `manual_clear` is not in `ASSERTING_KINDS` and no number of them asserts anything about a
+        grouping.
+
+        **Errors.** A situation that does not exist and one the principal may not see take the same
+        404, on the same path, as everywhere else on this perimeter (DECISIONS #60, F34). A
+        situation with nothing active in it is **not** a 409: unlike the single clear, where the
+        operator pressed a specific button on a specific row, "nothing left to clear" is the
+        expected outcome of a bulk gesture on a settled situation and reporting it as an error
+        would train operators to ignore errors.
+        """
+        sid = body.situation_id
+        scope = await scope_for(principal)
+        if not await situation_in_scope(sid, scope):
+            await audit_scope_denial(request, principal, "alarm.clear_all", "situation", str(sid))
+            raise HTTPException(status_code=404, detail="no such situation")
+        async with store.lock:
+            members = await store.situation_members(sid)
+        hidden = await ctx.perimeter.hidden_member_ids(sid, scope)
+        # Derived, then narrowed — never the other way round. `only_ids` can subtract from what the
+        # caller can already see and can never add to it, so no id in a request body ever reaches a
+        # row this principal was not already served.
+        visible = [row["id"] for row in members if row["id"] not in hidden]
+        if body.only_ids is not None:
+            wanted = set(body.only_ids)
+            visible = [aid for aid in visible if aid in wanted]
+        if not members:
+            # An empty situation and a nonexistent one are already indistinguishable above; this is
+            # the ordinary "there was nothing to do" and it is a 200.
+            return {"status": "cleared", "cleared": 0}
+        now = time.time()
+        cleared: list[int] = []
+        async with write_txn():
+            subject = await gestures.snapshot(store, sid)
+            for aid in visible:
+                if not await store.manual_clear_alarm(aid, now):
+                    continue  # already inactive: the same non-event as an id that was never ours
+                membership.cleared(engine, aid)
+                cleared.append(aid)
+                await gestures.record(
+                    store,
+                    gestures.Gesture(
+                        kind="manual_clear",
+                        situation_id=sid,
+                        at=now,
+                        actor=principal.ref,
+                        role=principal.role,
+                        alarm_id=aid,
+                    ),
+                    subject,
+                )
+                await audit_row(
+                    request,
+                    principal,
+                    "alarm.clear",
+                    "ok",
+                    object_type="alarm",
+                    object_id=str(aid),
+                    details={"situation_id": sid, "bulk": True},
+                )
+            if cleared:
+                await store.promote_situation(sid, now)
+                if await store.all_cleared(sid):
+                    await store.resolve_situation(sid, "manual_clear", now)
+                    engine.forget_situation(sid)
+            await audit_row(
+                request,
+                principal,
+                "alarm.clear_all",
+                "ok",
+                object_type="situation",
+                object_id=str(sid),
+                # The count and not the ids: the per-alarm rows above already carry those, and
+                # repeating them here would double the audit log's largest write for no new fact.
+                details={"cleared": len(cleared), "narrowed": body.only_ids is not None},
+            )
+        return {"status": "cleared", "cleared": len(cleared)}

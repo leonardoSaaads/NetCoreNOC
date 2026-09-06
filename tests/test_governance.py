@@ -1331,6 +1331,11 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/situations/{sid}/split"): "async def split_situation(",
         ("POST", "/api/situations/{sid}/name"): "async def name_situation(",
         ("POST", "/api/alarms/{aid}/clear"): "async def clear_alarm(",
+        # v0.16.5: the bulk form, and it is inside the perimeter twice over (DECISIONS #301). It
+        # calls `scope_for` like every route here, and its whole working set is then DERIVED from
+        # what that scope permits — `situation_members` minus `hidden_member_ids` — rather than
+        # taken from the request body, which is what keeps it from being an existence oracle.
+        ("POST", "/api/alarms/clear"): "async def clear_alarms(",
         # v0.16.2: the bare promotion. It writes one column and asserts nothing, and it is inside
         # the perimeter for exactly the reason every other one is — it names a situation, and its
         # capability is below `admin` (DECISIONS #273).

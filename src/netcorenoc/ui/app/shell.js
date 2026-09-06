@@ -39,7 +39,8 @@ import { Icon } from "./icons.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
 import { session, scopeSummary } from "./session.js";
 import { theme, setTheme, nextTheme, navState, setNavState, nextNavState } from "./theme.js";
-import { Bell, Health } from "./notices.js";
+import { Bell } from "./notices.js";
+import { Health } from "./health.js";
 import * as store from "./store.js";
 import { plural, utcOffset, TIMEZONE } from "./format.js";
 
@@ -177,10 +178,20 @@ function TopBar({ live, onSignOut, nav, onNav }) {
             first says whose clock, the second makes the arithmetic against a UTC log trivial. */
         null}
       <span class="tz" title=${TZ_TITLE}>${TIMEZONE}${" "}${utcOffset(new Date())}</span>
+    </div>
+    ${/* **The bell and the health control sit on the RIGHT, with the account controls.**
+          v0.16.4 put them beside the connection dot on the left, 723 px from the account name at
+          1440 px. Left is where the appliance says what it IS doing — nav, connection, clock —
+          and right is where the operator's own controls live. A notification bell and a status
+          indicator are the operator's: every console these operators also use puts them there,
+          and putting them anywhere else costs a search on every visit for no gain. They lead the
+          group rather than trail it so the two panels, which open from the bar's right edge, are
+          never further from their opener than the account controls are wide. */
+      null}
+    <div class="topbar-who">
       <${Bell} stats=${live.stats} />
       <${Health} stats=${live.stats} rate=${live.trapRate} />
-    </div>
-    <div class="topbar-who">
+      <span class="topbar-sep" aria-hidden="true"></span>
       ${scope ? html`<span class="badge badge-scope" title=${scope.title}>
         scoped: ${plural(scope.neCount, "NE", "NE")}</span>` : null}
       <span class="role-tag">${active.role}</span>

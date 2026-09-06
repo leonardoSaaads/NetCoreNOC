@@ -75,6 +75,13 @@ ACTIONS: frozenset[str] = frozenset(
         "situation.split",
         "situation.name",
         "alarm.clear",
+        # v0.16.5 — the batch envelope around N `alarm.clear` rows (DECISIONS #301). It does **not**
+        # replace them: every alarm still writes its own `alarm.clear` carrying `bulk: true`, so the
+        # question *"who cleared this alarm"* is answered by the same query it always was and does
+        # not have to know that bulk exists. This row answers the different question an auditor asks
+        # of a batch — *"who decided to clear a whole situation at once, and how many went"* — which
+        # no per-alarm row can answer, because none of them knows it was one of twelve.
+        "alarm.clear_all",
         # v0.16.2 — promotion WITHOUT judging (`PREREGISTRATION-0.16.2.md` §2.2, DECISIONS #273).
         # **This row is the whole durable record of a bare promotion**, and that is deliberate:
         # the event kinds are a `CHECK` on `situation_event.kind`, and widening one in SQLite is a

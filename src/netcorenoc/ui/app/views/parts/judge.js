@@ -50,6 +50,7 @@ import { Loading, Failed } from "../../widgets.js";
 import { age, alarmName, deviceName, lastJudgement, percent, plural, timeTitle }
   from "../../format.js";
 import { Members } from "./members.js";
+import { BulkClear } from "./bulkclear.js";
 import { canEdit } from "../../session.js";
 
 export class Detail extends Component {
@@ -58,7 +59,13 @@ export class Detail extends Component {
     // `adjusting` is the disclosure a JUDGED situation puts its grouping controls behind. It is
     // per-visit component state and nothing else — a card that remembered it would be a second,
     // private notion of situation state, which is what DECISIONS #267 refused to build.
-    this.state = { marked: new Set(), sending: false, outcome: null, adjusting: false };
+    this.state = {
+      marked: new Set(),
+      sending: false,
+      outcome: null,
+      adjusting: false,
+      confirmingClear: false,
+    };
   }
 
   toggleMark(alarmId, on) {
@@ -111,6 +118,37 @@ export class Detail extends Component {
     }
   }
 
+  /**
+   * Clear every active member at once, or only the marked ones.
+   *
+   * One request. The alternative — looping the single-clear route in the client — is 1 051 requests
+   * on the largest situation in the corpus, and a failure halfway through leaves a state no screen
+   * describes. The server derives the set from `situation_id`; `only_ids` can narrow it and cannot
+   * widen it, so this never asks for an alarm the operator was not already shown.
+   */
+  async clearMany(onlyMarked) {
+    const { sid, detail } = this.props;
+    if (this.state.sending) return;
+    this.setState({ sending: true, outcome: null, confirmingClear: false });
+    const body = { situation_id: sid };
+    if (onlyMarked) {
+      body.only_ids = detail.alarms
+        .filter((a) => a.status === "active" && this.state.marked.has(a.id))
+        .map((a) => a.id);
+    }
+    try {
+      const out = await post("/api/alarms/clear", body);
+      this.setState({
+        sending: false,
+        marked: new Set(),
+        outcome: { ok: true, kind: "clear_all", count: out?.cleared ?? 0 },
+      });
+      this.props.onChanged();
+    } catch (error) {
+      this.setState({ sending: false, outcome: { ok: false, error } });
+    }
+  }
+
   async promote() {
     const { sid } = this.props;
     if (this.state.sending) return;
@@ -143,6 +181,12 @@ export class Detail extends Component {
     const byId = new Map(detail.alarms.map((a) => [a.id, a]));
     const root = byId.get(detail.root_alarm_id);
     const editable = canEdit();
+    // What the bulk clear can act on: active members, and how many of those are marked. Counted
+    // from the rows this principal was served, which is the same set the server derives — a
+    // scoped viewer's hidden members are absent from `detail.alarms` and so from both numbers.
+    const active = detail.alarms.filter((a) => a.status === "active");
+    const activeCount = active.length;
+    const markedActive = active.filter((a) => this.state.marked.has(a.id)).length;
     // **The two facts the action surface turns on** (v0.16.4, DECISIONS #291).
     //
     // `judged` is whether an ASSERTING gesture is already on record, and it is not the same
@@ -187,6 +231,13 @@ export class Detail extends Component {
         <p class="hint">Scoping hides these members from you; it does not stop them correlating.
           This situation is larger than what is shown here.</p>
       </div>` : null}
+
+      ${editable && activeCount > 0
+        ? html`<${BulkClear} active=${activeCount} marked=${markedActive}
+                   confirming=${this.state.confirmingClear} sending=${this.state.sending}
+                   onAsk=${(on) => this.setState({ confirmingClear: on })}
+                   onGo=${() => this.clearMany(markedActive > 0)} />`
+        : null}
 
       <${Members} alarms=${detail.alarms} editable=${editable}
                   marked=${this.state.marked}
@@ -243,7 +294,13 @@ export class Detail extends Component {
 
       ${this.state.outcome ? html`<p class=${this.state.outcome.ok ? "ok-note" : "err"} role="status">
         ${this.state.outcome.ok
-          ? OUTCOME_TEXT[this.state.outcome.kind]
+          ? this.state.outcome.kind === "clear_all"
+            // The server's count and not the client's, because they can differ honestly: a member
+            // that self-cleared between the render and the press was already inactive, and saying
+            // "12 cleared" when the appliance cleared 11 would make the console the less reliable
+            // of the two records.
+            ? `${plural(this.state.outcome.count, "alarm")} hand-cleared.`
+            : OUTCOME_TEXT[this.state.outcome.kind]
           : `Not recorded — ${this.state.outcome.error.detail || this.state.outcome.error.message}`}
       </p>` : null}
     </div>`;

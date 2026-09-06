@@ -138,6 +138,13 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     # It gets its own ROUTE because the storage and the scope decision are the situation's.
     ("POST", "/api/situations/{sid}/name"): "label.write",
     ("POST", "/api/alarms/{aid}/clear"): "alarm.clear",
+    # v0.16.5: the same gesture over a whole situation, and therefore **the same capability**. A
+    # bulk clear is N single clears and nothing else — same event kind, same audit action, same
+    # absence from `ASSERTING_KINDS` — so a second capability would let an operator hold one and
+    # not the other over an act that has one meaning. It is not under `/api/situations` for the
+    # reason `annotate.clear_alarm` states: a clear is a fact about an alarm's lifecycle, and the
+    # correlation namespace would say otherwise in the URL.
+    ("POST", "/api/alarms/clear"): "alarm.clear",
     # v0.16.2: promotion WITHOUT judging. `PREREGISTRATION-0.16.2.md` §2.2 registers it as one of
     # two distinct actions, and the other one is `POST …/feedback` with `verdict: confirm`, which
     # already existed and already asserts.
@@ -231,6 +238,10 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/situations/{sid}/split"): "scoped",
     ("POST", "/api/situations/{sid}/name"): "scoped",
     ("POST", "/api/alarms/{aid}/clear"): "scoped",
+    # Scoped, and the handler derives its whole working set from what the scope permits rather than
+    # from the request body: `situation_members` minus `hidden_member_ids`. So the posture is not
+    # just declared here, it is the only way the route can reach a row at all.
+    ("POST", "/api/alarms/clear"): "scoped",
     ("POST", "/api/situations/{sid}/promote"): "scoped",
     ("GET", "/api/users"): "admin_only",
     ("POST", "/api/users"): "admin_only",
