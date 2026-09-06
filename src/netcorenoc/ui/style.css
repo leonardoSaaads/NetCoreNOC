@@ -421,6 +421,12 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 }
 .topbar-live, .topbar-who { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .conn { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-xs); color: var(--fg-muted); }
+/* Which clock every time on every screen is in (v0.16.4, #294). Monospaced because it sits beside
+   the offsets in the tables below and the two should read as the same kind of thing. */
+.tz {
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim);
+  white-space: nowrap; cursor: help;
+}
 .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-dim); }
 .conn-live .conn-dot { background: var(--quiet); }
 .conn-polling .conn-dot { background: var(--warn); }

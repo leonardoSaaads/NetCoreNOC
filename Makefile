@@ -2,7 +2,7 @@
 #   make qa PYTHON=python
 PYTHON ?= .venv/bin/python
 
-.PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay loadtest burst \
+.PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list loadtest burst \
 	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
 	bias-report dataset-stats agreement-report shadow-report census
 
@@ -79,10 +79,31 @@ fmt:
 run:
 	$(PYTHON) -m netcorenoc.main
 
-# Replay the fiber-cut fixture against a locally running NetCoreNOC (port 1162 by default
+# Replay a labelled corpus scenario against a locally running NetCoreNOC (port 1162 by default
 # so it works without privileges; export NETCORENOC_TRAP_PORT=1162 for the server too).
+#
+# **v0.16.4 (DECISIONS #295): `SCENARIO`, and a target that lists them.** This was pinned to
+# `fiber_cut`, so an operator who wanted any of the other twelve had to know that `eval/corpus/`
+# exists, that its files are JSON, and that `tools/trap_replay.py` takes a path. Knowing the tree
+# is exactly the gap the maintainer named, and a variable plus a listing closes it. No harness, no
+# scenario wrapper, no container: `eval/scenario_dsl.py` and `tests/test_operation.py` already
+# exist and the ask is ergonomics.
 replay:
-	$(PYTHON) tools/trap_replay.py eval/corpus/fiber_cut.json --port $${NETCORENOC_TRAP_PORT:-1162}
+	$(PYTHON) tools/trap_replay.py eval/corpus/$${SCENARIO:-fiber_cut}.json \
+		--port $${NETCORENOC_TRAP_PORT:-1162}
+
+# Every scenario this repository ships, both kinds, with the command for each. Derived by listing
+# the two directories rather than written out here — a menu that has to be edited when a scenario
+# is added is a menu that goes stale, and this one cannot.
+replay-list:
+	@echo "Corpus scenarios (real SNMP PDUs over UDP) —  make replay SCENARIO=<name>"
+	@ls eval/corpus/*.json | sed 's|eval/corpus/|  |;s|\.json$$||'
+	@echo
+	@echo "DSL scenarios (the trap simulator)          —  make sim SCENARIO=<name>"
+	@$(PYTHON) tools/trap_sim.py --list 2>/dev/null | sed 's|^|  |'
+	@echo
+	@echo "Without make, against a running appliance:"
+	@echo "  $(PYTHON) tools/trap_replay.py eval/corpus/<name>.json --port 1162"
 
 # 1000 traps/s for 60 s against a locally running NetCoreNOC.
 loadtest:

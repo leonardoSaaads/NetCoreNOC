@@ -3163,3 +3163,41 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Trade-off accepted**: the pin set grows by one entry per permalink followed in a visit, which is
   what #267 already specifies — a card an operator asked for stays where they are looking until they
   collapse it or pick a tab.
+
+## 298. Two limits that fail in opposite ways, and the compose file says which (v0.16.4)
+
+- **Decision**: `docker-compose.yml` gains `deploy.resources` — **1.0 CPU** and **512 MiB**, with
+  0.25 CPU and 128 MiB reserved — and `docs/install.md` states **what happens when each is hit**
+  rather than only what each is set to.
+- **Reason the consequence is the deliverable and not the number**: the two fail in completely
+  different ways. Memory is an **OOM kill**: `restart: unless-stopped` brings the process back and
+  the WAL means the database survives, but every trap in flight is lost **and no ingest gap is
+  recorded**, because the gap counter lives in the process that died. That is the one failure this
+  appliance cannot account for afterwards. CPU is a **throttle**: correlation falls behind, the
+  queue grows, `queue_depth` climbs in the health control, and overflow *is* counted as a gap.
+  Visible and recoverable. So the guidance is *raise memory before CPU* — one costs latency you can
+  see, the other costs traps you cannot.
+- **Where the numbers come from**: the appliance is one asyncio process, one SQLite file, one
+  bounded queue. `tests/test_perf.py::burst` drives 100 000 traps in a second through the real
+  path; 512 MiB is about four times that and leaves the page cache room. One CPU is what a single
+  event loop is bounded by anyway.
+- **Trade-off accepted**: a limit that is too generous protects the host less. Taken deliberately —
+  the failure mode of a tight memory limit on a trap collector is silent data loss, and this
+  project would rather bound the blast radius of a runaway than the appliance's ordinary work.
+
+## 299. Bug 2 is a family, and the guard is narrow on purpose (v0.16.4, F110)
+
+- **Decision**: one guard, matching **prose followed by an inline element across a newline** —
+  Bug 2's exact shape — and deliberately *not* matching element-to-element, which is textually
+  identical and usually correct.
+- **Reason**: `htm` drops a whitespace-only run between a text node and an element. Scanning for
+  the shape found three more instances beyond the reported one, two pre-existing on Settings and
+  the audit screen, and **one written by this release** in the timeline's own new zone caption —
+  three commits after repairing Bug 2. That is the measurement of how easy it is to write.
+- **Why not the wider rule**: twenty element-to-element sites exist and nineteen are correct,
+  because the container is a flex row whose `gap` separates them. A guard flagging those would be
+  noise, and noise is how a guard stops being read — which is the failure F92, F98 and F103 each
+  arrived at by a different route.
+- **Measured**: 4 sites repaired, 20 element-to-element sites left alone, 0 false positives. The
+  control is `views/parts/model.js:136`, whose template shape is identical and whose rendering is
+  correct because the next span's own text starts with a space.

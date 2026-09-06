@@ -41,7 +41,7 @@ import { session, scopeSummary } from "./session.js";
 import { theme, setTheme, nextTheme, navState, setNavState, nextNavState } from "./theme.js";
 import { Bell, Health } from "./notices.js";
 import * as store from "./store.js";
-import { plural } from "./format.js";
+import { plural, utcOffset, TIMEZONE } from "./format.js";
 
 export class Shell extends Component {
   constructor(props) {
@@ -170,6 +170,13 @@ function TopBar({ live, onSignOut, nav, onNav }) {
             title=${CONNECTION_TITLE[connection]}>
         <span class="conn-dot" aria-hidden="true"></span>${CONNECTION_LABEL[connection]}
       </span>
+      ${/* **Which clock every time on every screen is in** (v0.16.4, DECISIONS #294). Each
+            absolute stamp carries its own offset, so this is not the only place the zone is
+            stated — it is where the operator learns the ZONE, whose name an offset does not give
+            them. `America/Sao_Paulo` and `-03:00` are different facts and both are useful: the
+            first says whose clock, the second makes the arithmetic against a UTC log trivial. */
+        null}
+      <span class="tz" title=${TZ_TITLE}>${TIMEZONE}${" "}${utcOffset(new Date())}</span>
       <${Bell} stats=${live.stats} />
       <${Health} stats=${live.stats} rate=${live.trapRate} />
     </div>
@@ -183,6 +190,12 @@ function TopBar({ live, onSignOut, nav, onNav }) {
     </div>
   </header>`;
 }
+
+const TZ_TITLE =
+  "Every time this console shows is in this zone, and every absolute one carries its offset from " +
+  "UTC in the text. The appliance stores epoch UTC; this is your device's clock, not the " +
+  "appliance's. A trap's timestamp is when the APPLIANCE received it, not when the equipment " +
+  "raised it.";
 
 const NAV_TITLE = {
   collapse: "Collapse the navigation to icons",

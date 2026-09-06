@@ -27,6 +27,7 @@ the timeline SVG are not executed. `src/netcorenoc/ui/app/views/graph.js` says s
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -2093,4 +2094,153 @@ async def test_a_collapsed_sidebar_keeps_every_label_in_the_accessible_tree(
     assert not any(item["clipped"] for item in expanded["items"]), (
         "an expanded item's label is clipped, so the sidebar is icons at a width that has room "
         "for words"
+    )
+
+
+def test_every_absolute_timestamp_carries_its_offset_from_utc() -> None:
+    """**DECISIONS #294**, asserted over the function every screen renders through.
+
+    Measured before this release: nine surfaces printed a time and **none** named a zone in visible
+    text; `TIMEZONE` was referenced in exactly one place, an `overview.js` `title=`, so even there
+    it was hover-only. An operator in Japan and one in Brazil read different numbers for the same
+    event and no screen said so.
+
+    Driven in Node rather than read as source, because the property is about the **output** — the
+    shape of the string an operator sees — and a regex over the template would pass on a function
+    that returned the offset of the wrong instant.
+
+    The three cases are one test because they are one rule: a January and a July timestamp in a
+    zone with daylight saving must carry **different** offsets, which is what makes this the
+    offset *of the instant* rather than a constant read once at module load. That is not a
+    hypothetical: reading `getTimezoneOffset()` once would put the wrong offset on every timestamp
+    for half the year.
+    """
+    import json
+    import subprocess  # nosec B404 - the DOM harness's own runner, same as `domdriver`
+
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui"
+    script = f"""
+      import {{ absolute, utcOffset }} from {json.dumps(str(ui / "app" / "format.js"))};
+      const jan = 1_704_110_400;  // 2024-01-01 12:00 UTC
+      const jul = 1_719_835_200;  // 2024-07-01 12:00 UTC
+      console.log(JSON.stringify({{
+        jan: absolute(jan), jul: absolute(jul), none: absolute(null),
+        janOffset: utcOffset(new Date(jan * 1000)),
+        julOffset: utcOffset(new Date(jul * 1000)),
+      }}));
+    """
+    for zone in ("UTC", "America/Sao_Paulo", "Australia/Lord_Howe"):
+        proc = subprocess.run(  # nosec B603 B607 - a fixed argv, no shell
+            ["node", "--input-type=module", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={"PATH": os.environ.get("PATH", ""), "TZ": zone, "LC_ALL": "C"},
+            check=False,
+        )
+        if proc.returncode != 0:
+            pytest.skip(f"node is unavailable or refused the module: {proc.stderr[:200]}")
+        out = json.loads(proc.stdout)
+
+        shape = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (Z|[+-]\d{2}:\d{2})$")
+        for key in ("jan", "jul"):
+            assert shape.match(out[key]), (
+                f"in {zone}, `absolute` rendered {out[key]!r}. Every absolute timestamp is "
+                f"`YYYY-MM-DD HH:MM:SS ±HH:MM`, and the offset is what makes it unambiguous "
+                f"against a log in another window."
+            )
+        assert out["none"] == "—", "a missing timestamp renders as a number rather than as absent"
+
+    # The DST case, on the one zone above that has it. Two instants six months apart must not
+    # carry the same offset — which they would if the offset were read once and reused.
+    proc = subprocess.run(  # nosec B603 B607 - a fixed argv, no shell
+        ["node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={"PATH": os.environ.get("PATH", ""), "TZ": "America/Sao_Paulo", "LC_ALL": "C"},
+        check=False,
+    )
+    out = json.loads(proc.stdout)
+    assert out["janOffset"] == out["julOffset"] == "-03:00", (
+        f"São Paulo dropped daylight saving in 2019, so both offsets are -03:00 here: {out}. "
+        f"If this ever differs the zone changed, not the code."
+    )
+
+
+def test_no_screen_renders_a_bare_locale_timestamp() -> None:
+    """The other half of #294: nothing bypasses `absolute`.
+
+    A screen calling `toLocaleString()` directly prints a time whose zone nothing states and whose
+    *shape* depends on the browser's locale — `9/6/2026, 2:32:07 PM` and `06/09/2026 14:32:07` are
+    the same instant written two ways, and neither says which zone. `format.js` is the one place
+    allowed to reach for a `Date`'s fields, because it is the one place that appends the offset.
+
+    Derived by scanning every console module rather than by naming the screens: the two that did
+    this were `timeline.js`'s axis and its point tooltips, and a guard listing them would go quiet
+    the day a third appeared.
+    """
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    offenders: list[str] = []
+    for path in sorted(ui.rglob("*.js")):
+        if path.name == "format.js":
+            continue  # the one module that owns what a rendered time looks like
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.strip().startswith("*") or line.strip().startswith("//"):
+                continue  # prose may name the thing it is explaining
+            if re.search(r"\.toLocale(String|TimeString|DateString)\s*\(", line):
+                offenders.append(f"{path.relative_to(ui)}:{lineno}: {line.strip()[:80]}")
+    assert not offenders, (
+        "these render a time without its zone, bypassing `format.absolute`:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_no_template_glues_a_word_to_the_inline_element_after_it() -> None:
+    """**Bug 2's family, as a rule rather than as three repairs.**
+
+    `htm` drops a whitespace-only run between a text node and an element, so
+
+        Times on this axis are in
+          <b>${TIMEZONE}</b>
+
+    renders as `are inAsia/Tokyo`. That is what made `by admin` + `2m` read as `admin2m` and a
+    maintainer report a counter incrementing, and this release wrote the same defect **twice more**
+    before this guard existed — once in its own new timeline caption, once found by scanning:
+    `no write path.asserting_bags` on Settings and `this console.python -m netcorenoc` on the
+    audit screen.
+
+    **Prose-to-inline only, and the narrowness is the point.** Element-to-element across a newline
+    is the same textual shape and is usually *correct*, because the container is a flex row whose
+    `gap` separates them — twenty such sites exist and nineteen are fine. A guard flagging those
+    would be noise, and noise is how a guard stops being read. What cannot be right is a sentence
+    running into the `<code>` after it, and that is what this matches.
+
+    A block element is not matched either: a `<p>` or a `<div>` after prose starts its own line.
+    """
+    import netcorenoc
+
+    inline = r"(?:b|i|em|strong|small|code|span|a|abbr|kbd|output|label|button)"
+    pattern = re.compile(r"[\w)\].,;:!?%'\"-][ \t]*\n[ \t]*<" + inline + r"[\s>]")
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    offenders: list[str] = []
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        for match in pattern.finditer(source):
+            before = source[: match.start()]
+            if before.count("`") % 2 == 0:
+                continue  # not inside a template literal
+            opened, closed = before.rfind("/*"), before.rfind("*/")
+            if opened != -1 and closed < opened:
+                continue  # inside a `${/* … */ null}` block, which renders nothing
+            lineno = before.count("\n") + 1
+            text = source[match.start() : match.end()].replace("\n", "\\n")
+            offenders.append(f"{path.relative_to(ui)}:{lineno}: …{text}…")
+    assert not offenders, (
+        "these render a word joined to the element after it, because the newline between them is "
+        'whitespace `htm` drops. Put an explicit `${" "}` there:\n  ' + "\n  ".join(offenders)
     )

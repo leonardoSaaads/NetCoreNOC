@@ -1468,3 +1468,38 @@ Run every command below from the repository root with the virtualenv active.
   the device below 720 px, the mark column takes a declared 44 px so the second column's offset is
   a number rather than a guess, and the editor's frozen edge now reads `127.0.0.2`. Issued and
   closed by the release that measured it.
+
+## F110 — Bug 2's family: a sentence running into the `<code>` after it, on two admin screens
+
+- **What**: `htm` drops a whitespace-only run between a text node and an element, so a template
+  that wraps a line between prose and an inline element renders them as one word. Bug 2 is the
+  instance a maintainer reported (`by admin` + `2m` reading as `admin2m`); scanning for its **shape**
+  rather than its location found three more, two of them pre-existing:
+  * `views/parts/facts.js:45` — *"The sufficiency floors have no write path.**asserting_bags** ≥ 50"*
+  * `views/parts/facts.js:47` — *"changes the gate's inputs. See**docs/ROADMAP.md**."*
+  * `views/audit.js:80` — *"Verification runs offline, not from this console.**python -m
+    netcorenoc audit verify** walks the chain…"*
+  and one written **by this release**, in the timeline's own new zone caption:
+  *"Times on this axis are in**Asia/Tokyo** (+09:00 from UTC)"* — three commits after repairing
+  Bug 2, which is the measurement of how easy this is to write.
+- **Reproduce**, in a browser as an admin, on `#/settings` and `#/audit`:
+  ```js
+  [...document.querySelectorAll(".work .structural-note")]
+    .map(n => n.textContent.replace(/\s+/g, " ").trim())
+  ```
+- **Measured**, before: `"The sufficiency floors have no write path.asserting_bags ≥ 50 …"` and
+  `"Verification runs offline, not from this console.python -m netcorenoc audit verify walks …"`.
+  After: a space in each. **Control**: the same scan over `views/parts/model.js:136`, which has the
+  identical *template* shape — `</b>` then a newline then `<span>` — and reads correctly, because
+  the span's own text begins with a space. So it is the missing character and not the line break.
+- **Why it matters, and why the guard is narrow**: the same textual shape between two *elements* is
+  usually correct, because the container is a flex row whose `gap` separates them — twenty such
+  sites exist in this console and nineteen are fine. A guard that flagged those would be noise, and
+  noise is how a guard stops being read. What can never be right is a sentence running into the
+  element after it, and that is what
+  `test_ui_invariants.py::test_no_template_glues_a_word_to_the_inline_element_after_it` matches.
+  Both admin screens are ones the new notification bell links to, so this release put more traffic
+  on them.
+- **Disposition**: **FIXED in v0.16.4**. Four sites take an explicit `${" "}`; the guard is
+  demonstrated red by removing one and green with it. Issued and closed by the release that
+  scanned for it.

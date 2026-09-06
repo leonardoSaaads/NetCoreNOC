@@ -16,7 +16,7 @@
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
-import { plural, relative, absolute, TIMEZONE } from "../format.js";
+import { plural, relative, absolute, timeTitle, TIMEZONE } from "../format.js";
 import { can, canEdit, scopeSummary } from "../session.js";
 import * as store from "../store.js";
 
@@ -107,7 +107,8 @@ export class Overview extends Component {
             <li key=${s.id}>
               <a href=${`#/situations/${s.id}`}>#${s.id}</a>
               <span>${plural(s.alarm_count, "alarm")}</span>
-              <span class="muted">${relative(s.updated_at)}</span>
+              <span class="muted" title=${timeTitle(s.updated_at)}
+                >${relative(s.updated_at)}</span>
             </li>`)}</ul>`
         : html`<p class="hint">No open situations — alarms are arriving, nothing has
             correlated.</p>`}

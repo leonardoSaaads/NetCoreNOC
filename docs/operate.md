@@ -72,15 +72,45 @@ Point your equipment's SNMPv2c (or SNMPv1) trap destination at the appliance. Th
 configure on this side: no MIBs to load, no inventory to import, no topology to declare. A trap
 whose OID the appliance has never seen becomes an alarm class the first time it arrives.
 
-No equipment handy? Send real SNMP PDUs over UDP from the bundled scenarios:
+### A trap's timestamp is when the APPLIANCE received it
+
+Every time this appliance stores is the moment the **datagram arrived on its socket** — not the
+moment the equipment decided something was wrong, and not any timestamp inside the trap. SNMP traps
+are UDP: they are unordered, they can be delayed by a congested management network, and they can be
+retransmitted. An appliance that trusted a sender's own clock would be trusting one it cannot
+verify from a device that is, by hypothesis, having a bad day.
+
+This matters after an incident, when the question is *"what happened first"*. Two traps 400 ms
+apart here may have been raised in the other order. The correlation window and the temporal term
+are built on reception time and are consistent with themselves; a post-incident narrative that
+reads these stamps as *equipment* time can reach a wrong conclusion, and nothing in the appliance
+will contradict it.
+
+The console shows reception time in **your browser's zone**, with the offset from UTC in the text
+of every absolute stamp — `2026-09-06 14:32:07 -03:00` — and names the zone once in the top bar.
+The database stores epoch UTC.
+
+### Replaying the bundled scenarios
+
+No equipment handy? Send real SNMP PDUs over UDP from the ten labelled corpus scenarios and the
+three DSL ones, without needing to know where either lives:
 
 ```sh
-make replay                       # a two-NE fibre cut
-make sim SCENARIO=login_burst     # python tools/trap_sim.py --list for the rest
+make replay-list                     # every scenario, both kinds, with its one-line command
+make replay                          # the default: a two-NE fibre cut
+make replay SCENARIO=olt_storm       # any name `replay-list` printed
+make sim SCENARIO=login_burst        # the DSL scenarios
 ```
 
 ```
 sent 8 traps in 7.50s (1/s)
+```
+
+The one-liner, if you would rather not use `make` — the appliance must be running, and the port
+must be the one it is listening on:
+
+```sh
+.venv/bin/python tools/trap_replay.py eval/corpus/olt_storm.json --port 1162
 ```
 
 ## 4. Checking it is receiving
@@ -105,12 +135,17 @@ Read it in this order:
   telling you honestly what they cost.
 * **`queue_depth` growing and not falling back** is the one number that means the appliance is not
   keeping up. See [`troubleshoot.md`](troubleshoot.md).
-* **`receiver.denied` above zero** means datagrams arrived and the allowlist refused them. It is
-  also a banner on every screen, naming the count and the allowlist that refused them.
+* **`receiver.denied` above zero** means datagrams arrived and the allowlist refused them. It says
+  how many entries the allowlist holds and not which — the value is on **Settings**, where the
+  admin who can change it reads it (F107).
+* **`new_situations` and `working_situations`** split `open_situations`: the queue nobody has
+  looked at, and what the shift is working. Both are cards on the **Situations** screen and both
+  are filters there.
 
-All of the above are on the **Overview**'s *System health* section since v0.15.2, with a trap rate
-derived between two polls and labelled with the window it covers. There is no CPU, memory or uptime
-figure, because the appliance does not measure one.
+All of the above are in the top bar's **health control** since v0.16.4 — on every screen rather
+than on the Overview alone — with a trap rate derived between two polls and labelled with the
+window it covers. There is no CPU, memory, disk or uptime figure, because the appliance does not
+measure one; the control says so rather than leaving the absence to be inferred.
 
 ## 5. Reading a situation
 
