@@ -409,6 +409,21 @@ const scenarios = {
 
     await press('button[aria-controls="healthPanel"]');
     out.healthOpen = read("healthPanel");
+    // Opening the health control is a click OUTSIDE the bell, so the bell must have closed with
+    // it: two panels stacked on one another is a state neither of them can be dismissed from.
+    out.bellAfterHealth = read("noticePanel");
+
+    // Following a warning's link closes the panel. Found in the live pass: the click is *inside*
+    // the disclosure, so the outside-click rule kept it open and it hung over the screen it had
+    // just navigated to.
+    await press('button[aria-controls="noticePanel"]');
+    const link = env.document.querySelector("#noticePanel a[href]");
+    if (link) {
+      link.dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+      out.bellAfterLink = read("noticePanel");
+      out.linkHref = link.getAttribute("href");
+    }
 
     const navItems = () => env.document.querySelectorAll(".nav-item").map((a) => {
       const label = a.querySelector(".nav-label");

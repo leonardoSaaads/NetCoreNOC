@@ -98,10 +98,32 @@ class Disclosure extends Component {
     globalThis.document.removeEventListener("keydown", this.onKey);
   }
 
+  /* Close on a click outside — and on a **link inside**, which is not the same rule.
+   *
+   * Found in the live pass: following a warning's link navigated to Settings and left the panel
+   * hanging over it, because the click was inside `this.root` and the early return kept it open.
+   * A disclosure that survives the navigation it caused is a disclosure an operator has to dismiss
+   * twice. The opener itself is exempt — that click is the toggle, and closing here as well would
+   * make it a no-op. */
   onDocument(event) {
     if (!this.state.open) return;
-    if (this.root && this.root.contains(event.target)) return;
+    const inside = this.root && this.root.contains(event.target);
+    if (inside && !this.isNavigation(event.target)) return;
     this.setState({ open: false });
+  }
+
+  /** Did this click land on something that takes the operator elsewhere?
+   *
+   * `toLowerCase()` rather than a comparison against `"A"`: an HTML document reports `tagName`
+   * upper-case and an XHTML one reports it as authored, and the DOM harness is the second kind.
+   * Written the case-sensitive way this closed correctly in Chromium and not at all under the
+   * harness — a difference that would have shipped as *"no test could see it"* rather than as a
+   * bug, which is the failure mode this project has met eight times. */
+  isNavigation(target) {
+    for (let node = target; node && node !== this.root; node = node.parentNode) {
+      if (String(node.tagName).toLowerCase() === "a" && node.getAttribute?.("href")) return true;
+    }
+    return false;
   }
 
   onKey(event) {

@@ -2019,6 +2019,18 @@ async def test_the_top_bar_holds_the_warnings_and_the_health_it_used_to_spend_a_
         f"dead; one per warning would mean it links things it cannot resolve."
     )
 
+    # Following a warning's link closes the panel, and opening the other disclosure closes it too.
+    # Both were found in the live pass: a popover that survives the navigation it caused is one an
+    # operator has to dismiss twice, and two panels stacked on one another is a state neither can
+    # be dismissed from.
+    assert result["bellAfterLink"]["open"] is False, (
+        "following a warning's link left the bell hanging over the screen it navigated to"
+    )
+    assert result["linkHref"] == "#/settings", result["linkHref"]
+    assert result["bellAfterHealth"]["open"] is False, (
+        "opening the health control left the bell open behind it"
+    )
+
     health = result["healthOpen"]
     assert health["open"] is True
     assert set(health["figures"]) >= {"queue depth", "p95 latency", "trap rate"}, health["figures"]

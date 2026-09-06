@@ -367,7 +367,7 @@ UI_HASHES: dict[str, str] = {
     "app/format.js": "441d130bf7f6257124f8a2ca5c0573915ca3918a0ede8960f9f8cc40bb770db4",
     "app/icons.js": "bca6a442d593b20549197ade2231b887b821f72d0355c4b69c4160d2d44e1c98",
     "app/login.js": "ee936acd5ec82c2299416c9c87e594ab954b42dad137db4e8662eb6eded104fc",
-    "app/notices.js": "9da8fb3378759bc204a02fc0ff193fb6b1ce7168f274e482673c4d61eaccfd3f",
+    "app/notices.js": "bdd481caeee3cc2516280200f3aa0bb04171ca9db07edefa95d4b42a1218636b",
     "app/parameters.js": "e661fcc6136f849f565a16c1326a786b0a149c9553d64115e9a591da9fc2545d",
     "app/password.js": "6c85d8111fcaa2da415910744064c84e41adf5db57fc953cad9f1f14543ec11d",
     "app/registry.js": "38114bfebf5692f13f234013599665f7df3a40aaf7081dc53f824e91c0eb4720",
