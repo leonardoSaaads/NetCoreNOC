@@ -71,6 +71,13 @@ export function disagrees(alarm, declaredRank) {
  * consecutive releases have shipped. `tests/test_security_ui.py` refuses a bare `confirm(` for
  * exactly that reason, and it was right to.
  *
+ * **The opener names what it declares** (v0.16.4). It read `Declare` alone, which was legible
+ * while the three controls sat in three columns with their own headers — and became three
+ * identical words in one cell the moment DECISIONS #293 collapsed them. Found by looking at the
+ * rendered card at 1440 px, not by any assertion: every one of them was reachable, above the touch
+ * floor, and correctly wired, and an operator still could not tell which was which. Reachable and
+ * identifiable are different properties and only one of them was measured.
+ *
  * It is deliberately **not** a `Destructive`. That component says *"this cannot be undone"* and
  * requires a preview, and neither is true here: nothing is destroyed, the appliance's own value is
  * kept underneath, and `Clear` puts it back. Wrapping a reversible action in the irreversible
@@ -105,7 +112,7 @@ class Declaration extends Component {
     this.run(() => onSave(this.state.value));
   }
 
-  render({ label, value, children, onClear }, state) {
+  render({ label, noun, value, children, onClear }, state) {
     const { editing, busy, error, warn } = state;
     if (!editing) {
       // **No server string reaches an attribute here**, and that is the same rule the member
@@ -120,7 +127,7 @@ class Declaration extends Component {
           : `Declare ${label}. It takes precedence, and nothing the appliance learned is ` +
             "overwritten."}
         onClick=${() => this.setState({ editing: true, value: value || "", warn: null })}
-      >${value ? "Edit" : "Declare"}</button>`;
+      >${value ? "Edit" : "Declare"}${" "}<span class="declare-noun">${noun}</span></button>`;
     }
     return html`<form class="inline-form declare"
       onSubmit=${(e) => { e.preventDefault(); this.submit(); }}>
@@ -141,7 +148,8 @@ class Declaration extends Component {
 
 /** Name the network element this alarm came from. Propagates to Entities and to the graph. */
 export function DeclareNe({ alarm, onDone }) {
-  return html`<${Declaration} label="a name for this element" value=${alarm.device_label}
+  return html`<${Declaration} label="a name for this element" noun="element"
+    value=${alarm.device_label}
     onDone=${onDone}
     onSave=${(v) => post("/api/labels", { kind: "ne", id: alarm.ne_id, label: v.trim() })}
     onClear=${() => del(`/api/labels/ne/${alarm.ne_id}`)}>
@@ -154,7 +162,8 @@ export function DeclareNe({ alarm, onDone }) {
 
 /** Name the kind of trap. Propagates to Alarm Classes, the timeline and every situation card. */
 export function DeclareClass({ alarm, onDone }) {
-  return html`<${Declaration} label="a name for this kind of trap" value=${alarm.class_label}
+  return html`<${Declaration} label="a name for this kind of trap" noun="class"
+    value=${alarm.class_label}
     onDone=${onDone}
     onSave=${(v) => post("/api/labels", { kind: "class", id: alarm.class_id, label: v.trim() })}
     onClear=${() => del(`/api/labels/class/${alarm.class_id}`)}>
@@ -189,7 +198,7 @@ export function DeclareSeverity({ alarm, onDone }) {
       `50 closed alarms whose lifetimes confirmed the ordering. You are declaring "${token}", ` +
       `${Math.abs(rank - alarm.severity_rank)} steps away. What it learned is kept either way.`;
   };
-  return html`<${Declaration} label="the severity of this kind of trap"
+  return html`<${Declaration} label="the severity of this kind of trap" noun="severity"
     value=${alarm.declared_severity} onDone=${onDone} contradicts=${warn}
     onSave=${(token) => post("/api/labels",
                              { kind: "severity", id: alarm.class_id, label: token })}

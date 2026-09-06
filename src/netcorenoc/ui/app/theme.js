@@ -22,9 +22,13 @@
  */
 
 const THEME_COOKIE = "ncn_theme";
+const NAV_COOKIE = "ncn_nav";
 
 /** The closed set. Anything else is not a preference, it is noise, and is discarded. */
 export const THEMES = ["dark", "light", "system"];
+
+/** The sidebar's two states (v0.16.4, DECISIONS #290). A closed set, like the theme's. */
+export const NAV_STATES = ["expanded", "collapsed"];
 
 function readCookie(name) {
   for (const pair of String(globalThis.document.cookie || "").split(";")) {
@@ -102,4 +106,33 @@ export function effective(chosen = theme()) {
  */
 export function nextTheme(from = theme()) {
   return effective(from) === "dark" ? "light" : "dark";
+}
+
+/* ---------- the sidebar's state (v0.16.4, DECISIONS #290) ----------------------------------
+ *
+ * **The same mechanism as the theme, deliberately.** `tests/test_security_ui.py` asserts
+ * `"localStorage" not in app_js` — F2's remediation, and its value is that it is an absolute — so
+ * a second preference goes in a second cookie rather than in a second storage API. Inventing one
+ * would give this console two answers to *"where do preferences live"*, and the first carve-out is
+ * what turns an absolute into a judgement call on every future diff (ADR #172).
+ *
+ * The threat model is the theme's, unchanged: a value outside the closed set is discarded, so a
+ * hostile cookie can at worst select a supported sidebar state.
+ *
+ * **Not a per-user row.** A collapsed sidebar is a preference about the *device* — the same
+ * operator wants it collapsed on the phone in their hand and expanded on the wall behind them —
+ * so a row keyed on the account would be the wrong key even if the migration were free.
+ */
+
+export function navState() {
+  return validated(readCookie(NAV_COOKIE), NAV_STATES, "expanded");
+}
+
+export function setNavState(value) {
+  writeCookie(NAV_COOKIE, validated(value, NAV_STATES, "expanded"));
+}
+
+/** The other one. Two states, so this is a toggle and not a ring (F87's lesson, one control over). */
+export function nextNavState(from = navState()) {
+  return from === "collapsed" ? "expanded" : "collapsed";
 }

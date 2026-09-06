@@ -390,4 +390,35 @@ def test_a_denied_trap_raises_a_warning_and_a_clean_receiver_does_not() -> None:
     quiet = receiver_warnings(ReceiverStats(received=8, accepted=8), "10.0.0.0/8")
     assert quiet == [], quiet  # CONTROL: nothing denied, nothing said
     noisy = receiver_warnings(ReceiverStats(received=8, denied=8), "10.99.0.0/16")
-    assert len(noisy) == 1 and "8 trap(s) refused" in noisy[0] and "10.99.0.0/16" in noisy[0], noisy
+    assert len(noisy) == 1 and "8 trap(s) refused" in noisy[0], noisy
+
+
+def test_the_denied_trap_warning_says_how_many_allowlist_entries_and_never_which() -> None:
+    """**F107.** `stats.read` is a viewer capability and `/api/stats` shapes nothing it appends
+    after its scoped counters, so this string reaches a reader whose every rendered address is
+    coarsened to a `/24`. Measured before the repair: a viewer receiving `127.0.0.0/24` from
+    `/api/graph` and the literal `10.20.30.0/24,192.168.77.5` from `stats.warnings` in the same
+    session.
+
+    The count is what #227 already prints in the boot banner for the same reason, and the value is
+    on Settings for the role that can act on it.
+
+    **Derived, not listed**: the assertion is that no token of the allowlist survives into the
+    text, whatever the allowlist happens to be — a guard naming one prefix would pass the day
+    somebody re-added a different one.
+    """
+    from netcorenoc.ingest.receiver import ReceiverStats
+    from netcorenoc.runner import receiver_warnings
+
+    allowlist = "10.20.30.0/24,192.168.77.5,2001:db8::/32"
+    text = receiver_warnings(ReceiverStats(received=9, denied=9), allowlist)[0]
+    for token in allowlist.split(","):
+        assert token not in text, f"the warning still publishes {token!r}: {text}"
+    assert "3 entries" in text, text
+    assert "Settings" in text, "the warning names no place to read the value it withholds"
+    # Singular, plural and the empty allowlist all read as sentences rather than as `1 entries`.
+    assert "1 entry" in receiver_warnings(ReceiverStats(denied=1), "10.0.0.1")[0]
+    assert "0 entries" in receiver_warnings(ReceiverStats(denied=1), "")[0]
+    # CONTROL: with nothing denied there is no string at all, so what is measured above is the
+    # warning's own content and not a coarsener acting somewhere else.
+    assert receiver_warnings(ReceiverStats(denied=0), allowlist) == []

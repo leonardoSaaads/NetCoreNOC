@@ -14,13 +14,14 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of twenty-nine ask
-you to do something; ten more ask you to read a paragraph first. The other seventeen are
+Read only the rows between your version and the one you are installing. **Two of thirty ask
+you to do something; eleven more ask you to read a paragraph first. The other seventeen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
 read-a-paragraph row: it applies no migration and still changes what your existing situations do.
-v0.16.3 adds another: `0016` runs itself, and the names you already set come with it.)
+v0.16.3 adds another: `0016` runs itself, and the names you already set come with it. v0.16.4 adds
+a third: **no migration at all**, and the console you sign in to is rearranged.)
 
 | From → to | What you must do |
 |---|---|
@@ -53,6 +54,7 @@ v0.16.3 adds another: `0016` runs itself, and the names you already set come wit
 | v0.16.0 → v0.16.1 | Nothing. `0015` widens one index; **no situation regroups and no verdict changes** |
 | v0.16.1 → v0.16.2 | Nothing to run — **no migration** — but situations that were being closed will stop being closed. Read below |
 | v0.16.2 → v0.16.3 | Nothing to run. `0016` moves the names you already set and **they start appearing on Entities**. Read below |
+| v0.16.3 → v0.16.4 | Nothing to run — **no migration** — but the console is rearranged and two `/api/stats` keys are new. Read below |
 
 ## The two that need an action, and the six that need reading
 
@@ -337,3 +339,41 @@ assume away: scoping narrows what a signed-in identity **sees**. Correlation lea
 estate, so a scoped principal sees a filtered view of one shared engine, not a private one. It is
 not a tenancy boundary and it is not sold as one. [`docs/security.md`](docs/security.md) states
 exactly what it does and does not give you.
+
+### v0.16.4 — the console is rearranged, and nothing in your database moves
+
+**No migration.** `0016` is still the last one. Start the new binary; every row you have is read by
+the same queries, and two of them stop being read at all.
+
+**What you will notice on the first screen.**
+
+* **The four counters left the top bar.** `devices` and `alarm classes` are on the Overview;
+  `active alarms`, `new` and `open` are cards on the **Situations** screen, where pressing one
+  selects the tab it counts. `p95 latency` is in the new health control, which is in the top bar on
+  every screen rather than on the Overview alone.
+* **The warning strip became a bell.** The same warnings, one per line, each linking to the setting
+  that resolves it where one exists. An **ingest gap** is still a banner as well, because it is the
+  one message that must not wait for a panel to be opened.
+* **The sidebar collapses to icons**, remembered in a cookie (`ncn_nav`) exactly as the theme is.
+* **Every absolute time now reads `2026-09-06 14:32:07 -03:00`** — your browser's zone, with the
+  offset from UTC in the text. Nothing about what is stored changed: the database has always held
+  epoch UTC. If you have scripts that scrape times out of the console's HTML, they will need to
+  read the new shape; the API is unchanged.
+
+**Two new keys on `GET /api/stats`**, both additive: `new_situations` and `working_situations`,
+which split the `open_situations` you already had. Nothing was removed from that response.
+
+**One field left three API responses**, and nothing rendered it: `vendor` on `/api/graph`'s nodes,
+on `/api/entities`, and `device_vendor` on every alarm row of `/api/situations/{sid}`. It has been
+`NULL` on every row of every database since v0.1.0 — 25 elements and 0 vendors after 2 252 alarms
+on the reference corpus — because no writer has ever set it (F105). The **columns are still in the
+schema**; only the reads are gone, so nothing is dropped and nothing needs backfilling.
+
+**One warning says less than it did, deliberately.** The denied-trap warning named your allowlist
+verbatim, in a response any **viewer** can read while every address they are shown elsewhere is
+coarsened to a `/24`. It now says how many entries the allowlist holds; the value is on Settings,
+where the admin who can change it reads it (F107).
+
+**A situation you have already judged looks different.** Confirm and Split fold behind one *Adjust
+the grouping* button that names what was recorded and by whom. Nothing is removed — the same
+controls are one press away, in every status the server accepts them in.

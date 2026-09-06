@@ -7,12 +7,17 @@
  * per-term contributions that produced each link: the three named terms, their numbers, and the
  * threshold the sum had to clear. Not a score. The decomposition.
  *
- * **v0.16.1: the card moved to `views/parts/card.js`.** This module now owns *finding* a
- * situation — the list, the three tabs and the search — and that one owns *judging* it. The held
- * payload, the five gestures and the labelling contract all went with it, and its header carries
- * them. The split is not cosmetic: this file reached 411 lines when the search landed, over both
- * the 400-line rule and the module-graph guard, and a file over budget for a year had been two
- * things for a year.
+ * **v0.16.1: the card moved to `views/parts/card.js`.** This module owns *finding* a situation and
+ * that one owns *judging* it. The held payload, the five gestures and the labelling contract all
+ * went with it, and its header carries them. The split is not cosmetic: this file reached 411
+ * lines when the search landed, over both the 400-line rule and the module-graph guard, and a file
+ * over budget for a year had been two things for a year.
+ *
+ * **v0.16.4: the narrowing controls moved to `views/parts/finder.js`.** This release added a
+ * fourth of them — the count cards, which are filters rather than figures — and put all of them in
+ * one bordered block, and 19 006 bytes took the file past the same guard again. What is left here
+ * is the **list**: which rows are rendered, the held card, the pins, the deep link and the
+ * server-side search that fills it. What went is everything that decides which rows those are.
  *
  * ## The search box asks the server (v0.16.1)
  *
@@ -33,8 +38,9 @@
 import { html, Component, cx } from "../dom.js";
 import { SituationCard } from "./parts/card.js";
 import { get } from "../api.js";
-import { Loading, Empty, Failed } from "../widgets.js";
+import { Loading, Empty, Failed, routeKey } from "../widgets.js";
 import { plural } from "../format.js";
+import { Counts, SEARCH_NOTE, TABS } from "./parts/finder.js";
 import * as store from "../store.js";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -63,23 +69,53 @@ export class Situations extends Component {
 
   componentDidMount() {
     this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
-    /* A deep link (#/situations/12) opens that card, which is what makes a situation shareable
-     * during an incident (draft §2.4, §3).
-     *
-     * **It is pinned as well, and that is F97.** This screen opens on the New tab (DECISIONS
-     * #254), so a permalink to a situation in any other state expanded a card the list did not
-     * contain and the operator was shown an unremarkable tab with nothing in it — no card, no
-     * error, no explanation. Measured in the v0.16.1 live pass with a control: the same link to a
-     * `new` situation rendered the card expanded; to an `open` one it rendered nothing at all.
-     * The link is the operator asking for THIS situation, so the pin is exactly the right
-     * mechanism — the card appears where they are, its badge says which state it is in, and
-     * collapsing it or choosing a tab releases it like any other pin. */
-    const deepLink = Number(this.props.params[0]);
-    if (deepLink) {
-      this.setState({ pinned: new Set(this.state.pinned).add(deepLink) });
-      this.open(deepLink);
-    }
+    this.followDeepLink();
     if (this.state.filter.trim()) this.search(this.state.filter.trim());
+  }
+
+  /* **The permalink is honoured on every arrival, not only the first** (v0.16.4, F108).
+   *
+   * A hash change from `#/situations/38` to `#/situations/41` is a same-document navigation: the
+   * router publishes the new fragment, its decision names this same view, and this component is
+   * **not** remounted — so `componentDidMount` ran once and the deep link was read once. Measured:
+   * the address bar said `#/situations/41` while the card for 38 was the one still open, with no
+   * error and no empty state. Controls: the same address on a full load, and after leaving to
+   * Overview and returning, both opened the right card.
+   *
+   * That is the case that happens during an incident — an operator already on this screen pastes a
+   * colleague's link — and `card.js` calls the permalink *"shareable during the incident"*.
+   *
+   * The comparison is `Loader.routeKey`'s, imported rather than rewritten: *"did this route's
+   * parameters change"* has one answer in this console and a second copy of it is how two screens
+   * come to disagree about what a route change is.
+   */
+  componentDidUpdate(previous) {
+    if (routeKey(previous.params) === routeKey(this.props.params)) return;
+    this.followDeepLink();
+  }
+
+  /* A deep link (#/situations/12) opens that card, which is what makes a situation shareable
+   * during an incident (draft §2.4, §3).
+   *
+   * **It is pinned as well, and that is F97.** This screen opens on the New tab (DECISIONS
+   * #254), so a permalink to a situation in any other state expanded a card the list did not
+   * contain and the operator was shown an unremarkable tab with nothing in it — no card, no
+   * error, no explanation. Measured in the v0.16.1 live pass with a control: the same link to a
+   * `new` situation rendered the card expanded; to an `open` one it rendered nothing at all.
+   * The link is the operator asking for THIS situation, so the pin is exactly the right
+   * mechanism — the card appears where they are, its badge says which state it is in, and
+   * collapsing it or choosing a tab releases it like any other pin. */
+  followDeepLink() {
+    const sid = Number(this.props.params[0]);
+    if (!sid) return;
+    // The pin is unconditional and the expand is not, and the two must not be folded together.
+    // `store.expanded` is module state that outlives this component, while `pinned` is reset by
+    // the constructor — so on a remount a card can already be expanded and still be absent from
+    // the tab's list. Skipping the pin because it was open left the operator on the New tab with
+    // no card at all, which is F97's symptom reached by a different door. And `open` TOGGLES, so
+    // calling it on a card already open would close the one they asked for.
+    this.setState({ pinned: new Set(this.state.pinned).add(sid) });
+    if (!store.isExpanded(sid)) this.open(sid);
   }
 
   componentWillUnmount() {
@@ -185,21 +221,32 @@ export class Situations extends Component {
         );
 
     return html`<div class="situations">
-      <div class="filters" role="search">
-        <label class="visually-hidden" for="fltText">Search situations</label>
-        <input id="fltText" type="search" value=${filter}
-               placeholder="search by name, device, OID or instance"
-               onInput=${(e) => this.onSearch(e.target.value)} />
-        <span class="filter-count">${searching ? "searching…" : plural(rows.length, "situation")}</span>
-      </div>
+      <${Counts} stats=${live.stats} status=${status} onPick=${(v) => this.pickTab(v)} />
 
-      <div class="tabs" role="tablist" aria-label="Situation state">
-        ${TABS.map(([value, label, hint]) => html`<button key=${value} type="button" role="tab"
-            id=${`tab-${value || "any"}`}
-            class=${cx("tab", status === value && "tab-on")}
-            aria-selected=${status === value ? "true" : "false"}
-            aria-controls="sits" title=${hint}
-            onClick=${() => this.pickTab(value)}>${label}</button>`)}
+      ${/* **The finder** (v0.16.4, item 5). The search and the tabs are one block with a border
+            and space under it, because the maintainer's report was that they were *"too small,
+            crowded, and touching the table"* — and the third of those was structural: the tabs
+            sat 12 px above the first card with nothing between them, so they read as part of that
+            situation rather than as a filter over all of them. */ null}
+      <div class="finder">
+        <div class="filters" role="search">
+          <label class="visually-hidden" for="fltText">Search situations</label>
+          <input id="fltText" type="search" value=${filter}
+                 placeholder="search by name, device, OID or instance"
+                 onInput=${(e) => this.onSearch(e.target.value)} />
+          <span class="filter-count">${searching ? "searching…" : plural(rows.length, "situation")}</span>
+        </div>
+
+        <div class="filters">
+          <div class="tabs" role="tablist" aria-label="Situation state">
+            ${TABS.map(([value, label, hint]) => html`<button key=${value} type="button" role="tab"
+                id=${`tab-${value || "any"}`}
+                class=${cx("tab", status === value && "tab-on")}
+                aria-selected=${status === value ? "true" : "false"}
+                aria-controls="sits" title=${hint}
+                onClick=${() => this.pickTab(value)}>${label}</button>`)}
+          </div>
+        </div>
       </div>
 
       ${query ? html`<p class="hint search-note">${SEARCH_NOTE}</p>` : null}
@@ -234,21 +281,3 @@ export class Situations extends Component {
     </div>`;
   }
 }
-
-/* The three states the schema now has, and the fourth entry that is not a state.
- *
- * `new` leads because it is what the correlator creates and what an untriaged appliance is full of
- * (DECISIONS #254). The titles say what each state MEANS rather than repeating its name: "open" and
- * "new" are not self-explanatory to somebody who has just been handed the console. */
-const SEARCH_NOTE =
-  "These are search results, not the live list: they were matched by the server when you typed " +
-  "and they do not update on their own. The tab above narrows them. Clear the box to go back to " +
-  "the live list.";
-
-const TABS = [
-  ["new", "New", "Formed by the correlator, and nobody has looked at it yet"],
-  ["open", "Open", "An operator has touched it: judged, moved, merged, split or named it"],
-  ["resolved", "Resolved", "It has left — and the card says why"],
-  ["", "Any", "Every situation this appliance currently holds"],
-];
-

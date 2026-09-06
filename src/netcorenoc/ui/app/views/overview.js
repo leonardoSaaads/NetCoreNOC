@@ -16,7 +16,7 @@
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
-import { plural, relative, absolute, TIMEZONE } from "../format.js";
+import { plural, relative, absolute, timeTitle, TIMEZONE } from "../format.js";
 import { can, canEdit, scopeSummary } from "../session.js";
 import * as store from "../store.js";
 
@@ -75,16 +75,23 @@ export class Overview extends Component {
         Situations may extend beyond it; members you cannot see are shown as a redacted count.
       </p>` : null}
 
+      ${/* **v0.16.4: five tiles left this row and none of them was replaced here** (item 3).
+            `active alarms` and `open situations` moved to the Situations screen, where they are
+            **filters** rather than figures — pressing one selects the tab it counts, which is the
+            gesture the number was making an operator want. `p95 latency` moved into the top bar's
+            health control, so it is on every screen instead of on this one. `devices` and `alarm
+            classes` stay below, in the row that says what the appliance has LEARNED, which is what
+            they are about.
+
+            What is deliberately NOT here is a placeholder. v0.16.5 owns this screen's charts and
+            they are not started; a reserved region promising one is the failure #219 recorded, and
+            an empty row is not "room" — the room is that nothing has to be moved aside to add
+            them. */ null}
       <div class="stat-row">
-        <${Stat} label="active alarms" value=${stats.active_alarms}
-                 tone=${stats.active_alarms ? "alarm" : "quiet"} />
-        <${Stat} label="open situations" value=${stats.open_situations} />
         <${Stat} label="devices" value=${stats.devices}
                  note="learned, not configured" />
         <${Stat} label="alarm classes" value=${stats.classes}
                  note="learned, not configured" />
-        <${Stat} label="p95 latency" value=${`${stats.latency_p95_s ?? 0} s`}
-                 title="Time from trap arrival to correlation, 95th percentile." />
         ${(stats.ingest_gaps || []).length
           ? html`<${Stat} label="ingest gaps" value=${stats.ingest_gaps.length} tone="warn"
                           note="closed gaps, kept for history" />`
@@ -100,7 +107,8 @@ export class Overview extends Component {
             <li key=${s.id}>
               <a href=${`#/situations/${s.id}`}>#${s.id}</a>
               <span>${plural(s.alarm_count, "alarm")}</span>
-              <span class="muted">${relative(s.updated_at)}</span>
+              <span class="muted" title=${timeTitle(s.updated_at)}
+                >${relative(s.updated_at)}</span>
             </li>`)}</ul>`
         : html`<p class="hint">No open situations — alarms are arriving, nothing has
             correlated.</p>`}

@@ -35,6 +35,28 @@ cp .env.example .env    # then edit; .env is git-ignored and is the only place s
 Point your equipment's SNMP trap destination (v2c or v1) at the host, open `http://<host>:8080/`,
 and go to [`operate.md`](operate.md).
 
+### Resource limits, and what happens when one is hit
+
+`docker-compose.yml` sets `deploy.resources`: **1.0 CPU** and **512 MiB**, with 0.25 CPU and
+128 MiB reserved. Both are deliberately generous — the appliance is one asyncio process with one
+SQLite file and a bounded in-memory queue — and the two limits fail in **completely different
+ways**, which is the reason to state them rather than only set them.
+
+| limit | what happens when it is reached | what it costs you |
+|---|---|---|
+| **memory** | the kernel OOM-kills the process; `restart: unless-stopped` brings it back and the WAL means the database survives | **every trap in flight is lost and no ingest gap is recorded** — the gap counter lives in the process that died. This is the one failure the appliance cannot account for afterwards. |
+| **cpus** | the process is throttled, not killed | correlation falls behind the wire. `queue_depth` climbs in the health control, and if the queue fills, overflow **is** counted as an ingest gap. Visible, and recoverable. |
+
+So if you are unsure, **raise the memory limit before the CPU limit**: one costs latency you can
+see, the other costs traps you cannot.
+
+`tests/test_perf.py::burst` drives 100 000 traps in one second through the real ingest path, which
+is what 512 MiB is sized about four times over. One CPU is what a single event loop is bounded by
+anyway; giving the container more does not make correlation faster.
+
+To change them, edit `deploy.resources` in `docker-compose.yml`. With plain `docker run`, the
+equivalents are `--cpus 1.0 --memory 512m`.
+
 ## Docker
 
 ```sh
@@ -42,6 +64,7 @@ docker build -t netcorenoc .
 docker run -d --name netcorenoc \
   --read-only --cap-drop ALL --cap-add CAP_NET_BIND_SERVICE \
   --security-opt no-new-privileges --tmpfs /tmp \
+  --cpus 1.0 --memory 512m \
   -p 162:162/udp -p 8080:8080 \
   -v netcorenoc-data:/home/netcorenoc \
   netcorenoc

@@ -215,7 +215,27 @@ export class NameField extends Component {
  * `actor_name` is the username *if the account still exists* and is withheld from a viewer by
  * `FIELD_RULES`, so this renders whichever the server sent and never guesses: a deleted account
  * and a service token both fall back to the reference, which is the honest answer rather than
- * "unknown", because the reference is still exactly who did it. */
+ * "unknown", because the reference is still exactly who did it.
+ *
+ * ## v0.16.4, Bug 2: `by admin` and `2m` were one word, and the word looked like a counter
+ *
+ * The maintainer reported that *"`admin2` became `admin3`"*. Nobody was renaming anything: the row
+ * rendered `by admin` immediately followed by the age, so `admin` + `2m` read as `admin2m` and, a
+ * minute later, as `admin3m`. Two things were wrong and each needed its own repair, because each
+ * is invisible to the thing that would have caught the other.
+ *
+ *   * **The layout.** `.age` carries `margin-left: auto`, and `style.css` had no `.history-list`
+ *     rule at all — so the `<li>` was `display: list-item`, the auto margin did nothing, and the
+ *     age sat against the name with up to 1 002 px of empty row beside it. The stylesheet now gives
+ *     the row a flex context; measured, the age moved to the right edge at all three widths.
+ *   * **The text.** A separator in CSS is not a separator in `textContent`, so a screen reader, a
+ *     copy-paste and the DOM harness all still read `edt1s` after the layout was fixed. The
+ *     explicit `${" "}` below is what separates the runs *as text*; a whitespace-only text node is
+ *     not rendered as a flex item, so it costs nothing visually.
+ *
+ * The second half is why this is not a one-line CSS commit. Appendix B's blind spot is exactly
+ * *"the DOM harness cannot see whitespace"*, and half a repair reads as a whole one until the other
+ * half is measured. */
 export function History({ events }) {
   return html`<section class="history">
     <h3>What has been done to this situation</h3>
@@ -226,7 +246,7 @@ export function History({ events }) {
                          >${" by "}${e.actor_name || e.actor}</span>` : null}
         ${e.confidence != null
           ? html`<span class="muted">${` at ${percent(e.confidence)} confidence`}</span>` : null}
-        <span class="age" title=${timeTitle(e.at)}>${age(e.at)}</span>
+        ${" "}<span class="age" title=${timeTitle(e.at)}>${age(e.at)}</span>
       </li>`)}
     </ol>
   </section>`;

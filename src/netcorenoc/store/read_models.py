@@ -34,6 +34,13 @@ class ReadModelsMixin(StoreBase):
             # working appliance the moment this release shipped — and this number has always
             # meant "situations that have not left", which is what it still means.
             ("open_situations", f"SELECT COUNT(*) FROM situation WHERE {LIVE}"),  # nosec B608
+            # v0.16.4: the two halves of that population, **counted rather than derived**.
+            # The console's Situations screen shows them as cards, and the live list it holds is
+            # capped at 50 rows — so counting the statuses there would report a floor and call it
+            # a count, which is exactly the invented number decision 2 refuses one screen over.
+            # Two more `COUNT(*)` over the same small table, on a route that already runs five.
+            ("new_situations", "SELECT COUNT(*) FROM situation WHERE status='new'"),
+            ("working_situations", "SELECT COUNT(*) FROM situation WHERE status='open'"),
             ("quarantined", "SELECT COUNT(*) FROM quarantine"),
         ):
             cur = await self.conn.execute(sql)
@@ -46,7 +53,10 @@ class ReadModelsMixin(StoreBase):
         cur = await self.conn.execute(
             # nosec B608 - `_label_join` returns one of two fixed literals chosen by a schema
             # probe; every value in this statement is a bound parameter or a column name.
-            "SELECT d.id, d.ip, d.vendor, l.label, "  # nosec B608
+            # v0.16.4 (F105, DECISIONS #292): `d.vendor` is gone from the projection. Nothing has
+            # ever written it — 25 device rows and 0 vendors after 2 252 alarms — and the two
+            # screens that rendered it are gone with it. The column stays in the schema, unread.
+            "SELECT d.id, d.ip, l.label, "  # nosec B608
             "(SELECT COUNT(*) FROM alarm a WHERE a.device_id=d.id AND a.status='active') "
             "AS active_alarms FROM device d "
             # v0.16.3: through the ADDRESS, which is what `device` and `ne` genuinely share — both

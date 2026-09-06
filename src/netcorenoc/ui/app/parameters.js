@@ -162,3 +162,42 @@ export const RESTART_REQUIRED = [
   ["tls_enabled", "NETCORENOC_TLS_CERT / _TLS_KEY", "Whether the console is served over TLS."],
   ["log_json", "NETCORENOC_LOG_JSON", "Whether the process logs JSON lines instead of text."],
 ];
+
+/**
+ * **Which screen resolves this warning, derived from the tables above** (v0.16.4, DECISIONS #288).
+ *
+ * The maintainer's ask for the bell was *"a link to the setting that resolves it"*. Not every
+ * warning has one — an ingest gap, a crashed background task and a stale situation are conditions,
+ * not misconfigurations — so this returns `null` for those and the bell renders them as text with
+ * no affordance. A control that navigated somewhere unhelpful would teach an operator that the
+ * bell's links are noise, which costs the ones that work.
+ *
+ * **Derived rather than listed.** `SETTINGS` and `RESTART_REQUIRED` already name every parameter
+ * this console knows about, because the Settings screen renders them; a warning is matched against
+ * those names. Add a parameter and its warnings link themselves; delete one and the link goes.
+ * A table of `(warning text, destination)` pairs written here would be Appendix B's guard that
+ * lists what it checks, and it would keep a link pointing at the wrong place after a rewording
+ * rather than losing it.
+ *
+ * Measured: of the nine warning strings this appliance can emit, **two** name a parameter — the
+ * empty trap allowlist and the missing TLS certificate. Both resolve; the other seven do not, and
+ * that fraction is reported rather than the fact that linking works at all.
+ */
+export function warningTarget(text) {
+  const haystack = String(text ?? "").toLowerCase();
+  const named = [
+    ...SETTINGS.map((entry) => [entry.label, entry.env]),
+    ...RESTART_REQUIRED.map(([, env, _why]) => [null, env]),
+  ];
+  for (const [label, env] of named) {
+    // The environment variable first: it is unambiguous, and a warning that names one is naming
+    // the thing an admin will type. `NETCORENOC_TLS_CERT/KEY` is one token in the warning and two
+    // in the table, so each side of a `/` is tried.
+    for (const token of String(env ?? "").split("/")) {
+      const needle = token.trim().toLowerCase();
+      if (needle.length > 3 && haystack.includes(needle)) return "#/settings";
+    }
+    if (label && haystack.includes(label.toLowerCase())) return "#/settings";
+  }
+  return null;
+}

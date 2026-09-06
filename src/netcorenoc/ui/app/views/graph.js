@@ -135,8 +135,11 @@ export class GraphView extends Component {
       .attr("r", (d) => Math.min(NODE_MAX_RADIUS, NODE_BASE_RADIUS + 2.5 * Math.sqrt(d.active_alarms)))
       .attr("class", (d) => `node ${d.active_alarms > 0 ? "alarm" : "ok"}`);
     selection.selectAll("title").remove();
+    // v0.16.4 (F105): the middle line read `unknown vendor` for every node ever drawn, because
+    // `ne.vendor` has no writer. A tooltip that says the appliance could not identify a device,
+    // when the truth is that nothing ever tried, is worse than one line shorter.
     selection.append("title").text((d) =>
-      `${displayName(d)}\n${d.vendor || "unknown vendor"}\n${plural(d.active_alarms, "active alarm")}`);
+      `${displayName(d)}\n${plural(d.active_alarms, "active alarm")}`);
 
     this.labelLayer.selectAll("text").data(nodes, (d) => d.id)
       .join("text").attr("class", "node-label").text(displayName);
@@ -257,7 +260,11 @@ export function Busiest({ nodes }) {
              "at 24 px, so a storm and a busy hour look alike there and do not here."} />
     <${DataTable} columns=${[
       { key: "device", label: "element" },
-      { key: "vendor", label: "vendor", title: "inferred from the enterprise arc of the OID" },
+      // v0.16.4 (F105, DECISIONS #292): the **vendor** column is gone. Nothing has ever written
+      // `ne.vendor` — 25 rows, 0 vendors, after 2 252 alarms — and its tooltip, *"inferred from
+      // the enterprise arc of the OID"*, described `alarm_class`, a different table. An operator
+      // read `unknown` as "the appliance could not identify this device"; the truth was that
+      // nothing ever tried.
       { key: "alarms", label: "active alarms", numeric: true },
       { key: "act", label: "" },
     ]} rows=${rows.map((node) => ({
@@ -265,7 +272,6 @@ export function Busiest({ nodes }) {
       tone: "alarm",
       cells: {
         device: displayName(node),
-        vendor: node.vendor || "unknown",
         alarms: count(node.active_alarms),
         act: html`<a class="tap" href=${`#/situations?q=${encodeURIComponent(displayName(node))}`}
                      title="Find this element's situations, where it is named and its grouping corrected"

@@ -33,7 +33,7 @@
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Loading, Empty, Failed, DataTable, TimeCell, SectionHeading, cell } from "../widgets.js";
-import { count, plural } from "../format.js";
+import { absolute, count, plural, utcOffset, TIMEZONE } from "../format.js";
 import { d3Ready } from "../vendor.js";
 
 const LIMIT = 300;
@@ -61,6 +61,18 @@ const WINDOWS = [
   [86400, "last 24 hours"],
   [604800, "last 7 days"],
 ];
+
+/** An x-axis tick: the clock, in the browser's zone, without the offset (v0.16.4, #294).
+ *
+ * **The zone is named once, in the caption below the chart, and not on every tick.** Five ticks
+ * each carrying `-03:00` would be five copies of one fact in the space a chart has least of. Every
+ * point's own tooltip carries the full stamp with the offset in it, and the table beneath renders
+ * `TimeCell`, so the offset is one hover or one glance away from every mark. */
+function clockTick(t) {
+  const d = new Date(t * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 
 /** A y-axis tick label, clipped to what PAD_LEFT can hold. The full name is in the table. */
 function clipTick(name) {
@@ -125,15 +137,18 @@ export class Timeline extends Component {
     const y = d3.scalePoint().domain(devices).range([PAD, HEIGHT - PAD]).padding(0.5);
     const g = selection.attr("viewBox", `0 0 ${width} ${HEIGHT}`).append("g");
     g.append("g").attr("class", "axis").attr("transform", `translate(0,${HEIGHT - PAD})`)
-      .call(d3.axisBottom(x).ticks(5)
-        .tickFormat((t) => new Date(t * 1000).toLocaleTimeString()));
+      // **The axis names its zone once, in the caption, and not on every tick** (#294). Five
+      // ticks each carrying `-03:00` would be five copies of one fact in the space a chart has
+      // least of; the caption below states it, and every point's own tooltip carries the full
+      // stamp with the offset in it.
+      .call(d3.axisBottom(x).ticks(5).tickFormat(clockTick));
     g.append("g").attr("class", "axis").attr("transform", `translate(${PAD_LEFT},0)`)
       .call(d3.axisLeft(y).tickFormat(clipTick));
     g.selectAll("circle").data(marks).join("circle")
       .attr("cx", (m) => x(m.ts)).attr("cy", (m) => y(m.device)).attr("r", 4)
       .attr("class", (m) => (m.kind === "clear" ? "tl-clear" : "tl-raise"))
       .append("title")
-      .text((m) => `${m.device} ${m.class} (${m.kind}) ${new Date(m.ts * 1000).toLocaleString()}`);
+      .text((m) => `${m.device} ${m.class} (${m.kind}) ${absolute(m.ts)}`);
   }
 
   filters() {
@@ -205,6 +220,18 @@ export class Timeline extends Component {
         reader, or anyone copying a fact into a ticket should read.</p>
       <svg id="timeline" role="img" ref=${(node) => { this.svgRef = node; }}
            aria-label=${`Timeline of ${plural(marks.length, "mark")}. The same marks are listed as text below.`}></svg>
+      ${/* The chart's zone, named once (v0.16.4, #294). Five axis ticks each carrying `-03:00`
+            would be five copies of one fact in the space a chart has least of, so it is said here
+            instead — and every point's tooltip and every table row still carry the full stamp. */
+        null}
+      ${/* `${" "}` before the `<b>`, and it is Bug 2's exact shape caught in this release's own
+            new markup: `are in\n        <b>` renders as `are inAsia/Tokyo`, because htm drops a
+            whitespace-only run between a text node and an element. Found by reading the rendered
+            string in a browser rather than the template — which is the whole reason the live pass
+            exists, three commits after fixing the same thing in the gesture history. */ null}
+      <p class="hint timeline-zone">Times on this axis are in${" "}
+        <b>${TIMEZONE}</b>${" "}(${utcOffset(new Date())} from UTC), the zone of the device you are
+        reading this on. Every mark's tooltip and every row below carry the full stamp.</p>
       <${Summary} marks=${marks} />
       <p class="hint">The ${plural(Math.min(marks.length, 100), "most recent mark")}, as text:</p>
       <${DataTable} columns=${columns} rows=${rows} />

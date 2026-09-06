@@ -92,6 +92,18 @@ export function Unknown({ viewId }) {
   </div>`;
 }
 
+/**
+ * **Did this route's parameters change?** — one answer, for every screen that needs to ask.
+ *
+ * `Loader` has asked it since v0.13.0 as a private method, and `views/situations.js` did not ask it
+ * at all: a hash change within one view does not remount the component, so a permalink followed
+ * from inside Situations changed the address bar and opened nothing (F108, v0.16.4). Extracted
+ * rather than copied, because a second implementation of *"the route moved"* is how two screens
+ * come to disagree about what a route change is — and the one that disagrees is the one nobody
+ * drives.
+ */
+export function routeKey(params) { return JSON.stringify(params ?? []); }
+
 /* ---------- the loader: fetch on mount, all four states, one implementation ---------- */
 
 /**
@@ -116,7 +128,7 @@ export class Loader extends Component {
     if (this.routeKey(previous) !== this.routeKey(this.props)) this.reload();
   }
 
-  routeKey(props) { return JSON.stringify(props.params ?? []); }
+  routeKey(props) { return routeKey(props.params); }
 
   async reload() {
     this.setState({ status: "loading", error: null });
@@ -190,11 +202,16 @@ export function SeverityCell({ alarm }) {
  * A dense table. `columns` is `[{ key, label, numeric?, title? }]`; `rows` is a list of objects
  * with a `key` and a `cells` map. Numeric columns are right-aligned and tabular-figured so a
  * column of counts can be scanned vertically, which is the whole reason these products are dense.
+ *
+ * `kind` names a table whose *layout* differs from the default, and there is exactly one: the
+ * member table, whose first column is a checkbox rather than the row's identity (F109). It is a
+ * class on the element, not a set of options here — a table that took layout parameters would
+ * become the place every screen's layout is written, which is the opposite of one vocabulary.
  */
-export function DataTable({ columns, rows, caption, empty }) {
+export function DataTable({ columns, rows, caption, empty, kind }) {
   if (!rows.length && empty) return empty;
   return html`<div class="table-scroll">
-    <table class="data">
+    <table class=${cx("data", kind)}>
       ${caption ? html`<caption>${caption}</caption>` : null}
       <thead><tr>${columns.map((c) => html`
         <th key=${c.key} scope="col" class=${cx(c.numeric && "num")} title=${c.title}>${c.label}</th>`)}

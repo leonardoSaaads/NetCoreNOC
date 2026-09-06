@@ -98,7 +98,7 @@ export class Sidebar extends Component {
     if (index !== -1 && index !== this.state.focusIndex) this.setState({ focusIndex: index });
   }
 
-  render({ capabilities, activeId, counts = {} }) {
+  render({ capabilities, activeId, counts = {}, collapsed = false }) {
     const views = reachableViews(capabilities);
     this.items = views;
     const focusIndex = Math.min(Math.max(0, this.state.focusIndex), Math.max(0, views.length - 1));
@@ -106,12 +106,16 @@ export class Sidebar extends Component {
 
     const ungrouped = views.filter((v) => !v.group);
     const rendered = [];
-    if (ungrouped.length) rendered.push(this.renderGroup(null, ungrouped, activeId, focusIndex, counts));
+    if (ungrouped.length) {
+      rendered.push(this.renderGroup(null, ungrouped, activeId, focusIndex, counts, collapsed));
+    }
     for (const group of GROUPS) {
       const inGroup = views.filter((v) => v.group === group.id);
       // A group with nothing in it is not rendered at all. A viewer sees no `Administer`
       // heading standing over an empty space — absence is absence.
-      if (inGroup.length) rendered.push(this.renderGroup(group, inGroup, activeId, focusIndex, counts));
+      if (inGroup.length) {
+        rendered.push(this.renderGroup(group, inGroup, activeId, focusIndex, counts, collapsed));
+      }
     }
 
     // The brand is OUTSIDE the <nav>, and that placement is load-bearing rather than tidy.
@@ -119,8 +123,9 @@ export class Sidebar extends Component {
     // harness measured the sidebar at two tab stops with the first ArrowDown landing on item 2.
     // The accessibility floor says the nav is one tab stop; a link to the Overview is not one of
     // the sections the arrow keys move between, so it belongs beside the navigation, not in it.
-    return html`<div class="sidebar">
-      <a class="brand" href=${`#/${DEFAULT_VIEW}`} title="Go to the Overview">
+    return html`<div class=${cx("sidebar", collapsed && "sidebar-collapsed")}>
+      <a class="brand" href=${`#/${DEFAULT_VIEW}`} title="Go to the Overview"
+         aria-label="NetCoreNOC — go to the Overview">
         <span class="brand-mark" aria-hidden="true">◈</span>
         <span class="brand-name">Net<b>CoreNOC</b></span>
       </a>
@@ -130,7 +135,19 @@ export class Sidebar extends Component {
     </div>`;
   }
 
-  renderGroup(group, views, activeId, focusIndex, counts) {
+  /* A collapsed item is **icon-only, and the accessible name is the whole of its usability.**
+   *
+   * The v0.13.0 floor says every icon in this console is decoration beside a text label, and a
+   * collapsed sidebar is the one place that cannot hold: the label is not on screen. So the label
+   * stays in the DOM as `.nav-label` — hidden visually, never `display: none`, so a screen reader
+   * still reads it — and `aria-label` carries it plus the badge's meaning for the collapsed case,
+   * because `sr-only` text inside a link is announced but the count beside it is a bare numeral
+   * that would be read as part of the name.
+   *
+   * The `title` is the sighted half of the same fact, and it is the reason a collapsed sidebar is
+   * usable with a mouse at all.
+   */
+  renderGroup(group, views, activeId, focusIndex, counts, collapsed) {
     const headingId = group ? `nav-group-${group.id}` : "nav-group-top";
     return html`<div class="nav-group" key=${headingId}>
       ${group ? html`<h2 class="nav-heading" id=${headingId}>${group.label}</h2>` : null}
@@ -139,19 +156,32 @@ export class Sidebar extends Component {
           const index = this.items.indexOf(view);
           const active = view.id === activeId;
           const badge = counts[view.id];
+          const noun = view.countNoun ?? "items";
+          const said = badge != null && badge > 0
+            ? `${view.label} — ${badge} ${noun}`
+            : view.label;
           return html`<li key=${view.id}>
             <a
               class=${cx("nav-item", active && "active")}
               href=${`#/${view.id}`}
               aria-current=${active ? "page" : null}
+              aria-label=${collapsed ? said : null}
+              title=${collapsed ? said : null}
               tabindex=${index === focusIndex ? "0" : "-1"}
               ref=${(node) => { this.nodes[index] = node; }}
               onClick=${() => this.setState({ focusIndex: index })}
             >
               <span class="nav-glyph"><${Icon} name=${view.icon} /></span>
-              <span class="nav-label">${view.label}</span>
+              ${/* **`.visually-hidden`, the console's own class, not a second copy of its rules.**
+                    A collapsed label must be hidden from the eye and kept in the accessible tree,
+                    and this console already has exactly one implementation of that. Writing the
+                    clipping again in a `.sidebar-collapsed .nav-label` rule would be a second one
+                    — and a second one is how `display: none` gets in, which removes the label from
+                    the tree and is invisible to every test in this repository that has no layout
+                    engine. As a class it is visible in the DOM, so a guard can see it. */ null}
+              <span class=${cx("nav-label", collapsed && "visually-hidden")}>${view.label}</span>
               ${badge != null && badge > 0
-                ? html`<span class="nav-count" title=${`${badge} ${view.countNoun ?? "items"}`}>${badge}</span>`
+                ? html`<span class="nav-count" title=${`${badge} ${noun}`}>${badge}</span>`
                 : null}
             </a>
           </li>`;

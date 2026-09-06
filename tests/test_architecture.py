@@ -415,6 +415,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/members.js"),
     ("GET", "/app/views/parts/why.js"),
     ("GET", "/app/views/parts/card.js"),
+    # v0.16.4: the judgement surface, split out of `card.js` when the state-dependent action
+    # surface took that file over the module-graph guard (DECISIONS #291, #293).
+    ("GET", "/app/views/parts/judge.js"),
+    # v0.16.4: the controls that narrow the situation list (item 3, item 5).
+    ("GET", "/app/views/parts/finder.js"),
+    # v0.16.4: the top bar's two disclosures — the bell and the health control (#288, #289).
+    ("GET", "/app/notices.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
@@ -939,8 +946,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
 #: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
 #: for the same module-graph reason `members.js` and `card.js` were.
-SRC_TREE_DIGEST = "501d2838a03d97de9aebbefd6d3ec98af963ec021103535e8994aca90d062e92"
-SRC_FILE_COUNT = 198
+SRC_TREE_DIGEST = "2a815b1f8d323a198dbb50523b518f1df9cb49ab60f3731e6ffae79cfc8f2ee1"
+SRC_FILE_COUNT = 201
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1006,7 +1013,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.3", "the version this release carries"
+    assert __version__ == "0.16.4", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

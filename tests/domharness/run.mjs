@@ -281,7 +281,12 @@ const scenarios = {
     // v0.16.0: `input` alone no longer means "a member checkbox". The card also carries the
     // confidence range, two situation-id number fields and the name text field, so the selector
     // says which inputs it means rather than relying on the card having only one kind.
-    const boxes = detail.querySelectorAll('input[type="checkbox"]');
+    //
+    // v0.16.4: **and it says which part of the table it means.** The mark column's header now
+    // carries a select-all, so `input[type="checkbox"]` inside the card includes one control that
+    // is not a member — and taking it as index 0 shifted every mark by one row, which is exactly
+    // the shape invariant 2 exists to refuse. `tbody` is the rows.
+    const boxes = detail.querySelectorAll('tbody input[type="checkbox"]');
     for (const index of params.mark ?? []) {
       const box = boxes[index];
       if (!box) throw new Error(`no member checkbox at index ${index} (${boxes.length} rendered)`);
@@ -331,6 +336,227 @@ const scenarios = {
           cellText: td.textContent.replace(/\s+/g, " ").trim(),
         };
       }),
+      proof: proofOf(env),
+    };
+  },
+
+  /**
+   * Follow a sequence of situation permalinks and report which card is open after each (F108).
+   *
+   * v0.16.4. A hash change **inside** the Situations screen is a same-document navigation, so the
+   * component is not remounted and `componentDidMount`'s deep link is never read again. Measured
+   * in a browser: the address bar said `#/situations/41` while the card for 38 was the one still
+   * open. This drives the address the way the router does rather than the way a page load does,
+   * which is the only difference between the case that worked and the case that did not.
+   */
+  async permalink(params) {
+    const env = await boot(params);
+    const steps = [];
+    for (const fragment of params.fragments ?? []) {
+      env.navigate(fragment);
+      await settle(env);
+      steps.push({
+        fragment,
+        hash: env.location?.hash ?? null,
+        expanded: env.document.querySelectorAll(".sit.expanded").map((c) => c.dataset.sid),
+        cards: env.document.querySelectorAll(".sit").map((c) => c.dataset.sid),
+      });
+    }
+    return { steps, proof: proofOf(env) };
+  },
+
+  /**
+   * The top bar's two disclosures, and the sidebar's two states (v0.16.4, #288-#290).
+   *
+   * Opens each panel, reads what it holds, closes it with Escape, and toggles the sidebar — all
+   * through the events a browser raises, because every one of these is a control whose *state* is
+   * the thing under test and none of them is visible in the markup at rest.
+   */
+  async shellControls(params) {
+    const env = await boot(params);
+    const q = (sel) => env.document.querySelector(sel);
+    const read = (id) => {
+      const panel = env.document.getElementById(id);
+      return {
+        open: panel ? !panel.hasAttribute("hidden") : null,
+        label: panel?.getAttribute("aria-label") ?? null,
+        text: panel?.textContent.replace(/\s+/g, " ").trim() ?? null,
+        links: (panel?.querySelectorAll("a") ?? []).map((a) => a.getAttribute("href")),
+        items: (panel?.querySelectorAll(".notice-text") ?? [])
+          .map((n) => n.textContent.replace(/\s+/g, " ").trim()),
+        // The health panel's row LABELS: what it claims to measure, as distinct from the prose
+        // beside them saying what it cannot.
+        figures: (panel?.querySelectorAll("dt") ?? []).map((d) => d.textContent.trim()),
+      };
+    };
+    const press = async (sel) => {
+      const node = q(sel);
+      if (!node) throw new Error(`no control matching ${sel}`);
+      node.dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+    };
+
+    const out = { chips: env.document.querySelectorAll(".chip").length };
+    out.bellClosed = read("noticePanel");
+    await press('button[aria-controls="noticePanel"]');
+    out.bellOpen = read("noticePanel");
+    // A second press closes it. Escape does too — `notices.js` registers a document `keydown`
+    // listener for it — and that path is driven in the browser rather than here, because this
+    // harness's document has no key-event dispatch and a test that pretended otherwise would be
+    // measuring the harness.
+    await press('button[aria-controls="noticePanel"]');
+    out.bellReclosed = read("noticePanel");
+
+    await press('button[aria-controls="healthPanel"]');
+    out.healthOpen = read("healthPanel");
+    // Opening the health control is a click OUTSIDE the bell, so the bell must have closed with
+    // it: two panels stacked on one another is a state neither of them can be dismissed from.
+    out.bellAfterHealth = read("noticePanel");
+
+    // Following a warning's link closes the panel. Found in the live pass: the click is *inside*
+    // the disclosure, so the outside-click rule kept it open and it hung over the screen it had
+    // just navigated to.
+    await press('button[aria-controls="noticePanel"]');
+    const link = env.document.querySelector("#noticePanel a[href]");
+    if (link) {
+      link.dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+      out.bellAfterLink = read("noticePanel");
+      out.linkHref = link.getAttribute("href");
+    }
+
+    const navItems = () => env.document.querySelectorAll(".nav-item").map((a) => {
+      const label = a.querySelector(".nav-label");
+      return {
+        label: a.getAttribute("aria-label"),
+        text: label?.textContent ?? null,
+        // HOW the label is hidden, which is the whole difference between a screen-reader operator
+        // being able to use a collapsed rail and not. `.visually-hidden` clips; `display: none`
+        // removes it from the tree, and no test here has a layout engine to tell them apart —
+        // so the technique is a class in the DOM rather than a rule in a stylesheet.
+        clipped: (label?.getAttribute("class") ?? "").split(/\s+/).includes("visually-hidden"),
+      };
+    });
+    out.navExpanded = { items: navItems(), shell: q("#app")?.getAttribute("class") };
+    await press("button.nav-toggle");
+    out.navCollapsed = {
+      items: navItems(),
+      shell: q("#app")?.getAttribute("class"),
+      cookie: String(env.document.cookie ?? ""),
+      expandedAttr: q("button.nav-toggle")?.getAttribute("aria-expanded"),
+    };
+    await press("button.nav-toggle");
+    out.navReexpanded = { shell: q("#app")?.getAttribute("class") };
+    return { ...out, proof: proofOf(env) };
+  },
+
+  /**
+   * Expand a card and report **what an operator can do on it** (v0.16.4, DECISIONS #291).
+   *
+   * Not what it displays: which controls are on the page, whether the judged disclosure is closed
+   * over them, and — when `params.adjust` — the same list again after it is opened. The caller
+   * doctors `events` to put the situation in each of the states the decision names, because a
+   * corpus replay makes no gestures and would leave three of the four unreachable.
+   */
+  async actionSurface(params) {
+    // Reached by its PERMALINK rather than by the list plus a click: this screen opens on the New
+    // tab (DECISIONS #254), so a situation in any other state is not in the list to click on, and
+    // the permalink pins it there (F97's repair, doing exactly the job it was built for).
+    const env = await boot({ ...params, hash: `#/situations/${params.sid}` });
+    await settle(env);
+    const read = () => {
+      const detail = cardFor(env, params.sid).detail;
+      return {
+        judged: detail.querySelector(".judged-note")?.textContent.replace(/\s+/g, " ").trim() ?? null,
+        adjust: Boolean(detail.querySelector(".judged button")),
+        grouping: detail.querySelectorAll(".fb button").map((b) => b.textContent.trim()),
+        restructure: Boolean(detail.querySelector(".lifecycle")),
+        nameField: Boolean(detail.querySelector("#lcName")),
+        marks: detail.querySelectorAll('tbody input[type="checkbox"]').length,
+        selectAll: Boolean(detail.querySelector('thead input[type="checkbox"]')),
+        clears: detail.querySelectorAll("button.row-clear").length,
+        declares: detail.querySelectorAll(".row-actions .declare-open").length,
+      };
+    };
+    const before = read();
+    let after = null;
+    if (params.adjust && before.adjust) {
+      cardFor(env, params.sid).detail.querySelector(".judged button")
+        .dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+      after = read();
+    }
+    return { before, after, proof: proofOf(env) };
+  },
+
+  /**
+   * Tick the mark column's header and report what the split then sends (v0.16.4).
+   *
+   * One corpus situation holds 1 051 members; a partial split over it is not a gesture anybody
+   * completes one checkbox at a time. The assertion that matters is not that boxes appear ticked
+   * — it is that the ids in the request are **exactly** the membership, which is invariant 2's
+   * contract reached through a new control.
+   */
+  async markAll(params) {
+    const env = await boot(params);
+    env.navigate("#/situations");
+    await settle(env);
+    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const header = cardFor(env, params.sid).detail.querySelector('thead input[type="checkbox"]');
+    if (!header) throw new Error("the mark column's header carries no select-all");
+    header.checked = true;
+    header.dispatchEvent(new env.DomEvent("change"));
+    await settle(env);
+    const ticked = cardFor(env, params.sid).detail
+      .querySelectorAll('tbody input[type="checkbox"]').filter((b) => b.checked).length;
+
+    buttonIn(cardFor(env, params.sid).detail, "Split").dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const post = env.network.requests.find((r) => r.method === "POST" && r.path.includes("/feedback"));
+
+    // …and untick, because a control that only goes one way is half a control.
+    const header2 = cardFor(env, params.sid).detail.querySelector('thead input[type="checkbox"]');
+    header2.checked = false;
+    header2.dispatchEvent(new env.DomEvent("change"));
+    await settle(env);
+    const afterUntick = cardFor(env, params.sid).detail
+      .querySelectorAll('tbody input[type="checkbox"]').filter((b) => b.checked).length;
+
+    return {
+      ticked,
+      afterUntick,
+      feedbackBody: post?.body ?? null,
+      proof: proofOf(env),
+    };
+  },
+
+  /**
+   * Expand a card and read the gesture history **as text** (v0.16.4, Bug 2).
+   *
+   * The maintainer reported that `admin2` became `admin3`. Nobody renamed anything: the row
+   * rendered `by admin` and the age with nothing between them, so `admin` + `2m` read as a name
+   * with a counter after it. The layout half of the repair is a flex context this harness has no
+   * way to see — it has no layout engine — and the **text** half is exactly what it can see, which
+   * is why the repair has two halves and this scenario asserts one of them.
+   *
+   * The caller doctors the captured detail payload to carry events, for the reason
+   * `severityBands` doctors severities: a fresh corpus replay makes no gestures, so a history
+   * panel is unreachable on real data and would be untested by anything.
+   */
+  async history(params) {
+    const env = await boot(params);
+    env.navigate("#/situations");
+    await settle(env);
+    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const list = cardFor(env, params.sid).detail.querySelector(".history-list");
+    return {
+      present: Boolean(list),
+      // Raw, NOT whitespace-collapsed: whether the runs are separated at all is the whole
+      // question, and `replace(/\s+/g, " ")` would erase the difference being measured.
+      lines: (list?.querySelectorAll("li") ?? []).map((li) => li.textContent),
+      ages: (list?.querySelectorAll(".age") ?? []).map((s) => s.textContent),
       proof: proofOf(env),
     };
   },
@@ -466,7 +692,10 @@ const scenarios = {
 
     const detailBefore = cardFor(env, params.sid).detail;
     const splitBefore = buttonIn(detailBefore, "Split");
-    const boxes = detailBefore.querySelectorAll("input");
+    // v0.16.4: `tbody`, and the same correction as `partialSplit` above — the mark column's
+    // header now carries a select-all, so a card-wide `input` scan takes a control that is not a
+    // member as index 0 and every mark lands one row late.
+    const boxes = detailBefore.querySelectorAll('tbody input[type="checkbox"]');
     for (const index of params.mark ?? []) {
       boxes[index].checked = true;
       boxes[index].dispatchEvent(new env.DomEvent("change"));

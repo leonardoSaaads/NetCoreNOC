@@ -30,7 +30,10 @@ class EntityMixin(StoreBase):
         cur = await self.conn.execute(
             # nosec B608 - `_label_join` returns one of two fixed literals chosen by a schema
             # probe; every value in this statement is a bound parameter or a column name.
-            "SELECT n.id, n.ip, n.vendor, n.first_seen, n.last_seen, l.label FROM ne n "  # nosec B608
+            # v0.16.4 (F105, DECISIONS #292): `n.vendor` is gone. 25 NE rows, 0 vendors, after
+            # 2 252 alarms; the entity card rendered it beside the element's name and an operator
+            # read the blank as "could not identify" rather than "nothing ever tried".
+            "SELECT n.id, n.ip, n.first_seen, n.last_seen, l.label FROM ne n "  # nosec B608
             # On a pre-`0016` schema the equipment label is keyed on `device.id`, and there is no
             # device alias here to key it through — which is not a gap: on that schema this screen
             # never showed a label at all, and reproducing that exactly is what the frozen-schema

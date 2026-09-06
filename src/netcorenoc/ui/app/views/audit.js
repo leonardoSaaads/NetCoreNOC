@@ -77,7 +77,7 @@ function ChainState() {
     <${SectionHeading} title="Chain integrity"
       hint=${"Every row carries a hash of the row before it, so an edited or deleted row breaks " +
              "the chain at a detectable point."} />
-    <p class="structural-note"><b>Verification runs offline, not from this console.</b>
+    <p class="structural-note"><b>Verification runs offline, not from this console.</b>${" "}
       <code>python -m netcorenoc audit verify</code> walks the chain and reports the first broken
       link. There is no route for it and this screen does not invent one: a verdict computed by
       the same process that writes the rows would be worth less than the walk itself.</p>

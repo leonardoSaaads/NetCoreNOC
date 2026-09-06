@@ -1240,10 +1240,17 @@ Run every command below from the repository root with the virtualenv active.
   to protect and cannot see. That guard asserts the client sends **what was ticked**; it says
   nothing about whether the operator could tick what they meant. Found in a browser, which is the
   eighth consecutive release in which that sentence is true.
-- **Disposition**: open, **not fixed here**. Part VII rule 2 confines this release's console work to
-  the severity pill, and the repair is a hit-area rule that belongs with v0.16.4's shell — where
-  the row height, the checkbox column and the touch floor are one decision rather than three.
-  Issued in v0.16.2.
+- **Disposition**: **FIXED in v0.16.4**. The exclusion is deleted: `input[type="checkbox"]` and
+  `input[type="radio"]` now take `--tap` on **both** edges, and the member checkbox measures
+  **28 × 28 px** at all three widths. The more useful half of the repair is the guard.
+  `test_ui_invariants.py::test_every_declaration_control_clears_the_tap_floor_at_all_three_widths`
+  **passed over these 13 px controls in v0.16.2 and v0.16.3**, because the normaliser that read the
+  floor's selector flattened `input:not([type="checkbox"]):not([type="radio"])` down to `input` and
+  reported inputs covered — the exclusion that *was* the defect was the exact substring it threw
+  away. The reading now lives in `tap_floor_tags`, which refuses to count any part carrying a
+  negation: the question is *"does the floor reach every control of this kind"*, and any `:not(`
+  means the honest answer is no. Demonstrated red by restoring the exclusion, with the repaired
+  tree as its control. Issued in v0.16.2, fixed in the release that owns the shell.
 
 ## F104 — an operator-declared name carries a raw address past the field-shaping axis
 
@@ -1331,8 +1338,180 @@ Run every command below from the repository root with the virtualenv active.
   device"* when the truth is *"nothing ever tried"*, which is the exact failure `format.js`'s own
   header forbids for severity — *"a blank cell would read as 'no severity' rather than 'not learned
   yet'"*. It is also the shape F84 had: a field served to a screen that no writer fills.
-- **Disposition**: open, **not fixed here**. Two repairs exist — infer an NE vendor (from the
-  enterprise arcs of the traps it sends, which is real work and a correlation question) or delete
-  the column and the two renders — and this release has no measurement that decides between them.
-  Deleting a rendered column is v0.16.4's shell work, where the graph's tables and the entity card
-  are one decision. Issued in v0.16.3.
+- **Disposition**: **FIXED in v0.16.4** (DECISIONS #292), by deletion. The measurement that decided
+  between the two repairs is the one this finding lacked: **25 elements and 0 vendors after 2 252
+  alarms**, because no writer has ever set the column since v0.1.0 — so inferring a vendor is a new
+  correlation feature and not a repair. `vendor` leaves `/api/graph` nodes, `/api/entities` and
+  `/api/entities/{ne_id}`, and `device_vendor` leaves every alarm row of `/api/situations/{sid}`;
+  the four server-side projections that fed them are gone with the renders. **The columns stay in
+  the schema**, so nothing is dropped and nothing needs backfilling. This finding also **understated
+  itself**: it named two render sites and there were **three** — the graph node's SVG `<title>`
+  printed *"unknown vendor"* on hover for every node ever drawn, which no assertion reached because
+  the DOM harness substitutes a double for d3. Issued in v0.16.3.
+
+## F107 — the warning banner carries the trap allowlist to every viewer, past the shaping axis
+
+- **What**: `/api/stats` computes every enumerating counter over the in-scope set so that
+  out-of-scope activity *"cannot move a scoped viewer's numbers and become a volume oracle"* — the
+  handler's own comment, F32's rule. `out["warnings"] = all_warnings()` is then appended **after**
+  that reasoning and passes through no shaping at all. `runner.receiver_warnings` interpolates the
+  allowlist verbatim (`f"...not in the trap allowlist ({allowlist!r})"`), `stats.read` is a
+  **viewer** capability, and the console renders the list in a banner above the work area on every
+  screen. It is commit `8609962`'s shape once more — a string *containing* addresses reaching a role
+  the coarsener protects two keys away — and F9 already records that the allowlist reveals security
+  posture, which is why `_print_bootstrap_banner` prints a **count** and not the entries.
+- **Reproduce**: one scenario replayed, an allowlist set, three denied datagrams, then read
+  `/api/stats` and `/api/graph` as each role in the same session:
+  ```sh
+  python - <<'PY'
+  import asyncio, sys; sys.path[:0] = ['tests', 'src', 'tools']
+  from pathlib import Path
+  from netcorenoc.api import create_app
+  from netcorenoc.ingest.receiver import ReceiverStats
+  from netcorenoc.main import Engine
+  from netcorenoc.runner import receiver_warnings
+  from netcorenoc.store import Store
+  import authutil, corpus_census, util
+  ALLOWLIST = "10.20.30.0/24,192.168.77.5"
+  async def main():
+      store = Store('.demos/f107.db'); await store.open()
+      queue = asyncio.Queue(); engine = Engine(store, queue); await engine.start()
+      await authutil.make_users(store)
+      p = sorted(Path('eval/corpus').glob('*.json'))[0]
+      await util.drive(engine, queue, corpus_census.scenario_events(p, 1.7e9))
+      stats = ReceiverStats(); stats.denied = 3
+      app = create_app(engine, warnings=lambda: receiver_warnings(stats, ALLOWLIST))
+      for role in ('viewer', 'editor', 'admin'):
+          c = await authutil.client_as(app, role)
+          body = (await c.get('/api/stats')).json()
+          graph = (await c.get('/api/graph')).json()
+          ips = sorted({n['ip'] for n in graph.get('nodes', []) if n.get('ip')})[:1]
+          print(role, 'allowlist in body:',
+                any(ALLOWLIST in w for w in body.get('warnings', [])), '| graph ip:', ips)
+          await c.aclose()
+      stats.denied = 0
+      c = await authutil.client_as(app, 'viewer')
+      print('control (denied=0):',
+            any(ALLOWLIST in w for w in (await c.get('/api/stats')).json()['warnings']))
+      await store.close()
+  asyncio.run(main())
+  PY
+  ```
+- **Measured**: `viewer allowlist in body: True | graph ip: ['127.0.0.0/24']`, and the same `True`
+  for editor and admin. **Control**: with `denied = 0` the warning is not produced and the string is
+  absent (`False`) — so it is the warning carrying the addresses, not a broken coarsener. The
+  viewer is shown `127.0.0.0/24` for a device it can see and, in the same session, the estate's real
+  management prefixes in prose.
+- **Why it matters**: v0.16.4 gives the warning list a **permanent home** — a bell an operator opens
+  on any screen — so a string that was a transient banner becomes a surface. Directive 6 binds any
+  new control that renders operator text to the shaping axis, and this is text the axis never saw.
+  `coarsen_situation_name` cannot help: it is whitespace-token-wise and `'10.20.30.0/24,192.168.77.5'`
+  is one token with quotes and a comma.
+- **Second half, recorded and NOT fixed**: `stale_situation_warnings` counts idle-active situations
+  over the **whole estate** and reaches a scoped viewer unchanged, so the number moves with activity
+  that reader may not see — F32's volume oracle through the same unshaped key. The repair is a
+  per-scope count taken where the sweep already runs, which is engine work rather than shell work.
+- **Disposition**: **the disclosure half is FIXED in v0.16.4** — the warning names the allowlist's
+  **entry count** instead of its entries, following `_print_bootstrap_banner`'s own precedent
+  (#227), demonstrated red by restoring the interpolation with the repaired tree as its control. The
+  oracle half is **open**; issued in v0.16.4.
+
+## F108 — a permalink followed from inside Situations changes the address and opens nothing
+
+- **What**: `views/situations.js` reads its deep link once, in `componentDidMount`. A hash change
+  from `#/situations/38` to `#/situations/41` is a same-document navigation: the router publishes
+  the new fragment, `resolve()` returns the same view id, the component instance survives, and
+  `componentDidMount` does not run again. The address bar says `#/situations/41`, the card for 41
+  stays closed, and the card for 38 stays open. `widgets.Loader` has had the repair since v0.13.0 —
+  `componentDidUpdate(previous) { if (this.routeKey(previous) !== this.routeKey(this.props)) …}` —
+  and this screen does not use it. Appendix B's *"a method one call away from being used"*.
+- **Reproduce**, in a browser as an editor, with three ids that exist:
+  ```js
+  const open = () => [...document.querySelectorAll('.sit.expanded')].map(e => e.dataset.sid);
+  // A, the control: a FULL load of the address.
+  location.hash = '#/situations/38'; location.reload();
+  // …then, without reloading:
+  location.hash = '#/situations/41';           // B
+  // …and again, leaving the screen first:
+  location.hash = '#/overview'; location.hash = '#/situations/41';   // C
+  ```
+  reading `open()` after each.
+- **Measured**: `A -> ['38']`, `B -> ['38']` with `location.hash === '#/situations/41'`,
+  `C -> ['41']`. So the address is honoured on a load and after a remount and ignored in between,
+  which is the one case that happens during an incident: an operator already on Situations pastes a
+  colleague's link.
+- **Why it matters**: the permalink is the sharing mechanism — `card.js` calls it *"a link to this
+  situation alone, shareable during the incident"* — and F97 already repaired the other half of it
+  (a link to a situation the default tab excludes). This is the same promise broken by a different
+  mechanism, and it is silent: no error, no empty state, just the previous card.
+- **Disposition**: **FIXED in v0.16.4** (DECISIONS #297). `componentDidUpdate` re-reads
+  `params[0]`, pins and opens it, using `Loader`'s existing route-key comparison rather than a
+  second one. Demonstrated red by removing the hook, with the repaired tree as its control.
+
+## F109 — the frozen column keeps the row's identity for a viewer and is blank for an editor
+
+- **What**: DECISIONS #237 chose horizontal scroll with the first column frozen over dropping
+  columns and over cards, on the stated ground that *"the row keeps its identity (device, or id)
+  beside whatever the operator scrolled to"*. The rule is implemented as
+  `table.data th:first-child, table.data td:first-child { position: sticky; left: 0 }` — the
+  **first** column, whatever it happens to be. In a situation's member table the first column is
+  the mark checkbox for an editor and the device for a viewer, so the guarantee holds for the role
+  that cannot act and fails for the role that can. It is the same shape as F103: a rule written for
+  a column, applied to a position.
+- **Reproduce**, in a browser at 390 px, expanding a situation card as each role, scrolling the
+  member table fully right and reading what is left at the frozen edge:
+  ```js
+  const t = [...document.querySelectorAll('table.data')].find(t =>
+    [...t.querySelectorAll('thead th')].some(th => th.textContent.trim() === 'instance'));
+  t.parentElement.scrollLeft = t.parentElement.scrollWidth;
+  [...t.querySelectorAll('tbody tr:first-child td')]
+    .filter(td => getComputedStyle(td).position === 'sticky')
+    .map(td => td.textContent.trim())
+  ```
+- **Measured**, before: `viewer -> ["127.0.0.0/24"]` and `editor -> [""]`, with `1` and `active`
+  the cells beside the editor's blank one. **The viewer is the control** — same table, same width,
+  same release, and it reads correctly — so the failure is the first column's *identity*, not the
+  freezing.
+- **Why it matters**: an editor at a phone width is the operator this release exists for, and the
+  row they are acting on is the one whose identity disappears. Marking a checkbox that names no
+  device is the same hazard F103 named from the other end: a human judgement recorded about a pair
+  the human could not identify.
+- **Disposition**: **FIXED in v0.16.4** (DECISIONS #293). The member table freezes the mark **and**
+  the device below 720 px, the mark column takes a declared 44 px so the second column's offset is
+  a number rather than a guess, and the editor's frozen edge now reads `127.0.0.2`. Issued and
+  closed by the release that measured it.
+
+## F110 — Bug 2's family: a sentence running into the `<code>` after it, on two admin screens
+
+- **What**: `htm` drops a whitespace-only run between a text node and an element, so a template
+  that wraps a line between prose and an inline element renders them as one word. Bug 2 is the
+  instance a maintainer reported (`by admin` + `2m` reading as `admin2m`); scanning for its **shape**
+  rather than its location found three more, two of them pre-existing:
+  * `views/parts/facts.js:45` — *"The sufficiency floors have no write path.**asserting_bags** ≥ 50"*
+  * `views/parts/facts.js:47` — *"changes the gate's inputs. See**docs/ROADMAP.md**."*
+  * `views/audit.js:80` — *"Verification runs offline, not from this console.**python -m
+    netcorenoc audit verify** walks the chain…"*
+  and one written **by this release**, in the timeline's own new zone caption:
+  *"Times on this axis are in**Asia/Tokyo** (+09:00 from UTC)"* — three commits after repairing
+  Bug 2, which is the measurement of how easy this is to write.
+- **Reproduce**, in a browser as an admin, on `#/settings` and `#/audit`:
+  ```js
+  [...document.querySelectorAll(".work .structural-note")]
+    .map(n => n.textContent.replace(/\s+/g, " ").trim())
+  ```
+- **Measured**, before: `"The sufficiency floors have no write path.asserting_bags ≥ 50 …"` and
+  `"Verification runs offline, not from this console.python -m netcorenoc audit verify walks …"`.
+  After: a space in each. **Control**: the same scan over `views/parts/model.js:136`, which has the
+  identical *template* shape — `</b>` then a newline then `<span>` — and reads correctly, because
+  the span's own text begins with a space. So it is the missing character and not the line break.
+- **Why it matters, and why the guard is narrow**: the same textual shape between two *elements* is
+  usually correct, because the container is a flex row whose `gap` separates them — twenty such
+  sites exist in this console and nineteen are fine. A guard that flagged those would be noise, and
+  noise is how a guard stops being read. What can never be right is a sentence running into the
+  element after it, and that is what
+  `test_ui_invariants.py::test_no_template_glues_a_word_to_the_inline_element_after_it` matches.
+  Both admin screens are ones the new notification bell links to, so this release put more traffic
+  on them.
+- **Disposition**: **FIXED in v0.16.4**. Four sites take an explicit `${" "}`; the guard is
+  demonstrated red by removing one and green with it. Issued and closed by the release that
+  scanned for it.

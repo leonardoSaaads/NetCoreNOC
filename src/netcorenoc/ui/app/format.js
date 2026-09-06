@@ -1,12 +1,20 @@
 /* Formatting: time, counts, severity. Small, pure, and shared so two screens cannot disagree
  * about what "3 minutes ago" or "critical" looks like.
  *
- * ## Timestamps say which clock (§IV.1)
+ * ## Timestamps say which clock, and say it where an operator can see it (§IV.1, #294)
  *
- * Every absolute time this console prints is accompanied by its relative form and by the
- * timezone it is in. During an incident the operator is reading a log in one window and this
- * console in another, and an unlabelled `14:32:07` is the single easiest way to make them
- * disagree by an hour without noticing.
+ * During an incident the operator is reading a log in one window and this console in another, and
+ * an unlabelled `14:32:07` is the single easiest way to make them disagree by an hour without
+ * noticing.
+ *
+ * **That sentence has been in this header since v0.13.0 and was not true of the code.** Measured
+ * in v0.16.4: nine surfaces printed a time and **none of them named a zone in visible text**;
+ * `TIMEZONE` was referenced in exactly one place, an `overview.js` `title=`, so even there it was
+ * hover-only — which on a phone means it does not exist.
+ *
+ * Every absolute time now carries its **offset from UTC in the text**: `2026-09-06 14:32:07 -03:00`.
+ * The IANA zone name stays in the `title` and is stated once, visibly, in the shell. Relative
+ * forms and the `.age` badges are zone-free by nature and are unchanged.
  *
  * ## Severity is encoded more than once (§IV.1)
  *
@@ -21,10 +29,56 @@ export const TIMEZONE = (() => {
   catch { return "local time"; }
 })();
 
-/** Absolute, with the timezone named. Seconds included: incidents are read at second precision. */
+/**
+ * The offset from UTC of a given instant, as `+HH:MM` or `-HH:MM` (v0.16.4, DECISIONS #294).
+ *
+ * **Of the instant, not of now.** `getTimezoneOffset()` is a property of the `Date` it is called
+ * on, so an alarm from before a daylight-saving change carries the offset that was in force when
+ * it was raised. Reading it once at module load and reusing it would put the wrong offset on every
+ * timestamp for half the year, and the operator correlating a 2 a.m. incident against a syslog is
+ * exactly who would find it.
+ *
+ * `Z` for UTC, because `+00:00` is correct and `Z` is what a log file says.
+ */
+export function utcOffset(date) {
+  const minutes = -date.getTimezoneOffset();
+  if (minutes === 0) return "Z";
+  const sign = minutes < 0 ? "-" : "+";
+  const abs = Math.abs(minutes);
+  return `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}
+
+function pad(n) { return String(n).padStart(2, "0"); }
+
+/**
+ * An absolute timestamp: `YYYY-MM-DD HH:MM:SS ±HH:MM`, always, everywhere (DECISIONS #294).
+ *
+ * **Measured before this release: nine surfaces printed a time and none named a zone in visible
+ * text.** `TIMEZONE` was referenced in exactly one place — an `overview.js` `title=` — so even
+ * there it was hover-only, which on the phone half of this release means it did not exist. An
+ * operator in Japan and one in Brazil read different numbers for the same event and no screen said
+ * so.
+ *
+ * **Why a fixed shape rather than `toLocaleString()`.** The operator is reading this console in
+ * one window and a syslog in another. `9/6/2026, 2:32:07 PM` and `06/09/2026 14:32:07` are the same
+ * instant written two ways by two browsers, and neither says which zone. This is one string,
+ * sortable, comparable by eye, and unambiguous with respect to UTC because the offset is *in* it.
+ *
+ * **Why the browser's zone rather than a chosen one.** A chosen zone is a per-user row, a migration
+ * and a settings surface, for a value the browser already knows correctly. Naming the offset
+ * removes the ambiguity the ask is actually about; choosing a different zone is a convenience on
+ * top of it, and it is a ROADMAP line.
+ *
+ * Built from the `Date`'s own local getters rather than from `Intl`, so the output does not move
+ * with the runner's locale — which is also what lets the DOM harness assert on it.
+ */
 export function absolute(epochSeconds) {
   if (epochSeconds == null) return "—";
-  return new Date(epochSeconds * 1000).toLocaleString();
+  const d = new Date(epochSeconds * 1000);
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${utcOffset(d)}`
+  );
 }
 
 /** "4m ago", "2.1h ago". Compact, because it sits in a dense table beside the absolute form. */
@@ -54,6 +108,41 @@ export function age(epochSeconds, now = Date.now() / 1000) {
 export function timeTitle(epochSeconds) {
   if (epochSeconds == null) return "no timestamp recorded";
   return `${absolute(epochSeconds)} (${TIMEZONE}) — ${relative(epochSeconds)}`;
+}
+
+/* ---------- what has been asserted about a grouping ---------- */
+
+/**
+ * The gesture kinds that assert something about a **grouping** (v0.16.4, DECISIONS #291).
+ *
+ * A **mirror** of `store/situation_events.py::ASSERTING_KINDS`, not a second opinion:
+ * `tests/test_ui_invariants.py::test_the_console_and_the_store_agree_on_which_gestures_assert`
+ * reads both files and fails if they diverge. The literal lives there because that is where the
+ * prohibition is enforced — `PREREGISTRATION-0.16.0.md` §1 extends `incumbent_linked`'s rule to
+ * any signal that is not an assertion about a grouping — and it is needed here because the card's
+ * action surface turns on whether a judgement is already on record.
+ *
+ * `rename`, `manual_clear`, `self_clear`, `idle_close` and `operator_close` are deliberately
+ * absent. Each of them **promotes** a situation to `open` and none of them says anything about
+ * whether the alarms belong together, which is precisely why `open` is the wrong fact to key an
+ * action surface on (v0.16.2's promotion/affirmation split).
+ */
+export const ASSERTING_KINDS = new Set(["verdict", "move", "merge", "operator_split"]);
+
+/**
+ * Has this situation already been judged, and by whom?
+ *
+ * Returns `null` when no asserting gesture is on record — the ordinary state of a `new` situation,
+ * and of an `open` one that was promoted or renamed and nothing more. Otherwise the most recent
+ * asserting event, so the card can say what was recorded rather than only that something was.
+ */
+export function lastJudgement(events) {
+  let latest = null;
+  for (const event of events ?? []) {
+    if (!ASSERTING_KINDS.has(event.kind)) continue;
+    if (latest === null || (event.at ?? 0) >= (latest.at ?? 0)) latest = event;
+  }
+  return latest;
 }
 
 /* ---------- severity ---------- */

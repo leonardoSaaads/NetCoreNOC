@@ -42,9 +42,9 @@ export function Hardening({ scorer }) {
       : html`<p class="hint">The scorer's bounds could not be read, so they are not shown rather
           than guessed.</p>`}
 
-    <p class="structural-note"><b>The sufficiency floors have no write path.</b>
+    <p class="structural-note"><b>The sufficiency floors have no write path.</b>${" "}
       <code>asserting_bags ≥ 50</code> and <code>asserting_incidents ≥ 30</code> are constants in
-      the promotion route: changing them changes the gate's inputs. See
+      the promotion route: changing them changes the gate's inputs. See${" "}
       <code class="mono">docs/ROADMAP.md</code>.</p>
   </section>`;
 }

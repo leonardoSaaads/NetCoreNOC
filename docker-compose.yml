@@ -58,6 +58,37 @@ services:
     security_opt:
       - no-new-privileges:true
 
+    # --- resource limits (v0.16.4) ---------------------------------------------------------
+    #
+    # **What happens when each is hit, because a limit whose consequence is unstated is a limit
+    # nobody can size.**
+    #
+    #   * **memory** — the kernel OOM-kills the process. `restart: unless-stopped` brings it back,
+    #     the SQLite WAL means the database survives, and **every trap in flight at that moment is
+    #     lost with no ingest gap recorded** — the gap counter lives in the process that died. That
+    #     is the one failure this appliance cannot account for afterwards, which is why the limit
+    #     is set well above what it needs rather than tightly.
+    #   * **cpus** — the process is throttled, not killed. Correlation falls behind the wire, the
+    #     queue grows, and the appliance says so: `queue_depth` climbs in the health control and,
+    #     if the queue fills, overflow IS counted as an ingest gap. Visible and recoverable.
+    #
+    # **The numbers, and where they come from.** The appliance is one asyncio process with one
+    # SQLite file and a bounded in-memory queue; `tests/test_perf.py::burst` drives 100 000 traps
+    # in a second through the real path. 512 MiB is roughly four times what that burst needs and
+    # leaves the page cache room; 1.0 CPU is one core, which the single event loop is bounded by
+    # anyway. `reservations` is what the scheduler guarantees, not what the container may use.
+    #
+    # Raise `memory` before `cpus` if you are unsure: one costs latency you can see, the other
+    # costs traps you cannot.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
     environment:
       # Defaults keep `docker compose up` working with no .env. Override in .env.
       NETCORENOC_DB: /home/netcorenoc/netcorenoc.db

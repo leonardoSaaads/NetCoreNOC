@@ -160,8 +160,26 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   against observed behaviour rather than a check the perimeter injects.
 - **One layer-rule violation remains** — `runtime.py` imports the allowlist parser from the ingest
   layer. Either the parser moves to cross-cutting, or the config holder keeps strings.
-- **`Capture.warnings()` is never surfaced** — a degraded capture is counted, logged and invisible on
-  the stats payload. One line.
+- **An operator-chosen timezone.** v0.16.4 puts the offset from UTC in every absolute timestamp and
+  names the zone in the top bar, which removes the ambiguity; *choosing* a different zone is a
+  per-user row, a migration and a settings surface, and it is a convenience on top rather than a
+  repair ([#294](adr/DECISIONS.md)).
+- **A bulk hand-clear for a situation's alarms.** One corpus situation holds 1 051 members, and the
+  zombie clear is one button per row. The mark column's select-all covers the *grouping* gestures;
+  clearing is a write with an audit row and a lifecycle consequence per alarm, so it needs a route
+  and a decision rather than a loop in the browser.
+- **Reopening a resolved situation.** The three restructuring routes answer 409 there, deliberately:
+  reopening is a decision nobody has made ([#254](adr/DECISIONS.md)). An operator reviewing history
+  can still record a verdict, which the server accepts; what they cannot do is re-shape the bag.
+- **An NE vendor, inferred from the enterprise arcs of the traps it sends.** v0.16.4 deleted the
+  column nothing wrote (F105); deriving one is a correlation question — which arc wins when an
+  element emits three vendors' traps, and what a wrong answer costs a grouping. The measurement to
+  start from is in that finding: 25 elements, 0 vendors, against 46 of 48 alarm classes resolving
+  one from their OID.
+- **The stale-situation count is not scoped.** `/api/stats` computes every counter over the visible
+  set and then appends a warning list that does not; the idle-active count reaches a scoped reader
+  whole-estate, which is F32's volume oracle through an unshaped key. The repair is a per-scope
+  count where the sweep already runs, which is engine work rather than shell work. **F107**, open.
 - **`eval/corpus_gen.py` and `eval/harness.py` are over the 400-line guard** (457 and 435), outside
   its reach rather than exempted from it. Splitting the harness needs care: its stdout is the frozen
   `c2e8a0ce…` hash.

@@ -27,6 +27,9 @@ the timeline SVG are not executed. `src/netcorenoc/ui/app/views/graph.js` says s
 
 from __future__ import annotations
 
+import os
+import re
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -61,6 +64,35 @@ ALL_VIEWS = [
 
 #: The views whose capability's minimum role is `admin`, discovered below rather than listed.
 ADMIN_VIEWS = ["users", "tokens", "settings", "scorer", "governance", "quarantine", "audit"]
+
+
+def tap_floor_tags(stylesheet: Path) -> set[str]:
+    """Which element types the stylesheet's tap-target floor actually reaches.
+
+    **This is where F103 hid, and the reason it is a function now.** The v0.16.2 version of this
+    read the floor's selector and normalised each part with
+    ``part.strip().split(":")[0].split("[")[0]`` — which turns
+    ``input:not([type="checkbox"]):not([type="radio"])`` into ``input`` and reports that inputs are
+    covered. The exclusion that *was the defect* is exactly the substring the normaliser threw
+    away, so the guard came back green over 72 controls measuring 13x13 px in the same tree. A
+    guard that passes over the control it exists to protect is worse than no guard.
+
+    So a part carrying a negation is **not** counted as covering its tag. ``input:not([disabled])``
+    would be refused too, and that is deliberate: the question this answers is *"does the floor
+    reach every control of this kind"*, and any negation means the honest answer is no. A floor
+    that genuinely needs to exclude something should say so where a reader sees it, not inside a
+    selector a normaliser flattens.
+    """
+    css = stylesheet.read_text(encoding="utf-8")
+    floor = re.search(r"^([^\n{]*)\{\s*min-height: var\(--tap\);", css, re.M)
+    assert floor is not None, "the stylesheet no longer states a tap-target floor at all"
+    covered: set[str] = set()
+    for part in floor.group(1).split(","):
+        selector = part.strip()
+        if ":not(" in selector:
+            continue  # a negation is an exclusion, and an excluded control is F103
+        covered.add(selector.split(":")[0].split("[")[0])
+    return covered
 
 
 @pytest.fixture
@@ -1466,7 +1498,7 @@ async def test_a_declaration_can_be_withdrawn_from_the_row_that_made_it(
     result = domdriver.run_scenario(
         "withdraw", {"routes": doctored, "sid": sid, "control": "ne", "row": 0}
     )
-    assert result["openerLabel"] == "Edit", result["openerLabel"]
+    assert result["openerLabel"].startswith("Edit"), result["openerLabel"]
     assert result["deletePaths"] == [f"/api/labels/ne/{ne_id}"], result["deletePaths"]
     assert result["posts"] == [], "withdrawing a declaration also wrote one"
 
@@ -1474,7 +1506,16 @@ async def test_a_declaration_can_be_withdrawn_from_the_row_that_made_it(
         "declare",
         {"routes": routes["editor"], "sid": sid, "control": "ne", "row": 0, "value": "x"},
     )
-    assert plain["openerLabel"] == "Declare", plain["openerLabel"]
+    assert plain["openerLabel"].startswith("Declare"), plain["openerLabel"]
+    # **And it names WHAT it declares** (v0.16.4). Three of these share one actions cell since
+    # DECISIONS #293, and three buttons reading `Declare` are three controls an operator cannot
+    # tell apart. Every one was reachable and above the touch floor and still unusable, which is
+    # the difference between "reachable" and "identifiable" — found by looking at the rendered
+    # card, because nothing here measured the second.
+    assert plain["openerLabel"] != "Declare", (
+        "the declaration opener does not say what it declares; in one cell with two others that "
+        "makes three identical controls"
+    )
     assert plain["deletePaths"] == []
 
 
@@ -1493,17 +1534,16 @@ async def test_every_declaration_control_clears_the_tap_floor_at_all_three_width
     Each declaration control is a `button`, a `select` or an `input[type=text]`, and every one of
     those three is inside that selector. A control introduced as a `div` with a click handler, or
     as a checkbox, would fail here.
-    """
-    import re
-    from pathlib import Path
 
+    **v0.16.4: the reading of that rule moved into `tap_floor_tags`, and it changed answer.** This
+    test passed in v0.16.2 and v0.16.3 while the checkbox measured 13x13, because the normaliser
+    flattened away the very `:not([type="checkbox"])` that was the defect. The floor no longer
+    carries an exclusion and the reader no longer tolerates one; see that function.
+    """
     import netcorenoc
 
     ui = Path(netcorenoc.__file__).resolve().parent / "ui"
-    css = (ui / "style.css").read_text(encoding="utf-8")
-    floor = re.search(r"^([^\n{]*)\{\s*min-height: var\(--tap\);", css, re.M)
-    assert floor is not None, "the stylesheet no longer states a tap-target floor at all"
-    covered = {part.strip().split(":")[0].split("[")[0] for part in floor.group(1).split(",")}
+    covered = tap_floor_tags(ui / "style.css")
     assert {"button", "select", "input"} <= covered, (
         f"the tap floor covers {sorted(covered)}; the declaration controls are buttons, a select "
         f"and text inputs, and a control the floor's selector excludes is exactly F103"
@@ -1530,4 +1570,698 @@ async def test_every_declaration_control_clears_the_tap_floor_at_all_three_width
     )
     assert 'type="checkbox"' not in source, (
         "a declaration control is a checkbox, which is the one shape the tap floor excludes (F103)"
+    )
+
+
+def _flex_containers_of(css: str) -> set[str]:
+    """Every selector this stylesheet gives a flex or grid formatting context."""
+    out: set[str] = set()
+    for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        if not re.search(r"display:\s*(inline-)?(flex|grid)\b", body):
+            continue
+        for selector in selectors.split(","):
+            cleaned = selector.strip().split("/*")[0].strip()
+            if cleaned:
+                out.add(re.sub(r"\s+", " ", cleaned))
+    return out
+
+
+def _ancestor_chain_of(source: str, needle: str) -> list[list[str]]:
+    """For each element carrying `needle` in its class list, the open-element stack above it.
+
+    A small stack scanner over the `htm` templates rather than a regex per call site: the question
+    *"what is this element's parent"* is a nesting question and a regex cannot answer it. Each
+    entry is a list of `tag.class.class` strings from the outermost open element inwards, ending
+    with the element's **direct parent**.
+    """
+    stack: list[str] = []
+    found: list[list[str]] = []
+    void = {"br", "hr", "img", "input", "meta", "link", "source"}
+    for match in re.finditer(r"<(/?)(\w+)((?:[^<>]|\$\{[^{}]*\})*?)(/?)>", source, re.S):
+        closing, tag, body, selfclose = match.groups()
+        classes = re.search(r'\bclass="([^"$]*)"', body)
+        names = classes.group(1).split() if classes else []
+        if closing:
+            if stack:
+                stack.pop()
+            continue
+        if needle in names:
+            found.append(list(stack))
+        if selfclose or tag.lower() in void:
+            continue
+        stack.append(tag + "".join(f".{name}" for name in names))
+    return found
+
+
+def test_every_age_badge_sits_in_a_flex_context_or_its_auto_margin_does_nothing() -> None:
+    """**Bug 2's layout half, derived from the templates rather than from a list.**
+
+    `.age` right-aligns with `margin-left: auto`, which is inert outside a flex or grid formatting
+    context. `style.css` had **no `.history-list` rule at all**, so the gesture history's `<li>` was
+    `display: list-item`, the margin did nothing, and `by admin` abutted `2m` — read by a
+    maintainer as a counter incrementing from `admin2` to `admin3`. Measured in Chromium at 390 /
+    820 / 1440 px, with 192 / 622 / 1002 px of empty row to the age's right; the control was the
+    same `.age` on `.sit-head`, whose parent IS flex, correct at 12 px from the edge at every width.
+
+    So the rule was never wrong — it was placed in a context that did not exist. This walks every
+    template that renders `class="age"`, takes each one's ancestor stack, and requires the
+    stylesheet to give **some** ancestor a flex or grid context. A third `.age` added tomorrow
+    inside a plain `<div>` fails here rather than in a browser nine releases later.
+
+    What this does NOT cover: whether the age ends up on the right. That is layout, this suite has
+    no layout engine, and the browser measurement above is the evidence for it.
+    """
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui"
+    css = (ui / "style.css").read_text(encoding="utf-8")
+    assert re.search(r"\.age\s*\{[^}]*margin-left:\s*auto", css), (
+        "`.age` no longer right-aligns with an auto margin; this guard is about that rule"
+    )
+    flex = _flex_containers_of(css)
+    sites = 0
+    for js in sorted(ui.rglob("*.js")):
+        for chain in _ancestor_chain_of(js.read_text(encoding="utf-8"), "age"):
+            sites += 1
+            # Every selector an ancestor could match: its own classes, its tag, and the
+            # descendant form a stylesheet actually writes for an unclassed child (`.list li`).
+            candidates: set[str] = set()
+            for depth, node in enumerate(chain):
+                tag, *classes = node.split(".")
+                candidates.update(f".{name}" for name in classes)
+                for outer in chain[:depth]:
+                    for name in outer.split(".")[1:]:
+                        candidates.add(f".{name} {tag}")
+            assert candidates & flex, (
+                f"{js.name} renders an age badge inside {chain}, and this stylesheet gives none "
+                f"of {sorted(candidates)} a flex or grid context — so `margin-left: auto` does "
+                f"nothing there and the age abuts the text before it. That is Bug 2."
+            )
+    assert sites >= 2, f"only {sites} `.age` call sites were found; the scanner matched too little"
+
+
+def _with_history(captured: dict[str, Any], sid: int) -> dict[str, Any]:
+    """The captured detail payload with a gesture history on it.
+
+    A fresh corpus replay makes no gestures, so `events` is empty and the history panel is
+    unreachable on real data — the same reason `severityBands` doctors the severities it needs.
+    The shape is `store/situation_events.py::situation_events`'s five columns and nothing else,
+    because a scoped reader is served five and a sixth here would be testing a payload the server
+    does not send.
+    """
+    detail = captured[f"/api/situations/{sid}"]["json"]
+    events = [
+        {
+            "kind": "rename",
+            "at": 1_700_000_100.0,
+            "actor": "user:2",
+            "actor_name": "admin",
+            "confidence": None,
+        },
+        {
+            "kind": "operator_split",
+            "at": 1_700_000_200.0,
+            "actor": "user:2",
+            "actor_name": "admin",
+            "confidence": 0.8,
+        },
+    ]
+    return {
+        **captured,
+        f"/api/situations/{sid}": {"status": 200, "json": {**detail, "events": events}},
+    }
+
+
+@dom_test
+async def test_the_gesture_history_separates_the_actor_from_the_age_as_text(
+    routes: dict[str, Any],
+) -> None:
+    """**Bug 2's text half, and the half a stylesheet cannot fix.**
+
+    The row renders `" by "`, the actor, then the age. With no separator between the two runs,
+    `admin` followed by `2m` is the single string `admin2m` — which is what a maintainer read as
+    `admin2` becoming `admin3`, and what a screen reader announces, and what a copy-paste yields.
+
+    Giving the row a flex context repairs where the age is **drawn** and changes none of that: a
+    gap is not a character. So the template carries an explicit space, and this is the guard for
+    it — `textContent`, deliberately not whitespace-collapsed, because collapsing is precisely the
+    operation that erases the difference.
+
+    Appendix B names this blind spot outright: *the DOM harness cannot see whitespace.* It can see
+    whether whitespace is **there**, which is a different question and the one that matters here.
+    """
+    sid, _count = uifixtures.largest_situation(routes["editor"])
+    result = domdriver.run_scenario(
+        "history", {"routes": _with_history(routes["editor"], sid), "sid": sid}
+    )
+    assert result["present"], "the history panel did not render for a situation carrying events"
+    assert result["lines"], "the history rendered no rows"
+    for line, age in zip(result["lines"], result["ages"], strict=True):
+        assert age, "a history row rendered no age at all"
+        assert not line.endswith(f"admin{age}"), (
+            f"the actor and the age are one word: {line!r}. That is Bug 2 — `by admin` + `2m` "
+            f"reads as `admin2m`, and a minute later as `admin3m`."
+        )
+        # Derived rather than asserted against a literal: whatever precedes the age must end in
+        # whitespace, so the two runs are separate words however the row is composed.
+        before = line[: line.rindex(age)]
+        assert before != before.rstrip(), (
+            f"nothing separates {before!r} from the age {age!r} in {line!r}"
+        )
+
+
+@dom_test
+async def test_a_permalink_followed_from_inside_situations_opens_the_card_it_names(
+    routes: dict[str, Any],
+) -> None:
+    """**F108.** The permalink is the sharing mechanism — `card.js` calls it *"a link to this
+    situation alone, shareable during the incident"* — and the case that failed is the one that
+    happens during an incident: an operator already on Situations pastes a colleague's link.
+
+    A hash change inside one view does not remount the component, so `componentDidMount`'s deep
+    link was read once and never again. Measured in a browser: the address bar read
+    `#/situations/41` while the card for 38 was the one still open, with no error and no empty
+    state to say so.
+
+    Driven here as three steps, and the **first two are the control**: a first permalink from
+    outside the screen, then a second from inside it. If only the second worked the guard would be
+    asserting a coincidence; if only the first worked, that is the defect.
+    """
+    listing = routes["editor"]["/api/situations?limit=50"]["json"]
+    assert len(listing) >= 2, "the corpus must offer two situations for a permalink to move between"
+    first, second = listing[0]["id"], listing[1]["id"]
+
+    result = domdriver.run_scenario(
+        "permalink",
+        {
+            "routes": routes["editor"],
+            "fragments": [f"#/situations/{first}", f"#/situations/{second}", "#/overview"],
+        },
+    )
+    steps = result["steps"]
+    assert steps[0]["expanded"] == [str(first)], (
+        f"a permalink reached from outside the screen did not open #{first}: {steps[0]}"
+    )
+    assert str(second) in steps[1]["expanded"], (
+        f"the address moved to {steps[1]['hash']} and the card for #{second} did not open — the "
+        f"cards expanded are {steps[1]['expanded']}. That is F108."
+    )
+    assert steps[2]["expanded"] == [], "leaving the screen did not take the cards with it"
+
+
+def _in_state(
+    captured: dict[str, Any], sid: int, *, status: str, events: list[Any]
+) -> dict[str, Any]:
+    """The captured detail payload put into one of the four states DECISIONS #291 names.
+
+    A corpus replay makes no gestures and closes nothing, so three of the four are unreachable on
+    real data — the same reason `severityBands` doctors severities and `_with_history` doctors
+    events. Only the two fields the decision turns on are moved; everything else is the server's.
+    """
+    detail = captured[f"/api/situations/{sid}"]["json"]
+    listing = [
+        {**row, "status": status} if row["id"] == sid else row
+        for row in captured["/api/situations?limit=50"]["json"]
+    ]
+    return {
+        **captured,
+        "/api/situations?limit=50": {"status": 200, "json": listing},
+        f"/api/situations/{sid}": {
+            "status": 200,
+            "json": {**detail, "status": status, "events": events},
+        },
+    }
+
+
+JUDGEMENT = [
+    {
+        "kind": "verdict",
+        "at": 1_700_000_300.0,
+        "actor": "user:2",
+        "actor_name": "admin",
+        "confidence": None,
+    }
+]
+NOT_A_JUDGEMENT = [
+    # Every one of these PROMOTES a situation to `open` and none of them says anything about
+    # whether the alarms belong together. If the card keyed on the status it would treat this as
+    # judged, which is the reading DECISIONS #291 rejects.
+    {
+        "kind": "rename",
+        "at": 1_700_000_100.0,
+        "actor": "user:2",
+        "actor_name": "admin",
+        "confidence": None,
+    },
+    {
+        "kind": "manual_clear",
+        "at": 1_700_000_200.0,
+        "actor": "user:2",
+        "actor_name": "admin",
+        "confidence": None,
+    },
+]
+
+
+def test_the_console_and_the_store_agree_on_which_gestures_assert() -> None:
+    """**The mirror, checked** (DECISIONS #291).
+
+    `format.js::ASSERTING_KINDS` decides whether a card treats a situation as judged, and the
+    literal it mirrors lives in `store/situation_events.py`, where the prohibition is enforced.
+    Two copies of a set is how one of them comes to be wrong; this reads both files, so the day
+    they diverge is the day this fails rather than the day an operator is offered a gesture the
+    appliance no longer counts.
+    """
+    import netcorenoc
+    from netcorenoc.store.situation_events import ASSERTING_KINDS
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui"
+    source = (ui / "app" / "format.js").read_text(encoding="utf-8")
+    match = re.search(r"ASSERTING_KINDS = new Set\(\[([^\]]*)\]\)", source, re.S)
+    assert match, "format.js no longer mirrors ASSERTING_KINDS in a form this can read"
+    mirrored = set(re.findall(r'"([a-z_]+)"', match.group(1)))
+    assert mirrored == set(ASSERTING_KINDS), (
+        f"the console counts {sorted(mirrored)} as asserting and the store counts "
+        f"{sorted(ASSERTING_KINDS)}. One of them is wrong about what a gesture means."
+    )
+
+
+@dom_test
+async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_it_in(
+    routes: dict[str, Any],
+) -> None:
+    """**DECISIONS #291, and the property it must not break: nothing is removed.**
+
+    The maintainer's ask was that a judged situation stop offering Confirm and Split as though
+    nothing had happened. The answer is a disclosure, not a deletion — and the difference is what
+    this asserts. Four states:
+
+      * `new`, unjudged — the full triage surface, unchanged;
+      * `open` promoted or renamed but **not judged** — the same surface, because `open` means an
+        operator is working it and says nothing about the grouping (v0.16.2's split);
+      * `open` **judged** — the same controls, one click behind `Adjust the grouping`, with what
+        was already recorded stated above it;
+      * `resolved` — verdicts stay (the server answers 200), restructuring is absent (**409**).
+
+    What this does NOT cover: that the disclosure is discoverable. That is a browser question and
+    the live pass is where it is answered.
+    """
+    sid, _count = uifixtures.largest_situation(routes["editor"])
+    editor = routes["editor"]
+
+    # "Start working this" is the promote and belongs to `new` alone; every other control in the
+    # `.fb` row is a statement about the GROUPING, and those are what the disclosure folds.
+    def judging(state: dict[str, Any]) -> list[str]:
+        return [b for b in state["grouping"] if b != "Start working this"]
+
+    fresh = domdriver.run_scenario(
+        "actionSurface", {"routes": _in_state(editor, sid, status="new", events=[]), "sid": sid}
+    )["before"]
+    assert fresh["judged"] is None and fresh["adjust"] is False
+    assert "Confirm grouping" in fresh["grouping"], fresh["grouping"]
+    assert "Start working this" in fresh["grouping"], "a new situation offers no promote"
+    assert fresh["restructure"] and fresh["nameField"] and fresh["selectAll"]
+    assert fresh["marks"] > 0 and fresh["declares"] >= 3 * fresh["marks"]
+
+    # `open`, promoted or renamed, nothing judged. Identical to `new` but for the promote button,
+    # and THAT is the reading of `open` the decision turns on.
+    promoted = domdriver.run_scenario(
+        "actionSurface",
+        {"routes": _in_state(editor, sid, status="open", events=NOT_A_JUDGEMENT), "sid": sid},
+    )["before"]
+    assert promoted["judged"] is None, (
+        f"a rename and a hand-clear were read as a judgement: {promoted['judged']!r}. Neither "
+        f"asserts anything about the grouping, which is why the surface keys on the gesture and "
+        f"not on the status."
+    )
+    assert judging(promoted) == judging(fresh), (promoted["grouping"], fresh["grouping"])
+    assert "Start working this" not in promoted["grouping"], "an open situation offers a promote"
+    assert promoted["restructure"] is True
+
+    # `open`, judged: folded, and then unfolded to exactly the same controls.
+    judged = domdriver.run_scenario(
+        "actionSurface",
+        {
+            "routes": _in_state(editor, sid, status="open", events=JUDGEMENT),
+            "sid": sid,
+            "adjust": True,
+        },
+    )
+    assert judged["before"]["judged"], "a judged situation does not say what was recorded"
+    assert "admin" in judged["before"]["judged"], judged["before"]["judged"]
+    assert judged["before"]["adjust"] is True
+    assert judged["before"]["grouping"] == [], (
+        f"the grouping controls are still open on a judged situation: "
+        f"{judged['before']['grouping']}"
+    )
+    assert judging(judged["after"]) == judging(fresh), (
+        f"Adjust does not restore the same controls: {judged['after']['grouping']} vs "
+        f"{fresh['grouping']}. Nothing may be REMOVED by this decision, only folded."
+    )
+    assert judged["after"]["restructure"] is True
+    # The marks and the declarations are never folded: they are how a split is composed, and a
+    # declaration is not a judgement about the grouping at all.
+    for state in (fresh, promoted, judged["before"]):
+        assert state["marks"] == fresh["marks"] and state["selectAll"]
+        assert state["declares"] == fresh["declares"]
+        assert state["nameField"]
+
+    # `resolved`: the verdicts the server accepts, and none of the three it refuses with 409.
+    resolved = domdriver.run_scenario(
+        "actionSurface",
+        {
+            "routes": _in_state(editor, sid, status="resolved", events=JUDGEMENT),
+            "sid": sid,
+            "adjust": True,
+        },
+    )
+    assert resolved["after"]["restructure"] is False, (
+        "the restructure block is offered on a resolved situation; the server answers 409 to all "
+        "three of its gestures, so the console would be offering what will be refused"
+    )
+    assert "Confirm grouping" in resolved["after"]["grouping"], resolved["after"]["grouping"]
+    assert not any("Close" in b for b in resolved["after"]["grouping"]), (
+        f"Close is offered on a situation that has already closed: {resolved['after']['grouping']}"
+    )
+
+
+@dom_test
+async def test_the_mark_column_header_marks_and_clears_every_row(routes: dict[str, Any]) -> None:
+    """**"A way to clear every row at once"**, and it is invariant 2's contract through a new door.
+
+    Measured: one corpus situation holds **1 051** members. Ticking them one at a time is not a
+    gesture anybody completes, so the mark column's header ticks and clears the lot — and the
+    thing that must stay true is that the ids the split then sends are **exactly** the membership
+    and nothing else, which is what
+    `test_a_partial_split_sends_exactly_the_marked_ids_and_no_others` protects for the manual path.
+    """
+    sid, count = uifixtures.largest_situation(routes["editor"])
+    members = uifixtures.member_ids(routes["editor"], sid)
+    result = domdriver.run_scenario("markAll", {"routes": routes["editor"], "sid": sid})
+    assert result["ticked"] == count, f"{result['ticked']} of {count} rows were marked"
+    assert result["feedbackBody"]["excluded_ids"] == members, (
+        "select-all sent something other than the membership, in the order the card renders it"
+    )
+    # CONTROL: the same control the other way. A select-all that cannot be undone leaves an
+    # operator who mis-clicked with 1 051 checkboxes to untick.
+    assert result["afterUntick"] == 0, f"{result['afterUntick']} rows are still marked after untick"
+
+
+def _with_warnings(captured: dict[str, Any]) -> dict[str, Any]:
+    """The captured `/api/stats` carrying the warnings a misconfigured appliance really raises.
+
+    **Taken from `runner.py`'s own producers, never typed here.** The bell's link is derived by
+    matching a warning's text against the parameter table, so a guard written against a paraphrase
+    would pass over a rewording that broke the real thing. These are the strings the appliance
+    emits with no allowlist, no TLS and a denied datagram — the three that resolve — beside one
+    that names no parameter at all, which is the case the no-link branch exists for.
+    """
+    from netcorenoc.ingest.receiver import ReceiverStats
+    from netcorenoc.runner import Supervisor, operator_warnings, receiver_warnings
+
+    supervisor = Supervisor()
+    supervisor.crashes["engine"] = 2
+    supervisor.last_error["engine"] = "OSError"
+    warnings = [
+        *operator_warnings("", tls_enabled=False, http_host="0.0.0.0"),  # nosec B104 - a fixture
+        *receiver_warnings(ReceiverStats(denied=3), "10.0.0.0/8"),
+        *supervisor.warnings(),
+    ]
+    stats = captured["/api/stats"]["json"]
+    return {**captured, "/api/stats": {"status": 200, "json": {**stats, "warnings": warnings}}}
+
+
+@dom_test
+async def test_the_top_bar_holds_the_warnings_and_the_health_it_used_to_spend_a_row_on(
+    routes: dict[str, Any],
+) -> None:
+    """**DECISIONS #288 and #289**, driven rather than described.
+
+    Four counter chips left the top bar and two disclosures arrived. Neither is a new mechanism —
+    the warnings already interrupted and every health figure was already served — and what this
+    asserts is the part that is new: that the bell **holds** them, that a warning naming a
+    parameter carries a link to it and one that does not carries none, and that the health panel
+    shows only figures `/api/stats` measures.
+
+    What this does NOT cover: that 360 px of chrome became 94, or that the panel stays inside the
+    viewport. Those are layout, this harness has no layout engine, and the browser measurements in
+    the release notes are the evidence for them.
+    """
+    result = domdriver.run_scenario("shellControls", {"routes": _with_warnings(routes["admin"])})
+
+    assert result["chips"] == 0, (
+        f"{result['chips']} counter chips are still in the top bar. All four moved: two to the "
+        f"Situations screen as filters, two to the Overview's 'learned' row."
+    )
+    assert result["bellClosed"]["open"] is False, "the bell's panel is open before it is pressed"
+    assert result["bellOpen"]["open"] is True, "pressing the bell opened nothing"
+    assert result["bellReclosed"]["open"] is False, "a second press did not close the bell"
+
+    items = result["bellOpen"]["items"]
+    assert items, "the bell holds no warnings on a fixture whose /api/stats carries some"
+    links = result["bellOpen"]["links"]
+    assert all(href == "#/settings" for href in links), links
+    # The fraction, not the fact. A warning naming a parameter links; one that does not renders as
+    # text with no affordance, and BOTH halves are the decision.
+    assert 0 < len(links) <= len(items), (
+        f"{len(links)} of {len(items)} warnings carry a link. Zero would mean the derivation is "
+        f"dead; one per warning would mean it links things it cannot resolve."
+    )
+
+    # Following a warning's link closes the panel, and opening the other disclosure closes it too.
+    # Both were found in the live pass: a popover that survives the navigation it caused is one an
+    # operator has to dismiss twice, and two panels stacked on one another is a state neither can
+    # be dismissed from.
+    assert result["bellAfterLink"]["open"] is False, (
+        "following a warning's link left the bell hanging over the screen it navigated to"
+    )
+    assert result["linkHref"] == "#/settings", result["linkHref"]
+    assert result["bellAfterHealth"]["open"] is False, (
+        "opening the health control left the bell open behind it"
+    )
+
+    health = result["healthOpen"]
+    assert health["open"] is True
+    assert set(health["figures"]) >= {"queue depth", "p95 latency", "trap rate"}, health["figures"]
+    # **Every figure it shows is one `/api/stats` serves.** Asserted over the row LABELS rather
+    # than over the panel's text, because the panel also carries the sentence saying CPU, memory
+    # and disk are not measured — and a guard that could not tell a figure from a disclaimer would
+    # have to choose between failing on the honest sentence and passing on an invented number.
+    served = {"queue depth", "p95 latency", "trap rate", "refused", "dropped"}
+    assert set(health["figures"]) <= served, (
+        f"the health control shows {sorted(set(health['figures']) - served)}, which "
+        f"`/api/stats` does not serve. There is no psutil, no `resource` and no /proc read in "
+        f"src/, so a host figure here would be invented (DECISIONS #289)."
+    )
+    assert "not measured by this appliance" in health["text"], (
+        "the health control shows four numbers and does not say which it cannot show; an operator "
+        "asking 'is the box out of memory' deserves the answer rather than silence"
+    )
+
+
+@dom_test
+async def test_a_collapsed_sidebar_keeps_every_label_in_the_accessible_tree(
+    routes: dict[str, Any],
+) -> None:
+    """**DECISIONS #290, and the accessibility floor it must not lower.**
+
+    A collapsed sidebar is icon-only *by definition*, so the accessible name is the whole of its
+    usability for a screen-reader user — and the v0.13.0 floor's rule that every icon in this
+    console is decoration beside a text label is the one rule a collapsed rail cannot keep as
+    written. What keeps its intent is that the label is still **in the tree**: hidden by clipping,
+    never by `display: none`, and repeated in `aria-label` with the badge's meaning spelled out.
+
+    The state persists in a cookie, following the theme (ADR #172), because
+    `tests/test_security_ui.py` asserts `localStorage` appears nowhere in this console and a first
+    carve-out turns an absolute into a judgement call.
+    """
+    result = domdriver.run_scenario("shellControls", {"routes": routes["admin"]})
+
+    expanded, collapsed = result["navExpanded"], result["navCollapsed"]
+    assert "nav-collapsed" not in (expanded["shell"] or ""), expanded["shell"]
+    assert "nav-collapsed" in (collapsed["shell"] or ""), (
+        f"pressing the toggle did not collapse the shell: {collapsed['shell']!r}"
+    )
+    assert "nav-collapsed" not in (result["navReexpanded"]["shell"] or ""), (
+        "the toggle collapses and does not expand; two states need a toggle, not a ratchet"
+    )
+    assert collapsed["expandedAttr"] == "false", (
+        f"aria-expanded is {collapsed['expandedAttr']!r} on a collapsed sidebar"
+    )
+    assert "ncn_nav=collapsed" in collapsed["cookie"], (
+        f"the state did not persist to the cookie: {collapsed['cookie']!r}"
+    )
+
+    # Every item keeps its text in the DOM, and gains an explicit name when it is not painted.
+    assert len(collapsed["items"]) == len(expanded["items"]) > 0
+    for item in collapsed["items"]:
+        assert item["text"], "a collapsed item dropped its label from the tree entirely"
+        assert item["label"], (
+            "a collapsed item is icon-only with no accessible name, which makes it unusable for a "
+            "screen-reader operator — the one thing a collapsed rail must not do"
+        )
+        assert item["text"] in item["label"], (item["text"], item["label"])
+        assert item["clipped"], (
+            "a collapsed label is hidden by something other than `.visually-hidden`. The class is "
+            "this console's one implementation of 'hidden from the eye, kept in the tree'; a "
+            "second one is how `display: none` gets in, and that removes the label from the "
+            "accessible tree where no test in this repository could see it."
+        )
+    # CONTROL: expanded items need no `aria-label`, because the label is on screen beside the icon.
+    assert all(item["label"] is None for item in expanded["items"]), (
+        "an expanded item carries an aria-label, which would override the visible text a sighted "
+        "and a screen-reader operator are meant to share"
+    )
+    assert not any(item["clipped"] for item in expanded["items"]), (
+        "an expanded item's label is clipped, so the sidebar is icons at a width that has room "
+        "for words"
+    )
+
+
+def test_every_absolute_timestamp_carries_its_offset_from_utc() -> None:
+    """**DECISIONS #294**, asserted over the function every screen renders through.
+
+    Measured before this release: nine surfaces printed a time and **none** named a zone in visible
+    text; `TIMEZONE` was referenced in exactly one place, an `overview.js` `title=`, so even there
+    it was hover-only. An operator in Japan and one in Brazil read different numbers for the same
+    event and no screen said so.
+
+    Driven in Node rather than read as source, because the property is about the **output** — the
+    shape of the string an operator sees — and a regex over the template would pass on a function
+    that returned the offset of the wrong instant.
+
+    The three cases are one test because they are one rule: a January and a July timestamp in a
+    zone with daylight saving must carry **different** offsets, which is what makes this the
+    offset *of the instant* rather than a constant read once at module load. That is not a
+    hypothetical: reading `getTimezoneOffset()` once would put the wrong offset on every timestamp
+    for half the year.
+    """
+    import json
+    import subprocess  # nosec B404 - the DOM harness's own runner, same as `domdriver`
+
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui"
+    script = f"""
+      import {{ absolute, utcOffset }} from {json.dumps(str(ui / "app" / "format.js"))};
+      const jan = 1_704_110_400;  // 2024-01-01 12:00 UTC
+      const jul = 1_719_835_200;  // 2024-07-01 12:00 UTC
+      console.log(JSON.stringify({{
+        jan: absolute(jan), jul: absolute(jul), none: absolute(null),
+        janOffset: utcOffset(new Date(jan * 1000)),
+        julOffset: utcOffset(new Date(jul * 1000)),
+      }}));
+    """
+    for zone in ("UTC", "America/Sao_Paulo", "Australia/Lord_Howe"):
+        proc = subprocess.run(  # nosec B603 B607 - a fixed argv, no shell
+            ["node", "--input-type=module", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={"PATH": os.environ.get("PATH", ""), "TZ": zone, "LC_ALL": "C"},
+            check=False,
+        )
+        if proc.returncode != 0:
+            pytest.skip(f"node is unavailable or refused the module: {proc.stderr[:200]}")
+        out = json.loads(proc.stdout)
+
+        shape = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (Z|[+-]\d{2}:\d{2})$")
+        for key in ("jan", "jul"):
+            assert shape.match(out[key]), (
+                f"in {zone}, `absolute` rendered {out[key]!r}. Every absolute timestamp is "
+                f"`YYYY-MM-DD HH:MM:SS ±HH:MM`, and the offset is what makes it unambiguous "
+                f"against a log in another window."
+            )
+        assert out["none"] == "—", "a missing timestamp renders as a number rather than as absent"
+
+    # The DST case, on the one zone above that has it. Two instants six months apart must not
+    # carry the same offset — which they would if the offset were read once and reused.
+    proc = subprocess.run(  # nosec B603 B607 - a fixed argv, no shell
+        ["node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={"PATH": os.environ.get("PATH", ""), "TZ": "America/Sao_Paulo", "LC_ALL": "C"},
+        check=False,
+    )
+    out = json.loads(proc.stdout)
+    assert out["janOffset"] == out["julOffset"] == "-03:00", (
+        f"São Paulo dropped daylight saving in 2019, so both offsets are -03:00 here: {out}. "
+        f"If this ever differs the zone changed, not the code."
+    )
+
+
+def test_no_screen_renders_a_bare_locale_timestamp() -> None:
+    """The other half of #294: nothing bypasses `absolute`.
+
+    A screen calling `toLocaleString()` directly prints a time whose zone nothing states and whose
+    *shape* depends on the browser's locale — `9/6/2026, 2:32:07 PM` and `06/09/2026 14:32:07` are
+    the same instant written two ways, and neither says which zone. `format.js` is the one place
+    allowed to reach for a `Date`'s fields, because it is the one place that appends the offset.
+
+    Derived by scanning every console module rather than by naming the screens: the two that did
+    this were `timeline.js`'s axis and its point tooltips, and a guard listing them would go quiet
+    the day a third appeared.
+    """
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    offenders: list[str] = []
+    for path in sorted(ui.rglob("*.js")):
+        if path.name == "format.js":
+            continue  # the one module that owns what a rendered time looks like
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.strip().startswith("*") or line.strip().startswith("//"):
+                continue  # prose may name the thing it is explaining
+            if re.search(r"\.toLocale(String|TimeString|DateString)\s*\(", line):
+                offenders.append(f"{path.relative_to(ui)}:{lineno}: {line.strip()[:80]}")
+    assert not offenders, (
+        "these render a time without its zone, bypassing `format.absolute`:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_no_template_glues_a_word_to_the_inline_element_after_it() -> None:
+    """**Bug 2's family, as a rule rather than as three repairs.**
+
+    `htm` drops a whitespace-only run between a text node and an element, so
+
+        Times on this axis are in
+          <b>${TIMEZONE}</b>
+
+    renders as `are inAsia/Tokyo`. That is what made `by admin` + `2m` read as `admin2m` and a
+    maintainer report a counter incrementing, and this release wrote the same defect **twice more**
+    before this guard existed — once in its own new timeline caption, once found by scanning:
+    `no write path.asserting_bags` on Settings and `this console.python -m netcorenoc` on the
+    audit screen.
+
+    **Prose-to-inline only, and the narrowness is the point.** Element-to-element across a newline
+    is the same textual shape and is usually *correct*, because the container is a flex row whose
+    `gap` separates them — twenty such sites exist and nineteen are fine. A guard flagging those
+    would be noise, and noise is how a guard stops being read. What cannot be right is a sentence
+    running into the `<code>` after it, and that is what this matches.
+
+    A block element is not matched either: a `<p>` or a `<div>` after prose starts its own line.
+    """
+    import netcorenoc
+
+    inline = r"(?:b|i|em|strong|small|code|span|a|abbr|kbd|output|label|button)"
+    pattern = re.compile(r"[\w)\].,;:!?%'\"-][ \t]*\n[ \t]*<" + inline + r"[\s>]")
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    offenders: list[str] = []
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        for match in pattern.finditer(source):
+            before = source[: match.start()]
+            if before.count("`") % 2 == 0:
+                continue  # not inside a template literal
+            opened, closed = before.rfind("/*"), before.rfind("*/")
+            if opened != -1 and closed < opened:
+                continue  # inside a `${/* … */ null}` block, which renders nothing
+            lineno = before.count("\n") + 1
+            text = source[match.start() : match.end()].replace("\n", "\\n")
+            offenders.append(f"{path.relative_to(ui)}:{lineno}: …{text}…")
+    assert not offenders, (
+        "these render a word joined to the element after it, because the newline between them is "
+        'whitespace `htm` drops. Put an explicit `${" "}` there:\n  ' + "\n  ".join(offenders)
     )
