@@ -18,9 +18,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.models import CloseIn, FeedbackIn, LabelIn
+from netcorenoc.api.models import LABEL_KINDS, CloseIn, FeedbackIn, LabelIn
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.dataset import capture, gestures
+from netcorenoc.ingest import known_oids
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -156,17 +157,33 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def set_label(
         body: LabelIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
-        """Name a device or an alarm class.
+        """Declare what an operator already knows: the equipment, the trap, or its severity.
 
-        A **class** is deliberately not scoped: it is a *kind of trap*, not a network element, and
-        the table carries no NE reference — the same reasoning as `GET /api/classes`. A **device**
-        is scoped (F34), and the nonexistent-target case (F37) leaves through the very same 404, so
-        neither discloses whether the other applied.
+        **One mechanism, three kinds** (v0.16.3). The appliance starts knowing nothing about the
+        customer's network and becomes intelligent from the trap stream, and until this release it
+        had nowhere for an operator to write down what they knew before it did.
+
+        A **class** and a **severity** are deliberately not scoped: both are about a *kind of
+        trap*, not a network element, and the table carries no NE reference — the same reasoning as
+        `GET /api/classes`. An **NE** is scoped (F34), and the nonexistent-target case (F37) leaves
+        through the very same 404, so neither discloses whether the other applied.
+
+        The scope check reads `scope.allows_ne(body.id)`, which it always did — against a
+        `device.id`. Under `kind='ne'` it is asking about the id it names (DECISIONS #281).
         """
         scope = await scope_for(principal)
-        if body.kind == "device" and not scope.allows_ne(body.id):
+        if body.kind == "ne" and not scope.allows_ne(body.id):
             await audit_scope_denial(request, principal, "label.set", body.kind, str(body.id))
             raise HTTPException(status_code=404, detail="no such label target")
+        # A severity must land on one of the five rendered bands. `severity.py` refuses to
+        # fabricate a severity it cannot place, and a declaration that could name a token nothing
+        # renders would be that same fabrication arriving through the front door (DECISIONS #283).
+        declared_rank = known_oids.severity_rank(body.label)
+        if body.kind == "severity" and declared_rank is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"severity must be one of: {', '.join(sorted(known_oids.SEVERITY_VOCAB))}",
+            )
         async with write_txn():
             # F37: `label` has no foreign key and `prune()` never touched it, so v0.7.0's
             # unconditional UPSERT was an unbounded, never-reclaimed write primitive against the
@@ -174,6 +191,18 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             if not await store.label_target_exists(body.kind, body.id):
                 raise HTTPException(status_code=404, detail="no such label target")
             await store.set_label(body.kind, body.id, body.label, time.time())
+            details: dict[str, object] = {"label_len": len(body.label)}
+            if body.kind == "severity":
+                # **The disagreement, recorded server-side and without trusting the client**
+                # (DECISIONS #285). The console interrupts an operator whose declaration is two or
+                # more steps from what this alarm's own learned severity says; that governs a
+                # dialog. What is worth keeping is the fact itself — an operator overriding a
+                # judgement the appliance reached through two independent gates — so the audit row
+                # carries the declared rank beside every learned rank the class actually holds.
+                # It produces no training row: a severity is a claim about a kind of trap, not
+                # about a grouping (DECISIONS #286).
+                details["declared_rank"] = declared_rank
+                details["learned_ranks"] = await store.learned_severity_ranks(body.id)
             await audit_row(
                 request,
                 principal,
@@ -181,9 +210,42 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type=body.kind,
                 object_id=str(body.id),
-                details={"label_len": len(body.label)},
+                details=details,
             )
         return {"status": "labelled"}
+
+    @route.delete("/api/labels/{kind}/{target_id}")
+    async def clear_label(
+        kind: str, target_id: int, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, str]:
+        """Withdraw a declaration, and fall back to what the appliance derived (#284).
+
+        **A declaration that cannot be undone is a declaration nobody will make.** The learned
+        value was never overwritten — precedence is a read-time decision — so removing the row
+        restores the derived name or the learned severity exactly as it was.
+
+        Why a route rather than a `POST` carrying an empty label: `LabelIn.label` is
+        `min_length=1`, and relaxing it so that `""` means *delete* would let one mistyped save
+        destroy a declaration silently. Every refusal here answers the same 404 the POST does.
+        """
+        if kind not in LABEL_KINDS:
+            raise HTTPException(status_code=404, detail="no such label target")
+        scope = await scope_for(principal)
+        if kind == "ne" and not scope.allows_ne(target_id):
+            await audit_scope_denial(request, principal, "label.clear", kind, str(target_id))
+            raise HTTPException(status_code=404, detail="no such label target")
+        async with write_txn():
+            if not await store.clear_label(kind, target_id):
+                raise HTTPException(status_code=404, detail="no such label target")
+            await audit_row(
+                request,
+                principal,
+                "label.clear",
+                "ok",
+                object_type=kind,
+                object_id=str(target_id),
+            )
+        return {"status": "cleared"}
 
     @route.post("/api/situations/{sid}/close")
     async def close_situation(

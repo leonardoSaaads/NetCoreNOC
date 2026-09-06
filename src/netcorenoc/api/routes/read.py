@@ -65,16 +65,24 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         projected = shaping.project_graph(snapshot, scope)  # in-scope nodes; edges need both ends
         return shaping.shape(projected, principal.role)  # coarsen device IPs below editor
 
-    @route.get("/api/classes", dependencies=guarded)
-    async def classes() -> list[dict[str, Any]]:
-        """The alarm-class catalogue: trap OIDs and their labels.
+    @route.get("/api/classes")
+    async def classes(principal: auth.Principal = Depends(security)) -> list[dict[str, Any]]:
+        """The alarm-class catalogue: trap OIDs, what an operator called them, and their severity.
 
-        Not scoped, and deliberately so — a class is a *kind* of trap, not a network element, and
-        the table carries no NE reference. The count that *would* leak ("a device you cannot see
-        just emitted a new trap type") is `stats.classes`, and that one is scoped.
+        Still **not scoped**, and deliberately so — a class is a *kind* of trap, not a network
+        element, and the table carries no NE reference. The count that *would* leak ("a device you
+        cannot see just emitted a new trap type") is `stats.classes`, and that one is scoped.
+
+        **It is shaped now, and it was not before.** That is the same sentence commit `8609962`
+        wrote about `GET /api/situations`: the row carried an id, an OID, a name and a vendor, not
+        one protected field — correctly unshaped, until it started carrying a declaration. A class
+        label is text an operator typed, and an operator may type an address (F104). So the route
+        takes the principal it never needed, which is why `dependencies=guarded` is gone: the
+        `security` dependency it now names resolves the same identity that guard did.
         """
         async with store.lock:
-            return await store.list_classes()
+            listed = await store.list_classes()
+        return shaping.shape(listed, principal.role)  # coarsen an address inside a declaration
 
     @route.get("/api/situations")
     async def situations(

@@ -96,9 +96,23 @@ class CloseIn(BaseModel):
     remainder_together: bool | None = None
 
 
+#: The kinds of thing an operator may declare something about (v0.16.3). One mechanism, three
+#: gestures: which equipment this is, what this trap means, and how serious it is.
+#:
+#: `device` is **gone rather than aliased**. It named `device.id` while the Entities screen read
+#: `ne`, so a name written from the graph was invisible there forever; the two ids coincide on
+#: every database anyone has and nothing makes them (DECISIONS #281). Accepting it as a synonym
+#: would keep two names for one concept, which is the thing being removed — so a client that still
+#: sends it gets a 422 rather than a write that lands somewhere it cannot see.
+LABEL_KINDS = ("ne", "class", "severity")
+
+
 class LabelIn(BaseModel):
-    kind: Literal["device", "class"]
+    kind: Literal["ne", "class", "severity"]
     id: int
+    #: For `kind="severity"` this must be a token of `known_oids.SEVERITY_VOCAB`; the route checks
+    #: it, because a declared severity that cannot be placed on the five rendered bands would be
+    #: the fabricated value `severity.py` refuses to produce (DECISIONS #283).
     label: str = Field(min_length=1, max_length=MAX_LABEL_CHARS)
 
 
