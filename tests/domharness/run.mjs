@@ -336,6 +336,61 @@ const scenarios = {
   },
 
   /**
+   * Follow a sequence of situation permalinks and report which card is open after each (F108).
+   *
+   * v0.16.4. A hash change **inside** the Situations screen is a same-document navigation, so the
+   * component is not remounted and `componentDidMount`'s deep link is never read again. Measured
+   * in a browser: the address bar said `#/situations/41` while the card for 38 was the one still
+   * open. This drives the address the way the router does rather than the way a page load does,
+   * which is the only difference between the case that worked and the case that did not.
+   */
+  async permalink(params) {
+    const env = await boot(params);
+    const steps = [];
+    for (const fragment of params.fragments ?? []) {
+      env.navigate(fragment);
+      await settle(env);
+      steps.push({
+        fragment,
+        hash: env.location?.hash ?? null,
+        expanded: env.document.querySelectorAll(".sit.expanded").map((c) => c.dataset.sid),
+        cards: env.document.querySelectorAll(".sit").map((c) => c.dataset.sid),
+      });
+    }
+    return { steps, proof: proofOf(env) };
+  },
+
+  /**
+   * Expand a card and read the gesture history **as text** (v0.16.4, Bug 2).
+   *
+   * The maintainer reported that `admin2` became `admin3`. Nobody renamed anything: the row
+   * rendered `by admin` and the age with nothing between them, so `admin` + `2m` read as a name
+   * with a counter after it. The layout half of the repair is a flex context this harness has no
+   * way to see — it has no layout engine — and the **text** half is exactly what it can see, which
+   * is why the repair has two halves and this scenario asserts one of them.
+   *
+   * The caller doctors the captured detail payload to carry events, for the reason
+   * `severityBands` doctors severities: a fresh corpus replay makes no gestures, so a history
+   * panel is unreachable on real data and would be untested by anything.
+   */
+  async history(params) {
+    const env = await boot(params);
+    env.navigate("#/situations");
+    await settle(env);
+    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const list = cardFor(env, params.sid).detail.querySelector(".history-list");
+    return {
+      present: Boolean(list),
+      // Raw, NOT whitespace-collapsed: whether the runs are separated at all is the whole
+      // question, and `replace(/\s+/g, " ")` would erase the difference being measured.
+      lines: (list?.querySelectorAll("li") ?? []).map((li) => li.textContent),
+      ages: (list?.querySelectorAll(".age") ?? []).map((s) => s.textContent),
+      proof: proofOf(env),
+    };
+  },
+
+  /**
    * Make one declaration from a member row, and report what the click actually sent.
    *
    * v0.16.3. `params.control` is `"ne"`, `"class"` or `"severity"`; `params.row` is the member

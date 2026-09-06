@@ -27,6 +27,8 @@ the timeline SVG are not executed. `src/netcorenoc/ui/app/views/graph.js` says s
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -61,6 +63,35 @@ ALL_VIEWS = [
 
 #: The views whose capability's minimum role is `admin`, discovered below rather than listed.
 ADMIN_VIEWS = ["users", "tokens", "settings", "scorer", "governance", "quarantine", "audit"]
+
+
+def tap_floor_tags(stylesheet: Path) -> set[str]:
+    """Which element types the stylesheet's tap-target floor actually reaches.
+
+    **This is where F103 hid, and the reason it is a function now.** The v0.16.2 version of this
+    read the floor's selector and normalised each part with
+    ``part.strip().split(":")[0].split("[")[0]`` — which turns
+    ``input:not([type="checkbox"]):not([type="radio"])`` into ``input`` and reports that inputs are
+    covered. The exclusion that *was the defect* is exactly the substring the normaliser threw
+    away, so the guard came back green over 72 controls measuring 13x13 px in the same tree. A
+    guard that passes over the control it exists to protect is worse than no guard.
+
+    So a part carrying a negation is **not** counted as covering its tag. ``input:not([disabled])``
+    would be refused too, and that is deliberate: the question this answers is *"does the floor
+    reach every control of this kind"*, and any negation means the honest answer is no. A floor
+    that genuinely needs to exclude something should say so where a reader sees it, not inside a
+    selector a normaliser flattens.
+    """
+    css = stylesheet.read_text(encoding="utf-8")
+    floor = re.search(r"^([^\n{]*)\{\s*min-height: var\(--tap\);", css, re.M)
+    assert floor is not None, "the stylesheet no longer states a tap-target floor at all"
+    covered: set[str] = set()
+    for part in floor.group(1).split(","):
+        selector = part.strip()
+        if ":not(" in selector:
+            continue  # a negation is an exclusion, and an excluded control is F103
+        covered.add(selector.split(":")[0].split("[")[0])
+    return covered
 
 
 @pytest.fixture
@@ -1493,17 +1524,16 @@ async def test_every_declaration_control_clears_the_tap_floor_at_all_three_width
     Each declaration control is a `button`, a `select` or an `input[type=text]`, and every one of
     those three is inside that selector. A control introduced as a `div` with a click handler, or
     as a checkbox, would fail here.
-    """
-    import re
-    from pathlib import Path
 
+    **v0.16.4: the reading of that rule moved into `tap_floor_tags`, and it changed answer.** This
+    test passed in v0.16.2 and v0.16.3 while the checkbox measured 13x13, because the normaliser
+    flattened away the very `:not([type="checkbox"])` that was the defect. The floor no longer
+    carries an exclusion and the reader no longer tolerates one; see that function.
+    """
     import netcorenoc
 
     ui = Path(netcorenoc.__file__).resolve().parent / "ui"
-    css = (ui / "style.css").read_text(encoding="utf-8")
-    floor = re.search(r"^([^\n{]*)\{\s*min-height: var\(--tap\);", css, re.M)
-    assert floor is not None, "the stylesheet no longer states a tap-target floor at all"
-    covered = {part.strip().split(":")[0].split("[")[0] for part in floor.group(1).split(",")}
+    covered = tap_floor_tags(ui / "style.css")
     assert {"button", "select", "input"} <= covered, (
         f"the tap floor covers {sorted(covered)}; the declaration controls are buttons, a select "
         f"and text inputs, and a control the floor's selector excludes is exactly F103"
@@ -1531,3 +1561,199 @@ async def test_every_declaration_control_clears_the_tap_floor_at_all_three_width
     assert 'type="checkbox"' not in source, (
         "a declaration control is a checkbox, which is the one shape the tap floor excludes (F103)"
     )
+
+
+def _flex_containers_of(css: str) -> set[str]:
+    """Every selector this stylesheet gives a flex or grid formatting context."""
+    out: set[str] = set()
+    for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        if not re.search(r"display:\s*(inline-)?(flex|grid)\b", body):
+            continue
+        for selector in selectors.split(","):
+            cleaned = selector.strip().split("/*")[0].strip()
+            if cleaned:
+                out.add(re.sub(r"\s+", " ", cleaned))
+    return out
+
+
+def _ancestor_chain_of(source: str, needle: str) -> list[list[str]]:
+    """For each element carrying `needle` in its class list, the open-element stack above it.
+
+    A small stack scanner over the `htm` templates rather than a regex per call site: the question
+    *"what is this element's parent"* is a nesting question and a regex cannot answer it. Each
+    entry is a list of `tag.class.class` strings from the outermost open element inwards, ending
+    with the element's **direct parent**.
+    """
+    stack: list[str] = []
+    found: list[list[str]] = []
+    void = {"br", "hr", "img", "input", "meta", "link", "source"}
+    for match in re.finditer(r"<(/?)(\w+)((?:[^<>]|\$\{[^{}]*\})*?)(/?)>", source, re.S):
+        closing, tag, body, selfclose = match.groups()
+        classes = re.search(r'\bclass="([^"$]*)"', body)
+        names = classes.group(1).split() if classes else []
+        if closing:
+            if stack:
+                stack.pop()
+            continue
+        if needle in names:
+            found.append(list(stack))
+        if selfclose or tag.lower() in void:
+            continue
+        stack.append(tag + "".join(f".{name}" for name in names))
+    return found
+
+
+def test_every_age_badge_sits_in_a_flex_context_or_its_auto_margin_does_nothing() -> None:
+    """**Bug 2's layout half, derived from the templates rather than from a list.**
+
+    `.age` right-aligns with `margin-left: auto`, which is inert outside a flex or grid formatting
+    context. `style.css` had **no `.history-list` rule at all**, so the gesture history's `<li>` was
+    `display: list-item`, the margin did nothing, and `by admin` abutted `2m` — read by a
+    maintainer as a counter incrementing from `admin2` to `admin3`. Measured in Chromium at 390 /
+    820 / 1440 px, with 192 / 622 / 1002 px of empty row to the age's right; the control was the
+    same `.age` on `.sit-head`, whose parent IS flex, correct at 12 px from the edge at every width.
+
+    So the rule was never wrong — it was placed in a context that did not exist. This walks every
+    template that renders `class="age"`, takes each one's ancestor stack, and requires the
+    stylesheet to give **some** ancestor a flex or grid context. A third `.age` added tomorrow
+    inside a plain `<div>` fails here rather than in a browser nine releases later.
+
+    What this does NOT cover: whether the age ends up on the right. That is layout, this suite has
+    no layout engine, and the browser measurement above is the evidence for it.
+    """
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui"
+    css = (ui / "style.css").read_text(encoding="utf-8")
+    assert re.search(r"\.age\s*\{[^}]*margin-left:\s*auto", css), (
+        "`.age` no longer right-aligns with an auto margin; this guard is about that rule"
+    )
+    flex = _flex_containers_of(css)
+    sites = 0
+    for js in sorted(ui.rglob("*.js")):
+        for chain in _ancestor_chain_of(js.read_text(encoding="utf-8"), "age"):
+            sites += 1
+            # Every selector an ancestor could match: its own classes, its tag, and the
+            # descendant form a stylesheet actually writes for an unclassed child (`.list li`).
+            candidates: set[str] = set()
+            for depth, node in enumerate(chain):
+                tag, *classes = node.split(".")
+                candidates.update(f".{name}" for name in classes)
+                for outer in chain[:depth]:
+                    for name in outer.split(".")[1:]:
+                        candidates.add(f".{name} {tag}")
+            assert candidates & flex, (
+                f"{js.name} renders an age badge inside {chain}, and this stylesheet gives none "
+                f"of {sorted(candidates)} a flex or grid context — so `margin-left: auto` does "
+                f"nothing there and the age abuts the text before it. That is Bug 2."
+            )
+    assert sites >= 2, f"only {sites} `.age` call sites were found; the scanner matched too little"
+
+
+def _with_history(captured: dict[str, Any], sid: int) -> dict[str, Any]:
+    """The captured detail payload with a gesture history on it.
+
+    A fresh corpus replay makes no gestures, so `events` is empty and the history panel is
+    unreachable on real data — the same reason `severityBands` doctors the severities it needs.
+    The shape is `store/situation_events.py::situation_events`'s five columns and nothing else,
+    because a scoped reader is served five and a sixth here would be testing a payload the server
+    does not send.
+    """
+    detail = captured[f"/api/situations/{sid}"]["json"]
+    events = [
+        {
+            "kind": "rename",
+            "at": 1_700_000_100.0,
+            "actor": "user:2",
+            "actor_name": "admin",
+            "confidence": None,
+        },
+        {
+            "kind": "operator_split",
+            "at": 1_700_000_200.0,
+            "actor": "user:2",
+            "actor_name": "admin",
+            "confidence": 0.8,
+        },
+    ]
+    return {
+        **captured,
+        f"/api/situations/{sid}": {"status": 200, "json": {**detail, "events": events}},
+    }
+
+
+@dom_test
+async def test_the_gesture_history_separates_the_actor_from_the_age_as_text(
+    routes: dict[str, Any],
+) -> None:
+    """**Bug 2's text half, and the half a stylesheet cannot fix.**
+
+    The row renders `" by "`, the actor, then the age. With no separator between the two runs,
+    `admin` followed by `2m` is the single string `admin2m` — which is what a maintainer read as
+    `admin2` becoming `admin3`, and what a screen reader announces, and what a copy-paste yields.
+
+    Giving the row a flex context repairs where the age is **drawn** and changes none of that: a
+    gap is not a character. So the template carries an explicit space, and this is the guard for
+    it — `textContent`, deliberately not whitespace-collapsed, because collapsing is precisely the
+    operation that erases the difference.
+
+    Appendix B names this blind spot outright: *the DOM harness cannot see whitespace.* It can see
+    whether whitespace is **there**, which is a different question and the one that matters here.
+    """
+    sid, _count = uifixtures.largest_situation(routes["editor"])
+    result = domdriver.run_scenario(
+        "history", {"routes": _with_history(routes["editor"], sid), "sid": sid}
+    )
+    assert result["present"], "the history panel did not render for a situation carrying events"
+    assert result["lines"], "the history rendered no rows"
+    for line, age in zip(result["lines"], result["ages"], strict=True):
+        assert age, "a history row rendered no age at all"
+        assert not line.endswith(f"admin{age}"), (
+            f"the actor and the age are one word: {line!r}. That is Bug 2 — `by admin` + `2m` "
+            f"reads as `admin2m`, and a minute later as `admin3m`."
+        )
+        # Derived rather than asserted against a literal: whatever precedes the age must end in
+        # whitespace, so the two runs are separate words however the row is composed.
+        before = line[: line.rindex(age)]
+        assert before != before.rstrip(), (
+            f"nothing separates {before!r} from the age {age!r} in {line!r}"
+        )
+
+
+@dom_test
+async def test_a_permalink_followed_from_inside_situations_opens_the_card_it_names(
+    routes: dict[str, Any],
+) -> None:
+    """**F108.** The permalink is the sharing mechanism — `card.js` calls it *"a link to this
+    situation alone, shareable during the incident"* — and the case that failed is the one that
+    happens during an incident: an operator already on Situations pastes a colleague's link.
+
+    A hash change inside one view does not remount the component, so `componentDidMount`'s deep
+    link was read once and never again. Measured in a browser: the address bar read
+    `#/situations/41` while the card for 38 was the one still open, with no error and no empty
+    state to say so.
+
+    Driven here as three steps, and the **first two are the control**: a first permalink from
+    outside the screen, then a second from inside it. If only the second worked the guard would be
+    asserting a coincidence; if only the first worked, that is the defect.
+    """
+    listing = routes["editor"]["/api/situations?limit=50"]["json"]
+    assert len(listing) >= 2, "the corpus must offer two situations for a permalink to move between"
+    first, second = listing[0]["id"], listing[1]["id"]
+
+    result = domdriver.run_scenario(
+        "permalink",
+        {
+            "routes": routes["editor"],
+            "fragments": [f"#/situations/{first}", f"#/situations/{second}", "#/overview"],
+        },
+    )
+    steps = result["steps"]
+    assert steps[0]["expanded"] == [str(first)], (
+        f"a permalink reached from outside the screen did not open #{first}: {steps[0]}"
+    )
+    assert str(second) in steps[1]["expanded"], (
+        f"the address moved to {steps[1]['hash']} and the card for #{second} did not open — the "
+        f"cards expanded are {steps[1]['expanded']}. That is F108."
+    )
+    assert steps[2]["expanded"] == [], "leaving the screen did not take the cards with it"

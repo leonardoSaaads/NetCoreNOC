@@ -939,7 +939,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
 #: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
 #: for the same module-graph reason `members.js` and `card.js` were.
-SRC_TREE_DIGEST = "501d2838a03d97de9aebbefd6d3ec98af963ec021103535e8994aca90d062e92"
+SRC_TREE_DIGEST = "b6d0f68bd09aa54d3dce00c9298554cd269c662b93fd0e129075507a21637f71"
 SRC_FILE_COUNT = 198
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

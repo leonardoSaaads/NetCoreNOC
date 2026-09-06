@@ -92,6 +92,18 @@ export function Unknown({ viewId }) {
   </div>`;
 }
 
+/**
+ * **Did this route's parameters change?** — one answer, for every screen that needs to ask.
+ *
+ * `Loader` has asked it since v0.13.0 as a private method, and `views/situations.js` did not ask it
+ * at all: a hash change within one view does not remount the component, so a permalink followed
+ * from inside Situations changed the address bar and opened nothing (F108, v0.16.4). Extracted
+ * rather than copied, because a second implementation of *"the route moved"* is how two screens
+ * come to disagree about what a route change is — and the one that disagrees is the one nobody
+ * drives.
+ */
+export function routeKey(params) { return JSON.stringify(params ?? []); }
+
 /* ---------- the loader: fetch on mount, all four states, one implementation ---------- */
 
 /**
@@ -116,7 +128,7 @@ export class Loader extends Component {
     if (this.routeKey(previous) !== this.routeKey(this.props)) this.reload();
   }
 
-  routeKey(props) { return JSON.stringify(props.params ?? []); }
+  routeKey(props) { return routeKey(props.params); }
 
   async reload() {
     this.setState({ status: "loading", error: null });

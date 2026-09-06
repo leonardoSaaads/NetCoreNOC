@@ -33,7 +33,7 @@
 import { html, Component, cx } from "../dom.js";
 import { SituationCard } from "./parts/card.js";
 import { get } from "../api.js";
-import { Loading, Empty, Failed } from "../widgets.js";
+import { Loading, Empty, Failed, routeKey } from "../widgets.js";
 import { plural } from "../format.js";
 import * as store from "../store.js";
 
@@ -74,12 +74,53 @@ export class Situations extends Component {
      * The link is the operator asking for THIS situation, so the pin is exactly the right
      * mechanism — the card appears where they are, its badge says which state it is in, and
      * collapsing it or choosing a tab releases it like any other pin. */
-    const deepLink = Number(this.props.params[0]);
-    if (deepLink) {
-      this.setState({ pinned: new Set(this.state.pinned).add(deepLink) });
-      this.open(deepLink);
-    }
+    this.followDeepLink();
     if (this.state.filter.trim()) this.search(this.state.filter.trim());
+  }
+
+  /* **The permalink is honoured on every arrival, not only the first** (v0.16.4, F108).
+   *
+   * A hash change from `#/situations/38` to `#/situations/41` is a same-document navigation: the
+   * router publishes the new fragment, its decision names this same view, and this component is
+   * **not** remounted — so `componentDidMount` ran once and the deep link was read once. Measured:
+   * the address bar said `#/situations/41` while the card for 38 was the one still open, with no
+   * error and no empty state. Controls: the same address on a full load, and after leaving to
+   * Overview and returning, both opened the right card.
+   *
+   * That is the case that happens during an incident — an operator already on this screen pastes a
+   * colleague's link — and `card.js` calls the permalink *"shareable during the incident"*.
+   *
+   * The comparison is `Loader.routeKey`'s, imported rather than rewritten: *"did this route's
+   * parameters change"* has one answer in this console and a second copy of it is how two screens
+   * come to disagree about what a route change is.
+   */
+  componentDidUpdate(previous) {
+    if (routeKey(previous.params) === routeKey(this.props.params)) return;
+    this.followDeepLink();
+  }
+
+  /* A deep link (#/situations/12) opens that card, which is what makes a situation shareable
+   * during an incident (draft §2.4, §3).
+   *
+   * **It is pinned as well, and that is F97.** This screen opens on the New tab (DECISIONS
+   * #254), so a permalink to a situation in any other state expanded a card the list did not
+   * contain and the operator was shown an unremarkable tab with nothing in it — no card, no
+   * error, no explanation. Measured in the v0.16.1 live pass with a control: the same link to a
+   * `new` situation rendered the card expanded; to an `open` one it rendered nothing at all.
+   * The link is the operator asking for THIS situation, so the pin is exactly the right
+   * mechanism — the card appears where they are, its badge says which state it is in, and
+   * collapsing it or choosing a tab releases it like any other pin. */
+  followDeepLink() {
+    const sid = Number(this.props.params[0]);
+    if (!sid) return;
+    // The pin is unconditional and the expand is not, and the two must not be folded together.
+    // `store.expanded` is module state that outlives this component, while `pinned` is reset by
+    // the constructor — so on a remount a card can already be expanded and still be absent from
+    // the tab's list. Skipping the pin because it was open left the operator on the New tab with
+    // no card at all, which is F97's symptom reached by a different door. And `open` TOGGLES, so
+    // calling it on a card already open would close the one they asked for.
+    this.setState({ pinned: new Set(this.state.pinned).add(sid) });
+    if (!store.isExpanded(sid)) this.open(sid);
   }
 
   componentWillUnmount() {

@@ -168,14 +168,28 @@ def receiver_warnings(stats: ReceiverStats, allowlist: str) -> list[str]:
     A **counter read**, not a log line per packet. Principle 4: this is evaluated where the other
     warnings are — per `/api/stats` request, off the trap path — and the receiver's own
     `datagram_received` is untouched.
+
+    ## v0.16.4 (F107): the entry COUNT, not the entries
+
+    This interpolated the allowlist verbatim. `stats.read` is a **viewer** capability and the
+    warning list passes through no shaping at all, so a reader whose `/api/graph` is coarsened to
+    `127.0.0.0/24` received the estate's real management prefixes in prose from the same session.
+    Measured, with the control being `denied = 0`, where the string is absent.
+
+    #227 already settled the identical question for the boot banner — *"the allowlist's entries are
+    not printed; a count answers 'did it load what I set' without publishing the estate's
+    addressing"* — and the same sentence decides this. An admin who may act on it reads the value
+    on Settings, which is where the warning now points and which the bell links to.
     """
     if not stats.denied:
         return []
+    entries = len([part for part in allowlist.split(",") if part.strip()])
+    held = "1 entry" if entries == 1 else f"{entries} entries"
     return [
         f"{stats.denied} trap(s) refused: their source address is not in the trap allowlist "
-        f"({allowlist!r}). Denied datagrams are counted, never silently dropped — if your "
-        f"equipment is behind NAT or a relay, the allowlist must name the address the appliance "
-        f"actually sees."
+        f"({held}; the value is on Settings). Denied datagrams are counted, never silently "
+        f"dropped — if your equipment is behind NAT or a relay, the allowlist must name the "
+        f"address the appliance actually sees."
     ]
 
 

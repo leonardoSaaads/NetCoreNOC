@@ -293,8 +293,11 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             # nosec B608 - three fixed literals from `_label_join`, chosen by a schema probe;
             # the only bound value is the situation id.
             "SELECT a.id, a.instance, a.status, a.is_flapping, a.count, a.first_seen, "  # nosec B608
-            "a.last_seen, a.severity, a.severity_rank, a.ne_id, d.ip AS device_ip, d.vendor AS "
-            "device_vendor, dl.label AS device_label, c.oid AS class_oid, "
+            # v0.16.4 (F105, DECISIONS #292): `device_vendor` is gone. It was served on every
+            # alarm row of every situation detail and rendered by **nothing** — F84's shape with
+            # the arrow reversed, and a column no writer fills either way.
+            "a.last_seen, a.severity, a.severity_rank, a.ne_id, d.ip AS device_ip, "
+            "dl.label AS device_label, c.oid AS class_oid, "
             "c.id AS class_id, cl.label AS class_label, sl.label AS class_severity_label "
             "FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
             "JOIN device d ON d.id=a.device_id JOIN alarm_class c ON c.id=a.class_id "

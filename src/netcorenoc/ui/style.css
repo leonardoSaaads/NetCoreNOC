@@ -243,8 +243,24 @@ button, select, input, textarea {
   border-radius: var(--radius-1);
   padding: var(--space-1) var(--space-2);
 }
-/* The pointer floor (F81), applied where controls are made rather than per call site. */
-button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: var(--tap); }
+/* The pointer floor (F81), applied where controls are made rather than per call site.
+ *
+ * **v0.16.4 (F103): the exclusion is gone, and it was the whole defect.** This read
+ * `input:not([type="checkbox"]):not([type="radio"])`, so the floor covered every control except
+ * the two an operator taps with a fingertip. Measured in Chromium as an editor at 390, 820 and
+ * 1440 px: 72 member checkboxes, every one **13x13 px** — less than a quarter of the floor's area,
+ * in the column that decides which pairs a partial split asserts negative.
+ *
+ * A checkbox cannot simply take `min-height`: its box is its glyph, so growing it grows the tick.
+ * `width`/`height` at the floor and a matching `accent-color` give a real 28x28 target that still
+ * draws as a checkbox, and `flex: none` keeps it from being compressed inside the flex row a
+ * member cell becomes — the half-repair `.permalink` already taught this stylesheet (see `a.tap`).
+ */
+button, select, input { min-height: var(--tap); }
+input[type="checkbox"], input[type="radio"] {
+  width: var(--tap); height: var(--tap); min-width: var(--tap); flex: none;
+  margin: 0; accent-color: var(--accent); cursor: pointer;
+}
 button { cursor: pointer; }
 button:hover:not(:disabled) { background: var(--bg-hover); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -509,6 +525,28 @@ td.sev { white-space: nowrap; }
 .sit-chevron.open { transform: rotate(90deg); }
 .sid { font-family: var(--mono); font-weight: 600; }
 .age { margin-left: auto; color: var(--fg-muted); font-size: var(--fs-xs); }
+
+/* ---------- the gesture history, and the two lines that make `.age` mean something -------
+ *
+ * **Bug 2, and it made a maintainer believe a counter was incrementing.** `History` renders
+ * `" by "`, the actor, then `<span class="age">`. The rule above gives `.age` `margin-left: auto`,
+ * which does nothing outside a flex context — and there was **no `.history-list` rule in this
+ * stylesheet at all**, so the `<li>` was `display: list-item` and the two runs abutted:
+ * `by admin` + `2m` rendered as `by admin2m`, which reads as `admin2` and then, a minute later,
+ * as `admin3`.
+ *
+ * Measured in Chromium at 390 / 820 / 1440 px: `rename by edt1s`, with 192 / 622 / 1002 px of
+ * empty row sitting to the right of the age. **The control** is the same `.age` on `.sit-head`,
+ * whose parent IS a flex row: it is 12 px from the right edge at every width and reads correctly.
+ * So the rule was never wrong — it was never given a context, which is why this is two lines and
+ * not a rewrite.
+ */
+.history-list { list-style: none; margin: 0; padding: 0; }
+.history-list li {
+  display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
+}
+.history-kind { font-weight: 600; }
 .permalink { font-size: var(--fs-xs); color: var(--fg-dim); }
 .detail { padding: 0 var(--space-3) var(--space-3); border-top: 1px solid var(--line); }
 .detail[hidden] { display: none; }

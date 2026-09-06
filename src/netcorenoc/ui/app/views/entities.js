@@ -83,7 +83,6 @@ function NeCard({ ne, open, onToggle }) {
         <span class="sid">${ne.label || ne.ip}</span>
         ${ne.label ? html`<span class="muted">(declared)</span>` : null}
         <${Badge}>${plural(ne.entity_count, "entity", "entities")}<//>
-        ${ne.vendor ? html`<span class="age">${ne.vendor}</span>` : null}
       </button>
     </div>
     ${open ? html`<div class="detail"><${NeDetail} neId=${ne.id} /></div>` : null}
