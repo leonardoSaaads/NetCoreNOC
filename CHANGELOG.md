@@ -9,8 +9,115 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-nine rows, two ask for an
-action, ten ask you to read a paragraph, and seventeen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty rows, two ask for an
+action, eleven ask you to read a paragraph, and seventeen are start-the-new-binary.
+
+## [0.16.4] - 2026-09-06 — "the console's shell"
+
+The screens were built; what surrounds them was not. This release is about the chrome an operator
+lives inside and the one table they work in most — and **four of its nine items are closed by
+deleting something**.
+
+```
+at 390 px, as an editor                    before                    after
+  chrome above the work area               360 px of 844  (43 %)      94 px  (11 %)
+  top bar                                  126 px, 4 wrapped rows     46 px, 1 row
+  member-table columns                     11                          8
+  member table overflowing its box         602 px                     377 px
+    …the same at 820 px                    172 px                       0 px
+  controls under the 28 px touch floor     72                           0
+  frozen cell, scrolled fully right        (empty)                    127.0.0.2
+  screens naming a timezone, visibly       0 of 9                      9 of 9
+  scenarios reachable through `make`       1 of 13                    13 of 13
+```
+
+### The navbar (#288, #289)
+
+**The four counters are gone.** They were a strip of numbers nobody acts on from a chrome bar, and
+at 390 px they cost four wrapped rows. Two moved to the Overview, two became **filters** on
+Situations, and the p95 latency moved into a health control that is now on every screen.
+
+**A bell** holds the operator warnings — a mechanism that already existed and already interrupted,
+in a strip an operator could read and never return to. A warning naming a parameter this console
+knows about links to Settings; one that does not renders as text with **no** affordance, because a
+control that navigates somewhere unhelpful teaches an operator that the links are noise. Measured
+across every producer `runner.py` composes: **3 of 10** resolve. The other seven are why the
+no-link case had to be designed rather than assumed away.
+
+**A health control** shows queue depth, p95 latency, the derived trap rate with its window, and the
+two receiver counters that mean loss. **CPU, RAM and disk are not there and are not invented** —
+there is no `psutil`, no `resource` and no `/proc` read anywhere in `src/`, so the alternative to
+four true numbers is adding a source. The panel says which four it shows and which it cannot.
+
+### The member table (#293)
+
+Eleven columns became eight: the three declarations and the hand-clear share one actions cell.
+Every one of them is still reachable — driven at 390 px, the expanded card offers **76** controls
+and **not one** is under the touch floor.
+
+The mark column's header is now the select-all. One corpus situation holds **1 051** members, and
+neither marking nor unmarking them one at a time is a gesture anybody completes.
+
+### What an operator may do, and when (#291)
+
+A situation that has already been judged folds Confirm and Split behind one *Adjust the grouping*
+button naming what was recorded. **Nothing is removed from any status.** The surface turns on
+whether a judgement is on record, not on the status: `open` is reached by a bare promote or a
+rename, and hiding Confirm there would break the ordinary path.
+
+`resolved` is settled by measurement rather than preference. The server accepts a verdict there
+(200) and refuses all three restructuring gestures (409), so the console offers exactly that — the
+post-incident review keeps its evidence path, and reopening stays a decision nobody has made.
+
+### Every timestamp says which clock (#294)
+
+Nine surfaces printed a time and **none named a zone in visible text**; `TIMEZONE` was referenced in
+one place, a `title=`, so even there it was hover-only. Every absolute stamp now reads
+`2026-09-06 14:32:07 -03:00`, with the offset **of the instant**, and the top bar names the zone.
+
+### Also
+
+* **The sidebar collapses to icons**, remembered in a cookie exactly as the theme is (#290). Every
+  label stays in the accessible tree, because a collapsed rail's accessible name is the whole of its
+  usability for a screen-reader operator.
+* **Docker resource limits** (#298), with what each costs when it is hit: memory is an OOM kill that
+  loses traps and records no gap, CPU is a throttle the health control shows. Raise memory first.
+* **`make replay SCENARIO=` and `make replay-list`** (#295). One of thirteen scenarios had a target.
+* **`docs/operate.md` states** that a trap's timestamp is when the appliance received the datagram,
+  which a post-incident narrative can get wrong with nothing to contradict it.
+* **Bug 2** — the gesture history rendered `by admin` and `2m` as `admin2m`, which a maintainer read
+  as a counter incrementing. Two halves: a missing flex context (`.age`'s `margin-left: auto` was
+  inert), and a missing character (a gap is not a space in `textContent`).
+
+### Findings
+
+* **F103** closed — the tap floor's selector excluded checkboxes, so the control an operator ticks
+  most measured **13 × 13 px**. The exclusion is gone and they are 28 × 28. The guard that *passed*
+  over them for two releases is the more useful repair: it normalised away the exact substring that
+  was the defect.
+* **F105** closed by deletion — `device.vendor` and `ne.vendor` are `NULL` on every row ever written
+  (25 elements, 0 vendors, 2 252 alarms) and were rendered on **three** surfaces, one of them
+  printing *"unknown vendor"* on hover for every node. Columns kept, reads gone, no migration.
+* **F107** issued, disclosure half fixed — `/api/stats` scopes every counter and then appends an
+  unshaped warning list that named the trap allowlist verbatim to any **viewer**. It now names the
+  entry count. The oracle half (a whole-estate stale count reaching a scoped reader) is open.
+* **F108** closed — a permalink followed from *inside* Situations changed the address and opened
+  nothing, which is the case that happens during an incident.
+* **F109** closed — #237 froze the first column so a row keeps its identity, and for an editor the
+  first column is a checkbox: scrolled right at 390 px, a viewer's frozen cell read `127.0.0.0/24`
+  and an editor's read nothing.
+* **F110** closed — Bug 2 is a family. Three more sites, two pre-existing and **one written by this
+  release**, with a narrow guard.
+
+### Behaviour changes, declared
+
+1. `GET /api/stats` gains **`new_situations`** and **`working_situations`** (additive).
+2. `GET /api/graph`, `GET /api/entities`, `GET /api/entities/{ne_id}` drop **`vendor`**, and
+   `GET /api/situations/{sid}` drops **`device_vendor`** — a field nothing wrote and nothing
+   rendered (F105).
+3. The denied-trap warning names the allowlist's **entry count** instead of its entries (F107).
+4. Three static modules join the served set — `app/notices.js`, `views/parts/judge.js`,
+   `views/parts/finder.js`. **The `/api` surface is unchanged at 51 routes.**
 
 ## [0.16.3] - 2026-09-06 — "the operator's declaration"
 

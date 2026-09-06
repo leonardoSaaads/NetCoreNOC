@@ -160,6 +160,67 @@ construction — nothing on this corpus can reach it.
   the row height, the checkbox column, the actions cell and the touch floor are one decision rather
   than four.
 
+## What v0.16.4 measured, and what it deferred
+
+**The numbers the release exists to move**, all taken in Chromium at 390 / 820 / 1440 px as viewer,
+editor and admin, before and after:
+
+| | before | after |
+|---|---|---|
+| chrome above the work area at 390 px | **360 px of 844 (43 %)** | **94 px (11 %)** |
+| top bar at 390 px | 126 px, four wrapped rows | 46 px, one row |
+| member-table columns, editor | **11** *(not the nine the v0.16.3 note recorded)* | **8** |
+| member table overflow at 390 px | 602 px | 377 px |
+| member table overflow at 820 px | 172 px | **0** |
+| controls below the 28 px tap floor, expanded card | **72** | **0** |
+| frozen cell, editor, scrolled fully right | *(empty)* | `127.0.0.2` |
+| screens naming a timezone in visible text | **0 of 9** | **9 of 9** |
+| scenarios reachable through `make` | 1 of 13 | 13 of 13 |
+
+**Three corrections to the brief, each by measurement**: the member row was eleven columns and not
+nine; the restructure block did **not** render the same on every status (it was already hidden under
+`resolved`); and `resolved` is not an open question the console must answer alone, because the
+server accepts a verdict there (200) and refuses all three restructuring gestures (409).
+
+### Findings issued by v0.16.4
+
+* **F107** — `/api/stats` scopes every counter and then appends an unshaped `warnings` list that
+  interpolated the trap allowlist verbatim, to a **viewer** whose graph the same session coarsens to
+  a `/24`. The disclosure half is fixed (the warning names the entry count, following #227's own
+  answer for the boot banner); **the oracle half is open** — the stale-situation count is
+  whole-estate and reaches a scoped reader unchanged, and the repair is engine work.
+* **F108** — a permalink followed from inside Situations changed the address and opened nothing.
+  Fixed.
+* **F109** — #237's frozen first column keeps a row's identity, and for an editor the first column
+  is a checkbox: scrolled right at 390 px a viewer's frozen cell read `127.0.0.0/24` and an
+  editor's read nothing. Fixed.
+* **F110** — Bug 2 is a family. Scanning for its shape found three more, two pre-existing and **one
+  written by this release**. Fixed, with a narrow guard.
+
+### Deferred by v0.16.4, with the reason
+
+* **F107's oracle half**, above. A per-scope idle-active count belongs where the sweep runs.
+* **A bulk hand-clear.** One corpus situation holds **1 051** members and the zombie clear is one
+  button per row. The mark column's select-all covers the *grouping* gestures, which need no route;
+  clearing is a write with an audit row and a lifecycle consequence per alarm. **ROADMAP.**
+* **Reopening a resolved situation.** The server refuses restructuring there on #254's ground.
+  A verdict is still accepted, so no evidence path is foreclosed. **ROADMAP.**
+* **An operator-chosen timezone.** The offset removes the ambiguity; choosing a zone is a per-user
+  row and a migration (#294). **ROADMAP.**
+* **An NE vendor, derived.** F105's measurement — 25 elements, 0 vendors, against 46 of 48 classes
+  resolving one from their OID — is where a later release starts. **ROADMAP.**
+
+### For v0.16.5, which this release made room for
+
+* **The navbar's health control is where a sparkline goes**, and it needs a stored series: nothing
+  in this appliance keeps one, and `psutil`, `resource` and `/proc` are all absent from `src/`. The
+  control shows four served numbers and says which it cannot show.
+* **The Overview has room and no placeholder.** Two of its five tiles became filters on Situations
+  and one moved into the health control; nothing was left behind to be moved aside.
+* **A severity filter still reads a field that resolves for nothing** — 0 of 2 252 on the corpus,
+  unchanged by v0.16.3 and unchanged here, because a declaration is a separate source rather than a
+  lowered threshold.
+
 ## The claims
 
 Each row above is claimed here, one marker per line. The table's own document must claim every row

@@ -150,9 +150,42 @@ preview mode, the console says so rather than inventing a count.
 
 ## Appearance and keyboard
 
-Dark, light, or your system's preference; compact or comfortable density. Both are remembered in a
-cookie that carries a theme name and nothing else. The sidebar is **one tab stop** with arrow-key
-navigation, and focus moves into the work area when you navigate.
+Dark, light, or your system's preference; compact or comfortable density; and since v0.16.4 the
+sidebar collapses to icons. All three are remembered in cookies that carry a name from a closed set
+and nothing else — never a user id, never a token ([#172](adr/DECISIONS.md), [#290](adr/DECISIONS.md)).
+
+The sidebar is **one tab stop** with arrow-key navigation, and focus moves into the work area when
+you navigate. Collapsed it is icon-only, so every item keeps its label in the accessible tree and
+gains an explicit name carrying its badge — a collapsed rail's accessible name is the whole of its
+usability for a screen-reader operator.
+
+## The top bar: what it holds, and what it stopped holding
+
+Until v0.16.4 it carried four counters — devices, classes, active alarms, open situations. At
+390 px they wrapped it onto four rows, and with the nav strip and the warning banners **360 px of
+an 844 px phone** were spent before the work area began. They are gone; it is 94 px now.
+
+What replaced them is two disclosures:
+
+* **the bell** — every operator warning, each on its own line, with a link to the setting that
+  resolves it where one exists. Three of the ten warnings this appliance can emit name a parameter;
+  the other seven render as text with no link, because a control that navigates somewhere unhelpful
+  is worse than none.
+* **the health control** — queue depth, p95 latency, the derived trap rate with its window, and the
+  two receiver counters that mean loss, with one word summarising them.
+
+An **ingest gap** is still a banner above the work area as well as being in the bell: a panel an
+operator has to open is the wrong home for *"traps are being lost now"*.
+
+## Which clock every time is in
+
+Every absolute timestamp reads `2026-09-06 14:32:07 -03:00` — your browser's zone, with **the
+offset from UTC in the text**, not only in a tooltip. The top bar names the zone itself, because a
+name and an offset are different facts: the first says whose clock, the second makes the arithmetic
+against a UTC log trivial. The database stores epoch UTC.
+
+**A trap's timestamp is when the appliance received the datagram**, not when the equipment raised
+the alarm — [`operate.md`](operate.md) says why that matters after an incident.
 
 ## Two regions, and there used to be three
 
@@ -169,9 +202,11 @@ Stated here rather than discovered:
 * **The network graph is not keyboard-operable** and has no screen-reader equivalent beyond its
   label. Everything it shows is on the **Entities** screen as text, and the graph says so. No
   screen-reader testing has been performed.
-* **There is no CPU, memory or uptime figure**, because `/api/stats` does not serve one. What it
-  *does* serve is on the Overview since v0.15.2 — `queue_depth` and the five receiver counters,
-  plus a trap rate derived between two polls and labelled with the window it covers.
+* **There is no CPU, memory, disk or uptime figure**, because the appliance does not measure one —
+  there is no `psutil`, no `resource` and no `/proc` read anywhere in `src/`. What it *does* measure
+  is in the top bar's health control on every screen since v0.16.4, and that control says which
+  four things it shows rather than leaving the absence to be inferred. A ten-minute series is
+  v0.16.5's, because it needs storage nothing has.
 
 ## How the console is tested
 
