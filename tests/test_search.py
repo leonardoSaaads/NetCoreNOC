@@ -62,9 +62,9 @@ async def _alarm(store: Store, sid: int, ip: str, oid: str, instance: str) -> in
     )
     ne = int((await cur.fetchone())[0])  # type: ignore[index]
     cur = await store.conn.execute(
-        "INSERT INTO alarm_class (oid, name, first_seen, last_seen) VALUES (?, ?, ?, ?) "
-        "RETURNING id",
-        (oid, "linkDown", BASE, BASE),
+        # v0.16.3: the name is derived from the OID rather than stored beside it (DECISIONS #280).
+        "INSERT INTO alarm_class (oid, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
+        (oid, BASE, BASE),
     )
     cls = int((await cur.fetchone())[0])  # type: ignore[index]
     cur = await store.conn.execute(
@@ -271,22 +271,40 @@ async def test_a_device_label_is_searchable_by_every_role_and_an_address_is_not(
 ) -> None:
     """The rule is `FIELD_RULES`, not "anything that identifies a device".
 
-    A label is free text a person typed and `shape` passes it through for every role — the same
-    reason `operator_name` is not coarsened. So a viewer who can *read* `core-sw-1` on their own
-    screen can search for it, and cannot search for the address underneath. Asserting both in one
-    test is deliberate: they are two halves of one rule and a release that kept one would look
-    green.
+    A viewer who can *read* `core-sw-1` on their own screen can search for it, and cannot search
+    for the address underneath. Asserting both in one test is deliberate: they are two halves of
+    one rule and a release that kept one would look green.
+
+    **v0.16.3 changed why the first half holds.** It used to be that `shape` passed a label through
+    unchanged for every role; it does not any more, because an editor may type an address into one
+    (F104). What passes through is the part of the label that is *not* an address, which is all of
+    `core-sw-1` — and the third assertion below is the new half: a declaration is not a lookup
+    table for the address inside it (DECISIONS #287).
     """
     _engine, _queue, app = await authutil.make_env(store)
     ids = await _seed(store)
     async with store.lock:
         cur = await store.conn.execute("SELECT id FROM device WHERE ip='10.1.0.1'")
         device = int((await cur.fetchone())[0])  # type: ignore[index]
-        await store.set_label("device", device, "core-sw-1", BASE)
+        cur = await store.conn.execute("SELECT id FROM ne WHERE ip='10.1.0.1'")
+        ne = int((await cur.fetchone())[0])  # type: ignore[index]
+        assert device  # the label is keyed on the NE since v0.16.3 (DECISIONS #281)
+        await store.set_label("ne", ne, "core-sw-1", BASE)
+        await store.set_label("ne", ne, "core-sw-1 at 10.1.0.1", BASE)
+        await store.set_label("ne", ne, "core-sw-1", BASE)
         await store.commit()
 
     assert _ids(await _search(app, "viewer", "core-sw-1")) == {ids["visible"]}, "the label is text"
     assert await _search(app, "viewer", "10.1.0.1") == [], "the address underneath it is not"
+
+    # …and the declaration cannot become an oracle for the address either. An editor names the
+    # element after its own address; the viewer, who is shown `10.1.0.0/24` everywhere, still
+    # cannot confirm the fourth octet by typing it (F104's other half).
+    async with store.lock:
+        await store.set_label("ne", ne, "core-sw-1 at 10.1.0.1", BASE)
+        await store.commit()
+    assert await _search(app, "viewer", "10.1.0.1") == [], "a declaration is an address oracle"
+    assert _ids(await _search(app, "editor", "10.1.0.1")) == {ids["visible"]}, "the control"
 
 
 async def test_the_needle_is_bounded_rather_than_rejected(store: Store) -> None:

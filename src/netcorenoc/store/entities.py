@@ -14,8 +14,27 @@ from netcorenoc.store.base import StoreBase
 
 class EntityMixin(StoreBase):
     async def list_ne(self) -> list[dict[str, Any]]:
+        """Every network element, **with the name an operator gave it** (v0.16.3).
+
+        The join is the whole of F99's sibling complaint — *"I renamed the host and nothing changed
+        in Entities"*. This method selected five columns and joined no label, while
+        `ui/app/views/entities.js` rendered `${ne.label || ne.ip}` — a field the route had never
+        served, so the fallback was permanent. The label was not missing: the same row resolved
+        through the alarm projection and on the graph, which is the control that made this a broken
+        join rather than a broken write.
+
+        `kind='ne'`, not `kind='device'`. The console wrote against `device.id`, which equals
+        `ne.id` on every database anyone has and is a coincidence of insertion order rather than a
+        constraint — `0016` moves those rows across by ADDRESS (DECISIONS #281).
+        """
         cur = await self.conn.execute(
-            "SELECT id, ip, vendor, first_seen, last_seen FROM ne ORDER BY id"
+            "SELECT n.id, n.ip, n.vendor, n.first_seen, n.last_seen, l.label FROM ne n "
+            # On a pre-`0016` schema the equipment label is keyed on `device.id`, and there is no
+            # device alias here to key it through — which is not a gap: on that schema this screen
+            # never showed a label at all, and reproducing that exactly is what the frozen-schema
+            # upgrade tests are for. `n.id` under `kind='device'` is refused rather than assumed.
+            + self._label_join("l", "ne", "n.id", legacy_target="NULL")
+            + "ORDER BY n.id"
         )
         return [dict(r) for r in await cur.fetchall()]
 

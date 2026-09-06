@@ -132,6 +132,7 @@ SUBMODULES = [
     "store.lifecycle",
     "store.promotion",
     "store.read_models",
+    "store.situation_reads",
     "store.restructure",
     "store.retention",
     "store.scoring_config",

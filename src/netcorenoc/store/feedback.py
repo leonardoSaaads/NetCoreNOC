@@ -166,20 +166,61 @@ class FeedbackMixin(StoreBase):
         The caller turns a False here into the **same 404** an out-of-scope target produces, so the
         fix for F37 cannot re-introduce the existence oracle F34 closes.
         """
-        table = {"device": "device", "class": "alarm_class"}.get(kind)
+        # v0.16.3: three kinds, two tables. `ne` replaces `device` (DECISIONS #281) and `severity`
+        # is declared **per alarm class**, so it resolves against the same table `class` does
+        # (DECISIONS #283) — the qualifier that will later name a varbind is not an existence
+        # question, because a class either exists or it does not.
+        table = {"ne": "ne", "class": "alarm_class", "severity": "alarm_class"}.get(kind)
         if table is None:
             return False
         # nosec B608 - `table` comes from the fixed literal mapping directly above, never from input
         cur = await self.conn.execute(f"SELECT 1 FROM {table} WHERE id=?", (target_id,))  # nosec B608
         return await cur.fetchone() is not None
 
-    async def set_label(self, kind: str, target_id: int, label: str, ts: float) -> None:
+    async def set_label(
+        self, kind: str, target_id: int, label: str, ts: float, qualifier: str = ""
+    ) -> None:
+        """Write one operator declaration. **The derived value is never touched** (directive 4).
+
+        `qualifier` defaults to `''`, which means *the whole target*. Only a severity will ever
+        carry another value, and not in this release: `0016` put the column and the primary key in
+        place so that refining a severity declaration to class + varbind is a read rule rather than
+        a second migration (DECISIONS #283).
+        """
         await self.conn.execute(
-            "INSERT INTO label (kind, target_id, label, updated_at) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT (kind, target_id) DO UPDATE SET label=excluded.label, "
+            "INSERT INTO label (kind, target_id, qualifier, label, updated_at) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (kind, target_id, qualifier) DO UPDATE SET label=excluded.label, "
             "updated_at=excluded.updated_at",
-            (kind, target_id, label, ts),
+            (kind, target_id, qualifier, label, ts),
         )
+
+    async def learned_severity_ranks(self, class_id: int) -> list[int]:
+        """The distinct severity ranks the appliance itself learned for an alarm class.
+
+        Read at the moment a severity is declared, so the audit row records what the appliance
+        was saying when an operator said otherwise (DECISIONS #285). It is a **record**, not an
+        input: nothing consumes it, and no declaration produces a training row (#286).
+        """
+        cur = await self.conn.execute(
+            "SELECT DISTINCT severity_rank FROM alarm "
+            "WHERE class_id=? AND severity_rank IS NOT NULL ORDER BY severity_rank",
+            (class_id,),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]
+
+    async def clear_label(self, kind: str, target_id: int, qualifier: str = "") -> bool:
+        """Withdraw one declaration, and say whether there was one. **The revert** (#284).
+
+        A declaration that cannot be undone is a declaration nobody makes, and the appliance's own
+        derived value is still there to fall back to — that is the whole reason precedence is a
+        read-time decision and not an overwrite.
+        """
+        cur = await self.conn.execute(
+            "DELETE FROM label WHERE kind=? AND target_id=? AND qualifier=? RETURNING target_id",
+            (kind, target_id, qualifier),
+        )
+        return await cur.fetchone() is not None
 
     async def situation_opened_at(self, situation_id: int) -> float | None:
         """When the situation opened — the other half of label latency.

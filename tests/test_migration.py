@@ -642,8 +642,14 @@ async def test_migrate_populated_v070_database_dedupes_feedback_and_reaps_orphan
         assert all(r[0] is None and r[1] is None for r in await cur.fetchall())
 
         # F37: the three orphans are gone; both real labels survive.
+        #
+        # v0.16.3: the surviving device label reads `ne`, because `0016` moved every `kind='device'`
+        # row across **by address** — `label ⋈ device.id ⋈ ne.ip` — rather than by id. The two ids
+        # agree on this fixture, as they do on every database anyone has, and that is exactly why
+        # the migration does not key on them (DECISIONS #281). What F37 asserted is unchanged: two
+        # labels in, two labels out, three orphans reaped.
         cur = await store.conn.execute("SELECT kind, target_id FROM label ORDER BY kind, target_id")
-        assert [(r[0], r[1]) for r in await cur.fetchall()] == [("class", 1), ("device", 1)]
+        assert [(r[0], r[1]) for r in await cur.fetchall()] == [("class", 1), ("ne", 1)]
 
         cur = await store.conn.execute("PRAGMA foreign_key_check")
         assert list(await cur.fetchall()) == []

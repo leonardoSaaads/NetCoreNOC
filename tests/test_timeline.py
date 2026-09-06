@@ -56,9 +56,11 @@ async def _element(store: Store, ip: str) -> tuple[int, int, int]:
     )
     ne = int((await cur.fetchone())[0])  # type: ignore[index]
     cur = await store.conn.execute(
-        "INSERT INTO alarm_class (oid, name, first_seen, last_seen) VALUES (?, ?, ?, ?) "
-        "RETURNING id",
-        (f"1.3.6.1.4.1.99.{ne}", "linkDown", BASE, BASE),
+        # v0.16.3: `alarm_class` no longer stores `name` — it held `trap_name(oid)` for 48 of 48
+        # classes on a real corpus, so `0016` dropped it and readers derive it (DECISIONS #280).
+        # The OID is what a class IS, and it is what this fixture varies per element.
+        "INSERT INTO alarm_class (oid, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
+        (f"1.3.6.1.4.1.99.{ne}", BASE, BASE),
     )
     return device, ne, int((await cur.fetchone())[0])  # type: ignore[index]
 
