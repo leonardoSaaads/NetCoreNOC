@@ -25,6 +25,7 @@ import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 import uvicorn
@@ -40,6 +41,7 @@ from netcorenoc.crosscutting.settings import (
     legacy_env_error,
 )
 from netcorenoc.engine.operate.engine import Engine
+from netcorenoc.engine.operate.resources import SAMPLE_INTERVAL_S, ResourceSampler
 from netcorenoc.ingest.receiver import (
     QueueItem,
     ReceiverStats,
@@ -114,6 +116,19 @@ class HttpServerStartError(RuntimeError):
     propagates through ``asyncio.gather``, the cleanup runs, the store closes, the process exits
     non-zero, and a supervisor restarts it.
     """
+
+
+async def _sample_resources(sampler: ResourceSampler) -> None:
+    """Read CPU, memory and storage every ``SAMPLE_INTERVAL_S``, forever.
+
+    Supervised like the maintenance loop, and for the same reason: if it crashes the appliance keeps
+    correlating traps and the operator loses a graph, so a restart with backoff is the right
+    recovery and a crash that stops the process is not. Nothing here touches the store or the event
+    loop's hot path — three file reads and a deque append.
+    """
+    while True:
+        await asyncio.sleep(SAMPLE_INTERVAL_S)
+        sampler.sample()
 
 
 async def _serve_http(server: QuietServer, url: str) -> None:
@@ -306,8 +321,16 @@ async def _serve(settings: Settings, store: Store) -> None:
     if minted is not None:
         _print_bootstrap_banner(minted, recovery=existing_users > 0)
 
+    # The host readings the health control draws (v0.16.5). Sampled by a supervised loop rather
+    # than on demand: CPU is a delta between two readings, and a series sampled only while somebody
+    # has the panel open would be a graph of when people looked at it. The database's directory is
+    # the storage that matters — the filesystem that fills up and stops this appliance, not the
+    # host's root.
+    resources = ResourceSampler(path=str(Path(settings.db_path).resolve().parent))
+    resources.sample()  # one reading now, so CPU has a baseline to difference the next one against
+
     def receiver_stats() -> dict[str, Any]:
-        return {"receiver": asdict(receiver.stats)}
+        return {"receiver": asdict(receiver.stats), "resources": resources.snapshot()}
 
     supervisor = Supervisor()
 
@@ -371,6 +394,7 @@ async def _serve(settings: Settings, store: Store) -> None:
                 lambda: engine.maintenance_loop(lambda: runtime.retention_days),
             )
         ),
+        asyncio.create_task(supervisor.run("resources", lambda: _sample_resources(resources))),
         asyncio.create_task(_serve_http(server, url)),
     ]
     try:

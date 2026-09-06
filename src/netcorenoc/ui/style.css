@@ -260,9 +260,83 @@ button, select, input, textarea {
  * member cell becomes — the half-repair `.permalink` already taught this stylesheet (see `a.tap`).
  */
 button, select, input { min-height: var(--tap); }
+/* **The tick got smaller and the target did not** (v0.16.5, DECISIONS #302).
+ *
+ * F103 took the member checkbox from 13x13 to 28x28 by setting `width`/`height` to `--tap`. That
+ * fixed the target and overshot the glyph: 28 px of drawn checkbox in a 43 px table row reads as a
+ * form control that thinks it is a button, and the maintainer said so.
+ *
+ * **The first attempt at separating the two did not work, and the reason is worth keeping.**
+ * `box-sizing: content-box` with `width: 18px; padding: 5px` should give an 18 px glyph in a 28 px
+ * border box. Measured in Chromium: padding **`0px`**, hit area **18x28**, below the floor. A
+ * native control still at `appearance: auto` is laid out by the engine's own widget code and
+ * **ignores padding entirely** — the declaration is not overridden, it is discarded. So the box is
+ * drawn here instead, which is what every design system that needed this arrived at:
+ *
+ *   * the `input` keeps `--tap` on both edges and is the **hit area**, transparent and borderless;
+ *   * `::before` is the **box**, `--glyph` on a side, centred by the grid;
+ *   * `::after` is the **tick**, two borders rotated 45 degrees — not a `data:` URI, because
+ *     `img-src 'self'` in this appliance's CSP does not permit one and a silently blocked
+ *     background is a checkbox with no tick.
+ *
+ * `--glyph` is 18 px where there is a mouse and the full 28 px where there is not: a fingertip has
+ * no pixel-accurate centre to aim with, so on touch the tick should be as large as its target.
+ *
+ * F103's guard reads the floor's *selector* and refuses negations; it cannot see a glyph drawn in a
+ * pseudo-element. So this is measured instead, in both places: `test_ui_invariants` asserts the
+ * rule keeps `--tap` on the input, and the browser pass asserts the hit box at every width. */
+:root { --glyph: var(--tap); }
+@media (hover: hover) and (pointer: fine) { :root { --glyph: 18px; } }
+
 input[type="checkbox"], input[type="radio"] {
+  appearance: none; -webkit-appearance: none;
   width: var(--tap); height: var(--tap); min-width: var(--tap); flex: none;
-  margin: 0; accent-color: var(--accent); cursor: pointer;
+  display: inline-grid; place-content: center; position: relative;
+  margin: 0; padding: 0; border: 0; background: none; cursor: pointer;
+}
+input[type="checkbox"]::before, input[type="radio"]::before {
+  content: ""; display: block;
+  width: var(--glyph); height: var(--glyph);
+  border: 1.5px solid var(--line-strong); border-radius: var(--radius-1);
+  background: var(--bg-raised);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+input[type="radio"]::before { border-radius: 50%; }
+input[type="checkbox"]:checked::before, input[type="radio"]:checked::before {
+  background: var(--accent); border-color: var(--accent);
+}
+/* `left`/`top` at 50 % and a translate, **not** a bare `position: absolute`. Without offsets an
+   absolutely positioned pseudo-element falls back to its static position, and the static position
+   of a grid item inside `place-content: center` is not the centre of the box — measured: the tick
+   rendered somewhere with no offsets at all and the checked box drew as a solid square with no
+   mark on it. `-58%` rather than `-50%` on Y because a checkmark's optical centre sits below its
+   bounding box's centre, and the difference is visible at 18 px. */
+input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: calc(var(--glyph) * 0.3); height: calc(var(--glyph) * 0.56);
+  border: solid var(--bg); border-width: 0 2px 2px 0;
+  transform: translate(-50%, -58%) rotate(45deg);
+}
+input[type="radio"]:checked::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: calc(var(--glyph) * 0.4); height: calc(var(--glyph) * 0.4);
+  border-radius: 50%; background: var(--bg);
+  transform: translate(-50%, -50%);
+}
+input[type="checkbox"]:disabled, input[type="radio"]:disabled { cursor: not-allowed; opacity: 0.5; }
+input[type="checkbox"]:focus-visible::before, input[type="radio"]:focus-visible::before {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+/* An indeterminate box is neither on nor off, and the select-all header is in that state whenever
+   some but not all members are marked. Without this it draws as unchecked, which says "nothing is
+   marked" over a table where something is. */
+input[type="checkbox"]:indeterminate::before {
+  background: var(--accent); border-color: var(--accent);
+}
+input[type="checkbox"]:indeterminate::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: calc(var(--glyph) * 0.5); height: 2px; background: var(--bg);
+  border-radius: 1px; transform: translate(-50%, -50%);
 }
 button { cursor: pointer; }
 button:hover:not(:disabled) { background: var(--bg-hover); }
@@ -420,6 +494,12 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   flex-wrap: wrap;
 }
 .topbar-live, .topbar-who { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+/* A hairline between the operator's two status controls and the operator's identity. Both belong
+   on the right; they are not the same kind of thing, and a gap alone does not say so. */
+.topbar-sep {
+  width: 1px; align-self: stretch; min-height: var(--tap);
+  background: var(--line); margin: 0 var(--space-1);
+}
 .conn { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-xs); color: var(--fg-muted); }
 /* Which clock every time on every screen is in (v0.16.4, #294). Monospaced because it sits beside
    the offsets in the tables below and the two should read as the same kind of thing. */
@@ -440,7 +520,18 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
  * `min(24rem, calc(100vw - 2 * var(--space-3)))` is the whole of the phone accommodation: the
  * panel is as wide as it wants up to 24rem, and never wider than the viewport minus a margin, so
  * at 390 px it is a readable column rather than something that scrolls sideways. */
-.disclosure { position: relative; }
+/* **`.disclosure` is deliberately NOT positioned — F111.** v0.16.4 gave it `position: relative`
+   and then wrote `.topbar { position: relative }` below to anchor the panel against the bar. Only
+   the nearer of the two can be the containing block, and it was this one: the panel's `100%`
+   resolved against a **28 px** button instead of a 1208 px bar, so
+   `min(24rem, calc(100% - 2 * var(--space-3)))` computed to **26 px** at 390, 820 and 1440 alike.
+   Every warning wrapped one character per line, 7 732 px of scrollHeight inside a 388 px panel.
+   The comment below it asserted the containing block was `.topbar`; the layout said otherwise and
+   nothing measured the panel's width, so the assertion shipped. `test_ui_invariants` cannot see
+   layout, and the live pass measured control sizes and viewport overflow — a 26 px panel overflows
+   nothing. Guarded now by `tap_floor_tags`' sibling in spirit: a rule that says which element is
+   the anchor, and a browser assertion on the resulting width. */
+.disclosure { position: static; }
 .disclosure-open { position: relative; }
 .disclosure-alarm { color: var(--alarm); }
 .disclosure-warn { color: var(--warn); }
@@ -450,48 +541,145 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   border-radius: 999px; background: var(--alarm); color: var(--bg);
   font-family: var(--mono); font-size: 9px; line-height: 14px; text-align: center;
 }
-/* **Anchored to the TOP BAR, not to the 28 px button.** Measured at 390 px with the panel
-   anchored to its own opener: `right: 0` on a control sitting 100 px from the left edge put the
-   panel's left edge at **-238 px** — 366 px of warnings, entirely off the screen, on the width
-   this release exists for. The containing block is `.topbar`, so `100%` is a width the panel can
-   be clamped against and both edges are inside it by construction at every width.
+/* **Anchored to the TOP BAR, and now actually so.** Two bugs met here. v0.16.3 anchored the panel
+   to its own 28 px opener, which at 390 px put a 366 px panel's left edge at **-238 px**; v0.16.4
+   added `.topbar { position: relative }` to fix that but left `.disclosure` positioned above it,
+   so the anchor never changed and the panel collapsed to 26 px instead (F111). With `.disclosure`
+   static, `.topbar` is the containing block and `100%` is a width worth clamping against.
 
-   The bell opens from the left and the health control from the right, so the two never sit on top
-   of each other — though only one is ever open: pressing the second opener is a click outside the
-   first, which is what closes it. */
+   Both openers now sit in the right-hand group beside the account controls, so both panels open
+   from the **right** edge — the convention every console the operators also use follows, and the
+   one that keeps the panel under the control that opened it. Only one is ever open: pressing the
+   second opener is a click outside the first, which is what closes it. */
 .topbar { position: relative; }
 .disclosure-panel {
-  position: absolute; top: 100%; z-index: 30;
-  left: var(--space-3); right: auto;
-  width: min(24rem, calc(100% - 2 * var(--space-3)));
-  max-height: min(60vh, 30rem); overflow-y: auto;
+  position: absolute; top: calc(100% + var(--space-1)); z-index: 30;
+  right: var(--space-3); left: auto;
+  width: min(26rem, calc(100vw - 2 * var(--space-3)));
+  max-height: min(70vh, 34rem); overflow-y: auto; overscroll-behavior: contain;
   background: var(--bg-raised); border: 1px solid var(--line-strong);
   border-radius: var(--radius-2); box-shadow: var(--shadow-1);
-  padding: var(--space-3);
+  padding: 0;
 }
-#healthPanel { left: auto; right: var(--space-3); }
 .disclosure-panel[hidden] { display: none; }
+/* The panel's own header: a title and the dismiss the operator asked for. Sticky, because the
+   notice list scrolls and a close button that scrolls out of a panel you cannot see the bottom of
+   is a close button that is not there. */
+.disclosure-head {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  background: var(--bg-raised); border-bottom: 1px solid var(--line);
+}
+.disclosure-body { padding: var(--space-2) var(--space-3) var(--space-3); }
 .disclosure-title {
   font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--fg-muted); margin: 0 0 var(--space-2);
+  color: var(--fg-muted); margin: 0;
 }
+.disclosure-close {
+  flex: none; width: var(--tap); height: var(--tap); padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: var(--radius-1);
+  background: none; color: var(--fg-muted); cursor: pointer; font-size: var(--fs-lg);
+  line-height: 1;
+}
+.disclosure-close:hover, .disclosure-close:focus-visible {
+  background: var(--bg-sunken); color: var(--fg); border-color: var(--line-strong);
+}
+/* `flex-wrap` is deliberately NOT here. With it, a notice whose text cannot fit beside the icon
+   wraps the whole text box onto its own line — which is fine — but it also lets the box shrink to
+   its longest unbreakable word first, which is how F111's 26 px panel turned into one character
+   per line. `min-width: 0` on the body is what actually lets a flex child narrower than its
+   content wrap normally, and it is the rule that must not be dropped. */
 .notice-list { list-style: none; margin: 0; padding: 0; }
 .notice-list li {
-  display: flex; align-items: flex-start; gap: var(--space-2); flex-wrap: wrap;
+  display: flex; align-items: flex-start; gap: var(--space-2);
   padding: var(--space-2) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
 }
 .notice-list li:last-child { border-bottom: 0; }
 .notice-list .icon-svg { flex: none; margin-top: 0.15em; color: var(--warn); }
 .notice-urgent .icon-svg { color: var(--alarm); }
-.notice-text { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.notice-body { flex: 1 1 auto; min-width: 0; }
+.notice-text { margin: 0; overflow-wrap: anywhere; line-height: 1.45; }
+.notice-link { display: inline-block; margin-top: var(--space-1); white-space: nowrap; }
 .health-state {
-  font-size: var(--fs-lg); font-weight: 600; margin: 0 0 var(--space-2);
+  font-size: var(--fs-lg); font-weight: 600; margin: 0 0 var(--space-3);
 }
 .health-ok { color: var(--quiet); }
 .health-behind { color: var(--warn); }
 .health-dropping { color: var(--alarm); }
-.health-kv { font-size: var(--fs-sm); }
-.health-kv dt { font-variant-numeric: tabular-nums; }
+
+/* ---------- the three meters (v0.16.5, DECISIONS #300) ----------
+ *
+ * CPU, memory and storage. A name, a percentage, a bar, and a two-hour sparkline — the shape every
+ * console an operator also uses settles on, because a bar answers "how full" before the number is
+ * read and the line answers "getting worse?" which no single reading can.
+ *
+ * The bar and the line share one tone, and the thresholds are stated once here rather than in four
+ * places: quiet under 75 %, `--warn` from 75, `--alarm` from 90. */
+.meters { display: grid; gap: var(--space-3); }
+.meter-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2);
+}
+.meter-name {
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-muted);
+}
+.meter-pct {
+  font-family: var(--mono); font-size: var(--fs-lg); font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--fg);
+}
+.meter-bar {
+  height: 6px; margin: var(--space-1) 0; border-radius: 999px;
+  background: var(--bg-sunken); overflow: hidden;
+}
+.meter-fill {
+  display: block; height: 100%; border-radius: 999px; background: var(--quiet);
+  transition: width 240ms ease;
+}
+.meter-warn .meter-fill { background: var(--warn); }
+.meter-alarm .meter-fill { background: var(--alarm); }
+.meter-warn .meter-pct { color: var(--warn); }
+.meter-alarm .meter-pct { color: var(--alarm); }
+.meter-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+}
+.meter-detail { font-size: var(--fs-xs); color: var(--fg-dim); min-width: 0; }
+/* `preserveAspectRatio="none"` on the svg means the 100x24 viewBox stretches to whatever box it
+   lands in, so the stroke must not scale with it: `vector-effect` keeps the line 1px at any width.
+   Without it a 208px-wide sparkline draws a 2px-thick horizontal and a hairline vertical. */
+.spark {
+  flex: none; width: 104px; height: 22px; overflow: visible;
+}
+.spark polyline {
+  fill: none; stroke: var(--quiet); stroke-width: 1.5;
+  stroke-linejoin: round; stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.spark-warn polyline { stroke: var(--warn); }
+.spark-alarm polyline { stroke: var(--alarm); }
+/* The four correlation counters that used to be the whole panel, now one secondary line: the word
+   above answers "is it keeping up" and these are for when the answer is no. */
+.health-sub {
+  margin: var(--space-3) 0 0; padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-xs); color: var(--fg-dim); line-height: 1.7;
+}
+.health-sub b { font-family: var(--mono); font-weight: 600; color: var(--fg-muted); }
+/* The bulk hand-clear (v0.16.5, DECISIONS #301). Above the member table, because it acts on the
+   whole table and a control that acts on everything must not sit inside a row. */
+.bulkclear {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin: var(--space-2) 0;
+}
+.bulkclear-hint { margin: 0; }
+.bulkclear-confirm {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warn); border-radius: var(--radius-2);
+  background: var(--bg-sunken);
+}
+.bulkclear-ask { font-size: var(--fs-sm); font-weight: 600; }
+
 .role-tag {
   font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em;
   border: 1px solid var(--line-strong); border-radius: var(--radius-1);

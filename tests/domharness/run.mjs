@@ -385,8 +385,29 @@ const scenarios = {
         items: (panel?.querySelectorAll(".notice-text") ?? [])
           .map((n) => n.textContent.replace(/\s+/g, " ").trim()),
         // The health panel's row LABELS: what it claims to measure, as distinct from the prose
-        // beside them saying what it cannot.
-        figures: (panel?.querySelectorAll("dt") ?? []).map((d) => d.textContent.trim()),
+        // beside them saying what it cannot. v0.16.5 turned the `<dl>` into `.meter` blocks, so
+        // the label moved from a `<dt>` to `.meter-name`; both are read, because the correlation
+        // counters kept their old shape in the secondary line.
+        figures: [
+          ...(panel?.querySelectorAll("dt") ?? []),
+          ...(panel?.querySelectorAll(".meter-name") ?? []),
+        ].map((d) => d.textContent.trim()),
+        // What each meter actually renders: the percentage as shown and the detail beside it. A
+        // metric the host will not give up must read `—` here and never `0%` (DECISIONS #289).
+        meters: (panel?.querySelectorAll(".meter") ?? []).map((m) => ({
+          name: m.querySelector(".meter-name")?.textContent.trim() ?? null,
+          pct: m.querySelector(".meter-pct")?.textContent.trim() ?? null,
+          detail: m.querySelector(".meter-detail")?.textContent.trim() ?? null,
+          bar: m.querySelector(".meter-fill")?.getAttribute("style") ?? null,
+          aria: m.querySelector(".meter-bar")?.getAttribute("aria-label") ?? null,
+          // One polyline per unbroken run of readings: a gap must SPLIT the line rather than be
+          // drawn through, so the count is the assertion and not just the presence of an svg.
+          runs: m.querySelectorAll("polyline").length,
+        })),
+        // The dismiss v0.16.5 added. Escape, a second press and a click outside all worked before
+        // and none of them was visible.
+        closers: (panel?.querySelectorAll(".disclosure-close") ?? [])
+          .map((b) => b.getAttribute("aria-label")),
       };
     };
     const press = async (sel) => {

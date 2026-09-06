@@ -180,6 +180,31 @@ class ClearIn(BaseModel):
     """
 
 
+class BulkClearIn(BaseModel):
+    """Hand-clear every active member of one situation (v0.16.5, DECISIONS #301).
+
+    **The set is named by `situation_id` and derived on the server**, and that is a security
+    property rather than a convenience. The obvious shape for this route is a list of alarm ids,
+    and it would be an existence oracle: a scoped editor could post ids they cannot see and read
+    the answer off the count. Naming the situation instead means the server starts from
+    `situation_members`, subtracts `hidden_member_ids`, and can only ever act on — or count —
+    alarms the caller was already served. It is the same reasoning that keeps `member_ids` on
+    `FeedbackIn` from being validated against anything.
+
+    `only_ids` narrows that set and cannot widen it: the server **intersects**, so an id belonging
+    to another situation, to a hidden member, or to nothing at all contributes exactly what an
+    already-cleared member does, which is nothing. It exists because the mark column is already
+    there and "clear the four I ticked" is a real gesture; absent, every active member is cleared.
+
+    Bounded like every other client list on a write path (`max_length=4096`). The bound is a parse
+    ceiling, not a statement about meaning: the largest situation in the shipped corpus holds 1 051
+    members.
+    """
+
+    situation_id: int
+    only_ids: list[int] | None = Field(default=None, max_length=4096)
+
+
 class NameIn(BaseModel):
     """An operator's own name for a situation, or `null` to withdraw it.
 

@@ -1967,6 +1967,41 @@ async def test_the_mark_column_header_marks_and_clears_every_row(routes: dict[st
     assert result["afterUntick"] == 0, f"{result['afterUntick']} rows are still marked after untick"
 
 
+def _with_receiver(captured: dict[str, Any]) -> dict[str, Any]:
+    """The captured `/api/stats` carrying a socket-counter block.
+
+    A corpus replay boots no process runner, so the real capture has none and the health panel
+    correctly omits `refused` and `dropped`. Asserting they are shown therefore needs a fixture
+    that has them, and the shape is `ReceiverStats`' own rather than one typed here.
+    """
+    from dataclasses import asdict
+
+    from netcorenoc.ingest.receiver import ReceiverStats
+
+    stats = captured["/api/stats"]["json"]
+    return {
+        **captured,
+        "/api/stats": {
+            "status": 200,
+            "json": {**stats, "receiver": asdict(ReceiverStats(received=99, denied=3))},
+        },
+    }
+
+
+def _with_resources(captured: dict[str, Any], resources: dict[str, Any]) -> dict[str, Any]:
+    """The captured `/api/stats` carrying a given `resources` block.
+
+    The shape is `ResourceSampler.snapshot()`'s and is asserted against it by
+    `test_the_resources_fixture_matches_what_the_sampler_actually_produces`, so a field renamed in
+    `resources.py` cannot leave these fixtures quietly testing a payload nothing sends.
+    """
+    stats = captured["/api/stats"]["json"]
+    return {
+        **captured,
+        "/api/stats": {"status": 200, "json": {**stats, "resources": resources}},
+    }
+
+
 def _with_warnings(captured: dict[str, Any]) -> dict[str, Any]:
     """The captured `/api/stats` carrying the warnings a misconfigured appliance really raises.
 
@@ -2007,7 +2042,29 @@ async def test_the_top_bar_holds_the_warnings_and_the_health_it_used_to_spend_a_
     viewport. Those are layout, this harness has no layout engine, and the browser measurements in
     the release notes are the evidence for them.
     """
-    result = domdriver.run_scenario("shellControls", {"routes": _with_warnings(routes["admin"])})
+    # Warnings for the bell, and a readable `resources` block for the health control. A corpus
+    # replay boots no process runner, so `/api/stats` carries neither — the same reason
+    # `_with_warnings` exists at all.
+    fixture = _with_resources(
+        _with_receiver(_with_warnings(routes["admin"])),
+        {
+            "cpu_pct": 7.5,
+            "cpu_count": 4,
+            "mem_pct": 42.0,
+            "mem_used": 4_294_967_296,
+            "mem_total": 10_737_418_240,
+            "mem_source": "cgroup",
+            "disk_pct": 61.0,
+            "disk_used": 61,
+            "disk_total": 100,
+            "window_s": 7200,
+            "interval_s": 30,
+            "cpu_series": [5.0, 7.0, 9.0],
+            "mem_series": [41.0, 42.0],
+            "disk_series": [60.0, 61.0],
+        },
+    )
+    result = domdriver.run_scenario("shellControls", {"routes": fixture})
 
     assert result["chips"] == 0, (
         f"{result['chips']} counter chips are still in the top bar. All four moved: two to the "
@@ -2042,20 +2099,126 @@ async def test_the_top_bar_holds_the_warnings_and_the_health_it_used_to_spend_a_
 
     health = result["healthOpen"]
     assert health["open"] is True
-    assert set(health["figures"]) >= {"queue depth", "p95 latency", "trap rate"}, health["figures"]
-    # **Every figure it shows is one `/api/stats` serves.** Asserted over the row LABELS rather
-    # than over the panel's text, because the panel also carries the sentence saying CPU, memory
-    # and disk are not measured — and a guard that could not tell a figure from a disclaimer would
-    # have to choose between failing on the honest sentence and passing on an invented number.
-    served = {"queue depth", "p95 latency", "trap rate", "refused", "dropped"}
-    assert set(health["figures"]) <= served, (
-        f"the health control shows {sorted(set(health['figures']) - served)}, which "
-        f"`/api/stats` does not serve. There is no psutil, no `resource` and no /proc read in "
-        f"src/, so a host figure here would be invented (DECISIONS #289)."
+    # **Every figure it shows is one the appliance measures.** v0.16.5 widened that set rather than
+    # the licence: `resources.py` reads CPU from `/proc/stat`, memory from the cgroup or
+    # `/proc/meminfo`, and storage from `os.statvfs` — three stdlib reads, no `psutil`, no new
+    # dependency. What did not change is #289's rule, asserted below: a figure with no reading
+    # behind it renders as a dash.
+    served = {"CPU", "Memory", "Storage"}
+    assert set(health["figures"]) == served, (
+        f"the health control shows {sorted(health['figures'])}. A figure here must be one "
+        f"`stats.resources` carries; anything else would be invented (DECISIONS #289, #300)."
     )
-    assert "not measured by this appliance" in health["text"], (
-        "the health control shows four numbers and does not say which it cannot show; an operator "
-        "asking 'is the box out of memory' deserves the answer rather than silence"
+    # The four correlation counters did not leave — they moved into one secondary line, because
+    # "is it keeping up" is answered by the word at the top and these are for when it is not.
+    for counter in ("queue", "p95", "refused", "dropped"):
+        assert counter in health["text"], (
+            f"the health panel no longer mentions {counter!r}. The meters were added beside the "
+            f"correlation counters, not instead of them."
+        )
+
+    assert health["closers"] == ["Close"], (
+        f"the health panel offers {health['closers']} as a dismiss. Escape, a second press and a "
+        f"click outside all worked in v0.16.4 and not one of them was VISIBLE, which is why the "
+        f"maintainer reported the panel as having no way to close it."
+    )
+    assert result["bellOpen"]["closers"] == ["Close"], "the bell has no visible dismiss"
+
+
+@dom_test
+async def test_a_metric_the_host_will_not_give_up_reads_as_a_dash_and_never_as_zero(
+    routes: dict[str, Any],
+) -> None:
+    """**#289's rule, surviving the release that made the readings possible** (DECISIONS #300).
+
+    v0.16.4 could not show CPU, memory or storage and said so in the panel. v0.16.5 reads all three
+    from the standard library. The temptation the change creates is to render `0%` for a host that
+    will not answer — a container with no `/proc`, a first sample with no delta to difference — and
+    `0%` reads as *"idle"*, which is a measurement nobody took.
+
+    So the fixture serves a `resources` block with every value `null`, which is exactly what
+    `ResourceSampler.snapshot()` produces on a host it cannot read, and the panel must say so.
+    """
+    unreadable = _with_resources(
+        routes["admin"],
+        {
+            "cpu_pct": None,
+            "cpu_count": None,
+            "mem_pct": None,
+            "mem_used": None,
+            "mem_total": None,
+            "mem_source": None,
+            "disk_pct": None,
+            "disk_used": None,
+            "disk_total": None,
+            "window_s": 7200,
+            "interval_s": 30,
+            "cpu_series": [],
+            "mem_series": [],
+            "disk_series": [],
+        },
+    )
+    result = domdriver.run_scenario("shellControls", {"routes": unreadable})
+    meters = result["healthOpen"]["meters"]
+    assert len(meters) == 3, f"expected three meters, got {[m['name'] for m in meters]}"
+    for meter in meters:
+        assert meter["pct"] == "—", (
+            f"{meter['name']} reads {meter['pct']!r} on a host that reported nothing. A zero here "
+            f"says 'idle' about a number nobody measured, which is the one thing #289 forbids."
+        )
+        assert meter["detail"] == "not measured", (
+            f"{meter['name']} says {meter['detail']!r} rather than naming the absence"
+        )
+        assert "not measured" in (meter["aria"] or ""), (
+            f"{meter['name']}'s bar tells a screen reader {meter['aria']!r}; sighted users get "
+            f"the dash and everyone else gets a percentage that does not exist"
+        )
+        assert meter["runs"] == 0, (
+            f"{meter['name']} drew {meter['runs']} sparkline run(s) from an empty series"
+        )
+
+
+@dom_test
+async def test_a_gap_in_the_series_breaks_the_sparkline_rather_than_being_drawn_through(
+    routes: dict[str, Any],
+) -> None:
+    """A line joined across a period nobody sampled is the graph inventing the measurement.
+
+    The sampler yields `None` for any interval it could not read — a crashed loop, a container that
+    lost `/proc`, the minutes before the appliance started. `Spark` splits its polyline at every one
+    of those, so a reader can see the hole. Two runs from one series with one gap in the middle is
+    the assertion; a single run would mean the hole was drawn through.
+    """
+    gapped = _with_resources(
+        routes["admin"],
+        {
+            "cpu_pct": 12.0,
+            "cpu_count": 4,
+            "mem_pct": 40.0,
+            "mem_used": 4,
+            "mem_total": 10,
+            "mem_source": "host",
+            "disk_pct": 50.0,
+            "disk_used": 5,
+            "disk_total": 10,
+            "window_s": 7200,
+            "interval_s": 30,
+            # one gap in the middle -> two runs; none -> one; a single point -> nothing to draw
+            "cpu_series": [10.0, 11.0, None, None, 13.0, 14.0],
+            "mem_series": [40.0, 41.0, 42.0, 43.0],
+            "disk_series": [50.0],
+        },
+    )
+    result = domdriver.run_scenario("shellControls", {"routes": gapped})
+    runs = {m["name"]: m["runs"] for m in result["healthOpen"]["meters"]}
+    assert runs["CPU"] == 2, (
+        f"a series with one gap drew {runs['CPU']} polyline(s). One means the line was drawn "
+        f"straight through two intervals nobody measured."
+    )
+    assert runs["Memory"] == 1, f"an unbroken series drew {runs['Memory']} polylines"
+    assert runs["Storage"] == 0, (
+        f"a one-point series drew {runs['Storage']} polyline(s); a line needs two points and a "
+        f"single reading is not a trend"
     )
 
 
@@ -2264,4 +2427,149 @@ def test_no_template_glues_a_word_to_the_inline_element_after_it() -> None:
     assert not offenders, (
         "these render a word joined to the element after it, because the newline between them is "
         'whitespace `htm` drops. Put an explicit `${" "}` there:\n  ' + "\n  ".join(offenders)
+    )
+
+
+def test_the_disclosure_panel_is_anchored_to_the_bar_and_not_to_its_own_opener() -> None:
+    """**F111.** The rule that made the panels 26 px wide, stated so it cannot come back.
+
+    An absolutely positioned box resolves percentages against its **nearest positioned ancestor**.
+    v0.16.3 anchored the panel to its own 28 px opener, putting its left edge 238 px off the
+    left of a 390 px screen;
+    v0.16.4 fixed that by giving `.topbar` `position: relative` — and left `.disclosure`
+    `position: relative` two rules above it. Only the nearer wins, so nothing changed except
+    the direction of the failure: `min(24rem, calc(100% - 2 * var(--space-3)))` resolved against
+    28 px and computed to **26 px at 390, 820 and 1440 alike**, one character per line, 7 732 px of
+    scrollHeight inside a 388 px box.
+
+    Neither guard nor live pass caught it. `test_ui_invariants` has no layout engine; the live pass
+    measured control sizes and viewport overflow, and a 26 px panel overflows nothing. So the
+    assertion is on the **rule** rather than the rendered width: whatever `.disclosure-panel` is
+    anchored to, no element between it and `.topbar` may be positioned.
+    """
+    import netcorenoc
+
+    css = (Path(netcorenoc.__file__).resolve().parent / "ui" / "style.css").read_text("utf-8")
+
+    def position_of(selector: str) -> str | None:
+        """The `position` a selector's own rule sets, or None if it sets none."""
+        pattern = rf"(?m)^\s*{re.escape(selector)}\s*\{{([^}}]*)\}}"
+        found = None
+        for block in re.finditer(pattern, css):
+            declared = re.search(r"position:\s*([a-z-]+)", block.group(1))
+            if declared:
+                found = declared.group(1)  # last wins, as the cascade does
+        return found
+
+    assert position_of(".topbar") == "relative", (
+        "`.topbar` no longer establishes a containing block, so the panels anchor to whatever is "
+        "nearer — which is how F111 happened."
+    )
+    # The ancestors the panel actually has, between it and the bar. `.disclosure` wraps the opener
+    # and the panel; `.topbar-live` and `.topbar-who` are the two groups a disclosure can sit in.
+    for between in (".disclosure", ".topbar-live", ".topbar-who"):
+        assert position_of(between) in (None, "static"), (
+            f"`{between}` is positioned, so it and not `.topbar` is the disclosure panel's "
+            f"containing block. The panel's width is a percentage of that box: against the 28 px "
+            f"opener it computed to 26 px at every width (F111). If this element must be "
+            f"positioned, the panel needs a different anchor and this guard needs rewriting — not "
+            f"deleting."
+        )
+
+
+def test_the_checkbox_hit_area_stays_at_the_tap_floor_while_the_glyph_shrinks() -> None:
+    """**DECISIONS #302.** F103's repair, made proportionate without being undone.
+
+    F103 took the member checkbox from 13x13 to 28x28 by putting `--tap` on `width`/`height`. That
+    fixed the target and overshot the drawn control, and the maintainer reported it as too large.
+    The two are now separate: the `input` keeps `--tap` and is the hit area, `::before` draws
+    `--glyph`, and `--glyph` is smaller only where there is a mouse.
+
+    The failed first attempt is why this is a guard rather than a comment. `box-sizing: content-box`
+    with `width: 18px; padding: 5px` looks like it gives an 18 px glyph in a 28 px box, and Chromium
+    measured **`padding: 0px`, hit area 18x28** — a native control at `appearance: auto` is laid
+    out by the engine and discards padding. So what must hold is: the input carries `--tap` on both
+    edges, `--glyph` never exceeds `--tap`, and the shrink is inside a pointer query.
+    """
+    import netcorenoc
+
+    css = (Path(netcorenoc.__file__).resolve().parent / "ui" / "style.css").read_text("utf-8")
+
+    checkbox_rule = r'(?m)^input\[type="checkbox"\], input\[type="radio"\] \{([^}]*)\}'
+    rule = re.search(checkbox_rule, css)
+    assert rule is not None, "the checkbox rule is gone; F103's repair lives in it"
+    body = rule.group(1)
+    for edge in ("width", "height"):
+        assert re.search(rf"(?<!-){edge}:\s*var\(--tap\)", body), (
+            f"the checkbox's {edge} is no longer `var(--tap)`. The HIT AREA is what F103 was "
+            f"about; shrink the glyph in `::before` and leave this alone."
+        )
+    assert "appearance: none" in body, (
+        "the checkbox is back to a native appearance, which discards the padding and the "
+        "box this rule draws the glyph with"
+    )
+    before_rule = (
+        r'(?m)^input\[type="checkbox"\]::before, input\[type="radio"\]::before \{([^}]*)\}'
+    )
+    before = re.search(before_rule, css)
+    assert before is not None and "var(--glyph)" in before.group(1), (
+        "the drawn box no longer sizes on `--glyph`, so there is nothing separating the tick from "
+        "the target and one of the two is wrong"
+    )
+    # `--glyph` defaults to the floor and may only shrink behind a pointer query: a touch device
+    # gets a tick as big as its target, because a fingertip has no pixel-accurate centre.
+    assert re.search(r"(?m)^:root \{ --glyph: var\(--tap\); \}", css), (
+        "`--glyph` no longer defaults to `--tap`; a device that matches no media query would draw "
+        "whatever the last rule set"
+    )
+    shrink = re.search(
+        r"@media \(hover: hover\) and \(pointer: fine\) \{ :root \{ --glyph: (\d+)px", css
+    )
+    assert shrink is not None, (
+        "the smaller glyph is no longer behind `(hover: hover) and (pointer: fine)`, so a phone "
+        "gets it too"
+    )
+    assert 12 <= int(shrink.group(1)) < 28, (
+        f"--glyph is {shrink.group(1)}px on a mouse: below 12 it is the 13x13 target F103 was "
+        f"issued for, and at 28 there was nothing to change"
+    )
+
+
+def test_the_resources_fixture_matches_what_the_sampler_actually_produces() -> None:
+    """The fixtures above describe `/api/stats.resources`; this is what says they still do.
+
+    Appendix B's trap, in the form this release could fall into: two DOM tests assert how the health
+    panel renders a `resources` block, and both build that block by hand. Rename a field in
+    `resources.py` and they keep passing over a payload nothing sends, while the panel they claim to
+    guard renders three dashes. So the keys are **derived** from a real `ResourceSampler` rather
+    than restated.
+    """
+    import netcorenoc
+    from netcorenoc.engine.operate.resources import ResourceSampler
+
+    sampler = ResourceSampler(path=str(Path(netcorenoc.__file__).resolve().parent))
+    sampler.sample()
+    produced = set(sampler.snapshot())
+    fixture = {
+        "cpu_pct",
+        "cpu_count",
+        "mem_pct",
+        "mem_used",
+        "mem_total",
+        "mem_source",
+        "disk_pct",
+        "disk_used",
+        "disk_total",
+        "window_s",
+        "interval_s",
+        "cpu_series",
+        "mem_series",
+        "disk_series",
+    }
+    assert produced == fixture, (
+        f"`ResourceSampler.snapshot()` and the fixtures in this file have diverged.\n"
+        f"  only in the sampler: {sorted(produced - fixture)}\n"
+        f"  only in the fixture: {sorted(fixture - produced)}\n"
+        f"A fixture that has drifted from the payload keeps passing while the panel it guards "
+        f"renders nothing."
     )

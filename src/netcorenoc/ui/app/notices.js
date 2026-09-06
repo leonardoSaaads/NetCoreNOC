@@ -15,11 +15,16 @@
  *     parameter this console knows about links to Settings; each that does not renders as text
  *     with no affordance, because a control that navigates somewhere unhelpful teaches an operator
  *     that the bell's links are noise;
- *   * **the health control** — the four numbers `/api/stats` already measures and one word derived
- *     from them. **CPU, RAM and disk are not here and are not invented**: there is no `psutil`, no
- *     `resource` and no `/proc` read anywhere in `src/`, so the alternative to showing four true
- *     numbers is not "read what is there", it is "add a source". The ten-minute series the
- *     maintainer described needs storage nothing has, and it is v0.16.5's.
+ *   * **the health control** — CPU, memory and storage, each with a two-hour sparkline. It lives
+ *     in `health.js` from v0.16.5, because this file reached the module graph's 17 579-byte
+ *     ceiling; the disclosure mechanism it uses is still here and is exported to it.
+ *
+ * ## Both panels are anchored to the bar, and F111 is why that sentence is repeated
+ *
+ * v0.16.4 wrote `.topbar { position: relative }` to anchor them and left `.disclosure` positioned
+ * above it, so the panels resolved `100%` against a 28 px button and rendered **26 px wide at every
+ * width**. Both are in the right-hand group now, beside the account controls, and both open from
+ * the bar's right edge.
  *
  * ## The ingest gap stays a banner
  *
@@ -78,8 +83,12 @@ export function notices(stats) {
   return out;
 }
 
-/** A disclosure that closes on Escape, on a second press, and on a click outside it. */
-class Disclosure extends Component {
+/** A disclosure that closes on Escape, on a second press, and on a click outside it.
+ *
+ * Exported because `health.js` is the same mechanism with different contents — the split in
+ * v0.16.5 was forced by the module-graph ceiling, and duplicating the class to avoid an import
+ * would have been the guard making the code worse rather than better. */
+export class Disclosure extends Component {
   constructor(props) {
     super(props);
     this.state = { open: false };
@@ -96,6 +105,37 @@ class Disclosure extends Component {
   componentWillUnmount() {
     globalThis.document.removeEventListener("click", this.onDocument, true);
     globalThis.document.removeEventListener("keydown", this.onKey);
+    this.cancelHover();
+  }
+
+  cancelHover() {
+    if (this.hoverTimer) globalThis.clearTimeout(this.hoverTimer);
+    this.hoverTimer = null;
+  }
+
+  /**
+   * Hover opens it, on a mouse only — `hover` is the opt-in and the two timers are not optional.
+   *
+   * `matchMedia("(hover: hover) and (pointer: fine)")` because on a touch screen the browser
+   * synthesises a hover from the tap that is also the click: without the query the panel opens on
+   * hover and the click that caused it immediately closes it again, which reads as a control that
+   * does nothing. Touch keeps the click, which is the gesture that exists there.
+   *
+   * The delays: opening waits 120 ms so a pointer crossing the bar on its way somewhere else does
+   * not fling panels open; closing waits 260 ms because the panel is anchored to the bar's right
+   * edge and reaching it means leaving the 28 px button, and a panel that vanishes while you move
+   * toward it cannot be read. A panel opened by a **click** ignores both — `pinned` — because a
+   * deliberate press should not be undone by the pointer wandering off.
+   */
+  hover(open) {
+    const fine = globalThis.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches;
+    if (!fine || !this.props.hover) return;
+    if (this.pinned && !open) return;
+    this.cancelHover();
+    this.hoverTimer = globalThis.setTimeout(
+      () => this.setState({ open }),
+      open ? 120 : 260,
+    );
   }
 
   /* Close on a click outside — and on a **link inside**, which is not the same rule.
@@ -109,6 +149,17 @@ class Disclosure extends Component {
     if (!this.state.open) return;
     const inside = this.root && this.root.contains(event.target);
     if (inside && !this.isNavigation(event.target)) return;
+    this.close();
+  }
+
+  /** Every close goes through here, so none of them can leave `pinned` set behind it.
+   *
+   * A panel dismissed with Escape or the × that stayed pinned would be a panel hover could open
+   * and never close again — the bug you get for free by writing `setState({open: false})` in four
+   * places and remembering the flag in three. */
+  close() {
+    this.cancelHover();
+    this.pinned = false;
     this.setState({ open: false });
   }
 
@@ -127,20 +178,39 @@ class Disclosure extends Component {
   }
 
   onKey(event) {
-    if (event.key === "Escape" && this.state.open) this.setState({ open: false });
+    if (event.key === "Escape" && this.state.open) this.close();
   }
 
-  render({ id, icon, label, badge, tone, children }, { open }) {
-    return html`<div class="disclosure" ref=${(node) => { this.root = node; }}>
+  render({ id, icon, label, title, badge, tone, children }, { open }) {
+    return html`<div class="disclosure" ref=${(node) => { this.root = node; }}
+         onMouseEnter=${() => this.hover(true)} onMouseLeave=${() => this.hover(false)}>
       <button type="button" class=${cx("icon", "disclosure-open", tone && `disclosure-${tone}`)}
               aria-expanded=${open ? "true" : "false"} aria-controls=${id}
               aria-label=${label} title=${label}
-              onClick=${() => this.setState({ open: !open })}>
+              onClick=${() => {
+                this.cancelHover();
+                this.pinned = !open;
+                this.setState({ open: !open });
+              }}>
         <${Icon} name=${icon} />
         ${badge != null ? html`<span class="disclosure-badge">${badge}</span>` : null}
       </button>
       <div id=${id} class="disclosure-panel" role="dialog" aria-label=${label} hidden=${!open}>
-        ${open ? children : null}
+        ${open
+          ? html`<div class="disclosure-head">
+                <h2 class="disclosure-title">${title}</h2>
+                ${/* The dismiss the operator asked for. Escape, a second press of the opener and a
+                      click outside all close this panel and always did — but none of the three is
+                      VISIBLE, and a control an operator cannot see is a control they do not have.
+                      `aria-label` rather than a bare glyph: the accessible name of a control whose
+                      text content is "×" is the multiplication sign. */
+                  null}
+                <button type="button" class="disclosure-close" aria-label="Close"
+                        title="Close (Esc)"
+                        onClick=${() => this.close()}>×</button>
+              </div>
+              <div class="disclosure-body">${children}</div>`
+          : null}
       </div>
     </div>`;
   }
@@ -154,19 +224,21 @@ export function Bell({ stats }) {
     ? `${plural(items.length, "warning")} — open the list`
     : "No warnings. Open the list.";
   return html`<${Disclosure} id="noticePanel" icon="bell" label=${label}
+      title="What needs attention"
       tone=${urgent ? "alarm" : items.length ? "warn" : null}
       badge=${items.length || null}>
-    <h2 class="disclosure-title">What needs attention</h2>
     ${items.length === 0
       ? html`<p class="hint">Nothing. The appliance has raised no warnings and no ingest gap is
           open.</p>`
       : html`<ul class="notice-list">${items.map((item, index) => html`
           <li key=${index} class=${cx(item.urgent && "notice-urgent")}>
             <${Icon} name=${item.urgent ? "warn" : "info"} />
-            <span class="notice-text">${item.text}</span>
-            ${item.href
-              ? html`<a class="tap" href=${item.href}>Settings →</a>`
-              : null}
+            <div class="notice-body">
+              <p class="notice-text">${item.text}</p>
+              ${item.href
+                ? html`<a class="tap notice-link" href=${item.href}>Open the setting →</a>`
+                : null}
+            </div>
           </li>`)}</ul>`}
   <//>`;
 }
@@ -179,36 +251,3 @@ export function Bell({ stats }) {
  * number nobody can act on (DECISIONS #222); until a second sample arrives it says so rather than
  * showing a zero.
  */
-export function Health({ stats, rate }) {
-  const state = healthState(stats);
-  const receiver = stats?.receiver;
-  return html`<${Disclosure} id="healthPanel" icon="pulse" tone=${state.tone}
-      label=${`Appliance health: ${state.word}. Open the numbers.`}>
-    <h2 class="disclosure-title">Is the appliance keeping up?</h2>
-    <p class=${cx("health-state", `health-${state.key}`)}>${state.word}</p>
-    <dl class="kv health-kv">
-      <dt>queue depth</dt>
-      <dd>${count(stats?.queue_depth ?? 0)}${" "}
-        <span class="muted">traps parsed and not yet correlated</span></dd>
-      <dt>p95 latency</dt>
-      <dd>${score(stats?.latency_p95_s ?? 0, 4)} s${" "}
-        <span class="muted">arrival to correlation</span></dd>
-      <dt>trap rate</dt>
-      <dd>${rate
-        ? html`${rate.perSecond.toFixed(rate.perSecond < 10 ? 2 : 0)} /s${" "}
-            <span class="muted">over the last ${rate.windowS.toFixed(1)} s</span>`
-        : html`—${" "}<span class="muted">waiting for a second reading</span>`}</dd>
-      ${receiver ? html`<dt>refused</dt>
-        <dd>${count(receiver.denied)}${" "}
-          <span class="muted">source not in the allowlist</span></dd>
-        <dt>dropped</dt>
-        <dd>${count(receiver.dropped)}${" "}
-          <span class="muted">queue full — an ingest gap</span></dd>` : null}
-    </dl>
-    ${receiver ? null : html`<p class="hint">No <code>receiver</code> block in
-      <code>/api/stats</code>: the API is running without the process runner, so there are no
-      socket counters to show.</p>`}
-    <p class="hint">CPU, memory and disk are not measured by this appliance. Nothing here is
-      estimated.</p>
-  <//>`;
-}

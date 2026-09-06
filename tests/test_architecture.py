@@ -370,10 +370,6 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/destructive.js"),
     ("GET", "/app/dom.js"),
     ("GET", "/app/format.js"),
-    # v0.15.3: two static modules, in the alphabetical position `_UI_MODULES` gives them. Static
-    # asset order carries none of the matching semantics this baseline exists for — every one of
-    # these is a literal path with no template below it — but the list is pinned in full precisely
-    # so that a change here is a line in a diff rather than a silence.
     ("GET", "/app/icons.js"),
     ("GET", "/app/login.js"),
     ("GET", "/app/parameters.js"),
@@ -403,25 +399,20 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/timeline.js"),
     ("GET", "/app/views/tokens.js"),
     ("GET", "/app/views/users.js"),
-    # `views/parts/` — the four modules under `views/` that are not views (v0.15.3, #239).
     ("GET", "/app/views/parts/facts.js"),
     ("GET", "/app/views/parts/model.js"),
     ("GET", "/app/views/parts/retention.js"),
     ("GET", "/app/views/parts/verdict.js"),
     ("GET", "/app/views/parts/lifecycle.js"),
-    # v0.16.3: the three declaration controls, split out of the member row for the same
-    # module-graph reason `members.js` and `card.js` were (DECISIONS #281-#285).
     ("GET", "/app/views/parts/declare.js"),
     ("GET", "/app/views/parts/members.js"),
     ("GET", "/app/views/parts/why.js"),
     ("GET", "/app/views/parts/card.js"),
-    # v0.16.4: the judgement surface, split out of `card.js` when the state-dependent action
-    # surface took that file over the module-graph guard (DECISIONS #291, #293).
     ("GET", "/app/views/parts/judge.js"),
-    # v0.16.4: the controls that narrow the situation list (item 3, item 5).
+    ("GET", "/app/views/parts/bulkclear.js"),
     ("GET", "/app/views/parts/finder.js"),
-    # v0.16.4: the top bar's two disclosures — the bell and the health control (#288, #289).
     ("GET", "/app/notices.js"),
+    ("GET", "/app/health.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/d3.v7.min.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
@@ -442,26 +433,17 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/entities"),
     ("GET", "/api/entities/{ne_id}"),
     ("GET", "/api/state-clears"),
-    # v0.16.0: the five operator gestures — the three that assert something about a grouping, then
-    # the two that assert nothing about one, which is the seam the two modules are split on. Before
-    # the operate routes so the behaviour record drives them on a LIVE situation rather than after
-    # `close` has resolved it; ordering is free here because every path is a distinct literal.
     ("POST", "/api/situations/{sid}/move"),
     ("POST", "/api/situations/{sid}/merge"),
     ("POST", "/api/situations/{sid}/split"),
     ("POST", "/api/situations/{sid}/name"),
-    # v0.16.2: the bare promotion, registered in `routes/annotate.py` between the rename and the
-    # zombie clear because that is where it belongs on the modules' own seam — it asserts nothing
-    # about a grouping. A distinct literal below `GET /api/situations/{sid}`, so it shadows nothing
-    # (DECISIONS #273).
     ("POST", "/api/situations/{sid}/promote"),
     ("POST", "/api/alarms/{aid}/clear"),
+    ("POST", "/api/alarms/clear"),
     ("POST", "/api/entities/{ne_id}/reset"),
     ("POST", "/api/profiles/{ne_id}/reset"),
     ("POST", "/api/situations/{sid}/feedback"),
     ("POST", "/api/labels"),
-    # v0.16.3: the revert, registered beside the write it undoes. A distinct verb on a distinct
-    # literal prefix, so it shadows nothing and nothing shadows it (DECISIONS #284).
     ("DELETE", "/api/labels/{kind}/{target_id}"),
     ("POST", "/api/situations/{sid}/close"),
     ("GET", "/api/users"),
@@ -556,9 +538,12 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     _engine, _queue, app = await authutil.make_env(store)
     live = [entry for entry in route_order(app) if entry[1].startswith("/api")]
     assert live == API_ORDER_BASELINE
-    assert len(live) == 51, (
-        f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one "
-        f"and v0.16.3 exactly one"
+    assert len(live) == 52, (
+        f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
+        f"v0.16.3 exactly one and v0.16.5 exactly one — `POST /api/alarms/clear`, which is a "
+        f"literal on the `/api/alarms` prefix whose only other route is `/{{aid}}/clear`. The two "
+        f"cannot shadow each other: a concrete segment and a template segment differ in length "
+        f"before they differ in shape (DECISIONS #301)."
     )
 
 
@@ -946,8 +931,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
 #: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
 #: for the same module-graph reason `members.js` and `card.js` were.
-SRC_TREE_DIGEST = "2a815b1f8d323a198dbb50523b518f1df9cb49ab60f3731e6ffae79cfc8f2ee1"
-SRC_FILE_COUNT = 201
+SRC_TREE_DIGEST = "9ec81182489ae96681b6da9b62eb3e4b55a0369486408dee7894fad5bee61cdb"
+SRC_FILE_COUNT = 204
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1013,7 +998,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.4", "the version this release carries"
+    assert __version__ == "0.16.5", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

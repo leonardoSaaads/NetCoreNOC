@@ -590,14 +590,22 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # for the fourth time (DECISIONS #291, #293) — `app/notices.js` is the top bar's bell and
     # health control, which replaced four counter chips (#288, #289), and `views/parts/finder.js`
     # is the search, the tabs and the count cards, split out when they became one block. The /api
-    # surface is
-    # unchanged at 51, which is the property this pair of assertions is really for: a release
-    # about layout must not grow the server's contract.
-    assert len(served) == 108, f"the served surface moved: {len(served)} method/path pairs"
+    # surface was unchanged at 51 in that release, which is the property this pair of
+    # assertions is really for.
+    #
+    # v0.16.5: 108 -> 111, and this time **one of the three is an /api route**: `POST
+    # /api/alarms/clear`, the bulk hand-clear (DECISIONS #301). The /api surface moves 51 -> 52 and
+    # the assertion below moves with it, deliberately and once — a release that grows the server's
+    # contract must say so here rather than adjust a number quietly. The other two are static
+    # modules forced out by the module-graph guard for the fifth and sixth time: `app/health.js`
+    # (CPU, memory and storage, out of `notices.js` at 19 005 bytes) and
+    # `app/views/parts/bulkclear.js` (out of `judge.js` at 19 499).
+    assert len(served) == 111, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 51, (
+    assert len(api_pairs) == 52, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
+        f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
         f"v0.16.3 adds exactly one, `DELETE /api/labels/{{kind}}/{{target_id}}` — the revert, "
         f"without which a declaration is one nobody makes (DECISIONS #284) — and "
         f"v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else happened."
@@ -688,14 +696,22 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # for the fourth time (DECISIONS #291, #293) — `app/notices.js` is the top bar's bell and
     # health control, which replaced four counter chips (#288, #289), and `views/parts/finder.js`
     # is the search, the tabs and the count cards, split out when they became one block. The /api
-    # surface is
-    # unchanged at 51, which is the property this pair of assertions is really for: a release
-    # about layout must not grow the server's contract.
-    assert len(served) == 108, f"the served surface moved: {len(served)} method/path pairs"
+    # surface was unchanged at 51 in that release, which is the property this pair of
+    # assertions is really for.
+    #
+    # v0.16.5: 108 -> 111, and this time **one of the three is an /api route**: `POST
+    # /api/alarms/clear`, the bulk hand-clear (DECISIONS #301). The /api surface moves 51 -> 52 and
+    # the assertion below moves with it, deliberately and once — a release that grows the server's
+    # contract must say so here rather than adjust a number quietly. The other two are static
+    # modules forced out by the module-graph guard for the fifth and sixth time: `app/health.js`
+    # (CPU, memory and storage, out of `notices.js` at 19 005 bytes) and
+    # `app/views/parts/bulkclear.js` (out of `judge.js` at 19 499).
+    assert len(served) == 111, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 51, (
+    assert len(api_pairs) == 52, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
+        f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
         f"v0.16.3 adds exactly one, `DELETE /api/labels/{{kind}}/{{target_id}}` — the revert, "
         f"without which a declaration is one nobody makes (DECISIONS #284) — and "
         f"v0.13.0/v0.14.0/v0.15.3 added none at all. A change here means something else happened."
@@ -849,7 +865,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.16.3: 18 -> 19. Withdrawing a declaration names the same thing making one names, so it
     # takes the same posture — an out-of-scope NE 404s exactly as it does on the POST
     # (DECISIONS #284).
-    assert len(SCOPED) == 19, SCOPED
+    #
+    # v0.16.5: 19 -> 20. The bulk hand-clear names one situation and its capability is `alarm.clear`,
+    # which is below `admin`, so it is the same perimeter as the single-alarm form it batches.
+    assert len(SCOPED) == 20, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -880,6 +899,7 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/situations/{sid}/split"): {"alarm_ids": [1], "confidence": 0.9},
     ("POST", "/api/situations/{sid}/name"): {"name": "x"},
     ("POST", "/api/alarms/{aid}/clear"): {},
+    ("POST", "/api/alarms/clear"): {"situation_id": 1},
     ("POST", "/api/situations/{sid}/promote"): {},
     ("POST", "/api/users"): {"username": "x", "password": "x" * 14, "role": "viewer"},
     ("POST", "/api/users/{uid}/role"): {"role": "viewer"},
@@ -952,6 +972,13 @@ SCOPED_TARGETED = [
     ("POST", "/api/situations/{sid}/split"),
     ("POST", "/api/situations/{sid}/name"),
     ("POST", "/api/alarms/{aid}/clear"),
+    # v0.16.5: the bulk clear names its situation in the BODY and not in the path, which is the
+    # same shape `POST /api/labels` above already has — a route with no path parameter that is
+    # nonetheless targeted, because it acts on one named resource and must 404 on one the caller
+    # cannot see. The target is in the body precisely so the route cannot become an existence
+    # oracle: the server derives its whole working set from that situation's visible members
+    # rather than from a list of ids a caller could probe with (DECISIONS #301).
+    ("POST", "/api/alarms/clear"),
     # v0.16.2: the bare promotion names one situation, so it is targeted for the same reason.
     ("POST", "/api/situations/{sid}/promote"),
 ]
@@ -986,6 +1013,8 @@ async def test_scoped_routes_404_an_out_of_scope_target(
         body = {"alarm_ids": [out_of_scope_ne["alarm"]], "confidence": 0.9}
     if path == "/api/situations/{sid}/merge":
         body = {"from_situation_id": out_of_scope_ne["situation"], "confidence": 0.9}
+    if path == "/api/alarms/clear":
+        body = {"situation_id": out_of_scope_ne["situation"]}
     concrete = (
         path.replace("{sid}", str(out_of_scope_ne["situation"]))
         .replace("{ne_id}", str(out_of_scope_ne["ne"]))

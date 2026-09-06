@@ -3201,3 +3201,80 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: 4 sites repaired, 20 element-to-element sites left alone, 0 false positives. The
   control is `views/parts/model.js:136`, whose template shape is identical and whose rendering is
   correct because the next span's own text starts with a space.
+
+# v0.16.5 — the shell, corrected
+
+## 300. CPU, memory and storage are three stdlib reads, not a dependency (v0.16.5)
+
+- **Decision**: `engine/operate/resources.py` samples the host directly — `/proc/stat` differenced
+  for CPU, the cgroup's `memory.current`/`memory.max` (falling back to `/proc/meminfo`) for memory,
+  `os.statvfs` on the database's directory for storage — and `/api/stats` carries the current
+  reading plus three two-hour series.
+- **Reason**: #289 refused these on the ground that *"the alternative to showing four true numbers
+  is not 'read what is there', it is 'add a source'"*. **That premise was wrong and this release
+  measured it**: all three are readable with the standard library, so the runtime dependency count
+  is still **five** and there is still no `psutil`.
+- **cgroup first**: v0.16.4's compose file caps the container at 512 MiB (#298). Inside it,
+  `/proc/meminfo` reports the **host's** 16 GiB, so a panel reading it would report 15 GiB free
+  while the kernel prepares to OOM-kill the process. Each reading names its source.
+- **What #289 keeps**: never invent a number. A metric the host will not give up renders `—` and
+  says "not measured", never `0%`, and a gap in a series **breaks** the sparkline rather than being
+  drawn through. Both are guarded by DOM tests over a fixture derived from the sampler itself.
+- **Trade-off**: a supervised 30-second loop and a 240-sample ring per metric — about 6 kB of
+  process memory, lost on restart. A durable series needs a table and a migration, and a two-hour
+  window does not justify one.
+- **Measured**: panel text **320 characters → 157**; 49 words of qualifier prose → three meters.
+
+## 301. The bulk clear names its set by situation, and stays in the alarm namespace (v0.16.5)
+
+- **Decision**: `POST /api/alarms/clear` taking `{situation_id, only_ids?}`. It clears every active
+  member of that situation the caller can see, writes one `alarm.clear` row per alarm exactly as
+  the single-alarm route does, and one `alarm.clear_all` row for the batch.
+- **Why not a list of alarm ids**: it would be an **existence oracle**. A scoped editor could post
+  ids they cannot see and read the answer off the count. Deriving the set from
+  `situation_members` minus `hidden_member_ids` means the route can only ever act on — or count —
+  rows the caller was already served. `only_ids` **intersects** and can never widen.
+- **Why not `/api/situations/{sid}/clear`**: `annotate.clear_alarm` already states the rule — a
+  clear is a fact about an *alarm's lifecycle*, and the correlation namespace would express, as a
+  URL, the misreading `PREREGISTRATION-0.16.0.md` §1 exists to prevent. Bulk does not change what
+  the gesture means, so it does not get to change where it lives.
+- **Same capability, `alarm.clear`**: a second one would let an operator hold one and not the other
+  over an act with one meaning. `manual_clear` stays outside `ASSERTING_KINDS`, so no number of
+  these reaches a training row.
+- **Measured**: the largest corpus situation holds **1 051** members; the client loop this replaces
+  would have been 1 051 requests and 1 051 transactions, with no defined state on a partial failure.
+
+## 302. The tick and the target are separate sizes (v0.16.5)
+
+- **Decision**: the `input` keeps `--tap` (28 px) on both edges and is the hit area; `::before`
+  draws the box at `--glyph`, which is **18 px where there is a mouse** and the full 28 px where
+  there is not.
+- **Reason**: F103's repair set `width`/`height` to `--tap`, which fixed the target and overshot
+  the glyph — 28 px of drawn checkbox in a 39 px row. Shrinking the input would reopen F103.
+- **The attempt that failed, kept because it looks right**: `box-sizing: content-box` with
+  `width: 18px; padding: 5px` should give an 18 px glyph in a 28 px border box. Chromium measured
+  **`padding: 0px`, hit area 18×28** — a native control at `appearance: auto` is laid out by the
+  engine's widget code and **discards padding**. Hence `appearance: none` and a drawn box.
+- **Not a `data:` URI for the tick**: `img-src 'self'` in this appliance's CSP does not permit one,
+  and a silently blocked background is a checkbox with no tick. Two rotated borders instead.
+- **Measured**: hit area **28×28 at every width and both pointer types**, corner clicks toggle,
+  drawn glyph 18 px on a mouse; row height 43 px → 39 px.
+
+## 303. The health control opens on hover; the bell does not (v0.16.5)
+
+- **Decision**: hover opens the health panel behind `(hover: hover) and (pointer: fine)`, with a
+  120 ms open delay and a 260 ms close delay. The bell opens on click only. Both still open on
+  click at every width, and a click **pins** the panel against the pointer wandering off.
+- **Reason**: health is a glance — the operator wants to confirm the appliance is fine and carry
+  on, and a click for that is a tax on the common case. A warning is something they will act on,
+  and opening that panel by crossing it while reading the work area is an interruption nobody asked
+  for.
+- **Why the media query is not optional**: a touch browser synthesises a hover from the tap that is
+  also the click, so without it the panel opens on hover and the click closes it again — a control
+  that visibly does nothing.
+- **Why both delays**: 120 ms so a pointer crossing the bar does not fling panels open; 260 ms
+  because reaching the panel means leaving the 28 px opener, and a panel that vanishes on the way
+  cannot be read.
+- **Measured**: opens on hover, survives the pointer entering the panel, closes on leave, the bell
+  ignores hover, a pinned panel survives leaving, Escape closes it, and hover works again after —
+  eleven assertions in a driven browser.
