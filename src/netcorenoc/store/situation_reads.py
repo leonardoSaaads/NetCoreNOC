@@ -290,7 +290,9 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         if head is None:
             return None
         cur = await self.conn.execute(
-            "SELECT a.id, a.instance, a.status, a.is_flapping, a.count, a.first_seen, "
+            # nosec B608 - three fixed literals from `_label_join`, chosen by a schema probe;
+            # the only bound value is the situation id.
+            "SELECT a.id, a.instance, a.status, a.is_flapping, a.count, a.first_seen, "  # nosec B608
             "a.last_seen, a.severity, a.severity_rank, a.ne_id, d.ip AS device_ip, d.vendor AS "
             "device_vendor, dl.label AS device_label, c.oid AS class_oid, "
             "c.id AS class_id, cl.label AS class_label, sl.label AS class_severity_label "

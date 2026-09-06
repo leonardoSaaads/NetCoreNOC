@@ -121,7 +121,44 @@ column and the touch floor are one decision.
 
 **Also open for v0.16.3**: F99 (an integer severity rank above 4 has no place on the five bands)
 and F100 (48 alarm classes on the corpus, 2 with a name, 46 with a vendor — so an operator reads a
-raw OID 96 % of the time while the vendor sits one column away).
+raw OID 96 % of the time while the vendor sits one column away). **Both are closed in v0.16.3.**
+
+## What v0.16.3 measured, and what it deferred
+
+**The number the release exists to move**, re-measured on the same ten-scenario replay after the
+change: of 48 classes, the fraction whose class column is a **bare OID and nothing else** fell from
+**46/48 (95.8 %) to 0/48**, and the fraction carrying a **name** is unchanged at **2/48 (4.2 %)**.
+Both halves are reported deliberately. The vendor is a qualifier and not a name, so what moved is
+that an unnamed class now reads `Huawei · 1.3.6.1.4.1.2011.5.104.1` instead of the OID alone; the
+46 missing *names* arrive when an operator declares them, and the release's contribution is that
+they now can. A report of the first number alone would be Appendix B's triumphant one.
+
+**Severity is still 0 of 2 252 on the corpus**, and that is expected: `severity.py`'s two gates are
+byte-unchanged, a declaration is a separate source rather than a lowered threshold, and no
+declaration is made during a replay. It is also what makes the disagreement prompt rare by
+construction — nothing on this corpus can reach it.
+
+### Deferred by v0.16.3, with the reason
+
+* **MIB loading.** Parsing an operator-supplied MIB is a file parser, a validation surface and an
+  attack surface, and the manual declaration delivers the same operational value at a hundredth of
+  the risk. It becomes the *automation* of a gesture that already exists when there is demand for
+  it — which is a better position to design it from than a blank page. **Not scheduled**: it needs
+  a user asking for it, and there are none yet.
+* **Severity per class + varbind.** `0016` put `label.qualifier` in the primary key so that this is
+  a read rule rather than a second migration (DECISIONS #283). It waits on evidence that one class
+  genuinely carries two severities on one NE, which nothing has yet produced.
+* **F105** — `device.vendor` and `ne.vendor` are never written by anything (25 rows, 0 vendors,
+  after 2 252 alarms) and two screens render them, one with a tooltip describing a different
+  table's column. Deleting a rendered column belongs with **v0.16.4**, where the graph's tables and
+  the entity card are one decision; inferring an NE vendor from the enterprise arcs of the traps it
+  sends is a correlation question and belongs later still.
+* **The member table's shape.** Working inside `members.js` made three problems obvious and none of
+  them is this release's: the row is now nine columns wide for an editor and scrolls horizontally
+  on a phone; the three declaration controls sit in three separate columns rather than in one
+  actions cell; and the mark checkbox is still 13 × 13 px (F103). All three are **v0.16.4**, where
+  the row height, the checkbox column, the actions cell and the touch floor are one decision rather
+  than four.
 
 ## The claims
 

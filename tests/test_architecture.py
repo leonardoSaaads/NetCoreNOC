@@ -932,8 +932,15 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: 415 lines against the 400-line guard (DECISIONS #274), and `api/routes/__init__.py`, which is
 #: the package the twelve `routes_*.py` modules moved into (DECISIONS #278). **No migration**: the
 #: idle-but-active situation is derived, so `0015` is still the head of the schema.
-SRC_TREE_DIGEST = "bed72c84eff30badccdd39f35ce2a9404657a41aebad0e0f38b876c17262b0b1"
-SRC_FILE_COUNT = 195
+#: v0.16.3: 195 -> 198 files. Three added, none removed, none moved:
+#: `migrations/0016_operator_declaration.sql` (the operator's declaration, and the two stored
+#: derivations it drops), `store/situation_reads.py` — `read_models.py`'s one cohesive cluster
+#: after the release pushed that module to 508 lines against the 400-line guard, taking both of
+#: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
+#: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
+#: for the same module-graph reason `members.js` and `card.js` were.
+SRC_TREE_DIGEST = "501d2838a03d97de9aebbefd6d3ec98af963ec021103535e8994aca90d062e92"
+SRC_FILE_COUNT = 198
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -999,7 +1006,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.2", "the version this release carries"
+    assert __version__ == "0.16.3", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

@@ -30,7 +30,8 @@ class StateClearMixin(StoreBase):
     async def list_state_clears(self) -> list[dict[str, Any]]:
         """Learned state fields joined to their class, for inspection (which OID, which values)."""
         cur = await self.conn.execute(
-            "SELECT s.class_id, s.varbind_oid, s.clear_value, s.raise_value, s.learned_at, "
+            # nosec B608 - one fixed literal from `_label_join`, chosen by a schema probe.
+            "SELECT s.class_id, s.varbind_oid, s.clear_value, s.raise_value, s.learned_at, "  # nosec B608
             "cl.label AS class_label, c.oid AS class_oid FROM state_clear s "
             "JOIN alarm_class c ON c.id=s.class_id "
             + self._label_join("cl", "class", "c.id")

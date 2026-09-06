@@ -28,7 +28,9 @@ class EntityMixin(StoreBase):
         constraint — `0016` moves those rows across by ADDRESS (DECISIONS #281).
         """
         cur = await self.conn.execute(
-            "SELECT n.id, n.ip, n.vendor, n.first_seen, n.last_seen, l.label FROM ne n "
+            # nosec B608 - `_label_join` returns one of two fixed literals chosen by a schema
+            # probe; every value in this statement is a bound parameter or a column name.
+            "SELECT n.id, n.ip, n.vendor, n.first_seen, n.last_seen, l.label FROM ne n "  # nosec B608
             # On a pre-`0016` schema the equipment label is keyed on `device.id`, and there is no
             # device alias here to key it through — which is not a gap: on that schema this screen
             # never showed a label at all, and reproducing that exactly is what the frozen-schema

@@ -323,6 +323,12 @@ async def _targets(store: Store) -> dict[str, str]:
         out["aid"] = str(min(members))
     if nes:
         out["ne_id"] = str(min(int(n["id"]) for n in nes))
+        # v0.16.3: `DELETE /api/labels/{kind}/{target_id}` — the revert. Both parameters are
+        # filled, because a route the record cannot address is a route the record does not cover,
+        # and saying so in a `not-driven` line (F91) is the fallback rather than the goal. `ne` is
+        # the scoped kind, so it is the one whose posture is worth recording.
+        out["kind"] = "ne"
+        out["target_id"] = out["ne_id"]
     # The viewer account, never the acting principal except on the viewer pass — where every route
     # that names it refuses before the handler. Picking the highest id instead would have the admin
     # pass delete the admin it is authenticated as, midway through its own walk.
@@ -383,7 +389,11 @@ REQUEST_BODIES: dict[tuple[str, str], dict[str, Any]] = {
     },
     ("POST", "/api/situations/{sid}/feedback"): {"verdict": "confirm"},
     ("POST", "/api/situations/{sid}/close"): {"verdict": "confirm"},
-    ("POST", "/api/labels"): {"kind": "device", "id": 1, "label": "harness"},
+    # v0.16.3: `kind="ne"`, and the id is filled from the seed by `dynamic_body` below
+    # rather than pinned at 1 — a literal made this route 404 the moment the two id
+    # sequences stopped agreeing, and the record would then pin the perimeter rather
+    # than the handler (DECISIONS #281).
+    ("POST", "/api/labels"): {"kind": "ne", "id": 1, "label": "harness"},
     ("POST", "/api/scorer/preview"): dict(_SCORER_PARAMS),
     ("POST", "/api/scorer"): dict(_SCORER_PARAMS),
     ("POST", "/api/scorer/rollback"): {"config_id": 1},
@@ -409,6 +419,11 @@ def dynamic_body(path: str, targets: dict[str, str]) -> dict[str, Any] | None:
         return {"alarm_ids": [int(aid)], "confidence": 0.8}
     if path == "/api/situations/{sid}/name":
         return {"name": "harness"}
+    # v0.16.3: the declaration, against the NE the seed actually holds. Without this the record
+    # pinned a 422 for the release's own central route, which is the perimeter and not the
+    # handler — F91's lesson applied to a body rather than to a path parameter.
+    if path == "/api/labels" and targets.get("ne_id"):
+        return {"kind": "ne", "id": int(targets["ne_id"]), "label": "harness"}
     return None
 
 

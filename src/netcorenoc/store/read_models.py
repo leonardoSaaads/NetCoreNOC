@@ -44,7 +44,9 @@ class ReadModelsMixin(StoreBase):
 
     async def graph_snapshot(self, min_edge_n: float) -> dict[str, Any]:
         cur = await self.conn.execute(
-            "SELECT d.id, d.ip, d.vendor, l.label, "
+            # nosec B608 - `_label_join` returns one of two fixed literals chosen by a schema
+            # probe; every value in this statement is a bound parameter or a column name.
+            "SELECT d.id, d.ip, d.vendor, l.label, "  # nosec B608
             "(SELECT COUNT(*) FROM alarm a WHERE a.device_id=d.id AND a.status='active') "
             "AS active_alarms FROM device d "
             # v0.16.3: through the ADDRESS, which is what `device` and `ne` genuinely share — both
@@ -69,7 +71,8 @@ class ReadModelsMixin(StoreBase):
         operator's declaration for the class, the same row `situation_detail` reads.
         """
         cur = await self.conn.execute(
-            "SELECT c.id, c.oid, l.label, s.label AS severity FROM alarm_class c "
+            # nosec B608 - two fixed literals from `_label_join`, chosen by a schema probe.
+            "SELECT c.id, c.oid, l.label, s.label AS severity FROM alarm_class c "  # nosec B608
             + self._label_join("l", "class", "c.id")
             + self._label_join("s", "severity", "c.id")
             + "ORDER BY c.id"
@@ -129,7 +132,8 @@ class ReadModelsMixin(StoreBase):
         # column (`0016`), and the precedence had been written out twice — here and in
         # `list_state_clears` — which is one copy too many for a rule (DECISIONS #280).
         select = (
-            "SELECT a.first_seen, a.cleared_at, a.ne_id, COALESCE(dl.label, d.ip) AS device, "
+            # nosec B608 - two fixed literals from `_label_join`, chosen by a schema probe.
+            "SELECT a.first_seen, a.cleared_at, a.ne_id, COALESCE(dl.label, d.ip) AS device, "  # nosec B608
             "cl.label AS class_label, c.oid AS class_oid FROM alarm a "
             "JOIN device d ON d.id=a.device_id JOIN alarm_class c ON c.id=a.class_id "
             + self._label_join("dl", "ne", "a.ne_id", legacy_target="d.id")

@@ -9,8 +9,113 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-seven rows, two ask for an
-action, eight ask you to read a paragraph, and seventeen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of twenty-nine rows, two ask for an
+action, ten ask you to read a paragraph, and seventeen are start-the-new-binary.
+
+## [0.16.3] - 2026-09-06 — "the operator's declaration"
+
+The appliance learns everything by itself and had nowhere for an operator to say what they already
+knew. Three complaints came from three screens — *"I renamed the host and nothing changed in
+Entities"*, *"what is Alarm Classes for if it changes nothing?"*, *"where is the severity?"* — and
+they are **one gap**. This release builds the place, once, and applies it three times.
+
+```
+the class column, on a real corpus       before                    after
+  a bare OID and nothing else            46 / 48  (95.8 %)         0 / 48   (0 %)
+  a vendor beside the OID                 0 / 48                  46 / 48   (95.8 %)
+  a NAME                                  2 / 48   (4.2 %)         2 / 48   (4.2 %)
+    the third row is the honest one: a vendor is a qualifier, not a name. What moved is that an
+    unnamed class reads `Huawei · 1.3.6.1.4.1.2011.5.104.1` instead of the OID alone. The 46
+    missing NAMES arrive when an operator declares them, and the release is that they now can.
+
+the naming gap, both halves              before                    after
+  a name on the Situations row           resolved                  resolved
+  the same name on Entities              NEVER — no join at all    resolved
+  the same name on the Network Graph     resolved                  resolved
+    one POST, three screens, demonstrated. `list_ne` selected five columns and joined no label
+    while `entities.js` rendered `${ne.label || ne.ip}`, so the fallback was permanent.
+
+device.id == ne.id       25 / 25 addresses on a populated corpus database — and a COINCIDENCE:
+                         no foreign key, no shared key, two AUTOINCREMENT sequences. `0016`
+                         migrates every label BY ADDRESS, so the repair does not spend it (#281)
+alarm_class.name         == trap_name(oid) for 48/48; .vendor == vendor_of(oid) for 48/48.
+                         Two stored derivations, dropped: `0008`'s own rule settles which of two
+                         class-name homes loses, by measurement rather than by age (#280)
+severity, learned          0 of 2 252     unchanged, and expected: the gates are byte-identical
+label.kind        device|class -> ne|class|severity, with `qualifier` in the primary key so that
+                         class + varbind is a read rule later, not a second migration (#283)
+capabilities             35 -> 35        no new capability; a declaration is `label.write` (#260)
+migrations             0015 -> 0016      one, additive, forward-only; data intact, chain verifying
+/api surface             50 -> 51        DELETE /api/labels/{kind}/{target_id} — the revert (#284)
+runtime dependencies      5 -> 5         no npm, no build step, no MIB parser, CSP unchanged
+make eval                byte-identical: c2e8a0ce…8b9b6f26
+make qa                  1 786 passed (was 1 759); 44 DOM (was 35); mypy 237 files
+```
+
+### The three declarations
+
+* **Which equipment this is.** `label.kind='ne'`, and `device` is **gone rather than aliased**: it
+  named `device.id` while the screen built to describe that element read `ne`.
+* **What this trap means.** One home for the declared name and one **call** for the derived one.
+  Where nothing is declared, the row shows the vendor the appliance had already resolved — beside
+  the OID, never in the name's slot, because a vendor is not a name (#282).
+* **How serious it is.** Per alarm class, from the five bundled severity tokens. **The learned value
+  is never overwritten**: precedence is decided at read time, the pill marks which value it is
+  showing and names the other in its tooltip, and *Clear* puts the appliance's own back (#284).
+
+All three are made from the **member row**, where the operator already is. The naming control
+leaves the Network Graph, which is where it had ended up only because there was nowhere else.
+
+### One interruption, and it is rare by construction
+
+A confirmation appears only when the appliance's severity is **confirmed** — 200 observations and
+50 closed alarms whose lifetimes bore out the ordering — **and** the declaration is two or more
+steps away on the 0–4 scale. **A cancel writes nothing.** The brief read a declined disagreement as
+*"kept, and recorded"*; a confirmation that saves regardless is a notification wearing a dialog's
+clothes, and the second one an operator meets is dismissed unread (#285). The disagreement itself is
+recorded server-side on every declaration that lands, and consumed by nothing: no declaration
+produces a training row and `PREREGISTRATION-0.16.0.md` §2 is unamended (#286).
+
+It is also an element on the page rather than `globalThis.confirm`. The first draft reached for the
+native dialog and `test_security_ui.py` refused it — rightly: a native dialog is invisible to the
+DOM harness, which is how eight consecutive releases shipped a console defect no test could see.
+
+### Fixed
+
+* **F99** — an integer severity rank outside the vocabulary rendered as one identical pill, so a
+  vendor numbering severity 10/20/30 lost an ordering the appliance had validated against observed
+  lifetimes. Placed by **order within the field's set**, never by magnitude: order is all
+  `confirm_ordinality` established. *(F99 as issued says they render as `low`; v0.16.2's pill had
+  already moved them to UNKNOWN. The entry is corrected — the defect survives either reading.)*
+* **F100** — closed by the two halves above, and reported as two numbers rather than one.
+* **F104** — a name an operator typed carried a raw address past the field-shaping axis. A viewer
+  received `device_ip: "127.0.0.0/24"` and `device_label: "core-sw at 127.0.0.10"` in one body, on
+  two endpoints; `operator_name` leaked identically. Commit `8609962`'s defect in the declared
+  register, on a release that puts declared text on four screens. **And the half the repair itself
+  creates**: once a declaration is coarsened on the way out, matching the stored column in the
+  search would hand the address straight back, so the declared columns are gated on what the needle
+  contains (#287).
+* **F106**, found by this release's own probe — `/api/entities` handed a viewer
+  `ip: "127.0.0.0/24"` and `entities[0].key: "127.0.0.2"` in the same object, because `0003` defines
+  a level-0 entity as the NE itself with `key = its IP`.
+
+### Issued and left open
+
+* **F105** — `device.vendor` and `ne.vendor` are never written by anything (25 rows, 0 vendors,
+  after 2 252 alarms) and two screens render them, one with a tooltip describing a different
+  table's column. Deleting a rendered column belongs with v0.16.4's shell.
+
+### Removed
+
+`alarm_class.name` and `alarm_class.vendor`; `kind='device'` from the label domain and from every
+reader; the rename control on the Network Graph; two copies of the class-name precedence that had
+been written out as `COALESCE(cl.label, c.name, c.oid)`; and `read_models.py`'s situation cluster,
+which is `store/situation_reads.py` — split at the seam the import graph shows, taking both
+sibling-inheritance edges with it and leaving a plain `StoreBase` mixin behind.
+
+**Deliberately not built:** MIB loading. A file parser, a validation surface and an attack surface,
+against a manual declaration that delivers the same operational value at a hundredth of the risk.
+It becomes the automation of a gesture that now exists, when someone asks for it.
 
 ## [0.16.2] - 2026-09-05 — "a situation with a live alarm stops disappearing"
 
