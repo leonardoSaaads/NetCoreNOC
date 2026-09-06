@@ -866,8 +866,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # takes the same posture — an out-of-scope NE 404s exactly as it does on the POST
     # (DECISIONS #284).
     #
-    # v0.16.5: 19 -> 20. The bulk hand-clear names one situation and its capability is `alarm.clear`,
-    # which is below `admin`, so it is the same perimeter as the single-alarm form it batches.
+    # v0.16.5: 19 -> 20. The bulk hand-clear names one situation and its capability,
+    # `alarm.clear`, is below `admin` — the same perimeter as the single-alarm form it batches.
     assert len(SCOPED) == 20, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 

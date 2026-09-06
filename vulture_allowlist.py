@@ -169,6 +169,7 @@ propose_promotion  # unused function (netcorenoc/api/routes_promotion.py)
 # `Store` method the routes call, and vulture matches by name — so listing them would silence the
 # store method too, which is the failure mode the v0.9.1 block at line 110 records.
 clear_alarm  # unused function (netcorenoc/api/routes_annotate.py)
+clear_alarms  # the bulk form, v0.16.5 (netcorenoc/api/routes/annotate.py)
 name_situation  # unused function (netcorenoc/api/routes_annotate.py)
 split_situation  # unused function (netcorenoc/api/routes_lifecycle.py)
 # `Store.event_members` is the ordered-snapshot accessor, the exact counterpart of
