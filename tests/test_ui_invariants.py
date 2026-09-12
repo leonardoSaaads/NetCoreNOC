@@ -3566,3 +3566,129 @@ async def test_the_evidence_screen_records_what_nothing_measures(
     # to add such a chart is the one that needs to read it (prime directive 4).
     assert "0.01" in dump, "the shadow sampler's rate is not named anywhere on the screen"
     assert "sample_rate" in dump, "the column a rate would have to be read from is not named"
+
+
+def test_the_console_may_only_chart_a_registered_quantity() -> None:
+    """**Prime directive 2, and it had no guard until v0.16.6's own injection found that out.**
+
+    `0009`: *"no metric that decides promotion may be computed against `incumbent_linked`"*, and
+    `PREREGISTRATION-0.16.0.md` §1 extends that to any signal that is not an assertion about a
+    grouping. Seven releases of guards enforce it in the store, the engine and the pre-registration
+    documents — and **none of them looked at the console**, because until this release the console
+    charted nothing.
+
+    Found by execution: an injection that added
+    `["incumbent_linked", "Agreement with the champion", "higher is better"]` to the Evidence
+    screen's quantity list came back **green**. A chart titled *"agreement with the champion"* is
+    the prohibition wearing a new shape — a comparison basis doing the work of a measurement — and
+    a reader who saw it would treat it as a score.
+
+    So the set of keys a chart may plot is asserted **equal** to the server's own
+    `promotion.QUANTITY_NAMES`. Equal in both directions: a fifth key of any name fails, and a
+    missing one fails too, which is the same reason `views/parts/verdict.js` transcribes the four
+    rather than iterating whatever the document happens to hold.
+    """
+    import netcorenoc
+    from netcorenoc.engine.evaluation.promotion import QUANTITY_NAMES
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    evidence = (ui / "views" / "parts" / "evidence.js").read_text(encoding="utf-8")
+    block = re.search(r"const QUANTITIES = \[(.*?)\];", evidence, re.S)
+    assert block is not None, "the Evidence screen no longer declares its quantity list"
+    charted = re.findall(r'\["([a-z_]+)",', block.group(1))
+    assert set(charted) == set(QUANTITY_NAMES), (
+        "the console charts a quantity set that is not the registered one.\n"
+        f"  charted, not registered: {sorted(set(charted) - set(QUANTITY_NAMES))}\n"
+        f"  registered, not charted: {sorted(set(QUANTITY_NAMES) - set(charted))}\n"
+        "`PREREGISTRATION-0.10.0.md` §5 registers exactly four and refuses every composite; a "
+        "fifth key can only be a quantity no plan registered or a comparison basis worn as one."
+    )
+
+    # **And no console module READS `incumbent_linked`.**
+    #
+    # The distinction is the whole difficulty, and the first version of this guard got it wrong: it
+    # matched the string anywhere outside a comment and fired on `views/parts/evidence.js`, which
+    # **renders the prohibition to the operator** — "`incumbent_linked` is a comparison basis and
+    # never a target" is on the Evidence screen, inside a `<code>`. A guard that forbids explaining
+    # a rule is a guard that gets the explanation deleted.
+    #
+    # So the three forms that READ a column are matched instead: a property access, a string key,
+    # and an object key. Nothing else can get the value out of a payload, and the injection that
+    # exposed this guard's absence — `["incumbent_linked", "Agreement with the champion", …]` — is
+    # the second of the three.
+    reads = re.compile(
+        r"\.incumbent_linked\b"
+        r"|\[\s*[\"']incumbent_linked[\"']\s*\]"
+        r"|[\"']incumbent_linked[\"']\s*[,:]"
+        r"|\bincumbent_linked\s*:"
+    )
+    offenders: list[str] = []
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        stripped = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+        for match in reads.finditer(stripped):
+            lineno = stripped[: match.start()].count("\n") + 1
+            offenders.append(f"{path.relative_to(ui)}:{lineno}: {match.group(0)}")
+    assert not offenders, (
+        "these console modules READ `incumbent_linked`:\n  " + "\n  ".join(offenders) + "\n"
+        "It is a comparison basis and never a target (`0009`, `PREREGISTRATION-0.16.0.md` §1). "
+        "Naming it in rendered prose is fine and is what the Evidence screen does."
+    )
+
+
+def test_no_chart_is_drawn_from_a_sampled_table_without_naming_its_rate() -> None:
+    """**Prime directive 4, and it had no guard either — the same injection found it.**
+
+    *"Any distribution from `shadow_opinion` names its sample rate on screen."* An injection that
+    added a `Shadow score distribution` chart sourced `shadow_opinion.score`, with no rate anywhere
+    near it, came back **green**: the rule was in the directives and in this file's prose and in
+    nothing executable.
+
+    Two halves, because the honest state of this release is that **nothing sampled is drawn at
+    all**:
+
+    1. no console module may name `shadow_opinion` as a chart's `source` — there is no route
+       serving it, so a chart claiming to read it is either fabricating or is a route nobody
+       reviewed;
+    2. any caption that *does* speak of sampling must name a rate in the same breath.
+
+    The second half is what survives the day a later release adds the route, and it is written now
+    rather than then, because the release that adds the chart is the one least likely to remember.
+    """
+    import netcorenoc
+    from netcorenoc.engine.evaluation.shadow import DEFAULT_SAMPLE_RATE
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    sourced: list[str] = []
+    unrated: list[str] = []
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        bare = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+        for match in re.finditer(r'source=(?:\$\{)?[`"\']([^`"\']{0,300})', bare):
+            caption = match.group(1)
+            line = bare[: match.start()].count("\n") + 1
+            where = f"{path.relative_to(ui)}:{line}"
+            if "shadow_opinion" in caption:
+                sourced.append(f"{where}: {caption[:80]}")
+            if re.search(r"sampl", caption, re.I) and not re.search(r"rate|0\.0|%", caption):
+                unrated.append(f"{where}: {caption[:80]}")
+    assert not sourced, (
+        "a chart names `shadow_opinion` as its source:\n  " + "\n  ".join(sourced) + "\n"
+        "No route serves that table — `0009`'s posture is no read below admin, on any route, in "
+        "any format, ever — so a chart reading it is either inventing or is an unreviewed route."
+    )
+    assert not unrated, (
+        "a chart's source speaks of sampling without naming a rate:\n  " + "\n  ".join(unrated)
+    )
+
+    # The positive half: the screen where such a chart WOULD go states the rate and the column it
+    # would have to be read from, so a later release inherits the rule rather than the prose.
+    evidence = (ui / "views" / "parts" / "evidence.js").read_text(encoding="utf-8")
+    assert str(DEFAULT_SAMPLE_RATE) in evidence, (
+        f"the Evidence screen does not name the shadow sampler's default rate "
+        f"({DEFAULT_SAMPLE_RATE}); a later release adding a sampled chart would have no anchor."
+    )
+    assert "sample_rate" in evidence, (
+        "the Evidence screen does not name `challenger_run.sample_rate`, which is where a rate "
+        "must be READ from — the default is a fallback and a deployment may change it."
+    )
