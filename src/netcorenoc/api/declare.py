@@ -125,6 +125,9 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/destructive.js",
         "/app/dom.js",
         "/app/format.js",
+        # v0.16.6: the chart vocabulary and the arithmetic behind it (DECISIONS #305, #307).
+        "/app/charts.js",
+        "/app/chartdata.js",
         # v0.15.3: the drawn icon family (#236) and the shared password surface (V.2). Both are
         # fetched before any identity exists — the sign-in card imports them — so both are
         # unauthenticated by necessity as well as by claim.
@@ -177,6 +180,8 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # v0.16.4: the controls that narrow the situation list — the count cards, the search box
         # and the tabs — split out when they became a block (DECISIONS #288, item 3, item 5).
         "/app/views/parts/finder.js",
+        # v0.16.6: the Overview's five chart bands (DECISIONS #304).
+        "/app/views/parts/pulse.js",
         # v0.16.1: the console icon (F96). `img-src 'self'` forbids a data: URI.
         "/favicon.svg",
         # v0.16.4: the two disclosures in the top bar — the bell and the health control — split out

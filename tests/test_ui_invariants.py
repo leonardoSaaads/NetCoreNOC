@@ -998,6 +998,16 @@ async def test_the_health_tiles_render_what_api_stats_already_served(
     Every one of these was served on every poll and rendered nowhere, which is the whole finding:
     `receiver.denied` is the only evidence an operator has that their allowlist is refusing their
     own equipment, and it had never been on a screen.
+
+    **v0.16.6 changed where they are drawn and this test changed with it — the facts did not.**
+    They were seven `.stat` tiles under two headings; they are now one secondary line of
+    name/value pairs, which is the shape #300 chose for the health panel's own counters. So the
+    selector moved from `.stat-label`/`.stat-value` to `[data-metric]`, and every counter F68
+    found is still asserted to be on screen carrying the served number. `queue_depth` additionally
+    became a **chart**, so it is read from the chart's own printed reading — which `charts.js`
+    prints from the same array the plot was drawn from, so the two cannot disagree.
+
+    Draft §1.1's rule for a selector change: the assertion count may not go down. It went up.
     """
     result = domdriver.run_scenario(
         "health",
@@ -1026,13 +1036,31 @@ async def test_the_health_tiles_render_what_api_stats_already_served(
             ],
         },
     )
-    tiles = result["samples"][0]["tiles"]
-    assert tiles["queue depth"]["value"] == "7", tiles
-    assert tiles["received"]["value"] == "100", tiles
-    assert tiles["accepted"]["value"] == "90", tiles
-    assert tiles["denied"]["value"] == "6", tiles
-    assert tiles["quarantined"]["value"] == "3", tiles
-    assert tiles["dropped"]["value"] == "1", tiles
+    sample = result["samples"][0]
+    line = sample["line"]
+    # The five receiver counters, each read by its own name rather than out of a sentence.
+    assert line["received"]["value"] == "100", line
+    assert line["accepted"]["value"] == "90", line
+    assert line["denied"]["value"] == "6", line
+    assert line["quarantined"]["value"] == "3", line
+    assert line["dropped"]["value"] == "1", line
+    # `denied` renders as **"refused"**, which is the word an operator uses, while the
+    # machine-readable name stays the API's. Both are asserted, so a rename on either side of that
+    # pairing is visible rather than silent.
+    assert line["denied"]["name"] == "refused", line["denied"]
+    assert line["received"]["name"] == "received", line["received"]
+
+    # `queue_depth` is now a series, and the number the chart prints IS the latest value of the
+    # array it drew. A chart whose caption disagreed with its plot is the defect this release was
+    # most likely to ship, and this is the assertion that would see it.
+    assert "Queue depth" in sample["chartLatest"], sample["chartLatest"]
+    assert "7" in sample["chartLatest"]["Queue depth"], sample["chartLatest"]
+    # And the store really kept the reading, rather than the chart having been handed a literal.
+    # The ring already holds the boot poll's reading, so this asserts that it **accumulated**: the
+    # newest entry is the pushed 7, and it did not replace what was there.
+    ring = sample["ring"]["queue"]
+    assert ring[-1] == 7, ring
+    assert len(ring) >= 2, f"the ring replaced its contents instead of appending: {ring}"
 
 
 @dom_test
@@ -1074,22 +1102,22 @@ async def test_the_trap_rate_is_derived_from_two_samples_and_names_its_window(
     )
     first, second, third = result["samples"]
 
-    # One sample is not a rate, and the tile says so rather than showing a zero.
+    # One sample is not a rate, and the screen says so rather than showing a zero.
     assert first["rate"] is None, first
-    assert first["tiles"]["trap rate"]["value"] == "—", first["tiles"]
-    assert "waiting" in first["tiles"]["trap rate"]["note"], first["tiles"]
+    assert first["line"]["trap rate"]["value"] == "—", first["line"]
+    assert "waiting" in first["line"]["trap rate"]["note"], first["line"]
 
     # Two samples are. The window is stated on screen beside the figure.
     assert second["rate"] is not None, second
     assert second["rate"]["windowS"] > 0, second["rate"]
     expected = 60 / second["rate"]["windowS"]
     assert abs(second["rate"]["perSecond"] - expected) < 1e-9, second["rate"]
-    assert "over the last" in second["tiles"]["trap rate"]["note"], second["tiles"]
-    assert second["tiles"]["trap rate"]["value"].endswith("/s"), second["tiles"]
+    assert "over" in second["line"]["trap rate"]["note"], second["line"]
+    assert second["line"]["trap rate"]["value"].endswith("/s"), second["line"]
 
     # A counter that went BACKWARDS is an appliance that restarted, not a negative rate.
     assert third["rate"] is None, third
-    assert third["tiles"]["trap rate"]["value"] == "—", third["tiles"]
+    assert third["line"]["trap rate"]["value"] == "—", third["line"]
 
 
 # --- v0.15.3: "why these were grouped" answers the storm question (V.6, DECISIONS #245) ---------
@@ -2573,3 +2601,428 @@ def test_the_resources_fixture_matches_what_the_sampler_actually_produces() -> N
         f"A fixture that has drifted from the payload keeps passing while the panel it guards "
         f"renders nothing."
     )
+
+
+# --- v0.16.6: the chart primitives, and the rules they carry rather than describe --------------
+#
+# Every rule below is a property of `app/charts.js` and `app/chartdata.js` rather than of a caller,
+# and every one of them is demonstrated here rather than asserted in prose. That distinction is the
+# whole reason this release drew nothing with d3: a d3 chart produces no assertable DOM in this
+# harness, measured — descendants of `<svg #graph>` = 0 and of `<svg #timeline>` = 0 — while the
+# same rendered document carries 21 hand-written `<svg>` elements and 42 `<path>`s from `icons.js`.
+
+
+def _chartmath(routes: dict[str, Any], calls: dict[str, Any]) -> dict[str, Any]:
+    """Drive `app/chartdata.js`'s exports on the module instance the console imported."""
+    result = domdriver.run_scenario("chartmath", {"routes": routes["admin"], "calls": calls})
+    out: dict[str, Any] = result["out"]
+    return out
+
+
+@dom_test
+async def test_a_gap_breaks_the_line_rather_than_being_drawn_through(
+    routes: dict[str, Any],
+) -> None:
+    """**Prime directive 1, demonstrated on the arithmetic that implements it.**
+
+    A series holding a `null` must produce TWO runs, not one. One run would mean the polyline was
+    drawn straight across a period nobody measured, which is the single thing #289, #300 and #306
+    all forbid — and which renders perfectly, so no amount of looking at a chart would catch it.
+
+    The control is the same series **without** the hole: one run, same endpoints. Without it a test
+    that counted two runs could be passing because the splitter emits a run per point.
+    """
+    out = _chartmath(
+        routes,
+        {
+            "holed": {"fn": "runs", "args": [[10, 20, None, 40, 50], {"max": 100, "height": 24}]},
+            "whole": {"fn": "runs", "args": [[10, 20, 30, 40, 50], {"max": 100, "height": 24}]},
+            "all_null": {"fn": "runs", "args": [[None, None, None]]},
+            "alternating": {"fn": "runs", "args": [[10, None, 30, None, 50]]},
+        },
+    )
+    # The gap splits the line in two.
+    assert len(out["holed"]) == 2, out["holed"]
+    assert out["holed"][0] == ["0.0,21.6", "25.0,19.2"], out["holed"]
+    assert out["holed"][1] == ["75.0,14.4", "100.0,12.0"], out["holed"]
+
+    # THE CONTROL: the same five positions with nothing missing is one unbroken line.
+    assert len(out["whole"]) == 1, out["whole"]
+    assert len(out["whole"][0]) == 5, out["whole"]
+    assert out["whole"][0][0] == out["holed"][0][0], "the two series must start at the same point"
+    assert out["whole"][0][-1] == out["holed"][-1][-1], "and end at the same point"
+
+    # A series nothing could be read from draws nothing at all — never a flat line at zero.
+    assert out["all_null"] == [], out["all_null"]
+    # And a run of one point is not a line: alternating readings and holes draw nothing rather than
+    # a row of invisible one-point polylines.
+    assert out["alternating"] == [], out["alternating"]
+
+
+@dom_test
+async def test_the_axis_is_the_span_the_data_covers_and_never_the_window_requested(
+    routes: dict[str, Any],
+) -> None:
+    """**The structural reason a chart here cannot claim a range it does not hold.**
+
+    Measured on this project's own corpus during Phase 0: `GET /api/timeline?limit=1000` came back
+    **full — 1 000 marks spanning 15.6 seconds**. A chart titled "last 7 days" whose axis came from
+    the *request* would have been wrong on its first render, on the appliance this release was built
+    against. So `buckets` takes the stamps and nothing else: there is no window parameter to get
+    wrong.
+
+    The two cases below are that measurement in miniature — a 15-second page and a 7-day page — and
+    the assertion is that the reported span follows the data in both.
+    """
+    seven_days = 7 * 86400
+    out = _chartmath(
+        routes,
+        {
+            "storm": {
+                "fn": "buckets",
+                "args": [[1000.0, 1005.0, 1010.0, 1015.6], 24],
+                "probe": [1000.0, 1015.6, 999.0, 2000.0],
+            },
+            "week": {"fn": "buckets", "args": [[0.0, float(seven_days)], 24]},
+            "instant": {"fn": "buckets", "args": [[500.0, 500.0], 24]},
+            "empty": {"fn": "buckets", "args": [[], 24], "probe": [1.0]},
+        },
+    )
+    # A page that covers fifteen seconds reports fifteen seconds, whatever was asked for.
+    assert abs(out["storm"]["spanS"] - 15.6) < 1e-6, out["storm"]
+    # The same call over a week's worth reports the week — the function has no window to confuse.
+    assert abs(out["week"]["spanS"] - seven_days) < 1e-6, out["week"]
+    # **Never more buckets than readings.** Four stamps make four buckets and not twenty-four: a
+    # grid wider than its data draws twenty empty columns, which reads as twenty quiet minutes.
+    assert out["storm"]["n"] == 4, out["storm"]
+    assert out["week"]["n"] == 2, out["week"]
+    # A bucket index is clamped into the grid, and anything before the oldest datum is -1 rather
+    # than bucket 0: a mark outside the span must not be counted into the edge of it.
+    assert out["storm"]["index"] == [0, 3, -1, 3], out["storm"]["index"]
+    # One instant is one bucket, not a division by zero.
+    assert out["instant"]["n"] == 1, out["instant"]
+    assert out["instant"]["spanS"] == 0, out["instant"]
+    # Nothing at all is zero buckets and an index that answers -1, so a counting loop over it runs
+    # zero times instead of needing a guard at every call site.
+    assert out["empty"]["n"] == 0, out["empty"]
+    assert out["empty"]["index"] == [-1], out["empty"]
+    assert out["empty"]["labels"] == [], out["empty"]
+    # The tick resolution follows the span: seconds inside three minutes, a date beyond two days.
+    assert ":" in out["storm"]["labels"][0], out["storm"]["labels"]
+    assert out["storm"]["labels"][0].count(":") == 2, out["storm"]["labels"]
+    assert "-" in out["week"]["labels"][0], out["week"]["labels"]
+
+
+@dom_test
+async def test_a_counted_empty_bucket_is_zero_and_an_unmeasured_one_is_none(
+    routes: dict[str, Any],
+) -> None:
+    """A quiet estate and a sampler outage are different facts, and one type must not flatten them.
+
+    `tally` counts stamps into a grid built from those same stamps, so every bucket inside the span
+    was covered by the read that produced it — a bucket nothing fell into is **measured and empty**,
+    which is `0`. A `line` series' `null` means the opposite, and `runs` above is what proves the
+    two are drawn differently.
+    """
+    out = _chartmath(
+        routes,
+        {
+            "sparse": {
+                "fn": "buckets",
+                "args": [[0.0, 1.0, 2.0, 3.0], 4],
+                "tally": [0.0, 0.1, 3.0],
+            },
+        },
+    )
+    counted = out["sparse"]["tally"]
+    assert counted == [2, 0, 0, 1], counted
+    # The zeroes are zeroes, not holes: `None` here would make an idle minute look like an outage.
+    assert None not in counted, counted
+
+
+@dom_test
+async def test_the_axis_ceiling_is_a_number_a_reader_can_divide(routes: dict[str, Any]) -> None:
+    """`1 359` on an axis makes every chart's gridline mean something different.
+
+    Not decoration: a round ceiling is what lets two charts on one screen be compared, and pinning a
+    percentage to 100 is what stops a CPU chart rescaling to its own peak and drawing a busy minute
+    and an idle one as the same picture.
+    """
+    out = _chartmath(
+        routes,
+        {
+            name: {"fn": "ceiling", "args": [value]}
+            for name, value in {
+                "zero": 0,
+                "one": 1,
+                "small": 3,
+                "mid": 47,
+                "big": 1359,
+                "exact": 100,
+            }.items()
+        },
+    )
+    assert out["zero"] == 1, "an axis labelled 0 at both ends is not an axis"
+    assert out["one"] == 1
+    assert out["small"] == 5
+    assert out["mid"] == 50
+    assert out["big"] == 2000
+    assert out["exact"] == 100, "a value already round must not be rounded up a step"
+
+
+@dom_test
+async def test_an_unavailable_metric_renders_a_dash_and_the_words_not_measured(
+    routes: dict[str, Any],
+) -> None:
+    """**Prime directive 1's other half**, and #289's rule surviving the release that drew charts.
+
+    A host that will not give up a metric produces `None`, and the Overview must render `—` and the
+    words — never `0`, which reads as *idle*, and never an empty box, which reads as *broken*.
+
+    Driven through the live store with a `resources` block whose CPU is unreadable and whose memory
+    is fine, so the two branches are compared **in one render** rather than across two runs.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_resources(
+                        cpu_pct=None,
+                        cpu_series=[],
+                        mem_pct=41.0,
+                        mem_series=[40.0, 41.0, 41.0],
+                        disk_pct=88.4,
+                        disk_series=[88.0, 88.4],
+                    )
+                }
+            ],
+        },
+    )
+    unmeasured = " ".join(result["unmeasured"])
+    assert "not measured" in unmeasured, result["unmeasured"]
+    assert "CPU" in unmeasured, result["unmeasured"]
+    # The zero that must not appear. A chart drawn at 0% for an unreadable metric is the exact
+    # defect #289 exists to prevent, and it would look completely normal.
+    assert "0%" not in unmeasured, result["unmeasured"]
+    # And the readable ones DID draw, which is the control: an assertion that found no chart at all
+    # would pass the line above for the wrong reason.
+    drawn = [c for c in result["charts"] if c["polylines"]]
+    assert drawn, f"no chart drew a line at all: {result['charts']}"
+
+
+def _stats_with_resources(**resources: Any) -> dict[str, Any]:
+    """A `/api/stats` payload whose `resources` block is whatever a test needs it to be.
+
+    The key set is asserted against a real `ResourceSampler` by
+    `test_the_resources_fixture_matches_what_the_sampler_actually_produces`, so a field renamed in
+    `resources.py` fails there rather than quietly here.
+    """
+    block: dict[str, Any] = {
+        "cpu_pct": None,
+        "cpu_count": 4,
+        "cpu_series": [],
+        "mem_pct": None,
+        "mem_used": None,
+        "mem_total": None,
+        "mem_source": None,
+        "mem_series": [],
+        "disk_pct": None,
+        "disk_used": None,
+        "disk_total": None,
+        "disk_series": [],
+        "window_s": 7200,
+        "interval_s": 30.0,
+    }
+    block.update(resources)
+    return {
+        "devices": 4,
+        "classes": 17,
+        "active_alarms": 1868,
+        "open_situations": 2,
+        "new_situations": 2,
+        "working_situations": 0,
+        "quarantined": 0,
+        "ingest_gaps": [],
+        "open_ingest_gaps": [],
+        "latency_p95_s": 0.0123,
+        "queue_depth": 0,
+        "warnings": [],
+        "receiver": {
+            "received": 1976,
+            "accepted": 1976,
+            "denied": 0,
+            "quarantined": 0,
+            "dropped": 0,
+        },
+        "resources": block,
+    }
+
+
+@dom_test
+async def test_the_overview_lost_its_prose_and_gained_charts(routes: dict[str, Any]) -> None:
+    """**Decision 1's reading order, and the paragraphs the charts replaced.**
+
+    Measured before this release, in Chromium against a live appliance: eleven paragraphs, 172
+    words, eleven `.stat` tiles and **zero charts**. The maintainer's brief for this screen is
+    *"there is a lot of text and no UI/UX visualisation"*, so the charts are the deliverable and the
+    prose going is half of it.
+
+    The assertion is on **counts and order**, never on copy — this file's header forbids asserting a
+    string of copy, and it is right to: a heading's wording will change and the reading order is
+    what decision 1 actually decided.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_resources(
+                        cpu_pct=6.0,
+                        cpu_series=[5.0, 6.0, 6.0],
+                        mem_pct=41.0,
+                        mem_series=[40.0, 41.0],
+                        mem_total=536870912,
+                        mem_used=220200960,
+                        mem_source="cgroup",
+                        disk_pct=88.4,
+                        disk_series=[88.0, 88.4],
+                        disk_total=100,
+                        disk_used=88,
+                    )
+                }
+            ],
+        },
+    )
+    kinds = [c["kind"] for c in result["charts"]]
+    # All three types from decision 2 are on this one screen, which is what "reused everywhere"
+    # has to mean if the ceiling is to be worth anything.
+    assert "column" in kinds, kinds
+    assert "line" in kinds, kinds
+    assert "map" in kinds, kinds
+    assert "bars" in kinds, kinds
+    # Every chart names where its numbers came from. A chart whose source nobody can name is a
+    # chart nobody can check, which is why `charts.js` takes it as a required argument.
+    assert len(result["captions"]) >= len(result["charts"]), (result["captions"], kinds)
+    for caption in result["captions"]:
+        assert caption.strip(), result["captions"]
+    # The four host/queue line charts drew real geometry rather than an empty frame.
+    lines = [c for c in result["charts"] if c["kind"] == "line"]
+    assert any(c["polylines"] for c in lines), lines
+    # And the columns drew rects, each carrying a title so the exact count is one hover away.
+    cols = [c for c in result["charts"] if c["kind"] == "column"]
+    assert any(c["rects"] for c in cols), cols
+
+
+@dom_test
+async def test_every_chart_is_hand_written_and_therefore_visible_to_this_harness(
+    routes: dict[str, Any],
+) -> None:
+    """**Decision 4, demonstrated with the control that makes the zero mean something.**
+
+    The d3 screens produce **no** assertable geometry here — the double records the calls and
+    returns a proxy — while the charts this release added produce polylines, rects and cells in the
+    same document. Without the control, a test that found geometry on the Overview could not tell
+    "the harness can see hand-written SVG" from "the harness can see everything".
+    """
+    overview = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_resources(
+                        cpu_pct=6.0,
+                        cpu_series=[5.0, 6.0, 7.0],
+                    )
+                }
+            ],
+        },
+    )
+    drawn = sum(len(c["polylines"]) + len(c["rects"]) for c in overview["charts"])
+    assert drawn > 0, overview["charts"]
+
+    # THE CONTROL, in the same harness, same fixture, same run: the two d3 surfaces.
+    for fragment, svg_id in (("#/graph", "graph"), ("#/timeline", "timeline")):
+        d3_screen = domdriver.run_scenario(
+            "render", {"routes": routes["admin"], "navigate": fragment}
+        )
+        dump = d3_screen["dump"]
+        assert f"<svg #{svg_id}" in dump, f"{fragment} no longer renders its d3 canvas at all"
+        inside = _descendants_of(dump, f"<svg #{svg_id}")
+        assert inside == [], (
+            f"{fragment}'s d3 drawing produced assertable DOM, which would mean the harness's "
+            f"double has been replaced and decision 4's whole premise needs re-measuring: {inside}"
+        )
+        # The second control: hand-written SVG in that SAME document is visible. Without this the
+        # empty list above could mean the harness sees no SVG at all.
+        assert "<path" in dump, "icons.js's hand-written paths are missing from the dump"
+
+
+def _descendants_of(dump: str, needle: str) -> list[str]:
+    """Every line of a `dumpTree` dump nested under the first line containing `needle`."""
+    lines = dump.splitlines()
+    out: list[str] = []
+    for index, line in enumerate(lines):
+        if needle not in line:
+            continue
+        indent = len(line) - len(line.lstrip())
+        for following in lines[index + 1 :]:
+            if len(following) - len(following.lstrip()) <= indent:
+                break
+            out.append(following.strip())
+    return out
+
+
+@dom_test
+async def test_the_estate_map_is_a_pure_function_of_the_payload(routes: dict[str, Any]) -> None:
+    """**Decision 7's second reason**, and the one the force graph can never satisfy.
+
+    The graph's layout comes from a force simulation with drag and a re-centring force, so two
+    glances at an unchanged estate do not agree — which is why an operator cannot use it to compare
+    this morning with now. The map is sorted by load then by key, so the same payload draws the same
+    grid, and the same payload in a different ORDER draws the same grid too.
+
+    That second half is the assertion worth having: a map that merely rendered its input in order
+    would pass a repeat-render test and fail the day the API's node order changed.
+    """
+    nodes = [
+        {"id": 1, "ip": "127.0.0.1", "label": None, "active_alarms": 1359},
+        {"id": 2, "ip": "127.0.0.2", "label": None, "active_alarms": 4},
+        {"id": 3, "ip": "127.0.0.3", "label": None, "active_alarms": 4},
+        {"id": 4, "ip": "127.0.0.4", "label": None, "active_alarms": 501},
+    ]
+    stats = _stats_with_resources(cpu_pct=6.0, cpu_series=[6.0, 6.0])
+
+    def draw(order: list[dict[str, Any]]) -> list[str]:
+        result = domdriver.run_scenario(
+            "charts",
+            {
+                "routes": routes["admin"],
+                "navigate": "#/overview",
+                "updates": [{"stats": stats, "graph": {"nodes": order, "edges": []}}],
+            },
+        )
+        maps = [c for c in result["charts"] if c["kind"] == "map"]
+        assert maps, result["charts"]
+        return [cell["tip"] for cell in maps[0]["cells"]]
+
+    forward = draw(nodes)
+    shuffled = draw([nodes[2], nodes[0], nodes[3], nodes[1]])
+    assert forward == shuffled, (
+        "the estate map is not order-independent, so two glances at one estate can differ:\n"
+        f"  {forward}\n  {shuffled}"
+    )
+    # Sorted by load, busiest first, with the exact count in the cell's title — which is the fact
+    # the graph's saturating radius throws away: 1 359 and 501 both draw at 24.0 px there.
+    assert "1,359" in forward[0], forward
+    assert "501" in forward[1], forward
+    # Ties break on the key, so the order of two equally loaded elements is decided and not
+    # whatever the payload happened to hold.
+    assert "127.0.0.2" in forward[2], forward
+    assert "127.0.0.3" in forward[3], forward

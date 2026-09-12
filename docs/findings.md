@@ -1552,3 +1552,43 @@ Run every command below from the repository root with the virtualenv active.
   red by restoring `position: relative` on `.disclosure`, with the repaired tree as its control.
   Measured after: panel **338 px**, text box **291 px**, nothing clipped, no scrolling needed.
   Issued and closed by the release that was told to look at it.
+
+## F112 — F110's element-to-element exemption rests on a premise nothing checks, and generated content is invisible to `textContent`
+
+- **What**: `test_no_template_glues_a_word_to_the_inline_element_after_it` (F110's guard) exempts an
+  element-to-element pair across a newline, and states its ground: *"the container is a flex row
+  whose `gap` separates them — twenty such sites exist and nineteen are fine."* **Nothing checks
+  that the container is a flex row.** v0.16.6's own new markup is the twenty-first site and the
+  first where the premise is false: `<span class="metric-name">…</span>\n<b>…</b>` inside
+  `p.health-sub`, which is `display: block` with no `gap`. It rendered `p95 latency0.0000 s`.
+  **And the first two repairs were both wrong, which is the half worth keeping.** A
+  `margin-right` on the name fixed the pixels and left `textContent` glued — so a screen reader
+  announced `p95 latency0.0000 s` and an operator pasted that into a ticket. A `·` separator
+  written as `content: " · "` on `.metric + .metric::before` did the same one level up:
+  `0.0000 strap rate`, `0accepted 0refused`. **Generated content and margins are invisible to
+  `textContent`, so a fix that only moves pixels leaves the accessible text broken.**
+- **Reproduce**: against a live appliance with the v0.16.6 console, in a browser:
+  ```sh
+  # with the margin/pseudo-element form of the fix in place
+  node -e 'x' # no: this needs a layout engine. In Chromium's console, on #/overview:
+  #   document.querySelector('.health-sub').textContent
+  ```
+  The guard itself is reproducible without a browser:
+  ```sh
+  .venv/bin/python -m pytest -q tests/test_ui_invariants.py \
+      -k no_template_glues_a_word -p no:cacheprovider      # green over the defect
+  ```
+- **Measured**: the guard passed over all three forms. Rendered `textContent`, in order of repair:
+  `'p95 latency0.0000 strap rate0.00 /s…'` (no fix) → `'p95 latency 0.0000 strap rate 0.00 /s…'`
+  (margin: name fixed, separator still glued) → `'p95 latency 0.0000 s · trap rate 0.00 /s…'`
+  (explicit `${" "}` and a real `<span class="metric-sep">`). Found in a browser at 390 px; no
+  assertion in this repository saw any of it.
+- **Repair**: v0.16.6 fixes its own markup — the space and the separator are both real DOM nodes.
+  The **guard** is not repaired, and that is the open half: it should either check that an
+  element-to-element pair's container establishes a gap, or stop claiming that it does. A guard
+  whose exemption is justified by a property it never reads is F51's shape in a new place — the
+  scope of the exemption widens silently as markup is added.
+- **Disposition**: **open**, guard half. The markup half is fixed in v0.16.6. Deliberately not
+  fixed here: rewriting F110's guard to resolve a CSS container for every candidate pair is a
+  stylesheet-parsing problem, and directive 12 keeps a fix out of a feature release. The finding is
+  the record; a later release owns the guard.

@@ -370,6 +370,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/destructive.js"),
     ("GET", "/app/dom.js"),
     ("GET", "/app/format.js"),
+    ("GET", "/app/charts.js"),
+    ("GET", "/app/chartdata.js"),
     ("GET", "/app/icons.js"),
     ("GET", "/app/login.js"),
     ("GET", "/app/parameters.js"),
@@ -411,6 +413,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/judge.js"),
     ("GET", "/app/views/parts/bulkclear.js"),
     ("GET", "/app/views/parts/finder.js"),
+    ("GET", "/app/views/parts/pulse.js"),
     ("GET", "/app/notices.js"),
     ("GET", "/app/health.js"),
     ("GET", "/app/widgets.js"),
@@ -931,8 +934,15 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
 #: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
 #: for the same module-graph reason `members.js` and `card.js` were.
-SRC_TREE_DIGEST = "9ec81182489ae96681b6da9b62eb3e4b55a0369486408dee7894fad5bee61cdb"
-SRC_FILE_COUNT = 204
+#:
+#: v0.16.6: 204 -> 207 files. Three added, none removed, none moved, and **no migration** —
+#: `0016` is still the head of the schema. `ui/app/charts.js` (the three chart types),
+#: `ui/app/chartdata.js` (their arithmetic, separate because it is pure and is driven directly by
+#: tests with no DOM) and `ui/app/views/parts/pulse.js` (the Overview's five bands, out of
+#: `views/overview.js` at 22 552 bytes against the 17 579-byte module-graph guard). A release that
+#: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
+SRC_TREE_DIGEST = "4822021d569173981f58849d3fe871525a97f5ad4077539c79dac07d2cc384de"
+SRC_FILE_COUNT = 207
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

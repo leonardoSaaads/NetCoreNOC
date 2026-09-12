@@ -1,21 +1,48 @@
-/* The landing screen, shaped by what the principal can act on (draft §5).
+/* The landing screen. **Five questions, in the order an operator asks them** (DECISIONS #304).
  *
- * ## Live versus on demand (Part III, closing draft §12.4)
+ * ## What this screen is for, in the maintainer's words
  *
- * The three live figures — stats, graph, situations — are already in the store because the update
- * stream writes them; reading them costs this screen nothing. **Everything else is on demand.**
+ * *"The user wants to open the web application and immediately understand what is happening."*
+ * Until v0.16.6 it was eleven paragraphs, 172 words, eleven counter tiles and **no charts** — 1 521
+ * px tall at 390 px, which is 1.80 viewports of scrolling before the first situation. Measured in
+ * Chromium against a live appliance holding 1 976 replayed traps, as admin, before any of this was
+ * written.
  *
- * The reason is principle 4's discipline pointed at the client: the corpus figures, the promotion
- * history and the audit tail are reads nobody has measured on a busy appliance, and putting an
- * unmeasured cost on the screen every operator lands on is exactly the shape of change this
- * project does not ship. So each of those is a tile with a control, and once fetched it shows
- * **when** it was fetched — a number with no timestamp is a number an operator will assume is
- * current.
+ * A count of active alarms cannot say whether it is a burst or a trickle, and that is the first
+ * thing an operator needs to know. So the reading order is:
+ *
+ *   1. **What is happening** — situations and alarms over time.
+ *   2. **Where** — the estate map.
+ *   3. **Which element is worst** — elements by active alarms.
+ *   4. **Is the appliance itself keeping up** — CPU, memory, storage, queue depth, as series.
+ *   5. **What has it learned** — the two learned counters.
+ *
+ * ## What left, and what only changed shape
+ *
+ * **Gone**: this file's own `Health` component — seven tiles, two section headings and two
+ * paragraphs — and the paragraph pointing at five offline reports, which is `docs/operate.md`'s job
+ * and was a screen telling an operator to read a file.
+ *
+ * **Not gone**: the receiver's five counters. F68's finding was that `receiver.denied` is the only
+ * evidence an operator has that their own allowlist is refusing their own equipment, and that is as
+ * true as it was in v0.15.2. They became one secondary line — which is the shape #300 already chose
+ * for the health panel's four correlation counters, for the same reason: the word above answers
+ * *"is it keeping up"* and the numbers are for when the answer is no.
+ *
+ * ## Live versus on demand, unchanged since v0.13.0
+ *
+ * Everything in bands 1-5 except the alarm marks is already in the store because the update stream
+ * writes it, so reading it costs this screen nothing. The alarm marks are **one** extra read on
+ * mount — `/api/timeline`, measured at 8.3 ms against 181 750 `dataset_pair` rows — and it carries
+ * the time it was taken, because a number with no timestamp is a number an operator will assume is
+ * current. The corpus figures stay behind their on-demand control: `/api/dataset/retention` is
+ * **32.6 ms** measured, and that is the one read on this screen nobody should pay for on load.
  */
 
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
+import { Happening, Keeping, Learned, MARK_LIMIT, Where, Worst } from "./parts/pulse.js";
 import { plural, relative, absolute, timeTitle, TIMEZONE } from "../format.js";
 import { can, canEdit, scopeSummary } from "../session.js";
 import * as store from "../store.js";
@@ -23,16 +50,27 @@ import * as store from "../store.js";
 export class Overview extends Component {
   constructor(props) {
     super(props);
-    this.state = { live: store.get() };
+    this.state = { live: store.get(), marks: null, marksAt: null, marksError: null };
   }
 
   componentDidMount() {
     this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
+    this.readMarks();
   }
 
   componentWillUnmount() { if (this.unsubscribe) this.unsubscribe(); }
 
-  render(_props, { live }) {
+  /** The one read this screen makes. A failure is reported beside the chart, never as a zero. */
+  async readMarks() {
+    try {
+      const data = await get(`/api/timeline?limit=${MARK_LIMIT}`);
+      this.setState({ marks: data.marks || [], marksAt: Date.now() / 1000, marksError: null });
+    } catch (error) {
+      this.setState({ marksError: error });
+    }
+  }
+
+  render(_props, { live, marks, marksAt, marksError }) {
     const stats = live.stats;
     // The panel below is titled "Open situations" and the store now holds all three states, so the
     // filter is here rather than in the transport — the same expression the sidebar count and the
@@ -41,11 +79,9 @@ export class Overview extends Component {
     const scope = scopeSummary();
 
     // **A spinner is not an error state, and a monitoring console must not confuse them.**
-    // Driving this screen with a failing `/api/stats` (Phase 6) left it on "Reading the
-    // appliance…" indefinitely: on screen, a console that cannot reach its own API and a network
-    // that is merely quiet looked identical. That is the exact failure `api.readAll` exists to
-    // avoid elsewhere, reached here through a different door — the store, which has no error
-    // channel of its own beyond `connection`.
+    // Driving this screen with a failing `/api/stats` left it on "Reading the appliance…"
+    // indefinitely: on screen, a console that cannot reach its own API and a network that is
+    // merely quiet looked identical.
     if (!stats) {
       if (live.connection === "error") {
         return html`<${Failed}
@@ -69,36 +105,19 @@ export class Overview extends Component {
                     `begins once a second, related alarm arrives.`} />`;
     }
 
+    const nodes = (live.graph && live.graph.nodes) || [];
     return html`<div class="overview">
       ${scope ? html`<p class="warnbox" title=${scope.title}>
         Your view is scoped to ${plural(scope.neCount, "network element", "network elements")}.
         Situations may extend beyond it; members you cannot see are shown as a redacted count.
       </p>` : null}
 
-      ${/* **v0.16.4: five tiles left this row and none of them was replaced here** (item 3).
-            `active alarms` and `open situations` moved to the Situations screen, where they are
-            **filters** rather than figures — pressing one selects the tab it counts, which is the
-            gesture the number was making an operator want. `p95 latency` moved into the top bar's
-            health control, so it is on every screen instead of on this one. `devices` and `alarm
-            classes` stay below, in the row that says what the appliance has LEARNED, which is what
-            they are about.
-
-            What is deliberately NOT here is a placeholder. v0.16.5 owns this screen's charts and
-            they are not started; a reserved region promising one is the failure #219 recorded, and
-            an empty row is not "room" — the room is that nothing has to be moved aside to add
-            them. */ null}
-      <div class="stat-row">
-        <${Stat} label="devices" value=${stats.devices}
-                 note="learned, not configured" />
-        <${Stat} label="alarm classes" value=${stats.classes}
-                 note="learned, not configured" />
-        ${(stats.ingest_gaps || []).length
-          ? html`<${Stat} label="ingest gaps" value=${stats.ingest_gaps.length} tone="warn"
-                          note="closed gaps, kept for history" />`
-          : null}
-      </div>
-
-      <${Health} stats=${stats} rate=${live.trapRate} />
+      <${Happening} situations=${live.situations || []} marks=${marks} at=${marksAt}
+                    error=${marksError} retry=${() => this.readMarks()} />
+      <${Where} nodes=${nodes} />
+      <${Worst} nodes=${nodes} />
+      <${Keeping} stats=${stats} ring=${live.ring} rate=${live.trapRate} />
+      <${Learned} stats=${stats} />
 
       <${SectionHeading} title="Open situations"
         hint="Newest first. Open one to see the per-term contributions that produced each link." />
@@ -130,7 +149,8 @@ export class Overview extends Component {
             <${Stat} label="active model version"
                      value=${data.active_model_version_id ?? "—"} />
           </div>
-          <p><a href="#/promotion">Open the full record →</a></p>`} />` : null}
+          <p><a href="#/promotion">Open the full record and the evidence charts →</a></p>`} />`
+        : null}
       ${can("config.read") ? html`<${OnDemand}
           title="What capture is holding"
           hint="The feedback corpus every evidence claim is built on, in rows. Read on request."
@@ -142,69 +162,11 @@ export class Overview extends Component {
                      tone=${data.capture_enabled ? "quiet" : "warn"} />
           </div>
           <p><a class="tap" href="#/corpus">Open the corpus screen →</a></p>`} />` : null}
-      ${can("audit.read") ? html`<p class="hint">Five offline reports have no screen and no HTTP
-        route, deliberately — showing them here would make this console a second implementation of
-        each number. They are listed in <code class="mono">docs/operate.md</code>.</p>` : null}
     </div>`;
   }
 }
 
-/**
- * **Is the appliance keeping up, and is it hearing anything?** (DECISIONS #222, F68)
- *
- * Every number here was already served by `/api/stats` on every poll and rendered nowhere.
- * `queue_depth` is *the* figure that says whether correlation is behind the wire, and
- * `receiver.denied` is the only evidence an operator has that their allowlist is refusing their
- * own equipment — measured, an allowlist that denied every trap produced no log line, no warning
- * and no rendered counter, so the appliance received traffic, produced nothing, and said nothing.
- *
- * The trap rate is **derived in the client** between two polls rather than added to the route, and
- * it prints the window it covers beside it, because a rate with no window is a number nobody can
- * act on. Until a second sample arrives it says so instead of showing a zero.
- *
- * CPU, memory and uptime are genuinely absent from the API and are **not** invented here.
- */
-function Health({ stats, rate }) {
-  const receiver = stats.receiver;
-  const depth = stats.queue_depth ?? 0;
-  return html`<section class="panel-block">
-    <${SectionHeading} title="System health"
-      hint=${"What the appliance knows about itself. Queue depth is the one number that means it " +
-             "is not keeping up: growing and not falling back is the signal to act on."} />
-    <div class="stat-row">
-      <${Stat} label="queue depth" value=${depth} tone=${depth ? "warn" : "quiet"}
-               note="traps waiting to be correlated"
-               title="Datagrams parsed and queued but not yet correlated. The trap path never
-                      blocks: under sustained overload the queue fills and overflow is counted as
-                      an ingest gap rather than silently lost." />
-      <${Stat} label="trap rate"
-               value=${rate ? `${rate.perSecond.toFixed(rate.perSecond < 10 ? 2 : 0)} /s` : "—"}
-               note=${rate
-                 ? `over the last ${rate.windowS.toFixed(1)} s`
-                 : "waiting for a second reading"}
-               title="Derived from receiver.received between the last two updates, in this browser.
-                      The appliance serves the counter; it does not serve a rate." />
-    </div>
-    ${receiver
-      ? html`<div class="stat-row">
-          <${Stat} label="received" value=${receiver.received} note="datagrams on the socket" />
-          <${Stat} label="accepted" value=${receiver.accepted} note="became alarms" />
-          <${Stat} label="denied" value=${receiver.denied}
-                   tone=${receiver.denied ? "alarm" : null}
-                   note=${receiver.denied ? "source not in the allowlist" : "allowlist refused none"} />
-          <${Stat} label="quarantined" value=${receiver.quarantined}
-                   tone=${receiver.quarantined ? "warn" : null}
-                   note="the parser refused them" />
-          <${Stat} label="dropped" value=${receiver.dropped}
-                   tone=${receiver.dropped ? "alarm" : null}
-                   note="queue full — an ingest gap" />
-        </div>`
-      : html`<p class="hint">No <code>receiver</code> block in <code>/api/stats</code>: the API is
-          running without the process runner, so there are no socket counters to show.</p>`}
-  </section>`;
-}
-
-/** What an editor's labels have produced — the thing an editor has never been shown (draft §5.2). */
+/** What an editor's labels have produced — the thing an editor has never been shown. */
 class EditorPanel extends Component {
   render() {
     const situations = (store.get().situations || []).filter((s) => s.status !== "resolved");
@@ -219,9 +181,6 @@ class EditorPanel extends Component {
         <${Stat} label="singletons" value=${situations.length - splittable.length}
                  note="nothing to confirm or split" />
       </div>
-      <p class="hint">Whether your labels have reached the pre-registered floors is${" "}
-        <code>make shadow-report</code>, offline — this console shows numbers and never recomputes
-        them. See <code class="mono">docs/operate.md</code>.</p>
       <p><a class="tap" href="#/labelling">Open the labelling screen →</a></p>
     </section>`;
   }

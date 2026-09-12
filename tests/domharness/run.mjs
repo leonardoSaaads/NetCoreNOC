@@ -164,6 +164,36 @@ const scenarios = {
       }
       return out;
     };
+    // **v0.16.6: the counters moved from seven tiles to one line and did not leave.** Each one
+    // carries `data-metric`, so this reads a number by its NAME rather than out of a sentence —
+    // the same pairing `.stat-label`/`.stat-value` gives a tile. Reading both shapes here is what
+    // let the two v0.15.2 tests keep asserting the same facts across the change.
+    const readLine = () => {
+      const out = {};
+      for (const node of env.document.querySelectorAll(".health-sub .metric")) {
+        const name = node.dataset.metric;
+        out[name] = {
+          // The name as an operator READS it, beside the name the API uses. They differ for one
+          // counter — `denied` renders as "refused" — and a test that could only see one of them
+          // could not tell a rename from a relabelling.
+          name: node.querySelector(".metric-name")?.textContent.trim() ?? null,
+          value: node.querySelector("b")?.textContent.trim() ?? null,
+          note: node.querySelector(".metric-note")?.textContent.trim() ?? null,
+        };
+      }
+      return out;
+    };
+    // Every chart's own printed latest reading, beside its title. The number a chart prints comes
+    // from the same array the chart was drawn from (`charts.js`), so a test can compare the two
+    // without the harness having to measure a polyline against a caption.
+    const readCharts = () => {
+      const out = {};
+      for (const block of env.document.querySelectorAll(".chart-block")) {
+        const title = block.querySelector(".chart-title")?.textContent.trim();
+        if (title) out[title] = block.querySelector(".chart-latest")?.textContent.trim() ?? null;
+      }
+      return out;
+    };
     env.navigate("#/overview");
     await settle(env);
     const samples = [];
@@ -171,7 +201,13 @@ const scenarios = {
       if (samples.length) env.advanceClock(params.advanceMs ?? 2500);
       store.applyUpdate({ stats });
       await settle(env);
-      samples.push({ tiles: read(), rate: store.get().trapRate });
+      samples.push({
+        tiles: read(),
+        line: readLine(),
+        chartLatest: readCharts(),
+        rate: store.get().trapRate,
+        ring: { ...store.get().ring },
+      });
     }
     return { samples, proof: proofOf(env) };
   },
@@ -218,6 +254,46 @@ const scenarios = {
       dump: dumpTree(env.document.getElementById("root")).join("\n"),
       proof: proofOf(env),
     };
+  },
+
+  /**
+   * **Drive `app/chartdata.js` directly** — no DOM, no fixture, no render (v0.16.6).
+   *
+   * The honesty rules of this release are arithmetic: where a line breaks, what the axis reads,
+   * what span the data covers. Arithmetic can be asserted on its own, which is why it is a module
+   * of its own, and this scenario is the reason that is worth anything: a test can hand it a series
+   * with a hole in it and read back the runs, instead of inferring them from a rendered chart.
+   *
+   * The functions come off **the same module instance the running console imported**, which is what
+   * makes this a fact about the shipped UI rather than about a copy of it.
+   */
+  async chartmath(params) {
+    const env = await boot(params);
+    const found = [...env.modules.entries()].find(([file]) => file.endsWith("app/chartdata.js"));
+    if (!found) throw new Error("app/chartdata.js was not in the evaluated module graph");
+    const m = found[1].namespace;
+    const out = {};
+    for (const [name, call] of Object.entries(params.calls ?? {})) {
+      const fn = m[call.fn];
+      if (typeof fn !== "function") {
+        throw new Error(`chartdata.js exports no function ${JSON.stringify(call.fn)}`);
+      }
+      const value = fn(...(call.args ?? []));
+      // `buckets` hands back a closure, which JSON cannot carry. Everything a test asks of it is
+      // reported instead: the labels, the span, the bucket count, and the bucket each probe falls
+      // into — so the closure is exercised here rather than described.
+      out[name] = call.fn === "buckets"
+        ? {
+            n: value.n,
+            spanS: value.spanS,
+            labels: value.labels,
+            edges: value.edges,
+            index: (call.probe ?? []).map((t) => value.index(t)),
+            tally: call.tally ? m.tally(value, call.tally) : null,
+          }
+        : value;
+    }
+    return { out, proof: proofOf(env) };
   },
 
   /** Boot, optionally navigate, and dump the DOM. The gate documents quote `dump`. */
@@ -1018,6 +1094,20 @@ function readCharts(document) {
     })),
     ticks: chart.querySelectorAll("text").map((t) => t.textContent),
     titles: chart.querySelectorAll("title").map((t) => t.textContent),
+    // `Bars` and `Map` are HTML, so their marks are boxes with widths and their tooltips are
+    // `title` ATTRIBUTES rather than `<title>` elements — which is what the two lines below read.
+    // A reader of this scenario that looked only at `titles` above would find a map empty.
+    bars: chart.querySelectorAll(".chart-bar-row").map((row) => ({
+      label: row.querySelector(".chart-bar-label")?.textContent.trim() ?? null,
+      value: row.querySelector(".chart-bar-value")?.textContent.trim() ?? null,
+      width: row.querySelector(".chart-bar-fill")?.getAttribute("style") ?? null,
+    })),
+    cells: chart.querySelectorAll(".map-cell").map((cell) => ({
+      cls: cell.getAttribute("class"),
+      tip: cell.getAttribute("title"),
+      name: cell.querySelector(".map-name")?.textContent.trim() ?? null,
+      value: cell.querySelector(".map-value")?.textContent.trim() ?? null,
+    })),
   }));
 }
 

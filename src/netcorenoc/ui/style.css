@@ -658,6 +658,218 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 }
 .spark-warn polyline { stroke: var(--warn); }
 .spark-alarm polyline { stroke: var(--alarm); }
+
+/* ---------- the three chart types (v0.16.6, DECISIONS #305, #307) ----------------------------
+ *
+ * **No `<text>` in any SVG here, and that is load-bearing rather than tidy.** The plot below uses
+ * `preserveAspectRatio="none"` so it stretches to its box with no measurement, no resize listener
+ * and no layout pass — the sparkline's trick, at chart size. An `<svg><text>` inside a stretched
+ * viewBox scales *with the box*, so one chart would render 9 px type at 390 px and 33 px at 1440
+ * and the axis would be illegible at one end. Every label is therefore HTML, positioned over the
+ * plot with percentages, and it stays at the type scale's own size at every width.
+ *
+ * `vector-effect: non-scaling-stroke` for the same reason `.spark` needs it: without it a 1 200 px
+ * wide plot draws a 2 px horizontal and a hairline vertical from one `stroke-width`.
+ *
+ * The height is a custom property so a caller can ask for a taller plot without a second class. */
+.chart-block { margin: var(--space-4) 0; }
+.chart-block:first-child { margin-top: 0; }
+/* Four host charts. `auto-fit` with a **150 px** minimum, so they are two columns at 390 px and
+   four at 1440 with no breakpoint, and the reading order never changes — which is what lets an
+   operator learn where CPU is and find it there at every width.
+
+   **150 and not 260, and the difference is 480 px of the landing screen.** Measured: at 260 the
+   grid collapses to one column on a phone, and band 4 — the FOURTH question this screen answers —
+   took 800 px of a 844 px viewport, which inverts the reading order decision 1 exists to set. A
+   96 px plot 165 px wide still carries its axis, because the labels are HTML at the type scale's
+   own size rather than SVG text that scales with the box. */
+.chart-grid {
+  display: grid; gap: var(--space-3) var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.chart-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-2); flex-wrap: wrap;
+}
+.chart-title {
+  margin: 0; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-muted); font-weight: 600;
+}
+/* The latest reading, printed from the same array the plot was drawn from (`charts.js`), so the
+   number beside a chart cannot disagree with the chart. */
+.chart-latest {
+  margin: 0; font-family: var(--mono); font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums; color: var(--fg-dim);
+}
+.chart-latest b { color: var(--fg); font-weight: 600; }
+.chart-latest-name { font-family: var(--sans); font-size: var(--fs-xs); color: var(--fg-muted); }
+.chart-sep { color: var(--line-strong); }
+
+.chart { --chart-h: 96px; margin-top: var(--space-2); }
+.chart-plot {
+  position: relative; height: var(--chart-h);
+  border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  background: var(--bg-sunken);
+}
+.chart-plot > svg { display: block; width: 100%; height: 100%; }
+/* A shorter plot where the screen is a phone — **after** the rule it overrides, which is the whole
+   reason this block is here and not beside `.chart-grid` where it was written first. Same
+   specificity, so source order decides; measured, the 72 px never applied and every plot was 96 px
+   at 390 px. A media query that loses to the rule above it is a media query that does nothing. */
+@media (max-width: 460px) {
+  .chart { --chart-h: 72px; }
+}
+.chart-line polyline {
+  fill: none; stroke: var(--accent); stroke-width: 1.5;
+  stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke;
+}
+.chart-cols rect { fill: var(--accent); }
+.chart-alarm polyline, .chart-alarm rect { stroke: var(--alarm); fill: var(--alarm); }
+.chart-alarm polyline { fill: none; }
+.chart-warn polyline, .chart-warn rect { stroke: var(--warn); fill: var(--warn); }
+.chart-warn polyline { fill: none; }
+.chart-quiet polyline, .chart-quiet rect { stroke: var(--quiet); fill: var(--quiet); }
+.chart-quiet polyline { fill: none; }
+
+/* The y axis: two labels, the top and the zero, because a 96 px plot has room for two and the
+   question a series answers is "how close to the ceiling", which two answer. */
+.chart-y {
+  position: absolute; inset: 0; pointer-events: none;
+  display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start;
+}
+.chart-y span {
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim);
+  background: var(--bg-sunken); padding: 0 2px; line-height: 1.2;
+}
+/* Three x ticks — first, middle, last. `translateX(-50%)` on the middle one and edge alignment on
+   the outer two, so no tick hangs off the plot at 390 px. */
+.chart-x { position: relative; height: 1.4em; margin-top: 2px; }
+.chart-x-tick {
+  position: absolute; transform: translateX(-50%); white-space: nowrap;
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim);
+}
+.chart-x-tick:first-child { transform: none; }
+.chart-x-tick:last-child { transform: translateX(-100%); }
+.chart-x-tick:only-child { transform: none; }
+
+.chart-legend {
+  display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
+  margin: var(--space-1) 0 0; padding: 0; list-style: none;
+  font-size: var(--fs-xs); color: var(--fg-muted);
+}
+.chart-legend li { display: flex; align-items: center; gap: var(--space-1); }
+.chart-swatch {
+  width: 10px; height: 3px; border-radius: 999px; background: var(--accent); flex: none;
+}
+.chart-legend .chart-alarm { background: var(--alarm); }
+.chart-legend .chart-warn { background: var(--warn); }
+.chart-legend .chart-quiet { background: var(--quiet); }
+
+/* Where the numbers came from, and over what. A required argument in `charts.js`, because a chart
+   whose source nobody can name is a chart nobody can check. */
+.chart-caption {
+  margin: var(--space-1) 0 0; font-size: var(--fs-xs); color: var(--fg-dim); line-height: 1.6;
+}
+.chart-source { color: var(--fg-muted); }
+
+/* `—` and the word, never a zero, and never an empty box either: an empty chart and a chart of
+   zeroes are both indistinguishable from a broken one (DECISIONS #289). */
+.chart-unmeasured {
+  display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-3); margin-top: var(--space-2);
+  border: 1px dashed var(--line-strong); border-radius: var(--radius-2);
+  background: var(--bg-sunken);
+}
+.chart-dash { font-family: var(--mono); font-size: var(--fs-xl); color: var(--fg-dim); }
+.chart-unmeasured-what { font-size: var(--fs-sm); color: var(--fg-muted); }
+.chart-unmeasured-why { font-size: var(--fs-xs); color: var(--fg-dim); }
+
+/* Horizontal bars. A grid rather than flex so every value column aligns down the chart, which is
+   the whole reason a dense product draws bars instead of printing a list. */
+.chart-bars { display: grid; gap: var(--space-1); }
+.chart-bar-row {
+  display: grid; grid-template-columns: minmax(0, 9em) 1fr auto;
+  align-items: center; gap: var(--space-2);
+}
+.chart-bar-label {
+  font-size: var(--fs-sm); color: var(--fg); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.chart-bar-track {
+  height: 10px; border-radius: 999px; background: var(--bg-sunken); overflow: hidden;
+}
+.chart-bar-fill { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.chart-bars .chart-alarm { background: var(--alarm); }
+.chart-bars .chart-warn { background: var(--warn); }
+.chart-bars .chart-quiet { background: var(--quiet); }
+.chart-bar-value {
+  font-family: var(--mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+}
+/* At 390 px a 9em label column leaves ~150 px of track, which reads. Below that the label takes its
+   own row rather than being truncated to nothing. */
+@media (max-width: 460px) {
+  .chart-bar-row { grid-template-columns: 1fr auto; }
+  .chart-bar-label { grid-column: 1 / -1; }
+}
+
+/* The estate map (DECISIONS #310): one cell per element, sorted by load, deterministic.
+   `auto-fill` with a minimum, so the same grid is four columns at 390 px and twelve at 1440 without
+   a breakpoint — and the reading order is unchanged at every width, which is what makes two glances
+   comparable. */
+.chart-map {
+  display: grid; gap: var(--space-1);
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+}
+.map-cell {
+  display: grid; gap: 2px; padding: var(--space-2) var(--space-2) var(--space-1);
+  border: 1px solid var(--line); border-radius: var(--radius-1);
+  background: var(--bg-sunken); min-width: 0;
+}
+.map-name {
+  font-size: var(--fs-xs); color: var(--fg-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.map-value {
+  font-family: var(--mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+.map-share { display: block; height: 3px; border-radius: 999px; background: var(--bg); }
+.map-share-fill { display: block; height: 100%; border-radius: 999px; background: var(--fg-dim); }
+/* The four-step band. One of three encodings per cell — the band, the share bar and the printed
+   count — so none of them is load-bearing alone (#277's rule for severity, applied here). */
+.map-band-0 { border-color: var(--line); }
+.map-band-1 { border-color: var(--line-strong); }
+.map-band-2 { border-color: var(--warn); background: var(--warn-bg); }
+.map-band-2 .map-share-fill { background: var(--warn); }
+.map-band-3 { border-color: var(--alarm); background: var(--alarm-bg); }
+.map-band-3 .map-share-fill { background: var(--alarm); }
+.map-band-3 .map-value { color: var(--alarm); font-weight: 600; }
+
+/* ---------- urgency: animated, and never ONLY animated (v0.16.6, DECISIONS #309) -------------
+ *
+ * Two encodings, deliberately. The **ring** is 3 px against 1 px and is static, so an operator who
+ * has asked for reduced motion — or who is looking at a screenshot — still sees which marks are
+ * urgent. The **pulse** is what draws an eye that is not already on the screen.
+ *
+ * It is a CSS animation for one reason that matters: the `prefers-reduced-motion` block at the end
+ * of this file already turns every animation in this stylesheet off with `!important`, so honouring
+ * the preference is a property of WHERE the animation lives rather than of anyone remembering to
+ * check. A JS-driven pulse would have had to re-implement that rule, and a guard could not check it
+ * by reading one file. */
+.chart-urgent { outline: 3px solid var(--alarm); outline-offset: -1px; }
+.chart-urgent { animation: ncn-urgent 1.8s ease-in-out infinite; }
+@keyframes ncn-urgent {
+  0%, 100% { outline-color: var(--alarm); }
+  50% { outline-color: transparent; }
+}
+circle.node.urgent { animation: ncn-urgent-node 1.8s ease-in-out infinite; }
+/* The node's static half is its stroke, for the same reason the cell's is its ring. */
+circle.node.urgent { stroke: var(--fg); stroke-width: 2; }
+@keyframes ncn-urgent-node {
+  0%, 100% { stroke-opacity: 0.9; }
+  50% { stroke-opacity: 0.15; }
+}
 /* The four correlation counters that used to be the whole panel, now one secondary line: the word
    above answers "is it keeping up" and these are for when the answer is no. */
 .health-sub {
@@ -666,6 +878,23 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   font-size: var(--fs-xs); color: var(--fg-dim); line-height: 1.7;
 }
 .health-sub b { font-family: var(--mono); font-weight: 600; color: var(--fg-muted); }
+/* The Overview's secondary line (v0.16.6): the counters F68 found, as one wrapping row of
+   name/value pairs rather than seven tiles. `·` is drawn by the separator rather than written into
+   the markup, so the last item has none and a wrapped row does not start with one. */
+.health-sub .metric { white-space: nowrap; }
+/* `.metric-sep` is a real span carrying a real `·`, never `content:` on a pseudo-element — see
+   F112 and the note in `views/parts/pulse.js`. Generated content is invisible to `textContent`. */
+.health-sub .metric-sep { color: var(--line-strong); }
+/* **No margin between the name and the value, and that is F112's lesson** (v0.16.6).
+ *
+ * `htm` drops a whitespace-only run between two elements, so `<span>…</span>\n<b>…</b>` rendered
+ * `p95 latency0.0000 s` — Bug 2's family (F110) in this release's own new markup, found in a
+ * browser. A `margin-right` here was the first repair and it fixed the **pixels only**:
+ * `textContent` stayed glued, which is what a screen reader announces and what an operator pastes
+ * into a ticket. The space is in the markup instead (`views/parts/pulse.js`), so the rendering,
+ * the accessible text and the clipboard all agree. */
+.health-sub .metric-name { color: var(--fg-dim); }
+.health-sub .metric-note { font-size: var(--fs-xs); color: var(--fg-dim); }
 /* The bulk hand-clear (v0.16.5, DECISIONS #301). Above the member table, because it acts on the
    whole table and a control that acts on everything must not sit inside a row. */
 .bulkclear {

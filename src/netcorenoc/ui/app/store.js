@@ -20,10 +20,33 @@
  * card is instead of only that it is behind.
  */
 
+/**
+ * How many samples of the two numbers the appliance serves **without a history** are kept.
+ *
+ * `queue_depth` and `latency_p95_s` are instants. *"Is correlation behind?"* is answered by the
+ * number; *"and is it getting worse?"* is not, and that is the question an operator acts on. So the
+ * client keeps its own short series, on the same footing as the derived trap rate (#222): the
+ * appliance serves the counter, the client derives the shape, and **the screen says the series
+ * resets on reload** rather than implying the appliance stored it.
+ *
+ * Sixty samples. At the 2.5 s poll that is about two and a half minutes, and at the stream's pace
+ * it is however long sixty updates took — which is why the chart's axis comes from the timestamps
+ * kept beside the values rather than from a nominal interval (`chartdata.buckets`).
+ */
+const RING = 60;
+
 const state = {
   stats: null,
   /** The derived trap rate, or null until two samples with a `receiver` block have arrived. */
   trapRate: null,
+  /**
+   * `{ at, queue, p95 }` — three parallel arrays, oldest first, at most `RING` long.
+   *
+   * Parallel arrays rather than a list of objects because every consumer is a chart and a chart
+   * wants a column: `charts.Series` takes `values`, and building that from a list of records on
+   * every render would be a map per series per paint.
+   */
+  ring: { at: [], queue: [], p95: [] },
   graph: null,
   situations: [],
   connection: "connecting",   // connecting | live | polling | error
@@ -65,6 +88,24 @@ function deriveRate(next) {
   return { perSecond: (received - previous.received) / windowS, windowS };
 }
 
+/**
+ * Add one reading to the ring, keeping it bounded.
+ *
+ * A key the appliance did not send is pushed as **`null`**, never as `0`: an API running without
+ * the process runner serves no `queue_depth` at all, and a zero there would draw a floor across a
+ * period nobody measured — which `chartdata.runs` then breaks the line at, exactly as it does for
+ * an unreadable host metric. Same rule, same reason (#289, #300).
+ */
+function sample(stats) {
+  const numeric = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
+  state.ring.at.push(Date.now() / 1000);
+  state.ring.queue.push(numeric(stats.queue_depth));
+  state.ring.p95.push(numeric(stats.latency_p95_s));
+  for (const key of ["at", "queue", "p95"]) {
+    if (state.ring[key].length > RING) state.ring[key].splice(0, state.ring[key].length - RING);
+  }
+}
+
 export function get() { return state; }
 
 export function subscribe(fn) {
@@ -81,6 +122,7 @@ export function applyUpdate(update) {
   if (update.stats) {
     state.trapRate = deriveRate(update.stats);
     state.stats = update.stats;
+    sample(update.stats);
   }
   if (update.graph) state.graph = update.graph;
   if (update.situations) state.situations = update.situations;
@@ -135,6 +177,9 @@ export function reset() {
   state.stats = null;
   state.trapRate = null;
   lastSample = null;
+  // The ring goes with the principal. A viewer signing in after an admin must not inherit the
+  // admin's queue-depth history: the counters are scoped, so the series is a scoped quantity too.
+  state.ring = { at: [], queue: [], p95: [] };
   state.graph = null;
   state.situations = [];
   state.connection = "connecting";

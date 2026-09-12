@@ -12,40 +12,28 @@
 
 import { html, cx } from "./dom.js";
 import { count, plural, score } from "./format.js";
+import { runs as splitRuns } from "./chartdata.js";
 import { Disclosure, healthState } from "./notices.js";
 
 /**
- * A sparkline: one `<polyline>` per metric, drawn from the series `/api/stats` already carries.
+ * A sparkline: one `<polyline>` per run, drawn from the series `/api/stats` already carries.
  *
  * **No charting library and no `<canvas>`.** Twenty-four points scaled into a `viewBox` is nine
  * lines of arithmetic, and the alternative is a dependency this project does not take — the same
  * answer d3 got, except d3 draws a force simulation and this draws a line.
  *
- * A gap in the series is a **break in the line**, not a dip to zero: the polyline is split at every
- * `null` and each run drawn separately. A graph that joins across a period nobody measured is
- * inventing the measurement, which is the one thing the health control must never do.
+ * A gap in the series is a **break in the line**, not a dip to zero. **v0.16.6 moved that rule into
+ * `chartdata.runs`** and this calls it: the splitting was written here first and the Overview's
+ * charts need the same behaviour, and two implementations of *"where does the line break"* is how
+ * two charts on one screen come to disagree about it. The arithmetic is byte-for-byte the same —
+ * `tests/test_ui_invariants.py` drives both surfaces over the same series.
  */
 export function Spark({ series, tone }) {
-  const points = (series || []).filter((v) => v != null);
-  if (points.length < 2) return null;
-  const W = 100;
-  const H = 24;
-  const step = W / Math.max(1, series.length - 1);
-  const runs = [];
-  let run = [];
-  series.forEach((value, index) => {
-    if (value == null) {
-      if (run.length > 1) runs.push(run);
-      run = [];
-      return;
-    }
-    run.push(`${(index * step).toFixed(1)},${(H - (Math.min(100, value) / 100) * H).toFixed(1)}`);
-  });
-  if (run.length > 1) runs.push(run);
-  if (!runs.length) return null;
-  return html`<svg class=${cx("spark", tone && `spark-${tone}`)} viewBox=${`0 0 ${W} ${H}`}
+  const parts = splitRuns(series, { max: 100, height: 24 });
+  if (!parts.length) return null;
+  return html`<svg class=${cx("spark", tone && `spark-${tone}`)} viewBox="0 0 100 24"
        preserveAspectRatio="none" aria-hidden="true" focusable="false">
-    ${runs.map((r, i) => html`<polyline key=${i} points=${r.join(" ")} />`)}
+    ${parts.map((r, i) => html`<polyline key=${i} points=${r.join(" ")} />`)}
   <//>`;
 }
 

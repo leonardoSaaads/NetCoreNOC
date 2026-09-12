@@ -600,7 +600,19 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # modules forced out by the module-graph guard for the fifth and sixth time: `app/health.js`
     # (CPU, memory and storage, out of `notices.js` at 19 005 bytes) and
     # `app/views/parts/bulkclear.js` (out of `judge.js` at 19 499).
-    assert len(served) == 111, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # v0.16.6: 111 -> 114, and **all three are static modules with no /api route between them**,
+    # which is the property this pair of assertions is really for. A release that drew charts on
+    # four screens added **no route and no route parameter** (DECISIONS #306): the host series were
+    # already on `/api/stats`, the marks already on `/api/timeline`, the estate already on
+    # `/api/graph`, and the four named quantities already on `/api/promotion`. The /api surface is
+    # unchanged at 52.
+    #
+    # The three: `app/charts.js` (the three chart types), `app/chartdata.js` (their arithmetic,
+    # separate because it is pure and is driven directly by tests with no DOM), and
+    # `app/views/parts/pulse.js` (the Overview's five bands, out of `views/overview.js` at 22 552
+    # bytes against the 17 579-byte guard — the seventh time that guard has chosen a seam).
+    assert len(served) == 114, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 52, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
@@ -706,7 +718,19 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # modules forced out by the module-graph guard for the fifth and sixth time: `app/health.js`
     # (CPU, memory and storage, out of `notices.js` at 19 005 bytes) and
     # `app/views/parts/bulkclear.js` (out of `judge.js` at 19 499).
-    assert len(served) == 111, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # v0.16.6: 111 -> 114, and **all three are static modules with no /api route between them**,
+    # which is the property this pair of assertions is really for. A release that drew charts on
+    # four screens added **no route and no route parameter** (DECISIONS #306): the host series were
+    # already on `/api/stats`, the marks already on `/api/timeline`, the estate already on
+    # `/api/graph`, and the four named quantities already on `/api/promotion`. The /api surface is
+    # unchanged at 52.
+    #
+    # The three: `app/charts.js` (the three chart types), `app/chartdata.js` (their arithmetic,
+    # separate because it is pure and is driven directly by tests with no DOM), and
+    # `app/views/parts/pulse.js` (the Overview's five bands, out of `views/overview.js` at 22 552
+    # bytes against the 17 579-byte guard — the seventh time that guard has chosen a seam).
+    assert len(served) == 114, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 52, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "

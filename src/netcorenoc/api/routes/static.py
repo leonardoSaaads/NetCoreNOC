@@ -50,6 +50,12 @@ _UI_MODULES = (
     "app/destructive.js",
     "app/dom.js",
     "app/format.js",
+    # v0.16.6: the chart vocabulary (DECISIONS #305, #307). `charts.js` is the three types every
+    # screen draws with; `chartdata.js` is the arithmetic behind them — where a line breaks, what
+    # the axis reads, what span the data covers — kept separate because it is pure and is driven
+    # directly by tests with no DOM.
+    "app/charts.js",
+    "app/chartdata.js",
     # v0.15.3: `icons.js` is the drawn icon family that replaces seventeen Unicode glyphs (#236);
     # `password.js` is the confirmation, length meter and reveal shared by the sign-in card and the
     # account screen, so the two cannot drift about what a valid password is (V.2).
@@ -106,6 +112,11 @@ _UI_MODULES = (
     # v0.16.4: the controls that narrow the situation list — the count cards, the search box
     # and the tabs — split out when they became a block (DECISIONS #288, item 3, item 5).
     "app/views/parts/finder.js",
+    # v0.16.6: the Overview's five chart bands, split out when they pushed `views/overview.js` to
+    # 22 552 bytes against the module graph's 17 579-byte ceiling (DECISIONS #304). The seam is
+    # real: `overview.js` owns the screen's composition and its four states, `pulse.js` owns the
+    # charts and the population each one may claim.
+    "app/views/parts/pulse.js",
     # v0.16.4: the two disclosures in the top bar — the bell and the health control — split out
     # of `shell.js` (DECISIONS #288, #289).
     "app/notices.js",
