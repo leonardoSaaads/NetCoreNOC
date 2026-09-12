@@ -176,6 +176,50 @@ const scenarios = {
     return { samples, proof: proofOf(env) };
   },
 
+  /**
+   * **Read every hand-written chart in the document, as geometry** (v0.16.6).
+   *
+   * The one thing this harness can do for a chart and cannot do for a d3 one: the marks are real
+   * DOM, so their `points`, `x`/`width` and `d` attributes are readable and a test can check that
+   * a gap SPLIT the line rather than being drawn through it. `charts.js` exists so that this
+   * scenario covers every chart in the console rather than one screen's worth.
+   *
+   * `resources` is pushed through the live store so the health control's meters and the
+   * Overview's host series are driven from one payload — the same `/api/stats` shape the sampler
+   * produces, which `test_the_resources_fixture_matches_what_the_sampler_actually_produces`
+   * already pins against `resources.py` itself.
+   */
+  async charts(params) {
+    const env = await boot(params);
+    const entry = [...env.modules.entries()].find(([file]) => file.endsWith("app/store.js"));
+    const store = entry[1].namespace;
+    if (params.navigate) { env.navigate(params.navigate); await settle(env); }
+    for (const update of params.updates ?? []) { store.applyUpdate(update); await settle(env); }
+    // The health control is a disclosure and its children render only when it is open, so a
+    // scenario that wants the meters has to press the opener exactly as an operator does.
+    if (params.openHealth) {
+      const opener = env.document.querySelector('[aria-controls="healthPanel"]');
+      if (!opener) throw new Error("no health disclosure opener in the top bar");
+      opener.dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+    }
+    for (const selector of params.click ?? []) {
+      const node = env.document.querySelector(selector);
+      if (!node) throw new Error(`nothing matched ${JSON.stringify(selector)}`);
+      node.dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+    }
+    return {
+      charts: readCharts(env.document),
+      sparks: readSparks(env.document),
+      unmeasured: env.document.querySelectorAll(".chart-unmeasured").map((n) => n.textContent.trim()),
+      captions: env.document.querySelectorAll(".chart-caption").map((n) => n.textContent.trim()),
+      requestPaths: env.network.requests.map((r) => `${r.method} ${r.path}`),
+      dump: dumpTree(env.document.getElementById("root")).join("\n"),
+      proof: proofOf(env),
+    };
+  },
+
   /** Boot, optionally navigate, and dump the DOM. The gate documents quote `dump`. */
   async render(params) {
     const env = await boot(params);
@@ -951,6 +995,39 @@ const scenarios = {
     return { node: process.version, platform: process.platform, tz: process.env.TZ ?? null };
   },
 };
+
+/**
+ * Every `.chart` in the document, as the geometry it drew (v0.16.6).
+ *
+ * `polylines` is a LIST of lists: one entry per run of consecutive readable points, which is how
+ * a gap is visible from outside. A chart that interpolated across a `null` would report one run
+ * where an honest one reports two, and that difference is what `tests/test_ui_invariants.py`
+ * asserts rather than describes.
+ */
+function readCharts(document) {
+  return document.querySelectorAll(".chart").map((chart) => ({
+    kind: chart.dataset.chart ?? null,
+    label: chart.getAttribute("aria-label"),
+    role: chart.getAttribute("role"),
+    polylines: chart.querySelectorAll("polyline").map((p) => p.getAttribute("points")),
+    rects: chart.querySelectorAll("rect").map((r) => ({
+      x: r.getAttribute("x"), y: r.getAttribute("y"),
+      w: r.getAttribute("width"), h: r.getAttribute("height"),
+      cls: r.getAttribute("class"),
+      title: r.querySelector("title")?.textContent ?? null,
+    })),
+    ticks: chart.querySelectorAll("text").map((t) => t.textContent),
+    titles: chart.querySelectorAll("title").map((t) => t.textContent),
+  }));
+}
+
+/** The health control's sparklines, which have been assertable since v0.16.5. The control. */
+function readSparks(document) {
+  return document.querySelectorAll(".spark").map((spark) => ({
+    cls: spark.getAttribute("class"),
+    polylines: spark.querySelectorAll("polyline").map((p) => p.getAttribute("points")),
+  }));
+}
 
 function census(document) {
   const tags = {};

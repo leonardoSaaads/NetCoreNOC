@@ -273,7 +273,16 @@ def test_the_release_table_parses() -> None:
     # brief, so five rows join and none moves. That is the difference this line records — the four
     # edits above each moved a release that was already here, and this one adds releases that were
     # only ever described in a prompt. Twenty rows.
-    assert len(table) == 20, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
+    #
+    # v0.16.6 RENUMBERS two rows without moving any release's content (DECISIONS #304-#311's
+    # release, and the note under "The v0.16 block" says it in one line). The block was planned as
+    # five and shipped as six: v0.16.4's shell went out, a browser found six defects in it, and
+    # repairing them took a release rather than a patch — so the table said v0.16.5 was *the
+    # evidence screens* while the code, the CHANGELOG and the tag all said *the shell, corrected*.
+    # That is the same defect the third and fourth edits above caught, one release later: **a table
+    # that disagrees with the release it governs**. The evidence screens are v0.16.6 and maintenance
+    # windows are v0.16.7, which is a new row rather than a moved one. Twenty-one rows.
+    assert len(table) == 21, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -293,6 +302,7 @@ def test_the_release_table_parses() -> None:
         "v0.16.4",
         "v0.16.5",
         "v0.16.6",
+        "v0.16.7",
         "v0.17.0",
         "v0.18.0",
     }
