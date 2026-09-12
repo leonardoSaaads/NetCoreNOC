@@ -12,6 +12,34 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty rows, two ask for an
 action, eleven ask you to read a paragraph, and seventeen are start-the-new-binary.
 
+## [0.16.6] - 2026-09-12 — "the route nothing tested"
+
+A defect in v0.16.5's own bulk hand-clear, found by measuring coverage on the release after it
+merged rather than by anyone hitting it.
+
+### Fixed
+
+* **`POST /api/alarms/clear` returned `200 {"cleared": 0}` for a situation that does not exist**,
+  where its own docstring promised a 404 (F112). `situation_in_scope` answers *"may this principal
+  see it"* and short-circuits to `True` for an unrestricted scope — it never asks *"is there one"* —
+  so a nonexistent id sailed past the perimeter check, found no members and came back as an
+  ordinary empty success. An **admin** got a silent 200 for a typo where a **scoped editor** got a
+  404 for the same request: two answers to one question, and the wrong one for the principal who
+  can act on it. Existence is now read separately, and a situation that exists but holds nothing
+  is still the 200 it should be.
+
+### Added
+
+* **Seven tests for the bulk clear**, which had **none** — the route shipped in v0.16.5 covered
+  only by a browser drive that lives in a session, not in the tree. Coverage of
+  `api/routes/annotate.py` was **67 %**, with the whole handler among the misses. It is **81 %**
+  now, and the tests are the ones that matter: that the batch records exactly N single clears plus
+  one `alarm.clear_all`; that it asserts nothing about the grouping at batch size; that a settled
+  situation is a 200 and not a 409; that a viewer is refused and nothing is cleared; and above all
+  that **`only_ids` narrows and can never widen** — driven by naming one member of one situation
+  and every member of another, and asserting the second is untouched. That last one is what keeps
+  the route from being an existence oracle (#301), and it was the property with no guard.
+
 ## [0.16.5] - 2026-09-06 — "the shell, corrected"
 
 Six things the maintainer found by using v0.16.4's console. One of them was a defect of mine that

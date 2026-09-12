@@ -931,7 +931,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
 #: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
 #: for the same module-graph reason `members.js` and `card.js` were.
-SRC_TREE_DIGEST = "9ec81182489ae96681b6da9b62eb3e4b55a0369486408dee7894fad5bee61cdb"
+SRC_TREE_DIGEST = "a459a42cee87d49886d7fbb01dd31a423d5dc31c6e0f964f9a48f8bb09cd3722"
 SRC_FILE_COUNT = 204
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
@@ -998,7 +998,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.5", "the version this release carries"
+    assert __version__ == "0.16.6", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

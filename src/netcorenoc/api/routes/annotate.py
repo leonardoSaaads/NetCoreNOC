@@ -278,7 +278,18 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             await audit_scope_denial(request, principal, "alarm.clear_all", "situation", str(sid))
             raise HTTPException(status_code=404, detail="no such situation")
         async with store.lock:
-            members = await store.situation_members(sid)
+            # **Existence is checked separately, and the first version of this did not.**
+            # `situation_in_scope` returns True immediately for an unrestricted scope — it answers
+            # *"may they see this one"*, never *"is there one"* — so a nonexistent id sailed past
+            # it, found no members, and came back `200 {"cleared": 0}` for an admin while a scoped
+            # editor got a 404 for the same request. Two answers for one question, and the wrong
+            # one for the principal who can act on it. Caught by
+            # `test_a_situation_that_does_not_exist_and_one_out_of_scope_answer_alike`, which was
+            # written from this handler's own docstring.
+            exists = await store.situation_detail(sid) is not None
+            members = await store.situation_members(sid) if exists else []
+        if not exists:
+            raise HTTPException(status_code=404, detail="no such situation")
         hidden = await ctx.perimeter.hidden_member_ids(sid, scope)
         # Derived, then narrowed — never the other way round. `only_ids` can subtract from what the
         # caller can already see and can never add to it, so no id in a request body ever reaches a
@@ -288,8 +299,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             wanted = set(body.only_ids)
             visible = [aid for aid in visible if aid in wanted]
         if not members:
-            # An empty situation and a nonexistent one are already indistinguishable above; this is
-            # the ordinary "there was nothing to do" and it is a 200.
+            # A situation that EXISTS and holds nothing — an idle one the sweep created, or one
+            # already fully cleared. The ordinary "there was nothing to do", and a 200.
             return {"status": "cleared", "cleared": 0}
         now = time.time()
         cleared: list[int] = []

@@ -1552,3 +1552,38 @@ Run every command below from the repository root with the virtualenv active.
   red by restoring `position: relative` on `.disclosure`, with the repaired tree as its control.
   Measured after: panel **338 px**, text box **291 px**, nothing clipped, no scrolling needed.
   Issued and closed by the release that was told to look at it.
+
+## F112 — the bulk clear answers 200 for a situation that does not exist, and its docstring says 404
+
+- **What**: `POST /api/alarms/clear` guards its perimeter with `situation_in_scope`, which answers
+  *"may this principal see this situation"* and **returns `True` immediately when the scope is
+  unrestricted** — it never reads the situation row. A nonexistent `situation_id` therefore passed
+  the check, found no members, and fell into the handler's *"nothing to do"* branch, whose comment
+  claimed an empty situation and a nonexistent one were "already indistinguishable above". They
+  were not: a **scoped editor** got a 404 (the scope check fails, since no member is theirs) and an
+  **admin** got `200 {"status": "cleared", "cleared": 0}`. One question, two answers, and the wrong
+  one for the principal who can actually act on it.
+- **Reproduce**, as an admin against any appliance:
+  ```sh
+  curl -sS -X POST "$BASE/api/alarms/clear" -H 'content-type: application/json' \
+       -b "$COOKIE" -d '{"situation_id": 10000000}' -w '\n%{http_code}\n'
+  ```
+- **Measured**: `{"status":"cleared","cleared":0}` and **200**, where `clear_alarm` answers **404**
+  for the same class of mistake on an alarm, and where this route's own docstring reads *"A
+  situation that does not exist and one the principal may not see take the same 404."*
+- **Why it matters**: not disclosure — the failure is in the safe direction, and no scoped
+  principal learns anything they could not learn before. It matters because it is **silent**: an
+  operator who fat-fingers a situation id is told the clear succeeded and nothing happened, and a
+  script that batches clears records success for every id it got wrong. It is also the second time
+  in two releases that a comment in this repository asserted a property the code did not have
+  (F111 was the first), which is the pattern worth naming rather than the bug.
+- **Why nothing caught it**: the route shipped with **no test at all**. `api/routes/annotate.py`
+  sat at **67 %** coverage with the entire handler among the misses; the only thing that had ever
+  exercised it was a browser drive in a working session, which is not in the tree. The bug was
+  found by attributing a 0.31-point coverage drop to a file, not by anyone using the console.
+- **Disposition**: **FIXED in v0.16.6.** Existence is read separately from scope, both answer 404,
+  and a situation that exists but holds nothing is still a 200. Seven tests added in
+  `tests/test_lifecycle.py`, including
+  `test_a_situation_that_does_not_exist_and_one_out_of_scope_answer_alike` — which was written from
+  the handler's docstring and failed on the first run, which is how the defect was found. Coverage
+  of the file is now 81 %. Issued and closed by the release that measured it.

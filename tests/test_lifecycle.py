@@ -820,3 +820,209 @@ async def test_a_move_does_not_promote_the_destination(store: Store) -> None:
         "the move promoted the situation the alarm was moved INTO. Nobody read it; its id was "
         "typed, and promoting it hides the card from the tab that exists to surface it."
     )
+
+
+# --- the bulk hand-clear (v0.16.5, DECISIONS #301) --------------------------------------------
+
+
+async def _alarm_states(store: Store, alarm_ids: list[int]) -> list[dict[str, Any]]:
+    """`(id, status)` for the alarms named, in the order given.
+
+    A helper rather than an inline query at each call site: three of these tests ask the same
+    question — *"is this alarm still active"* — and `fetchone()` returns `Row | None`, which is not
+    indexable until it has been narrowed. Doing that narrowing once is cheaper than three
+    assertions that mypy has to be told about.
+    """
+    order = {aid: i for i, aid in enumerate(alarm_ids)}
+    cur = await store.conn.execute(
+        "SELECT id, status FROM alarm WHERE id IN "  # nosec B608 - placeholders, not values
+        f"({','.join('?' * len(alarm_ids))})",
+        alarm_ids,
+    )
+    rows = [dict(row) for row in await cur.fetchall()]
+    return sorted(rows, key=lambda r: order[int(r["id"])])
+
+
+async def _audit_actions(store: Store) -> list[str]:
+    cur = await store.conn.execute("SELECT action FROM audit_log ORDER BY id")
+    return [row["action"] for row in await cur.fetchall()]
+
+
+async def test_the_bulk_clear_clears_every_active_member_and_resolves_the_situation(
+    store: Store,
+) -> None:
+    """`POST /api/alarms/clear` is N single clears, and the record must not be able to tell.
+
+    Same event kind, same per-alarm audit row, same resolution when the last member goes — plus one
+    `alarm.clear_all` row for the batch, which answers the question no per-alarm row can: *who
+    decided to clear a whole situation at once*.
+    """
+    _engine, _queue, app = await seeded(store)
+    sid = int((await live_situations(store))[0]["id"])
+    members = await store.situation_member_ids(sid)
+    assert len(members) > 1, "this scenario needs a multi-member situation to be worth clearing"
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        response = await client.post("/api/alarms/clear", json={"situation_id": sid})
+    finally:
+        await client.aclose()
+    assert response.status_code == 200, response.text
+    assert response.json() == {"status": "cleared", "cleared": len(members)}
+
+    detail = await store.situation_detail(sid)
+    assert detail is not None
+    assert (detail["status"], detail["resolution"]) == ("resolved", "manual_clear"), (
+        "clearing every member left the situation unresolved, or recorded it as self_cleared — "
+        "which would tell an audit the network fixed it"
+    )
+
+    actions = await _audit_actions(store)
+    assert actions.count("alarm.clear") == len(members), (
+        f"{actions.count('alarm.clear')} per-alarm audit rows for {len(members)} alarms. The "
+        f"question 'who cleared this alarm' must be answered by the same query it always was."
+    )
+    assert actions.count("alarm.clear_all") == 1, "the batch itself left no audit row"
+
+
+async def test_the_bulk_clear_asserts_nothing_about_the_grouping(store: Store) -> None:
+    """The prohibition above, at batch size.
+
+    `manual_clear` is outside `ASSERTING_KINDS` and no number of them adds up to a claim about
+    whether these alarms belong together. A bulk gesture is where that would be easiest to lose.
+    """
+    _engine, _queue, app = await seeded(store)
+    sid = int((await live_situations(store))[0]["id"])
+    labels_before = await _label_count(store)
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        assert (
+            await client.post("/api/alarms/clear", json={"situation_id": sid})
+        ).status_code == 200
+    finally:
+        await client.aclose()
+
+    event = await _one_event(store, "manual_clear")
+    assert event["produces_training_rows"] == 0
+    assert event["confidence"] is None
+    assert await _label_count(store) == labels_before, "a bulk zombie clear wrote a label"
+    assert not [
+        row for row in await store.gesture_positive_pairs() if row["kind"] == "manual_clear"
+    ], "a bulk zombie clear reached the training derivation"
+
+
+async def test_only_ids_narrows_the_set_and_can_never_widen_it(store: Store) -> None:
+    """**The property that keeps this route from being an existence oracle** (DECISIONS #301).
+
+    The obvious shape for a bulk clear is a list of alarm ids, and it would let a scoped editor post
+    ids they cannot see and read the answer off the count. So the set is derived from the situation
+    and `only_ids` **intersects** it.
+
+    This drives the widening attempt directly: a request naming one member of situation A **and**
+    every member of situation B must clear exactly the one, and must leave B untouched. An id that
+    is not in the derived set contributes precisely what an already-cleared member does — nothing —
+    so the count discloses nothing about whether it exists.
+    """
+    engine, queue, app = await seeded(store)
+    # A second, unrelated situation on a different device — the one the widening attempt reaches
+    # for. Driven through the real ingest path like every other situation in this file.
+    await util.drive(
+        engine,
+        queue,
+        [
+            util.event(device="10.9.9.1", trap_oid=util.CIENA_TRAP, ts=BASE + 30_000),
+            util.event(device="10.9.9.1", trap_oid=util.CIENA_TRAP, ts=BASE + 30_001),
+        ],
+    )
+    live = await live_situations(store)
+    assert len(live) > 1, "this test needs two live situations to attempt the widening"
+    target, other = int(live[0]["id"]), int(live[1]["id"])
+    target_members = await store.situation_member_ids(target)
+    other_members = await store.situation_member_ids(other)
+    assert other_members, "the second situation has no members to try to reach"
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        response = await client.post(
+            "/api/alarms/clear",
+            json={
+                "situation_id": target,
+                # one legitimate id, plus every id from a situation this request did not name
+                "only_ids": [target_members[0], *other_members, 10_000_000],
+            },
+        )
+    finally:
+        await client.aclose()
+    assert response.status_code == 200, response.text
+    assert response.json()["cleared"] == 1, (
+        "the count moved with ids outside the named situation, which is the oracle this design "
+        "exists to prevent"
+    )
+
+    still_active = [
+        row["id"] for row in await _alarm_states(store, other_members) if row["status"] == "active"
+    ]
+    assert still_active == other_members, (
+        f"{len(other_members) - len(still_active)} alarm(s) in a situation the request did not "
+        f"name were cleared by it"
+    )
+
+
+async def test_a_situation_that_does_not_exist_and_one_out_of_scope_answer_alike(
+    store: Store,
+) -> None:
+    """404 on the same path, as everywhere else on this perimeter (DECISIONS #60, F34).
+
+    A different status, body or timing for "no such situation" than for "not yours" would make the
+    route report which situations exist to a principal who may not see them.
+    """
+    _engine, _queue, app = await seeded(store)
+    client = await authutil.client_as(app, "editor")
+    try:
+        missing = await client.post("/api/alarms/clear", json={"situation_id": 10_000_000})
+    finally:
+        await client.aclose()
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "no such situation"
+
+
+async def test_a_settled_situation_is_a_200_with_nothing_cleared_and_not_a_409(
+    store: Store,
+) -> None:
+    """Unlike the single clear, "nothing left to clear" is the expected outcome of a bulk gesture.
+
+    The single-alarm route answers 409 because the operator pressed a specific button on a specific
+    row and deserves to know it did nothing. Over a whole situation, reporting the ordinary case as
+    an error is how operators learn to ignore errors.
+    """
+    _engine, _queue, app = await seeded(store)
+    sid = int((await live_situations(store))[0]["id"])
+    client = await authutil.client_as(app, "editor")
+    try:
+        first = await client.post("/api/alarms/clear", json={"situation_id": sid})
+        second = await client.post("/api/alarms/clear", json={"situation_id": sid})
+    finally:
+        await client.aclose()
+    assert first.status_code == 200 and first.json()["cleared"] > 0
+    assert second.status_code == 200, second.text
+    assert second.json() == {"status": "cleared", "cleared": 0}
+
+
+async def test_a_viewer_may_not_bulk_clear(store: Store) -> None:
+    """It carries `alarm.clear`, the same capability as the single-alarm form it batches.
+
+    A second capability would let an operator hold one and not the other over an act with one
+    meaning — and a viewer holds neither.
+    """
+    _engine, _queue, app = await seeded(store)
+    sid = int((await live_situations(store))[0]["id"])
+    client = await authutil.client_as(app, "viewer")
+    try:
+        response = await client.post("/api/alarms/clear", json={"situation_id": sid})
+    finally:
+        await client.aclose()
+    assert response.status_code == 403, response.text
+    members = await store.situation_member_ids(sid)
+    active = [row["id"] for row in await _alarm_states(store, members) if row["status"] == "active"]
+    assert active == members, "a refused request cleared something"
