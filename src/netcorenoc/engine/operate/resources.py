@@ -214,6 +214,14 @@ class ResourceSampler:
             **self._latest,
             "window_s": WINDOW_S,
             "interval_s": SAMPLE_INTERVAL_S,
+            # **v0.16.6: how wide one served point is.** `window_s` is the ring's span and
+            # `interval_s` is the sampling period; neither says how much time ONE POINT of the
+            # series covers, because that is `WINDOW_S / SERIES_POINTS` and `SERIES_POINTS` was
+            # not on the wire. A console drawing a time axis therefore had nothing to put on it,
+            # and the caption said "last 2 hours" over a series that might cover one minute — the
+            # exact failure DECISIONS #306 exists to prevent, reached from the one direction that
+            # release did not look. Additive, and the only number the axis needed.
+            "bucket_s": WINDOW_S / SERIES_POINTS,
             "cpu_series": self._series(self._cpu),
             "mem_series": self._series(self._mem),
             "disk_series": self._series(self._disk),

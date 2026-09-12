@@ -31,8 +31,9 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.16.2** | **The critical repairs** — a situation holding a live alarm stops leaving the live view, promotion stops being an implicit assertion, and severity becomes legible without reading. | `critical-repairs` |
 | **v0.16.3** | **The operator's declaration** — naming an NE, naming an alarm class, declaring a severity, and propagating all three. | `operator-declaration` |
 | **v0.16.4** | **The console's shell** — navigation, the situation cards, the members table, and the timezone the console already computes and does not always show. | `console-shell` |
-| **v0.16.5** | **The evidence screens** — overview graphs, health, the map, a configurable timeline, and the model metrics beside the grouping they explain. | `evidence-screens` |
-| **v0.16.6** | **Maintenance windows** — a planned-work declaration, and the composed severity/time filters that read it. | `maintenance-windows` |
+| **v0.16.5** | **The shell, corrected** — six things a browser found in v0.16.4's console, and the host metrics v0.16.4 believed needed a dependency. **Shipped.** | `shell-corrected` |
+| **v0.16.6** | **The evidence screens** — overview charts, the estate map, a configurable timeline, and the model metrics beside the grouping they explain. | `evidence-screens` |
+| **v0.16.7** | **Maintenance windows** — a planned-work declaration, and the composed severity/time filters that read it. | `maintenance-windows` |
 | **v0.17.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
 | **v0.18.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
 
@@ -65,7 +66,15 @@ code:
   promotion gate refused on this project's own corpus with `asserting_bags = 0` against a floor of
   50, and per-archetype weights mean splitting an already-insufficient corpus `k` ways.
 
-### The v0.16 block, and why it is five releases rather than one
+### The v0.16 block, and why it is six releases rather than one
+
+> **The numbering moved once, in v0.16.6, and the reason is worth one line.** The block was planned
+> as five and shipped as six: v0.16.4's shell went out, a browser found six defects in it, and
+> repairing them was a release of its own rather than a patch on the one that followed. So v0.16.5
+> is *the shell, corrected* — which is what the code and the CHANGELOG already said — the evidence
+> screens are v0.16.6, and maintenance windows are v0.16.7. Nothing about any release's *content*
+> moved; only two of their numbers did.
+
 
 * **v0.16.2 first, because a defect that hides an active alarm outranks every feature behind it.**
   The idle sweep resolved a situation that still held a live alarm, and a repeating trap increments
@@ -78,7 +87,7 @@ code:
   measured what that means on a real corpus. An operator declaration is what fills the gap the
   measurement describes; declaring it before the gap was measured would have been a feature looking
   for a reason.
-* **v0.16.5 and v0.16.6 after v0.16.3**, and the dependency is on the declaration rather than on the
+* **v0.16.6 and v0.16.7 after v0.16.3**, and the dependency is on the declaration rather than on the
   screens: a severity filter and a per-severity health panel both read a severity that, today,
   resolves for almost nothing. Building either first would produce a screen whose every row says
   *unknown* and no way to tell a broken screen from an honest one.
@@ -86,6 +95,10 @@ code:
   dependency at all — it is shape, not signal. It is placed third because the declaration of
   v0.16.3 needs somewhere to live, and a shell built after the thing it must hold is a shell built
   once.
+* **v0.16.5 immediately after v0.16.4, and not folded into it.** Its six defects were found by using
+  the shell, which could not happen before the shell existed; and one of them — a panel 26 px wide
+  at every width whose own comment asserted otherwise (F111) — is the reason this project's releases
+  now end in a browser rather than in a gate document.
 
 ## What v0.16.2 measured, and which block needs it
 
@@ -110,7 +123,7 @@ binding constraint is the ordinality test, which validates a candidate ranking a
 alarm lifetimes**, and the corpus closes one alarm in 2 252. That is a corpus question before it is
 a threshold question, and it is the gap an operator declaration fills.
 
-**For v0.16.5 and v0.16.6 — the same table.** A severity filter and a per-severity health panel
+**For v0.16.6 and v0.16.7 — the same table.** A severity filter and a per-severity health panel
 both read a field that resolves for nothing. Either would render a screen whose every row says
 *unknown*, with no way to tell a broken screen from an honest one.
 
@@ -215,11 +228,116 @@ server accepts a verdict there (200) and refuses all three restructuring gesture
 * **The navbar's health control is where a sparkline goes**, and it needs a stored series: nothing
   in this appliance keeps one, and `psutil`, `resource` and `/proc` are all absent from `src/`. The
   control shows four served numbers and says which it cannot show.
+  *(**Refuted by v0.16.5**, DECISIONS #300: all three host metrics are stdlib reads, the dependency
+  count is still five, and the series is a two-hour in-memory ring rather than a table. The premise
+  "the alternative is add a source" was wrong, and the sentence is kept so the correction has
+  something to point at.)*
 * **The Overview has room and no placeholder.** Two of its five tiles became filters on Situations
   and one moved into the health control; nothing was left behind to be moved aside.
 * **A severity filter still reads a field that resolves for nothing** — 0 of 2 252 on the corpus,
   unchanged by v0.16.3 and unchanged here, because a declaration is a separate source rather than a
   lowered threshold.
+
+## What v0.16.6 measured: which charts have data behind them, and which do not
+
+A chart the appliance cannot measure is worse than the counter it replaced, so v0.16.6 answered
+three questions for every chart the maintainer asked for **before drawing any of them**: what does
+it answer, what data exists, and what does it cost. Nine were drawable, four were not, and the four
+are the valuable half — each one names the table and the columns a later release would have to add.
+
+**Drawn, and where the data comes from:**
+
+| Chart | Answers | Source | Cost |
+|---|---|---|---|
+| CPU / memory / storage | is the box about to stop? | `stats.resources.{cpu,mem,disk}_series` | free, already polled |
+| queue depth, p95 latency | is correlation falling behind, **and getting worse**? | `stats.queue_depth`, `stats.latency_p95_s`, ringed **in the client** (#222's precedent) | free; resets on reload, and the chart says so |
+| situations over time | is this a burst or a trickle? | `GET /api/situations?limit=500` → `created_at`, `status` | **2.5 ms** measured |
+| open vs new over time | is anyone triaging them? | the same rows, split by `status` | shared with the above |
+| alarms over time | when did it start? | `GET /api/timeline?since&limit=1000` → `ts`, `kind` | **8.3 ms** measured |
+| elements by active alarms | which element is worst *now*? | `GET /api/graph` → `nodes[].active_alarms` | free, already polled |
+| the estate map | is it one element or the whole estate? | the same nodes | shared |
+| verdict over time | is the challenger getting closer? | `promotion.decided_at`, `promotion.verdict` | **4.3 ms**, on demand |
+| the four named quantities, per decision | which quantity moved? | `promotion.metrics` — four quantities, **both arms**, per `0013` | shared |
+| seal query count over decisions | has the holdout been spent? | `promotion.query_count` | shared |
+| the retention census | what is capture holding? | `/api/dataset/retention` → `stats` | **32.6 ms** — stays behind its on-demand control |
+
+**Cannot be drawn, with what a later release would need:**
+
+* **A loss curve.** `challenger_run` has 24 columns and not one holds a per-iteration loss, a
+  residual or a convergence trace: `iterations` is a count, `learning_rate` and `fit_seconds` are a
+  duration each. **What it would need**: a `challenger_iteration(run_id, iteration, loss)` table
+  written by `engine/model/training.py` — a migration, and therefore a pre-registration question
+  before it is a schema one. **v0.17.0**, where the corpus work already lives.
+* **A residual distribution.** The only label in the schema is in `feedback` and reaching it needs
+  the join; `incumbent_linked` is a comparison basis and **never a target** (`0009`, and
+  `PREREGISTRATION-0.16.0.md` §1). What could be drawn is the *score* distribution of
+  `shadow_opinion.score` — but **no module under `src/` mentions `shadow_opinion` and an `/api/`
+  path**, because `0009`'s posture is *no read below admin, on any route, in any format, ever* and
+  v0.9.0 added no route at all. **What it would need**: an admin-only aggregate route, which is a
+  security decision before it is a chart — and whatever it drew would have to name
+  `challenger_run.sample_rate` beside it (**0.01** by default, deployment-settable through
+  `config.shadow_sample_rate`).
+* **Fold results.** `evaluation_fold` holds `(run_id, incident_id, repeat, fold)` — **membership,
+  not results**, which is exactly what `0013` says it is for. Fold *sizes* are drawable and answer a
+  different question; per-fold metrics are not. **What it would need**: the per-fold metrics
+  `shadow_cv` computes and discards.
+* **Top elements by alarms over a week.** The appliance serves *active* alarms per element and a
+  recent mark page, and neither is a count over a window. Measured, and it is why this one is
+  refused rather than approximated: `GET /api/timeline?limit=1000` came back **full — 1 000 marks
+  spanning 15.6 seconds** — on a corpus of 1 976 traps, so a chart titled *"last 7 days"* drawn
+  from that page would have shown fifteen seconds. **What it would need**: `GROUP BY ne_id` over
+  `alarm.first_seen` inside a window — a query and one route parameter, no migration. The Overview
+  draws *"by active alarms now"* instead, which is exact and complete.
+
+**And the two numbers the release corrected in its own brief, both by execution:**
+
+* `cpu_series` is **24 points, not 240**. `SAMPLES_KEPT = 240` is the ring; `SERIES_POINTS = 24` is
+  what `snapshot()` serves, meaned into five-minute buckets. An appliance up for ten minutes serves
+  two points, and the chart draws two.
+* `/api/promotion` carries the four named quantities **per decision, with a timestamp**. The brief
+  read `challenger_run` and `shadow_opinion` and concluded that *"which model is winning over
+  time"* needed a new table. It needs a render.
+
+### What v0.16.6 deferred, with the reason
+
+* **F112's guard half.** F110's element-to-element exemption is justified by *"the container is a
+  flex row whose `gap` separates them"* and nothing reads the container. Repairing it means
+  resolving a CSS container per candidate pair — a stylesheet-parsing problem. The three sites are
+  fixed; the guard is a **ROADMAP** line.
+* **A second "map".** The maintainer asked for *"more than one map"* and got exactly one more, per
+  decision 7: one that answers a question the first cannot. A third projection with no question
+  behind it would be the placeholder #219 recorded, with a chart's face.
+* **A frozen timeline window.** The window control is rolling (`since = now - win`), so a permalink
+  shares the *configuration* and not the *instant*. An `at` anchor plus `until` would make it exact
+  and is one parameter the route already accepts — but it needs a gesture nobody asked for, and
+  decision 8's four controls are what the brief named. **ROADMAP.**
+* **The four CLI reports still have no HTTP route**, so an operator reads a verdict's label in the
+  browser and its content in a terminal. Unchanged by this release and unchanged deliberately: a
+  route into the corpus is the security decision the residual chart is blocked on.
+
+### The live pass, and what it found
+
+**162 screens driven** — eighteen fragments at 390 / 820 / 1440 as viewer, editor and admin — with
+**156 charts** checked for three things by looking: that the chart fits, that its axis is readable,
+and that it agrees with the number printed beside it. Fifteen percentage line charts had their
+**geometry** compared against their printed reading (`y = 40 - value/100 x 40`); none disagreed.
+
+**It found four defects that no assertion in this repository could see**, and all four were in
+work this release wrote:
+
+1. the host series had **no time axis at all**, and their caption claimed *"last 2 hours"* over a
+   series holding two points. `resources` serves values with no timestamps, so the fix is one
+   additive key — `bucket_s` — and a span derived from `points x bucket_s`;
+2. a **one-point line** drew an axis, printed a reading beside it, and left the plot empty;
+3. the last x tick was **one bucket short**, because `buckets()` labels a bucket's *start* — right
+   for a column, wrong for a series of means;
+4. an `aria-label` reading *"over over 7 min"*, because both the span and the label added the
+   preposition.
+
+Numbers 1 and 3 are the same class as F111: a chart that renders perfectly and says something
+untrue. Neither is visible to a harness with no layout engine, and number 3 is not visible to a
+browser either unless someone reads the ticks against the span — which is what Part III means by
+*check that it says the same thing the number beside it says*.
 
 ## The claims
 
@@ -244,8 +362,9 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 <!-- release-claim: v0.16.2 = critical-repairs -->
 <!-- release-claim: v0.16.3 = operator-declaration -->
 <!-- release-claim: v0.16.4 = console-shell -->
-<!-- release-claim: v0.16.5 = evidence-screens -->
-<!-- release-claim: v0.16.6 = maintenance-windows -->
+<!-- release-claim: v0.16.5 = shell-corrected -->
+<!-- release-claim: v0.16.6 = evidence-screens -->
+<!-- release-claim: v0.16.7 = maintenance-windows -->
 <!-- release-claim: v0.17.0 = external-cartridge -->
 <!-- release-claim: v0.18.0 = archetypes -->
 

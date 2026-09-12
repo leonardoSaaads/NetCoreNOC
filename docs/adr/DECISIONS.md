@@ -3278,3 +3278,160 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: opens on hover, survives the pointer entering the panel, closes on leave, the bell
   ignores hover, a pinned panel survives leaving, Escape closes it, and hover works again after —
   eleven assertions in a driven browser.
+
+# v0.16.6 — the evidence screens
+
+## 304. The Overview's reading order, and the prose the charts replaced (v0.16.6)
+
+- **Decision** (decision 1): five bands, top to bottom, answering five questions in the order an
+  operator asks them: **(1) what is happening** — situations and alarms over time; **(2) where** —
+  the estate map; **(3) which element is worst** — elements by active alarms; **(4) is the
+  appliance itself keeping up** — CPU, memory, storage and queue depth as series; **(5) what has it
+  learned** — the two learned counters. The open-situations list closes the live band and the two
+  on-demand tiles stay beneath it.
+- **What left**: the Overview's own `Health` component — seven tiles, two headings and two
+  paragraphs — and the paragraph pointing at five offline reports. The receiver's five counters
+  **did not leave**; they became one secondary line, which is the shape #300 already chose for the
+  health panel's correlation counters.
+- **Reason**: *"open the web application and immediately understand what is happening."* A count of
+  active alarms cannot say whether it is a burst or a trickle, and that is the first thing an
+  operator needs. A column series says it without being read.
+- **Why the host charts appear here as well as in the top bar**: the control's sparkline is 104 x 22
+  px and carries no axis. The same three metrics at full width carry one, and the top bar keeps the
+  glance. One vocabulary, two sizes — never two implementations (`app/charts.js`).
+- **Measured** in Chromium against a live appliance holding 1 976 replayed traps, as admin, before:
+  **11 paragraphs, 172 words, 11 stat tiles, 0 charts**, and the screen **1 521 px tall at 390 px —
+  1.80 viewports of scrolling** (1 215 px at 820, 1 073 px at 1440).
+
+## 305. Three chart types, reused everywhere, and an interval is not one of them (v0.16.6)
+
+- **Decision** (decision 2): three, and every chart in the console is one of them. **`Series`** — a
+  time axis carrying `line` or `column` marks. **`Bars`** — horizontal categorical magnitudes, the
+  value printed as text beside each bar. **`Map`** — a deterministic grid, one cell per element.
+- **The ceiling is the decision.** Two marks inside `Series` rather than two types, because "line or
+  columns over time" is one question asked two ways and the timeline's own chart-type control
+  (decision 8) is exactly that choice.
+- **The fourth candidate was refused**: a dot-and-interval chart for the four named quantities. An
+  interval of `0.0123 [0.0011, 0.0456]` has to be *read*, not eyeballed, at 390 px; and four of them
+  drawn on one pair of axes is a picture that invites the composition
+  `PREREGISTRATION-0.10.0.md` §5 forbids. They keep the table `views/parts/verdict.js` already
+  gives them, and what this release adds beside it is each quantity's value **over decisions**,
+  which is a `Series` and is four separate small charts rather than one.
+- **Trade-off accepted**: an estate of thousands of elements will outgrow one `Map` cell per
+  element. The cap is stated on screen and the remainder counted, rather than the grid becoming
+  unreadable in silence.
+- **Measured**: the three cover **11 of the 11** charts this release draws; none needed a fourth.
+
+## 306. A series comes from the read the console already makes, at a limit the route already accepts (v0.16.6)
+
+- **Decision** (decision 3): **no new route and no new route parameter.** The host series come from
+  `/api/stats.resources`, already on every poll. Situations over time comes from
+  `GET /api/situations?limit=500` — a bound the handler already clamps at 500. Alarms over time
+  comes from `GET /api/timeline?since=…&limit=1000`, whose parameters v0.16.1 registered. Queue
+  depth and p95 come from a **bounded client-side ring**, on #222's precedent for the trap rate:
+  the appliance serves the counter and the client keeps its own short history and says so.
+- **Every series' axis is the span it actually covers**, derived from the oldest datum returned and
+  never from the window that was requested. That is the honesty mechanism, and it is structural: a
+  reader who asks for seven days and is shown sixteen seconds has been told so by the axis.
+- **Measured** on a live appliance holding 1 976 traps and **181 750** `dataset_pair` rows:
+  `/api/stats` **4.1 ms**, `/api/situations?limit=500` **2.5 ms**, `/api/timeline?limit=1000`
+  **8.3 ms**, `/api/graph` 3.8 ms, `/api/promotion` 4.3 ms — and
+  `/api/dataset/retention` **32.6 ms**, which is the one that stays behind the on-demand control it
+  already had.
+- **Measured, and it is why the axis rule exists**: `/api/timeline?limit=1000` came back **full —
+  1 000 marks spanning 15.6 seconds** — on this corpus. A chart titled *"last 7 days"* drawn from
+  that page would have been wrong on its first render, on the appliance this release was built
+  against.
+
+## 307. Hand-written SVG for every chart this release adds; d3 stays exactly where it is (v0.16.6)
+
+- **Decision** (decision 4): every new chart is hand-written SVG in `app/charts.js`. d3 keeps the
+  force graph and the timeline scatter it already draws, and gains nothing.
+- **Reason**: the harness substitutes a recording double for d3, so a d3 chart is invisible to every
+  assertion in this repository, and `health.js` has proved since v0.16.5 that the alternative works
+  — including the part that matters, a gap that breaks the line.
+- **Measured**, with two controls in the same rendered document: descendants of `<svg #graph>` =
+  **0** and of `<svg #timeline>` = **0**, while that same document carries **21 hand-written
+  `<svg>` elements and 42 `<path>`s** from `icons.js`, and `health.js`'s sparkline reports a series
+  holding one `null` as **two polyline runs** (`"0.0,21.6 25.0,21.1"`, `"75.0,20.6 100.0,20.2"`).
+  The zero is a property of d3, not of the harness.
+- **What this closes and what it does not**: the estate map is hand-written, so the Graph screen's
+  *second* projection is executed by tests where its first is not. The force drawing is still
+  executed by nothing, and that sentence stays in `views/graph.js` and in the report.
+
+## 308. Evidence records the gap and draws what exists (v0.16.6)
+
+- **Decision** (decision 5): **no training-metrics table, no migration, no pre-registration
+  amendment.** The screen draws the verdict over time as its three states, each decision's four
+  named quantities **uncomposed**, the seal's query count over decisions, the trigger census, and
+  the retention census. `INSUFFICIENT_EVIDENCE` is a rendered state with its own wording, never an
+  empty chart.
+- **Recorded as *cannot be drawn***, in `docs/plans/releases.md`, with what a later release would
+  need: a **loss curve**, a **residual distribution**, and **fold results**.
+- **Measured**: `challenger_run` has 24 columns and **not one** holds a per-iteration loss, a
+  residual or a convergence trace — `iterations`, `learning_rate` and `fit_seconds` are a count and
+  two durations. **No module under `src/` mentions `shadow_opinion` and an `/api/` path**: migration
+  `0009`'s posture is *no read below admin, on any route, in any format, ever*, and v0.9.0 added no
+  route, so a residual chart is a security decision before it is a chart. `evaluation_fold` holds
+  `(run_id, incident_id, repeat, fold)` — membership, not results.
+- **What was found instead, and it is the correction to my own brief**: `promotion.metrics` already
+  holds *"the four named quantities with clustered intervals, both arms"* per decision, and
+  `promotion.decided_at` gives them a time axis. *"Which model is winning over time"* is a render,
+  not a migration. `0013`'s own column comment is where that was written down.
+- **Trade-off accepted**: on this corpus every verdict is `INSUFFICIENT_EVIDENCE` and the series is
+  one flat band. That is the measurement, and a screen that made it look like more would be the
+  triumphant number Appendix B names.
+
+## 309. Urgency is animated in CSS, and motion is never the only encoding (v0.16.6)
+
+- **Decision** (decision 6): a heavily-alarming mark gets a CSS `@keyframes` pulse **and** a static
+  second encoding — a ring whose stroke width follows the load — **and** the exact count in its
+  `<title>` and in the table beside it. Any one of the three carries the fact alone.
+- **Why the animation lives in the stylesheet**: `style.css` already ends with
+  `@media (prefers-reduced-motion: reduce) { * { animation: none !important } }`, so a CSS animation
+  honours the preference **by construction** and a guard can assert it by reading one file. A
+  JS-driven animation would have had to re-implement that rule and could not be checked against it.
+- **Reason for the static encoding**: an urgency carried only by motion fails for the same operator
+  colour-alone fails for, and #277's three-encoding rule for severity is the same rule.
+- **Measured** in Chromium: with `prefers-reduced-motion: reduce`, `animationName` is `none` on
+  every urgent mark; without it, the pulse runs. The ring is 3 px against 1 px at both settings, so
+  the mark is distinguishable with motion off.
+
+## 310. The second projection is a deterministic estate map, because the force graph cannot compare two elements (v0.16.6)
+
+- **Decision** (decision 7): one more projection, not two — an **ordered grid, one cell per
+  element**, cell area and tone following active alarms, sorted by load then by id. It is the
+  Overview's network map and the Graph screen's second projection: one primitive in two places,
+  which is decision 2's ceiling doing its job.
+- **The question it answers that the first cannot**: *is this one element or the whole estate?* The
+  force graph answers *which elements are related* and is the right drawing for that. It cannot
+  answer this one for two independent reasons, and both are measured.
+- **Measured — the radius saturates**: `min(24, 7 + 2.5 * sqrt(active_alarms))` reaches its ceiling
+  at **47 active alarms** (F77 set that ceiling deliberately). On this corpus `127.0.0.1` carries
+  **1 359** active alarms and `127.0.0.4` carries **501** — 2.7 times apart — and **both draw at
+  exactly 24.0 px**. The one screen built to say which host is worst cannot distinguish them.
+- **Measured — the layout is not deterministic**: node positions come from a force simulation with
+  drag and a re-centring force, so two glances at an unchanged estate do not agree. The grid is a
+  pure function of the payload, which is what lets an operator compare this morning with now.
+- **Trade-off accepted**: the map shows adjacency of *load*, not of topology. It is labelled as
+  such, and the affinity drawing stays where it is rather than being replaced.
+
+## 311. The timeline's configuration lives in the URL, and the scope-bearing half stays in SQL (v0.16.6)
+
+- **Decision** (decision 8): element, window, chart type, depth and combine/separate are **query
+  parameters on `#/timeline`**, read on arrival and written on every change, so the configured
+  screen is a permalink.
+- **Why not a stored preference**: a per-user row and a migration — which is exactly the answer
+  #294 gave for an operator-chosen timezone — for a value a URL already carries. Why not component
+  state: v0.16.4 measured what that costs on the screen next door (F108), and a configuration
+  nobody can send to a colleague during an incident is half a feature.
+- **The split that matters, and it is F35/F38's**: `ne`, `win` and `depth` become `ne_id`, `since`
+  and `limit` and are **applied in the query**; `chart` and `split` are presentational choices over
+  the rows the server already returned, and they say so. The element filter is never applied at
+  render — v0.7.0 compared a rendered `COALESCE(label, ip)` against a scope's address set, and a
+  display string is never an authorization key.
+- **Demonstrated red**: an injection that filters by `ne` in the render instead of the query turns
+  `test_the_timeline_element_filter_is_a_query_filter` red; the control is the window filter
+  applied the same way, which stays green because it is not scope-bearing.
+- **Measured**: `/api/timeline` already accepted `ne_id`, `since`, `until` and `limit`; this release
+  adds **no route parameter** and begins sending `until`, which was served and never used.

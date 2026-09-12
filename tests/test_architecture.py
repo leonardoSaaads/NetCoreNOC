@@ -370,6 +370,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/destructive.js"),
     ("GET", "/app/dom.js"),
     ("GET", "/app/format.js"),
+    ("GET", "/app/charts.js"),
+    ("GET", "/app/chartdata.js"),
     ("GET", "/app/icons.js"),
     ("GET", "/app/login.js"),
     ("GET", "/app/parameters.js"),
@@ -411,6 +413,10 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/judge.js"),
     ("GET", "/app/views/parts/bulkclear.js"),
     ("GET", "/app/views/parts/finder.js"),
+    ("GET", "/app/views/parts/pulse.js"),
+    ("GET", "/app/views/parts/estate.js"),
+    ("GET", "/app/views/parts/marks.js"),
+    ("GET", "/app/views/parts/evidence.js"),
     ("GET", "/app/notices.js"),
     ("GET", "/app/health.js"),
     ("GET", "/app/widgets.js"),
@@ -931,8 +937,20 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
 #: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
 #: for the same module-graph reason `members.js` and `card.js` were.
-SRC_TREE_DIGEST = "9ec81182489ae96681b6da9b62eb3e4b55a0369486408dee7894fad5bee61cdb"
-SRC_FILE_COUNT = 204
+#:
+#: v0.16.6: 204 -> 210 files. Three added, none removed, none moved, and **no migration** —
+#: `0016` is still the head of the schema. `ui/app/charts.js` (the three chart types),
+#: `ui/app/chartdata.js` (their arithmetic, separate because it is pure and is driven directly by
+#: tests with no DOM) and `ui/app/views/parts/pulse.js` (the Overview's five bands, out of
+#: `views/overview.js` at 22 552 bytes against the 17 579-byte module-graph guard) — and
+#: `ui/app/views/parts/estate.js`, the Graph screen's second projection and its two derived
+#: tables, out of `views/graph.js` at the same ceiling — and
+#: `ui/app/views/parts/marks.js`, the timeline's half of that same boundary, and
+#: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
+#: the three things nothing measures. A release that
+#: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
+SRC_TREE_DIGEST = "41257f1e4f571ca9a72a4b40dbba1f1b688d5bf8525ded7b5618872797d8074c"
+SRC_FILE_COUNT = 210
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -998,7 +1016,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.5", "the version this release carries"
+    assert __version__ == "0.16.6", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

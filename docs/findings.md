@@ -1552,3 +1552,92 @@ Run every command below from the repository root with the virtualenv active.
   red by restoring `position: relative` on `.disclosure`, with the repaired tree as its control.
   Measured after: panel **338 px**, text box **291 px**, nothing clipped, no scrolling needed.
   Issued and closed by the release that was told to look at it.
+
+## F112 — F110's element-to-element exemption rests on a premise nothing checks, and generated content is invisible to `textContent`
+
+- **What**: `test_no_template_glues_a_word_to_the_inline_element_after_it` (F110's guard) exempts an
+  element-to-element pair across a newline, and states its ground: *"the container is a flex row
+  whose `gap` separates them — twenty such sites exist and nineteen are fine."* **Nothing checks
+  that the container is a flex row.** v0.16.6's own new markup is the twenty-first site and the
+  first where the premise is false: `<span class="metric-name">…</span>\n<b>…</b>` inside
+  `p.health-sub`, which is `display: block` with no `gap`. It rendered `p95 latency0.0000 s`.
+  **And the first two repairs were both wrong, which is the half worth keeping.** A
+  `margin-right` on the name fixed the pixels and left `textContent` glued — so a screen reader
+  announced `p95 latency0.0000 s` and an operator pasted that into a ticket. A `·` separator
+  written as `content: " · "` on `.metric + .metric::before` did the same one level up:
+  `0.0000 strap rate`, `0accepted 0refused`. **Generated content and margins are invisible to
+  `textContent`, so a fix that only moves pixels leaves the accessible text broken.**
+- **Reproduce**: against a live appliance with the v0.16.6 console, in a browser:
+  ```sh
+  # with the margin/pseudo-element form of the fix in place
+  node -e 'x' # no: this needs a layout engine. In Chromium's console, on #/overview:
+  #   document.querySelector('.health-sub').textContent
+  ```
+  The guard itself is reproducible without a browser:
+  ```sh
+  .venv/bin/python -m pytest -q tests/test_ui_invariants.py \
+      -k no_template_glues_a_word -p no:cacheprovider      # green over the defect
+  ```
+- **Measured**: the guard passed over all three forms. Rendered `textContent`, in order of repair:
+  `'p95 latency0.0000 strap rate0.00 /s…'` (no fix) → `'p95 latency 0.0000 strap rate 0.00 /s…'`
+  (margin: name fixed, separator still glued) → `'p95 latency 0.0000 s · trap rate 0.00 /s…'`
+  (explicit `${" "}` and a real `<span class="metric-sep">`). Found in a browser at 390 px; no
+  assertion in this repository saw any of it.
+- **Repair**: v0.16.6 fixes its own markup — the space and the separator are both real DOM nodes.
+  The **guard** is not repaired, and that is the open half: it should either check that an
+  element-to-element pair's container establishes a gap, or stop claiming that it does. A guard
+  whose exemption is justified by a property it never reads is F51's shape in a new place — the
+  scope of the exemption widens silently as markup is added.
+- **Disposition**: **open**, guard half. The markup half is fixed in v0.16.6. Deliberately not
+  fixed here: rewriting F110's guard to resolve a CSS container for every candidate pair is a
+  stylesheet-parsing problem, and directive 12 keeps a fix out of a feature release. The finding is
+  the record; a later release owns the guard.
+
+## F113 — F110's guard asked "am I inside a template literal?" with a parity count, and nested templates made it blind
+
+- **What**: the guard decided whether a match was inside markup with
+  `before.count("`") % 2`, which assumes **at most one template is open**. This console nests them
+  constantly — `${cond ? html`…` : null}` and `rows.map((r) => html`…`)` are its two commonest
+  shapes — and **two open templates give even parity**, so the guard skipped the site in silence.
+  It was not a narrow miss: closing the hole immediately exposed **three real sites**, one written
+  by v0.16.6 and **two shipped since v0.13.0 on the admin scorer screen**.
+- **Reproduce** — the guard's blindness, then the defect it was hiding:
+  ```sh
+  # 1. The parity count at the site v0.16.6's live pass found on screen.
+  .venv/bin/python - <<'PY'
+  import re
+  from pathlib import Path
+  src = Path("src/netcorenoc/ui/app/views/parts/evidence.js").read_text(encoding="utf-8")
+  at = src.index("The most recent verdict is")
+  print("backticks before it:", src[:at].count("`"), "->",
+        "odd" if src[:at].count("`") % 2 else "EVEN (so the old rule skipped it)")
+  PY
+  # 2. The defect the hole was hiding, on a screen shipped three releases ago.
+  .venv/bin/python -m pytest -q tests/test_ui_invariants.py \
+      -k a_hardening_only_value -p no:cacheprovider
+  ```
+  The second command's scenario returns `refusalText`; print it to see the rendering.
+- **Measured**: at the `evidence.js` site, **10 backticks, even** — the outer `html`` still open and
+  an inner one just opened, which is two. The shipped scorer refusal rendered
+  `the project floor is1 s.Your value was not applied and nothing was sent…`; repaired it reads
+  `the project floor is 1 s. Your value was not applied…`. Both taken through the DOM harness's
+  `submitForm` scenario, which is the same one `test_a_hardening_only_value_cannot_be_lowered…`
+  has driven since v0.13.0 — **it asserts `"not applied" in text` and that substring survives the
+  glue**, which is why a guard-shaped defect and an assertion-shaped one both missed it.
+- **The first repair attempted was wrong, and the measurement said so.** It blanked comments, on
+  the theory that their backticks were the cause. Comments in that file contribute **60** — an even
+  number — so they had never affected the parity at all. The real mechanism is nesting.
+- **Repair**: **fixed in v0.16.6.** Parity is replaced by a scanner that walks the source tracking a
+  stack of template and `${…}` contexts, so a match counts only when the innermost context is a
+  template; comments are still blanked first, because a backtick in prose about code is not a
+  delimiter. The three sites it exposed are fixed in the same commit.
+- **Disposition**: **closed by v0.16.6**, and the entry is kept because the reproduction is the only
+  record of what the guard could not see. Fixed inside a feature release deliberately, against
+  directive 12: the repaired guard makes the suite red, so the alternative to fixing three
+  one-token whitespace glues was weakening the guard that found them.
+- **What it says about guards generally**, which is why this is worth an entry rather than a line in
+  the CHANGELOG: F110's guard was written in the release that found F110, and its scope test was
+  never itself tested. Together with **F112** — whose exemption is justified by a container property
+  it never reads — this is twice in one guard. A guard's *scope* deserves the same demonstration as
+  its *rule*: `test_the_element_tag_check_goes_red_on_a_backticked_stray_tag` exists for exactly
+  that reason one directory away, and has no counterpart here.

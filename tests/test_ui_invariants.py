@@ -998,6 +998,16 @@ async def test_the_health_tiles_render_what_api_stats_already_served(
     Every one of these was served on every poll and rendered nowhere, which is the whole finding:
     `receiver.denied` is the only evidence an operator has that their allowlist is refusing their
     own equipment, and it had never been on a screen.
+
+    **v0.16.6 changed where they are drawn and this test changed with it — the facts did not.**
+    They were seven `.stat` tiles under two headings; they are now one secondary line of
+    name/value pairs, which is the shape #300 chose for the health panel's own counters. So the
+    selector moved from `.stat-label`/`.stat-value` to `[data-metric]`, and every counter F68
+    found is still asserted to be on screen carrying the served number. `queue_depth` additionally
+    became a **chart**, so it is read from the chart's own printed reading — which `charts.js`
+    prints from the same array the plot was drawn from, so the two cannot disagree.
+
+    Draft §1.1's rule for a selector change: the assertion count may not go down. It went up.
     """
     result = domdriver.run_scenario(
         "health",
@@ -1026,13 +1036,31 @@ async def test_the_health_tiles_render_what_api_stats_already_served(
             ],
         },
     )
-    tiles = result["samples"][0]["tiles"]
-    assert tiles["queue depth"]["value"] == "7", tiles
-    assert tiles["received"]["value"] == "100", tiles
-    assert tiles["accepted"]["value"] == "90", tiles
-    assert tiles["denied"]["value"] == "6", tiles
-    assert tiles["quarantined"]["value"] == "3", tiles
-    assert tiles["dropped"]["value"] == "1", tiles
+    sample = result["samples"][0]
+    line = sample["line"]
+    # The five receiver counters, each read by its own name rather than out of a sentence.
+    assert line["received"]["value"] == "100", line
+    assert line["accepted"]["value"] == "90", line
+    assert line["denied"]["value"] == "6", line
+    assert line["quarantined"]["value"] == "3", line
+    assert line["dropped"]["value"] == "1", line
+    # `denied` renders as **"refused"**, which is the word an operator uses, while the
+    # machine-readable name stays the API's. Both are asserted, so a rename on either side of that
+    # pairing is visible rather than silent.
+    assert line["denied"]["name"] == "refused", line["denied"]
+    assert line["received"]["name"] == "received", line["received"]
+
+    # `queue_depth` is now a series, and the number the chart prints IS the latest value of the
+    # array it drew. A chart whose caption disagreed with its plot is the defect this release was
+    # most likely to ship, and this is the assertion that would see it.
+    assert "Queue depth" in sample["chartLatest"], sample["chartLatest"]
+    assert "7" in sample["chartLatest"]["Queue depth"], sample["chartLatest"]
+    # And the store really kept the reading, rather than the chart having been handed a literal.
+    # The ring already holds the boot poll's reading, so this asserts that it **accumulated**: the
+    # newest entry is the pushed 7, and it did not replace what was there.
+    ring = sample["ring"]["queue"]
+    assert ring[-1] == 7, ring
+    assert len(ring) >= 2, f"the ring replaced its contents instead of appending: {ring}"
 
 
 @dom_test
@@ -1074,22 +1102,22 @@ async def test_the_trap_rate_is_derived_from_two_samples_and_names_its_window(
     )
     first, second, third = result["samples"]
 
-    # One sample is not a rate, and the tile says so rather than showing a zero.
+    # One sample is not a rate, and the screen says so rather than showing a zero.
     assert first["rate"] is None, first
-    assert first["tiles"]["trap rate"]["value"] == "—", first["tiles"]
-    assert "waiting" in first["tiles"]["trap rate"]["note"], first["tiles"]
+    assert first["line"]["trap rate"]["value"] == "—", first["line"]
+    assert "waiting" in first["line"]["trap rate"]["note"], first["line"]
 
     # Two samples are. The window is stated on screen beside the figure.
     assert second["rate"] is not None, second
     assert second["rate"]["windowS"] > 0, second["rate"]
     expected = 60 / second["rate"]["windowS"]
     assert abs(second["rate"]["perSecond"] - expected) < 1e-9, second["rate"]
-    assert "over the last" in second["tiles"]["trap rate"]["note"], second["tiles"]
-    assert second["tiles"]["trap rate"]["value"].endswith("/s"), second["tiles"]
+    assert "over" in second["line"]["trap rate"]["note"], second["line"]
+    assert second["line"]["trap rate"]["value"].endswith("/s"), second["line"]
 
     # A counter that went BACKWARDS is an appliance that restarted, not a negative rate.
     assert third["rate"] is None, third
-    assert third["tiles"]["trap rate"]["value"] == "—", third["tiles"]
+    assert third["line"]["trap rate"]["value"] == "—", third["line"]
 
 
 # --- v0.15.3: "why these were grouped" answers the storm question (V.6, DECISIONS #245) ---------
@@ -2405,8 +2433,65 @@ def test_no_template_glues_a_word_to_the_inline_element_after_it() -> None:
     running into the `<code>` after it, and that is what this matches.
 
     A block element is not matched either: a `<p>` or a `<div>` after prose starts its own line.
+
+    ## F113: parity cannot answer "am I inside a template literal?" when templates nest
+
+    The test was `before.count("`") % 2`, which assumes at most one template is open. This codebase
+    nests them constantly — `${cond ? html`…` : null}` is its commonest shape — and **two open
+    templates give even parity**, so the guard skipped the site silently.
+
+    Measured on `views/parts/evidence.js` when this release's live pass found
+    `verdict isINSUFFICIENT_EVIDENCE` on a screen: ten backticks before the defect, **even**, with
+    the outer `html`` still open and an inner one just opened. The first repair attempted here
+    blanked comments on the theory that their backticks were the cause; that was **wrong** and the
+    measurement said so — comments contributed sixty, an even number, so they had never mattered.
+
+    So the question is answered by a scanner rather than by a count: it walks the source tracking a
+    stack of template and `${…}` expression contexts, and a match counts only when the innermost
+    context is a template. Comments are still blanked first, because a backtick in prose about code
+    is not a delimiter — that part of the first attempt was right for a different reason.
     """
     import netcorenoc
+
+    def blank_comments(source: str) -> str:
+        """Blank every comment, keeping newlines, so offsets and line numbers are unchanged."""
+        out = list(source)
+        for match in re.finditer(r"/\*.*?\*/|//[^\n]*", source, re.S):
+            for index in range(match.start(), match.end()):
+                if out[index] != "\n":
+                    out[index] = " "
+        return "".join(out)
+
+    def template_spans(source: str) -> list[tuple[int, int]]:
+        """Every region that is INSIDE a template literal's markup, as (start, end) offsets.
+
+        A stack, because templates nest: a `` ` `` opens one when the innermost context is not
+        already a template and closes it when it is, and `${` opens an expression context that `}`
+        closes. Only the regions whose innermost context is a template are markup; everything in a
+        `${…}` is JavaScript, where a newline before a `<` means nothing.
+        """
+        spans: list[tuple[int, int]] = []
+        stack: list[str] = []
+        opened_at = 0
+        index = 0
+        while index < len(source):
+            char = source[index]
+            if char == "`":
+                if stack and stack[-1] == "template":
+                    spans.append((opened_at, index))
+                    stack.pop()
+                else:
+                    stack.append("template")
+                    opened_at = index + 1
+            elif char == "$" and source[index : index + 2] == "${" and stack[-1:] == ["template"]:
+                spans.append((opened_at, index))
+                stack.append("expr")
+                index += 1
+            elif char == "}" and stack[-1:] == ["expr"]:
+                stack.pop()
+                opened_at = index + 1
+            index += 1
+        return spans
 
     inline = r"(?:b|i|em|strong|small|code|span|a|abbr|kbd|output|label|button)"
     pattern = re.compile(r"[\w)\].,;:!?%'\"-][ \t]*\n[ \t]*<" + inline + r"[\s>]")
@@ -2414,14 +2499,12 @@ def test_no_template_glues_a_word_to_the_inline_element_after_it() -> None:
     offenders: list[str] = []
     for path in sorted(ui.rglob("*.js")):
         source = path.read_text(encoding="utf-8")
-        for match in pattern.finditer(source):
-            before = source[: match.start()]
-            if before.count("`") % 2 == 0:
-                continue  # not inside a template literal
-            opened, closed = before.rfind("/*"), before.rfind("*/")
-            if opened != -1 and closed < opened:
-                continue  # inside a `${/* … */ null}` block, which renders nothing
-            lineno = before.count("\n") + 1
+        bare = blank_comments(source)
+        markup = template_spans(bare)
+        for match in pattern.finditer(bare):
+            if not any(start <= match.start() < end for start, end in markup):
+                continue  # JavaScript, or prose in a comment — a newline there renders nothing
+            lineno = bare[: match.start()].count("\n") + 1
             text = source[match.start() : match.end()].replace("\n", "\\n")
             offenders.append(f"{path.relative_to(ui)}:{lineno}: …{text}…")
     assert not offenders, (
@@ -2562,6 +2645,7 @@ def test_the_resources_fixture_matches_what_the_sampler_actually_produces() -> N
         "disk_total",
         "window_s",
         "interval_s",
+        "bucket_s",
         "cpu_series",
         "mem_series",
         "disk_series",
@@ -2572,4 +2656,1049 @@ def test_the_resources_fixture_matches_what_the_sampler_actually_produces() -> N
         f"  only in the fixture: {sorted(fixture - produced)}\n"
         f"A fixture that has drifted from the payload keeps passing while the panel it guards "
         f"renders nothing."
+    )
+
+
+# --- v0.16.6: the chart primitives, and the rules they carry rather than describe --------------
+#
+# Every rule below is a property of `app/charts.js` and `app/chartdata.js` rather than of a caller,
+# and every one of them is demonstrated here rather than asserted in prose. That distinction is the
+# whole reason this release drew nothing with d3: a d3 chart produces no assertable DOM in this
+# harness, measured — descendants of `<svg #graph>` = 0 and of `<svg #timeline>` = 0 — while the
+# same rendered document carries 21 hand-written `<svg>` elements and 42 `<path>`s from `icons.js`.
+
+
+def _chartmath(routes: dict[str, Any], calls: dict[str, Any]) -> dict[str, Any]:
+    """Drive `app/chartdata.js`'s exports on the module instance the console imported."""
+    result = domdriver.run_scenario("chartmath", {"routes": routes["admin"], "calls": calls})
+    out: dict[str, Any] = result["out"]
+    return out
+
+
+@dom_test
+async def test_a_gap_breaks_the_line_rather_than_being_drawn_through(
+    routes: dict[str, Any],
+) -> None:
+    """**Prime directive 1, demonstrated on the arithmetic that implements it.**
+
+    A series holding a `null` must produce TWO runs, not one. One run would mean the polyline was
+    drawn straight across a period nobody measured, which is the single thing #289, #300 and #306
+    all forbid — and which renders perfectly, so no amount of looking at a chart would catch it.
+
+    The control is the same series **without** the hole: one run, same endpoints. Without it a test
+    that counted two runs could be passing because the splitter emits a run per point.
+    """
+    out = _chartmath(
+        routes,
+        {
+            "holed": {"fn": "runs", "args": [[10, 20, None, 40, 50], {"max": 100, "height": 24}]},
+            "whole": {"fn": "runs", "args": [[10, 20, 30, 40, 50], {"max": 100, "height": 24}]},
+            "all_null": {"fn": "runs", "args": [[None, None, None]]},
+            "alternating": {"fn": "runs", "args": [[10, None, 30, None, 50]]},
+        },
+    )
+    # The gap splits the line in two.
+    assert len(out["holed"]) == 2, out["holed"]
+    assert out["holed"][0] == ["0.0,21.6", "25.0,19.2"], out["holed"]
+    assert out["holed"][1] == ["75.0,14.4", "100.0,12.0"], out["holed"]
+
+    # THE CONTROL: the same five positions with nothing missing is one unbroken line.
+    assert len(out["whole"]) == 1, out["whole"]
+    assert len(out["whole"][0]) == 5, out["whole"]
+    assert out["whole"][0][0] == out["holed"][0][0], "the two series must start at the same point"
+    assert out["whole"][0][-1] == out["holed"][-1][-1], "and end at the same point"
+
+    # A series nothing could be read from draws nothing at all — never a flat line at zero.
+    assert out["all_null"] == [], out["all_null"]
+    # And a run of one point is not a line: alternating readings and holes draw nothing rather than
+    # a row of invisible one-point polylines.
+    assert out["alternating"] == [], out["alternating"]
+
+
+@dom_test
+async def test_the_axis_is_the_span_the_data_covers_and_never_the_window_requested(
+    routes: dict[str, Any],
+) -> None:
+    """**The structural reason a chart here cannot claim a range it does not hold.**
+
+    Measured on this project's own corpus during Phase 0: `GET /api/timeline?limit=1000` came back
+    **full — 1 000 marks spanning 15.6 seconds**. A chart titled "last 7 days" whose axis came from
+    the *request* would have been wrong on its first render, on the appliance this release was built
+    against. So `buckets` takes the stamps and nothing else: there is no window parameter to get
+    wrong.
+
+    The two cases below are that measurement in miniature — a 15-second page and a 7-day page — and
+    the assertion is that the reported span follows the data in both.
+    """
+    seven_days = 7 * 86400
+    out = _chartmath(
+        routes,
+        {
+            "storm": {
+                "fn": "buckets",
+                "args": [[1000.0, 1005.0, 1010.0, 1015.6], 24],
+                "probe": [1000.0, 1015.6, 999.0, 2000.0],
+            },
+            "week": {"fn": "buckets", "args": [[0.0, float(seven_days)], 24]},
+            "instant": {"fn": "buckets", "args": [[500.0, 500.0], 24]},
+            "empty": {"fn": "buckets", "args": [[], 24], "probe": [1.0]},
+        },
+    )
+    # A page that covers fifteen seconds reports fifteen seconds, whatever was asked for.
+    assert abs(out["storm"]["spanS"] - 15.6) < 1e-6, out["storm"]
+    # The same call over a week's worth reports the week — the function has no window to confuse.
+    assert abs(out["week"]["spanS"] - seven_days) < 1e-6, out["week"]
+    # **Never more buckets than readings.** Four stamps make four buckets and not twenty-four: a
+    # grid wider than its data draws twenty empty columns, which reads as twenty quiet minutes.
+    assert out["storm"]["n"] == 4, out["storm"]
+    assert out["week"]["n"] == 2, out["week"]
+    # A bucket index is clamped into the grid, and anything before the oldest datum is -1 rather
+    # than bucket 0: a mark outside the span must not be counted into the edge of it.
+    assert out["storm"]["index"] == [0, 3, -1, 3], out["storm"]["index"]
+    # One instant is one bucket, not a division by zero.
+    assert out["instant"]["n"] == 1, out["instant"]
+    assert out["instant"]["spanS"] == 0, out["instant"]
+    # Nothing at all is zero buckets and an index that answers -1, so a counting loop over it runs
+    # zero times instead of needing a guard at every call site.
+    assert out["empty"]["n"] == 0, out["empty"]
+    assert out["empty"]["index"] == [-1], out["empty"]
+    assert out["empty"]["labels"] == [], out["empty"]
+    # The tick resolution follows the span: seconds inside three minutes, a date beyond two days.
+    assert ":" in out["storm"]["labels"][0], out["storm"]["labels"]
+    assert out["storm"]["labels"][0].count(":") == 2, out["storm"]["labels"]
+    assert "-" in out["week"]["labels"][0], out["week"]["labels"]
+
+
+@dom_test
+async def test_a_counted_empty_bucket_is_zero_and_an_unmeasured_one_is_none(
+    routes: dict[str, Any],
+) -> None:
+    """A quiet estate and a sampler outage are different facts, and one type must not flatten them.
+
+    `tally` counts stamps into a grid built from those same stamps, so every bucket inside the span
+    was covered by the read that produced it — a bucket nothing fell into is **measured and empty**,
+    which is `0`. A `line` series' `null` means the opposite, and `runs` above is what proves the
+    two are drawn differently.
+    """
+    out = _chartmath(
+        routes,
+        {
+            "sparse": {
+                "fn": "buckets",
+                "args": [[0.0, 1.0, 2.0, 3.0], 4],
+                "tally": [0.0, 0.1, 3.0],
+            },
+        },
+    )
+    counted = out["sparse"]["tally"]
+    assert counted == [2, 0, 0, 1], counted
+    # The zeroes are zeroes, not holes: `None` here would make an idle minute look like an outage.
+    assert None not in counted, counted
+
+
+@dom_test
+async def test_the_axis_ceiling_is_a_number_a_reader_can_divide(routes: dict[str, Any]) -> None:
+    """`1 359` on an axis makes every chart's gridline mean something different.
+
+    Not decoration: a round ceiling is what lets two charts on one screen be compared, and pinning a
+    percentage to 100 is what stops a CPU chart rescaling to its own peak and drawing a busy minute
+    and an idle one as the same picture.
+    """
+    out = _chartmath(
+        routes,
+        {
+            name: {"fn": "ceiling", "args": [value]}
+            for name, value in {
+                "zero": 0,
+                "one": 1,
+                "small": 3,
+                "mid": 47,
+                "big": 1359,
+                "exact": 100,
+            }.items()
+        },
+    )
+    assert out["zero"] == 1, "an axis labelled 0 at both ends is not an axis"
+    assert out["one"] == 1
+    assert out["small"] == 5
+    assert out["mid"] == 50
+    assert out["big"] == 2000
+    assert out["exact"] == 100, "a value already round must not be rounded up a step"
+
+
+@dom_test
+async def test_an_unavailable_metric_renders_a_dash_and_the_words_not_measured(
+    routes: dict[str, Any],
+) -> None:
+    """**Prime directive 1's other half**, and #289's rule surviving the release that drew charts.
+
+    A host that will not give up a metric produces `None`, and the Overview must render `—` and the
+    words — never `0`, which reads as *idle*, and never an empty box, which reads as *broken*.
+
+    Driven through the live store with a `resources` block whose CPU is unreadable and whose memory
+    is fine, so the two branches are compared **in one render** rather than across two runs.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_resources(
+                        cpu_pct=None,
+                        cpu_series=[],
+                        mem_pct=41.0,
+                        mem_series=[40.0, 41.0, 41.0],
+                        disk_pct=88.4,
+                        disk_series=[88.0, 88.4],
+                    )
+                }
+            ],
+        },
+    )
+    unmeasured = " ".join(result["unmeasured"])
+    assert "not measured" in unmeasured, result["unmeasured"]
+    assert "CPU" in unmeasured, result["unmeasured"]
+    # The zero that must not appear. A chart drawn at 0% for an unreadable metric is the exact
+    # defect #289 exists to prevent, and it would look completely normal.
+    assert "0%" not in unmeasured, result["unmeasured"]
+    # And the readable ones DID draw, which is the control: an assertion that found no chart at all
+    # would pass the line above for the wrong reason.
+    drawn = [c for c in result["charts"] if c["polylines"]]
+    assert drawn, f"no chart drew a line at all: {result['charts']}"
+
+
+def _stats_with_resources(**resources: Any) -> dict[str, Any]:
+    """A `/api/stats` payload whose `resources` block is whatever a test needs it to be.
+
+    The key set is asserted against a real `ResourceSampler` by
+    `test_the_resources_fixture_matches_what_the_sampler_actually_produces`, so a field renamed in
+    `resources.py` fails there rather than quietly here.
+    """
+    block: dict[str, Any] = {
+        "cpu_pct": None,
+        "cpu_count": 4,
+        "cpu_series": [],
+        "mem_pct": None,
+        "mem_used": None,
+        "mem_total": None,
+        "mem_source": None,
+        "mem_series": [],
+        "disk_pct": None,
+        "disk_used": None,
+        "disk_total": None,
+        "disk_series": [],
+        "window_s": 7200,
+        "interval_s": 30.0,
+        "bucket_s": 300.0,
+    }
+    block.update(resources)
+    return {
+        "devices": 4,
+        "classes": 17,
+        "active_alarms": 1868,
+        "open_situations": 2,
+        "new_situations": 2,
+        "working_situations": 0,
+        "quarantined": 0,
+        "ingest_gaps": [],
+        "open_ingest_gaps": [],
+        "latency_p95_s": 0.0123,
+        "queue_depth": 0,
+        "warnings": [],
+        "receiver": {
+            "received": 1976,
+            "accepted": 1976,
+            "denied": 0,
+            "quarantined": 0,
+            "dropped": 0,
+        },
+        "resources": block,
+    }
+
+
+@dom_test
+async def test_the_overview_lost_its_prose_and_gained_charts(routes: dict[str, Any]) -> None:
+    """**Decision 1's reading order, and the paragraphs the charts replaced.**
+
+    Measured before this release, in Chromium against a live appliance: eleven paragraphs, 172
+    words, eleven `.stat` tiles and **zero charts**. The maintainer's brief for this screen is
+    *"there is a lot of text and no UI/UX visualisation"*, so the charts are the deliverable and the
+    prose going is half of it.
+
+    The assertion is on **counts and order**, never on copy — this file's header forbids asserting a
+    string of copy, and it is right to: a heading's wording will change and the reading order is
+    what decision 1 actually decided.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_resources(
+                        cpu_pct=6.0,
+                        cpu_series=[5.0, 6.0, 6.0],
+                        mem_pct=41.0,
+                        mem_series=[40.0, 41.0],
+                        mem_total=536870912,
+                        mem_used=220200960,
+                        mem_source="cgroup",
+                        disk_pct=88.4,
+                        disk_series=[88.0, 88.4],
+                        disk_total=100,
+                        disk_used=88,
+                    )
+                }
+            ],
+        },
+    )
+    kinds = [c["kind"] for c in result["charts"]]
+    # All three types from decision 2 are on this one screen, which is what "reused everywhere"
+    # has to mean if the ceiling is to be worth anything.
+    assert "column" in kinds, kinds
+    assert "line" in kinds, kinds
+    assert "map" in kinds, kinds
+    assert "bars" in kinds, kinds
+    # Every chart names where its numbers came from. A chart whose source nobody can name is a
+    # chart nobody can check, which is why `charts.js` takes it as a required argument.
+    assert len(result["captions"]) >= len(result["charts"]), (result["captions"], kinds)
+    for caption in result["captions"]:
+        assert caption.strip(), result["captions"]
+    # The four host/queue line charts drew real geometry rather than an empty frame.
+    lines = [c for c in result["charts"] if c["kind"] == "line"]
+    assert any(c["polylines"] for c in lines), lines
+    # And the columns drew rects, each carrying a title so the exact count is one hover away.
+    cols = [c for c in result["charts"] if c["kind"] == "column"]
+    assert any(c["rects"] for c in cols), cols
+
+
+@dom_test
+async def test_every_chart_is_hand_written_and_therefore_visible_to_this_harness(
+    routes: dict[str, Any],
+) -> None:
+    """**Decision 4, demonstrated with the control that makes the zero mean something.**
+
+    The d3 screens produce **no** assertable geometry here — the double records the calls and
+    returns a proxy — while the charts this release added produce polylines, rects and cells in the
+    same document. Without the control, a test that found geometry on the Overview could not tell
+    "the harness can see hand-written SVG" from "the harness can see everything".
+    """
+    overview = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_resources(
+                        cpu_pct=6.0,
+                        cpu_series=[5.0, 6.0, 7.0],
+                    )
+                }
+            ],
+        },
+    )
+    drawn = sum(len(c["polylines"]) + len(c["rects"]) for c in overview["charts"])
+    assert drawn > 0, overview["charts"]
+
+    # THE CONTROL, in the same harness, same fixture, same run: the two d3 surfaces.
+    for fragment, svg_id in (("#/graph", "graph"), ("#/timeline", "timeline")):
+        d3_screen = domdriver.run_scenario(
+            "render", {"routes": routes["admin"], "navigate": fragment}
+        )
+        dump = d3_screen["dump"]
+        assert f"<svg #{svg_id}" in dump, f"{fragment} no longer renders its d3 canvas at all"
+        inside = _descendants_of(dump, f"<svg #{svg_id}")
+        assert inside == [], (
+            f"{fragment}'s d3 drawing produced assertable DOM, which would mean the harness's "
+            f"double has been replaced and decision 4's whole premise needs re-measuring: {inside}"
+        )
+        # The second control: hand-written SVG in that SAME document is visible. Without this the
+        # empty list above could mean the harness sees no SVG at all.
+        assert "<path" in dump, "icons.js's hand-written paths are missing from the dump"
+
+
+def _descendants_of(dump: str, needle: str) -> list[str]:
+    """Every line of a `dumpTree` dump nested under the first line containing `needle`."""
+    lines = dump.splitlines()
+    out: list[str] = []
+    for index, line in enumerate(lines):
+        if needle not in line:
+            continue
+        indent = len(line) - len(line.lstrip())
+        for following in lines[index + 1 :]:
+            if len(following) - len(following.lstrip()) <= indent:
+                break
+            out.append(following.strip())
+    return out
+
+
+@dom_test
+async def test_the_estate_map_is_a_pure_function_of_the_payload(routes: dict[str, Any]) -> None:
+    """**Decision 7's second reason**, and the one the force graph can never satisfy.
+
+    The graph's layout comes from a force simulation with drag and a re-centring force, so two
+    glances at an unchanged estate do not agree — which is why an operator cannot use it to compare
+    this morning with now. The map is sorted by load then by key, so the same payload draws the same
+    grid, and the same payload in a different ORDER draws the same grid too.
+
+    That second half is the assertion worth having: a map that merely rendered its input in order
+    would pass a repeat-render test and fail the day the API's node order changed.
+    """
+    nodes = [
+        {"id": 1, "ip": "127.0.0.1", "label": None, "active_alarms": 1359},
+        {"id": 2, "ip": "127.0.0.2", "label": None, "active_alarms": 4},
+        {"id": 3, "ip": "127.0.0.3", "label": None, "active_alarms": 4},
+        {"id": 4, "ip": "127.0.0.4", "label": None, "active_alarms": 501},
+    ]
+    stats = _stats_with_resources(cpu_pct=6.0, cpu_series=[6.0, 6.0])
+
+    def draw(order: list[dict[str, Any]]) -> list[str]:
+        result = domdriver.run_scenario(
+            "charts",
+            {
+                "routes": routes["admin"],
+                "navigate": "#/overview",
+                "updates": [{"stats": stats, "graph": {"nodes": order, "edges": []}}],
+            },
+        )
+        maps = [c for c in result["charts"] if c["kind"] == "map"]
+        assert maps, result["charts"]
+        return [cell["tip"] for cell in maps[0]["cells"]]
+
+    forward = draw(nodes)
+    shuffled = draw([nodes[2], nodes[0], nodes[3], nodes[1]])
+    assert forward == shuffled, (
+        "the estate map is not order-independent, so two glances at one estate can differ:\n"
+        f"  {forward}\n  {shuffled}"
+    )
+    # Sorted by load, busiest first, with the exact count in the cell's title — which is the fact
+    # the graph's saturating radius throws away: 1 359 and 501 both draw at 24.0 px there.
+    assert "1,359" in forward[0], forward
+    assert "501" in forward[1], forward
+    # Ties break on the key, so the order of two equally loaded elements is decided and not
+    # whatever the payload happened to hold.
+    assert "127.0.0.2" in forward[2], forward
+    assert "127.0.0.3" in forward[3], forward
+
+
+# --- v0.16.6: the timeline's configuration, and the half of it that must stay in SQL ------------
+
+
+@dom_test
+async def test_the_timeline_reads_its_whole_configuration_out_of_the_address(
+    routes: dict[str, Any],
+) -> None:
+    """**Decision 8: the configured screen is a permalink**, so every control is in the address.
+
+    Driven as a deep link, which is what a colleague's pasted URL is. The assertion is on the
+    request the client **issues** — element, window and depth all have to appear in it — because
+    that is the only evidence that they were applied by the server rather than in the render.
+    """
+    result = domdriver.run_scenario(
+        "render",
+        {"routes": routes["admin"], "navigate": "#/timeline?ne=2&win=3600&depth=1000"},
+    )
+    asked = [p for p in result["requestPaths"] if "/api/timeline" in p]
+    assert asked, result["requestPaths"]
+    last = asked[-1]
+    assert "ne_id=2" in last, last
+    assert "since=" in last, last
+    assert "limit=1000" in last, last
+
+
+@dom_test
+async def test_the_timeline_element_filter_is_a_query_filter(routes: dict[str, Any]) -> None:
+    """**F35 and F38, as a live property rather than as a comment.**
+
+    v0.7.0 truncated globally and then compared the rendered `COALESCE(label, ip)` string against a
+    scope's address set, which made a **non-unique display string an authorization key**. So the
+    element control sends an `ne_id` — the same key the scope predicate uses — and the depth control
+    sends a `limit`, so `LIMIT` bounds the *filtered* set.
+
+    **This guard has two halves and each was demonstrated red by its own injection.**
+
+    1. Move the element and depth filters into the render — filter `marks` by device after the
+       fetch, then `slice(0, depth)`. The request loses its parameters, the screen still looks
+       right, and three assertions here go red. That is v0.7.0's defect exactly.
+    2. Send a presentational parameter to the server — `parts.push("chart=" + chart)`. Also red.
+       Measured, and it is worth stating because the first attempt at this docstring called it a
+       control that *stays* green: it does not. The guard asserts the absence as well as the
+       presence, so the surface is pinned in both directions and neither mistake can be made
+       quietly.
+
+    **The green that means something** is the bare case at the end: with no configuration the
+    request carries only the default depth. An implementation that always sent all five parameters
+    would satisfy every "is present" assertion above and fail that one.
+    """
+    scoped = domdriver.run_scenario(
+        "render",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/timeline?ne=2&win=21600&depth=100&chart=column&split=host",
+        },
+    )
+    asked = [p for p in scoped["requestPaths"] if "/api/timeline" in p][-1]
+    # The three that are the server's business.
+    assert "ne_id=2" in asked, asked
+    assert "since=" in asked, asked
+    assert "limit=100" in asked, asked
+    # The two that are not. A presentational choice reaching the server invites the reverse
+    # mistake later — a scope-bearing one being "applied" client-side.
+    assert "chart" not in asked, asked
+    assert "split" not in asked, asked
+    # And nothing sends a device NAME, ever. This is the string v0.7.0 compared.
+    assert "device=" not in asked, asked
+
+    # THE CONTROL: with no configuration at all, the request carries only the default depth — so
+    # the parameters above are present because they were asked for, not because they are always
+    # there.
+    bare = domdriver.run_scenario("render", {"routes": routes["admin"], "navigate": "#/timeline"})
+    plain = [p for p in bare["requestPaths"] if "/api/timeline" in p][-1]
+    assert "ne_id" not in plain, plain
+    assert "since" not in plain, plain
+    assert "limit=300" in plain, plain
+
+
+@dom_test
+async def test_a_hand_edited_address_cannot_widen_the_read(routes: dict[str, Any]) -> None:
+    """An address is untrusted input, and this screen's controls are in the address.
+
+    `limit=999999` and `win=31536000` are what a curious operator types. The client clamps both to
+    the values its own controls offer — and the server clamps `limit` again at 1 000 regardless, so
+    this is the affordance and not the control. Both layers, as everywhere else in this console.
+    """
+    result = domdriver.run_scenario(
+        "render",
+        {"routes": routes["admin"], "navigate": "#/timeline?depth=999999&win=31536000&chart=pie"},
+    )
+    asked = [p for p in result["requestPaths"] if "/api/timeline" in p][-1]
+    assert "limit=300" in asked, f"an out-of-range depth was not clamped to the default: {asked}"
+    assert "since=" not in asked, f"an out-of-range window was not discarded: {asked}"
+    # An unrecognised chart type falls back rather than rendering nothing.
+    assert "<svg #timeline" in result["dump"], result["dump"][:400]
+
+
+def test_the_urgency_animation_is_css_and_therefore_reducible() -> None:
+    """**Decision 6: an animation that cannot be turned off is an accessibility defect.**
+
+    The mechanism is *where the animation lives*, not a check anyone has to remember: `style.css`
+    ends with `@media (prefers-reduced-motion: reduce) { * { animation: none !important } }`, so any
+    CSS animation in this stylesheet is off for an operator who asked for that. A JS-driven pulse
+    would have had to re-implement that rule, and this guard could not have read it.
+
+    Two things are asserted, and the second is the one that matters: that the urgency marks are
+    animated **in this stylesheet**, and that urgency is carried by something that is not motion.
+    """
+    import netcorenoc
+
+    css = (Path(netcorenoc.__file__).resolve().parent / "ui" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    # The blanket reduction exists and reaches animations with `!important`.
+    reduce_block = re.search(
+        r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\}\s*\}", css, re.S
+    )
+    assert reduce_block is not None, "the stylesheet no longer reduces motion at all"
+    assert re.search(r"animation:\s*none\s*!important", reduce_block.group(1)), reduce_block.group(
+        1
+    )
+
+    # Every urgency rule is an `animation` in THIS file, so the block above reaches it.
+    animated = re.findall(r"^([^\n{]*\{[^}]*animation:[^}]*\})", css, re.M)
+    urgent = [rule for rule in animated if "urgent" in rule]
+    assert len(urgent) >= 2, f"expected the cell and the node to animate here: {animated}"
+
+    # **And urgency is not encoded by motion alone.** `outline` on the cell and `stroke-width` on
+    # the node are static, so the mark is still marked with the animation suppressed. An urgency
+    # carried only by movement fails for exactly the operator colour-alone fails for.
+    assert re.search(r"\.chart-urgent\s*\{[^}]*outline:", css), "the cell has no static ring"
+    assert re.search(r"circle\.node\.urgent\s*\{[^}]*stroke-width:", css), (
+        "the node has no static stroke, so its urgency is motion-only"
+    )
+
+
+@dom_test
+async def test_every_charted_mark_reads_as_a_sentence_not_a_run_of_digits(
+    routes: dict[str, Any],
+) -> None:
+    """**F112's third occurrence, and the guard that would have caught all three.**
+
+    A label and a value can sit on separate grid rows — visually perfect — and still concatenate in
+    `textContent`, because a layout that separates boxes does not separate text. Measured in
+    Chromium before this guard existed: the estate map's cells read `127.0.0.11,458` and the bars
+    read `127.0.0.11,458 alarms`. The first could be misread as an address, and both are what a
+    screen reader announces and what an operator pastes into a ticket.
+
+    **This checks the outcome rather than a premise**, which is the difference from F110's guard and
+    the reason F112's open half is about that guard rather than about this one: it does not ask
+    whether a container establishes a gap, it asks whether the rendered text of every mark contains
+    its own label and value **separated**. An implementation that got there by any means passes, and
+    one that renders perfectly and reads as one number does not.
+    """
+    nodes = [
+        {"id": 1, "ip": "127.0.0.1", "label": None, "active_alarms": 1458},
+        {"id": 4, "ip": "127.0.0.4", "label": None, "active_alarms": 501},
+    ]
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_resources(cpu_pct=6.0, cpu_series=[5.0, 6.0]),
+                    "graph": {"nodes": nodes, "edges": []},
+                }
+            ],
+        },
+    )
+    marks = 0
+    for chart in result["charts"]:
+        for cell in chart["cells"]:
+            marks += 1
+            assert f"{cell['name']} {cell['value']}" in " ".join(cell["text"].split()), (
+                f"an estate cell's accessible text glues its name to its value: {cell['text']!r} "
+                f"(name {cell['name']!r}, value {cell['value']!r})"
+            )
+        for bar in chart["bars"]:
+            marks += 1
+            assert f"{bar['label']} {bar['value']}" in " ".join(bar["text"].split()), (
+                f"a bar's accessible text glues its label to its value: {bar['text']!r} "
+                f"(label {bar['label']!r}, value {bar['value']!r})"
+            )
+    # Without this the loop above passes vacuously over a screen that drew nothing, which is how a
+    # guard comes to be green for the wrong reason.
+    assert marks >= 4, f"expected the map's cells and the bars' rows to be drawn; saw {marks}"
+
+
+@dom_test
+async def test_a_presentational_change_does_not_re_read_the_server(
+    routes: dict[str, Any],
+) -> None:
+    """The presentational half of decision 8 is real in behaviour, not only in the address.
+
+    `chart` and `split` choose how rows already in hand are drawn. Measured in a browser before
+    this was fixed: four control changes produced four requests, two of them for a page that had
+    not changed. So the reload key is the three parameters that reach SQL, and nothing else.
+
+    Driven by navigating between two addresses that differ **only** in `chart`: the request count
+    must not move. The control is the pair below it, which differ in `depth` and must re-read.
+    """
+
+    def timeline_reads(fragments: list[str]) -> list[int]:
+        """How many `/api/timeline` requests EACH navigation issued. `paths` is already a delta."""
+        result = domdriver.run_scenario(
+            "navigateTo", {"routes": routes["admin"], "fragments": fragments}
+        )
+        return [
+            len([p for p in result["outcomes"][fragment]["paths"] if "/api/timeline" in p])
+            for fragment in fragments
+        ]
+
+    # Arriving mounts the screen and reads once. Changing only `chart` must read zero more times.
+    mounted, after_chart = timeline_reads(
+        ["#/timeline?win=3600", "#/timeline?win=3600&chart=column"]
+    )
+    assert mounted >= 1, "arriving on the timeline did not read it at all"
+    assert after_chart == 0, (
+        f"a presentational change re-read the server: it issued {after_chart} timeline request(s)"
+    )
+
+    # THE CONTROL: a change to a query parameter must re-read, or the screen would show a page it
+    # no longer matches — which is the opposite defect and just as bad.
+    _again, after_depth = timeline_reads(["#/timeline?win=3600", "#/timeline?win=3600&depth=1000"])
+    assert after_depth >= 1, (
+        f"a depth change did not re-read the server: it issued {after_depth} timeline request(s)"
+    )
+
+
+# --- v0.16.6: Evidence draws what exists and records what does not (DECISIONS #308) ------------
+
+
+def _promotion_payload(*decisions: dict[str, Any]) -> dict[str, Any]:
+    """A `/api/promotion` payload holding the decisions a test needs."""
+    return {
+        "promotions": list(decisions),
+        "model_versions": [
+            {"id": 1, "kind": "logistic", "params_hash": "a" * 64, "challenger_run_id": 7}
+        ],
+        "active_model_version_id": None,
+        "active_config_id": 1,
+        "seal_query_count": 0,
+        "plan_sha256": "b" * 64,
+    }
+
+
+def _decision(
+    *, row_id: int, at: float, verdict: str, metrics: str, triggers: str = "[]", queries: int = 0
+) -> dict[str, Any]:
+    return {
+        "id": row_id,
+        "model_version_id": 1,
+        "verdict": verdict,
+        "triggers": triggers,
+        "metrics": metrics,
+        "evaluation_run_id": "run-1",
+        "plan_sha256": "b" * 64,
+        "query_count": queries,
+        "approved_by": "adm",
+        "decided_at": at,
+        "outcome": "refused" if verdict != "BETTER" else "applied",
+        "refusal_reason": None if verdict == "BETTER" else "a floor was unmet",
+        "unavailable": "[]",
+    }
+
+
+def _quantities(**rates: Any) -> str:
+    """A `promotion.metrics` document. A rate of `None` becomes the degenerate `[0, 0, 0]`."""
+    import json
+
+    out = {}
+    for name in (
+        "over_merge_rate",
+        "under_merge_rate",
+        "split_bag_intact_rate",
+        "asserted_negative_respected_rate",
+    ):
+        pair = rates.get(name)
+        if pair is None:
+            out[name] = {"challenger": [0, 0, 0], "champion": [0, 0, 0], "clusters": 0}
+        else:
+            challenger, champion = pair
+            out[name] = {
+                "challenger": [challenger, challenger - 0.01, challenger + 0.01],
+                "champion": [champion, champion - 0.01, champion + 0.01],
+                "clusters": 31,
+            }
+    return json.dumps(out, sort_keys=True, separators=(",", ":"))
+
+
+@dom_test
+async def test_the_four_named_quantities_are_drawn_as_four_and_never_composed(
+    routes: dict[str, Any],
+) -> None:
+    """**Prime directive 3**, and `PREREGISTRATION-0.10.0.md` §5, as a property of the screen.
+
+    §5 registers three quantities *"never composed"* plus a fourth *"also never composed"*, and
+    names the whole entity-resolution family (B-Cubed, MUC, CEAF, pairwise F, ARI, NMI, VI) as **not
+    adopted** because a single scalar cannot say whether a difference came from merges or splits.
+
+    So the assertion is on the **count of charts and of axes**: four separate line charts, each with
+    its own domain, and no fifth chart that could only be a composition. A screen that scored them
+    would have drawn one line where this draws four — which is the shape the guard can see.
+    """
+    routes = {**routes, "admin": {**routes["admin"]}}
+    routes["admin"]["/api/promotion"] = {
+        "status": 200,
+        "json": _promotion_payload(
+            _decision(
+                row_id=2,
+                at=1_700_000_400.0,
+                verdict="NOT_BETTER",
+                queries=1,
+                triggers='["POWER"]',
+                metrics=_quantities(
+                    over_merge_rate=(0.21, 0.18),
+                    under_merge_rate=(0.09, 0.11),
+                    split_bag_intact_rate=(0.77, 0.74),
+                    asserted_negative_respected_rate=(0.55, 0.52),
+                ),
+            ),
+            _decision(
+                row_id=1,
+                at=1_700_000_000.0,
+                verdict="NOT_BETTER",
+                triggers='["ASSERTING_BAGS", "THIN_SPLIT"]',
+                metrics=_quantities(
+                    over_merge_rate=(0.24, 0.18),
+                    under_merge_rate=(0.12, 0.11),
+                    split_bag_intact_rate=(0.71, 0.74),
+                    asserted_negative_respected_rate=(0.50, 0.52),
+                ),
+            ),
+        ),
+    }
+    result = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+    )
+    titles = [c["label"] for c in result["charts"]]
+    lines = [c for c in result["charts"] if c["kind"] == "line"]
+    # The four, by name, each its own chart.
+    for wanted in (
+        "Over-merge rate",
+        "Under-merge rate",
+        "Split-bag intact rate",
+        "Asserted-negative respected rate",
+    ):
+        assert any(t and t.startswith(wanted) for t in titles), (wanted, titles)
+    # Each of the four carries BOTH arms, because a challenger number with no champion number
+    # beside it is not a comparison (`PREREGISTRATION-0.11.0.md` §2 item 4).
+    quantity_charts = [
+        c
+        for c in lines
+        if c["label"]
+        and c["label"].split(".")[0]
+        in {
+            "Over-merge rate",
+            "Under-merge rate",
+            "Split-bag intact rate",
+            "Asserted-negative respected rate",
+        }
+    ]
+    assert len(quantity_charts) == 4, [c["label"] for c in quantity_charts]
+    for chart in quantity_charts:
+        assert "challenger" in chart["label"], chart["label"]
+        assert "champion" in chart["label"], chart["label"]
+    # **And no chart claims to be a composite.** A single "quality", "score" or "index" line is
+    # exactly what §5 refuses, and it would be one `reduce` away from the code that draws these.
+    for label in titles:
+        lowered = (label or "").lower()
+        for forbidden in ("quality", "composite", "overall score", "index"):
+            assert forbidden not in lowered, f"a composed quantity reached the screen: {label!r}"
+
+
+@dom_test
+async def test_a_quantity_that_was_not_computable_breaks_the_line_rather_than_reading_zero(
+    routes: dict[str, Any],
+) -> None:
+    """`promotion_metrics.measure` returns `[0, 0, 0]` **with a stated reason** when the input is
+    genuinely absent, and `views/parts/verdict.js` has rendered that as "not computable" since
+    v0.14.0. A chart has to make the same distinction.
+
+    Driven with two decisions: the older has every quantity degenerate, the newer has real numbers.
+    An implementation that plotted the degenerate one as zero would draw a line rising from the
+    floor — a picture of a challenger that improved from nothing, which nobody measured.
+    """
+    routes = {**routes, "admin": {**routes["admin"]}}
+    routes["admin"]["/api/promotion"] = {
+        "status": 200,
+        "json": _promotion_payload(
+            _decision(
+                row_id=2,
+                at=1_700_000_400.0,
+                verdict="NOT_BETTER",
+                metrics=_quantities(over_merge_rate=(0.21, 0.18)),
+            ),
+            _decision(
+                row_id=1, at=1_700_000_000.0, verdict="INSUFFICIENT_EVIDENCE", metrics=_quantities()
+            ),
+        ),
+    }
+    result = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+    )
+    # Two decisions, one of them unmeasurable: **one readable point, and a line needs two.** So no
+    # line is drawn from the floor — and the chart says which of the two cases it is in, rather
+    # than showing an empty plot inside a frame. That distinction is a repair the live pass forced:
+    # a one-point series used to draw an axis, print a reading beside it, and leave the plot blank.
+    unmeasured = " ".join(result["unmeasured"])
+    assert "Over-merge rate" in unmeasured, result["unmeasured"]
+    assert "only one reading so far" in unmeasured, result["unmeasured"]
+    # And the three that were degenerate in BOTH decisions say the other thing, because nothing
+    # was readable at all. Two absences, two different sentences.
+    assert "Under-merge rate" in unmeasured, result["unmeasured"]
+    assert "not measured" in unmeasured, result["unmeasured"]
+    # No chart drew a line from zero.
+    for chart in result["charts"]:
+        if chart["label"] and chart["label"].startswith(("Over-merge", "Under-merge")):
+            assert chart["polylines"] == [], (chart["label"], chart["polylines"])
+
+
+@dom_test
+async def test_insufficient_evidence_is_legible_rather_than_blank(
+    routes: dict[str, Any],
+) -> None:
+    """**Prime directive of `PREREGISTRATION-0.10.0.md` §6**, on screen.
+
+    §6.1: *"the challenger is not better"* and *"this corpus cannot tell"* are opposite claims a
+    binary type collapses into one, and that collapse is how a promotion gate comes to treat no
+    evidence as evidence of no difference. The corpus has returned the third value every release
+    since v0.9.1, so this is the state the screen will actually be in.
+
+    The assertion is that the state is **stated** and that the three verdicts are drawn as three,
+    not that any particular sentence appears.
+    """
+    routes = {**routes, "admin": {**routes["admin"]}}
+    routes["admin"]["/api/promotion"] = {
+        "status": 200,
+        "json": _promotion_payload(
+            _decision(
+                row_id=1,
+                at=1_700_000_000.0,
+                verdict="INSUFFICIENT_EVIDENCE",
+                triggers='["ASSERTING_BAGS"]',
+                metrics=_quantities(),
+            )
+        ),
+    }
+    result = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+    )
+    dump = result["dump"]
+    assert "INSUFFICIENT_EVIDENCE" in dump, "the verdict is not on the screen at all"
+    # A warnbox, not a blank: the state has a rendered home of its own.
+    assert ".warnbox" in dump, "the third verdict has no prominent statement"
+    # And the verdict chart carries all THREE lanes, so the reader can see which one is lit
+    # rather than inferring it from an empty chart.
+    verdicts = [c for c in result["charts"] if c["label"] and c["label"].startswith("Verdicts")]
+    assert verdicts, [c["label"] for c in result["charts"]]
+    label = verdicts[0]["label"]
+    for state in ("better", "not better", "insufficient evidence"):
+        assert state in label, (state, label)
+
+
+@dom_test
+async def test_the_evidence_screen_records_what_nothing_measures(
+    routes: dict[str, Any],
+) -> None:
+    """**Decision 5's other half: the gap is on the screen, not only in the plan.**
+
+    Three named absences, each with the reason. An operator who came looking for a loss curve must
+    find the sentence saying there is none — omitting it would let them conclude the appliance had
+    measured something it has not, which is the same dishonesty as drawing a zero.
+
+    Driven with **no decisions at all**, which is this project's actual state and the case where a
+    screen is most tempted to render an empty chart.
+    """
+    routes = {**routes, "admin": {**routes["admin"]}}
+    routes["admin"]["/api/promotion"] = {"status": 200, "json": _promotion_payload()}
+    result = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+    )
+    dump = result["dump"]
+    for absent in ("loss curve", "residual distribution", "Fold results"):
+        assert absent in dump, f"the screen does not say that {absent!r} cannot be drawn"
+    # The sample-rate rule is stated even though nothing here is sampled, because the next release
+    # to add such a chart is the one that needs to read it (prime directive 4).
+    assert "0.01" in dump, "the shadow sampler's rate is not named anywhere on the screen"
+    assert "sample_rate" in dump, "the column a rate would have to be read from is not named"
+
+
+def test_the_console_may_only_chart_a_registered_quantity() -> None:
+    """**Prime directive 2, and it had no guard until v0.16.6's own injection found that out.**
+
+    `0009`: *"no metric that decides promotion may be computed against `incumbent_linked`"*, and
+    `PREREGISTRATION-0.16.0.md` §1 extends that to any signal that is not an assertion about a
+    grouping. Seven releases of guards enforce it in the store, the engine and the pre-registration
+    documents — and **none of them looked at the console**, because until this release the console
+    charted nothing.
+
+    Found by execution: an injection that added
+    `["incumbent_linked", "Agreement with the champion", "higher is better"]` to the Evidence
+    screen's quantity list came back **green**. A chart titled *"agreement with the champion"* is
+    the prohibition wearing a new shape — a comparison basis doing the work of a measurement — and
+    a reader who saw it would treat it as a score.
+
+    So the set of keys a chart may plot is asserted **equal** to the server's own
+    `promotion.QUANTITY_NAMES`. Equal in both directions: a fifth key of any name fails, and a
+    missing one fails too, which is the same reason `views/parts/verdict.js` transcribes the four
+    rather than iterating whatever the document happens to hold.
+    """
+    import netcorenoc
+    from netcorenoc.engine.evaluation.promotion import QUANTITY_NAMES
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    evidence = (ui / "views" / "parts" / "evidence.js").read_text(encoding="utf-8")
+    block = re.search(r"const QUANTITIES = \[(.*?)\];", evidence, re.S)
+    assert block is not None, "the Evidence screen no longer declares its quantity list"
+    charted = re.findall(r'\["([a-z_]+)",', block.group(1))
+    assert set(charted) == set(QUANTITY_NAMES), (
+        "the console charts a quantity set that is not the registered one.\n"
+        f"  charted, not registered: {sorted(set(charted) - set(QUANTITY_NAMES))}\n"
+        f"  registered, not charted: {sorted(set(QUANTITY_NAMES) - set(charted))}\n"
+        "`PREREGISTRATION-0.10.0.md` §5 registers exactly four and refuses every composite; a "
+        "fifth key can only be a quantity no plan registered or a comparison basis worn as one."
+    )
+
+    # **And no console module READS `incumbent_linked`.**
+    #
+    # The distinction is the whole difficulty, and the first version of this guard got it wrong: it
+    # matched the string anywhere outside a comment and fired on `views/parts/evidence.js`, which
+    # **renders the prohibition to the operator** — "`incumbent_linked` is a comparison basis and
+    # never a target" is on the Evidence screen, inside a `<code>`. A guard that forbids explaining
+    # a rule is a guard that gets the explanation deleted.
+    #
+    # So the three forms that READ a column are matched instead: a property access, a string key,
+    # and an object key. Nothing else can get the value out of a payload, and the injection that
+    # exposed this guard's absence — `["incumbent_linked", "Agreement with the champion", …]` — is
+    # the second of the three.
+    reads = re.compile(
+        r"\.incumbent_linked\b"
+        r"|\[\s*[\"']incumbent_linked[\"']\s*\]"
+        r"|[\"']incumbent_linked[\"']\s*[,:]"
+        r"|\bincumbent_linked\s*:"
+    )
+    offenders: list[str] = []
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        stripped = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+        for match in reads.finditer(stripped):
+            lineno = stripped[: match.start()].count("\n") + 1
+            offenders.append(f"{path.relative_to(ui)}:{lineno}: {match.group(0)}")
+    assert not offenders, (
+        "these console modules READ `incumbent_linked`:\n  " + "\n  ".join(offenders) + "\n"
+        "It is a comparison basis and never a target (`0009`, `PREREGISTRATION-0.16.0.md` §1). "
+        "Naming it in rendered prose is fine and is what the Evidence screen does."
+    )
+
+
+def test_no_chart_is_drawn_from_a_sampled_table_without_naming_its_rate() -> None:
+    """**Prime directive 4, and it had no guard either — the same injection found it.**
+
+    *"Any distribution from `shadow_opinion` names its sample rate on screen."* An injection that
+    added a `Shadow score distribution` chart sourced `shadow_opinion.score`, with no rate anywhere
+    near it, came back **green**: the rule was in the directives and in this file's prose and in
+    nothing executable.
+
+    Two halves, because the honest state of this release is that **nothing sampled is drawn at
+    all**:
+
+    1. no console module may name `shadow_opinion` as a chart's `source` — there is no route
+       serving it, so a chart claiming to read it is either fabricating or is a route nobody
+       reviewed;
+    2. any caption that *does* speak of sampling must name a rate in the same breath.
+
+    The second half is what survives the day a later release adds the route, and it is written now
+    rather than then, because the release that adds the chart is the one least likely to remember.
+    """
+    import netcorenoc
+    from netcorenoc.engine.evaluation.shadow import DEFAULT_SAMPLE_RATE
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    sourced: list[str] = []
+    unrated: list[str] = []
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        bare = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+        for match in re.finditer(r'source=(?:\$\{)?[`"\']([^`"\']{0,300})', bare):
+            caption = match.group(1)
+            line = bare[: match.start()].count("\n") + 1
+            where = f"{path.relative_to(ui)}:{line}"
+            if "shadow_opinion" in caption:
+                sourced.append(f"{where}: {caption[:80]}")
+            if re.search(r"sampl", caption, re.I) and not re.search(r"rate|0\.0|%", caption):
+                unrated.append(f"{where}: {caption[:80]}")
+    assert not sourced, (
+        "a chart names `shadow_opinion` as its source:\n  " + "\n  ".join(sourced) + "\n"
+        "No route serves that table — `0009`'s posture is no read below admin, on any route, in "
+        "any format, ever — so a chart reading it is either inventing or is an unreviewed route."
+    )
+    assert not unrated, (
+        "a chart's source speaks of sampling without naming a rate:\n  " + "\n  ".join(unrated)
+    )
+
+    # The positive half: the screen where such a chart WOULD go states the rate and the column it
+    # would have to be read from, so a later release inherits the rule rather than the prose.
+    evidence = (ui / "views" / "parts" / "evidence.js").read_text(encoding="utf-8")
+    assert str(DEFAULT_SAMPLE_RATE) in evidence, (
+        f"the Evidence screen does not name the shadow sampler's default rate "
+        f"({DEFAULT_SAMPLE_RATE}); a later release adding a sampled chart would have no anchor."
+    )
+    assert "sample_rate" in evidence, (
+        "the Evidence screen does not name `challenger_run.sample_rate`, which is where a rate "
+        "must be READ from — the default is a fallback and a deployment may change it."
     )

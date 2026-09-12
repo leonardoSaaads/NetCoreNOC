@@ -27,6 +27,7 @@ import { count, plural } from "../format.js";
 import { can } from "../session.js";
 import { Destructive } from "../destructive.js";
 import { Decision } from "./parts/verdict.js";
+import { Evidence } from "./parts/evidence.js";
 
 export class Promotion extends Loader {
   constructor(props) {
@@ -80,6 +81,12 @@ export class Promotion extends Loader {
       ${versions.length
         ? html`<${DataTable} columns=${VERSION_COLUMNS} rows=${versions.map(toVersion)} />`
         : html`<p class="hint">No model versions have been registered.</p>`}
+
+      ${/* **Evidence over time** (v0.16.6, DECISIONS #308). Below the record rather than above
+            it: the tables say what the gate decided and this says how those decisions have moved,
+            which is the second question and not the first. It reads the same payload — no second
+            request, and therefore no way for the two halves of this screen to disagree. */ null}
+      <${Evidence} data=${data} />
 
       ${can("promotion.write") && versions.length ? html`<${Propose} versions=${versions} onDone=${this.reload} />` : null}
     </div>`;

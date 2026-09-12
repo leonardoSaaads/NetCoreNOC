@@ -12,7 +12,20 @@
 import { html } from "../dom.js";
 import { get } from "../api.js";
 import { Loader, Empty, DataTable, SectionHeading, Stat } from "../widgets.js";
+import { Bars } from "../charts.js";
 import { count, plural } from "../format.js";
+
+/**
+ * The row counts that are **counts of the same thing** and can therefore share an axis
+ * (v0.16.6, DECISIONS #305).
+ *
+ * `stats` mixes two kinds: row counts, and two epoch timestamps plus a day count
+ * (`sink_newest`, `sink_oldest`, `sink_window_days`). Charting all of them on one axis would put
+ * `1 789 236 376` beside `1 868` and make every bar but one invisible — a chart that is pretty and
+ * wrong about the very thing this screen exists to report. So the bars take the row counts only and
+ * the tiles keep everything, which is the honest split rather than a prettier one.
+ */
+const ROW_COUNT_KEYS = (key) => !key.startsWith("sink_");
 
 export class Corpus extends Loader {
   constructor(props) {
@@ -45,7 +58,26 @@ export class Corpus extends Loader {
         : html`<div class="stat-row">
           ${entries.map(([key, value]) => html`
             <${Stat} key=${key} label=${key.replaceAll("_", " ")} value=${value} />`)}
-        </div>`}
+        </div>
+        ${/* **The census, as a shape** (v0.16.6). Eleven tiles answer "how many of each" and
+              cannot answer "and how does that compare" — measured on this project's corpus,
+              `dataset_pair.sink` holds **181 750** rows against `dataset_observation.sink`'s
+              **1 868**, a hundredfold difference that eleven equal-sized boxes render as two
+              similar numbers. The bars are sorted, so the row that dominates retention is the
+              first thing read. */ null}
+        <${Bars} title="What capture is holding, by rows" unit="rows"
+          rows=${entries
+            .filter(([key, value]) => ROW_COUNT_KEYS(key) && typeof value === "number")
+            .sort((a, b) => b[1] - a[1])
+            .map(([key, value]) => ({
+              key,
+              label: key.replaceAll("_", " "),
+              value,
+              tone: value ? null : "warn",
+            }))}
+          source="/api/dataset/retention · aggregates only, never a row"
+          note=${"row counts only — the sink's two timestamps and its window are above, because " +
+                 "an epoch on this axis would make every other bar invisible"} />`}
 
       <p class="hint">Capture is <b>${data.capture_enabled ? "on" : "off"}</b>.</p>
 

@@ -13,8 +13,8 @@ disabled controls.
 | View | The question it answers |
 |---|---|
 | **Situations** | Correlated groups of alarms, and **why each alarm was grouped** |
-| **Network graph** | Learned affinity between network elements |
-| **Timeline** | Raises and clears over time, per device |
+| **Network graph** | Learned affinity between network elements, plus the same estate ordered by load — because a node's radius stops growing at 24 px, so two elements 2.7x apart draw identically |
+| **Timeline** | Raises and clears over time — element, window, depth, chart type and element split, all in the address so the configured screen can be sent to a colleague |
 | **Entities** | What the appliance has learned about each element, and the evidence for it |
 | **Alarm classes** | Every trap type it has learned, with no configuration |
 
@@ -24,7 +24,7 @@ disabled controls.
 |---|---|
 | **Labelling** | Confirm or split a grouping, and what your labels have produced |
 | **Corpus** | What capture costs in rows, and the three retention tiers |
-| **Judge & promotion** | What the gate decided, why it refused, and the seal's query count |
+| **Judge & promotion** | What the gate decided, why it refused, the seal's query count, and the four named quantities over time — **never composed**, and with the three things nothing measures named on the screen |
 
 ## Administer — the machine itself
 
@@ -58,6 +58,36 @@ The appliance also refuses to remove its own last administrator — a role chang
 that account's role as locked rather than offering a control that would fail. If an appliance ends
 up with no admin anyway, [`troubleshoot.md`](troubleshoot.md) has the recovery; before v0.15.3 there
 was none (F79).
+
+## The Overview: five questions, in the order you ask them (v0.16.6)
+
+The landing screen answers five, top to bottom, and the order is the decision rather than the
+layout:
+
+1. **What is happening** — situations by creation time, and alarm raises against clears. The second
+   is the one that says whether it is *recovering*: five hundred raises with three clears and five
+   hundred with 495 are opposite situations, and no counter can tell them apart.
+2. **Where** — the estate as a deterministic grid, one cell per element, sorted by load. It is a map
+   of **load, not topology**; the affinity drawing on the Graph screen is the one that says which
+   elements are related.
+3. **Which element is worst** — the busiest five, by alarms active **now**.
+4. **Is the appliance itself keeping up** — CPU, memory, storage and queue depth as series.
+5. **What it has learned** — devices and alarm classes, learned and not configured.
+
+**Every chart names its source and the span it actually covers**, and the span comes from the data
+rather than from the window that was requested: ask for seven days on a busy appliance and the axis
+will tell you it is showing the most recent minute, because the read is bounded at a thousand
+alarms. A metric the host will not give up renders `—` and the words *not measured*, never `0`; a
+gap in a series **breaks** the line rather than being drawn through.
+
+Two things that would be reasonable to expect and are **not** there, because nothing measures them:
+**top elements over a chosen week** (the appliance counts alarms active now, not a count over a
+window) and anything derived from the sampled shadow opinions. Both are recorded in
+[`plans/releases.md`](plans/releases.md) with the table and the columns a later release would need.
+
+The **queue depth** series is derived in your browser between polls, on the same footing as the trap
+rate: the appliance serves the number and keeps no history, so the series starts when you open the
+console and is lost on reload. The chart says so.
 
 ## The screen this product exists for
 
@@ -171,8 +201,12 @@ What replaced them is two disclosures:
   resolves it where one exists. Three of the ten warnings this appliance can emit name a parameter;
   the other seven render as text with no link, because a control that navigates somewhere unhelpful
   is worse than none.
-* **the health control** — queue depth, p95 latency, the derived trap rate with its window, and the
-  two receiver counters that mean loss, with one word summarising them.
+* **the health control** — one word summarising whether the appliance is keeping up, then CPU,
+  memory and storage as three meters with a two-hour sparkline each, then queue depth, p95 latency
+  and the derived trap rate on one secondary line. The three host readings are stdlib reads
+  (`/proc/stat`, the cgroup's limit, `os.statvfs`) and the dependency count is still five. It opens
+  on hover as well as on click, because health is a glance; the bell keeps click only, because a
+  warning is something you act on.
 
 An **ingest gap** is still a banner above the work area as well as being in the bell: a panel an
 operator has to open is the wrong home for *"traps are being lost now"*.
