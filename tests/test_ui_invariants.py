@@ -2433,8 +2433,65 @@ def test_no_template_glues_a_word_to_the_inline_element_after_it() -> None:
     running into the `<code>` after it, and that is what this matches.
 
     A block element is not matched either: a `<p>` or a `<div>` after prose starts its own line.
+
+    ## F113: parity cannot answer "am I inside a template literal?" when templates nest
+
+    The test was `before.count("`") % 2`, which assumes at most one template is open. This codebase
+    nests them constantly — `${cond ? html`…` : null}` is its commonest shape — and **two open
+    templates give even parity**, so the guard skipped the site silently.
+
+    Measured on `views/parts/evidence.js` when this release's live pass found
+    `verdict isINSUFFICIENT_EVIDENCE` on a screen: ten backticks before the defect, **even**, with
+    the outer `html`` still open and an inner one just opened. The first repair attempted here
+    blanked comments on the theory that their backticks were the cause; that was **wrong** and the
+    measurement said so — comments contributed sixty, an even number, so they had never mattered.
+
+    So the question is answered by a scanner rather than by a count: it walks the source tracking a
+    stack of template and `${…}` expression contexts, and a match counts only when the innermost
+    context is a template. Comments are still blanked first, because a backtick in prose about code
+    is not a delimiter — that part of the first attempt was right for a different reason.
     """
     import netcorenoc
+
+    def blank_comments(source: str) -> str:
+        """Blank every comment, keeping newlines, so offsets and line numbers are unchanged."""
+        out = list(source)
+        for match in re.finditer(r"/\*.*?\*/|//[^\n]*", source, re.S):
+            for index in range(match.start(), match.end()):
+                if out[index] != "\n":
+                    out[index] = " "
+        return "".join(out)
+
+    def template_spans(source: str) -> list[tuple[int, int]]:
+        """Every region that is INSIDE a template literal's markup, as (start, end) offsets.
+
+        A stack, because templates nest: a `` ` `` opens one when the innermost context is not
+        already a template and closes it when it is, and `${` opens an expression context that `}`
+        closes. Only the regions whose innermost context is a template are markup; everything in a
+        `${…}` is JavaScript, where a newline before a `<` means nothing.
+        """
+        spans: list[tuple[int, int]] = []
+        stack: list[str] = []
+        opened_at = 0
+        index = 0
+        while index < len(source):
+            char = source[index]
+            if char == "`":
+                if stack and stack[-1] == "template":
+                    spans.append((opened_at, index))
+                    stack.pop()
+                else:
+                    stack.append("template")
+                    opened_at = index + 1
+            elif char == "$" and source[index : index + 2] == "${" and stack[-1:] == ["template"]:
+                spans.append((opened_at, index))
+                stack.append("expr")
+                index += 1
+            elif char == "}" and stack[-1:] == ["expr"]:
+                stack.pop()
+                opened_at = index + 1
+            index += 1
+        return spans
 
     inline = r"(?:b|i|em|strong|small|code|span|a|abbr|kbd|output|label|button)"
     pattern = re.compile(r"[\w)\].,;:!?%'\"-][ \t]*\n[ \t]*<" + inline + r"[\s>]")
@@ -2442,14 +2499,12 @@ def test_no_template_glues_a_word_to_the_inline_element_after_it() -> None:
     offenders: list[str] = []
     for path in sorted(ui.rglob("*.js")):
         source = path.read_text(encoding="utf-8")
-        for match in pattern.finditer(source):
-            before = source[: match.start()]
-            if before.count("`") % 2 == 0:
-                continue  # not inside a template literal
-            opened, closed = before.rfind("/*"), before.rfind("*/")
-            if opened != -1 and closed < opened:
-                continue  # inside a `${/* … */ null}` block, which renders nothing
-            lineno = before.count("\n") + 1
+        bare = blank_comments(source)
+        markup = template_spans(bare)
+        for match in pattern.finditer(bare):
+            if not any(start <= match.start() < end for start, end in markup):
+                continue  # JavaScript, or prose in a comment — a newline there renders nothing
+            lineno = bare[: match.start()].count("\n") + 1
             text = source[match.start() : match.end()].replace("\n", "\\n")
             offenders.append(f"{path.relative_to(ui)}:{lineno}: …{text}…")
     assert not offenders, (
@@ -3257,3 +3312,257 @@ async def test_a_presentational_change_does_not_re_read_the_server(
     assert after_depth >= 1, (
         f"a depth change did not re-read the server: it issued {after_depth} timeline request(s)"
     )
+
+
+# --- v0.16.6: Evidence draws what exists and records what does not (DECISIONS #308) ------------
+
+
+def _promotion_payload(*decisions: dict[str, Any]) -> dict[str, Any]:
+    """A `/api/promotion` payload holding the decisions a test needs."""
+    return {
+        "promotions": list(decisions),
+        "model_versions": [
+            {"id": 1, "kind": "logistic", "params_hash": "a" * 64, "challenger_run_id": 7}
+        ],
+        "active_model_version_id": None,
+        "active_config_id": 1,
+        "seal_query_count": 0,
+        "plan_sha256": "b" * 64,
+    }
+
+
+def _decision(
+    *, row_id: int, at: float, verdict: str, metrics: str, triggers: str = "[]", queries: int = 0
+) -> dict[str, Any]:
+    return {
+        "id": row_id,
+        "model_version_id": 1,
+        "verdict": verdict,
+        "triggers": triggers,
+        "metrics": metrics,
+        "evaluation_run_id": "run-1",
+        "plan_sha256": "b" * 64,
+        "query_count": queries,
+        "approved_by": "adm",
+        "decided_at": at,
+        "outcome": "refused" if verdict != "BETTER" else "applied",
+        "refusal_reason": None if verdict == "BETTER" else "a floor was unmet",
+        "unavailable": "[]",
+    }
+
+
+def _quantities(**rates: Any) -> str:
+    """A `promotion.metrics` document. A rate of `None` becomes the degenerate `[0, 0, 0]`."""
+    import json
+
+    out = {}
+    for name in (
+        "over_merge_rate",
+        "under_merge_rate",
+        "split_bag_intact_rate",
+        "asserted_negative_respected_rate",
+    ):
+        pair = rates.get(name)
+        if pair is None:
+            out[name] = {"challenger": [0, 0, 0], "champion": [0, 0, 0], "clusters": 0}
+        else:
+            challenger, champion = pair
+            out[name] = {
+                "challenger": [challenger, challenger - 0.01, challenger + 0.01],
+                "champion": [champion, champion - 0.01, champion + 0.01],
+                "clusters": 31,
+            }
+    return json.dumps(out, sort_keys=True, separators=(",", ":"))
+
+
+@dom_test
+async def test_the_four_named_quantities_are_drawn_as_four_and_never_composed(
+    routes: dict[str, Any],
+) -> None:
+    """**Prime directive 3**, and `PREREGISTRATION-0.10.0.md` §5, as a property of the screen.
+
+    §5 registers three quantities *"never composed"* plus a fourth *"also never composed"*, and
+    names the whole entity-resolution family (B-Cubed, MUC, CEAF, pairwise F, ARI, NMI, VI) as **not
+    adopted** because a single scalar cannot say whether a difference came from merges or splits.
+
+    So the assertion is on the **count of charts and of axes**: four separate line charts, each with
+    its own domain, and no fifth chart that could only be a composition. A screen that scored them
+    would have drawn one line where this draws four — which is the shape the guard can see.
+    """
+    routes = {**routes, "admin": {**routes["admin"]}}
+    routes["admin"]["/api/promotion"] = {
+        "status": 200,
+        "json": _promotion_payload(
+            _decision(
+                row_id=2,
+                at=1_700_000_400.0,
+                verdict="NOT_BETTER",
+                queries=1,
+                triggers='["POWER"]',
+                metrics=_quantities(
+                    over_merge_rate=(0.21, 0.18),
+                    under_merge_rate=(0.09, 0.11),
+                    split_bag_intact_rate=(0.77, 0.74),
+                    asserted_negative_respected_rate=(0.55, 0.52),
+                ),
+            ),
+            _decision(
+                row_id=1,
+                at=1_700_000_000.0,
+                verdict="INSUFFICIENT_EVIDENCE",
+                triggers='["ASSERTING_BAGS", "THIN_SPLIT"]',
+                metrics=_quantities(),
+            ),
+        ),
+    }
+    result = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+    )
+    titles = [c["label"] for c in result["charts"]]
+    lines = [c for c in result["charts"] if c["kind"] == "line"]
+    # The four, by name, each its own chart.
+    for wanted in (
+        "Over-merge rate",
+        "Under-merge rate",
+        "Split-bag intact rate",
+        "Asserted-negative respected rate",
+    ):
+        assert any(t and t.startswith(wanted) for t in titles), (wanted, titles)
+    # Each of the four carries BOTH arms, because a challenger number with no champion number
+    # beside it is not a comparison (`PREREGISTRATION-0.11.0.md` §2 item 4).
+    quantity_charts = [
+        c
+        for c in lines
+        if c["label"]
+        and c["label"].split(".")[0]
+        in {
+            "Over-merge rate",
+            "Under-merge rate",
+            "Split-bag intact rate",
+            "Asserted-negative respected rate",
+        }
+    ]
+    assert len(quantity_charts) == 4, [c["label"] for c in quantity_charts]
+    for chart in quantity_charts:
+        assert "challenger" in chart["label"], chart["label"]
+        assert "champion" in chart["label"], chart["label"]
+    # **And no chart claims to be a composite.** A single "quality", "score" or "index" line is
+    # exactly what §5 refuses, and it would be one `reduce` away from the code that draws these.
+    for label in titles:
+        lowered = (label or "").lower()
+        for forbidden in ("quality", "composite", "overall score", "index"):
+            assert forbidden not in lowered, f"a composed quantity reached the screen: {label!r}"
+
+
+@dom_test
+async def test_a_quantity_that_was_not_computable_breaks_the_line_rather_than_reading_zero(
+    routes: dict[str, Any],
+) -> None:
+    """`promotion_metrics.measure` returns `[0, 0, 0]` **with a stated reason** when the input is
+    genuinely absent, and `views/parts/verdict.js` has rendered that as "not computable" since
+    v0.14.0. A chart has to make the same distinction.
+
+    Driven with two decisions: the older has every quantity degenerate, the newer has real numbers.
+    An implementation that plotted the degenerate one as zero would draw a line rising from the
+    floor — a picture of a challenger that improved from nothing, which nobody measured.
+    """
+    routes = {**routes, "admin": {**routes["admin"]}}
+    routes["admin"]["/api/promotion"] = {
+        "status": 200,
+        "json": _promotion_payload(
+            _decision(
+                row_id=2,
+                at=1_700_000_400.0,
+                verdict="NOT_BETTER",
+                metrics=_quantities(over_merge_rate=(0.21, 0.18)),
+            ),
+            _decision(
+                row_id=1, at=1_700_000_000.0, verdict="INSUFFICIENT_EVIDENCE", metrics=_quantities()
+            ),
+        ),
+    }
+    result = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+    )
+    over_merge = [
+        c for c in result["charts"] if c["label"] and c["label"].startswith("Over-merge rate")
+    ]
+    assert over_merge, [c["label"] for c in result["charts"]]
+    # Two decisions, one of them unmeasurable: a two-point run is impossible, so NOTHING is drawn
+    # rather than a line from zero. `runs` drops a run of one point for exactly this reason.
+    assert over_merge[0]["polylines"] == [], over_merge[0]["polylines"]
+
+    # The three quantities that were degenerate in BOTH decisions say so in words.
+    unmeasured = " ".join(result["unmeasured"])
+    assert "not measured" in unmeasured, result["unmeasured"]
+    assert "Under-merge rate" in unmeasured, result["unmeasured"]
+
+
+@dom_test
+async def test_insufficient_evidence_is_legible_rather_than_blank(
+    routes: dict[str, Any],
+) -> None:
+    """**Prime directive of `PREREGISTRATION-0.10.0.md` §6**, on screen.
+
+    §6.1: *"the challenger is not better"* and *"this corpus cannot tell"* are opposite claims a
+    binary type collapses into one, and that collapse is how a promotion gate comes to treat no
+    evidence as evidence of no difference. The corpus has returned the third value every release
+    since v0.9.1, so this is the state the screen will actually be in.
+
+    The assertion is that the state is **stated** and that the three verdicts are drawn as three,
+    not that any particular sentence appears.
+    """
+    routes = {**routes, "admin": {**routes["admin"]}}
+    routes["admin"]["/api/promotion"] = {
+        "status": 200,
+        "json": _promotion_payload(
+            _decision(
+                row_id=1,
+                at=1_700_000_000.0,
+                verdict="INSUFFICIENT_EVIDENCE",
+                triggers='["ASSERTING_BAGS"]',
+                metrics=_quantities(),
+            )
+        ),
+    }
+    result = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+    )
+    dump = result["dump"]
+    assert "INSUFFICIENT_EVIDENCE" in dump, "the verdict is not on the screen at all"
+    # A warnbox, not a blank: the state has a rendered home of its own.
+    assert ".warnbox" in dump, "the third verdict has no prominent statement"
+    # And the verdict chart carries all THREE lanes, so the reader can see which one is lit
+    # rather than inferring it from an empty chart.
+    verdicts = [c for c in result["charts"] if c["label"] and c["label"].startswith("Verdicts")]
+    assert verdicts, [c["label"] for c in result["charts"]]
+    label = verdicts[0]["label"]
+    for state in ("better", "not better", "insufficient evidence"):
+        assert state in label, (state, label)
+
+
+@dom_test
+async def test_the_evidence_screen_records_what_nothing_measures(
+    routes: dict[str, Any],
+) -> None:
+    """**Decision 5's other half: the gap is on the screen, not only in the plan.**
+
+    Three named absences, each with the reason. An operator who came looking for a loss curve must
+    find the sentence saying there is none — omitting it would let them conclude the appliance had
+    measured something it has not, which is the same dishonesty as drawing a zero.
+
+    Driven with **no decisions at all**, which is this project's actual state and the case where a
+    screen is most tempted to render an empty chart.
+    """
+    routes = {**routes, "admin": {**routes["admin"]}}
+    routes["admin"]["/api/promotion"] = {"status": 200, "json": _promotion_payload()}
+    result = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+    )
+    dump = result["dump"]
+    for absent in ("loss curve", "residual distribution", "Fold results"):
+        assert absent in dump, f"the screen does not say that {absent!r} cannot be drawn"
+    # The sample-rate rule is stated even though nothing here is sampled, because the next release
+    # to add such a chart is the one that needs to read it (prime directive 4).
+    assert "0.01" in dump, "the shadow sampler's rate is not named anywhere on the screen"
+    assert "sample_rate" in dump, "the column a rate would have to be read from is not named"

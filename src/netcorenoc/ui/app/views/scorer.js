@@ -202,8 +202,13 @@ function Refusals({ refusals }) {
     <h4>Not applied — these values would loosen a project floor</h4>
     ${refusals.map((r, index) => html`<div class="refusal-item" key=${index}>
       <p><b>${r.headline}</b></p>
-      <p>You entered <code class="mono">${String(r.submitted)}</code>; the project floor is
-        <code class="mono">${String(r.floor)}${r.unit ? ` ${r.unit}` : ""}</code>.
+      ${/* Two `${" "}`, and both are F113: this markup shipped in v0.13.0 rendering
+            `floor is0.01` and `.Your value was not applied`, and F110's guard could not see
+            either because the parity rule it used to decide "am I inside a template literal"
+            cannot count nested templates — and `refusals.map((r, i) => html`…`)` is nested. */
+        null}
+      <p>You entered <code class="mono">${String(r.submitted)}</code>; the project floor is${" "}
+        <code class="mono">${String(r.floor)}${r.unit ? ` ${r.unit}` : ""}</code>.${" "}
         <b>Your value was not applied and nothing was sent to the appliance.</b></p>
       <p class="why">${r.why}</p>
       <p class="hint">${r.stricterIs} is accepted — this floor can be made stricter here, only

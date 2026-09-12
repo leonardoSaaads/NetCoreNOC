@@ -57,8 +57,13 @@ const H = 40;
  */
 export function Unmeasured({ what, why }) {
   return html`<div class="chart-unmeasured" role="img" aria-label=${`${what}: not measured`}>
-    <span class="chart-dash" aria-hidden="true">—</span>
-    <span class="chart-unmeasured-what">${what}</span>
+    ${/* The explicit spaces are F112 again. `role="img"` with an `aria-label` means assistive
+          tech reads the label and ignores these children, so the announcement was always right —
+          but `textContent` read `—Over-merge ratenot measured`, which is what a copy-paste gets
+          and what anyone reading a DOM dump sees. Three spans on three lines are three boxes, not
+          three words. */ null}
+    <span class="chart-dash" aria-hidden="true">—</span>${" "}
+    <span class="chart-unmeasured-what">${what}</span>${" "}
     <span class="chart-unmeasured-why">not measured${why ? ` — ${why}` : ""}</span>
   </div>`;
 }

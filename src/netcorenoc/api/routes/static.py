@@ -124,6 +124,8 @@ _UI_MODULES = (
     # v0.16.6: the timeline's hand-written half — the five controls, the column alternative to the
     # d3 scatter, and the per-element summary (DECISIONS #311). Same boundary as `estate.js`.
     "app/views/parts/marks.js",
+    # v0.16.6: evidence over time, and the three things nothing measures (DECISIONS #308).
+    "app/views/parts/evidence.js",
     # v0.16.4: the two disclosures in the top bar — the bell and the health control — split out
     # of `shell.js` (DECISIONS #288, #289).
     "app/notices.js",

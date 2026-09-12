@@ -237,7 +237,7 @@ export function Keeping({ stats, ring, rate }) {
       </span>`)}
     </p>
     ${receiver && receiver.denied
-      ? html`<p class="warnbox">The trap allowlist has refused
+      ? html`<p class="warnbox">The trap allowlist has refused${" "}
           <b>${plural(receiver.denied, "datagram")}</b>. A refused source is dropped at the socket:
           it is not quarantined and it never becomes an alarm.</p>`
       : null}

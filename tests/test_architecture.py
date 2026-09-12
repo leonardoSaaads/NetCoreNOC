@@ -416,6 +416,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/pulse.js"),
     ("GET", "/app/views/parts/estate.js"),
     ("GET", "/app/views/parts/marks.js"),
+    ("GET", "/app/views/parts/evidence.js"),
     ("GET", "/app/notices.js"),
     ("GET", "/app/health.js"),
     ("GET", "/app/widgets.js"),
@@ -937,17 +938,19 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
 #: for the same module-graph reason `members.js` and `card.js` were.
 #:
-#: v0.16.6: 204 -> 209 files. Three added, none removed, none moved, and **no migration** —
+#: v0.16.6: 204 -> 210 files. Three added, none removed, none moved, and **no migration** —
 #: `0016` is still the head of the schema. `ui/app/charts.js` (the three chart types),
 #: `ui/app/chartdata.js` (their arithmetic, separate because it is pure and is driven directly by
 #: tests with no DOM) and `ui/app/views/parts/pulse.js` (the Overview's five bands, out of
 #: `views/overview.js` at 22 552 bytes against the 17 579-byte module-graph guard) — and
 #: `ui/app/views/parts/estate.js`, the Graph screen's second projection and its two derived
 #: tables, out of `views/graph.js` at the same ceiling — and
-#: `ui/app/views/parts/marks.js`, the timeline's half of that same boundary. A release that
+#: `ui/app/views/parts/marks.js`, the timeline's half of that same boundary, and
+#: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
+#: the three things nothing measures. A release that
 #: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
-SRC_TREE_DIGEST = "0a719601ee860d4dae053506878a712f267515b82f9ff2f6c7c0795eadc5cea6"
-SRC_FILE_COUNT = 209
+SRC_TREE_DIGEST = "3dd356dc121477997816e9c1f0840af19da4655882e116f802da08504a1eff88"
+SRC_FILE_COUNT = 210
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
