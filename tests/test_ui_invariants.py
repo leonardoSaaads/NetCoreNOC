@@ -3026,3 +3026,234 @@ async def test_the_estate_map_is_a_pure_function_of_the_payload(routes: dict[str
     # whatever the payload happened to hold.
     assert "127.0.0.2" in forward[2], forward
     assert "127.0.0.3" in forward[3], forward
+
+
+# --- v0.16.6: the timeline's configuration, and the half of it that must stay in SQL ------------
+
+
+@dom_test
+async def test_the_timeline_reads_its_whole_configuration_out_of_the_address(
+    routes: dict[str, Any],
+) -> None:
+    """**Decision 8: the configured screen is a permalink**, so every control is in the address.
+
+    Driven as a deep link, which is what a colleague's pasted URL is. The assertion is on the
+    request the client **issues** — element, window and depth all have to appear in it — because
+    that is the only evidence that they were applied by the server rather than in the render.
+    """
+    result = domdriver.run_scenario(
+        "render",
+        {"routes": routes["admin"], "navigate": "#/timeline?ne=2&win=3600&depth=1000"},
+    )
+    asked = [p for p in result["requestPaths"] if "/api/timeline" in p]
+    assert asked, result["requestPaths"]
+    last = asked[-1]
+    assert "ne_id=2" in last, last
+    assert "since=" in last, last
+    assert "limit=1000" in last, last
+
+
+@dom_test
+async def test_the_timeline_element_filter_is_a_query_filter(routes: dict[str, Any]) -> None:
+    """**F35 and F38, as a live property rather than as a comment.**
+
+    v0.7.0 truncated globally and then compared the rendered `COALESCE(label, ip)` string against a
+    scope's address set, which made a **non-unique display string an authorization key**. So the
+    element control sends an `ne_id` — the same key the scope predicate uses — and the depth control
+    sends a `limit`, so `LIMIT` bounds the *filtered* set.
+
+    **This guard has two halves and each was demonstrated red by its own injection.**
+
+    1. Move the element and depth filters into the render — filter `marks` by device after the
+       fetch, then `slice(0, depth)`. The request loses its parameters, the screen still looks
+       right, and three assertions here go red. That is v0.7.0's defect exactly.
+    2. Send a presentational parameter to the server — `parts.push("chart=" + chart)`. Also red.
+       Measured, and it is worth stating because the first attempt at this docstring called it a
+       control that *stays* green: it does not. The guard asserts the absence as well as the
+       presence, so the surface is pinned in both directions and neither mistake can be made
+       quietly.
+
+    **The green that means something** is the bare case at the end: with no configuration the
+    request carries only the default depth. An implementation that always sent all five parameters
+    would satisfy every "is present" assertion above and fail that one.
+    """
+    scoped = domdriver.run_scenario(
+        "render",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/timeline?ne=2&win=21600&depth=100&chart=column&split=host",
+        },
+    )
+    asked = [p for p in scoped["requestPaths"] if "/api/timeline" in p][-1]
+    # The three that are the server's business.
+    assert "ne_id=2" in asked, asked
+    assert "since=" in asked, asked
+    assert "limit=100" in asked, asked
+    # The two that are not. A presentational choice reaching the server invites the reverse
+    # mistake later — a scope-bearing one being "applied" client-side.
+    assert "chart" not in asked, asked
+    assert "split" not in asked, asked
+    # And nothing sends a device NAME, ever. This is the string v0.7.0 compared.
+    assert "device=" not in asked, asked
+
+    # THE CONTROL: with no configuration at all, the request carries only the default depth — so
+    # the parameters above are present because they were asked for, not because they are always
+    # there.
+    bare = domdriver.run_scenario("render", {"routes": routes["admin"], "navigate": "#/timeline"})
+    plain = [p for p in bare["requestPaths"] if "/api/timeline" in p][-1]
+    assert "ne_id" not in plain, plain
+    assert "since" not in plain, plain
+    assert "limit=300" in plain, plain
+
+
+@dom_test
+async def test_a_hand_edited_address_cannot_widen_the_read(routes: dict[str, Any]) -> None:
+    """An address is untrusted input, and this screen's controls are in the address.
+
+    `limit=999999` and `win=31536000` are what a curious operator types. The client clamps both to
+    the values its own controls offer — and the server clamps `limit` again at 1 000 regardless, so
+    this is the affordance and not the control. Both layers, as everywhere else in this console.
+    """
+    result = domdriver.run_scenario(
+        "render",
+        {"routes": routes["admin"], "navigate": "#/timeline?depth=999999&win=31536000&chart=pie"},
+    )
+    asked = [p for p in result["requestPaths"] if "/api/timeline" in p][-1]
+    assert "limit=300" in asked, f"an out-of-range depth was not clamped to the default: {asked}"
+    assert "since=" not in asked, f"an out-of-range window was not discarded: {asked}"
+    # An unrecognised chart type falls back rather than rendering nothing.
+    assert "<svg #timeline" in result["dump"], result["dump"][:400]
+
+
+def test_the_urgency_animation_is_css_and_therefore_reducible() -> None:
+    """**Decision 6: an animation that cannot be turned off is an accessibility defect.**
+
+    The mechanism is *where the animation lives*, not a check anyone has to remember: `style.css`
+    ends with `@media (prefers-reduced-motion: reduce) { * { animation: none !important } }`, so any
+    CSS animation in this stylesheet is off for an operator who asked for that. A JS-driven pulse
+    would have had to re-implement that rule, and this guard could not have read it.
+
+    Two things are asserted, and the second is the one that matters: that the urgency marks are
+    animated **in this stylesheet**, and that urgency is carried by something that is not motion.
+    """
+    import netcorenoc
+
+    css = (Path(netcorenoc.__file__).resolve().parent / "ui" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    # The blanket reduction exists and reaches animations with `!important`.
+    reduce_block = re.search(
+        r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\}\s*\}", css, re.S
+    )
+    assert reduce_block is not None, "the stylesheet no longer reduces motion at all"
+    assert re.search(r"animation:\s*none\s*!important", reduce_block.group(1)), reduce_block.group(
+        1
+    )
+
+    # Every urgency rule is an `animation` in THIS file, so the block above reaches it.
+    animated = re.findall(r"^([^\n{]*\{[^}]*animation:[^}]*\})", css, re.M)
+    urgent = [rule for rule in animated if "urgent" in rule]
+    assert len(urgent) >= 2, f"expected the cell and the node to animate here: {animated}"
+
+    # **And urgency is not encoded by motion alone.** `outline` on the cell and `stroke-width` on
+    # the node are static, so the mark is still marked with the animation suppressed. An urgency
+    # carried only by movement fails for exactly the operator colour-alone fails for.
+    assert re.search(r"\.chart-urgent\s*\{[^}]*outline:", css), "the cell has no static ring"
+    assert re.search(r"circle\.node\.urgent\s*\{[^}]*stroke-width:", css), (
+        "the node has no static stroke, so its urgency is motion-only"
+    )
+
+
+@dom_test
+async def test_every_charted_mark_reads_as_a_sentence_not_a_run_of_digits(
+    routes: dict[str, Any],
+) -> None:
+    """**F112's third occurrence, and the guard that would have caught all three.**
+
+    A label and a value can sit on separate grid rows — visually perfect — and still concatenate in
+    `textContent`, because a layout that separates boxes does not separate text. Measured in
+    Chromium before this guard existed: the estate map's cells read `127.0.0.11,458` and the bars
+    read `127.0.0.11,458 alarms`. The first could be misread as an address, and both are what a
+    screen reader announces and what an operator pastes into a ticket.
+
+    **This checks the outcome rather than a premise**, which is the difference from F110's guard and
+    the reason F112's open half is about that guard rather than about this one: it does not ask
+    whether a container establishes a gap, it asks whether the rendered text of every mark contains
+    its own label and value **separated**. An implementation that got there by any means passes, and
+    one that renders perfectly and reads as one number does not.
+    """
+    nodes = [
+        {"id": 1, "ip": "127.0.0.1", "label": None, "active_alarms": 1458},
+        {"id": 4, "ip": "127.0.0.4", "label": None, "active_alarms": 501},
+    ]
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_resources(cpu_pct=6.0, cpu_series=[5.0, 6.0]),
+                    "graph": {"nodes": nodes, "edges": []},
+                }
+            ],
+        },
+    )
+    marks = 0
+    for chart in result["charts"]:
+        for cell in chart["cells"]:
+            marks += 1
+            assert f"{cell['name']} {cell['value']}" in " ".join(cell["text"].split()), (
+                f"an estate cell's accessible text glues its name to its value: {cell['text']!r} "
+                f"(name {cell['name']!r}, value {cell['value']!r})"
+            )
+        for bar in chart["bars"]:
+            marks += 1
+            assert f"{bar['label']} {bar['value']}" in " ".join(bar["text"].split()), (
+                f"a bar's accessible text glues its label to its value: {bar['text']!r} "
+                f"(label {bar['label']!r}, value {bar['value']!r})"
+            )
+    # Without this the loop above passes vacuously over a screen that drew nothing, which is how a
+    # guard comes to be green for the wrong reason.
+    assert marks >= 4, f"expected the map's cells and the bars' rows to be drawn; saw {marks}"
+
+
+@dom_test
+async def test_a_presentational_change_does_not_re_read_the_server(
+    routes: dict[str, Any],
+) -> None:
+    """The presentational half of decision 8 is real in behaviour, not only in the address.
+
+    `chart` and `split` choose how rows already in hand are drawn. Measured in a browser before
+    this was fixed: four control changes produced four requests, two of them for a page that had
+    not changed. So the reload key is the three parameters that reach SQL, and nothing else.
+
+    Driven by navigating between two addresses that differ **only** in `chart`: the request count
+    must not move. The control is the pair below it, which differ in `depth` and must re-read.
+    """
+
+    def timeline_reads(fragments: list[str]) -> list[int]:
+        """How many `/api/timeline` requests EACH navigation issued. `paths` is already a delta."""
+        result = domdriver.run_scenario(
+            "navigateTo", {"routes": routes["admin"], "fragments": fragments}
+        )
+        return [
+            len([p for p in result["outcomes"][fragment]["paths"] if "/api/timeline" in p])
+            for fragment in fragments
+        ]
+
+    # Arriving mounts the screen and reads once. Changing only `chart` must read zero more times.
+    mounted, after_chart = timeline_reads(
+        ["#/timeline?win=3600", "#/timeline?win=3600&chart=column"]
+    )
+    assert mounted >= 1, "arriving on the timeline did not read it at all"
+    assert after_chart == 0, (
+        f"a presentational change re-read the server: it issued {after_chart} timeline request(s)"
+    )
+
+    # THE CONTROL: a change to a query parameter must re-read, or the screen would show a page it
+    # no longer matches — which is the opposite defect and just as bad.
+    _again, after_depth = timeline_reads(["#/timeline?win=3600", "#/timeline?win=3600&depth=1000"])
+    assert after_depth >= 1, (
+        f"a depth change did not re-read the server: it issued {after_depth} timeline request(s)"
+    )

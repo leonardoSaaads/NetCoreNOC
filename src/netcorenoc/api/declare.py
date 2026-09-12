@@ -182,6 +182,10 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/finder.js",
         # v0.16.6: the Overview's five chart bands (DECISIONS #304).
         "/app/views/parts/pulse.js",
+        # v0.16.6: the Graph screen's second projection and its tables (DECISIONS #307, #310).
+        "/app/views/parts/estate.js",
+        # v0.16.6: the timeline's controls, column chart and summary (DECISIONS #311).
+        "/app/views/parts/marks.js",
         # v0.16.1: the console icon (F96). `img-src 'self'` forbids a data: URI.
         "/favicon.svg",
         # v0.16.4: the two disclosures in the top bar — the bell and the health control — split out

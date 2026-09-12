@@ -117,6 +117,13 @@ _UI_MODULES = (
     # real: `overview.js` owns the screen's composition and its four states, `pulse.js` owns the
     # charts and the population each one may claim.
     "app/views/parts/pulse.js",
+    # v0.16.6: the Graph screen's second projection and its two derived tables — everything on
+    # that screen a test executes — split out of `views/graph.js` at the same ceiling
+    # (DECISIONS #307, #310).
+    "app/views/parts/estate.js",
+    # v0.16.6: the timeline's hand-written half — the five controls, the column alternative to the
+    # d3 scatter, and the per-element summary (DECISIONS #311). Same boundary as `estate.js`.
+    "app/views/parts/marks.js",
     # v0.16.4: the two disclosures in the top bar — the bell and the health control — split out
     # of `shell.js` (DECISIONS #288, #289).
     "app/notices.js",

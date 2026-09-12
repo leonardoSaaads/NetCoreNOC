@@ -234,12 +234,12 @@ export function Bars({ title, hint, rows, unit = "", source, span, note, max }) 
          aria-label=${`${title}. ` +
            `${readable.map((r) => `${r.label}: ${unitText(r.value, unit)}`).join(", ")}.`}>
       ${(rows || []).map((row) => html`<div class="chart-bar-row" key=${row.key ?? row.label}>
-        <span class="chart-bar-label" title=${row.title}>${row.label}</span>
+        <span class="chart-bar-label" title=${row.title}>${row.label}</span>${" "}
         <span class="chart-bar-track">
           <span class=${cx("chart-bar-fill", row.tone && `chart-${row.tone}`)}
                 style=${`width:${row.value == null ? 0 : ((row.value / top) * 100).toFixed(2)}%`}
           ></span>
-        </span>
+        </span>${" "}
         <span class="chart-bar-value">${unitText(row.value, unit)}</span>
       </div>`)}
     </div>
@@ -293,11 +293,15 @@ export function Map({ title, hint, cells, source, note, cap = 60, urgentAt }) {
              title=${`${cell.label}: ${count(value)} active ` +
                      `${value === 1 ? "alarm" : "alarms"}` +
                      `${total ? ` — ${((value / total) * 100).toFixed(1)}% of the estate's load` : ""}`}>
-          <span class="map-name">${cell.label}</span>
+          ${/* The explicit spaces are F112, third occurrence. These are grid ROWS, so the
+                pixels were always right — and `textContent` read `127.0.0.11,458`, which a screen
+                reader announces as one number and which could be misread as an address. A layout
+                that separates boxes does not separate text. */ null}
+          <span class="map-name">${cell.label}</span>${" "}
           <span class="map-share" aria-hidden="true">
             <span class="map-share-fill" style=${`width:${((value / top) * 100).toFixed(1)}%`}
             ></span>
-          </span>
+          </span>${" "}
           <span class="map-value">${count(value)}</span>
         <//>`;
       })}

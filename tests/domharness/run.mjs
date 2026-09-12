@@ -1097,16 +1097,21 @@ function readCharts(document) {
     // `Bars` and `Map` are HTML, so their marks are boxes with widths and their tooltips are
     // `title` ATTRIBUTES rather than `<title>` elements — which is what the two lines below read.
     // A reader of this scenario that looked only at `titles` above would find a map empty.
+    // `text` is the WHOLE mark's textContent beside its parts, and it is there because of F112:
+    // a label and a value can be laid out on separate grid rows and still concatenate in the
+    // accessible text. A harness that only read the parts could never see that.
     bars: chart.querySelectorAll(".chart-bar-row").map((row) => ({
       label: row.querySelector(".chart-bar-label")?.textContent.trim() ?? null,
       value: row.querySelector(".chart-bar-value")?.textContent.trim() ?? null,
       width: row.querySelector(".chart-bar-fill")?.getAttribute("style") ?? null,
+      text: row.textContent.trim(),
     })),
     cells: chart.querySelectorAll(".map-cell").map((cell) => ({
       cls: cell.getAttribute("class"),
       tip: cell.getAttribute("title"),
       name: cell.querySelector(".map-name")?.textContent.trim() ?? null,
       value: cell.querySelector(".map-value")?.textContent.trim() ?? null,
+      text: cell.textContent.trim(),
     })),
   }));
 }

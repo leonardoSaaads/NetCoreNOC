@@ -1,10 +1,24 @@
-/* The network graph — **the one screen in this console that no test executes.**
+/* The network graph — **the force drawing below is executed by no test, and it is now the only
+ * thing on this screen that is not.**
+ *
+ * ## The sentence this header used to carry, corrected rather than deleted (v0.16.6)
+ *
+ * It said *"the one screen in this console that no test executes"*, and that stopped being true of
+ * the SCREEN when this release added a second projection. What is still exactly true is the claim
+ * about **this file**: every line below that touches `d3.*` runs against a recording double.
+ *
+ * The screen's other three parts moved to `views/parts/estate.js` and are hand-written, produce
+ * real DOM, and are asserted — the deterministic estate map (DECISIONS #310) and the two derived
+ * tables. So the honest boundary is no longer drawing-versus-text, it is **d3-versus-hand-written**,
+ * and it runs along this module's own import list. A reader who wants to know what is covered can
+ * read that list rather than take a sentence's word for it.
  *
  * ## Say this plainly, because a green suite would otherwise imply otherwise
  *
- * d3 is kept (Part III, closing draft §12.2): replacing it means writing a force layout inside
- * the release that rewrites everything else. Two costs are real and are recorded rather than
- * absorbed:
+ * d3 is kept (Part III, closing draft §12.2, and DECISIONS #307 re-measured it): replacing it means
+ * writing a force layout, and the measurement that settled it is that a d3 chart is invisible to
+ * every assertion here while a hand-written one is not — so the new work is hand-written and the
+ * existing drawing is left alone. Two costs are real and are recorded rather than absorbed:
  *
  *   * **279 706 bytes serving one view** — twenty-two times the two framework assets combined,
  *     and this is the only screen that uses it.
@@ -30,13 +44,11 @@
  */
 
 import { html, Component } from "../dom.js";
-import { Empty, DataTable, SectionHeading } from "../widgets.js";
-import { count, plural, score } from "../format.js";
+import { Empty } from "../widgets.js";
+import { plural } from "../format.js";
 import * as store from "../store.js";
 import { d3Ready } from "../vendor.js";
-
-/** How many rows each derived table shows. Enough to answer the question, short enough to read. */
-const TOP_N = 10;
+import { Busiest, Projection, Strongest, URGENT_AT } from "./parts/estate.js";
 
 const NODE_BASE_RADIUS = 7;
 /* **The radius is capped at the collision radius** (F77, v0.15.2).
@@ -131,9 +143,20 @@ export class GraphView extends Component {
           .on("start", (_e, d) => { this.sim.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
           .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
           .on("end", (_e, d) => { this.sim.alphaTarget(0); d.fx = null; d.fy = null; })));
+    // **v0.16.6: `urgent` on a heavily-alarming node** (DECISIONS #309). The class is all this
+    // file contributes; the pulse, the static stroke that survives reduced motion, and the
+    // `prefers-reduced-motion` block that turns the pulse off are all in `style.css`. That is the
+    // whole reason the animation is CSS: the stylesheet already ends with
+    // `@media (prefers-reduced-motion: reduce) { * { animation: none !important } }`, so honouring
+    // the preference is a property of WHERE the animation lives rather than of anyone remembering.
+    //
+    // `URGENT_AT` is `47` and it is imported rather than written here, because it is the load at
+    // which `NODE_MAX_RADIUS` saturates — so the encoding that replaces the radius begins exactly
+    // where the radius stops meaning anything. The other projection uses the same constant.
     selection
       .attr("r", (d) => Math.min(NODE_MAX_RADIUS, NODE_BASE_RADIUS + 2.5 * Math.sqrt(d.active_alarms)))
-      .attr("class", (d) => `node ${d.active_alarms > 0 ? "alarm" : "ok"}`);
+      .attr("class", (d) => `node ${d.active_alarms > 0 ? "alarm" : "ok"}`
+        + (d.active_alarms >= URGENT_AT ? " urgent" : ""));
     selection.selectAll("title").remove();
     // v0.16.4 (F105): the middle line read `unknown vendor` for every node ever drawn, because
     // `ne.vendor` has no writer. A tooltip that says the appliance could not identify a device,
@@ -192,7 +215,8 @@ export class GraphView extends Component {
     return html`<div class="graphview">
       <p class="hint">An edge is a learned affinity — how often two elements' alarms appeared
         together. Opacity and thickness both encode it; node size follows active alarms and stops
-        at ${NODE_MAX_RADIUS} px. Hover for exact counts.</p>
+        at ${NODE_MAX_RADIUS} px. A node above ${URGENT_AT} alarms is ringed and pulses — the ring
+        is what remains if you have asked for reduced motion. Hover for exact counts.</p>
       ${empty ? html`<${Empty}
           title="No network elements yet."
           will=${"A node appears for each device the appliance hears from, and an edge appears " +
@@ -213,10 +237,11 @@ export class GraphView extends Component {
       </div>
       ${!empty ? html`<p class="hint">
         <b>The drawing itself is not keyboard-operable and has no screen-reader equivalent beyond
-        its label.</b> The two tables below carry what it encodes, as text. Everything about an
-        element is on <a class="tap" href="#/entities">Entities</a>, and an element is named from
-        the situation it appears in.</p>` : null}
+        its label.</b> The projection and the two tables below carry what it encodes. Everything
+        about an element is on <a class="tap" href="#/entities">Entities</a>, and an element is
+        named from the situation it appears in.</p>` : null}
 
+      ${!empty ? html`<${Projection} nodes=${graph.nodes} />` : null}
       ${!empty ? html`<${Busiest} nodes=${graph.nodes} />` : null}
       ${!empty ? html`<${Strongest} graph=${graph} />` : null}
     </div>`;
@@ -225,100 +250,3 @@ export class GraphView extends Component {
 
 function displayName(node) { return node.label || node.ip; }
 
-/**
- * Which elements are alarming most. **Derived from the payload this screen already had.**
- *
- * `/api/graph` has served `active_alarms` on every node since v0.13.0 and the drawing has encoded
- * it in a radius ever since — a radius that is *capped* at 24 px (F77), so the one screen that
- * answers "which host is worst" answered it in a quantity that saturates. The number was on the
- * wire and thrown away, which is exactly what v0.15.2 found on `/api/stats`: eleven keys served,
- * five rendered. **No new route was needed and none was added** (Part VII rule 2).
- *
- * **v0.16.3 removed the rename from this screen**, and that is a repair rather than a loss. It was
- * here because there was nowhere else — a `globalThis.prompt` on double-click, then a button in
- * this table — and it wrote `label(kind='device', target_id=node.id)` while the Entities screen
- * read the `ne` table, so the name an operator gave a host was invisible on the screen built to
- * describe that host. An element is now named where the operator already is: the row in a
- * situation's member table, the same place its class and its severity are declared. This screen
- * **reads** what was declared there, which is the propagation the release exists to build.
- *
- * **No new gesture is invented here** (Part VII rule 5): the graph shows learned affinities between
- * elements, and an assertion that two elements are unrelated is not in
- * `PREREGISTRATION-0.16.0.md` §2's registered map. The grouping an operator can correct is a
- * *situation*, so each row links to the search that finds this element's situations, where the
- * five registered gestures — and now the three declarations — live.
- */
-export function Busiest({ nodes }) {
-  const rows = [...nodes]
-    .filter((node) => node.active_alarms > 0)
-    .sort((a, b) => b.active_alarms - a.active_alarms || String(a.id).localeCompare(String(b.id)))
-    .slice(0, TOP_N);
-  if (!rows.length) return null;
-  return html`<section class="panel-block">
-    <${SectionHeading} title="Elements alarming most"
-      hint=${"The exact counts the drawing can only approximate: a node's radius stops growing " +
-             "at 24 px, so a storm and a busy hour look alike there and do not here."} />
-    <${DataTable} columns=${[
-      { key: "device", label: "element" },
-      // v0.16.4 (F105, DECISIONS #292): the **vendor** column is gone. Nothing has ever written
-      // `ne.vendor` — 25 rows, 0 vendors, after 2 252 alarms — and its tooltip, *"inferred from
-      // the enterprise arc of the OID"*, described `alarm_class`, a different table. An operator
-      // read `unknown` as "the appliance could not identify this device"; the truth was that
-      // nothing ever tried.
-      { key: "alarms", label: "active alarms", numeric: true },
-      { key: "act", label: "" },
-    ]} rows=${rows.map((node) => ({
-      key: node.id,
-      tone: "alarm",
-      cells: {
-        device: displayName(node),
-        alarms: count(node.active_alarms),
-        act: html`<a class="tap" href=${`#/situations?q=${encodeURIComponent(displayName(node))}`}
-                     title="Find this element's situations, where it is named and its grouping corrected"
-                  >situations</a>`,
-      },
-    }))} />
-  </section>`;
-}
-
-/**
- * Which relationships are strongest — the maintainer's second question, in the words they used:
- * *"if a host's alarms always affect another, show that relationship."*
- *
- * `weight` is the learned affinity and `n` is the co-occurrence mass behind it, and **both were
- * already on every edge** the drawing renders as opacity and thickness. Two encodings of one
- * number, and no way to read the number.
- *
- * `n` is shown beside the weight rather than folded into it, and that is not decoration: a pair
- * seen six times can reach an affinity of 0.83 (F61, measured), so a strong-looking edge with a
- * small `n` is a claim from very little evidence. A table that printed the affinity alone would
- * present those two as the same fact.
- */
-export function Strongest({ graph }) {
-  const named = new Map(graph.nodes.map((node) => [node.id, displayName(node)]));
-  const rows = [...graph.edges]
-    .filter((edge) => named.has(edge.a_id) && named.has(edge.b_id))
-    .sort((a, b) => b.weight - a.weight || b.n - a.n)
-    .slice(0, TOP_N);
-  if (!rows.length) return null;
-  return html`<section class="panel-block">
-    <${SectionHeading} title="Strongest learned relationships"
-      hint=${"How often two elements' alarms have appeared together, as a number rather than as " +
-             "an opacity. Evidence is the second column and it is not optional: a pair seen a " +
-             "handful of times can already score highly, and that is a weaker claim than the " +
-             "same score over hundreds of observations."} />
-    <${DataTable} columns=${[
-      { key: "pair", label: "pair" },
-      { key: "weight", label: "affinity", numeric: true },
-      { key: "n", label: "evidence (n)", numeric: true,
-        title: "co-occurrence mass; an edge is not drawn at all below the learned minimum" },
-    ]} rows=${rows.map((edge) => ({
-      key: `${edge.a_id}-${edge.b_id}`,
-      cells: {
-        pair: `${named.get(edge.a_id)} ↔ ${named.get(edge.b_id)}`,
-        weight: score(edge.weight),
-        n: score(edge.n),
-      },
-    }))} />
-  </section>`;
-}
