@@ -122,10 +122,20 @@ function Absent({ title, why, source, span }) {
 export function Series({
   title, hint, series, mark = "line", unit = "", source, span, note, max, labels = [], height,
 }) {
-  const lines = (series || []).filter((one) => (one.values || []).some((v) => v != null));
+  // **A `line` needs TWO readings and a `column` needs one**, and that difference is a defect the
+  // live pass found: `some(v => v != null)` let a one-point series through, so a freshly started
+  // appliance drew an axis, printed `2.8%` beside it, and left the plot **empty**. An empty plot
+  // inside a chart's frame is the "chart of zeroes" problem wearing a better costume — #289's rule
+  // is that an absence is stated, and "one reading so far" is the statement.
+  const enough = mark === "line" ? 2 : 1;
+  const readable = (one) => (one.values || []).filter((v) => v != null).length;
+  const lines = (series || []).filter((one) => readable(one) >= enough);
   if (!lines.length) {
+    const partial = (series || []).some((one) => readable(one) > 0);
     return html`<${Absent} title=${title} source=${source} span=${span}
-      why=${note || "no reading has arrived yet"} />`;
+      why=${partial
+        ? "only one reading so far — a line needs two"
+        : note || "no reading has arrived yet"} />`;
   }
   // The domain. A percentage is pinned to 0-100 because a CPU chart that rescaled to its own peak
   // would draw a busy minute and an idle one as the same picture; everything else takes a round
@@ -212,7 +222,7 @@ function ariaFor(title, latest, unit, span) {
   const readings = latest
     .map((one) => `${one.name}: ${one.value == null ? "not measured" : unitText(one.value, unit)}`)
     .join(", ");
-  return `${title}. Latest ${readings}${span ? `, over ${span}` : ""}.`;
+  return `${title}. Latest ${readings}${span ? `, ${span}` : ""}.`;
 }
 
 /**

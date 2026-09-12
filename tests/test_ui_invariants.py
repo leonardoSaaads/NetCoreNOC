@@ -2645,6 +2645,7 @@ def test_the_resources_fixture_matches_what_the_sampler_actually_produces() -> N
         "disk_total",
         "window_s",
         "interval_s",
+        "bucket_s",
         "cpu_series",
         "mem_series",
         "disk_series",
@@ -2890,6 +2891,7 @@ def _stats_with_resources(**resources: Any) -> dict[str, Any]:
         "disk_series": [],
         "window_s": 7200,
         "interval_s": 30.0,
+        "bucket_s": 300.0,
     }
     block.update(resources)
     return {
@@ -3409,9 +3411,14 @@ async def test_the_four_named_quantities_are_drawn_as_four_and_never_composed(
             _decision(
                 row_id=1,
                 at=1_700_000_000.0,
-                verdict="INSUFFICIENT_EVIDENCE",
+                verdict="NOT_BETTER",
                 triggers='["ASSERTING_BAGS", "THIN_SPLIT"]',
-                metrics=_quantities(),
+                metrics=_quantities(
+                    over_merge_rate=(0.24, 0.18),
+                    under_merge_rate=(0.12, 0.11),
+                    split_bag_intact_rate=(0.71, 0.74),
+                    asserted_negative_respected_rate=(0.50, 0.52),
+                ),
             ),
         ),
     }
@@ -3484,18 +3491,21 @@ async def test_a_quantity_that_was_not_computable_breaks_the_line_rather_than_re
     result = domdriver.run_scenario(
         "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
     )
-    over_merge = [
-        c for c in result["charts"] if c["label"] and c["label"].startswith("Over-merge rate")
-    ]
-    assert over_merge, [c["label"] for c in result["charts"]]
-    # Two decisions, one of them unmeasurable: a two-point run is impossible, so NOTHING is drawn
-    # rather than a line from zero. `runs` drops a run of one point for exactly this reason.
-    assert over_merge[0]["polylines"] == [], over_merge[0]["polylines"]
-
-    # The three quantities that were degenerate in BOTH decisions say so in words.
+    # Two decisions, one of them unmeasurable: **one readable point, and a line needs two.** So no
+    # line is drawn from the floor — and the chart says which of the two cases it is in, rather
+    # than showing an empty plot inside a frame. That distinction is a repair the live pass forced:
+    # a one-point series used to draw an axis, print a reading beside it, and leave the plot blank.
     unmeasured = " ".join(result["unmeasured"])
-    assert "not measured" in unmeasured, result["unmeasured"]
+    assert "Over-merge rate" in unmeasured, result["unmeasured"]
+    assert "only one reading so far" in unmeasured, result["unmeasured"]
+    # And the three that were degenerate in BOTH decisions say the other thing, because nothing
+    # was readable at all. Two absences, two different sentences.
     assert "Under-merge rate" in unmeasured, result["unmeasured"]
+    assert "not measured" in unmeasured, result["unmeasured"]
+    # No chart drew a line from zero.
+    for chart in result["charts"]:
+        if chart["label"] and chart["label"].startswith(("Over-merge", "Under-merge")):
+            assert chart["polylines"] == [], (chart["label"], chart["polylines"])
 
 
 @dom_test

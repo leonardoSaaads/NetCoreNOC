@@ -298,6 +298,47 @@ are the valuable half — each one names the table and the columns a later relea
   read `challenger_run` and `shadow_opinion` and concluded that *"which model is winning over
   time"* needed a new table. It needs a render.
 
+### What v0.16.6 deferred, with the reason
+
+* **F112's guard half.** F110's element-to-element exemption is justified by *"the container is a
+  flex row whose `gap` separates them"* and nothing reads the container. Repairing it means
+  resolving a CSS container per candidate pair — a stylesheet-parsing problem. The three sites are
+  fixed; the guard is a **ROADMAP** line.
+* **A second "map".** The maintainer asked for *"more than one map"* and got exactly one more, per
+  decision 7: one that answers a question the first cannot. A third projection with no question
+  behind it would be the placeholder #219 recorded, with a chart's face.
+* **A frozen timeline window.** The window control is rolling (`since = now - win`), so a permalink
+  shares the *configuration* and not the *instant*. An `at` anchor plus `until` would make it exact
+  and is one parameter the route already accepts — but it needs a gesture nobody asked for, and
+  decision 8's four controls are what the brief named. **ROADMAP.**
+* **The four CLI reports still have no HTTP route**, so an operator reads a verdict's label in the
+  browser and its content in a terminal. Unchanged by this release and unchanged deliberately: a
+  route into the corpus is the security decision the residual chart is blocked on.
+
+### The live pass, and what it found
+
+**162 screens driven** — eighteen fragments at 390 / 820 / 1440 as viewer, editor and admin — with
+**156 charts** checked for three things by looking: that the chart fits, that its axis is readable,
+and that it agrees with the number printed beside it. Fifteen percentage line charts had their
+**geometry** compared against their printed reading (`y = 40 - value/100 x 40`); none disagreed.
+
+**It found four defects that no assertion in this repository could see**, and all four were in
+work this release wrote:
+
+1. the host series had **no time axis at all**, and their caption claimed *"last 2 hours"* over a
+   series holding two points. `resources` serves values with no timestamps, so the fix is one
+   additive key — `bucket_s` — and a span derived from `points x bucket_s`;
+2. a **one-point line** drew an axis, printed a reading beside it, and left the plot empty;
+3. the last x tick was **one bucket short**, because `buckets()` labels a bucket's *start* — right
+   for a column, wrong for a series of means;
+4. an `aria-label` reading *"over over 7 min"*, because both the span and the label added the
+   preposition.
+
+Numbers 1 and 3 are the same class as F111: a chart that renders perfectly and says something
+untrue. Neither is visible to a harness with no layout engine, and number 3 is not visible to a
+browser either unless someone reads the ticks against the span — which is what Part III means by
+*check that it says the same thing the number beside it says*.
+
 ## The claims
 
 Each row above is claimed here, one marker per line. The table's own document must claim every row

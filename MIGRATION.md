@@ -14,14 +14,16 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of thirty ask
-you to do something; eleven more ask you to read a paragraph first. The other seventeen are
+Read only the rows between your version and the one you are installing. **Two of thirty-two ask
+you to do something; twelve more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
 read-a-paragraph row: it applies no migration and still changes what your existing situations do.
 v0.16.3 adds another: `0016` runs itself, and the names you already set come with it. v0.16.4 adds
-a third: **no migration at all**, and the console you sign in to is rearranged.)
+a third: **no migration at all**, and the console you sign in to is rearranged. **v0.16.5 did not
+add its row either — F94's shape, twice now — so v0.16.6 adds both**, which is why the count moves
+by two: v0.16.5's is start-the-new-binary and v0.16.6's is read-a-paragraph, for v0.16.4's reason.)
 
 | From → to | What you must do |
 |---|---|
@@ -55,6 +57,8 @@ a third: **no migration at all**, and the console you sign in to is rearranged.)
 | v0.16.1 → v0.16.2 | Nothing to run — **no migration** — but situations that were being closed will stop being closed. Read below |
 | v0.16.2 → v0.16.3 | Nothing to run. `0016` moves the names you already set and **they start appearing on Entities**. Read below |
 | v0.16.3 → v0.16.4 | Nothing to run — **no migration** — but the console is rearranged and two `/api/stats` keys are new. Read below |
+| v0.16.4 → v0.16.5 | Nothing to run — **no migration**. CPU, memory and storage appear in the health control, read from `/proc` and the cgroup; `POST /api/alarms/clear` is new |
+| v0.16.5 → v0.16.6 | Nothing to run — **no migration** — but four screens are redrawn and one `/api/stats.resources` key is new. Read below |
 
 ## The two that need an action, and the six that need reading
 
@@ -377,3 +381,43 @@ where the admin who can change it reads it (F107).
 **A situation you have already judged looks different.** Confirm and Split fold behind one *Adjust
 the grouping* button that names what was recorded and by whom. Nothing is removed — the same
 controls are one press away, in every status the server accepts them in.
+
+### v0.16.6 — four screens are redrawn, and nothing in your database moves
+
+**No migration.** `0016` is still the head of the schema, which the startup log prints as
+`schema version 16`. Nothing is written, nothing is backfilled, and the trap path is byte-unchanged.
+
+**What you will notice is that the Overview looks different.** It answers five questions in order —
+what is happening, where, which element is worst, is the appliance keeping up, what it has learned —
+and eight charts replaced eleven counter tiles and six paragraphs. The receiver's five counters did
+not leave; they are one line of numbers under the host charts.
+
+**Three things the charts will tell you that the counters could not**, worth knowing before you
+read them during an incident:
+
+* **Every chart's axis is the span its data actually covers**, not the window it asked for. Ask the
+  timeline for seven days on a busy appliance and the axis may say it is showing the most recent
+  minute, because the read is bounded at a thousand alarms. That is the chart telling you the truth
+  about its own page rather than a bug.
+* **A metric your host will not give up renders `—` and the words *not measured*, never `0`.** A
+  gap in a series **breaks** the line rather than being drawn through it. Both are deliberate: a
+  zero reads as *idle* and a joined line asserts a measurement nobody took.
+* **The host series are held in memory and start again when the appliance restarts.** Each chart
+  says so, and each says how much of its two-hour window it currently covers.
+
+**One additive API key**: `GET /api/stats` gains `resources.bucket_s` — how much wall-clock time one
+point of the CPU, memory and storage series covers (300 s). It is absent exactly where the whole
+`resources` block is already absent, which is an API running without the process runner. Nothing was
+removed from that response.
+
+**The timeline's controls are now in its address.** `#/timeline?ne=3&win=21600&depth=100&chart=column`
+is a link you can send to a colleague, and it restores the screen you were looking at. If you have
+bookmarks to `#/timeline`, they still work and open the unconfigured screen. The element, window and
+depth are applied by the server **inside your own visibility scope**, so a link from someone who can
+see more of the estate than you shows you only your own part of it.
+
+**Judge & promotion now draws the record over time** — the verdict's three states, the four named
+quantities separately, and the seal's query count. It also states, on the screen, the three things
+this appliance does **not** measure: a loss curve, a residual distribution and per-fold results.
+Those are absences by design rather than gaps in the screen, and
+[`docs/plans/releases.md`](docs/plans/releases.md) records what each would need.

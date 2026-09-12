@@ -9,8 +9,114 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty rows, two ask for an
-action, eleven ask you to read a paragraph, and seventeen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-two rows, two ask for an
+action, twelve ask you to read a paragraph, and eighteen are start-the-new-binary.
+
+## [0.16.6] - 2026-09-12 — "the evidence screens"
+
+Four screens stopped describing and started showing. **And the release's most valuable output is
+the list of what cannot be drawn**, which is four of the charts the brief asked for.
+
+```
+                                              before              after
+  charts on the Overview                           0                  8
+  chart captions naming a source                   0                  8
+  .stat tiles on the Overview                     11                  4
+  words of prose on the Overview                 172                122
+  paragraphs a chart replaced                      -                  6
+  projections of the estate                        1                  2
+  timeline controls, and all of them in the URL    2                  5
+  charts on the Judge screen                       0                  3
+  DOM tests executed                              52                 69
+  new routes                                       -                  0
+  new route parameters                             -                  0
+  migrations                                       -                  0
+```
+
+### Phase 0 measured what could be drawn before anything was drawn
+
+Nine charts had data behind them; **four did not**, and each one now names the table and the
+columns a later release would need (`docs/plans/releases.md`):
+
+* **a loss curve** — `challenger_run` has 24 columns and not one holds a per-iteration loss, a
+  residual or a convergence trace; `iterations` is a count.
+* **a residual distribution** — the only label in the schema is in `feedback`, and
+  `incumbent_linked` is a comparison basis and never a target. **No module under `src/` mentions
+  `shadow_opinion` and an `/api/` path**: `0009`'s posture is *no read below admin, on any route, in
+  any format, ever*, and v0.9.0 added no route. It is a security decision before it is a chart.
+* **fold results** — `evaluation_fold` stores which incident went into which fold, not what each
+  fold scored.
+* **top elements over a chosen week** — the appliance counts alarms *active now*. Measured:
+  `GET /api/timeline?limit=1000` came back **full, 1 000 marks spanning 15.6 seconds**, so a chart
+  titled *"last 7 days"* would have shown fifteen seconds of one storm. The Overview draws
+  *"busiest now"* instead, which is exact.
+
+**Two numbers in the brief were wrong and execution said so.** `cpu_series` is **24 points, not
+240** — `SAMPLES_KEPT = 240` is the ring and `SERIES_POINTS = 24` is what is served. And
+`promotion.metrics` already holds the four named quantities with clustered intervals, **both arms,
+per decision, with a timestamp**, so *"which model is winning over time"* is a render rather than a
+migration; `0013`'s own column comment is where that was written down.
+
+### Added
+
+* **Three chart types, reused everywhere** (#305, #307): `Series` (line or column over time),
+  `Bars`, `Map`. Hand-written SVG and HTML, no dependency, no charting library. The measurement
+  that settled it: descendants of `<svg #graph>` = **0** and of `<svg #timeline>` = **0** in the
+  harness's rendered DOM, while the same document carries 21 hand-written `<svg>` elements and 42
+  `<path>`s from `icons.js`. A d3 chart is invisible to every assertion here; a hand-written one is
+  not.
+* **The Overview answers five questions in the order an operator asks them** (#304) — what is
+  happening, where, which element is worst, is the appliance keeping up, what has it learned.
+* **A second projection of the estate** (#310), on the Overview and the Graph screen. The force
+  drawing cannot answer *is this one element or the whole estate*: the radius saturates at **47**
+  alarms, so `127.0.0.1` at 1 458 and `127.0.0.4` at 501 both draw at exactly **24.0 px** — and its
+  layout is not deterministic, so two glances disagree. The grid is a pure function of the payload,
+  asserted order-independent.
+* **Urgency animation on heavily-alarming nodes and cells** (#309), as a CSS animation — so the
+  stylesheet's existing `prefers-reduced-motion` block turns it off **by construction**. Driven both
+  ways in Chromium: the ring stays 3 px and the node stroke 2 px with motion off, so urgency is
+  never carried by motion alone.
+* **The timeline's five controls live in its address** (#311): element, window, depth, chart type
+  and element split. Element, window and depth become `ne_id`, `since` and `limit` **in SQL**; the
+  other two never reach the server. A configured screen is a permalink.
+* **Evidence over time** (#308): the verdict's three states, the four named quantities
+  **uncomposed**, the seal's query count, and the trigger census — plus the three absences above,
+  stated on the screen where someone would look for them.
+
+### Changed
+
+* **`GET /api/stats.resources` gains `bucket_s`**, how much time one served point covers. The host
+  charts had no time axis and their caption claimed *"last 2 hours"* over a series that, on a
+  freshly started appliance, held two points — the exact failure #306 exists to prevent, reached
+  from the one direction that decision did not look. The caption now reads *"10 min of a 2.0 h
+  window"*, derived from the data.
+* **The Overview's own `Health` component is gone** — seven tiles, two headings, two paragraphs.
+  The receiver's five counters **did not leave**: they are one secondary line, which is the shape
+  #300 chose for the health panel.
+* **A `line` needs two readings.** One drew an axis, printed a number beside it and left the plot
+  empty; it now says *"only one reading so far"*.
+
+### Fixed
+
+* **F112** — F110's element-to-element exemption rests on *"the container is a flex row whose `gap`
+  separates them"*, and nothing checks that it is. Three sites, and **the first two repairs were
+  both wrong**: a CSS margin and a `content: " · "` separator each fixed the pixels and left
+  `textContent` glued, which is what a screen reader announces and what an operator pastes into a
+  ticket. The guard half is open and recorded.
+* **F113** — that guard asked *"am I inside a template literal?"* with a backtick parity count,
+  which assumes one template is open; this console nests them constantly and **two open templates
+  give even parity**. Closing the hole exposed three real sites, **two shipped since v0.13.0**: the
+  admin scorer's refusal rendered `the project floor is1 s.Your value was not applied`. Parity is
+  now a scanner over template and `${…}` contexts.
+
+### Behaviour changes, one
+
+1. **`GET /api/stats.resources` gains `bucket_s`** (`WINDOW_S / SERIES_POINTS`, 300.0 s). Additive,
+   and absent exactly where the whole `resources` block already was.
+
+**No new route, no new route parameter, no migration.** The `/api` surface is unchanged at 52 and
+the served surface moves 111 → 117, all six additions static modules. `make eval` is byte-identical
+at `c2e8a0ce…`. Findings: **F112** issued (guard half open), **F113** issued and closed.
 
 ## [0.16.5] - 2026-09-06 — "the shell, corrected"
 

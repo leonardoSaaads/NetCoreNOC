@@ -107,7 +107,18 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 - **The panel loaders have no capability check of their own** — the observed outcome is right and the
   mechanism is a `TypeError` from a removed container.
 - **The graph and timeline render paths are uncharacterised** — d3 is a recording double, so two of
-  the largest render paths execute against a stub.
+  the largest render paths execute against a stub. **Narrowed by v0.16.6, not closed**: the estate
+  map beside the force drawing and the column chart beside the scatter are hand-written and are
+  asserted, so each screen now has one drawing a test executes and one it does not. The d3 halves
+  are still executed by nothing, and `views/graph.js` says so where a reader will find it.
+- **F112's open half: F110's element-to-element exemption is justified by a container property it
+  never reads.** It should either resolve the container's `display`/`gap` for each candidate pair or
+  stop claiming that the container separates them. A stylesheet-parsing problem, which is why
+  v0.16.6 recorded it rather than fixed it — it fixed the three sites and F113's parity hole.
+- **A guard's SCOPE deserves the same demonstration as its rule.** F112 and F113 are two holes in
+  one guard, and both were in the *scope test* rather than in the rule.
+  `test_documentation.py::test_the_element_tag_check_goes_red_on_a_backticked_stray_tag` exists for
+  exactly this and has no counterpart in `test_ui_invariants.py`.
 - **The unauthenticated boot path is not exercised** — nothing asserts that a failed resume renders
   no panel and, the part that matters, issues no further requests.
 - **No shape assertion on the captured fixtures** — a route that dropped a field would render
@@ -191,3 +202,26 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   reads a verdict's *label* in the browser and its *content* in a terminal.
 - **`make security` fails on `pip` itself where the bundled pip is old** — an environment fact, not a
   defect in this project.
+
+## Open after v0.16.6 — the charts nothing measures
+
+Each of these is a chart the maintainer asked for, refused on a measurement rather than on taste,
+with the table and columns it would need. The measurements are in
+[`plans/releases.md`](plans/releases.md).
+
+- **A loss curve.** `challenger_run` keeps no per-iteration loss; it would need a
+  `challenger_iteration(run_id, iteration, loss)` table written by `engine/model/training.py` — a
+  migration, and therefore a **pre-registration question** before a schema one. **v0.17.0**, where
+  the corpus work already lives.
+- **A residual distribution.** No route serves `shadow_opinion` and `0009`'s posture is *no read
+  below admin, on any route, in any format, ever*. An admin-only aggregate route is a **security
+  decision** before it is a chart, and whatever it drew would have to read
+  `challenger_run.sample_rate` beside it rather than assume the 0.01 default.
+- **Per-fold results.** `evaluation_fold` stores membership. The per-fold metrics `shadow_cv`
+  computes are discarded; keeping them is a schema question.
+- **Top elements over a chosen window.** `GROUP BY ne_id` over `alarm.first_seen` inside a window —
+  a query and one route parameter, **no migration**. The cheapest of the four, and the one an
+  operator is most likely to ask for: v0.16.6 draws *"busiest now"* because a page bounded at a
+  thousand alarms came back covering **15.6 seconds** on the reference corpus.
+- **A durable host series.** The two-hour CPU/memory/storage window is a `deque` in process memory
+  and restarts with the process; the screen says so. A series that survives a restart is a table.

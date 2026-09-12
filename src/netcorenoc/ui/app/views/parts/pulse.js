@@ -15,7 +15,7 @@
 import { html } from "../../dom.js";
 import { Stat, Failed, SectionHeading } from "../../widgets.js";
 import { Series, Bars, Map as EstateMap } from "../../charts.js";
-import { buckets, tally, spanText } from "../../chartdata.js";
+import { buckets, clock, spanText, tally } from "../../chartdata.js";
 import { plural, relative, count, score, TIMEZONE } from "../../format.js";
 
 /** How many alarms the marks read asks for. The route clamps at 1 000; this is that clamp. */
@@ -162,8 +162,40 @@ export function Worst({ nodes }) {
 export function Keeping({ stats, ring, rate }) {
   const res = stats.resources;
   const receiver = stats.receiver;
-  const hours = res && res.window_s ? Math.round(res.window_s / 3600) : 2;
   const ringGrid = buckets((ring && ring.at) || [], 60);
+  /* **The host series get a real time axis, and that is a repair the live pass forced.**
+   *
+   * They had none: three `line` charts with no `labels`, and a caption reading *"last 2 hours"*
+   * over a series that, on an appliance up for a minute, held two points. The window was a claim
+   * about the ring rather than a statement about the data — which is precisely what DECISIONS #306
+   * forbids, reached from the one direction that decision did not look, because `resources` serves
+   * values with **no timestamps at all**.
+   *
+   * `bucket_s` (v0.16.6, additive) is how much time one served point covers, so the span is
+   * `points x bucket_s` — derived from the array, like every other axis here — and the labels are
+   * clock times counted back from now. `window_s` is still named, as the **upper bound** it is. */
+  const hostAxis = (values) => {
+    const points = (values || []).length;
+    const bucket = Number(res && res.bucket_s) || 0;
+    if (!points || !bucket) return { labels: [], span: null };
+    const newest = Date.now() / 1000;
+    const stamps = Array.from({ length: points }, (_, i) => newest - (points - 1 - i) * bucket);
+    /* **`clock` per point, and NOT `buckets(...).labels`** — a second thing the live pass caught.
+     *
+     * `buckets` labels each bucket's START, which is right for a column chart where a bar covers
+     * `[start, start + width)`. Here each value is a bucket MEAN, so a point is an instant, and
+     * routing through `buckets` put the last tick at `newest - width`: two readings five minutes
+     * apart were labelled two and a half minutes apart. A tick one bucket short renders perfectly
+     * and is wrong, which is this release's whole difficulty in one line. */
+    const span = points > 1 ? stamps[points - 1] - stamps[0] : 0;
+    return {
+      labels: stamps.map((ts) => clock(ts, span)),
+      // The coverage, and the ring's window as the upper bound it is. Each point is a mean over
+      // `bucket_s`, so `points x bucket_s` is what the series covers — never `window_s`, which is
+      // what the ring COULD hold and what the caption used to claim.
+      span: `${spanText(points * bucket)} of a ${spanText(res.window_s)} window`,
+    };
+  };
   return html`<section class="panel-block">
     <${SectionHeading} title="Is the appliance keeping up" />
     ${/* **The queue chart is OUTSIDE the `resources` branch, and that placement is a repair.**
@@ -174,21 +206,23 @@ export function Keeping({ stats, ring, rate }) {
           has nothing to do with it. Two sources, two conditions. */ null}
     <div class="chart-grid">
       ${res
-        ? html`<${Series} title="CPU" unit="%" series=${[{ name: "CPU", values: res.cpu_series }]}
-              source="/api/stats.resources" span=${`last ${plural(hours, "hour")}`}
-              note=${`sampled every ${res.interval_s ?? 30} s; resets on restart`} />
-            <${Series} title="Memory" unit="%"
-              series=${[{ name: "Memory", values: res.mem_series }]}
-              source=${res.mem_source === "cgroup"
-                ? "/api/stats.resources — the container's limit"
-                : "/api/stats.resources — the host's memory"}
-              span=${`last ${plural(hours, "hour")}`}
-              note="resets on restart" />
-            <${Series} title="Storage" unit="%"
-              series=${[{ name: "Storage", values: res.disk_series }]}
-              source="/api/stats.resources — the filesystem holding the database"
-              span=${`last ${plural(hours, "hour")}`}
-              note="resets on restart" />`
+        ? [
+            ["CPU", res.cpu_series, "/api/stats.resources",
+             `sampled every ${res.interval_s ?? 30} s; resets on restart`],
+            ["Memory", res.mem_series,
+             res.mem_source === "cgroup"
+               ? "/api/stats.resources — the container's limit"
+               : "/api/stats.resources — the host's memory",
+             "resets on restart"],
+            ["Storage", res.disk_series,
+             "/api/stats.resources — the filesystem holding the database",
+             "resets on restart"],
+          ].map(([label, values, source, note]) => {
+            const axis = hostAxis(values);
+            return html`<${Series} key=${label} title=${label} unit="%"
+              series=${[{ name: label, values }]} labels=${axis.labels}
+              source=${source} span=${axis.span} note=${note} />`;
+          })
         : null}
       <${Series} title="Queue depth" unit="traps"
         series=${[{ name: "queued", tone: "warn", values: (ring && ring.queue) || [] }]}

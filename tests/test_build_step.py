@@ -363,7 +363,7 @@ UI_HASHES: dict[str, str] = {
     "app.js": "426f5fc2e948536a3b337a874c6dcc090f8e2714af74740c864db965a9a10bfd",
     "app/api.js": "186f79e412a22550a061bc7fd0354a97398e41a153d60c1d19f8e9f03965e977",
     "app/chartdata.js": "23e1cbc075be1b37ad0558e4f95e3c4066ad70a328ca89aa14699a5e5daeb990",
-    "app/charts.js": "59b79e80124731922c53ae9de25d0abc23347399ce5a4ab9f4697a07a240202b",
+    "app/charts.js": "e1f7cb46f49998f780decc562939445a78d832cd931bc5e8dd593ebea6074732",
     "app/destructive.js": "51994f0640e3e170061ec0f9bea068f7b3fff7348ca153ffb00d64cfb11838e0",
     "app/dom.js": "b0e279c902ae6f76a902dbc24bb8595d6936aff13f46354870120c4fe42b119b",
     "app/format.js": "441d130bf7f6257124f8a2ca5c0573915ca3918a0ede8960f9f8cc40bb770db4",
@@ -416,7 +416,7 @@ UI_HASHES: dict[str, str] = {
         "a3b39b4eb11b14858862c13d2c4c765bc6269c8ee2105ae673accc89d5aeaf24"
     ),
     "app/views/parts/model.js": "c30966786ff8e78e8c326b3b0206fe171298e86ef784b0841d68999ef068e81d",
-    "app/views/parts/pulse.js": "e93c147dd0317eafddd0dcc2617fb20a67e5f433210c041ce04d7c321d5d1d15",
+    "app/views/parts/pulse.js": "c9e5eacc5330350ba2595e57c5277e9b24f0b98d124576366d196213b4a68d15",
     "app/views/parts/retention.js": (
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
     ),
@@ -455,7 +455,7 @@ UI_SIZES: dict[str, int] = {
     "app.js": 5_540,
     "app/api.js": 3_424,
     "app/chartdata.js": 8_181,
-    "app/charts.js": 16_200,
+    "app/charts.js": 16_918,
     "app/destructive.js": 4_152,
     "app/dom.js": 2_142,
     "app/format.js": 16_964,
@@ -494,7 +494,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/marks.js": 9_929,
     "app/views/parts/members.js": 8_897,
     "app/views/parts/model.js": 10_290,
-    "app/views/parts/pulse.js": 15_029,
+    "app/views/parts/pulse.js": 17_095,
     "app/views/parts/retention.js": 5_003,
     "app/views/parts/verdict.js": 8_420,
     "app/views/parts/why.js": 10_884,
