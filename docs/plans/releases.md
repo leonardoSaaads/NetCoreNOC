@@ -33,7 +33,8 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.16.4** | **The console's shell** — navigation, the situation cards, the members table, and the timezone the console already computes and does not always show. | `console-shell` |
 | **v0.16.5** | **The shell, corrected** — six things a browser found in v0.16.4's console, and the host metrics v0.16.4 believed needed a dependency. **Shipped.** | `shell-corrected` |
 | **v0.16.6** | **The evidence screens** — overview charts, the estate map, a configurable timeline, and the model metrics beside the grouping they explain. | `evidence-screens` |
-| **v0.16.7** | **Maintenance windows** — a planned-work declaration, and the composed severity/time filters that read it. | `maintenance-windows` |
+| **v0.16.7** | **Severity, and the screen an operator runs a shift from** — active alarms by band on the Overview, with the ones the appliance has **not** been able to place counted and named. | `severity-census` |
+| **v0.16.8** | **Maintenance windows** — a planned-work declaration, and the composed severity/time filters that read it. | `maintenance-windows` |
 | **v0.17.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
 | **v0.18.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
 
@@ -68,12 +69,13 @@ code:
 
 ### The v0.16 block, and why it is six releases rather than one
 
-> **The numbering moved once, in v0.16.6, and the reason is worth one line.** The block was planned
-> as five and shipped as six: v0.16.4's shell went out, a browser found six defects in it, and
-> repairing them was a release of its own rather than a patch on the one that followed. So v0.16.5
-> is *the shell, corrected* — which is what the code and the CHANGELOG already said — the evidence
-> screens are v0.16.6, and maintenance windows are v0.16.7. Nothing about any release's *content*
-> moved; only two of their numbers did.
+> **The numbering has moved twice, and both times for the same reason.** The block was planned as
+> five and shipped as eight. v0.16.4's shell went out, a browser found six defects in it, and
+> repairing them was a release of its own rather than a patch on the one that followed — so v0.16.5
+> is *the shell, corrected* and the evidence screens are v0.16.6. Then v0.16.6 shipped eight charts
+> onto the Overview and **still did not answer how many critical alarms are active**, because
+> nothing on any screen counted them; that is v0.16.7, and maintenance windows move to v0.16.8.
+> Nothing about any release's *content* moved; only their numbers did.
 
 
 * **v0.16.2 first, because a defect that hides an active alarm outranks every feature behind it.**
@@ -87,7 +89,7 @@ code:
   measured what that means on a real corpus. An operator declaration is what fills the gap the
   measurement describes; declaring it before the gap was measured would have been a feature looking
   for a reason.
-* **v0.16.6 and v0.16.7 after v0.16.3**, and the dependency is on the declaration rather than on the
+* **v0.16.6, v0.16.7 and v0.16.8 after v0.16.3**, and the dependency is on the declaration rather than on the
   screens: a severity filter and a per-severity health panel both read a severity that, today,
   resolves for almost nothing. Building either first would produce a screen whose every row says
   *unknown* and no way to tell a broken screen from an honest one.
@@ -123,9 +125,11 @@ binding constraint is the ordinality test, which validates a candidate ranking a
 alarm lifetimes**, and the corpus closes one alarm in 2 252. That is a corpus question before it is
 a threshold question, and it is the gap an operator declaration fills.
 
-**For v0.16.6 and v0.16.7 — the same table.** A severity filter and a per-severity health panel
-both read a field that resolves for nothing. Either would render a screen whose every row says
-*unknown*, with no way to tell a broken screen from an honest one.
+**For v0.16.6, v0.16.7 and v0.16.8 — the same table.** A severity filter and a per-severity
+health panel both read a field that resolves for nothing. **v0.16.7 is the release that decided
+to say so rather than to wait**: the panel it ships counts the unplaced alarms as their own band
+and reads `—` on every other one, which is the difference between a broken screen and an honest
+one made visible instead of assumed. A *filter* still needs the field, so v0.16.8 still waits.
 
 **For v0.16.4 — F103.** The member checkbox renders 13 × 13 px at every width, because the
 tap-target floor's own selector excludes checkboxes. It is the control that decides which members a
@@ -339,6 +343,74 @@ untrue. Neither is visible to a harness with no layout engine, and number 3 is n
 browser either unless someone reads the ticks against the span — which is what Part III means by
 *check that it says the same thing the number beside it says*.
 
+## What v0.16.7 measured, and what it refuses to draw
+
+### The severity inventory: ten scenarios, 2 119 alarms, zero placed
+
+Every scenario in `eval/corpus/` was replayed **separately**, over real UDP, into its own fresh
+database, and `alarm.severity` censused after each:
+
+| scenario | alarms | with a severity | closed alarms |
+|---|---:|---:|---:|
+| `background_noise` | 24 | 0 | 0 |
+| `camera_nvr` | 300 | 0 | 0 |
+| `chassis_card_fail` | 99 | 0 | 0 |
+| `decoy_varbinds` | 240 | 0 | 0 |
+| `dual_incident` | 8 | 0 | 0 |
+| `fiber_cut` | 8 | 0 | 0 |
+| `flapping_noise` | 1 | 0 | **1** |
+| `olt_storm` | 501 | 0 | 0 |
+| `pon_dying_gasp` | 926 | 0 | 0 |
+| `pon_pon_port_down` | 12 | 0 | 0 |
+| **total** | **2 119** | **0** | **1** |
+
+**The cause is the last column, not the second.** `varbind_profile.role` never once holds
+`severity` across any of the ten, so the learner does not reject a candidate — it never nominates
+one. Gate one (`SEVERITY_MIN_OBS = 200` observations of one varbind on one NE) *is* reachable: nine
+rows clear it on the three-scenario estate. Gate two is `confirm_ordinality`, which validates a
+candidate ranking against **observed alarm lifetimes**, and a lifetime needs a close.
+
+So severity is unknowable on this corpus **because nothing ends**. That is a property of the
+corpus, not of the learner, and lowering `SEVERITY_MIN_CLOSED` to make a panel fill would fabricate
+exactly the ordering `engine/correlate/severity.py` exists to refuse. **What a later release needs
+is a scenario in which alarms clear** — v0.17.0's corpus work.
+
+### The three refusals this release records
+
+**1. Severity over time.** Blocked twice over, and either alone is fatal:
+
+* there is no severity to plot (above);
+* **there is no time to plot it against.** `MIN(alarm.first_seen)` to `MAX(alarm.first_seen)` across
+  the whole 1 716-alarm three-scenario estate is **1.14 seconds**, and `COUNT(alarm.cleared_at)` is
+  **0**. A chart labelled *"last 24 hours"* would draw one column and call it a day.
+
+*What a later release needs*, so it is not rediscovered: the column is **`alarm.first_seen`**; the
+query is `SELECT severity_rank, COUNT(*) FROM alarm WHERE first_seen >= ? GROUP BY severity_rank,
+bucket`; the window is a **route parameter** on `/api/stats` or a read of its own; and the
+precondition is a corpus whose alarms clear.
+
+**2. Top elements over a window.** v0.16.6's fourth refusal, re-checked here and **still refused**,
+though it is now exactly one route parameter away (`GROUP BY ne_id` over `alarm.first_seen` inside
+a window). The same 1.14 seconds refuses it: the window control would have one useful setting.
+
+**3. A topology projection on the Overview.** Measured: `edge` holds **one** row of `kind='device'`
+on the three-scenario estate and its weight is **0.0**, so `graph_snapshot`'s `min_edge_n` filter
+returns **zero** edges — a topology here would draw two unconnected circles. The estate map keeps
+*"where"* and its caption now links to the Graph screen, which owns the force scene (#317).
+
+**The three v0.16.6 refusals that are unchanged**: a loss curve (`challenger_run` holds no
+per-iteration trace), a residual distribution (`0009`'s posture is no read of `shadow_opinion`
+below admin, on any route, in any format), and per-fold results (`evaluation_fold` stores
+membership, not results). None became drawable.
+
+### What was measured and left exactly as it was
+
+**The receiver's five counters stay a line and do not become a chart.** Measured on the
+three-scenario estate: `received` 1 816, `accepted` 1 816, `denied` 0, `quarantined` 0, `dropped`
+0. As bars that is two identical full-width marks and three of zero width — less legible than the
+line it would replace, and legible for a reason that has nothing to do with the network. F68 still
+binds and `receiver.denied` is still on screen, which is what F68 actually asked for.
+
 ## The claims
 
 Each row above is claimed here, one marker per line. The table's own document must claim every row
@@ -364,7 +436,8 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 <!-- release-claim: v0.16.4 = console-shell -->
 <!-- release-claim: v0.16.5 = shell-corrected -->
 <!-- release-claim: v0.16.6 = evidence-screens -->
-<!-- release-claim: v0.16.7 = maintenance-windows -->
+<!-- release-claim: v0.16.7 = severity-census -->
+<!-- release-claim: v0.16.8 = maintenance-windows -->
 <!-- release-claim: v0.17.0 = external-cartridge -->
 <!-- release-claim: v0.18.0 = archetypes -->
 

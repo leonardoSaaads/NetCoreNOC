@@ -813,6 +813,32 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   .chart-bar-label { grid-column: 1 / -1; }
 }
 
+/* The severity band (v0.16.7, DECISIONS #312). The first thing on the landing screen, and the
+   only place in this console where a number is set at display size — because the question it
+   answers is the one an operator reads across a room, at 3 a.m., from a chair they are deciding
+   whether to leave. */
+.severity-band { margin-block-end: var(--space-4); }
+.severity-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2);
+  margin: 0 0 var(--space-2); font-weight: 600;
+}
+.severity-now {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: clamp(2.2rem, 9vw, 3.2rem); line-height: 1; color: var(--alarm);
+}
+/* When the appliance has graded nothing the headline is a dash, and a dash in alarm red reads as
+   an alarm. It takes the muted colour every other unmeasured figure in this console takes. */
+.severity-ungraded .severity-now { color: var(--fg-muted); }
+.severity-word { font-size: var(--fs-lg); color: var(--fg); }
+.severity-of { font-size: var(--fs-sm); font-weight: 400; color: var(--fg-muted); }
+/* The refusal, when the appliance has placed nothing. It is a `warnbox` and not a `hint` on
+   purpose: an operator who reads "0 critical" over an estate the appliance cannot grade has been
+   told something false unless this line is as loud as the number above it. */
+.severity-none { margin-block: var(--space-2); }
+/* The glyph leads the label, so the band is legible by SHAPE before colour or width — the fourth
+   encoding the accessibility floor asks for, and the one that survives a greyscale monitor. */
+.severity-band .chart-bar-label { font-variant-numeric: tabular-nums; }
+
 /* The estate map (DECISIONS #310): one cell per element, sorted by load, deterministic.
    `auto-fill` with a minimum, so the same grid is four columns at 390 px and twelve at 1440 without
    a breakpoint — and the reading order is unchanged at every width, which is what makes two glances

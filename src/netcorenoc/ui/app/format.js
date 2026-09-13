@@ -179,6 +179,17 @@ const SEVERITIES = [
 const UNKNOWN = { key: "unknown", glyph: "?", label: "unknown" };
 
 /**
+ * `{ key, glyph, label }` for a rank — **the only place a rank becomes a band** (v0.16.7).
+ *
+ * `severity()` below had this `find` inline; the Overview's census panel needs the same answer from
+ * a rank alone, because it counts alarms and never holds one. Two of these is how a panel and a
+ * pill come to disagree about what rank 3 is called.
+ */
+export function band(rank) {
+  return SEVERITIES.find((entry) => entry.rank === rank) ?? UNKNOWN;
+}
+
+/**
  * The highest vocabulary rank, and therefore the top of the scale an integer field is mapped onto.
  * Derived from `SEVERITIES` rather than written as `3`, so a band added later moves the ceiling
  * with it — F92's lesson, in one constant.
@@ -266,9 +277,8 @@ export function severity(alarm) {
     !declared && typeof raw === "number" && placementApplies(raw, alarm.severity_ranks)
       ? placeInteger(raw, alarm.severity_ranks)
       : raw;
-  const found = SEVERITIES.find((entry) => entry.rank === rank) ?? UNKNOWN;
   return {
-    ...found,
+    ...band(rank),
     known: true,
     text: String(value),
     rank,

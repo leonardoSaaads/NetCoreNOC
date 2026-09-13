@@ -414,6 +414,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/bulkclear.js"),
     ("GET", "/app/views/parts/finder.js"),
     ("GET", "/app/views/parts/pulse.js"),
+    ("GET", "/app/views/parts/keeping.js"),
+    ("GET", "/app/views/parts/severity.js"),
     ("GET", "/app/views/parts/estate.js"),
     ("GET", "/app/views/parts/marks.js"),
     ("GET", "/app/views/parts/evidence.js"),
@@ -949,8 +951,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
 #: the three things nothing measures. A release that
 #: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
-SRC_TREE_DIGEST = "41257f1e4f571ca9a72a4b40dbba1f1b688d5bf8525ded7b5618872797d8074c"
-SRC_FILE_COUNT = 210
+SRC_TREE_DIGEST = "b5becc7ebe3268a141c9194d070e9ced3633b91d87c38efaca08a312f8a29e49"
+SRC_FILE_COUNT = 213
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1016,7 +1018,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.6", "the version this release carries"
+    assert __version__ == "0.16.7", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

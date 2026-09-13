@@ -622,7 +622,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # `app/views/parts/evidence.js` — the promotion record's four named quantities over time, the
     # verdict's three states, and the three things nothing measures, stated on the screen where
     # someone would look for them (DECISIONS #308). 111 -> 117, all six static.
-    assert len(served) == 117, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # v0.16.7 adds two more, both static and both a split rather than a feature:
+    # `app/views/parts/keeping.js` (the Overview's appliance half, #318) and
+    # `app/views/parts/severity.js` (the band this release exists for, #312). 117 -> 119,
+    # and the /api surface is **unchanged at 52** through the release that adds the count
+    # an operator opens the console for — because the census is one more query on a route
+    # that was already being read (#316).
+    assert len(served) == 119, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 52, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
@@ -740,7 +747,7 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # separate because it is pure and is driven directly by tests with no DOM), and
     # `app/views/parts/pulse.js` (the Overview's five bands, out of `views/overview.js` at 22 552
     # bytes against the 17 579-byte guard — the seventh time that guard has chosen a seam).
-    assert len(served) == 117, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 119, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     assert len(api_pairs) == 52, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "

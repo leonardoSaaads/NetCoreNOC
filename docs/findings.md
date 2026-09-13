@@ -1641,3 +1641,140 @@ Run every command below from the repository root with the virtualenv active.
   it never reads — this is twice in one guard. A guard's *scope* deserves the same demonstration as
   its *rule*: `test_the_element_tag_check_goes_red_on_a_backticked_stray_tag` exists for exactly
   that reason one directory away, and has no counterpart here.
+
+## F114 — the composition guard counted only the charts it already knew about, and its denylist did not hold the word "score"
+
+- **What**: `tests/test_ui_invariants.py::test_the_four_named_quantities_are_drawn_as_four_and_never_composed`
+  passed while a fifth line chart titled **"Gate score"**, plotting the arithmetic mean of the four
+  named quantities of `PREREGISTRATION-0.10.0.md` §5, rendered on the Judge & promotion screen.
+  Prime directive 3, refused by seven releases of guards in the store, the engine and the
+  pre-registration documents, was green on the one surface an operator reads. **Two independent
+  causes**, either of which alone lets the chart through:
+  1. the count assertion was `len(quantity_charts) == 4` over charts **whose label starts with one
+     of the four names**, so a fifth chart of any other name never entered the set being counted.
+     `== 4` could not move;
+  2. the composite refusal was a hand-written denylist — `("quality", "composite", "overall score",
+     "index")` — and *"gate score"*, *"combined"*, *"aggregate"* and *"health"* all pass it.
+- **And its scope was one file.** `test_the_console_may_only_chart_a_registered_quantity` read
+  `views/parts/evidence.js` alone, while `views/parts/verdict.js` declares its own `QUANTITIES`
+  with the same four — a fact that guard's own docstring cited. A fifth entry added to
+  `verdict.js` was caught by **nothing but the byte-identity pin**, which is re-pinned every
+  release by construction and is therefore not a guard.
+- **Reproduce** — add the chart, then watch the whole file stay green:
+  ```sh
+  # In views/parts/evidence.js, after the QUANTITIES chart grid, add a Series titled "Gate score"
+  # whose values are the mean of the four challenger rates. Then:
+  .venv/bin/python -m pytest -q tests/test_ui_invariants.py -m "" -p no:cacheprovider
+  ```
+- **Measured**: with the injection applied, **78 of 78** UI-invariant tests passed, and the DOM
+  harness printed the chart list with the composition in it:
+  ```
+  [line] Over-merge rate. Latest challenger: 0, champion: 0.
+  [line] Under-merge rate. Latest challenger: 0, champion: 0.
+  [line] Split-bag intact rate. Latest challenger: 1, champion: 1.
+  [line] Asserted-negative respected rate. Latest challenger: 1, champion: 1.
+  [line] Gate score. Latest gate score: 0.
+  ```
+- **Fix**: the refusal now asks the opposite question. Not *"is this title on a list of bad
+  words"* but **"is every chart drawn from `promotion.metrics` one of the quantities the plan
+  registers?"** — the registered set derived from `promotion.QUANTITY_NAMES` through the console's
+  own declarations, asserted equal in both directions. A name nobody registered fails whatever it
+  is called. And the scan that finds those declarations walks `ui/app` rather than naming a file,
+  so a third module declaring a fifth quantity is found without the test being edited.
+- **The guard's scope is now demonstrated, which is what this file had and this one did not.**
+  `test_the_quantity_scan_reaches_every_module_that_declares_one` drives the scan's reach, and
+  `test_the_quantity_scan_would_find_a_fifth_declaration_in_a_module_it_has_never_seen` drives its
+  pattern against a module that does not exist — so what is proved is the reach, not today's file
+  set. Narrowing the scan back to one file turns both red.
+- **Disposition**: **closed by v0.16.7**. Three injections, each red with a control that held: the
+  Gate score chart; a fifth quantity added to `verdict.js` rather than `evidence.js` (which fires
+  **both** repaired guards); and the scan narrowed back to `evidence.js` alone.
+- **What it says about guards generally**: this is the third consecutive finding in which **the
+  rule was right and the set of things it looked at was smaller than the rule claimed** — F112's
+  exemption rests on a container property nothing reads, F113's scope was defeated by nesting, and
+  this one's was one filename long. It is also this project's fourth **denylist standing in for a
+  derived set** (F92, F98, two in v0.15.1). Both patterns are in Appendix B of the brief that
+  produced this release, and both caught it anyway.
+
+## F115 — `/api/stats` and the `/api/events` stream assembled the same payload twice, and the console reads the one nothing compares
+
+- **What**: two route modules each built the live statistics object for themselves — the same
+  counters, the same scoping, the same engine numbers — and nothing in this repository compared
+  them. They agreed until v0.16.7 added the severity census to `routes/read.py`, which is **not**
+  the surface the console reads: `store.js` fills `state.stats` from the `/api/events` update
+  stream, so the Overview's new band rendered *"— critical of an unread count"* on an appliance
+  whose census was correct one route along.
+- **Why nothing saw it**: `/api/events` is in the behaviour record's `NOT_DRIVEN` set — a stream has
+  no single response to hash — and the DOM harness captures route payloads rather than the stream.
+  So the only surface that could show the drift was a browser, and only because the panel was
+  written to say *"not measured"* rather than *"0"* when the block is missing. **The honest
+  fallback is what made the defect visible**; a panel that defaulted to zero would have rendered
+  four confident zeros and nobody would have looked.
+- **Reproduce**, on the tree before the repair:
+  ```sh
+  # Both blocks exist, and only one of them has the census.
+  grep -n "await store.stats()" src/netcorenoc/api/routes/read.py src/netcorenoc/api/routes/events.py
+  ```
+- **Measured**: the two assemblies were **14 lines each**, differing only in that `/api/stats` adds
+  `ingest_gaps` and `open_ingest_gaps`. The console's live figures come from the stream on every
+  screen: `store.js` sets `state.stats = update.stats` and nothing else writes it.
+- **Fix**: `src/netcorenoc/api/livestats.py` — one `live_stats()` both routes call, with the two
+  members that genuinely differ kept at the call site so the difference is visible where it is
+  made. `tests/apisource.py::MODULE_ORDER` and `tests/test_structure.py::SUBMODULES` gain the
+  module, so the source-scanning guards keep covering the package.
+- **Disposition**: **closed by v0.16.7**. Repaired inside a feature against directive 12, for the
+  same reason F113 was: the feature is wrong without it. Adding the census to the second copy would
+  have shipped the defect with one more line in it.
+- **What is still open**: nothing compares the two surfaces. The repair removes today's drift by
+  removing the duplication, but a future key added to one caller's post-assembly block would drift
+  again, and `NOT_DRIVEN` still means no gate watches the stream. A test that subscribes to
+  `/api/events`, takes one frame and compares its `stats` against `GET /api/stats` minus the two
+  gap members would close it, and is **not** written here.
+
+## F117 — the hostile-payload fixture stopped reaching network elements four releases ago, and nothing went red
+
+- **What**: `tests/uifixtures.py::_label_everything` pushes the XSS payload onto *"every device and
+  class"* through the real label route, and **throws every response away**. Migration `0016`
+  renamed `kind='device'` to `kind='ne'` in v0.16.3 and `LabelIn.kind` became
+  `Literal["ne", "class", "severity"]`, so **every one of those writes has been a 422 since
+  v0.16.3** — silently. UI invariant 4 has since been demonstrated on alarm-class labels only,
+  which is half the coverage its own docstring claims.
+- **Why nothing saw it**: the invariant's own control — *"did the payload reach the DOM at all?"* —
+  is `payloadInTextNodes > 0`, and the **class** labels still land, so the control stayed green on
+  half the fixture. This is Appendix B's *"a pin whose coverage shrinks silently"*, in a fixture
+  rather than a pin.
+- **How it was found**, which is the part worth keeping: an injection aimed at the NE-label render
+  path in `views/entities.js` came back **green**. Appendix B says *suspect the injection first*,
+  and it was the fixture — there was no NE label to render.
+- **Reproduce**, on the tree before the repair:
+  ```sh
+  # Print the captured hostile fixture's node and class labels.
+  # Every node and entity comes back label=None; every class carries the payload.
+  ```
+- **Measured**: `/api/graph` nodes `id=1 label=None`, `id=2 label=None`; `/api/entities`
+  `127.0.0.2 label=None`, `127.0.0.3 label=None`; `/api/classes` id 1, 2 and 3 all carrying
+  `<img src=x onerror=alert(1)><script>…`.
+- **Fix**: `kind="ne"`, and **every response asserted 200**. A fixture that ignores a status code
+  is a fixture that can stop doing its job without anything going red — which is the general
+  lesson, and it is the same one F115 records one layer up.
+- **Disposition**: **closed by v0.16.7**. With the fixture repaired, the NE-label injection is
+  **red** and its control holds. Repaired during Phase 6 rather than deferred, because prime
+  directive 8 requires each of the five UI invariants to be demonstrated red under its own
+  injection and invariant 4 could not be demonstrated on that path at all.
+
+## F116 — `unitText` prints `1 alarms`
+
+- **What**: `chartdata.unitText(1, "alarms")` renders `1 alarms`. Every `Bars` chart carrying a
+  count unit shows it whenever a bar reads one — the Overview's *"Busiest 5 elements"* since
+  v0.16.6 and its severity band since v0.16.7.
+- **Reproduce**:
+  ```sh
+  .venv/bin/python -m pytest -q tests/test_ui_invariants.py -m dom \
+      -k a_band_that_was_graded -p no:cacheprovider   # then print the rendered bar values
+  ```
+- **Measured**: driven in Chromium against a live appliance with three declared severities, the
+  band read `▲ critical 1 alarms` beside `◆ major 500 alarms`.
+- **Disposition**: **open**. Not fixed here (directive 12): it is a grammar defect in the shared
+  chart vocabulary, not in this release's feature, and `format.js::plural` already holds the rule
+  `unitText` would have to call. The fix is one line in `chartdata.js` and it moves every chart in
+  the console, so it belongs in a commit of its own with the pins that move with it.

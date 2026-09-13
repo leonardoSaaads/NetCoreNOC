@@ -54,6 +54,7 @@ SUBMODULES = [
     "api.context",
     "api.declare",
     "api.governance_cache",
+    "api.livestats",
     "api.models",
     "api.perimeter",
     "api.routes.admin",

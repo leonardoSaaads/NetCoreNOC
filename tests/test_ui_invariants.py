@@ -3453,12 +3453,46 @@ async def test_the_four_named_quantities_are_drawn_as_four_and_never_composed(
     for chart in quantity_charts:
         assert "challenger" in chart["label"], chart["label"]
         assert "champion" in chart["label"], chart["label"]
-    # **And no chart claims to be a composite.** A single "quality", "score" or "index" line is
-    # exactly what §5 refuses, and it would be one `reduce` away from the code that draws these.
-    for label in titles:
-        lowered = (label or "").lower()
-        for forbidden in ("quality", "composite", "overall score", "index"):
-            assert forbidden not in lowered, f"a composed quantity reached the screen: {label!r}"
+
+    # **The composition refusal, DERIVED** (F114, v0.16.7).
+    #
+    # It was a denylist — `("quality", "composite", "overall score", "index")` — and a chart
+    # titled *"Gate score"* plotting the arithmetic mean of these four rendered on this screen
+    # with every test in this file green. Reproduced by injection; the harness printed
+    # `[line] Gate score. Latest gate score: 0.` beside the four.
+    #
+    # Two holes, and the count above is the second one: `quantity_charts` filters to charts whose
+    # label starts with one of the four names, so a fifth chart **of any other name** never enters
+    # the set being counted. `== 4` could never move.
+    #
+    # The repair asks the opposite question. Not *"is this title on a list of bad words"* — a list
+    # is exactly the trap Appendix B names and this project's fourth instance of it — but **"is
+    # every chart drawn from `promotion.metrics` one of the quantities the plan registers?"** The
+    # registered set comes from `promotion.QUANTITY_NAMES` through the console's own `QUANTITIES`
+    # declarations, so a name nobody registered fails whatever it is called, and the four must all
+    # be there.
+    registered = {label.lower() for _key, label in _console_quantities().items()}
+    assert len(registered) == 4, f"the console declares {len(registered)} quantities, not four"
+    from_metrics = [
+        chart
+        for chart, caption in zip(result["charts"], result["captions"], strict=False)
+        if "promotion.metrics" in caption
+    ]
+    assert len(from_metrics) == len(result["captions"]) - len(
+        [c for c in result["captions"] if "promotion.metrics" not in c]
+    ), "the chart list and the caption list are not parallel; the reader below would be guessing"
+    assert from_metrics, "no chart on this screen is drawn from promotion.metrics at all"
+    for chart in from_metrics:
+        title = (chart["label"] or "").split(".")[0].strip().lower()
+        assert title in registered, (
+            f"a chart drawn from promotion.metrics is titled {title!r}, which is not one of the "
+            f"four quantities `PREREGISTRATION-0.10.0.md` §5 registers ({sorted(registered)}). "
+            f"A fifth series over these four inputs can only be a composition, whatever it is "
+            f"called — and §5 refuses every one of them by name AND by construction."
+        )
+    assert {(c["label"] or "").split(".")[0].strip().lower() for c in from_metrics} == registered, (
+        "the charts drawn from promotion.metrics are not exactly the four registered quantities"
+    )
 
 
 @dom_test
@@ -3602,17 +3636,31 @@ def test_the_console_may_only_chart_a_registered_quantity() -> None:
     from netcorenoc.engine.evaluation.promotion import QUANTITY_NAMES
 
     ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
-    evidence = (ui / "views" / "parts" / "evidence.js").read_text(encoding="utf-8")
-    block = re.search(r"const QUANTITIES = \[(.*?)\];", evidence, re.S)
-    assert block is not None, "the Evidence screen no longer declares its quantity list"
-    charted = re.findall(r'\["([a-z_]+)",', block.group(1))
-    assert set(charted) == set(QUANTITY_NAMES), (
-        "the console charts a quantity set that is not the registered one.\n"
-        f"  charted, not registered: {sorted(set(charted) - set(QUANTITY_NAMES))}\n"
-        f"  registered, not charted: {sorted(set(QUANTITY_NAMES) - set(charted))}\n"
-        "`PREREGISTRATION-0.10.0.md` §5 registers exactly four and refuses every composite; a "
-        "fifth key can only be a quantity no plan registered or a comparison basis worn as one."
+
+    # **Every module that declares one, found by looking** (F114's second half, v0.16.7).
+    #
+    # This guard read `views/parts/evidence.js` and nothing else, while `views/parts/verdict.js`
+    # declares its own `QUANTITIES` with the same four — a fact this docstring already cited. A
+    # fifth entry added to `verdict.js` was caught by **nothing but the byte-identity pin**, which
+    # is re-pinned every release by construction, so it is not a guard.
+    #
+    # The rule was right and the file list was one entry long, which is the third trap in this
+    # project's own Appendix B and the third time it has been this repository's defect (F112,
+    # F113, now this).
+    declarations = _quantity_declarations()
+    assert len(declarations) >= 2, (
+        f"this guard found {len(declarations)} module(s) declaring QUANTITIES. It has been wrong "
+        f"about that before: `verdict.js` and `evidence.js` both declare one, so a scan finding "
+        f"fewer than two has stopped scanning rather than found a simpler console."
     )
+    for module, charted in declarations.items():
+        assert set(charted) == set(QUANTITY_NAMES), (
+            f"{module} charts a quantity set that is not the registered one.\n"
+            f"  charted, not registered: {sorted(set(charted) - set(QUANTITY_NAMES))}\n"
+            f"  registered, not charted: {sorted(set(QUANTITY_NAMES) - set(charted))}\n"
+            "`PREREGISTRATION-0.10.0.md` §5 registers exactly four and refuses every composite; a "
+            "fifth key can only be a quantity no plan registered or a comparison basis worn as one."
+        )
 
     # **And no console module READS `incumbent_linked`.**
     #
@@ -3701,4 +3749,300 @@ def test_no_chart_is_drawn_from_a_sampled_table_without_naming_its_rate() -> Non
     assert "sample_rate" in evidence, (
         "the Evidence screen does not name `challenger_run.sample_rate`, which is where a rate "
         "must be READ from — the default is a fallback and a deployment may change it."
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# The severity band (v0.16.7, DECISIONS #312). Prime directive 1, at the place it is hardest to
+# hold: a count that reads `0` is a claim about every alarm, and a count nothing measures is not.
+# --------------------------------------------------------------------------------------------
+
+
+def _stats_with_severity(**census: Any) -> dict[str, Any]:
+    """A `/api/stats` payload whose `severity` block is whatever a test needs.
+
+    The key set is the one `store/read_models.severity_census` returns, and
+    `test_the_severity_fixture_matches_what_the_census_actually_produces` pins it against that
+    function rather than against this literal — the same discipline `_stats_with_resources` uses.
+    """
+    out = _stats_with_resources()
+    block: dict[str, Any] = {
+        "active": 0,
+        "placed": {},
+        "unplaced": 0,
+        "vendor_scaled": 0,
+        "declared": 0,
+    }
+    block.update(census)
+    out["severity"] = block
+    out["active_alarms"] = block["active"]
+    return out
+
+
+async def test_the_severity_fixture_matches_what_the_census_actually_produces(
+    store: Store,
+) -> None:
+    """Guard the fixture. A census key renamed in the store must fail here, not silently make
+    every assertion below vacuous — F98's shape, and the reason `_stats_with_resources` has the
+    same test beside it."""
+    async with store.lock:
+        real = await store.severity_census()
+    assert set(_stats_with_severity()["severity"]) == set(real), (
+        f"the fixture's census keys are not the store's: fixture "
+        f"{sorted(_stats_with_severity()['severity'])} vs store {sorted(real)}"
+    )
+
+
+@dom_test
+async def test_a_band_the_appliance_cannot_grade_reads_a_dash_and_never_zero(
+    routes: dict[str, Any],
+) -> None:
+    """**The defect this release could most easily have shipped**, and did ship for one pass.
+
+    `0 critical of 1 684 active alarms` rendered in display type over an estate whose every alarm
+    the appliance had refused to place. It was correct arithmetic and a false sentence, and no
+    assertion in this repository could see it: the panel was green, the census was right, and the
+    number beside the chart agreed with the chart. It was found by looking at the screen.
+
+    A `0` in a band is the claim *"I checked every active alarm and none is critical"*. When
+    nothing has been placed, that claim has not been made — so the band reads `—`, which is what
+    prime directive 1 has said since #289 about every other unreadable metric on this console.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [{"stats": _stats_with_severity(active=1684, unplaced=1684)}],
+        },
+    )
+    bars = _severity_rows(result)
+    assert bars, f"no severity chart rendered at all: {[c['kind'] for c in result['charts']]}"
+    by_label = {row["label"]: row["value"] for row in bars}
+    graded = [label for label in by_label if "not placed" not in label]
+    assert graded, f"the severity chart has no bands: {by_label}"
+    for label in graded:
+        assert by_label[label] == "—", (
+            f"{label!r} reads {by_label[label]!r} over 1 684 alarms the appliance has not placed. "
+            f"A zero there says 'I checked and there are none', which is not what happened."
+        )
+    unplaced = [value for label, value in by_label.items() if "not placed" in label]
+    assert unplaced and "1,684" in unplaced[0], f"the unplaced count is not on screen: {by_label}"
+
+
+@dom_test
+async def test_a_band_that_was_graded_and_is_empty_reads_zero(routes: dict[str, Any]) -> None:
+    """**The control for the test above, and it is the half that makes it mean anything.**
+
+    A panel that rendered `—` unconditionally would pass that test and be just as useless. Once
+    the appliance has placed something, an empty band is a measured emptiness and says `0`.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_severity(
+                        active=10, placed={"0": 3, "1": 2}, unplaced=5, declared=2
+                    )
+                }
+            ],
+        },
+    )
+    by_label = {row["label"]: row["value"] for row in _severity_rows(result)}
+    critical = [v for k, v in by_label.items() if "critical" in k]
+    minor = [v for k, v in by_label.items() if "minor" in k]
+    assert critical and "3" in critical[0], f"the placed count is wrong: {by_label}"
+    assert minor and minor[0].startswith("0"), (
+        f"a band the appliance DID grade and found empty reads {minor!r} rather than 0 — "
+        f"which would hide the difference between 'none' and 'not known'"
+    )
+
+
+@dom_test
+async def test_the_unplaced_count_is_never_folded_into_a_placed_band(
+    routes: dict[str, Any],
+) -> None:
+    """The bands must sum to what was placed, and the unplaced must sum to itself. An appliance
+    that quietly added 1 682 unknown alarms to `low` would produce a panel that looks complete."""
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [{"stats": _stats_with_severity(active=100, placed={"0": 1}, unplaced=99)}],
+        },
+    )
+    rows = _severity_rows(result)
+    numbers = {
+        row["label"]: int(row["value"].split()[0].replace(",", ""))
+        for row in rows
+        if row["value"] and row["value"][0].isdigit()
+    }
+    placed = sum(n for label, n in numbers.items() if "not placed" not in label)
+    unplaced = sum(n for label, n in numbers.items() if "not placed" in label)
+    assert placed == 1, f"the placed bands sum to {placed}, not to the 1 the census reported"
+    assert unplaced == 99, f"the unplaced row reads {unplaced}, not the 99 the census reported"
+
+
+@dom_test
+async def test_every_severity_row_is_legible_without_colour(routes: dict[str, Any]) -> None:
+    """The accessibility floor: **no encoding by colour alone.** Every row carries a glyph, and
+    two rows sharing a glyph are one encoding — which is exactly what `indeterminate` and
+    `not placed` did on the first pass, both drawing `?`."""
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {"stats": _stats_with_severity(active=6, placed={"0": 1, "4": 1}, unplaced=4)}
+            ],
+        },
+    )
+    rows = _severity_rows(result)
+    glyphs = [row["label"].split()[0] for row in rows]
+    assert len(glyphs) == len(set(glyphs)), (
+        f"two severity rows share a glyph, so shape encodes less than colour does: {glyphs}"
+    )
+    for row in rows:
+        assert len(row["label"].split()) >= 2, f"a row has a glyph and no word: {row['label']!r}"
+
+
+@dom_test
+async def test_the_severity_band_names_that_a_declaration_can_move_it(
+    routes: dict[str, Any],
+) -> None:
+    """#315: the census resolves an operator's declaration first, and the screen says so. An
+    operator who declares a severity and watches a band move must be able to tell that the
+    appliance did not suddenly learn something."""
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {"stats": _stats_with_severity(active=4, placed={"0": 3}, unplaced=1, declared=3)}
+            ],
+        },
+    )
+    captions = " ".join(result["captions"])
+    assert "declaration" in captions, (
+        f"the panel does not say a declaration takes precedence: {result['captions']}"
+    )
+    assert "3 from a declaration" in captions, (
+        f"the panel does not say how many bands came from a declaration: {captions}"
+    )
+
+
+def _severity_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """The bar rows of the severity chart, found by its accessible name rather than by position.
+
+    A reader that took `charts[0]` would silently follow the band up or down the screen the next
+    time the reading order changes, which is a guard measuring the layout instead of the fact.
+    """
+    for chart in result["charts"]:
+        if chart["label"] and chart["label"].startswith("Active alarms by severity"):
+            return list(chart["bars"])
+    return []
+
+
+# --------------------------------------------------------------------------------------------
+# F114's two helpers, and the demonstration that the second one's SCOPE is real.
+#
+# `test_documentation.py` has a scope-of-guard demonstration and this file had none, which is
+# what F112, F113 and F114 have in common: in all three the rule was right and the set of things
+# it looked at was smaller than the rule claimed. A guard's scope deserves the same demonstration
+# as its rule, so below the scan is itself driven.
+# --------------------------------------------------------------------------------------------
+
+
+def _quantity_declarations() -> dict[str, list[str]]:
+    """Every console module declaring a `QUANTITIES` list, mapped to the keys it charts.
+
+    **Derived by walking `ui/app`, never named.** The point is not that two files declare one
+    today; it is that a third one declaring a fifth quantity is found without this test being
+    edited — which is exactly what did not happen for `verdict.js`.
+    """
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    out: dict[str, list[str]] = {}
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        block = re.search(r"const QUANTITIES = \[(.*?)\];", source, re.S)
+        if block is None:
+            continue
+        out[str(path.relative_to(ui))] = re.findall(r'\["([a-z_]+)",', block.group(1))
+    return out
+
+
+def _console_quantities() -> dict[str, str]:
+    """`{key: display label}` for the registered quantities, from the console's own declarations.
+
+    Both declarations must agree, and that is asserted here rather than assumed: two lists of the
+    same four keys with different labels would let a chart be titled something the table never
+    calls it, which is the drift this whole family of guards exists to stop.
+    """
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    seen: dict[str, set[str]] = {}
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        block = re.search(r"const QUANTITIES = \[(.*?)\];", source, re.S)
+        if block is None:
+            continue
+        for key, label in re.findall(r'\["([a-z_]+)", "([^"]+)"', block.group(1)):
+            seen.setdefault(key, set()).add(label.lower())
+    assert seen, "no console module declares a quantity list; the scan found nothing"
+    for key, labels in seen.items():
+        assert len(labels) == 1, f"{key} is labelled {sorted(labels)} in different modules"
+    return {key: next(iter(labels)) for key, labels in seen.items()}
+
+
+def test_the_quantity_scan_reaches_every_module_that_declares_one() -> None:
+    """**The scope-of-guard demonstration this file did not have** (F114).
+
+    A scan is only worth what it reaches, and the way this project has been wrong three times
+    running is a correct rule over too few files. So the scan's reach is driven rather than
+    trusted: it must find the two modules that declare a quantity list today, and it must find a
+    third the moment one exists.
+    """
+    found = _quantity_declarations()
+    assert "views/parts/evidence.js" in found, (
+        f"the scan no longer reaches the Evidence screen, which is the module the guard was "
+        f"originally written against. It found: {sorted(found)}"
+    )
+    assert "views/parts/verdict.js" in found, (
+        f"the scan does not reach `views/parts/verdict.js`, which declares its own QUANTITIES "
+        f"with the same four keys. That omission IS F114's second half: a fifth entry added there "
+        f"was caught by nothing but the byte-identity pin. It found: {sorted(found)}"
+    )
+
+
+def test_the_quantity_scan_would_find_a_fifth_declaration_in_a_module_it_has_never_seen() -> None:
+    """The half of the demonstration above that matters: **the scan is not a list of two names.**
+
+    A guard that happened to name the two files would pass the test above and still be exactly
+    the defect F114 records. This drives the scan's own pattern over a module that does not exist
+    in the tree, so what is proved is the reach and not today's file set.
+    """
+    invented = """
+    const QUANTITIES = [
+      ["over_merge_rate", "over-merge rate", "lower is better"],
+      ["gate_score", "gate score", "higher is better"],
+    ];
+    """
+    block = re.search(r"const QUANTITIES = \[(.*?)\];", invented, re.S)
+    assert block is not None, "the scan's own pattern no longer matches a declaration"
+    keys = re.findall(r'\["([a-z_]+)",', block.group(1))
+    assert keys == ["over_merge_rate", "gate_score"], keys
+    from netcorenoc.engine.evaluation.promotion import QUANTITY_NAMES
+
+    assert set(keys) != set(QUANTITY_NAMES), (
+        "a declaration carrying an unregistered fifth key compares equal to the registered set, "
+        "so the guard above would pass it"
     )

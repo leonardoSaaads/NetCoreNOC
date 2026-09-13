@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of thirty-two ask
-you to do something; twelve more ask you to read a paragraph first. The other eighteen are
+Read only the rows between your version and the one you are installing. **Two of thirty-three ask
+you to do something; thirteen more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
@@ -23,7 +23,9 @@ read-a-paragraph row: it applies no migration and still changes what your existi
 v0.16.3 adds another: `0016` runs itself, and the names you already set come with it. v0.16.4 adds
 a third: **no migration at all**, and the console you sign in to is rearranged. **v0.16.5 did not
 add its row either — F94's shape, twice now — so v0.16.6 adds both**, which is why the count moves
-by two: v0.16.5's is start-the-new-binary and v0.16.6's is read-a-paragraph, for v0.16.4's reason.)
+by two: v0.16.5's is start-the-new-binary and v0.16.6's is read-a-paragraph, for v0.16.4's reason.
+**v0.16.7 adds its own, in its own release** — read-a-paragraph, because the screen you open first
+now leads with a number that may read `—`, and an operator who reads that as a fault will file one.)
 
 | From → to | What you must do |
 |---|---|
@@ -59,6 +61,7 @@ by two: v0.16.5's is start-the-new-binary and v0.16.6's is read-a-paragraph, for
 | v0.16.3 → v0.16.4 | Nothing to run — **no migration** — but the console is rearranged and two `/api/stats` keys are new. Read below |
 | v0.16.4 → v0.16.5 | Nothing to run — **no migration**. CPU, memory and storage appear in the health control, read from `/proc` and the cgroup; `POST /api/alarms/clear` is new |
 | v0.16.5 → v0.16.6 | Nothing to run — **no migration** — but four screens are redrawn and one `/api/stats.resources` key is new. Read below |
+| v0.16.6 → v0.16.7 | Nothing to run — **no migration**. The Overview leads with active alarms by severity, and on a fresh appliance that panel reads *not measured* rather than zero. Read below |
 
 ## The two that need an action, and the six that need reading
 
@@ -381,6 +384,31 @@ where the admin who can change it reads it (F107).
 **A situation you have already judged looks different.** Confirm and Split fold behind one *Adjust
 the grouping* button that names what was recorded and by whom. Nothing is removed — the same
 controls are one press away, in every status the server accepts them in.
+
+### v0.16.7 — the Overview leads with severity, and on your appliance it may read `—`
+
+**No migration, and nothing in your database moves.** `alarm.severity` and `alarm.severity_rank`
+have existed since v0.16.2; this release counts them and draws the count.
+
+**What you will see, and why it is not a fault.** The first thing on the Overview is now *active
+alarms by severity*, in six rows: critical, major, minor, low, `indeterminate`, and **not placed**.
+On most appliances the last row holds everything and every other row reads `—` rather than `0`.
+
+That is correct and deliberate. `engine/correlate/severity.py` names a severity only when a
+vocabulary match **and** an ordinality check against observed alarm lifetimes agree, and the second
+check needs fifty closed alarms on the element before it will commit. Measured on the ten scenarios
+this repository ships: **2 119 alarms, none with a severity, one closed alarm in total.** A `0`
+beside that would be the appliance claiming it had checked; a `—` is the appliance saying it has
+not been able to.
+
+**What makes the panel fill.** Either the element's traps stop and start again often enough for the
+learner to confirm a severity field, or an operator declares one: *Alarm classes → a class →
+severity*, which has existed since v0.16.3 and which the panel resolves ahead of the learned value.
+The panel names how many of its bands came from a declaration, so the two are never confused.
+
+**One additive API key.** `GET /api/stats` and the `/api/events` stream both gain a nested
+`severity` object. Nothing that existed changed name, type or meaning. A client that does not read
+it is unaffected.
 
 ### v0.16.6 — four screens are redrawn, and nothing in your database moves
 

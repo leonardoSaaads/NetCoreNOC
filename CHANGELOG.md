@@ -9,8 +9,95 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-two rows, two ask for an
-action, twelve ask you to read a paragraph, and eighteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-three rows, two ask for an
+action, thirteen ask you to read a paragraph, and eighteen are start-the-new-binary.
+
+## [0.16.7] - 2026-09-13 — "severity, and the number it refuses to invent"
+
+The Overview has eight charts and, until this release, **answered no question about how bad
+anything is**. *"How many critical alarms are active right now"* was on no screen in this console.
+It is now the first thing on the first one — and on the corpus this repository ships, what it
+answers is **not measured**, which is the release.
+
+```
+                                              before              after
+  screens counting alarms by severity              0                  1
+  severity bands on the Overview                   -                  6
+  .stat tiles on the Overview                      4                  2
+  words of prose on the Overview (admin)         122                114
+  charts on the Overview                           8                  9
+  DOM tests executed                              69                 74
+  new routes / route parameters / migrations       -            0 / 0 / 0
+```
+
+### Phase 0 measured what could be counted before anything was drawn
+
+**Ten corpus scenarios, replayed separately over real UDP into ten fresh databases: 2 119 alarms,
+2 119 with `severity IS NULL`.** No scenario this repository ships produces one confirmed severity.
+
+**The cause is not the vocabulary.** `varbind_profile.role` never once holds `severity`, so the
+learner does not reject a candidate — it never nominates one. Gate one (200 observations of a
+varbind on an NE) *is* reachable. Gate two is `confirm_ordinality`, which validates a candidate
+ranking against **observed alarm lifetimes**, and a lifetime needs a close: the corpus closes
+**one alarm in ten scenarios**. Severity is unknowable here because nothing ends — a property of
+the corpus, and v0.17.0's work (#314).
+
+**A declaration does not fill the column.** Measured end to end against a booted appliance:
+`POST /api/labels {kind: severity}` returns 200 and writes `label(kind='severity')`; `alarm.severity`
+afterwards is **1 716 of 1 716 still NULL**. Precedence is a read-time decision (#284), so the
+census resolves declared-then-learned in one join (#315).
+
+### Added
+
+* **Active alarms by severity, on the Overview, above the fold at 390 px** (#312, #318). Six rows
+  in scale order: critical, major, minor, low, `indeterminate`, and **not placed**. Four encodings
+  per row — glyph, position, bar width, printed count — so it reads in greyscale.
+* **`GET /api/stats` and the `/api/events` stream carry a nested `severity` census** (#316):
+  `{active, placed: {rank: n}, unplaced, vendor_scaled, declared}`. **No new route, no new route
+  parameter, no migration.** Measured on 1 716 active alarms, 25 runs: **0.563 ms** median for the
+  resolved query against **0.387 ms** for the learned-only one.
+* **The estate map links to the Graph screen** (#317), which is decision 5's answer. Measured:
+  `edge` holds one `kind='device'` row at weight 0.0 on the three-scenario estate, so a topology on
+  the Overview would draw two unconnected circles.
+
+### Changed
+
+* **A band the appliance has not graded reads `—`, not `0`** — prime directive 1 at the place it
+  is hardest to hold. `0 critical of 1 684 active alarms` rendered in display type over an estate
+  whose every alarm had been refused, with every assertion green. Once something *is* placed, an
+  empty band reads `0`, because that emptiness is measured. Both states are asserted, each as the
+  other's control.
+* **`views/parts/pulse.js` split at the subject** (#318): 17 095 → 7 517 bytes, with
+  `views/parts/keeping.js` (11 100 B) taking the appliance's own half. `pulse.js` is about the
+  network; `keeping.js` is about the appliance.
+* **`format.js::band` is the one place a rank becomes a name**, so the census panel and an alarm's
+  own pill cannot disagree about what rank 3 is called.
+
+### Removed
+
+* **"Your labelling" on the Overview** — a heading, a 24-word paragraph and two stat tiles counting
+  situations an editor could judge, on a screen with nothing to do about them. The Labelling screen
+  answers the same question with the situations in front of the operator.
+
+### Fixed
+
+* **F114** — `test_the_four_named_quantities_are_drawn_as_four_and_never_composed` passed while a
+  fifth chart titled **"Gate score"**, plotting the mean of the four, rendered on the Judge screen.
+  Two causes: the count was `== 4` over charts *already known by name*, so a fifth of any other name
+  never entered the set; and the composite refusal was a **denylist** four words long. And its scope
+  was one file, while `verdict.js` declares the same four. Both repaired by **derivation**, and the
+  guard's scope is now demonstrated by two tests of its own.
+* **F115** — `/api/stats` and the `/api/events` stream **assembled the same payload twice**. They
+  agreed until this release added a key to one of them; the console reads the other. One
+  `api/livestats.py` now serves both.
+
+### Known
+
+* **F116** — `unitText` prints `1 alarms`. Open: it is a grammar defect in the shared chart
+  vocabulary and moves every chart in the console, so it belongs in a commit of its own.
+* **Severity over time is not drawn**, and the column, the query, the route parameter and the
+  precondition a later release needs are written down instead (#313). `alarm.first_seen` spans
+  **1.14 seconds** across the whole estate and `cleared_at` is non-null on **none** of it.
 
 ## [0.16.6] - 2026-09-12 — "the evidence screens"
 
