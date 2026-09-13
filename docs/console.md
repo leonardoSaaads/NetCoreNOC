@@ -59,20 +59,40 @@ that account's role as locked rather than offering a control that would fail. If
 up with no admin anyway, [`troubleshoot.md`](troubleshoot.md) has the recovery; before v0.15.3 there
 was none (F79).
 
-## The Overview: five questions, in the order you ask them (v0.16.6)
+## The Overview: six questions, in the order you ask them (v0.16.7)
 
-The landing screen answers five, top to bottom, and the order is the decision rather than the
+The landing screen answers six, top to bottom, and the order is the decision rather than the
 layout:
 
-1. **What is happening** — situations by creation time, and alarm raises against clears. The second
+1. **How bad is it** — active alarms by severity: critical, major, minor, low, `indeterminate`, and
+   **not placed**. The last row is the one to read first on a new appliance, and it is explained
+   below.
+2. **What is happening** — situations by creation time, and alarm raises against clears. The second
    is the one that says whether it is *recovering*: five hundred raises with three clears and five
    hundred with 495 are opposite situations, and no counter can tell them apart.
-2. **Where** — the estate as a deterministic grid, one cell per element, sorted by load. It is a map
+3. **Where** — the estate as a deterministic grid, one cell per element, sorted by load. It is a map
    of **load, not topology**; the affinity drawing on the Graph screen is the one that says which
-   elements are related.
-3. **Which element is worst** — the busiest five, by alarms active **now**.
-4. **Is the appliance itself keeping up** — CPU, memory, storage and queue depth as series.
-5. **What it has learned** — devices and alarm classes, learned and not configured.
+   elements are related, and the caption links to it.
+4. **Which element is worst** — the busiest five, by alarms active **now**.
+5. **Is the appliance itself keeping up** — CPU, memory, storage and queue depth as series.
+6. **What it has learned** — devices and alarm classes, learned and not configured.
+
+### Why the severity panel may read `—` on every band
+
+**Because the appliance has not been able to place your alarms, and says so rather than guessing.**
+It learns severity from the trap stream: a varbind becomes the severity field only when a small
+vocabulary match **and** an ordinality check against observed alarm lifetimes agree, and the second
+check needs fifty *closed* alarms on the element. Until both agree, every alarm counts under **not
+placed** and every band reads `—`.
+
+A `0` would be a different claim — *"I checked every active alarm and none is critical"* — and the
+appliance has not checked. Once it has placed something, an empty band reads `0`, and the two
+readings mean what they say.
+
+**To fill it now**, declare a severity for an alarm class: *Alarm classes → a class → severity*. A
+declaration takes precedence over the learned value at read time, moves every active alarm of that
+class at once, and the panel says how many of its bands came from a declaration so the two are
+never confused. Nothing overwrites what the appliance learned.
 
 **Every chart names its source and the span it actually covers**, and the span comes from the data
 rather than from the window that was requested: ask for seven days on a busy appliance and the axis
@@ -80,10 +100,13 @@ will tell you it is showing the most recent minute, because the read is bounded 
 alarms. A metric the host will not give up renders `—` and the words *not measured*, never `0`; a
 gap in a series **breaks** the line rather than being drawn through.
 
-Two things that would be reasonable to expect and are **not** there, because nothing measures them:
-**top elements over a chosen week** (the appliance counts alarms active now, not a count over a
-window) and anything derived from the sampled shadow opinions. Both are recorded in
-[`plans/releases.md`](plans/releases.md) with the table and the columns a later release would need.
+Three things that would be reasonable to expect and are **not** there, because nothing measures
+them: **top elements over a chosen week** (the appliance counts alarms active now, not a count over
+a window), **severity over time** (measured on this project's own corpus, the whole alarm history
+spans 1.14 seconds and nothing has cleared, so a time axis would be a claim about a corpus rather
+than a statement about the data), and anything derived from the sampled shadow opinions. All three
+are recorded in [`plans/releases.md`](plans/releases.md) with the table, the columns and the route
+parameter a later release would need.
 
 The **queue depth** series is derived in your browser between polls, on the same footing as the trap
 rate: the appliance serves the number and keeps no history, so the series starts when you open the
