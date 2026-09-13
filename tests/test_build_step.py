@@ -419,7 +419,7 @@ UI_HASHES: dict[str, str] = {
         "a3b39b4eb11b14858862c13d2c4c765bc6269c8ee2105ae673accc89d5aeaf24"
     ),
     "app/views/parts/model.js": "c30966786ff8e78e8c326b3b0206fe171298e86ef784b0841d68999ef068e81d",
-    "app/views/parts/pulse.js": "17eb93d33445a481b06f1cdfda4bd7c158a95274593426577cb2bd8516bacbf8",
+    "app/views/parts/pulse.js": "1d2ca74f77e4801a6e29c527aa66f03b5e5d6701520e3714bf63839c502b12a3",
     "app/views/parts/retention.js": (
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
     ),
@@ -501,7 +501,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/marks.js": 9_929,
     "app/views/parts/members.js": 8_897,
     "app/views/parts/model.js": 10_290,
-    "app/views/parts/pulse.js": 7_517,
+    "app/views/parts/pulse.js": 8_278,
     "app/views/parts/retention.js": 5_003,
     "app/views/parts/severity.js": 8_317,
     "app/views/parts/verdict.js": 8_420,

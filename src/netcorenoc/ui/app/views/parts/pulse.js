@@ -103,7 +103,17 @@ export function Happening({ situations, marks, at, error, retry }) {
   </section>`;
 }
 
-/** **Band 2 — where.** The estate, deterministic, so two glances can be compared. */
+/**
+ * **Band 3 — where.** The estate, deterministic, so two glances can be compared.
+ *
+ * **No topology is drawn here, and the caption links to the one that is** (v0.16.7, #317). The
+ * maintainer asked for the network topology on this screen; measured on the three-scenario estate,
+ * `edge` holds **one** row of `kind='device'` and its weight is **0.0**, so `graph_snapshot`'s
+ * filter returns **zero** edges and a topology here would draw two unconnected circles. A third
+ * drawing of the same two tables would also double a surface no assertion can reach —
+ * `tests/domharness/env.mjs` substitutes a recording double for d3 — to say what this grid and the
+ * Graph screen already say between them. So the answer is one click, made obvious.
+ */
 export function Where({ nodes }) {
   return html`<section class="panel-block">
     <${SectionHeading} title="Where it is happening" />
@@ -115,7 +125,8 @@ export function Where({ nodes }) {
       }))}
       urgentAt=${URGENT_AT}
       source="/api/graph, live · load, not topology"
-      note=${`one cell per element, busiest first; pulses above ${URGENT_AT}`} />
+      note=${html`one cell per element, busiest first; pulses above ${URGENT_AT} —
+        ${" "}<a href="#/graph">how they are connected is on the Graph screen</a>`} />
   </section>`;
 }
 

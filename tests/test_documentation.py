@@ -282,7 +282,11 @@ def test_the_release_table_parses() -> None:
     # That is the same defect the third and fourth edits above caught, one release later: **a table
     # that disagrees with the release it governs**. The evidence screens are v0.16.6 and maintenance
     # windows are v0.16.7, which is a new row rather than a moved one. Twenty-one rows.
-    assert len(table) == 21, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
+    #
+    # v0.16.7 adds one more, for the same reason again: v0.16.6 put eight charts on the Overview
+    # and the screen still did not answer *how many critical alarms are active*, because nothing
+    # counted them. Severity is v0.16.7; maintenance windows move to v0.16.8. Twenty-two rows.
+    assert len(table) == 22, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -303,6 +307,7 @@ def test_the_release_table_parses() -> None:
         "v0.16.5",
         "v0.16.6",
         "v0.16.7",
+        "v0.16.8",
         "v0.17.0",
         "v0.18.0",
     }
