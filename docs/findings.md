@@ -1731,6 +1731,37 @@ Run every command below from the repository root with the virtualenv active.
   `/api/events`, takes one frame and compares its `stats` against `GET /api/stats` minus the two
   gap members would close it, and is **not** written here.
 
+## F117 — the hostile-payload fixture stopped reaching network elements four releases ago, and nothing went red
+
+- **What**: `tests/uifixtures.py::_label_everything` pushes the XSS payload onto *"every device and
+  class"* through the real label route, and **throws every response away**. Migration `0016`
+  renamed `kind='device'` to `kind='ne'` in v0.16.3 and `LabelIn.kind` became
+  `Literal["ne", "class", "severity"]`, so **every one of those writes has been a 422 since
+  v0.16.3** — silently. UI invariant 4 has since been demonstrated on alarm-class labels only,
+  which is half the coverage its own docstring claims.
+- **Why nothing saw it**: the invariant's own control — *"did the payload reach the DOM at all?"* —
+  is `payloadInTextNodes > 0`, and the **class** labels still land, so the control stayed green on
+  half the fixture. This is Appendix B's *"a pin whose coverage shrinks silently"*, in a fixture
+  rather than a pin.
+- **How it was found**, which is the part worth keeping: an injection aimed at the NE-label render
+  path in `views/entities.js` came back **green**. Appendix B says *suspect the injection first*,
+  and it was the fixture — there was no NE label to render.
+- **Reproduce**, on the tree before the repair:
+  ```sh
+  # Print the captured hostile fixture's node and class labels.
+  # Every node and entity comes back label=None; every class carries the payload.
+  ```
+- **Measured**: `/api/graph` nodes `id=1 label=None`, `id=2 label=None`; `/api/entities`
+  `127.0.0.2 label=None`, `127.0.0.3 label=None`; `/api/classes` id 1, 2 and 3 all carrying
+  `<img src=x onerror=alert(1)><script>…`.
+- **Fix**: `kind="ne"`, and **every response asserted 200**. A fixture that ignores a status code
+  is a fixture that can stop doing its job without anything going red — which is the general
+  lesson, and it is the same one F115 records one layer up.
+- **Disposition**: **closed by v0.16.7**. With the fixture repaired, the NE-label injection is
+  **red** and its control holds. Repaired during Phase 6 rather than deferred, because prime
+  directive 8 requires each of the five UI invariants to be demonstrated red under its own
+  injection and invariant 4 could not be demonstrated on that path at all.
+
 ## F116 — `unitText` prints `1 alarms`
 
 - **What**: `chartdata.unitText(1, "alarms")` renders `1 alarms`. Every `Bars` chart carrying a

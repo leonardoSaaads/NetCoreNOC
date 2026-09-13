@@ -951,7 +951,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
 #: the three things nothing measures. A release that
 #: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
-SRC_TREE_DIGEST = "3151cdd3b97db30a3d59e7fd11989b8bdc21f289a2df7aeebae6280d7167129f"
+SRC_TREE_DIGEST = "a8d236fb3933520b56d2a627659ddd5168b8fec3c00fe3768419b32db1dd539b"
 SRC_FILE_COUNT = 213
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
@@ -1018,7 +1018,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.16.6", "the version this release carries"
+    assert __version__ == "0.16.7", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

@@ -131,20 +131,38 @@ async def _capture_situations(client: httpx.AsyncClient, routes: dict[str, Any])
 
 
 async def _label_everything(app: Any, label: str) -> None:
-    """Push `label` through the real label route onto every device and class.
+    """Push `label` through the real label route onto every network element and alarm class.
 
     Deliberately the real write path: the escaping invariant is worthless if the hostile string is
     injected into a fixture rather than travelling the route an operator's input actually takes.
+
+    **Every response is checked, and that is F117** (v0.16.7). This helper posted `kind="device"`
+    and threw the response away. `0016` renamed that kind to `ne` in v0.16.3 and `LabelIn.kind` is
+    a `Literal["ne", "class", "severity"]`, so every one of these writes had been a **422 for four
+    releases** — silently. Measured: every node and every entity came back with `label=None` while
+    the alarm classes carried the payload, so invariant 4's own control (*"did the payload reach
+    the DOM at all?"*) stayed green on half the coverage it claimed. A fixture that ignores a
+    status code is a fixture that can stop doing its job without anything going red.
     """
     admin = await authutil.client_as(app, "admin")
     try:
         graph = (await admin.get("/api/graph")).json()
         for node in graph["nodes"]:
-            await admin.post(
-                "/api/labels", json={"kind": "device", "id": node["id"], "label": label}
+            posted = await admin.post(
+                "/api/labels", json={"kind": "ne", "id": node["id"], "label": label}
+            )
+            assert posted.status_code == 200, (
+                f"the hostile label did not reach NE {node['id']}: "
+                f"{posted.status_code} {posted.text[:200]}"
             )
         for cls in (await admin.get("/api/classes")).json():
-            await admin.post("/api/labels", json={"kind": "class", "id": cls["id"], "label": label})
+            posted = await admin.post(
+                "/api/labels", json={"kind": "class", "id": cls["id"], "label": label}
+            )
+            assert posted.status_code == 200, (
+                f"the hostile label did not reach class {cls['id']}: "
+                f"{posted.status_code} {posted.text[:200]}"
+            )
     finally:
         await admin.aclose()
 
