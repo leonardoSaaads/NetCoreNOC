@@ -179,12 +179,11 @@ const SEVERITIES = [
 const UNKNOWN = { key: "unknown", glyph: "?", label: "unknown" };
 
 /**
- * `{ key, glyph, label }` for a rank, and **the only place a rank becomes a band.**
+ * `{ key, glyph, label }` for a rank — **the only place a rank becomes a band** (v0.16.7).
  *
- * `severity()` below had this `find` inline and the Overview's census panel needs the same answer
- * from a rank alone — it counts alarms and never holds one. Two `find`s over `SEVERITIES` is how a
- * panel and a pill come to disagree about what rank 3 is called, which is the defect this release
- * spent its Phase 0 refusing at the other end of the same pipe.
+ * `severity()` below had this `find` inline; the Overview's census panel needs the same answer from
+ * a rank alone, because it counts alarms and never holds one. Two of these is how a panel and a
+ * pill come to disagree about what rank 3 is called.
  */
 export function band(rank) {
   return SEVERITIES.find((entry) => entry.rank === rank) ?? UNKNOWN;
