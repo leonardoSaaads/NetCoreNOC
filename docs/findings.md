@@ -1642,6 +1642,60 @@ Run every command below from the repository root with the virtualenv active.
   its *rule*: `test_the_element_tag_check_goes_red_on_a_backticked_stray_tag` exists for exactly
   that reason one directory away, and has no counterpart here.
 
+## F114 — the composition guard counted only the charts it already knew about, and its denylist did not hold the word "score"
+
+- **What**: `tests/test_ui_invariants.py::test_the_four_named_quantities_are_drawn_as_four_and_never_composed`
+  passed while a fifth line chart titled **"Gate score"**, plotting the arithmetic mean of the four
+  named quantities of `PREREGISTRATION-0.10.0.md` §5, rendered on the Judge & promotion screen.
+  Prime directive 3, refused by seven releases of guards in the store, the engine and the
+  pre-registration documents, was green on the one surface an operator reads. **Two independent
+  causes**, either of which alone lets the chart through:
+  1. the count assertion was `len(quantity_charts) == 4` over charts **whose label starts with one
+     of the four names**, so a fifth chart of any other name never entered the set being counted.
+     `== 4` could not move;
+  2. the composite refusal was a hand-written denylist — `("quality", "composite", "overall score",
+     "index")` — and *"gate score"*, *"combined"*, *"aggregate"* and *"health"* all pass it.
+- **And its scope was one file.** `test_the_console_may_only_chart_a_registered_quantity` read
+  `views/parts/evidence.js` alone, while `views/parts/verdict.js` declares its own `QUANTITIES`
+  with the same four — a fact that guard's own docstring cited. A fifth entry added to
+  `verdict.js` was caught by **nothing but the byte-identity pin**, which is re-pinned every
+  release by construction and is therefore not a guard.
+- **Reproduce** — add the chart, then watch the whole file stay green:
+  ```sh
+  # In views/parts/evidence.js, after the QUANTITIES chart grid, add a Series titled "Gate score"
+  # whose values are the mean of the four challenger rates. Then:
+  .venv/bin/python -m pytest -q tests/test_ui_invariants.py -m "" -p no:cacheprovider
+  ```
+- **Measured**: with the injection applied, **78 of 78** UI-invariant tests passed, and the DOM
+  harness printed the chart list with the composition in it:
+  ```
+  [line] Over-merge rate. Latest challenger: 0, champion: 0.
+  [line] Under-merge rate. Latest challenger: 0, champion: 0.
+  [line] Split-bag intact rate. Latest challenger: 1, champion: 1.
+  [line] Asserted-negative respected rate. Latest challenger: 1, champion: 1.
+  [line] Gate score. Latest gate score: 0.
+  ```
+- **Fix**: the refusal now asks the opposite question. Not *"is this title on a list of bad
+  words"* but **"is every chart drawn from `promotion.metrics` one of the quantities the plan
+  registers?"** — the registered set derived from `promotion.QUANTITY_NAMES` through the console's
+  own declarations, asserted equal in both directions. A name nobody registered fails whatever it
+  is called. And the scan that finds those declarations walks `ui/app` rather than naming a file,
+  so a third module declaring a fifth quantity is found without the test being edited.
+- **The guard's scope is now demonstrated, which is what this file had and this one did not.**
+  `test_the_quantity_scan_reaches_every_module_that_declares_one` drives the scan's reach, and
+  `test_the_quantity_scan_would_find_a_fifth_declaration_in_a_module_it_has_never_seen` drives its
+  pattern against a module that does not exist — so what is proved is the reach, not today's file
+  set. Narrowing the scan back to one file turns both red.
+- **Disposition**: **closed by v0.16.7**. Three injections, each red with a control that held: the
+  Gate score chart; a fifth quantity added to `verdict.js` rather than `evidence.js` (which fires
+  **both** repaired guards); and the scan narrowed back to `evidence.js` alone.
+- **What it says about guards generally**: this is the third consecutive finding in which **the
+  rule was right and the set of things it looked at was smaller than the rule claimed** — F112's
+  exemption rests on a container property nothing reads, F113's scope was defeated by nesting, and
+  this one's was one filename long. It is also this project's fourth **denylist standing in for a
+  derived set** (F92, F98, two in v0.15.1). Both patterns are in Appendix B of the brief that
+  produced this release, and both caught it anyway.
+
 ## F115 — `/api/stats` and the `/api/events` stream assembled the same payload twice, and the console reads the one nothing compares
 
 - **What**: two route modules each built the live statistics object for themselves — the same

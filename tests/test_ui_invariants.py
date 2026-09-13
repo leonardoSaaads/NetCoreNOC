@@ -3453,12 +3453,46 @@ async def test_the_four_named_quantities_are_drawn_as_four_and_never_composed(
     for chart in quantity_charts:
         assert "challenger" in chart["label"], chart["label"]
         assert "champion" in chart["label"], chart["label"]
-    # **And no chart claims to be a composite.** A single "quality", "score" or "index" line is
-    # exactly what §5 refuses, and it would be one `reduce` away from the code that draws these.
-    for label in titles:
-        lowered = (label or "").lower()
-        for forbidden in ("quality", "composite", "overall score", "index"):
-            assert forbidden not in lowered, f"a composed quantity reached the screen: {label!r}"
+
+    # **The composition refusal, DERIVED** (F114, v0.16.7).
+    #
+    # It was a denylist — `("quality", "composite", "overall score", "index")` — and a chart
+    # titled *"Gate score"* plotting the arithmetic mean of these four rendered on this screen
+    # with every test in this file green. Reproduced by injection; the harness printed
+    # `[line] Gate score. Latest gate score: 0.` beside the four.
+    #
+    # Two holes, and the count above is the second one: `quantity_charts` filters to charts whose
+    # label starts with one of the four names, so a fifth chart **of any other name** never enters
+    # the set being counted. `== 4` could never move.
+    #
+    # The repair asks the opposite question. Not *"is this title on a list of bad words"* — a list
+    # is exactly the trap Appendix B names and this project's fourth instance of it — but **"is
+    # every chart drawn from `promotion.metrics` one of the quantities the plan registers?"** The
+    # registered set comes from `promotion.QUANTITY_NAMES` through the console's own `QUANTITIES`
+    # declarations, so a name nobody registered fails whatever it is called, and the four must all
+    # be there.
+    registered = {label.lower() for _key, label in _console_quantities().items()}
+    assert len(registered) == 4, f"the console declares {len(registered)} quantities, not four"
+    from_metrics = [
+        chart
+        for chart, caption in zip(result["charts"], result["captions"], strict=False)
+        if "promotion.metrics" in caption
+    ]
+    assert len(from_metrics) == len(result["captions"]) - len(
+        [c for c in result["captions"] if "promotion.metrics" not in c]
+    ), "the chart list and the caption list are not parallel; the reader below would be guessing"
+    assert from_metrics, "no chart on this screen is drawn from promotion.metrics at all"
+    for chart in from_metrics:
+        title = (chart["label"] or "").split(".")[0].strip().lower()
+        assert title in registered, (
+            f"a chart drawn from promotion.metrics is titled {title!r}, which is not one of the "
+            f"four quantities `PREREGISTRATION-0.10.0.md` §5 registers ({sorted(registered)}). "
+            f"A fifth series over these four inputs can only be a composition, whatever it is "
+            f"called — and §5 refuses every one of them by name AND by construction."
+        )
+    assert {(c["label"] or "").split(".")[0].strip().lower() for c in from_metrics} == registered, (
+        "the charts drawn from promotion.metrics are not exactly the four registered quantities"
+    )
 
 
 @dom_test
@@ -3602,17 +3636,31 @@ def test_the_console_may_only_chart_a_registered_quantity() -> None:
     from netcorenoc.engine.evaluation.promotion import QUANTITY_NAMES
 
     ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
-    evidence = (ui / "views" / "parts" / "evidence.js").read_text(encoding="utf-8")
-    block = re.search(r"const QUANTITIES = \[(.*?)\];", evidence, re.S)
-    assert block is not None, "the Evidence screen no longer declares its quantity list"
-    charted = re.findall(r'\["([a-z_]+)",', block.group(1))
-    assert set(charted) == set(QUANTITY_NAMES), (
-        "the console charts a quantity set that is not the registered one.\n"
-        f"  charted, not registered: {sorted(set(charted) - set(QUANTITY_NAMES))}\n"
-        f"  registered, not charted: {sorted(set(QUANTITY_NAMES) - set(charted))}\n"
-        "`PREREGISTRATION-0.10.0.md` §5 registers exactly four and refuses every composite; a "
-        "fifth key can only be a quantity no plan registered or a comparison basis worn as one."
+
+    # **Every module that declares one, found by looking** (F114's second half, v0.16.7).
+    #
+    # This guard read `views/parts/evidence.js` and nothing else, while `views/parts/verdict.js`
+    # declares its own `QUANTITIES` with the same four — a fact this docstring already cited. A
+    # fifth entry added to `verdict.js` was caught by **nothing but the byte-identity pin**, which
+    # is re-pinned every release by construction, so it is not a guard.
+    #
+    # The rule was right and the file list was one entry long, which is the third trap in this
+    # project's own Appendix B and the third time it has been this repository's defect (F112,
+    # F113, now this).
+    declarations = _quantity_declarations()
+    assert len(declarations) >= 2, (
+        f"this guard found {len(declarations)} module(s) declaring QUANTITIES. It has been wrong "
+        f"about that before: `verdict.js` and `evidence.js` both declare one, so a scan finding "
+        f"fewer than two has stopped scanning rather than found a simpler console."
     )
+    for module, charted in declarations.items():
+        assert set(charted) == set(QUANTITY_NAMES), (
+            f"{module} charts a quantity set that is not the registered one.\n"
+            f"  charted, not registered: {sorted(set(charted) - set(QUANTITY_NAMES))}\n"
+            f"  registered, not charted: {sorted(set(QUANTITY_NAMES) - set(charted))}\n"
+            "`PREREGISTRATION-0.10.0.md` §5 registers exactly four and refuses every composite; a "
+            "fifth key can only be a quantity no plan registered or a comparison basis worn as one."
+        )
 
     # **And no console module READS `incumbent_linked`.**
     #
@@ -3899,3 +3947,102 @@ def _severity_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
         if chart["label"] and chart["label"].startswith("Active alarms by severity"):
             return list(chart["bars"])
     return []
+
+
+# --------------------------------------------------------------------------------------------
+# F114's two helpers, and the demonstration that the second one's SCOPE is real.
+#
+# `test_documentation.py` has a scope-of-guard demonstration and this file had none, which is
+# what F112, F113 and F114 have in common: in all three the rule was right and the set of things
+# it looked at was smaller than the rule claimed. A guard's scope deserves the same demonstration
+# as its rule, so below the scan is itself driven.
+# --------------------------------------------------------------------------------------------
+
+
+def _quantity_declarations() -> dict[str, list[str]]:
+    """Every console module declaring a `QUANTITIES` list, mapped to the keys it charts.
+
+    **Derived by walking `ui/app`, never named.** The point is not that two files declare one
+    today; it is that a third one declaring a fifth quantity is found without this test being
+    edited — which is exactly what did not happen for `verdict.js`.
+    """
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    out: dict[str, list[str]] = {}
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        block = re.search(r"const QUANTITIES = \[(.*?)\];", source, re.S)
+        if block is None:
+            continue
+        out[str(path.relative_to(ui))] = re.findall(r'\["([a-z_]+)",', block.group(1))
+    return out
+
+
+def _console_quantities() -> dict[str, str]:
+    """`{key: display label}` for the registered quantities, from the console's own declarations.
+
+    Both declarations must agree, and that is asserted here rather than assumed: two lists of the
+    same four keys with different labels would let a chart be titled something the table never
+    calls it, which is the drift this whole family of guards exists to stop.
+    """
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    seen: dict[str, set[str]] = {}
+    for path in sorted(ui.rglob("*.js")):
+        source = path.read_text(encoding="utf-8")
+        block = re.search(r"const QUANTITIES = \[(.*?)\];", source, re.S)
+        if block is None:
+            continue
+        for key, label in re.findall(r'\["([a-z_]+)", "([^"]+)"', block.group(1)):
+            seen.setdefault(key, set()).add(label.lower())
+    assert seen, "no console module declares a quantity list; the scan found nothing"
+    for key, labels in seen.items():
+        assert len(labels) == 1, f"{key} is labelled {sorted(labels)} in different modules"
+    return {key: next(iter(labels)) for key, labels in seen.items()}
+
+
+def test_the_quantity_scan_reaches_every_module_that_declares_one() -> None:
+    """**The scope-of-guard demonstration this file did not have** (F114).
+
+    A scan is only worth what it reaches, and the way this project has been wrong three times
+    running is a correct rule over too few files. So the scan's reach is driven rather than
+    trusted: it must find the two modules that declare a quantity list today, and it must find a
+    third the moment one exists.
+    """
+    found = _quantity_declarations()
+    assert "views/parts/evidence.js" in found, (
+        f"the scan no longer reaches the Evidence screen, which is the module the guard was "
+        f"originally written against. It found: {sorted(found)}"
+    )
+    assert "views/parts/verdict.js" in found, (
+        f"the scan does not reach `views/parts/verdict.js`, which declares its own QUANTITIES "
+        f"with the same four keys. That omission IS F114's second half: a fifth entry added there "
+        f"was caught by nothing but the byte-identity pin. It found: {sorted(found)}"
+    )
+
+
+def test_the_quantity_scan_would_find_a_fifth_declaration_in_a_module_it_has_never_seen() -> None:
+    """The half of the demonstration above that matters: **the scan is not a list of two names.**
+
+    A guard that happened to name the two files would pass the test above and still be exactly
+    the defect F114 records. This drives the scan's own pattern over a module that does not exist
+    in the tree, so what is proved is the reach and not today's file set.
+    """
+    invented = """
+    const QUANTITIES = [
+      ["over_merge_rate", "over-merge rate", "lower is better"],
+      ["gate_score", "gate score", "higher is better"],
+    ];
+    """
+    block = re.search(r"const QUANTITIES = \[(.*?)\];", invented, re.S)
+    assert block is not None, "the scan's own pattern no longer matches a declaration"
+    keys = re.findall(r'\["([a-z_]+)",', block.group(1))
+    assert keys == ["over_merge_rate", "gate_score"], keys
+    from netcorenoc.engine.evaluation.promotion import QUANTITY_NAMES
+
+    assert set(keys) != set(QUANTITY_NAMES), (
+        "a declaration carrying an unregistered fifth key compares equal to the registered set, "
+        "so the guard above would pass it"
+    )
