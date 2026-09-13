@@ -49,6 +49,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 else await store.scoped_stats(scope.ne_ids, scope.ips)
             )
             out["ingest_gaps"] = await store.list_ingest_gaps(20)
+            # v0.16.7 (#312, #316): active alarms by band, on the route the Overview already
+            # reads — and scoped by the same rule as every counter beside it, because `unplaced`
+            # rising with nothing visible to explain it is the volume oracle F32 named.
+            out["severity"] = await store.severity_census(
+                None if scope.unrestricted else scope.ne_ids
+            )
         out["open_ingest_gaps"] = engine.gap.snapshot()
         out["latency_p95_s"] = round(engine.latency_p95(), 4)
         out["queue_depth"] = engine.queue.qsize()

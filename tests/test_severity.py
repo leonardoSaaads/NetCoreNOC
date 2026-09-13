@@ -414,3 +414,128 @@ async def test_an_integer_rank_above_the_vocabulary_no_longer_renders_as_one_ban
         "rank 4 was placed on the scale; `indeterminate` is the vocabulary's word for "
         "'I do not know how serious this is', which is a placement on no scale at all"
     )
+
+
+# --------------------------------------------------------------------------------------------
+# The census (v0.16.7, DECISIONS #312/#315/#316). Active alarms by band, on `/api/stats`.
+#
+# The defect these tests exist to stop is not a missing feature: it is a confident one. A panel
+# that reads "0 critical" over 1 716 alarms the appliance has refused to place would look like a
+# quiet network, and on the corpus this repository ships that is 100 % of the alarms.
+# --------------------------------------------------------------------------------------------
+
+
+async def _census(store: Store, **kwargs: Any) -> dict[str, Any]:
+    async with store.lock:
+        return await store.severity_census(**kwargs)
+
+
+async def test_an_unplaced_alarm_is_counted_as_unplaced_and_never_as_a_band(store: Store) -> None:
+    """The release's whole honesty test, at the layer that produces the number.
+
+    Every scenario in `eval/corpus/` leaves `alarm.severity` NULL — measured, ten out of ten, 2 119
+    alarms — because `confirm_ordinality` needs 50 closed alarms to validate a ranking and the
+    corpus closes one. So this is not an edge case; it is what the product does on day one.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        for i in range(5):
+            await engine._process(_event(CLS_A, f"nosev-{i}", "chartreuse", BASE + i))
+        await store.commit()
+
+    census = await _census(store)
+    assert census["active"] == 5
+    assert census["unplaced"] == 5, "an alarm the appliance could not place vanished from the count"
+    assert census["placed"] == {}, (
+        "a band was reported for alarms that have no severity: four zeros over five unplaced "
+        "alarms is the defect that would look like a feature"
+    )
+    assert census["vendor_scaled"] == 0
+    assert census["declared"] == 0
+
+
+async def test_the_census_reads_a_declaration_the_column_never_received(store: Store) -> None:
+    """v0.16.3 writes a declaration to `label`, never to `alarm.severity` (#284, #315).
+
+    Measured end to end against a booted appliance: after `POST /api/labels {kind: severity}`,
+    1 716 of 1 716 alarm rows are still NULL and the resolved census reads `critical 1`. A census
+    that read the column alone would report an operator's own declaration as unplaced.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        for i in range(3):
+            await engine._process(_event(CLS_A, f"dec-{i}", "chartreuse", BASE + i))
+        await engine._process(_event(CLS_B, "other", "chartreuse", BASE + 10))
+        await store.commit()
+    class_a = await store.class_id(CLS_A, BASE)
+
+    before = await _census(store)
+    assert before["unplaced"] == 4 and before["placed"] == {}
+
+    async with store.lock:
+        await store.set_label("severity", class_a, "critical", BASE + 100)
+        await store.commit()
+        cur = await store.conn.execute("SELECT COUNT(*) FROM alarm WHERE severity IS NOT NULL")
+        row = await cur.fetchone()
+    assert row is not None and row[0] == 0, "the declaration wrote the alarm column"
+
+    after = await _census(store)
+    assert after["placed"] == {"0": 3}, "the declared class did not move its alarms into a band"
+    assert after["unplaced"] == 1, "the undeclared class stopped being unplaced"
+    assert after["declared"] == 3, "the census does not say how many bands came from a declaration"
+    assert after["active"] == 4, "the total moved when only its composition did"
+
+
+async def test_a_vendor_scale_is_counted_apart_and_never_placed_on_the_bands(store: Store) -> None:
+    """F99's rank, at aggregate. A learned `int`-kind rank is a vendor's own numbering, and
+    placing it needs *that NE's* whole rank set — which an aggregate does not have. Counting it
+    as `low` would let this panel and the alarm's own pill disagree about the same alarm."""
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_event(CLS_A, "vendor", "chartreuse", BASE))
+        await store.commit()
+        # What `severity.py::_candidate_ranks` writes for a vendor numbering severity 10/20/30.
+        await store.conn.execute(
+            "UPDATE alarm SET severity='20', severity_rank=20 WHERE instance='vendor'"
+        )
+        await store.commit()
+
+    census = await _census(store)
+    assert census["vendor_scaled"] == 1, "a rank outside the vocabulary was silently dropped"
+    assert census["placed"] == {}, "a vendor's own number was placed on the bundled scale"
+    assert census["unplaced"] == 0, "a severity the appliance DID learn was reported as unknown"
+
+
+async def test_the_band_boundary_is_derived_from_the_vocabulary_not_written_as_four() -> None:
+    """F92's lesson in one constant: a band added to `SEVERITY_VOCAB` moves the line with it."""
+    from netcorenoc.ingest import known_oids
+    from netcorenoc.store import read_models
+
+    assert max(known_oids.SEVERITY_VOCAB.values()) == read_models.VOCAB_MAX_RANK
+    assert known_oids.severity_rank("indeterminate") == read_models.VOCAB_MAX_RANK
+
+
+async def test_the_census_scope_is_a_query_filter_and_not_a_render_filter(store: Store) -> None:
+    """F35/F38, and F32's volume oracle. `unplaced` rising with nothing visible to explain it
+    says *"a storm is happening somewhere you cannot see"*, so the scope is in the WHERE clause
+    and an empty scope counts nothing at all."""
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_event(CLS_A, "mine", "chartreuse", BASE))
+        await store.commit()
+    ne_id = await store.ne_id(DEV, BASE)
+
+    assert (await _census(store, ne_ids=None))["active"] == 1
+    assert (await _census(store, ne_ids=frozenset({ne_id})))["active"] == 1
+    outside = await _census(store, ne_ids=frozenset({ne_id + 999}))
+    assert outside["active"] == 0 and outside["unplaced"] == 0, (
+        "an out-of-scope alarm reached a scoped principal's census"
+    )
+    empty = await _census(store, ne_ids=frozenset())
+    assert empty == {
+        "active": 0,
+        "placed": {},
+        "unplaced": 0,
+        "vendor_scaled": 0,
+        "declared": 0,
+    }, "a principal who can see no NE was given a count of something"

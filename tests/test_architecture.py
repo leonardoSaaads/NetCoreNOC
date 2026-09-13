@@ -414,6 +414,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/bulkclear.js"),
     ("GET", "/app/views/parts/finder.js"),
     ("GET", "/app/views/parts/pulse.js"),
+    ("GET", "/app/views/parts/keeping.js"),
     ("GET", "/app/views/parts/estate.js"),
     ("GET", "/app/views/parts/marks.js"),
     ("GET", "/app/views/parts/evidence.js"),
@@ -949,8 +950,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
 #: the three things nothing measures. A release that
 #: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
-SRC_TREE_DIGEST = "41257f1e4f571ca9a72a4b40dbba1f1b688d5bf8525ded7b5618872797d8074c"
-SRC_FILE_COUNT = 210
+SRC_TREE_DIGEST = "5bdeed0b0cc6a8a9396e29f7c2793c565eaa74a29a951253c8bde180c0daffb2"
+SRC_FILE_COUNT = 211
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

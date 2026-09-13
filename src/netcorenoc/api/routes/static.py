@@ -117,6 +117,10 @@ _UI_MODULES = (
     # real: `overview.js` owns the screen's composition and its four states, `pulse.js` owns the
     # charts and the population each one may claim.
     "app/views/parts/pulse.js",
+    # v0.16.7: the Overview's appliance half, split from `pulse.js` when this release added a band
+    # above it and the file had 484 bytes of headroom (DECISIONS #318). The seam is the subject:
+    # `pulse.js` is about the network, this is about the appliance.
+    "app/views/parts/keeping.js",
     # v0.16.6: the Graph screen's second projection and its two derived tables — everything on
     # that screen a test executes — split out of `views/graph.js` at the same ceiling
     # (DECISIONS #307, #310).

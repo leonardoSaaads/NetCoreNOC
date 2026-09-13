@@ -389,7 +389,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
     "app/views/graph.js": "05f282c80124a41ec1716c6dd1f1d06386d4c63f3aa71eecfd36963ca8235a9c",
     "app/views/labelling.js": "f4700fc88921415127605c524cd8d3d8442eea40e7239cffb9473ccf950a97a0",
-    "app/views/overview.js": "ce00c61b5d58820e45de226e6e3a80b18b5974e0619bf46850c671df4d7dd360",
+    "app/views/overview.js": "90cd437cc1b508e45797ffb9e3d027c05e8a0d30aaba89892044e5f59533b7a0",
     "app/views/parts/bulkclear.js": (
         "2c3b484d2a010c1b9a7b48bb6fb9eeab1b056c28111e8d55e052c872e45a2867"
     ),
@@ -408,6 +408,9 @@ UI_HASHES: dict[str, str] = {
         "b0652368970a0631d24987c4d1a4dd92b40affe833d1d7959db2a3933fc03274"
     ),
     "app/views/parts/judge.js": "fe63d1a56e3e63ddb4fc8bff07fdbb806136eb137277d52f16aa83e5eb7445b4",
+    "app/views/parts/keeping.js": (
+        "23937c3cf802a673a46dcb380bbae7aabec043bcb303d2dc5479ca07e6e83f07"
+    ),
     "app/views/parts/lifecycle.js": (
         "a7c0a01b71795a048fad96956dc6280c0cd9e0a2b5db39893a029de4f9b23dbf"
     ),
@@ -416,7 +419,7 @@ UI_HASHES: dict[str, str] = {
         "a3b39b4eb11b14858862c13d2c4c765bc6269c8ee2105ae673accc89d5aeaf24"
     ),
     "app/views/parts/model.js": "c30966786ff8e78e8c326b3b0206fe171298e86ef784b0841d68999ef068e81d",
-    "app/views/parts/pulse.js": "c9e5eacc5330350ba2595e57c5277e9b24f0b98d124576366d196213b4a68d15",
+    "app/views/parts/pulse.js": "17eb93d33445a481b06f1cdfda4bd7c158a95274593426577cb2bd8516bacbf8",
     "app/views/parts/retention.js": (
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
     ),
@@ -481,7 +484,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/governance.js": 10_218,
     "app/views/graph.js": 13_704,
     "app/views/labelling.js": 5_327,
-    "app/views/overview.js": 11_545,
+    "app/views/overview.js": 11_582,
     "app/views/parts/bulkclear.js": 3_112,
     "app/views/parts/card.js": 6_140,
     "app/views/parts/declare.js": 11_975,
@@ -490,11 +493,12 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/facts.js": 6_340,
     "app/views/parts/finder.js": 6_220,
     "app/views/parts/judge.js": 17_092,
+    "app/views/parts/keeping.js": 11_100,
     "app/views/parts/lifecycle.js": 13_509,
     "app/views/parts/marks.js": 9_929,
     "app/views/parts/members.js": 8_897,
     "app/views/parts/model.js": 10_290,
-    "app/views/parts/pulse.js": 17_095,
+    "app/views/parts/pulse.js": 7_517,
     "app/views/parts/retention.js": 5_003,
     "app/views/parts/verdict.js": 8_420,
     "app/views/parts/why.js": 10_884,

@@ -42,7 +42,8 @@
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
-import { Happening, Keeping, Learned, MARK_LIMIT, Where, Worst } from "./parts/pulse.js";
+import { Happening, MARK_LIMIT, Where, Worst } from "./parts/pulse.js";
+import { Keeping, Learned } from "./parts/keeping.js";
 import { plural, relative, absolute, timeTitle, TIMEZONE } from "../format.js";
 import { can, canEdit, scopeSummary } from "../session.js";
 import * as store from "../store.js";

@@ -21,8 +21,111 @@ from netcorenoc.store.base import StoreBase
 from netcorenoc.store.situations import LIVE
 from netcorenoc.store.types import MAX_SCOPE_PARAMS, class_display
 
+#: The highest rank the bundled vocabulary issues, **derived from the vocabulary** rather than
+#: written as 4. `known_oids.SEVERITY_VOCAB` ranks `critical 0 … indeterminate/cleared 4`, and a
+#: rank above this can only have come from `severity.py::_candidate_ranks`' `int` kind, where the
+#: number is a vendor's own and means nothing until it is ordered against the others (F99).
+#: `app/format.js` holds the same line as `VOCAB_MAX_RANK` and `tests/test_severity.py` pins both
+#: against the vocabulary itself, so the two languages cannot drift apart silently.
+VOCAB_MAX_RANK = max(known_oids.SEVERITY_VOCAB.values())
+
 
 class ReadModelsMixin(StoreBase):
+    async def severity_census(self, ne_ids: frozenset[int] | None = None) -> dict[str, Any]:
+        """Active alarms by band, resolved **declared first, then learned** (v0.16.7, #312).
+
+        The one number the Overview is arranged around, and the one thing no screen could answer:
+        *how many active alarms are critical, and how many has the appliance not been able to
+        place at all.*
+
+        **Why ranks and not names.** The wire carries `{rank: count}` and never a band label,
+        because `app/format.js` already owns the naming and a second one here is how two surfaces
+        come to disagree about the same alarm. Ranks 0-`VOCAB_MAX_RANK` came from the bundled
+        vocabulary or from an operator's declaration, which the route restricts to that same
+        vocabulary; anything above is a vendor's own numbering (F99) and is counted apart under
+        `vendor_scaled`, because placing it needs *that NE's* whole rank set and an aggregate does
+        not have one.
+
+        **`unplaced` is a first-class count, never a zero.** `engine/correlate/severity.py` refuses
+        to name a severity two independent tests have not confirmed, and on the corpus this
+        repository ships that refusal covers every alarm there is. A census that reported four
+        zeros beside it would be describing a quiet network.
+
+        **The declaration is read here, not written anywhere.** v0.16.3 stores an operator's
+        severity as `label(kind='severity', target_id=<alarm class>)` and never touches
+        `alarm.severity`, so precedence is a read-time decision (#284, #315) — the same one
+        `situation_detail` and `app/format.js::severity` make.
+
+        **The scope is a WHERE clause** (F35/F38). Every count here enumerates something an
+        out-of-scope NE could contribute to, so leaving it global would hand a scoped viewer the
+        volume oracle `scoped_stats` exists to close: a rising `unplaced` with nothing visible to
+        explain it says *"a storm is happening somewhere you cannot see"*. `ne_ids=None` runs the
+        unmodified statement, so parity is by construction.
+        """
+        select = (
+            # nosec B608 - one fixed literal from `_label_join`, chosen by a schema probe; every
+            # other token here is a column name written in this string.
+            "SELECT s.label AS declared, a.severity AS learned, "  # nosec B608
+            "a.severity_rank AS learned_rank, a.ne_id AS ne_id, COUNT(*) AS n FROM alarm a "
+            # The declaration is per alarm CLASS, which is what an operator declares: "this kind of
+            # trap is critical". One row of `label` therefore moves every active alarm of that
+            # class at once, and the panel's source line says so.
+            + self._label_join("s", "severity", "a.class_id")
+        )
+        group = " GROUP BY declared, learned, learned_rank, ne_id"
+        rows: list[Any]
+        if ne_ids is None:
+            cur = await self.conn.execute(f"{select}WHERE a.status='active'{group}")  # nosec B608
+            rows = list(await cur.fetchall())
+        elif not ne_ids:
+            rows = []
+        elif len(ne_ids) > MAX_SCOPE_PARAMS:
+            # See MAX_SCOPE_PARAMS: an estate with more NEs in one scope than SQLite will bind is
+            # filtered here rather than having its id list truncated, which would answer a
+            # different question quietly. The same choice `timeline_marks` makes.
+            cur = await self.conn.execute(f"{select}WHERE a.status='active'{group}")  # nosec B608
+            rows = [r for r in await cur.fetchall() if r["ne_id"] in ne_ids]
+        else:
+            marks = ",".join("?" * len(ne_ids))
+            cur = await self.conn.execute(
+                f"{select}WHERE a.status='active' "  # nosec B608 - placeholders only
+                f"AND a.ne_id IN ({marks}){group}",  # nosec B608 - placeholders only
+                tuple(sorted(ne_ids)),
+            )
+            rows = list(await cur.fetchall())
+
+        placed: dict[int, int] = {}
+        unplaced = vendor_scaled = declared_n = active = 0
+        for row in rows:
+            n = int(row["n"])
+            active += n
+            # A declared severity is a vocabulary token by construction: `POST /api/labels` refuses
+            # anything `known_oids.severity_rank` cannot place, so this never invents a rank.
+            declared = row["declared"]
+            rank = (
+                known_oids.severity_rank(declared)
+                if declared is not None
+                else (None if row["learned"] is None else row["learned_rank"])
+            )
+            if rank is None:
+                unplaced += n
+                continue
+            if declared is not None:
+                declared_n += n
+            if rank > VOCAB_MAX_RANK:
+                vendor_scaled += n
+            else:
+                placed[int(rank)] = placed.get(int(rank), 0) + n
+        return {
+            "active": active,
+            # String keys, because this crosses JSON and an integer key would come back as one
+            # anyway. The console reads them back with `Number(...)`.
+            "placed": {str(rank): placed[rank] for rank in sorted(placed)},
+            "unplaced": unplaced,
+            "vendor_scaled": vendor_scaled,
+            "declared": declared_n,
+        }
+
     async def stats(self) -> dict[str, int]:
         out: dict[str, int] = {}
         for name, sql in (
