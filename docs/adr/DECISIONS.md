@@ -3435,3 +3435,160 @@ From this release an entry is about six lines: decision, reason, release.*
   applied the same way, which stays green because it is not scope-bearing.
 - **Measured**: `/api/timeline` already accepted `ne_id`, `since`, `until` and `limit`; this release
   adds **no route parameter** and begins sending `until`, which was served and never used.
+
+## 312. Severity is five bands and two kinds of not-knowing, and the unplaced band is the headline (v0.16.7)
+
+- **Decision** (decision 1): the Overview's first band counts **active** alarms into the bands
+  `app/format.js` already renders — `critical`, `major`, `minor`, `low` — plus **`indeterminate`**
+  (the vocabulary's own rank 4, a placement on no scale) and **`unplaced`** (nothing known). Six
+  cells, never five, and `unplaced` is a cell of the same kind as the others rather than a footnote.
+- **The unplaced band is never summed into a total that implies placement.** The panel prints
+  *"N active alarms, M placed"* and the two numbers are different numbers. A band the appliance
+  cannot reach renders its count, never `0`; a band it can reach and finds empty renders `0`.
+- **Reason**: `engine/correlate/severity.py` refuses to name a severity two independent tests have
+  not confirmed, and that refusal is the product working. A panel that folds the refusals into a
+  total, or draws four zeros beside them, spends the honesty the engine paid for. **The failure
+  mode is not a missing feature; it is a confident one.**
+- **A seventh state is named rather than placed**: a learned `int`-kind rank outside the bundled
+  vocabulary (F99) is a vendor's own numbering, and placing it needs *that NE's* whole rank set,
+  which an aggregate does not have. Those alarms count as **`vendor_scaled`** and the panel says so.
+  Placing them here would let the panel and the alarm's own pill disagree about the same alarm.
+- **Trade-off accepted**: six cells is more than four, and on a corpus where five are empty the
+  panel is mostly zeros and one large number. That is the true picture of a zero-config appliance on
+  its first day, and it is the picture the maintainer has never been shown.
+- **Measured**, ten scenarios replayed separately through real UDP into ten fresh databases:
+  **2 119 alarms, 2 119 with `severity IS NULL`** — `background_noise` 24, `camera_nvr` 300,
+  `chassis_card_fail` 99, `decoy_varbinds` 240, `dual_incident` 8, `fiber_cut` 8, `flapping_noise`
+  1, `olt_storm` 501, `pon_dying_gasp` 926, `pon_pon_port_down` 12. **No scenario produces one
+  confirmed severity.** The three-scenario estate this release is driven against holds **1 716
+  alarms, 1 716 unplaced**.
+
+## 313. Severity over time cannot be drawn, and what a later release needs is named (v0.16.7)
+
+- **Decision** (decision 2): **no severity-over-time chart.** The refusal is recorded in
+  `docs/plans/releases.md` with the column, the window and the route parameter a later release
+  needs, which is the fifth time this project has answered a chart question with *"not yet"*.
+- **Reason**: two independent blockers, either of which alone is fatal. **(a) There is no severity
+  to plot** — see #312. **(b) There is no time to plot it against**: `alarm.first_seen` across the
+  whole three-scenario estate spans **1.14 seconds** for 1 716 alarms, and `alarm.cleared_at` is
+  non-null on **0** of them. A chart labelled *"last 24 hours"* over that data would draw one column
+  and call it a day.
+- **What a later release needs**, stated so it is not rediscovered: `SELECT severity_rank,
+  COUNT(*) FROM alarm WHERE first_seen >= ? GROUP BY severity_rank, bucket` — the column is
+  **`alarm.first_seen`**, the window is a **route parameter** on `/api/stats` or a new read, and the
+  precondition is a corpus whose alarms **clear**, because an active-only corpus has no lifetime.
+- **Trade-off accepted**: the maintainer asked for severity *"as a number and over time"* and this
+  release ships only the number. Half the ask, honestly, beats all of it with the time axis
+  invented.
+- **Measured**: `MIN(first_seen)` 1789311053.91, `MAX(first_seen)` 1789311055.05 — **1.14 s**;
+  `COUNT(cleared_at)` = **0** of 1 716.
+
+## 314. Why no shipped scenario can produce a severity: nothing clears (v0.16.7)
+
+- **Decision**: record the cause rather than weaken the gate. `SEVERITY_MIN_CLOSED = 50` stays.
+- **Reason**: the severity learner's second gate, `confirm_ordinality`, validates a candidate
+  ranking against **observed alarm lifetimes**, and a lifetime needs a close. The corpus closes
+  **one alarm in ten scenarios**. So severity is unknowable here not because the vocabulary is
+  missing but because **the corpus never lets anything end** — which is a property of the corpus,
+  not of the learner, and lowering the gate to make a chart draw would be fabricating the very
+  ordering the module exists to refuse.
+- **Measured**: `varbind_profile.role` across all ten scenarios holds only `NULL` and `entity` —
+  **never `severity`**, so no candidate is ever even nominated. Closed alarms: `flapping_noise` 1,
+  every other scenario **0**. Varbind rows reaching `SEVERITY_MIN_OBS = 200`: 9 on the
+  three-scenario estate, so gate one is within reach and gate two is not.
+- **What a later release needs**: a corpus scenario in which alarms clear — `eval/corpus/` has ten
+  and `flapping_noise` is the only one that closes anything. v0.17.0's corpus work.
+
+## 315. A declaration does not fill `alarm.severity`, and the census resolves it at read time (v0.16.7)
+
+- **Decision**: the census reads **the declared severity of the alarm's class first, then the
+  learned severity of the alarm**, which is the precedence `app/format.js::severity` has applied
+  since v0.16.3. One `LEFT JOIN` onto `label`, never a second rule.
+- **Reason**: v0.16.3 stores an operator's severity as `label(kind='severity', target_id=<class>,
+  qualifier='')` and **never writes `alarm.severity`** — precedence is a read-time decision so that
+  a disagreement between an operator and the appliance survives as evidence (#284). A census that
+  read the column alone would report an operator's own declaration as unplaced.
+- **Trade-off accepted**: the declaration is per **alarm class**, so declaring one severity moves
+  every active alarm of that class at once. That is what the declaration means, and the panel's
+  source line says the count is resolved declared-first.
+- **Measured**, end to end against a booted appliance: `POST /api/labels {kind: severity, id: 1,
+  label: critical}` → `200 {"status":"labelled"}`; `alarm.severity` afterwards: **1 716 of 1 716
+  still NULL**; the resolved census afterwards: **critical 1, unplaced 1 715**. Neither back-filled
+  nor applied to new alarms — the column is never written by the declaration path at all.
+
+## 316. The census is one more query on `/api/stats`, not a new route (v0.16.7)
+
+- **Decision** (decision 7): `/api/stats` gains a nested **`severity`** object. **No new route, no
+  new route parameter, no migration.**
+- **Reason**: `/api/stats` is the single read the Overview already makes on every poll, and it
+  already carries four nested members (`receiver`, `resources`, `warnings`, `ingest_gaps`) beside
+  its ten scalars. A second route would be a second round trip on the screen that must paint
+  fastest, and a second thing to authorise, for a number that is read at exactly the same moment as
+  the ten already there. `store/read_models.stats()` is a list of literal `COUNT(*)` statements over
+  small tables; this is the same shape three previous releases used.
+- **Trade-off accepted**: `/api/stats` grows a fifth nested member, and the route's response is
+  measurably larger for clients that do not draw the panel. The alternative was measured and is
+  worse.
+- **Measured** on the 1 716-alarm estate, 25 runs each: the learned-only `GROUP BY` at **0.387 ms**
+  median (0.545 ms max); the resolved query, with the `label` join the decision above requires, at
+  **0.563 ms** median (0.740 ms max). Plan: `SEARCH a USING INDEX idx_alarm_status`, `SEARCH s USING
+  INDEX sqlite_autoindex_label_1 LEFT-JOIN`, one temp B-tree for the grouping. The route's other
+  seven counts are unchanged and every key it already served keeps its name and type.
+
+## 317. Hand-written SVG again, and the Overview links to the force graph rather than embedding it (v0.16.7)
+
+- **Decision** (decisions 3 and 5): everything this release draws is **hand-written**, reusing
+  `app/charts.js`'s three types. **No topology projection is added to the Overview**; the estate map
+  keeps *"where"* and gains a visible link to the Graph screen, which owns the force scene.
+- **Reason for the link rather than a second projection**: #310 already put a deterministic
+  projection on the Overview because the force graph cannot compare two elements. Adding a third
+  drawing of the same two tables would answer no question the first two do not — and the d3 scene is
+  invisible to every assertion in this repository, because `tests/domharness/env.mjs` substitutes a
+  recording double for d3. Embedding it would double the untested surface to say something already
+  said.
+- **Measured**, on the three-scenario estate: `edge` holds **1** row of `kind='device'` and its
+  weight is **0.0**, so `graph_snapshot`'s `min_edge_n` filter returns **zero** edges. A topology on
+  the Overview would draw **two unconnected circles**. The class-level graph has 23 edges, but class
+  co-occurrence is not network topology and labelling it as one would be the untrue chart this
+  release exists to avoid.
+- **Trade-off accepted**: an operator who wants topology takes one click. The link is in the
+  estate map's own caption, where the question is asked.
+
+## 318. The Overview's reading order, with severity first and two prose blocks gone (v0.16.7)
+
+- **Decision** (decisions 4 and 6): **severity becomes band 1** and everything else moves down one.
+  The order is: **(1) how bad is it** — active alarms by band; **(2) what is happening** —
+  situations and alarms over time; **(3) where** — the estate map; **(4) which element is worst**;
+  **(5) is the appliance keeping up**; **(6) what has it learned**.
+- **What left, and what it answered**: the *"Your labelling"* block — a heading, a 24-word
+  paragraph and two stat tiles — is **deleted from the Overview**. It answered *"how many situations
+  can I judge"*, which the Labelling screen answers with the situations themselves in front of the
+  operator; a counter on a different screen was a number with nowhere to act on it. The link stays,
+  in the Operations group of the sidebar, where every other screen is reached. The *"Open
+  situations"* list **stays**: it is not prose, it is the eight most recent situations with their
+  ages, and it is the only place on this screen an operator can open one.
+- **Reason**: *"how many critical alarms are active right now"* is the question that decides whether
+  an operator gets out of their chair, and it was on no screen. It goes above everything that
+  describes it.
+- **Trade-off accepted**: an editor loses a count they had. They gain it back in one click, on the
+  screen where the count is actionable.
+- **Measured**, in Chromium against this release's own booted appliance holding 1 716 active alarms,
+  v0.16.6 before: the Overview is **2 606 px at 390 px — 3.09 viewports** on an 844 px phone, with
+  **8 charts, 4 stat tiles and 122 words of body prose** as admin (105 as editor, 74 as viewer), and
+  **nothing above the fold counts an alarm**.
+
+## 319. What v0.16.7 refuses, and what became drawable (v0.16.7)
+
+- **Decision** (decision 8): four charts stay refused and one of v0.16.6's four **became partly
+  drawable**; none of the four is drawn here.
+- **Still refused, unchanged**: a **loss curve** (`challenger_run` holds no per-iteration trace —
+  needs a table, so a pre-registration question first); a **residual distribution** (`0009`'s
+  posture is no read of `shadow_opinion` below admin on any route, so it is a security decision
+  before it is a chart); **per-fold results** (`evaluation_fold` stores membership, not results).
+- **Newly named, still refused**: **severity over time** (#313) and **top elements over a window**
+  — the latter is v0.16.6's fourth refusal and it is now exactly one route parameter away: `GROUP
+  BY ne_id` over `alarm.first_seen` inside a window. It is not taken here because the same corpus
+  measurement that refuses #313 refuses it: **1.14 seconds of alarm history**, so the window would
+  be a control with one setting.
+- **Measured**: the four v0.16.6 refusals were re-checked against the schema at `0016`, and three
+  are unchanged. The fourth is blocked by data, not by schema.
