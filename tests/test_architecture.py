@@ -951,7 +951,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
 #: the three things nothing measures. A release that
 #: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
-SRC_TREE_DIGEST = "a8d236fb3933520b56d2a627659ddd5168b8fec3c00fe3768419b32db1dd539b"
+SRC_TREE_DIGEST = "b5becc7ebe3268a141c9194d070e9ced3633b91d87c38efaca08a312f8a29e49"
 SRC_FILE_COUNT = 213
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
