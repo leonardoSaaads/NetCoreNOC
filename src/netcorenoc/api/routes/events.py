@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
+from netcorenoc.api.livestats import live_stats
 from netcorenoc.crosscutting import auth, rbac, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
@@ -57,10 +58,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 return None  # revoked mid-stream: stop sending, rather than serve a stale grant
             scope = await scope_for(principal)
             async with store.lock:
-                stats_out: dict[str, Any] = dict(
-                    await store.stats()
-                    if scope.unrestricted
-                    else await store.scoped_stats(scope.ne_ids, scope.ips)
+                # **One assembly, shared with `GET /api/stats`** (F115). These two surfaces
+                # publish the same object and built it twice until v0.16.7, when a key added to
+                # the route did not appear on the stream — and the console reads its live figures
+                # from HERE, so the Overview's new band rendered "not measured" over an appliance
+                # whose census was correct one route along. Nothing in this repository compares
+                # them: `/api/events` is in the behaviour record's NOT_DRIVEN set.
+                stats_out: dict[str, Any] = await live_stats(
+                    store, engine, scope, all_warnings, extra_stats
                 )
                 graph_out = await store.graph_snapshot(min_edge_n=MIN_EDGE_N)
                 # F38 applies to the stream too: truncating globally would make a scoped
@@ -89,11 +94,6 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     if scope.unrestricted
                     else await store.situation_member_nes([int(s["id"]) for s in sits])
                 )
-            stats_out["latency_p95_s"] = round(engine.latency_p95(), 4)
-            stats_out["queue_depth"] = engine.queue.qsize()
-            stats_out["warnings"] = all_warnings()
-            if extra_stats is not None:
-                stats_out.update(extra_stats())
             if not scope.unrestricted:
                 graph_out = shaping.project_graph(graph_out, scope)
                 # The same projection `GET /api/situations` uses, through the same function

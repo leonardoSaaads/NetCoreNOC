@@ -38,6 +38,10 @@ MODULE_ORDER: tuple[str, ...] = (
     "governance_cache.py",
     "perimeter.py",
     "declare.py",
+    # v0.16.7 (F115): the live statistics payload, which `routes/read.py` and
+    # `routes/events.py` both publish and both used to assemble for themselves. It sits
+    # before `app.py` because it is a helper the route modules import, not a registration.
+    "livestats.py",
     "app.py",
     "routes/__init__.py",
     "routes/static.py",

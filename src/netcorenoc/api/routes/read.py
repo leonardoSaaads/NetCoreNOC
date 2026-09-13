@@ -18,6 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
+from netcorenoc.api.livestats import live_stats
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
@@ -42,25 +43,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         scope = await scope_for(principal)
         async with store.lock:
             # Every enumerating counter is computed over the in-scope set, so out-of-scope activity
-            # cannot move a scoped viewer's numbers and become a volume oracle (F32).
-            out: dict[str, Any] = dict(
-                await store.stats()
-                if scope.unrestricted
-                else await store.scoped_stats(scope.ne_ids, scope.ips)
-            )
+            # cannot move a scoped viewer's numbers and become a volume oracle (F32). The assembly
+            # is shared with the `/api/events` stream (F115): this route and that one publish the
+            # same object, and building it twice is how the severity census reached one of them.
+            out: dict[str, Any] = await live_stats(store, engine, scope, all_warnings, extra_stats)
+            # The two members the stream genuinely does not carry, kept at the call site so the
+            # difference between the surfaces is visible where it is made.
             out["ingest_gaps"] = await store.list_ingest_gaps(20)
-            # v0.16.7 (#312, #316): active alarms by band, on the route the Overview already
-            # reads — and scoped by the same rule as every counter beside it, because `unplaced`
-            # rising with nothing visible to explain it is the volume oracle F32 named.
-            out["severity"] = await store.severity_census(
-                None if scope.unrestricted else scope.ne_ids
-            )
         out["open_ingest_gaps"] = engine.gap.snapshot()
-        out["latency_p95_s"] = round(engine.latency_p95(), 4)
-        out["queue_depth"] = engine.queue.qsize()
-        out["warnings"] = all_warnings()
-        if extra_stats is not None:
-            out.update(extra_stats())
         return out
 
     @route.get("/api/graph")

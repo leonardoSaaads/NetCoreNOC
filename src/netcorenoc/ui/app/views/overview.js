@@ -1,27 +1,33 @@
-/* The landing screen. **Five questions, in the order an operator asks them** (DECISIONS #304).
+/* The landing screen. **Six questions, in the order an operator asks them** (#304, #318).
  *
  * ## What this screen is for, in the maintainer's words
  *
  * *"The user wants to open the web application and immediately understand what is happening."*
- * Until v0.16.6 it was eleven paragraphs, 172 words, eleven counter tiles and **no charts** — 1 521
- * px tall at 390 px, which is 1.80 viewports of scrolling before the first situation. Measured in
- * Chromium against a live appliance holding 1 976 replayed traps, as admin, before any of this was
- * written.
+ * Until v0.16.6 it was eleven paragraphs, 172 words, eleven counter tiles and **no charts**. It
+ * gained eight charts there — and still did not answer the one question that decides whether a
+ * duty operator gets out of their chair: **how many critical alarms are active right now.** That
+ * number was on no screen in this console. It is now the first thing on this one.
  *
- * A count of active alarms cannot say whether it is a burst or a trickle, and that is the first
- * thing an operator needs to know. So the reading order is:
+ *   1. **How bad is it** — active alarms by band, and how many are on no band at all.
+ *   2. **What is happening** — situations and alarms over time.
+ *   3. **Where** — the estate map.
+ *   4. **Which element is worst** — elements by active alarms.
+ *   5. **Is the appliance itself keeping up** — CPU, memory, storage, queue depth, as series.
+ *   6. **What has it learned** — the two learned counters.
  *
- *   1. **What is happening** — situations and alarms over time.
- *   2. **Where** — the estate map.
- *   3. **Which element is worst** — elements by active alarms.
- *   4. **Is the appliance itself keeping up** — CPU, memory, storage, queue depth, as series.
- *   5. **What has it learned** — the two learned counters.
+ * A count of active alarms cannot say whether it is a burst or a trickle, which is why band 2
+ * exists; and a shape over time cannot say how serious any of it is, which is why band 1 comes
+ * first.
  *
  * ## What left, and what only changed shape
  *
- * **Gone**: this file's own `Health` component — seven tiles, two section headings and two
- * paragraphs — and the paragraph pointing at five offline reports, which is `docs/operate.md`'s job
- * and was a screen telling an operator to read a file.
+ * **Gone in v0.16.6**: this file's own `Health` component — seven tiles, two section headings and
+ * two paragraphs — and the paragraph pointing at five offline reports, which is `docs/operate.md`'s
+ * job and was a screen telling an operator to read a file.
+ *
+ * **Gone in v0.16.7**: *"Your labelling"* — a heading, a 24-word paragraph and two stat tiles
+ * counting situations an editor could judge. A count is not a task, and the Labelling screen
+ * answers the same question with the situations themselves in front of the operator (#318).
  *
  * **Not gone**: the receiver's five counters. F68's finding was that `receiver.denied` is the only
  * evidence an operator has that their own allowlist is refusing their own equipment, and that is as
@@ -44,8 +50,9 @@ import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
 import { Happening, MARK_LIMIT, Where, Worst } from "./parts/pulse.js";
 import { Keeping, Learned } from "./parts/keeping.js";
+import { Severity } from "./parts/severity.js";
 import { plural, relative, absolute, timeTitle, TIMEZONE } from "../format.js";
-import { can, canEdit, scopeSummary } from "../session.js";
+import { can, scopeSummary } from "../session.js";
 import * as store from "../store.js";
 
 export class Overview extends Component {
@@ -113,6 +120,7 @@ export class Overview extends Component {
         Situations may extend beyond it; members you cannot see are shown as a redacted count.
       </p>` : null}
 
+      <${Severity} census=${stats.severity} />
       <${Happening} situations=${live.situations || []} marks=${marks} at=${marksAt}
                     error=${marksError} retry=${() => this.readMarks()} />
       <${Where} nodes=${nodes} />
@@ -133,7 +141,12 @@ export class Overview extends Component {
         : html`<p class="hint">No open situations — alarms are arriving, nothing has
             correlated.</p>`}
 
-      ${canEdit() ? html`<${EditorPanel} />` : null}
+      ${/* **"Your labelling" left here in v0.16.7** (#318). A heading, a 24-word paragraph and
+            two stat tiles that answered *"how many situations can I judge"* — a count on a screen
+            with nothing to do about it. The Labelling screen answers the same question with the
+            situations themselves in front of the operator, and its link is in the sidebar with
+            every other screen's. What replaced it above is the count that decides whether an
+            operator stands up. */ null}
       ${can("promotion.read") ? html`<${OnDemand}
           title="Judge and promotion"
           hint=${"What the gate last decided, why it refused, and the seal's query count. Read " +
@@ -164,26 +177,6 @@ export class Overview extends Component {
           </div>
           <p><a class="tap" href="#/corpus">Open the corpus screen →</a></p>`} />` : null}
     </div>`;
-  }
-}
-
-/** What an editor's labels have produced — the thing an editor has never been shown. */
-class EditorPanel extends Component {
-  render() {
-    const situations = (store.get().situations || []).filter((s) => s.status !== "resolved");
-    const splittable = situations.filter((s) => s.alarm_count >= 2);
-    return html`<section class="panel-block">
-      <${SectionHeading} title="Your labelling"
-        hint=${"A label is only evidence if it was a decision. A situation with one member " +
-               "contains no pair to judge, so it is not counted here."} />
-      <div class="stat-row">
-        <${Stat} label="situations you can judge" value=${splittable.length}
-                 note="two or more members" />
-        <${Stat} label="singletons" value=${situations.length - splittable.length}
-                 note="nothing to confirm or split" />
-      </div>
-      <p><a class="tap" href="#/labelling">Open the labelling screen →</a></p>
-    </section>`;
   }
 }
 

@@ -366,7 +366,7 @@ UI_HASHES: dict[str, str] = {
     "app/charts.js": "e1f7cb46f49998f780decc562939445a78d832cd931bc5e8dd593ebea6074732",
     "app/destructive.js": "51994f0640e3e170061ec0f9bea068f7b3fff7348ca153ffb00d64cfb11838e0",
     "app/dom.js": "b0e279c902ae6f76a902dbc24bb8595d6936aff13f46354870120c4fe42b119b",
-    "app/format.js": "441d130bf7f6257124f8a2ca5c0573915ca3918a0ede8960f9f8cc40bb770db4",
+    "app/format.js": "1874d00bd2ab4fe82e0b8cacb82e48415e8117e19b89a44cb634ffffba16fb74",
     "app/health.js": "b88e3c4d10d35cc0975fc3360a2faf79d7d08fd680ae4dc538fc689066a7bf94",
     "app/icons.js": "bca6a442d593b20549197ade2231b887b821f72d0355c4b69c4160d2d44e1c98",
     "app/login.js": "ee936acd5ec82c2299416c9c87e594ab954b42dad137db4e8662eb6eded104fc",
@@ -389,7 +389,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
     "app/views/graph.js": "05f282c80124a41ec1716c6dd1f1d06386d4c63f3aa71eecfd36963ca8235a9c",
     "app/views/labelling.js": "f4700fc88921415127605c524cd8d3d8442eea40e7239cffb9473ccf950a97a0",
-    "app/views/overview.js": "90cd437cc1b508e45797ffb9e3d027c05e8a0d30aaba89892044e5f59533b7a0",
+    "app/views/overview.js": "131b15658551037df02cb0c50ea42c8ccaa6884b66619d48ef675aea9769133e",
     "app/views/parts/bulkclear.js": (
         "2c3b484d2a010c1b9a7b48bb6fb9eeab1b056c28111e8d55e052c872e45a2867"
     ),
@@ -423,6 +423,9 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/retention.js": (
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
     ),
+    "app/views/parts/severity.js": (
+        "781a512e5cd34a5ee45682b19c8eca0959b1c21bb4fe447e9ee8bd455d940c2b"
+    ),
     "app/views/parts/verdict.js": (
         "bfedceae5645684afeaf50c636bc56f2626f6822a7b03e6f45af9f6f9bc2a9d3"
     ),
@@ -438,7 +441,7 @@ UI_HASHES: dict[str, str] = {
     "app/widgets.js": "abe9f6d9342f0335ead13cef4061b54ace36f31e28b0d92308918c96a3561e21",
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "73f4206c6fa3dc1ae5ff0476f56c1c29e93e6bc38e2510c50311e96a1f833c1d",
-    "style.css": "6d0c66c74ff21c2971bc784c9fc581b4e8c37d8601339de9e3f332086660ce1a",
+    "style.css": "97db82c76f9f9622fff62d61923465713a99f42945ab37eae579b08de035c680",
     "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
     "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
     "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
@@ -461,7 +464,7 @@ UI_SIZES: dict[str, int] = {
     "app/charts.js": 16_918,
     "app/destructive.js": 4_152,
     "app/dom.js": 2_142,
-    "app/format.js": 16_964,
+    "app/format.js": 17_455,
     "app/health.js": 7_383,
     "app/icons.js": 7_222,
     "app/login.js": 7_137,
@@ -484,7 +487,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/governance.js": 10_218,
     "app/views/graph.js": 13_704,
     "app/views/labelling.js": 5_327,
-    "app/views/overview.js": 11_582,
+    "app/views/overview.js": 11_649,
     "app/views/parts/bulkclear.js": 3_112,
     "app/views/parts/card.js": 6_140,
     "app/views/parts/declare.js": 11_975,
@@ -500,6 +503,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/model.js": 10_290,
     "app/views/parts/pulse.js": 7_517,
     "app/views/parts/retention.js": 5_003,
+    "app/views/parts/severity.js": 8_317,
     "app/views/parts/verdict.js": 8_420,
     "app/views/parts/why.js": 10_884,
     "app/views/promotion.js": 11_378,
@@ -513,7 +517,7 @@ UI_SIZES: dict[str, int] = {
     "app/widgets.js": 11_923,
     "favicon.svg": 608,
     "index.html": 2_159,
-    "style.css": 82_719,
+    "style.css": 84_377,
     "vendor/CHECKSUMS.txt": 2_039,
     "vendor/d3.LICENSE": 764,
     "vendor/d3.v7.min.js": 279_706,

@@ -1641,3 +1641,55 @@ Run every command below from the repository root with the virtualenv active.
   it never reads — this is twice in one guard. A guard's *scope* deserves the same demonstration as
   its *rule*: `test_the_element_tag_check_goes_red_on_a_backticked_stray_tag` exists for exactly
   that reason one directory away, and has no counterpart here.
+
+## F115 — `/api/stats` and the `/api/events` stream assembled the same payload twice, and the console reads the one nothing compares
+
+- **What**: two route modules each built the live statistics object for themselves — the same
+  counters, the same scoping, the same engine numbers — and nothing in this repository compared
+  them. They agreed until v0.16.7 added the severity census to `routes/read.py`, which is **not**
+  the surface the console reads: `store.js` fills `state.stats` from the `/api/events` update
+  stream, so the Overview's new band rendered *"— critical of an unread count"* on an appliance
+  whose census was correct one route along.
+- **Why nothing saw it**: `/api/events` is in the behaviour record's `NOT_DRIVEN` set — a stream has
+  no single response to hash — and the DOM harness captures route payloads rather than the stream.
+  So the only surface that could show the drift was a browser, and only because the panel was
+  written to say *"not measured"* rather than *"0"* when the block is missing. **The honest
+  fallback is what made the defect visible**; a panel that defaulted to zero would have rendered
+  four confident zeros and nobody would have looked.
+- **Reproduce**, on the tree before the repair:
+  ```sh
+  # Both blocks exist, and only one of them has the census.
+  grep -n "await store.stats()" src/netcorenoc/api/routes/read.py src/netcorenoc/api/routes/events.py
+  ```
+- **Measured**: the two assemblies were **14 lines each**, differing only in that `/api/stats` adds
+  `ingest_gaps` and `open_ingest_gaps`. The console's live figures come from the stream on every
+  screen: `store.js` sets `state.stats = update.stats` and nothing else writes it.
+- **Fix**: `src/netcorenoc/api/livestats.py` — one `live_stats()` both routes call, with the two
+  members that genuinely differ kept at the call site so the difference is visible where it is
+  made. `tests/apisource.py::MODULE_ORDER` and `tests/test_structure.py::SUBMODULES` gain the
+  module, so the source-scanning guards keep covering the package.
+- **Disposition**: **closed by v0.16.7**. Repaired inside a feature against directive 12, for the
+  same reason F113 was: the feature is wrong without it. Adding the census to the second copy would
+  have shipped the defect with one more line in it.
+- **What is still open**: nothing compares the two surfaces. The repair removes today's drift by
+  removing the duplication, but a future key added to one caller's post-assembly block would drift
+  again, and `NOT_DRIVEN` still means no gate watches the stream. A test that subscribes to
+  `/api/events`, takes one frame and compares its `stats` against `GET /api/stats` minus the two
+  gap members would close it, and is **not** written here.
+
+## F116 — `unitText` prints `1 alarms`
+
+- **What**: `chartdata.unitText(1, "alarms")` renders `1 alarms`. Every `Bars` chart carrying a
+  count unit shows it whenever a bar reads one — the Overview's *"Busiest 5 elements"* since
+  v0.16.6 and its severity band since v0.16.7.
+- **Reproduce**:
+  ```sh
+  .venv/bin/python -m pytest -q tests/test_ui_invariants.py -m dom \
+      -k a_band_that_was_graded -p no:cacheprovider   # then print the rendered bar values
+  ```
+- **Measured**: driven in Chromium against a live appliance with three declared severities, the
+  band read `▲ critical 1 alarms` beside `◆ major 500 alarms`.
+- **Disposition**: **open**. Not fixed here (directive 12): it is a grammar defect in the shared
+  chart vocabulary, not in this release's feature, and `format.js::plural` already holds the rule
+  `unitText` would have to call. The fix is one line in `chartdata.js` and it moves every chart in
+  the console, so it belongs in a commit of its own with the pins that move with it.
