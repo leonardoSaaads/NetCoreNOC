@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import socket
 import subprocess  # nosec B404 - fixed argv, shell=False; see _spawn
 import sys
@@ -169,6 +170,23 @@ def up(
     return children, elapsed
 
 
+def _install_signal_handlers(children: list[subprocess.Popen[bytes]]) -> None:
+    """Stop the appliance and the agents when this process is asked to stop.
+
+    Python's default SIGTERM handler exits **without unwinding**, so `main`'s `finally` never runs
+    and the children outlive their parent. That is how v0.17.0's own verification run left an
+    appliance holding port 8080 — which the F122 guard then correctly refused to start beside, in a
+    different directory, twenty minutes later. An orphaned lab is a port conflict with a long fuse.
+    """
+
+    def _bye(signum: int, _frame: object) -> None:  # pragma: no cover - signal path
+        _stop(children)
+        raise SystemExit(128 + signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, _bye)
+
+
 def _stop(children: list[subprocess.Popen[bytes]]) -> None:
     for child in reversed(children):
         child.terminate()
@@ -199,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     control.write("steady", args.state)
 
     children, elapsed = up(args.scenario, args.trap_port, args.http_port, args.db, args.state)
+    _install_signal_handlers(children)
     print(  # noqa: T201
         f"appliance healthy in {elapsed:.1f}s -> http://127.0.0.1:{args.http_port}/"
     )
