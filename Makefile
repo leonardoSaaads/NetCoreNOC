@@ -4,6 +4,7 @@ PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list loadtest burst \
 	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
+	lab lab-demo lab-cut lab-repair lab-status \
 	bias-report dataset-stats agreement-report shadow-report census
 
 qa: lint typecheck deadcode scan test eval
@@ -151,6 +152,29 @@ corpus:
 sim:
 	$(PYTHON) tools/trap_sim.py $${SCENARIO:-login_burst} --send \
 		--port $${NETCORENOC_TRAP_PORT:-1162}
+
+# --- the testbed (v0.17.0, DECISIONS #329-#334) ------------------------------------------------
+#
+# A two-host fibre cut you can trigger while watching it. `testbed/README.md` is the whole story;
+# these four targets are the commands it prints, so an operator never has to know the tree.
+#
+# `lab` leaves the appliance and both NE agents running and tells you what to type next. `lab-demo`
+# is the unattended version CI runs: three cut/repair cycles, then it reports from the DATABASE —
+# two distinct sources, the situation, the clears — rather than from a log line.
+lab:
+	$(PYTHON) testbed/run_local.py
+
+lab-demo:
+	$(PYTHON) testbed/run_local.py --demo --cycles $${CYCLES:-3} --hold-s $${HOLD:-18}
+
+lab-cut:
+	$(PYTHON) testbed/control.py cut
+
+lab-repair:
+	$(PYTHON) testbed/control.py repair
+
+lab-status:
+	$(PYTHON) testbed/control.py status
 
 # Apply pending schema migrations to NETCORENOC_DB (idempotent; runs at startup too).
 migrate:

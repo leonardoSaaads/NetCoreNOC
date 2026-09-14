@@ -75,7 +75,7 @@ netcorenoc = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tools", "tests", "eval"]
+src = ["src", "tools", "tests", "eval", "testbed"]
 # The vulture dead-code allowlist is intentionally a list of bare names (not real code).
 extend-exclude = ["vulture_allowlist.py"]
 
@@ -92,6 +92,10 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 known-local-folder = [
     "metrics", "trap_replay", "harness", "corpus_gen", "scenario_dsl", "trap_sim",
     "util", "authutil", "apisource", "behaviour_identity",
+    # v0.17.0: the lab (DECISIONS #329). `ne` is `testbed/ne/`, imported by the agents and by
+    # `tests/test_testbed.py` the same way `harness` is imported from `eval/` — a local dev module,
+    # never part of the distributed package, which `MANIFEST.in` prunes and a guard asserts.
+    "ne",
 ]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
@@ -105,8 +109,8 @@ known-local-folder = [
 [tool.mypy]
 strict = true
 python_version = "3.12"
-files = ["src", "tools", "tests", "eval"]
-mypy_path = ["src", "eval", "tools"]
+files = ["src", "tools", "tests", "eval", "testbed"]
+mypy_path = ["src", "eval", "tools", "testbed"]
 
 [[tool.mypy.overrides]]
 module = ["pysnmp.*", "pyasn1.*"]

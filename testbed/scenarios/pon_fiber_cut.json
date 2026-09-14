@@ -1,0 +1,335 @@
+{
+  "name": "pon_fiber_cut",
+  "description": "A fibre cut on the span between two GPON OLTs, the ONU storm behind it, and the clears on repair. Two hosts with distinct addresses, driven live: `python testbed/control.py cut`, then `... repair`.",
+  "notes": [
+    "THE SPAN uses the IETF standard linkDown (1.3.6.1.6.3.1.1.5.3) and linkUp (1.3.6.1.6.3.1.1.5.4) notifications from RFC 3418 / RFC 2863. The appliance carries that pair in known_oids.CLEAR_PAIR_SEEDS, so the span alarm clears on the FIRST repair with zero configuration.",
+    "THE ONUs use a vendor arc, and their raise/clear pairing is NOT bundled. The appliance learns it from strict alternation: learn.CLEAR_CYCLES_TO_LEARN = 2, so after cut/repair twice the pair is trusted and from the THIRD cut the ONU alarms clear too. That progression is the product's own thesis \u2014 the network teaches the appliance \u2014 and the lab is where you watch it happen.",
+    "Trap OIDs below an ENTERPRISE arc are ILLUSTRATIVE, not vendor-attested. The enterprise numbers are real IANA PENs (2011 Huawei, 1271 Ciena); the sub-arcs are shaped like a GPON/transport MIB and are not read from one. No vendor MIB file is in this repository. Attested vendor mappings with citations are v0.17.1's job.",
+    "The severity varbind is X.733 perceived severity carried at the IETF ALARM-MIB arc (1.3.6.1.2.1.118.1.2.2.1.4, RFC 3877), with its six tokens exactly matching known_oids.SEVERITY_VOCAB. The appliance will still render every alarm UNPLACED, because severity.py refuses a ranking that observed lifetimes have not confirmed (SEVERITY_MIN_CLOSED = 50). That refusal is correct and the console says so."
+  ],
+  "hosts": [
+    {
+      "id": "olt-a",
+      "address": "127.0.0.2",
+      "role": "GPON OLT, west end of the cut span",
+      "enterprise": 2011,
+      "onus": [
+        "1/1/1",
+        "1/1/2",
+        "1/1/3",
+        "1/1/4",
+        "1/1/5",
+        "1/1/6"
+      ]
+    },
+    {
+      "id": "olt-b",
+      "address": "127.0.0.3",
+      "role": "GPON OLT, east end of the cut span",
+      "enterprise": 2011,
+      "onus": [
+        "2/1/1",
+        "2/1/2",
+        "2/1/3",
+        "2/1/4"
+      ]
+    }
+  ],
+  "phases": {
+    "steady": {
+      "description": "Nothing is broken. A flapping access port on olt-a, raised and cleared five seconds later, every twelve seconds \u2014 the most ordinary thing in a real NOC, and the reason the console is not empty before the cut. It uses the STANDARD linkDown/linkUp pair, which the appliance already knows (known_oids.CLEAR_PAIR_SEEDS), so it clears from the very first heartbeat and never leaves an alarm behind to hold the fibre-cut situation open after the repair. ifIndex 999 keeps it a different instance from the two span uplinks, so it is a distinct alarm rather than a duplicate of the cut.",
+      "repeat_every_s": 12.0,
+      "events": [
+        {
+          "at_s": 0.0,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+          "role": "a flapping access port goes down",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.2.1.2.2.1.1",
+              "kind": "int",
+              "value": "999"
+            },
+            {
+              "oid": "1.3.6.1.4.1.1271.9.1",
+              "kind": "str",
+              "value": "access-port-99"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "minor"
+            }
+          ]
+        },
+        {
+          "at_s": 5.0,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+          "role": "\u2026and comes back (bundled pair, clears with no learning)",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.2.1.2.2.1.1",
+              "kind": "int",
+              "value": "999"
+            },
+            {
+              "oid": "1.3.6.1.4.1.1271.9.1",
+              "kind": "str",
+              "value": "access-port-99"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "cleared"
+            }
+          ]
+        }
+      ]
+    },
+    "cut": {
+      "description": "The span is cut. Both OLTs lose the uplink within a second of each other, then every ONU behind each one reports loss of signal and dying gasp. This is the storm the correlator has to collapse into one situation.",
+      "events": [
+        {
+          "at_s": 0.0,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+          "role": "root: standard linkDown on the cut span (west end)",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.2.1.2.2.1.1",
+              "kind": "int",
+              "value": "101"
+            },
+            {
+              "oid": "1.3.6.1.4.1.1271.9.1",
+              "kind": "str",
+              "value": "span-west-1"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "critical"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.5",
+              "kind": "int",
+              "value": "8"
+            }
+          ]
+        },
+        {
+          "at_s": 0.7,
+          "host": "olt-b",
+          "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+          "role": "the far end of the same cut, seen from the other host",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.2.1.2.2.1.1",
+              "kind": "int",
+              "value": "201"
+            },
+            {
+              "oid": "1.3.6.1.4.1.1271.9.1",
+              "kind": "str",
+              "value": "span-east-1"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "critical"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.5",
+              "kind": "int",
+              "value": "8"
+            }
+          ]
+        },
+        {
+          "at_s": 1.6,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.4.1.1271.2.1.2",
+          "role": "excessive bit error rate as the span degrades",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.4.1.1271.9.1",
+              "kind": "str",
+              "value": "span-west-1"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "major"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.5",
+              "kind": "int",
+              "value": "12"
+            }
+          ]
+        },
+        {
+          "at_s": 2.2,
+          "per_onu": true,
+          "spread_s": 3.5,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.4.1.2011.6.128.1.1.2.2",
+          "role": "the storm: every ONU behind olt-a reports loss of signal",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.4.1.2011.6.128.1.1.2.2.1",
+              "kind": "str",
+              "value": "{onu}"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "major"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.5",
+              "kind": "int",
+              "value": "8"
+            }
+          ]
+        },
+        {
+          "at_s": 3.0,
+          "per_onu": true,
+          "spread_s": 3.5,
+          "host": "olt-b",
+          "trap_oid": "1.3.6.1.4.1.2011.6.128.1.1.2.2",
+          "role": "the same storm behind the other host",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.4.1.2011.6.128.1.1.2.2.1",
+              "kind": "str",
+              "value": "{onu}"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "major"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.5",
+              "kind": "int",
+              "value": "8"
+            }
+          ]
+        }
+      ]
+    },
+    "repair": {
+      "description": "The splice is done. The span comes up first \u2014 a standard linkUp, which the appliance pairs with linkDown out of the box \u2014 then the ONUs re-range. The ONU pairing is learned rather than bundled, so on the first two repairs those alarms stay active and from the third cut onward they clear.",
+      "events": [
+        {
+          "at_s": 0.0,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+          "role": "clear: standard linkUp, the span is back (west end)",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.2.1.2.2.1.1",
+              "kind": "int",
+              "value": "101"
+            },
+            {
+              "oid": "1.3.6.1.4.1.1271.9.1",
+              "kind": "str",
+              "value": "span-west-1"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "cleared"
+            }
+          ]
+        },
+        {
+          "at_s": 0.6,
+          "host": "olt-b",
+          "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+          "role": "clear: the far end agrees",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.2.1.2.2.1.1",
+              "kind": "int",
+              "value": "201"
+            },
+            {
+              "oid": "1.3.6.1.4.1.1271.9.1",
+              "kind": "str",
+              "value": "span-east-1"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "cleared"
+            }
+          ]
+        },
+        {
+          "at_s": 1.2,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.4.1.1271.2.1.3",
+          "role": "clear: the bit error rate is back inside spec (learned pair)",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.4.1.1271.9.1",
+              "kind": "str",
+              "value": "span-west-1"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "cleared"
+            }
+          ]
+        },
+        {
+          "at_s": 1.8,
+          "per_onu": true,
+          "spread_s": 4.0,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.4.1.2011.6.128.1.1.2.4",
+          "role": "clear: the ONUs re-range behind olt-a (learned pair)",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.4.1.2011.6.128.1.1.2.2.1",
+              "kind": "str",
+              "value": "{onu}"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "cleared"
+            }
+          ]
+        },
+        {
+          "at_s": 2.4,
+          "per_onu": true,
+          "spread_s": 4.0,
+          "host": "olt-b",
+          "trap_oid": "1.3.6.1.4.1.2011.6.128.1.1.2.4",
+          "role": "clear: the ONUs re-range behind olt-b (learned pair)",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.4.1.2011.6.128.1.1.2.2.1",
+              "kind": "str",
+              "value": "{onu}"
+            },
+            {
+              "oid": "1.3.6.1.2.1.118.1.2.2.1.4",
+              "kind": "str",
+              "value": "cleared"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

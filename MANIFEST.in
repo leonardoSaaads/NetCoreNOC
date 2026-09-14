@@ -22,3 +22,7 @@ exclude CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md MIGRATION.md CHANGELOG.md
 # Never ship secrets, databases, or caches.
 global-exclude .env .env.* *.db *.db-wal *.db-shm *.pyc
 global-exclude __pycache__ .DS_Store
+
+# The testbed (v0.17.0): a development tree like tests/, eval/ and tools/. An sdist that carried
+# it would ship a trap generator to an operator, and `tests/test_testbed.py` asserts this line.
+prune testbed

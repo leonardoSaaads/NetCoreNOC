@@ -36,6 +36,9 @@ TOP_LEVEL_REQUIRED = [
     "eval",
     "tools",
     "docs",
+    # v0.17.0: the lab. Required rather than optional, because a `testbed/` that quietly went
+    # missing would take the only end-to-end check of the zero-configuration claim with it.
+    "testbed",
 ]
 
 # **v0.15.0 replaced this taxonomy** (DECISIONS #198). It named six directories, four of which held

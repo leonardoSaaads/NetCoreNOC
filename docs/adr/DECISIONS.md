@@ -3790,3 +3790,122 @@ From this release an entry is about six lines: decision, reason, release.*
   `tests/test_scoring.py`'s module denylist and five prose references, and changed no guard's verdict
   on any input. Neither generator is imported by anything — both are scripts — so the move had no
   import graph to simplify either.
+
+## 329. The testbed scenario format extends the corpus shape and cannot carry truth (v0.17.0)
+
+- **Decision** (decision 9): a new format in `testbed/scenarios/*.json`, reusing the corpus's event
+  shape (`source`/`trap_oid`/`varbinds`) and adding three things: `hosts` (named NEs with an address,
+  an IANA PEN and the ONUs behind them), `phases` instead of one flat timeline, and `per_onu` fan-out.
+  The loader **refuses a `truth` key at any depth**.
+- **Reason**: the existing DSL (`eval/scenario_dsl.py`) and the corpus JSON each answer a different
+  question — a declarative simulator for `tests/test_operation.py`, and a *labelled* gate input. The
+  lab needs neither: it needs a timeline an operator can interrupt, which is what `phases` are, and it
+  must never produce a label, which is what the refusal is. Extending the corpus shape rather than the
+  DSL keeps `trap_replay.encode_trap` as the one PDU encoder in the repository.
+- **What replacing the DSL would have cost**: `eval/scenario_dsl.py` is driven by two test modules and
+  `make sim`; folding the lab into it would have put an operator-triggered phase machine inside a
+  module whose callers want a deterministic offline replay, and coupled the lab's evolution to a gate.
+- **Why the refusal is stronger than a check**: making truth *unrepresentable* beats checking that it
+  does not leak. The walk is recursive because `eval/corpus/*.json` keeps `truth` **inside each
+  event**, so a top-level check would accept a fully labelled corpus file copied into the lab.
+- **Trade-off accepted**: two scenario formats now exist in the repository. That is the honest cost of
+  the boundary — one format that could carry truth and be pointed at a live appliance is the thing
+  `PREREGISTRATION-0.10.0.md` §6 forbids.
+- **Measured**: `pon_fiber_cut.json` resolves to 19 cut events over two hosts and 12 repair events;
+  two loads are identical; `scenario.load(eval/corpus/fiber_cut.json)` raises verbatim.
+
+## 330. The lab's live state is a file, and it carries a sequence number (v0.17.0)
+
+- **Decision** (decision 10): `testbed/state/phase` holds one word and `testbed/state/phase.seq` a
+  counter. `python testbed/control.py cut` writes both atomically; the agents poll them.
+- **Reason**: the maintainer's ask is a gesture made while watching the console, so the phase is
+  state rather than a script argument. The agents are separate processes — separate containers under
+  compose — and need to see a transition within a second of each other. A file on a shared volume does
+  that with no port, no protocol and **no new runtime dependency** (directive 6), and it is the thing
+  an operator can `cat` when the lab misbehaves.
+- **Why the sequence number is not decoration**: without it an agent cannot distinguish *"still cut"*
+  from *"cut again"*, and re-cutting is the fastest way to watch a situation form twice. A phase file
+  alone makes the second cut invisible.
+- **Trade-off accepted**: polling, at 0.25 s. A socket would be prompter and would add a protocol to
+  debug; the lab's resolution is a human watching a browser, and 250 ms is under it.
+- **Measured**: `cut` twice yields `(cut, 1)` then `(cut, 2)`; a corrupt `phase.seq` reads as `steady`
+  rather than raising, so the lab's first second is not its most fragile.
+
+## 331. One container per NE, measured against the alternative (v0.17.0)
+
+- **Decision** (decision 11): one process — one container under compose — per simulated host.
+- **Reason**: the maintainer's stated need is **two different hosts**, and `trap_replay.Sender` can
+  already send from two source addresses in one process, so the cheap option was available and was
+  rejected on three counts. One process means one crash takes both NEs down; one `--collector` flag
+  points both at the same appliance, so "half the estate is pointed somewhere else" is untestable; and
+  killing one NE — the most obvious thing to do in a lab — is not a thing you can do.
+- **The measured cost of the choice**: two extra Python processes, about 30 MB resident, and a second
+  `Dockerfile`. The NE image carries `pysnmp` and nothing else — **no new dependency**, since the
+  appliance already requires it — and copies no `src/`, so directive 7 holds at the image layer too.
+- **The failure this choice exposed, which is the real find**: `Sender.socket_for` binds its source
+  under `contextlib.suppress(OSError)`, so an unbindable address **silently falls back to the default
+  local address**. Correct for a load generator; fatal for a lab whose entire claim is two sources,
+  because the console then shows one device and nothing says why. Each agent therefore binds its own
+  address up front and exits non-zero if it cannot.
+- **Measured**: `SELECT DISTINCT ip FROM device` after a run returns `127.0.0.2` and `127.0.0.3` —
+  two rows, from the database rather than from a log line.
+
+## 332. The evidence boundary the lab cannot cross, and where it is enforced (v0.17.0)
+
+- **Decision** (decision 12): three guards, each demonstrated red. (a) `scenario.load` refuses ground
+  truth, so generated traffic has no label to leak. (b) `tests/test_testbed.py` asserts over the AST
+  that no module under `src/netcorenoc/` imports the lab. (c) `MANIFEST.in` prunes `testbed/` and
+  `.dockerignore` excludes it, so it cannot ship.
+- **Reason**: `PREREGISTRATION-0.10.0.md` §6 forbids the generator's truth from reaching the promotion
+  path, and before this release that held because pointing a generator at a live appliance was awkward.
+  v0.17.0 makes it one command, so the boundary has to move from circumstance into the tree.
+- **Why the layer guard could not do (b)**: `test_layers.py::_imports` collects only `netcorenoc.*`
+  names, so `from ne import control` inside `src/` would be **invisible** to it — the layer table has
+  no row for a directory outside the package, and adding one would mean classifying the lab as a
+  layer, which it is not. Hence a guard of its own, over the AST rather than over text.
+- **Trade-off accepted**: (b) is a second import guard rather than an extension of the first. Two
+  guards with clear scopes beat one guard whose scope has to be explained.
+- **Measured**: injections — `from ne import control` added to `src/netcorenoc/main.py` → red, naming
+  the file and line; the lab compose pointed at `netcorenoc-data` → red; pointed at `8080:8080` → red;
+  `eval/corpus/fiber_cut.json` loaded as a testbed scenario → red. Control green after each.
+
+## 333. The lab runs without Docker too, and that is the path v0.17.0 could execute (v0.17.0)
+
+- **Decision**: `testbed/run_local.py` brings up the appliance and both agents on loopback aliases,
+  and is a first-class entry point rather than a fallback. `make lab`, `make lab-demo`.
+- **Reason**: two, and the second is the honest one. It is the faster loop — the console is static ES
+  modules and the appliance is one process, so a lab needing an image rebuild to change a trap offset
+  is a lab people stop using. And **it is the only path this release could run**: the build environment
+  had a working Docker daemon and no reachable registry (`registry-1.docker.io` answers 403 to the
+  egress proxy, an organisation policy denial), so no base image could be pulled and `docker compose
+  up` was never executed.
+- **What that means for the claims**: every measured number about the lab came from `run_local.py`.
+  The compose file is written and `docker compose config` validates it; it is **not proven**, and
+  `testbed/README.md` §"What was actually run" and the compose preamble both say so. Part VIII
+  resolves an unrun testbed to *"it does not work"*, and the honest report is which half was run.
+- **Trade-off accepted**: two entry points to keep working. They share the agent, the scenario loader
+  and the control file — only the address source and the collector host differ, which is why `--address`
+  exists.
+- **Measured**: `/healthz` in **1.0 s** from a clean state; three cut/repair cycles in **112 s**;
+  25 of 25 alarms cleared; one situation of 24 members named `Storm -> 127.0.0.2 and 1 more`.
+
+## 334. What the lab demonstrates that no gate could: the appliance learning a vendor's clears (v0.17.0)
+
+- **Decision**: the scenario uses the **standard** `linkDown`/`linkUp` pair for the span and a
+  **vendor** arc for the ONUs, deliberately, so one clears immediately and the other has to be learned.
+- **Reason**: the span pair is in `known_oids.CLEAR_PAIR_SEEDS` (RFC 3418 / RFC 2863), so it clears on
+  the first repair with nothing configured. The ONU pair is not bundled, and
+  `learn.CLEAR_CYCLES_TO_LEARN = 2` means two full alternations before it is trusted — so cut and
+  repair three times and the ONU alarms start clearing too. That progression *is* the product's thesis,
+  and it is not visible in `make eval`, which replays each scenario once against a frozen baseline.
+- **What it also fixes**: #314 recorded that **no shipped corpus scenario closes anything**, which is
+  why severity is unknowable on the corpus. The lab closes 25 alarms per run. That does not make
+  severity placeable — `SEVERITY_MIN_CLOSED = 50` is per NE and the lab is nowhere near it, and
+  v0.17.0 deliberately does not lower it — but it is the first thing in this repository that generates
+  alarm lifetimes at all, which is what v0.17.2's corpus work needs.
+- **Trade-off accepted**: the first two cut/repair cycles leave ONU alarms active, which reads as a
+  bug to someone who has not read the README. Stated there, in the table and in the scenario's own
+  `notes`, because the alternative is a lab that fakes zero-configuration by configuring it.
+- **Measured**: after three cycles, `edge` holds three `clear_pair` rows —
+  `1.3.6.1.6.3.1.1.5.3 → …5.4` (bundled), `2011.6.128.1.1.2.2 → …2.4` and `1271.2.1.2 → …2.1.3`
+  (both learned) — and every alarm is `cleared`, every situation `resolved`.
