@@ -3592,3 +3592,383 @@ From this release an entry is about six lines: decision, reason, release.*
   be a control with one setting.
 - **Measured**: the four v0.16.6 refusals were re-checked against the schema at `0016`, and three
   are unchanged. The fourth is blocked by data, not by schema.
+
+## 320. The package tree does not move, and the measurement is the argument (v0.17.0)
+
+- **Decision** (decision 1): `src/netcorenoc/`'s five layer directories and `engine/`'s six domains
+  stay exactly as v0.15.1 left them. #207–#210 are **confirmed, not superseded**.
+- **Reason**: the brief asks whether `engine/` *earns* 59 files, and the honest answer is measured
+  rather than felt. The cross-domain import graph is a near-DAG: `correlate` is a pure sink
+  (28 edges in, 0 out), `operate` and `report` are pure sources (20 and 14 out, 0 in), and the only
+  cycle is `dataset ↔ model` at 1 and 2 edges. A folder whose six members form a DAG is six
+  boundaries, not one drawer. `store/` is a data layer, not a second domain layer: 23 of its 26
+  modules contain SQL and **zero** import `engine` or `api`.
+- **Trade-off accepted**: the release spends none of its latitude on the package tree, so a reader
+  who expected a redrawn `src/` gets the same tree with better guards. Part VIII decides it —
+  *"ambiguity about whether a move is worth it resolves to the named cost. No cost, no move"* — and
+  Part VII.7 forbids a rename whose only argument is taste.
+- **Also decisive**: prime directive 3 pins the trap path's *contents* by hash, and all five of those
+  modules import absolutely. Moving anything they name rewrites their import lines, which changes
+  their bytes. So the interiors of `correlate/`, `dataset/`, `operate/` and `ingest/` are closed to
+  this release by its own first constraint, and a restructure of `engine/` that skipped them would
+  move only `model/`, `evaluation/` and `report/` — the three with no measured cost.
+- **Measured**: 129 `.py` under `src/netcorenoc`; `engine/` 59 files / 13 326 lines in six domains;
+  15 cross-domain edges, 1 cycle; `store/` 26 modules, 0 upward imports.
+
+## 321. The 81 test files keep one flat directory, and the marker stays at one (v0.17.0)
+
+- **Decision** (decision 2): no test directories, no new markers, no en-masse rename. A contributor
+  adds `tests/test_<subject>.py` beside the rest, and `dom` remains the only marker.
+- **Reason**: the cost of the flat layout was looked for and not found. What a newcomer actually
+  needs is *"where is the fibre cut?"*, and `tests/` answers that by filename already —
+  `test_correlate.py`, `test_receiver.py`, `test_scenarios.py`. Splitting into `unit/`,
+  `integration/` and `ui/` would rewrite 57 of 81 paths that are named as text somewhere in this
+  repository, against no defect anyone can point at. A restructure whose benefit is symmetry and
+  whose cost is 57 rewritten references is the trade the maintainer refused.
+- **Trade-off accepted**: `tests/test_ui_invariants.py` is 4 048 lines and the 400-line module guard
+  covers `src/` and `ui/` but not `tests/`. That is a real gap and it is **F118**, not a move: a
+  guard extended to test files would go red on 9 files today, which is a decision with an owner
+  rather than something to bury in a restructure (directive 12).
+- **Measured**: 81 `test_*.py`, 89 `.py`, 38 792 lines, one marker, 74 DOM tests executed; 57 of the
+  81 named as text somewhere, but every one of those in prose, a citation or a `-k` selector, and
+  none in a guard that would silently stop guarding.
+
+## 322. `eval/` splits by *what a thing is for*, and `tools/` states who runs it (v0.17.0)
+
+- **Decision** (decision 3): `eval/` keeps its name and its harness, and the generators move under
+  `eval/generators/`; the corpus stays at `eval/corpus/`. `tools/evidence/` — six per-release scripts
+  — moves to `tools/evidence/` unchanged, and `tools/` gains a README stating which of its scripts an
+  operator runs and which a release runs.
+- **Reason**: the measured cost is a loaded gun, not an aesthetic. `eval/corpus/` is the subject the
+  frozen gate is a baseline *of*, and `eval/corpus_gen.py` **writes into it** — `make corpus`
+  regenerates the corpus that `make eval` gates on, in the same directory, with no record. Putting
+  the generators one level down does not by itself prevent that; #324's re-baseline log is what makes
+  the re-cut auditable, and the directory split is what makes the two roles legible to a reader.
+- **Trade-off accepted**: `eval/` still holds three kinds of thing (a gate, a DSL, a simulation
+  package). Splitting it into three top-level directories was rejected because `tests/test_structure.py`
+  pins the top-level tree and `eval/simulation/` is imported by `tests/test_simulation.py` and
+  `test_operation.py` by bare module name through `known-local-folder` — a top-level move would
+  rewrite that isort configuration for no measured defect.
+- **Measured**: `eval/` 3 068 lines across 12 modules plus 10 corpus scenarios (3 159 events) and one
+  baseline; `tools/` 2 113 lines across 10 scripts, 4 operator-facing and 6 release-facing.
+
+## 323. `docs/` gains a reader's first page and keeps the process record where it is (v0.17.0)
+
+- **Decision** (decision 4): `docs/README.md` becomes the reader's entry point and states, in its
+  first lines, which files are documentation and which two are append-only process record.
+  `DECISIONS.md` and `findings.md` do not move.
+- **Reason**: measured, **51 % of `docs/` is process record** — `DECISIONS.md` 3 594 lines and
+  `findings.md` 1 780 of 10 598 — and both sit at the same level as `install.md` and `operate.md`,
+  so a newcomer opening `docs/` cannot tell the two registers apart. The cost is a reader who starts
+  in a 3 594-line append-only log looking for how to install the thing.
+- **Trade-off accepted**: moving them into `docs/record/` would be the tidier tree and is refused on
+  one measurement: **98+ docstrings in `src/` cite ADR numbers** and `docs/adr/DECISIONS.md` is named
+  as text in 20 files. The gain is alphabetical; the cost is every citation in the tree.
+- **Measured**: 29 files, 10 598 lines, three subdirectories; `adr/` + `findings.md` = 5 374 lines.
+
+## 324. A baseline that cannot be re-cut is a baseline that forbids a corpus (v0.17.0)
+
+- **Decision** (decision 6): `make eval-baseline REASON="…"` re-cuts the frozen baseline. It
+  **refuses to run without a reason**, checks that before the two-minute replay, and appends the
+  digest it replaced beside the digest it wrote — plus every aggregate metric that moved — to
+  `eval/baselines/REBASELINE-LOG.md`.
+- **Reason**: `make eval`'s stdout hash has held at `c2e8a0ce…` since v0.7.0, which is exactly what a
+  large refactor needs: *did this change correlation behaviour when I did not mean to?* It is not a
+  reason the corpus may never grow, and before this release the only way to grow it was to overwrite
+  `eval/baselines/v0.2.0.json` by hand — an edit no reviewer can distinguish from a behaviour change
+  that was papered over. A mandatory reason and a recorded pair of digests turn that into a commit
+  someone can argue with.
+- **Trade-off accepted**: the log is prose, so it records *a* reason rather than a *true* one. The
+  alternative — a machine-checkable justification — would have to know what a legitimate corpus
+  change is, which is the judgement the log exists to surface rather than to replace.
+- **Measured**: refused three ways (no `REASON`, whitespace `REASON`, no `--reason`); the refusal
+  returns in 0.42 s because it precedes the replay, and `tests/test_rebaseline.py` pins that ordering
+  by monkeypatching `run_all` to explode. The happy path recorded 8 moved metrics and both digests.
+- **Note on the renderer**: the log writes values with `repr`, not the delta table's 4-decimal
+  `_fmt`. The v0.2.0 baseline holds `pairwise_f1 = 0.999955` against a current `0.999958` — a real
+  move that `_fmt` prints as `1.0000 -> 1.0000`, which would have listed a metric as changed on a
+  line showing two identical numbers.
+
+## 325. What the corpus is a baseline of, and what the behaviour record cannot see (v0.17.0)
+
+- **Decision** (decision 7): the corpus is a baseline of **grouping decisions on ten scenarios**, and
+  nothing else. It is not a baseline of scoring arithmetic, not a sample of any customer's network,
+  and not evidence for a promotion. The behaviour record's blind spots are declared in
+  `behaviour_identity.py`'s own header, where the next release reads the instrument, and the one that
+  is mechanically checkable is now checked.
+- **Reason**: both instruments were measured rather than trusted, and both are narrower than their
+  reputation. The eval gate collapses correctly when a grouping decision changes — forcing
+  `linked=False` moves the hash to `bb890b78…` and prints two gated regressions — but **halving the
+  class-affinity term moved no aggregate metric at all**, because no link on this corpus crossed the
+  threshold differently. The record, meanwhile, drives **nine query parameters across four routes
+  with no query string**, `q` — the v0.16.1 server-side search — among them.
+- **Trade-off accepted**: the query-parameter gap is declared rather than closed. Driving them would
+  change the record, which directive 2 forbids this release; declaring them makes the next release's
+  choice explicit instead of accidental.
+- **Measured**: 10 scenarios, 3 159 events, 20 distinct varbind OIDs, none a severity field. Gate
+  sensitivity: `linked=False` → red; `term_a × 0.5` → identical; corpus directory moved → identical
+  at `c2e8a0ce…`; one scenario added → `28b77470…`. Record: module rename with import-only rewrites →
+  identical at `acd2763b…`; one added response key → `f0dbd63d…`; one route docstring edited → moved
+  by four `/openapi.json` lines.
+
+## 326. `SUBMODULES` is derived, because the rule was right and the list was 66 % of the tree (v0.17.0)
+
+- **Decision** (directive 11): `tests/test_structure.py`'s `SUBMODULES` — a hand-written list of 84
+  dotted names — becomes `sorted(_source_modules())`, read off `src/netcorenoc` by `rglob`. The
+  `api.` and `store.` package-shape tests keep their assertions and read the same walk through
+  `_package_modules()`.
+- **Reason**: the rule has been unchanged since v0.5.0 — *every runtime submodule must resolve from
+  the installed package under its unchanged name*, which is what keeps the F12 class of defect (a
+  source tree the tests pass against and a wheel would not reproduce) impossible. The list had
+  fallen to **84 of 128**: 44 modules were never imported by any test, including **every module of
+  `engine/dataset/`, `engine/model/`, `engine/evaluation/` and `engine/report/`** — four of
+  `engine/`'s six domains, `engine.dataset.capture` on the trap path among them — plus
+  `crosscutting/administration`, `engine/operate/resources`, `api/routes` and `__main__`.
+- **The cost, named**: an unimportable module in any of those four domains was a green build. The
+  guard's own subject could be edited away, which is the hole
+  `test_no_module_may_join_the_allowlist` closes for the size guard and nothing closed here. This is
+  F112 and F113's shape — *the rule was right and the file list was one entry long* — at 34 entries.
+- **Trade-off accepted**: a derived set cannot express *"this module is deliberately not importable"*.
+  Nothing in the tree wants to: all 128 import cleanly, measured. If one ever must not, the
+  exemption becomes a named constant with a reason, which is the visible diff `DEBT_ALLOWLIST` is.
+- **Why `api.` and `store.` kept their own tests**: they were the only two packages whose contents
+  were compared against disk in both directions, and that property is worth keeping stated. The
+  difference is that they compared a hand-written *slice* against disk, and every layer is now
+  covered by construction rather than three of five being covered by someone remembering.
+- **Measured**: `test_every_submodule_resolves` went from **84 parametrized cases to 128**, 40 of
+  them in the four previously unguarded `engine/` domains. Four new guard-the-guard tests: the walk
+  finds ≥ 120 names, every layer directory and every `engine/` domain contributes at least one, a
+  package `__init__` is named by its package, and the module and package views agree with the
+  filesystem. Injection: `rglob` narrowed to `glob` → red, naming the domains it lost.
+
+## 327. The corpus is pinned by digest, because the eval hash is not sensitive to it (v0.17.0)
+
+- **Decision** (decision 7): `tests/test_eval.py` pins `eval/corpus/` by a path-and-contents digest
+  with the scenario count and the total event count beside it. A release that grows the corpus updates
+  all three in the same commit, next to the `make eval-baseline REASON="…"` entry that re-cuts the
+  baseline (#324).
+- **Reason**: `make corpus` regenerates the corpus and `make eval` gates on it, and **nothing
+  compared the two**. A regeneration that changed a scenario re-measured the frozen baseline against
+  a different subject, and the only symptom was a `make eval` hash that moved for a reason nobody had
+  to state. The pin turns that into a red test naming which of the three things changed.
+- **What makes it worth having rather than redundant**: measured in Phase 0, `make eval`'s stdout
+  hash is **insensitive to a 50 % perturbation of the class-affinity term** — no link on this corpus
+  crossed the threshold differently, so no aggregate metric moved. A snapshot of aggregates can only
+  see a change that moves an aggregate. A digest over the corpus bytes is insensitive to nothing, and
+  the two instruments now fail for different reasons, which is the point of having both.
+- **Why the path is in the digest**: `harness.run_all` enumerates the directory with
+  `sorted(CORPUS_DIR.glob("*.json"))`, so the **filenames are the replay order**. A digest over
+  contents alone would let two scenarios swap names and change the order silently.
+- **Trade-off accepted**: three constants to update whenever the corpus legitimately changes. That is
+  the reviewable-line-in-a-diff cost `TRAP_PATH_HASHES`, `UI_HASHES` and `SRC_TREE_DIGEST` already
+  pay, and the alternative is the invisible edit above.
+- **Measured**: 10 scenarios, 3 159 events, digest `85f73f07…`. Injections: one varbind value changed
+  inside a scenario, count preserved → red on the digest; a scenario file renamed with bytes
+  identical → red on the digest; a scenario added → red on the count. Control green each time.
+
+## 328. Superseding #322 — the `eval/` move is withdrawn, because it removes no cost (v0.17.0)
+
+- **Decision**: **#322 is superseded.** `eval/corpus_gen.py` and `eval/background_gen.py` stay where
+  they are; no `eval/generators/` directory is created. `tools/` is unchanged. #322's reading of what
+  `eval/` holds stands; its proposed move does not.
+- **Reason**: #322 named the cost as *"the generators write into the corpus the frozen gate is a
+  baseline of, in the same directory, with no record"* — and then proposed a directory as the remedy.
+  Writing it out made the flaw plain: **moving a generator one level down prevents nothing.**
+  `make corpus` would still rewrite `eval/corpus/`, the gate would still be re-measured against a
+  changed subject, and the only difference would be the path in the traceback. That is precisely the
+  rename Part VII.7 forbids — *no rename whose only argument is taste* — and Part VIII decides it:
+  ambiguity about whether a move is worth it resolves to the named cost, and this move's named cost
+  survives the move.
+- **What replaced it**: #327's corpus digest, which removes the actual cost. The silent regeneration
+  is now a red test that names whether the count, the event total or a scenario's bytes moved.
+- **Trade-off accepted**: `eval/` still holds four kinds of thing under one name — a gate (harness,
+  metrics, baselines), a DSL, two generators and a simulation package — and a reader still has to
+  learn that. The honest ranking is that the legibility complaint is real and small, and the
+  correctness complaint was the one worth a commit. `eval/README.md` states the four roles, which is
+  what the directory split would have communicated at none of its cost.
+- **Measured**: the move would have touched `Makefile`, `pyproject.toml`'s `known-local-folder`,
+  `tests/test_scoring.py`'s module denylist and five prose references, and changed no guard's verdict
+  on any input. Neither generator is imported by anything — both are scripts — so the move had no
+  import graph to simplify either.
+
+## 329. The testbed scenario format extends the corpus shape and cannot carry truth (v0.17.0)
+
+- **Decision** (decision 9): a new format in `testbed/scenarios/*.json`, reusing the corpus's event
+  shape (`source`/`trap_oid`/`varbinds`) and adding three things: `hosts` (named NEs with an address,
+  an IANA PEN and the ONUs behind them), `phases` instead of one flat timeline, and `per_onu` fan-out.
+  The loader **refuses a `truth` key at any depth**.
+- **Reason**: the existing DSL (`eval/scenario_dsl.py`) and the corpus JSON each answer a different
+  question — a declarative simulator for `tests/test_operation.py`, and a *labelled* gate input. The
+  lab needs neither: it needs a timeline an operator can interrupt, which is what `phases` are, and it
+  must never produce a label, which is what the refusal is. Extending the corpus shape rather than the
+  DSL keeps `trap_replay.encode_trap` as the one PDU encoder in the repository.
+- **What replacing the DSL would have cost**: `eval/scenario_dsl.py` is driven by two test modules and
+  `make sim`; folding the lab into it would have put an operator-triggered phase machine inside a
+  module whose callers want a deterministic offline replay, and coupled the lab's evolution to a gate.
+- **Why the refusal is stronger than a check**: making truth *unrepresentable* beats checking that it
+  does not leak. The walk is recursive because `eval/corpus/*.json` keeps `truth` **inside each
+  event**, so a top-level check would accept a fully labelled corpus file copied into the lab.
+- **Trade-off accepted**: two scenario formats now exist in the repository. That is the honest cost of
+  the boundary — one format that could carry truth and be pointed at a live appliance is the thing
+  `PREREGISTRATION-0.10.0.md` §6 forbids.
+- **Measured**: `pon_fiber_cut.json` resolves to 19 cut events over two hosts and 12 repair events;
+  two loads are identical; `scenario.load(eval/corpus/fiber_cut.json)` raises verbatim.
+
+## 330. The lab's live state is a file, and it carries a sequence number (v0.17.0)
+
+- **Decision** (decision 10): `testbed/state/phase` holds one word and `testbed/state/phase.seq` a
+  counter. `python testbed/control.py cut` writes both atomically; the agents poll them.
+- **Reason**: the maintainer's ask is a gesture made while watching the console, so the phase is
+  state rather than a script argument. The agents are separate processes — separate containers under
+  compose — and need to see a transition within a second of each other. A file on a shared volume does
+  that with no port, no protocol and **no new runtime dependency** (directive 6), and it is the thing
+  an operator can `cat` when the lab misbehaves.
+- **Why the sequence number is not decoration**: without it an agent cannot distinguish *"still cut"*
+  from *"cut again"*, and re-cutting is the fastest way to watch a situation form twice. A phase file
+  alone makes the second cut invisible.
+- **Trade-off accepted**: polling, at 0.25 s. A socket would be prompter and would add a protocol to
+  debug; the lab's resolution is a human watching a browser, and 250 ms is under it.
+- **Measured**: `cut` twice yields `(cut, 1)` then `(cut, 2)`; a corrupt `phase.seq` reads as `steady`
+  rather than raising, so the lab's first second is not its most fragile.
+
+## 331. One container per NE, measured against the alternative (v0.17.0)
+
+- **Decision** (decision 11): one process — one container under compose — per simulated host.
+- **Reason**: the maintainer's stated need is **two different hosts**, and `trap_replay.Sender` can
+  already send from two source addresses in one process, so the cheap option was available and was
+  rejected on three counts. One process means one crash takes both NEs down; one `--collector` flag
+  points both at the same appliance, so "half the estate is pointed somewhere else" is untestable; and
+  killing one NE — the most obvious thing to do in a lab — is not a thing you can do.
+- **The measured cost of the choice**: two extra Python processes, about 30 MB resident, and a second
+  `Dockerfile`. The NE image carries `pysnmp` and nothing else — **no new dependency**, since the
+  appliance already requires it — and copies no `src/`, so directive 7 holds at the image layer too.
+- **The failure this choice exposed, which is the real find**: `Sender.socket_for` binds its source
+  under `contextlib.suppress(OSError)`, so an unbindable address **silently falls back to the default
+  local address**. Correct for a load generator; fatal for a lab whose entire claim is two sources,
+  because the console then shows one device and nothing says why. Each agent therefore binds its own
+  address up front and exits non-zero if it cannot.
+- **Measured**: `SELECT DISTINCT ip FROM device` after a run returns `127.0.0.2` and `127.0.0.3` —
+  two rows, from the database rather than from a log line.
+
+## 332. The evidence boundary the lab cannot cross, and where it is enforced (v0.17.0)
+
+- **Decision** (decision 12): three guards, each demonstrated red. (a) `scenario.load` refuses ground
+  truth, so generated traffic has no label to leak. (b) `tests/test_testbed.py` asserts over the AST
+  that no module under `src/netcorenoc/` imports the lab. (c) `MANIFEST.in` prunes `testbed/` and
+  `.dockerignore` excludes it, so it cannot ship.
+- **Reason**: `PREREGISTRATION-0.10.0.md` §6 forbids the generator's truth from reaching the promotion
+  path, and before this release that held because pointing a generator at a live appliance was awkward.
+  v0.17.0 makes it one command, so the boundary has to move from circumstance into the tree.
+- **Why the layer guard could not do (b)**: `test_layers.py::_imports` collects only `netcorenoc.*`
+  names, so `from ne import control` inside `src/` would be **invisible** to it — the layer table has
+  no row for a directory outside the package, and adding one would mean classifying the lab as a
+  layer, which it is not. Hence a guard of its own, over the AST rather than over text.
+- **Trade-off accepted**: (b) is a second import guard rather than an extension of the first. Two
+  guards with clear scopes beat one guard whose scope has to be explained.
+- **Measured**: injections — `from ne import control` added to `src/netcorenoc/main.py` → red, naming
+  the file and line; the lab compose pointed at `netcorenoc-data` → red; pointed at `8080:8080` → red;
+  `eval/corpus/fiber_cut.json` loaded as a testbed scenario → red. Control green after each.
+
+## 333. The lab runs without Docker too, and that is the path v0.17.0 could execute (v0.17.0)
+
+- **Decision**: `testbed/run_local.py` brings up the appliance and both agents on loopback aliases,
+  and is a first-class entry point rather than a fallback. `make lab`, `make lab-demo`.
+- **Reason**: two, and the second is the honest one. It is the faster loop — the console is static ES
+  modules and the appliance is one process, so a lab needing an image rebuild to change a trap offset
+  is a lab people stop using. And **it is the only path this release could run**: the build environment
+  had a working Docker daemon and no reachable registry (`registry-1.docker.io` answers 403 to the
+  egress proxy, an organisation policy denial), so no base image could be pulled and `docker compose
+  up` was never executed.
+- **What that means for the claims**: every measured number about the lab came from `run_local.py`.
+  The compose file is written and `docker compose config` validates it; it is **not proven**, and
+  `testbed/README.md` §"What was actually run" and the compose preamble both say so. Part VIII
+  resolves an unrun testbed to *"it does not work"*, and the honest report is which half was run.
+- **Trade-off accepted**: two entry points to keep working. They share the agent, the scenario loader
+  and the control file — only the address source and the collector host differ, which is why `--address`
+  exists.
+- **Measured**: `/healthz` in **1.0 s** from a clean state; three cut/repair cycles in **112 s**;
+  25 of 25 alarms cleared; one situation of 24 members named `Storm -> 127.0.0.2 and 1 more`.
+
+## 334. What the lab demonstrates that no gate could: the appliance learning a vendor's clears (v0.17.0)
+
+- **Decision**: the scenario uses the **standard** `linkDown`/`linkUp` pair for the span and a
+  **vendor** arc for the ONUs, deliberately, so one clears immediately and the other has to be learned.
+- **Reason**: the span pair is in `known_oids.CLEAR_PAIR_SEEDS` (RFC 3418 / RFC 2863), so it clears on
+  the first repair with nothing configured. The ONU pair is not bundled, and
+  `learn.CLEAR_CYCLES_TO_LEARN = 2` means two full alternations before it is trusted — so cut and
+  repair three times and the ONU alarms start clearing too. That progression *is* the product's thesis,
+  and it is not visible in `make eval`, which replays each scenario once against a frozen baseline.
+- **What it also fixes**: #314 recorded that **no shipped corpus scenario closes anything**, which is
+  why severity is unknowable on the corpus. The lab closes 25 alarms per run. That does not make
+  severity placeable — `SEVERITY_MIN_CLOSED = 50` is per NE and the lab is nowhere near it, and
+  v0.17.0 deliberately does not lower it — but it is the first thing in this repository that generates
+  alarm lifetimes at all, which is what v0.17.2's corpus work needs.
+- **Trade-off accepted**: the first two cut/repair cycles leave ONU alarms active, which reads as a
+  bug to someone who has not read the README. Stated there, in the table and in the scenario's own
+  `notes`, because the alternative is a lab that fakes zero-configuration by configuring it.
+- **Measured**: after three cycles, `edge` holds three `clear_pair` rows —
+  `1.3.6.1.6.3.1.1.5.3 → …5.4` (bundled), `2011.6.128.1.1.2.2 → …2.4` and `1271.2.1.2 → …2.1.3`
+  (both learned) — and every alarm is `cleared`, every situation `resolved`.
+
+## 335. What CI must run, and the four things it never did (v0.17.0)
+
+- **Decision** (decision 13): one job becomes **four parallel jobs** — `static`, `tests`, `console`,
+  `appliance`. In: the DOM tests on a runner with Node, the coverage number reported rather than only
+  gated, the wheel built and booted, the container image built, and the testbed driven end to end. Out:
+  a second OS and a second Python version.
+- **Reason, per missing thing, measured against the tree at v0.16.7**:
+  * **the 74 DOM tests never ran.** They are ordinary pytest tests so `make test` *collected* them and
+    **skipped** them, because the runner had no Node — and a skip is not a failure. Ten consecutive
+    releases shipped a console defect only a browser found. The new job asserts the count is non-zero
+    and fails on the word `skipped`, so the exact state CI was in for five releases is now red.
+  * **coverage was measured and discarded.** `fail_under = 85` means a slide from 95.52 % to 86 % was
+    legal and invisible. Printed into the job summary now.
+  * **the image was never built.** F85 shipped a wheel whose console was missing five modules; the
+    only thing that catches that class is building the artifact and asking it for a page.
+  * **the appliance was never started.** Every gate ran against a source tree. Nothing proved the
+    thing boots, applies sixteen migrations and answers `/healthz`.
+- **Why parallel**: the old job ran its steps in sequence, so a formatting error hid every test result
+  behind it. Four jobs cost the same runner minutes and give four independent answers.
+- **Why no second OS or Python**: the appliance is one asyncio process on SQLite with five
+  dependencies, and `requires-python = ">=3.12"`. A matrix would quadruple the wait for a second
+  answer nobody has a use for yet. That is a deliberate omission, not an oversight.
+- **Why `actions/setup-node` is NOT used**: `tests/test_workflows.py` requires every action pinned by a
+  40-character commit SHA, and the environment this release was built in cannot reach
+  `github.com/actions/*` — so pinning one would mean committing a SHA nobody here verified, and a wrong
+  pin fails with an error pointing at nothing. `ubuntu-latest` ships Node in its toolcache, so the
+  ordinary case needs no action; a step checks the version and **fails with the remedy in its message**
+  if the image ever drops below the harness's floor of 22.
+- **Trade-off accepted**: the `appliance` job's `make dist-image` step could not be exercised here (no
+  reachable registry), so it is the one step in this workflow that v0.17.0 did not run. Named in the
+  handoff rather than left to be discovered.
+- **Measured**: every other step's logic was executed locally against both a good and a broken input.
+  DOM skip-detection: green output → pass; `74 skipped` → fail; `no tests ran` → fail; `0 passed` →
+  fail. Testbed assertions: the real lab database → pass; one device row deleted → fail naming the
+  sources; every alarm forced `active` → fail; membership cut to 4 → fail; `clear_pair` rows deleted →
+  fail. Wheel boot: installed into a clean venv, `/healthz` returned
+  `{"status":"ok","version":"0.16.7"}`, five console paths returned 200 including
+  `.well-known/security.txt`, `PRAGMA user_version` = 16.
+
+## 336. Renumbering the v0.17 block, because the table disagreed with the release again (v0.17.0)
+
+- **Decision**: `docs/plans/releases.md` gains two rows and moves one. **v0.17.0 is the foundations**
+  (this release); **v0.17.1** the standard alarm vocabulary and vendor severity defaults; **v0.17.2**
+  the corpus, F76 and the correlation window; **v0.17.3** the external cartridge, moved one place.
+  v0.18.0 (archetypes) is unchanged. Twenty-five rows.
+- **Reason**: the table said v0.17.0 was *the external cartridge* and the release that governs it is
+  *the foundations*. That is the same defect #202, #249, #304 and #311 each caught one release later —
+  **a table that disagrees with the release it governs** — and `test_documentation.py` caught it here
+  before the number shipped, which is what it is for.
+- **Why the foundations go first rather than anywhere else in the block**: the other three depend on
+  machinery this release builds. v0.17.2 cannot grow the corpus without a baseline that can be re-cut
+  with a recorded reason (#324). v0.17.1 reads a severity varbind that no scenario format could carry
+  until now. And #314's blocker for severity was that **nothing in this repository closes an alarm** —
+  the lab closes 25 per run. Shipping the cartridge first would have put this project's riskiest step
+  on top of a gate nobody could re-cut.
+- **Trade-off accepted**: the cartridge slips a fourth time (#184, #202, #249, now this). Its own brief
+  already argues it should, and nothing in its argument moves — only its position.
+- **Measured**: the table parses to 25 rows; every row has a `<!-- release-claim -->` marker and the
+  guard confirms each agrees with the table; three stale in-document references to "v0.17.0's corpus
+  work" and "whether v0.17.0 happens at all" were corrected in the same commit, and
+  `docs/plans/cartridge.md`'s own claim marker moved to v0.17.3 — which the claim guard caught rather
+  than a reader.

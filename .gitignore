@@ -19,3 +19,7 @@ result
 .env
 # Local TLS material referenced by the commented compose profile.
 /tls/
+
+# The testbed's runtime state: the phase file, the lab database, per-process logs (v0.17.0).
+testbed/state/
+testbed/logs/

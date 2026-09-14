@@ -1,0 +1,137 @@
+# THE LAB, NOT THE PRODUCT. What this file relaxes against the root docker-compose.yml, and why:
+#
+#   1. `read_only` is DROPPED on the NE agents. They write nothing, but they read the shared phase
+#      file on a volume and an immutable rootfs buys nothing for a process with no state of its own.
+#      The appliance service below KEEPS `read_only: true` — the thing under test is not relaxed.
+#   2. The trap port is 1162, not 162. A high port needs no CAP_NET_BIND_SERVICE, so this file drops
+#      ALL capabilities and adds NOTHING back, which is strictly tighter than production's one add.
+#   3. The HTTP port is published on 127.0.0.1 only (`127.0.0.1:8088:8080`), and on **8088** rather
+#      than 8080, so a lab brought up beside a real appliance cannot take its port or be reached
+#      from another host.
+#   4. The database is a volume named `netcorenoc-testbed-data`. It is NOT `netcorenoc-data`, and
+#      that is the point: the lab cannot write the production database (prime directive 8), and
+#      `tests/test_testbed.py` asserts the two names are different and that neither the production
+#      volume nor port 162 nor 8080 appears anywhere in this file.
+#   5. `restart: unless-stopped` is DROPPED. A lab should stop when you stop it.
+#   6. No resource limits. Production caps memory and CPU because a limit whose consequence is
+#      unstated is a limit nobody can size; a lab on a laptop wants neither the cap nor the OOM.
+#
+# Everything else is the hardened posture: no privilege escalation, all capabilities dropped, a
+# tmpfs for /tmp, a non-root user from the image.
+#
+# One command:
+#
+#     cd testbed && docker compose up --build
+#
+# Then, from the repository root, while watching http://127.0.0.1:8088/ :
+#
+#     python testbed/control.py cut
+#     python testbed/control.py repair
+#
+# **NOT EXECUTED IN v0.17.0.** The release that wrote this file was built in an environment with a
+# Docker daemon and no reachable registry: `registry-1.docker.io` answers 403 to the egress proxy, an
+# organisation policy denial. So this file is written and validated with `docker compose config`, and
+# `docker compose up` was never run. What WAS run, end to end and repeatedly, is the same lab without
+# containers — `python testbed/run_local.py`, which is where every number in the handoff came from.
+# Read `testbed/README.md` §"What was actually run" before trusting this file in anger.
+
+name: netcorenoc-testbed
+
+services:
+  appliance:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: netcorenoc:local
+    container_name: netcorenoc-testbed-appliance
+    networks:
+      lab:
+        ipv4_address: 172.31.7.10
+    ports:
+      # Loopback only, and 8088 so a lab cannot collide with a real appliance on 8080.
+      - "127.0.0.1:8088:8080"
+    environment:
+      NETCORENOC_DB: /home/netcorenoc/netcorenoc.db
+      NETCORENOC_TRAP_PORT: "1162"
+      NETCORENOC_HTTP_PORT: "8080"
+      # Empty allowlist: the lab's whole job is that an unconfigured appliance learns the estate.
+      NETCORENOC_ALLOWLIST: ""
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - netcorenoc-testbed-data:/home/netcorenoc
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 3s
+
+  olt-a:
+    build:
+      context: ..
+      dockerfile: testbed/Dockerfile.ne
+    image: netcorenoc-testbed-ne:local
+    container_name: netcorenoc-testbed-olt-a
+    depends_on:
+      appliance:
+        condition: service_healthy
+    networks:
+      lab:
+        ipv4_address: 172.31.7.21
+    # `--address` is the container's own address on the lab network, not the scenario's
+    # loopback default: the agent verifies it can bind before sending, so a mismatch is a
+    # startup failure rather than two hosts quietly collapsing into one.
+    command: ["olt-a", "--collector", "172.31.7.10", "--port", "1162", "--address", "172.31.7.21"]
+    environment:
+      NETCORENOC_TESTBED_STATE: /lab/state
+    volumes:
+      - ./state:/lab/state
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  olt-b:
+    build:
+      context: ..
+      dockerfile: testbed/Dockerfile.ne
+    image: netcorenoc-testbed-ne:local
+    container_name: netcorenoc-testbed-olt-b
+    depends_on:
+      appliance:
+        condition: service_healthy
+    networks:
+      lab:
+        ipv4_address: 172.31.7.22
+    command: ["olt-b", "--collector", "172.31.7.10", "--port", "1162", "--address", "172.31.7.22"]
+    environment:
+      NETCORENOC_TESTBED_STATE: /lab/state
+    volumes:
+      - ./state:/lab/state
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  lab:
+    # A fixed subnet so each NE has a stable address. That is the whole reason the lab has its own
+    # network: the receiver must see two DIFFERENT sources, and it sees whatever the kernel put in
+    # the datagram. `testbed/scenarios/*.json` carries the loopback addresses the no-Docker path
+    # uses; under compose the source is the container's address on this network, and the agents
+    # verify they can bind theirs before sending a single trap.
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.7.0/24
+
+volumes:
+  # Deliberately NOT `netcorenoc-data`. The lab cannot touch the production database.
+  netcorenoc-testbed-data:

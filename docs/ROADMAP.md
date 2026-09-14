@@ -34,7 +34,7 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 ## Correlation and the entity model
 
 - **Unlearning / expiry for learned raise-clear pairs** — permanent once promoted, today.
-- **Typed relations and device-archetype clustering** (#36) — what v0.17.0 needs and does not have.
+- **Typed relations and device-archetype clustering** (#36) — what v0.18.0 needs and does not have.
 - **Finish the `device_id` → `entity_id`/`ne_id` cutover** (#35), forward-only, with a parity re-run.
 - **`situation.merged_into` resolves one hop, not transitively.** Two consumers still use a one-hop
   `COALESCE` where the training joins use the transitive walk. On every corpus this project holds all
@@ -211,8 +211,8 @@ with the table and columns it would need. The measurements are in
 
 - **A loss curve.** `challenger_run` keeps no per-iteration loss; it would need a
   `challenger_iteration(run_id, iteration, loss)` table written by `engine/model/training.py` — a
-  migration, and therefore a **pre-registration question** before a schema one. **v0.17.0**, where
-  the corpus work already lives.
+  migration, and therefore a **pre-registration question** before a schema one. **v0.17.2**, where
+  the corpus work now lives (#336).
 - **A residual distribution.** No route serves `shadow_opinion` and `0009`'s posture is *no read
   below admin, on any route, in any format, ever*. An admin-only aggregate route is a **security
   decision** before it is a chart, and whatever it drew would have to read

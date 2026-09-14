@@ -36,6 +36,9 @@ TOP_LEVEL_REQUIRED = [
     "eval",
     "tools",
     "docs",
+    # v0.17.0: the lab. Required rather than optional, because a `testbed/` that quietly went
+    # missing would take the only end-to-end check of the zero-configuration claim with it.
+    "testbed",
 ]
 
 # **v0.15.0 replaced this taxonomy** (DECISIONS #198). It named six directories, four of which held
@@ -44,109 +47,57 @@ TOP_LEVEL_REQUIRED = [
 # exist rather than that a set of producer-named directories does.
 DOCS_TAXONOMY = ["adr", "analysis", "plans"]
 
+
 # Every runtime submodule must resolve from the installed package under its unchanged name.
 # v0.7.2: `api` became a package (DECISIONS #79). It keeps its name and its whole re-export
 # surface, and every module inside it must resolve from the **installed** package too — the same
 # F12 guarantee the src/ layout bought, extended one level down.
-SUBMODULES = [
-    "api",
-    "api.app",
-    "api.context",
-    "api.declare",
-    "api.governance_cache",
-    "api.livestats",
-    "api.models",
-    "api.perimeter",
-    "api.routes.admin",
-    "api.routes.annotate",
-    "api.routes.audit",
-    "api.routes.auth",
-    "api.routes.events",
-    "api.routes.governance",
-    "api.routes.lifecycle",
-    "api.routes.operate",
-    "api.routes.read",
-    "api.routes.promotion",
-    "api.routes.scorer",
-    "api.routes.static",
-    "crosscutting",
-    "crosscutting.audit",
-    "crosscutting.auth",
-    "engine.correlate",
-    "engine.correlate.correlate",
-    "engine.correlate.learn",
-    "engine.correlate.preview",
-    "engine.correlate.rootcause",
-    "engine.correlate.scorer_contract",
-    "engine.correlate.scoring",
-    "engine.correlate.severity",
-    "engine.correlate.varbind_accum",
-    "engine.correlate.varbind_profile",
-    "ingest",
-    "ingest.events",
-    "ingest.known_oids",
-    "ingest.receiver",
-    "engine",
-    "engine.operate",
-    "engine.operate.engine",
-    "engine.operate.engine_base",
-    "engine.operate.gaps",
-    "engine.operate.maintenance",
-    "engine.operate.membership",
-    "engine.operate.scorer_lifecycle",
-    "crosscutting.logsetup",
-    "main",
-    # v0.7.4: `rbac` became a package (DECISIONS #96). `tables.py` is the single source of
-    # authority; `__init__.py` re-exports it by identity, never by copy.
-    "crosscutting.rbac",
-    "crosscutting.rbac.policy",
-    "crosscutting.rbac.tables",
-    "runner",
-    "crosscutting.runtime",
-    "crosscutting.settings",
-    # v0.7.4: `shaping` became a package (DECISIONS #95), on the same terms `api` and `store` did —
-    # it keeps its name and its whole re-export surface, and every module inside it must resolve
-    # from the **installed** package too.
-    "crosscutting.shaping",
-    "crosscutting.shaping.fields",
-    "crosscutting.shaping.naming",
-    "crosscutting.shaping.project",
-    "crosscutting.shaping.scope",
-    # v0.7.3: `store` became a package (DECISIONS #88), on the same terms `api` did in v0.7.2 — it
-    # keeps its name and its whole re-export surface, and every module inside it must resolve from
-    # the **installed** package too, which is the F12 guarantee extended one level down.
-    "store",
-    "store.alarms",
-    "store.audit_log",
-    "store.auth",
-    "store.base",
-    "store.dataset",
-    "store.devices",
-    "store.entities",
-    "store.feedback",
-    "store.governance",
-    # v0.16.2: the idle population, split out of `store.situations` when the critical repair
-    # pushed that module past the 400-line guard (DECISIONS #274).
-    "store.idle",
-    "store.ingest_gaps",
-    "store.learned",
-    "store.lifecycle",
-    "store.promotion",
-    "store.read_models",
-    "store.situation_reads",
-    "store.restructure",
-    "store.retention",
-    "store.scoring_config",
-    # v0.9.0: shadow mode's SQL. A separate module from `store.dataset` because that file is at
-    # 395 of its 400-line budget and the seam is real — `dataset` owns what capture wrote, this
-    # owns what the challenger read and wrote back.
-    "store.seal",
-    "store.shadow",
-    "store.situation_events",
-    "store.situations",
-    "store.state_clears",
-    "store.types",
-]
+#: **Every importable `netcorenoc.*` submodule, DERIVED from the source tree** (v0.17.0,
+#: DECISIONS #326). The rule has been the same since v0.5.0 — *every runtime submodule must resolve
+#: from the installed package under its unchanged name*, so the F12 class of defect (a tree the
+#: tests pass against and a wheel would not reproduce) stays impossible.
+#:
+#: **It was a hand-written list of 84 names, and the package holds 128.** Measured at v0.16.7: 44
+#: modules were never checked to import at all — every module of `engine/dataset/`, `engine/model/`,
+#: `engine/evaluation/` and `engine/report/`, plus `crosscutting/administration`,
+#: `engine/operate/resources`, `api/routes` and `__main__`. Four of `engine/`'s six domains were
+#: entirely outside the guard, `engine.dataset.capture` — a trap-path module — among them. The rule
+#: was right and the list was 66 % of the tree, which is F112 and F113's shape exactly.
+#:
+#: A list cannot be both exhaustive and maintained by hand; this repository has proved that six
+#: times (F92, F98, F112, F113, F114). So the set is read off disk, and `test_the_derivation_*`
+#: below is what stops the derivation itself from quietly matching nothing.
+#:
+#: `api.` and `store.` had completeness tests of their own and keep them — the difference is that
+#: those two compared a hand-written slice against disk, and now every layer is covered by
+#: construction rather than three of five being covered by someone remembering.
+def _source_modules() -> dict[str, Path]:
+    """`{dotted submodule name: its file}` for every `.py` under `src/netcorenoc`.
+
+    A package's `__init__.py` maps to the package's own dotted name (`api.routes`), because that
+    name is importable and an unimportable package is exactly the F12 failure. Keyed by file so the
+    two package-shape tests below can tell a module from a package without re-walking the tree.
+    """
+    pkg = REPO_ROOT / "src" / "netcorenoc"
+    out: dict[str, Path] = {}
+    for path in sorted(pkg.rglob("*.py")):
+        rel = path.relative_to(pkg)
+        dotted = ".".join(rel.parts[:-1]) if rel.name == "__init__.py" else ".".join(rel.parts)[:-3]
+        if dotted:  # the package root's own `__init__.py` maps to "", which is `netcorenoc` itself
+            out[dotted] = path
+    return out
+
+
+SUBMODULES = sorted(_source_modules())
+
+
+def _package_modules(prefix: str) -> list[str]:
+    """The non-`__init__` module names inside one package, relative to it, from the derived set."""
+    return sorted(
+        name.split(".", 1)[1]
+        for name, path in _source_modules().items()
+        if name.startswith(f"{prefix}.") and path.name != "__init__.py"
+    )
 
 
 def test_adopts_src_layout() -> None:
@@ -404,7 +355,7 @@ def test_the_api_package_holds_exactly_the_expected_modules() -> None:
         for p in pkg.rglob("*.py")
         if p.stem != "__init__"
     )
-    expected = sorted(m.split(".", 1)[1] for m in SUBMODULES if m.startswith("api."))
+    expected = _package_modules("api")
     assert found == expected, f"api package contents changed: {found}"
 
 
@@ -420,7 +371,7 @@ def test_the_store_package_holds_exactly_the_expected_modules() -> None:
 
     pkg = Path(netcorenoc.store.__file__).resolve().parent
     found = sorted(p.stem for p in pkg.glob("*.py") if p.stem != "__init__")
-    expected = sorted(m.split(".", 1)[1] for m in SUBMODULES if m.startswith("store."))
+    expected = _package_modules("store")
     assert found == expected, f"store package contents changed: {found}"
     assert "_all" not in found, "the transitional store/_all.py must be deleted, not shipped"
 
@@ -487,3 +438,119 @@ def test_every_declared_version_is_one_the_release_check_reads() -> None:
     # by a check that reads none.
     assert set(release_check.main.__globals__) >= {"flake_version", "changelog_version"}
     assert release_check.flake_version() == release_check.pyproject_version()
+
+
+# --- the derivation that replaced a hand-written list of 84 (v0.17.0, DECISIONS #326) ------------
+
+
+def test_the_derivation_finds_the_whole_package_and_not_a_slice_of_it() -> None:
+    """**Guard the guard.** A walk that matched nothing would make `test_every_submodule_resolves`
+    parametrize over an empty list — 128 green tests replaced by zero green tests, which pytest
+    reports as success.
+
+    The floor is stated as a number rather than as `> 0` because "found something" is the assertion
+    that let a hand-written list sit at 66 % of the tree for four releases without anyone noticing.
+    """
+    found = _source_modules()
+    assert len(found) >= 120, (
+        f"the derivation found {len(found)} submodules; the package holds about 128"
+    )
+    # One member from each of the five layers, so a walk that lost a whole directory is caught.
+    for name in (
+        "api.app",
+        "store.situations",
+        "engine.correlate.correlate",
+        "engine.report.bias_report",
+        "ingest.receiver",
+        "crosscutting.rbac.tables",
+        "main",
+    ):
+        assert name in found, f"the derivation missed {name}, so it is not walking the whole tree"
+
+
+def test_the_derivation_covers_every_layer_directory() -> None:
+    """The 44 modules the hand-written list never checked were four whole `engine/` domains.
+
+    Asserted by construction rather than by listing them: every top-level directory that holds
+    Python must contribute at least one name, and every `engine/` domain must too. A derivation that
+    skipped a directory would otherwise look exactly like a directory that holds nothing.
+    """
+    found = _source_modules()
+    pkg = REPO_ROOT / "src" / "netcorenoc"
+    directories = {
+        path.relative_to(pkg).parts[0] for path in pkg.rglob("*.py") if path.parent != pkg
+    }
+    for directory in sorted(directories):
+        assert any(name.split(".")[0] == directory for name in found), (
+            f"no derived submodule lives in {directory}/, so the walk lost it"
+        )
+    domains = {
+        path.relative_to(pkg / "engine").parts[0]
+        for path in (pkg / "engine").rglob("*.py")
+        if path.parent != pkg / "engine"
+    }
+    assert domains >= {"correlate", "dataset", "evaluation", "model", "operate", "report"}, domains
+    for domain in sorted(domains):
+        assert any(name.startswith(f"engine.{domain}.") for name in found), (
+            f"engine/{domain}/ contributes no derived submodule — this is the 44-module hole"
+        )
+
+
+def test_a_package_init_is_named_by_its_package_rather_than_dropped() -> None:
+    """`api/routes/__init__.py` imports as `netcorenoc.api.routes`, so it is checked.
+
+    The hand-written list omitted it. A package whose `__init__` raises is the F12 failure in its
+    purest form — every module inside it becomes unreachable — so the package names belong in the
+    set that gets imported, not only the leaf modules.
+    """
+    found = _source_modules()
+    assert "api.routes" in found, "the routes package must be imported by name"
+    assert found["api.routes"].name == "__init__.py"
+    assert "api.routes" not in _package_modules("api"), (
+        "a package name must not be counted as one of its own modules; the shape tests compare "
+        "against files, and `rglob(*.py) if p.stem != '__init__'` excludes it on the other side"
+    )
+
+
+def test_the_module_and_package_views_agree_with_the_filesystem() -> None:
+    """Two views of one walk; a disagreement between them means one of the two is wrong."""
+    for prefix in ("api", "store", "crosscutting"):
+        pkg = REPO_ROOT / "src" / "netcorenoc" / prefix
+        on_disk = sorted(
+            str(path.relative_to(pkg).with_suffix("")).replace("/", ".")
+            for path in pkg.rglob("*.py")
+            if path.stem != "__init__"
+        )
+        assert _package_modules(prefix) == on_disk, f"{prefix}: {_package_modules(prefix)}"
+
+
+def test_submodules_is_the_derivation_and_not_a_list_someone_wrote() -> None:
+    """**The hole this release found in its own guard, by injecting into it** (F121, Appendix B).
+
+    `SUBMODULES` feeds a parametrized test, so its length *is* that test's coverage. The four
+    guard-the-guard tests above all call `_source_modules()` directly — which means replacing
+
+        SUBMODULES = sorted(_source_modules())
+
+    with a hand-written list left every one of them **green** while
+    `test_every_submodule_resolves` quietly fell from 128 cases to 3. Measured: the injection
+    reported *"21 passed"* and nothing said the pin had shrunk by 125 modules.
+
+    That is precisely *"a pin whose coverage shrinks silently"* — the failure `UI_SIZES` had when
+    the re-pin helper intersected with existing keys, and every test over `UI_SIZES` iterated
+    `UI_SIZES`. Deriving a set is not enough; the thing the tests actually iterate has to BE the
+    derivation, and this is what says so.
+    """
+    assert sorted(_source_modules()) == SUBMODULES, (
+        "SUBMODULES is no longer the derivation.\n"
+        f"  it holds {len(SUBMODULES)} names; the tree holds {len(_source_modules())}\n"
+        f"  missing: {sorted(set(_source_modules()) - set(SUBMODULES))[:10]}\n\n"
+        "`test_every_submodule_resolves` parametrizes over this list, so its length is that "
+        "test's coverage. A hand-written list here silently un-checks whatever it omits — which "
+        "is how the old list came to cover 84 of 128 modules (#326)."
+    )
+    # …and the floor, stated separately: an empty derivation would satisfy the equality above.
+    assert len(SUBMODULES) >= 120, (
+        f"SUBMODULES holds {len(SUBMODULES)} names. The equality above is satisfied by two empty "
+        "collections, so the count is asserted on its own."
+    )

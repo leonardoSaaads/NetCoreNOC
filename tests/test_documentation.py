@@ -286,7 +286,14 @@ def test_the_release_table_parses() -> None:
     # v0.16.7 adds one more, for the same reason again: v0.16.6 put eight charts on the Overview
     # and the screen still did not answer *how many critical alarms are active*, because nothing
     # counted them. Severity is v0.16.7; maintenance windows move to v0.16.8. Twenty-two rows.
-    assert len(table) == 22, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
+    # v0.17.0 RENUMBERS the v0.17 block and adds two rows (DECISIONS #336). The table said v0.17.0
+    # was *the external cartridge*, and the release that governs it is *the foundations* — the same
+    # table-disagrees-with-its-release defect the third, fourth and sixth edits above caught, and it
+    # is caught here again. The foundations are v0.17.0 because they build what the rest of the
+    # block needs: a baseline that can be re-cut, a lab whose scenarios close alarms, and a scenario
+    # format that carries a severity varbind. The alarm vocabulary is v0.17.1, the corpus and the
+    # correlation window v0.17.2, and the cartridge moves one place to v0.17.3. Twenty-five rows.
+    assert len(table) == 25, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -309,6 +316,9 @@ def test_the_release_table_parses() -> None:
         "v0.16.7",
         "v0.16.8",
         "v0.17.0",
+        "v0.17.1",
+        "v0.17.2",
+        "v0.17.3",
         "v0.18.0",
     }
     claims = [claim for _theme, claim in table.values()]

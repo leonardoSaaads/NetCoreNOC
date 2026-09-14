@@ -46,3 +46,7 @@ vulture_allowlist.py
 docker-compose.yml
 flake.nix
 .editorconfig
+
+# The testbed (v0.17.0). The lab drives the product over UDP and HTTP and is never imported by it;
+# keeping it out of the build context is the other half of that boundary.
+testbed/

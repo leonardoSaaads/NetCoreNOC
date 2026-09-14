@@ -1778,3 +1778,163 @@ Run every command below from the repository root with the virtualenv active.
   chart vocabulary, not in this release's feature, and `format.js::plural` already holds the rule
   `unitText` would have to call. The fix is one line in `chartdata.js` and it moves every chart in
   the console, so it belongs in a commit of its own with the pins that move with it.
+
+## F118 — the 400-line module guard covers `src/` and `ui/` and not `tests/`, and 31 files there are over it
+
+- **What**: `tests/test_architecture.py` enforces `MAX_MODULE_LINES = 400` over
+  `src/netcorenoc/**/*.py` (`_modules()`) and over `ui/**/*.js` (`javascript_modules()`). Nothing
+  applies it to `tests/`, and the rule it encodes — *a module owns one noun or one decision*
+  (`architecture.md`) — is not a claim about where a file lives. `tests/test_ui_invariants.py` is
+  **4 048 lines**, ten times the limit the same repository enforces one directory away.
+- **Why it matters**: the guard's own comment says a module over ~250 lines is a smell and over 400
+  is debt with a named owner. A 4 048-line test module is where a guard goes to hide: F114 was a
+  composition guard whose denylist let a chart through, and it lived in this file. The larger the
+  module, the likelier the next one.
+- **Reproduce**:
+  ```sh
+  .venv/bin/python - <<'PY'
+  import pathlib
+  over = {p.name: len(p.read_text().splitlines())
+          for p in pathlib.Path("tests").rglob("*.py")
+          if len(p.read_text().splitlines()) > 400}
+  print(len(over), "of", len(list(pathlib.Path("tests").rglob("*.py"))), "files over 400 lines")
+  for n, c in sorted(over.items(), key=lambda kv: -kv[1]): print(f"  {c:5} {n}")
+  PY
+  ```
+- **Measured**: **31 of the 90 files under `tests/` exceed 400 lines** — a third of the directory.
+  The top of the distribution: `test_ui_invariants.py` 4 048, `test_governance.py` 1 509,
+  `test_upgrade.py` 1 473, `test_dataset.py` 1 323, `test_declaration.py` 1 195,
+  `test_evidence_boundary.py` 1 063, `test_architecture.py` 1 057, `test_shadow.py` 968,
+  `test_documentation.py` 938; the tail runs down through `test_simulation.py` at 405.
+  `behaviour_identity.py` — the instrument this release leans on hardest — is itself 550.
+- **Disposition**: **open**. Not fixed here (directive 12, and Part VII.7): extending the guard to
+  `tests/` would need a debt allowlist with **31** entries on the day it was installed, which is the
+  `DEBT_ALLOWLIST`-arrives-full shape #91 warns about, and at 34 % of the directory the honest
+  reading is that the rule was never meant to apply here rather than that the directory is in debt.
+  It is a decision with an owner — either the rule is scoped to `src/` and `ui/` deliberately and
+  says so in `architecture.md`, or a ratchet is installed at today's measured ceiling and walked
+  down — and v0.17.0 is a release whose first two movements change no behaviour, so it records the
+  finding and stops.
+- **Note on how this was found**: the first draft of this entry said *"nine of 89"*, taken from the
+  last ten lines of a `wc -l | sort -n` rather than from a count. The number was wrong by 22.
+  Appendix A's rule — *incrementing a number is not measuring it* — applies to a finding's own
+  evidence as much as to a release's.
+
+## F119 — the guard whose job is "the UI tree is enumerated" was blind to `.well-known/` disappearing
+
+- **What**: `tests/test_security_ui.py::test_the_ui_tree_is_exactly_what_is_declared` compared the
+  console's top level as `top_level - {".well-known"} == {…}` and then checked that directory's
+  contents under `if well_known.exists():`. **Subtracting an absent member is a no-op**, so the set
+  comparison passes whether `ui/.well-known/` is present or gone, and the conditional then skips its
+  contents for the same reason. The one guard whose stated purpose is *"the tree is not merely small,
+  it is enumerated"* could not see the disappearance of a directory the appliance serves a route
+  from.
+- **Why it matters**: `GET /.well-known/security.txt` is a real route — pinned in
+  `test_architecture.ROUTE_ORDER_BASELINE` and recorded in the behaviour record — and RFC 9116 is why
+  it exists. Losing the file makes that route a 500. It is also the one directory `pyproject.toml`'s
+  `ui/**/*` glob cannot match, because `**` does not cross a leading dot, which is why it needs its
+  own `package-data` line (F85's neighbour). A directory that needs a special case in packaging and
+  is invisible to the tree guard is the combination that ships a broken wheel.
+- **Reproduce** (against the guard as it stood before this release):
+  ```sh
+  mv src/netcorenoc/ui/.well-known /tmp/wk
+  .venv/bin/python -m pytest -q tests/test_security_ui.py -k ui_tree    # 1 passed
+  mv /tmp/wk src/netcorenoc/ui/.well-known
+  ```
+- **Measured**: with `ui/.well-known/` moved away, the pre-fix guard reported **1 passed**. The same
+  injection against the repaired guard reports **1 failed**, naming the missing member.
+- **Disposition**: **fixed in v0.17.0**, in a commit of its own that changes no behaviour. The
+  membership is now required rather than subtracted, and the directory's contents are **derived from
+  `STATIC_ASSETS`** — what the appliance actually serves — so the two sides of the comparison are
+  the two things that must agree, instead of a literal repeated in a second place.
+
+## F120 — the release-claim guard covers `<!-- release-claim -->` markers and not prose, and `docs/README.md` had drifted twice
+
+- **What**: `tests/test_documentation.py` enforces *"exactly one answer to what is release X, across
+  every live document"* — but only against `<!-- release-claim: vX.Y.Z = key -->` markers and the
+  element tags inside a document that carries one. `docs/README.md`'s index table names release
+  numbers in **prose**, in a column nothing reads, and two of its three forward rows were wrong:
+  `plans/cartridge.md` was labelled **v0.16.0** when the release table had said **v0.17.0** since
+  v0.15.3 (#249), and `plans/archetypes.md` was labelled **v0.17.0** when the table had said
+  **v0.18.0** since the same edit.
+- **Why it matters**: `docs/README.md` is the first document a newcomer opens — v0.17.0 made it the
+  reader's entry point on purpose (#323) — so it is the worst place in the tree to carry a stale
+  answer. The guard's own docstring says the rule is about *every live document*, and its
+  implementation is about every live **marker**. That is the F112/F113 shape once more: the rule is
+  right and its scope is narrower than its sentence.
+- **Reproduce** (against the tree before this release):
+  ```sh
+  grep -n 'plans/cartridge.md\|plans/archetypes.md' docs/README.md   # v0.16.0 and v0.17.0
+  grep -n 'cartridge\|Archetypes' docs/plans/releases.md             # v0.17.0 and v0.18.0
+  ```
+- **Measured**: two of the three forward-looking rows in `docs/README.md` disagreed with the release
+  table, and had done since v0.15.3 — **four releases**, through two renumberings, with the claim
+  guard green throughout.
+- **Disposition**: **partly fixed in v0.17.0.** Both rows are corrected, and the renumbering of #336
+  is reflected in them. The **guard is not extended**, and that is deliberate (directive 12): making
+  it read prose means deciding what a release number looks like in a sentence, which is a regex over
+  English and the wrong instrument. The honest fix is to give `docs/README.md`'s table real claim
+  markers, or to stop it naming releases at all and let it link to the table — a decision with an
+  owner, not something to bury in a renumbering commit.
+
+## F121 — the derived `SUBMODULES` could be replaced by a hand-written list and every guard stayed green
+
+- **What**: v0.17.0 replaced `tests/test_structure.py`'s hand-written `SUBMODULES` with
+  `sorted(_source_modules())` and installed four guard-the-guard tests (#326). **All four call
+  `_source_modules()` directly.** So the derivation was checked and the *constant the tests actually
+  iterate* was not — and overwriting `SUBMODULES` with `["api", "store", "main"]` left the whole
+  module green while `test_every_submodule_resolves` fell from **128 parametrized cases to 3**.
+- **Why it matters**: this is the exact defect #326 was written to fix, reintroduced one line away
+  from the fix. `SUBMODULES` feeds a `@pytest.mark.parametrize`, so **its length is that test's
+  coverage**, and a shorter list is not a failure — it is fewer tests, which pytest reports as
+  success. Appendix B's *"a pin whose coverage shrinks silently"*: `UI_SIZES` lost five files because
+  the re-pin helper intersected with existing keys, and every test over `UI_SIZES` iterated
+  `UI_SIZES`. Deriving a set is not sufficient; the iterated thing has to **be** the derivation.
+- **How it was found**: by injecting into the release's own new guard during Phase 5, as the
+  "a new test that violates the Phase 2 convention" injection. It came back **green**, and Part IX's
+  rule — *when an injection comes back green, suspect the injection first* — turned out to be wrong
+  here in the most useful way: the injection was correct and the guard was not.
+- **Reproduce**:
+  ```sh
+  python - <<'PY'
+  import pathlib; p = pathlib.Path("tests/test_structure.py"); s = p.read_text()
+  p.write_text(s.replace("SUBMODULES = sorted(_source_modules())", 'SUBMODULES = ["api", "store", "main"]'))
+  PY
+  .venv/bin/python -m pytest -q tests/test_structure.py    # before the fix: 21 passed
+  ```
+- **Measured**: the injection reported **21 passed** against the guard as first written, and
+  **1 failed — "it holds 3 names; the tree holds 128"** against the repaired one.
+- **Disposition**: **fixed in v0.17.0**, in the release's own verification phase.
+  `test_submodules_is_the_derivation_and_not_a_list_someone_wrote` asserts the constant equals the
+  derivation, with the count asserted separately because two empty collections satisfy an equality.
+
+## F122 — the lab health-checked an appliance it had not started, and drove it for two minutes
+
+- **What**: `testbed/run_local.py` started the appliance and then waited for `/healthz` to answer 200.
+  It never checked that the answer came from **its own** appliance. During v0.17.0's live pass an
+  appliance from an earlier session still held port 8080, so this run's appliance failed to bind and
+  exited, `wait_for_health` succeeded against the stranger, and both NE agents spent **two minutes**
+  sending traps into a database this run had never opened.
+- **What it looked like**: `appliance healthy in 0.0 s`, two agents reporting their source addresses
+  normally, and a lab database with **zero rows**. Nothing anywhere said why. The `0.0 s` was the
+  only tell, and it reads as good news.
+- **Why it matters**: this is the same shape as the source-address fallback the testbed was already
+  built to refuse — a component that carries on plausibly when its premise is false — and it is worse
+  in one way: the traps went *somewhere*. A lab pointed at a colleague's appliance, or at a real one,
+  is not a broken lab; it is a lab quietly writing into something else.
+- **Reproduce**:
+  ```sh
+  python -m http.server 8080 --bind 127.0.0.1 &     # anything holding the port
+  python testbed/run_local.py --demo --cycles 1     # before the fix: "healthy in 0.0 s", empty lab
+  ```
+- **Measured**: with a stranger on 8080, the run reported healthy in **0.0 s** and produced a
+  database with 0 alarms and 0 devices. With the fix, it refuses before starting anything:
+  `PortAlreadyServingError: TCP port 8080 is already in use`.
+- **Disposition**: **fixed in v0.17.0**, found by the live pass, in the phase that exists to find
+  exactly this. `refuse_a_foreign_appliance` probes **both** ports before anything starts, and
+  `wait_for_health` additionally fails if the appliance it is waiting for has exited.
+- **The first fix was wrong and the injection caught it.** It asked whether anything answered
+  `/healthz` with a 200 — and a plain `http.server` on 8080 answers **404**, which is not a 200, so
+  the check declared the port free and the injection walked past it. The premise is *"can this run
+  bind the ports"*, so the check is now a bind probe, and it covers the **trap** port too: a lab whose
+  traps land in a stranger's receiver looks healthier than one whose console does not load.

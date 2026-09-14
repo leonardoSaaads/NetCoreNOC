@@ -4,6 +4,7 @@ PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list loadtest burst \
 	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
+	lab lab-demo lab-cut lab-repair lab-status \
 	bias-report dataset-stats agreement-report shadow-report census
 
 qa: lint typecheck deadcode scan test eval
@@ -121,9 +122,26 @@ burst:
 eval:
 	$(PYTHON) eval/harness.py
 
-# Freeze the current metrics as a baseline (Phase 1 only writes eval/baselines/v0.2.0.json).
+# Re-cut the frozen baseline. **Refuses to run without a stated reason** (v0.17.0, DECISIONS #324):
+#
+#     make eval-baseline REASON="v0.17.2 adds two PON scenarios; the gate is a baseline of the
+#                                corpus, so it is re-cut with it"
+#
+# **Why a target rather than an edit.** `make eval` hashes its own stdout, and that hash has held at
+# `c2e8a0ce…` since v0.7.0 — which is what makes it useful to a refactor: *"did this change
+# correlation behaviour when I did not mean to?"*. It is NOT there to stop the corpus growing, and
+# before this target the only way to grow it was to overwrite the baseline by hand, which is an edit
+# nobody can audit. So the re-cut is mechanical, it demands a reason, and it appends the digest it
+# replaced beside the digest it wrote to `eval/baselines/REBASELINE-LOG.md`. A re-baseline is then a
+# reviewable commit that changes nothing else — the discipline snapshot tests use everywhere.
+#
+# The reason is checked BEFORE the replay, so a caller who forgets it is told in a second.
 eval-baseline:
-	$(PYTHON) eval/harness.py --write-baseline eval/baselines/v0.2.0.json
+	@test -n "$(REASON)" || { \
+		echo 'make eval-baseline requires REASON="why the baseline is being re-cut".'; \
+		echo 'A baseline re-cut without a recorded reason is the edit this target prevents.'; \
+		exit 2; }
+	$(PYTHON) eval/harness.py --write-baseline eval/baselines/v0.2.0.json --reason "$(REASON)"
 
 # Regenerate the labelled corpus from its deterministic generator.
 corpus:
@@ -134,6 +152,29 @@ corpus:
 sim:
 	$(PYTHON) tools/trap_sim.py $${SCENARIO:-login_burst} --send \
 		--port $${NETCORENOC_TRAP_PORT:-1162}
+
+# --- the testbed (v0.17.0, DECISIONS #329-#334) ------------------------------------------------
+#
+# A two-host fibre cut you can trigger while watching it. `testbed/README.md` is the whole story;
+# these four targets are the commands it prints, so an operator never has to know the tree.
+#
+# `lab` leaves the appliance and both NE agents running and tells you what to type next. `lab-demo`
+# is the unattended version CI runs: three cut/repair cycles, then it reports from the DATABASE —
+# two distinct sources, the situation, the clears — rather than from a log line.
+lab:
+	$(PYTHON) testbed/run_local.py
+
+lab-demo:
+	$(PYTHON) testbed/run_local.py --demo --cycles $${CYCLES:-3} --hold-s $${HOLD:-18}
+
+lab-cut:
+	$(PYTHON) testbed/control.py cut
+
+lab-repair:
+	$(PYTHON) testbed/control.py repair
+
+lab-status:
+	$(PYTHON) testbed/control.py status
 
 # Apply pending schema migrations to NETCORENOC_DB (idempotent; runs at startup too).
 migrate:

@@ -35,7 +35,10 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.16.6** | **The evidence screens** — overview charts, the estate map, a configurable timeline, and the model metrics beside the grouping they explain. | `evidence-screens` |
 | **v0.16.7** | **Severity, and the screen an operator runs a shift from** — active alarms by band on the Overview, with the ones the appliance has **not** been able to place counted and named. | `severity-census` |
 | **v0.16.8** | **Maintenance windows** — a planned-work declaration, and the composed severity/time filters that read it. | `maintenance-windows` |
-| **v0.17.0** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
+| **v0.17.0** | **The foundations** — an eval baseline that can be re-cut with a recorded reason, guards that derive their sets instead of listing them, and `testbed/`: a two-host fibre cut a newcomer can deploy and trigger. **Shipped.** | `foundations` |
+| **v0.17.1** | **The standard alarm vocabulary and vendor severity defaults** — a vendor-published severity shown immediately, with provenance and an operator override, beside the learned one. | `alarm-vocabulary` |
+| **v0.17.2** | **The corpus, F76, and the correlation window** — scenarios whose alarms clear, the scenario that fails its own stated requirement, and the window the correlator reasons over. | `corpus-window` |
+| **v0.17.3** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
 | **v0.18.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
 
 ## Why the order cannot be permuted
@@ -63,9 +66,16 @@ code:
   second process, a preemption harness, an amendment to *"ingestion is sacred"* — and taking it
   while a stranger cannot find the install instructions is the wrong order. Nothing in the
   cartridge's own argument moves; only its position does.
-* **v0.17.0 last, deferred out of v0.12.0 by #170 on a measurement rather than a preference.** The
+* **v0.18.0 last, deferred out of v0.12.0 by #170 on a measurement rather than a preference.** The
   promotion gate refused on this project's own corpus with `asserting_bags = 0` against a floor of
   50, and per-archetype weights mean splitting an already-insufficient corpus `k` ways.
+* **v0.17.0 first in its block, and it is the reason the other three moved** (#336). The foundations
+  release builds the machine the rest of the block needs: a baseline that can be re-cut with a
+  recorded reason, so v0.17.2 can grow the corpus at all; a testbed whose scenarios **close alarms**,
+  which #314 recorded as the missing ingredient for severity; and a scenario format that can carry a
+  severity varbind, which is what v0.17.1 reads. Shipping the cartridge before any of that would have
+  put this project's riskiest step — a second process, a preemption harness, an amendment to
+  *"ingestion is sacred"* — on top of a gate nobody could re-cut.
 
 ### The v0.16 block, and why it is six releases rather than one
 
@@ -271,7 +281,7 @@ are the valuable half — each one names the table and the columns a later relea
   residual or a convergence trace: `iterations` is a count, `learning_rate` and `fit_seconds` are a
   duration each. **What it would need**: a `challenger_iteration(run_id, iteration, loss)` table
   written by `engine/model/training.py` — a migration, and therefore a pre-registration question
-  before it is a schema one. **v0.17.0**, where the corpus work already lives.
+  before it is a schema one. **v0.17.2**, where the corpus work now lives (#336).
 * **A residual distribution.** The only label in the schema is in `feedback` and reaching it needs
   the join; `incumbent_linked` is a comparison basis and **never a target** (`0009`, and
   `PREREGISTRATION-0.16.0.md` §1). What could be drawn is the *score* distribution of
@@ -373,7 +383,13 @@ candidate ranking against **observed alarm lifetimes**, and a lifetime needs a c
 So severity is unknowable on this corpus **because nothing ends**. That is a property of the
 corpus, not of the learner, and lowering `SEVERITY_MIN_CLOSED` to make a panel fill would fabricate
 exactly the ordering `engine/correlate/severity.py` exists to refuse. **What a later release needs
-is a scenario in which alarms clear** — v0.17.0's corpus work.
+is a scenario in which alarms clear** — v0.17.2's corpus work.
+
+> **v0.17.0 changed the second half of that sentence without changing the first.** `testbed/`
+> closes 25 alarms per run, which is the first thing in this repository that produces alarm
+> lifetimes at all. It does **not** make severity placeable: `SEVERITY_MIN_CLOSED = 50` is per NE
+> and the lab is nowhere near it, and v0.17.0 deliberately did not lower it. What the lab supplies
+> is the *shape* v0.17.2 needs in the corpus — a raise, a lifetime, and a close.
 
 ### The three refusals this release records
 
@@ -411,6 +427,95 @@ three-scenario estate: `received` 1 816, `accepted` 1 816, `denied` 0, `quaranti
 line it would replace, and legible for a reason that has nothing to do with the network. F68 still
 binds and `receiver.denied` is still on screen, which is what F68 actually asked for.
 
+## What v0.17.0 measured, and the seam it leaves for v0.17.1
+
+### The two instruments, measured rather than trusted
+
+Both are narrower than their reputation, and a release that leans on them should know how.
+
+**`make eval`** has held at `c2e8a0ce…` since v0.7.0 and that is worth what it looks like — but only
+for a change that moves an aggregate. Measured here:
+
+| Injection | Result |
+|---|---|
+| every candidate pair forced unlinked | **red** — hash `bb890b78…`, two gated regressions |
+| the class-affinity term halved (`× 0.5`) | **identical**; no link crossed the threshold differently |
+| the `W_T` module constant changed | **identical**; the live weights come from the seeded `scoring_config` row, not the Python default |
+| the corpus **directory moved** | **identical** — so the restructure needed no re-baseline |
+| one scenario added | **moved** to `28b77470…` |
+
+**The behaviour record** (`acd2763b…`) is byte-sensitive to every response body and every served
+console file, and it drives **no query parameters at all** — nine of them across four routes, `q` (the
+v0.16.1 server-side search) among them. That is now declared in `behaviour_identity.py` and checked by
+a derivation, so a parameter added to a route goes red until someone drives it or declares it.
+
+One surprise worth carrying forward: a module **rename** leaves the record identical, but editing a
+route **docstring** moves it, because FastAPI publishes docstrings as OpenAPI descriptions.
+
+### The seam for v0.17.1, and the question this release does not answer
+
+The maintainer's specification, in his own example: if Huawei publishes trap `1.2.3.4.5.6.7.8.9` as
+**GRAVE / Remote Fail**, then when that trap arrives over SNMPv2 the console shows **GRAVE Remote
+Fail** — and the customer may rename it, re-grade it, or override it.
+
+That is a **default with provenance, not a fabrication**, and the distinction is the design:
+
+* a **vendor-published** severity is an attested fact with a citation, shown immediately;
+* a **learned** severity is what `engine/correlate/severity.py` confirmed from this stream;
+* a **declared** severity is what this operator said — v0.16.3 already ships the route;
+* and **the screen says which one it is looking at**, because an operator who cannot tell a vendor
+  default from a measurement cannot correct either.
+
+**Most of that seam already exists and v0.17.1 must not rebuild it.**
+`store/read_models.py::severity_census` already resolves **declared first, then learned**, at read
+time, and already reports `placed`, `unplaced`, `vendor_scaled` and `declared` separately. Note that
+`vendor_scaled` there means *a rank above `VOCAB_MAX_RANK` from a vendor's own numbering* (F99) and is
+**not** the pre-loaded table — do not overload the name.
+
+So v0.17.1 inserts **one source into an existing chain**, and the open question is where:
+
+> **Is the order `declared > vendor-published > learned`, or `declared > learned >
+> vendor-published`?** A vendor's published severity is attested but static; a learned one is
+> measured but only from this deployment's stream. Which should win when they disagree?
+
+> **And what does the console show when they disagree?** The census reports buckets, not conflicts.
+> Is a vendor default that the stream contradicts a fourth bucket, a badge on the learned value, or
+> nothing at all?
+
+> **And is a vendor default evidence?** It is attested, so it is not generated data — but it is also
+> not a measurement of *this* network. Does a vendor-defaulted severity count toward
+> `SEVERITY_MIN_OBS`, or is it display-only until the stream confirms it?
+
+**These are left as questions deliberately** (principle 8). v0.17.1 will need a pre-registration, and
+answering them here would be deciding an analytical question in a release that measured nothing about
+it.
+
+**What v0.17.0 owes v0.17.1, and delivered**: a scenario format that carries a severity varbind
+(`testbed/scenarios/pon_fiber_cut.json` uses X.733 perceived severity at RFC 3877's ALARM-MIB arc,
+whose six tokens are exactly `known_oids.SEVERITY_VOCAB`), and a `known_oids`-shaped place for the
+table to land. **No vendor MIB file enters this repository, in this release or the next** — vendor MIBs
+carry the vendor's copyright even when published, so v0.17.1 ships derived rows with cited sources
+instead. The public source material is the **IANA-ITU-ALARM-TC** registry of ITU probable causes
+(`lossOfSignal 8`, `lossOfFrame 6`, `transmitFailure 18`, `excessiveBER 12`, `degradedSignal 3`),
+**RFC 3877 (ALARM-MIB)**, and **X.733 perceived severity** — whose six values `known_oids` already
+holds, uncited.
+
+### What v0.17.0 refused, with the reason
+
+* **The package tree did not move** (#320). `engine/`'s six domains form a near-DAG — `correlate` is a
+  pure sink at 28 edges in and 0 out, `operate` and `report` pure sources — with one 2-edge cycle
+  between `dataset` and `model`. `store/` is a data layer: 23 of 26 modules hold SQL, **zero** import
+  `engine` or `api`. No named cost, no move (Part VIII).
+* **The test directories did not appear** (#321). 57 of 81 test files are named as text somewhere, and
+  every one of those is prose, a citation or a `-k` selector — not a guard that would silently stop
+  guarding. A move that rewrites 57 references against no defect is the trade the maintainer refused.
+* **The `eval/` move was withdrawn after being decided** (#322, superseded by #328). Its named cost —
+  generators writing into the gate's subject — **survives a directory change**, so the directory was
+  not the remedy. A digest was (#327).
+* **`SEVERITY_MIN_CLOSED` was not lowered.** The lab now closes alarms, which #314 named as the
+  missing ingredient, but 25 closes is nowhere near 50 per NE and lowering the gate to make a chart
+  draw would fabricate the ordering `severity.py` exists to refuse.
+
 ## The claims
 
 Each row above is claimed here, one marker per line. The table's own document must claim every row
@@ -438,7 +543,10 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 <!-- release-claim: v0.16.6 = evidence-screens -->
 <!-- release-claim: v0.16.7 = severity-census -->
 <!-- release-claim: v0.16.8 = maintenance-windows -->
-<!-- release-claim: v0.17.0 = external-cartridge -->
+<!-- release-claim: v0.17.0 = foundations -->
+<!-- release-claim: v0.17.1 = alarm-vocabulary -->
+<!-- release-claim: v0.17.2 = corpus-window -->
+<!-- release-claim: v0.17.3 = external-cartridge -->
 <!-- release-claim: v0.18.0 = archetypes -->
 
 ## What this document does not decide
@@ -450,5 +558,5 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 * **v0.7.5.** Not in this chain: a runtime-behaviour fix to the feedback acquisition path, a
   prerequisite for v0.8.0 rather than a member of the sequence.
 * **Anything after v0.18.0.** [`../ROADMAP.md`](../ROADMAP.md) keeps the unsequenced items.
-* **Whether v0.17.0 happens at all.** *Likely, review before committing.* It is the one release here
-  that may reasonably be dropped.
+* **Whether v0.17.3 happens at all.** *Likely, review before committing.* It is the one release here
+  that may reasonably be dropped. (It was numbered v0.17.0 until #336 renumbered the block.)
