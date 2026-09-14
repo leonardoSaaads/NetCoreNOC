@@ -3710,3 +3710,33 @@ From this release an entry is about six lines: decision, reason, release.*
   at `c2e8a0ce…`; one scenario added → `28b77470…`. Record: module rename with import-only rewrites →
   identical at `acd2763b…`; one added response key → `f0dbd63d…`; one route docstring edited → moved
   by four `/openapi.json` lines.
+
+## 326. `SUBMODULES` is derived, because the rule was right and the list was 66 % of the tree (v0.17.0)
+
+- **Decision** (directive 11): `tests/test_structure.py`'s `SUBMODULES` — a hand-written list of 84
+  dotted names — becomes `sorted(_source_modules())`, read off `src/netcorenoc` by `rglob`. The
+  `api.` and `store.` package-shape tests keep their assertions and read the same walk through
+  `_package_modules()`.
+- **Reason**: the rule has been unchanged since v0.5.0 — *every runtime submodule must resolve from
+  the installed package under its unchanged name*, which is what keeps the F12 class of defect (a
+  source tree the tests pass against and a wheel would not reproduce) impossible. The list had
+  fallen to **84 of 128**: 44 modules were never imported by any test, including **every module of
+  `engine/dataset/`, `engine/model/`, `engine/evaluation/` and `engine/report/`** — four of
+  `engine/`'s six domains, `engine.dataset.capture` on the trap path among them — plus
+  `crosscutting/administration`, `engine/operate/resources`, `api/routes` and `__main__`.
+- **The cost, named**: an unimportable module in any of those four domains was a green build. The
+  guard's own subject could be edited away, which is the hole
+  `test_no_module_may_join_the_allowlist` closes for the size guard and nothing closed here. This is
+  F112 and F113's shape — *the rule was right and the file list was one entry long* — at 34 entries.
+- **Trade-off accepted**: a derived set cannot express *"this module is deliberately not importable"*.
+  Nothing in the tree wants to: all 128 import cleanly, measured. If one ever must not, the
+  exemption becomes a named constant with a reason, which is the visible diff `DEBT_ALLOWLIST` is.
+- **Why `api.` and `store.` kept their own tests**: they were the only two packages whose contents
+  were compared against disk in both directions, and that property is worth keeping stated. The
+  difference is that they compared a hand-written *slice* against disk, and every layer is now
+  covered by construction rather than three of five being covered by someone remembering.
+- **Measured**: `test_every_submodule_resolves` went from **84 parametrized cases to 128**, 40 of
+  them in the four previously unguarded `engine/` domains. Four new guard-the-guard tests: the walk
+  finds ≥ 120 names, every layer directory and every `engine/` domain contributes at least one, a
+  package `__init__` is named by its package, and the module and package views agree with the
+  filesystem. Injection: `rglob` narrowed to `glob` → red, naming the domains it lost.
