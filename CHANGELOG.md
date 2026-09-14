@@ -12,6 +12,116 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-three rows, two ask for an
 action, thirteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
+## [0.17.0] - 2026-09-14 — "the foundations"
+
+Three movements, in the order that made each one safe: prove what the safety net can see, change
+what measurement said was worth changing, and build the lab that was missing.
+
+**The headline numbers.** **22 seconds** from a clean state to a correlated fibre cut visible in the
+console — and **zero files moved** with the behaviour record unchanged across them, because
+measurement said the package tree had no named cost to move.
+
+That second number is the release arguing with its own brief, and it is the honest answer. The brief
+asked whether `engine/` earns 59 files. Measured: its six domains form a near-DAG — `correlate` is a
+pure sink at 28 import edges in and 0 out, `operate` and `report` pure sources, one 2-edge cycle
+between `dataset` and `model`. `store/` is a data layer, not a second domain layer: 23 of 26 modules
+hold SQL and **zero** import `engine` or `api`. Part VIII decides it — *no named cost, no move* — and
+Part VII.7 forbids a rename whose only argument is taste. So nothing moved, and the effort went where
+the measurements pointed instead.
+
+### The safety net (#324, #325, #327)
+
+`make eval-baseline REASON="…"` **refuses to run without a reason**, checks that before the
+two-minute replay, and appends the digest it replaced beside the digest it wrote — plus every
+aggregate metric that moved — to `eval/baselines/REBASELINE-LOG.md`. A pinned baseline exists to
+answer *did this change behaviour when I did not mean to?*; it is not a reason the corpus may never
+grow, and before this the only way to grow it was an edit no reviewer could tell from a behaviour
+change that was papered over.
+
+**Both instruments were measured rather than trusted, and both are narrower than their reputation.**
+
+| Injection | `make eval` |
+|---|---|
+| every pair forced unlinked | **red**, `bb890b78…`, two gated regressions |
+| class-affinity term halved | **identical** — no link crossed the threshold differently |
+| the `W_T` constant changed | **identical** — live weights come from the seeded `scoring_config` row |
+| the corpus directory moved | **identical** — so the restructure needed no re-baseline |
+| one scenario added | **moved**, `28b77470…` |
+
+So the corpus is now pinned by a path-and-contents digest with its scenario and event counts
+(#327) — the instrument `make eval` is not, since a digest over bytes is insensitive to nothing.
+And the behaviour record's blind spots are declared where the next release reads the instrument: it
+drives **nine query parameters across four routes with no query string**, `q` — v0.16.1's
+server-side search — among them. The live set is **derived** from `route.dependant.query_params`, so
+a parameter added to a route goes red until someone drives it or declares it.
+
+### Guards that derive their sets (#326, F119)
+
+`tests/test_structure.py`'s `SUBMODULES` was a hand-written list of **84 names against a package of
+128**. The 44 nobody checked were every module of `engine/dataset/`, `engine/model/`,
+`engine/evaluation/` and `engine/report/` — **four of engine's six domains**, `engine.dataset.capture`
+on the trap path among them. The rule was right and the list was a third short, which is F112 and
+F113's shape at 34 entries. The set is read off disk now; `test_every_submodule_resolves` went from
+84 parametrized cases to **128**.
+
+**F119**: the guard whose stated job is *"the UI tree is enumerated"* compared the console's top
+level as `top_level - {".well-known"} == {…}` and checked that directory's contents under an `if`.
+Subtracting an absent member is a no-op, so it passed whether `ui/.well-known/` was there or gone —
+and it holds RFC 9116's `security.txt`, a **served route**. Moving the directory away left the
+pre-fix guard green and makes the repaired one red.
+
+**F118** and **F120** are recorded and open: the 400-line module guard covers `src/` and `ui/` and
+not `tests/`, where **31 of 90 files** are over it; and the release-claim guard reads markers, not
+prose, so `docs/README.md` had disagreed with the release table for four releases on two of three
+rows.
+
+### `testbed/` — a two-host fibre cut you can trigger while watching it (#329-#334)
+
+Two simulated GPON OLTs with **different addresses** send genuine SNMPv2c trap PDUs at an
+unconfigured appliance. `python testbed/control.py cut` and the span goes down, the ONUs storm behind
+it, the appliance collapses them into one situation and **names it itself**. `… repair` and it clears.
+
+Measured from database queries, not log lines: `/healthz` in **1.0 s**; three cut/repair cycles in
+**128 s**; `SELECT DISTINCT ip FROM device` → `127.0.0.2`, `127.0.0.3`; one situation of **24
+members** across both devices, `derived_name = "Storm -> 127.0.0.2 and 1 more"`; **25 of 25 alarms
+cleared**, all five situations `resolved`; mid-cut `severity_census` → `active: 25, unplaced: 25,
+placed: {}`.
+
+The scenario uses the **standard** `linkDown`/`linkUp` pair for the span and a **vendor** arc for the
+ONUs, deliberately: the span clears on the first repair from `CLEAR_PAIR_SEEDS`, and the ONU pairing
+has to be *learned* — `CLEAR_CYCLES_TO_LEARN = 2`, so from the third cut those clear too. That
+progression is the product's thesis and `make eval` cannot show it, because the harness replays each
+scenario once.
+
+**A scenario cannot carry ground truth.** Not *does not* — the loader refuses a `truth` key at any
+depth, so generated traffic has no label to leak. The walk is recursive because the corpus keeps
+`truth` inside each event; a top-level check would accept a labelled corpus file copied in.
+
+No new dependency (five, unchanged), no new route, no migration (`0016` still head), no `/api` change.
+
+### CI: four jobs, and the four things it never ran (#335)
+
+The 74 DOM tests **never ran** — collected and skipped, because the runner had no Node, and a skip is
+not a failure. Coverage was measured and thrown away. The image was never built. The appliance was
+never started. All four are in, in four parallel jobs; the console job **fails on the word
+`skipped`**, so the exact state CI was in for five releases is now red.
+
+### Not in this release
+
+`v0.17.1`'s vendor severity defaults — the seam is left, and its three open questions are recorded
+**as questions** in `docs/plans/releases.md` (principle 8). No vendor MIB file enters this
+repository, in this release or the next.
+
+    make eval          c2e8a0ce…8b9b6f26   unchanged since v0.7.0
+    behaviour record   acd2763b…9f2d2bae   unchanged, byte for byte
+    trap path          5 modules, byte-identical by hash
+    suite              1984 passed (from 1891)
+    make dom           74 executed
+    coverage           95.52 %
+    mypy --strict      clean, 248 files
+    ruff / format      clean, 286 files
+    migrations         0016, user_version 16 — no new migration
+
 ## [0.16.7] - 2026-09-13 — "severity, and the number it refuses to invent"
 
 The Overview has eight charts and, until this release, **answered no question about how bad
