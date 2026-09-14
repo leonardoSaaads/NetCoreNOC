@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import socket
 import subprocess  # nosec B404 - fixed argv, shell=False; see _spawn
 import sys
 import time
@@ -60,11 +61,62 @@ def _spawn(argv: list[str], env: dict[str, str], log: Path) -> subprocess.Popen[
     )
 
 
-def wait_for_health(port: int, timeout_s: float = 60.0) -> float:
-    """Block until `/healthz` answers 200. Returns the seconds it took."""
+class PortAlreadyServingError(RuntimeError):
+    """Something was already answering on the lab's port, so the lab would drive *that*."""
+
+
+def refuse_a_foreign_appliance(trap_port: int, http_port: int) -> None:
+    """**Refuse if either port is already taken, before starting anything** (F122).
+
+    Found by the live pass. An appliance left over from an earlier session still held 8080, so this
+    run's own appliance failed to bind, `wait_for_health` succeeded **against the stranger**, and
+    both NE agents spent two minutes sending traps into a database this run had never opened. It
+    reported *"appliance healthy in 0.0 s"*, produced an empty lab, and said nothing about why.
+
+    Same shape as the source-address fallback in `agent.py`: a component that carries on plausibly
+    when its premise is false. Same remedy — check the premise first, and refuse.
+
+    **The premise is "can this run bind the ports", so that is what is tested.** The first version
+    asked whether anything answered `/healthz` with a 200, and an injection walked straight past it:
+    a plain `http.server` on 8080 answers 404, which is not a 200, so the check said the port was
+    free. Anything holding the port defeats this lab whatever it serves — and the trap port matters
+    more than the HTTP one, because a lab whose traps land in a stranger's receiver looks *healthy*.
+    """
+    for port, kind, proto in (
+        (http_port, socket.SOCK_STREAM, "TCP"),
+        (trap_port, socket.SOCK_DGRAM, "UDP"),
+    ):
+        probe = socket.socket(socket.AF_INET, kind)
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError as exc:
+            raise PortAlreadyServingError(
+                f"{proto} port {port} is already in use: {exc}\n\n"
+                "The lab will not start beside whatever holds it. During v0.17.0's live pass an "
+                "appliance from an earlier session still held 8080: this run health-checked the "
+                "stranger, and both NE agents sent their traps into a database this run had never "
+                "opened — silently, for two minutes.\n\n"
+                "Stop the other process, or move the lab with --http-port / --trap-port."
+            ) from exc
+        finally:
+            probe.close()
+
+
+def wait_for_health(port: int, child: subprocess.Popen[bytes], timeout_s: float = 60.0) -> float:
+    """Block until `/healthz` answers 200. Returns the seconds it took.
+
+    `child` is the appliance this run started: if it exits, waiting for it to become healthy is
+    waiting for something that cannot happen, so that is reported rather than timed out.
+    """
     start = time.monotonic()
     url = f"http://127.0.0.1:{port}/healthz"
     while time.monotonic() - start < timeout_s:
+        if child.poll() is not None:
+            raise RuntimeError(
+                f"the appliance exited with code {child.returncode} before answering {url}. "
+                f"Its output is in testbed/logs/appliance.log."
+            )
         try:
             with urllib.request.urlopen(url, timeout=2) as response:  # nosec B310 - fixed http URL
                 if response.status == 200:
@@ -92,10 +144,12 @@ def up(
         "NETCORENOC_TESTBED_STATE": str(state),
         "PYTHONPATH": str(REPO_ROOT / "src"),
     }
-    children = [
-        _spawn([_python(), "-m", "netcorenoc.main"], env, logs / "appliance.log"),
-    ]
-    elapsed = wait_for_health(http_port)
+    # Refuse before starting anything, so a stranger on the port is a message rather than a
+    # two-minute run into somebody else's database (F122).
+    refuse_a_foreign_appliance(trap_port, http_port)
+    appliance = _spawn([_python(), "-m", "netcorenoc.main"], env, logs / "appliance.log")
+    children = [appliance]
+    elapsed = wait_for_health(http_port, appliance)
     for host in scen.hosts:
         children.append(
             _spawn(

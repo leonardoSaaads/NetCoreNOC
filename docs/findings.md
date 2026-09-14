@@ -1907,3 +1907,34 @@ Run every command below from the repository root with the virtualenv active.
 - **Disposition**: **fixed in v0.17.0**, in the release's own verification phase.
   `test_submodules_is_the_derivation_and_not_a_list_someone_wrote` asserts the constant equals the
   derivation, with the count asserted separately because two empty collections satisfy an equality.
+
+## F122 — the lab health-checked an appliance it had not started, and drove it for two minutes
+
+- **What**: `testbed/run_local.py` started the appliance and then waited for `/healthz` to answer 200.
+  It never checked that the answer came from **its own** appliance. During v0.17.0's live pass an
+  appliance from an earlier session still held port 8080, so this run's appliance failed to bind and
+  exited, `wait_for_health` succeeded against the stranger, and both NE agents spent **two minutes**
+  sending traps into a database this run had never opened.
+- **What it looked like**: `appliance healthy in 0.0 s`, two agents reporting their source addresses
+  normally, and a lab database with **zero rows**. Nothing anywhere said why. The `0.0 s` was the
+  only tell, and it reads as good news.
+- **Why it matters**: this is the same shape as the source-address fallback the testbed was already
+  built to refuse — a component that carries on plausibly when its premise is false — and it is worse
+  in one way: the traps went *somewhere*. A lab pointed at a colleague's appliance, or at a real one,
+  is not a broken lab; it is a lab quietly writing into something else.
+- **Reproduce**:
+  ```sh
+  python -m http.server 8080 --bind 127.0.0.1 &     # anything holding the port
+  python testbed/run_local.py --demo --cycles 1     # before the fix: "healthy in 0.0 s", empty lab
+  ```
+- **Measured**: with a stranger on 8080, the run reported healthy in **0.0 s** and produced a
+  database with 0 alarms and 0 devices. With the fix, it refuses before starting anything:
+  `PortAlreadyServingError: TCP port 8080 is already in use`.
+- **Disposition**: **fixed in v0.17.0**, found by the live pass, in the phase that exists to find
+  exactly this. `refuse_a_foreign_appliance` probes **both** ports before anything starts, and
+  `wait_for_health` additionally fails if the appliance it is waiting for has exited.
+- **The first fix was wrong and the injection caught it.** It asked whether anything answered
+  `/healthz` with a 200 — and a plain `http.server` on 8080 answers **404**, which is not a 200, so
+  the check declared the port free and the injection walked past it. The premise is *"can this run
+  bind the ports"*, so the check is now a bind probe, and it covers the **trap** port too: a lab whose
+  traps land in a stranger's receiver looks healthier than one whose console does not load.
