@@ -1876,3 +1876,34 @@ Run every command below from the repository root with the virtualenv active.
   English and the wrong instrument. The honest fix is to give `docs/README.md`'s table real claim
   markers, or to stop it naming releases at all and let it link to the table — a decision with an
   owner, not something to bury in a renumbering commit.
+
+## F121 — the derived `SUBMODULES` could be replaced by a hand-written list and every guard stayed green
+
+- **What**: v0.17.0 replaced `tests/test_structure.py`'s hand-written `SUBMODULES` with
+  `sorted(_source_modules())` and installed four guard-the-guard tests (#326). **All four call
+  `_source_modules()` directly.** So the derivation was checked and the *constant the tests actually
+  iterate* was not — and overwriting `SUBMODULES` with `["api", "store", "main"]` left the whole
+  module green while `test_every_submodule_resolves` fell from **128 parametrized cases to 3**.
+- **Why it matters**: this is the exact defect #326 was written to fix, reintroduced one line away
+  from the fix. `SUBMODULES` feeds a `@pytest.mark.parametrize`, so **its length is that test's
+  coverage**, and a shorter list is not a failure — it is fewer tests, which pytest reports as
+  success. Appendix B's *"a pin whose coverage shrinks silently"*: `UI_SIZES` lost five files because
+  the re-pin helper intersected with existing keys, and every test over `UI_SIZES` iterated
+  `UI_SIZES`. Deriving a set is not sufficient; the iterated thing has to **be** the derivation.
+- **How it was found**: by injecting into the release's own new guard during Phase 5, as the
+  "a new test that violates the Phase 2 convention" injection. It came back **green**, and Part IX's
+  rule — *when an injection comes back green, suspect the injection first* — turned out to be wrong
+  here in the most useful way: the injection was correct and the guard was not.
+- **Reproduce**:
+  ```sh
+  python - <<'PY'
+  import pathlib; p = pathlib.Path("tests/test_structure.py"); s = p.read_text()
+  p.write_text(s.replace("SUBMODULES = sorted(_source_modules())", 'SUBMODULES = ["api", "store", "main"]'))
+  PY
+  .venv/bin/python -m pytest -q tests/test_structure.py    # before the fix: 21 passed
+  ```
+- **Measured**: the injection reported **21 passed** against the guard as first written, and
+  **1 failed — "it holds 3 names; the tree holds 128"** against the repaired one.
+- **Disposition**: **fixed in v0.17.0**, in the release's own verification phase.
+  `test_submodules_is_the_derivation_and_not_a_list_someone_wrote` asserts the constant equals the
+  derivation, with the count asserted separately because two empty collections satisfy an equality.

@@ -522,3 +522,35 @@ def test_the_module_and_package_views_agree_with_the_filesystem() -> None:
             if path.stem != "__init__"
         )
         assert _package_modules(prefix) == on_disk, f"{prefix}: {_package_modules(prefix)}"
+
+
+def test_submodules_is_the_derivation_and_not_a_list_someone_wrote() -> None:
+    """**The hole this release found in its own guard, by injecting into it** (F121, Appendix B).
+
+    `SUBMODULES` feeds a parametrized test, so its length *is* that test's coverage. The four
+    guard-the-guard tests above all call `_source_modules()` directly — which means replacing
+
+        SUBMODULES = sorted(_source_modules())
+
+    with a hand-written list left every one of them **green** while
+    `test_every_submodule_resolves` quietly fell from 128 cases to 3. Measured: the injection
+    reported *"21 passed"* and nothing said the pin had shrunk by 125 modules.
+
+    That is precisely *"a pin whose coverage shrinks silently"* — the failure `UI_SIZES` had when
+    the re-pin helper intersected with existing keys, and every test over `UI_SIZES` iterated
+    `UI_SIZES`. Deriving a set is not enough; the thing the tests actually iterate has to BE the
+    derivation, and this is what says so.
+    """
+    assert sorted(_source_modules()) == SUBMODULES, (
+        "SUBMODULES is no longer the derivation.\n"
+        f"  it holds {len(SUBMODULES)} names; the tree holds {len(_source_modules())}\n"
+        f"  missing: {sorted(set(_source_modules()) - set(SUBMODULES))[:10]}\n\n"
+        "`test_every_submodule_resolves` parametrizes over this list, so its length is that "
+        "test's coverage. A hand-written list here silently un-checks whatever it omits — which "
+        "is how the old list came to cover 84 of 128 modules (#326)."
+    )
+    # …and the floor, stated separately: an empty derivation would satisfy the equality above.
+    assert len(SUBMODULES) >= 120, (
+        f"SUBMODULES holds {len(SUBMODULES)} names. The equality above is satisfied by two empty "
+        "collections, so the count is asserted on its own."
+    )
