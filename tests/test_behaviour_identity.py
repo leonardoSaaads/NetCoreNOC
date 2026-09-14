@@ -16,9 +16,13 @@ from __future__ import annotations
 import hashlib
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from netcorenoc.store import Store
+
+import authutil
 import behaviour_identity as bi
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -146,4 +150,81 @@ def test_a_changed_response_produces_a_diff(
     assert injected != control, (
         "one extra key in one response left the record unchanged. The canonicalisation is wide "
         "enough to erase a real difference, which is the failure this harness exists to prevent."
+    )
+
+
+# --- what the record does not see, kept honest by derivation (v0.17.0, DECISIONS #325) ----------
+
+
+def _routes(app: object) -> list[Any]:
+    """`app.routes`, read through one typed accessor. `make_env` returns the app as `object`, and
+    three call sites reaching into it would each need their own `type: ignore`."""
+    return list(getattr(app, "routes", []))
+
+
+async def test_the_undriven_query_parameters_are_exactly_those_declared(store: Store) -> None:
+    """**The blind spot, turned from a fact nobody wrote down into a declaration that is checked.**
+
+    `Recorder._request` builds every URL from the route's path template and sends **no query
+    string**, so every route with query parameters is recorded at its defaults only. Measured at
+    v0.16.7: nine parameters across four routes, `q` — the v0.16.1 server-side situation search —
+    among them. A regression in search or in the timeline window leaves the record byte-identical.
+
+    The live set is **derived** from `route.dependant.query_params` rather than transcribed, so a
+    parameter added to a route fails here until someone either drives it in the harness or adds it
+    to `UNDRIVEN_QUERY_PARAMS` with a reason. A hand-written list is the guard this repository has
+    shipped six times and repaired six times (F92, F98, F112, F113, F114).
+
+    Deleting an entry cannot make this pass: the comparison is equality in both directions.
+    """
+    _engine, _queue, app = await authutil.make_env(store)
+    live: dict[tuple[str, str], tuple[str, ...]] = {}
+    for route in _routes(app):
+        dependant = getattr(route, "dependant", None)
+        path = getattr(route, "path", None)
+        if dependant is None or path is None:
+            continue
+        names = tuple(sorted(param.name for param in getattr(dependant, "query_params", [])))
+        if not names:
+            continue
+        for method in sorted(getattr(route, "methods", set()) or set()):
+            if method not in ("HEAD", "OPTIONS"):
+                live[(method, path)] = names
+
+    declared = bi.UNDRIVEN_QUERY_PARAMS
+    assert live == declared, (
+        "the set of query parameters this record does not drive has changed.\n"
+        f"  live, undeclared: {sorted(set(live) - set(declared))}\n"
+        f"  declared, gone:   {sorted(set(declared) - set(live))}\n"
+        f"  differing names:  "
+        f"{sorted(k for k in set(live) & set(declared) if live[k] != declared[k])}\n\n"
+        "Either drive the parameter in behaviour_identity.py, or declare it undriven with the "
+        "reason. What it may not be is undocumented: an undriven parameter is a regression this "
+        "record cannot see, and NOT_DRIVEN at least writes a line for the route it skips."
+    )
+
+
+async def test_the_query_parameter_derivation_actually_finds_parameters(store: Store) -> None:
+    """Guard the guard: a derivation that returned nothing would make the table above vacuous
+    while looking like a clean bill of health — F92's shape exactly."""
+    _engine, _queue, app = await authutil.make_env(store)
+    found = [
+        param.name
+        for route in _routes(app)
+        for param in getattr(getattr(route, "dependant", None), "query_params", [])
+    ]
+    assert len(found) >= 5, f"the derivation found {len(found)} query parameters; it is broken"
+    assert "q" in found, "the server-side situation search must be among what was found"
+
+
+def test_the_record_does_not_drive_a_single_query_string() -> None:
+    """The premise the declaration rests on, asserted against the committed record itself.
+
+    If the harness ever starts driving query strings, this goes red and the table above becomes a
+    claim about nothing — which is how a blind-spot declaration outlives the blind spot.
+    """
+    record = bi.RECORD.read_text(encoding="utf-8")
+    driven = [line for line in record.splitlines() if "?" in line and not line.startswith("#")]
+    assert not driven, (
+        f"the record now drives query strings; the declaration is stale: {driven[:3]}"
     )

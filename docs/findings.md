@@ -1778,3 +1778,44 @@ Run every command below from the repository root with the virtualenv active.
   chart vocabulary, not in this release's feature, and `format.js::plural` already holds the rule
   `unitText` would have to call. The fix is one line in `chartdata.js` and it moves every chart in
   the console, so it belongs in a commit of its own with the pins that move with it.
+
+## F118 — the 400-line module guard covers `src/` and `ui/` and not `tests/`, and 31 files there are over it
+
+- **What**: `tests/test_architecture.py` enforces `MAX_MODULE_LINES = 400` over
+  `src/netcorenoc/**/*.py` (`_modules()`) and over `ui/**/*.js` (`javascript_modules()`). Nothing
+  applies it to `tests/`, and the rule it encodes — *a module owns one noun or one decision*
+  (`architecture.md`) — is not a claim about where a file lives. `tests/test_ui_invariants.py` is
+  **4 048 lines**, ten times the limit the same repository enforces one directory away.
+- **Why it matters**: the guard's own comment says a module over ~250 lines is a smell and over 400
+  is debt with a named owner. A 4 048-line test module is where a guard goes to hide: F114 was a
+  composition guard whose denylist let a chart through, and it lived in this file. The larger the
+  module, the likelier the next one.
+- **Reproduce**:
+  ```sh
+  .venv/bin/python - <<'PY'
+  import pathlib
+  over = {p.name: len(p.read_text().splitlines())
+          for p in pathlib.Path("tests").rglob("*.py")
+          if len(p.read_text().splitlines()) > 400}
+  print(len(over), "of", len(list(pathlib.Path("tests").rglob("*.py"))), "files over 400 lines")
+  for n, c in sorted(over.items(), key=lambda kv: -kv[1]): print(f"  {c:5} {n}")
+  PY
+  ```
+- **Measured**: **31 of the 90 files under `tests/` exceed 400 lines** — a third of the directory.
+  The top of the distribution: `test_ui_invariants.py` 4 048, `test_governance.py` 1 509,
+  `test_upgrade.py` 1 473, `test_dataset.py` 1 323, `test_declaration.py` 1 195,
+  `test_evidence_boundary.py` 1 063, `test_architecture.py` 1 057, `test_shadow.py` 968,
+  `test_documentation.py` 938; the tail runs down through `test_simulation.py` at 405.
+  `behaviour_identity.py` — the instrument this release leans on hardest — is itself 550.
+- **Disposition**: **open**. Not fixed here (directive 12, and Part VII.7): extending the guard to
+  `tests/` would need a debt allowlist with **31** entries on the day it was installed, which is the
+  `DEBT_ALLOWLIST`-arrives-full shape #91 warns about, and at 34 % of the directory the honest
+  reading is that the rule was never meant to apply here rather than that the directory is in debt.
+  It is a decision with an owner — either the rule is scoped to `src/` and `ui/` deliberately and
+  says so in `architecture.md`, or a ratchet is installed at today's measured ceiling and walked
+  down — and v0.17.0 is a release whose first two movements change no behaviour, so it records the
+  finding and stops.
+- **Note on how this was found**: the first draft of this entry said *"nine of 89"*, taken from the
+  last ten lines of a `wc -l | sort -n` rather than from a count. The number was wrong by 22.
+  Appendix A's rule — *incrementing a number is not measuring it* — applies to a finding's own
+  evidence as much as to a release's.

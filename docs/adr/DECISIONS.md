@@ -3592,3 +3592,121 @@ From this release an entry is about six lines: decision, reason, release.*
   be a control with one setting.
 - **Measured**: the four v0.16.6 refusals were re-checked against the schema at `0016`, and three
   are unchanged. The fourth is blocked by data, not by schema.
+
+## 320. The package tree does not move, and the measurement is the argument (v0.17.0)
+
+- **Decision** (decision 1): `src/netcorenoc/`'s five layer directories and `engine/`'s six domains
+  stay exactly as v0.15.1 left them. #207–#210 are **confirmed, not superseded**.
+- **Reason**: the brief asks whether `engine/` *earns* 59 files, and the honest answer is measured
+  rather than felt. The cross-domain import graph is a near-DAG: `correlate` is a pure sink
+  (28 edges in, 0 out), `operate` and `report` are pure sources (20 and 14 out, 0 in), and the only
+  cycle is `dataset ↔ model` at 1 and 2 edges. A folder whose six members form a DAG is six
+  boundaries, not one drawer. `store/` is a data layer, not a second domain layer: 23 of its 26
+  modules contain SQL and **zero** import `engine` or `api`.
+- **Trade-off accepted**: the release spends none of its latitude on the package tree, so a reader
+  who expected a redrawn `src/` gets the same tree with better guards. Part VIII decides it —
+  *"ambiguity about whether a move is worth it resolves to the named cost. No cost, no move"* — and
+  Part VII.7 forbids a rename whose only argument is taste.
+- **Also decisive**: prime directive 3 pins the trap path's *contents* by hash, and all five of those
+  modules import absolutely. Moving anything they name rewrites their import lines, which changes
+  their bytes. So the interiors of `correlate/`, `dataset/`, `operate/` and `ingest/` are closed to
+  this release by its own first constraint, and a restructure of `engine/` that skipped them would
+  move only `model/`, `evaluation/` and `report/` — the three with no measured cost.
+- **Measured**: 129 `.py` under `src/netcorenoc`; `engine/` 59 files / 13 326 lines in six domains;
+  15 cross-domain edges, 1 cycle; `store/` 26 modules, 0 upward imports.
+
+## 321. The 81 test files keep one flat directory, and the marker stays at one (v0.17.0)
+
+- **Decision** (decision 2): no test directories, no new markers, no en-masse rename. A contributor
+  adds `tests/test_<subject>.py` beside the rest, and `dom` remains the only marker.
+- **Reason**: the cost of the flat layout was looked for and not found. What a newcomer actually
+  needs is *"where is the fibre cut?"*, and `tests/` answers that by filename already —
+  `test_correlate.py`, `test_receiver.py`, `test_scenarios.py`. Splitting into `unit/`,
+  `integration/` and `ui/` would rewrite 57 of 81 paths that are named as text somewhere in this
+  repository, against no defect anyone can point at. A restructure whose benefit is symmetry and
+  whose cost is 57 rewritten references is the trade the maintainer refused.
+- **Trade-off accepted**: `tests/test_ui_invariants.py` is 4 048 lines and the 400-line module guard
+  covers `src/` and `ui/` but not `tests/`. That is a real gap and it is **F118**, not a move: a
+  guard extended to test files would go red on 9 files today, which is a decision with an owner
+  rather than something to bury in a restructure (directive 12).
+- **Measured**: 81 `test_*.py`, 89 `.py`, 38 792 lines, one marker, 74 DOM tests executed; 57 of the
+  81 named as text somewhere, but every one of those in prose, a citation or a `-k` selector, and
+  none in a guard that would silently stop guarding.
+
+## 322. `eval/` splits by *what a thing is for*, and `tools/` states who runs it (v0.17.0)
+
+- **Decision** (decision 3): `eval/` keeps its name and its harness, and the generators move under
+  `eval/generators/`; the corpus stays at `eval/corpus/`. `tools/evidence/` — six per-release scripts
+  — moves to `tools/evidence/` unchanged, and `tools/` gains a README stating which of its scripts an
+  operator runs and which a release runs.
+- **Reason**: the measured cost is a loaded gun, not an aesthetic. `eval/corpus/` is the subject the
+  frozen gate is a baseline *of*, and `eval/corpus_gen.py` **writes into it** — `make corpus`
+  regenerates the corpus that `make eval` gates on, in the same directory, with no record. Putting
+  the generators one level down does not by itself prevent that; #324's re-baseline log is what makes
+  the re-cut auditable, and the directory split is what makes the two roles legible to a reader.
+- **Trade-off accepted**: `eval/` still holds three kinds of thing (a gate, a DSL, a simulation
+  package). Splitting it into three top-level directories was rejected because `tests/test_structure.py`
+  pins the top-level tree and `eval/simulation/` is imported by `tests/test_simulation.py` and
+  `test_operation.py` by bare module name through `known-local-folder` — a top-level move would
+  rewrite that isort configuration for no measured defect.
+- **Measured**: `eval/` 3 068 lines across 12 modules plus 10 corpus scenarios (3 159 events) and one
+  baseline; `tools/` 2 113 lines across 10 scripts, 4 operator-facing and 6 release-facing.
+
+## 323. `docs/` gains a reader's first page and keeps the process record where it is (v0.17.0)
+
+- **Decision** (decision 4): `docs/README.md` becomes the reader's entry point and states, in its
+  first lines, which files are documentation and which two are append-only process record.
+  `DECISIONS.md` and `findings.md` do not move.
+- **Reason**: measured, **51 % of `docs/` is process record** — `DECISIONS.md` 3 594 lines and
+  `findings.md` 1 780 of 10 598 — and both sit at the same level as `install.md` and `operate.md`,
+  so a newcomer opening `docs/` cannot tell the two registers apart. The cost is a reader who starts
+  in a 3 594-line append-only log looking for how to install the thing.
+- **Trade-off accepted**: moving them into `docs/record/` would be the tidier tree and is refused on
+  one measurement: **98+ docstrings in `src/` cite ADR numbers** and `docs/adr/DECISIONS.md` is named
+  as text in 20 files. The gain is alphabetical; the cost is every citation in the tree.
+- **Measured**: 29 files, 10 598 lines, three subdirectories; `adr/` + `findings.md` = 5 374 lines.
+
+## 324. A baseline that cannot be re-cut is a baseline that forbids a corpus (v0.17.0)
+
+- **Decision** (decision 6): `make eval-baseline REASON="…"` re-cuts the frozen baseline. It
+  **refuses to run without a reason**, checks that before the two-minute replay, and appends the
+  digest it replaced beside the digest it wrote — plus every aggregate metric that moved — to
+  `eval/baselines/REBASELINE-LOG.md`.
+- **Reason**: `make eval`'s stdout hash has held at `c2e8a0ce…` since v0.7.0, which is exactly what a
+  large refactor needs: *did this change correlation behaviour when I did not mean to?* It is not a
+  reason the corpus may never grow, and before this release the only way to grow it was to overwrite
+  `eval/baselines/v0.2.0.json` by hand — an edit no reviewer can distinguish from a behaviour change
+  that was papered over. A mandatory reason and a recorded pair of digests turn that into a commit
+  someone can argue with.
+- **Trade-off accepted**: the log is prose, so it records *a* reason rather than a *true* one. The
+  alternative — a machine-checkable justification — would have to know what a legitimate corpus
+  change is, which is the judgement the log exists to surface rather than to replace.
+- **Measured**: refused three ways (no `REASON`, whitespace `REASON`, no `--reason`); the refusal
+  returns in 0.42 s because it precedes the replay, and `tests/test_rebaseline.py` pins that ordering
+  by monkeypatching `run_all` to explode. The happy path recorded 8 moved metrics and both digests.
+- **Note on the renderer**: the log writes values with `repr`, not the delta table's 4-decimal
+  `_fmt`. The v0.2.0 baseline holds `pairwise_f1 = 0.999955` against a current `0.999958` — a real
+  move that `_fmt` prints as `1.0000 -> 1.0000`, which would have listed a metric as changed on a
+  line showing two identical numbers.
+
+## 325. What the corpus is a baseline of, and what the behaviour record cannot see (v0.17.0)
+
+- **Decision** (decision 7): the corpus is a baseline of **grouping decisions on ten scenarios**, and
+  nothing else. It is not a baseline of scoring arithmetic, not a sample of any customer's network,
+  and not evidence for a promotion. The behaviour record's blind spots are declared in
+  `behaviour_identity.py`'s own header, where the next release reads the instrument, and the one that
+  is mechanically checkable is now checked.
+- **Reason**: both instruments were measured rather than trusted, and both are narrower than their
+  reputation. The eval gate collapses correctly when a grouping decision changes — forcing
+  `linked=False` moves the hash to `bb890b78…` and prints two gated regressions — but **halving the
+  class-affinity term moved no aggregate metric at all**, because no link on this corpus crossed the
+  threshold differently. The record, meanwhile, drives **nine query parameters across four routes
+  with no query string**, `q` — the v0.16.1 server-side search — among them.
+- **Trade-off accepted**: the query-parameter gap is declared rather than closed. Driving them would
+  change the record, which directive 2 forbids this release; declaring them makes the next release's
+  choice explicit instead of accidental.
+- **Measured**: 10 scenarios, 3 159 events, 20 distinct varbind OIDs, none a severity field. Gate
+  sensitivity: `linked=False` → red; `term_a × 0.5` → identical; corpus directory moved → identical
+  at `c2e8a0ce…`; one scenario added → `28b77470…`. Record: module rename with import-only rewrites →
+  identical at `acd2763b…`; one added response key → `f0dbd63d…`; one route docstring edited → moved
+  by four `/openapi.json` lines.

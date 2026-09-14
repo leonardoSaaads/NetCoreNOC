@@ -106,6 +106,51 @@ SESSION_ENDING = frozenset(
 #: for it so that "not driven" is visible rather than absent.
 NOT_DRIVEN = frozenset({("GET", "/api/events")})
 
+#: **What this record does not see, declared rather than left to be discovered** (v0.17.0,
+#: DECISIONS #325). v0.17.0 leans on this instrument harder than any release before it — it is the
+#: thing that makes a restructure reviewable — so its blind spots are written where the next release
+#: reads the instrument, and the one that is mechanically checkable is checked.
+#:
+#: **1. Query parameters — none are driven.** `_request` builds every URL from the route's path
+#: template and sends no query string at all, so each of these routes is recorded at its *defaults*
+#: only. Measured at v0.16.7: **nine parameters across four routes**, and `q` is the server-side
+#: situation search added in v0.16.1. A regression in search, in `status` filtering, or in the
+#: timeline's `since`/`until`/`ne_id` window leaves this record byte-identical. That is the largest
+#: gap in it, and until v0.17.0 it was not written down anywhere — unlike `NOT_DRIVEN`, which at
+#: least writes a line into the record for the route it skips.
+#:
+#: `test_behaviour_identity.py` **derives** the live set from `route.dependant.query_params` and
+#: compares it with this table, so a parameter added to a route goes red until someone either drives
+#: it or declares it here. A table nobody checks would be the hand-written list this project has
+#: shipped six times (F92, F98, F112, F113, F114).
+#:
+#: **2. One scenario seeds it.** `fiber_cut.json` and nothing else, so a behaviour that only appears
+#: under a storm, a flap or a quarantined v1 trap is invisible except as that seed happens to
+#: produce it.
+#:
+#: **3. `time.monotonic` stays real.** Only `time.time` is frozen (see `_frozen_clock`), so anything
+#: keyed on the monotonic clock — the rate limiter's window, the engine's drain deadline — is not
+#: pinned by this record and cannot be.
+#:
+#: **4. It records responses, not decisions.** Correlation, scoring and capture appear only insofar
+#: as a response reflects them. `make eval` is the instrument for those, and it has its own blind
+#: spot: measured in v0.17.0's Phase 0, halving the class-affinity term changed no aggregate metric,
+#: because no link on this corpus crossed the threshold differently.
+#:
+#: **5. The console's bytes, not its behaviour.** Every static module is served and hashed here, so
+#: an edit to one moves the record — but what the JavaScript *does* is `make dom`'s question.
+#:
+#: **6. Route docstrings are IN, which surprises people.** FastAPI publishes them as OpenAPI
+#: descriptions, so `/openapi.json` carries them and editing a handler's prose moves this record.
+#: Measured: renaming `store/idle.py` left the record byte-identical; rewriting one route docstring
+#: that mentioned the module moved it by four lines.
+UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("GET", "/api/situations"): ("limit", "q", "status"),
+    ("GET", "/api/timeline"): ("limit", "ne_id", "since", "until"),
+    ("GET", "/api/quarantine"): ("limit",),
+    ("GET", "/api/audit"): ("limit",),
+}
+
 #: Headers dropped from the record, with the reason each one is not a behaviour of this project.
 #:
 #:   * `date`, `server` — the wall clock and the ASGI server's own name.

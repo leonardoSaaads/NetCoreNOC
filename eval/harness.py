@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -49,6 +50,22 @@ import trap_replay  # noqa: E402  (v2c encoder, shared with the replay tool)
 
 CORPUS_DIR = HERE / "corpus"
 BASELINE = HERE / "baselines" / "v0.2.0.json"
+
+#: Where a re-baseline is recorded (v0.17.0, DECISIONS #324). Beside the baselines it describes, so
+#: a reader who opens `eval/baselines/` finds the history of every cut without being told it exists.
+REBASELINE_LOG = HERE / "baselines" / "REBASELINE-LOG.md"
+
+REBASELINE_HEAD = """\
+# Baseline re-cut log
+
+Every entry here was written by `make eval-baseline REASON="…"` (`eval/harness.py --write-baseline
+--reason`). The target refuses to run without a reason, so a baseline cannot be re-cut silently.
+
+**Read this before trusting an unchanged `make eval` hash across releases**: the hash compares
+*current* against *baseline*, so re-cutting the baseline moves it for a reason that is not a
+behaviour change. Each entry records the digest replaced, the digest written, and which aggregate
+metrics moved.
+"""
 BASE_TS = 1_000_000.0
 SERVICE_S = 0.0003  # synthetic per-trap service time for the deterministic latency model
 GATE_METRICS = ("pairwise_f1", "ari", "entity_accuracy")
@@ -402,9 +419,82 @@ def _regressions(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]
     return out
 
 
+def _moved_metrics(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
+    """Every aggregate metric whose value differs, written **old -> new**.
+
+    The log entry records what actually moved rather than *"the baseline was re-cut"*, because a
+    re-baseline whose diff nobody wrote down is the edit this mechanism exists to prevent.
+
+    Values are rendered with `repr`, not with the 4-decimal `_fmt` the delta table uses: two floats
+    that differ in the seventh place are a real move, and `_fmt` would print both as `0.9999` and
+    make the entry read as though nothing changed on a line that exists to say something did.
+    """
+    old_agg, new_agg = old.get("aggregate", {}), new.get("aggregate", {})
+    out: list[str] = []
+    for key in sorted(set(old_agg) | set(new_agg)):
+        before, after = old_agg.get(key), new_agg.get(key)
+        if before != after:
+            out.append(f"{key}: {before!r} -> {after!r}")
+    return out
+
+
+def _rebaseline(target: Path, payload: str, reason: str) -> int:
+    """Write a new baseline and record, beside it, the hash it replaced and why.
+
+    **The reason is mandatory and that is the whole point.** A pinned baseline answers *"did this
+    change correlation behaviour when I did not mean to?"*, which is the question a large refactor
+    needs answered — so the baseline has to be re-cuttable, or a corpus can never grow. What it may
+    not be is re-cut *silently*: this writes a reviewable log entry carrying the old digest, the new
+    digest and the metrics that moved, so a re-baseline is a commit someone can argue with rather
+    than an edit nobody can audit.
+    """
+    old_digest = (
+        hashlib.sha256(target.read_bytes()).hexdigest() if target.is_file() else "(none: first cut)"
+    )
+    new_digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    # Read the outgoing baseline BEFORE overwriting it; the entry is "old -> new" in that order.
+    moved = (
+        _moved_metrics(json.loads(target.read_text()), json.loads(payload))
+        if target.is_file()
+        else []
+    )
+    target.write_text(payload)
+
+    from netcorenoc import __version__
+
+    entry = [
+        f"## {__version__} — {target.name}",
+        "",
+        f"- **Reason**: {reason}",
+        f"- **Replaced digest**: `{old_digest}`",
+        f"- **New digest**: `{new_digest}`",
+    ]
+    entry += (
+        [f"- **Aggregate metrics that moved** ({len(moved)}):"] + [f"  - {line}" for line in moved]
+        if moved
+        else ["- **Aggregate metrics that moved**: none"]
+    )
+    log = (
+        REBASELINE_LOG.read_text(encoding="utf-8") if REBASELINE_LOG.is_file() else REBASELINE_HEAD
+    )
+    REBASELINE_LOG.write_text(log.rstrip("\n") + "\n\n" + "\n".join(entry) + "\n", encoding="utf-8")
+
+    print(f"wrote baseline to {target}")  # noqa: T201
+    print(f"  replaced {old_digest}")  # noqa: T201
+    print(f"  now      {new_digest}")  # noqa: T201
+    print(  # noqa: T201
+        f"  recorded in {REBASELINE_LOG.name} with the reason and {len(moved)} moved metric(s)"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write-baseline", type=Path, help="freeze current metrics to this path")
+    parser.add_argument(
+        "--reason",
+        help="why the baseline is being re-cut; MANDATORY with --write-baseline (see _rebaseline)",
+    )
     parser.add_argument("--json", action="store_true", help="print the full metrics JSON")
     parser.add_argument("--baseline", type=Path, default=BASELINE, help="baseline to diff against")
     parser.add_argument(
@@ -412,13 +502,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # Refuse BEFORE the replay, so the caller is told in a second rather than after a full run.
+    if args.write_baseline and not (args.reason or "").strip():
+        parser.error(
+            "--write-baseline requires --reason: a re-baseline is a deliberate, reviewable act. "
+            'Say what changed and why, e.g. --reason "v0.17.2 adds two PON scenarios to the '
+            'corpus; the gate is a baseline of the corpus, so it is re-cut with it."'
+        )
+
     current = asyncio.run(run_all(promote=not args.cold))
     payload = json.dumps(current, indent=2, sort_keys=True) + "\n"
 
     if args.write_baseline:
-        args.write_baseline.write_text(payload)
-        print(f"wrote baseline to {args.write_baseline}")  # noqa: T201
-        return 0
+        return _rebaseline(args.write_baseline, payload, args.reason.strip())
     if args.json:
         print(payload)  # noqa: T201
         return 0

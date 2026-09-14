@@ -121,9 +121,26 @@ burst:
 eval:
 	$(PYTHON) eval/harness.py
 
-# Freeze the current metrics as a baseline (Phase 1 only writes eval/baselines/v0.2.0.json).
+# Re-cut the frozen baseline. **Refuses to run without a stated reason** (v0.17.0, DECISIONS #324):
+#
+#     make eval-baseline REASON="v0.17.2 adds two PON scenarios; the gate is a baseline of the
+#                                corpus, so it is re-cut with it"
+#
+# **Why a target rather than an edit.** `make eval` hashes its own stdout, and that hash has held at
+# `c2e8a0ce…` since v0.7.0 — which is what makes it useful to a refactor: *"did this change
+# correlation behaviour when I did not mean to?"*. It is NOT there to stop the corpus growing, and
+# before this target the only way to grow it was to overwrite the baseline by hand, which is an edit
+# nobody can audit. So the re-cut is mechanical, it demands a reason, and it appends the digest it
+# replaced beside the digest it wrote to `eval/baselines/REBASELINE-LOG.md`. A re-baseline is then a
+# reviewable commit that changes nothing else — the discipline snapshot tests use everywhere.
+#
+# The reason is checked BEFORE the replay, so a caller who forgets it is told in a second.
 eval-baseline:
-	$(PYTHON) eval/harness.py --write-baseline eval/baselines/v0.2.0.json
+	@test -n "$(REASON)" || { \
+		echo 'make eval-baseline requires REASON="why the baseline is being re-cut".'; \
+		echo 'A baseline re-cut without a recorded reason is the edit this target prevents.'; \
+		exit 2; }
+	$(PYTHON) eval/harness.py --write-baseline eval/baselines/v0.2.0.json --reason "$(REASON)"
 
 # Regenerate the labelled corpus from its deterministic generator.
 corpus:
