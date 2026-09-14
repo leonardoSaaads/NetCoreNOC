@@ -1847,3 +1847,32 @@ Run every command below from the repository root with the virtualenv active.
   membership is now required rather than subtracted, and the directory's contents are **derived from
   `STATIC_ASSETS`** — what the appliance actually serves — so the two sides of the comparison are
   the two things that must agree, instead of a literal repeated in a second place.
+
+## F120 — the release-claim guard covers `<!-- release-claim -->` markers and not prose, and `docs/README.md` had drifted twice
+
+- **What**: `tests/test_documentation.py` enforces *"exactly one answer to what is release X, across
+  every live document"* — but only against `<!-- release-claim: vX.Y.Z = key -->` markers and the
+  element tags inside a document that carries one. `docs/README.md`'s index table names release
+  numbers in **prose**, in a column nothing reads, and two of its three forward rows were wrong:
+  `plans/cartridge.md` was labelled **v0.16.0** when the release table had said **v0.17.0** since
+  v0.15.3 (#249), and `plans/archetypes.md` was labelled **v0.17.0** when the table had said
+  **v0.18.0** since the same edit.
+- **Why it matters**: `docs/README.md` is the first document a newcomer opens — v0.17.0 made it the
+  reader's entry point on purpose (#323) — so it is the worst place in the tree to carry a stale
+  answer. The guard's own docstring says the rule is about *every live document*, and its
+  implementation is about every live **marker**. That is the F112/F113 shape once more: the rule is
+  right and its scope is narrower than its sentence.
+- **Reproduce** (against the tree before this release):
+  ```sh
+  grep -n 'plans/cartridge.md\|plans/archetypes.md' docs/README.md   # v0.16.0 and v0.17.0
+  grep -n 'cartridge\|Archetypes' docs/plans/releases.md             # v0.17.0 and v0.18.0
+  ```
+- **Measured**: two of the three forward-looking rows in `docs/README.md` disagreed with the release
+  table, and had done since v0.15.3 — **four releases**, through two renumberings, with the claim
+  guard green throughout.
+- **Disposition**: **partly fixed in v0.17.0.** Both rows are corrected, and the renumbering of #336
+  is reflected in them. The **guard is not extended**, and that is deliberate (directive 12): making
+  it read prose means deciding what a release number looks like in a sentence, which is a regex over
+  English and the wrong instrument. The honest fix is to give `docs/README.md`'s table real claim
+  markers, or to stop it naming releases at all and let it link to the table — a decision with an
+  owner, not something to bury in a renumbering commit.

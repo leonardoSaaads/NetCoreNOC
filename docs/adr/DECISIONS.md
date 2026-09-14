@@ -3948,3 +3948,27 @@ From this release an entry is about six lines: decision, reason, release.*
   fail. Wheel boot: installed into a clean venv, `/healthz` returned
   `{"status":"ok","version":"0.16.7"}`, five console paths returned 200 including
   `.well-known/security.txt`, `PRAGMA user_version` = 16.
+
+## 336. Renumbering the v0.17 block, because the table disagreed with the release again (v0.17.0)
+
+- **Decision**: `docs/plans/releases.md` gains two rows and moves one. **v0.17.0 is the foundations**
+  (this release); **v0.17.1** the standard alarm vocabulary and vendor severity defaults; **v0.17.2**
+  the corpus, F76 and the correlation window; **v0.17.3** the external cartridge, moved one place.
+  v0.18.0 (archetypes) is unchanged. Twenty-five rows.
+- **Reason**: the table said v0.17.0 was *the external cartridge* and the release that governs it is
+  *the foundations*. That is the same defect #202, #249, #304 and #311 each caught one release later —
+  **a table that disagrees with the release it governs** — and `test_documentation.py` caught it here
+  before the number shipped, which is what it is for.
+- **Why the foundations go first rather than anywhere else in the block**: the other three depend on
+  machinery this release builds. v0.17.2 cannot grow the corpus without a baseline that can be re-cut
+  with a recorded reason (#324). v0.17.1 reads a severity varbind that no scenario format could carry
+  until now. And #314's blocker for severity was that **nothing in this repository closes an alarm** —
+  the lab closes 25 per run. Shipping the cartridge first would have put this project's riskiest step
+  on top of a gate nobody could re-cut.
+- **Trade-off accepted**: the cartridge slips a fourth time (#184, #202, #249, now this). Its own brief
+  already argues it should, and nothing in its argument moves — only its position.
+- **Measured**: the table parses to 25 rows; every row has a `<!-- release-claim -->` marker and the
+  guard confirms each agrees with the table; three stale in-document references to "v0.17.0's corpus
+  work" and "whether v0.17.0 happens at all" were corrected in the same commit, and
+  `docs/plans/cartridge.md`'s own claim marker moved to v0.17.3 — which the claim guard caught rather
+  than a reader.
