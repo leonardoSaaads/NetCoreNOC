@@ -1938,3 +1938,87 @@ Run every command below from the repository root with the virtualenv active.
   the check declared the port free and the injection walked past it. The premise is *"can this run
   bind the ports"*, so the check is now a bind probe, and it covers the **trap** port too: a lab whose
   traps land in a stranger's receiver looks healthier than one whose console does not load.
+
+## F123 — the entity discriminator promoted the ITU perceived-severity column, and six ONUs became one alarm
+
+- **What**: `varbind_profile` scores each varbind as a candidate *entity discriminator* and promotes
+  the winner. On a lab NE it promoted **`1.3.6.1.2.1.118.1.2.2.1.4`** — the column carrying X.733
+  perceived severity — because two distinct values across several alarm classes is exactly the shape
+  a discriminator has. The consequences are not subtle:
+  * the appliance **created four entities named after severities**. `entity` rows 3-6 on NE 1 carry
+    `key_source = 1.3.6.1.2.1.118.1.2.2.1.4` and keys `cleared`, `critical`, `major`, `minor`. Those
+    rows assert that four things exist inside that OLT. They do not.
+  * alarms raised after the promotion are **deduplicated by severity**. The alarm row with id 28 reads
+    `instance='major'`, `class=1.3.6.1.4.1.2011.6.128.1.1.2.2`, `count=6` — **six different ONUs, all
+    reporting loss of signal, collapsed into one alarm row** because they shared a severity word.
+  * and the field is then permanently disqualified from *being* severity:
+    `severity.severity_candidate` excludes any OID in `entity_oids`.
+- **Why it matters**: this is not a severity bug with a correlation side effect; it is a
+  **correlation bug**. An operator looking at that estate sees one ONU alarm where six ONUs are down,
+  and an entity list containing four things that are not equipment. It is also the sharpest possible
+  statement of why bundled standard knowledge is not a convenience: given the most standardised
+  severity field in SNMP, an appliance that knows nothing typed it as an identifier.
+- **Reproduce**:
+  ```sh
+  rm -rf testbed/state testbed/logs
+  .venv/bin/python testbed/run_local.py --demo --cycles 14 --hold-s 10 --settle-s 12
+  .venv/bin/python - <<'PY'
+  import sqlite3
+  c = sqlite3.connect("testbed/state/testbed.db"); c.row_factory = sqlite3.Row
+  for r in c.execute("SELECT id, ne_id, level, key, key_source FROM entity WHERE level>0"):
+      print(dict(r))
+  for r in c.execute("SELECT id, instance, count FROM alarm WHERE ne_id=1 AND count>1"):
+      print(dict(r))
+  PY
+  ```
+- **Measured** (14 cycles, 370 traps, 196 raises → 29 alarm rows): entity rows 3-6 keyed
+  `cleared`/`critical`/`major`/`minor`, all `key_source = 1.3.6.1.2.1.118.1.2.2.1.4`, confidence
+  0.658. Alarm row id 28: `instance='major' count=6`. The same column on NE 1 shows `role='entity'`,
+  `n_obs=230`, `n_distinct=2` in `varbind_profile`. **Control**: on NE 2 the same OID is `role=None`
+  — so the promotion, not the OID, is what disqualifies it there; NE 2 fails the severity test for a
+  different reason (`n_obs=140` against `SEVERITY_MIN_OBS=200`).
+- **Disposition**: **open, recorded, not fixed in v0.17.1** (DECISIONS #342). The mechanism for the
+  fix already exists — `varbind_profile._SKIP_OIDS`, whose comment reads *"standard framing varbinds
+  are never entity discriminators"* — and the defect is that this field is not in it. It is not fixed
+  here because both available keys are blocked: keying on the **OID** needs an OID no reachable
+  source can verify (#337, both registries 403), and keying on the **value vocabulary** would
+  disqualify varbinds in the shipped corpus — **2 338 corpus varbind instances carry X.733 tokens** —
+  moving entity inference on the corpus and `make eval` with it, against prime directive 5. The fix
+  needs a pre-registration because it changes what promotion metrics are computed against.
+
+## F124 — closed-alarm lifetime evidence is capped by estate size, not by observation time
+
+- **What**: `store/entities.py::closed_alarm_varbind_lifetimes` — the only evidence
+  `severity.confirm_ordinality` has — selects **alarm rows** with `status='cleared'`. The alarm table
+  deduplicates on `(device, class, instance)`, and a re-clear **overwrites `cleared_at`** rather than
+  appending a sample. So the sample count is bounded by the number of distinct (device, class,
+  instance) triples that have ever cleared, and **does not grow with time**.
+- **Why it matters**: `SEVERITY_MIN_CLOSED = 50` per NE therefore encodes *"at least 50 distinct
+  alarm identities on this NE must have cleared"*, not *"50 clear events observed"*. An access node
+  with six ports and four alarm classes can run for a year and never reach it. The threshold reads
+  like a patience requirement and is really an estate-size requirement, which is why the learned arm
+  of the severity chain is unreachable in every lab a newcomer can run.
+- **Reproduce** (same appliance, same trap path, same encoder; the only variable is whether the
+  instance changes per cycle, and both use the **bundled** `linkDown`/`linkUp` pair so clearing needs
+  no learned alternation):
+
+  | | raises | alarm rows | closed samples |
+  |---|---|---|---|
+  | instances **vary** per cycle, 14 cycles | 84 | 84 | **84** |
+  | instances **fixed**, 14 cycles | 84 | 6 | **6** |
+  | instances **fixed**, 7 cycles | 42 | 6 | **6** |
+
+- **Measured**: identical raise counts, a 14× difference in samples, and the fixed-instance ceiling is
+  **the same at 7 and 14 cycles** — the ceiling is the instance count, not the cycle count. On the
+  shipped lab scenario: 14 cycles, 196 raises, 29 alarm rows, **17 closed samples** (NE 1: 8, NE 2: 9)
+  against a floor of 50.
+- **A first attempt at this control was wrong and is worth recording.** It varied the instance while
+  using a **learned** clear pair, and reported 0 closed samples — because with a different instance
+  every cycle the pair never alternates on one instance and so is never learned, and nothing clears
+  at all. The control measured the clear-pair learner, not dedup. Switching to the bundled pair
+  isolated the variable.
+- **Disposition**: **open, recorded, not changed in v0.17.1** (DECISIONS #338, and the brief's own
+  IV.3(5) reading). Changing the evidence from rows to clear events alters what confirms a *learned*
+  severity, which is an analytical change requiring a pre-registration (Appendix C, (a)) — and doing
+  it in the same release that makes severity placeable by another route would leave neither change
+  measurable.
