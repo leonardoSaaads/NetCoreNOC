@@ -3909,3 +3909,42 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Measured**: after three cycles, `edge` holds three `clear_pair` rows —
   `1.3.6.1.6.3.1.1.5.3 → …5.4` (bundled), `2011.6.128.1.1.2.2 → …2.4` and `1271.2.1.2 → …2.1.3`
   (both learned) — and every alarm is `cleared`, every situation `resolved`.
+
+## 335. What CI must run, and the four things it never did (v0.17.0)
+
+- **Decision** (decision 13): one job becomes **four parallel jobs** — `static`, `tests`, `console`,
+  `appliance`. In: the DOM tests on a runner with Node, the coverage number reported rather than only
+  gated, the wheel built and booted, the container image built, and the testbed driven end to end. Out:
+  a second OS and a second Python version.
+- **Reason, per missing thing, measured against the tree at v0.16.7**:
+  * **the 74 DOM tests never ran.** They are ordinary pytest tests so `make test` *collected* them and
+    **skipped** them, because the runner had no Node — and a skip is not a failure. Ten consecutive
+    releases shipped a console defect only a browser found. The new job asserts the count is non-zero
+    and fails on the word `skipped`, so the exact state CI was in for five releases is now red.
+  * **coverage was measured and discarded.** `fail_under = 85` means a slide from 95.52 % to 86 % was
+    legal and invisible. Printed into the job summary now.
+  * **the image was never built.** F85 shipped a wheel whose console was missing five modules; the
+    only thing that catches that class is building the artifact and asking it for a page.
+  * **the appliance was never started.** Every gate ran against a source tree. Nothing proved the
+    thing boots, applies sixteen migrations and answers `/healthz`.
+- **Why parallel**: the old job ran its steps in sequence, so a formatting error hid every test result
+  behind it. Four jobs cost the same runner minutes and give four independent answers.
+- **Why no second OS or Python**: the appliance is one asyncio process on SQLite with five
+  dependencies, and `requires-python = ">=3.12"`. A matrix would quadruple the wait for a second
+  answer nobody has a use for yet. That is a deliberate omission, not an oversight.
+- **Why `actions/setup-node` is NOT used**: `tests/test_workflows.py` requires every action pinned by a
+  40-character commit SHA, and the environment this release was built in cannot reach
+  `github.com/actions/*` — so pinning one would mean committing a SHA nobody here verified, and a wrong
+  pin fails with an error pointing at nothing. `ubuntu-latest` ships Node in its toolcache, so the
+  ordinary case needs no action; a step checks the version and **fails with the remedy in its message**
+  if the image ever drops below the harness's floor of 22.
+- **Trade-off accepted**: the `appliance` job's `make dist-image` step could not be exercised here (no
+  reachable registry), so it is the one step in this workflow that v0.17.0 did not run. Named in the
+  handoff rather than left to be discovered.
+- **Measured**: every other step's logic was executed locally against both a good and a broken input.
+  DOM skip-detection: green output → pass; `74 skipped` → fail; `no tests ran` → fail; `0 passed` →
+  fail. Testbed assertions: the real lab database → pass; one device row deleted → fail naming the
+  sources; every alarm forced `active` → fail; membership cut to 4 → fail; `clear_pair` rows deleted →
+  fail. Wheel boot: installed into a clean venv, `/healthz` returned
+  `{"status":"ok","version":"0.16.7"}`, five console paths returned 200 including
+  `.well-known/security.txt`, `PRAGMA user_version` = 16.
