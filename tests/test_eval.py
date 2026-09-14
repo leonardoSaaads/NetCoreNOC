@@ -106,3 +106,111 @@ def test_proxied_scenarios_attribute_to_the_ne_in_the_baseline(scenario: str) ->
     """Under v0.2.0 the proxied storms attribute every alarm to the reporting NE, so their
     per-scenario entity accuracy is far below one — the gap v0.3.0 closes."""
     assert BASELINE["scenarios"][scenario]["entity_accuracy"] < 0.5
+
+
+# --- what the corpus is, pinned (v0.17.0, DECISIONS #327) ----------------------------------------
+#
+# `make corpus` regenerates `eval/corpus/*.json` from `eval/corpus_gen.py`, and `make eval` gates on
+# what that directory holds. Nothing compared the two, so a regeneration that changed a scenario was
+# an invisible edit: the frozen baseline would be re-measured against a different corpus and the
+# `make eval` hash would move for a reason nobody had to state.
+#
+# **This is the instrument the eval hash is not.** Measured in v0.17.0's Phase 0, `make eval`'s
+# stdout hash is insensitive to a 50 % perturbation of the class-affinity term, because no link on
+# this corpus crossed the threshold differently — a snapshot of *aggregate metrics* can only see a
+# change that moves one. A digest over the corpus bytes is insensitive to nothing.
+#
+# **When a release legitimately grows the corpus** it updates these three constants in the same
+# commit, beside the `make eval-baseline REASON="…"` entry that re-cuts the baseline (#324) — the
+# reviewable-line-in-a-diff discipline `TRAP_PATH_HASHES`, `UI_HASHES` and `SRC_TREE_DIGEST` use.
+
+#: SHA-256 over `eval/corpus/*.json`, path hashed alongside contents, ordered by the POSIX string:
+#:
+#:     for each path in sorted order:  update(path); update(b"\0"); update(sha256(contents))
+#:
+#: The path is in the digest, so **renaming a scenario file moves it** even when every byte of every
+#: file is unchanged. That matters here more than it does for `src/`: `harness.run_all` enumerates
+#: this directory with `sorted(CORPUS_DIR.glob("*.json"))`, so the filenames are the replay order.
+CORPUS_DIGEST = "85f73f07eb7d9878a7c6d4801a4f3df622b4d6e953bf87e95e989aeda3cfef9a"
+CORPUS_SCENARIOS = 10
+CORPUS_EVENTS = 3159
+
+
+def _corpus_digest() -> tuple[str, int, int]:
+    """`(digest, scenario count, total event count)` over the labelled corpus."""
+    import hashlib
+
+    corpus = EVAL / "corpus"
+    paths = sorted(p.relative_to(corpus).as_posix() for p in corpus.glob("*.json"))
+    digest = hashlib.sha256()
+    events = 0
+    for relative in paths:
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        raw = (corpus / relative).read_bytes()
+        digest.update(hashlib.sha256(raw).digest())
+        events += len(json.loads(raw).get("events", []))
+    return digest.hexdigest(), len(paths), events
+
+
+def test_the_corpus_is_byte_identical_to_its_pin() -> None:
+    """**The gate.** `make corpus` cannot change the gate's subject without a reviewable line.
+
+    A red here means `eval/corpus/` moved. If that was intended — a scenario added, a label
+    corrected — update the three constants above **and** re-cut the baseline with
+    `make eval-baseline REASON="…"`, which records both digests and what moved (#324). If it was not
+    intended, someone ran `make corpus` against a generator that no longer reproduces the shipped
+    corpus, and that is a defect in the generator rather than a new corpus.
+    """
+    digest, scenarios, events = _corpus_digest()
+    assert scenarios == CORPUS_SCENARIOS, (
+        f"{scenarios} corpus scenarios; the pin records {CORPUS_SCENARIOS}. A scenario was added "
+        "or removed, which changes what the frozen baseline is a baseline OF."
+    )
+    assert events == CORPUS_EVENTS, (
+        f"{events} corpus events; the pin records {CORPUS_EVENTS}. The scenario count is the "
+        "same, so a scenario's contents moved — which the count alone would not have shown."
+    )
+    assert digest == CORPUS_DIGEST, (
+        f"the corpus moved.\n  pinned: {CORPUS_DIGEST}\n  actual: {digest}\n\n"
+        "Both the count and the event total matched, so this is a change inside a scenario that "
+        "preserved how many events it holds — a relabelled root, a changed varbind, a different "
+        "source address. Exactly the edit an aggregate-metrics snapshot can miss."
+    )
+
+
+def test_the_corpus_digest_is_sensitive_to_a_single_byte(tmp_path: Path) -> None:
+    """The control. A digest that ignored contents, or ignored paths, would pin nothing.
+
+    Both halves are asserted, because they fail differently: a digest over contents alone would let
+    two scenarios swap filenames — and filenames are the replay order, since `run_all` globs this
+    directory — while a digest over paths alone would let any scenario's body be rewritten.
+    """
+    import hashlib
+
+    def digest(files: dict[str, bytes]) -> str:
+        out = hashlib.sha256()
+        for name in sorted(files):
+            out.update(name.encode())
+            out.update(b"\0")
+            out.update(hashlib.sha256(files[name]).digest())
+        return out.hexdigest()
+
+    base = {"a.json": b'{"name": "a"}', "b.json": b'{"name": "b"}'}
+    assert digest(base) != digest({**base, "a.json": b'{"name": "a "}'}), "contents are not in it"
+    assert digest(base) != digest({"a2.json": base["a.json"], "b.json": base["b.json"]}), (
+        "paths are not in the digest, so two scenarios could swap names and change the replay order"
+    )
+
+
+def test_the_corpus_pin_names_the_scenarios_the_harness_will_replay() -> None:
+    """The pin covers the set `harness.run_all` actually enumerates, not a directory beside it.
+
+    `run_all` uses `sorted(CORPUS_DIR.glob("*.json"))`. If the two ever read different places the
+    pin would be guarding a corpus nobody replays, which is the F112 shape — a rule whose scope is
+    narrower than the thing it claims to cover.
+    """
+    replayed = sorted(p.name for p in harness.CORPUS_DIR.glob("*.json"))
+    pinned = sorted(p.name for p in (EVAL / "corpus").glob("*.json"))
+    assert replayed == pinned, f"the harness replays {replayed}; the pin covers {pinned}"
+    assert len(replayed) == CORPUS_SCENARIOS

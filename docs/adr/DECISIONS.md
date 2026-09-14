@@ -3740,3 +3740,53 @@ From this release an entry is about six lines: decision, reason, release.*
   finds ≥ 120 names, every layer directory and every `engine/` domain contributes at least one, a
   package `__init__` is named by its package, and the module and package views agree with the
   filesystem. Injection: `rglob` narrowed to `glob` → red, naming the domains it lost.
+
+## 327. The corpus is pinned by digest, because the eval hash is not sensitive to it (v0.17.0)
+
+- **Decision** (decision 7): `tests/test_eval.py` pins `eval/corpus/` by a path-and-contents digest
+  with the scenario count and the total event count beside it. A release that grows the corpus updates
+  all three in the same commit, next to the `make eval-baseline REASON="…"` entry that re-cuts the
+  baseline (#324).
+- **Reason**: `make corpus` regenerates the corpus and `make eval` gates on it, and **nothing
+  compared the two**. A regeneration that changed a scenario re-measured the frozen baseline against
+  a different subject, and the only symptom was a `make eval` hash that moved for a reason nobody had
+  to state. The pin turns that into a red test naming which of the three things changed.
+- **What makes it worth having rather than redundant**: measured in Phase 0, `make eval`'s stdout
+  hash is **insensitive to a 50 % perturbation of the class-affinity term** — no link on this corpus
+  crossed the threshold differently, so no aggregate metric moved. A snapshot of aggregates can only
+  see a change that moves an aggregate. A digest over the corpus bytes is insensitive to nothing, and
+  the two instruments now fail for different reasons, which is the point of having both.
+- **Why the path is in the digest**: `harness.run_all` enumerates the directory with
+  `sorted(CORPUS_DIR.glob("*.json"))`, so the **filenames are the replay order**. A digest over
+  contents alone would let two scenarios swap names and change the order silently.
+- **Trade-off accepted**: three constants to update whenever the corpus legitimately changes. That is
+  the reviewable-line-in-a-diff cost `TRAP_PATH_HASHES`, `UI_HASHES` and `SRC_TREE_DIGEST` already
+  pay, and the alternative is the invisible edit above.
+- **Measured**: 10 scenarios, 3 159 events, digest `85f73f07…`. Injections: one varbind value changed
+  inside a scenario, count preserved → red on the digest; a scenario file renamed with bytes
+  identical → red on the digest; a scenario added → red on the count. Control green each time.
+
+## 328. Superseding #322 — the `eval/` move is withdrawn, because it removes no cost (v0.17.0)
+
+- **Decision**: **#322 is superseded.** `eval/corpus_gen.py` and `eval/background_gen.py` stay where
+  they are; no `eval/generators/` directory is created. `tools/` is unchanged. #322's reading of what
+  `eval/` holds stands; its proposed move does not.
+- **Reason**: #322 named the cost as *"the generators write into the corpus the frozen gate is a
+  baseline of, in the same directory, with no record"* — and then proposed a directory as the remedy.
+  Writing it out made the flaw plain: **moving a generator one level down prevents nothing.**
+  `make corpus` would still rewrite `eval/corpus/`, the gate would still be re-measured against a
+  changed subject, and the only difference would be the path in the traceback. That is precisely the
+  rename Part VII.7 forbids — *no rename whose only argument is taste* — and Part VIII decides it:
+  ambiguity about whether a move is worth it resolves to the named cost, and this move's named cost
+  survives the move.
+- **What replaced it**: #327's corpus digest, which removes the actual cost. The silent regeneration
+  is now a red test that names whether the count, the event total or a scenario's bytes moved.
+- **Trade-off accepted**: `eval/` still holds four kinds of thing under one name — a gate (harness,
+  metrics, baselines), a DSL, two generators and a simulation package — and a reader still has to
+  learn that. The honest ranking is that the legibility complaint is real and small, and the
+  correctness complaint was the one worth a commit. `eval/README.md` states the four roles, which is
+  what the directory split would have communicated at none of its cost.
+- **Measured**: the move would have touched `Makefile`, `pyproject.toml`'s `known-local-folder`,
+  `tests/test_scoring.py`'s module denylist and five prose references, and changed no guard's verdict
+  on any input. Neither generator is imported by anything — both are scripts — so the move had no
+  import graph to simplify either.
