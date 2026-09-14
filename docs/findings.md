@@ -1819,3 +1819,31 @@ Run every command below from the repository root with the virtualenv active.
   last ten lines of a `wc -l | sort -n` rather than from a count. The number was wrong by 22.
   Appendix A's rule — *incrementing a number is not measuring it* — applies to a finding's own
   evidence as much as to a release's.
+
+## F119 — the guard whose job is "the UI tree is enumerated" was blind to `.well-known/` disappearing
+
+- **What**: `tests/test_security_ui.py::test_the_ui_tree_is_exactly_what_is_declared` compared the
+  console's top level as `top_level - {".well-known"} == {…}` and then checked that directory's
+  contents under `if well_known.exists():`. **Subtracting an absent member is a no-op**, so the set
+  comparison passes whether `ui/.well-known/` is present or gone, and the conditional then skips its
+  contents for the same reason. The one guard whose stated purpose is *"the tree is not merely small,
+  it is enumerated"* could not see the disappearance of a directory the appliance serves a route
+  from.
+- **Why it matters**: `GET /.well-known/security.txt` is a real route — pinned in
+  `test_architecture.ROUTE_ORDER_BASELINE` and recorded in the behaviour record — and RFC 9116 is why
+  it exists. Losing the file makes that route a 500. It is also the one directory `pyproject.toml`'s
+  `ui/**/*` glob cannot match, because `**` does not cross a leading dot, which is why it needs its
+  own `package-data` line (F85's neighbour). A directory that needs a special case in packaging and
+  is invisible to the tree guard is the combination that ships a broken wheel.
+- **Reproduce** (against the guard as it stood before this release):
+  ```sh
+  mv src/netcorenoc/ui/.well-known /tmp/wk
+  .venv/bin/python -m pytest -q tests/test_security_ui.py -k ui_tree    # 1 passed
+  mv /tmp/wk src/netcorenoc/ui/.well-known
+  ```
+- **Measured**: with `ui/.well-known/` moved away, the pre-fix guard reported **1 passed**. The same
+  injection against the repaired guard reports **1 failed**, naming the missing member.
+- **Disposition**: **fixed in v0.17.0**, in a commit of its own that changes no behaviour. The
+  membership is now required rather than subtracted, and the directory's contents are **derived from
+  `STATIC_ASSETS`** — what the appliance actually serves — so the two sides of the comparison are
+  the two things that must agree, instead of a literal repeated in a second place.

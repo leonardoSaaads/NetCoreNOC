@@ -795,13 +795,20 @@ def test_the_ui_tree_is_exactly_what_is_declared() -> None:
     top_level = {p.name for p in UI_DIR.iterdir()}
     # v0.16.1 adds `favicon.svg` — served from this origin because `img-src 'self'` forbids the
     # `data:` URI that would otherwise be the one-line repair for the /favicon.ico 404 (F96).
-    assert top_level - {".well-known"} == {
+    #
+    # **v0.17.0 (F119): `.well-known` is REQUIRED here rather than subtracted.** It was written
+    # `top_level - {".well-known"} == {...}`, which passes whether the directory is present or gone
+    # — subtracting a member that is absent is a no-op — and the conditional below then skipped its
+    # contents too. So the one guard whose stated job is *"the tree is enumerated"* was blind to the
+    # disappearance of a directory the appliance serves a route from.
+    assert top_level == {
         "index.html",
         "app.js",
         "style.css",
         "favicon.svg",
         "app",
         "vendor",
+        ".well-known",
     }
 
     on_disk = {str(p.relative_to(UI_DIR)) for p in UI_DIR.rglob("*.js") if "vendor" not in p.parts}
@@ -811,9 +818,26 @@ def test_the_ui_tree_is_exactly_what_is_declared() -> None:
         f"  on disk, not served: {sorted(on_disk - served)}\n"
         f"  served, not on disk: {sorted(served - on_disk)}"
     )
+    # …and its contents, **derived from what the appliance serves** rather than from a literal and
+    # rather than under an `if` (F119). `STATIC_ASSETS` is the served surface, so the two sides of
+    # this comparison are the two things that must agree; a file added under `.well-known/` and not
+    # served, or served and not present, is the F85 packaging defect in the one directory whose
+    # leading dot makes `ui/**/*` skip it.
     well_known = UI_DIR / ".well-known"
-    if well_known.exists():
-        assert {p.name for p in well_known.iterdir()} == {"security.txt"}
+    assert well_known.is_dir(), (
+        "ui/.well-known/ is gone. RFC 9116 security.txt is a served route — it is in "
+        "ROUTE_ORDER_BASELINE and in the behaviour record — so this is a 500, not a tidy-up."
+    )
+    served_well_known = {
+        name.split("/", 1)[1] for name in STATIC_ASSETS if name.startswith(".well-known/")
+    }
+    assert {p.name for p in well_known.iterdir()} == served_well_known, (
+        f"ui/.well-known/ holds {sorted(p.name for p in well_known.iterdir())} and the appliance "
+        f"serves {sorted(served_well_known)}"
+    )
+    assert served_well_known == {"security.txt"}, (
+        "the served .well-known set changed; RFC 9116 defines exactly this one file here"
+    )
 
 
 def test_csp_is_unchanged_and_forbids_inline() -> None:
