@@ -4169,3 +4169,27 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Trade-off accepted**: the console can say which varbind carried the severity but not what that
   varbind is called. Naming it is one reachable RFC away and is a documentation change, not a code
   one.
+
+## 347. No vendor MIB file, proved by what files contain and not by what they are called (v0.17.1)
+
+- **Decision**: `tests/test_supply_chain.py::test_no_vendor_mib_file_is_in_this_repository` searches
+  the **tracked tree** and fails on any file whose *contents* are an ASN.1 module defining SNMP
+  objects — the ASN.1 module signature plus at least one SMIv2 macro, both required.
+- **Reason**: #339 refuses vendor rows; this is the guarantee underneath it. Vendor MIBs carry the
+  vendor's copyright even where the vendor publishes them, so the property that matters is legal and
+  attaches to the file's *content*, not to its name. A guard keyed on `*.mib` and `*.my` passes on a
+  MIB renamed `notes.md`, filed under `docs/reference/`, or given no extension — which is F51's shape
+  and this repository's most repeated defect (F92, F98, F112, F113, F114, F121, F125).
+- **Why both conditions**: the ASN.1 signature alone matches X.509 and LDAP schemas, which are ASN.1
+  and are not what #339 is about. Requiring an SMIv2 macro as well is what makes it a *MIB*.
+- **Why the guard cannot flag itself**: the signature it searches for is built by concatenation at
+  import time, so it never appears literally in the test file. The alternative — excluding the guard
+  by path — is a hole that a file only has to be moved through.
+- **Guarded guard**: a second test builds a minimal SMIv2 module *written here* and asserts the
+  detector recognises it, and a third asserts prose about MIBs (this repository is full of it) does
+  not fire. Neutering the detector to always answer "no" leaves the main guard green and fails the
+  second, which is the point of having it.
+- **Demonstrated red**: a real Huawei-shaped MIB committed as `docs/reference/vendor-notes.md` — no
+  MIB extension anywhere — fails the guard by name.
+- **Scope**: the tracked tree, so it covers `testbed/`, `docs/` and `eval/corpus/` alike rather than
+  the directories anyone thought to look in.

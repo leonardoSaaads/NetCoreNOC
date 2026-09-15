@@ -385,3 +385,116 @@ def test_the_two_files_that_would_hide_a_packaging_hole_are_not_in_the_image_bui
         f"builder above would then assemble something that is not what the image builds."
     )
     assert "*.egg-info/" in (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------------------------
+# No vendor MIB file, anywhere (v0.17.1, DECISIONS #339).
+#
+# Vendor MIBs carry the vendor's own copyright even where the vendor publishes them. This
+# repository ships derived knowledge with a cited public source, never a vendor's file — not
+# vendored, not "for reference", not one.
+# --------------------------------------------------------------------------------------------
+
+# Built by concatenation so that **this file never contains the signature it searches for**. A
+# guard that matched itself would have to exclude itself by path, and a path exclusion is the hole
+# a file only has to be moved through. Nothing here is a MIB; nothing here looks like one either.
+_ASN1_OPEN = "DEFINITIONS" + " ::= " + "BEGIN"
+_SNMP_MACROS = (
+    "MODULE-" + "IDENTITY",
+    "OBJECT-" + "TYPE",
+    "NOTIFICATION-" + "TYPE",
+    "OBJECT-" + "IDENTITY",
+    "TEXTUAL-" + "CONVENTION",
+    "MODULE-" + "COMPLIANCE",
+)
+
+
+def _tracked_files() -> list[str]:
+    import subprocess  # nosec B404 - `git ls-files` in this repository, no shell, no input
+
+    out = subprocess.run(  # nosec B603 B607 - a fixed argv in this repository
+        ["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert len(out) > 100, (
+        f"`git ls-files` answered with {len(out)} paths, so this guard has no tree to search and "
+        "is not guarding. A repository this size has hundreds."
+    )
+    return out
+
+
+def _looks_like_a_mib(text: str) -> bool:
+    """True for an ASN.1 module that defines SNMP objects — which is what a MIB file is.
+
+    Two independent things must both hold: the ASN.1 module signature, and at least one of the
+    SMIv2 macros that make a module a *MIB* rather than any other ASN.1 (X.509 and LDAP schemas are
+    ASN.1 too and are not what #339 is about).
+    """
+    if _ASN1_OPEN not in text:
+        return False
+    return any(macro in text for macro in _SNMP_MACROS)
+
+
+def test_no_vendor_mib_file_is_in_this_repository() -> None:
+    """**#339's guarantee, derived from file contents and not from a list of extensions.**
+
+    A MIB is recognisable by what is *inside* it: an ASN.1 module signature plus at least one SMIv2
+    macro. That is the property the licence question attaches to, and it does not change when
+    somebody renames `HUAWEI-XPON-MIB.txt` to `notes.md`, drops it under `docs/reference/`, or gives
+    it no extension at all. A guard keyed on `*.mib` and `*.my` would pass on all three, which is
+    F51's shape and this repository's most repeated defect (F92, F98, F112, F113, F114, F121, F125).
+
+    The subject is the **tracked tree**, so it covers a file committed anywhere — `testbed/`,
+    `docs/`, `eval/corpus/` — not just the places anyone thought to look.
+    """
+    offenders = []
+    for relative in _tracked_files():
+        path = REPO_ROOT / relative
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="strict")
+        except (UnicodeDecodeError, OSError):
+            continue  # not text, so not an ASN.1 module
+        if _looks_like_a_mib(text):
+            offenders.append(relative)
+    assert not offenders, (
+        f"file(s) {offenders} are ASN.1 modules defining SNMP objects — i.e. MIB files. "
+        "DECISIONS #339: vendor MIBs carry the vendor's copyright even where published, and this "
+        "repository ships derived rows with a cited public source instead. Remove the file; if the "
+        "knowledge in it is needed, cite the public document it came from and derive the rows."
+    )
+
+
+def test_the_mib_detector_actually_recognises_a_mib() -> None:
+    """**Guard the guard** (F121). The test above passes trivially if `_looks_like_a_mib` never
+    says yes to anything, and a guard that cannot fail is a guard that is not there.
+
+    The sample is a minimal SMIv2 module written here, not a vendor's — which is the point: the
+    detector is shown to work without this repository containing the thing it forbids.
+    """
+    mib = "\n".join(
+        [
+            f"EXAMPLE-MIB {_ASN1_OPEN}",
+            "IMPORTS " + "MODULE-" + "IDENTITY FROM SNMPv2-SMI;",
+            "exampleMIB " + "MODULE-" + "IDENTITY",
+            '    LAST-UPDATED "202601010000Z"',
+            "    ::= { enterprises 99999 }",
+            "END",
+        ]
+    )
+    assert _looks_like_a_mib(mib), "the detector does not recognise a minimal SMIv2 module"
+
+
+def test_the_mib_detector_does_not_fire_on_prose_about_mibs() -> None:
+    """The repository talks about MIBs constantly — `testbed/README.md`, the scenario notes, this
+    module's own header. None of that is a MIB, and a detector that said otherwise would be
+    unusable: it would be switched off, which is how a guard stops guarding."""
+    prose = (
+        "The severity varbind is X.733 perceived severity carried at RFC 3877's ALARM-MIB arc. "
+        "No vendor MIB file is in this repository. The " + "OBJECT-" + "TYPE macro is SMIv2's."
+    )
+    assert not _looks_like_a_mib(prose), "prose about MIBs was read as a MIB"
+    assert not _looks_like_a_mib(_ASN1_OPEN), (
+        "the ASN.1 signature alone was read as a MIB; an X.509 or LDAP schema is ASN.1 too and is "
+        "not what #339 is about"
+    )
