@@ -951,7 +951,16 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
 #: the three things nothing measures. A release that
 #: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
-SRC_TREE_DIGEST = "b5becc7ebe3268a141c9194d070e9ced3633b91d87c38efaca08a312f8a29e49"
+#:
+#: v0.17.1: 213 files, unchanged — **no file added, removed or moved**, which is the first thing
+#: this pin says and the reason the count is asserted separately from the digest. Two files differ
+#: in content: `ingest/known_oids.py` (the `standard_severity` read, and `BUNDLED_SOURCES` citing
+#: every bundled table — #337, #344) and `store/read_models.py` (the `declared > standard > learned`
+#: precedence chain and the `provenance` breakdown — #338, #341). The one behaviour that moved with
+#: them is `GET /api/stats`, 290 -> 343 bytes on all three roles, and
+#: `fixtures/behaviour-identity.txt` records exactly those three lines and no others. `make eval`'s
+#: stdout hash did not move at all: `c333ca46…` before and after, checked against a stashed tree.
+SRC_TREE_DIGEST = "f0a1bb3226b662cb5eda04ee18e268dfc6b505ba1109f53c73ec57b65028282f"
 SRC_FILE_COUNT = 213
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

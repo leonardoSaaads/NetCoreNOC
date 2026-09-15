@@ -4098,3 +4098,74 @@ From this release an entry is about six lines: decision, reason, release.*
   this release delivers two. Stated plainly rather than implied by silence.
 - **Measured**: `POST /api/labels` already accepts `kind='severity'` and v0.16.3's route is
   unchanged; `alarm_class` has no name column and `0016` adds none.
+
+## 344. Every bundled table cites its source, and a derived guard enforces it (v0.17.1)
+
+- **Decision**: `ingest/known_oids.py` gains **one** `BUNDLED_SOURCES` mapping, keyed by table name,
+  naming the standard or registry behind every public-data table it ships. `tests/test_known_oids.py`
+  **derives the set of tables from the module** and asserts each has a non-empty entry — and that the
+  mapping cites nothing that is not a table.
+- **Reason**: #337 closes the dishonesty for `SEVERITY_VOCAB`. Written as a list of the tables anyone
+  was thinking about, the guard would have covered exactly that one. Derived, its first run named
+  four more — `IANA_ENTERPRISES`, `STANDARD_TRAPS`, `WELL_KNOWN_VARBINDS` and `CLEAR_PAIR_SEEDS` —
+  all shipping public data with the citation in a comment or nowhere. This is the repository's
+  recurring defect class (F92, F98, F112, F113, F114, F121) caught before it shipped, not after.
+- **Why a constant and not a comment**: a comment cannot be shown to an operator asking which
+  standard a `standard` severity came from, and no guard can read one. The release's rule is *name
+  the source*, and a source the appliance cannot quote is not one.
+- **Why one mapping and not five constants**: the first shape was `<NAME>_SOURCE` per table. That is
+  five names in the module, five lines in `vulture_allowlist.py`, and a sixth of each to remember
+  when v0.18.0 adds a table — the same growing hand-written list the guard exists to replace. Folded
+  into one mapping it is **one** allowlist line, fixed, and adding a table requires no edit to any
+  list: the guard simply fails until its citation is written.
+- **Trade-off accepted**: `STANDARD_TRAPS`' citation names four documents for six OIDs, which is
+  verbose. Citing them as "RFC 3418" would have been one line and wrong about three of the six:
+  linkDown/linkUp are RFC 2863's and egpNeighborLoss is RFC 1213's, sharing the subtree but not the
+  defining document.
+- **Not re-verified**: `IANA_ENTERPRISES`' citation says in its own text that the rows were not
+  checked against the registry for this release — `www.iana.org` answers 403 to this build
+  environment's egress proxy. The citation says where a reader checks; it does not claim anyone here
+  did.
+- **Nothing in `src/` reads it yet.** The console's source line is the reader it is for (V.4), so it
+  carries one `vulture_allowlist.py` entry until then, with that stated in the entry.
+- **Demonstrated red**: a bundled `PON_ONU_STATES` table added with no citation fails the guard by
+  name.
+
+## 345. The lab raises one alarm that carries no severity at all (v0.17.1)
+
+- **Decision**: `testbed/scenarios/pon_fiber_cut.json` gains a cut-phase rectifier fault
+  (`1.3.6.1.4.1.2011.6.128.1.1.4.7`) whose varbinds are an identifier and a sentence of English —
+  no severity column — and which has **no clear in the repair phase**, so it is still active when
+  the demo settles.
+- **Reason**: measured after #337 went in, the lab read `placed {0: 2, 1: 9, 2: 1}` and
+  **`unplaced 0`**, because every event in the scenario carried the ALARM-MIB column. That number is
+  true and it is about a corpus chosen to make it true. A lab that places everything demonstrates
+  half the census and hides the half prime directive 2 is about: the appliance's willingness to say
+  it does not know. The console's `—` had nothing to render.
+- **Why it never clears**: an unplaced alarm that disappears on repair is not there when an operator
+  looks. It is also the realistic case — a subsystem that never implemented ALARM-MIB does not start
+  reporting severity because the fibre was fixed.
+- **Trade-off accepted**: `make lab-demo` now settles with one permanently active alarm. That is a
+  true statement about the modelled estate, and the scenario's `role` and `notes` both say so.
+- **What it is for**: it is the alarm an operator **declares** a severity on. That gesture is the
+  only evidence in the building (`PREREGISTRATION-0.10.0.md` §6), and the lab now has somewhere to
+  make it.
+- **Measured**: cut phase 5 events -> 6; one carries no severity column; `repair` still clears the
+  span on the first cycle and the ONUs from the third.
+
+## 346. The ALARM-MIB column number is used and not named (v0.17.1)
+
+- **Decision**: `1.3.6.1.2.1.118.1.2.2.1.4` is described everywhere as *the arc the lab's NEs emit*
+  and **never** as a named `alarmActiveEntry` column.
+- **Reason**: RFC 3877 is unreachable from this build environment (`www.rfc-editor.org` answers 403
+  to the egress proxy), so which column `.4` is cannot be checked here. A draft of
+  `tests/test_known_oids.py` called it `alarmActiveResourceId`; counting the columns in the RFC's
+  table from memory puts `.4` elsewhere, and a citation that is probably wrong is worse than none —
+  it is exactly the defect #337 exists to close, committed in the commit that closes it.
+- **Why it costs nothing**: `standard_severity` is keyed on the **value**, not the OID (#337). The
+  OID it returns is a pointer for the operator — *this is the varbind to look at on your device* —
+  not a claim about a registry. The read works at whatever OID the device chose and would be
+  unaffected if the lab moved it.
+- **Trade-off accepted**: the console can say which varbind carried the severity but not what that
+  varbind is called. Naming it is one reachable RFC away and is a documentation change, not a code
+  one.

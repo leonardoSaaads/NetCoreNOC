@@ -3772,6 +3772,9 @@ def _stats_with_severity(**census: Any) -> dict[str, Any]:
         "unplaced": 0,
         "vendor_scaled": 0,
         "declared": 0,
+        # v0.17.1 (#341): where each placed severity came from. A new arm added to the census must
+        # fail the guard below, not appear on screen with no test having looked at it.
+        "provenance": {"declared": 0, "standard": 0, "learned": 0},
     }
     block.update(census)
     out["severity"] = block

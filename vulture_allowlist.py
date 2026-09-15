@@ -184,3 +184,15 @@ event_members
 # are: a sentinel with a meaning belongs beside the code that would otherwise repeat the literal,
 # and `tests/test_bag_identity.py` asserts against the name so the two cannot drift.
 UNKEYED_BAG  # the pre-0015 sentinel (netcorenoc/store/feedback.py)
+# --- v0.17.1, the bundled tables' citations ------------------------------------------------------
+# `BUNDLED_SOURCES` names the standard or registry behind every public-data table in
+# `ingest/known_oids.py` (DECISIONS #344). Nothing in `src/` reads it yet — the console's source
+# line is the reader it is for — and `tests/test_known_oids.py` reaches it through `vars()` while
+# deriving the table set from the module, which is an access no static scan can see.
+#
+# **One entry, deliberately.** The first shape of this was five `<NAME>_SOURCE` constants, which
+# meant five lines here and a sixth to remember for every table a later release adds — the
+# hand-written list this repository keeps getting wrong (F92, F98, F112, F113, F114, F121). Folded
+# into one mapping, adding a table needs no change to this file at all: the guard fails until the
+# citation is written, which is the thing that should be required.
+BUNDLED_SOURCES  # every bundled table's citation (netcorenoc/ingest/known_oids.py)

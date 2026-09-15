@@ -2022,3 +2022,90 @@ Run every command below from the repository root with the virtualenv active.
   severity, which is an analytical change requiring a pre-registration (Appendix C, (a)) — and doing
   it in the same release that makes severity placeable by another route would leave neither change
   measurable.
+
+## F125 — four bundled tables shipped public data with no citation, and only the fifth was noticed
+
+**Found**: v0.17.1, Phase 1, by the guard written for a different table.
+**Severity**: low as a defect, high as a lesson.
+**Status**: fixed in the release that found it.
+
+DECISIONS #337 set out to close one dishonesty: `known_oids.SEVERITY_VOCAB` had shipped ITU-T X.733's
+perceived-severity vocabulary since v0.8.0 with no attribution, so standard knowledge looked like a
+convenience this repository had invented. The fix was a citation.
+
+The guard written to hold that fix in place was **derived** — it asks the module which of its
+members are bundled tables, rather than being told. On its first run it failed naming four tables
+nobody had been thinking about:
+
+```
+AssertionError: bundled table(s) ['CLEAR_PAIR_SEEDS', 'IANA_ENTERPRISES', 'STANDARD_TRAPS',
+'WELL_KNOWN_VARBINDS'] ship public data with no stated source.
+```
+
+All four are public data with real, checkable sources — the IANA PEN registry, RFC 3418, RFC 2863,
+RFC 2819, RFC 1213. Three had the source in a `#` comment; one had it nowhere. None could be quoted
+by the appliance, which is what a citation is *for*: an operator looking at a severity the console
+says came from `standard` is entitled to ask which standard, and a comment cannot answer them.
+
+**Why this is the sixth of its kind.** F92, F98, F112, F113, F114 and F121 are all the same shape: a
+guard whose subject is a hand-written list covers what its author remembered and nothing else. Here
+the list was never even written — the intent was "cite the severity table", and a listed guard would
+have done exactly that and passed. The derivation found 5× the intended scope in one run, at no
+extra cost, because asking the module is not more work than writing the names down.
+
+**Writing the citation surfaced a second error the comment had made.** `STANDARD_TRAPS`' comment read
+*"Standard SNMPv2 notification OIDs (RFC 3418) plus the two RMON alarm traps"*. That is wrong about
+three of its six `snmpTraps` entries: linkDown and linkUp are RFC 2863's and egpNeighborLoss is RFC
+1213's. They share the `1.3.6.1.6.3.1.1.5` subtree but not the defining document, and a citation is
+the thing that forces you to check which.
+
+**Fix**: one `BUNDLED_SOURCES` mapping keyed by table name (#344), and the guard derives the tables
+from the module and asserts coverage in both directions — every table cited, and nothing cited that
+is not a table.
+
+**The fix's own first shape was the defect again.** It was five `<NAME>_SOURCE` constants, which
+meant five `vulture_allowlist.py` lines and a sixth of each to remember when a later release adds a
+table. Folded into one mapping it is one allowlist line, fixed forever, and adding a table needs no
+list edit at all — the guard just fails until the citation is written.
+
+**What did not change**: no OID, no name, no rank. `make eval`'s stdout hash is `c333ca46…` before
+and after, checked against a stashed tree.
+
+## F126 — the lab placed every severity it had, which made `unplaced` read 0
+
+**Found**: v0.17.1, Phase 1, in the measurement taken to confirm the release worked.
+**Severity**: medium — a true number that misrepresents the product.
+**Status**: fixed in the same phase.
+
+With the standard read in place, one `make lab-demo` during a live cut read:
+
+```
+active 14   placed {critical: 2, major: 11}   unplaced 0   provenance {standard: 13}
+```
+
+`unplaced 0` is arithmetically correct and it is a claim about a corpus chosen to make it true. Every
+alarm-raising event in `pon_fiber_cut.json` carried the ALARM-MIB severity column, because v0.17.0
+added that column to all of them to demonstrate a format. So the lab could no longer show the half of
+the census that prime directive 1 exists for: the appliance's willingness to say *I do not know* in
+preference to inventing a severity. The console's `—` had nothing to render, and a maintainer running
+the lab would have concluded the appliance always knows.
+
+This is the mirror image of the defect v0.16.7 fixed. That one was four confident zeros over 1 716
+alarms nobody had placed. This one is a confident zero in the *unplaced* column, arrived at honestly,
+and it would have shipped as evidence that the release worked.
+
+**Fix** (#345): the cut phase raises one more alarm — a rectifier fault at
+`1.3.6.1.4.1.2011.6.128.1.1.4.7` whose varbinds are an identifier and a sentence of English. No
+severity column, no bundled row, no declaration. It has **no clear in the repair phase**, so it is
+still active when the demo settles; an unplaced alarm that vanishes on repair is not there when an
+operator looks, and a subsystem that never implemented ALARM-MIB does not start reporting severity
+because the fibre was fixed.
+
+Measured after the fix, same live cut: `placed {critical: 2, major: 11}`, **`unplaced 1`**,
+`provenance {standard: 13}` — and after declaring a severity on the rectifier's class,
+`placed {critical: 2, major: 12}`, `unplaced 0`, `provenance {declared: 1, standard: 13}`. Both
+halves, and the operator's overrule, in one run.
+
+**The lesson is about measurement, not about the scenario.** The number moved from 0 placed to 13
+placed and the release looked finished. It took asking *which alarms are still unplaced, and can the
+lab still produce one* to notice that the answer was "none, by construction".

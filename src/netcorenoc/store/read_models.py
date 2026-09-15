@@ -14,6 +14,7 @@ authorization key). ``ne_ids=None`` runs the unmodified v0.7.0 SQL, so parity is
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import Any
 
 from netcorenoc.ingest import known_oids
@@ -28,6 +29,29 @@ from netcorenoc.store.types import MAX_SCOPE_PARAMS, class_display
 #: `app/format.js` holds the same line as `VOCAB_MAX_RANK` and `tests/test_severity.py` pins both
 #: against the vocabulary itself, so the two languages cannot drift apart silently.
 VOCAB_MAX_RANK = max(known_oids.SEVERITY_VOCAB.values())
+
+
+def _varbinds_of(blob: Any) -> list[dict[str, Any]]:
+    """The varbind list stored on an alarm row, or `[]` when it cannot be read (v0.17.1, #337).
+
+    `alarm.varbinds` is `TEXT NOT NULL DEFAULT '[]'` and only ever written by
+    `store/alarms.py` as `json.dumps` of validated models, so the unhappy path here should not
+    exist. It is written anyway because this runs on a **stats route the console polls**: one
+    truncated blob — a disk that filled mid-write, a row restored from a partial backup — would
+    otherwise 500 the Overview for the whole estate rather than cost that one alarm its severity.
+    Falling back to `[]` leaves the alarm **unplaced**, which is the honest reading of a row whose
+    varbinds cannot be read, and the count it lands in is one the screen already shows.
+
+    `store/entities.py` parses the same column with a bare `json.loads`; that is a background
+    sweep where a raise is visible in the logs and costs nothing a user is waiting on.
+    """
+    try:
+        parsed = json.loads(blob)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [vb for vb in parsed if isinstance(vb, dict)]
 
 
 class ReadModelsMixin(StoreBase):
@@ -62,17 +86,22 @@ class ReadModelsMixin(StoreBase):
         explain it says *"a storm is happening somewhere you cannot see"*. `ne_ids=None` runs the
         unmodified statement, so parity is by construction.
         """
+        # The declaration joined here is per alarm CLASS, which is what an operator declares: "this
+        # kind of trap is critical". One row of `label` therefore moves every active alarm of that
+        # class at once, and the panel's source line says so.
         select = (
             # nosec B608 - one fixed literal from `_label_join`, chosen by a schema probe; every
             # other token here is a column name written in this string.
             "SELECT s.label AS declared, a.severity AS learned, "  # nosec B608
-            "a.severity_rank AS learned_rank, a.ne_id AS ne_id, COUNT(*) AS n FROM alarm a "
-            # The declaration is per alarm CLASS, which is what an operator declares: "this kind of
-            # trap is critical". One row of `label` therefore moves every active alarm of that
-            # class at once, and the panel's source line says so.
-            + self._label_join("s", "severity", "a.class_id")
+            "a.severity_rank AS learned_rank, a.ne_id AS ne_id, a.varbinds AS varbinds "
+            "FROM alarm a " + self._label_join("s", "severity", "a.class_id")
         )
-        group = " GROUP BY declared, learned, learned_rank, ne_id"
+        # **v0.17.1: no GROUP BY, one row per active alarm** (DECISIONS #340). The standard read
+        # resolves from the alarm's own varbinds, which are unique per row, so there is nothing left
+        # to aggregate on. Measured before the change: 3.8 us to parse one varbinds blob, so a
+        # 2000-alarm estate costs about 7.6 ms per census — off the trap path, on a route the
+        # console polls, and paid only by the read.
+        group = ""
         rows: list[Any]
         if ne_ids is None:
             cur = await self.conn.execute(f"{select}WHERE a.status='active'{group}")  # nosec B608
@@ -95,27 +124,45 @@ class ReadModelsMixin(StoreBase):
             rows = list(await cur.fetchall())
 
         placed: dict[int, int] = {}
+        # **The provenance breakdown** (v0.17.1, DECISIONS #341). Every placed alarm is counted in
+        # exactly one of these, so they sum to `active - unplaced` and a reader can check that.
+        # `declared` is kept at the top level too, because v0.16.7's console already reads it there
+        # and this release does not get to move a key the previous one shipped.
+        by_source: dict[str, int] = {"declared": 0, "standard": 0, "learned": 0}
         unplaced = vendor_scaled = declared_n = active = 0
         for row in rows:
-            n = int(row["n"])
-            active += n
-            # A declared severity is a vocabulary token by construction: `POST /api/labels` refuses
-            # anything `known_oids.severity_rank` cannot place, so this never invents a rank.
+            active += 1
+            # **The precedence chain, and it is the whole of #338**: declared > standard > learned.
+            # A declared severity is a vocabulary token by construction — `POST /api/labels` refuses
+            # anything `known_oids.severity_rank` cannot place — so this never invents a rank.
             declared = row["declared"]
-            rank = (
-                known_oids.severity_rank(declared)
-                if declared is not None
-                else (None if row["learned"] is None else row["learned_rank"])
-            )
-            if rank is None:
-                unplaced += n
-                continue
+            rank: int | None
+            source: str
             if declared is not None:
-                declared_n += n
-            if rank > VOCAB_MAX_RANK:
-                vendor_scaled += n
+                rank, source = known_oids.severity_rank(declared), "declared"
             else:
-                placed[int(rank)] = placed.get(int(rank), 0) + n
+                # The trap's own word, read in X.733's vocabulary (#337). Not an inference and not
+                # a claim about a vendor: the device said `critical` and this believes it.
+                standard = known_oids.standard_severity(_varbinds_of(row["varbinds"]))
+                if standard is not None:
+                    rank, source = standard[1], "standard"
+                elif row["learned"] is not None:
+                    rank, source = row["learned_rank"], "learned"
+                else:
+                    rank, source = None, "unplaced"
+            if rank is None:
+                # **`unplaced` stays a first-class count, never a zero** (prime directive 1). An
+                # alarm whose trap carried no severity word, whose NE confirmed no severity field
+                # and whose class nobody declared is counted here and rendered `—`.
+                unplaced += 1
+                continue
+            by_source[source] += 1
+            if source == "declared":
+                declared_n += 1
+            if rank > VOCAB_MAX_RANK:
+                vendor_scaled += 1
+            else:
+                placed[int(rank)] = placed.get(int(rank), 0) + 1
         return {
             "active": active,
             # String keys, because this crosses JSON and an integer key would come back as one
@@ -124,6 +171,10 @@ class ReadModelsMixin(StoreBase):
             "unplaced": unplaced,
             "vendor_scaled": vendor_scaled,
             "declared": declared_n,
+            # v0.17.1: where each placed severity came from. `vendor` is absent rather than zero —
+            # #339 refuses to ship vendor rows this release, and a zero would read as "we looked and
+            # found none" instead of "this arm is not built".
+            "provenance": by_source,
         }
 
     async def stats(self) -> dict[str, int]:

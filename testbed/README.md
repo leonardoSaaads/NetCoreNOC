@@ -120,15 +120,45 @@ is a stronger guarantee than checking that it does not leak.
 
 ### The severity varbind
 
-Every alarm-raising event carries X.733 perceived severity at RFC 3877's ALARM-MIB arc
+Almost every alarm-raising event carries X.733 perceived severity at RFC 3877's ALARM-MIB arc
 (`1.3.6.1.2.1.118.1.2.2.1.4`), with the six tokens that are already exactly
 `known_oids.SEVERITY_VOCAB`.
 
-**The appliance still renders every alarm `unplaced`, and that is correct.** `severity.py` refuses a
-ranking that observed alarm lifetimes have not confirmed (`SEVERITY_MIN_CLOSED = 50`), and the
-console's Overview counts the unplaced band as a first-class number rather than showing four zeros.
-A vendor-published default *with a citation* is v0.17.1's job. This release owes it a format that can
-carry the field, and this is it.
+**From v0.17.1 the appliance reads that word**, and the Overview says where it came from:
+`standard`. It is not an inference and it is not a claim about Huawei — the device transmitted the
+word `critical`, ITU-T X.733 is the standard that defines that word as a perceived severity, and the
+appliance believes the device about its own alarm. v0.17.0 placed *nothing* from the same traps,
+because the only arm it had was the learned one and `severity.py` will not confirm a ranking that
+observed lifetimes have not borne out (`SEVERITY_MIN_CLOSED = 50`, against a lab that closes far
+fewer — finding F124).
+
+**One alarm in the cut phase deliberately carries no severity column at all**: the rectifier fault
+at `1.3.6.1.4.1.2011.6.128.1.1.4.7`, whose varbinds are an identifier and a sentence of English. It
+stays **unplaced**, it is counted as such, and it has no clear in the repair phase — so it is still
+there when the demo settles. That is not an oversight. A lab in which everything is placed would
+demonstrate half the census and hide the half that matters, which is the appliance's willingness to
+say it does not know rather than invent a severity for a trap that carried none.
+
+It is also the alarm to try the console on: declaring a severity on its class is one gesture, and it
+outranks both of the other sources. That declaration is the only thing here that is *evidence*
+(`PREREGISTRATION-0.10.0.md` §6) — a word read out of a standard column is knowledge, not consent.
+
+Measured on one run, during a live cut:
+
+| | v0.17.0 | v0.17.1 |
+|---|---|---|
+| active | 14 | 14 |
+| placed | `{}` | `{critical: 2, major: 11}` |
+| unplaced | 14 | 1 |
+| provenance | — | `standard 13` |
+
+and after declaring a severity on the rectifier class: `placed {critical: 2, major: 12}`,
+`unplaced 0`, `provenance {declared: 1, standard: 13}`.
+
+**Which `alarmActiveEntry` column `.4` is, this repository does not say.** RFC 3877 could not be
+reached from the environment this was built in, and a citation nobody checked is exactly the defect
+v0.17.1 exists to close. It costs nothing: the read is keyed on the **value**, so it works at
+whatever OID a device chose and never depended on the answer.
 
 ### The trap OIDs, honestly
 
