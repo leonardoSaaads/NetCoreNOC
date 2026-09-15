@@ -1938,3 +1938,214 @@ Run every command below from the repository root with the virtualenv active.
   the check declared the port free and the injection walked past it. The premise is *"can this run
   bind the ports"*, so the check is now a bind probe, and it covers the **trap** port too: a lab whose
   traps land in a stranger's receiver looks healthier than one whose console does not load.
+
+## F123 — the entity discriminator promoted the ITU perceived-severity column, and six ONUs became one alarm
+
+- **What**: `varbind_profile` scores each varbind as a candidate *entity discriminator* and promotes
+  the winner. On a lab NE it promoted **`1.3.6.1.2.1.118.1.2.2.1.4`** — the column carrying X.733
+  perceived severity — because two distinct values across several alarm classes is exactly the shape
+  a discriminator has. The consequences are not subtle:
+  * the appliance **created four entities named after severities**. `entity` rows 3-6 on NE 1 carry
+    `key_source = 1.3.6.1.2.1.118.1.2.2.1.4` and keys `cleared`, `critical`, `major`, `minor`. Those
+    rows assert that four things exist inside that OLT. They do not.
+  * alarms raised after the promotion are **deduplicated by severity**. The alarm row with id 28 reads
+    `instance='major'`, `class=1.3.6.1.4.1.2011.6.128.1.1.2.2`, `count=6` — **six different ONUs, all
+    reporting loss of signal, collapsed into one alarm row** because they shared a severity word.
+  * and the field is then permanently disqualified from *being* severity:
+    `severity.severity_candidate` excludes any OID in `entity_oids`.
+- **Why it matters**: this is not a severity bug with a correlation side effect; it is a
+  **correlation bug**. An operator looking at that estate sees one ONU alarm where six ONUs are down,
+  and an entity list containing four things that are not equipment. It is also the sharpest possible
+  statement of why bundled standard knowledge is not a convenience: given the most standardised
+  severity field in SNMP, an appliance that knows nothing typed it as an identifier.
+- **Reproduce**:
+  ```sh
+  rm -rf testbed/state testbed/logs
+  .venv/bin/python testbed/run_local.py --demo --cycles 14 --hold-s 10 --settle-s 12
+  .venv/bin/python - <<'PY'
+  import sqlite3
+  c = sqlite3.connect("testbed/state/testbed.db"); c.row_factory = sqlite3.Row
+  for r in c.execute("SELECT id, ne_id, level, key, key_source FROM entity WHERE level>0"):
+      print(dict(r))
+  for r in c.execute("SELECT id, instance, count FROM alarm WHERE ne_id=1 AND count>1"):
+      print(dict(r))
+  PY
+  ```
+- **Measured** (14 cycles, 370 traps, 196 raises → 29 alarm rows): entity rows 3-6 keyed
+  `cleared`/`critical`/`major`/`minor`, all `key_source = 1.3.6.1.2.1.118.1.2.2.1.4`, confidence
+  0.658. Alarm row id 28: `instance='major' count=6`. The same column on NE 1 shows `role='entity'`,
+  `n_obs=230`, `n_distinct=2` in `varbind_profile`. **Control**: on NE 2 the same OID is `role=None`
+  — so the promotion, not the OID, is what disqualifies it there; NE 2 fails the severity test for a
+  different reason (`n_obs=140` against `SEVERITY_MIN_OBS=200`).
+- **Disposition**: **open, recorded, not fixed in v0.17.1** (DECISIONS #342). The mechanism for the
+  fix already exists — `varbind_profile._SKIP_OIDS`, whose comment reads *"standard framing varbinds
+  are never entity discriminators"* — and the defect is that this field is not in it. It is not fixed
+  here because both available keys are blocked: keying on the **OID** needs an OID no reachable
+  source can verify (#337, both registries 403), and keying on the **value vocabulary** would
+  disqualify varbinds in the shipped corpus — **2 338 corpus varbind instances carry X.733 tokens** —
+  moving entity inference on the corpus and `make eval` with it, against prime directive 5. The fix
+  needs a pre-registration because it changes what promotion metrics are computed against.
+
+## F124 — closed-alarm lifetime evidence is capped by estate size, not by observation time
+
+- **What**: `store/entities.py::closed_alarm_varbind_lifetimes` — the only evidence
+  `severity.confirm_ordinality` has — selects **alarm rows** with `status='cleared'`. The alarm table
+  deduplicates on `(device, class, instance)`, and a re-clear **overwrites `cleared_at`** rather than
+  appending a sample. So the sample count is bounded by the number of distinct (device, class,
+  instance) triples that have ever cleared, and **does not grow with time**.
+- **Why it matters**: `SEVERITY_MIN_CLOSED = 50` per NE therefore encodes *"at least 50 distinct
+  alarm identities on this NE must have cleared"*, not *"50 clear events observed"*. An access node
+  with six ports and four alarm classes can run for a year and never reach it. The threshold reads
+  like a patience requirement and is really an estate-size requirement, which is why the learned arm
+  of the severity chain is unreachable in every lab a newcomer can run.
+- **Reproduce** (same appliance, same trap path, same encoder; the only variable is whether the
+  instance changes per cycle, and both use the **bundled** `linkDown`/`linkUp` pair so clearing needs
+  no learned alternation):
+
+  | | raises | alarm rows | closed samples |
+  |---|---|---|---|
+  | instances **vary** per cycle, 14 cycles | 84 | 84 | **84** |
+  | instances **fixed**, 14 cycles | 84 | 6 | **6** |
+  | instances **fixed**, 7 cycles | 42 | 6 | **6** |
+
+- **Measured**: identical raise counts, a 14× difference in samples, and the fixed-instance ceiling is
+  **the same at 7 and 14 cycles** — the ceiling is the instance count, not the cycle count. On the
+  shipped lab scenario: 14 cycles, 196 raises, 29 alarm rows, **17 closed samples** (NE 1: 8, NE 2: 9)
+  against a floor of 50.
+- **A first attempt at this control was wrong and is worth recording.** It varied the instance while
+  using a **learned** clear pair, and reported 0 closed samples — because with a different instance
+  every cycle the pair never alternates on one instance and so is never learned, and nothing clears
+  at all. The control measured the clear-pair learner, not dedup. Switching to the bundled pair
+  isolated the variable.
+- **Disposition**: **open, recorded, not changed in v0.17.1** (DECISIONS #338, and the brief's own
+  IV.3(5) reading). Changing the evidence from rows to clear events alters what confirms a *learned*
+  severity, which is an analytical change requiring a pre-registration (Appendix C, (a)) — and doing
+  it in the same release that makes severity placeable by another route would leave neither change
+  measurable.
+
+## F125 — four bundled tables shipped public data with no citation, and only the fifth was noticed
+
+**Found**: v0.17.1, Phase 1, by the guard written for a different table.
+**Severity**: low as a defect, high as a lesson.
+**Status**: fixed in the release that found it.
+
+DECISIONS #337 set out to close one dishonesty: `known_oids.SEVERITY_VOCAB` had shipped ITU-T X.733's
+perceived-severity vocabulary since v0.8.0 with no attribution, so standard knowledge looked like a
+convenience this repository had invented. The fix was a citation.
+
+The guard written to hold that fix in place was **derived** — it asks the module which of its
+members are bundled tables, rather than being told. On its first run it failed naming four tables
+nobody had been thinking about:
+
+```
+AssertionError: bundled table(s) ['CLEAR_PAIR_SEEDS', 'IANA_ENTERPRISES', 'STANDARD_TRAPS',
+'WELL_KNOWN_VARBINDS'] ship public data with no stated source.
+```
+
+All four are public data with real, checkable sources — the IANA PEN registry, RFC 3418, RFC 2863,
+RFC 2819, RFC 1213. Three had the source in a `#` comment; one had it nowhere. None could be quoted
+by the appliance, which is what a citation is *for*: an operator looking at a severity the console
+says came from `standard` is entitled to ask which standard, and a comment cannot answer them.
+
+**Why this is the sixth of its kind.** F92, F98, F112, F113, F114 and F121 are all the same shape: a
+guard whose subject is a hand-written list covers what its author remembered and nothing else. Here
+the list was never even written — the intent was "cite the severity table", and a listed guard would
+have done exactly that and passed. The derivation found 5× the intended scope in one run, at no
+extra cost, because asking the module is not more work than writing the names down.
+
+**Writing the citation surfaced a second error the comment had made.** `STANDARD_TRAPS`' comment read
+*"Standard SNMPv2 notification OIDs (RFC 3418) plus the two RMON alarm traps"*. That is wrong about
+three of its six `snmpTraps` entries: linkDown and linkUp are RFC 2863's and egpNeighborLoss is RFC
+1213's. They share the `1.3.6.1.6.3.1.1.5` subtree but not the defining document, and a citation is
+the thing that forces you to check which.
+
+**Fix**: one `BUNDLED_SOURCES` mapping keyed by table name (#344), and the guard derives the tables
+from the module and asserts coverage in both directions — every table cited, and nothing cited that
+is not a table.
+
+**The fix's own first shape was the defect again.** It was five `<NAME>_SOURCE` constants, which
+meant five `vulture_allowlist.py` lines and a sixth of each to remember when a later release adds a
+table. Folded into one mapping it is one allowlist line, fixed forever, and adding a table needs no
+list edit at all — the guard just fails until the citation is written.
+
+**What did not change**: no OID, no name, no rank. `make eval`'s stdout hash is `c2e8a0ce…` before
+and after, checked against a stashed tree.
+
+## F126 — the lab placed every severity it had, which made `unplaced` read 0
+
+**Found**: v0.17.1, Phase 1, in the measurement taken to confirm the release worked.
+**Severity**: medium — a true number that misrepresents the product.
+**Status**: fixed in the same phase.
+
+With the standard read in place, one `make lab-demo` during a live cut read:
+
+```
+active 14   placed {critical: 2, major: 11}   unplaced 0   provenance {standard: 13}
+```
+
+`unplaced 0` is arithmetically correct and it is a claim about a corpus chosen to make it true. Every
+alarm-raising event in `pon_fiber_cut.json` carried the ALARM-MIB severity column, because v0.17.0
+added that column to all of them to demonstrate a format. So the lab could no longer show the half of
+the census that prime directive 1 exists for: the appliance's willingness to say *I do not know* in
+preference to inventing a severity. The console's `—` had nothing to render, and a maintainer running
+the lab would have concluded the appliance always knows.
+
+This is the mirror image of the defect v0.16.7 fixed. That one was four confident zeros over 1 716
+alarms nobody had placed. This one is a confident zero in the *unplaced* column, arrived at honestly,
+and it would have shipped as evidence that the release worked.
+
+**Fix** (#345): the cut phase raises one more alarm — a rectifier fault at
+`1.3.6.1.4.1.2011.6.128.1.1.4.7` whose varbinds are an identifier and a sentence of English. No
+severity column, no bundled row, no declaration. It has **no clear in the repair phase**, so it is
+still active when the demo settles; an unplaced alarm that vanishes on repair is not there when an
+operator looks, and a subsystem that never implemented ALARM-MIB does not start reporting severity
+because the fibre was fixed.
+
+Measured after the fix, same live cut: `placed {critical: 2, major: 11}`, **`unplaced 1`**,
+`provenance {standard: 13}` — and after declaring a severity on the rectifier's class,
+`placed {critical: 2, major: 12}`, `unplaced 0`, `provenance {declared: 1, standard: 13}`. Both
+halves, and the operator's overrule, in one run.
+
+**The lesson is about measurement, not about the scenario.** The number moved from 0 placed to 13
+placed and the release looked finished. It took asking *which alarms are still unplaced, and can the
+lab still produce one* to notice that the answer was "none, by construction".
+
+## F127 — `format.js` had 228 bytes of headroom under the module-graph ceiling, and nothing said so
+
+**Found**: v0.17.1, Phase 3, by the ceiling itself, when a 1 372-byte addition tripped it.
+**Severity**: low now, and it is the kind that is only ever low until it is not.
+**Status**: open. Not fixed here; the release routed around it and recorded why.
+
+`tests/test_build_step.py` enforces that no UI module exceeds a third of the v0.12.0 monolith —
+`52 738 // 3 = 17 579` bytes. The guard is one of this repository's better ideas: it forces a split
+at the moment a module starts accumulating, instead of after it has.
+
+`ui/app/format.js` measured **17 351 bytes**, which is 98.7 % of that ceiling and **228 bytes** of
+room. Nothing on the screen, in the file, or in any report said so. The first person to add anything
+to it — here, a vocabulary of four strings and the comment explaining them — trips a guard whose
+message is about the v0.12.0 monolith and looks, at a glance, like an unrelated pin:
+
+```
+E       assert 18725 < (52738 // 3)
+```
+
+**Why this is a finding and not just an event.** The guard fires at exactly the wrong moment: not
+when the file is designed, but when someone unrelated is halfway through a feature. Its answer —
+*split this module* — is a restructure, and a restructure is the one thing that must not share a
+commit with a behaviour change. So the pressure at the moment of failure is to make the addition
+smaller rather than to split the file, which is the opposite of what the guard is for. That pressure
+is what produced the right answer here only because the addition had a second, better home.
+
+**What this release did**: moved the four-string vocabulary and `sourceLabel` into
+`ui/app/views/parts/severity.js`, its **only** consumer. That is defensible on its own terms —
+`format.js` owns `band()` because four surfaces read it, and a vocabulary with one reader belongs
+with its reader until a second one appears — and it left `format.js` byte-identical, which the
+behaviour-identity record proves. It is not a fix for the headroom.
+
+**What a later release needs**: either the split (`format.js` has clean section boundaries already:
+time, judgement, severity, numbers, names), or a report that states each module's remaining headroom
+so the ceiling stops being discovered by walking into it. The second is cheap and would have turned
+this into a sentence in a build report instead of a failed gate.
+
+**Measured**: `format.js` 17 351 bytes before and after; ceiling 17 579; headroom 228.
+`views/parts/severity.js` 8 317 -> 12 918, ceiling 17 579, headroom 4 661.

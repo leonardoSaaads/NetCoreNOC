@@ -13,6 +13,8 @@ Neither table is user configuration.
 
 from __future__ import annotations
 
+from typing import Any
+
 ENTERPRISE_PREFIX = "1.3.6.1.4.1."
 SNMP_TRAP_OID = "1.3.6.1.6.3.1.1.4.1.0"
 SYS_UPTIME_OID = "1.3.6.1.2.1.1.3.0"
@@ -157,10 +159,19 @@ CLEAR_PAIR_SEEDS: dict[str, str] = {
     "1.3.6.1.2.1.16.0.1": "1.3.6.1.2.1.16.0.2",  # risingAlarm → fallingAlarm
 }
 
-# Bundled, widely used severity tokens and their normalised rank (0 = most severe), public
-# data in the spirit of the IANA table (§5.3). A varbind is only *treated* as severity after
-# its ordinality is validated against observed alarm lifetimes — the vocabulary supplies the
-# candidate ranking, never an assumed one.
+# The **X.733 perceived-severity vocabulary**, and its normalised rank (0 = most severe).
+#
+# **Source, cited in v0.17.1 and uncited for the eight releases before it**: ITU-T Recommendation
+# X.733 (ISO/IEC 10164-4), *Systems Management: Alarm reporting function*, `perceivedSeverity`. Its
+# six values are exactly the six below — `critical`, `major`, `minor`, `warning`, `indeterminate`
+# and `cleared` — and the IETF carries the same six into SNMP through RFC 3877's ALARM-MIB. This
+# table has held them since v0.8.0 with no attribution at all, which is the small dishonesty
+# DECISIONS #337 closes: the appliance was already shipping standard knowledge and calling it a
+# bundled convenience.
+#
+# **The ranking is X.733's own ordering**, not a judgement made here. `cleared` and `indeterminate`
+# share rank 4 because neither asserts a degree of fault: one says the fault is over and the other
+# says the reporter does not know.
 SEVERITY_VOCAB: dict[str, int] = {
     "critical": 0,
     "major": 1,
@@ -174,6 +185,44 @@ SEVERITY_VOCAB: dict[str, int] = {
 def severity_rank(value: str) -> int | None:
     """Normalised 0-4 rank for a severity token (case-insensitive), or None if unrecognised."""
     return SEVERITY_VOCAB.get(value.strip().lower())
+
+
+def standard_severity(varbinds: list[dict[str, Any]]) -> tuple[str, int, str] | None:
+    """`(token, rank, varbind_oid)` for the severity a trap **carried**, or None (v0.17.1, #337).
+
+    **This asserts nothing about any vendor.** The device transmitted the word `critical`; X.733 is
+    the standard that defines that word as a perceived severity; this reads it. It is neither a
+    learned inference nor a bundled claim about a product — it is the trap's own statement about its
+    own alarm, in the vocabulary the ITU standardised, and that is why its provenance is `standard`.
+
+    **Why the value and not the OID.** The intended design keyed on the registered column — RFC
+    3877's ALARM-MIB and the IANA-ITU-ALARM-TC registry. Both sources are unreachable from the
+    environment this was built in (`www.iana.org` and `www.rfc-editor.org` answer 403 to the egress
+    proxy), so every OID-keyed row would carry a citation nobody here could open. Keying on the
+    value needs only the vocabulary above, which is citable and already shipped — and it has the
+    happier property of working at whatever OID a vendor chose, which an OID table would miss.
+
+    **The most severe wins**, not the first seen. A trap carrying both `major` and `cleared` is
+    reporting something about both, and under-reporting a fault is the worse error; ties break on
+    varbind order so the result is deterministic. The rank is X.733's, so "most severe" is its
+    ordering and not one invented here.
+
+    **The false positive is real and bounded.** A varbind whose value is `minor` for an unrelated
+    reason — a version qualifier — is read as a severity. The provenance says `standard`, the screen
+    says so, and an operator's declaration outranks it (#338), so the recourse is one gesture. The
+    alternative is what v0.17.0 shipped: nothing placed, ever.
+    """
+    best: tuple[str, int, str] | None = None
+    for vb in varbinds:
+        raw = vb.get("value")
+        if not isinstance(raw, str):
+            continue
+        rank = severity_rank(raw)
+        if rank is None:
+            continue
+        if best is None or rank < best[1]:
+            best = (raw.strip().lower(), rank, str(vb.get("oid", "")))
+    return best
 
 
 def vendor_of(oid: str) -> str | None:
@@ -198,3 +247,48 @@ def varbind_name(oid: str) -> str | None:
         if oid == key or (key.endswith(".") and oid.startswith(key)):
             return name
     return None
+
+
+#: **Where every bundled table above came from**, keyed by the table's own name (v0.17.1, #344).
+#:
+#: One mapping rather than five `<NAME>_SOURCE` constants, because five constants is a list that
+#: grows — add a sixth table in v0.18.0 and somebody has to remember a sixth line in three places.
+#: `tests/test_known_oids.py` derives the set of bundled tables from this module and asserts each
+#: has an entry here, so a table added without a citation fails the guard by name and no list has
+#: to be maintained to make that happen.
+#:
+#: **A citation is a constant and not a comment** because the appliance has to be able to *quote*
+#: it. An operator looking at a severity the console says came from `standard` is entitled to ask
+#: which standard, and a comment cannot answer them.
+BUNDLED_SOURCES: dict[str, str] = {
+    # **Not re-verified in v0.17.1**: `www.iana.org` answers 403 to this build environment's egress
+    # proxy, so the rows are as curated in the releases that added them. The citation names where a
+    # reader checks them; it does not claim that anyone here did.
+    "IANA_ENTERPRISES": (
+        "IANA Private Enterprise Numbers registry — "
+        "https://www.iana.org/assignments/enterprise-numbers (rows not re-verified in v0.17.1: the "
+        "registry is unreachable from the build environment)"
+    ),
+    "STANDARD_TRAPS": (
+        "RFC 3418 (SNMPv2-MIB) snmpTraps 1.3.6.1.6.3.1.1.5 — coldStart, warmStart, "
+        "authenticationFailure; RFC 2863 (IF-MIB) — linkDown, linkUp, registered under that same "
+        "subtree; RFC 1213 (MIB-II) EGP group — egpNeighborLoss; RFC 2819 (RMON-MIB) "
+        "1.3.6.1.2.1.16.0 — risingAlarm, fallingAlarm"
+    ),
+    "WELL_KNOWN_VARBINDS": (
+        "RFC 3418 (SNMPv2-MIB) — sysUpTime and sysName in the system group 1.3.6.1.2.1.1, and "
+        "snmpTrapOID.0 / snmpTrapEnterprise.0 in 1.3.6.1.6.3.1.1.4; RFC 2863 (IF-MIB) ifTable "
+        "1.3.6.1.2.1.2.2.1 — ifIndex, ifDescr, ifAdminStatus, ifOperStatus; RFC 2863 ifXTable "
+        "1.3.6.1.2.1.31.1.1.1 — ifName, ifAlias"
+    ),
+    "CLEAR_PAIR_SEEDS": (
+        "RFC 2863 (IF-MIB) — linkUp is defined as the notification sent when ifOperStatus "
+        "leaves the down state that raised linkDown; RFC 2819 (RMON-MIB) — fallingAlarm is "
+        "the complement of "
+        "risingAlarm for the same alarmIndex, one per threshold crossing in each direction"
+    ),
+    "SEVERITY_VOCAB": (
+        "ITU-T Rec. X.733 (ISO/IEC 10164-4), Systems Management: Alarm reporting function — "
+        "perceivedSeverity; carried into SNMP by RFC 3877 (ALARM-MIB)"
+    ),
+}

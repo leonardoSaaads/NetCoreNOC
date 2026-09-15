@@ -5,7 +5,8 @@
     "THE SPAN uses the IETF standard linkDown (1.3.6.1.6.3.1.1.5.3) and linkUp (1.3.6.1.6.3.1.1.5.4) notifications from RFC 3418 / RFC 2863. The appliance carries that pair in known_oids.CLEAR_PAIR_SEEDS, so the span alarm clears on the FIRST repair with zero configuration.",
     "THE ONUs use a vendor arc, and their raise/clear pairing is NOT bundled. The appliance learns it from strict alternation: learn.CLEAR_CYCLES_TO_LEARN = 2, so after cut/repair twice the pair is trusted and from the THIRD cut the ONU alarms clear too. That progression is the product's own thesis \u2014 the network teaches the appliance \u2014 and the lab is where you watch it happen.",
     "Trap OIDs below an ENTERPRISE arc are ILLUSTRATIVE, not vendor-attested. The enterprise numbers are real IANA PENs (2011 Huawei, 1271 Ciena); the sub-arcs are shaped like a GPON/transport MIB and are not read from one. No vendor MIB file is in this repository. Attested vendor mappings with citations are v0.17.1's job.",
-    "The severity varbind is X.733 perceived severity carried at the IETF ALARM-MIB arc (1.3.6.1.2.1.118.1.2.2.1.4, RFC 3877), with its six tokens exactly matching known_oids.SEVERITY_VOCAB. The appliance will still render every alarm UNPLACED, because severity.py refuses a ranking that observed lifetimes have not confirmed (SEVERITY_MIN_CLOSED = 50). That refusal is correct and the console says so."
+    "THE SEVERITY VARBIND is X.733 perceived severity carried at the IETF ALARM-MIB arc (1.3.6.1.2.1.118.1.2.2.1.4, RFC 3877), with its six tokens exactly matching known_oids.SEVERITY_VOCAB. From v0.17.1 the appliance READS that word and places the alarm with provenance `standard` \u2014 it is the device's own statement about its own alarm, not an inference and not a claim about Huawei. Which alarmActiveEntry column `.4` is was not verified for this release: www.rfc-editor.org answers 403 to the build environment's proxy, and the read is keyed on the VALUE precisely so that it never depended on the answer.",
+    "ONE ALARM IN THE CUT PHASE DELIBERATELY CARRIES NO SEVERITY COLUMN (the rectifier fault at 1.3.6.1.4.1.2011.6.128.1.1.4.7). It stays UNPLACED and is counted as such, because a trap that says nothing about how serious it is gets no severity invented for it. It has no clear in the repair phase either, so it is still there when the demo settles \u2014 which is the point: a lab where everything is placed would not show you the half of the census that matters. Declaring a severity on its class is the one gesture that places it, and that is an operator's evidence in a way neither of the other two sources is."
   ],
   "hosts": [
     {
@@ -217,6 +218,24 @@
               "oid": "1.3.6.1.2.1.118.1.2.2.1.5",
               "kind": "int",
               "value": "8"
+            }
+          ]
+        },
+        {
+          "at_s": 4.2,
+          "host": "olt-a",
+          "trap_oid": "1.3.6.1.4.1.2011.6.128.1.1.4.7",
+          "role": "an alarm that carries NO severity column, so the appliance must leave it unplaced (v0.17.1) \u2014 a rectifier fault on the same shelf, reported by a subsystem that never implemented ALARM-MIB",
+          "varbinds": [
+            {
+              "oid": "1.3.6.1.4.1.2011.6.128.1.1.4.7.1",
+              "kind": "str",
+              "value": "psu-2"
+            },
+            {
+              "oid": "1.3.6.1.4.1.2011.6.128.1.1.4.7.2",
+              "kind": "str",
+              "value": "rectifier module input voltage out of range"
             }
           ]
         }

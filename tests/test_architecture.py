@@ -951,7 +951,25 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
 #: the three things nothing measures. A release that
 #: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
-SRC_TREE_DIGEST = "b5becc7ebe3268a141c9194d070e9ced3633b91d87c38efaca08a312f8a29e49"
+#:
+#: v0.17.1: 213 files, unchanged — **no file added, removed or moved**, which is the first thing
+#: this pin says and the reason the count is asserted separately from the digest. Two files differ
+#: in content: `ingest/known_oids.py` (the `standard_severity` read, and `BUNDLED_SOURCES` citing
+#: every bundled table — #337, #344) and `store/read_models.py` (the `declared > standard > learned`
+#: precedence chain and the `provenance` breakdown — #338, #341). The one behaviour that moved with
+#: them is `GET /api/stats`, 290 -> 343 bytes on all three roles, and
+#: `fixtures/behaviour-identity.txt` records exactly those three lines and no others. `make eval`'s
+#: stdout hash did not move at all: `c2e8a0ce…` before and after, checked against a stashed tree.
+#:
+#: Then one more, for the console half (#348): `ui/app/views/parts/severity.js` appends the
+#: provenance clause to the band's note and carries the vocabulary that names the sources. Three
+#: files in total; still 213; still no route but `/api/stats` and that module's own asset.
+#:
+#: `ui/app/format.js` is **byte-identical**, and that is a decision rather than an accident. The
+#: source vocabulary was written there first, on the *"one place where a token becomes a name"*
+#: argument that put `band()` there — and it pushed the file 1 146 bytes over the module-graph
+#: ceiling, because `format.js` had 228 bytes of headroom (F127). It moved to its only consumer.
+SRC_TREE_DIGEST = "1c60131c334653b75ef80028eb5a9c697e19cc3436fc05cb690db25b7baacecf"
 SRC_FILE_COUNT = 213
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
@@ -1018,7 +1036,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.17.0", "the version this release carries"
+    assert __version__ == "0.17.1", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

@@ -302,31 +302,73 @@ def test_a_scenario_with_two_hosts_at_one_address_is_refused(tmp_path: Path) -> 
         scenario.load(path)
 
 
-def test_the_scenario_carries_a_severity_varbind_the_appliance_cannot_place() -> None:
-    """What this release owes v0.17.1 (V.5): a format that can carry a severity, and an appliance
-    that says so rather than inventing one.
+SEVERITY_OID = "1.3.6.1.2.1.118.1.2.2.1.4"
 
-    The varbind is X.733 perceived severity at RFC 3877's ALARM-MIB arc, and its tokens are exactly
-    `known_oids.SEVERITY_VOCAB`. The appliance still renders every alarm **unplaced**, because
-    `severity.py` will not confirm a ranking that observed lifetimes have not validated. Measured on
-    the lab: `severity_census` returns `unplaced` equal to `active`, with `placed` empty.
+
+def test_the_scenario_carries_severity_words_from_the_bundled_vocabulary() -> None:
+    """The lab's severities are X.733's words, not invented ones.
+
+    v0.17.0 shipped this varbind and measured that the appliance placed **nothing** from it:
+    `severity.py` will not confirm a ranking that observed lifetimes have not validated, and a lab
+    run closes nowhere near `SEVERITY_MIN_CLOSED = 50` alarms (F124). v0.17.1 reads the word the
+    trap carried instead of inferring one, so the same scenario now places every alarm that
+    carries this column — see the test below for the ones that do not.
     """
     from netcorenoc.ingest import known_oids
 
     scen = scenario.load("pon_fiber_cut")
-    severity_oid = "1.3.6.1.2.1.118.1.2.2.1.4"
     values = {
         vb["value"]
         for phase in scen.phases.values()
         for event in phase.events
         for vb in event.varbinds
-        if vb["oid"] == severity_oid
+        if vb["oid"] == SEVERITY_OID
     }
-    assert values, f"no scenario event carries the severity varbind {severity_oid}"
+    assert values, f"no scenario event carries the severity varbind {SEVERITY_OID}"
     unknown = {v for v in values if known_oids.severity_rank(v) is None}
     assert not unknown, (
         f"the scenario uses severity tokens the bundled vocabulary does not hold: {unknown}. "
         "The point of carrying X.733 values is that they are the vocabulary already shipped."
+    )
+
+
+def test_the_lab_still_raises_an_alarm_that_carries_no_severity_at_all() -> None:
+    """**Prime directive 2, in the one place an operator will actually look at it** (v0.17.1).
+
+    A lab in which every alarm is placed would demonstrate exactly half the census and would hide
+    the half that matters: an appliance that invents a severity for a trap that carried none is
+    worse than one that admits it does not know. So the cut phase raises a rectifier fault whose
+    varbinds are an identifier and a sentence of English — no severity column, no bundled row, no
+    declaration — and the demo settles with it still active and still unplaced.
+
+    Measured on one `make lab-demo` after this was added: `placed {0: 2, 1: 9, 2: 1}` from
+    provenance `standard`, and `unplaced 1`. Before v0.17.1 the same run read `placed {}`,
+    `unplaced 12`.
+
+    This asserts the **scenario**, not the count, because the count belongs to a lab run and this
+    suite does not raise traps. What it pins is the property that makes the count meaningful:
+    at least one event carries no severity column and is never cleared.
+    """
+    scen = scenario.load("pon_fiber_cut")
+    cut = scen.phases["cut"]
+    without = [e for e in cut.events if all(vb["oid"] != SEVERITY_OID for vb in e.varbinds)]
+    assert without, (
+        "every event in the cut phase carries a severity column, so a lab run places all of them "
+        "and `unplaced` reads 0. That is a true number about a corpus chosen to make it true — "
+        "the lab must also raise something the appliance honestly cannot grade."
+    )
+    raised = {e.trap_oid for e in without}
+    cleared = {
+        vb["value"]
+        for e in scen.phases["repair"].events
+        for vb in e.varbinds
+        if vb["oid"] == SEVERITY_OID and vb["value"] == "cleared"
+    }
+    assert cleared, "the repair phase stopped clearing anything, so the lab no longer recovers"
+    repaired = {e.trap_oid for e in scen.phases["repair"].events}
+    assert not (raised & repaired), (
+        f"{sorted(raised & repaired)} is both the unplaced raise and a repair trap; the unplaced "
+        "alarm has to survive the repair or the demo settles with nothing left to be honest about"
     )
 
 

@@ -3972,3 +3972,264 @@ From this release an entry is about six lines: decision, reason, release.*
   work" and "whether v0.17.0 happens at all" were corrected in the same commit, and
   `docs/plans/cartridge.md`'s own claim marker moved to v0.17.3 — which the claim guard caught rather
   than a reader.
+
+## 337. The standard read is value-driven, because the OID registries are unreachable (v0.17.1)
+
+- **Decision** (decision 2): a severity is read from the trap's **own varbind values** when a value
+  is a member of the X.733 perceived-severity vocabulary the repository already ships, with
+  provenance `standard`. **No bundled OID table is used to find the field**, and none is shipped.
+- **Reason**: the intended design was to key on the registered column — RFC 3877's ALARM-MIB and the
+  IANA-ITU-ALARM-TC probable-cause registry. **Both sources are unreachable from this build
+  environment**: `www.iana.org` and `www.rfc-editor.org` both answer **403** to the egress proxy, the
+  same organisation policy denial that blocked the container registry in v0.17.0. Shipping OIDs
+  recalled from memory and presenting them as registry-verified is exactly the fabrication this
+  release exists to forbid (Part VIII: *if you cannot cite it, it is not placed*).
+- **What the value-driven read rests on instead, and why it is stronger**: it makes **no assertion
+  about any vendor**. The device transmitted the word `critical`; X.733 is the standard that defines
+  that word as a perceived severity; the appliance believes the device. That is reading what the trap
+  says, not asserting what a product does — and it works at whatever OID a vendor chose, which is the
+  common real-world case an OID table would miss.
+- **Trade-off accepted**: a varbind whose value happens to be a severity word for another reason —
+  a `minor` that means a version qualifier — is read as a severity. The cost is bounded: the
+  provenance says `standard`, the screen shows it, and `declared` outranks it, so an operator can
+  overrule it in one gesture. The alternative is the status quo, which places nothing at all.
+- **Measured**: 9 307 corpus varbind instances scanned; **2 338 carry an X.733 token as their value**,
+  across four vendor arcs (Huawei `2011.6.128.1.1.2.44`, Axis `368.1.1.9`, Cisco `9.9.276.1.1.4`).
+  The lab's traps carry 12. Both registry hosts: `connect_rejected … 403` at the proxy.
+
+## 338. Precedence: declared > standard > learned > vendor (v0.17.1)
+
+- **Decision** (decision 1): an operator's declaration wins; then the severity the trap itself
+  carried; then what the learner confirmed from this deployment; then a bundled vendor default.
+- **Reason**: the ordering follows **how specific the evidence is to this alarm**. A declaration is
+  this operator's instruction about their own network. A standard-vocabulary value is what the
+  equipment said **about this alarm instance**, in a vocabulary the ITU defined — not an inference at
+  all. A learned severity is inferred, but from *this* deployment's own stream. A vendor default is
+  attested yet generic: it describes a product, not an instance and not a network.
+- **What the losing order costs**: `declared > standard > vendor > learned` puts a vendor's
+  publication above a measurement taken on the operator's own equipment. Its argument is that an
+  attested fact beats a statistical inference — fair in the abstract, and weaker here because the
+  learner's bar is high (`confirm_ordinality` needs monotonic median lifetimes across values), so a
+  learned severity that exists at all has cleared more evidence than a table row ever will.
+- **Trade-off accepted**: a vendor default that is right and a learned severity that is wrong will
+  resolve to the wrong one. The operator's declaration is the recourse, and it is already built.
+- **Measured**: the `vendor` arm is **specified and unpopulated** — see #339. The chain therefore
+  resolves `declared > standard > learned` today, and adding vendor rows later changes no code.
+
+## 339. The vendor table is refused for this release, with the reason (v0.17.1)
+
+- **Decision** (decisions 3 and 7): **no vendor rows ship.** V.3 is refused, not deferred quietly.
+  `known_oids.py` gains no OID table and no data file.
+- **Reason**: IV.2 requires a URL or document identifier **a reader can check**, and Part VIII
+  resolves an unverifiable row to leaving it out. Every vendor row would have rested on an OID I
+  could not verify against any reachable source, dressed in a citation I could not open. A table of
+  plausible-looking OIDs with real-looking references is worse than no table: it is the exact failure
+  — *a severity asserted on a vendor's behalf* — that prime directive 1 forbids, wearing the costume
+  of the fix.
+- **Trade-off accepted**: the maintainer's example (*Huawei publishes trap X as GRAVE / Remote Fail*)
+  is **not** delivered. What is delivered instead covers the case that example is drawn from, by a
+  different route: Huawei's own traps in the shipped corpus carry `critical`/`major`/`minor` as
+  values, and those are now read. The vendor table would add the case where a vendor publishes a
+  severity the trap does **not** carry — which is the part that genuinely needs the citation.
+- **What a later release needs**: reachable `www.iana.org` and `www.rfc-editor.org`, or the registry
+  text supplied into the repository by the maintainer. Then the rows are mechanical.
+- **Measured**: both hosts 403 at the egress proxy, recorded in the proxy's own failure log.
+
+## 340. The standard read resolves at READ time, not at ingest (v0.17.1)
+
+- **Decision**: the standard severity is computed from `alarm.varbinds` when an alarm is read, in
+  `store/read_models.py`, beside the declaration lookup. **`engine.py::_resolve_severity` is not
+  touched**, `alarm.severity` keeps meaning *learned*, and no migration is added.
+- **Reason**: v0.16.7 already decided this shape for the operator's declaration (#315: *a declaration
+  does not fill `alarm.severity`, and the census resolves it at read time*). The standard read is the
+  same kind of thing — a resolution over evidence already stored — so it belongs in the same place.
+  Three things fall out for free: the **trap path's file contents are unchanged** (prime directive 5),
+  there is **no per-packet cost** (Part I.3), and `make eval` cannot move, because nothing at ingest
+  changes.
+- **Trade-off accepted**: the resolution runs per read rather than once per trap. It is a dictionary
+  lookup over varbinds already parsed into JSON on the row, and the census already parses them for
+  `closed_alarm_varbind_lifetimes`; the read path was already doing this work for the declaration.
+- **Measured**: `engine.py` SHA `85cff6b1…` unchanged; `make eval` byte-identical at `c2e8a0ce…`;
+  no migration, `user_version` stays 16.
+
+## 341. Provenance is a first-class field, and `vendor_scaled` is not reused (v0.17.1)
+
+- **Decision** (decision 4): `severity_census` gains a `provenance` breakdown naming
+  `declared`, `standard` and `learned` separately, and the wire keeps carrying **ranks**, with
+  `format.js` owning every displayed name (#312). `vendor_scaled` is untouched.
+- **Reason**: `vendor_scaled` already means *a rank above `VOCAB_MAX_RANK` from a vendor's own
+  numbering* (F99). Overloading it to mean *"placed from a vendor table"* would give one key two
+  meanings across two releases, which is how two surfaces come to disagree about the same alarm —
+  the exact failure #312's rank-not-name rule exists to prevent.
+- **Trade-off accepted**: the census payload grows. It is aggregate counts, not rows.
+- **Measured**: before this release, `severity` on `/api/stats` read
+  `{active: 12, placed: {}, unplaced: 12, vendor_scaled: 0, declared: 0}` on a 14-cycle lab.
+
+## 342. F123 is recorded and NOT fixed here (v0.17.1)
+
+- **Decision**: the entity discriminator promoting the ITU perceived-severity column is **F123**,
+  recorded with its evidence and left unfixed.
+- **Reason**: the fix is one entry in `varbind_profile._SKIP_OIDS` — a list whose comment already
+  reads *"standard framing varbinds are never entity discriminators"*, so the mechanism is present
+  and the defect is that this field is not in it. But keying the skip on an OID needs the OID I
+  cannot cite (#337), and keying it on the **value vocabulary** disqualifies varbinds in the shipped
+  corpus: **2 338 corpus varbind instances carry X.733 tokens**, so entity inference on the corpus
+  would move and `make eval` with it. That breaks prime directive 5 in a release whose whole claim is
+  that the gate did not move.
+- **Trade-off accepted**: the lab keeps inventing entities named `critical`, `major` and `minor`, and
+  keeps collapsing six ONUs into one alarm row. That is severe and it is in the finding, at the top.
+- **What a later release needs**: a pre-registration, because it changes entity inference and
+  therefore what the promotion metrics are computed against (Appendix C, (c)).
+- **Measured**: entity rows 3-6 on NE 1 have `key_source = 1.3.6.1.2.1.118.1.2.2.1.4` and keys
+  `cleared`, `critical`, `major`, `minor`. The alarm row with id 28 shows `instance='major'`, `count=6` — six
+  distinct ONUs in one row.
+
+## 343. Renaming an alarm class is refused, and named as its own feature (v0.17.1)
+
+- **Decision** (decision 6): the maintainer's *"renomear"* is **not** built here. The operator can
+  already re-grade (`POST /api/labels` with `kind='severity'`) and this release makes that
+  declaration outrank the new standard read. A display **name** for an alarm class is a different
+  object and gets its own plan entry.
+- **Reason**: a severity is an ordinal drawn from a fixed six-token vocabulary; a name is free text
+  belonging to an alarm class, which raises questions this release has measured nothing about —
+  whether it is scoped, whether it appears in the audit trail, whether it collides with
+  `situation.operator_name`, and what it does to search. Half-building it is what Part VII.5 forbids.
+- **Trade-off accepted**: the maintainer asked for three verbs — rename, re-grade, override — and
+  this release delivers two. Stated plainly rather than implied by silence.
+- **Measured**: `POST /api/labels` already accepts `kind='severity'` and v0.16.3's route is
+  unchanged; `alarm_class` has no name column and `0016` adds none.
+
+## 344. Every bundled table cites its source, and a derived guard enforces it (v0.17.1)
+
+- **Decision**: `ingest/known_oids.py` gains **one** `BUNDLED_SOURCES` mapping, keyed by table name,
+  naming the standard or registry behind every public-data table it ships. `tests/test_known_oids.py`
+  **derives the set of tables from the module** and asserts each has a non-empty entry — and that the
+  mapping cites nothing that is not a table.
+- **Reason**: #337 closes the dishonesty for `SEVERITY_VOCAB`. Written as a list of the tables anyone
+  was thinking about, the guard would have covered exactly that one. Derived, its first run named
+  four more — `IANA_ENTERPRISES`, `STANDARD_TRAPS`, `WELL_KNOWN_VARBINDS` and `CLEAR_PAIR_SEEDS` —
+  all shipping public data with the citation in a comment or nowhere. This is the repository's
+  recurring defect class (F92, F98, F112, F113, F114, F121) caught before it shipped, not after.
+- **Why a constant and not a comment**: a comment cannot be shown to an operator asking which
+  standard a `standard` severity came from, and no guard can read one. The release's rule is *name
+  the source*, and a source the appliance cannot quote is not one.
+- **Why one mapping and not five constants**: the first shape was `<NAME>_SOURCE` per table. That is
+  five names in the module, five lines in `vulture_allowlist.py`, and a sixth of each to remember
+  when v0.18.0 adds a table — the same growing hand-written list the guard exists to replace. Folded
+  into one mapping it is **one** allowlist line, fixed, and adding a table requires no edit to any
+  list: the guard simply fails until its citation is written.
+- **Trade-off accepted**: `STANDARD_TRAPS`' citation names four documents for six OIDs, which is
+  verbose. Citing them as "RFC 3418" would have been one line and wrong about three of the six:
+  linkDown/linkUp are RFC 2863's and egpNeighborLoss is RFC 1213's, sharing the subtree but not the
+  defining document.
+- **Not re-verified**: `IANA_ENTERPRISES`' citation says in its own text that the rows were not
+  checked against the registry for this release — `www.iana.org` answers 403 to this build
+  environment's egress proxy. The citation says where a reader checks; it does not claim anyone here
+  did.
+- **Nothing in `src/` reads it yet.** The console's source line is the reader it is for (V.4), so it
+  carries one `vulture_allowlist.py` entry until then, with that stated in the entry.
+- **Demonstrated red**: a bundled `PON_ONU_STATES` table added with no citation fails the guard by
+  name.
+
+## 345. The lab raises one alarm that carries no severity at all (v0.17.1)
+
+- **Decision**: `testbed/scenarios/pon_fiber_cut.json` gains a cut-phase rectifier fault
+  (`1.3.6.1.4.1.2011.6.128.1.1.4.7`) whose varbinds are an identifier and a sentence of English —
+  no severity column — and which has **no clear in the repair phase**, so it is still active when
+  the demo settles.
+- **Reason**: measured after #337 went in, the lab read `placed {0: 2, 1: 9, 2: 1}` and
+  **`unplaced 0`**, because every event in the scenario carried the ALARM-MIB column. That number is
+  true and it is about a corpus chosen to make it true. A lab that places everything demonstrates
+  half the census and hides the half prime directive 2 is about: the appliance's willingness to say
+  it does not know. The console's `—` had nothing to render.
+- **Why it never clears**: an unplaced alarm that disappears on repair is not there when an operator
+  looks. It is also the realistic case — a subsystem that never implemented ALARM-MIB does not start
+  reporting severity because the fibre was fixed.
+- **Trade-off accepted**: `make lab-demo` now settles with one permanently active alarm. That is a
+  true statement about the modelled estate, and the scenario's `role` and `notes` both say so.
+- **What it is for**: it is the alarm an operator **declares** a severity on. That gesture is the
+  only evidence in the building (`PREREGISTRATION-0.10.0.md` §6), and the lab now has somewhere to
+  make it.
+- **Measured**: cut phase 5 events -> 6; one carries no severity column; `repair` still clears the
+  span on the first cycle and the ONUs from the third.
+
+## 346. The ALARM-MIB column number is used and not named (v0.17.1)
+
+- **Decision**: `1.3.6.1.2.1.118.1.2.2.1.4` is described everywhere as *the arc the lab's NEs emit*
+  and **never** as a named `alarmActiveEntry` column.
+- **Reason**: RFC 3877 is unreachable from this build environment (`www.rfc-editor.org` answers 403
+  to the egress proxy), so which column `.4` is cannot be checked here. A draft of
+  `tests/test_known_oids.py` called it `alarmActiveResourceId`; counting the columns in the RFC's
+  table from memory puts `.4` elsewhere, and a citation that is probably wrong is worse than none —
+  it is exactly the defect #337 exists to close, committed in the commit that closes it.
+- **Why it costs nothing**: `standard_severity` is keyed on the **value**, not the OID (#337). The
+  OID it returns is a pointer for the operator — *this is the varbind to look at on your device* —
+  not a claim about a registry. The read works at whatever OID the device chose and would be
+  unaffected if the lab moved it.
+- **Trade-off accepted**: the console can say which varbind carried the severity but not what that
+  varbind is called. Naming it is one reachable RFC away and is a documentation change, not a code
+  one.
+
+## 347. No vendor MIB file, proved by what files contain and not by what they are called (v0.17.1)
+
+- **Decision**: `tests/test_supply_chain.py::test_no_vendor_mib_file_is_in_this_repository` searches
+  the **tracked tree** and fails on any file whose *contents* are an ASN.1 module defining SNMP
+  objects — the ASN.1 module signature plus at least one SMIv2 macro, both required.
+- **Reason**: #339 refuses vendor rows; this is the guarantee underneath it. Vendor MIBs carry the
+  vendor's copyright even where the vendor publishes them, so the property that matters is legal and
+  attaches to the file's *content*, not to its name. A guard keyed on `*.mib` and `*.my` passes on a
+  MIB renamed `notes.md`, filed under `docs/reference/`, or given no extension — which is F51's shape
+  and this repository's most repeated defect (F92, F98, F112, F113, F114, F121, F125).
+- **Why both conditions**: the ASN.1 signature alone matches X.509 and LDAP schemas, which are ASN.1
+  and are not what #339 is about. Requiring an SMIv2 macro as well is what makes it a *MIB*.
+- **Why the guard cannot flag itself**: the signature it searches for is built by concatenation at
+  import time, so it never appears literally in the test file. The alternative — excluding the guard
+  by path — is a hole that a file only has to be moved through.
+- **Guarded guard**: a second test builds a minimal SMIv2 module *written here* and asserts the
+  detector recognises it, and a third asserts prose about MIBs (this repository is full of it) does
+  not fire. Neutering the detector to always answer "no" leaves the main guard green and fails the
+  second, which is the point of having it.
+- **Demonstrated red**: a real Huawei-shaped MIB committed as `docs/reference/vendor-notes.md` — no
+  MIB extension anywhere — fails the guard by name.
+- **Scope**: the tracked tree, so it covers `testbed/`, `docs/` and `eval/corpus/` alike rather than
+  the directories anyone thought to look in.
+
+## 348. The console names the source of every placed severity, derived from the payload (v0.17.1)
+
+- **Decision**: the Overview's severity band appends a provenance clause to its note —
+  *"13 placed, 1 not placed — 13 read from the word the trap carried"* — and its source line names
+  the whole precedence chain. `sourceLabel` turns a provenance key into an operator's phrase, and
+  lives **in that panel**, not in `format.js`.
+- **Reason**: *"13 placed"* is half an answer. An operator deciding whether to overrule a severity
+  needs to know what they would be overruling — a word their own device transmitted, an inference
+  this appliance drew across 200 observations, or a colleague's declaration. Those deserve different
+  amounts of trust, and this release's rule is **name the source**: a severity that cannot say where
+  it came from is not placed.
+- **Why not in `format.js`**, which owns `band()` on the *"one place where a token becomes a name"*
+  argument this would otherwise share: `band()` is read by four surfaces and this is read by one.
+  A vocabulary with a single consumer belongs with its consumer and earns the move on the day a
+  second surface needs it. It was written in `format.js` first, and the module-graph ceiling
+  rejected it — that file had **228 bytes** of headroom (F127), so the alternative was a restructure
+  of `format.js` in the commit that adds a feature. `format.js` is byte-identical in this release
+  and the behaviour-identity record proves it.
+- **Why the note and not a seventh bar**: provenance partitions the same alarms the bands already
+  count. A row for it would be the same alarms drawn twice, and a reader adding the bars up would
+  get twice the estate.
+- **Derived from the payload, not listed**: the arms are whatever `provenance` holds, sorted by
+  count, and `sourceLabel` falls back to the raw key for one this build does not know. A later
+  release that adds a fourth source shows it without this file being edited — the fifth instance of
+  F92's lesson in one panel, beside `SCALE`'s.
+- **Zero arms are dropped**: *"0 learned"* on an estate with no learned severity is not the
+  four-zeros defect — nobody reads it as a claim about alarms — and it is noise in a line that must
+  stay readable at 390px.
+- **`—` is unchanged.** v0.16.7's rule that an ungraded band renders `—` and never `0` is untouched
+  and has its own test at both layers (F126 nearly re-introduced the defect from the other side).
+- **Measured**, driven in Chromium against a live lab appliance, all three roles at 390/820/1440:
+  zero horizontal overflow, zero console errors. The panel read *"13 placed, 1 not placed — 13 read
+  from the word the trap carried"*; after one `POST /api/labels` as **editor** it read *"14 placed,
+  0 not placed — 13 read from the word the trap carried, 1 from an operator's declaration"*. The
+  same request as **viewer** is refused `403 insufficient role`.
+- **Still visible and still not fixed here**: F116's *"1 alarms"* renders in the unplaced row. Its
+  own disposition says the fix is one line in `chartdata.js` that moves every chart in the console,
+  so it belongs in a commit with the pins that move with it — not in a release whose claim is that
+  one route moved.

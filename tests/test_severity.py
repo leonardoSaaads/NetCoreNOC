@@ -538,4 +538,199 @@ async def test_the_census_scope_is_a_query_filter_and_not_a_render_filter(store:
         "unplaced": 0,
         "vendor_scaled": 0,
         "declared": 0,
+        # v0.17.1: three zeros here are not the defect prime directive 1 names. That one is a band
+        # count of zero over alarms nobody placed — a claim about alarms. This is a breakdown of
+        # the empty set, read by a principal who can see no NE, and every arm of it is genuinely 0.
+        "provenance": {"declared": 0, "standard": 0, "learned": 0},
     }, "a principal who can see no NE was given a count of something"
+
+
+# --------------------------------------------------------------------------------------------
+# The standard read at the census (v0.17.1, DECISIONS #337/#338/#340/#341). The one number this
+# release exists to move: how many active alarms carry a placed severity, and where each came
+# from. `unplaced` stays a first-class count and every test below checks it did not become a zero.
+# --------------------------------------------------------------------------------------------
+
+
+def _carrying(cls: str, inst: str, word: str, ts: float) -> TrapEvent:
+    """A trap whose ALARM-MIB severity column carries `word`, as the lab's NEs emit it."""
+    return TrapEvent(
+        device=DEV,
+        trap_oid=cls,
+        instance=inst,
+        ts=ts,
+        varbinds=[
+            Varbind(oid=ID_OID, kind="str", value=inst),
+            Varbind(oid="1.3.6.1.2.1.118.1.2.2.1.4", kind="str", value=word),
+        ],
+    )
+
+
+async def test_a_trap_that_carried_its_own_severity_is_placed_from_the_standard(
+    store: Store,
+) -> None:
+    """**The number this release moves**, at the layer that produces it.
+
+    v0.17.0 placed nothing on the lab corpus, because the learned arm needs 50 closed alarms to
+    confirm an ordering and a lab run closes far fewer (F124). The trap said `critical` the whole
+    time. This reads the word it said.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_carrying(CLS_A, "olt-1", "critical", BASE))
+        await engine._process(_carrying(CLS_A, "olt-2", "major", BASE + 1))
+        await engine._process(_event(CLS_B, "quiet", "chartreuse", BASE + 2))
+        await store.commit()
+
+    census = await _census(store)
+    assert census["active"] == 3
+    assert census["placed"] == {"0": 1, "1": 1}, (
+        "the severity the device itself transmitted was not read; v0.17.0's answer was {} over "
+        "every alarm, and the trap carried the word all along"
+    )
+    assert census["provenance"]["standard"] == 2, "a placed severity has no stated provenance"
+    assert census["provenance"] == {"declared": 0, "standard": 2, "learned": 0}
+    assert census["unplaced"] == 1, (
+        "the alarm whose trap carried no severity word stopped being unplaced — which is the "
+        "fabrication prime directive 2 forbids, dressed as an improvement in the number"
+    )
+    assert census["declared"] == 0, "a standard read was reported as an operator's declaration"
+
+
+async def test_a_declaration_outranks_the_word_the_trap_carried(store: Store) -> None:
+    """#338's precedence, and `PREREGISTRATION-0.10.0.md` §6 at the same time.
+
+    The operator's gesture is the only evidence in the building. A severity this repository read
+    out of a standard column is knowledge, not evidence, so when the two disagree the human wins
+    and the census says `declared` — never both, and never an average of them.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_carrying(CLS_A, "olt-1", "critical", BASE))
+        await store.commit()
+    class_a = await store.class_id(CLS_A, BASE)
+
+    before = await _census(store)
+    assert before["placed"] == {"0": 1} and before["provenance"]["standard"] == 1
+
+    async with store.lock:
+        await store.set_label("severity", class_a, "warning", BASE + 100)
+        await store.commit()
+
+    after = await _census(store)
+    assert after["placed"] == {"3": 1}, (
+        "the operator declared `warning` over a trap that said `critical` and the appliance kept "
+        "its own reading — the overrule this release exists to give them does not work"
+    )
+    assert after["provenance"] == {"declared": 1, "standard": 0, "learned": 0}
+    assert after["declared"] == 1
+    assert after["active"] == 1 and after["unplaced"] == 0
+
+
+async def test_the_standard_read_outranks_a_learned_severity(store: Store) -> None:
+    """#338's second edge. The trap's own word is a statement by the device about this alarm; the
+    learned rank is an inference this appliance drew across many. When they disagree the
+    statement wins, and the census says which one it used."""
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_carrying(CLS_A, "olt-1", "major", BASE))
+        await store.commit()
+        await store.conn.execute(
+            "UPDATE alarm SET severity='minor', severity_rank=2 WHERE instance='olt-1'"
+        )
+        await store.commit()
+
+    census = await _census(store)
+    assert census["placed"] == {"1": 1}, "the learned inference overrode the device's own word"
+    assert census["provenance"] == {"declared": 0, "standard": 1, "learned": 0}
+
+
+async def test_a_learned_severity_still_places_an_alarm_whose_trap_said_nothing(
+    store: Store,
+) -> None:
+    """The learned arm is not removed by this release, only outranked. An estate large enough to
+    confirm an ordinality (F124) still gets its severities, and they are still labelled."""
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_event(CLS_A, "learned-1", "chartreuse", BASE))
+        await store.commit()
+        await store.conn.execute(
+            "UPDATE alarm SET severity='minor', severity_rank=2 WHERE instance='learned-1'"
+        )
+        await store.commit()
+
+    census = await _census(store)
+    assert census["placed"] == {"2": 1}
+    assert census["provenance"] == {"declared": 0, "standard": 0, "learned": 1}
+
+
+async def test_the_provenance_arms_account_for_every_placed_alarm(store: Store) -> None:
+    """**The arithmetic a reader can check on screen**: the arms sum to `active - unplaced`.
+
+    Derived from the census rather than written as a total, so an arm added in a later release
+    without being counted fails here instead of making the panel quietly not add up.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_carrying(CLS_A, "std-1", "critical", BASE))
+        await engine._process(_carrying(CLS_A, "std-2", "minor", BASE + 1))
+        await engine._process(_event(CLS_B, "none-1", "chartreuse", BASE + 2))
+        await engine._process(_event(CLS_B, "learn-1", "chartreuse", BASE + 3))
+        await store.commit()
+        await store.conn.execute(
+            "UPDATE alarm SET severity='warning', severity_rank=3 WHERE instance='learn-1'"
+        )
+        await store.commit()
+    class_a = await store.class_id(CLS_A, BASE)
+    async with store.lock:
+        await store.set_label("severity", class_a, "major", BASE + 100)
+        await store.commit()
+
+    census = await _census(store)
+    placed_total = sum(census["placed"].values()) + census["vendor_scaled"]
+    assert sum(census["provenance"].values()) == placed_total, (
+        f"the provenance arms {census['provenance']} do not account for the {placed_total} "
+        "placed alarms — a severity is on screen with no source behind it"
+    )
+    assert placed_total + census["unplaced"] == census["active"], (
+        f"placed {placed_total} + unplaced {census['unplaced']} != active {census['active']}: "
+        "an alarm is in neither column, so the panel does not add up"
+    )
+    assert census["provenance"] == {"declared": 2, "standard": 0, "learned": 1}
+    assert census["unplaced"] == 1
+
+
+async def test_a_varbinds_blob_that_cannot_be_read_leaves_the_alarm_unplaced(store: Store) -> None:
+    """A stats route the console polls must not 500 the whole estate over one unreadable row.
+
+    `alarm.varbinds` is `TEXT NOT NULL DEFAULT '[]'` and only ever written as `json.dumps` of
+    validated models, so this row should not exist — but the failure mode if it does is the whole
+    Overview going dark for every operator, and the honest reading of varbinds nobody can parse
+    is that this alarm carries no severity word.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_carrying(CLS_A, "torn", "critical", BASE))
+        await engine._process(_carrying(CLS_A, "intact", "major", BASE + 1))
+        await store.commit()
+        await store.conn.execute(
+            "UPDATE alarm SET varbinds='[{\"oid\": \"1.3.6.1' WHERE instance='torn'"
+        )
+        await store.commit()
+
+    census = await _census(store)
+    assert census["active"] == 2
+    assert census["unplaced"] == 1, "the torn row was given a severity nobody could read"
+    assert census["placed"] == {"1": 1}, "the intact row lost its severity to its neighbour"
+    assert census["provenance"] == {"declared": 0, "standard": 1, "learned": 0}
+
+    # **Well-formed JSON that is not a list of varbinds.** The blob parses, so the `except` above
+    # never fires — a reader who tested only the truncated case would leave this path to find out
+    # about itself in production, where `for vb in 42` raises inside a stats route.
+    for blob in ("42", '"critical"', '{"oid": "1.3.6.1"}', "null"):
+        async with store.lock:
+            await store.conn.execute("UPDATE alarm SET varbinds=? WHERE instance='torn'", (blob,))
+            await store.commit()
+        again = await _census(store)
+        assert again["unplaced"] == 1, f"varbinds={blob} placed a severity: {again}"
+        assert again["placed"] == {"1": 1}, f"varbinds={blob} disturbed the intact row: {again}"

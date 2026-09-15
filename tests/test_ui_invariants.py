@@ -3764,6 +3764,12 @@ def _stats_with_severity(**census: Any) -> dict[str, Any]:
     The key set is the one `store/read_models.severity_census` returns, and
     `test_the_severity_fixture_matches_what_the_census_actually_produces` pins it against that
     function rather than against this literal — the same discipline `_stats_with_resources` uses.
+
+    **`provenance.declared` follows `declared` unless a test sets it** (v0.17.1). The store computes
+    both from one loop over one set of rows, so they cannot disagree there; a fixture that let them
+    disagree would put the panel in a state the appliance cannot produce, and any assertion made
+    against that state would be about nothing. A test that genuinely wants them apart — to prove the
+    panel reads the one it should — passes `provenance` explicitly and says so.
     """
     out = _stats_with_resources()
     block: dict[str, Any] = {
@@ -3772,8 +3778,13 @@ def _stats_with_severity(**census: Any) -> dict[str, Any]:
         "unplaced": 0,
         "vendor_scaled": 0,
         "declared": 0,
+        # v0.17.1 (#341): where each placed severity came from. A new arm added to the census must
+        # fail the guard below, not appear on screen with no test having looked at it.
+        "provenance": {"declared": 0, "standard": 0, "learned": 0},
     }
     block.update(census)
+    if "provenance" not in census:
+        block["provenance"] = {**block["provenance"], "declared": block["declared"]}
     out["severity"] = block
     out["active_alarms"] = block["active"]
     return out
@@ -3932,9 +3943,130 @@ async def test_the_severity_band_names_that_a_declaration_can_move_it(
     assert "declaration" in captions, (
         f"the panel does not say a declaration takes precedence: {result['captions']}"
     )
-    assert "3 from a declaration" in captions, (
+    assert "3 from an operator's declaration" in captions, (
         f"the panel does not say how many bands came from a declaration: {captions}"
     )
+
+
+@dom_test
+async def test_the_panel_names_every_source_a_placed_severity_came_from(
+    routes: dict[str, Any],
+) -> None:
+    """**Name the source** (v0.17.1, #341). *"13 placed"* is half an answer.
+
+    An operator deciding whether to overrule a severity needs to know what they would be
+    overruling: a word their own device transmitted, an inference this appliance drew across 200
+    observations, or a colleague's declaration. Those deserve different amounts of trust and the
+    screen must not flatten them into one number.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_severity(
+                        active=14,
+                        placed={"0": 2, "1": 11},
+                        unplaced=1,
+                        declared=1,
+                        provenance={"declared": 1, "standard": 12, "learned": 0},
+                    )
+                }
+            ],
+        },
+    )
+    captions = " ".join(result["captions"])
+    assert "12 read from the word the trap carried" in captions, (
+        f"the standard read is on screen with no source named: {captions}"
+    )
+    assert "1 from an operator's declaration" in captions, (
+        f"the declared severity is on screen with no source named: {captions}"
+    )
+    assert "0 learned from the trap stream" not in captions, (
+        "the panel printed a zero arm. `0 learned` on an estate with no learned severity is not a "
+        f"claim anybody misreads, but it is noise in a line that must stay readable at 390px: "
+        f"{captions}"
+    )
+    # The word `learned` is still on screen, in the source line naming the precedence — which is
+    # the thing an operator needs in order to know that this panel has a third arm at all.
+    assert "then what the appliance learned" in captions, (
+        f"the source line stopped naming the whole precedence chain: {captions}"
+    )
+
+
+@dom_test
+async def test_a_source_this_build_does_not_know_is_shown_and_not_dropped(
+    routes: dict[str, Any],
+) -> None:
+    """**F92, for the fifth time in this one panel.**
+
+    A screen that lists the sources it knows about will silently drop the count of a fourth arm a
+    later release adds — and the alarms would still be in `placed`, so the arithmetic on screen
+    would stop adding up with no error anywhere. Showing the raw key is ugly and honest.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_severity(
+                        active=5,
+                        placed={"1": 5},
+                        unplaced=0,
+                        declared=0,
+                        provenance={"declared": 0, "standard": 0, "telepathy": 5},
+                    )
+                }
+            ],
+        },
+    )
+    captions = " ".join(result["captions"])
+    assert "5 telepathy" in captions, (
+        f"a provenance this build does not know was dropped, and five placed alarms on screen now "
+        f"have no source at all: {captions}"
+    )
+
+
+@dom_test
+async def test_the_unplaced_row_still_reads_a_dash_when_nothing_was_placed(
+    routes: dict[str, Any],
+) -> None:
+    """**v0.17.1 must not weaken v0.16.7's guarantee.** The standard read places more alarms, which
+    is the release; the case it does not cover — an estate whose devices carry no severity word —
+    is unchanged and still renders `—` rather than `0`.
+
+    This is the defect that shipped for one pass in v0.16.7 and the one F126 nearly re-introduced
+    from the other side. It gets a test at both layers.
+    """
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [
+                {
+                    "stats": _stats_with_severity(
+                        active=9,
+                        placed={},
+                        unplaced=9,
+                        provenance={"declared": 0, "standard": 0, "learned": 0},
+                    )
+                }
+            ],
+        },
+    )
+    rows = {row["label"]: row["value"] for row in _severity_rows(result)}
+    assert rows, "the severity chart was not found, so this asserts nothing"
+    graded = [label for label, value in rows.items() if "not placed" not in label]
+    assert all(rows[label] in ("\u2014", "—", None, "") for label in graded), (
+        f"a band reported a number over nine alarms the appliance placed nowhere: {rows}"
+    )
+    captions = " ".join(result["captions"])
+    assert "9 not placed" in captions, f"the unplaced count left the note: {captions}"
 
 
 def _severity_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
