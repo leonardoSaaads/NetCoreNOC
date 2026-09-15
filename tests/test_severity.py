@@ -723,3 +723,14 @@ async def test_a_varbinds_blob_that_cannot_be_read_leaves_the_alarm_unplaced(sto
     assert census["unplaced"] == 1, "the torn row was given a severity nobody could read"
     assert census["placed"] == {"1": 1}, "the intact row lost its severity to its neighbour"
     assert census["provenance"] == {"declared": 0, "standard": 1, "learned": 0}
+
+    # **Well-formed JSON that is not a list of varbinds.** The blob parses, so the `except` above
+    # never fires — a reader who tested only the truncated case would leave this path to find out
+    # about itself in production, where `for vb in 42` raises inside a stats route.
+    for blob in ("42", '"critical"', '{"oid": "1.3.6.1"}', "null"):
+        async with store.lock:
+            await store.conn.execute("UPDATE alarm SET varbinds=? WHERE instance='torn'", (blob,))
+            await store.commit()
+        again = await _census(store)
+        assert again["unplaced"] == 1, f"varbinds={blob} placed a severity: {again}"
+        assert again["placed"] == {"1": 1}, f"varbinds={blob} disturbed the intact row: {again}"

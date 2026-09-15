@@ -12,6 +12,94 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-three rows, two ask for an
 action, thirteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
+## [0.17.1] - 2026-09-15 — "the alarm vocabulary"
+
+The appliance had been receiving the word `critical` since v0.8.0 and refusing to use it. This
+release reads it, says where every severity came from, and lets an operator overrule any of it.
+
+**The headline number.** On one `make lab-demo` during a live cut: **0 placed / 14 unplaced** became
+**13 placed / 1 unplaced**, every one of the thirteen labelled `standard`. After one operator gesture
+on the remaining alarm: **14 placed / 0 unplaced**, `declared 1, standard 13`. `make eval`'s stdout
+hash did not move — `c333ca46…` before and after, checked against a stashed tree.
+
+**What the release is not.** No vendor rows, no vendor MIB file, no severity anybody invented.
+
+### The standard read (#337, #338, #340)
+
+`known_oids.standard_severity` reads the X.733 perceived-severity word a trap carried in its own
+varbinds. **This asserts nothing about any vendor**: the device transmitted the word, ITU-T X.733
+defines that word as a perceived severity, and the appliance believes the device about its own alarm.
+Its provenance is `standard`.
+
+Precedence is **declared > standard > learned**, resolved at *read* time in `store/read_models.py`
+consistent with #315 — so the trap path is untouched, its content hashes are intact, there is no
+migration and no per-packet cost. An operator's declaration outranks both, because a severity read
+out of a standard column is knowledge and not consent (`PREREGISTRATION-0.10.0.md` §6).
+
+**The read is keyed on the value, not the OID.** The intended design keyed on RFC 3877's registered
+column; `www.rfc-editor.org` and `www.iana.org` both answer 403 to the environment this was built in,
+so every OID-keyed row would have carried a citation nobody here could open. Keying on the value
+needs only the vocabulary already shipped — and works at whatever OID a device chose.
+
+`unplaced` stays a first-class count. A trap that carries no severity word, matches no bundled row
+and has no declaration is still unplaced, counted, and rendered `—`.
+
+### The console (#341, #348)
+
+The Overview's severity band now reads *"14 placed, 0 not placed — 13 read from the word the trap
+carried, 1 from an operator's declaration"*, and its source line names the whole precedence chain.
+The arms are derived from the payload with a fallback to the raw key, so a later release that adds a
+fourth source shows it without that file being edited.
+
+Driven in Chromium against a live lab appliance, three roles at 390/820/1440: zero horizontal
+overflow, zero console errors. `POST /api/labels` as **viewer** is refused `403 insufficient role`.
+
+### What was refused, and why (#339, #343, #346)
+
+- **No vendor rows.** Every one would have rested on an OID unverifiable against any reachable
+  source, dressed in a citation nobody could open. A table of plausible-looking OIDs with
+  real-looking references is worse than no table: it is *a severity asserted on a vendor's behalf*
+  wearing the costume of the fix.
+- **No renaming of alarm classes.** The maintainer asked for three verbs — rename, re-grade,
+  override — and this delivers two. Stated plainly rather than implied by silence.
+- **The ALARM-MIB column is used and not named.** A draft called `1.3.6.1.2.1.118.1.2.2.1.4`
+  `alarmActiveResourceId`; RFC 3877 is unreachable from here, and a citation nobody checked is the
+  defect this release exists to close.
+
+### Citations, and a guard that found more than it was written for (#344, #347, F125)
+
+Every bundled table in `known_oids.py` now carries a source in `BUNDLED_SOURCES`, and the guard
+**derives its subject from the module**. Written as a list it would have covered the one table anyone
+was thinking about; derived, its first run named four more. Writing those citations caught an error
+in an existing comment: `STANDARD_TRAPS` was labelled "RFC 3418", which is wrong about three of its
+six entries.
+
+`tests/test_supply_chain.py` proves **no vendor MIB file is in this repository**, by what files
+*contain* — an ASN.1 module signature plus an SMIv2 macro — rather than by what they are called. A
+MIB renamed `notes.md` with no MIB extension fails it by name.
+
+### Findings
+
+- **F125** — four bundled tables shipped public data with no citation; only the fifth was noticed.
+- **F126** — with the standard read in, the lab placed *everything* and `unplaced` read 0. True, and
+  a claim about a corpus chosen to make it true. The lab now raises one rectifier fault that carries
+  no severity at all and never clears, so both halves of the census are visible (#345).
+- **F127** — `ui/app/format.js` had **228 bytes** of headroom under the module-graph ceiling and
+  nothing said so. Routed around, not fixed: the vocabulary moved to its only consumer and
+  `format.js` is byte-identical.
+- **F116** is still open and still visible: the unplaced row reads *"1 alarms"*.
+
+### Verification
+
+2 004 tests. `make test` reports **96 %** over **8 923** statements — and that number **does not
+cover `testbed/` at all**. Adding `--cov=testbed` gives **9 266** statements at 93 %: the lab
+contributes **343** statements of which **36 %** are exercised, because `run_local.py` and
+`ne/agent.py` are subprocess entry points the suite drives as processes rather than imports.
+
+Four injections, each red, with a behaviourally-neutral control that stayed green: a fabricated
+default severity; the precedence inverted so the appliance outranks the operator; a provenance the
+build does not know silently dropped; an ungraded band printing `0` instead of `—`.
+
 ## [0.17.0] - 2026-09-14 — "the foundations"
 
 Three movements, in the order that made each one safe: prove what the safety net can see, change
