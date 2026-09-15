@@ -2109,3 +2109,43 @@ halves, and the operator's overrule, in one run.
 **The lesson is about measurement, not about the scenario.** The number moved from 0 placed to 13
 placed and the release looked finished. It took asking *which alarms are still unplaced, and can the
 lab still produce one* to notice that the answer was "none, by construction".
+
+## F127 — `format.js` had 228 bytes of headroom under the module-graph ceiling, and nothing said so
+
+**Found**: v0.17.1, Phase 3, by the ceiling itself, when a 1 372-byte addition tripped it.
+**Severity**: low now, and it is the kind that is only ever low until it is not.
+**Status**: open. Not fixed here; the release routed around it and recorded why.
+
+`tests/test_build_step.py` enforces that no UI module exceeds a third of the v0.12.0 monolith —
+`52 738 // 3 = 17 579` bytes. The guard is one of this repository's better ideas: it forces a split
+at the moment a module starts accumulating, instead of after it has.
+
+`ui/app/format.js` measured **17 351 bytes**, which is 98.7 % of that ceiling and **228 bytes** of
+room. Nothing on the screen, in the file, or in any report said so. The first person to add anything
+to it — here, a vocabulary of four strings and the comment explaining them — trips a guard whose
+message is about the v0.12.0 monolith and looks, at a glance, like an unrelated pin:
+
+```
+E       assert 18725 < (52738 // 3)
+```
+
+**Why this is a finding and not just an event.** The guard fires at exactly the wrong moment: not
+when the file is designed, but when someone unrelated is halfway through a feature. Its answer —
+*split this module* — is a restructure, and a restructure is the one thing that must not share a
+commit with a behaviour change. So the pressure at the moment of failure is to make the addition
+smaller rather than to split the file, which is the opposite of what the guard is for. That pressure
+is what produced the right answer here only because the addition had a second, better home.
+
+**What this release did**: moved the four-string vocabulary and `sourceLabel` into
+`ui/app/views/parts/severity.js`, its **only** consumer. That is defensible on its own terms —
+`format.js` owns `band()` because four surfaces read it, and a vocabulary with one reader belongs
+with its reader until a second one appears — and it left `format.js` byte-identical, which the
+behaviour-identity record proves. It is not a fix for the headroom.
+
+**What a later release needs**: either the split (`format.js` has clean section boundaries already:
+time, judgement, severity, numbers, names), or a report that states each module's remaining headroom
+so the ceiling stops being discovered by walking into it. The second is cheap and would have turned
+this into a sentence in a build report instead of a failed gate.
+
+**Measured**: `format.js` 17 351 bytes before and after; ceiling 17 579; headroom 228.
+`views/parts/severity.js` 8 317 -> 12 918, ceiling 17 579, headroom 4 661.

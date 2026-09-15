@@ -960,7 +960,16 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: them is `GET /api/stats`, 290 -> 343 bytes on all three roles, and
 #: `fixtures/behaviour-identity.txt` records exactly those three lines and no others. `make eval`'s
 #: stdout hash did not move at all: `c333ca46…` before and after, checked against a stashed tree.
-SRC_TREE_DIGEST = "f0a1bb3226b662cb5eda04ee18e268dfc6b505ba1109f53c73ec57b65028282f"
+#:
+#: Then one more, for the console half (#348): `ui/app/views/parts/severity.js` appends the
+#: provenance clause to the band's note and carries the vocabulary that names the sources. Three
+#: files in total; still 213; still no route but `/api/stats` and that module's own asset.
+#:
+#: `ui/app/format.js` is **byte-identical**, and that is a decision rather than an accident. The
+#: source vocabulary was written there first, on the *"one place where a token becomes a name"*
+#: argument that put `band()` there — and it pushed the file 1 146 bytes over the module-graph
+#: ceiling, because `format.js` had 228 bytes of headroom (F127). It moved to its only consumer.
+SRC_TREE_DIGEST = "1c60131c334653b75ef80028eb5a9c697e19cc3436fc05cb690db25b7baacecf"
 SRC_FILE_COUNT = 213
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

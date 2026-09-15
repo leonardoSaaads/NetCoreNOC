@@ -424,7 +424,7 @@ UI_HASHES: dict[str, str] = {
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
     ),
     "app/views/parts/severity.js": (
-        "781a512e5cd34a5ee45682b19c8eca0959b1c21bb4fe447e9ee8bd455d940c2b"
+        "1fb51c993c95851abd38498e745c440ae7ea4dc6f627c959d02d14d6cafd8a7a"
     ),
     "app/views/parts/verdict.js": (
         "bfedceae5645684afeaf50c636bc56f2626f6822a7b03e6f45af9f6f9bc2a9d3"
@@ -503,7 +503,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/model.js": 10_290,
     "app/views/parts/pulse.js": 8_278,
     "app/views/parts/retention.js": 5_003,
-    "app/views/parts/severity.js": 8_317,
+    "app/views/parts/severity.js": 12_918,
     "app/views/parts/verdict.js": 8_420,
     "app/views/parts/why.js": 10_884,
     "app/views/promotion.js": 11_378,

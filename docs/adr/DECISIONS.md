@@ -4193,3 +4193,43 @@ From this release an entry is about six lines: decision, reason, release.*
   MIB extension anywhere — fails the guard by name.
 - **Scope**: the tracked tree, so it covers `testbed/`, `docs/` and `eval/corpus/` alike rather than
   the directories anyone thought to look in.
+
+## 348. The console names the source of every placed severity, derived from the payload (v0.17.1)
+
+- **Decision**: the Overview's severity band appends a provenance clause to its note —
+  *"13 placed, 1 not placed — 13 read from the word the trap carried"* — and its source line names
+  the whole precedence chain. `sourceLabel` turns a provenance key into an operator's phrase, and
+  lives **in that panel**, not in `format.js`.
+- **Reason**: *"13 placed"* is half an answer. An operator deciding whether to overrule a severity
+  needs to know what they would be overruling — a word their own device transmitted, an inference
+  this appliance drew across 200 observations, or a colleague's declaration. Those deserve different
+  amounts of trust, and this release's rule is **name the source**: a severity that cannot say where
+  it came from is not placed.
+- **Why not in `format.js`**, which owns `band()` on the *"one place where a token becomes a name"*
+  argument this would otherwise share: `band()` is read by four surfaces and this is read by one.
+  A vocabulary with a single consumer belongs with its consumer and earns the move on the day a
+  second surface needs it. It was written in `format.js` first, and the module-graph ceiling
+  rejected it — that file had **228 bytes** of headroom (F127), so the alternative was a restructure
+  of `format.js` in the commit that adds a feature. `format.js` is byte-identical in this release
+  and the behaviour-identity record proves it.
+- **Why the note and not a seventh bar**: provenance partitions the same alarms the bands already
+  count. A row for it would be the same alarms drawn twice, and a reader adding the bars up would
+  get twice the estate.
+- **Derived from the payload, not listed**: the arms are whatever `provenance` holds, sorted by
+  count, and `sourceLabel` falls back to the raw key for one this build does not know. A later
+  release that adds a fourth source shows it without this file being edited — the fifth instance of
+  F92's lesson in one panel, beside `SCALE`'s.
+- **Zero arms are dropped**: *"0 learned"* on an estate with no learned severity is not the
+  four-zeros defect — nobody reads it as a claim about alarms — and it is noise in a line that must
+  stay readable at 390px.
+- **`—` is unchanged.** v0.16.7's rule that an ungraded band renders `—` and never `0` is untouched
+  and has its own test at both layers (F126 nearly re-introduced the defect from the other side).
+- **Measured**, driven in Chromium against a live lab appliance, all three roles at 390/820/1440:
+  zero horizontal overflow, zero console errors. The panel read *"13 placed, 1 not placed — 13 read
+  from the word the trap carried"*; after one `POST /api/labels` as **editor** it read *"14 placed,
+  0 not placed — 13 read from the word the trap carried, 1 from an operator's declaration"*. The
+  same request as **viewer** is refused `403 insufficient role`.
+- **Still visible and still not fixed here**: F116's *"1 alarms"* renders in the unplaced row. Its
+  own disposition says the fix is one line in `chartdata.js` that moves every chart in the console,
+  so it belongs in a commit with the pins that move with it — not in a release whose claim is that
+  one route moved.
