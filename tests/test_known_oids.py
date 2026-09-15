@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from netcorenoc.ingest import known_oids
 
 
@@ -56,7 +58,7 @@ def test_the_standard_read_takes_the_word_the_trap_carried() -> None:
     mechanism: `standard_severity` is keyed on the *value*, so it reads the word at whatever OID
     the device chose and would work identically if the lab moved it tomorrow.
     """
-    lab_trap = [
+    lab_trap: list[dict[str, Any]] = [
         {"oid": "1.3.6.1.2.1.1.3.0", "kind": "int", "value": 12345},
         {"oid": "1.3.6.1.2.1.118.1.2.2.1.4", "kind": "str", "value": "critical"},
     ]

@@ -20,7 +20,7 @@ release reads it, says where every severity came from, and lets an operator over
 **The headline number.** On one `make lab-demo` during a live cut: **0 placed / 14 unplaced** became
 **13 placed / 1 unplaced**, every one of the thirteen labelled `standard`. After one operator gesture
 on the remaining alarm: **14 placed / 0 unplaced**, `declared 1, standard 13`. `make eval`'s stdout
-hash did not move — `c333ca46…` before and after, checked against a stashed tree.
+hash did not move — `c2e8a0ce…` before and after, checked against a stashed tree.
 
 **What the release is not.** No vendor rows, no vendor MIB file, no severity anybody invented.
 

@@ -2068,7 +2068,7 @@ meant five `vulture_allowlist.py` lines and a sixth of each to remember when a l
 table. Folded into one mapping it is one allowlist line, fixed forever, and adding a table needs no
 list edit at all — the guard just fails until the citation is written.
 
-**What did not change**: no OID, no name, no rank. `make eval`'s stdout hash is `c333ca46…` before
+**What did not change**: no OID, no name, no rank. `make eval`'s stdout hash is `c2e8a0ce…` before
 and after, checked against a stashed tree.
 
 ## F126 — the lab placed every severity it had, which made `unplaced` read 0

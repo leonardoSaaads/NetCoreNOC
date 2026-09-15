@@ -959,7 +959,7 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: precedence chain and the `provenance` breakdown — #338, #341). The one behaviour that moved with
 #: them is `GET /api/stats`, 290 -> 343 bytes on all three roles, and
 #: `fixtures/behaviour-identity.txt` records exactly those three lines and no others. `make eval`'s
-#: stdout hash did not move at all: `c333ca46…` before and after, checked against a stashed tree.
+#: stdout hash did not move at all: `c2e8a0ce…` before and after, checked against a stashed tree.
 #:
 #: Then one more, for the console half (#348): `ui/app/views/parts/severity.js` appends the
 #: provenance clause to the band's note and carries the vocabulary that names the sources. Three
