@@ -17,7 +17,8 @@
 
 import { html } from "../../dom.js";
 import { Failed, SectionHeading } from "../../widgets.js";
-import { Series, Bars, Map as EstateMap } from "../../charts.js";
+import { Series } from "../../charts.js";
+import { Bars, Map as EstateMap } from "../../compare.js";
 import { buckets, spanText, tally } from "../../chartdata.js";
 import { plural, relative, count, TIMEZONE } from "../../format.js";
 

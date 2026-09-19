@@ -12,6 +12,114 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-three rows, two ask for an
 action, thirteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
+## [0.18.0] - 2026-09-19 — "the audit"
+
+Not a feature release. The brief was *use the product, find what is broken, fix it* — so the
+headline is a count: **nine defects found by driving the appliance, of which six no test in this
+repository could have found**, and one of them made a flapping link invisible.
+
+**The headline defect (F134).** `CLEAR_PAIR_SEEDS` ships `linkDown → linkUp`. The alternation
+learner registered the **inverse** of that pair as soon as a `(device, instance)` alternation
+happened to begin with `linkUp` — the ordinary case for an appliance deployed while a link is
+already down. From that moment every `linkDown` trap was dispatched to `_handle_clear` and no
+alarm was ever raised for it again. Measured on a real appliance over UDP: eight traps ending in
+`linkDown`, **0 active alarms**. The link was down and the console said the network was clean.
+The corruption was durable — both directions were written to the `edge` table — so a code-only
+fix would have come back on the next restart. After the fix, the same replay: **1 active alarm**.
+
+**F76 is closed.** `eval/corpus/dual_incident.json` has described itself as *"two unrelated
+incidents … must stay separate"* since v0.15.0 and they did not; a test pinned the wrong answer
+on purpose, saying what to replace it with. The scorer no longer applies *learned* cross-element
+affinity to a pair on two different elements whose trap OIDs sit in different enterprise subtrees
+— `same_oid_root`, the fourth feature `PREREGISTRATION-0.9.0.md` §2.3 registered in v0.9.0 and
+which went unimplemented for nine releases for one recorded reason: it needed an edit to
+`correlate.py`, whose bytes were pinned. **The v0.18.0 brief withdrew that pin.**
+
+Measured over the whole corpus: `dual_incident` `pairwise_f1` 0.6364 → **1.0000**, `ari` 0.0000 →
+**1.0000**, `over_merge_rate` 1.0000 → **0.0000**; the other nine scenarios do not move on any
+metric and `under_merge_rate` stays 0.0000 on all ten. Corpus-wide `over_merge_rate` 0.0312 →
+**0.0000**. A score threshold could not have done it: the seven cross-incident links scored
+0.5857 to 0.7243 against within-incident links at 0.6161 to 0.7684, overlapping, with one pair
+either side of the boundary at 0.7134 and 0.7131.
+
+**This is a declared correlation behaviour change**, so `make eval`'s stdout hash moves —
+`c2e8a0ce…` → `c75b42aa…` (the intermediate `ecab6c45…`, before the baseline was re-cut, is recorded here because the printed table carries the baseline's own numbers, so the re-cut moves the hash a second time) — and the baseline is re-cut with its reason in
+`eval/baselines/REBASELINE-LOG.md`.
+
+### The appliance can see itself (Part II)
+
+Nothing measured the running scorer. `GET /api/correlation` and a new **Correlator** screen now
+answer *"is the correlator doing a good job right now?"* without an offline report: accept rate,
+the score distribution with the threshold marked, how many decisions land within 0.05 of it,
+which of the three terms carried each link, merges per activation, and the subtree refusals —
+each **lifetime and over the last 500 activations**, because one number cannot say whether a
+figure is normal.
+
+It found something immediately. On four replayed scenarios: learned entity affinity carried
+**518 of 520** accepted links. That is F58's arithmetic, visible in the product for the first time.
+
+**It is not evidence.** Nothing is stored, no promotion path reads it, and the screen offers no
+control that records an opinion.
+
+### The newcomer path (F128, F129, F130, F131, F132)
+
+`tools/trap_replay.py` bound each simulated source under `contextlib.suppress(OSError)`. **Eight
+of the corpus's twenty-five source addresses are TEST-NET-3**, which no host has an interface in,
+so `make replay SCENARIO=dual_incident` delivered its four devices as **one**, on every machine,
+every time — and the appliance then merged them correctly, because on the wire they were one
+device. `tests/test_operation.py` carried a private rewrite that worked around this, so the one
+test that drives that scenario over a socket could not see it. The rewrite now lives in the tool
+and the test calls it.
+
+`testbed/Dockerfile.ne` could not be built: the root `.dockerignore` excluded all three of its
+COPY sources. `docker compose config` parses YAML and never reads `.dockerignore`, which is why
+v0.17.0 shipped it. Fixed, with a guard that derives every Dockerfile's COPY sources and checks
+them against the ignore file — no daemon required, because a guard that needs one is a guard
+that skips.
+
+The lab now picks a free port when its default is busy and says so; `control.py` finds the
+running lab through a descriptor instead of printing a hardcoded `8080`.
+
+### What was deleted
+
+* **`TRAP_PATH_HASHES` and `TRAP_PATH_BODY_HASHES`** (173 lines) — they protected the ingest path
+  from casual edits, the brief withdrew byte-pinning by name, and they could not tell a comment
+  fix from a blocking `open()`. Replaced by the constraint the brief keeps: a guard that reads
+  `datagram_received` and fails on an `await`, a lock or an I/O call, with a control proving it
+  can fail.
+* **`test_score_link_body_is_unchanged_by_the_capture_change`** — a source-text hash policing one
+  sentence of v0.8.0's build prompt, ten releases past. Replaced by a behavioural parity test
+  that checks the *number* rather than the text.
+
+### Also
+
+* `shadow_opinion.same_oid_root` recorded a hardcoded `0` for nine releases — not empty, which
+  would have been honest, but **wrong**, and no reader could tell. It now records the pair.
+* A count chart's header printed its **last bucket** and called it the reading (F133): the
+  Overview said `resolved 1` beside three resolved columns. A `column` series now reports the
+  window total and a `line` series its latest sample, and the header says which.
+* `eval/baselines/v0.2.0.json` was both an immutable historical record three tests assert against
+  **and** the file `make eval-baseline` overwrites (F136). The first release to re-cut a baseline
+  since that target was added found it. Split into `current.json` and `v0.2.0.json`.
+* `learn.py` split at the 400-line guard: the two alternation learners answer *"which class turns
+  this one off?"*, which is not the affinity matrices' question. `ui/app/charts.js` split at the
+  module-graph ceiling: `Bars` and `Map` compare things to each other, `Series` compares a thing
+  to its own past.
+
+### What was measured and left alone
+
+* **The snowball is refuted.** Three configurations, none of which grows: a cycler with its own
+  situation forms a fresh one per re-raise and each resolves; a cycler sharing a never-closing
+  situation stays at two members; with the structural bridge in place it grows **once** and then
+  stops. The situation stays open and does **not** swallow. What was really wrong with repeating
+  alarms is F134.
+* **The idle-close decision (v0.16.2) is upheld.** A situation holding an active alarm is not
+  resolved, is badged `stale`, is counted in an operator warning and can be closed by hand. The
+  measurement above says it does not grow, so the population it leaves is bounded.
+* **The architecture is unchanged and still a real structure.** v0.17.0's measurement, repeated:
+  `engine/` is six domains with **15** cross-domain edges, one 2-cycle (`dataset ↔ model`),
+  `correlate` a pure sink, and `store/` 26 modules with **0** imports of `engine/` or `api/`.
+
 ## [0.17.1] - 2026-09-15 — "the alarm vocabulary"
 
 The appliance had been receiving the word `critical` since v0.8.0 and refusing to use it. This

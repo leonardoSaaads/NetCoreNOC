@@ -12,8 +12,10 @@ from netcorenoc.engine.correlate.correlate import (
     CorrelationResult,
     Correlator,
     WindowAlarm,
+    contribution_of,
 )
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N, Learner
+from netcorenoc.engine.correlate.scoring import AdditiveScorer, LinkFeatures
 
 
 def wa(alarm_id: int, class_id: int, device_id: int, ts: float) -> WindowAlarm:
@@ -311,32 +313,65 @@ def test_select_candidates_skips_tombstones_and_honours_the_window_and_cap() -> 
 # and nothing else; these tests are what make that a fact rather than a claim.
 
 
-def test_score_link_body_is_unchanged_by_the_capture_change() -> None:
-    """**The correlation-parity anchor.** `score_link` is the decision; it must not have moved.
+# **What was here, and why it went** (v0.18.0).
+#
+# `test_score_link_body_is_unchanged_by_the_capture_change` hashed the SOURCE TEXT of
+# `Correlator.score_link` and `Correlator.features` against the v0.7.5 tree, to police one
+# sentence of v0.8.0's build prompt: *"v0.8.0 permits exactly one change to correlate.py."*
+#
+# **It was protecting a release-scope rule, and that release is ten releases past.** The v0.18.0
+# brief withdraws byte-pinning of the trap path in terms — *"its bytes are no longer frozen"* —
+# and `features` legitimately changes here to compute the `same_oid_root` that
+# `PREREGISTRATION-0.9.0.md` §2.3 registered in v0.9.0. A pin whose only remedy is "recompute the
+# hash" catches nothing on a release that is supposed to change the file.
+#
+# The claim worth keeping is not "these bytes did not move" but "the arithmetic is still the
+# arithmetic", and that is a behaviour, so it is asserted as one below.
 
-    A body hash rather than a behavioural test, because behaviour is already covered above and the
-    question here is different: did the v0.8.0 capture change touch the arithmetic *at all*? The
-    frozen digests are recorded in `docs/gates/v0.8.0-phase-0.md`, taken on the untouched v0.7.5
-    tree before any of this release's code existed.
 
-    If this fails, `make eval` may still pass — float arithmetic can be reordered without moving any
-    metric on this corpus — and that is precisely why the hash is checked separately.
+def test_the_three_term_formula_is_unchanged_for_every_pair_the_gate_does_not_touch() -> None:
+    """**The correlation-parity anchor, as behaviour** (v0.18.0).
+
+    v0.18.0 changes one thing about the score: a pair on two different network elements whose
+    trap OIDs sit in different enterprise subtrees no longer receives the learned entity-affinity
+    term (F76). *Every other pair must compute exactly what v0.5.0 computed* — same three
+    products, same left-to-right sum, same strict `>` comparison — because float addition is not
+    associative and a last-bit difference either side of the threshold is a different grouping.
+
+    Checked against the formula written out independently here, rather than against a hash of the
+    implementation's source: a hash says the text is the same, this says the *number* is.
     """
-    import hashlib
-    import inspect
+    import math
 
-    frozen = {
-        "score_link": "3bbec32371cc8cdf6f16f4795b5a25ed9adf0be0dd9c3663128abd31a670a256",
-        "features": "b7742649119e8876da78de16301f1c11a8db41143b0e5735e373ee7a78c4393e",
-    }
-    for name, expected in frozen.items():
-        source = inspect.getsource(getattr(Correlator, name))
-        actual = hashlib.sha256(source.encode()).hexdigest()
-        assert actual == expected, (
-            f"Correlator.{name} changed. v0.8.0 permits exactly one change to correlate.py and it "
-            f"is additive on CorrelationResult — not a change to the scoring seam.\n"
-            f"  expected {expected}\n  actual   {actual}"
+    scorer = AdditiveScorer()
+    cases = [
+        # (delta_t, class_affinity, entity_affinity, ne_i, ne_j, same_oid_root)
+        (0.0, 0.0, 1.0, 5, 5, None),  # same element, root unknown — the v0.5.0 default path
+        (3.0, 0.4, 0.9, 5, 5, False),  # same element: the gate must not fire
+        (3.0, 0.4, 0.9, 5, 6, True),  # same subtree: the gate must not fire
+        (12.5, 0.83, 0.77, 5, 6, None),  # unknown subtree: the gate must not fire
+        (60.0, 0.1, 0.2, 1, 2, True),
+        (0.5, 1.0, 1.0, 9, 9, True),
+    ]
+    for delta_t, class_aff, entity_aff, ne_i, ne_j, same_root in cases:
+        features = LinkFeatures(
+            delta_t_s=delta_t,
+            class_i=1,
+            class_j=2,
+            class_affinity=class_aff,
+            ne_i=ne_i,
+            ne_j=ne_j,
+            entity_affinity=entity_aff,
+            same_oid_root=same_root,
         )
+        expected = 0.3 * math.exp(-abs(delta_t) / 30.0) + 0.35 * class_aff + 0.35 * entity_aff
+        result = scorer.score(features)
+        assert result.score == expected, (
+            f"the formula moved for {features}: {result.score!r} != {expected!r}"
+        )
+        assert result.linked == (expected > 0.5)
+        # The three printed terms must sum to the printed score, or the explanation is a lie.
+        assert math.isclose(sum(t.contribution for t in result.terms), result.score, rel_tol=1e-12)
 
 
 def test_evaluated_carries_every_candidate_and_links_is_unchanged() -> None:
@@ -422,3 +457,82 @@ def test_correlation_result_still_constructs_without_evaluated() -> None:
     """
     empty = CorrelationResult(links=[], considered=[], storm=False)
     assert empty.evaluated == []
+
+
+# --- F76: two incidents on disjoint elements, kept apart by the subtree gate -------------------
+
+
+def _feat(**kw: object) -> LinkFeatures:
+    base: dict[str, object] = {
+        "delta_t_s": 1.0,
+        "class_i": 1,
+        "class_j": 2,
+        "class_affinity": 0.0,
+        "ne_i": 1,
+        "ne_j": 2,
+        "entity_affinity": 0.9,
+        "same_oid_root": None,
+    }
+    base.update(kw)
+    return LinkFeatures(**base)  # type: ignore[arg-type]
+
+
+def test_learned_cross_element_affinity_is_refused_across_enterprise_subtrees() -> None:
+    """**F76's repair, at the one expression that implements it.**
+
+    Two alarms on different network elements whose trap OIDs live in different enterprise
+    subtrees are co-occurring, not related. The entity term is what F58/F61 measured to be cheap
+    — six ordinary alarms clear `MIN_EDGE_N` and the affinity is 0.833 — so it is the term the
+    gate removes, and only for that pair shape.
+    """
+    scorer = AdditiveScorer()
+    blocked = scorer.score(_feat(same_oid_root=False))
+    assert contribution_of(blocked, "entity_affinity") == 0.0
+    assert not blocked.linked, blocked.score
+
+
+def test_the_gate_does_not_touch_same_element_or_same_subtree_pairs() -> None:
+    """Three controls, because a gate that fired too widely would look identical on `dual_incident`
+    and would quietly stop the appliance correlating anything across two devices."""
+    scorer = AdditiveScorer()
+    # Same element: `E` is structural there, not learned, and must survive.
+    same_element = scorer.score(_feat(same_oid_root=False, ne_i=7, ne_j=7))
+    assert contribution_of(same_element, "entity_affinity") == pytest_approx(0.35 * 0.9)
+    # Same subtree across elements: the ordinary cross-device correlation the product exists for.
+    same_subtree = scorer.score(_feat(same_oid_root=True))
+    assert contribution_of(same_subtree, "entity_affinity") == pytest_approx(0.35 * 0.9)
+    # Unknown subtree: an alarm built without a root must behave exactly as it did before v0.18.0.
+    unknown = scorer.score(_feat(same_oid_root=None))
+    assert contribution_of(unknown, "entity_affinity") == pytest_approx(0.35 * 0.9)
+
+
+def test_class_affinity_is_never_gated_so_a_recurring_pair_keeps_a_route_to_linking() -> None:
+    """The gate narrows one term, not the appliance's ability to learn.
+
+    A genuinely recurring cross-vendor pair accumulates **class** affinity, which is not gated.
+    Without this the gate would be a permanent taxonomy rule rather than a prior, and
+    "structure emerges from the stream" would stop being true across vendors.
+    """
+    scorer = AdditiveScorer()
+    strong = scorer.score(_feat(same_oid_root=False, class_affinity=1.0, delta_t_s=0.0))
+    assert contribution_of(strong, "class_affinity") == pytest_approx(0.35)
+    assert strong.score == pytest_approx(0.3 + 0.35)
+    assert strong.linked, "a fully-learned class pair must still link across subtrees"
+
+
+def test_the_window_alarm_carries_the_root_and_features_compares_it() -> None:
+    """The plumbing, end to end through `Correlator.features` rather than by construction."""
+    learner = Learner()
+    ciena = WindowAlarm(1, 10, 100, 1000.0, oid_root="1.3.6.1.4.1.1271")
+    juniper = WindowAlarm(2, 11, 200, 1001.0, oid_root="1.3.6.1.4.1.2636")
+    ciena2 = WindowAlarm(3, 12, 300, 1002.0, oid_root="1.3.6.1.4.1.1271")
+    rootless = WindowAlarm(4, 13, 400, 1003.0)
+    assert Correlator.features(ciena, juniper, learner).same_oid_root is False
+    assert Correlator.features(ciena, ciena2, learner).same_oid_root is True
+    assert Correlator.features(ciena, rootless, learner).same_oid_root is None
+
+
+def pytest_approx(value: float) -> object:
+    import pytest
+
+    return pytest.approx(value)

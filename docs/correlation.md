@@ -22,6 +22,22 @@ s = 0.3·e^(−Δt/30s)  +  0.35·A[class_i, class_j]  +  0.35·E[ne_i, ne_j]   
 | `0.35·A[i,j]` | **class affinity** | How often these two *trap types* have been seen together |
 | `0.35·E[i,j]` | **entity affinity** | How often these two *network elements* have been seen together |
 
+**One condition withholds the entity term** (v0.18.0). When the two alarms are on **different
+network elements** *and* their trap OIDs sit in **different enterprise subtrees** — the first seven
+dot-components, `1.3.6.1.4.1.<enterprise>` — the learned cross-element affinity contributes 0 and
+the link must be carried by time and class affinity alone.
+
+The reason is [F76](findings.md#f76--a-corpus-scenario-fails-its-own-stated-requirement-completely-and-the-aggregate-hides-it):
+`E` means *"these two elements go together"*, and six ordinary alarms are enough to establish it
+(F61). Two vendors' unrelated alarms inside one window are co-occurrence without relatedness, and
+that combination merged two entirely separate incidents in the shipped corpus for three releases.
+**No MIB is consulted** — the enterprise arc is arithmetic on the identifier the trap carried, which
+is the same opaque token the appliance already keys on. **Class affinity is not withheld**, so two
+trap types that genuinely do recur together across vendors keep a route to linking.
+
+On screen the term shows its gated value, so the three printed numbers still sum to the score
+exactly. The **Correlator** screen counts how many pairs this refused, lifetime and recent.
+
 A **situation** is a connected component of the resulting link graph. Within one, learned temporal
 precedence flags the probable root cause.
 

@@ -629,9 +629,18 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # and the /api surface is **unchanged at 52** through the release that adds the count
     # an operator opens the console for — because the census is one more query on a route
     # that was already being read (#316).
-    assert len(served) == 119, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # **v0.18.0: 119 -> 122 served, 52 -> 53 under /api.** Three paths: the route
+    # `GET /api/correlation`
+    # (Part II): counters over the running scorer's own decisions, so an operator can answer
+    # *"is the correlator doing a good job right now?"* without an offline report. Read-only,
+    # aggregate, in memory, and never evidence — and `GET /app/views/correlation.js`, the
+    # console module that draws it, plus `GET /app/compare.js` — `Bars` and `Map` out of
+    # `app/charts.js` at the module-graph ceiling, which the chart-header repair pushed over.
+    # Both new modules are static assets like every other one.
+    assert len(served) == 122, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 52, (
+    assert len(api_pairs) == 53, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -747,9 +756,18 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # separate because it is pure and is driven directly by tests with no DOM), and
     # `app/views/parts/pulse.js` (the Overview's five bands, out of `views/overview.js` at 22 552
     # bytes against the 17 579-byte guard — the seventh time that guard has chosen a seam).
-    assert len(served) == 119, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # **v0.18.0: 119 -> 122 served, 52 -> 53 under /api.** Three paths: the route
+    # `GET /api/correlation`
+    # (Part II): counters over the running scorer's own decisions, so an operator can answer
+    # *"is the correlator doing a good job right now?"* without an offline report. Read-only,
+    # aggregate, in memory, and never evidence — and `GET /app/views/correlation.js`, the
+    # console module that draws it, plus `GET /app/compare.js` — `Bars` and `Map` out of
+    # `app/charts.js` at the module-graph ceiling, which the chart-header repair pushed over.
+    # Both new modules are static assets like every other one.
+    assert len(served) == 122, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 52, (
+    assert len(api_pairs) == 53, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -824,7 +842,8 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # v0.11.0 adds `GET /api/promotion`: a refusal EXPLAINS why the correlator is still what
     # it is, and names no network element. Six now, and the count is asserted exactly so a
     # seventh cannot arrive without this line moving.
-    assert len(entries) == 6, entries
+    # v0.18.0: 6 -> 7, for `GET /api/correlation` (Part II).
+    assert len(entries) == 7, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -895,7 +914,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # `GET /api/promotion` is `unscoped` for `GET /api/scorer`'s reason: a decision about the
     # correlator's arithmetic names no network element.
     assert len(ADMIN_ONLY) == 25, len(ADMIN_ONLY)
-    assert len(UNSCOPED) == 6, UNSCOPED
+    # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
+    # — counters over the scorer's own decisions are a statement about arithmetic and
+    # name no network element (Part II).
+    assert len(UNSCOPED) == 7, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.

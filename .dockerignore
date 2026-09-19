@@ -50,3 +50,24 @@ flake.nix
 # The testbed (v0.17.0). The lab drives the product over UDP and HTTP and is never imported by it;
 # keeping it out of the build context is the other half of that boundary.
 testbed/
+
+# --- what `testbed/Dockerfile.ne` copies, re-included (v0.18.0, F130) -------------------------
+#
+# The three exclusions above hid exactly the three paths the NE image COPYs, so
+# `docker compose up --build` in `testbed/` failed with `"/testbed/scenarios": not found` and
+# v0.17.0 shipped an image that could not be built. `docker compose config` validates YAML and
+# never reads this file, which is why nothing caught it;
+# `tests/test_deploy.py::test_every_dockerfile_copy_source_survives_the_ignore_file` now does,
+# by deriving the COPY sources from every Dockerfile rather than listing them here.
+#
+# Docker resolves the LAST matching pattern, so these three lines must stay below the two
+# directory exclusions they carve out of.
+#
+# **What this widens, stated.** These paths now enter the build context of the *product* image
+# too, which copies only `pyproject.toml`, `README.md`, `LICENSE` and `src/` — so they reach the
+# daemon and no image layer. They are a PDU encoder, two agent modules and a JSON scenario: no
+# secret, no credential, ~40 KB. The secret-free intent of this file is untouched; every `.env`,
+# key and certificate rule above still applies, and nothing here re-includes one.
+!tools/trap_replay.py
+!testbed/ne
+!testbed/scenarios

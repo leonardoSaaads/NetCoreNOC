@@ -43,16 +43,21 @@ Other install routes — plain Docker, pip, Nix, systemd — are in [`docs/insta
 
 ## What you see
 
-Seventeen views in three groups: **Operations** (situations, network graph, timeline, entities,
-alarm classes), **Evidence** (labelling, corpus, judge & promotion) and **Administer** (users,
+Eighteen views in three groups: **Operations** (situations, network graph, timeline, entities,
+alarm classes, correlator), **Evidence** (labelling, corpus, judge & promotion) and **Administer** (users,
 tokens, settings, link scorer, governance, quarantine, audit). A view you cannot use is not
 rendered — a viewer sees no `Administer` group at all.
 
-Four roles (`viewer`, `operator`, `editor`, `admin`) and an optional per-principal visibility scope
+Three roles (`viewer`, `editor`, `admin`) and an optional per-principal visibility scope
 narrow what a signed-in identity may see. **Visibility scoping is not tenant isolation**, and the
 distinction is load-bearing: correlation learns across the whole estate, so a scoped principal sees
 a filtered view of one shared engine rather than a private one.
 [`docs/security.md`](docs/security.md) states exactly what it does and does not give you.
+
+**Correlator** answers the other question an operator has during an incident — *is the thing
+deciding my links any good right now?* — with the accept rate, the distribution of scores against
+the threshold, how often a decision is close enough to flip, and which of the three terms is
+carrying the links, each over the appliance's lifetime and over its last 500 decisions.
 
 The screen the product exists for is **Situations**: dense cards that expand in place to show the
 probable root cause, the member alarms, and then *Why these were grouped* — one row per link with
@@ -69,7 +74,11 @@ s = 0.3·e^(−Δt/30s) + 0.35·A[class_i, class_j] + 0.35·E[ne_i, ne_j] > 0.5
 ```
 
 `A` and `E` are learned incrementally from co-occurrence (normalised PMI, exponential forgetting,
-damped 10× during storms, and an entity pair needs five observations before its edge is trusted). A
+damped 10× during storms, and an entity pair needs five observations before its edge is trusted).
+**`E` is withheld from a pair on two different network elements whose trap OIDs sit in different
+enterprise subtrees** — two vendors' unrelated alarms inside one window are co-occurrence without
+relatedness, and that was the whole of F76. No MIB is consulted: the enterprise arc is arithmetic
+on the identifier the trap already carried. A
 **situation** is a connected component of the resulting link graph; learned temporal precedence
 flags the probable root. Raise/clear pairs are learned from strict alternation. `Confirm` reinforces
 a grouping, `Split` penalises it.

@@ -37,7 +37,7 @@ import { html } from "./dom.js";
  * (cx, cy, r). Nothing here carries a colour, a size or a stroke width — those belong to the one
  * `<svg>` below, so a change to the family is a change in one place. */
 const ICONS = {
-  // -- the seventeen views, in registry order ------------------------------------------
+  // -- the eighteen views, in registry order -----------------------------------------
   overview: { d: ["M3 12a9 9 0 0 1 18 0", "M12 12l4.5-3"], c: [[12, 12, 1]] },
   situations: { d: ["M4 8.5 12 4l8 4.5-8 4.5-8-4.5Z", "M4 15.5 12 20l8-4.5"] },
   graph: { d: ["M7.5 8.7l4-2.2M16.5 8.7l-4-2.2M7 12v3M17 12v3M9 18h6"],
@@ -45,6 +45,11 @@ const ICONS = {
   timeline: { d: ["M3 20h18", "M6 20V9", "M11 20V5", "M16 20v-8", "M21 20v-4"] },
   entities: { d: ["M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z", "M4 7.5 12 12l8-4.5M12 12v9"] },
   classes: { d: ["M8 6h12M8 12h12M8 18h12", "M4 6h.01M4 12h.01M4 18h.01"] },
+  // v0.18.0: the Correlator screen. Bars of differing height with a line across them — the
+  // score histogram and its threshold, which is the thing the screen is for. Deliberately not
+  // the `scorer` curve: two views sharing an icon is two views an operator cannot tell apart,
+  // and `test_every_view_in_the_registry_names_an_icon` asserts exactly that.
+  correlation: { d: ["M4 20V13M9 20V9M14 20v-5M19 20V6", "M2.5 16.5h19"] },
   labelling: { d: ["M4 12.5 9 17.5 20 6.5"] },
   corpus: { d: ["M4 6c0-1.4 3.6-2.5 8-2.5S20 4.6 20 6s-3.6 2.5-8 2.5S4 7.4 4 6Z",
                 "M4 6v12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V6", "M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5"] },

@@ -695,14 +695,23 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   margin: 0; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--fg-muted); font-weight: 600;
 }
-/* The latest reading, printed from the same array the plot was drawn from (`charts.js`), so the
-   number beside a chart cannot disagree with the chart. */
+/* The reading, printed from the same array the plot was drawn from (`charts.js`), so the number
+   beside a chart cannot disagree with the chart.
+
+   `.chart-latest-kind` carries the word "Latest" or "Total" (F133). The number used to be the
+   last bucket of a count series with nothing saying so, which read as the whole window and was
+   wrong by however many buckets came before it. Muted and small, like the series names beside
+   it: it qualifies the figures rather than competing with them. */
 .chart-latest {
   margin: 0; font-family: var(--mono); font-size: var(--fs-md);
   font-variant-numeric: tabular-nums; color: var(--fg-dim);
 }
 .chart-latest b { color: var(--fg); font-weight: 600; }
 .chart-latest-name { font-family: var(--sans); font-size: var(--fs-xs); color: var(--fg-muted); }
+.chart-latest-kind {
+  font-family: var(--sans); font-size: var(--fs-xs); color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
 .chart-sep { color: var(--line-strong); }
 
 .chart { --chart-h: 96px; margin-top: var(--space-2); }

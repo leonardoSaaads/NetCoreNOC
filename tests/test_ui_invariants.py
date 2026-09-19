@@ -4178,3 +4178,66 @@ def test_the_quantity_scan_would_find_a_fifth_declaration_in_a_module_it_has_nev
         "a declaration carrying an unregistered fifth key compares equal to the registered set, "
         "so the guard above would pass it"
     )
+
+
+# --- F133: a count chart's header printed its last bucket and called it the reading -------------
+
+
+@dom_test
+async def test_a_count_chart_summarises_its_window_and_a_gauge_its_last_reading(
+    routes: dict[str, Any],
+) -> None:
+    """**The header number must mean what the chart means** (v0.18.0, F133).
+
+    Found by driving the lab in a browser and reading the Overview beside the database. The
+    *Situations, by when they were created* header said ``resolved 1`` while the plot drew three
+    resolved columns and ``GET /api/situations?status=resolved`` returned three rows. Nothing was
+    lying: the header printed the **last bucket's** count, with no word saying so, next to a
+    chart covering twenty-five seconds.
+
+    The two marks summarise differently and now say which:
+
+    * a ``column`` series is a **count per bucket**, so the figure is the **Total** over the
+      window — the number an operator reads as *"how many"*;
+    * a ``line`` series is a gauge sampled over time, so the figure stays the **Latest** reading;
+      summing CPU samples would produce a number with no meaning at all.
+
+    Asserted through the rendered accessible label, which `charts.js` builds from the same array
+    the plot is drawn from — so the header, the screen reader and the columns cannot disagree.
+    The gauge half is the control: without it, a test that only checked the total would pass
+    equally well if every chart had been switched to summing.
+    """
+    # Four situations, three of them resolved and spread across the window, so a "last bucket"
+    # summary and a "whole window" summary give DIFFERENT answers. They must, or this proves
+    # nothing: the defect was invisible precisely when the two agreed.
+    base = 1_700_000_000.0
+    situations = [
+        {"id": 1, "status": "resolved", "created_at": base, "alarm_count": 1},
+        {"id": 2, "status": "resolved", "created_at": base + 1, "alarm_count": 1},
+        {"id": 3, "status": "new", "created_at": base + 20, "alarm_count": 14},
+        {"id": 4, "status": "resolved", "created_at": base + 25, "alarm_count": 0},
+    ]
+    # `cpu_series` is what puts a GAUGE on the same screen, which is this test's control.
+    stats = _stats_with_resources(cpu_pct=12.5, cpu_series=[9.0, 11.0, 12.5])
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [{"situations": situations, "stats": stats}],
+        },
+    )
+    labels = [c["label"] for c in result["charts"] if c["label"]]
+    created = next((label for label in labels if "by when they were created" in label), None)
+    assert created is not None, labels
+    # Three resolved in the window; the last bucket holds ONE of them. The defect printed 1.
+    assert "Total" in created, created
+    assert "resolved: 3" in created, created
+    assert "new: 1" in created, created
+    assert "Latest" not in created, f"a count series must not claim a latest reading: {created}"
+
+    # The control: a gauge on the same screen still reports its last sample, not a sum.
+    gauges = [label for label in labels if "Latest" in label]
+    assert gauges, f"no gauge chart rendered, so the control asserts nothing: {labels}"
+    for label in gauges:
+        assert "Total" not in label, f"a gauge must not be summed: {label}"

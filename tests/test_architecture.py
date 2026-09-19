@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -99,7 +100,17 @@ COHESION_EXEMPT: dict[str, str] = {
 # v0.15.1: 580 -> 545, and it FELL because the metric changed rather than because the file did
 # (DECISIONS #218). `engine.py` is 569 lines, 24 of which are imports; the number here is now what
 # a reviewer has to read to audit the batch lock, which is what the exemption was always about.
-COHESION_EXEMPT_CEILING: dict[str, int] = {"engine/operate/engine.py": 545}
+# v0.18.0: 545 -> 566, and it is the v0.8.0 shape exactly — **call sites, not decisions**. The
+# 21 lines are: `oid_root(item.trap_oid)` on the `WindowAlarm` the correlator already builds
+# (F135, seven lines because the constructor wraps), one `self.monitor.observe(...)` after
+# `_assign_situation` with the comment saying why it is last (Part II), one attribute in
+# `__init__`, and a return value plus docstring on `_assign_situation` so the engine can tell the
+# monitor how many situations an arriving alarm fused — a fact only the engine has.
+#
+# Paid for the same way: `test_the_engine_holds_no_monitoring_logic` below asserts the thing the
+# number is a proxy for. Every counter, every histogram bucket and every rate lives in
+# `engine/correlate/monitor.py`; `engine.py` gets one call.
+COHESION_EXEMPT_CEILING: dict[str, int] = {"engine/operate/engine.py": 566}
 
 # The invariant names a COHESION_EXEMPT reason may cite, taken from MODULE-ARCHITECTURE.md §1.
 # A reason that cites nothing in this set is an assertion nobody has had to defend.
@@ -371,6 +382,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/dom.js"),
     ("GET", "/app/format.js"),
     ("GET", "/app/charts.js"),
+    ("GET", "/app/compare.js"),
     ("GET", "/app/chartdata.js"),
     ("GET", "/app/icons.js"),
     ("GET", "/app/login.js"),
@@ -387,6 +399,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/account.js"),
     ("GET", "/app/views/audit.js"),
     ("GET", "/app/views/classes.js"),
+    ("GET", "/app/views/correlation.js"),
     ("GET", "/app/views/corpus.js"),
     ("GET", "/app/views/entities.js"),
     ("GET", "/app/views/governance.js"),
@@ -466,6 +479,10 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/dataset/retention"),
     ("POST", "/api/dataset/retention"),
     ("GET", "/api/scorer"),
+    # v0.18.0 (Part II): registered immediately after `GET /api/scorer` because it is the other
+    # half of the same question — that route says what formula is running, this one says whether
+    # it is working — and route order is the declaration order, which is what this pin records.
+    ("GET", "/api/correlation"),
     ("POST", "/api/scorer/preview"),
     ("POST", "/api/scorer"),
     ("POST", "/api/scorer/rollback"),
@@ -546,12 +563,12 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     _engine, _queue, app = await authutil.make_env(store)
     live = [entry for entry in route_order(app) if entry[1].startswith("/api")]
     assert live == API_ORDER_BASELINE
-    assert len(live) == 52, (
+    assert len(live) == 53, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
-        f"v0.16.3 exactly one and v0.16.5 exactly one — `POST /api/alarms/clear`, which is a "
-        f"literal on the `/api/alarms` prefix whose only other route is `/{{aid}}/clear`. The two "
-        f"cannot shadow each other: a concrete segment and a template segment differ in length "
-        f"before they differ in shape (DECISIONS #301)."
+        f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — and v0.18.0 "
+        f"exactly one, `GET /api/correlation`. None can shadow another: each is a distinct "
+        f"literal, and a concrete segment and a template segment differ in length before they "
+        f"differ in shape (DECISIONS #301)."
     )
 
 
@@ -611,6 +628,34 @@ def test_the_engine_holds_no_capture_logic() -> None:
         "The COHESION_EXEMPT entry covers the ingest reasoning, not any code that lands nearby. "
         "Dataset persistence belongs in netcorenoc/capture.py (decisions) and "
         "netcorenoc/store/dataset.py (SQL); engine.py gets a call site."
+    )
+
+
+def test_the_engine_holds_no_monitoring_logic() -> None:
+    """**The control that pays for v0.18.0's ceiling raise** (Part II).
+
+    Same bargain as `test_the_engine_holds_no_capture_logic` one release-family over: the
+    correlation monitor needs a call site, a call site is at the call, and that is only
+    acceptable while the *reason* for the exemption holds. So this asserts what the number is a
+    proxy for: **no counter, no histogram, no rate arithmetic in `engine.py`.** It may construct
+    the monitor and call `observe`, and nothing more.
+
+    Without it, "observability" becomes the excuse that relaxes the one structural bound this
+    project keeps on its ingest path.
+    """
+    source = (PKG / "engine" / "operate" / "engine.py").read_text(encoding="utf-8")
+    leaks = [
+        needle
+        for needle in ("histogram", "accept_rate", "near_threshold", "carried_by", "snapshot(")
+        if needle in source
+    ]
+    assert not leaks, (
+        f"engine.py contains correlation-monitoring logic: {leaks}\n\n"
+        "The COHESION_EXEMPT entry covers the ingest reasoning, not code that lands nearby. "
+        "Every counter belongs in engine/correlate/monitor.py; engine.py gets a call site."
+    )
+    assert "self.monitor.observe(" in source, (
+        "engine.py no longer calls the monitor, so the ceiling raise bought nothing"
     )
 
 
@@ -720,70 +765,47 @@ def test_every_javascript_module_opens_with_a_block_comment() -> None:
         )
 
 
-# --- prime directive 1, as a test rather than as a command someone remembers to run --------------
-
-#: SHA-256 of the five modules on the trap path, at **v0.13.0** — the release this one branched
-#: from. v0.14.0's build prompt makes their byte-identity its first non-negotiable:
-#:
-#:   > `correlate.py`, `engine.py`, `receiver.py`, `capture.py`, `learn.py` byte-identical at the
-#:   > end, verified by hash.
-#:
-#: Every gate document in this release quotes those hashes. **Quoting them is not a guard**: a hash
-#: a human runs `sha256sum` for at the end of a phase catches a change only if the human remembers,
-#: and the phase where they would most want to forget is the phase that found a defect in one of
-#: these files. This release is that phase — F58 is a finding about `learn.py`, measured with the
-#: evidence on screen, and left unfixed. This table is what made leaving it unfixed a property of
-#: the tree rather than a promise in a document.
-#:
-#: Pinned by content, not by `git diff`, so it holds against a working tree with no history: a
-#: reformat, an import reordering, a comment fix and a semantic change are all the same event here,
-#: which is right, because "did anything at all move" is the question prime directive 1 asks.
-#:
-#: **When a later release legitimately changes one of these**, it updates this table in the same
-#: commit — the reviewable-line-in-a-diff discipline `UI_HASHES` has used since v0.11.0.
-TRAP_PATH_HASHES: dict[str, str] = {
-    "capture.py": "71a531b44addaedc5fb2f365a134e05dc2bfb6d084bb6c22fdc01b1b7f844ec2",
-    "correlate.py": "b550497367232a99c3bc8814cab72dbcb665dcc29891c15b6a3e6eab68a11165",
-    "engine.py": "85cff6b1c05950c32ac9ec7b8ee1843e0fb3b2bce56f9575e447653059188b58",
-    "learn.py": "d3b6bf24b422795fed6a1f9c73ed4262bad668379872d8e27c69971368486a0c",
-    "receiver.py": "c59ec7e98a95831f1eb2d76e0f3a9007aa129958abf82c896a63c22a1f181222",
-}
-
-
-#: The same five modules, hashed with **every import statement removed** — and unlike the table
-#: above, these do not change at all in v0.15.1.
-#:
-#: The brief for this release states that a move breaks the pin above "on path, not on content".
-#: That is not so, and the difference matters: a moved module's own imports are rewritten, so its
-#: bytes change too, and the pin above therefore has to be recomputed in each move commit. A pin
-#: that is recomputed is a pin that absorbs whatever else came with the change.
-#:
-#: So the claim v0.15.1 can actually make is this one: strip the imports and **nothing moved**.
-#: Same idea as `tools/evidence/move_census.py`, which makes it for all 56 moved files; here it is
-#: a permanent test for the five that matter most, so a later release cannot change a trap-path
-#: module's body while updating the raw hash in the same breath and call it a move.
-TRAP_PATH_BODY_HASHES: dict[str, str] = {
-    "capture.py": "3d4b1c23ee38e761a490ddcbeb5ae30aba90b526725fe137945debced368d9ab",
-    "correlate.py": "a46255038f440951a7b0f0505a691e74e0839960c61d0e640109385ab3ff08d7",
-    "engine.py": "789488173e6145ca00624de76b760826dd16ee7b9bff17a32e0515f30f3fd2d5",
-    "learn.py": "29f39ef06cec70e6030867221db7c695a346ffa9640747127ae1bf5c4508215c",
-    "receiver.py": "99d43cdce8479277bcdc2aae17810b8b5118cfeb94d1840402638b7200ba3340",
-}
+# --- prime directive 1: the ingest path's BEHAVIOUR, not its bytes -----------------------------
+#
+# ## What was here until v0.18.0, and why it is gone
+#
+# Two tables of SHA-256 hashes — `TRAP_PATH_HASHES` and `TRAP_PATH_BODY_HASHES` — pinning five
+# modules byte-for-byte against v0.13.0, plus their two tests and the import-stripping helper
+# they shared: 173 lines.
+#
+# **They were protecting the ingest path from being edited casually by a release that had no
+# business in it.** That was the right instrument while each release had a narrow theme it could
+# be held to. The v0.18.0 brief withdraws it by name — *"that directive is withdrawn... The trap
+# path is still not allowed to gain per-packet latency, locks or I/O — that is a behaviour
+# constraint and it stays. Its bytes are no longer frozen."*
+#
+# A byte pin also could not tell the difference between the change that matters and the change
+# that does not. Fixing a comment, sorting an import and adding a blocking `open()` to
+# `datagram_received` were one event to it, and the remedy for all three was the same: recompute
+# the hash. A pin that is recomputed is a pin that absorbs whatever came with the change — which
+# the comment on `SRC_TREE_DIGEST` says of itself, in this same file.
+#
+# So the bytes are unpinned and **the behaviour is asserted instead**, below. This is not a new
+# self-imposed rule (anti-overengineering §5): it is the one constraint the brief keeps, written
+# as a test for the first time. Until now *"ingestion is sacred"* was a sentence in
+# `MODULE-ARCHITECTURE.md` and a hash of a file, and no test anywhere read the ingest path and
+# checked that it does not block.
 
 
 def _body(source: str) -> str:
     """Source with every `import` / `from … import` statement removed, by `ast` span.
 
-    A second copy of `tools/evidence/move_census.py`'s `strip_imports`, deliberately: that one is
-    a release gate somebody runs, this one runs on every `make qa`, and a test that reached into
-    `tools/evidence/` to borrow eight lines would couple a permanent guard to a one-release script.
+    **Kept when the trap-path byte pins went** (v0.18.0): those hashed a stripped body, but the
+    module-size guard above needs the same strip for a different and still-live reason — a
+    package reorganisation lengthens import lines and must not consume a module's line budget.
+    An import statement cannot hold logic, so there is nowhere for size to hide.
     """
-    import ast
+    import ast as _ast
 
-    tree = ast.parse(source)
+    tree = _ast.parse(source)
     drop: set[int] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import | ast.ImportFrom):
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Import | _ast.ImportFrom):
             drop.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
     # …and the blank lines the import block is separated by. Sorting an import into a different
     # position moves a blank line with it — `varbind_profile.py` lost one when `known_oids` sorted
@@ -803,32 +825,8 @@ def _body(source: str) -> str:
     return "\n".join(line for number, line in enumerate(lines, start=1) if number not in drop)
 
 
-def test_the_trap_path_bodies_are_unchanged_by_the_move() -> None:
-    """**What v0.15.1 claims about the trap path**, and it is stronger than the raw pin.
-
-    The five modules' imports were rewritten and their paths changed. Everything else — every
-    decision on the ingest path, every line a reviewer would have to read to confirm the batch
-    lock is respected — is byte-identical to the tree this release started from.
-    """
-    import hashlib
-
-    moved = []
-    for name, expected in sorted(TRAP_PATH_BODY_HASHES.items()):
-        path = util.module_path(name)
-        actual = hashlib.sha256(_body(path.read_text(encoding="utf-8")).encode("utf-8")).hexdigest()
-        if actual != expected:
-            moved.append(f"  {name}\n    pinned: {expected}\n    actual: {actual}")
-    assert not moved, (
-        "a trap-path module changed beyond its imports:\n"
-        + "\n".join(moved)
-        + "\n\nA move rewrites imports and nothing else. If a later release legitimately changes "
-        "one of these bodies, it updates this table in the same commit — which is a reviewable "
-        "line in a diff rather than something that happened while the raw hash was being bumped."
-    )
-
-
 def test_the_body_strip_is_load_bearing() -> None:
-    """The control. A strip that removed everything, or nothing, would make the pin meaningless."""
+    """The control. A strip that removed everything, or nothing, makes the guard meaningless."""
     sample = (
         "import os\n"
         "from x import (\n    y,\n    z,\n)\n"  # a parenthesised import, which spans four lines
@@ -852,45 +850,134 @@ def test_the_body_strip_is_load_bearing() -> None:
     assert _body("A = 1\n\nB = 2\n") == "A = 1\n\nB = 2", "a blank line away from imports was eaten"
 
 
-def test_the_trap_path_is_byte_identical_to_the_release_this_one_branched_from() -> None:
-    """**Prime directive 1**, measured on every run rather than at the end of a phase.
+#: The one function every trap passes through, before any queue, batch or lock exists.
+#:
+#: Named as a (module, function) pair rather than as a list of files, because the constraint is
+#: about a **call path**, not about a directory: `engine._process` runs under the batch lock by
+#: construction and is allowed to await, while `datagram_received` is called by the event loop
+#: for every datagram and must return without yielding.
+HOT_PATH = ("netcorenoc/ingest/receiver.py", "datagram_received")
 
-    The five modules are named individually. A glob over "the ingest path" would be a claim about
-    a boundary nobody drew, and the boundary is the point: these are the files a trap actually
-    passes through, and a release about *models* has no business inside any of them.
+#: What must not appear on it, and what each one would cost. Derived checks, not a denylist of
+#: names: the AST node types below are *categories* of blocking, so a new blocking call of an
+#: existing kind is caught without this table being edited (Appendix B).
+#:
+#: `open` and the `socket`/`sqlite3` module attributes are the exception — they are names, because
+#: "this call does I/O" is not derivable from an AST without resolving the callee. They are a
+#: floor under the structural checks, not the whole guard.
+BLOCKING_CALL_NAMES = frozenset({"open", "sleep", "read", "write", "flush", "fsync", "connect"})
+
+
+def _hot_path_function() -> tuple[Any, str]:
+    """The AST of the per-packet entry point, found by name in its own module."""
+    import ast as _ast
+
+    path = PKG.parent.parent / "src" / HOT_PATH[0]
+    assert path.is_file(), f"{HOT_PATH[0]} does not exist; the hot-path guard has no subject"
+    source = path.read_text(encoding="utf-8")
+    for node in _ast.walk(_ast.parse(source)):
+        if isinstance(node, _ast.FunctionDef | _ast.AsyncFunctionDef) and node.name == HOT_PATH[1]:
+            return node, source
+    raise AssertionError(f"{HOT_PATH[0]} defines no {HOT_PATH[1]}; the guard has no subject")
+
+
+def test_the_per_packet_path_takes_no_lock_and_does_no_io() -> None:
+    """**Prime directive 1 as a behaviour**, read off the ingest path rather than hashed.
+
+    `datagram_received` is called by the event loop once per datagram. Three things on it would
+    each turn a 100 000-trap burst into a stall, and none of them is visible in a diff that also
+    reformats a docstring:
+
+    * **`await`** — the receiver is a `DatagramProtocol` callback and cannot be suspended; an
+      `await` here is either a syntax error or a coroutine nobody schedules.
+    * **a lock** — `async with self.store.lock` on the packet path serialises ingestion behind
+      the batch that is committing, which is the one thing the queue exists to prevent.
+    * **I/O** — a file read, a socket call or a `sqlite3` statement, each of which is unbounded
+      and happens while datagrams queue in the kernel.
+
+    Derived from the function's own AST, so it holds for however the function is written.
     """
-    import hashlib
+    import ast as _ast
 
-    moved = []
-    for name, expected in sorted(TRAP_PATH_HASHES.items()):
-        actual = hashlib.sha256(util.module_path(name).read_bytes()).hexdigest()
-        if actual != expected:
-            moved.append(f"  {name}\n    pinned: {expected}\n    actual: {actual}")
-    assert not moved, (
-        "a module on the trap path moved:\n"
-        + "\n".join(moved)
-        + "\n\nPrime directive 1: correlate.py, engine.py, receiver.py, capture.py and learn.py "
-        "are byte-identical for the whole of v0.14.0. If a later release changes one of these "
-        "legitimately, update TRAP_PATH_HASHES in the same commit — which makes the change a "
-        "reviewable line in a diff instead of something that happened while someone was in the "
-        "file for another reason."
+    node, _source = _hot_path_function()
+    offences: list[str] = []
+    for child in _ast.walk(node):
+        if isinstance(child, _ast.Await):
+            offences.append(f"line {child.lineno}: await on the per-packet path")
+        if isinstance(child, _ast.AsyncWith):
+            offences.append(f"line {child.lineno}: `async with` — a lock or a managed resource")
+        if isinstance(child, _ast.With):
+            for item in child.items:
+                target = _ast.unparse(item.context_expr)
+                if "lock" in target.lower():
+                    offences.append(f"line {child.lineno}: acquires {target}")
+        if isinstance(child, _ast.Call):
+            called = _ast.unparse(child.func)
+            tail = called.rsplit(".", 1)[-1]
+            if tail in BLOCKING_CALL_NAMES:
+                offences.append(f"line {child.lineno}: {called}() blocks")
+            if called.startswith(("sqlite3.", "socket.socket", "subprocess.")):
+                offences.append(f"line {child.lineno}: {called}() is I/O")
+    assert not offences, (
+        "the per-packet path gained work it may not do:\n  "
+        + "\n  ".join(offences)
+        + "\n\nEvery trap passes through this function before any queue or batch exists. "
+        "A lock, an await or an I/O call here is paid once per datagram."
     )
 
 
-def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() -> None:
-    """The other direction: the table names five files and they are the five that exist.
+def test_the_hot_path_guard_can_actually_fail() -> None:
+    """The control, and this file's own standard for one.
 
-    Without this, deleting an entry would make the guard pass by having nothing left to check —
-    the same hole `test_no_module_may_join_the_allowlist` closes for the size guard, and the same
-    reason: a guard whose subject can be edited away is not a guard.
+    A guard over a function that happens to be clean proves nothing about the guard. Each of the
+    three offences is constructed here and must be reported — otherwise the test above is a green
+    light wired to nothing, which is the failure mode Appendix B names most often.
     """
-    expected = {"capture.py", "correlate.py", "engine.py", "learn.py", "receiver.py"}
-    assert set(TRAP_PATH_HASHES) == expected, (
-        "the pinned set is no longer the five modules the build prompt names"
+    import ast as _ast
+
+    def offences_in(body: str) -> list[str]:
+        node = _ast.parse(body).body[0]
+        assert isinstance(node, _ast.FunctionDef | _ast.AsyncFunctionDef)
+        found = []
+        for child in _ast.walk(node):
+            if isinstance(child, _ast.Await | _ast.AsyncWith):
+                found.append("suspends")
+            if isinstance(child, _ast.With):
+                for item in child.items:
+                    if "lock" in _ast.unparse(item.context_expr).lower():
+                        found.append("locks")
+            if (
+                isinstance(child, _ast.Call)
+                and _ast.unparse(child.func).rsplit(".", 1)[-1] in BLOCKING_CALL_NAMES
+            ):
+                found.append("blocks")
+        return found
+
+    assert "suspends" in offences_in("async def f(self):\n    await self.q.put(1)\n")
+    assert "locks" in offences_in("def f(self):\n    with self.store.lock:\n        pass\n")
+    assert "blocks" in offences_in("def f(self):\n    open('/tmp/x').read()\n")
+    assert offences_in("def f(self):\n    self.stats.received += 1\n") == [], (
+        "the guard reports an offence for a function that only increments a counter"
     )
-    assert set(TRAP_PATH_BODY_HASHES) == expected, "the two tables must pin the same five modules"
-    for name in TRAP_PATH_HASHES:
-        assert util.module_path(name).is_file(), f"{name} is pinned and does not exist"
+
+
+def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
+    """The specific call the whole design turns on, named rather than inferred.
+
+    `put_nowait` raises `QueueFull` and the receiver counts a drop; `await put()` would apply
+    backpressure **to the kernel's receive buffer**, which is where §5.6's queue-full accounting
+    comes from. The structural guard above forbids the `await`; this asserts the counter that
+    makes the refusal visible, so "no await" cannot be satisfied by dropping silently.
+    """
+    import ast as _ast
+
+    node, _source = _hot_path_function()
+    body = _ast.unparse(node)
+    assert "put_nowait" in body, "the hot path no longer enqueues without blocking"
+    assert "QueueFull" in body, (
+        "the hot path enqueues without blocking and does not handle QueueFull, so a full queue "
+        "raises into the event loop instead of being counted as a drop"
+    )
 
 
 # --- "did any code move at all", as one reviewable line ----------------------------------------
@@ -969,8 +1056,8 @@ def test_every_pinned_trap_path_module_exists_and_the_set_is_the_whole_path() ->
 #: source vocabulary was written there first, on the *"one place where a token becomes a name"*
 #: argument that put `band()` there — and it pushed the file 1 146 bytes over the module-graph
 #: ceiling, because `format.js` had 228 bytes of headroom (F127). It moved to its only consumer.
-SRC_TREE_DIGEST = "1c60131c334653b75ef80028eb5a9c697e19cc3436fc05cb690db25b7baacecf"
-SRC_FILE_COUNT = 213
+SRC_TREE_DIGEST = "0dcfa53ea37bee0102ed9de18d2c0e15015ea3906907f1922c67114e905a8c42"
+SRC_FILE_COUNT = 217
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1036,7 +1123,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.17.1", "the version this release carries"
+    assert __version__ == "0.18.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

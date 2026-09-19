@@ -38,7 +38,7 @@ describes something you cannot run.
 | [`plans/v0.15.2-console.md`](plans/v0.15.2-console.md) | What is broken in the console, measured |
 | [`plans/v0.15.3-console-design.md`](plans/v0.15.3-console-design.md) | What v0.15.2 will leave undone |
 | [`plans/cartridge.md`](plans/cartridge.md) | v0.17.3 — the external cartridge, and why it slipped |
-| [`plans/archetypes.md`](plans/archetypes.md) | v0.18.0 — per-archetype weights, *likely, review before committing* |
+| [`plans/archetypes.md`](plans/archetypes.md) | v0.18.1 — per-archetype weights, *likely, review before committing* |
 
 ## The analysis plans, and why they are not records
 

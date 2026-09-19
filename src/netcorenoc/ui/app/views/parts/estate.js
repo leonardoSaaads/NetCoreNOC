@@ -28,7 +28,7 @@
 
 import { html } from "../../dom.js";
 import { DataTable, SectionHeading } from "../../widgets.js";
-import { Map as EstateMap } from "../../charts.js";
+import { Map as EstateMap } from "../../compare.js";
 import { count, plural, score } from "../../format.js";
 
 /** How many rows each derived table shows. Enough to answer the question, short enough to read. */

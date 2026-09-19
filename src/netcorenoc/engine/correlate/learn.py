@@ -8,7 +8,9 @@ feedback flows back in: ``confirm`` re-applies a situation's pairwise updates; `
 — every pair, or **only the ones asserted** when v0.9.1's exclusion set names which do not belong.
 
 Raise/clear pairs are learned from strict alternation of two classes on one (device, instance),
-seeded with the universal standard pairs (linkDown → linkUp).
+seeded with the universal standard pairs (linkDown → linkUp). **Both alternation learners moved to
+`alternation.py` in v0.18.0** at the 400-line guard — a different question from this file's, and
+re-exported here so every importer is unchanged.
 """
 
 from __future__ import annotations
@@ -16,9 +18,17 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
-from typing import Any
 
-from netcorenoc.ingest import known_oids
+from netcorenoc.engine.correlate.alternation import (
+    CLEAR_CYCLES_TO_LEARN as CLEAR_CYCLES_TO_LEARN,
+)
+from netcorenoc.engine.correlate.alternation import MAX_STATE_SLOTS as MAX_STATE_SLOTS
+from netcorenoc.engine.correlate.alternation import (
+    STATE_MAX_VALUE_CHARS as STATE_MAX_VALUE_CHARS,
+)
+from netcorenoc.engine.correlate.alternation import ClearPairLearner as ClearPairLearner
+from netcorenoc.engine.correlate.alternation import StateClearLearner as StateClearLearner
+from netcorenoc.engine.correlate.alternation import StateRow as StateRow
 from netcorenoc.store import EdgeRow, Store
 
 LAMBDA = 0.05  # forgetting factor per learning epoch (closed situation)
@@ -27,20 +37,8 @@ SAME_NE_AFFINITY = 0.8  # affinity between two distinct entities on the same NE 
 STORM_DAMPING = 0.1  # 10x smaller updates during mass storms
 STORM_ALARMS = 50  # window/situation occupancy that defines a storm
 SPLIT_PENALTY = 0.5  # pair-mass multiplier applied by a "split" feedback
-CLEAR_CYCLES_TO_LEARN = 2  # full X→Y alternations before a clear pair is trusted
 EPOCH_PAIR_CAP = 20  # members sampled when a situation reinforces the matrices
-MAX_STATE_SLOTS = 4096  # bounded per-(device, instance, class, oid) alternation trackers (S9)
-STATE_MAX_VALUE_CHARS = 32  # truncate tracked state values (bounds hostile strings)
 
-# Framing varbinds are never state fields; skipping them saves alternation slots (S9).
-_STATE_SKIP = frozenset(
-    {
-        known_oids.SYS_UPTIME_OID,
-        known_oids.SNMP_TRAP_OID,
-        "1.3.6.1.6.3.1.1.4.3.0",  # snmpTrapEnterprise
-        "1.3.6.1.6.3.18.1.3.0",  # snmpTrapAddress (the v1 agent address)
-    }
-)
 
 Item = tuple[int, int]  # (class_id, device_id)
 
@@ -140,153 +138,6 @@ class Matrix:
         self.total, self.total_e = float(data["total"][0]), int(data["total"][1])
         self.marginals = {int(k): (float(m), int(e)) for k, m, e in data["marginals"]}
         self.pairs = {_pair(e.a_id, e.b_id): (e.n, e.g) for e in edges}
-
-
-@dataclass
-class _Alternation:
-    first: int
-    second: int | None = None
-    last: int = 0
-    cycles: int = 0
-
-
-@dataclass
-class ClearPairLearner:
-    """Learn raise → clear class pairs from strict alternation on a (device, instance)."""
-
-    raise_to_clear: dict[int, int] = field(default_factory=dict)
-    clear_to_raise: dict[int, int] = field(default_factory=dict)
-    state: dict[tuple[int, str], _Alternation] = field(default_factory=dict)
-    dirty: set[tuple[int, int]] = field(default_factory=set)
-
-    def register(self, raise_class: int, clear_class: int) -> None:
-        if raise_class not in self.raise_to_clear and clear_class not in self.clear_to_raise:
-            self.raise_to_clear[raise_class] = clear_class
-            self.clear_to_raise[clear_class] = raise_class
-            self.dirty.add((raise_class, clear_class))
-
-    def observe(self, device_id: int, instance: str, class_id: int) -> None:
-        """Track alternation; duplicates are ignored, a third class restarts tracking."""
-        slot = (device_id, instance)
-        alt = self.state.get(slot)
-        if alt is None:
-            self.state[slot] = _Alternation(first=class_id, last=class_id)
-            return
-        if class_id == alt.last:
-            return
-        if alt.second is None and class_id != alt.first:
-            alt.second = class_id
-        if class_id not in (alt.first, alt.second):
-            self.state[slot] = _Alternation(first=class_id, last=class_id)
-            return
-        alt.last = class_id
-        if class_id == alt.second:
-            alt.cycles += 1
-            known = alt.first in self.raise_to_clear or alt.second in self.clear_to_raise
-            if alt.cycles >= CLEAR_CYCLES_TO_LEARN and not known and alt.second is not None:
-                self.register(alt.first, alt.second)
-
-    def flush(self) -> list[EdgeRow]:
-        rows = [
-            EdgeRow("clear_pair", raise_c, clear_c, 1.0, 1.0, 0)
-            for raise_c, clear_c in sorted(self.dirty)
-        ]
-        self.dirty.clear()
-        return rows
-
-    def load(self, edges: list[EdgeRow]) -> None:
-        for edge in edges:
-            self.raise_to_clear[edge.a_id] = edge.b_id
-            self.clear_to_raise[edge.b_id] = edge.a_id
-
-
-@dataclass
-class _ValueAlternation:
-    """Strict two-value alternation of one varbind on one (device, instance, class)."""
-
-    first: str
-    second: str | None = None
-    last: str = ""
-    cycles: int = 0
-    poisoned: bool = False  # a third distinct value appeared: not a two-state field
-
-
-# (class_id, varbind_oid, clear_value, raise_value)
-StateRow = tuple[int, str, str, str]
-
-
-@dataclass
-class StateClearLearner:
-    """Learn a per-(class, varbind) *state* field and its clear value from strict two-value
-    alternation on a (device, instance) — the single-OID analogue of ClearPairLearner (S9).
-
-    A varbind whose value strictly alternates between exactly two values for
-    ``CLEAR_CYCLES_TO_LEARN`` full cycles is a state field; the value it returns to (the second
-    seen) is the clear value, the first the raise value. The two-value requirement is
-    self-selecting: an identifier (many values) or a multi-level severity poisons its slot and
-    is never learned. Additive — the class-level learner is untouched, and until a field is
-    learned nothing is routed, so cold-start grouping is unchanged.
-    """
-
-    clear_value: dict[tuple[int, str], str] = field(default_factory=dict)  # (class,oid)->clear
-    raise_value: dict[tuple[int, str], str] = field(default_factory=dict)  # (class,oid)->raise
-    slots: dict[tuple[int, str, int, str], _ValueAlternation] = field(default_factory=dict)
-    dirty: set[tuple[int, str]] = field(default_factory=set)
-
-    def observe(
-        self, device_id: int, instance: str, class_id: int, varbinds: list[tuple[str, str]]
-    ) -> None:
-        for oid, raw in varbinds:
-            if oid in _STATE_SKIP or (class_id, oid) in self.clear_value:
-                continue  # framing, or already learned for this class
-            value = raw[:STATE_MAX_VALUE_CHARS]
-            slot_key = (device_id, instance, class_id, oid)
-            alt = self.slots.get(slot_key)
-            if alt is None:
-                if len(self.slots) < MAX_STATE_SLOTS:
-                    self.slots[slot_key] = _ValueAlternation(first=value, last=value)
-                continue
-            if alt.poisoned or value == alt.last:
-                continue
-            if alt.second is None and value != alt.first:
-                alt.second = value
-            if value not in (alt.first, alt.second):
-                alt.poisoned = True  # a third value: not a two-state field
-                continue
-            alt.last = value
-            if value == alt.second and alt.second is not None:
-                alt.cycles += 1
-                if alt.cycles >= CLEAR_CYCLES_TO_LEARN:
-                    self.register(class_id, oid, alt.first, alt.second)
-
-    def register(self, class_id: int, oid: str, raise_v: str, clear_v: str) -> None:
-        key = (class_id, oid)
-        if key not in self.clear_value:
-            self.clear_value[key] = clear_v
-            self.raise_value[key] = raise_v
-            self.dirty.add(key)
-
-    def is_clear(self, class_id: int, varbinds: list[tuple[str, str]]) -> bool:
-        """True when a trap of this class carries a learned state varbind at its clear value."""
-        for oid, raw in varbinds:
-            clear = self.clear_value.get((class_id, oid))
-            if clear is not None and raw[:STATE_MAX_VALUE_CHARS] == clear:
-                return True
-        return False
-
-    def flush(self) -> list[StateRow]:
-        rows = [
-            (c, o, self.clear_value[(c, o)], self.raise_value[(c, o)])
-            for (c, o) in sorted(self.dirty)
-        ]
-        self.dirty.clear()
-        return rows
-
-    def load(self, rows: list[dict[str, Any]]) -> None:
-        for row in rows:
-            key = (int(row["class_id"]), str(row["varbind_oid"]))
-            self.clear_value[key] = str(row["clear_value"])
-            self.raise_value[key] = str(row["raise_value"])
 
 
 class Learner:
@@ -396,5 +247,17 @@ class Learner:
             raw = await store.get_meta(key)
             if raw is not None:
                 matrix.load_state(raw, await store.load_edges(matrix.kind))
-        self.clears.load(await store.load_edges("clear_pair"))
+        contradicted = self.clears.load(await store.load_edges("clear_pair"))
+        if contradicted:
+            # **Said out loud, through the channel that already carries damaged durable state.**
+            # A database written before v0.18.0 can hold a raise/clear pair in both directions
+            # (F134), which made a raise trap dispatch as a clear and the alarm invisible. The
+            # rows are ignored from here on, and the two classes behave as ordinary alarms until
+            # the pair is re-seeded or re-learned — but an operator whose appliance quietly
+            # changed its mind about a trap pair is owed the sentence.
+            store.integrity_warnings.append(
+                f"Stored raise/clear pairs contradicted each other for alarm class(es) "
+                f"{', '.join(str(c) for c in contradicted)}; they were ignored. Traps of those "
+                "classes raise ordinary alarms until the pair is learned again (F134)."
+            )
         self.states.load(await store.load_state_clears())

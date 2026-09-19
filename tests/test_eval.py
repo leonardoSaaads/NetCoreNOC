@@ -24,7 +24,15 @@ sys.path.insert(0, str(EVAL))
 
 import harness  # noqa: E402
 
-BASELINE = json.loads((EVAL / "baselines" / "v0.2.0.json").read_text())
+# **Two baselines, because they answer two questions** (v0.18.0, F136).
+#
+# `BASELINE` is what `make eval` gates against and what `make eval-baseline` re-cuts; it moves
+# when correlation behaviour changes on purpose. `V020` is the v0.2.0 measurement, immutable —
+# the tests below that describe what v0.3.0 improved on are claims about history, and they were
+# reading the same file the re-baseline target overwrites. Nothing caught it because no release
+# had re-cut a baseline since the target was added in v0.17.0.
+BASELINE = json.loads((EVAL / "baselines" / "current.json").read_text())
+V020 = json.loads((EVAL / "baselines" / "v0.2.0.json").read_text())
 
 
 async def test_harness_is_deterministic() -> None:
@@ -43,15 +51,52 @@ async def test_no_regression_against_frozen_baseline() -> None:
         )
 
 
+#: Scenarios whose cold-mode metrics have **deliberately** left v0.2.0, each with the release
+#: that moved them and why. Every other scenario must still reproduce v0.2.0 byte-for-byte, which
+#: is what keeps this a parity gate rather than a list of excuses.
+DECLARED_DIVERGENCES = {
+    "camera_nvr": "v0.3.0 (S2): v0.2.0 quarantined its SNMPv1 traps; they are now ingested.",
+    "dual_incident": (
+        "v0.18.0 (F76): the scorer no longer applies learned cross-element affinity across "
+        "enterprise subtrees, so the two incidents stay separate — pairwise_f1 0.6364 -> 1.0000, "
+        "ari 0.0000 -> 1.0000, over_merge_rate 1.0000 -> 0.0000. The scenario's own description "
+        "says 'must stay separate'; until now it did not."
+    ),
+}
+
+
 async def test_cold_mode_reproduces_the_v020_baseline() -> None:
     """Cold/parity mode (no promotion) reproduces the frozen v0.2.0 output byte-for-byte on
-    every existing fixture — the mechanical parity gate (prime directive 3). camera_nvr is the
-    one legitimate exception: v0.2.0 quarantined its v1 traps, v0.3.0 ingests them (S2)."""
+    every fixture except the divergences a release declared — the mechanical parity gate.
+
+    **A divergence must be declared, not discovered.** `DECLARED_DIVERGENCES` names each one and
+    the release that caused it, so a grouping change nobody intended still fails here; that is
+    the whole value of a parity gate against a nine-release-old measurement.
+    """
     cold = await harness.run_all(promote=False)
-    for name, expected in BASELINE["scenarios"].items():
-        if name == "camera_nvr":
+    for name, expected in V020["scenarios"].items():
+        if name in DECLARED_DIVERGENCES:
             continue
-        assert cold["scenarios"][name] == expected, f"cold-mode {name} diverged from v0.2.0"
+        assert cold["scenarios"][name] == expected, (
+            f"cold-mode {name} diverged from v0.2.0 and no release declared it. If the change is "
+            f"intended, add {name} to DECLARED_DIVERGENCES with the reason and the numbers."
+        )
+
+
+async def test_every_declared_divergence_is_a_real_one() -> None:
+    """The control: an entry that no longer diverges is an exemption hiding a passing case.
+
+    Without this, `DECLARED_DIVERGENCES` becomes a place to park scenarios, and the parity gate
+    quietly shrinks to nothing — the shape `test_no_module_may_join_the_allowlist` guards against
+    for the size gate, for the same reason.
+    """
+    cold = await harness.run_all(promote=False)
+    for name in DECLARED_DIVERGENCES:
+        assert name in V020["scenarios"], f"{name} is declared divergent and is not in v0.2.0"
+        assert cold["scenarios"][name] != V020["scenarios"][name], (
+            f"{name} is listed as a declared divergence but now matches v0.2.0 exactly; remove "
+            "it from DECLARED_DIVERGENCES so the parity gate covers it again"
+        )
 
 
 async def test_learning_mode_lifts_entity_accuracy() -> None:
@@ -59,7 +104,7 @@ async def test_learning_mode_lifts_entity_accuracy() -> None:
     proxied storms while grouping (pairwise_f1) never regresses."""
     learned = await harness.run_all(promote=True)
     agg = learned["aggregate"]
-    assert agg["entity_accuracy"] > 0.3  # up from the frozen baseline's 0.032
+    assert agg["entity_accuracy"] > 0.3  # up from v0.2.0's 0.032
     assert agg["pairwise_f1"] >= BASELINE["aggregate"]["pairwise_f1"] - harness.GATE_TOLERANCE
     # The PON dying-gasp storm is the clearest win: ONUs learned from their varbinds.
     assert learned["scenarios"]["pon_dying_gasp"]["entity_accuracy"] > 0.5
@@ -96,7 +141,7 @@ def test_corpus_covers_the_targeted_phenomena() -> None:
 def test_baseline_shows_the_v020_weaknesses_to_be_improved() -> None:
     """Sanity: the frozen baseline records the failures v0.3.0 exists to fix — proxied
     entity attribution near zero, and the instance heuristic leaving dedup poor."""
-    agg = BASELINE["aggregate"]
+    agg = V020["aggregate"]
     assert agg["entity_accuracy"] < 0.2, "baseline entity attribution should be poor (proxying)"
     assert agg["pairwise_f1"] > 0.9, "baseline grouping is already good; v0.3.0 must not regress it"
 
@@ -105,7 +150,7 @@ def test_baseline_shows_the_v020_weaknesses_to_be_improved() -> None:
 def test_proxied_scenarios_attribute_to_the_ne_in_the_baseline(scenario: str) -> None:
     """Under v0.2.0 the proxied storms attribute every alarm to the reporting NE, so their
     per-scenario entity accuracy is far below one — the gap v0.3.0 closes."""
-    assert BASELINE["scenarios"][scenario]["entity_accuracy"] < 0.5
+    assert V020["scenarios"][scenario]["entity_accuracy"] < 0.5
 
 
 # --- what the corpus is, pinned (v0.17.0, DECISIONS #327) ----------------------------------------

@@ -29,6 +29,7 @@ import { GraphView } from "./views/graph.js";
 import { Timeline } from "./views/timeline.js";
 import { Entities } from "./views/entities.js";
 import { Classes } from "./views/classes.js";
+import { Correlation } from "./views/correlation.js";
 import { Labelling } from "./views/labelling.js";
 import { Corpus } from "./views/corpus.js";
 import { Promotion } from "./views/promotion.js";
@@ -81,6 +82,16 @@ export const VIEWS = [
     id: "classes", label: "Alarm classes", icon: "classes", group: "operations",
     capability: "classes.read", component: Classes,
     summary: "Every trap type the appliance has learned, with no configuration.",
+  },
+  {
+    // **Operations, not Administer** (v0.18.0, Part II). *"Is the correlator doing a good job
+    // right now?"* is an operator's question during an incident, not an administrator's question
+    // about configuration — the Link scorer screen answers *what the formula is* and is where an
+    // admin changes it. `correlation.read` is a viewer capability for `scorer.read`'s reason:
+    // these numbers explain grouping and name no network element.
+    id: "correlation", label: "Correlator", icon: "correlation", group: "operations",
+    capability: "correlation.read", component: Correlation,
+    summary: "What the running scorer is deciding, and how sure it is.",
   },
 
   /* ---------- Evidence: what has been learned, and what is refused ---------- */

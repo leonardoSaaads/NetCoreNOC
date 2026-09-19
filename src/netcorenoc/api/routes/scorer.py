@@ -167,6 +167,37 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "history": [_scorer_row(row) for row in history],
         }
 
+    @route.get("/api/correlation", dependencies=guarded)
+    async def get_correlation() -> dict[str, Any]:
+        """**How the running scorer is behaving** — the thing nothing measured (v0.18.0, Part II).
+
+        Beside `GET /api/scorer` because they are two halves of one question: that route says
+        *what formula is running*, this one says *whether it is working*. Same capability class,
+        same `unscoped` posture, and the same reason — both are statements about arithmetic that
+        name no network element.
+
+        Every figure comes from `engine.monitor`, which counts the champion's own decisions as it
+        makes them. Nothing here is stored, so the horizon is *"since this appliance started"*
+        and the payload says so rather than implying a history it does not have.
+
+        **It is an observability surface and it is not evidence.** It reads no label, it writes
+        nothing, and no promotion path can reach it. Measuring the champion is not labelling it.
+        """
+        snapshot = engine.monitor.snapshot()
+        safe = engine.correlator.scorer
+        async with store.lock:
+            running = await _running_identity()
+        snapshot["running"] = running
+        snapshot["degraded"] = safe.degraded
+        snapshot["degraded_reason"] = safe.last_error
+        snapshot["config_id"] = engine.scorer_config_id
+        # The threshold the accept/refuse split is against, so the histogram can be drawn with
+        # the line on it rather than the console guessing where it goes.
+        snapshot["threshold"] = _tunable_scorer().threshold
+        snapshot["window_s"] = engine.correlator.window_s
+        snapshot["max_candidates"] = engine.correlator.max_candidates
+        return snapshot
+
     def _validated(body: ScorerParamsIn) -> None:
         """Semantic validation — bounds *and* degeneracy. A rejected set is never stored."""
         try:

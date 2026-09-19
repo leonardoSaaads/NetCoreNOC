@@ -340,6 +340,7 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         "events.stream": "viewer",
         "entities.read": "viewer",
         "scorer.read": "viewer",
+        "correlation.read": "viewer",
         # operate (editor+)
         "feedback.write": "editor",
         "label.write": "editor",

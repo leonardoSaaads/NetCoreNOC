@@ -42,7 +42,8 @@
  */
 
 import { html } from "../../dom.js";
-import { Bars, Series } from "../../charts.js";
+import { Series } from "../../charts.js";
+import { Bars } from "../../compare.js";
 import { buckets, spanText, tally } from "../../chartdata.js";
 import { plural } from "../../format.js";
 import { SectionHeading } from "../../widgets.js";

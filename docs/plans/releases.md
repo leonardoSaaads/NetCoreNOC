@@ -37,9 +37,10 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.16.8** | **Maintenance windows** — a planned-work declaration, and the composed severity/time filters that read it. | `maintenance-windows` |
 | **v0.17.0** | **The foundations** — an eval baseline that can be re-cut with a recorded reason, guards that derive their sets instead of listing them, and `testbed/`: a two-host fibre cut a newcomer can deploy and trigger. **Shipped.** | `foundations` |
 | **v0.17.1** | **The standard alarm vocabulary and vendor severity defaults** — a vendor-published severity shown immediately, with provenance and an operator override, beside the learned one. | `alarm-vocabulary` |
-| **v0.17.2** | **The corpus, F76, and the correlation window** — scenarios whose alarms clear, the scenario that fails its own stated requirement, and the window the correlator reasons over. | `corpus-window` |
+| **v0.17.2** | **The corpus and the correlation window** — scenarios whose alarms clear, a scenario spanning two enterprise subtrees in ONE incident (the case v0.18.0's gate is unmeasured against), and the window the correlator reasons over. **F76 left this release**: v0.18.0 closed it. | `corpus-window` |
 | **v0.17.3** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
-| **v0.18.0** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
+| **v0.18.0** | **The audit** — no theme: use the product, find what is broken, fix it. Nine defects found by driving it, F76 closed, and the first measurement of the scorer that is actually running. **Shipped.** | `audit` |
+| **v0.18.1** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
 
 ## Why the order cannot be permuted
 
@@ -516,6 +517,65 @@ holds, uncited.
   missing ingredient, but 25 closes is nowhere near 50 per NE and lowering the gate to make a chart
   draw would fabricate the ordering `severity.py` exists to refuse.
 
+## What v0.18.0 measured about the 120-second window, and why it is a plan and not a patch
+
+The audit's brief names four defects. Three were settled in the release (F76 closed, the snowball
+refuted, the idle-close decision upheld and measured). The fourth — *"correlation cannot see past
+120 seconds"* — is a design question larger than one release, and this is the written answer the
+brief allows in place of code.
+
+### What is actually true
+
+`WINDOW_S = 120.0`, and eviction is on `now - window[0].ts > window_s`. **A pair more than 120 s
+apart never reaches the scorer at all**, so no weight, no threshold and no model changes the
+outcome. That much is confirmed. What is *not* true is that the appliance has no long memory: `A`
+and `E` accumulate across all time with exponential forgetting per learning epoch, and they are
+the only reason cross-element correlation works at all.
+
+So the appliance has long-horizon memory and **cannot reach it from the linking decision**. The
+window is not a memory; it is a **candidate set**.
+
+### Why widening it is not the fix
+
+Candidate selection is `O(min(n, MAX_CANDIDATES))` per activation against a window bounded by
+`MAX_WINDOW_ALARMS = 20 000`. Widening `WINDOW_S` to a month does not produce a month-wide window;
+it produces a 20 000-alarm window that evicts on the cap instead of on time, silently, counting
+each shed live alarm as a gap. On the `olt_storm` corpus scenario alone — 501 traps in 25 s — the
+cap is 2.5 % consumed by one incident. A month of a real estate overruns it constantly, and the
+result is not longer memory but **arbitrary** memory.
+
+### What recurrence should mean here, stated so the next release can disagree with it
+
+Three candidate mechanisms, none built:
+
+1. **A second, coarse candidate source.** Keep the 120 s window for *what is happening now*, and
+   add a bounded set of *representatives* — one entry per (class, element) active in the last N
+   hours, capped. A new alarm scores against both. Cost is bounded by the representative cap, not
+   by the horizon. This is the smallest change that makes a month reachable.
+2. **Recurrence as a feature, not a candidate.** Leave candidate selection alone and let the
+   scorer see *"this exact pair has co-occurred k times over the last 30 days"* — which `A` and
+   `E` already know and `LinkFeatures` does not carry. This links nothing new; it changes how
+   confidently the pairs already in the window are linked.
+3. **Situation-level recurrence.** Do not link across the horizon at all; instead recognise that a
+   *closed* situation resembles one from last week, and say so. This is the only one that does not
+   touch the ingest path, and the only one that answers *"is this the same fault again?"* rather
+   than *"are these two alarms one incident?"* — which are different questions an operator asks
+   with different words.
+
+### What v0.18.0 measured that bears on the choice
+
+**Affinity mass is driven by burst density, not by recurrence**, and that is the more urgent
+defect. Thirty recurrences of the same genuine cross-element pair, 600 s apart, produce
+`entity_affinity = 0.0000` — the pair mass reaches 1.0 against `MIN_EDGE_N = 5.0` and decays
+between rounds. Sixteen alarms in five seconds produce **0.833**. The appliance therefore trusts
+*"many alarms at once"* far more than *"the same two elements together thirty times"*, which is
+backwards for exactly the recurrence question I.1 asks about.
+
+**So mechanism 2 is the one this measurement supports**, and it needs F58/F61 resolved first:
+there is no point serving a recurrence feature computed from an accumulator that recurrence
+barely moves. A release that takes I.1 should decide what `MIN_EDGE_N` is counting before it
+decides how far back the correlator can see.
+
 ## The claims
 
 Each row above is claimed here, one marker per line. The table's own document must claim every row
@@ -547,7 +607,8 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 <!-- release-claim: v0.17.1 = alarm-vocabulary -->
 <!-- release-claim: v0.17.2 = corpus-window -->
 <!-- release-claim: v0.17.3 = external-cartridge -->
-<!-- release-claim: v0.18.0 = archetypes -->
+<!-- release-claim: v0.18.0 = audit -->
+<!-- release-claim: v0.18.1 = archetypes -->
 
 ## What this document does not decide
 

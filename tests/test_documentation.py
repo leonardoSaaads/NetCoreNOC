@@ -293,7 +293,11 @@ def test_the_release_table_parses() -> None:
     # block needs: a baseline that can be re-cut, a lab whose scenarios close alarms, and a scenario
     # format that carries a severity varbind. The alarm vocabulary is v0.17.1, the corpus and the
     # correlation window v0.17.2, and the cartridge moves one place to v0.17.3. Twenty-five rows.
-    assert len(table) == 25, f"expected v0.8.0…v0.18.0, parsed {sorted(table)}"
+    # v0.18.0 adds one row and renumbers one, for the reason the six edits above give. The table
+    # said v0.18.0 was *archetypes*; the release that governs it is *the audit*, whose brief opens
+    # "this one is not a feature release". Archetypes moves to v0.18.1. v0.17.2 keeps its row and
+    # loses F76, which the audit closed. Twenty-six rows.
+    assert len(table) == 26, f"expected v0.8.0…v0.18.1, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -320,6 +324,7 @@ def test_the_release_table_parses() -> None:
         "v0.17.2",
         "v0.17.3",
         "v0.18.0",
+        "v0.18.1",
     }
     claims = [claim for _theme, claim in table.values()]
     assert len(set(claims)) == len(claims), f"two releases share a claim key: {claims}"
@@ -946,3 +951,52 @@ def test_the_test_citation_reader_finds_the_citations_that_are_there() -> None:
     assert len(cited) >= 15, f"only {len(cited)} test citations found in src/; the reader is wrong"
     assert ("test_store", "test_every_live_situation_query_uses_the_one_fragment") in cited
     assert all(module.startswith("test_") for module, _ in cited)
+
+
+# --- F137: the README advertised a role the appliance has never had -----------------------------
+
+
+def test_every_role_the_docs_name_is_a_role_the_appliance_has() -> None:
+    """**Derived from `ROLE_RANK`, never listed here** (v0.18.0, F137).
+
+    `README.md` said *"Four roles (`viewer`, `operator`, `editor`, `admin`)"* for the whole of
+    this project's life. `ROLE_RANK` has three and there is no `operator` anywhere in `src/` —
+    `UserIn.role` is `Literal["viewer", "editor", "admin"]`, so the API refuses to create one.
+    A reader following the README went looking for a role that cannot exist.
+
+    Found by trying to create the accounts for a live three-role browser pass. No guard could
+    have caught it, because nothing compared the prose against the table.
+
+    The check takes the roles from `rbac.ROLE_RANK` and scans the operator-facing documents for a
+    quoted role-like word that is not one of them, so a role added or removed in code needs no
+    edit here — Appendix B's standing complaint about guards that enumerate what they check.
+    """
+    from netcorenoc.crosscutting import rbac
+
+    real = set(rbac.ROLE_RANK)
+    assert real, "ROLE_RANK is empty, so this guard is asserting nothing"
+    # Words that look like a role in a sentence about roles. Deliberately a small, closed set of
+    # *candidates* — the assertion is about which of them the docs claim, not about finding every
+    # noun in English.
+    candidates = {"viewer", "operator", "editor", "admin", "superuser", "owner", "auditor"}
+    suspects = sorted(candidates - real)
+    assert suspects, "every candidate word is a real role; the guard cannot fail"
+
+    offenders: list[str] = []
+    for name in ("README.md", "docs/security.md", "docs/console.md", "docs/operate.md"):
+        path = REPO_ROOT / name
+        if not path.is_file():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if "role" not in line.lower():
+                continue
+            for word in suspects:
+                if f"`{word}`" in line:
+                    offenders.append(
+                        f"{name}:{number} names the role `{word}`, which does not exist"
+                    )
+    assert not offenders, (
+        "a document names a role the appliance does not have:\n  "
+        + "\n  ".join(offenders)
+        + f"\n\nThe roles are {sorted(real)} (rbac.ROLE_RANK)."
+    )

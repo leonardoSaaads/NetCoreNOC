@@ -141,7 +141,7 @@ eval-baseline:
 		echo 'make eval-baseline requires REASON="why the baseline is being re-cut".'; \
 		echo 'A baseline re-cut without a recorded reason is the edit this target prevents.'; \
 		exit 2; }
-	$(PYTHON) eval/harness.py --write-baseline eval/baselines/v0.2.0.json --reason "$(REASON)"
+	$(PYTHON) eval/harness.py --write-baseline eval/baselines/current.json --reason "$(REASON)"
 
 # Regenerate the labelled corpus from its deterministic generator.
 corpus:

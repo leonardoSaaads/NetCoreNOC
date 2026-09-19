@@ -55,6 +55,7 @@ _UI_MODULES = (
     # the axis reads, what span the data covers — kept separate because it is pure and is driven
     # directly by tests with no DOM.
     "app/charts.js",
+    "app/compare.js",
     "app/chartdata.js",
     # v0.15.3: `icons.js` is the drawn icon family that replaces seventeen Unicode glyphs (#236);
     # `password.js` is the confirmation, length meter and reveal shared by the sign-in card and the
@@ -74,6 +75,7 @@ _UI_MODULES = (
     "app/views/account.js",
     "app/views/audit.js",
     "app/views/classes.js",
+    "app/views/correlation.js",
     "app/views/corpus.js",
     "app/views/entities.js",
     "app/views/governance.js",

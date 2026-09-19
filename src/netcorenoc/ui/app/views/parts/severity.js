@@ -41,7 +41,7 @@
  */
 
 import { html, cx } from "../../dom.js";
-import { Bars } from "../../charts.js";
+import { Bars } from "../../compare.js";
 import { band, count, plural } from "../../format.js";
 
 /**
