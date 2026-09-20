@@ -399,7 +399,6 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/account.js"),
     ("GET", "/app/views/audit.js"),
     ("GET", "/app/views/classes.js"),
-    ("GET", "/app/views/correlation.js"),
     ("GET", "/app/views/corpus.js"),
     ("GET", "/app/views/entities.js"),
     ("GET", "/app/views/governance.js"),
@@ -423,6 +422,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/members.js"),
     ("GET", "/app/views/parts/why.js"),
     ("GET", "/app/views/parts/card.js"),
+    ("GET", "/app/views/parts/correlation.js"),
     ("GET", "/app/views/parts/judge.js"),
     ("GET", "/app/views/parts/bulkclear.js"),
     ("GET", "/app/views/parts/finder.js"),
@@ -1056,7 +1056,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: source vocabulary was written there first, on the *"one place where a token becomes a name"*
 #: argument that put `band()` there — and it pushed the file 1 146 bytes over the module-graph
 #: ceiling, because `format.js` had 228 bytes of headroom (F127). It moved to its only consumer.
-SRC_TREE_DIGEST = "0dcfa53ea37bee0102ed9de18d2c0e15015ea3906907f1922c67114e905a8c42"
+SRC_TREE_DIGEST = "6bf13c699bc83ee2a1e33d076de2a8997bbd5ddf5508f5643aee28c6875b1286"
 SRC_FILE_COUNT = 217
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

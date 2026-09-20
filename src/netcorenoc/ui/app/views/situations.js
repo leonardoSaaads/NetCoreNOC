@@ -41,6 +41,7 @@ import { get } from "../api.js";
 import { Loading, Empty, Failed, routeKey } from "../widgets.js";
 import { plural } from "../format.js";
 import { Counts, SEARCH_NOTE, TABS } from "./parts/finder.js";
+import { CorrelationHealth } from "./parts/correlation.js";
 import * as store from "../store.js";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -222,6 +223,9 @@ export class Situations extends Component {
 
     return html`<div class="situations">
       <${Counts} stats=${live.stats} status=${status} onPick=${(v) => this.pickTab(v)} />
+      ${/* One line saying whether the scorer that produced these groupings is
+            currently doing a good job; everything behind it is collapsed. */ null}
+      <${CorrelationHealth} />
 
       ${/* **The finder** (v0.16.4, item 5). The search and the tabs are one block with a border
             and space under it, because the maintainer's report was that they were *"too small,

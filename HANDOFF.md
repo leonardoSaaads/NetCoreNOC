@@ -80,8 +80,8 @@ Everything, because the answer before was **nothing**. The appliance could repor
 about the scorer that was running — no per-decision record, no score distribution, no count of
 links made and refused, no drift signal.
 
-`GET /api/correlation` and the new **Correlator** screen (Operations group, `viewer+`) answer
-*"is the correlator doing a good job right now?"* without an offline report:
+`GET /api/correlation` (`viewer+`) answers *"is the correlator doing a good job right now?"*
+without an offline report:
 
 * **what is running** — scorer, contract, threshold, window, candidate cap, and whether it has
   degraded to the fail-safe;
@@ -94,6 +94,14 @@ links made and refused, no drift signal.
 
 Every figure appears **twice**: lifetime, and over the last 500 activations. One number cannot
 answer *"is this normal?"*; the difference between two can, with no stored history to keep in step.
+
+**On screen it is one line, on Situations, and the detail is behind a click.** This first shipped
+as a whole view in the Operations group and the maintainer corrected it mid-release: Situations
+already explains *this* grouping through *Why these were grouped*, and an operator wants the
+**result** — whether what they are looking at is trustworthy — not a second screen of metrics. So
+the collapsed state is one sentence (*"Grouping looks steady — 2.6 % of decisions were close
+calls"*), the panel is not rendered until opened, and the standalone view is deleted. The verdict
+is derived from two signals and says its own rule; every number it judged is in the panel.
 
 **It earned its place on the first run.** Four replayed scenarios, 530 activations, 47 950 pairs:
 learned entity affinity carried **518 of 520** accepted links. That is F58's arithmetic, visible
@@ -124,8 +132,12 @@ caption can honestly say *"since this appliance started"*.
 
 Driven in Chromium (headed binary, headless) against a **real appliance** on real replayed
 traffic — `dual_incident`, `fiber_cut`, `olt_storm`, `flapping_noise`, 549 traps — at **390 / 820
-/ 1440 px**, as **viewer, editor and admin**: all eighteen views plus a situation permalink, per
-role, zero page errors and zero page-level horizontal overflow.
+/ 1440 px**, as **viewer, editor and admin**: all seventeen views plus a situation permalink, per
+role, zero page errors and zero page-level horizontal overflow. The correlation-health line was
+driven collapsed and expanded at 1440 and 390 after the redesign — the panel is absent from the
+DOM until the line is clicked, and three defects in my own first cut of it were found that way
+and fixed (two missing spaces where adjacent interpolations concatenated, F112's lesson again,
+and a two-column grid whose right-aligned value collided with the next column's label).
 
 **Not covered:**
 
@@ -137,9 +149,11 @@ role, zero page errors and zero page-level horizontal overflow.
 * **No TLS.** Every drive was plain HTTP on loopback.
 * **The scoped-principal view** was not driven in a browser; visibility scoping is covered by the
   API suite only.
-* **The Correlator screen's drift band** was never seen in its `warn` state on live traffic — the
-  recent and lifetime accept rates stayed within 5 % of each other for the whole pass. The branch
-  is exercised by unit-level data, not by a drive.
+* **The correlation verdict's two `warn` branches** were never seen on live traffic — the close-
+  call rate stayed at 2.6 % against a 25 % band, and the recent and lifetime accept rates stayed
+  within 5 %. Both branches are exercised by
+  `test_the_correlation_verdict_states_the_rule_it_applied`, which drives the rule directly, not
+  by a drive.
 * **No sustained load through the console.** `make loadtest` and `make burst` were not run in this
   session; the perf assertions are the suite's.
 
@@ -230,7 +244,27 @@ curl -s --cookie /tmp/c http://127.0.0.1:8080/api/correlation | python -m json.t
 
 ## 8. Gates, all run after the last change
 
-See §"Verification" below for the figures. Every one was taken on the delivered tree.
+| Gate | Result |
+|---|---|
+| full suite + coverage | **2048 passed, 0 failed**, coverage **95.59 %** (`fail_under` 85) |
+| `mypy --strict` | clean, 252 source files |
+| `ruff check .` / `ruff format --check .` | clean / 292 files already formatted |
+| `make dom` | **78 passed** — *executed*, not skipped (Node 22.22.2 present) |
+| `make scan` (bandit) | exit 0, no issues |
+| `pip-audit` | "No known vulnerabilities found" |
+| `make deadcode` (vulture) | clean |
+| `make eval` | no gated regressions; stdout hash `c75b42aa…` |
+| `tools/release_check.py` | all four sources agree on `0.18.0` |
+| behaviour-identity record | regenerated; every diff attributed in §2 of the PR |
+| wheel + sdist | built, installed into a clean venv, appliance booted through **16** migrations, `dual_incident` replayed against it: 4 NEs, two 8-alarm situations |
+
+**What coverage does not measure, stated plainly.** `pyproject.toml` sets
+`coverage.run source = ["netcorenoc"]`, so the **95.59 %** above is over `src/netcorenoc` only.
+`testbed/`, `tools/` and `eval/` are outside it — including `testbed/run_local.py` and
+`testbed/ne/agent.py`, which this release changed. Their behaviour is covered by
+`tests/test_testbed.py` and by the live lab runs recorded in §7, not by that percentage. I did
+not widen the source list: doing so at the end of an audit would move the headline figure for a
+reason unrelated to the code, and the honest option was to say which code the number cannot see.
 
 ## 9. On tags
 

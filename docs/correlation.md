@@ -36,7 +36,8 @@ is the same opaque token the appliance already keys on. **Class affinity is not 
 trap types that genuinely do recur together across vendors keep a route to linking.
 
 On screen the term shows its gated value, so the three printed numbers still sum to the score
-exactly. The **Correlator** screen counts how many pairs this refused, lifetime and recent.
+exactly. How many pairs it refused is in the correlation-health panel on **Situations**, under
+*"how it decided"*.
 
 A **situation** is a connected component of the resulting link graph. Within one, learned temporal
 precedence flags the probable root cause.

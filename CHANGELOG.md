@@ -48,12 +48,17 @@ either side of the boundary at 0.7134 and 0.7131.
 
 ### The appliance can see itself (Part II)
 
-Nothing measured the running scorer. `GET /api/correlation` and a new **Correlator** screen now
-answer *"is the correlator doing a good job right now?"* without an offline report: accept rate,
-the score distribution with the threshold marked, how many decisions land within 0.05 of it,
-which of the three terms carried each link, merges per activation, and the subtree refusals —
-each **lifetime and over the last 500 activations**, because one number cannot say whether a
-figure is normal.
+Nothing measured the running scorer. `GET /api/correlation` now answers *"is the correlator doing
+a good job right now?"* without an offline report: accept rate, the score distribution against the
+threshold, how many decisions land within 0.05 of it, which of the three terms carried each link,
+merges per activation, and the subtree refusals — each **lifetime and over the last 500
+activations**, because one number cannot say whether a figure is normal.
+
+**On screen it is one line on Situations, and the detail is behind a click.** It shipped first as
+a whole view and that was wrong: Situations already explains *this* grouping, and an operator
+wants the *result* — whether what they are looking at is trustworthy — not a second screen of
+metrics. So the answer is a sentence above the list (*"Grouping looks steady — 2.6 % of decisions
+were close calls"*), and the panel is not in the DOM until it is opened.
 
 It found something immediately. On four replayed scenarios: learned entity affinity carried
 **518 of 520** accepted links. That is F58's arithmetic, visible in the product for the first time.
@@ -116,6 +121,10 @@ running lab through a descriptor instead of printing a hardcoded `8080`.
 * **The idle-close decision (v0.16.2) is upheld.** A situation holding an active alarm is not
   resolved, is badged `stale`, is counted in an operator warning and can be closed by hand. The
   measurement above says it does not grow, so the population it leaves is bounded.
+* **The gates**, all after the last change: **2048 passed**, `mypy --strict` clean on 252 files,
+  `ruff check` and `ruff format --check` clean, **78 DOM tests executed** (not skipped), bandit
+  and `pip-audit` clean, coverage **95.59 %**, wheel and sdist installed into a clean venv and
+  the appliance booted through all 16 migrations from it.
 * **The architecture is unchanged and still a real structure.** v0.17.0's measurement, repeated:
   `engine/` is six domains with **15** cross-domain edges, one 2-cycle (`dataset ↔ model`),
   `correlate` a pure sink, and `store/` 26 modules with **0** imports of `engine/` or `api/`.

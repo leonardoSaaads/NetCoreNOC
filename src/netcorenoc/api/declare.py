@@ -147,7 +147,6 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/account.js",
         "/app/views/audit.js",
         "/app/views/classes.js",
-        "/app/views/correlation.js",
         "/app/views/corpus.js",
         "/app/views/entities.js",
         "/app/views/governance.js",
@@ -175,6 +174,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # v0.16.1: the situation card, split out when the server-side search pushed
         # `views/situations.js` over the module-graph guard (DECISIONS #265).
         "/app/views/parts/card.js",
+        "/app/views/parts/correlation.js",
         # v0.16.4: the judgement surface, split out when the state-dependent action surface pushed
         # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
         "/app/views/parts/judge.js",

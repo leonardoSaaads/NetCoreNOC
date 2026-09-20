@@ -1574,3 +1574,57 @@ pre.refusal-reason {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* The correlation-health line on Situations (v0.18.0).
+
+   **One line, and it is the button.** The maintainer's note on the first attempt was that an
+   operator wants the *result* — whether the grouping they are looking at is trustworthy — and
+   not a screen of metrics. So the summary is the whole control at rest, and the detail is not
+   in the DOM until it is asked for.
+
+   The dot carries the verdict's tone as well as the text colour, because colour alone is not a
+   signal (the same rule `.chart-swatch` follows beside a legend). Focus comes from the global
+   `:focus-visible` rule, and `--tap` keeps the row above the touch-target floor (F81, F103). */
+.corr { margin: var(--space-3) 0; }
+.corr-line {
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 100%; padding: var(--space-2) var(--space-3);
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-2);
+  font: inherit; color: var(--fg-dim); text-align: left; cursor: pointer;
+  min-height: var(--tap);
+}
+.corr-line:hover { border-color: var(--line-strong); }
+.corr-dot {
+  flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-muted);
+}
+.corr-ok .corr-dot { background: var(--quiet); }
+.corr-warn .corr-dot { background: var(--warn); }
+.corr-warn { color: var(--fg); }
+.corr-text { flex: 1 1 auto; min-width: 0; }
+.corr-more {
+  flex: none; font-size: var(--fs-xs); color: var(--fg-muted); text-decoration: underline;
+}
+/* A read that failed is a sentence, not a button: there is nothing to expand. */
+p.corr-line { cursor: default; }
+
+.corr-panel {
+  margin-top: var(--space-2); padding: var(--space-3);
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-2);
+}
+.corr-facts { margin: 0; display: grid; gap: var(--space-1) var(--space-4); }
+.corr-facts > div {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: var(--space-4); padding: 2px 0; border-bottom: 1px solid var(--line);
+}
+.corr-facts > div:last-child { border-bottom: 0; }
+.corr-facts dt { color: var(--fg-muted); font-size: var(--fs-sm); }
+.corr-facts dd {
+  margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--fg);
+  text-align: right;
+}
+.corr-carried { margin: var(--space-3) 0 0; font-size: var(--fs-sm); color: var(--fg-dim); }
+.corr-note { color: var(--warn); }
+.corr-since { margin: var(--space-2) 0 0; font-size: var(--fs-xs); color: var(--fg-muted); }
+/* **One column at every width.** Two columns were tried and the right-aligned value of the left
+   pair ran into the label of the right one — `98.3%` abutting `Close calls`. Six rows read once,
+   behind a click, do not need the horizontal packing that made them ambiguous. */

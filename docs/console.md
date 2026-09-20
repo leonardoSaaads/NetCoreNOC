@@ -4,7 +4,7 @@ One static web UI, loaded directly by the browser: **no build step, no npm, no l
 bundle.** The files a browser fetches are the files on disk. That is a test
 (`tests/test_build_step.py`), not an intention.
 
-Eighteen views in three groups, plus an overview and one reachable only by address. **A view you
+Seventeen views in three groups, plus an overview and one reachable only by address. **A view you
 cannot use is not rendered** — a viewer sees no `Administer` group at all, rather than a group of
 disabled controls.
 

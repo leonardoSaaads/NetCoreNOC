@@ -43,8 +43,8 @@ Other install routes — plain Docker, pip, Nix, systemd — are in [`docs/insta
 
 ## What you see
 
-Eighteen views in three groups: **Operations** (situations, network graph, timeline, entities,
-alarm classes, correlator), **Evidence** (labelling, corpus, judge & promotion) and **Administer** (users,
+Seventeen views in three groups: **Operations** (situations, network graph, timeline, entities,
+alarm classes), **Evidence** (labelling, corpus, judge & promotion) and **Administer** (users,
 tokens, settings, link scorer, governance, quarantine, audit). A view you cannot use is not
 rendered — a viewer sees no `Administer` group at all.
 
@@ -54,14 +54,12 @@ distinction is load-bearing: correlation learns across the whole estate, so a sc
 a filtered view of one shared engine rather than a private one.
 [`docs/security.md`](docs/security.md) states exactly what it does and does not give you.
 
-**Correlator** answers the other question an operator has during an incident — *is the thing
-deciding my links any good right now?* — with the accept rate, the distribution of scores against
-the threshold, how often a decision is close enough to flip, and which of the three terms is
-carrying the links, each over the appliance's lifetime and over its last 500 decisions.
-
 The screen the product exists for is **Situations**: dense cards that expand in place to show the
 probable root cause, the member alarms, and then *Why these were grouped* — one row per link with
-the score and **the three named terms, each with its number beside its bar**.
+the score and **the three named terms, each with its number beside its bar**. Above the list, one
+line says whether the scorer producing those groupings is currently deciding well — how often it
+lands near its own threshold, and whether that has moved. It expands, on a click, into the
+distribution behind it, and is collapsed until then.
 
 ## How it works
 

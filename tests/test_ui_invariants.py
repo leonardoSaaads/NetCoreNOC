@@ -4241,3 +4241,82 @@ async def test_a_count_chart_summarises_its_window_and_a_gauge_its_last_reading(
     assert gauges, f"no gauge chart rendered, so the control asserts nothing: {labels}"
     for label in gauges:
         assert "Total" not in label, f"a gauge must not be summed: {label}"
+
+
+# --- v0.18.0: correlation health is one line on Situations, and the detail is behind a click ---
+
+
+@dom_test
+async def test_the_correlation_verdict_is_one_line_until_it_is_clicked(
+    routes: dict[str, Any],
+) -> None:
+    """**The maintainer's correction, asserted as behaviour.**
+
+    This shipped first as a whole view. The instruction that replaced it is specific: *"the user
+    doesn't want to know this information; they only want to know the result — whether the events
+    are well correlated … it should be very compact, meaning these metrics only appear if the
+    user clicks."*
+
+    So the collapsed state is **one sentence and no numbers panel in the DOM at all** — not a
+    hidden panel, not a panel with `display: none`, which a screen reader still reaches and a
+    DOM dump still shows. Clicking renders it.
+    """
+    collapsed = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/situations"}
+    )
+    dump = collapsed["dump"]
+    assert ".corr-line" in dump or "corr-line" in dump, "the verdict line is not on Situations"
+    assert "corrPanel" not in dump, (
+        "the detail panel is in the DOM before anyone asked for it; it must not be rendered "
+        "until the line is clicked"
+    )
+
+    opened = domdriver.run_scenario(
+        "charts",
+        {"routes": routes["admin"], "navigate": "#/situations", "click": [".corr-line"]},
+    )
+    assert "corrPanel" in opened["dump"], "clicking the verdict line did not open the detail"
+
+
+def test_the_correlation_verdict_states_the_rule_it_applied() -> None:
+    """The verdict is derived, so the sentence has to carry the number it judged (§V.2).
+
+    Driven directly on `summarise`'s three branches rather than through a render, because what
+    is being asserted is the *rule*: a grade with no number beside it is the fabricated-severity
+    defect wearing a different hat.
+    """
+    result = domdriver.run_scenario(
+        "correlationverdict",
+        {
+            "cases": {
+                "steady": {
+                    "lifetime": {
+                        "activations": 10,
+                        "near_threshold_rate": 0.02,
+                        "accept_rate": 0.5,
+                    },
+                    "recent": {"accept_rate": 0.5},
+                },
+                "close_calls": {
+                    "lifetime": {"activations": 10, "near_threshold_rate": 0.4, "accept_rate": 0.5},
+                    "recent": {"accept_rate": 0.5},
+                },
+                "moved": {
+                    "lifetime": {
+                        "activations": 10,
+                        "near_threshold_rate": 0.02,
+                        "accept_rate": 0.2,
+                    },
+                    "recent": {"accept_rate": 0.9},
+                },
+                "nothing": {"lifetime": {"activations": 0}, "recent": {}},
+            }
+        },
+    )
+    out = result["out"]
+    assert out["steady"]["tone"] == "ok" and "2.0%" in out["steady"]["text"]
+    assert out["close_calls"]["tone"] == "warn" and "40.0%" in out["close_calls"]["text"]
+    assert out["moved"]["tone"] == "warn" and "70.0%" in out["moved"]["text"]
+    # A correlator that has decided nothing is not "healthy"; it is silent, and says so.
+    assert out["nothing"]["tone"] == "quiet"
+    assert "%" not in out["nothing"]["text"], "a verdict with no data must not print a rate"

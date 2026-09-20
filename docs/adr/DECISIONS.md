@@ -4294,6 +4294,17 @@ From this release an entry is about six lines: decision, reason, release.*
   no score distribution, no count of links made and refused, no drift signal.
 - **The decision**: `engine/correlate/monitor.py` counts the champion's own decisions as it makes
   them and `GET /api/correlation` serves them, lifetime and over the last 500 activations.
+- **On screen it is one line, not a screen, and that is a correction.** This shipped first as a
+  whole view in the Operations group. The maintainer's response is the decision: *"this
+  correlation page is not necessary … the user doesn't want to know this information; they only
+  want to know the result — whether the events are well correlated … it should be very compact,
+  meaning these metrics only appear if the user clicks."* Situations already explains *this*
+  grouping through `parts/why.js`; what was missing was whether the scorer producing it is
+  currently deciding well. So the surface is one sentence above the situation list, with the
+  detail not rendered at all until it is opened, and the whole view is deleted.
+- **The verdict is derived and its rule is in the sentence it returns.** Two signals — the share
+  of decisions within 0.05 of the threshold, and how far the recent accept rate has moved from
+  the lifetime one — with loose bands, because this is a "look here" marker and not a gate.
 - **In memory, never persisted**, and that is the honest shape rather than a shortcut: the caption
   can then say *"since this appliance started"* and mean it. A stored history would be a second
   thing to keep in step with the decisions it describes.
