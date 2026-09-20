@@ -76,13 +76,18 @@ damped 10× during storms, and an entity pair needs five observations before its
 **`E` is withheld from a pair on two different network elements whose trap OIDs sit in different
 enterprise subtrees** — two vendors' unrelated alarms inside one window are co-occurrence without
 relatedness, and that was the whole of F76. No MIB is consulted: the enterprise arc is arithmetic
-on the identifier the trap already carried. A
+on the identifier the trap already carried. **`A` is withheld from a pair on two different network
+elements the appliance has learned nothing about** (`E` exactly zero) — an estate where every
+device raises the same two trap classes drove `A` up until seventy independent failures landed in
+one situation, which was F138. A
 **situation** is a connected component of the resulting link graph; learned temporal precedence
 flags the probable root. Raise/clear pairs are learned from strict alternation. `Confirm` reinforces
 a grouping, `Split` penalises it.
 
-**Cold start is honest.** With nothing learned, two alarms group only when they are on the same
-network element and within about 21 seconds. Everything beyond that — cross-device correlation,
+**Cold start is honest, and stays honest.** With nothing learned, two alarms group only when they
+are on the same network element and within about 21 seconds — and since v0.19.0 that holds for two
+elements the appliance has learned nothing about at *any* point in its life, not only the first
+hour. Everything beyond that — cross-device correlation,
 raise/clear pairs, which varbind names the alarmed entity — is learned from *your* stream. Run it
 alongside your existing NMS from day one; it only needs a copy of the traps.
 

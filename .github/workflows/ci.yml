@@ -187,7 +187,7 @@ jobs:
           python - <<'PY'
           import sqlite3
           v = sqlite3.connect("/tmp/ci.db").execute("PRAGMA user_version").fetchone()[0]
-          assert v == 16, f"the appliance booted at schema {v}, not 16"
+          assert v == 18, f"the appliance booted at schema {v}, not 18"
           print(f"schema version {v}, all migrations applied")
           PY
           kill %1

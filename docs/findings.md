@@ -2331,3 +2331,87 @@ this into a sentence in a build report instead of a failed gate.
   found it.
 - **Disposition**: **fixed in v0.18.0.** `current.json` is the moving baseline `make eval` gates
   against; `v0.2.0.json` keeps its numbers and its name.
+
+## F138 — seventy independent failures became one situation, and class affinity did it
+
+- **What**: a situation is a connected component of the link graph, and learned **class** affinity
+  can carry a link between two network elements the appliance has learned nothing whatever about.
+  Every device in an estate raising the same two trap classes drives `A` up until any two of those
+  alarms, anywhere, arriving within a few seconds, clear the threshold — and one chain of such
+  links merges every incident it touches.
+- **Reproduce**: 70 devices on distinct addresses, four vendor arcs, one independent card failure
+  each (two alarms three seconds apart). `tools/trap_replay.py` against a clean appliance.
+- **Measured**: **one** situation holding all 140 alarms. 650 links, **580 between different
+  devices**, and **492 of the 650 carried by class affinity**. A representative cross-device link:
+  `T 0.294 + A 0.220 + E 0.000 = 0.514` against a `0.50` threshold. After the repair, the same
+  replay produces **70 situations of two alarms each and zero cross-device links**.
+- **Why no test saw it**: this is F76 one term over, and v0.18.0 measured suppressing the class
+  term as well — on the ten-scenario corpus, where it changed nothing, so the narrow gate shipped
+  on that evidence. The corpus's scenarios have two to four elements each. Seventy have a failure
+  mode four cannot exhibit, and `docs/plans/releases.md` had already recorded that the corpus
+  contains no scenario able to price this gate.
+- **Disposition**: **fixed in v0.19.0** (`scoring.unrelated_elements`). Class affinity is withheld
+  when the two alarms are on different network elements **and** `E` is exactly zero — no learned
+  relationship at all. The pair can then only be carried by the temporal term, which caps at
+  `w_t` and cannot reach the threshold, so the documented cold-start rule now holds at every hour
+  and not only the first. The whole shipped corpus is **unchanged on every metric**.
+
+## F139 — every situation in a live queue was called a "Storm"
+
+- **What**: `derive_situation_name` opened three of its four forms with `Storm -> `, including the
+  one for a grouping of two alarms. An operator scanning the queue read the same word on every
+  row, so the one word meant to say what they were looking at distinguished nothing.
+- **Reproduce**: open **Situations** on any appliance with more than one grouping.
+- **Measured**: seventeen situations in a live queue, seventeen names beginning `Storm -> `, on
+  groupings of 2, 8, 12, 107, 240, 300, 509 and 1 051 alarms.
+- **Repair**: the word is reserved for `member_count >= STORM_ALARMS`, which is the count the
+  **engine** already treats as a storm when it damps learning. Declared in `naming.py` rather than
+  imported, because `crosscutting` may not import `engine`, with a test asserting the two are
+  equal so they cannot drift.
+- **Disposition**: **fixed in v0.19.0.**
+
+## F140 — a query took three minutes to return nothing, on every training tick
+
+- **What**: `store.gesture_positive_pairs()` matched member rows against `dataset_pair` on the
+  pair's two alarm ids **in both orders**, expressed as an `OR` inside the join condition. SQLite
+  cannot use an index for either side of such an `OR`, so it drove the join from the member rows
+  and, for each one, searched `idx_pair_sink` on `lifecycle` alone — which matches every row in
+  the sink. `dataset_pair` had no index on an alarm id at all.
+- **Reproduce**: call it on an appliance with a populated sink. Found by building the Overview's
+  model card on top of it, where it showed up as a request that never returned.
+- **Measured**, 222 050 sink pairs against 4 614 member rows, returning **0 rows**:
+
+  | | `OR` in the join | `UNION ALL` |
+  |---|---|---|
+  | **without the index** | 176.550 s | 220.591 s |
+  | **with the index** | 175.345 s | **0.003 s** |
+
+- **Both halves are load-bearing.** An index the planner cannot reach changes nothing, and
+  splitting the `OR` with nothing to land on is worse than what it replaced. Together, ~58 000x.
+- **Disposition**: **fixed in v0.19.0** — migration `0018` adds `(alarm_a, alarm_b)` and
+  `(alarm_b, alarm_a)`, and the query became a union of two indexable joins in the same commit.
+
+## F141 — the health charts were blank for the first ten minutes after every restart
+
+- **What**: `ResourceSampler._series` bucketed readings by `SAMPLES_KEPT // SERIES_POINTS`, which
+  is ten — a constant derived from the ring's **capacity** rather than from the readings taken. So
+  the first ten samples were one point, and a `line` needs two.
+- **Reproduce**: restart the appliance and open the Overview.
+- **Measured**: three minutes of uptime, six readings taken, **four empty charts**, each saying
+  "only one reading so far" under a caption reading "5 min of a 2.0 h window" — a claim about data
+  the chart was not drawing.
+- **Repair**: bucket by the readings in hand. The second reading is now the second point, and the
+  behaviour converges on exactly the old one once the ring is full. `bucket_s` is derived from the
+  same computation, so the console's time axis cannot be built from a width the series did not use.
+- **Disposition**: **fixed in v0.19.0.**
+
+## F142 — the chart axis printed its clock times on top of each other
+
+- **What**: `.chart-x-tick` was absolutely positioned at `left: 0/50/100%`, which overlaps as soon
+  as the chart is narrower than three clock times.
+- **Reproduce**: open the Overview at 1440 px, where the health panel puts five charts in one row.
+- **Measured**: the first two ticks rendered as `09:36:3309:37:03`.
+- **Repair**: the three ticks are the first, middle and last bucket by construction, which is what
+  `justify-content: space-between` lays out — the same positions, with a gap that cannot be
+  crossed.
+- **Disposition**: **fixed in v0.19.0.**

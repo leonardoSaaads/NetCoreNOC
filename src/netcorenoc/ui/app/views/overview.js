@@ -50,6 +50,7 @@ import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
 import { Happening, MARK_LIMIT, Where, Worst } from "./parts/pulse.js";
 import { Keeping, Learned } from "./parts/keeping.js";
+import { ModelHealth } from "./parts/models.js";
 import { Severity } from "./parts/severity.js";
 import { plural, relative, absolute, timeTitle, TIMEZONE } from "../format.js";
 import { can, scopeSummary } from "../session.js";
@@ -121,6 +122,12 @@ export class Overview extends Component {
       </p>` : null}
 
       <${Severity} census=${stats.severity} />
+      ${/* **Directly under the alarm summary, and above everything else.** The maintainer's
+            standing request is to migrate correlation from the fixed formula to a learned
+            model; until v0.19.0 the console said nothing at all about how that was going, on
+            any screen. It is one line and one bar, so the position costs an operator who does
+            not care about it a single glance. */ null}
+      <${ModelHealth} admin=${can("model.register")} />
       <${Happening} situations=${live.situations || []} marks=${marks} at=${marksAt}
                     error=${marksError} retry=${() => this.readMarks()} />
       <${Where} nodes=${nodes} />

@@ -429,6 +429,9 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/pulse.js"),
     ("GET", "/app/views/parts/keeping.js"),
     ("GET", "/app/views/parts/severity.js"),
+    # v0.19.0: the Overview's model line, registered after `severity.js` because that is where
+    # `views/overview.js` mounts it — directly under the alarm summary.
+    ("GET", "/app/views/parts/models.js"),
     ("GET", "/app/views/parts/estate.js"),
     ("GET", "/app/views/parts/marks.js"),
     ("GET", "/app/views/parts/evidence.js"),
@@ -488,6 +491,9 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/scorer/rollback"),
     ("GET", "/api/promotion"),
     ("POST", "/api/promotion"),
+    # v0.19.0: `routes/models.register` runs straight after `routes/promotion.register`.
+    ("GET", "/api/models"),
+    ("POST", "/api/models/register"),
     ("GET", "/api/rbac"),
     ("POST", "/api/rbac"),
     ("GET", "/api/scope"),
@@ -563,7 +569,8 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     _engine, _queue, app = await authutil.make_env(store)
     live = [entry for entry in route_order(app) if entry[1].startswith("/api")]
     assert live == API_ORDER_BASELINE
-    assert len(live) == 53, (
+    # v0.19.0: 53 -> 55, `GET /api/models` and `POST /api/models/register`.
+    assert len(live) == 55, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — and v0.18.0 "
         f"exactly one, `GET /api/correlation`. None can shadow another: each is a distinct "
@@ -1056,8 +1063,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: source vocabulary was written there first, on the *"one place where a token becomes a name"*
 #: argument that put `band()` there — and it pushed the file 1 146 bytes over the module-graph
 #: ceiling, because `format.js` had 228 bytes of headroom (F127). It moved to its only consumer.
-SRC_TREE_DIGEST = "6bf13c699bc83ee2a1e33d076de2a8997bbd5ddf5508f5643aee28c6875b1286"
-SRC_FILE_COUNT = 217
+SRC_TREE_DIGEST = "5f92fe9d8f37c322390bff6485b7cb84744601828beb0570712cb5871f4b241b"
+SRC_FILE_COUNT = 222
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1123,7 +1130,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.18.0", "the version this release carries"
+    assert __version__ == "0.19.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

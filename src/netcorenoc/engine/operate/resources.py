@@ -40,6 +40,7 @@ release that adds a measurement does not get to relax the standard that kept it 
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections import deque
 from dataclasses import dataclass, field
@@ -138,6 +139,33 @@ def read_storage(path: str | os.PathLike[str]) -> tuple[int, int, str] | None:
     return total - free, total, "statvfs"
 
 
+def read_database(db_path: str | os.PathLike[str]) -> tuple[int, int] | None:
+    """``(database_bytes, journal_bytes)`` for the SQLite file and its write-ahead log.
+
+    **Two `stat` calls, and deliberately not a query.** ``PRAGMA page_count`` would be the precise
+    answer and it is the wrong instrument here: this runs on a supervised loop every thirty seconds
+    and a pragma takes the same connection every write takes, so the panel that tells an operator
+    the appliance is busy would be adding to it. The file size is what fills the filesystem, which
+    is the question the chart beside it is already answering.
+
+    The WAL is reported separately rather than summed. A database of 40 MiB with a 300 MiB WAL is
+    a checkpointing problem and a database of 340 MiB is a retention one, and an operator seeing
+    one number cannot tell those apart.
+    """
+    main = Path(db_path)
+    try:
+        size = main.stat().st_size
+    except OSError:
+        return None
+    journal = 0
+    for suffix in ("-wal", "-journal"):
+        # Absent is the normal case for whichever journal mode is not in use, so a missing file
+        # contributes nothing rather than failing the reading that the main file already gave us.
+        with contextlib.suppress(OSError):
+            journal += main.with_name(main.name + suffix).stat().st_size
+    return size, journal
+
+
 def _mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
@@ -151,10 +179,14 @@ class ResourceSampler:
     """
 
     path: str
+    #: The database file itself, for the size series. Empty means the deployment did not name one
+    #: and the database chart is absent rather than zero — the rule the module header states.
+    db_path: str = ""
     _cpu_prev: tuple[float, float] | None = None
     _cpu: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
     _mem: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
     _disk: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
+    _db: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
     _latest: dict[str, Any] = field(default_factory=dict)
 
     def sample(self) -> None:
@@ -175,10 +207,18 @@ class ResourceSampler:
         mem_pct = round(100.0 * memory[0] / memory[1], 1) if memory and memory[1] else None
         disk_pct = round(100.0 * storage[0] / storage[1], 1) if storage and storage[1] else None
 
+        database = read_database(self.db_path) if self.db_path else None
+        # Megabytes on the wire, because that is the unit the chart's axis carries and rounding
+        # here keeps the series small enough to ride on every `/api/stats` poll.
+        db_mb = round((database[0] + database[1]) / 1e6, 2) if database else None
+
         self._cpu.append(cpu_pct)
         self._mem.append(mem_pct)
         self._disk.append(disk_pct)
+        self._db.append(db_mb)
         self._latest = {
+            "db_bytes": database[0] if database else None,
+            "db_journal_bytes": database[1] if database else None,
             "cpu_pct": cpu_pct,
             "cpu_count": os.cpu_count(),
             "mem_pct": mem_pct,
@@ -189,6 +229,18 @@ class ResourceSampler:
             "disk_used": storage[0] if storage else None,
             "disk_total": storage[1] if storage else None,
         }
+
+    def _per_bucket(self) -> int:
+        """Samples meaned into one served point, from the readings actually taken.
+
+        **One computation, used by both the series and `bucket_s`.** The console derives its time
+        axis from `bucket_s`, so a bucket width the series used and the payload did not report
+        would draw ticks at the wrong times — which is the failure the `bucket_s` field was added
+        to prevent, reached from the other direction. The rings are appended together on every
+        sample, so their lengths agree and the longest is the count.
+        """
+        taken = max(len(self._cpu), len(self._mem), len(self._disk), len(self._db))
+        return max(1, taken // SERIES_POINTS)
 
     def _series(self, ring: deque[float | None]) -> list[float | None]:
         """The ring meaned into ``SERIES_POINTS`` buckets, oldest first.
@@ -201,7 +253,19 @@ class ResourceSampler:
         if not ring:
             return []
         samples = list(ring)
-        per = max(1, SAMPLES_KEPT // SERIES_POINTS)
+        # **Bucket against the samples in hand, not against the ring's capacity** (v0.19.0, F141).
+        #
+        # `SAMPLES_KEPT // SERIES_POINTS` is 10, so a freshly started appliance put its first ten
+        # readings into one bucket and served a single point — and a `line` needs two, so all four
+        # host charts rendered "only one reading so far" for **five minutes**, and drew no line at
+        # all for ten. Measured on a restart: three minutes of uptime, six readings taken, four
+        # empty charts. Meanwhile the caption underneath read "5 min of a 2.0 h window", which is
+        # a claim about data the chart was not drawing.
+        #
+        # Dividing by what is present makes the second reading the second point, and converges on
+        # exactly the old behaviour once the ring is full — at `SAMPLES_KEPT` samples this is the
+        # same integer it always was.
+        per = self._per_bucket()
         out: list[float | None] = []
         for start in range(0, len(samples), per):
             chunk = [v for v in samples[start : start + per] if v is not None]
@@ -221,8 +285,17 @@ class ResourceSampler:
             # and the caption said "last 2 hours" over a series that might cover one minute — the
             # exact failure DECISIONS #306 exists to prevent, reached from the one direction that
             # release did not look. Additive, and the only number the axis needed.
-            "bucket_s": WINDOW_S / SERIES_POINTS,
+            # **Derived from the readings taken, not from the ring's capacity** (F141). While
+            # the ring is filling, one point is one reading, and an axis built from the
+            # capacity-derived 300 s would have spaced two readings taken 30 s apart five
+            # minutes apart on screen.
+            "bucket_s": self._per_bucket() * SAMPLE_INTERVAL_S,
             "cpu_series": self._series(self._cpu),
             "mem_series": self._series(self._mem),
             "disk_series": self._series(self._disk),
+            # **In megabytes, not per cent.** Every other series here is a share of something with
+            # a ceiling; a database has none, and the question an operator asks of it is "is it
+            # growing and how fast", which is a size over time. `_series` means each bucket, which
+            # for a monotone-ish size is the size during that bucket.
+            "db_series": self._series(self._db),
         }

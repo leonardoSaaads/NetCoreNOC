@@ -50,6 +50,15 @@ NO_MEMBERS = "(no members)"
 #: in a column, an SSE frame and a card heading.
 MAX_NAME_CHARS = 120
 
+#: Members at which a grouping is called a storm by name.
+#:
+#: **Declared here rather than imported, because `crosscutting` may not import `engine`** — that
+#: is the layering the whole package rests on and a name is not worth inverting it for. The value
+#: is `engine.correlate.learn.STORM_ALARMS`, and
+#: `tests/test_shaping.py::test_the_storm_threshold_in_a_name_is_the_engines_own` asserts the two
+#: are equal rather than trusting this comment, so the day one moves the other goes red.
+STORM_ALARMS = 50
+
 
 def derive_situation_name(
     addresses: Iterable[str], member_count: int, device_count: int | None = None
@@ -94,12 +103,21 @@ def derive_situation_name(
     devices = max(len(unique), device_count if device_count is not None else 0)
     if member_count <= 0 or not unique:
         return NO_MEMBERS
+    # **"Storm" is reserved for a storm** (v0.19.0, F139). Every form above except the single
+    # alarm used to open with it, so a live queue of seventeen situations read `Storm -> …`
+    # seventeen times — including on a grouping of two alarms — and the one word on the row that
+    # was supposed to tell an operator what they were looking at told them nothing at all. The
+    # threshold is `STORM_ALARMS`, which is the count the *engine* already treats as a storm when
+    # it damps learning; a second, different number for the same word would be how the name and
+    # the behaviour drift apart.
+    storm = member_count >= STORM_ALARMS
+    lead = f"Storm -> {unique[0]}" if storm else unique[0]
     if devices == 1:
-        name = unique[0] if member_count == 1 else f"Storm -> {unique[0]}"
+        name = lead
     elif devices == 2 and member_count == 2:
         name = f"{unique[0]} <-> {unique[1]}"
     else:
-        name = f"Storm -> {unique[0]} and {devices - 1} more"
+        name = f"{lead} and {devices - 1} more"
     return name[:MAX_NAME_CHARS]
 
 

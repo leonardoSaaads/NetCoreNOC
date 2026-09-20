@@ -34,6 +34,68 @@ __all__ = ["SituationEventMixin"]
 ASSERTING_KINDS: frozenset[str] = frozenset({"verdict", "move", "merge", "operator_split"})
 
 
+#: The columns `gesture_positive_pairs` returns, shared by the two branches below so the union's
+#: halves cannot drift apart into different shapes.
+_GESTURE_PAIR_COLUMNS = (
+    "e.id AS event_id, e.kind, e.confidence, e.situation_id, "
+    "e.at AS label_at, e.acquisition_channel, "
+    "p.id AS pair_id, p.delta_t_s, p.class_affinity, p.entity_affinity, "
+    "p.incumbent_linked, p.evaluated_at"
+)
+
+
+def _gesture_branch(first: str, second: str) -> str:
+    """One ordering of the pair, as a join an index can serve.
+
+    `first`/`second` are column names this module supplies from a two-element literal tuple — no
+    caller reaches them, so there is no interpolation of anything a request could influence.
+    """
+    # nosec B608 - `first`/`second` are the two literals the call sites below pass and are not
+    # reachable from a request; `_GESTURE_PAIR_COLUMNS` is a module constant. No value a caller
+    # can influence is interpolated here, and the test below asserts the branches' shape.
+    return (
+        f"SELECT {_GESTURE_PAIR_COLUMNS} FROM situation_event e "  # nosec B608
+        "JOIN situation_event_member sm ON sm.event_id = e.id AND sm.source = 'server' "
+        "JOIN situation_event_member pm ON pm.event_id = e.id AND pm.source = 'peer' "
+        f"JOIN dataset_pair p ON p.{first} = sm.alarm_id AND p.{second} = pm.alarm_id "
+        "WHERE p.lifecycle = 'dataset' "
+        "  AND e.produces_training_rows = 1 "
+        "  AND e.kind IN ('move', 'merge') "
+        "  AND (e.kind = 'merge' OR sm.alarm_id = e.alarm_id)"
+    )
+
+
+#: **A union of two indexable joins, not one join with an `OR`** (v0.19.0, F140).
+#:
+#: The pair has to be matched in both orders, because `dataset_pair` records `(alarm_a, alarm_b)`
+#: as the window alarm and the newly activated one — an ordering that is a fact about capture and
+#: not about the assertion. Expressing that as `OR` **inside the join condition** left SQLite with
+#: no way to use an index for either side: it drove the join from the member rows and, for each
+#: one, searched `idx_pair_sink` on `lifecycle` alone, which matches every row in the sink.
+#:
+#: Measured on a live appliance, 222 050 sink pairs against 4 614 member rows, returning 0 rows:
+#:
+#: =================  ==============  ==============
+#: ..                 `OR` in a join  `UNION ALL`
+#: without the index  176.550 s       220.591 s
+#: with the index     175.345 s       **0.003 s**
+#: =================  ==============  ==============
+#:
+#: Both halves are load-bearing and neither is worth anything alone, which is why migration
+#: `0018` and this rewrite ship together. The trainer calls this on every training tick, so an
+#: appliance with a real corpus was spending three minutes of every five inside it.
+#:
+#: `ORDER BY` is outside the union and names the output aliases, so the ordering is still the
+#: `(event, pair)` order the training rows depend on rather than the planner's.
+_GESTURE_PAIRS_SQL = (
+    "SELECT * FROM ("  # nosec B608 - module constants only; see `_gesture_branch` above
+    + _gesture_branch("alarm_a", "alarm_b")
+    + " UNION ALL "
+    + _gesture_branch("alarm_b", "alarm_a")
+    + ") ORDER BY event_id, pair_id"
+)
+
+
 class SituationEventMixin(StoreBase):
     # -- the derived name -----------------------------------------------------------------------
 
@@ -272,22 +334,7 @@ class SituationEventMixin(StoreBase):
         `ORDER BY e.id, p.id` — both stable and unique, so the training row order is a property of
         the data rather than of the query planner, exactly as `labelled_pairs` orders.
         """
-        cur = await self.conn.execute(
-            "SELECT e.id AS event_id, e.kind, e.confidence, e.situation_id, "
-            "       e.at AS label_at, e.acquisition_channel, "
-            "       p.id AS pair_id, p.delta_t_s, p.class_affinity, p.entity_affinity, "
-            "       p.incumbent_linked, p.evaluated_at "
-            "FROM situation_event e "
-            "JOIN situation_event_member sm ON sm.event_id = e.id AND sm.source = 'server' "
-            "JOIN situation_event_member pm ON pm.event_id = e.id AND pm.source = 'peer' "
-            "JOIN dataset_pair p ON p.lifecycle = 'dataset' AND ("
-            "     (p.alarm_a = sm.alarm_id AND p.alarm_b = pm.alarm_id) "
-            "  OR (p.alarm_a = pm.alarm_id AND p.alarm_b = sm.alarm_id)) "
-            "WHERE e.produces_training_rows = 1 "
-            "  AND e.kind IN ('move', 'merge') "
-            "  AND (e.kind = 'merge' OR sm.alarm_id = e.alarm_id) "
-            "ORDER BY e.id, p.id"
-        )
+        cur = await self.conn.execute(_GESTURE_PAIRS_SQL)
         return [dict(row) for row in await cur.fetchall()]
 
     async def event_counts_by_channel(self) -> dict[str, int]:

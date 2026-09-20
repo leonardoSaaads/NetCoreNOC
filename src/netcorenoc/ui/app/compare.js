@@ -117,8 +117,12 @@ export function Map({ title, hint, cells, source, note, cap = 60, urgentAt }) {
         <//>`;
       })}
     </div>
+    ${/* The `${" "}` below, and not the newline after it: `htm` drops a whitespace-only run
+          between an interpolation and the text that follows, so this rendered
+          `23 quieter elementsare not drawn`. F112's lesson, found by reading the Overview rather
+          than the source — the template looks correct and the DOM is not. */ null}
     ${hidden > 0
-      ? html`<p class="hint">${count(hidden)} quieter ${hidden === 1 ? "element" : "elements"}
+      ? html`<p class="hint">${count(hidden)} quieter ${hidden === 1 ? "element" : "elements"}${" "}
           are not drawn. The grid is sorted by load, so what is missing is the quiet end.</p>`
       : null}
     <${Caption} source=${source} note=${note} />

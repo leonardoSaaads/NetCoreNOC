@@ -638,9 +638,19 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # console module that draws it, plus `GET /app/compare.js` — `Bars` and `Map` out of
     # `app/charts.js` at the module-graph ceiling, which the chart-header repair pushed over.
     # Both new modules are static assets like every other one.
-    assert len(served) == 122, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # **v0.19.0: 122 -> 125 served, 53 -> 55 under /api.** Three paths: `GET /api/models` (who is
+    # deciding, how far the operator's judgements are from training a model, and the loss curve)
+    # and `POST /api/models/register` (turn one of *this appliance's own* fits into a registerable
+    # artefact — admin-only, and the body names a run id, never a parameter), plus
+    # `GET /app/views/parts/models.js`, the console module that draws them. The register POST is
+    # the first HTTP route that can create a `model_version`; what kept that CLI-only was that a
+    # request must not be able to assert a model, and it still cannot — see the route's docstring.
+    assert len(served) == 125, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 53, (
+    # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
+    # models are doing, and turning one of this appliance's own fits into an artefact.
+    assert len(api_pairs) == 55, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -765,9 +775,19 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # console module that draws it, plus `GET /app/compare.js` — `Bars` and `Map` out of
     # `app/charts.js` at the module-graph ceiling, which the chart-header repair pushed over.
     # Both new modules are static assets like every other one.
-    assert len(served) == 122, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # **v0.19.0: 122 -> 125 served, 53 -> 55 under /api.** Three paths: `GET /api/models` (who is
+    # deciding, how far the operator's judgements are from training a model, and the loss curve)
+    # and `POST /api/models/register` (turn one of *this appliance's own* fits into a registerable
+    # artefact — admin-only, and the body names a run id, never a parameter), plus
+    # `GET /app/views/parts/models.js`, the console module that draws them. The register POST is
+    # the first HTTP route that can create a `model_version`; what kept that CLI-only was that a
+    # request must not be able to assert a model, and it still cannot — see the route's docstring.
+    assert len(served) == 125, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
-    assert len(api_pairs) == 53, (
+    # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
+    # models are doing, and turning one of this appliance's own fits into an artefact.
+    assert len(api_pairs) == 55, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -843,7 +863,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # it is, and names no network element. Six now, and the count is asserted exactly so a
     # seventh cannot arrive without this line moving.
     # v0.18.0: 6 -> 7, for `GET /api/correlation` (Part II).
-    assert len(entries) == 7, entries
+    # v0.19.0: 7 -> 8, for `GET /api/models` — floors, counts and a loss curve, which
+    # are arithmetic and tallies of judgements, naming no network element.
+    assert len(entries) == 8, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -913,11 +935,14 @@ def test_the_three_postures_are_all_populated() -> None:
     # minimum role is `admin` — the posture is DERIVED, never asserted independently — and
     # `GET /api/promotion` is `unscoped` for `GET /api/scorer`'s reason: a decision about the
     # correlator's arithmetic names no network element.
-    assert len(ADMIN_ONLY) == 25, len(ADMIN_ONLY)
+    # v0.19.0: 25 -> 26. `POST /api/models/register` is `admin_only` by the same
+    # derivation — its capability's minimum role is `admin`.
+    assert len(ADMIN_ONLY) == 26, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
-    assert len(UNSCOPED) == 7, UNSCOPED
+    # v0.19.0: 7 -> 8, `GET /api/models`, for the reason above.
+    assert len(UNSCOPED) == 8, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.

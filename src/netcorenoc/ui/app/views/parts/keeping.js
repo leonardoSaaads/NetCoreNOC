@@ -70,8 +70,15 @@ export function Keeping({ stats, ring, rate }) {
       span: `${spanText(points * bucket)} of a ${spanText(res.window_s)} window`,
     };
   };
+  const verdict = keepingUp(res, stats, receiver);
   return html`<section class="panel-block">
     <${SectionHeading} title="Is the appliance keeping up" />
+    ${/* **The heading asks a question, so something has to answer it.** Four charts and a run of
+          counters are the evidence for an answer, not the answer, and an operator who has to
+          read four axes to find out whether anything is wrong will stop opening the panel. Same
+          shape as the grouping verdict on Situations: one line, coloured, and the charts below
+          it are what you read when the line says to. */ null}
+    <p class="verdict verdict-${verdict.tone}">${verdict.text}</p>
     ${/* **The queue chart is OUTSIDE the `resources` branch, and that placement is a repair.**
           It was inside it first, and a DOM test drove an `/api/stats` with no `resources` block
           and found the chart gone. `queue_depth` is served whether or not the process runner is
@@ -79,31 +86,45 @@ export function Keeping({ stats, ring, rate }) {
           lose the one chart that says whether correlation is falling behind — for a reason that
           has nothing to do with it. Two sources, two conditions. */ null}
     <div class="chart-grid">
+      ${/* **The captions name what is being measured, not which endpoint served it.**
+            They read `/api/stats.resources — the host's memory` before, under four charts on the
+            screen an operator opens first. The endpoint is a fact about this console's plumbing
+            and the operator is not debugging the console; what they need is which memory, whose
+            filesystem, how often. The path stays where a reader who wants it will look for it —
+            in the module that fetches it — rather than on the face of the chart. */ null}
       ${res
         ? [
-            ["CPU", res.cpu_series, "/api/stats.resources",
-             `sampled every ${res.interval_s ?? 30} s; resets on restart`],
-            ["Memory", res.mem_series,
-             res.mem_source === "cgroup"
-               ? "/api/stats.resources — the container's limit"
-               : "/api/stats.resources — the host's memory",
+            ["CPU", res.cpu_series, "%",
+             res.cpu_count ? `${res.cpu_count} cores, all of them` : "this host",
+             `read every ${res.interval_s ?? 30} s · resets on restart`],
+            ["Memory", res.mem_series, "%",
+             res.mem_source === "cgroup" ? "this container's limit" : "this host's memory",
              "resets on restart"],
-            ["Storage", res.disk_series,
-             "/api/stats.resources — the filesystem holding the database",
+            ["Storage", res.disk_series, "%",
+             "the filesystem holding the database",
              "resets on restart"],
-          ].map(([label, values, source, note]) => {
+            /* **The database itself, which nothing measured until v0.19.0.** "Storage" above is
+               the filesystem, and an operator reading 89 % there cannot tell whether this
+               appliance is responsible for it. A size in megabytes over the same window answers
+               both *how big has my correlator got* and *how fast is it growing*, which is the
+               question retention settings are the answer to. In MB, not per cent: a database has
+               no ceiling to be a share of. */
+            ["Database", res.db_series, "MB",
+             "the SQLite file and its journal",
+             "resets on restart"],
+          ].map(([label, values, unit, what, note]) => {
             const axis = hostAxis(values);
-            return html`<${Series} key=${label} title=${label} unit="%"
+            return html`<${Series} key=${label} title=${label} unit=${unit}
               series=${[{ name: label, values }]} labels=${axis.labels}
-              source=${source} span=${axis.span} note=${note} />`;
+              source=${what} span=${axis.span} note=${note} />`;
           })
         : null}
       <${Series} title="Queue depth" unit="traps"
         series=${[{ name: "queued", tone: "warn", values: (ring && ring.queue) || [] }]}
         labels=${ringGrid.labels}
-        source="derived in this browser from /api/stats.queue_depth"
+        source="traps waiting to be correlated"
         span=${ringGrid.n > 1 ? `over ${spanText(ringGrid.spanS)}` : null}
-        note="this browser's own history; lost on reload" />
+        note="counted by this browser; lost on reload" />
     </div>
     ${res
       ? null
@@ -150,6 +171,49 @@ export function Keeping({ stats, ring, rate }) {
           it is not quarantined and it never becomes an alarm.</p>`
       : null}
   </section>`;
+}
+
+/**
+ * The one-line answer to the panel's own question, and the rule it applied.
+ *
+ * **Every branch is a threshold on a number this panel already draws**, so the line can never
+ * disagree with the charts under it. The order is the order an operator would act in: something
+ * that stops the appliance outright (a full filesystem), then something that loses traps (a
+ * growing queue, a refusing allowlist), then load, then the all-clear. `null` readings are not
+ * failures and never a zero — a metric this host does not expose simply does not vote.
+ */
+export function keepingUp(res, stats, receiver) {
+  const disk = res && res.disk_pct;
+  const cpu = res && res.cpu_pct;
+  const mem = res && res.mem_pct;
+  const dropped = (receiver && receiver.dropped) || 0;
+  const denied = (receiver && receiver.denied) || 0;
+  if (disk != null && disk >= 90) {
+    return { tone: "bad", text: `Storage is ${disk}% full — this appliance stops when it fills.` };
+  }
+  if (dropped > 0) {
+    return { tone: "bad", text: `${count(dropped)} traps were dropped — it is not keeping up.` };
+  }
+  if (denied > 0) {
+    return { tone: "warn", text: `${count(denied)} datagrams refused by the trap allowlist.` };
+  }
+  if ((cpu != null && cpu >= 85) || (mem != null && mem >= 85)) {
+    return { tone: "warn", text: `Running hot — CPU ${cpu ?? "—"}%, memory ${mem ?? "—"}%.` };
+  }
+  if (cpu == null && mem == null && disk == null) {
+    return { tone: "quiet", text: "This host exposes no CPU, memory or storage readings." };
+  }
+  /* **"Keeping up" with nothing to keep up with is not an answer**, and the first cut said
+     exactly that: a freshly restarted appliance read `Keeping up — 0 traps accepted`. Nothing had
+     arrived, so the appliance had not been tested and the panel had no business grading it. */
+  const accepted = (receiver && receiver.accepted) || 0;
+  if (!accepted) {
+    return { tone: "quiet", text: "No traps have arrived yet, so there is nothing to keep up with." };
+  }
+  return {
+    tone: "ok",
+    text: `Keeping up — ${count(accepted)} traps accepted, none dropped, CPU ${cpu ?? "—"}%.`,
+  };
 }
 
 /**

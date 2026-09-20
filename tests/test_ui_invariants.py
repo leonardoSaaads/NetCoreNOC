@@ -2649,6 +2649,12 @@ def test_the_resources_fixture_matches_what_the_sampler_actually_produces() -> N
         "cpu_series",
         "mem_series",
         "disk_series",
+        # v0.19.0: the database's own size, which "Storage" above does not answer — that is the
+        # filesystem, and an operator reading 89 % there cannot tell how much of it is this
+        # appliance.
+        "db_bytes",
+        "db_journal_bytes",
+        "db_series",
     }
     assert produced == fixture, (
         f"`ResourceSampler.snapshot()` and the fixtures in this file have diverged.\n"

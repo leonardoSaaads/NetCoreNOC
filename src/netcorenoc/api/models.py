@@ -318,6 +318,18 @@ class PromotionIn(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+class ModelRegisterIn(BaseModel):
+    """**Names a training run. It may not assert a model.**
+
+    The same construction as `PromotionIn` one table earlier: there is no `coefficients`, `kind`
+    or `contract_version` field, so a caller cannot register parameters this appliance did not
+    fit. The handler reads them out of the named `challenger_run` row. That is what lets a
+    register route exist over HTTP at all without reopening what the CLI-only rule was closing.
+    """
+
+    challenger_run_id: int = Field(ge=1)
+
+
 class PolicyIn(BaseModel):
     """One governance write: apply a new document, roll back to a version, or clear the policy.
 

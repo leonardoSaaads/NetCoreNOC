@@ -66,7 +66,7 @@ export function Projection({ nodes }) {
         value: node.active_alarms,
       }))}
       urgentAt=${URGENT_AT}
-      source="/api/graph, live · deterministic: sorted by load, then by id"
+      source="every element, sorted by load then by id — the same grid every time"
       note=${`pulses above ${URGENT_AT} active alarms — where the drawing's radius saturates`} />
   </section>`;
 }

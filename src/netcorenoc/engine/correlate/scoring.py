@@ -33,6 +33,12 @@ import math
 import time
 from dataclasses import dataclass
 
+# The two gates, in `gates.py` since v0.19.0 at the 400-line guard. Re-exported here because
+# every existing importer reaches them through this module, and a split is not an excuse to move
+# a name somebody depends on.
+from netcorenoc.engine.correlate.gates import cross_subtree_elements as cross_subtree_elements
+from netcorenoc.engine.correlate.gates import unrelated_elements as unrelated_elements
+
 # Re-exported with the redundant-alias form, which is the explicit "this is a re-export" spelling
 # both ruff and mypy understand. `correlate.py` imports every one of these from `netcorenoc.scoring`
 # and this release may not change one byte of it, so the names have to stay here whatever module
@@ -142,62 +148,6 @@ def params_hash(
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def cross_subtree_elements(features: LinkFeatures) -> bool:
-    """Are these two alarms on **different network elements** and from **different enterprise
-    subtrees**? If so the learned cross-element affinity is not evidence about this pair.
-
-    ## The defect (F76, open since v0.15.0)
-
-    `eval/corpus/dual_incident.json` says of itself *"Two unrelated incidents overlap in time on
-    disjoint NEs; **must stay separate**."* They did not: all sixteen alarms landed in one
-    situation, the scenario scored `ari 0.000` and `over_merge_rate 1.000`, and a test pinned the
-    wrong answer on purpose because fixing it needed the correlator.
-
-    **The obvious fix does not work, and measuring is how that was found.** The seven
-    cross-incident links scored 0.5857 to 0.7243; the twenty-five within-incident links scored
-    0.6161 to 0.7684. They *overlap*: the strongest bridge beat most legitimate links, and one
-    cross-incident pair scored 0.7134 against a within-incident pair at 0.7131. No threshold, and
-    no "a merge needs a stronger link than a join" rule, separates those two numbers. Nor is it
-    one weak bridge that a connected-component rule could refuse: there were **seven**.
-
-    ## Why the subtree is the signal
-
-    What does separate them is already in the trap: incident A is `1.3.6.1.4.1.1271.*` (Ciena) and
-    incident B is `1.3.6.1.4.1.2636.*` (Juniper), disjoint at the enterprise arc.
-    `PREREGISTRATION-0.9.0.md` §2.3 registered exactly this as the fourth feature and v0.9.0 could
-    not serve it, for one recorded reason — it needed an edit to `correlate.py`, whose bytes were
-    pinned. **No MIB is consulted**: this is arithmetic on the identifier, which is the same
-    opaque token the appliance already keys on, minus the habit of discarding its structure.
-
-    It gates **only the entity term, and only across elements**. `E` means *"these two network
-    elements go together"*, and F58/F61 measured that claim to be cheap: `MIN_EDGE_N` is cleared
-    by **six** ordinary alarms, after which `E` is 0.833. Two vendors' unrelated alarms inside one
-    window is co-occurrence without relatedness, and that is precisely the false positive. Same-
-    element pairs are untouched — there `E` is structural, not learned. Class affinity is
-    untouched too, which is what leaves a genuinely recurring cross-vendor pair a way to link.
-
-    ## Measured, on the whole corpus, after the change
-
-    `dual_incident` goes `pairwise_f1` 0.6364 → **1.0000**, `ari` 0.0000 → **1.0000**,
-    `over_merge_rate` 1.0000 → **0.0000**. The other nine scenarios do not move by any metric, and
-    `under_merge_rate` stays 0.0000 on all ten. Suppressing the class term as well was measured
-    too and changes nothing further, so the narrower gate is the one that ships.
-
-    ## The limitation, stated
-
-    **No scenario in the corpus contains a ground-truth incident that spans two enterprise
-    subtrees on different elements**, so the corpus cannot show this gate's cost. The nearest
-    measurement: thirty recurrences of the same genuine cross-vendor pair produce
-    `entity_affinity = 0.0000` and a total of 0.4652 against a 0.5 threshold — it does **not**
-    link today either, because affinity mass is driven by burst density rather than by
-    recurrence. So the gate removes no capability that currently works. That, and not an
-    argument, is why it ships; the missing scenario is recorded as a finding.
-    """
-    if features.same_oid_root is not False:
-        return False  # True (same subtree) or None (unknown) — the gate stays out of the way
-    return features.ne_i != features.ne_j
-
-
 @dataclass(frozen=True)
 class AdditiveScorer:
     """The built-in three-term score — the default, and the always-available safe fallback.
@@ -225,12 +175,18 @@ class AdditiveScorer:
         # difference either side of `threshold` is a different grouping.
         decay = math.exp(-abs(features.delta_t_s) / self.tau_s)
         entity_affinity = features.entity_affinity
+        class_affinity = features.class_affinity
         if cross_subtree_elements(features):
             # **v0.18.0 (F76/F135): learned cross-element affinity needs the alarms to be the
             # same kind of thing.** See `cross_subtree_elements` for the measurement.
             entity_affinity = 0.0
+        if unrelated_elements(features):
+            # **v0.19.0 (F138): so does learned class affinity.** Two elements the appliance has
+            # learned nothing about are not related by their alarms looking alike. See
+            # `unrelated_elements` — 70 independent failures in one situation is the measurement.
+            class_affinity = 0.0
         term_t = self.w_t * decay
-        term_a = self.w_a * features.class_affinity
+        term_a = self.w_a * class_affinity
         term_e = self.w_e * entity_affinity
         total = term_t + term_a + term_e
         return LinkScore(
@@ -239,7 +195,10 @@ class AdditiveScorer:
             threshold=self.threshold,
             terms=(
                 TermContribution("temporal", self.w_t, decay, term_t),
-                TermContribution("class_affinity", self.w_a, features.class_affinity, term_a),
+                # Gated, for the same reason the entity term below is: the three printed
+                # contributions must sum to the score exactly, and printing the ungated value
+                # would break the one contract an explanation may never break.
+                TermContribution("class_affinity", self.w_a, class_affinity, term_a),
                 # The **gated** value, so the number beside the bar is the number that was used.
                 # Reporting the ungated affinity here would make the three printed terms not sum
                 # to the score, which is the one thing the explanation may never do.

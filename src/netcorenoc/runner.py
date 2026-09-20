@@ -326,7 +326,10 @@ async def _serve(settings: Settings, store: Store) -> None:
     # has the panel open would be a graph of when people looked at it. The database's directory is
     # the storage that matters — the filesystem that fills up and stops this appliance, not the
     # host's root.
-    resources = ResourceSampler(path=str(Path(settings.db_path).resolve().parent))
+    resources = ResourceSampler(
+        path=str(Path(settings.db_path).resolve().parent),
+        db_path=str(Path(settings.db_path).resolve()),
+    )
     resources.sample()  # one reading now, so CPU has a baseline to difference the next one against
 
     def receiver_stats() -> dict[str, Any]:

@@ -1,0 +1,29 @@
+-- v0.19.0 — the three-minute query that returned nothing (F140).
+--
+-- `store.gesture_positive_pairs()` matches `situation_event_member` against `dataset_pair` on the
+-- pair`s two alarm ids in **both orders**, because `dataset_pair` records `(alarm_a, alarm_b)` as
+-- the window alarm and the newly activated one and that ordering is a fact about capture rather
+-- than about the assertion. `dataset_pair` had two indexes, on `(lifecycle, evaluated_at)` and on
+-- `(situation_id)`, and **neither can serve a lookup by alarm id**.
+--
+-- Measured on a live appliance with 222 050 sink pairs against 4 614 member rows, returning 0
+-- rows, across both halves of the repair:
+--
+--                       OR inside the join     UNION ALL of two joins
+--   without this index        176.550 s               220.591 s
+--   with this index           175.345 s                 0.003 s
+--
+-- **Neither half is worth anything alone**, which is why this migration and the query rewrite in
+-- `store/situation_events.py` ship in one commit: an index the planner cannot reach because of an
+-- `OR` changes nothing, and splitting the `OR` without an index to land on is worse than what it
+-- replaced. Together they are about 58 000x. The trainer calls this on every training tick, so an
+-- appliance with a real corpus was spending three minutes of every five inside it.
+--
+-- Two indexes, not one: each branch of the union leads with a different column, and an index can
+-- only serve the branch whose leading column it starts with.
+--
+-- `alarm_a`/`alarm_b` are not unique here — one pair of alarms can be captured on several
+-- activations — so these are plain indexes, and the cost is two more b-tree inserts on a table
+-- the capture path already writes in bulk.
+CREATE INDEX IF NOT EXISTS idx_pair_alarm_ab ON dataset_pair (alarm_a, alarm_b);
+CREATE INDEX IF NOT EXISTS idx_pair_alarm_ba ON dataset_pair (alarm_b, alarm_a);

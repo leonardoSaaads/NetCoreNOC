@@ -4337,3 +4337,77 @@ From this release an entry is about six lines: decision, reason, release.*
   reported. This is not a new self-imposed rule: it is the one constraint the brief keeps, written
   as a test for the first time. *"Ingestion is sacred"* was a sentence in a document and a hash of
   a file, and no test anywhere checked that the path does not block.
+
+## 353. Class affinity may not link two elements the appliance knows nothing about (v0.19.0)
+
+- **The measurement**: 70 independent card failures, four vendors, one situation holding all 140
+  alarms; 492 of its 650 links carried by class affinity, 580 of them between different devices.
+  F138 has the numbers.
+- **The rule**: when the two alarms are on different network elements **and** `E` is exactly zero,
+  the class term is withheld. `E > 0` means the pair cleared `MIN_EDGE_N` — the appliance has
+  watched those two elements together enough times to trust the edge — and from there class
+  affinity applies in full.
+- **Why this is not a rule against cross-element correlation**: it closes only where the appliance
+  has learned *nothing at all* connecting the two elements, which is where it would otherwise be
+  inferring a relationship between devices from the shape of their alarms. `docs/correlation.md`
+  already claimed this behaviour — *"two alarms group only when they are on the same network
+  element and within about 21 seconds"* — which was true at cold start and stopped being true the
+  moment `A` learned anything. The doc described the first hour; this makes it describe every one.
+- **What it cost**: nothing measurable. All ten corpus scenarios are byte-identical on every
+  metric, before and after.
+- **Why v0.18.0 did not do it**: it measured exactly this and found it changed nothing, on a
+  corpus whose scenarios have two to four elements. The gate's cost and its benefit are both
+  invisible below about a dozen elements, and `docs/plans/releases.md` had already recorded that
+  the corpus contains no scenario able to price it. Running an estate priced it.
+
+## 354. The console may register a fit this appliance made; it still may not assert a model (v0.19.0)
+
+- **What changed**: `POST /api/models/register` turns a `challenger_run` the appliance itself
+  fitted into a `model_version`. Until now the only way was the CLI.
+- **The ground that kept it CLI-only**: *the thing that could put a new model in front of your
+  traffic must not be reachable from the network.* That is honoured rather than set aside. **The
+  body names a run id and nothing else** — no coefficients, no kind, no contract version — so a
+  request cannot introduce a model this appliance did not fit. The parameters are read out of its
+  own row. It is the construction `POST /api/promotion` already uses for its verdict, one table
+  earlier, and `ModelRegisterIn` enforces it by *not having the fields* rather than by ignoring
+  them.
+- **What did not change**: promotion. Registering is not promoting, the judge still re-derives
+  every floor, the power condition, the sealed holdout and the verdict, and an admin's click is
+  the human gesture. The CLI path stays for a model fitted elsewhere, and that one is still not
+  reachable from the network — which is the part of the posture doing the work.
+- **Why it was worth doing**: the operator had no route from *"I have judged two hundred
+  groupings"* to *"a model is deciding"* that did not require shell access to the appliance. A
+  security posture that can only be satisfied by giving people a shell is not the posture anybody
+  wanted.
+
+## 355. The loss curve is recorded, so the screen that said it could not be drawn goes (v0.19.0)
+
+- **What was there**: the Judge screen carried a heading reading *"Not drawn, because nothing
+  measures it"* over a paragraph explaining that `challenger_run` keeps `iterations` as a count and
+  no per-iteration trace. True, and an answer to the wrong question.
+- **What replaced it**: `training.fit` records `log_loss` every `_TRACE_STRIDE` iterations plus a
+  final point at the coefficients that were kept, migration `0017` stores it, and the Overview
+  draws it. On a separable fixture the curve runs 0.693 — `ln 2`, the coin-flip baseline — down to
+  0.061 over 21 points, monotonically.
+- **The stride is why it is affordable**: `log_loss` is a second pass over every training row, so
+  recording it each iteration would double a fit. `TRACE_POINTS` points regardless of
+  `ITERATIONS` bounds the extra work, and the stride is arithmetic on two constants, so two runs
+  still produce byte-identical coefficients **and** byte-identical traces. Determinism is the
+  property this module is built around and a diagnostic does not get to spend it.
+- **Old rows are `NULL`, not back-filled.** Those fits happened and nobody recorded their
+  intermediate states; inventing a curve for them would be inventing the release's own evidence.
+
+## 356. The evidence bars are counted live, behind a marker, not read off the last training run (v0.19.0)
+
+- **The question**: *"I confirmed a grouping — did that do anything?"* The first cut read the
+  counts off the newest `challenger_run`, which is written every `TRAIN_EVERY_TICKS` maintenance
+  ticks — five minutes. An operator judged a grouping, looked at the bar, and saw it unmoved.
+- **The second cut counted live** and cost 1.4 s per read under `store.lock`, which would have put
+  a second and a half of ingestion stall behind every operator who opened the console.
+- **What ships**: the census is computed by `corpus_stats` — the function `Shadow.train` calls,
+  over the same rows, in the same order, so there is still exactly one implementation of the rule
+  — and cached against a marker: the row count and highest id of the two tables a judgement
+  writes. Two aggregate queries the planner answers from indexes. Measured: **1 410 ms** cold,
+  **~3 ms** warm, and a fresh verdict moved `split_bags` from 5 to 6 on the very next read.
+- **Not a TTL**, deliberately: a TTL makes the bar lag the click by exactly the interval chosen,
+  which is the defect the card exists to disprove.

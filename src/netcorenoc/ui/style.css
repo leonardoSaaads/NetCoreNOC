@@ -752,14 +752,20 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 }
 /* Three x ticks — first, middle, last. `translateX(-50%)` on the middle one and edge alignment on
    the outer two, so no tick hangs off the plot at 390 px. */
-.chart-x { position: relative; height: 1.4em; margin-top: 2px; }
+/* **Flex, not absolute positions** (v0.19.0, F142). The ticks were placed at `left: 0/50/100%`
+   with transforms, which overlaps as soon as the chart is narrower than three clock times — and
+   the Overview's health panel puts five charts across one row, so `09:36:33` and `09:37:03`
+   rendered as `09:36:3309:37:03` on a 1440-px screen. The three ticks are the first, middle and
+   last bucket by construction, which is exactly what `space-between` lays out, so this is the
+   same positions without the overlap and with a gap that cannot be crossed. */
+.chart-x {
+  display: flex; justify-content: space-between; gap: var(--space-1);
+  height: 1.4em; margin-top: 2px; overflow: hidden;
+}
 .chart-x-tick {
-  position: absolute; transform: translateX(-50%); white-space: nowrap;
+  white-space: nowrap; min-width: 0;
   font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim);
 }
-.chart-x-tick:first-child { transform: none; }
-.chart-x-tick:last-child { transform: translateX(-100%); }
-.chart-x-tick:only-child { transform: none; }
 
 .chart-legend {
   display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
@@ -1628,3 +1634,61 @@ p.corr-line { cursor: default; }
 /* **One column at every width.** Two columns were tried and the right-aligned value of the left
    pair ran into the label of the right one — `98.3%` abutting `Close calls`. Six rows read once,
    behind a click, do not need the horizontal packing that made them ambiguous. */
+
+/* --- a section's own answer to its own heading (v0.19.0) -------------------------------------
+   The health panel asked "is the appliance keeping up" and left four charts to be interpreted.
+   This is the answer line, and the same three tones the grouping verdict already uses so that a
+   reader learns one colour vocabulary rather than one per screen. */
+.verdict {
+  margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--fg-muted); border-radius: var(--radius-1);
+  background: var(--bg-raised); font-size: var(--fs-sm); color: var(--fg);
+}
+.verdict-ok { border-left-color: var(--quiet); }
+.verdict-warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.verdict-bad { border-left-color: var(--sev-crit-fill); background: var(--warn-bg); }
+.verdict-quiet { color: var(--fg-dim); }
+
+/* --- how far the evidence is from a model (v0.19.0) -----------------------------------------
+   A bar and its two numbers. The numbers are not decoration: a bar alone cannot be read to
+   "2 of 50" and that is the figure an operator is actually tracking, so the bar carries the
+   shape and the pair beside it carries the fact. */
+.models { margin-bottom: var(--space-4); }
+.meter {
+  display: grid; grid-template-columns: minmax(0, 1fr) 2fr auto;
+  align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);
+  font-size: var(--fs-sm);
+}
+.meter-label { color: var(--fg-dim); min-width: 0; }
+.meter-track {
+  display: block; height: 8px; border-radius: 4px; background: var(--bg-sunken);
+  border: 1px solid var(--line); overflow: hidden;
+}
+.models-bar {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin-top: var(--space-2); font-size: var(--fs-xs);
+}
+.meter-wide { flex: 1 1 auto; }
+.meter-fill { display: block; height: 100%; background: var(--accent); }
+.meter-value { font-variant-numeric: tabular-nums; color: var(--fg-dim); white-space: nowrap; }
+.models-head {
+  margin: 0 0 var(--space-2); font-size: var(--fs-xs); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--fg-muted);
+}
+.models-none { margin: var(--space-2) 0 0; font-size: var(--fs-sm); color: var(--fg-muted); }
+.models-said { margin: var(--space-2) 0 0; font-size: var(--fs-sm); color: var(--fg); }
+.models-acts {
+  margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+}
+@media (max-width: 560px) {
+  .meter { grid-template-columns: minmax(0, 1fr) auto; }
+  .meter-track { grid-column: 1 / -1; }
+}
+
+.models-next {
+  margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3);
+  background: var(--bg-raised); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-1); font-size: var(--fs-sm);
+}
+.models-acts .models-none { flex: 1 1 100%; margin: 0; }

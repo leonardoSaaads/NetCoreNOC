@@ -31,6 +31,7 @@ widen a threshold around.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -307,6 +308,13 @@ class Shadow:
                 document["iterations"] = outcomes["A"]["iterations"]
                 document["learning_rate"] = outcomes["A"]["learning_rate"]
                 document["fit_seconds"] = outcomes["A"]["fit_seconds"]
+                # Policy A's curve, because policy A's coefficients are the ones that score. B is
+                # fitted and reported alongside, and plotting a curve from the model that is not
+                # running would be a chart of something nobody uses.
+                document["loss_trace"] = json.dumps(
+                    outcomes["A"]["loss_trace"], separators=(",", ":")
+                )
+                document["loss_trace_stride"] = outcomes["A"]["loss_trace_stride"]
                 # The ACTIVE-IN-SHADOW model is policy A's. B is fitted and reported and is never
                 # the one that scores, because the two must not silently swap between runs.
                 self.scorer = LogisticScorer(chosen)

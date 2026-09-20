@@ -66,6 +66,10 @@ get_scorer  # unused function (netcorenoc/api/routes_scorer.py)
 # v0.18.0 — how the RUNNING scorer is behaving. Same shape as `get_scorer` above: a
 # FastAPI handler registered by decorator and never called by name.
 get_correlation  # unused function (netcorenoc/api/routes/scorer.py)
+# v0.19.0 — the model card's two routes. Same shape again: FastAPI handlers registered by
+# decorator and never called by name.
+get_models  # unused function (netcorenoc/api/routes/models.py)
+register_fit  # unused function (netcorenoc/api/routes/models.py)
 preview_scorer  # unused function (netcorenoc/api/routes_scorer.py)
 set_scorer  # unused function (netcorenoc/api/routes_scorer.py)
 rollback_scorer  # unused function (netcorenoc/api/routes_scorer.py)

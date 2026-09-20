@@ -175,6 +175,9 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # `views/situations.js` over the module-graph guard (DECISIONS #265).
         "/app/views/parts/card.js",
         "/app/views/parts/correlation.js",
+        # v0.19.0: the Overview's model line. A static module like every other one — it resolves
+        # no identity; the two routes it calls do.
+        "/app/views/parts/models.js",
         # v0.16.4: the judgement surface, split out when the state-dependent action surface pushed
         # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
         "/app/views/parts/judge.js",

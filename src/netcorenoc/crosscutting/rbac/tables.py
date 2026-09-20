@@ -56,6 +56,12 @@ PERMISSIONS: dict[str, str] = {
     # explains grouping, it is aggregate, and it names no network element. An operator who may
     # see the formula may see whether it is working.
     "correlation.read": "viewer",
+    # Whether the models are learning, and how far the evidence is from the registered
+    # floors. Same class again: counts of the operator's own judgements and a loss curve
+    # over them, naming no network element. Registering one of this appliance's own fits is
+    # a different act and is admin — it creates an artefact a promotion could later name.
+    "model.read": "viewer",
+    "model.register": "admin",
     # operate (editor+)
     "feedback.write": "editor",
     "label.write": "editor",
@@ -170,6 +176,8 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/dataset/retention"): "config.write",
     ("GET", "/api/scorer"): "scorer.read",
     ("GET", "/api/correlation"): "correlation.read",
+    ("GET", "/api/models"): "model.read",
+    ("POST", "/api/models/register"): "model.register",
     ("POST", "/api/scorer/preview"): "scorer.preview",
     ("POST", "/api/scorer"): "scorer.write",
     ("POST", "/api/scorer/rollback"): "scorer.write",
@@ -270,6 +278,12 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     # surface and never evidence**: it is read-only, it is in memory, and no promotion path
     # reads it.
     ("GET", "/api/correlation"): "unscoped",
+    # The models: floors, counts and a loss curve. Unscoped for the third time for the same
+    # reason — arithmetic and tallies of judgements, no element named. The register POST is
+    # `admin_only` because its capability's minimum role is `admin`; the posture is DERIVED
+    # from PERMISSIONS above and never asserted here independently (DECISIONS #58, #80).
+    ("GET", "/api/models"): "unscoped",
+    ("POST", "/api/models/register"): "admin_only",
     # Same reasoning one release on: a promotion decision is about the SCORER, not about a network
     # element, and its row names no NE. Scoping the READ would be scoping a statement about
     # arithmetic. The WRITE is `admin_only` because its capability's minimum role is `admin` — the

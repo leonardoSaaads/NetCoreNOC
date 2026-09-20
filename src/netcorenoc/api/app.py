@@ -105,6 +105,7 @@ def create_app(
     routes.admin.register(app, ctx)
     routes.scorer.register(app, ctx)
     routes.promotion.register(app, ctx)
+    routes.models.register(app, ctx)
     routes.governance.register(app, ctx)
     routes.audit.register(app, ctx)
     routes.events.register(app, ctx)

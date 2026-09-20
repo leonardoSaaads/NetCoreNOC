@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -530,6 +532,99 @@ def test_the_window_alarm_carries_the_root_and_features_compares_it() -> None:
     assert Correlator.features(ciena, juniper, learner).same_oid_root is False
     assert Correlator.features(ciena, ciena2, learner).same_oid_root is True
     assert Correlator.features(ciena, rootless, learner).same_oid_root is None
+
+
+# --- F138: seventy independent failures became one situation ----------------------------------
+
+
+def test_class_affinity_cannot_link_two_elements_the_appliance_knows_nothing_about() -> None:
+    """**F138, at the expression that implements it.**
+
+    The measurement: 70 devices, one independent card failure each, two alarms three seconds
+    apart, four vendors. The appliance produced **one** situation of 140 alarms with 650 links,
+    580 of them cross-device and 492 of those carried by class affinity. Every device raised the
+    same two trap classes, so `A` climbed to ~0.63, and `0.294 + 0.35 x 0.628 = 0.514` clears a
+    0.50 threshold for any two of them anywhere in the estate.
+
+    This is the pair shape that produced it: different elements, `E` exactly zero.
+    """
+    scorer = AdditiveScorer()
+    estate = scorer.score(_feat(delta_t_s=0.6, class_affinity=0.628, entity_affinity=0.0))
+    assert contribution_of(estate, "class_affinity") == 0.0
+    assert not estate.linked, estate.score
+    # And the score is the temporal term alone, which cannot reach the threshold by construction.
+    assert estate.score == pytest_approx(0.3 * math.exp(-0.6 / 30.0))
+
+
+def test_the_gate_opens_the_moment_the_two_elements_have_a_learned_relationship() -> None:
+    """The control that keeps this a prior rather than a rule against cross-element correlation.
+
+    `E > 0` means the pair cleared `MIN_EDGE_N` — the appliance has watched these two elements
+    enough times to trust the edge — and from there class affinity applies in full. Without this
+    the gate would permanently forbid the cross-device correlation the product exists to do.
+    """
+    scorer = AdditiveScorer()
+    known = scorer.score(_feat(delta_t_s=0.6, class_affinity=0.628, entity_affinity=0.3))
+    assert contribution_of(known, "class_affinity") == pytest_approx(0.35 * 0.628)
+    assert known.linked, known.score
+
+
+def test_the_gate_leaves_same_element_pairs_exactly_as_they_were() -> None:
+    """The other control. Two alarms on one element are the case the cold-start rule is built on,
+    and a gate that touched them would stop the appliance grouping anything at all."""
+    scorer = AdditiveScorer()
+    one_element = scorer.score(
+        _feat(ne_i=7, ne_j=7, delta_t_s=0.6, class_affinity=0.628, entity_affinity=1.0)
+    )
+    assert contribution_of(one_element, "class_affinity") == pytest_approx(0.35 * 0.628)
+    assert one_element.linked
+
+
+def test_an_estate_of_independent_failures_does_not_collapse_into_one_situation() -> None:
+    """**The defect as it was actually found: at the estate, not at the expression.**
+
+    The unit tests above pin the arithmetic. They would not have caught this, and saying so is
+    the point: every individual link that merged the estate was *defensible* — 0.514 against a
+    0.50 threshold, from a class pair that genuinely does co-occur — and the damage came from
+    situations being connected components, where a chain of defensible links merges everything
+    it touches. Only running the estate shows that.
+
+    So this drives the shape that produced it: many devices, each raising the same two classes,
+    close enough in time to be candidates for one another, with the learner watching. It fails on
+    the v0.18.0 scorer and passes on this one.
+    """
+    correlator, learner = Correlator(max_window=4096), Learner()
+    devices = 40
+    linked_across_devices = 0
+    for index in range(devices):
+        base = 1000.0 + index * 0.6
+        for step, class_id in enumerate((1, 2)):
+            alarm_id = index * 2 + step
+            alarm = wa(alarm_id, class_id, 10 + index, ts=base + step * 3.0)
+            result = correlator.process(alarm, learner)
+            for link in result.links:
+                if link.other.device_id != alarm.device_id:
+                    linked_across_devices += 1
+            learner.observe_activation((class_id, 10 + index))
+            learner.observe_pairs(
+                (class_id, 10 + index),
+                [(other.other.class_id, other.other.device_id) for other in result.links],
+                storm=False,
+            )
+    # The two classes have now co-occurred forty times, so `A[1,2]` is large. No pair of
+    # *different* devices may link on that alone.
+    assert learner.class_affinity(1, 2) > 0.3, "the corpus must actually have learned the pair"
+    assert linked_across_devices == 0, (
+        f"{linked_across_devices} links joined two devices the appliance knows nothing about; "
+        f"this is F138, and it merged 70 independent card failures into one situation"
+    )
+
+
+def test_the_three_printed_terms_still_sum_to_the_score_when_both_gates_fire() -> None:
+    """The contract neither gate may break, with both of them closed at once."""
+    scorer = AdditiveScorer()
+    both = scorer.score(_feat(same_oid_root=False, class_affinity=0.9, entity_affinity=0.0))
+    assert sum(term.contribution for term in both.terms) == pytest_approx(both.score)
 
 
 def pytest_approx(value: float) -> object:

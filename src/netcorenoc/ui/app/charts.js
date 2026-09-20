@@ -127,6 +127,27 @@ export function Absent({ title, why, source, span }) {
  * The **latest reading is printed in the header from `values` itself**, so the number beside the
  * chart cannot disagree with the chart.
  */
+/**
+ * The ceiling for a percentage axis: the smallest band that contains the data.
+ *
+ * **This replaces a hard 0-100, and the reason is a live pass.** The Overview's CPU and memory
+ * charts ran at 5-6 % against a fixed 100 % ceiling, which draws a straight line along the floor:
+ * two hours of readings, no shape, nothing an operator could act on. Three of the four charts in
+ * that panel were unreadable for the same reason.
+ *
+ * The old ceiling was defended on the ground that *"a CPU chart that rescaled to its own peak
+ * would draw a busy minute and an idle one as the same picture"*, and that objection is right
+ * about rescaling to the peak. It is answered by the bands rather than by refusing to rescale:
+ * the top of the axis is one of five fixed values and **`.chart-y-top` prints it**, so an idle
+ * appliance and a busy one differ in the label as well as in the shape, and nothing is implied
+ * that the number beside it does not say. A series that reaches half the scale keeps the full
+ * 0-100, because near the top the whole is the comparison that matters.
+ */
+export function percentTop(observed) {
+  const bands = [5, 10, 25, 50, 100];
+  return bands.find((band) => observed <= band) ?? 100;
+}
+
 export function Series({
   title, hint, series, mark = "line", unit = "", source, span, note, max, labels = [], height,
 }) {
@@ -145,13 +166,12 @@ export function Series({
         ? "only one reading so far — a line needs two"
         : note || "no reading has arrived yet"} />`;
   }
-  // The domain. A percentage is pinned to 0-100 because a CPU chart that rescaled to its own peak
-  // would draw a busy minute and an idle one as the same picture; everything else takes a round
-  // ceiling over every series, so two series on one chart are comparable by construction.
+  // The domain. Everything but a percentage takes a round ceiling over every series, so two
+  // series on one chart are comparable by construction.
   const observed = Math.max(
     ...lines.flatMap((one) => (one.values || []).filter((v) => v != null).map(Number)),
   );
-  const top = max != null ? max : unit === "%" ? 100 : ceiling(observed);
+  const top = max != null ? max : unit === "%" ? percentTop(observed) : ceiling(observed);
   const n = Math.max(...lines.map((one) => (one.values || []).length));
   // **What the header number means depends on what the series IS** (v0.18.0, F133).
   //
@@ -216,8 +236,12 @@ export function Series({
         </div>
       </div>
       <div class="chart-x" aria-hidden="true">
+        ${/* No inline `left`: `.chart-x` lays these out with `space-between`, which puts the
+              first, middle and last bucket exactly where the percentages did and cannot overlap
+              when the chart is narrow (F142). `at` stays on the tick because it is what says the
+              positions are evenly spaced rather than arbitrary. */ null}
         ${ticks.map((t) => html`<span key=${t.text} class="chart-x-tick"
-             style=${`left:${t.at.toFixed(2)}%`}>${t.text}</span>`)}
+             data-at=${t.at.toFixed(2)}>${t.text}</span>`)}
       </div>
     </div>
     <${Legend} series=${lines} />

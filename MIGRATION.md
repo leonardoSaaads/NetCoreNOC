@@ -62,6 +62,9 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.16.4 → v0.16.5 | Nothing to run — **no migration**. CPU, memory and storage appear in the health control, read from `/proc` and the cgroup; `POST /api/alarms/clear` is new |
 | v0.16.5 → v0.16.6 | Nothing to run — **no migration** — but four screens are redrawn and one `/api/stats.resources` key is new. Read below |
 | v0.16.6 → v0.16.7 | Nothing to run — **no migration**. The Overview leads with active alarms by severity, and on a fresh appliance that panel reads *not measured* rather than zero. Read below |
+| v0.18.0 → v0.19.0 | Nothing to run. **Two migrations apply at boot** (`0017`, `0018`) and both are additive: two nullable columns on `challenger_run` for the learning curve, and two indexes on `dataset_pair`. Correlation groups differently on estates of many elements — deliberately, and narrower. Read below |
+
+*(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
 ## The two that need an action, and the six that need reading
 
@@ -449,3 +452,25 @@ quantities separately, and the seal's query count. It also states, on the screen
 this appliance does **not** measure: a loss curve, a residual distribution and per-fold results.
 Those are absences by design rather than gaps in the screen, and
 [`docs/plans/releases.md`](docs/plans/releases.md) records what each would need.
+
+
+### v0.19.0 — correlation groups less on large estates, and it is meant to
+
+**Nothing to run**, and both migrations apply themselves at boot. Two things will look different.
+
+**Groupings on an estate of many elements get smaller.** Learned *class* affinity no longer links
+two alarms on different network elements when the appliance has learned no relationship between
+those elements at all. Before this, an estate where every device raises the same two trap classes
+could merge unrelated incidents without limit — measured at seventy independent card failures in
+**one** situation of 140 alarms. Afterwards the same traffic makes seventy situations.
+
+If you were relying on those wide groupings, what you want back is the *learned* relationship: let
+the appliance see the elements co-occur, or correct the groupings it makes and let the entity
+affinity build. The gate opens the moment `E` is above zero for the pair. All ten corpus scenarios
+are unchanged, so small estates and single incidents behave exactly as before.
+
+**The Overview leads with a line about the models.** One sentence, one bar, and everything else
+behind a click — who is deciding, how far your judgements are from training a model, and the loss
+curve once a fit exists. An admin gets two controls there: register the fit this appliance made,
+and ask the server to hand correlation over. Neither shortens the evidence path — the judge still
+re-derives every floor and may refuse, which on a corpus below the floors is the expected answer.

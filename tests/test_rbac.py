@@ -341,6 +341,12 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         "entities.read": "viewer",
         "scorer.read": "viewer",
         "correlation.read": "viewer",
+        # v0.19.0: the model card on the Overview. Reading is `viewer` for the same
+        # reason the two above are — counts of the operator's own judgements and a
+        # loss curve, naming no network element. Registering one of this appliance's
+        # own fits is `admin`, because it creates the artefact a promotion can name.
+        "model.read": "viewer",
+        "model.register": "admin",
         # operate (editor+)
         "feedback.write": "editor",
         "label.write": "editor",

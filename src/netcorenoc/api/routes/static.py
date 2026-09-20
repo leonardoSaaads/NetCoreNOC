@@ -126,6 +126,10 @@ _UI_MODULES = (
     # v0.16.7: the band this release exists for — active alarms by severity, and the count
     # the appliance has NOT been able to place (DECISIONS #312).
     "app/views/parts/severity.js",
+    # v0.19.0: the Overview's model line — who is deciding, how far the operator's own judgements
+    # are from training one, and the loss curve once a fit exists. One line and one bar on the
+    # face of it; everything else behind a click.
+    "app/views/parts/models.js",
     # v0.16.6: the Graph screen's second projection and its two derived tables — everything on
     # that screen a test executes — split out of `views/graph.js` at the same ceiling
     # (DECISIONS #307, #310).

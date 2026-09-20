@@ -242,8 +242,12 @@ export function Severity({ census }) {
           appliance learns it from the trap stream and has not been able to yet.</p>`
       : null}
     <${Bars} title="Active alarms by severity" unit="alarms" rows=${rows}
-      source=${"/api/stats.severity — an operator's declaration first, then the word the trap " +
-        "carried, then what the appliance learned"}
+      ${/* The caption says where a severity comes from, not which endpoint served it. The
+            endpoint was on the face of the chart on the screen an operator opens first, and an
+            operator reading it is not debugging the console — same repair as the health panel's
+            four captions. */ null}
+      source=${"an operator's declaration first, then the word the trap carried, then what the " +
+        "appliance learned"}
       note=${known
         ? `${count(placedTotal)} placed, ${count(unplaced)} not placed` + provenanceNote(census)
         : "the appliance did not report a severity census"} />
