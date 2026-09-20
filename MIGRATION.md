@@ -469,6 +469,22 @@ the appliance see the elements co-occur, or correct the groupings it makes and l
 affinity build. The gate opens the moment `E` is above zero for the pair. All ten corpus scenarios
 are unchanged, so small estates and single incidents behave exactly as before.
 
+**Situations you already have keep the name they were given.** `derived_name` is computed when a
+grouping's membership changes and stored, so an existing situation of eight alarms goes on reading
+`Storm -> 10.0.0.1` until something changes it. New and changed groupings get the new form
+immediately. Nothing recomputes the old ones, deliberately: a migration that renamed every stored
+situation would rewrite rows an operator may have been reading all week, to fix a word.
+
+**The decision comes before the analysis on a situation.** *Confirm* and *Split* used to sit below
+the per-term score breakdown, so judging a grouping of a thousand alarms meant scrolling past the
+member table and the breakdown to reach the buttons. The breakdown is still there, directly under
+them.
+
+**Two panels left the foot of the Overview.** *Judge and promotion* and *What capture is holding*
+each rendered "Not computed yet" beside a `Compute now` button until you pressed it. The first is
+answered live by the model line at the top of the same screen; the second is the Corpus screen's
+subject. The seal's query count and the decision history are unchanged on **Judge & promotion**.
+
 **The Overview leads with a line about the models.** One sentence, one bar, and everything else
 behind a click — who is deciding, how far your judgements are from training a model, and the loss
 curve once a fit exists. An admin gets two controls there: register the fit this appliance made,

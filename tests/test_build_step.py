@@ -389,8 +389,8 @@ UI_HASHES: dict[str, str] = {
     "app/views/entities.js": "a9d54241a38d437695b8ffb20d951349e0d908f49f39542e4ee31c13539a2209",
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
     "app/views/graph.js": "05f282c80124a41ec1716c6dd1f1d06386d4c63f3aa71eecfd36963ca8235a9c",
-    "app/views/labelling.js": "f4700fc88921415127605c524cd8d3d8442eea40e7239cffb9473ccf950a97a0",
-    "app/views/overview.js": "e79b87fed4c4686dd0936f41ac4cae1ddce66a684b558895d5c76f5ab507edec",
+    "app/views/labelling.js": "e163b0f1ca9d7af77404d50c45a2797c0ea8d038e4ce176d56eb7396b6d01aa1",
+    "app/views/overview.js": "6f03d2a7dede62dcd54d5e28e063c2223cdfe6d4f89cd80683987733634990d0",
     "app/views/parts/bulkclear.js": (
         "2c3b484d2a010c1b9a7b48bb6fb9eeab1b056c28111e8d55e052c872e45a2867"
     ),
@@ -403,11 +403,11 @@ UI_HASHES: dict[str, str] = {
     ),
     "app/views/parts/estate.js": "2be4c170193f28c3ce6df8597adff904c1d242ca777692c9869ed4618133831d",
     "app/views/parts/evidence.js": (
-        "7ebc6d302bc20b846d361d5939a1e62e540385305fa48cfcb5c13f01645c64f6"
+        "44e19d816d873d5f720f5eca67fa641189daec53a8f065671606d59eb65239df"
     ),
     "app/views/parts/facts.js": "2befcc9ed54b18d57de942f3f9583e00a0a39170bb2b45d68b29933881858f12",
     "app/views/parts/finder.js": "b0652368970a0631d24987c4d1a4dd92b40affe833d1d7959db2a3933fc03274",
-    "app/views/parts/judge.js": "fe63d1a56e3e63ddb4fc8bff07fdbb806136eb137277d52f16aa83e5eb7445b4",
+    "app/views/parts/judge.js": "ed5cbe333177143fe8870a306c428c8ecf0b40bc772a2280eb51d64ed047d45f",
     "app/views/parts/keeping.js": (
         "20f6fdb1cbffbd19a623f60948ed8baa7f517805f095f75f2b2af071162114ec"
     ),
@@ -488,17 +488,17 @@ UI_SIZES: dict[str, int] = {
     "app/views/entities.js": 9_378,
     "app/views/governance.js": 10_218,
     "app/views/graph.js": 13_704,
-    "app/views/labelling.js": 5_327,
-    "app/views/overview.js": 12_183,
+    "app/views/labelling.js": 6_105,
+    "app/views/overview.js": 9_610,
     "app/views/parts/bulkclear.js": 3_112,
     "app/views/parts/card.js": 6_140,
     "app/views/parts/correlation.js": 7_185,
     "app/views/parts/declare.js": 11_975,
     "app/views/parts/estate.js": 9_325,
-    "app/views/parts/evidence.js": 12_291,
+    "app/views/parts/evidence.js": 13_062,
     "app/views/parts/facts.js": 6_340,
     "app/views/parts/finder.js": 6_220,
-    "app/views/parts/judge.js": 17_092,
+    "app/views/parts/judge.js": 17_279,
     "app/views/parts/keeping.js": 14_978,
     "app/views/parts/lifecycle.js": 13_509,
     "app/views/parts/marks.js": 9_929,

@@ -89,6 +89,25 @@ with the index        175.345 s          0.003 s
 * **`23 quieter elementsare not drawn`** — F112's missing space, third occurrence, found by
   reading the rendered page rather than the template.
 
+### Screens that had stopped being true, and two that had stopped earning their place
+
+* **The Judge screen no longer says the loss curve cannot be drawn.** That heading was correct
+  until this release recorded the measurement; leaving it up afterwards would have been the same
+  dishonesty in the other direction. The two absences beside it — a residual distribution and
+  per-fold results — are unchanged and still named.
+* **Labelling no longer says the corpus figures are "deliberately not computed here"** and points
+  at a `make` target needing shell access. The objection behind that was right — a second
+  implementation of the counts would be a second source of truth — and the answer is to call the
+  *same* function, which is what the card now mounted there does. What genuinely stays offline is
+  the shadow **verdict**, and that is still said plainly.
+* **The decision comes before the analysis on a situation.** *Confirm* and *Split* sat below the
+  per-term breakdown, so judging a grouping of 1 051 alarms meant scrolling past the member table
+  and the breakdown to reach them.
+* **Two on-demand panels left the foot of the Overview.** Each rendered *"Not computed yet"* beside
+  a `Compute now` button — two dead boxes at the end of the screen an operator opens most. *Judge
+  and promotion* is answered live by the model line at the top of the same page; *what capture is
+  holding* is the Corpus screen's whole subject.
+
 ### The gates
 
 **2 064 passed**, coverage **95.59 %**, `mypy --strict` clean on 226 files, ruff clean, vulture

@@ -246,8 +246,8 @@ export class Detail extends Component {
                   onClear=${(id) => this.clearAlarm(id)}
                   onDeclared=${() => this.props.onChanged()} />
 
-      <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
-
+      ${/* **The decision precedes the analysis** (v0.19.0): judging 1 051 alarms meant scrolling
+            past the member table and the score breakdown to reach the buttons. */ null}
       ${editable && detail.status === "new" ? html`<div class="fb">
         <button type="button" disabled=${this.state.sending} title=${PROMOTE_TITLE}
                 onClick=${() => this.promote()}>
@@ -281,6 +281,8 @@ export class Detail extends Component {
         ${restructurable ? html`<button type="button" disabled=${this.state.sending}
                 onClick=${() => this.close()}>Close situation</button>` : null}
       </div>` : null}
+
+      <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
 
       ${editable && grouping && restructurable ? html`<${Restructure}
           sid=${sid} marked=${this.state.marked} post=${post}
