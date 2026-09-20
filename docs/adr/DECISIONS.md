@@ -4233,3 +4233,181 @@ From this release an entry is about six lines: decision, reason, release.*
   own disposition says the fix is one line in `chartdata.js` that moves every chart in the console,
   so it belongs in a commit with the pins that move with it — not in a release whose claim is that
   one route moved.
+
+## 349. A class holds one raise/clear role for good (v0.18.0, F134)
+
+- **The defect**: `ClearPairLearner.register` guarded only the orientation it was writing — *is
+  this class already a raise? is that one already a clear?* — so an alternation beginning with the
+  **clear** class registered the inverse of the shipped `linkDown → linkUp` seed. `_process`
+  consults `clear_to_raise` before anything else, so every subsequent `linkDown` was dispatched to
+  `_handle_clear` and no alarm was raised for that link again. Measured live: eight traps ending
+  `linkDown`, **0 active alarms**.
+- **The decision**: a class that already holds either role may not be given the other, ever. A pair
+  is a statement about which of two classes turns an alarm ON and the appliance cannot hold both
+  answers; registering the inverse does not add information, it **deletes an alarm**.
+- **Why not resolve the contradiction instead**: on load, a stored pair present in both directions
+  is **dropped**, not adjudicated. Picking a winner means guessing which of two contradictory rows
+  was right, and guessing wrong reinstates the defect silently. Dropped means the two classes are
+  ordinary alarms again — the raise is visible — until `CLEAR_PAIR_SEEDS` or two clean alternations
+  re-establish the pair. An integrity warning says so.
+- **The control**: `test_an_unrelated_pair_is_still_learned_after_one_is_known`. A guard that
+  refused to learn anything would satisfy the fix and destroy the feature.
+
+## 350. Learned cross-element affinity is withheld across enterprise subtrees (v0.18.0, F76)
+
+- **The decision**: when two alarms are on different network elements *and* their trap OIDs are in
+  different enterprise subtrees (the first seven dot-components), the `entity_affinity` term
+  contributes 0. Same-element pairs are untouched — `E` is structural there, not learned — and
+  class affinity is never withheld.
+- **Why not a threshold, and why not a bridge count**: both were measured and neither works. The
+  seven cross-incident links in `dual_incident` scored 0.5857 to 0.7243 against twenty-five
+  within-incident links at 0.6161 to 0.7684 — **overlapping**, with one pair either side of the
+  boundary at 0.7134 and 0.7131. And the two incidents were joined by **seven** edges, not the one
+  weak bridge F76 describes, so no rule about how many links a merge needs would have separated
+  them either. Measuring is what found this; the expected fix does not exist.
+- **Why this is a prior and not a taxonomy**: `E` claims *"these two elements go together"*, and
+  F61 measured that claim to cost six alarms. The subtree relation is independent evidence about
+  whether the two alarms are the same kind of thing at all. Leaving class affinity ungated is what
+  keeps *"structure emerges from the stream"* true across vendors: a pair that genuinely recurs
+  accumulates `A` and links on it.
+- **Why now**: `same_oid_root` was registered in `PREREGISTRATION-0.9.0.md` §2.3 in **v0.9.0** and
+  went unimplemented for nine releases for one recorded reason — it needed an edit to
+  `correlate.py`, whose bytes were pinned. The v0.18.0 brief withdrew that pin by name.
+- **Measured, whole corpus**: `dual_incident` `pairwise_f1` 0.6364 → 1.0000, `ari` 0.0000 →
+  1.0000, `over_merge_rate` 1.0000 → 0.0000. The other nine scenarios do not move on any metric;
+  `under_merge_rate` stays 0.0000 on all ten; corpus `over_merge_rate` 0.0312 → 0.0000. Gating the
+  class term as well was measured and changes nothing further, so the narrower gate ships.
+- **Declared**: this is a correlation behaviour change. `make eval`'s stdout hash moves
+  `c2e8a0ce…` → `c75b42aa…` (the intermediate `ecab6c45…`, before the baseline was re-cut, is recorded here because the printed table carries the baseline's own numbers, so the re-cut moves the hash a second time), the baseline is re-cut with its reason, and
+  `tests/test_eval.py::DECLARED_DIVERGENCES` records `dual_incident` as a deliberate departure
+  from the v0.2.0 parity baseline with a control asserting it is a real one.
+- **The limitation**: no corpus scenario has a ground-truth incident spanning two subtrees on
+  different elements, so the corpus cannot price this gate. The nearest measurement — thirty
+  recurrences of one genuine cross-vendor pair yielding `entity_affinity 0.0000` and a total of
+  0.4652 against a 0.5 threshold — says there is no such capability to lose today. The missing
+  scenario is recorded as a gap, not argued away.
+
+## 351. The champion is measured, and the measurement is not evidence (v0.18.0, Part II)
+
+- **The gap**: the appliance could report on a challenger, on the feedback corpus and on the
+  promotion gate, and could say nothing about the scorer that was running. No per-decision record,
+  no score distribution, no count of links made and refused, no drift signal.
+- **The decision**: `engine/correlate/monitor.py` counts the champion's own decisions as it makes
+  them and `GET /api/correlation` serves them, lifetime and over the last 500 activations.
+- **On screen it is one line, not a screen, and that is a correction.** This shipped first as a
+  whole view in the Operations group. The maintainer's response is the decision: *"this
+  correlation page is not necessary … the user doesn't want to know this information; they only
+  want to know the result — whether the events are well correlated … it should be very compact,
+  meaning these metrics only appear if the user clicks."* Situations already explains *this*
+  grouping through `parts/why.js`; what was missing was whether the scorer producing it is
+  currently deciding well. So the surface is one sentence above the situation list, with the
+  detail not rendered at all until it is opened, and the whole view is deleted.
+- **The verdict is derived and its rule is in the sentence it returns.** Two signals — the share
+  of decisions within 0.05 of the threshold, and how far the recent accept rate has moved from
+  the lifetime one — with loose bands, because this is a "look here" marker and not a gate.
+- **In memory, never persisted**, and that is the honest shape rather than a shortcut: the caption
+  can then say *"since this appliance started"* and mean it. A stored history would be a second
+  thing to keep in step with the decisions it describes.
+- **It is not evidence, structurally**: it writes nothing, reaches no promotion path, and the
+  screen offers no control that records an opinion. Only a human gesture is evidence; measuring
+  the champion is not labelling it.
+- **Two horizons, because one number cannot answer *"is this normal?"***. The difference between
+  them is the only drift signal that needs no stored history.
+- **It earned its place immediately**: on four replayed scenarios, learned entity affinity carried
+  **518 of 520** accepted links — F58's arithmetic, visible in the product for the first time.
+- **Cost**: one call per activation, under the batch lock, over pairs the correlator already
+  evaluated. `datagram_received` never reaches it, and
+  `test_the_engine_holds_no_monitoring_logic` pays for the 21-line ceiling raise by asserting that
+  every counter lives in the monitor.
+
+## 352. The trap path's bytes are unpinned; its behaviour is asserted instead (v0.18.0)
+
+- **What went**: `TRAP_PATH_HASHES`, `TRAP_PATH_BODY_HASHES`, their two tests and the shared
+  import-stripping helper — 173 lines pinning five modules against v0.13.0.
+- **What they were protecting**: the ingest path from being edited casually by a release with no
+  business in it. Right while each release had a narrow theme it could be held to; the v0.18.0
+  brief withdraws it in terms — *"its bytes are no longer frozen"*.
+- **Why a hash was the wrong instrument anyway**: it could not distinguish a comment fix, an
+  import reordering and a blocking `open()` on the per-packet path. All three were one event, and
+  the remedy for all three was "recompute the hash" — which this file already says of
+  `SRC_TREE_DIGEST` is how a pin absorbs whatever came with the change.
+- **What replaces it**: a guard that reads `receiver.datagram_received`'s AST and fails on an
+  `await`, an `async with`, a lock acquisition or an I/O call, plus
+  `test_the_hot_path_guard_can_actually_fail`, which constructs each offence and requires it to be
+  reported. This is not a new self-imposed rule: it is the one constraint the brief keeps, written
+  as a test for the first time. *"Ingestion is sacred"* was a sentence in a document and a hash of
+  a file, and no test anywhere checked that the path does not block.
+
+## 353. Class affinity may not link two elements the appliance knows nothing about (v0.19.0)
+
+- **The measurement**: 70 independent card failures, four vendors, one situation holding all 140
+  alarms; 492 of its 650 links carried by class affinity, 580 of them between different devices.
+  F138 has the numbers.
+- **The rule**: when the two alarms are on different network elements **and** `E` is exactly zero,
+  the class term is withheld. `E > 0` means the pair cleared `MIN_EDGE_N` — the appliance has
+  watched those two elements together enough times to trust the edge — and from there class
+  affinity applies in full.
+- **Why this is not a rule against cross-element correlation**: it closes only where the appliance
+  has learned *nothing at all* connecting the two elements, which is where it would otherwise be
+  inferring a relationship between devices from the shape of their alarms. `docs/correlation.md`
+  already claimed this behaviour — *"two alarms group only when they are on the same network
+  element and within about 21 seconds"* — which was true at cold start and stopped being true the
+  moment `A` learned anything. The doc described the first hour; this makes it describe every one.
+- **What it cost**: nothing measurable. All ten corpus scenarios are byte-identical on every
+  metric, before and after.
+- **Why v0.18.0 did not do it**: it measured exactly this and found it changed nothing, on a
+  corpus whose scenarios have two to four elements. The gate's cost and its benefit are both
+  invisible below about a dozen elements, and `docs/plans/releases.md` had already recorded that
+  the corpus contains no scenario able to price it. Running an estate priced it.
+
+## 354. The console may register a fit this appliance made; it still may not assert a model (v0.19.0)
+
+- **What changed**: `POST /api/models/register` turns a `challenger_run` the appliance itself
+  fitted into a `model_version`. Until now the only way was the CLI.
+- **The ground that kept it CLI-only**: *the thing that could put a new model in front of your
+  traffic must not be reachable from the network.* That is honoured rather than set aside. **The
+  body names a run id and nothing else** — no coefficients, no kind, no contract version — so a
+  request cannot introduce a model this appliance did not fit. The parameters are read out of its
+  own row. It is the construction `POST /api/promotion` already uses for its verdict, one table
+  earlier, and `ModelRegisterIn` enforces it by *not having the fields* rather than by ignoring
+  them.
+- **What did not change**: promotion. Registering is not promoting, the judge still re-derives
+  every floor, the power condition, the sealed holdout and the verdict, and an admin's click is
+  the human gesture. The CLI path stays for a model fitted elsewhere, and that one is still not
+  reachable from the network — which is the part of the posture doing the work.
+- **Why it was worth doing**: the operator had no route from *"I have judged two hundred
+  groupings"* to *"a model is deciding"* that did not require shell access to the appliance. A
+  security posture that can only be satisfied by giving people a shell is not the posture anybody
+  wanted.
+
+## 355. The loss curve is recorded, so the screen that said it could not be drawn goes (v0.19.0)
+
+- **What was there**: the Judge screen carried a heading reading *"Not drawn, because nothing
+  measures it"* over a paragraph explaining that `challenger_run` keeps `iterations` as a count and
+  no per-iteration trace. True, and an answer to the wrong question.
+- **What replaced it**: `training.fit` records `log_loss` every `_TRACE_STRIDE` iterations plus a
+  final point at the coefficients that were kept, migration `0017` stores it, and the Overview
+  draws it. On a separable fixture the curve runs 0.693 — `ln 2`, the coin-flip baseline — down to
+  0.061 over 21 points, monotonically.
+- **The stride is why it is affordable**: `log_loss` is a second pass over every training row, so
+  recording it each iteration would double a fit. `TRACE_POINTS` points regardless of
+  `ITERATIONS` bounds the extra work, and the stride is arithmetic on two constants, so two runs
+  still produce byte-identical coefficients **and** byte-identical traces. Determinism is the
+  property this module is built around and a diagnostic does not get to spend it.
+- **Old rows are `NULL`, not back-filled.** Those fits happened and nobody recorded their
+  intermediate states; inventing a curve for them would be inventing the release's own evidence.
+
+## 356. The evidence bars are counted live, behind a marker, not read off the last training run (v0.19.0)
+
+- **The question**: *"I confirmed a grouping — did that do anything?"* The first cut read the
+  counts off the newest `challenger_run`, which is written every `TRAIN_EVERY_TICKS` maintenance
+  ticks — five minutes. An operator judged a grouping, looked at the bar, and saw it unmoved.
+- **The second cut counted live** and cost 1.4 s per read under `store.lock`, which would have put
+  a second and a half of ingestion stall behind every operator who opened the console.
+- **What ships**: the census is computed by `corpus_stats` — the function `Shadow.train` calls,
+  over the same rows, in the same order, so there is still exactly one implementation of the rule
+  — and cached against a marker: the row count and highest id of the two tables a judgement
+  writes. Two aggregate queries the planner answers from indexes. Measured: **1 410 ms** cold,
+  **~3 ms** warm, and a fresh verdict moved `split_bags` from 5 to 6 on the very next read.
+- **Not a TTL**, deliberately: a TTL makes the bar lag the click by exactly the interval chosen,
+  which is the defect the card exists to disprove.

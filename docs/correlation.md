@@ -22,6 +22,39 @@ s = 0.3·e^(−Δt/30s)  +  0.35·A[class_i, class_j]  +  0.35·E[ne_i, ne_j]   
 | `0.35·A[i,j]` | **class affinity** | How often these two *trap types* have been seen together |
 | `0.35·E[i,j]` | **entity affinity** | How often these two *network elements* have been seen together |
 
+**One condition withholds the entity term** (v0.18.0). When the two alarms are on **different
+network elements** *and* their trap OIDs sit in **different enterprise subtrees** — the first seven
+dot-components, `1.3.6.1.4.1.<enterprise>` — the learned cross-element affinity contributes 0 and
+the link must be carried by time and class affinity alone.
+
+The reason is [F76](findings.md#f76--a-corpus-scenario-fails-its-own-stated-requirement-completely-and-the-aggregate-hides-it):
+`E` means *"these two elements go together"*, and six ordinary alarms are enough to establish it
+(F61). Two vendors' unrelated alarms inside one window are co-occurrence without relatedness, and
+that combination merged two entirely separate incidents in the shipped corpus for three releases.
+**No MIB is consulted** — the enterprise arc is arithmetic on the identifier the trap carried, which
+is the same opaque token the appliance already keys on. **Class affinity is not withheld**, so two
+trap types that genuinely do recur together across vendors keep a route to linking.
+
+**A second condition withholds the class term** (v0.19.0). When the two alarms are on
+**different network elements** *and* the learned entity affinity between them is **exactly zero** —
+no relationship established at all, the pair never having cleared `MIN_EDGE_N` — the class term
+contributes 0 and only the temporal term remains. Since that caps at `w_t` (0.30), such a pair
+cannot link.
+
+The reason is [F138](findings.md#f138--seventy-independent-failures-became-one-situation-and-class-affinity-did-it):
+`A` means *"these two trap types go together"* and says **nothing about which device**. In an
+estate where every element raises the same two classes, `A` climbs until any two of those alarms
+anywhere clear the threshold on time alone — seventy independent card failures measured as **one**
+situation of 140 alarms, 492 of its 650 links carried by class affinity. The cold-start rule this
+page states below — *two alarms group only when they are on the same network element and within
+about 21 seconds* — was true in the first hour and stopped being true the moment `A` learned
+anything. This makes it true at every hour. **The gate opens the moment the two elements have any
+learned relationship at all**, so genuine cross-element correlation is untouched.
+
+On screen both terms show their gated values, so the three printed numbers still sum to the score
+exactly. How many pairs were refused is in the correlation-health panel on **Situations**, under
+*"how it decided"*.
+
 A **situation** is a connected component of the resulting link graph. Within one, learned temporal
 precedence flags the probable root cause.
 
@@ -147,9 +180,13 @@ answers.
 
 ## Nothing is promoted without evidence
 
-Registering a model is not promoting one, and there is **no HTTP route that creates a model
-version** — the thing that could put a new model in front of your traffic is not reachable from the
-network.
+Registering a model is not promoting one, and **no request can assert a model**.
+
+Since v0.19.0 an admin can register **a fit this appliance made itself**, from the Overview or with
+`POST /api/models/register`. That body names a `challenger_run_id` and nothing else — no
+coefficients, no kind, no contract version — so the parameters come out of the appliance's own row
+and a request cannot introduce a model it did not fit. A model trained **somewhere else** still
+arrives only by the CLI, which is not reachable from the network:
 
 ```sh
 python -m netcorenoc promotion register --kind tree --params "$(cat model.json)"

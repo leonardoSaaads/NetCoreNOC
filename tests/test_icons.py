@@ -96,7 +96,9 @@ def test_every_view_in_the_registry_names_an_icon() -> None:
     known = defined()
     for view_id, icon in ids:
         assert icon in known, f"view {view_id!r} names icon {icon!r}, which is not in the set"
-    assert len({icon for _v, icon in ids}) == 17, "two views share an icon; they are not the same"
+    assert len({icon for _v, icon in ids}) == 17, (
+        "two views share an icon; they are not the same screen"
+    )
 
 
 def test_the_family_is_one_geometry() -> None:

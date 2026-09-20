@@ -6,9 +6,12 @@
  * The maintainer asked for loss curves, residuals and partitions — *"we are completely in the
  * dark"* — and Phase 0 answered three of those with **cannot be drawn**, by execution:
  *
- *   * **a loss curve.** `challenger_run` has 24 columns and not one holds a per-iteration loss, a
- *     residual or a convergence trace. `iterations` is a count; `learning_rate` and `fit_seconds`
- *     are a duration each.
+ *   * **a loss curve.** `challenger_run` had 24 columns and not one held a per-iteration loss, a
+ *     residual or a convergence trace. **v0.19.0 changed that** rather than restating it:
+ *     `training.fit` records `log_loss` at a fixed stride, migration `0017` stores the trace, and
+ *     the curve is drawn on the Overview's model line. This screen no longer claims it cannot be
+ *     — the finding was right, and the answer to a correct finding is the measurement, not a
+ *     better paragraph about its absence.
  *   * **a residual distribution.** The only label in the schema is in `feedback` and reaching it
  *     needs the join; `incumbent_linked` is a comparison basis and **never a target** (`0009`, and
  *     `PREREGISTRATION-0.16.0.md` §1). What *could* be drawn is the score distribution of
@@ -42,7 +45,8 @@
  */
 
 import { html } from "../../dom.js";
-import { Bars, Series } from "../../charts.js";
+import { Series } from "../../charts.js";
+import { Bars } from "../../compare.js";
 import { buckets, spanText, tally } from "../../chartdata.js";
 import { plural } from "../../format.js";
 import { SectionHeading } from "../../widgets.js";
@@ -225,10 +229,13 @@ function Triggers({ decisions }) {
  */
 function Gap() {
   return html`<div class="unavailable">
+    ${/* **The loss curve left this list in v0.19.0, because it stopped being true.**
+          `training.fit` records `log_loss` at a fixed stride and migration `0017` stores it, so
+          the curve is drawn — on the Overview's model line, where the operator asking "is it
+          learning?" already is. A screen that went on declaring the measurement impossible after
+          the release that made it would be the same dishonesty in the other direction. The two
+          below are unchanged and still absent. */ null}
     <h4>Not drawn, because nothing measures it</h4>
-    <p class="hint">A <b>loss curve</b> — <code class="mono">challenger_run</code> records${" "}
-      <code class="mono">iterations</code> as a count and keeps no per-iteration loss, residual or
-      convergence trace.</p>
     <p class="hint">A <b>residual distribution</b> — the only label in this schema is in${" "}
       <code class="mono">feedback</code>, and <code class="mono">incumbent_linked</code> is a
       comparison basis and never a target. The sampled opinions that could show a score
@@ -242,6 +249,8 @@ function Gap() {
       deployment may change it, so the rate would have to be read from${" "}
       <code class="mono">challenger_run.sample_rate</code> rather than assumed.</p>
     <p class="hint">What each would need is written down in${" "}
-      <code class="mono">docs/plans/releases.md</code>, with its table and its columns.</p>
+      <code class="mono">docs/plans/releases.md</code>, with its table and its columns. The${" "}
+      <b>loss curve</b> used to be on this list and is now on the <b>Overview</b>: the optimiser
+      records it, so there is a chart instead of a paragraph.</p>
   </div>`;
 }

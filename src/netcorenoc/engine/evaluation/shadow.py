@@ -31,6 +31,7 @@ widen a threshold around.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -154,10 +155,19 @@ class Shadow:
         emitted — never re-derived from the learner, whose masses have already moved by now, which
         is `capture._value_of`'s argument one module over.
 
-        `same_oid_root` is written as **0**: it is registered in the analysis plan and not
-        implemented, because `LinkFeatures` carries no trap OID and a feature that cannot be served
-        is a feature that guarantees skew. The column exists so a later release can populate it
-        without a migration; this release records honestly that it did not.
+        **`same_oid_root` is the pair's real value from v0.18.0** (F135). For nine releases this
+        wrote a hardcoded `0` — *"registered in the analysis plan and not implemented, because
+        `LinkFeatures` carries no trap OID"* — so every one of these rows asserted that the two
+        traps came from different enterprise subtrees, whatever they actually were. The column
+        was not empty, which would have been honest; it was **wrong**, which no reader could
+        tell. `WindowAlarm` now carries the root and `Correlator.features` computes the relation,
+        so the row records what the pair is.
+
+        An unknown root (either side constructed without one) still writes `0`, and that is the
+        one case where the old value happens to be right: `None` means *"not computed"*, the
+        column is `NOT NULL CHECK (same_oid_root IN (0, 1))`, and a `0` for an uncomputed pair is
+        the same "no" the schema can express. Rows written before this release are not corrected
+        — nothing can recover what they were — which is why this is a finding and not only a fix.
         """
         if not self.enabled or self.run_id is None:
             return
@@ -179,6 +189,11 @@ class Shadow:
                     ne_i=entry.device_id,
                     ne_j=other.device_id,
                     entity_affinity=_value_of(pair.result, "entity_affinity"),
+                    same_oid_root=(
+                        (entry.oid_root == other.oid_root)
+                        if (entry.oid_root and other.oid_root)
+                        else None
+                    ),
                 )
                 started = time.perf_counter_ns()
                 verdict = self.scorer.score(features)
@@ -193,7 +208,7 @@ class Shadow:
                         delta_t,
                         features.class_affinity,
                         features.entity_affinity,
-                        0,  # same_oid_root: registered, not implemented — see the docstring
+                        1 if features.same_oid_root else 0,  # None (unknown) records as 0
                         sigmoid(verdict.score),
                         1 if verdict.linked else 0,
                         1 if pair.result.linked else 0,
@@ -293,6 +308,13 @@ class Shadow:
                 document["iterations"] = outcomes["A"]["iterations"]
                 document["learning_rate"] = outcomes["A"]["learning_rate"]
                 document["fit_seconds"] = outcomes["A"]["fit_seconds"]
+                # Policy A's curve, because policy A's coefficients are the ones that score. B is
+                # fitted and reported alongside, and plotting a curve from the model that is not
+                # running would be a chart of something nobody uses.
+                document["loss_trace"] = json.dumps(
+                    outcomes["A"]["loss_trace"], separators=(",", ":")
+                )
+                document["loss_trace_stride"] = outcomes["A"]["loss_trace_stride"]
                 # The ACTIVE-IN-SHADOW model is policy A's. B is fitted and reported and is never
                 # the one that scores, because the two must not silently swap between runs.
                 self.scorer = LogisticScorer(chosen)

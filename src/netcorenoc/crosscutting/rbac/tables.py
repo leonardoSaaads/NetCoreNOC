@@ -51,6 +51,17 @@ PERMISSIONS: dict[str, str] = {
     # v0.6.0: the active scorer id, its parameters, and the per-term contributions EXPLAIN
     # grouping — they are not a secret, so every authenticated role may read them.
     "scorer.read": "viewer",
+    # v0.18.0 (Part II): how the RUNNING scorer is behaving — accept rate, score distribution,
+    # which term is carrying the links. Same class and same reasoning as `scorer.read`: it
+    # explains grouping, it is aggregate, and it names no network element. An operator who may
+    # see the formula may see whether it is working.
+    "correlation.read": "viewer",
+    # Whether the models are learning, and how far the evidence is from the registered
+    # floors. Same class again: counts of the operator's own judgements and a loss curve
+    # over them, naming no network element. Registering one of this appliance's own fits is
+    # a different act and is admin — it creates an artefact a promotion could later name.
+    "model.read": "viewer",
+    "model.register": "admin",
     # operate (editor+)
     "feedback.write": "editor",
     "label.write": "editor",
@@ -164,6 +175,9 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/dataset/retention"): "config.read",
     ("POST", "/api/dataset/retention"): "config.write",
     ("GET", "/api/scorer"): "scorer.read",
+    ("GET", "/api/correlation"): "correlation.read",
+    ("GET", "/api/models"): "model.read",
+    ("POST", "/api/models/register"): "model.register",
     ("POST", "/api/scorer/preview"): "scorer.preview",
     ("POST", "/api/scorer"): "scorer.write",
     ("POST", "/api/scorer/rollback"): "scorer.write",
@@ -258,6 +272,18 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     # grouping decision and name no network element, so every authenticated role reads the same
     # numbers (SCOPE-0.6 §2).
     ("GET", "/api/scorer"): "unscoped",
+    # Counters over the scorer's own decisions. Aggregate over the whole estate by construction —
+    # correlation learns across it — and naming no element, so scoping it would be scoping a
+    # statement about arithmetic, exactly as for `/api/scorer` above. **It is an observability
+    # surface and never evidence**: it is read-only, it is in memory, and no promotion path
+    # reads it.
+    ("GET", "/api/correlation"): "unscoped",
+    # The models: floors, counts and a loss curve. Unscoped for the third time for the same
+    # reason — arithmetic and tallies of judgements, no element named. The register POST is
+    # `admin_only` because its capability's minimum role is `admin`; the posture is DERIVED
+    # from PERMISSIONS above and never asserted here independently (DECISIONS #58, #80).
+    ("GET", "/api/models"): "unscoped",
+    ("POST", "/api/models/register"): "admin_only",
     # Same reasoning one release on: a promotion decision is about the SCORER, not about a network
     # element, and its row names no NE. Scoping the READ would be scoping a statement about
     # arithmetic. The WRITE is `admin_only` because its capability's minimum role is `admin` — the

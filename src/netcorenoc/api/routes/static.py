@@ -55,6 +55,7 @@ _UI_MODULES = (
     # the axis reads, what span the data covers — kept separate because it is pure and is driven
     # directly by tests with no DOM.
     "app/charts.js",
+    "app/compare.js",
     "app/chartdata.js",
     # v0.15.3: `icons.js` is the drawn icon family that replaces seventeen Unicode glyphs (#236);
     # `password.js` is the confirmation, length meter and reveal shared by the sign-in card and the
@@ -105,6 +106,7 @@ _UI_MODULES = (
     # v0.16.1: the situation card, split out when the server-side search pushed
     # `views/situations.js` over the module-graph guard (DECISIONS #265).
     "app/views/parts/card.js",
+    "app/views/parts/correlation.js",
     # v0.16.4: the judgement surface, split out when the state-dependent action surface pushed
     # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
     "app/views/parts/judge.js",
@@ -124,6 +126,10 @@ _UI_MODULES = (
     # v0.16.7: the band this release exists for — active alarms by severity, and the count
     # the appliance has NOT been able to place (DECISIONS #312).
     "app/views/parts/severity.js",
+    # v0.19.0: the Overview's model line — who is deciding, how far the operator's own judgements
+    # are from training one, and the loss curve once a fit exists. One line and one bar on the
+    # face of it; everything else behind a click.
+    "app/views/parts/models.js",
     # v0.16.6: the Graph screen's second projection and its two derived tables — everything on
     # that screen a test executes — split out of `views/graph.js` at the same ceiling
     # (DECISIONS #307, #310).

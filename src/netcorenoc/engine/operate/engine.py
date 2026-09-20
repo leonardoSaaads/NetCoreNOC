@@ -45,7 +45,9 @@ from dataclasses import dataclass, field
 from netcorenoc.engine.correlate import severity
 from netcorenoc.engine.correlate.correlate import Correlator, ScoredLink, WindowAlarm
 from netcorenoc.engine.correlate.learn import STORM_ALARMS, STORM_DAMPING, Learner
+from netcorenoc.engine.correlate.monitor import CorrelationMonitor
 from netcorenoc.engine.correlate.rootcause import Member, Precedence
+from netcorenoc.engine.correlate.scorer_contract import oid_root
 from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler
 from netcorenoc.engine.dataset import capture as capture_mod
 from netcorenoc.engine.dataset.capture import Capture, LabelContext, RetentionPolicy
@@ -147,6 +149,10 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # Shadow mode (v0.9.0). Call sites only; every decision is `netcorenoc.shadow`. It scores
         # a sample and buffers — it writes nothing here, decides nothing, and reaches no situation.
         self.shadow = Shadow()
+        # Correlation observability (v0.18.0, Part II). Counters over the CHAMPION's own
+        # decisions — the thing nothing measured. In memory, aggregate, never persisted and
+        # never evidence: `GET /api/correlation` reads it and no promotion path can.
+        self.monitor = CorrelationMonitor()
 
     def forget_situation(self, sid: int) -> None:
         """Drop in-memory membership after an operator manually closes a situation."""
@@ -288,7 +294,16 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             return
         if await self._is_flapping(item, instance, result.alarm_id):
             return
-        entry = WindowAlarm(result.alarm_id, class_id, device_id, item.ts, result.entity_id)
+        # `oid_root` is computed here, once per activation, not once per candidate pair — the
+        # pair-level question is a string comparison of two values already in hand (F135).
+        entry = WindowAlarm(
+            result.alarm_id,
+            class_id,
+            device_id,
+            item.ts,
+            result.entity_id,
+            oid_root(item.trap_oid),
+        )
         outcome = self.correlator.process(entry, self.learner)
         recent = outcome.considered[-LEARN_CAP:]
         item_pair = (class_id, device_id)
@@ -301,7 +316,11 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             self.precedence.observe(
                 (candidate.class_id, candidate.device_id), item_pair, lead_weight
             )
-        await self._assign_situation(entry, outcome.links)
+        merged = await self._assign_situation(entry, outcome.links)
+        # **Observability, not evidence** (v0.18.0, Part II). Counters over the decisions the
+        # champion just made, in memory, read by `GET /api/correlation` and drawn by the console.
+        # It writes nothing and reaches no promotion path. `observe` never raises.
+        self.monitor.observe(entry, outcome, merged)
         # After `_assign_situation`, so the situation id is where the alarm landed, and last on
         # this path so a capture failure precedes no decision. `capture.record` never raises.
         await self.capture.record(
@@ -450,14 +469,21 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         if len(members) > 1:
             self.learner.learn_epoch([(m.class_id, m.device_id) for m in members])
 
-    async def _assign_situation(self, entry: WindowAlarm, links: list[ScoredLink]) -> None:
-        """Connected components: join the linked situations, merging when links bridge."""
+    async def _assign_situation(self, entry: WindowAlarm, links: list[ScoredLink]) -> int:
+        """Connected components: join the linked situations, merging when links bridge.
+
+        Returns **how many existing situations this activation fused** — 0 when it started one
+        or joined exactly one, which is the ordinary case. The correlator cannot know this (it
+        scores pairs; membership lives here), and a rising merge rate is the over-merge
+        signature F76 turned out to be, so the number goes to the monitor (v0.18.0, Part II).
+        """
         sids = {
             self.sit_of[link.other.alarm_id] for link in links if link.other.alarm_id in self.sit_of
         }
         own = self.sit_of.get(entry.alarm_id)
         if own is not None:
             sids.add(own)
+        merged = max(0, len(sids) - 1)
         if not sids:
             # Provenance (v0.6.0): the situation records the scoring configuration that formed
             # it. Written here — engine side, under the batch lock — never on the datagram path.
@@ -491,6 +517,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         root = self.precedence.pick_root(self.members[sid])
         if root is not None:
             await self.store.set_root(sid, root)
+        return merged
 
     async def apply_feedback(
         self,

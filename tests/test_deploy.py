@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import dockerignore
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -111,6 +113,83 @@ def test_dockerignore_excludes_secrets_and_dev_trees() -> None:
     di = _read(".dockerignore")
     for excluded in (".git", ".env", "*.db", "tests/", ".venv"):
         assert excluded in di, f".dockerignore must exclude {excluded!r} from the build context"
+
+
+# --- F130: a COPY source the ignore file removes ------------------------------------------------
+
+
+def _dockerfiles() -> list[Path]:
+    """Every Dockerfile in the tree, **derived by walking it** (Appendix B).
+
+    A list written here is a list that goes stale the day someone adds an image, which is the
+    shape of F92/F98/F114/F121. `.git` is skipped because it is not source.
+    """
+    found = sorted(
+        p
+        for p in REPO_ROOT.rglob("Dockerfile*")
+        if ".git" not in p.parts and p.is_file() and not p.name.endswith(".dockerignore")
+    )
+    assert found, "no Dockerfile found, so this guard is asserting nothing"
+    return found
+
+
+def test_every_dockerfile_copy_source_survives_the_ignore_file() -> None:
+    """**The check v0.17.0 did not have, and the one `docker compose config` cannot be** (F130).
+
+    `testbed/Dockerfile.ne` copies `tools/trap_replay.py`, `testbed/ne` and `testbed/scenarios`;
+    the root `.dockerignore` excluded `tools/` and `testbed/`. Every one of the image's three
+    sources was therefore absent from the build context and `docker compose up --build` failed
+    with ``"/testbed/scenarios": not found``. The lab's compose file *was* validated before
+    release — with `docker compose config`, which parses YAML and never opens `.dockerignore`.
+
+    **This needs no daemon and no registry**, which is the point: the environments this project
+    is built in have had neither, so a guard that shells out to `docker build` is a guard that
+    skips, and a skipped guard is exactly how the unbuildable image shipped.
+
+    Both halves are derived — the Dockerfiles by walking the tree, the sources by parsing their
+    own `COPY`/`ADD` lines — so an image or a source added later is covered without editing this.
+    """
+    ignore = dockerignore.DockerIgnore.parse(_read(".dockerignore"))
+    broken: list[str] = []
+    checked = 0
+    for dockerfile in _dockerfiles():
+        rel = dockerfile.relative_to(REPO_ROOT)
+        for source in dockerignore.copy_sources(dockerfile.read_text(encoding="utf-8")):
+            checked += 1
+            if ignore.excluded(source):
+                broken.append(f"{rel} COPY {source} -> {ignore.explain(source)}")
+    assert checked, "no COPY source was examined; the Dockerfile parser found nothing"
+    assert not broken, (
+        "a Dockerfile copies a path the ignore file removes from the build context, so the "
+        "image cannot be built:\n  " + "\n  ".join(broken)
+    )
+
+
+def test_the_copy_source_guard_can_actually_fail() -> None:
+    """The guard above is green; this is what makes that mean something.
+
+    An assertion over a tree that happens to be correct proves nothing about the assertion. The
+    exact pre-fix state — `testbed/` excluded with nothing re-including it — is reconstructed
+    here and must be reported as broken.
+    """
+    ignore = dockerignore.DockerIgnore.parse("testbed/\ntools/\n")
+    assert ignore.excluded("testbed/scenarios")
+    assert ignore.excluded("tools/trap_replay.py")
+    assert "EXCLUDED by 'testbed/'" in ignore.explain("testbed/ne/agent.py")
+
+
+def test_the_ignore_matcher_follows_dockers_ordering_and_wildcard_rules() -> None:
+    """The matcher's own rules, since the guard is only as good as these.
+
+    Last match wins, a parent's exclusion reaches its children, `*` stays inside one path
+    component and `**` crosses them.
+    """
+    assert not dockerignore.DockerIgnore.parse("a/\n!a/b").excluded("a/b/c.txt")
+    assert dockerignore.DockerIgnore.parse("!a/b\na/").excluded("a/b/c.txt"), "order matters"
+    assert dockerignore.DockerIgnore.parse("*.db").excluded("x.db")
+    assert not dockerignore.DockerIgnore.parse("*.db").excluded("sub/x.db"), "* must not cross /"
+    assert dockerignore.DockerIgnore.parse("**/*.db").excluded("sub/x.db")
+    assert not dockerignore.DockerIgnore.parse("# a comment\n\n").excluded("anything")
 
 
 def test_notice_and_third_party_license_present() -> None:

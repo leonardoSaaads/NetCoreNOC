@@ -20,6 +20,8 @@ import { html, Component } from "../dom.js";
 import { Empty, SectionHeading, DataTable, Badge } from "../widgets.js";
 import { plural, relative, timeTitle } from "../format.js";
 import * as store from "../store.js";
+import { can } from "../session.js";
+import { ModelHealth } from "./parts/models.js";
 
 export class Labelling extends Component {
   constructor(props) {
@@ -84,15 +86,22 @@ export class Labelling extends Component {
           meanwhile=${"Singleton situations need no judgement — there is no pair in them to be " +
                       "right or wrong about."} />`}
 
+      ${/* **v0.19.0: this section used to say "Deliberately not computed here" and point at a
+            `make` target needing shell access to the appliance.** The objection it rested on was
+            right — a second implementation of the corpus counts would be a second source of truth
+            for the figure the whole evidence chain rests on — but the conclusion was not: the
+            answer is to call the *same* function, not to refuse to answer. The card below reads
+            `corpus_stats`, which is the function `Shadow.train` calls, over the same rows. What
+            genuinely stays offline is named underneath, and that part is unchanged. */ null}
       <${SectionHeading} title="Where the corpus stands"
-        hint=${"Deliberately not computed here."} />
-      <p class="structural-note">Whether the corpus has reached the pre-registered floors, what
-        the minimum detectable difference is, and how far off the projection is are all answered
-        by <code class="mono">make shadow-report</code>. It runs offline over frozen inputs and a
-        test compares its output byte-for-byte. <b>This console displays such numbers and never
-        recomputes them</b>: a second implementation of the shadow verdict would be a second
-        source of truth for the figure the whole evidence chain rests on. That report has no HTTP
-        route, so running it needs shell access to the appliance.</p>
+        hint=${"What your judgements have added up to, and what a model still needs."} />
+      <${ModelHealth} admin=${can("model.register")} />
+      <p class="structural-note">The counts above come from the same census the challenger trains
+        against — this console runs no second implementation of them. What is still answered only
+        by <code class="mono">make shadow-report</code> is the <b>verdict</b>: the minimum
+        detectable difference at your corpus's <i>n</i>, and how far off the projection is. That
+        report runs offline over frozen inputs, a test compares its output byte-for-byte, and it
+        has no HTTP route — so running it needs shell access to the appliance.</p>
       <p class="hint">${plural(all.length, "situation")} are currently loaded.</p>
     </div>`;
   }

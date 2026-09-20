@@ -127,6 +127,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/format.js",
         # v0.16.6: the chart vocabulary and the arithmetic behind it (DECISIONS #305, #307).
         "/app/charts.js",
+        "/app/compare.js",
         "/app/chartdata.js",
         # v0.15.3: the drawn icon family (#236) and the shared password surface (V.2). Both are
         # fetched before any identity exists — the sign-in card imports them — so both are
@@ -173,6 +174,10 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # v0.16.1: the situation card, split out when the server-side search pushed
         # `views/situations.js` over the module-graph guard (DECISIONS #265).
         "/app/views/parts/card.js",
+        "/app/views/parts/correlation.js",
+        # v0.19.0: the Overview's model line. A static module like every other one — it resolves
+        # no identity; the two routes it calls do.
+        "/app/views/parts/models.js",
         # v0.16.4: the judgement surface, split out when the state-dependent action surface pushed
         # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
         "/app/views/parts/judge.js",

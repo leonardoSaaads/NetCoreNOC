@@ -297,17 +297,25 @@ def test_no_server_derivation_reaches_operator_name() -> None:
     server cannot tell a typed name from a pasted one — which is why the claim this release makes
     is about the *appliance*, and is checkable.
     """
+    # **The file, not the line** (v0.19.0). This pinned `store/situation_events.py:99` and went
+    # red when an unrelated SQL constant was added above the method — a guard failing for a reason
+    # it does not care about teaches people to update it without reading it, which is exactly how
+    # a real second writer would get waved through. The property is *one writer, and it is the
+    # rename route's*; the line it sits on is not part of it.
     writers = sorted(
         f"{path.relative_to(PKG)}:{lineno}"
         for path in PKG.rglob("*.py")
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
         if "operator_name" in line and ("UPDATE" in line or "INSERT" in line)
     )
-    assert writers == ["store/situation_events.py:99"], (
+    assert len(writers) == 1 and writers[0].startswith("store/situation_events.py:"), (
         f"more than one statement writes `operator_name`: {writers}. A model does not propose a "
         "name in this release, and the way that stays true is that there is one writer and it is "
         "the rename route's."
     )
+    # CONTROL: the scan really does find a writer, so the assertion above is not satisfiable by a
+    # search that matched nothing.
+    assert writers, "the scan found no writer at all, so it is measuring nothing"
 
 
 def test_the_derived_name_never_carries_an_operator_supplied_string() -> None:

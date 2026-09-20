@@ -127,3 +127,62 @@ def test_learner_ignores_constants_and_framing_varbinds() -> None:
     for state in ["down", "up", "down", "up"]:  # framing OIDs are skipped
         learner.observe(1, "eth-1", 7, [(known_oids.SNMP_TRAP_OID, state)])
     assert (7, known_oids.SNMP_TRAP_OID) not in learner.clear_value
+
+
+# --- F134: a flapping link went invisible, through the engine rather than the learner ----------
+
+LINK_DOWN = "1.3.6.1.6.3.1.1.5.3"
+LINK_UP = "1.3.6.1.6.3.1.1.5.4"
+
+
+def _link(oid: str, ts: float, port: str = "7") -> TrapEvent:
+    return TrapEvent(device=DEV, trap_oid=oid, instance=port, ts=ts, varbinds=[])
+
+
+async def test_a_flapping_link_is_still_reported_down_after_several_cycles(
+    store: Store,
+) -> None:
+    """**The defect an operator would have met first** (v0.18.0, F134), end to end.
+
+    `CLEAR_PAIR_SEEDS` ships `linkDown → linkUp`, and the alternation learner registered the
+    **inverse** of it as soon as a `(device, instance)` alternation began with `linkUp` — which
+    is the ordinary case for an appliance deployed while a link is already down, and for any
+    slot a third alarm class restarted. From that moment every `linkDown` trap was dispatched to
+    `_handle_clear` and no alarm was ever raised for it again.
+
+    Measured before the fix on a real appliance over UDP: eight traps ending in `linkDown`,
+    **0 active alarms**. The link was down and the console said the network was clean.
+
+    This drives the engine, not the learner, because the learner's state is only half the story:
+    what makes it a defect is the dispatch in `_process` that reads it.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    # The first trap is the recovery, then the link flaps and ends DOWN.
+    events = []
+    t = BASE
+    for _ in range(4):
+        events.append(_link(LINK_UP, t))
+        events.append(_link(LINK_DOWN, t + 1))
+        t += 10.0
+    await _process_all(engine, store, events)
+
+    assert await _status(store, "7") == "active", (
+        "the link is down and the appliance holds no active alarm for it: the linkDown trap was "
+        "dispatched as a clear (F134)"
+    )
+    down_class = await store.class_id(LINK_DOWN, BASE)
+    assert engine.learner.clears.clear_to_raise.get(down_class) is None, (
+        "linkDown is registered as a clear class; every future linkDown is swallowed"
+    )
+
+
+async def test_the_seeded_pair_still_clears_the_alarm_the_right_way_round(
+    store: Store,
+) -> None:
+    """The control. A guard that simply stopped learning pairs would pass the test above and
+    break the feature: `linkUp` must still clear the alarm `linkDown` raised."""
+    engine, _queue, _app = await authutil.make_env(store)
+    await _process_all(engine, store, [_link(LINK_DOWN, BASE)])
+    assert await _status(store, "7") == "active"
+    await _process_all(engine, store, [_link(LINK_UP, BASE + 1)])
+    assert await _status(store, "7") == "cleared"

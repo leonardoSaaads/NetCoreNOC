@@ -276,8 +276,14 @@ def test_the_series_means_each_bucket_and_keeps_a_hole_a_hole() -> None:
     """
     sampler = res.ResourceSampler(path="/anywhere")
     per = max(1, res.SAMPLES_KEPT // res.SERIES_POINTS)
-    for value in [10.0] * per + [None] * per + [20.0, 40.0] + [None] * (per - 2):
+    pattern = [10.0] * per + [None] * per + [20.0, 40.0] + [None] * (per - 2)
+    # **The ring is filled to capacity**, because that is when a bucket holds `per` readings.
+    # v0.19.0 made the bucket width follow the readings taken rather than the ring's capacity
+    # (F141), so on a partly-filled ring one reading is one bucket and there is no bucket for a
+    # hole to be in. The property under test is about the steady state, so the ring is put in it.
+    for value in pattern + [None] * (res.SAMPLES_KEPT - len(pattern)):
         sampler._cpu.append(value)
+    assert sampler._per_bucket() == per, "the ring is full, so buckets are the steady-state width"
     series = sampler._series(sampler._cpu)
     assert series[0] == 10.0, "a full bucket is the mean of its readings"
     assert series[1] is None, "a bucket with no reading must not become a zero"

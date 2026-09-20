@@ -49,7 +49,23 @@ import metrics  # noqa: E402
 import trap_replay  # noqa: E402  (v2c encoder, shared with the replay tool)
 
 CORPUS_DIR = HERE / "corpus"
-BASELINE = HERE / "baselines" / "v0.2.0.json"
+#: **The baseline `make eval` compares against, and the one `make eval-baseline` re-cuts.**
+#:
+#: v0.18.0 (F136) split this from `baselines/v0.2.0.json`, which it used to be. That one file was
+#: doing two incompatible jobs: `tests/test_eval.py` asserts of it that *"cold mode reproduces the
+#: v0.2.0 baseline"* and that it *"shows the v0.2.0 weaknesses v0.3.0 exists to fix"* — claims
+#: about a historical measurement — while `make eval-baseline` (v0.17.0, DECISIONS #324)
+#: **overwrites** it.
+#:
+#: The two could not both be true, and nothing noticed because no release had re-cut a baseline
+#: since the target was added. The first one that did — this one, repairing F76 — turned three
+#: tests red for the right reason. So the historical record keeps its name and its numbers, and
+#: the moving baseline gets its own file.
+BASELINE = HERE / "baselines" / "current.json"
+
+#: The v0.2.0 measurement, immutable. Read by the tests that describe what v0.3.0 improved on;
+#: never written by `--write-baseline`.
+BASELINE_V020 = HERE / "baselines" / "v0.2.0.json"
 
 #: Where a re-baseline is recorded (v0.17.0, DECISIONS #324). Beside the baselines it describes, so
 #: a reader who opens `eval/baselines/` finds the history of every cut without being told it exists.

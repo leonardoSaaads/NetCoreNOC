@@ -86,20 +86,20 @@ SETTLE_TIMEOUT_S = 30.0
 
 
 def _to_wire(ip: str) -> str:
-    """`203.0.113.4` -> `127.0.113.4`. **The transport rewrite, and its reason.**
+    """`203.0.113.4` -> `127.0.113.4`. **The transport rewrite, and where it now lives.**
 
     The corpus is addressed in TEST-NET-3, and a UDP source address must be *bindable*: this host
-    has no interface in `203.0.113.0/24`, so `sendto` from it fails and `tools/trap_replay.py`
-    suppresses that failure — right for a burst generator, and wrong here, because every device
-    would then arrive as `127.0.0.1` and four NEs would silently become one. Replacing only the
-    first octet keeps the last three, which are what distinguish the corpus's devices, and lands
-    inside the loopback block, which is bindable with no interface configuration.
+    has no interface in `203.0.113.0/24`, so `sendto` from it fails and every device would arrive
+    as `127.0.0.1`, four NEs silently becoming one.
 
-    It changes the transport and not the corpus. `test_the_transport_rewrite_is_a_bijection`
-    asserts the "silently become one" failure cannot happen, over the addresses this scenario
-    actually contains rather than by an argument about octets.
+    **v0.18.0: this is `trap_replay.loopback_alias`, not a copy of it (F128).** Until this release
+    the rewrite existed *here only*, so this file drove the scenario correctly while
+    `tools/trap_replay.py` — the command the README's quickstart prints and `make replay` runs —
+    collapsed the same four devices into one on every machine. The one test that drives this
+    scenario over a socket had already worked around the defect and therefore could not see it.
+    Delegating means the test exercises the tool's rule: if the tool regresses, this goes red.
     """
-    return "127." + ip.split(".", 1)[1]
+    return trap_replay.loopback_alias(ip)
 
 
 def _events() -> list[dict[str, Any]]:
@@ -128,20 +128,15 @@ def _free_port(kind: int) -> int:
 def _send_over_udp(target: tuple[str, int]) -> int:
     """Sixteen real SNMPv2c PDUs, from four bindable source addresses, **spread over time**.
 
-    The bind is allowed to fail loudly. `trap_replay.Sender` suppresses `OSError` because a burst
-    generator does not care which address its packets claim to come from; this does care, and a
-    silent fallback would produce a different network and an unexplainable result.
+    **Driven through `trap_replay.Sender`, which is the point (F128).** This used to manage its
+    own sockets precisely so it could let a bind failure raise, because the shipped `Sender`
+    suppressed it. Now the shipped `Sender` raises too, so the test can use the real thing — and
+    a future change that reintroduces the silent fallback fails here instead of being absorbed.
     """
-    sockets: dict[str, socket.socket] = {}
-    sent = 0
+    sender = trap_replay.Sender(target)
     started = time.monotonic()
     try:
         for event in _events():
-            wire = _to_wire(event["source"])
-            if wire not in sockets:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.bind((wire, 0))  # raises rather than falling back — see the docstring
-                sockets[wire] = sock
             wait = float(event["delay"]) - (time.monotonic() - started)
             if wait > 0:
                 time.sleep(wait)
@@ -151,11 +146,14 @@ def _send_over_udp(target: tuple[str, int]) -> int:
                 "public",
                 uptime_ticks=int((time.monotonic() - started) * 100),
             )
-            sockets[wire].sendto(payload, target)
-            sent += 1
+            sender.send(_to_wire(event["source"]), payload)
     finally:
-        for sock in sockets.values():
-            sock.close()
+        sent = sender.sent
+        assert sender.sources_used() == 4, (
+            f"{sender.sources_used()} source address(es) went on the wire, not 4: the sender "
+            "collapsed distinct devices, which is F128"
+        )
+        sender.close()
     return sent
 
 
@@ -278,24 +276,28 @@ def test_a_real_appliance_ingests_every_trap_off_a_real_socket(drives: tuple[Dri
     assert first.stats["active_alarms"] == 16, first.stats
 
 
-def test_the_two_incidents_are_merged_into_one_situation_and_that_is_a_defect(
+def test_no_situation_carries_members_of_two_ground_truth_incidents(
     drives: tuple[Drive, Drive],
 ) -> None:
-    """**The scenario's own requirement is not met, and this pins the failure rather than it.**
+    """**The purity assertion F76's placeholder stood in for** (v0.18.0).
 
-    `dual_incident.json`'s description is *"Two unrelated incidents overlap in time on disjoint NEs;
-    must stay separate."* A real appliance, fed those sixteen traps over a real socket at their real
-    gaps, puts **all of them in one situation** — the two ground-truth incidents merged inside five
-    seconds. That is F76, and it is F61's arithmetic arriving at the product: `MIN_EDGE_N` is
-    cleared by **six** ordinary alarms, after which the entity-affinity term links network elements
-    that have nothing to do with each other.
+    `dual_incident.json` describes itself as *"Two unrelated incidents overlap in time on disjoint
+    NEs; must stay separate."* Until this release they did not: a real appliance fed those sixteen
+    traps over a real socket put **all of them in one situation** inside five seconds, and
+    `test_the_two_incidents_are_merged_into_one_situation_and_that_is_a_defect` pinned that
+    failure on purpose, with a message saying to replace it with this assertion once the
+    correlator was repaired. This is that replacement.
 
-    **This assertion is deliberately the wrong way round.** It records what the appliance does so
-    that the behaviour is visible in the suite instead of hidden inside an aggregate, and it will
-    go red the day someone fixes the correlator — which is the intended direction, and the failure
-    message says so. Fixing it here is out of scope by F61's own disposition: *"the next release
-    that touches the correlator owns it, and should decide what `MIN_EDGE_N` is counting before
-    changing either number."*
+    **What repaired it**, measured rather than asserted: the two incidents are `1.3.6.1.4.1.1271`
+    (Ciena) and `1.3.6.1.4.1.2636` (Juniper), disjoint at the enterprise arc, and v0.18.0 stops
+    applying the *learned* cross-element affinity term to a pair that is on two different
+    elements and in two different subtrees (`scoring.cross_subtree_elements`, F76/F135). A score
+    threshold could not have done it — the seven cross-incident links scored 0.5857 to 0.7243
+    against within-incident links at 0.6161 to 0.7684, overlapping, with one pair either side of the
+    boundary at 0.7134 and 0.7131.
+
+    Both halves are asserted. Purity alone would pass on an appliance that formed sixteen
+    singletons, so coverage — every incident reaching a situation — is checked first.
     """
     first, _second = drives
     truth = _truth_by_wire_device()
@@ -307,17 +309,17 @@ def test_the_two_incidents_are_merged_into_one_situation_and_that_is_a_defect(
     assert represented == set(truth.values()), (
         f"only {sorted(represented)} of {sorted(set(truth.values()))} reached a situation"
     )
-    mixed = [keys for keys in per_situation if len(keys) > 1]
-    assert mixed, (
-        "A situation no longer mixes the two incidents of `dual_incident`. **This is good news and "
-        "this test is now wrong.** F76/F61 are fixed or mitigated: replace this assertion with the "
-        "purity assertion it stands in for — no situation carries members of two ground-truth "
-        "incidents — and close F76 with the measurement that made it pass."
+    mixed = [sorted(keys) for keys in per_situation if len(keys) > 1]
+    assert not mixed, (
+        f"{len(mixed)} situation(s) mix two ground-truth incidents: {mixed}. `dual_incident` "
+        "requires them to stay separate, and v0.18.0 made that hold — this is F76 returning."
     )
-    assert len(first.projection) == 1, (
-        f"the appliance formed {len(first.projection)} open situation(s); F76 records one holding "
-        f"every member of both incidents. A different number is a change in the correlator and "
-        f"needs the same attention as the line above."
+    # …and the grouping is not shattered either: each incident is held together, not scattered
+    # across a situation per alarm. Without this the assertion above is satisfied by doing nothing.
+    assert len(first.projection) == len(set(truth.values())), (
+        f"the appliance formed {len(first.projection)} open situation(s) for "
+        f"{len(set(truth.values()))} ground-truth incident(s); the two incidents must each be one "
+        "situation, not several"
     )
 
 

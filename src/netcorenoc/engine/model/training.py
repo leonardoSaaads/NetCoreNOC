@@ -91,6 +91,14 @@ MAX_PAIRS_PER_BAG = 256
 # training-window choice.
 MAX_TRAINING_ROWS = 8000
 
+#: Points on the learning curve, not counting the final one. Chosen for a chart rather than for
+#: the optimiser: a sparkline a few hundred pixels wide cannot resolve 200 points, and each point
+#: costs one extra pass over the training rows.
+TRACE_POINTS = 20
+#: Iterations between recorded losses. Derived so the trace length does not move when `ITERATIONS`
+#: does — a constant `10` here would silently become 100 points if the iteration count were raised.
+_TRACE_STRIDE = max(1, ITERATIONS // TRACE_POINTS)
+
 
 @dataclass(frozen=True)
 class LabelledPair:
@@ -263,8 +271,23 @@ async def fit(rows: list[TrainingRow]) -> tuple[Coefficients, dict[str, Any]]:
     intercept = 0.0
     weights = [0.0] * dimensions
     mass = sum(row.weight for row in rows) or 1.0
+    trace: list[float] = []
 
-    for _iteration in range(ITERATIONS):
+    for iteration in range(ITERATIONS):
+        # **The learning curve, recorded rather than described.** Until v0.19.0 `challenger_run`
+        # kept `iterations` as a count and nothing else, so the console had no way to answer *"is
+        # this model learning?"* and said so in a paragraph where a chart belonged. A loss is the
+        # one number that answers it, and the optimiser already computes everything it needs.
+        #
+        # **At a stride, and the stride is why this is affordable.** `log_loss` is a second pass
+        # over every row, so recording it each iteration would double a fit. `TRACE_POINTS` points
+        # regardless of `ITERATIONS` bounds the extra work at a fixed fraction, and the stride is
+        # arithmetic on two constants, so two runs still produce byte-identical coefficients and
+        # byte-identical traces. Determinism is the property this module is built around and a
+        # diagnostic does not get to spend it.
+        if iteration % _TRACE_STRIDE == 0:
+            here = Coefficients.from_vector(intercept, tuple(weights))
+            trace.append(round(log_loss(here, rows), 6))
         grad_b = 0.0
         grad_w = [0.0] * dimensions
         for row in rows:
@@ -281,13 +304,20 @@ async def fit(rows: list[TrainingRow]) -> tuple[Coefficients, dict[str, Any]]:
         await asyncio.sleep(0)
 
     coefficients = Coefficients.from_vector(intercept, tuple(weights))
+    final_loss = round(log_loss(coefficients, rows), 6)
+    # The curve ends where the model ended. Without this the last plotted point is the loss
+    # `_TRACE_STRIDE` iterations before the answer, and a chart whose last point is not the result
+    # is a chart of something nobody shipped.
+    trace.append(final_loss)
     diagnostics = {
         "iterations": ITERATIONS,
         "learning_rate": LEARNING_RATE,
         "l2": L2,
         "rows": len(rows),
         "fit_seconds": round(time.monotonic() - started, 4),
-        "log_loss": round(log_loss(coefficients, rows), 6),
+        "log_loss": final_loss,
+        "loss_trace": trace,
+        "loss_trace_stride": _TRACE_STRIDE,
     }
     return coefficients, diagnostics
 

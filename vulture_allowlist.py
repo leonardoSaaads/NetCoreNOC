@@ -63,6 +63,13 @@ _.best_promotable  # unused method (netcorenoc/varbind_profile.py:345)
 # ignored. `class_i`/`class_j`/`ne_i`/`ne_j` are carried for future scorers and for provenance;
 # the built-in AdditiveScorer scores on the affinities already resolved from them.
 get_scorer  # unused function (netcorenoc/api/routes_scorer.py)
+# v0.18.0 — how the RUNNING scorer is behaving. Same shape as `get_scorer` above: a
+# FastAPI handler registered by decorator and never called by name.
+get_correlation  # unused function (netcorenoc/api/routes/scorer.py)
+# v0.19.0 — the model card's two routes. Same shape again: FastAPI handlers registered by
+# decorator and never called by name.
+get_models  # unused function (netcorenoc/api/routes/models.py)
+register_fit  # unused function (netcorenoc/api/routes/models.py)
 preview_scorer  # unused function (netcorenoc/api/routes_scorer.py)
 set_scorer  # unused function (netcorenoc/api/routes_scorer.py)
 rollback_scorer  # unused function (netcorenoc/api/routes_scorer.py)

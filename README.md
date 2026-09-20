@@ -48,7 +48,7 @@ alarm classes), **Evidence** (labelling, corpus, judge & promotion) and **Admini
 tokens, settings, link scorer, governance, quarantine, audit). A view you cannot use is not
 rendered — a viewer sees no `Administer` group at all.
 
-Four roles (`viewer`, `operator`, `editor`, `admin`) and an optional per-principal visibility scope
+Three roles (`viewer`, `editor`, `admin`) and an optional per-principal visibility scope
 narrow what a signed-in identity may see. **Visibility scoping is not tenant isolation**, and the
 distinction is load-bearing: correlation learns across the whole estate, so a scoped principal sees
 a filtered view of one shared engine rather than a private one.
@@ -56,7 +56,10 @@ a filtered view of one shared engine rather than a private one.
 
 The screen the product exists for is **Situations**: dense cards that expand in place to show the
 probable root cause, the member alarms, and then *Why these were grouped* — one row per link with
-the score and **the three named terms, each with its number beside its bar**.
+the score and **the three named terms, each with its number beside its bar**. Above the list, one
+line says whether the scorer producing those groupings is currently deciding well — how often it
+lands near its own threshold, and whether that has moved. It expands, on a click, into the
+distribution behind it, and is collapsed until then.
 
 ## How it works
 
@@ -69,13 +72,22 @@ s = 0.3·e^(−Δt/30s) + 0.35·A[class_i, class_j] + 0.35·E[ne_i, ne_j] > 0.5
 ```
 
 `A` and `E` are learned incrementally from co-occurrence (normalised PMI, exponential forgetting,
-damped 10× during storms, and an entity pair needs five observations before its edge is trusted). A
+damped 10× during storms, and an entity pair needs five observations before its edge is trusted).
+**`E` is withheld from a pair on two different network elements whose trap OIDs sit in different
+enterprise subtrees** — two vendors' unrelated alarms inside one window are co-occurrence without
+relatedness, and that was the whole of F76. No MIB is consulted: the enterprise arc is arithmetic
+on the identifier the trap already carried. **`A` is withheld from a pair on two different network
+elements the appliance has learned nothing about** (`E` exactly zero) — an estate where every
+device raises the same two trap classes drove `A` up until seventy independent failures landed in
+one situation, which was F138. A
 **situation** is a connected component of the resulting link graph; learned temporal precedence
 flags the probable root. Raise/clear pairs are learned from strict alternation. `Confirm` reinforces
 a grouping, `Split` penalises it.
 
-**Cold start is honest.** With nothing learned, two alarms group only when they are on the same
-network element and within about 21 seconds. Everything beyond that — cross-device correlation,
+**Cold start is honest, and stays honest.** With nothing learned, two alarms group only when they
+are on the same network element and within about 21 seconds — and since v0.19.0 that holds for two
+elements the appliance has learned nothing about at *any* point in its life, not only the first
+hour. Everything beyond that — cross-device correlation,
 raise/clear pairs, which varbind names the alarmed entity — is learned from *your* stream. Run it
 alongside your existing NMS from day one; it only needs a copy of the traps.
 

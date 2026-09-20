@@ -19,8 +19,11 @@
  *
  * ## Three types, and no SVG text anywhere (DECISIONS #305)
  *
- * **`Series`** — a time axis carrying `line` or `column` marks. **`Bars`** — horizontal categorical
- * magnitudes. **`Map`** — a deterministic grid, one cell per element.
+ * **`Series`** — a time axis carrying `line` or `column` marks, and it is what this file holds.
+ * **`Bars`** (horizontal categorical magnitudes) and **`Map`** (a deterministic grid, one cell
+ * per element) moved to `compare.js` in v0.18.0 at the module-graph ceiling; they answer
+ * *"how do these compare right now"* rather than *"how did this change"*, and they import the
+ * shared chrome from here.
  *
  * Only `Series` draws SVG, and it draws **geometry only**: a `viewBox` of `0 0 100 40` with
  * `preserveAspectRatio="none"`, exactly as the sparkline does, so the plot stretches to whatever
@@ -44,6 +47,11 @@
 import { html, cx } from "./dom.js";
 import { count } from "./format.js";
 import { ceiling, runs, unitText } from "./chartdata.js";
+
+// Re-exported for `compare.js`, which draws the categorical marks and needs the same
+// rounding rule: two chart families that round differently are two chart families an
+// operator cannot compare (v0.18.0).
+export { ceiling };
 
 /** The plot's height in user units. The rendered height is the stylesheet's; this is arithmetic. */
 const H = 40;
@@ -69,7 +77,7 @@ export function Unmeasured({ what, why }) {
 }
 
 /** The series names, so a multi-series chart is never colour alone. */
-function Legend({ series }) {
+export function Legend({ series }) {
   if (series.length < 2) return null;
   return html`<ul class="chart-legend">
     ${series.map((one) => html`<li key=${one.name}>
@@ -85,7 +93,7 @@ function Legend({ series }) {
  * Required rather than optional. A chart whose source nobody can name is a chart nobody can check,
  * and the whole difficulty of this release is that a wrong axis renders perfectly.
  */
-function Caption({ source, span, note }) {
+export function Caption({ source, span, note }) {
   return html`<p class="chart-caption">
     <span class="chart-source">${source}</span>
     ${span ? html` <span class="chart-span">· ${span}</span>` : null}
@@ -94,7 +102,7 @@ function Caption({ source, span, note }) {
 }
 
 /** The header a chart with nothing readable in it renders. One shape, three call sites. */
-function Absent({ title, why, source, span }) {
+export function Absent({ title, why, source, span }) {
   return html`<section class="chart-block">
     <h4 class="chart-title">${title}</h4>
     <${Unmeasured} what=${title} why=${why} />
@@ -119,6 +127,27 @@ function Absent({ title, why, source, span }) {
  * The **latest reading is printed in the header from `values` itself**, so the number beside the
  * chart cannot disagree with the chart.
  */
+/**
+ * The ceiling for a percentage axis: the smallest band that contains the data.
+ *
+ * **This replaces a hard 0-100, and the reason is a live pass.** The Overview's CPU and memory
+ * charts ran at 5-6 % against a fixed 100 % ceiling, which draws a straight line along the floor:
+ * two hours of readings, no shape, nothing an operator could act on. Three of the four charts in
+ * that panel were unreadable for the same reason.
+ *
+ * The old ceiling was defended on the ground that *"a CPU chart that rescaled to its own peak
+ * would draw a busy minute and an idle one as the same picture"*, and that objection is right
+ * about rescaling to the peak. It is answered by the bands rather than by refusing to rescale:
+ * the top of the axis is one of five fixed values and **`.chart-y-top` prints it**, so an idle
+ * appliance and a busy one differ in the label as well as in the shape, and nothing is implied
+ * that the number beside it does not say. A series that reaches half the scale keeps the full
+ * 0-100, because near the top the whole is the comparison that matters.
+ */
+export function percentTop(observed) {
+  const bands = [5, 10, 25, 50, 100];
+  return bands.find((band) => observed <= band) ?? 100;
+}
+
 export function Series({
   title, hint, series, mark = "line", unit = "", source, span, note, max, labels = [], height,
 }) {
@@ -137,18 +166,35 @@ export function Series({
         ? "only one reading so far — a line needs two"
         : note || "no reading has arrived yet"} />`;
   }
-  // The domain. A percentage is pinned to 0-100 because a CPU chart that rescaled to its own peak
-  // would draw a busy minute and an idle one as the same picture; everything else takes a round
-  // ceiling over every series, so two series on one chart are comparable by construction.
+  // The domain. Everything but a percentage takes a round ceiling over every series, so two
+  // series on one chart are comparable by construction.
   const observed = Math.max(
     ...lines.flatMap((one) => (one.values || []).filter((v) => v != null).map(Number)),
   );
-  const top = max != null ? max : unit === "%" ? 100 : ceiling(observed);
+  const top = max != null ? max : unit === "%" ? percentTop(observed) : ceiling(observed);
   const n = Math.max(...lines.map((one) => (one.values || []).length));
+  // **What the header number means depends on what the series IS** (v0.18.0, F133).
+  //
+  // Found by looking at the Overview beside the database. The header read
+  // `new 1 · being worked 0 · resolved 1` while the plot beside it drew three resolved columns
+  // and `/api/situations?status=resolved` returned three rows. Both were "right": the header was
+  // the LAST BUCKET's count, printed with no word saying so.
+  //
+  // A `line` series is a gauge sampled over time — CPU, queue depth — and its last reading is the
+  // only honest summary; a total would be meaningless. A `column` series here is a COUNT PER
+  // BUCKET, and the summary an operator reads as "how many" is the sum over the window. Summing a
+  // gauge and taking the last count are each the other's defect, so the mark decides, and
+  // `summary` names which was taken so the two can never again be read as the same thing.
+  const perBucketCount = mark === "column";
   const latest = lines.map((one) => {
     const readable = (one.values || []).filter((v) => v != null);
-    return { name: one.name, value: readable.length ? readable[readable.length - 1] : null };
+    if (!readable.length) return { name: one.name, value: null };
+    const value = perBucketCount
+      ? readable.reduce((sum, v) => sum + Number(v), 0)
+      : readable[readable.length - 1];
+    return { name: one.name, value };
   });
+  const summary = perBucketCount ? "Total" : "Latest";
   const ticks = [0, Math.floor((n - 1) / 2), n - 1]
     .filter((i, at, all) => i >= 0 && all.indexOf(i) === at)
     .map((i) => ({ at: n < 2 ? 0 : (i / (n - 1)) * 100, text: labels[i] ?? "" }))
@@ -158,6 +204,7 @@ export function Series({
     <div class="chart-head">
       <h4 class="chart-title">${title}</h4>
       <p class="chart-latest">
+        <span class="chart-latest-kind">${summary} </span>
         ${latest.map((one, i) => html`<span key=${one.name}>
           ${i ? html`<span class="chart-sep"> · </span>` : null}
           ${latest.length > 1 ? html`<span class="chart-latest-name">${one.name} </span>` : null}
@@ -167,7 +214,7 @@ export function Series({
     </div>
     ${hint ? html`<p class="hint">${hint}</p>` : null}
     <div class=${cx("chart", `chart-${mark}`)} data-chart=${mark} role="img"
-         aria-label=${ariaFor(title, latest, unit, span)}
+         aria-label=${ariaFor(title, latest, unit, span, summary)}
          style=${height ? `--chart-h:${height}px` : null}>
       <div class="chart-plot">
         <svg viewBox=${`0 0 100 ${H}`} preserveAspectRatio="none" focusable="false"
@@ -189,8 +236,12 @@ export function Series({
         </div>
       </div>
       <div class="chart-x" aria-hidden="true">
+        ${/* No inline `left`: `.chart-x` lays these out with `space-between`, which puts the
+              first, middle and last bucket exactly where the percentages did and cannot overlap
+              when the chart is narrow (F142). `at` stays on the tick because it is what says the
+              positions are evenly spaced rather than arbitrary. */ null}
         ${ticks.map((t) => html`<span key=${t.text} class="chart-x-tick"
-             style=${`left:${t.at.toFixed(2)}%`}>${t.text}</span>`)}
+             data-at=${t.at.toFixed(2)}>${t.text}</span>`)}
       </div>
     </div>
     <${Legend} series=${lines} />
@@ -217,114 +268,15 @@ function columns(values, top, seriesCount, seriesIndex) {
   return out;
 }
 
-/** The accessible name: what it is, what it reads now, over what. Never the word "chart". */
-function ariaFor(title, latest, unit, span) {
+/** The accessible name: what it is, what it reads now, over what. Never the word "chart".
+ *
+ * `summary` is "Latest" or "Total" and comes from the caller rather than being assumed here, so
+ * a screen reader is told the same thing the sighted header says (F133). Hardcoding "Latest"
+ * is what made the two disagree.
+ */
+function ariaFor(title, latest, unit, span, summary = "Latest") {
   const readings = latest
     .map((one) => `${one.name}: ${one.value == null ? "not measured" : unitText(one.value, unit)}`)
     .join(", ");
-  return `${title}. Latest ${readings}${span ? `, ${span}` : ""}.`;
-}
-
-/**
- * **Horizontal bars, with the value as text beside each one.**
- *
- * Horizontal because a category is a name and a name needs room: five vertical bars at 390 px carry
- * five rotated labels or five truncated ones, and the operator's question here is *which element*,
- * which is the label.
- *
- * The value is **printed**, not only drawn. A bar answers *how much bigger* at a glance and cannot
- * answer *how much*, and during an incident the second one goes in the ticket.
- */
-export function Bars({ title, hint, rows, unit = "", source, span, note, max }) {
-  const readable = (rows || []).filter((r) => r.value != null);
-  if (!readable.length) {
-    return html`<${Absent} title=${title} source=${source} span=${span}
-      why=${note || "nothing to rank yet"} />`;
-  }
-  const top = max != null ? max : Math.max(...readable.map((r) => Number(r.value))) || 1;
-  return html`<section class="chart-block">
-    <h4 class="chart-title">${title}</h4>
-    ${hint ? html`<p class="hint">${hint}</p>` : null}
-    <div class="chart chart-bars" data-chart="bars" role="img"
-         aria-label=${`${title}. ` +
-           `${readable.map((r) => `${r.label}: ${unitText(r.value, unit)}`).join(", ")}.`}>
-      ${(rows || []).map((row) => html`<div class="chart-bar-row" key=${row.key ?? row.label}>
-        <span class="chart-bar-label" title=${row.title}>${row.label}</span>${" "}
-        <span class="chart-bar-track">
-          <span class=${cx("chart-bar-fill", row.tone && `chart-${row.tone}`)}
-                style=${`width:${row.value == null ? 0 : ((row.value / top) * 100).toFixed(2)}%`}
-          ></span>
-        </span>${" "}
-        <span class="chart-bar-value">${unitText(row.value, unit)}</span>
-      </div>`)}
-    </div>
-    <${Caption} source=${source} span=${span} note=${note} />
-  <//>`;
-}
-
-/**
- * **The estate, as a deterministic grid — one cell per element** (DECISIONS #310).
- *
- * The question the force drawing cannot answer: *is this one element or the whole estate?* Two
- * independent reasons, both measured. The node radius saturates at **47** active alarms, so an
- * element carrying 1 359 and one carrying 501 draw at exactly the same 24 px; and the layout comes
- * from a force simulation with drag, so two glances at an unchanged estate do not agree.
- *
- * This is a pure function of the payload — sorted by load, then by key — so the same estate draws
- * the same grid every time and an operator can compare this morning with now.
- *
- * **It is a map of LOAD and not of topology**, and the caption says so. This appliance learns
- * affinity from co-occurrence and has no physical topology to draw.
- *
- * Three encodings per cell, none of them alone: the **band** (a four-step ramp), the **share bar**
- * inside the cell, and the **count as text**. The busiest band also carries `chart-urgent`, whose
- * pulse is a CSS animation and is therefore off under `prefers-reduced-motion` by construction
- * (DECISIONS #309) — and whose ring is 3 px against 1 px, so the cell stays marked with motion off.
- */
-export function Map({ title, hint, cells, source, note, cap = 60, urgentAt }) {
-  const all = [...(cells || [])].sort(
-    (a, b) => (b.value ?? 0) - (a.value ?? 0) || String(a.key).localeCompare(String(b.key)),
-  );
-  if (!all.length) {
-    return html`<${Absent} title=${title} source=${source}
-      why=${note || "the appliance has heard from no element yet"} />`;
-  }
-  const shown = all.slice(0, cap);
-  const hidden = all.length - shown.length;
-  const top = Math.max(...all.map((c) => Number(c.value) || 0)) || 1;
-  const total = all.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
-  const urgent = urgentAt == null ? Infinity : urgentAt;
-  return html`<section class="chart-block">
-    <h4 class="chart-title">${title}</h4>
-    ${hint ? html`<p class="hint">${hint}</p>` : null}
-    <div class="chart chart-map" data-chart="map" role="img"
-         aria-label=${`${title}. ${shown.length} of ${all.length} elements, ` +
-                      `busiest ${shown[0].label} at ${count(shown[0].value ?? 0)}.`}>
-      ${shown.map((cell) => {
-        const value = Number(cell.value) || 0;
-        const band = value === 0 ? 0 : value >= top * 0.5 ? 3 : value >= top * 0.2 ? 2 : 1;
-        return html`<div key=${cell.key}
-             class=${cx("map-cell", `map-band-${band}`, value >= urgent && "chart-urgent")}
-             title=${`${cell.label}: ${count(value)} active ` +
-                     `${value === 1 ? "alarm" : "alarms"}` +
-                     `${total ? ` — ${((value / total) * 100).toFixed(1)}% of the estate's load` : ""}`}>
-          ${/* The explicit spaces are F112, third occurrence. These are grid ROWS, so the
-                pixels were always right — and `textContent` read `127.0.0.11,458`, which a screen
-                reader announces as one number and which could be misread as an address. A layout
-                that separates boxes does not separate text. */ null}
-          <span class="map-name">${cell.label}</span>${" "}
-          <span class="map-share" aria-hidden="true">
-            <span class="map-share-fill" style=${`width:${((value / top) * 100).toFixed(1)}%`}
-            ></span>
-          </span>${" "}
-          <span class="map-value">${count(value)}</span>
-        <//>`;
-      })}
-    </div>
-    ${hidden > 0
-      ? html`<p class="hint">${count(hidden)} quieter ${hidden === 1 ? "element" : "elements"}
-          are not drawn. The grid is sorted by load, so what is missing is the quiet end.</p>`
-      : null}
-    <${Caption} source=${source} note=${note} />
-  <//>`;
+  return `${title}. ${summary} ${readings}${span ? `, ${span}` : ""}.`;
 }

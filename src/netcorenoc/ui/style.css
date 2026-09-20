@@ -695,14 +695,23 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   margin: 0; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--fg-muted); font-weight: 600;
 }
-/* The latest reading, printed from the same array the plot was drawn from (`charts.js`), so the
-   number beside a chart cannot disagree with the chart. */
+/* The reading, printed from the same array the plot was drawn from (`charts.js`), so the number
+   beside a chart cannot disagree with the chart.
+
+   `.chart-latest-kind` carries the word "Latest" or "Total" (F133). The number used to be the
+   last bucket of a count series with nothing saying so, which read as the whole window and was
+   wrong by however many buckets came before it. Muted and small, like the series names beside
+   it: it qualifies the figures rather than competing with them. */
 .chart-latest {
   margin: 0; font-family: var(--mono); font-size: var(--fs-md);
   font-variant-numeric: tabular-nums; color: var(--fg-dim);
 }
 .chart-latest b { color: var(--fg); font-weight: 600; }
 .chart-latest-name { font-family: var(--sans); font-size: var(--fs-xs); color: var(--fg-muted); }
+.chart-latest-kind {
+  font-family: var(--sans); font-size: var(--fs-xs); color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
 .chart-sep { color: var(--line-strong); }
 
 .chart { --chart-h: 96px; margin-top: var(--space-2); }
@@ -743,14 +752,20 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 }
 /* Three x ticks — first, middle, last. `translateX(-50%)` on the middle one and edge alignment on
    the outer two, so no tick hangs off the plot at 390 px. */
-.chart-x { position: relative; height: 1.4em; margin-top: 2px; }
+/* **Flex, not absolute positions** (v0.19.0, F142). The ticks were placed at `left: 0/50/100%`
+   with transforms, which overlaps as soon as the chart is narrower than three clock times — and
+   the Overview's health panel puts five charts across one row, so `09:36:33` and `09:37:03`
+   rendered as `09:36:3309:37:03` on a 1440-px screen. The three ticks are the first, middle and
+   last bucket by construction, which is exactly what `space-between` lays out, so this is the
+   same positions without the overlap and with a gap that cannot be crossed. */
+.chart-x {
+  display: flex; justify-content: space-between; gap: var(--space-1);
+  height: 1.4em; margin-top: 2px; overflow: hidden;
+}
 .chart-x-tick {
-  position: absolute; transform: translateX(-50%); white-space: nowrap;
+  white-space: nowrap; min-width: 0;
   font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim);
 }
-.chart-x-tick:first-child { transform: none; }
-.chart-x-tick:last-child { transform: translateX(-100%); }
-.chart-x-tick:only-child { transform: none; }
 
 .chart-legend {
   display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
@@ -1565,3 +1580,115 @@ pre.refusal-reason {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* The correlation-health line on Situations (v0.18.0).
+
+   **One line, and it is the button.** The maintainer's note on the first attempt was that an
+   operator wants the *result* — whether the grouping they are looking at is trustworthy — and
+   not a screen of metrics. So the summary is the whole control at rest, and the detail is not
+   in the DOM until it is asked for.
+
+   The dot carries the verdict's tone as well as the text colour, because colour alone is not a
+   signal (the same rule `.chart-swatch` follows beside a legend). Focus comes from the global
+   `:focus-visible` rule, and `--tap` keeps the row above the touch-target floor (F81, F103). */
+.corr { margin: var(--space-3) 0; }
+.corr-line {
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 100%; padding: var(--space-2) var(--space-3);
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-2);
+  font: inherit; color: var(--fg-dim); text-align: left; cursor: pointer;
+  min-height: var(--tap);
+}
+.corr-line:hover { border-color: var(--line-strong); }
+.corr-dot {
+  flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-muted);
+}
+.corr-ok .corr-dot { background: var(--quiet); }
+.corr-warn .corr-dot { background: var(--warn); }
+.corr-warn { color: var(--fg); }
+.corr-text { flex: 1 1 auto; min-width: 0; }
+.corr-more {
+  flex: none; font-size: var(--fs-xs); color: var(--fg-muted); text-decoration: underline;
+}
+/* A read that failed is a sentence, not a button: there is nothing to expand. */
+p.corr-line { cursor: default; }
+
+.corr-panel {
+  margin-top: var(--space-2); padding: var(--space-3);
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-2);
+}
+.corr-facts { margin: 0; display: grid; gap: var(--space-1) var(--space-4); }
+.corr-facts > div {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: var(--space-4); padding: 2px 0; border-bottom: 1px solid var(--line);
+}
+.corr-facts > div:last-child { border-bottom: 0; }
+.corr-facts dt { color: var(--fg-muted); font-size: var(--fs-sm); }
+.corr-facts dd {
+  margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--fg);
+  text-align: right;
+}
+.corr-carried { margin: var(--space-3) 0 0; font-size: var(--fs-sm); color: var(--fg-dim); }
+.corr-note { color: var(--warn); }
+.corr-since { margin: var(--space-2) 0 0; font-size: var(--fs-xs); color: var(--fg-muted); }
+/* **One column at every width.** Two columns were tried and the right-aligned value of the left
+   pair ran into the label of the right one — `98.3%` abutting `Close calls`. Six rows read once,
+   behind a click, do not need the horizontal packing that made them ambiguous. */
+
+/* --- a section's own answer to its own heading (v0.19.0) -------------------------------------
+   The health panel asked "is the appliance keeping up" and left four charts to be interpreted.
+   This is the answer line, and the same three tones the grouping verdict already uses so that a
+   reader learns one colour vocabulary rather than one per screen. */
+.verdict {
+  margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--fg-muted); border-radius: var(--radius-1);
+  background: var(--bg-raised); font-size: var(--fs-sm); color: var(--fg);
+}
+.verdict-ok { border-left-color: var(--quiet); }
+.verdict-warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.verdict-bad { border-left-color: var(--sev-crit-fill); background: var(--warn-bg); }
+.verdict-quiet { color: var(--fg-dim); }
+
+/* --- how far the evidence is from a model (v0.19.0) -----------------------------------------
+   A bar and its two numbers. The numbers are not decoration: a bar alone cannot be read to
+   "2 of 50" and that is the figure an operator is actually tracking, so the bar carries the
+   shape and the pair beside it carries the fact. */
+.models { margin-bottom: var(--space-4); }
+.meter {
+  display: grid; grid-template-columns: minmax(0, 1fr) 2fr auto;
+  align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);
+  font-size: var(--fs-sm);
+}
+.meter-label { color: var(--fg-dim); min-width: 0; }
+.meter-track {
+  display: block; height: 8px; border-radius: 4px; background: var(--bg-sunken);
+  border: 1px solid var(--line); overflow: hidden;
+}
+.models-bar {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin-top: var(--space-2); font-size: var(--fs-xs);
+}
+.meter-wide { flex: 1 1 auto; }
+.meter-fill { display: block; height: 100%; background: var(--accent); }
+.meter-value { font-variant-numeric: tabular-nums; color: var(--fg-dim); white-space: nowrap; }
+.models-head {
+  margin: 0 0 var(--space-2); font-size: var(--fs-xs); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--fg-muted);
+}
+.models-none { margin: var(--space-2) 0 0; font-size: var(--fs-sm); color: var(--fg-muted); }
+.models-said { margin: var(--space-2) 0 0; font-size: var(--fs-sm); color: var(--fg); }
+.models-acts {
+  margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+}
+@media (max-width: 560px) {
+  .meter { grid-template-columns: minmax(0, 1fr) auto; }
+  .meter-track { grid-column: 1 / -1; }
+}
+
+.models-next {
+  margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3);
+  background: var(--bg-raised); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-1); font-size: var(--fs-sm);
+}
+.models-acts .models-none { flex: 1 1 100%; margin: 0; }

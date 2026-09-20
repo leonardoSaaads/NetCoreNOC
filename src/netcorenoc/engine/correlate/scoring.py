@@ -33,6 +33,12 @@ import math
 import time
 from dataclasses import dataclass
 
+# The two gates, in `gates.py` since v0.19.0 at the 400-line guard. Re-exported here because
+# every existing importer reaches them through this module, and a split is not an excuse to move
+# a name somebody depends on.
+from netcorenoc.engine.correlate.gates import cross_subtree_elements as cross_subtree_elements
+from netcorenoc.engine.correlate.gates import unrelated_elements as unrelated_elements
+
 # Re-exported with the redundant-alias form, which is the explicit "this is a re-export" spelling
 # both ruff and mypy understand. `correlate.py` imports every one of these from `netcorenoc.scoring`
 # and this release may not change one byte of it, so the names have to stay here whatever module
@@ -168,9 +174,20 @@ class AdditiveScorer:
         # expression exactly. Do not reorder — float addition is not associative, and a last-bit
         # difference either side of `threshold` is a different grouping.
         decay = math.exp(-abs(features.delta_t_s) / self.tau_s)
+        entity_affinity = features.entity_affinity
+        class_affinity = features.class_affinity
+        if cross_subtree_elements(features):
+            # **v0.18.0 (F76/F135): learned cross-element affinity needs the alarms to be the
+            # same kind of thing.** See `cross_subtree_elements` for the measurement.
+            entity_affinity = 0.0
+        if unrelated_elements(features):
+            # **v0.19.0 (F138): so does learned class affinity.** Two elements the appliance has
+            # learned nothing about are not related by their alarms looking alike. See
+            # `unrelated_elements` — 70 independent failures in one situation is the measurement.
+            class_affinity = 0.0
         term_t = self.w_t * decay
-        term_a = self.w_a * features.class_affinity
-        term_e = self.w_e * features.entity_affinity
+        term_a = self.w_a * class_affinity
+        term_e = self.w_e * entity_affinity
         total = term_t + term_a + term_e
         return LinkScore(
             linked=total > self.threshold,
@@ -178,8 +195,14 @@ class AdditiveScorer:
             threshold=self.threshold,
             terms=(
                 TermContribution("temporal", self.w_t, decay, term_t),
-                TermContribution("class_affinity", self.w_a, features.class_affinity, term_a),
-                TermContribution("entity_affinity", self.w_e, features.entity_affinity, term_e),
+                # Gated, for the same reason the entity term below is: the three printed
+                # contributions must sum to the score exactly, and printing the ungated value
+                # would break the one contract an explanation may never break.
+                TermContribution("class_affinity", self.w_a, class_affinity, term_a),
+                # The **gated** value, so the number beside the bar is the number that was used.
+                # Reporting the ungated affinity here would make the three printed terms not sum
+                # to the score, which is the one thing the explanation may never do.
+                TermContribution("entity_affinity", self.w_e, entity_affinity, term_e),
             ),
         )
 

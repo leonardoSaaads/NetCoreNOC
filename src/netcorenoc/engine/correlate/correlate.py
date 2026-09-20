@@ -127,6 +127,22 @@ class WindowAlarm:
     device_id: int
     ts: float
     entity_id: int = 0  # the alarmed entity (§5.5); defaults to device_id via __post_init__
+    # **v0.18.0 (F135): the trap OID's enterprise root**, so `same_oid_root` can be *served*.
+    #
+    # `PREREGISTRATION-0.9.0.md` §2.3 registered `same_oid_root` as the fourth feature in v0.9.0
+    # and it was never implemented, for one reason recorded in `model/challenger.py`: this class
+    # carried no OID, and adding one meant editing `correlate.py`, whose bytes were pinned. The
+    # v0.18.0 brief withdrew that pin, so a feature that was computable offline and not online —
+    # the definition of guaranteed training/serving skew — can finally be computed in both.
+    #
+    # The **root**, not the OID: `class_id` already identifies the class, and storing the OID
+    # here would put a second identifier on the hot path for no gain. The root is a bounded
+    # string computed once per activation, never per candidate pair.
+    #
+    # Defaulted to "" so every existing constructor — the engine's, preview's, and every test's —
+    # keeps working, and an empty root simply means "not known", which `features` reports as
+    # `same_oid_root=None` rather than as a false.
+    oid_root: str = ""
 
     def __post_init__(self) -> None:
         # At level 0 the entity is 1:1 with the device, so an unset entity_id defaults to the
@@ -289,7 +305,14 @@ class Correlator:
 
     @staticmethod
     def features(new: WindowAlarm, old: WindowAlarm, learner: Learner) -> LinkFeatures:
-        """Build the scorer's input once per candidate pair. Reserved slots stay ``None``."""
+        """Build the scorer's input once per candidate pair. Reserved slots stay ``None``.
+
+        `same_oid_root` is a **string comparison of two values already in hand** — no lookup, no
+        allocation beyond the bool, and `None` whenever either root is unknown, which is what an
+        alarm constructed without one means. It is the fourth feature
+        `PREREGISTRATION-0.9.0.md` §2.3 registered and v0.9.0 could not serve (F135).
+        """
+        both_known = bool(new.oid_root) and bool(old.oid_root)
         return LinkFeatures(
             delta_t_s=abs(new.ts - old.ts),
             class_i=new.class_id,
@@ -300,6 +323,7 @@ class Correlator:
             entity_affinity=learner.entity_affinity(
                 new.entity_id, new.device_id, old.entity_id, old.device_id
             ),
+            same_oid_root=(new.oid_root == old.oid_root) if both_known else None,
         )
 
     def score_link(self, new: WindowAlarm, old: WindowAlarm, learner: Learner) -> LinkScore:

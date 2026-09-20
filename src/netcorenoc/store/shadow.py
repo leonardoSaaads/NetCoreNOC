@@ -180,6 +180,12 @@ class ShadowMixin(StoreBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def challenger_run(self, run_id: int) -> dict[str, Any] | None:
+        """One run by id, for the register path, which acts on a run the caller named."""
+        cur = await self.conn.execute("SELECT * FROM challenger_run WHERE id = ?", (run_id,))
+        row = await cur.fetchone()
+        return dict(row) if row is not None else None
+
     # -- the sampled online opinions ------------------------------------------------------------
 
     async def add_shadow_opinions(self, rows: list[tuple[Any, ...]]) -> None:

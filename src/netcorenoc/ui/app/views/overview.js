@@ -50,6 +50,7 @@ import { get } from "../api.js";
 import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
 import { Happening, MARK_LIMIT, Where, Worst } from "./parts/pulse.js";
 import { Keeping, Learned } from "./parts/keeping.js";
+import { ModelHealth } from "./parts/models.js";
 import { Severity } from "./parts/severity.js";
 import { plural, relative, absolute, timeTitle, TIMEZONE } from "../format.js";
 import { can, scopeSummary } from "../session.js";
@@ -121,6 +122,12 @@ export class Overview extends Component {
       </p>` : null}
 
       <${Severity} census=${stats.severity} />
+      ${/* **Directly under the alarm summary, and above everything else.** The maintainer's
+            standing request is to migrate correlation from the fixed formula to a learned
+            model; until v0.19.0 the console said nothing at all about how that was going, on
+            any screen. It is one line and one bar, so the position costs an operator who does
+            not care about it a single glance. */ null}
+      <${ModelHealth} admin=${can("model.register")} />
       <${Happening} situations=${live.situations || []} marks=${marks} at=${marksAt}
                     error=${marksError} retry=${() => this.readMarks()} />
       <${Where} nodes=${nodes} />
@@ -147,77 +154,17 @@ export class Overview extends Component {
             situations themselves in front of the operator, and its link is in the sidebar with
             every other screen's. What replaced it above is the count that decides whether an
             operator stands up. */ null}
-      ${can("promotion.read") ? html`<${OnDemand}
-          title="Judge and promotion"
-          hint=${"What the gate last decided, why it refused, and the seal's query count. Read " +
-                 "on request, not on load."}
-          path="/api/promotion"
-          render=${(data) => html`<div class="stat-row">
-            <${Stat} label="model versions" value=${(data.model_versions || []).length} />
-            <${Stat} label="decisions recorded" value=${(data.promotions || []).length} />
-            <${Stat} label="seal query count" value=${data.seal_query_count}
-                     tone=${data.seal_query_count === 0 ? "quiet" : "warn"}
-                     note=${data.seal_query_count === 0
-                       ? "the holdout has never been read"
-                       : "the holdout has been read"} />
-            <${Stat} label="active model version"
-                     value=${data.active_model_version_id ?? "—"} />
-          </div>
-          <p><a href="#/promotion">Open the full record and the evidence charts →</a></p>`} />`
-        : null}
-      ${can("config.read") ? html`<${OnDemand}
-          title="What capture is holding"
-          hint="The feedback corpus every evidence claim is built on, in rows. Read on request."
-          path="/api/dataset/retention"
-          render=${(data) => html`<div class="stat-row">
-            ${Object.entries(data.stats || {}).slice(0, 5).map(([key, value]) => html`
-              <${Stat} key=${key} label=${key.replaceAll("_", " ")} value=${value} />`)}
-            <${Stat} label="capture" value=${data.capture_enabled ? "on" : "off"}
-                     tone=${data.capture_enabled ? "quiet" : "warn"} />
-          </div>
-          <p><a class="tap" href="#/corpus">Open the corpus screen →</a></p>`} />` : null}
+      ${/* **The two on-demand panels left in v0.19.0.**
+            They sat at the foot of this screen reading *"Not computed yet"* beside a
+            `Compute now` button, which is what an operator saw every time they opened the
+            console — two dead boxes at the end of the page they use most.
+            `Judge and promotion` answered *"is a model running, and what has the gate
+            decided"*, which the model line at the top of this screen now answers live and
+            without a click. `What capture is holding` answered *"how big is the corpus"*,
+            which is the Corpus screen's whole subject and is linked from the sidebar. Both
+            were a second, colder copy of a question that already had a home. The seal's
+            query count and the decision history stay on **Judge & promotion**, which is
+            where an auditor looks for them. */ null}
     </div>`;
-  }
-}
-
-/**
- * A tile that fetches only when asked, and then says when it fetched.
- *
- * The timestamp is the whole point. A figure with no time on it is a figure an operator will
- * assume is current, and during an incident that assumption is expensive.
- */
-class OnDemand extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { status: "idle", data: null, error: null, at: null };
-    this.load = this.load.bind(this);
-  }
-
-  async load() {
-    this.setState({ status: "loading" });
-    try {
-      const data = await get(this.props.path);
-      this.setState({ status: "ready", data, at: Date.now() / 1000, error: null });
-    } catch (error) {
-      this.setState({ status: "error", error });
-    }
-  }
-
-  render({ title, hint, render: renderBody }, { status, data, error, at }) {
-    return html`<section class="panel-block on-demand">
-      <${SectionHeading} title=${title} hint=${hint}>
-        <button type="button" onClick=${this.load} disabled=${status === "loading"}>
-          ${status === "idle" ? "Compute now" : status === "loading" ? "Reading…" : "Recompute"}
-        </button>
-      <//>
-      ${status === "idle" ? html`<p class="hint">Not computed yet.</p>` : null}
-      ${status === "loading" ? html`<${Loading} label=${`Reading ${title.toLowerCase()}`} />` : null}
-      ${status === "error" ? html`<${Failed} error=${error} retry=${this.load} what=${title} />` : null}
-      ${status === "ready" ? html`<div>
-        <p class="computed-at">Last computed ${relative(at)} —
-          <span title=${`${absolute(at)} (${TIMEZONE})`}>${absolute(at)}</span></p>
-        ${renderBody(data)}
-      </div>` : null}
-    </section>`;
   }
 }

@@ -79,6 +79,29 @@ TAU0_S = 30.0
 FEATURE_NAMES = ("decay", "class_affinity", "entity_affinity")
 
 
+#: How many dot-components of a trap OID make its **root**, as
+#: `PREREGISTRATION-0.9.0.md` §2.3 registered it: `1.3.6.1.4.1.<enterprise>` is seven.
+#:
+#: Seven is the enterprise arc, which is the level at which two OIDs stop being *the same kind of
+#: thing*. `1.3.6.1.4.1.1271.2.1.1` and `1.3.6.1.4.1.2636.4.5.1` are a Ciena alarm and a Juniper
+#: alarm; they share six components and nothing else. It also lands sensibly on the standard tree:
+#: `1.3.6.1.6.3.1.1.5.3` (linkDown) and `...5.4` (linkUp) share `1.3.6.1.6.3.1`.
+#:
+#: **No MIB is consulted and none is needed.** This is arithmetic on the identifier the trap
+#: carried, which is the same thing the appliance already does when it treats the OID as an
+#: opaque token — it simply stops discarding the identifier's own structure.
+OID_ROOT_COMPONENTS = 7
+
+
+def oid_root(oid: str) -> str:
+    """The first :data:`OID_ROOT_COMPONENTS` dot-components of a trap OID.
+
+    A shorter OID is its own root, which is the honest answer: there is nothing to truncate, and
+    padding it would invent structure the trap did not carry.
+    """
+    return ".".join(oid.split(".")[:OID_ROOT_COMPONENTS])
+
+
 def feature_vector(
     delta_t_s: float, class_affinity: float, entity_affinity: float
 ) -> tuple[float, float, float]:
@@ -133,6 +156,28 @@ class LinkFeatures(NamedTuple):
     probable_cause_j: str | None = None
     event_type_i: str | None = None
     event_type_j: str | None = None
+
+    # **The fourth pre-registered feature, served at last** (v0.18.0, F135).
+    #
+    # `PREREGISTRATION-0.9.0.md` §2.3 registered four features. This is the fourth, and it went
+    # unimplemented for nine releases for one stated reason — `challenger.py`:
+    #
+    #   > "`LinkFeatures` carries no trap OID, and neither does `correlate.WindowAlarm` … a
+    #   > feature that cannot be served is a feature that *guarantees* training/serving skew …
+    #   > Adding it would have required editing `correlate.py`, which this release may not touch."
+    #
+    # The v0.18.0 brief withdraws the directive that pinned `correlate.py`'s bytes, so the only
+    # obstacle is gone. `shadow.py` has been writing a hardcoded `0` into `shadow_opinion.
+    # same_oid_root` since v0.9.0; it can now write what the pair actually is.
+    #
+    # **A relation, never an identifier.** The plan is explicit that the feature is *"a relation
+    # between two OIDs, not an OID"* — carrying the OIDs themselves would put a key in the
+    # feature vector, which migration 0008's rule 2 forbids and which teaches a model one
+    # customer's estate. So this is the boolean and nothing else.
+    #
+    # `None` means "not computed", which is what every caller built before this release passes,
+    # and what keeps this a minor contract bump rather than a breaking one.
+    same_oid_root: bool | None = None
 
 
 # How a scorer derived its terms (v0.14.0, DECISIONS #186). A tree predicts a leaf value, not a

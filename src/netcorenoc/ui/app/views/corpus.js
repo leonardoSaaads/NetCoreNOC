@@ -12,7 +12,7 @@
 import { html } from "../dom.js";
 import { get } from "../api.js";
 import { Loader, Empty, DataTable, SectionHeading, Stat } from "../widgets.js";
-import { Bars } from "../charts.js";
+import { Bars } from "../compare.js";
 import { count, plural } from "../format.js";
 
 /**

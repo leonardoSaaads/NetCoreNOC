@@ -238,3 +238,96 @@ async def test_matrix_persistence_is_versioned(store: Store) -> None:
 
 def test_util_event_helper_defaults() -> None:
     assert util.event().trap_oid == util.CIENA_TRAP
+
+
+# --- F134: the alternation learner registered the pair backwards and deleted the alarm ---------
+
+
+def test_a_pair_is_never_registered_in_both_directions() -> None:
+    """**The release's most severe defect, as three lines** (v0.18.0, F134).
+
+    `register` asked *"is this class already a raise?"* and *"is that one already a clear?"* —
+    the two halves of the orientation it was about to write. It never asked whether the two were
+    already a pair **the other way round**, so an alternation that began with the CLEAR class
+    registered the inverse of a pair the appliance already knew.
+
+    The consequence is not a worse grouping, it is a **missing alarm**: `Engine._process`
+    consults `clear_to_raise` before anything else, so once `linkDown` is in it, every linkDown
+    trap is dispatched to `_handle_clear` and no alarm is ever raised again.
+    """
+    clears = ClearPairLearner()
+    clears.register(2, 3)  # the shipped seed: linkDown(2) is cleared by linkUp(3)
+    # A link that flaps, on an appliance whose first sight of it was the RECOVERY — which is the
+    # ordinary case when it is deployed while something is already down.
+    for class_id in (3, 2, 3, 2, 3, 2):
+        clears.observe(7, "port-7", class_id)
+    assert clears.clear_to_raise == {3: 2}, clears.clear_to_raise
+    assert clears.raise_to_clear == {2: 3}, clears.raise_to_clear
+    # The assertion that is the defect: linkDown must never become a clear class.
+    assert clears.clear_to_raise.get(2) is None, (
+        "linkDown is registered as a CLEAR class, so every linkDown trap will be dispatched to "
+        "_handle_clear and the link-down alarm will never be raised again"
+    )
+
+
+def test_a_class_holds_one_role_whichever_order_the_pair_arrives_in() -> None:
+    """Both orders, because the guard used to be asymmetric and one order passed it."""
+    forward = ClearPairLearner()
+    forward.register(1, 2)
+    forward.register(2, 1)
+    assert forward.raise_to_clear == {1: 2} and forward.clear_to_raise == {2: 1}
+
+    backward = ClearPairLearner()
+    backward.register(2, 1)
+    backward.register(1, 2)
+    assert backward.raise_to_clear == {2: 1} and backward.clear_to_raise == {1: 2}
+
+    assert forward.known_role(1) == "raise" and forward.known_role(2) == "clear"
+    assert forward.known_role(99) is None
+
+
+def test_an_unrelated_pair_is_still_learned_after_one_is_known() -> None:
+    """The control: the guard must refuse an INVERSION, not refuse to learn.
+
+    Without this, `register` could satisfy the test above by never registering anything twice,
+    and the appliance would stop learning raise/clear pairs altogether — a silent regression of
+    the feature the guard is protecting.
+    """
+    clears = ClearPairLearner()
+    clears.register(1, 2)
+    clears.register(3, 4)
+    assert clears.raise_to_clear == {1: 2, 3: 4}
+    assert clears.clear_to_raise == {2: 1, 4: 3}
+
+
+def test_a_stored_pair_that_contradicts_itself_is_dropped_rather_than_reloaded() -> None:
+    """The defect was **durable**, so the fix has to survive a restart (F134).
+
+    A database written before v0.18.0 holds both `(X, Y)` and `(Y, X)` in the `edge` table.
+    Loading both would reinstate exactly the state that makes a raise trap dispatch as a clear,
+    so a code-only fix would come back on the next boot.
+    """
+    from netcorenoc.store import EdgeRow
+
+    clears = ClearPairLearner()
+    dropped = clears.load(
+        [
+            EdgeRow("clear_pair", 1, 2, 1.0, 1.0, 0),
+            EdgeRow("clear_pair", 2, 1, 1.0, 1.0, 0),
+            EdgeRow("clear_pair", 5, 6, 1.0, 1.0, 0),  # an unaffected pair, the control
+        ]
+    )
+    assert dropped == (1, 2), dropped
+    assert 2 not in clears.clear_to_raise, "the contradicting pair was reloaded"
+    assert 1 not in clears.clear_to_raise, "the contradicting pair was reloaded"
+    # …and a clean pair in the same table is untouched, so the repair is surgical.
+    assert clears.raise_to_clear == {5: 6} and clears.clear_to_raise == {6: 5}
+
+
+def test_a_clean_stored_pair_loads_unchanged() -> None:
+    """The other control: `load` must still load. An over-eager repair is a silent feature loss."""
+    from netcorenoc.store import EdgeRow
+
+    clears = ClearPairLearner()
+    assert clears.load([EdgeRow("clear_pair", 1, 2, 1.0, 1.0, 0)]) == ()
+    assert clears.raise_to_clear == {1: 2} and clears.clear_to_raise == {2: 1}

@@ -17,7 +17,8 @@
 
 import { html } from "../../dom.js";
 import { Failed, SectionHeading } from "../../widgets.js";
-import { Series, Bars, Map as EstateMap } from "../../charts.js";
+import { Series } from "../../charts.js";
+import { Bars, Map as EstateMap } from "../../compare.js";
 import { buckets, spanText, tally } from "../../chartdata.js";
 import { plural, relative, count, TIMEZONE } from "../../format.js";
 
@@ -124,7 +125,7 @@ export function Where({ nodes }) {
         value: node.active_alarms,
       }))}
       urgentAt=${URGENT_AT}
-      source="/api/graph, live · load, not topology"
+      source="where the alarms are — load, not topology"
       note=${html`one cell per element, busiest first; pulses above ${URGENT_AT} —
         ${" "}<a href="#/graph">how they are connected is on the Graph screen</a>`} />
   </section>`;
@@ -155,7 +156,7 @@ export function Worst({ nodes }) {
     }));
   return html`<section class="panel-block">
     <${Bars} title=${`Busiest ${TOP_N} elements`}
-      rows=${rows} unit="alarms" source="/api/graph, live"
+      rows=${rows} unit="alarms" source="active now, across the estate"
       note="active now, not over a window" />
   </section>`;
 }

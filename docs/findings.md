@@ -413,12 +413,37 @@ Run every command below from the repository root with the virtualenv active.
   aggregate can absorb a scenario that fails totally is a gate that cannot see a scenario.** The
   frozen hash is doing its job; what is missing is a per-scenario floor, and inventing one is a
   change to a gated artefact rather than a patch.
-- **Disposition**: open, issued not fixed, and **pinned by a test that asserts the wrong answer on
-  purpose** — `tests/test_operation.py::test_the_two_incidents_are_merged_into_one_situation_and_that_is_a_defect`,
-  whose failure message says to replace it with the purity assertion when the correlator is
-  repaired. Repairing it is F58/F61's disposition: *"the next release that touches the correlator
-  owns it, and should decide what `MIN_EDGE_N` is counting before changing either number."*
-  Doing it here would move `eval`'s frozen hash and the trap path in a release about neither.
+- **Disposition**: **CLOSED in v0.18.0**, and the pinned test was replaced by the purity
+  assertion its own failure message named —
+  `tests/test_operation.py::test_no_situation_carries_members_of_two_ground_truth_incidents`.
+
+  **The fix is not the one this entry expected, and measuring is how that was found.** A stronger
+  threshold for a merge cannot work here: the seven cross-incident links scored 0.5857 to 0.7243
+  and the twenty-five within-incident links scored 0.6161 to 0.7684 — overlapping, with one pair
+  either side of the boundary at 0.7134 and 0.7131. Nor was it *"one weak bridge"*: there were
+  **seven**, so no connected-component rule about bridge counts would have separated them either.
+
+  What separates them is in the trap. Incident A is `1.3.6.1.4.1.1271.*` and incident B is
+  `1.3.6.1.4.1.2636.*`, disjoint at the enterprise arc, and `scoring.cross_subtree_elements` now
+  withholds the *learned* cross-element affinity term from a pair on two different elements in
+  two different subtrees. That is `same_oid_root`, registered in `PREREGISTRATION-0.9.0.md` §2.3
+  in v0.9.0 and unimplemented for nine releases because it needed an edit to `correlate.py`,
+  whose bytes were pinned until this release's brief withdrew the pin (see F135).
+
+  Measured: this scenario `pairwise_f1` 0.6364 → **1.0000**, `ari` 0.0000 → **1.0000**,
+  `over_merge_rate` 1.0000 → **0.0000**; the other nine scenarios do not move on any metric and
+  `under_merge_rate` stays 0.0000 on all ten. `make eval`'s hash moved `c2e8a0ce…` → `c75b42aa…` (the intermediate `ecab6c45…`, before the baseline was re-cut, is recorded here because the printed table carries the baseline's own numbers, so the re-cut moves the hash a second time)
+  and the baseline was re-cut with its reason. **F58/F61 stay open**: `MIN_EDGE_N` is still
+  cleared by six ordinary alarms, and this release narrows where that arithmetic is *believed*
+  rather than fixing the arithmetic.
+
+  **The limitation, stated**: no corpus scenario contains a ground-truth incident spanning two
+  enterprise subtrees on different elements, so the corpus cannot show this gate's cost. The
+  nearest measurement is that thirty recurrences of the same genuine cross-vendor pair produce
+  `entity_affinity = 0.0000` and a total of 0.4652 against a 0.5 threshold — it does not link
+  today either, so the gate removes no capability that currently works. Class affinity is not
+  gated, which leaves such a pair a route to linking. **The missing scenario is a real gap in the
+  corpus and is not closed here.**
 
 ## F77 — the network graph pushed three of its four nodes off the canvas
 
@@ -2149,3 +2174,244 @@ this into a sentence in a build report instead of a failed gate.
 
 **Measured**: `format.js` 17 351 bytes before and after; ceiling 17 579; headroom 228.
 `views/parts/severity.js` 8 317 -> 12 918, ceiling 17 579, headroom 4 661.
+
+## F128 — the replay tool collapsed four devices into one, on every machine, silently
+
+- **What**: `tools/trap_replay.py`'s `Sender.socket_for` bound each simulated source under
+  `contextlib.suppress(OSError)`. A source the host cannot bind fell back to the default local
+  address with **no message**, so every such device arrived as `127.0.0.1`. **Eight of the
+  corpus's twenty-five source addresses are TEST-NET-3 (`203.0.113.0/24`)**, which no host has an
+  interface in, so `make replay SCENARIO=dual_incident` — a scenario whose whole point is two
+  incidents on *disjoint* network elements — delivered its four devices as one, every time. The
+  appliance then merged them, correctly, because on the wire they really were one device.
+- **Reproduce**: on the pre-fix tree, boot an appliance and
+  `python tools/trap_replay.py eval/corpus/dual_incident.json --port <trap port>`, then
+  `sqlite3 <db> "SELECT ip FROM ne"`.
+- **Measured**: `ne` held one row, `127.0.0.1`, for a scenario declaring four sources. After the
+  fix: `127.0.113.1, 127.0.113.2, 127.0.113.51, 127.0.113.52`, and the tool prints the rewrite
+  and the count of source addresses it actually used.
+- **Why no test saw it**: `tests/test_operation.py` carried its own `_to_wire` rewrite and bound
+  its own sockets, precisely so *it* would not hit the fallback. The one test that drives this
+  scenario over a socket had already worked around the defect. The rewrite now lives in the tool
+  and the test calls it; `tests/test_trap_replay.py` checks the tool's rule against every shipped
+  scenario, derived from the corpus directory.
+- **Disposition**: **fixed in v0.18.0.** A bind failure now raises; unbindable corpus addresses
+  are rewritten onto distinct loopback aliases and the rewrite is printed.
+
+## F129 — the replay tool's default port and the appliance's default port disagreed
+
+- **What**: `trap_replay.py --port` defaulted to 162 while the documented quickstart and the
+  `Makefile` both use `NETCORENOC_TRAP_PORT=1162`. A replay aimed at the wrong port is silent:
+  the traps go nowhere and nothing says so.
+- **Reproduce**: `python tools/trap_replay.py eval/corpus/fiber_cut.json` against an appliance on
+  1162, then look at `/api/stats`.
+- **Measured**: `receiver.received` stays 0; the tool reports `sent 8 traps` and exits 0.
+- **Repair**: `--port` now defaults from `$NETCORENOC_TRAP_PORT`, the same variable the appliance
+  reads, so one export configures both halves of the quickstart.
+- **Disposition**: **fixed in v0.18.0.**
+
+## F130 — the NE image could not be built, and the tool that validated it cannot see why
+
+- **What**: `testbed/Dockerfile.ne` copies `tools/trap_replay.py`, `testbed/ne` and
+  `testbed/scenarios`; the root `.dockerignore` excluded `tools/` and `testbed/`. All three
+  sources were absent from the build context, so `docker compose up --build` fails with
+  `"/testbed/scenarios": not found`.
+- **Reproduce**: `python -c "import sys; sys.path.insert(0,'tests'); import dockerignore, pathlib;
+  i=dockerignore.DockerIgnore.parse(pathlib.Path('.dockerignore').read_text());
+  print([i.explain(s) for s in dockerignore.copy_sources(pathlib.Path('testbed/Dockerfile.ne').read_text())])"`
+- **Measured**: before the fix, 3 of 3 COPY sources reported `EXCLUDED`. After: 3 of 3
+  `re-included`, with `.env`, `tls/`, `tests/`, `docs/`, `deploy/` and `.git` still excluded.
+- **Why no test saw it**: the lab's compose file *was* validated before release — with
+  `docker compose config`, which parses YAML and never opens `.dockerignore`.
+- **Disposition**: **fixed in v0.18.0**, with
+  `tests/test_deploy.py::test_every_dockerfile_copy_source_survives_the_ignore_file`, which
+  derives both the Dockerfiles and their COPY sources and needs no daemon. **`docker build` was
+  still not executed**: this environment has no Docker daemon, which is why the guard was built
+  to need none.
+
+## F131 — `control.py cut` told the operator to open a port the lab might not be on
+
+- **What**: it printed `watch it form: http://127.0.0.1:8080/` unconditionally. A lab on any
+  other port sent its operator somewhere nothing was listening.
+- **Reproduce**: hold 8080, `make lab`, then `make lab-cut`.
+- **Measured**: before, the message named 8080 while the lab was on a kernel-assigned port; after,
+  it names the lab's actual URL, read from a descriptor the lab writes once it is healthy.
+- **Repair**: `testbed/ne/control.py` gained `Lab`, written by `run_local.py` and removed when it
+  stops; a descriptor whose pid is gone is reported as stopped rather than trusted.
+- **Disposition**: **fixed in v0.18.0.** `NETCORENOC_TESTBED_STATE` is no longer needed for the
+  ordinary two-terminal case.
+
+## F132 — the lab refused to start and that was the end of it
+
+- **What**: `refuse_a_foreign_appliance` (F122) correctly refused to start beside a process
+  holding the port — and refusing was all it did, so every subsequent command tested nothing.
+- **Reproduce**: hold TCP 8080 and UDP 1162, then `make lab`.
+- **Measured**: before, `PortAlreadyServingError`. After: `console port 41249 (default 8080 was
+  busy; picked a free one)`, `trap port 52201 (…)`, and a working lab — two network elements, 15
+  alarms and a 14-member situation on the first cut.
+- **Repair**: a port nobody asked for is a convenience and the lab moves off it, loudly. A port
+  requested with `--http-port`/`--trap-port` is a requirement and is still refused, now naming
+  the `ss` command that identifies the holder.
+- **Disposition**: **fixed in v0.18.0.**
+
+## F133 — a count chart printed its last bucket and called it the reading
+
+- **What**: `charts.js` summarised every series as its last non-null value. For a `line` series —
+  a gauge sampled over time — that is right. For a `column` series, which is a **count per
+  bucket**, it printed one bucket's count beside a chart covering the whole window, with no word
+  saying so.
+- **Reproduce**: drive any traffic, open the Overview, and compare the *Situations, by when they
+  were created* header against `GET /api/situations?status=resolved`.
+- **Measured**: the header read `new 1 · being worked 0 · resolved 1`; the plot drew three
+  resolved columns and the API returned three rows. *Alarm raises and clears* read `raises 2`
+  over 16 marks. After the fix: `TOTAL new 1 · being worked 0 · resolved 3` and
+  `TOTAL raises 15 · clears 1`, with the gauges still reading `LATEST`.
+- **Why no test saw it**: every chart test asserted geometry or the presence of a caption; none
+  compared the printed header against the data it was drawn from.
+- **Disposition**: **fixed in v0.18.0**, with
+  `test_a_count_chart_summarises_its_window_and_a_gauge_its_last_reading`, whose gauge half is
+  the control.
+
+## F134 — a flapping link went invisible, permanently, and the corruption was durable
+
+- **What**: `ClearPairLearner.register` asked *"is this class already a raise?"* and *"is that one
+  already a clear?"* — the two halves of the orientation it was about to write. It never asked
+  whether the two were already a pair **the other way round**. An alternation that began with the
+  CLEAR class therefore registered the inverse of the shipped `linkDown → linkUp` seed, and from
+  that moment `Engine._process` dispatched every `linkDown` trap to `_handle_clear`. No alarm was
+  ever raised for that link again. Both directions were written to the `edge` table, so a restart
+  reloaded the corruption.
+- **Reproduce**: three lines, no appliance needed —
+  ```sh
+  python -c "
+  from netcorenoc.engine.correlate.learn import ClearPairLearner
+  lr = ClearPairLearner(); lr.register(2, 3)          # the shipped linkDown->linkUp seed
+  for c in (3, 2, 3, 2, 3, 2): lr.observe(7, 'p1', c)  # a link that flaps, first seen recovering
+  print(lr.clear_to_raise.get(2))"
+  ```
+  End to end: replay eight traps alternating `1.3.6.1.6.3.1.1.5.4` and `…5.3` from one source,
+  starting with the **up**, and read `SELECT COUNT(*) FROM alarm WHERE status='active'`.
+- **Measured**: before, the probe printed `3` (linkDown had become a clear class) and the live
+  appliance reported **0 active alarms** with the link down, `clear_pair` edges `[(1,2),(2,1)]`.
+  After: the probe prints `None` and the appliance reports **1 active alarm**, one edge.
+- **Why it matters**: `linkDown`/`linkUp` is the most common trap pair in SNMP, and the trigger is
+  the ordinary case — an appliance deployed while something is already down, or any third alarm
+  class restarting the `(device, instance)` alternation. The symptom is the absence of a symptom.
+- **Disposition**: **fixed in v0.18.0.** A class holds one role for good; `load` drops a stored
+  pair that contradicts itself and raises an integrity warning rather than reinstating it.
+  Regression tests at both levels (`test_learn.py`, `test_state_clear.py`).
+
+## F135 — `shadow_opinion.same_oid_root` recorded a hardcoded zero for nine releases
+
+- **What**: `PREREGISTRATION-0.9.0.md` §2.3 registered `same_oid_root` as the fourth feature.
+  `shadow.py` wrote a literal `0` into the column for every row since v0.9.0, because
+  `LinkFeatures` carried no trap OID. The column was not *empty*, which would have been honest;
+  it was **wrong**, and no reader could tell.
+- **Reproduce**: `sqlite3 <db> "SELECT DISTINCT same_oid_root FROM shadow_opinion"` on any
+  appliance that has run with shadow mode enabled.
+- **Measured**: one distinct value, `0`, whatever the pairs were.
+- **Repair**: `WindowAlarm` carries the OID root, `Correlator.features` computes the relation, and
+  the column records it. The obstacle was never the arithmetic — it was that the fix needed an
+  edit to `correlate.py`, whose bytes were pinned until this release's brief withdrew the pin.
+- **Disposition**: **fixed in v0.18.0 for new rows.** Rows written before it are **not**
+  corrected and cannot be: nothing recovers what they should have said.
+
+## F136 — one baseline file was both an immutable record and the file the re-cut overwrites
+
+- **What**: `eval/baselines/v0.2.0.json` is read by three tests that assert properties of the
+  **v0.2.0 measurement** (*"cold mode reproduces it"*, *"it shows the weaknesses v0.3.0 exists to
+  fix"*) and is the file `make eval-baseline` (v0.17.0, #324) **overwrites**. The two cannot both
+  be true.
+- **Reproduce**: `make eval-baseline REASON="anything"` on the v0.17.1 tree, then
+  `python -m pytest tests/test_eval.py`.
+- **Measured**: three failures — `entity_accuracy 0.448 < 0.2`, `pon_dying_gasp 0.765 < 0.5`, and
+  cold mode no longer reproducing a file that now holds current numbers.
+- **Why no test saw it**: no release had re-cut a baseline since the target was added, so the
+  contradiction was unreachable. The first release that needed it — this one, repairing F76 —
+  found it.
+- **Disposition**: **fixed in v0.18.0.** `current.json` is the moving baseline `make eval` gates
+  against; `v0.2.0.json` keeps its numbers and its name.
+
+## F138 — seventy independent failures became one situation, and class affinity did it
+
+- **What**: a situation is a connected component of the link graph, and learned **class** affinity
+  can carry a link between two network elements the appliance has learned nothing whatever about.
+  Every device in an estate raising the same two trap classes drives `A` up until any two of those
+  alarms, anywhere, arriving within a few seconds, clear the threshold — and one chain of such
+  links merges every incident it touches.
+- **Reproduce**: 70 devices on distinct addresses, four vendor arcs, one independent card failure
+  each (two alarms three seconds apart). `tools/trap_replay.py` against a clean appliance.
+- **Measured**: **one** situation holding all 140 alarms. 650 links, **580 between different
+  devices**, and **492 of the 650 carried by class affinity**. A representative cross-device link:
+  `T 0.294 + A 0.220 + E 0.000 = 0.514` against a `0.50` threshold. After the repair, the same
+  replay produces **70 situations of two alarms each and zero cross-device links**.
+- **Why no test saw it**: this is F76 one term over, and v0.18.0 measured suppressing the class
+  term as well — on the ten-scenario corpus, where it changed nothing, so the narrow gate shipped
+  on that evidence. The corpus's scenarios have two to four elements each. Seventy have a failure
+  mode four cannot exhibit, and `docs/plans/releases.md` had already recorded that the corpus
+  contains no scenario able to price this gate.
+- **Disposition**: **fixed in v0.19.0** (`scoring.unrelated_elements`). Class affinity is withheld
+  when the two alarms are on different network elements **and** `E` is exactly zero — no learned
+  relationship at all. The pair can then only be carried by the temporal term, which caps at
+  `w_t` and cannot reach the threshold, so the documented cold-start rule now holds at every hour
+  and not only the first. The whole shipped corpus is **unchanged on every metric**.
+
+## F139 — every situation in a live queue was called a "Storm"
+
+- **What**: `derive_situation_name` opened three of its four forms with `Storm -> `, including the
+  one for a grouping of two alarms. An operator scanning the queue read the same word on every
+  row, so the one word meant to say what they were looking at distinguished nothing.
+- **Reproduce**: open **Situations** on any appliance with more than one grouping.
+- **Measured**: seventeen situations in a live queue, seventeen names beginning `Storm -> `, on
+  groupings of 2, 8, 12, 107, 240, 300, 509 and 1 051 alarms.
+- **Repair**: the word is reserved for `member_count >= STORM_ALARMS`, which is the count the
+  **engine** already treats as a storm when it damps learning. Declared in `naming.py` rather than
+  imported, because `crosscutting` may not import `engine`, with a test asserting the two are
+  equal so they cannot drift.
+- **Disposition**: **fixed in v0.19.0.**
+
+## F140 — a query took three minutes to return nothing, on every training tick
+
+- **What**: `store.gesture_positive_pairs()` matched member rows against `dataset_pair` on the
+  pair's two alarm ids **in both orders**, expressed as an `OR` inside the join condition. SQLite
+  cannot use an index for either side of such an `OR`, so it drove the join from the member rows
+  and, for each one, searched `idx_pair_sink` on `lifecycle` alone — which matches every row in
+  the sink. `dataset_pair` had no index on an alarm id at all.
+- **Reproduce**: call it on an appliance with a populated sink. Found by building the Overview's
+  model card on top of it, where it showed up as a request that never returned.
+- **Measured**, 222 050 sink pairs against 4 614 member rows, returning **0 rows**:
+
+  | | `OR` in the join | `UNION ALL` |
+  |---|---|---|
+  | **without the index** | 176.550 s | 220.591 s |
+  | **with the index** | 175.345 s | **0.003 s** |
+
+- **Both halves are load-bearing.** An index the planner cannot reach changes nothing, and
+  splitting the `OR` with nothing to land on is worse than what it replaced. Together, ~58 000x.
+- **Disposition**: **fixed in v0.19.0** — migration `0018` adds `(alarm_a, alarm_b)` and
+  `(alarm_b, alarm_a)`, and the query became a union of two indexable joins in the same commit.
+
+## F141 — the health charts were blank for the first ten minutes after every restart
+
+- **What**: `ResourceSampler._series` bucketed readings by `SAMPLES_KEPT // SERIES_POINTS`, which
+  is ten — a constant derived from the ring's **capacity** rather than from the readings taken. So
+  the first ten samples were one point, and a `line` needs two.
+- **Reproduce**: restart the appliance and open the Overview.
+- **Measured**: three minutes of uptime, six readings taken, **four empty charts**, each saying
+  "only one reading so far" under a caption reading "5 min of a 2.0 h window" — a claim about data
+  the chart was not drawing.
+- **Repair**: bucket by the readings in hand. The second reading is now the second point, and the
+  behaviour converges on exactly the old one once the ring is full. `bucket_s` is derived from the
+  same computation, so the console's time axis cannot be built from a width the series did not use.
+- **Disposition**: **fixed in v0.19.0.**
+
+## F142 — the chart axis printed its clock times on top of each other
+
+- **What**: `.chart-x-tick` was absolutely positioned at `left: 0/50/100%`, which overlaps as soon
+  as the chart is narrower than three clock times.
+- **Reproduce**: open the Overview at 1440 px, where the health panel puts five charts in one row.
+- **Measured**: the first two ticks rendered as `09:36:3309:37:03`.
+- **Repair**: the three ticks are the first, middle and last bucket by construction, which is what
+  `justify-content: space-between` lays out — the same positions, with a gap that cannot be
+  crossed.
+- **Disposition**: **fixed in v0.19.0.**

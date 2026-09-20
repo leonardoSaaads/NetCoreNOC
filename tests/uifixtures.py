@@ -64,6 +64,11 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("tokens.manage", "/api/tokens"),
     ("config.read", "/api/config"),
     ("scorer.read", "/api/scorer"),
+    # v0.18.0: the correlation-health line on Situations reads this on mount. Captured
+    # for every other entry's reason — a screen that reads a route the fixture does not
+    # carry renders its error state in the harness, which is honest and is not the
+    # screen anybody is testing.
+    ("correlation.read", "/api/correlation"),
     ("rbac.read", "/api/rbac"),
     ("scope.read", "/api/scope"),
     ("quarantine.read", "/api/quarantine?limit=100"),

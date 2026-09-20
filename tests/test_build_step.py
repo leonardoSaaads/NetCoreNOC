@@ -363,7 +363,8 @@ UI_HASHES: dict[str, str] = {
     "app.js": "426f5fc2e948536a3b337a874c6dcc090f8e2714af74740c864db965a9a10bfd",
     "app/api.js": "186f79e412a22550a061bc7fd0354a97398e41a153d60c1d19f8e9f03965e977",
     "app/chartdata.js": "23e1cbc075be1b37ad0558e4f95e3c4066ad70a328ca89aa14699a5e5daeb990",
-    "app/charts.js": "e1f7cb46f49998f780decc562939445a78d832cd931bc5e8dd593ebea6074732",
+    "app/charts.js": "937dc8bc1e2b7962cdadd9491e43b64eb825688edb4469c7d100448d7c9a109b",
+    "app/compare.js": "223c60ae00c056e33514900559f2ef053a43c6340937c5e5a8e1916f2e0b0669",
     "app/destructive.js": "51994f0640e3e170061ec0f9bea068f7b3fff7348ca153ffb00d64cfb11838e0",
     "app/dom.js": "b0e279c902ae6f76a902dbc24bb8595d6936aff13f46354870120c4fe42b119b",
     "app/format.js": "67b1f92858adeea52195158def6369af3f9df05d1eb3041e5c35ecca2e3dca0b",
@@ -384,32 +385,31 @@ UI_HASHES: dict[str, str] = {
     "app/views/account.js": "9459ec67e2288914ebd66b22e5f50c80abb2da53b7f0972474bed45f84ed453b",
     "app/views/audit.js": "5f6de01c2eb9ed02f920f9c0165be345ea127aafe186e6d67ad05f7e00b5ce71",
     "app/views/classes.js": "34a0ed86e2724ff763818fb10d22d0401d69e41f822d0a1401340952fa911a44",
-    "app/views/corpus.js": "34219af1b7bccc5405a387ad0806d4114c674a4e9ded79e8ad3116253146f2fc",
+    "app/views/corpus.js": "5493886eb9c3023f3a94bd555d20dc613aba3570f34a4519148d9191bfb6d131",
     "app/views/entities.js": "a9d54241a38d437695b8ffb20d951349e0d908f49f39542e4ee31c13539a2209",
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
     "app/views/graph.js": "05f282c80124a41ec1716c6dd1f1d06386d4c63f3aa71eecfd36963ca8235a9c",
-    "app/views/labelling.js": "f4700fc88921415127605c524cd8d3d8442eea40e7239cffb9473ccf950a97a0",
-    "app/views/overview.js": "131b15658551037df02cb0c50ea42c8ccaa6884b66619d48ef675aea9769133e",
+    "app/views/labelling.js": "e163b0f1ca9d7af77404d50c45a2797c0ea8d038e4ce176d56eb7396b6d01aa1",
+    "app/views/overview.js": "6f03d2a7dede62dcd54d5e28e063c2223cdfe6d4f89cd80683987733634990d0",
     "app/views/parts/bulkclear.js": (
         "2c3b484d2a010c1b9a7b48bb6fb9eeab1b056c28111e8d55e052c872e45a2867"
     ),
     "app/views/parts/card.js": "ee4cc5d51a27b19f70259e3a5e61df623e53f6c6101f103cebe404d90748013b",
+    "app/views/parts/correlation.js": (
+        "715d11c2a3e393ec4ba2f46e5b5fa649670ffc4deb4d1ca4f1a86dedb0b66776"
+    ),
     "app/views/parts/declare.js": (
         "55d42568d7358eebb67d1e8c2b8138ac71676ec5fac45057663683772611f297"
     ),
-    "app/views/parts/estate.js": (
-        "7e101d4e33eb7a6d7e702d29affa748c499eb888d108eb5add21206cc14850fa"
-    ),
+    "app/views/parts/estate.js": "2be4c170193f28c3ce6df8597adff904c1d242ca777692c9869ed4618133831d",
     "app/views/parts/evidence.js": (
-        "2984e7129e76ca56edcfb1089ab801d51af4072e05deb704d722514491637a37"
+        "44e19d816d873d5f720f5eca67fa641189daec53a8f065671606d59eb65239df"
     ),
     "app/views/parts/facts.js": "2befcc9ed54b18d57de942f3f9583e00a0a39170bb2b45d68b29933881858f12",
-    "app/views/parts/finder.js": (
-        "b0652368970a0631d24987c4d1a4dd92b40affe833d1d7959db2a3933fc03274"
-    ),
-    "app/views/parts/judge.js": "fe63d1a56e3e63ddb4fc8bff07fdbb806136eb137277d52f16aa83e5eb7445b4",
+    "app/views/parts/finder.js": "b0652368970a0631d24987c4d1a4dd92b40affe833d1d7959db2a3933fc03274",
+    "app/views/parts/judge.js": "ed5cbe333177143fe8870a306c428c8ecf0b40bc772a2280eb51d64ed047d45f",
     "app/views/parts/keeping.js": (
-        "23937c3cf802a673a46dcb380bbae7aabec043bcb303d2dc5479ca07e6e83f07"
+        "20f6fdb1cbffbd19a623f60948ed8baa7f517805f095f75f2b2af071162114ec"
     ),
     "app/views/parts/lifecycle.js": (
         "a7c0a01b71795a048fad96956dc6280c0cd9e0a2b5db39893a029de4f9b23dbf"
@@ -419,12 +419,13 @@ UI_HASHES: dict[str, str] = {
         "a3b39b4eb11b14858862c13d2c4c765bc6269c8ee2105ae673accc89d5aeaf24"
     ),
     "app/views/parts/model.js": "c30966786ff8e78e8c326b3b0206fe171298e86ef784b0841d68999ef068e81d",
-    "app/views/parts/pulse.js": "1d2ca74f77e4801a6e29c527aa66f03b5e5d6701520e3714bf63839c502b12a3",
+    "app/views/parts/models.js": "b954899695a6710f21c657f83ccd035f887fabfdecd8414fa8111b83bc1adf7c",
+    "app/views/parts/pulse.js": "23d5fe02c939cd0d95b01046f484153478c637ddfa5f79935e152bd35448a2b2",
     "app/views/parts/retention.js": (
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
     ),
     "app/views/parts/severity.js": (
-        "1fb51c993c95851abd38498e745c440ae7ea4dc6f627c959d02d14d6cafd8a7a"
+        "9e5a000cf28611afd09450a748cb11ea40db425efacbc2be5d6b102d0c9fac10"
     ),
     "app/views/parts/verdict.js": (
         "bfedceae5645684afeaf50c636bc56f2626f6822a7b03e6f45af9f6f9bc2a9d3"
@@ -434,14 +435,14 @@ UI_HASHES: dict[str, str] = {
     "app/views/quarantine.js": "04ed768d8180e7d3182086e8dd12c69c8a497196bfb0086ea5023e34a5470b5b",
     "app/views/scorer.js": "bd3126b1928b72b840f80a7c5a7916fd4ac8c482aa92f8532cb40aeafcb5dce1",
     "app/views/settings.js": "87ecd031c5ab16f549223f5fdaf6711ae8ae97b12aa65f643b21f998a256584d",
-    "app/views/situations.js": "afe374be8e8e920369da6fe767294cc29a7cec7fea9899a6deace262f1509241",
+    "app/views/situations.js": "8f81a9361f3c5ed3d79bedefa53776248fffc09c431ea8f7ba0b5ca5e52b592d",
     "app/views/timeline.js": "0b53b512c66656f9d35ebf1055960a31f3facdafd550ebae2c13f7b9f67c4a80",
     "app/views/tokens.js": "f1195d816ebc5e2a9a431d9d618c05299b4497eb60d8a26774be2edb99fbb676",
     "app/views/users.js": "c3fc89f35a09b0c4c748c609d3d45777842f877a59ef88dfdd70ef9a4ea31b19",
     "app/widgets.js": "abe9f6d9342f0335ead13cef4061b54ace36f31e28b0d92308918c96a3561e21",
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "73f4206c6fa3dc1ae5ff0476f56c1c29e93e6bc38e2510c50311e96a1f833c1d",
-    "style.css": "97db82c76f9f9622fff62d61923465713a99f42945ab37eae579b08de035c680",
+    "style.css": "0f812154326c5d2bbbf424e3c83af2f5ccd56e440889f31f6f629182a5b92e17",
     "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
     "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
     "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
@@ -461,7 +462,8 @@ UI_SIZES: dict[str, int] = {
     "app.js": 5_540,
     "app/api.js": 3_424,
     "app/chartdata.js": 8_181,
-    "app/charts.js": 16_918,
+    "app/charts.js": 14_731,
+    "app/compare.js": 7_285,
     "app/destructive.js": 4_152,
     "app/dom.js": 2_142,
     "app/format.js": 17_351,
@@ -482,42 +484,44 @@ UI_SIZES: dict[str, int] = {
     "app/views/account.js": 4_614,
     "app/views/audit.js": 6_490,
     "app/views/classes.js": 7_106,
-    "app/views/corpus.js": 6_231,
+    "app/views/corpus.js": 6_232,
     "app/views/entities.js": 9_378,
     "app/views/governance.js": 10_218,
     "app/views/graph.js": 13_704,
-    "app/views/labelling.js": 5_327,
-    "app/views/overview.js": 11_649,
+    "app/views/labelling.js": 6_105,
+    "app/views/overview.js": 9_610,
     "app/views/parts/bulkclear.js": 3_112,
     "app/views/parts/card.js": 6_140,
+    "app/views/parts/correlation.js": 7_185,
     "app/views/parts/declare.js": 11_975,
-    "app/views/parts/estate.js": 9_316,
-    "app/views/parts/evidence.js": 12_256,
+    "app/views/parts/estate.js": 9_325,
+    "app/views/parts/evidence.js": 13_062,
     "app/views/parts/facts.js": 6_340,
     "app/views/parts/finder.js": 6_220,
-    "app/views/parts/judge.js": 17_092,
-    "app/views/parts/keeping.js": 11_100,
+    "app/views/parts/judge.js": 17_279,
+    "app/views/parts/keeping.js": 14_978,
     "app/views/parts/lifecycle.js": 13_509,
     "app/views/parts/marks.js": 9_929,
     "app/views/parts/members.js": 8_897,
     "app/views/parts/model.js": 10_290,
-    "app/views/parts/pulse.js": 8_278,
+    "app/views/parts/models.js": 11_698,
+    "app/views/parts/pulse.js": 8_331,
     "app/views/parts/retention.js": 5_003,
-    "app/views/parts/severity.js": 12_918,
+    "app/views/parts/severity.js": 13_217,
     "app/views/parts/verdict.js": 8_420,
     "app/views/parts/why.js": 10_884,
     "app/views/promotion.js": 11_378,
     "app/views/quarantine.js": 2_247,
     "app/views/scorer.js": 13_216,
     "app/views/settings.js": 11_331,
-    "app/views/situations.js": 15_602,
+    "app/views/situations.js": 15_856,
     "app/views/timeline.js": 14_921,
     "app/views/tokens.js": 5_104,
     "app/views/users.js": 8_994,
     "app/widgets.js": 11_923,
     "favicon.svg": 608,
     "index.html": 2_159,
-    "style.css": 84_377,
+    "style.css": 90_928,
     "vendor/CHECKSUMS.txt": 2_039,
     "vendor/d3.LICENSE": 764,
     "vendor/d3.v7.min.js": 279_706,

@@ -12,6 +12,230 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-three rows, two ask for an
 action, thirteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
+## [0.19.0] - 2026-09-20 — "the operator's day"
+
+The brief was to **use the appliance the way its operator does**: set it up from the boot banner,
+point real traffic at it, work the queue with three people over several shifts, and fix what hurt.
+Five defects came out of driving it that no test in this repository could have found, and the
+worst of them merged an entire estate.
+
+**The headline defect (F138): seventy independent failures became one situation.** Seventy devices
+on distinct addresses, four vendor arcs, one card failure each — every incident separate by
+construction. The appliance produced **one** situation of 140 alarms: 650 links, **580 between
+different devices**, and **492 of the 650 carried by class affinity**. Every device raised the same
+two trap classes, so `A[c_i, c_j]` climbed, and after a few dozen `0.294 + 0.220 = 0.514` cleared a
+`0.50` threshold for any two of those alarms anywhere in the estate. A situation is a connected
+component, so one chain of defensible links swallowed the lot.
+
+This is [F76](docs/findings.md) one term over, and v0.18.0 measured exactly this repair and found
+it changed nothing — on ten scenarios of two to four elements each. Seventy have a failure mode
+four cannot exhibit. **Class affinity is now withheld when the two alarms are on different network
+elements and `E` is exactly zero**, which is where the appliance has learned nothing whatever
+connecting them. The same replay after the fix: **70 situations, two alarms each, zero cross-device
+links**, and the whole shipped corpus **unchanged on every metric** (#353).
+
+### The models stopped being prose
+
+The Judge screen carried a heading reading *"Not drawn, because nothing measures it"* over the loss
+curve, and the Labelling screen said the corpus figures were *"deliberately not computed here"* and
+pointed at a `make` target needing shell access. Both were honest and both answered the wrong
+question.
+
+* **The optimiser records its loss now** (#355), so the curve is drawn rather than explained. On a
+  separable fixture it runs 0.693 — `ln 2`, the coin-flip baseline — down to 0.061 over 21 points.
+  Old rows are `NULL` and are not back-filled: those fits happened and nobody recorded them.
+* **The Overview leads with one line and one bar**: *"The built-in formula is deciding. Your
+  judgements are 12 % of the way to training a model."* Behind a click: the four registered floors
+  as bars, the curve, and — for an admin — the two controls.
+* **The bars are live.** A verdict moves them on the very next read (5 → 6, measured), because the
+  census is cached against the row count and highest id of the tables a judgement writes rather
+  than read off a training run that happens every five minutes (#356).
+* **An admin can register the appliance's own fit from the console** (#354) and then ask the
+  server to hand correlation over. Registering is not promoting: the judge still re-derives every
+  floor, the power condition, the sealed holdout and the verdict. **The request body names a run
+  id and nothing else**, so it cannot assert a model this appliance did not fit — the same
+  construction `POST /api/promotion` uses, one table earlier.
+
+### A query that took three minutes to return nothing (F140)
+
+`gesture_positive_pairs` matched alarm ids in both orders as an `OR` inside a join, which no index
+can serve, against a table with no index on an alarm id at all. On 222 050 sink pairs: **176.550 s,
+returning 0 rows** — on every training tick. Migration `0018` adds the two indexes and the query
+became a union of two indexable joins **in the same commit**, because neither half is worth
+anything alone:
+
+```
+                   OR in the join     UNION ALL
+without the index     176.550 s        220.591 s
+with the index        175.345 s          0.003 s
+```
+
+### What an operator actually looks at
+
+* **The health charts are readable** (F141, F142). CPU and memory ran at 5 % against a fixed 100 %
+  ceiling — a flat line along the floor — so a percentage axis now takes the smallest band that
+  contains the data and **prints its ceiling**. Charts were blank for the first ten minutes after a
+  restart because buckets were sized against the ring's capacity rather than the readings taken;
+  they now appear from the second reading. Axis ticks were rendering as `09:36:3309:37:03`.
+* **The database has its own chart**, in megabytes beside the filesystem's percentage — "Storage"
+  is the disk, and an operator reading 89 % could not tell how much of it was this appliance.
+* **The panel answers its own heading.** *"Is the appliance keeping up"* now carries a one-line
+  verdict above the charts, by the same rule and in the same three tones as the grouping verdict.
+* **Captions say what is measured, not which endpoint served it.** `/api/stats.resources — the
+  host's memory` became `this host's memory`, on the screen an operator opens first.
+* **"Storm" is reserved for a storm** (F139). Seventeen situations in a live queue were all named
+  `Storm -> …`, including groupings of two. The threshold is `STORM_ALARMS`, the count the engine
+  already damps learning at, with a test pinning the two together.
+* **`23 quieter elementsare not drawn`** — F112's missing space, third occurrence, found by
+  reading the rendered page rather than the template.
+
+### Screens that had stopped being true, and two that had stopped earning their place
+
+* **The Judge screen no longer says the loss curve cannot be drawn.** That heading was correct
+  until this release recorded the measurement; leaving it up afterwards would have been the same
+  dishonesty in the other direction. The two absences beside it — a residual distribution and
+  per-fold results — are unchanged and still named.
+* **Labelling no longer says the corpus figures are "deliberately not computed here"** and points
+  at a `make` target needing shell access. The objection behind that was right — a second
+  implementation of the counts would be a second source of truth — and the answer is to call the
+  *same* function, which is what the card now mounted there does. What genuinely stays offline is
+  the shadow **verdict**, and that is still said plainly.
+* **The decision comes before the analysis on a situation.** *Confirm* and *Split* sat below the
+  per-term breakdown, so judging a grouping of 1 051 alarms meant scrolling past the member table
+  and the breakdown to reach them.
+* **Two on-demand panels left the foot of the Overview.** Each rendered *"Not computed yet"* beside
+  a `Compute now` button — two dead boxes at the end of the screen an operator opens most. *Judge
+  and promotion* is answered live by the model line at the top of the same page; *what capture is
+  holding* is the Corpus screen's whole subject.
+
+### The gates
+
+**2 064 passed**, coverage **95.59 %**, `mypy --strict` clean on 226 files, ruff clean, vulture
+clean, **79 DOM tests executed**, `make eval` with **no gated regressions** and every metric
+identical to v0.18.0. Schema 16 → **18**. Still **five runtime dependencies**.
+
+One guard was made less brittle rather than updated: `test_no_server_derivation_reaches_operator_name`
+pinned a line number and went red when an unrelated constant was added above the method. It asserts
+the property — one writer, in that file — because a guard that fails for a reason it does not care
+about teaches people to update it without reading it.
+
+## [0.18.0] - 2026-09-19 — "the audit"
+
+Not a feature release. The brief was *use the product, find what is broken, fix it* — so the
+headline is a count: **nine defects found by driving the appliance, of which six no test in this
+repository could have found**, and one of them made a flapping link invisible.
+
+**The headline defect (F134).** `CLEAR_PAIR_SEEDS` ships `linkDown → linkUp`. The alternation
+learner registered the **inverse** of that pair as soon as a `(device, instance)` alternation
+happened to begin with `linkUp` — the ordinary case for an appliance deployed while a link is
+already down. From that moment every `linkDown` trap was dispatched to `_handle_clear` and no
+alarm was ever raised for it again. Measured on a real appliance over UDP: eight traps ending in
+`linkDown`, **0 active alarms**. The link was down and the console said the network was clean.
+The corruption was durable — both directions were written to the `edge` table — so a code-only
+fix would have come back on the next restart. After the fix, the same replay: **1 active alarm**.
+
+**F76 is closed.** `eval/corpus/dual_incident.json` has described itself as *"two unrelated
+incidents … must stay separate"* since v0.15.0 and they did not; a test pinned the wrong answer
+on purpose, saying what to replace it with. The scorer no longer applies *learned* cross-element
+affinity to a pair on two different elements whose trap OIDs sit in different enterprise subtrees
+— `same_oid_root`, the fourth feature `PREREGISTRATION-0.9.0.md` §2.3 registered in v0.9.0 and
+which went unimplemented for nine releases for one recorded reason: it needed an edit to
+`correlate.py`, whose bytes were pinned. **The v0.18.0 brief withdrew that pin.**
+
+Measured over the whole corpus: `dual_incident` `pairwise_f1` 0.6364 → **1.0000**, `ari` 0.0000 →
+**1.0000**, `over_merge_rate` 1.0000 → **0.0000**; the other nine scenarios do not move on any
+metric and `under_merge_rate` stays 0.0000 on all ten. Corpus-wide `over_merge_rate` 0.0312 →
+**0.0000**. A score threshold could not have done it: the seven cross-incident links scored
+0.5857 to 0.7243 against within-incident links at 0.6161 to 0.7684, overlapping, with one pair
+either side of the boundary at 0.7134 and 0.7131.
+
+**This is a declared correlation behaviour change**, so `make eval`'s stdout hash moves —
+`c2e8a0ce…` → `c75b42aa…` (the intermediate `ecab6c45…`, before the baseline was re-cut, is recorded here because the printed table carries the baseline's own numbers, so the re-cut moves the hash a second time) — and the baseline is re-cut with its reason in
+`eval/baselines/REBASELINE-LOG.md`.
+
+### The appliance can see itself (Part II)
+
+Nothing measured the running scorer. `GET /api/correlation` now answers *"is the correlator doing
+a good job right now?"* without an offline report: accept rate, the score distribution against the
+threshold, how many decisions land within 0.05 of it, which of the three terms carried each link,
+merges per activation, and the subtree refusals — each **lifetime and over the last 500
+activations**, because one number cannot say whether a figure is normal.
+
+**On screen it is one line on Situations, and the detail is behind a click.** It shipped first as
+a whole view and that was wrong: Situations already explains *this* grouping, and an operator
+wants the *result* — whether what they are looking at is trustworthy — not a second screen of
+metrics. So the answer is a sentence above the list (*"Grouping looks steady — 2.6 % of decisions
+were close calls"*), and the panel is not in the DOM until it is opened.
+
+It found something immediately. On four replayed scenarios: learned entity affinity carried
+**518 of 520** accepted links. That is F58's arithmetic, visible in the product for the first time.
+
+**It is not evidence.** Nothing is stored, no promotion path reads it, and the screen offers no
+control that records an opinion.
+
+### The newcomer path (F128, F129, F130, F131, F132)
+
+`tools/trap_replay.py` bound each simulated source under `contextlib.suppress(OSError)`. **Eight
+of the corpus's twenty-five source addresses are TEST-NET-3**, which no host has an interface in,
+so `make replay SCENARIO=dual_incident` delivered its four devices as **one**, on every machine,
+every time — and the appliance then merged them correctly, because on the wire they were one
+device. `tests/test_operation.py` carried a private rewrite that worked around this, so the one
+test that drives that scenario over a socket could not see it. The rewrite now lives in the tool
+and the test calls it.
+
+`testbed/Dockerfile.ne` could not be built: the root `.dockerignore` excluded all three of its
+COPY sources. `docker compose config` parses YAML and never reads `.dockerignore`, which is why
+v0.17.0 shipped it. Fixed, with a guard that derives every Dockerfile's COPY sources and checks
+them against the ignore file — no daemon required, because a guard that needs one is a guard
+that skips.
+
+The lab now picks a free port when its default is busy and says so; `control.py` finds the
+running lab through a descriptor instead of printing a hardcoded `8080`.
+
+### What was deleted
+
+* **`TRAP_PATH_HASHES` and `TRAP_PATH_BODY_HASHES`** (173 lines) — they protected the ingest path
+  from casual edits, the brief withdrew byte-pinning by name, and they could not tell a comment
+  fix from a blocking `open()`. Replaced by the constraint the brief keeps: a guard that reads
+  `datagram_received` and fails on an `await`, a lock or an I/O call, with a control proving it
+  can fail.
+* **`test_score_link_body_is_unchanged_by_the_capture_change`** — a source-text hash policing one
+  sentence of v0.8.0's build prompt, ten releases past. Replaced by a behavioural parity test
+  that checks the *number* rather than the text.
+
+### Also
+
+* `shadow_opinion.same_oid_root` recorded a hardcoded `0` for nine releases — not empty, which
+  would have been honest, but **wrong**, and no reader could tell. It now records the pair.
+* A count chart's header printed its **last bucket** and called it the reading (F133): the
+  Overview said `resolved 1` beside three resolved columns. A `column` series now reports the
+  window total and a `line` series its latest sample, and the header says which.
+* `eval/baselines/v0.2.0.json` was both an immutable historical record three tests assert against
+  **and** the file `make eval-baseline` overwrites (F136). The first release to re-cut a baseline
+  since that target was added found it. Split into `current.json` and `v0.2.0.json`.
+* `learn.py` split at the 400-line guard: the two alternation learners answer *"which class turns
+  this one off?"*, which is not the affinity matrices' question. `ui/app/charts.js` split at the
+  module-graph ceiling: `Bars` and `Map` compare things to each other, `Series` compares a thing
+  to its own past.
+
+### What was measured and left alone
+
+* **The snowball is refuted.** Three configurations, none of which grows: a cycler with its own
+  situation forms a fresh one per re-raise and each resolves; a cycler sharing a never-closing
+  situation stays at two members; with the structural bridge in place it grows **once** and then
+  stops. The situation stays open and does **not** swallow. What was really wrong with repeating
+  alarms is F134.
+* **The idle-close decision (v0.16.2) is upheld.** A situation holding an active alarm is not
+  resolved, is badged `stale`, is counted in an operator warning and can be closed by hand. The
+  measurement above says it does not grow, so the population it leaves is bounded.
+* **The gates**, all after the last change: **2048 passed**, `mypy --strict` clean on 252 files,
+  `ruff check` and `ruff format --check` clean, **79 DOM tests executed** (not skipped), bandit
+  and `pip-audit` clean, coverage **95.59 %**, wheel and sdist installed into a clean venv and
+  the appliance booted through all 16 migrations from it.
+* **The architecture is unchanged and still a real structure.** v0.17.0's measurement, repeated:
+  `engine/` is six domains with **15** cross-domain edges, one 2-cycle (`dataset ↔ model`),
+  `correlate` a pure sink, and `store/` 26 modules with **0** imports of `engine/` or `api/`.
+
 ## [0.17.1] - 2026-09-15 — "the alarm vocabulary"
 
 The appliance had been receiving the word `critical` since v0.8.0 and refusing to use it. This

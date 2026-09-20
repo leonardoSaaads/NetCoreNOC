@@ -304,3 +304,40 @@ async def test_a_scoped_reader_gets_no_name_built_from_members_they_cannot_see(
     finally:
         await unrestricted.aclose()
         await scoped.aclose()
+
+
+# --- F139: every situation in a live queue was called a "Storm" -------------------------------
+
+
+def test_the_storm_threshold_in_a_name_is_the_engines_own() -> None:
+    """`naming.STORM_ALARMS` is declared, not imported, because `crosscutting` may not import
+    `engine`. This is what stops the two drifting: the day one moves, this goes red.
+    """
+    from netcorenoc.crosscutting.shaping import naming
+    from netcorenoc.engine.correlate.learn import STORM_ALARMS
+
+    assert naming.STORM_ALARMS == STORM_ALARMS
+
+
+def test_a_grouping_of_two_alarms_is_not_called_a_storm() -> None:
+    """**F139.** A live queue of seventeen situations read `Storm -> …` on every row — including
+    groupings of two, eight and twelve alarms — so the one word meant to say what an operator was
+    looking at distinguished nothing at all.
+    """
+    from netcorenoc.crosscutting.shaping.naming import STORM_ALARMS, derive_situation_name
+
+    assert derive_situation_name(["10.0.0.1", "10.0.0.1"], 2) == "10.0.0.1"
+    assert derive_situation_name(["10.0.0.1", "10.0.0.2", "10.0.0.3"], 12) == "10.0.0.1 and 2 more"
+    # And a real storm still says so, at the engine's own threshold.
+    assert derive_situation_name(["10.0.0.1"], STORM_ALARMS) == "Storm -> 10.0.0.1"
+    assert derive_situation_name(["10.0.0.1"], STORM_ALARMS - 1) == "10.0.0.1"
+
+
+def test_the_shapes_that_were_already_right_are_untouched() -> None:
+    """The controls. A single alarm names its device, the two-element pair keeps the shape that
+    *is* the diagnosis, and an empty grouping still says so."""
+    from netcorenoc.crosscutting.shaping.naming import NO_MEMBERS, derive_situation_name
+
+    assert derive_situation_name(["10.0.0.1"], 1) == "10.0.0.1"
+    assert derive_situation_name(["10.0.0.2", "10.0.0.1"], 2) == "10.0.0.1 <-> 10.0.0.2"
+    assert derive_situation_name([], 0) == NO_MEMBERS
