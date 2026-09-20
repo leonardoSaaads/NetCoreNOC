@@ -122,7 +122,7 @@ running lab through a descriptor instead of printing a hardcoded `8080`.
   resolved, is badged `stale`, is counted in an operator warning and can be closed by hand. The
   measurement above says it does not grow, so the population it leaves is bounded.
 * **The gates**, all after the last change: **2048 passed**, `mypy --strict` clean on 252 files,
-  `ruff check` and `ruff format --check` clean, **78 DOM tests executed** (not skipped), bandit
+  `ruff check` and `ruff format --check` clean, **79 DOM tests executed** (not skipped), bandit
   and `pip-audit` clean, coverage **95.59 %**, wheel and sdist installed into a clean venv and
   the appliance booted through all 16 migrations from it.
 * **The architecture is unchanged and still a real structure.** v0.17.0's measurement, repeated:

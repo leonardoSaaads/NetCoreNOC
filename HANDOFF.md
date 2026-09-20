@@ -123,7 +123,7 @@ caption can honestly say *"since this appliance started"*.
 | **`device` duplicates `ne`** | Measured on a live appliance after 549 traps: **8 device rows, 8 ne rows, `device.id == ne.id` for 8 of 8** — the property F105 flagged still holds, still with two independent sequences and no foreign key, so it still holds *by accident*. Migration `0003`'s own comment says `device_id` is *"retained and kept in sync for one version"* and it has been fifteen. **Not fixed here**: removing it means a migration touching `alarm`, `link`, `dataset_pair` and the `device`-kind edges, which changes the shape of the feedback dataset and the graph — a structural release's work, not an audit's, and doing it badly at the end of one is how a correlator loses its topology. `device.vendor`/`ne.vendor` are `0` non-null of 8, as F105 recorded; that finding is already closed by deleting the *renders*, and the columns stay unwritten on purpose. |
 | **F56** — a malformed corpus file hangs the harness | Untouched. Offline tooling; the blast radius is a person's afternoon. |
 | **F116** — `unitText` prints `1 alarms` | Untouched, and still visible. Its own disposition says the one-line fix moves every chart in the console, so it belongs in a commit with the pins that move with it. |
-| **`docker build` was not executed** | This environment has **no Docker daemon** (`/var/run/docker.sock` absent) — the same constraint v0.17.0 recorded for a different reason. F130's fix is therefore verified by a guard that needs no daemon, which is deliberate: a guard that needs one is a guard that skips, and skipping is how the unbuildable image shipped. |
+| **`docker build` was not executed** | This environment has **no Docker daemon** (`/var/run/docker.sock` absent) — the same constraint v0.17.0 recorded for a different reason. F130's fix is therefore verified by a guard that needs no daemon, which is deliberate: a guard that needs one is a guard that skips, and skipping is how the unbuildable image shipped. **And CI does not close this gap either**, which is worth saying rather than assuming: the `appliance` job runs `make dist-image`, which is `docker build -t netcorenoc:local .` — the *root* `Dockerfile` only — and drives the lab through `testbed/run_local.py` rather than `docker compose up`, precisely so it tests the lab instead of Docker networking. So **nothing anywhere builds `testbed/Dockerfile.ne`**. That is Appendix B's "a path validated by a tool that cannot see the failure" pointed at my own fix, and the honest statement is: the ignore file now lets the three COPY sources through *by parse*, and no build has confirmed it. The root image, which CI does build, still builds with the changed `.dockerignore` — that much is verified. |
 | **The judge still returns `INSUFFICIENT_EVIDENCE`** | Unchanged and correctly so: the floor is 50 asserting bags, the corpus ceiling is 41, and softening a registered floor because the data is short is the one move the evidence rules forbid. This release measures the **champion** instead, which needs no promotion. |
 
 ---
@@ -249,7 +249,7 @@ curl -s --cookie /tmp/c http://127.0.0.1:8080/api/correlation | python -m json.t
 | full suite + coverage | **2048 passed, 0 failed**, coverage **95.59 %** (`fail_under` 85) |
 | `mypy --strict` | clean, 252 source files |
 | `ruff check .` / `ruff format --check .` | clean / 292 files already formatted |
-| `make dom` | **78 passed** — *executed*, not skipped (Node 22.22.2 present) |
+| `make dom` | **79 passed** — *executed*, not skipped (Node 22.22.2 present) |
 | `make scan` (bandit) | exit 0, no issues |
 | `pip-audit` | "No known vulnerabilities found" |
 | `make deadcode` (vulture) | clean |
@@ -265,6 +265,19 @@ curl -s --cookie /tmp/c http://127.0.0.1:8080/api/correlation | python -m json.t
 `tests/test_testbed.py` and by the live lab runs recorded in §7, not by that percentage. I did
 not widen the source list: doing so at the end of an audit would move the headline figure for a
 reason unrelated to the code, and the honest option was to say which code the number cannot see.
+
+**Re-run from the unpacked delivery, not from the tree it was written in.** Appendix A asks for
+that because a fix that only works where it was written is not delivered. The ZIP was unpacked to
+a fresh directory, a new `python3.12` virtualenv built inside it, and the gates run there:
+
+| From the unpacked copy | Result |
+|---|---|
+| `make qa` (lint, types, deadcode, scan, test, eval) | exit **0** — **2048 passed**, coverage **95.59 %**, no gated eval regressions |
+| `make dom` | **79 passed** — executed, not skipped |
+| `eval/harness.py \| sha256sum` | `c75b42aa95e1931f78af91d2581cc071ebed36ca1cca47e22505797a3369839a` — **identical** to the tree |
+| behaviour-identity record | 8 passed |
+| the lab, brought up | `run_local.py --demo --cycles 1`: ports chosen (8080 / 1162), both sources bound from `127.0.0.2` and `127.0.0.3`, appliance healthy in 1.3 s. From its database afterwards: **2 devices**, 20 active + 1 cleared alarm, **2 situations, one resolved**. `testbed/state/` holds no `lab.json` — the descriptor was cleared on exit, as it must be |
+| `git` state in the copy | clean working tree, branch `claude-code/beautiful-shannon-nhed8v`, both commits present, **0 tags**, the package reporting `0.18.0`, `HANDOFF.md` at the root |
 
 ## 9. On tags
 
