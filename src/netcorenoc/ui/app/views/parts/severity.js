@@ -246,8 +246,15 @@ export function Severity({ census }) {
             endpoint was on the face of the chart on the screen an operator opens first, and an
             operator reading it is not debugging the console — same repair as the health panel's
             four captions. */ null}
-      source=${"an operator's declaration first, then the word the trap carried, then what the " +
-        "appliance learned"}
+      ${/* **Shorter, and nothing dropped** (v0.20.0). This read "an operator's declaration
+            first, then the word the trap carried, then what the appliance learned" — nineteen
+            words restating the precedence order under a chart on the screen an operator opens
+            first. The order still has to be on screen, because a declaration moving a severity
+            is the one thing here an operator can act on, and the per-source breakdown in the
+            note has to stay whole: `provenanceNote` names a source this build does not
+            recognise rather than discarding it, and four guards hold that. So the sentence is
+            cut and the facts are not. */ null}
+      source="a declaration wins, then the trap's word, then what was learned"
       note=${known
         ? `${count(placedTotal)} placed, ${count(unplaced)} not placed` + provenanceNote(census)
         : "the appliance did not report a severity census"} />

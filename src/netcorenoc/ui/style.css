@@ -1692,3 +1692,26 @@ p.corr-line { cursor: default; }
   border-radius: var(--radius-1); font-size: var(--fs-sm);
 }
 .models-acts .models-none { flex: 1 1 100%; margin: 0; }
+
+/* --- the Overview's two-column grid and its range picker (v0.20.0) --------------------------
+   Every panel used to take a full row, so six short rows of severity counts occupied as much of
+   the screen as the estate grid. One column below 900 px, so the phone layout is unchanged. */
+.grid-2 {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4); align-items: start;
+}
+@media (max-width: 900px) { .grid-2 { grid-template-columns: minmax(0, 1fr); } }
+
+.ranges { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-4); }
+.range {
+  min-height: var(--tap); padding: 0 var(--space-3);
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-2);
+  color: var(--fg-dim); font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.range:hover { border-color: var(--line-strong); color: var(--fg); }
+.range.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+.learned-line {
+  margin: var(--space-3) 0 0; padding-top: var(--space-2); border-top: 1px solid var(--line);
+  font-size: var(--fs-sm); color: var(--fg-muted);
+}

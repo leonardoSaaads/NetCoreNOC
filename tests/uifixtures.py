@@ -58,6 +58,10 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("graph.read", "/api/graph"),
     ("situations.read", "/api/situations?limit=50"),
     ("timeline.read", "/api/timeline?limit=300"),
+    # v0.20.0: the Overview's activity chart reads the **bucketed** form over the range the
+    # operator picked. Two entries, because the default range is what the screen asks for on
+    # mount and a fixture that carried only the marks would leave the chart in its absent state.
+    ("timeline.read", "/api/timeline?buckets=24&range_s=7200"),
     ("entities.read", "/api/entities"),
     ("entities.read", "/api/state-clears"),
     ("users.manage", "/api/users"),

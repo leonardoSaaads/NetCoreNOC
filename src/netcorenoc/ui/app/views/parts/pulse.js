@@ -19,11 +19,41 @@ import { html } from "../../dom.js";
 import { Failed, SectionHeading } from "../../widgets.js";
 import { Series } from "../../charts.js";
 import { Bars, Map as EstateMap } from "../../compare.js";
-import { buckets, spanText, tally } from "../../chartdata.js";
-import { plural, relative, count, TIMEZONE } from "../../format.js";
+import { clock, spanText } from "../../chartdata.js";
+import { count, TIMEZONE } from "../../format.js";
 
-/** How many alarms the marks read asks for. The route clamps at 1 000; this is that clamp. */
-export const MARK_LIMIT = 1000;
+/**
+ * The ranges the Overview offers, and the default.
+ *
+ * Here rather than in the view because the chart's axis and the picker's labels have to mean the
+ * same thing, and two lists of durations is how they come to differ by one entry.
+ */
+export const RANGES = [
+  { label: "15m", seconds: 15 * 60 },
+  { label: "1h", seconds: 60 * 60 },
+  { label: "2h", seconds: 2 * 60 * 60 },
+  { label: "6h", seconds: 6 * 60 * 60 },
+  { label: "12h", seconds: 12 * 60 * 60 },
+  { label: "1d", seconds: 24 * 60 * 60 },
+  { label: "3d", seconds: 3 * 24 * 60 * 60 },
+  { label: "7d", seconds: 7 * 24 * 60 * 60 },
+];
+
+/** Two hours: the window the health sampler already keeps, so the two panels agree by default. */
+export const DEFAULT_RANGE_S = 2 * 60 * 60;
+
+/** Columns in the activity chart. Twenty-four reads at 390 px and resolves at 1440. */
+export const RANGE_BUCKETS = 24;
+
+/** The range picker: eight buttons, the current one pressed. */
+export function RangePicker({ value, onPick }) {
+  return html`<div class="ranges" role="group" aria-label="How far back to look">
+    ${RANGES.map((r) => html`<button type="button" key=${r.label}
+        class=${r.seconds === value ? "range on" : "range"}
+        aria-pressed=${r.seconds === value}
+        onClick=${() => onPick(r.seconds)}>${r.label}</button>`)}
+  </div>`;
+}
 
 /** How many elements the top-elements bars rank. Enough to act on, short enough to read. */
 const TOP_N = 5;
@@ -39,109 +69,72 @@ const TOP_N = 5;
 export const URGENT_AT = 47;
 
 /**
- * **Band 1 — what is happening.** Two column series, and they answer different halves.
+ * **What is happening** — one chart, over a range the operator chose.
  *
- * *Situations by creation time* says whether the correlator is forming groups steadily or all at
- * once. Its population is **the situations in the live list** — the 50 most recently active, which
- * is what the update stream carries — and the caption says so. That is deliberately not a second,
- * larger read: one source for the situations on this screen means the chart and the list beneath it
- * cannot disagree, and the question *"burst or trickle"* is answered by the population an operator
- * is actually working through. *(DECISIONS #306 measured `?limit=500` at 2.5 ms and it would have
- * been affordable; it was refused for the disagreement, not for the cost.)*
+ * ## What this replaced, and why (v0.20.0, F144)
  *
- * *Raises and clears* is the half that says whether it is **recovering**. Five hundred raises and
- * three clears and five hundred raises and 495 clears are opposite situations and the counters
- * cannot tell them apart. Both series share one bucket grid, so a column in one lines up with the
- * column beside it.
+ * Two column charts sat here. The first plotted *situations by creation time* over **the 50 most
+ * recent situations the live list carries**; the second plotted raises and clears by fetching
+ * `/api/timeline?limit=1000` and counting in the browser. Both drew their own axis from whatever
+ * span their own data happened to cover, so the two charts under one heading were usually over
+ * two different periods, neither of them stated in a unit an operator picked — which is what
+ * made the panel read as blocks rather than as time passing.
+ *
+ * The thousand-row read was also 108.5 KiB on every load to produce twenty-four numbers, and it
+ * was **truncated**: on the measured estate those thousand marks spanned 15.6 seconds of one
+ * storm out of 1 963 raises. `Worst` below already recorded that a chart labelled "last 7 days"
+ * over that data would be a lie, and deferred the fix to "a later release" with a `GROUP BY` in
+ * it. This is that release: `/api/timeline?buckets=…&range_s=…` counts in SQL, so the axis is
+ * the range that was asked for and the counts are all of it.
+ *
+ * One chart, because raises against clears is the question — five hundred raises with three
+ * clears and five hundred with 495 are opposite situations and no counter distinguishes them.
+ * Whether situations arrive in a burst is answered by the list beside it.
  */
-export function Happening({ situations, marks, at, error, retry }) {
-  const created = situations.map((s) => s.created_at).filter((t) => t != null);
-  const grid = buckets(created, 24);
-  const byStatus = (want) =>
-    tally(grid, situations.filter((s) => (want === "resolved"
-      ? s.status === "resolved"
-      : s.status === want)).map((s) => s.created_at));
-
-  const markTimes = (marks || []).map((m) => m.ts);
-  const markGrid = buckets(markTimes, 24);
-  const raises = tally(markGrid, (marks || []).filter((m) => m.kind !== "clear").map((m) => m.ts));
-  const clears = tally(markGrid, (marks || []).filter((m) => m.kind === "clear").map((m) => m.ts));
-  const truncated = (marks || []).length >= MARK_LIMIT;
-
-  return html`<section class="panel-block">
-    <${SectionHeading} title="What is happening" />
-    <${Series} title="Situations, by when they were created" mark="column"
-      series=${[
-        { name: "new", tone: "alarm", values: byStatus("new") },
-        { name: "being worked", tone: "warn", values: byStatus("open") },
-        { name: "resolved", tone: "quiet", values: byStatus("resolved") },
-      ]}
-      labels=${grid.labels}
-      source=${`the ${plural(situations.length, "situation")} in the live list (50 newest)`}
-      span=${grid.n ? `over ${spanText(grid.spanS)}, one column per ${spanText(grid.bucketS)}`
-        : null}
-      note=${`in ${TIMEZONE}`} />
-
-    ${error
-      ? html`<${Failed} error=${error} retry=${retry} what="recent alarm activity" />`
-      : html`<${Series} title="Alarm raises and clears" mark="column"
-          series=${[
-            { name: "raises", tone: "alarm", values: raises },
-            { name: "clears", tone: "quiet", values: clears },
-          ]}
-          labels=${markGrid.labels}
-          source=${marks == null
-            ? "reading /api/timeline…"
-            : `${plural(marks.length, "mark")} from /api/timeline`}
-          span=${markGrid.n
-            ? `over ${spanText(markGrid.spanS)}, one column per ${spanText(markGrid.bucketS)}`
-            : null}
-          note=${[
-            truncated ? `bounded at ${count(MARK_LIMIT)} alarms: the axis is what this page covers`
-              : null,
-            at ? `read ${relative(at)}` : null,
-          ].filter(Boolean).join("; ") || null} />`}
-  </section>`;
+export function Happening({ data, rangeS, error, retry }) {
+  if (error) {
+    return html`<${Failed} error=${error} retry=${retry} what="recent alarm activity" />`;
+  }
+  const series = (data && data.series) || null;
+  const n = series ? series.raises.length : 0;
+  const bucketS = (data && data.bucket_s) || 0;
+  // Ticks are clock times counted back from the end of the range, so the axis is the range the
+  // operator chose rather than the span the rows happened to cover.
+  const labels = n && data
+    ? Array.from({ length: n }, (_, i) => clock(data.from + (i + 0.5) * bucketS, rangeS))
+    : [];
+  const total = series ? series.raises.reduce((a, b) => a + b, 0) : 0;
+  const cleared = series ? series.clears.reduce((a, b) => a + b, 0) : 0;
+  return html`<${Series} title="Alarm activity" mark="column"
+    series=${[
+      { name: "raised", tone: "alarm", values: series ? series.raises : [] },
+      { name: "cleared", tone: "quiet", values: series ? series.clears : [] },
+    ]}
+    labels=${labels}
+    source=${series
+      ? `${count(total)} raised, ${count(cleared)} cleared`
+      : "reading…"}
+    span=${bucketS ? `one column per ${spanText(bucketS)}` : null}
+    note=${TIMEZONE} />`;
 }
 
 /**
- * **Band 3 — where.** The estate, deterministic, so two glances can be compared.
+ * **The estate** — the grid and the ranking, in one card.
  *
- * **No topology is drawn here, and the caption links to the one that is** (v0.16.7, #317). The
- * maintainer asked for the network topology on this screen; measured on the three-scenario estate,
- * `edge` holds **one** row of `kind='device'` and its weight is **0.0**, so `graph_snapshot`'s
- * filter returns **zero** edges and a topology here would draw two unconnected circles. A third
- * drawing of the same two tables would also double a surface no assertion can reach —
- * `tests/domharness/env.mjs` substitutes a recording double for d3 — to say what this grid and the
- * Graph screen already say between them. So the answer is one click, made obvious.
- */
-export function Where({ nodes }) {
-  return html`<section class="panel-block">
-    <${SectionHeading} title="Where it is happening" />
-    <${EstateMap} title="The estate, by active alarms"
-      cells=${nodes.map((node) => ({
-        key: String(node.id),
-        label: node.label || node.ip,
-        value: node.active_alarms,
-      }))}
-      urgentAt=${URGENT_AT}
-      source="where the alarms are — load, not topology"
-      note=${html`one cell per element, busiest first; pulses above ${URGENT_AT} —
-        ${" "}<a href="#/graph">how they are connected is on the Graph screen</a>`} />
-  </section>`;
-}
-
-/**
- * **Band 3 — which element is worst.** Active alarms, which is exact and complete.
+ * They were two panels, each taking a full row, and they are two views of one array: one drew
+ * every element as a cell, the other ranked the busiest five of the same elements. An operator
+ * reads them together — *is it everywhere or somewhere, and if somewhere, which* — so they are
+ * one card under one heading. That is a row of the Overview saved and a question answered once.
  *
- * **Not "by alarms in a week"**, and that refusal is Phase 0's most useful result. The appliance
- * serves *active* alarms per element and a page of recent marks, and neither is a count over a
- * window: measured, `GET /api/timeline?limit=1000` came back full — 1 000 marks spanning **15.6
- * seconds** — so a chart labelled *"last 7 days"* would have shown fifteen seconds of one storm.
- * What a later release needs is `GROUP BY ne_id` over `alarm.first_seen` inside a window, and it is
- * recorded in `docs/plans/releases.md` rather than approximated here.
+ * **No topology is drawn here, and the caption links to the one that is** (v0.16.7, #317).
+ * Measured on the three-scenario estate, `edge` holds one row of `kind='device'` at weight 0.0,
+ * so a topology here would draw unconnected circles.
+ *
+ * The ranking is **active alarms now**, not a count over the selected range, and it says so.
+ * `/api/graph` serves what is active; a per-element count over a window is a different query and
+ * deriving one from this would be inventing it.
  */
-export function Worst({ nodes }) {
+export function Estate({ nodes }) {
   const rows = [...nodes]
     .filter((node) => node.active_alarms > 0)
     .sort((a, b) => b.active_alarms - a.active_alarms
@@ -152,11 +145,19 @@ export function Worst({ nodes }) {
       label: node.label || node.ip,
       value: node.active_alarms,
       tone: node.active_alarms >= URGENT_AT ? "alarm" : "warn",
-      title: "Open this element's situations from the Graph screen's tables",
     }));
   return html`<section class="panel-block">
-    <${Bars} title=${`Busiest ${TOP_N} elements`}
-      rows=${rows} unit="alarms" source="active now, across the estate"
-      note="active now, not over a window" />
+    <${SectionHeading} title="Where it is happening" />
+    <${Bars} title=${`Busiest ${TOP_N}`} rows=${rows} unit="alarms"
+      source="active now, not over the range above" />
+    <${EstateMap} title="Every element"
+      cells=${nodes.map((node) => ({
+        key: String(node.id),
+        label: node.label || node.ip,
+        value: node.active_alarms,
+      }))}
+      urgentAt=${URGENT_AT}
+      source="load, not topology"
+      note=${html`busiest first —${" "}<a href="#/graph">how they connect</a>`} />
   </section>`;
 }

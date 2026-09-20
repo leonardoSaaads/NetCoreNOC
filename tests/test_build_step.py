@@ -390,7 +390,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
     "app/views/graph.js": "05f282c80124a41ec1716c6dd1f1d06386d4c63f3aa71eecfd36963ca8235a9c",
     "app/views/labelling.js": "e163b0f1ca9d7af77404d50c45a2797c0ea8d038e4ce176d56eb7396b6d01aa1",
-    "app/views/overview.js": "6f03d2a7dede62dcd54d5e28e063c2223cdfe6d4f89cd80683987733634990d0",
+    "app/views/overview.js": "f7542b163a7b93dab10cdff8f0322544e2eac07e554a70cfe0c0a61f4e184c2e",
     "app/views/parts/bulkclear.js": (
         "2c3b484d2a010c1b9a7b48bb6fb9eeab1b056c28111e8d55e052c872e45a2867"
     ),
@@ -409,7 +409,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/finder.js": "b0652368970a0631d24987c4d1a4dd92b40affe833d1d7959db2a3933fc03274",
     "app/views/parts/judge.js": "ed5cbe333177143fe8870a306c428c8ecf0b40bc772a2280eb51d64ed047d45f",
     "app/views/parts/keeping.js": (
-        "20f6fdb1cbffbd19a623f60948ed8baa7f517805f095f75f2b2af071162114ec"
+        "c45aea8c2da99a2375e6e120de9638465f17c3c693b048ce34b1bdfb99457905"
     ),
     "app/views/parts/lifecycle.js": (
         "a7c0a01b71795a048fad96956dc6280c0cd9e0a2b5db39893a029de4f9b23dbf"
@@ -420,12 +420,12 @@ UI_HASHES: dict[str, str] = {
     ),
     "app/views/parts/model.js": "c30966786ff8e78e8c326b3b0206fe171298e86ef784b0841d68999ef068e81d",
     "app/views/parts/models.js": "b954899695a6710f21c657f83ccd035f887fabfdecd8414fa8111b83bc1adf7c",
-    "app/views/parts/pulse.js": "23d5fe02c939cd0d95b01046f484153478c637ddfa5f79935e152bd35448a2b2",
+    "app/views/parts/pulse.js": "f3318885214127a54e9df912810abd3f7b4f114fa8636c02b7b8cb7ec4555e75",
     "app/views/parts/retention.js": (
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
     ),
     "app/views/parts/severity.js": (
-        "9e5a000cf28611afd09450a748cb11ea40db425efacbc2be5d6b102d0c9fac10"
+        "0046277f0abd9c05f7f159513949230b2d057f9e8c60c89f25375d8f4fc58eca"
     ),
     "app/views/parts/verdict.js": (
         "bfedceae5645684afeaf50c636bc56f2626f6822a7b03e6f45af9f6f9bc2a9d3"
@@ -442,7 +442,7 @@ UI_HASHES: dict[str, str] = {
     "app/widgets.js": "abe9f6d9342f0335ead13cef4061b54ace36f31e28b0d92308918c96a3561e21",
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "73f4206c6fa3dc1ae5ff0476f56c1c29e93e6bc38e2510c50311e96a1f833c1d",
-    "style.css": "0f812154326c5d2bbbf424e3c83af2f5ccd56e440889f31f6f629182a5b92e17",
+    "style.css": "3a079dd80dc1697426156a4372ab874e68d089b038f27d3b62e5b6222c8a3735",
     "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
     "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
     "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
@@ -489,7 +489,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/governance.js": 10_218,
     "app/views/graph.js": 13_704,
     "app/views/labelling.js": 6_105,
-    "app/views/overview.js": 9_610,
+    "app/views/overview.js": 11_284,
     "app/views/parts/bulkclear.js": 3_112,
     "app/views/parts/card.js": 6_140,
     "app/views/parts/correlation.js": 7_185,
@@ -499,15 +499,15 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/facts.js": 6_340,
     "app/views/parts/finder.js": 6_220,
     "app/views/parts/judge.js": 17_279,
-    "app/views/parts/keeping.js": 14_978,
+    "app/views/parts/keeping.js": 15_185,
     "app/views/parts/lifecycle.js": 13_509,
     "app/views/parts/marks.js": 9_929,
     "app/views/parts/members.js": 8_897,
     "app/views/parts/model.js": 10_290,
     "app/views/parts/models.js": 11_698,
-    "app/views/parts/pulse.js": 8_331,
+    "app/views/parts/pulse.js": 7_983,
     "app/views/parts/retention.js": 5_003,
-    "app/views/parts/severity.js": 13_217,
+    "app/views/parts/severity.js": 13_873,
     "app/views/parts/verdict.js": 8_420,
     "app/views/parts/why.js": 10_884,
     "app/views/promotion.js": 11_378,
@@ -521,7 +521,7 @@ UI_SIZES: dict[str, int] = {
     "app/widgets.js": 11_923,
     "favicon.svg": 608,
     "index.html": 2_159,
-    "style.css": 90_928,
+    "style.css": 92_097,
     "vendor/CHECKSUMS.txt": 2_039,
     "vendor/d3.LICENSE": 764,
     "vendor/d3.v7.min.js": 279_706,

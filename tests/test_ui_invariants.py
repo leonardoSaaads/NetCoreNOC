@@ -3997,9 +3997,18 @@ async def test_the_panel_names_every_source_a_placed_severity_came_from(
     )
     # The word `learned` is still on screen, in the source line naming the precedence — which is
     # the thing an operator needs in order to know that this panel has a third arm at all.
-    assert "then what the appliance learned" in captions, (
-        f"the source line stopped naming the whole precedence chain: {captions}"
-    )
+    # **The three arms, not one sentence** (v0.20.0). This pinned the literal "then what the
+    # appliance learned", which made a guard about *the precedence being on screen* fail when the
+    # sentence was shortened without losing an arm. The property is that an operator can see the
+    # panel has three sources and which one wins; the wording is not part of it.
+    for arm in ("declaration", "trap", "learned"):
+        assert arm in captions, (
+            f"the source line stopped naming the {arm!r} arm of the precedence chain: {captions}"
+        )
+    # CONTROL: the arms are named in the source line, not merely somewhere in the page's captions
+    # — a chart elsewhere mentioning "trap" must not be able to satisfy the assertion above.
+    precedence = next((c for c in captions.split(" · ") if "declaration wins" in c), None)
+    assert precedence is not None, f"no precedence line on screen at all: {captions}"
 
 
 @dom_test
@@ -4213,34 +4222,28 @@ async def test_a_count_chart_summarises_its_window_and_a_gauge_its_last_reading(
     The gauge half is the control: without it, a test that only checked the total would pass
     equally well if every chart had been switched to summing.
     """
-    # Four situations, three of them resolved and spread across the window, so a "last bucket"
-    # summary and a "whole window" summary give DIFFERENT answers. They must, or this proves
-    # nothing: the defect was invisible precisely when the two agreed.
-    base = 1_700_000_000.0
-    situations = [
-        {"id": 1, "status": "resolved", "created_at": base, "alarm_count": 1},
-        {"id": 2, "status": "resolved", "created_at": base + 1, "alarm_count": 1},
-        {"id": 3, "status": "new", "created_at": base + 20, "alarm_count": 14},
-        {"id": 4, "status": "resolved", "created_at": base + 25, "alarm_count": 0},
-    ]
-    # `cpu_series` is what puts a GAUGE on the same screen, which is this test's control.
+    # **Re-anchored in v0.20.0.** This drove the "situations by when they were created" chart,
+    # which the Overview no longer has: it plotted the 50 situations the live list carries, on an
+    # axis derived from whatever span those happened to cover, and it was one of the two charts
+    # the blocky-panel rework replaced with a single ranged one. The property is unchanged and is
+    # what this still asserts — a COUNT PER BUCKET series summarises its window, a sampled gauge
+    # reports its last reading, and neither may claim the other's summary. F133 was exactly that
+    # confusion, so the guard follows the column chart rather than the chart it first found it in.
     stats = _stats_with_resources(cpu_pct=12.5, cpu_series=[9.0, 11.0, 12.5])
     result = domdriver.run_scenario(
         "charts",
         {
             "routes": routes["admin"],
             "navigate": "#/overview",
-            "updates": [{"situations": situations, "stats": stats}],
+            "updates": [{"situations": [], "stats": stats}],
         },
     )
     labels = [c["label"] for c in result["charts"] if c["label"]]
-    created = next((label for label in labels if "by when they were created" in label), None)
-    assert created is not None, labels
-    # Three resolved in the window; the last bucket holds ONE of them. The defect printed 1.
-    assert "Total" in created, created
-    assert "resolved: 3" in created, created
-    assert "new: 1" in created, created
-    assert "Latest" not in created, f"a count series must not claim a latest reading: {created}"
+    activity = next((label for label in labels if label.startswith("Alarm activity")), None)
+    assert activity is not None, labels
+    # A column series is a count per bucket, so the honest summary is the window's total.
+    assert "Total" in activity, activity
+    assert "Latest" not in activity, f"a count series must not claim a latest reading: {activity}"
 
     # The control: a gauge on the same screen still reports its last sample, not a sum.
     gauges = [label for label in labels if "Latest" in label]

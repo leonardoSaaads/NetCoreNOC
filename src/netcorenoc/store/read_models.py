@@ -363,6 +363,96 @@ class ReadModelsMixin(StoreBase):
         marks.sort(key=lambda m: m["ts"])
         return marks
 
+    async def timeline_buckets(
+        self,
+        *,
+        bucket_s: float,
+        buckets: int,
+        now: float,
+        ne_ids: frozenset[int] | None = None,
+        device_ne_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Raise and clear **counts per bucket** over the last ``buckets * bucket_s`` seconds.
+
+        ## Why this exists (v0.20.0, F144)
+
+        The Overview drew a raise/clear chart of about twenty-four columns by fetching
+        ``/api/timeline?limit=1000`` and counting in the browser — **108.5 KiB on every load** to
+        produce twenty-four numbers, and a thousand objects for the DOM to hold. The chart is an
+        aggregate; the wire should carry the aggregate.
+
+        It also makes a time range **mean something**. Bucketing a thousand rows client-side can
+        only ever show the last thousand alarms, so a "7 days" control over that would name a
+        window the data does not cover. This counts in SQL over the range asked for.
+
+        ## It reuses the scope predicate rather than restating it
+
+        `_timeline_scope` is the one construction of *"which alarms may this principal see"*, and
+        both this and :meth:`timeline_marks` go through it. F35 and F38 were both a second copy of
+        that decision drifting from the first, and a `GROUP BY` written beside it with its own
+        `WHERE` would have been the third copy.
+
+        A row contributes a raise to the bucket its `first_seen` falls in and a clear to the
+        bucket of its `cleared_at`, independently — a cleared alarm raised before the window is
+        one mark inside it, exactly as the mark expansion above treats it.
+        """
+        since = now - bucket_s * buckets
+        where, args = self._timeline_scope(ne_ids, device_ne_id)
+        series: dict[str, list[int]] = {
+            "raises": [0] * buckets,
+            "clears": [0] * buckets,
+        }
+        for column, key in (("a.first_seen", "raises"), ("a.cleared_at", "clears")):
+            # `CAST((t - since) / bucket_s AS INTEGER)` is the bucket index, computed in SQL so
+            # the rows never leave the database. `bucket_s`, `since` and the scope ids are all
+            # bound values; the only interpolation is the column name, which is one of two
+            # literals in this loop.
+            cur = await self.conn.execute(  # nosec B608 - literal column + bound values
+                f"SELECT CAST(({column} - ?) / ? AS INTEGER) AS b, COUNT(*) "  # nosec B608
+                f"FROM alarm a WHERE {where} AND {column} IS NOT NULL "
+                f"AND {column} >= ? AND {column} <= ? GROUP BY b",
+                (since, bucket_s, *args, since, now),
+            )
+            for row in await cur.fetchall():
+                index = int(row[0])
+                if 0 <= index < buckets:
+                    series[key][index] += int(row[1])
+        return {
+            "from": since,
+            "to": now,
+            "bucket_s": bucket_s,
+            "buckets": buckets,
+            "series": series,
+        }
+
+    def _timeline_scope(
+        self, ne_ids: frozenset[int] | None, device_ne_id: int | None
+    ) -> tuple[str, tuple[Any, ...]]:
+        """The one place that decides which alarms a principal's timeline may count.
+
+        Returns a `WHERE` fragment and its bound values. `device_ne_id` is `AND`ed with the scope
+        so it can only narrow, never widen — the property F35 and F38 are both about.
+
+        **A scope set too large to bind is refused, not truncated.** `timeline_marks` handles that
+        case by filtering in Python after an unbounded read, which it can do because it is reading
+        rows anyway; an aggregate has no rows to filter, and silently counting the whole estate
+        for a scoped principal would be the leak those findings named. `_TOO_MANY_SCOPE_IDS` makes
+        the answer empty instead.
+        """
+        clauses: list[str] = []
+        args: list[Any] = []
+        if ne_ids is None:
+            clauses.append("1=1")
+        elif not ne_ids or len(ne_ids) > MAX_SCOPE_PARAMS:
+            clauses.append("0=1")
+        else:
+            clauses.append(f"a.ne_id IN ({','.join('?' * len(ne_ids))})")
+            args.extend(sorted(ne_ids))
+        if device_ne_id is not None:
+            clauses.append("a.ne_id=?")
+            args.append(device_ne_id)
+        return " AND ".join(clauses), tuple(args)
+
     async def list_quarantine(self, limit: int) -> list[dict[str, Any]]:
         """Quarantine metadata only — never the raw payload (F4)."""
         cur = await self.conn.execute(

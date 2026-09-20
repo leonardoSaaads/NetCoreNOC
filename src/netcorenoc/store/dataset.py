@@ -147,6 +147,20 @@ class DatasetMixin(StoreBase):
 
     # -- retention -----------------------------------------------------------------------------
 
+    async def sink_pairs_for_situation(self, situation_id: int) -> int:
+        """Sink pairs already captured for one situation — the seed for capture's per-situation cap.
+
+        `lifecycle='sink'` only: a promoted pair is evidence a human produced and is not what the
+        cap is rationing. Served by `idx_pair_situation`, and capture calls it once per situation
+        per process lifetime rather than per activation.
+        """
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='sink' AND situation_id = ?",
+            (situation_id,),
+        )
+        row = await cur.fetchone()
+        return int(row[0]) if row else 0
+
     async def prune_sink(self, cutoff: float, row_cap: int) -> dict[str, int]:
         """The sink's **dual bound**: time, and a row cap, whichever binds first.
 

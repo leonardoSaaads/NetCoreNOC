@@ -95,23 +95,17 @@ export function Keeping({ stats, ring, rate }) {
       ${res
         ? [
             ["CPU", res.cpu_series, "%",
-             res.cpu_count ? `${res.cpu_count} cores, all of them` : "this host",
-             `read every ${res.interval_s ?? 30} s · resets on restart`],
+             res.cpu_count ? `${res.cpu_count} cores` : "this host", null],
             ["Memory", res.mem_series, "%",
-             res.mem_source === "cgroup" ? "this container's limit" : "this host's memory",
-             "resets on restart"],
-            ["Storage", res.disk_series, "%",
-             "the filesystem holding the database",
-             "resets on restart"],
+             res.mem_source === "cgroup" ? "this container" : "this host", null],
+            ["Storage", res.disk_series, "%", "the database's filesystem", null],
             /* **The database itself, which nothing measured until v0.19.0.** "Storage" above is
                the filesystem, and an operator reading 89 % there cannot tell whether this
                appliance is responsible for it. A size in megabytes over the same window answers
                both *how big has my correlator got* and *how fast is it growing*, which is the
                question retention settings are the answer to. In MB, not per cent: a database has
                no ceiling to be a share of. */
-            ["Database", res.db_series, "MB",
-             "the SQLite file and its journal",
-             "resets on restart"],
+            ["Database", res.db_series, "MB", "the file and its journal", null],
           ].map(([label, values, unit, what, note]) => {
             const axis = hostAxis(values);
             return html`<${Series} key=${label} title=${label} unit=${unit}
@@ -122,9 +116,9 @@ export function Keeping({ stats, ring, rate }) {
       <${Series} title="Queue depth" unit="traps"
         series=${[{ name: "queued", tone: "warn", values: (ring && ring.queue) || [] }]}
         labels=${ringGrid.labels}
-        source="traps waiting to be correlated"
+        source="waiting to be correlated"
         span=${ringGrid.n > 1 ? `over ${spanText(ringGrid.spanS)}` : null}
-        note="counted by this browser; lost on reload" />
+        note="this browser only" />
     </div>
     ${res
       ? null
@@ -153,12 +147,18 @@ export function Keeping({ stats, ring, rate }) {
           value: rate ? `${rate.perSecond.toFixed(rate.perSecond < 10 ? 2 : 0)} /s` : "—",
           note: rate ? `over ${rate.windowS.toFixed(1)} s` : "waiting for a second reading",
         },
+        // **Only what is non-zero, plus the two always worth a glance** (v0.20.0). Five counters
+        // reading `refused 0 · quarantined 0 · dropped 0` is three facts an operator reads to
+        // learn nothing. A zero here is the good case and the good case needs no words; a
+        // non-zero one is the whole reason the line exists.
         ...(receiver
-          ? ["received", "accepted", "denied", "quarantined", "dropped"].map((key) => ({
-              name: key === "denied" ? "refused" : key,
-              metric: key,
-              value: count(receiver[key]),
-            }))
+          ? ["received", "accepted", "denied", "quarantined", "dropped"]
+              .filter((key) => key === "received" || key === "accepted" || receiver[key])
+              .map((key) => ({
+                name: key === "denied" ? "refused" : key,
+                metric: key,
+                value: count(receiver[key]),
+              }))
           : []),
       ].map((one, index) => html`<span key=${one.metric || one.name}>
         ${index ? html`<span class="metric-sep"> · </span>` : null}

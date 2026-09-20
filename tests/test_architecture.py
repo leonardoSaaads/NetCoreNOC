@@ -1063,7 +1063,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: source vocabulary was written there first, on the *"one place where a token becomes a name"*
 #: argument that put `band()` there — and it pushed the file 1 146 bytes over the module-graph
 #: ceiling, because `format.js` had 228 bytes of headroom (F127). It moved to its only consumer.
-SRC_TREE_DIGEST = "fcfd2bf7e8a15818a9a8ed6808bdec05fd05bf27b9655b4db7875bb7d2cf14a0"
+SRC_TREE_DIGEST = "c7f4d3669439f4153aac56140856b0749263aa7576e3046c94b55c417098664f"
 SRC_FILE_COUNT = 222
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

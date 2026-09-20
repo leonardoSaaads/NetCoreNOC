@@ -57,6 +57,7 @@ from netcorenoc.engine.dataset.retention_policy import (
     TIER_NAMES,
     RetentionPolicy,
 )
+from netcorenoc.engine.model.training import MAX_PAIRS_PER_BAG
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.engine.correlate.learn import Learner
@@ -64,6 +65,34 @@ if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_l
     from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")
+
+#: Sink pairs kept for **one situation**, after which capture stops adding rows for it.
+#:
+#: ## The measurement (v0.20.0, F143)
+#:
+#: 2 847 traps across five corpus scenarios produced **191 250 sink pairs — 26.2 MB of a 29 MB
+#: database**, and 99.4 % of them were captured during a storm. One storm situation held **105 100
+#: pairs on its own**.
+#:
+#: Training can never read most of that. `training.MAX_PAIRS_PER_BAG` caps a bag at **256** pairs,
+#: so of those 105 100 rows at most 256 will ever become a training row — **0.24 %**. Across the
+#: whole run: 191 250 stored against at most 1 280 usable. The sink was not holding evidence; it
+#: was holding the same storm written down ninety-seven times per alarm.
+#:
+#: ## Why a multiple of the training cap rather than the cap itself
+#:
+#: A bag's membership changes — a merge widens it, a move rewrites it — and `MAX_PAIRS_PER_BAG`
+#: samples from whatever is there when the fit runs. Capturing exactly the training cap would mean
+#: a situation that later grows has no pairs to sample for its new members. Four times gives the
+#: sampler a pool it can still choose within, and is still **two orders of magnitude** below what
+#: was being written.
+#:
+#: **The first N by arrival, deterministically, with the rest counted.** Not a random sample: this
+#: runs under the batch lock on the ingest path, an RNG there would make the corpus a property of
+#: the machine, and `MAX_PAIRS_PER_BAG` already truncates deterministically for the same reason.
+#: The count of what was refused is surfaced, because a corpus that is truncated and does not say
+#: so is a corpus whose `n` is a lie.
+MAX_SINK_PAIRS_PER_SITUATION = MAX_PAIRS_PER_BAG * 4
 
 # Re-exported so `engine.py` and the API keep one import site for "the capture surface", while
 # the verdict-path code lives in `labels.py`. See that module for why the split is by *path*.
@@ -126,6 +155,14 @@ class Capture:
     # Bounded by pruning it against the correlator's own window on every activation, so it cannot
     # outgrow the window it mirrors.
     _observations: dict[int, int] = field(default_factory=dict)
+    # situation_id -> sink pairs already captured for it, seeded from the database the first time
+    # this process sees the situation so a restart cannot reopen the cap. Bounded with the
+    # observation index, against the correlator's own window.
+    _per_situation: dict[int, int] = field(default_factory=dict)
+    # Pairs this process declined to write because their situation was already at the cap.
+    # Surfaced rather than silent: a corpus that is truncated and does not say so is a corpus
+    # whose `n` is a lie.
+    pairs_over_cap: int = 0
     # What the audit sweep has destroyed in this process's lifetime, by row kind. Deleting a label
     # is the most consequential thing this product does, so the count is kept and surfaced rather
     # than discarded the way `store.prune`'s is.
@@ -250,8 +287,19 @@ class Capture:
                 alarm_count=count,
             )
             kept = {link.other.alarm_id for link in outcome.links}
+            # **The per-situation cap** (F143). `room` is how many more pairs this situation may
+            # contribute; `None` means the pair has no situation yet and is not capped by one.
+            room: int | None = None
+            if situation_id is not None:
+                held = await self._held_for(store, situation_id)
+                room = max(0, MAX_SINK_PAIRS_PER_SITUATION - held)
             rows: list[tuple[Any, ...]] = []
             for pair in outcome.evaluated:
+                if room is not None and len(rows) >= room:
+                    # Count every pair refused, not just the first, so the figure is the size of
+                    # what the corpus does not contain.
+                    self.pairs_over_cap += len(outcome.evaluated) - len(rows)
+                    break
                 other = pair.other
                 rows.append(
                     (
@@ -280,6 +328,10 @@ class Capture:
                     )
                 )
             await store.add_pairs(rows)
+            if situation_id is not None:
+                self._per_situation[situation_id] = self._per_situation.get(situation_id, 0) + len(
+                    rows
+                )
             self._forget_outside(set(store_window_ids(outcome)) | {entry.alarm_id})
         except Exception as exc:
             self._degrade(exc)
@@ -376,6 +428,20 @@ class Capture:
         except Exception as exc:
             self._degrade(exc)
 
+    async def _held_for(self, store: Store, situation_id: int) -> int:
+        """Sink pairs already captured for this situation, counted once per process.
+
+        **Seeded from the database, not from zero.** An in-memory counter alone would let every
+        restart grant the situation another `MAX_SINK_PAIRS_PER_SITUATION`, which on an appliance
+        that restarts is no cap at all. One `COUNT` per situation per process lifetime, served by
+        `idx_pair_situation`, and every later activation reads the cached number.
+        """
+        held = self._per_situation.get(situation_id)
+        if held is None:
+            held = await store.sink_pairs_for_situation(situation_id)
+            self._per_situation[situation_id] = held
+        return held
+
     def _forget_outside(self, live: set[int]) -> None:
         """Keep the observation index bounded by the correlator's own window.
 
@@ -384,6 +450,12 @@ class Capture:
         """
         if len(self._observations) > MAX_CANDIDATES * 4:
             self._observations = {k: v for k, v in self._observations.items() if k in live}
+        # The per-situation counter is bounded the same way and for the same reason. It is keyed
+        # by situation rather than by alarm, so it is trimmed to the situations of the live
+        # window's alarms — a situation that falls out and comes back is re-seeded from the
+        # database, which is the correct number rather than a fresh allowance.
+        if len(self._per_situation) > MAX_CANDIDATES * 4:
+            self._per_situation.clear()
 
 
 def store_window_ids(outcome: CorrelationResult) -> list[int]:
