@@ -1939,7 +1939,7 @@ async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_
     # distinction the disclosure already turned on — `.fb` is what folds, and a promote asserts
     # nothing about the grouping. One list, one boolean, and no filtering by wording.
     def judging(state: dict[str, Any]) -> list[str]:
-        return state["grouping"]
+        return [str(label) for label in state["grouping"]]
 
     fresh = domdriver.run_scenario(
         "actionSurface", {"routes": _in_state(editor, sid, status="new", events=[]), "sid": sid}
