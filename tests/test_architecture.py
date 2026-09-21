@@ -418,6 +418,9 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/retention.js"),
     ("GET", "/app/views/parts/verdict.js"),
     ("GET", "/app/views/parts/lifecycle.js"),
+    # v0.20.0: registered beside the file each came off, because the order here is the
+    # order the app declares and a module that moved should read as having moved.
+    ("GET", "/app/views/parts/restructure.js"),
     ("GET", "/app/views/parts/declare.js"),
     ("GET", "/app/views/parts/members.js"),
     ("GET", "/app/views/parts/why.js"),
@@ -425,6 +428,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/correlation.js"),
     ("GET", "/app/views/parts/judge.js"),
     ("GET", "/app/views/parts/bulkclear.js"),
+    ("GET", "/app/views/parts/decide.js"),
     ("GET", "/app/views/parts/finder.js"),
     ("GET", "/app/views/parts/pulse.js"),
     ("GET", "/app/views/parts/keeping.js"),
@@ -1063,8 +1067,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: source vocabulary was written there first, on the *"one place where a token becomes a name"*
 #: argument that put `band()` there — and it pushed the file 1 146 bytes over the module-graph
 #: ceiling, because `format.js` had 228 bytes of headroom (F127). It moved to its only consumer.
-SRC_TREE_DIGEST = "c7f4d3669439f4153aac56140856b0749263aa7576e3046c94b55c417098664f"
-SRC_FILE_COUNT = 222
+SRC_TREE_DIGEST = "8a3828ce94361db827082a885279a2d1b1a514adb8e6dcc83176b92d3c5aff50"
+SRC_FILE_COUNT = 226
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1130,7 +1134,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.19.0", "the version this release carries"
+    assert __version__ == "0.20.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

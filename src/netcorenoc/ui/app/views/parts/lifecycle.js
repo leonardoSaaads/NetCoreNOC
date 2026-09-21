@@ -1,156 +1,17 @@
-/* The operator's gestures: move, merge, split, name — and the confidence they carry.
+/* What a situation IS and HAS BEEN: its operator name, its history, how it ended.
  *
- * ## Why the confidence control is one control and not four
+ * The three gestures that change **which alarms are in it** left for
+ * `views/parts/restructure.js` in v0.20.0, at the module graph's ceiling and on the seam this
+ * file's own title drew — *"move, merge, split, name"* — because a name is not a restructuring.
+ * What is here writes no training row and is refused by no 409: naming a situation asserts
+ * nothing about its grouping, and the history is a read.
  *
- * An operator restructuring a situation is doing **one** thing: saying how the incident actually
- * looks. Asking them how sure they are once, and applying that answer to whichever action they then
- * take, matches the gesture. Four sliders would be four chances to leave one at a value nobody
- * chose, and the plan's §4 registers a floor of 0.50 below which a gesture produces no training
- * row — so a control left at a stale value is not cosmetic, it decides whether the appliance learns
- * from what the operator just did.
- *
- * **The number is always on screen, with what it does to the row.** `m(c) = 0.6 + 0.4c` is
- * registered, so an operator can be told exactly what their answer is worth — and below 0.50 the
- * card says the action will still happen and will teach the correlator nothing. That sentence is
- * the whole of the honesty here: a control that silently discarded the evidence would be worse than
- * one that never asked.
- *
- * ## What is deliberately NOT here
- *
- * No situation picker. Move and merge take a **situation id**, typed, because the id is the
- * identity — it is what an operator pastes into a chat during an incident and what the permalink
- * carries — and a dropdown of every open situation is a search problem, which is v0.16.1's
- * (`docs/plans/v0.16.1-visualisation.md`). A typed id that does not exist answers 404 and says so.
- *
- * No model-proposed name. A model writing "fibre cut" above a grouping the operator is about to
- * judge contaminates that judgement, which is the `incumbent_linked` mistake in a new register
- * (`PREREGISTRATION-0.16.0.md` §1's register, one level up).
+ * The `id` remains the identity. The heading still says `#12`, the permalink is unchanged, and a
+ * name is never a key.
  */
 
-import { html, Component, cx } from "../../dom.js";
-import { Icon } from "../../icons.js";
-import { age, percent, plural, timeTitle } from "../../format.js";
-
-/** The registered floor. Below it a gesture is recorded in full and produces no training row. */
-export const CONFIDENCE_FLOOR = 0.5;
-
-/**
- * `m(c) = 0.6 + 0.4c`, the registered multiplier — **shown, never applied here.**
- *
- * The console computes it only to *say* what a row will be worth. The weight that reaches a fit is
- * derived server-side, at derivation, composed with the design-effect and class-balance factors;
- * a console that multiplied anything would be a second implementation of a registered constant.
- */
-export function weightAt(confidence) {
-  return 0.6 + 0.4 * confidence;
-}
-
-/** The confidence an action carries, with the number and its consequence both on screen. */
-export function Confidence({ value, onChange, disabled }) {
-  const below = value < CONFIDENCE_FLOOR;
-  return html`<div class=${cx("confidence", below && "confidence-below")}>
-    <label for="fbConfidence">How sure are you?</label>
-    <input id="fbConfidence" type="range" min="0" max="1" step="0.05" value=${value}
-           disabled=${disabled} aria-describedby="fbConfidenceNote"
-           onInput=${(e) => onChange(Number(e.target.value))} />
-    <output for="fbConfidence" class="confidence-value">${percent(value)}</output>
-    <p id="fbConfidenceNote" class=${cx("hint", below && "err")}>
-      ${below
-        ? "Below 50%, the change is made and recorded, and it teaches the correlator nothing."
-        : `Counts toward training at ${percent(weightAt(value))} of a full weight.`}
-    </p>
-  </div>`;
-}
-
-/**
- * The three restructuring gestures.
- *
- * Each button states what it will do to **this** situation in the words of the thing it changes,
- * and each is disabled with a reason rather than silently inert: a control that is grey for no
- * stated reason is a control an operator files a ticket about.
- */
-export class Restructure extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { destination: "", source: "", confidence: 0.8, busy: false, outcome: null };
-  }
-
-  async send(kind, path, body) {
-    if (this.state.busy) return;
-    this.setState({ busy: true, outcome: null });
-    try {
-      await this.props.post(path, body);
-      this.setState({ busy: false, outcome: { ok: true, kind } });
-      this.props.onDone();
-    } catch (error) {
-      this.setState({ busy: false, outcome: { ok: false, error } });
-    }
-  }
-
-  render({ sid, marked }, { destination, source, confidence, busy, outcome }) {
-    const one = marked.size === 1 ? [...marked][0] : null;
-    const c = confidence;
-    return html`<section class="lifecycle">
-      <h3>Restructure this situation</h3>
-      <p class="hint">Correcting the grouping is the strongest evidence this appliance can be
-        given: moving one alarm says both where it does not belong and where it does.</p>
-
-      <${Confidence} value=${c} disabled=${busy}
-                     onChange=${(v) => this.setState({ confidence: v })} />
-
-      <div class="lifecycle-actions">
-        <div class="lifecycle-action">
-          <label for="lcMoveTo">Move the marked alarm to situation</label>
-          <input id="lcMoveTo" type="number" min="1" inputmode="numeric" value=${destination}
-                 placeholder="id" onInput=${(e) => this.setState({ destination: e.target.value })} />
-          <button type="button" disabled=${busy || one === null || !destination}
-                  title=${one === null ? "Mark exactly one member to move it" : ""}
-                  onClick=${() => this.send("move", `/api/situations/${sid}/move`, {
-                    alarm_id: one, to_situation_id: Number(destination), confidence: c })}>
-            <${Icon} name="chevron" /> Move
-          </button>
-        </div>
-
-        <div class="lifecycle-action">
-          <label for="lcMergeFrom">Merge situation into this one</label>
-          <input id="lcMergeFrom" type="number" min="1" inputmode="numeric" value=${source}
-                 placeholder="id" onInput=${(e) => this.setState({ source: e.target.value })} />
-          <button type="button" disabled=${busy || !source}
-                  onClick=${() => this.send("merge", `/api/situations/${sid}/merge`, {
-                    from_situation_id: Number(source), confidence: c })}>
-            <${Icon} name="check" /> Merge
-          </button>
-        </div>
-
-        <div class="lifecycle-action">
-          <label>Split the marked members out</label>
-          <button type="button" disabled=${busy || marked.size === 0}
-                  title=${marked.size === 0 ? "Mark the members that belong elsewhere" : ""}
-                  onClick=${() => this.send("split", `/api/situations/${sid}/split`, {
-                    alarm_ids: [...marked], confidence: c })}>
-            <${Icon} name="cross" />${" "}
-            ${marked.size
-              ? `Split ${plural(marked.size, "member")} into a new situation`
-              : "Split marked members out"}
-          </button>
-        </div>
-      </div>
-
-      ${outcome ? html`<p class=${outcome.ok ? "ok-note" : "err"} role="status">
-        ${outcome.ok
-          ? RESTRUCTURE_TEXT[outcome.kind]
-          : `Not applied — ${outcome.error.detail || outcome.error.message}`}
-      </p>` : null}
-    </section>`;
-  }
-}
-
-const RESTRUCTURE_TEXT = {
-  move: "Moved. That alarm is now asserted apart from the members it left and together with the " +
-        "members it joined.",
-  merge: "Merged. Every pair across the two situations is now an asserted positive.",
-  split: "Split. Every pair across the new boundary is now an asserted negative.",
-};
+import { html, Component } from "../../dom.js";
+import { age, percent, timeTitle } from "../../format.js";
 
 /**
  * The operator's own name for a situation.
@@ -183,18 +44,16 @@ export class NameField extends Component {
   }
 
   render({ derivedName }, { draft, busy, outcome }) {
+    // **The placeholder IS the explanation** (v0.20.0). A 24-word sentence under the field said
+    // that the greyed-out name in the field is the one the appliance derived — which the field
+    // was already showing. The fact that survives is *where that name comes from*, and a title
+    // is where a fact that only some readers want belongs.
     return html`<section class="lifecycle-name">
       <label for="lcName">Name this situation</label>
       <input id="lcName" type="text" maxlength="120" value=${draft} disabled=${busy}
-             placeholder=${derivedName || "#id"} aria-describedby="lcNameNote"
+             placeholder=${derivedName || "#id"} title=${NAME_TITLE}
              onInput=${(e) => this.setState({ draft: e.target.value })} />
       <button type="button" disabled=${busy} onClick=${() => this.save()}>Save</button>
-      <p id="lcNameNote" class="hint">
-        ${derivedName
-          ? `Without a name of your own this situation is called “${derivedName}”, which the ` +
-            "appliance derives from its members and recomputes when they change."
-          : "The appliance has no members to derive a name from."}
-      </p>
       ${outcome ? html`<p class=${outcome.ok ? "ok-note" : "err"} role="status">
         ${outcome.ok
           ? (outcome.cleared ? "Name withdrawn." : "Named.")
@@ -203,6 +62,11 @@ export class NameField extends Component {
     </section>`;
   }
 }
+
+const NAME_TITLE =
+  "Your own name for this situation. With none, the greyed name shown here is the one the " +
+  "appliance derives from the members, and it is recomputed when they change. The id above " +
+  "stays the identity either way; a name is never a key.";
 
 /* What has been done to this situation, and by whom.
  *

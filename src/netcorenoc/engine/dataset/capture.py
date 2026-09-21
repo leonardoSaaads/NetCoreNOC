@@ -42,6 +42,7 @@ from netcorenoc.engine.correlate.correlate import (
     WindowAlarm,
 )
 from netcorenoc.engine.correlate.scoring import LINK_THRESHOLD, LinkScore
+from netcorenoc.engine.dataset import sweep
 from netcorenoc.engine.dataset.labels import (
     MAX_CLIENT_MEMBERS,
     ClientFingerprint,
@@ -365,68 +366,12 @@ class Capture:
         return obs_id
 
     async def prune(self, store: Store, now: float, retention: RetentionPolicy) -> None:
-        """The maintenance-time dataset pass: the policy's two **background** bounds, then one
-        **verification**.
-
-        The bounds are the sink's dual bound (age, then a row cap — unchanged from v0.8.0) and the
-        **audit bound**, the outer edge of the data's life and the only background path that may
-        delete a human label.
-
-        **The training tier is deliberately absent**: it *selects* rather than deletes
-        (DECISIONS #110). v0.8.0's directive 9 — this loop must never *silently* destroy labels —
-        is satisfied rather than repealed, because the audit sweep destroys nothing the operator
-        did not configure a bound for, and every deletion is counted here and reported.
-
-        Degrades exactly as capture does. A sweep that failed is a disk-space problem; a
-        maintenance pass that raised would also skip the learned-state flush behind it.
-
-        **Why the verification's call site is here** (v0.9.2): it belongs to the maintenance
-        cadence, it must run inside the lock the pass already holds, and `engine.py` is
-        `COHESION_EXEMPT` at a ceiling equal to its exact size, so this release may not add a call
-        site to it. This is the one method the maintenance pass already calls on the dataset, on the
-        `PRUNE_EVERY_TICKS` schedule the verification wants. Named in the docstring rather than
-        left to be discovered.
-        """
-        if not self.enabled:
-            return
-        try:
-            await store.prune_sink(now - retention.sink_days * 86400.0, retention.sink_rows)
-            swept = await store.prune_dataset_audit(now - retention.audit_days * 86400.0)
-        except Exception as exc:
-            self._degrade(exc)
-        else:
-            for key, count in swept.items():
-                self.audit_swept[key] = self.audit_swept.get(key, 0) + count
-        await self.verify_evidence(store)
+        """The maintenance-time dataset pass. See :mod:`netcorenoc.engine.dataset.sweep`."""
+        await sweep.prune(self, store, now, retention)
 
     async def verify_evidence(self, store: Store) -> None:
-        """Recompute the reconciled exclusion count from the child tables and **report** drift.
-
-        The denormalized `feedback.excluded_reconciled` is a **rebuildable copy**;
-        `feedback_exclusion` and `feedback_member(source='server')` remain the source of truth. So
-        the system carries a reconciliation query and drift monitoring rather than trusting the
-        copy — which is the ordinary discipline for a denormalized aggregate, applied literally.
-
-        **It does not correct, and that is the decision rather than an omission** (DECISIONS #134).
-        A disagreement means a **write path is broken**. Repairing the row silently would destroy
-        the evidence of that, which is the entire reason this release exists: had this check shipped
-        in v0.9.1 as a corrector, F46 would have been invisible — every hostile row quietly repaired
-        on the next pass, the reports looking right, and the write path staying broken indefinitely.
-
-        Surfaced through :meth:`warnings`, and counted durably by `dataset bias`, which recomputes
-        it from the database on every run. **No audit row**: the audit catalog is frozen and this
-        release adds no action to it, and a detection that changes no behaviour is not an event in
-        the sense the catalog records. The report is the durable record; the warning is the alert.
-
-        Degrades like everything else here. A verification that raised would take the maintenance
-        pass with it, which would be a worse outcome than an unverified sweep.
-        """
-        if not self.enabled:
-            return
-        try:
-            self.drift_rows = len(await store.reconciliation_drift())
-        except Exception as exc:
-            self._degrade(exc)
+        """Recompute the reconciled exclusion count and **report** drift. Never corrects."""
+        await sweep.verify_evidence(self, store)
 
     async def _held_for(self, store: Store, situation_id: int) -> int:
         """Sink pairs already captured for this situation, counted once per process.

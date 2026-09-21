@@ -1167,6 +1167,13 @@ async def test_the_grouping_summary_is_computed_from_every_link_not_from_thirty(
     the weakest one, its margin over the threshold, and which of the three named terms is carrying
     the grouping.
 
+    **v0.20.0 moved the seam and kept the property.** The whole section is now one disclosure,
+    closed by default, because the maintainer's reading was that an operator meets a heading, three
+    figures, a paragraph, three bars and a second toggle before reaching the decision. What may not
+    move behind the press is the **verdict** — the band computed from every link — because that is
+    the bit that changes what the operator does. So: the band and its sentence are readable closed;
+    the figures behind them are one press away.
+
     What this does NOT cover: whether the arithmetic is the right arithmetic. It is min, max and a
     mean per term, and it is checked by reading `views/parts/why.js` — a test that recomputed it
     here would be a second implementation of the thing under test.
@@ -1175,21 +1182,34 @@ async def test_the_grouping_summary_is_computed_from_every_link_not_from_thirty(
     assert count >= 4, "the corpus must offer a situation with several links"
     result = domdriver.run_scenario("whyGrouped", {"routes": routes["editor"], "sid": sid})
 
-    closed = result["closed"]
-    assert closed["summaryText"], "no summary rendered at all"
-    for label in ("weakest link", "strongest link", "above the threshold"):
-        assert label in closed["summaryText"], (
-            f"the summary does not report {label!r}: {closed['summaryText']!r}"
-        )
-    # All three named terms are reported as means, so "which term is carrying this" is answerable
-    # without opening anything.
-    assert len(closed["means"]) == 3, closed["means"]
-    assert closed["band"] in {
+    # Closed: the verdict from every link, and nothing else.
+    assert result["closed"]["band"] in {
         "soundness-thin",
         "soundness-fair",
         "soundness-wide",
         "soundness-unknown",
-    }, closed["band"]
+    }, result["closed"]["band"]
+    assert result["closed"]["verdict"], (
+        "the closed section states no verdict; the band would be a colour and nothing else, "
+        "which is the failure the severity rules are written against"
+    )
+    assert not result["closed"]["summaryText"], (
+        f"the summary renders before the operator asked for it: {result['closed']['summaryText']!r}"
+    )
+
+    opened = result["opened"]
+    assert opened["summaryText"], "no summary rendered at all"
+    for label in ("weakest link", "strongest link", "above the threshold"):
+        assert label in opened["summaryText"], (
+            f"the summary does not report {label!r}: {opened['summaryText']!r}"
+        )
+    # All three named terms are reported as means, so "which term is carrying this" is answerable
+    # without reading the per-link rows below them.
+    assert len(opened["means"]) == 3, opened["means"]
+    assert opened["band"] == result["closed"]["band"], (
+        f"the band changed when the section opened: {result['closed']['band']} then "
+        f"{opened['band']}"
+    )
 
 
 @dom_test
@@ -1204,7 +1224,9 @@ async def test_the_per_term_decomposition_is_one_interaction_away_and_complete(
     Two properties, and the second is the one a redesign could quietly lose:
 
       * the decomposition is **behind one interaction** — closed by default, so a storm does not
-        open thousands of rows nobody asked for;
+        open thousands of rows nobody asked for. v0.20.0 makes that literally one rather than two:
+        the section's own disclosure was nested inside a second one, so reaching a contribution
+        from an expanded card took two presses. The outer is now the only one;
       * it is **complete when opened**. The old version capped at thirty and printed a line saying
         how many it had hidden, which means the per-term contributions of link thirty-one onwards
         were unreachable on any device at all. A cap is how this screen stops carrying the
@@ -1510,9 +1532,19 @@ async def test_a_declaration_can_be_withdrawn_from_the_row_that_made_it(
     """**A declaration that cannot be undone is a declaration nobody will make** (#284).
 
     The revert is driven rather than described: the control offers `Clear` only when a declaration
-    is in force, and it sends a DELETE naming the same kind and target the POST named. The control
-    is the opener's own label — `Edit` when something is declared, `Declare` when nothing is — so
-    a screen that offered `Clear` unconditionally would be visible here.
+    is in force, and it sends a DELETE naming the same kind and target the POST named.
+
+    **The two arms, and what changed in v0.20.0.** Until then the opener was a worded button —
+    `Edit element` when something was declared, `Declare element` when nothing was — and the arms
+    were told apart by that word. The opener is now the value itself, so the word is gone and the
+    rule is measured where it lives: `clearOffered` is read off the *open editor* in both arms.
+    That is the stronger of the two checks; the label only ever stood in for it.
+
+    **And an operator can still tell the three apart.** v0.16.4 collapsed them into one actions
+    cell, where three buttons reading `Declare` were three controls nobody could distinguish, and
+    the repair was to put the noun in each. Each opener is now the value it declares, under the
+    column header that names it, which is the same property reached without the word: the three
+    labels on a row differ, and `device`, `class` and `severity` are the headers above them.
     """
     import copy
 
@@ -1526,25 +1558,29 @@ async def test_a_declaration_can_be_withdrawn_from_the_row_that_made_it(
     result = domdriver.run_scenario(
         "withdraw", {"routes": doctored, "sid": sid, "control": "ne", "row": 0}
     )
-    assert result["openerLabel"].startswith("Edit"), result["openerLabel"]
+    assert result["openerLabel"].startswith("CORE-SW-01"), result["openerLabel"]
     assert result["deletePaths"] == [f"/api/labels/ne/{ne_id}"], result["deletePaths"]
     assert result["posts"] == [], "withdrawing a declaration also wrote one"
+
+    # The declared arm offers `Clear`; a row with nothing declared must not.
+    declared = domdriver.run_scenario(
+        "declare", {"routes": doctored, "sid": sid, "control": "ne", "row": 0, "value": "y"}
+    )
+    assert declared["clearOffered"], "a declaration in force cannot be withdrawn from its editor"
 
     plain = domdriver.run_scenario(
         "declare",
         {"routes": routes["editor"], "sid": sid, "control": "ne", "row": 0, "value": "x"},
     )
-    assert plain["openerLabel"].startswith("Declare"), plain["openerLabel"]
-    # **And it names WHAT it declares** (v0.16.4). Three of these share one actions cell since
-    # DECISIONS #293, and three buttons reading `Declare` are three controls an operator cannot
-    # tell apart. Every one was reachable and above the touch floor and still unusable, which is
-    # the difference between "reachable" and "identifiable" — found by looking at the rendered
-    # card, because nothing here measured the second.
-    assert plain["openerLabel"] != "Declare", (
-        "the declaration opener does not say what it declares; in one cell with two others that "
-        "makes three identical controls"
+    assert not plain["clearOffered"], (
+        "the editor offers `Clear` with nothing declared; there is nothing to withdraw"
     )
     assert plain["deletePaths"] == []
+
+    # **Identifiable, not merely reachable** (v0.16.4's finding, v0.20.0's shape). Three controls
+    # an operator cannot tell apart are unusable however correctly each is wired.
+    assert len(set(plain["openerLabels"])) == 3, plain["openerLabels"]
+    assert {"device", "class", "severity"} <= set(plain["headers"]), plain["headers"]
 
 
 @dom_test
@@ -1897,17 +1933,20 @@ async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_
     sid, _count = uifixtures.largest_situation(routes["editor"])
     editor = routes["editor"]
 
-    # "Start working this" is the promote and belongs to `new` alone; every other control in the
-    # `.fb` row is a statement about the GROUPING, and those are what the disclosure folds.
+    # The promote belongs to `new` alone and is reported separately from `.fb`. Until v0.20.0 it
+    # was a `.fb` row of its own above the judged note and this filtered it back out by label;
+    # it now sits in the same decision bar as the verdicts and outside `.fb`, which is the
+    # distinction the disclosure already turned on — `.fb` is what folds, and a promote asserts
+    # nothing about the grouping. One list, one boolean, and no filtering by wording.
     def judging(state: dict[str, Any]) -> list[str]:
-        return [b for b in state["grouping"] if b != "Start working this"]
+        return state["grouping"]
 
     fresh = domdriver.run_scenario(
         "actionSurface", {"routes": _in_state(editor, sid, status="new", events=[]), "sid": sid}
     )["before"]
     assert fresh["judged"] is None and fresh["adjust"] is False
     assert "Confirm grouping" in fresh["grouping"], fresh["grouping"]
-    assert "Start working this" in fresh["grouping"], "a new situation offers no promote"
+    assert fresh["promote"], "a new situation offers no promote"
     assert fresh["restructure"] and fresh["nameField"] and fresh["selectAll"]
     assert fresh["marks"] > 0 and fresh["declares"] >= 3 * fresh["marks"]
 
@@ -1923,7 +1962,7 @@ async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_
         f"not on the status."
     )
     assert judging(promoted) == judging(fresh), (promoted["grouping"], fresh["grouping"])
-    assert "Start working this" not in promoted["grouping"], "an open situation offers a promote"
+    assert not promoted["promote"], "an open situation offers a promote"
     assert promoted["restructure"] is True
 
     # `open`, judged: folded, and then unfolded to exactly the same controls.

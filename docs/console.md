@@ -136,15 +136,30 @@ facts and the console now says which.
 **A card leaves the New tab the moment you gesture on it.** That is the state machine working, not
 the card vanishing: it is on Open, and on Any.
 
-Five operations sit under **Restructure this situation**, and each is a statement:
+Every operation on a card is a **statement**, and the card is laid out so the statement comes
+first: one row of decisions above the member table, the table itself, and then the two questions
+you only sometimes ask — *why did it group these* and *is the grouping shaped wrong*.
 
 | control | what it says | what it teaches |
 |---|---|---|
-| **Move** an alarm to another situation | it does not belong here, and it belongs there | a negative pair against the members it left, and a positive against the ones it joined |
-| **Merge** another situation into this one | these are one incident | the cross pairs, from the two memberships as they were |
-| **Split marked members out** | these members do not belong with the rest | a negative pair for each marked member against each unmarked one |
+| **Confirm grouping** | these belong together | every pair in the situation, positive |
+| **Grouping is wrong** | they do not | the marked members, negative against the rest; with nothing marked, a plain split |
+| **Start working this** | somebody has it | nothing about the grouping |
+| **Move N elsewhere** → a situation | they do not belong here, and they belong there | a negative pair against the members they left, and a positive against the ones they joined |
+| **Move N elsewhere** → *A new situation* | these do not belong with the rest | a negative pair for each marked member against each unmarked one |
+| **Merge another situation in** | these are one incident | the cross pairs, from the two memberships as they were |
 | **Save** a name | nothing about the grouping | nothing |
 | **clear**, beside a member alarm | this ALARM is stale | nothing |
+
+**Move and Merge ask for the selection first.** With nothing ticked there is nothing to move, so
+the control is not offered and one line says what to tick. Tick members and press **Move**, and
+the situations that exist are listed — id, name, size, age — filtered by id or name if there are
+many. *A new situation* is the first row, and it is what an operator-split is: move these
+somewhere that does not exist yet. There is no situation id to type and none to remember.
+
+**`Split (wrong grouping)` is now `Grouping is wrong`.** Same gesture, same route, same evidence:
+`split` is the name of the route and the question you are answering is whether the appliance got
+the grouping right.
 
 The last two are the release's central distinction. A hand-clear is a fact about an alarm's
 lifecycle, not about whether the grouping was right, so it carries **no confidence control** and

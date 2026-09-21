@@ -112,7 +112,7 @@ class Declaration extends Component {
     this.run(() => onSave(this.state.value));
   }
 
-  render({ label, noun, value, children, onClear }, state) {
+  render({ label, noun, value, children, onClear, face }, state) {
     const { editing, busy, error, warn } = state;
     if (!editing) {
       // **No server string reaches an attribute here**, and that is the same rule the member
@@ -120,13 +120,28 @@ class Declaration extends Component {
       // and putting it in a `title=` means a screen reader announces whatever arrived in a trap.
       // It is inert as markup either way; "inert" is not the same as "appropriate to read aloud".
       // The declared value is already rendered, in the cell beside this button.
+      const open = () => this.setState({ editing: true, value: value || "", warn: null });
+      const why = value
+        ? "A declaration is in force. Editing it replaces it; Clear withdraws it and the "
+          + "appliance's own value comes back."
+        : `Declare ${label}. It takes precedence, and nothing the appliance learned is `
+          + "overwritten.";
+      // **The caller may make the VALUE the control** (v0.20.0). Three `Declare element` /
+      // `Declare class` / `Declare severity` buttons sat in an actions cell beside every member
+      // row — three buttons per row, on a table that reaches 1 051 rows, to edit three things
+      // that were already on screen one column away. Clicking the thing you want to change is
+      // the gesture an operator reaches for; a button that names the thing is a second way to
+      // say it. `face` is what goes INSIDE the opener, not a replacement for it: the class, the
+      // title and the click stay here, so a control that opens this editor is the same control
+      // to every reader, wherever the caller put it. The worded opener below is still the
+      // default, because a caller with no value to click still needs something to press.
+      if (face) {
+        return html`<button type="button" class="declare-open cell-edit" title=${why}
+          onClick=${open}>${face}</button>`;
+      }
       return html`<button type="button" class="tap declare-open"
-        title=${value
-          ? "A declaration is in force. Editing it replaces it; Clear withdraws it and the " +
-            "appliance's own value comes back."
-          : `Declare ${label}. It takes precedence, and nothing the appliance learned is ` +
-            "overwritten."}
-        onClick=${() => this.setState({ editing: true, value: value || "", warn: null })}
+        title=${why}
+        onClick=${open}
       >${value ? "Edit" : "Declare"}${" "}<span class="declare-noun">${noun}</span></button>`;
     }
     return html`<form class="inline-form declare"
@@ -147,8 +162,8 @@ class Declaration extends Component {
 }
 
 /** Name the network element this alarm came from. Propagates to Entities and to the graph. */
-export function DeclareNe({ alarm, onDone }) {
-  return html`<${Declaration} label="a name for this element" noun="element"
+export function DeclareNe({ alarm, onDone, face }) {
+  return html`<${Declaration} label="a name for this element" noun="element" face=${face}
     value=${alarm.device_label}
     onDone=${onDone}
     onSave=${(v) => post("/api/labels", { kind: "ne", id: alarm.ne_id, label: v.trim() })}
@@ -161,8 +176,8 @@ export function DeclareNe({ alarm, onDone }) {
 }
 
 /** Name the kind of trap. Propagates to Alarm Classes, the timeline and every situation card. */
-export function DeclareClass({ alarm, onDone }) {
-  return html`<${Declaration} label="a name for this kind of trap" noun="class"
+export function DeclareClass({ alarm, onDone, face }) {
+  return html`<${Declaration} label="a name for this kind of trap" noun="class" face=${face}
     value=${alarm.class_label}
     onDone=${onDone}
     onSave=${(v) => post("/api/labels", { kind: "class", id: alarm.class_id, label: v.trim() })}
@@ -185,7 +200,7 @@ export function DeclareClass({ alarm, onDone }) {
  * not of one alarm. `qualifier=''` carries that meaning in the schema, and the column is already
  * wide enough for a later class + varbind refinement (DECISIONS #283).
  */
-export function DeclareSeverity({ alarm, onDone }) {
+export function DeclareSeverity({ alarm, onDone, face }) {
   // **The interruption, and nothing else.** It changes what the operator sees and never what is
   // written: `Cancel` closes the form without a request, `Declare anyway` sends the same POST it
   // would have sent. The disagreement is recorded server-side on every declaration that lands,
@@ -199,6 +214,7 @@ export function DeclareSeverity({ alarm, onDone }) {
       `${Math.abs(rank - alarm.severity_rank)} steps away. What it learned is kept either way.`;
   };
   return html`<${Declaration} label="the severity of this kind of trap" noun="severity"
+    face=${face}
     value=${alarm.declared_severity} onDone=${onDone} contradicts=${warn}
     onSave=${(token) => post("/api/labels",
                              { kind: "severity", id: alarm.class_id, label: token })}

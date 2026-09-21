@@ -116,6 +116,24 @@ function cardFor(env, sid) {
 // preceded by an icon renders `" Confirm grouping"` — the leading space is markup whitespace no
 // operator can see, and matching on it made the selector sensitive to how the template happened to
 // wrap. What a scenario means by "the Confirm button" is the label, so that is what is compared.
+/* The split verdict, by CLASS rather than by label.
+ *
+ * It read `Split (wrong grouping)` until v0.20.0 and now reads `Grouping is wrong`, because
+ * `split` is the name of the route and the operator is being asked whether the grouping is
+ * right. Four scenarios located it by the word `Split`, so a rewording broke four scenarios —
+ * which is a harness pinning wording it was never asserting. `verdict-split` is the identity;
+ * the label is free to say whatever the operator needs it to. */
+function verdictButton(node, which) {
+  const found = node.querySelector(`button.verdict-${which}`);
+  if (!found) {
+    throw new Error(
+      `no button starting ${JSON.stringify(which)}: the card offers no ${which} verdict ` +
+      `(saw: ${node.querySelectorAll("button").map((b) => JSON.stringify(b.textContent)).join(", ")})`,
+    );
+  }
+  return found;
+}
+
 function buttonIn(node, prefix) {
   const found = node.querySelectorAll("button").find((b) => b.textContent.trim().startsWith(prefix));
   if (!found) {
@@ -374,6 +392,10 @@ const scenarios = {
    * interaction and **complete** when opened. Both halves are measured here, because principle 2
    * — the per-term contributions are reachable — is what this screen exists for and truncation is
    * the way it silently stops being true.
+   *
+   * v0.20.0: the section itself is the disclosure, and the closed state carries the **verdict**
+   * — the band, in a sentence, on the toggle. So `closedVerdict` and `band` are read before the
+   * press and everything else after it, which is the same two halves at a different seam.
    */
   async whyGrouped(params) {
     const env = await boot(params);
@@ -393,13 +415,19 @@ const scenarios = {
         .replace(/\s+/g, " ").trim(),
       // `className`, not `classList`: this DOM's classList is not iterable, and reaching for one
       // that is would be testing the harness rather than the console.
-      band: String(why().querySelector(".soundness")?.className ?? "")
+      //
+      // Read off the TOGGLE, which carries the band whether the section is open or shut. The
+      // band is the one fact an operator needs before deciding, so it may not be behind the
+      // press; the `.soundness` div carries the same class and is only there once opened.
+      band: String(why().querySelector(".why-toggle")?.className ?? "")
         .split(/\s+/).find((c) => c.startsWith("soundness-")) ?? null,
+      verdict: why().querySelector(".why-verdict")?.textContent.trim() ?? null,
       means: why().querySelectorAll(".term-mean-label").map((n) => n.textContent.trim()),
     });
 
     const closed = read();
-    const toggle = buttonIn(why(), "Show");
+    const toggle = why().querySelector(".why-toggle");
+    if (!toggle) throw new Error("the grouping section has no disclosure");
     toggle.dispatchEvent(new env.DomEvent("click"));
     await settle(env);
     const opened = read();
@@ -408,7 +436,7 @@ const scenarios = {
       closed,
       opened,
       toggleLabel: toggle.textContent.replace(/\s+/g, " ").trim(),
-      expandedAttr: why().querySelector(".link-detail-toggle").getAttribute("aria-expanded"),
+      expandedAttr: why().querySelector(".why-toggle").getAttribute("aria-expanded"),
       proof: proofOf(env),
     };
   },
@@ -441,7 +469,9 @@ const scenarios = {
       box.dispatchEvent(new env.DomEvent("change"));
       await settle(env);
     }
-    buttonIn(cardFor(env, params.sid).detail, params.button ?? "Split")
+    (params.button
+      ? buttonIn(cardFor(env, params.sid).detail, params.button)
+      : verdictButton(cardFor(env, params.sid).detail, "split"))
       .dispatchEvent(new env.DomEvent("click"));
     await settle(env);
 
@@ -638,12 +668,20 @@ const scenarios = {
         judged: detail.querySelector(".judged-note")?.textContent.replace(/\s+/g, " ").trim() ?? null,
         adjust: Boolean(detail.querySelector(".judged button")),
         grouping: detail.querySelectorAll(".fb button").map((b) => b.textContent.trim()),
+        // The promote is in the same decision bar as `.fb` since v0.20.0 and is NOT in `.fb`,
+        // which is deliberate: `.fb` is the controls the judged disclosure folds, and a promote
+        // asserts nothing about the grouping. Reported separately for the same reason.
+        promote: Boolean(detail.querySelector(".decide .promote")),
         restructure: Boolean(detail.querySelector(".lifecycle")),
         nameField: Boolean(detail.querySelector("#lcName")),
         marks: detail.querySelectorAll('tbody input[type="checkbox"]').length,
         selectAll: Boolean(detail.querySelector('thead input[type="checkbox"]')),
         clears: detail.querySelectorAll("button.row-clear").length,
-        declares: detail.querySelectorAll(".row-actions .declare-open").length,
+        // Three per member row, wherever the row puts them. v0.16.4 collapsed them into one
+        // actions cell and this counted `.row-actions .declare-open`; v0.20.0 put each opener
+        // around the value it declares, so the cell is no longer where they live. What the
+        // assertion is about — that every member offers all three — did not change.
+        declares: detail.querySelectorAll("tbody .declare-open").length,
       };
     };
     const before = read();
@@ -679,7 +717,8 @@ const scenarios = {
     const ticked = cardFor(env, params.sid).detail
       .querySelectorAll('tbody input[type="checkbox"]').filter((b) => b.checked).length;
 
-    buttonIn(cardFor(env, params.sid).detail, "Split").dispatchEvent(new env.DomEvent("click"));
+    verdictButton(cardFor(env, params.sid).detail, "split")
+      .dispatchEvent(new env.DomEvent("click"));
     await settle(env);
     const post = env.network.requests.find((r) => r.method === "POST" && r.path.includes("/feedback"));
 
@@ -759,11 +798,22 @@ const scenarios = {
       );
     }
     const openerLabel = opener.textContent.trim();
+    // **All three, and the headers above them** (v0.20.0). Each opener is now the value it
+    // declares, in the column whose header names it, so "can an operator tell these three apart"
+    // is answered by the labels being distinct and the headers naming the three things — not by
+    // a noun inside the button, which is what v0.16.4's three-in-one-cell shape needed.
+    const openerLabels = openers.map((b) => b.textContent.replace(/\s+/g, " ").trim());
+    const headers = cardFor(env, params.sid).detail
+      .querySelectorAll("thead th").map((th) => th.textContent.trim());
     opener.dispatchEvent(new env.DomEvent("click"));
     await settle(env);
 
     const form = rowNode.querySelector("form.declare");
     if (!form) throw new Error("the declaration editor did not open");
+    // `Clear` appears only when a declaration is in force. Reported rather than asserted, because
+    // the two arms of that rule are two different fixtures and the test owns the comparison.
+    const clearOffered = form.querySelectorAll("button")
+      .some((b) => b.textContent.trim().startsWith("Clear"));
     // The harness DOM takes one simple selector at a time — deliberately, so an unrecognised
     // one cannot match nothing quietly. Two queries rather than a comma group.
     const field = form.querySelector("input") ?? form.querySelector("select");
@@ -804,6 +854,9 @@ const scenarios = {
     );
     return {
       openerLabel,
+      openerLabels,
+      headers,
+      clearOffered,
       saveLabel,
       confirmLabel,
       warned,
@@ -829,8 +882,14 @@ const scenarios = {
     await settle(env);
     const column = { ne: 0, class: 1, severity: 2 };
     const rowNode = cardFor(env, params.sid).detail.querySelectorAll("tbody tr")[params.row ?? 0];
-    const opener = rowNode.querySelectorAll("button.declare-open")[column[params.control]];
-    const openerLabel = opener.textContent.trim();
+    const openers = rowNode.querySelectorAll("button.declare-open");
+    const opener = openers[column[params.control]];
+    if (!opener) {
+      throw new Error(
+        `no declaration control for ${params.control} (saw ${openers.length} on the row)`,
+      );
+    }
+    const openerLabel = opener.textContent.replace(/\s+/g, " ").trim();
     opener.dispatchEvent(new env.DomEvent("click"));
     await settle(env);
     const form = rowNode.querySelector("form.declare");
@@ -859,7 +918,7 @@ const scenarios = {
     await settle(env);
 
     const detailBefore = cardFor(env, params.sid).detail;
-    const splitBefore = buttonIn(detailBefore, "Split");
+    const splitBefore = verdictButton(detailBefore, "split");
     // v0.16.4: `tbody`, and the same correction as `partialSplit` above — the mark column's
     // header now carries a select-all, so a card-wide `input` scan takes a control that is not a
     // member as index 0 and every mark lands one row late.

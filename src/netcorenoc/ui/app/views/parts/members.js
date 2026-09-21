@@ -50,7 +50,7 @@
  */
 
 import { html } from "../../dom.js";
-import { SeverityCell, DataTable, cell } from "../../widgets.js";
+import { SeverityBadge, SeverityCell, DataTable, cell } from "../../widgets.js";
 import { alarmName, classVendor, deviceName, plural } from "../../format.js";
 import { DeclareNe, DeclareClass, DeclareSeverity } from "./declare.js";
 
@@ -79,9 +79,9 @@ export function Members({ alarms, editable, marked, onMark, onMarkAll, onClear, 
     { key: "count", label: "count", numeric: true },
     { key: "state", label: "state" },
     ...(editable
-      ? [{ key: "actions", label: "actions",
-           title: "name this element, name this kind of trap, declare its severity, or hand-clear "
-                + "an alarm that never cleared" }]
+      ? [{ key: "actions", label: "",
+           title: "hand-clear an alarm that never cleared; the device, class and severity are "
+                + "edited by clicking them" }]
       : []),
   ];
   const rows = alarms.map((a, index) => ({
@@ -98,27 +98,49 @@ export function Members({ alarms, editable, marked, onMark, onMarkAll, onClear, 
       mark: html`<td><input type="checkbox" checked=${marked.has(a.id)}
         aria-label=${`Mark member ${index + 1} of ${alarms.length} as not belonging`}
         onChange=${(e) => onMark(a.id, e.target.checked)} /></td>`,
-      device: html`<span>${deviceName(a)}${a.device_label
-        ? html` <span class="muted">(declared)</span>` : null}</span>`,
+      // **The value is the control** (v0.20.0). An editor clicks the device name to name the
+      // element, the class to name the kind of trap, the severity to declare one. A viewer, who
+      // may declare nothing, gets the plain text — the same cell without a button in it.
+      device: (() => {
+        const body = html`${deviceName(a)}${a.device_label
+          ? html` <span class="muted">(declared)</span>` : null}`;
+        return editable
+          ? html`<${DeclareNe} alarm=${a} onDone=${onDeclared} face=${body} />`
+          : html`<span>${body}</span>`;
+      })(),
       // The vendor sits BESIDE the name, never in it (DECISIONS #282): 46 of 48 classes on a real
       // corpus have a vendor the appliance resolved and no name at all, so this row read as a bare
       // `1.3.6.1.4.1.2011.5.104.1` for 96 % of the classes an operator meets.
-      class: html`<span>${classVendor(a)
-        ? html`<span class="muted">${classVendor(a)} · </span>` : null}${alarmName(a)}${a.is_flapping
-        ? html`<span class="flap" title="This alarm is flapping"> ~flapping</span>` : null}${
-        a.class_label ? html` <span class="muted">(declared)</span>` : null}</span>`,
+      class: (() => {
+        const body = html`${classVendor(a)
+          ? html`<span class="muted">${classVendor(a)} · </span>` : null}${alarmName(a)}${
+          a.is_flapping
+            ? html`<span class="flap" title="This alarm is flapping"> ~flapping</span>` : null}${
+          a.class_label ? html` <span class="muted">(declared)</span>` : null}`;
+        return editable
+          ? html`<${DeclareClass} alarm=${a} onDone=${onDeclared} face=${body} />`
+          : html`<span>${body}</span>`;
+      })(),
       instance: a.instance || "—",
-      severity: cell(html`<${SeverityCell} alarm=${a} />`),
+      // A `<td class="sev">` either way, so the column reads the same for a viewer and an editor;
+      // an editor's badge is simply inside the button that declares it. `SeverityCell` IS that
+      // `<td>`, so the editable branch builds its own around the badge rather than nesting one
+      // cell inside another.
+      severity: cell(editable
+        ? html`<td class="sev"><${DeclareSeverity} alarm=${a} onDone=${onDeclared}
+            face=${html`<${SeverityBadge} alarm=${a} />`} /></td>`
+        : html`<${SeverityCell} alarm=${a} />`),
       count: a.count,
       state: a.status,
       // **One cell, four controls, and each still says which kind of thing it asserts.** The three
       // declarations state what a thing IS; the clear states that an ALARM was stale and asserts
       // nothing whatever about the grouping — which is why it has no confidence control and why it
       // is separated here by a rule rather than sitting flush against the other three.
+      // **One control left here** (v0.20.0). The three declarations moved onto the values they
+      // declare; a hand-clear has no value to click — it asserts that an alarm which never
+      // cleared should be treated as cleared — so it keeps a button of its own, and the column
+      // that used to hold four now holds one.
       actions: html`<td class="row-actions">
-        <${DeclareNe} alarm=${a} onDone=${onDeclared} />
-        <${DeclareClass} alarm=${a} onDone=${onDeclared} />
-        <${DeclareSeverity} alarm=${a} onDone=${onDeclared} />
         ${a.status === "active" ? html`<button type="button" class="tap row-clear"
           title="This alarm never cleared. Clearing it by hand says nothing about the grouping."
           onClick=${() => onClear(a.id)}>clear</button>` : null}

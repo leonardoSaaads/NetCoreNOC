@@ -292,6 +292,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             # label is the most consequential thing this product does, so the count is reported
             # rather than discarded the way `store.prune`'s is.
             "audit_swept": dict(engine.capture.audit_swept),
+            # **Pairs the per-situation cap declined** since this process started (v0.20.0, F143).
+            # Reported and not warned about: hitting the cap on a storm is the cap working, and a
+            # persistent warning on expected operation is how an operator learns to ignore the
+            # warning list. But a corpus that is truncated and does not say so is a corpus whose
+            # `n` is a lie, so the number is on the same route as everything else capture costs.
+            "pairs_over_cap": engine.capture.pairs_over_cap,
         }
 
     @route.post("/api/dataset/retention")

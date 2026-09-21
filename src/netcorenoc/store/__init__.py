@@ -47,6 +47,7 @@ from netcorenoc.store.seal import SealMixin
 from netcorenoc.store.shadow import ShadowMixin
 from netcorenoc.store.situation_reads import SituationReadsMixin
 from netcorenoc.store.state_clears import StateClearMixin
+from netcorenoc.store.timeline_models import TimelineMixin
 from netcorenoc.store.types import (
     MAX_SCOPE_PARAMS,
     MIGRATIONS_DIR,
@@ -82,6 +83,10 @@ class Store(
     StateClearMixin,
     EntityMixin,
     ReadModelsMixin,
+    # v0.20.0. The timeline's two reads and their shared scope builder, off
+    # `ReadModelsMixin` at the 400-line guard. A plain `StoreBase` mixin: it overrides no
+    # name and nothing overrides it, so its position here is only readability.
+    TimelineMixin,
     SituationReadsMixin,
     GovernanceMixin,
     FeedbackMixin,

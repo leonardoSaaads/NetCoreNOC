@@ -45,9 +45,10 @@ export function BulkClear({ active, marked, confirming, sending, onAsk, onGo }) 
       <${Icon} name="cross" />${" "}
       ${marked > 0 ? `Clear ${plural(n, "marked alarm")}` : `Clear all ${n} active`}
     </button>
-    ${marked > 0
-      ? null
-      : html`<span class="hint bulkclear-hint">or tick members to clear only those</span>`}
+    ${/* The sentence *"or tick members to clear only those"* used to sit here. It explained a
+          control that explains itself: the boxes are on screen, and the moment one is ticked
+          this button's own label becomes `Clear 2 marked alarms`. A caption describing what the
+          next click will say is the text this console is being asked to stop producing. */ null}
   </div>`;
 }
 

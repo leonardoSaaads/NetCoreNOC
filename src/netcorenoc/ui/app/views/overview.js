@@ -56,38 +56,26 @@ import { ModelHealth } from "./parts/models.js";
 import { Severity } from "./parts/severity.js";
 import { plural, relative, count, timeTitle } from "../format.js";
 import { can, scopeSummary } from "../session.js";
+import { rangeSeconds, setRangeSeconds } from "../theme.js";
 import * as store from "../store.js";
 
-/** Where the chosen range is remembered. Per-viewer convenience; never state anything depends on. */
-const RANGE_KEY = "netcorenoc.overview.range";
-
 /**
- * The remembered range, or the default.
+ * The eight ranges as a set of seconds, which is the closed set `theme.js` validates against.
  *
- * Wrapped because `localStorage` throws in a private window and returns nothing with site data
- * cleared, and a console that fails to render because it could not read a preference would be a
- * worse defect than the preference not sticking. An unrecognised value falls back rather than
- * reaching the API: the range goes into a query string.
+ * **The preference is a cookie and not `localStorage`** (ADR #172, F2). This was written against
+ * `localStorage` first and `tests/test_security_ui.py` refused it, which is the guard doing its
+ * job: the value of *"no `localStorage` anywhere"* is that it is an absolute, and the first
+ * carve-out turns it into a judgement call on every future diff. A third preference goes in a
+ * third cookie, beside the theme and the sidebar, and nothing new is invented for it.
  */
-function readRange() {
-  try {
-    const stored = Number(globalThis.localStorage.getItem(RANGE_KEY));
-    if (RANGES.some((r) => r.seconds === stored)) return stored;
-  } catch { /* no storage, or it refused: the default is correct */ }
-  return DEFAULT_RANGE_S;
-}
-
-function writeRange(seconds) {
-  try {
-    globalThis.localStorage.setItem(RANGE_KEY, String(seconds));
-  } catch { /* the choice applies to this view either way */ }
-}
+const RANGE_VALUES = RANGES.map((r) => r.seconds);
 
 export class Overview extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      live: store.get(), activity: null, activityError: null, rangeS: readRange(),
+      live: store.get(), activity: null, activityError: null,
+      rangeS: rangeSeconds(RANGE_VALUES, DEFAULT_RANGE_S),
     };
   }
 
@@ -121,7 +109,7 @@ export class Overview extends Component {
   /** Change the range, remember it for next time, and re-read at the new resolution. */
   pick(rangeS) {
     this.setState({ rangeS, activity: null }, () => {
-      writeRange(rangeS);
+      setRangeSeconds(rangeS, RANGE_VALUES, DEFAULT_RANGE_S);
       this.readActivity();
     });
   }

@@ -100,6 +100,10 @@ _UI_MODULES = (
     "app/views/parts/retention.js",
     "app/views/parts/verdict.js",
     "app/views/parts/lifecycle.js",
+    # v0.20.0: the three restructuring gestures and their confidence, off `lifecycle.js` at the
+    # module-graph ceiling — that file's own title said *"move, merge, split, name"*, and a name
+    # is not a restructuring (DECISIONS #358).
+    "app/views/parts/restructure.js",
     "app/views/parts/declare.js",
     "app/views/parts/members.js",
     "app/views/parts/why.js",
@@ -111,6 +115,9 @@ _UI_MODULES = (
     # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
     "app/views/parts/judge.js",
     "app/views/parts/bulkclear.js",
+    # v0.20.0: the decision bar — what may be pressed on a situation right now, and in what
+    # words — off `judge.js`, which keeps when a press sends and what the server answered.
+    "app/views/parts/decide.js",
     # v0.16.4: the controls that narrow the situation list — the count cards, the search box
     # and the tabs — split out when they became a block (DECISIONS #288, item 3, item 5).
     "app/views/parts/finder.js",

@@ -41,7 +41,7 @@
 
 import { html, Component, cx } from "../../dom.js";
 import { Icon } from "../../icons.js";
-import { score, alarmName } from "../../format.js";
+import { score, alarmName, plural } from "../../format.js";
 
 const TERM_KEY = { temporal: "t", class_affinity: "a", entity_affinity: "e" };
 const TERM_LABEL = {
@@ -56,7 +56,18 @@ const TERM_MEANING = {
   entity_affinity: "these devices have co-occurred before",
 };
 
-/** The three named terms, from the scorer's own list, falling back to the legacy columns. */
+/**
+ * The three named terms of one link.
+ *
+ * **Named here rather than on the wire** (v0.20.0, F145). `/api/situations/{id}` used to carry
+ * both this list and the three columns it is built from: measured on a 1 051-member storm,
+ * 993 KiB of a 1 844 KiB response was the same three floats written twice, held for as long as
+ * the operator had the card open. The names were never the server's to give — `TERM_LABEL` and
+ * `TERM_KEY` above are keyed on them, so this file already knew all three.
+ *
+ * A payload that still carries `terms` is honoured, because a scorer with a different term set
+ * would announce it that way and this must not silently relabel it as the three it expects.
+ */
 export function termsOf(link) {
   if (Array.isArray(link.terms) && link.terms.length) return link.terms;
   return [
@@ -93,20 +104,66 @@ export function summarise(links) {
   };
 }
 
-export function WhyGrouped({ links, byId, threshold }) {
-  const all = links || [];
-  const summary = summarise(all);
-  if (!summary) {
+/** The band a margin falls in, and the one sentence that IS the answer to "can I trust this?". */
+export function bandOf(weakest, threshold) {
+  if (threshold == null) return { band: "unknown", margin: null };
+  const margin = weakest - threshold;
+  return { band: margin < 0.05 ? "thin" : margin < 0.15 ? "fair" : "wide", margin };
+}
+
+const BAND_VERDICT = {
+  thin: "The weakest pair only just cleared the threshold",
+  fair: "Every pair cleared the threshold",
+  wide: "Every pair cleared the threshold comfortably",
+  unknown: "The threshold was not reported",
+};
+
+/**
+ * **One line, closed; everything, open** (v0.20.0).
+ *
+ * *"The correlation panel is not very intuitive — too much information. The user doesn't want to
+ * know all that, they want to know what to do right away."* This section was three things stacked:
+ * a heading, a three-figure summary with a paragraph and three mean bars, and a second disclosure
+ * holding the per-link decomposition. An operator deciding whether a grouping is right met all of
+ * it before reaching the decision, and the only part that changes the decision is **one bit**:
+ * did the weakest pair clear the threshold comfortably or barely.
+ *
+ * So the closed state is that bit, in a sentence, with the band's colour and the link count — and
+ * the two disclosures became **one**. That is strictly better for principle 2, not worse: the
+ * per-term contributions used to be two interactions away (expand the card, then open the detail)
+ * and are now one, and they are still complete when opened.
+ */
+export class WhyGrouped extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { open: false };
+  }
+
+  render({ links, byId, threshold }, { open }) {
+    const all = links || [];
+    const summary = summarise(all);
+    if (!summary) {
+      return html`<section class="why">
+        <p class="hint">This situation has one member, so there is no link to explain.</p>
+      </section>`;
+    }
+    const { band } = bandOf(summary.weakest, threshold);
     return html`<section class="why">
-      <h3>Why these were grouped</h3>
-      <p class="hint">This situation has one member, so there is no link to explain.</p>
+      <button type="button" class=${cx("why-toggle", `soundness-${band}`)}
+              aria-expanded=${open ? "true" : "false"} aria-controls="why-body"
+              onClick=${() => this.setState({ open: !open })}>
+        <span class=${open ? "sit-chevron open" : "sit-chevron"}><${Icon} name="chevron" /></span>
+        <${Icon} name=${BAND_ICON[band]} />${" "}
+        <span class="why-verdict">${BAND_VERDICT[band]}</span>${" "}
+        <span class="muted">${plural(summary.count, "link")}</span>
+      </button>
+      <div class="why-body" id="why-body" hidden=${!open}>
+        ${open ? html`
+          <${Soundness} summary=${summary} threshold=${threshold} band=${band} />
+          <${LinkRows} links=${all} byId=${byId} />` : null}
+      </div>
     </section>`;
   }
-  return html`<section class="why">
-    <h3>Why these were grouped</h3>
-    <${Soundness} summary=${summary} threshold=${threshold} />
-    <${LinkDetail} links=${all} byId=${byId} count=${summary.count} />
-  </section>`;
 }
 
 /* The icon per band, as a table rather than a ternary inside the element.
@@ -118,11 +175,10 @@ export function WhyGrouped({ links, byId, threshold }) {
 const BAND_ICON = { thin: "warn", fair: "info", wide: "info", unknown: "info" };
 
 /** The answer to "is this grouping sound?", from every link. */
-function Soundness({ summary, threshold }) {
+function Soundness({ summary, threshold, band }) {
   const margin = threshold != null ? summary.weakest - threshold : null;
   // Three bands, and the words change with the band as well as the colour — a margin read off a
   // colour alone fails the same operator the severity rules are written for.
-  const band = margin == null ? "unknown" : margin < 0.05 ? "thin" : margin < 0.15 ? "fair" : "wide";
   return html`<div class=${cx("soundness", `soundness-${band}`)}>
     <div class="stat-row">
       <div class="stat">
@@ -143,15 +199,10 @@ function Soundness({ summary, threshold }) {
         <div class="stat-note">every pair scored above the threshold</div>
       </div>
     </div>
-    ${margin != null ? html`<p class=${cx("hint", band === "thin" && "err")}>
-      <${Icon} name=${BAND_ICON[band]} />${" "}
-      ${band === "thin"
-        ? "The weakest pair cleared the threshold by a small margin, so this grouping is "
-          + "sensitive to a change in the scorer."
-        : band === "wide"
-          ? "Every pair cleared the threshold comfortably."
-          : "Every pair cleared the threshold."}
-    </p>` : null}
+    ${/* The sentence that used to be here is the toggle's own label now (v0.20.0). Saying it
+          twice, once on the control that was just pressed and once under it, is the shape of
+          text this console is being asked to stop producing. `margin` is still what the
+          weakest-link note above reports, which is where the number belongs. */ null}
     <${Carrying} means=${summary.means} />
   </div>`;
 }
@@ -182,40 +233,28 @@ function Carrying({ means }) {
 }
 
 /**
- * Every link, complete, behind one interaction.
+ * Every link, complete.
  *
  * **Complete is the point.** The old version rendered `slice(0, 30)` and said how many it had
  * hidden, which means the per-term contributions — the product's central claim — were unreachable
- * for link thirty-one onwards on any device at all. They are all here once opened; what is behind
- * the interaction is the *cost* of drawing them, not the facts.
+ * for link thirty-one onwards on any device at all. They are all here once the section is opened;
+ * what is behind the interaction is the *cost* of drawing them, not the facts.
+ *
+ * It had a disclosure of its own until v0.20.0 and no longer does. Two nested toggles put the
+ * decomposition two interactions from an expanded card, and the outer one now hides the whole
+ * section — so the inner one was a second press to reach what the first press was for.
  */
-class LinkDetail extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { open: false };
-  }
-
-  render({ links, byId, count }, { open }) {
-    return html`<div class="link-detail">
-      <button type="button" class="link-detail-toggle" aria-expanded=${open ? "true" : "false"}
-              aria-controls="why-links"
-              onClick=${() => this.setState({ open: !open })}>
-        <span class=${open ? "sit-chevron open" : "sit-chevron"}><${Icon} name="chevron" /></span>
-        ${open ? "Hide" : "Show"} the per-term contribution of${" "}
-        ${count === 1 ? "the link" : `all ${count} links`}
-      </button>
-      <ol class="links" id="why-links" hidden=${!open}>
-        ${open ? links.map((link, index) => html`<li class="linkrow" key=${index}>
-          <span class="linkscore" title="the sum of the three terms below">${score(link.score)}</span>
-          <${TermBar} link=${link} />
-          <span class="linkpair">
-            ${nameOf(byId, link.alarm_a)} <span aria-hidden="true">↔</span>
-            ${nameOf(byId, link.alarm_b)}
-          </span>
-        </li>`) : null}
-      </ol>
-    </div>`;
-  }
+function LinkRows({ links, byId }) {
+  return html`<ol class="links" id="why-links">
+    ${links.map((link, index) => html`<li class="linkrow" key=${index}>
+      <span class="linkscore" title="the sum of the three terms below">${score(link.score)}</span>
+      <${TermBar} link=${link} />
+      <span class="linkpair">
+        ${nameOf(byId, link.alarm_a)} <span aria-hidden="true">↔</span>
+        ${nameOf(byId, link.alarm_b)}
+      </span>
+    </li>`)}
+  </ol>`;
 }
 
 function nameOf(byId, alarmId) {

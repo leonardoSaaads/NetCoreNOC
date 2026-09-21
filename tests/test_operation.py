@@ -331,15 +331,26 @@ def test_every_link_decomposes_into_terms_that_sum_to_its_score(
 
     Read off the payload the console renders, on an appliance that learned this network from the
     wire — not from a scorer called directly with constructed features.
+
+    **v0.20.0 reads the three columns, not a `terms` list** (F145). The route used to build
+    `[{"name": "temporal", "contribution": …}, …]` beside them on every link; measured on a
+    1 051-member storm that restatement was **993 KiB of a 1 844 KiB response**, held in the
+    browser for as long as the card was open. The named list is built in
+    `views/parts/why.js::termsOf` now, from these columns, by a branch that always existed.
+
+    What the mapping below duplicates is three names, and duplicating them is the point: a
+    console that renamed a term would still pass a test that asked the console what the terms
+    were called. The contract is that *these three columns* are the decomposition and that they
+    sum to the score exactly.
     """
     first, _second = drives
     links = [link for detail in first.details for link in detail.get("links", [])]
     assert links, "no link was explained, so the contract was not exercised"
+    columns = {"temporal": "term_t", "class_affinity": "term_a", "entity_affinity": "term_e"}
     for link in links:
-        terms = link["terms"]
-        assert {t["name"] for t in terms} == {"temporal", "class_affinity", "entity_affinity"}
-        total = sum(float(t["contribution"]) for t in terms)
-        assert abs(total - float(link["score"])) < 1e-9, (link["score"], terms)
+        assert set(columns.values()) <= link.keys(), sorted(link)
+        total = sum(float(link[column]) for column in columns.values())
+        assert abs(total - float(link["score"])) < 1e-9, (link["score"], link)
 
 
 def test_a_viewer_token_is_refused_the_admin_routes_over_tcp(drives: tuple[Drive, Drive]) -> None:

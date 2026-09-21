@@ -191,15 +191,23 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             detail = shaping.project_situation_detail(detail, scope, member_ne_ids=member_ne)
         if detail is None:
             raise HTTPException(status_code=404, detail="no such situation")
-        # v0.6.0: every link carries its explanation as a typed, *named* term list — the same
-        # three numbers, from one source (`LinkScore.terms`) rather than three ad-hoc columns.
-        # The columns stay for compatibility and remain byte-identical (DECISIONS #50).
-        for link in detail.get("links", []):
-            link["terms"] = [
-                {"name": "temporal", "contribution": link["term_t"]},
-                {"name": "class_affinity", "contribution": link["term_a"]},
-                {"name": "entity_affinity", "contribution": link["term_e"]},
-            ]
+        # **The named term list is built in the console, not on the wire** (v0.20.0, F145).
+        #
+        # v0.6.0 added `terms` here — `[{"name": "temporal", "contribution": …}, …]` — as the
+        # typed source of the explanation, keeping `term_t`/`term_a`/`term_e` beside it for
+        # compatibility (DECISIONS #50). Six releases later, **measured** on a 1 051-member
+        # storm: this response is 1 843.9 KiB, of which `links` is 1 535.0 KiB, of which
+        # **993 KiB is the same three floats written a second time** — 194 bytes per link,
+        # 5 240 links, rebuilt in a Python loop on every read. A held card keeps it for as long
+        # as the operator has the situation open, which is the memory growth the maintainer
+        # reported and the reason the card is slow to arrive.
+        #
+        # Nothing is lost. `views/parts/why.js::termsOf` has always built the named list from
+        # the three columns when `terms` is absent — that is the path every link now takes —
+        # and the names live in that file already, because `TERM_LABEL` and `TERM_KEY` are
+        # keyed on them. What left the wire is the restatement; what carries the decomposition
+        # is the columns, which is what the database stores and what DECISIONS #50 promised
+        # would stay. Principle 2 is unchanged and is asserted over the columns.
         # `None` when the configuration row is gone, never a default: a threshold the console
         # guessed would be worse than one it says it does not have.
         detail["threshold"] = float(config["threshold"]) if config is not None else None

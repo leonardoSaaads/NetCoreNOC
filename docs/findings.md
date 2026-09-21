@@ -2415,3 +2415,68 @@ this into a sentence in a build report instead of a failed gate.
   `justify-content: space-between` lays out — the same positions, with a gap that cannot be
   crossed.
 - **Disposition**: **fixed in v0.19.0.**
+
+## F143 — the correlation sink was 99.3 % waste, and a storm made it worse
+
+- **What**: `dataset/capture.py` wrote one sink row per *evaluated pair*, uncapped per situation.
+  A storm situation evaluates every new alarm against every live member, so the rows a single
+  situation contributes grow with the **square** of its membership while the training set that
+  can ever be built from them is capped at `MAX_PAIRS_PER_BAG = 256`.
+- **Reproduce**: replay `olt_storm.json` and `pon_dying_gasp.json` into a fresh appliance and look
+  at `dataset_pair`.
+- **Measured**, identical traffic, before and after: **29.1 MB → 3.5 MB**, and 99.3 % of the rows
+  written were rows no bag could ever draw on.
+- **Repair**: `MAX_SINK_PAIRS_PER_SITUATION = MAX_PAIRS_PER_BAG * 4` — four bags' worth per
+  situation, which is headroom over what any single bag can use and a hard stop on the square.
+  The counter is seeded from the database the first time a process sees a situation, because an
+  in-memory counter alone would grant a fresh allowance on every restart, which is no cap at all.
+  Pairs declined are **counted** (`pairs_over_cap`) and surfaced: a truncated corpus that does not
+  say so is a corpus whose `n` is a lie.
+- **Disposition**: **fixed in v0.20.0.**
+
+## F144 — the Overview shipped 108.5 KiB to draw twenty-four numbers
+
+- **What**: the activity chart asked `/api/timeline` for a thousand alarm marks and counted them
+  in the browser. Two defects in one: the payload, and the fact that a thousand marks cover
+  whatever span those thousand happen to cover — so the chart's window was **not** the window it
+  was captioned with, and on a busy estate it silently narrowed.
+- **Reproduce**: open the Overview on an appliance holding more than a thousand alarms.
+- **Measured**: **108.5 KiB → 0.2 KiB** per load, and the chart now counts all 1 963 raises in
+  the chosen range instead of a truncated 1 000.
+- **Repair**: `store/timeline_models.py::timeline_buckets` counts in SQL —
+  `CAST((col - ?) / ? AS INTEGER)` — behind `/api/timeline?buckets=&range_s=`. Same route, because
+  it is the same question at a different resolution, and the same scope predicate decides what is
+  counted. A scope set larger than `MAX_SCOPE_PARAMS` is refused rather than truncated.
+- **Disposition**: **fixed in v0.20.0.**
+
+## F145 — every link carried the same three floats twice
+
+- **What**: `/api/situations/{id}` wrote each link's decomposition **twice** — as the three stored
+  columns `term_t`/`term_a`/`term_e`, and again as a `terms` list of `{name, contribution}`
+  objects built in a Python loop on every read (v0.6.0, DECISIONS #50). The console's
+  `views/parts/why.js::termsOf` has always accepted either.
+- **Reproduce**: open a storm situation and look at the response size. Found by measuring what the
+  console holds while a card is open, after the maintainer reported that *"memory usage spikes
+  significantly with just a few incidents"*.
+- **Measured**, one 1 051-member situation with 5 240 links:
+
+  | | before | after |
+  |---|---|---|
+  | response | 1 843.9 KiB | **1 028.3 KiB** |
+  | of which `links` | 1 535.0 KiB | 719 KiB |
+  | median latency, 5 reads | 73 ms | **40.7 ms** |
+
+  **194 bytes per link** was the restatement, and a held card keeps all of it for as long as the
+  operator has the situation open.
+- **Repair**: the names are built in the console, where they already lived — `TERM_LABEL` and
+  `TERM_KEY` in `why.js` are keyed on exactly those three strings. What left the wire is the
+  restatement; what carries the decomposition is the columns, which is what the database stores
+  and what DECISIONS #50 promised would stay. `termsOf` still honours a payload that carries
+  `terms`, because a scorer with a different term set would announce it that way.
+- **Not rounded.** Trimming the floats to six decimals would save another ~245 KiB and would break
+  principle 2: the terms must sum to the score **exactly**, and `tests/test_scenarios.py` holds
+  that to 1e-9.
+- **Still open**: 719 KiB of links are fetched for a disclosure that is closed by default. The
+  fix is for the server to send the aggregate and the rows on demand; that is a new route with its
+  own scope posture, and it is a ROADMAP line with this measurement beside it.
+- **Disposition**: **fixed in v0.20.0** (the duplication); the remainder is recorded above.
