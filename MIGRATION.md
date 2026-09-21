@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of thirty-three ask
-you to do something; thirteen more ask you to read a paragraph first. The other eighteen are
+Read only the rows between your version and the one you are installing. **Two of thirty-four ask
+you to do something; fourteen more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
@@ -63,6 +63,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.16.5 → v0.16.6 | Nothing to run — **no migration** — but four screens are redrawn and one `/api/stats.resources` key is new. Read below |
 | v0.16.6 → v0.16.7 | Nothing to run — **no migration**. The Overview leads with active alarms by severity, and on a fresh appliance that panel reads *not measured* rather than zero. Read below |
 | v0.18.0 → v0.19.0 | Nothing to run. **Two migrations apply at boot** (`0017`, `0018`) and both are additive: two nullable columns on `challenger_run` for the learning curve, and two indexes on `dataset_pair`. Correlation groups differently on estates of many elements — deliberately, and narrower. Read below |
+| v0.19.0 → v0.20.0 | Nothing to run. **No migration.** The console is rearranged again — the Overview, the situation card and the restructure controls — and one API field is gone from `/api/situations/{id}`. Read below |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -490,3 +491,33 @@ behind a click — who is deciding, how far your judgements are from training a 
 curve once a fit exists. An admin gets two controls there: register the fit this appliance made,
 and ask the server to hand correlation over. Neither shortens the evidence path — the judge still
 re-derives every floor and may refuse, which on a corpus below the floors is the expected answer.
+
+### v0.20.0 — the console is rearranged, and one API field is gone
+
+**No migration.** Your database, alarms, learned state, sessions, tokens and audit chain are
+untouched. What changed is the screen, and one field on one read route.
+
+**`/api/situations/{id}` no longer sends `terms` on each link.** The three columns it was built
+from — `term_t`, `term_a`, `term_e` — are unchanged and are still on every link, and the console
+builds the named list from them, which it has always been able to do. This matters only if you
+wrote your own client against `link.terms`: map `temporal → term_t`, `class_affinity → term_a`,
+`entity_affinity → term_e`. The reason is measured — 993 KiB of a 1 843.9 KiB response on a
+1 051-member situation was the same three floats written a second time, held in the browser for as
+long as the card was open (F145).
+
+**The Overview has a time range**, and it is remembered in a cookie named `ncn_range`, beside
+`ncn_theme` and `ncn_nav`. It carries one of eight durations and nothing else; a value outside
+that set is discarded and the default (2 h) applies.
+
+**The situation card puts every decision in one row above the member table**, and the three
+`Declare …` buttons are gone from the actions cell — the device, the class and the severity are
+now edited by clicking the value itself, which carries a dotted underline to say so. Nothing was
+removed: every gesture that existed still exists, in the place the thing it changes is shown.
+
+**`Split (wrong grouping)` now reads `Grouping is wrong`.** Same route, same payload, same
+evidence. If you have a runbook that names the button, it is the one beside `Confirm grouping`.
+
+**Restructure asks for a selection first.** Tick the members, then choose `Move N elsewhere` or
+`Merge another situation in`, and pick the destination from the list of situations that exist.
+The two typed situation-id fields are gone; `A new situation` at the top of the move list is what
+the old `Split the marked members out` did, and it posts to the same `/split` route.

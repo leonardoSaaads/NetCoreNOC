@@ -47,39 +47,74 @@
 
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
-import { Stat, Empty, Loading, Failed, SectionHeading } from "../widgets.js";
-import { Happening, MARK_LIMIT, Where, Worst } from "./parts/pulse.js";
-import { Keeping, Learned } from "./parts/keeping.js";
+import { Empty, Loading, Failed, SectionHeading } from "../widgets.js";
+import {
+  DEFAULT_RANGE_S, Estate, Happening, RANGE_BUCKETS, RANGES, RangePicker,
+} from "./parts/pulse.js";
+import { Keeping } from "./parts/keeping.js";
 import { ModelHealth } from "./parts/models.js";
 import { Severity } from "./parts/severity.js";
-import { plural, relative, absolute, timeTitle, TIMEZONE } from "../format.js";
+import { plural, relative, count, timeTitle } from "../format.js";
 import { can, scopeSummary } from "../session.js";
+import { rangeSeconds, setRangeSeconds } from "../theme.js";
 import * as store from "../store.js";
+
+/**
+ * The eight ranges as a set of seconds, which is the closed set `theme.js` validates against.
+ *
+ * **The preference is a cookie and not `localStorage`** (ADR #172, F2). This was written against
+ * `localStorage` first and `tests/test_security_ui.py` refused it, which is the guard doing its
+ * job: the value of *"no `localStorage` anywhere"* is that it is an absolute, and the first
+ * carve-out turns it into a judgement call on every future diff. A third preference goes in a
+ * third cookie, beside the theme and the sidebar, and nothing new is invented for it.
+ */
+const RANGE_VALUES = RANGES.map((r) => r.seconds);
 
 export class Overview extends Component {
   constructor(props) {
     super(props);
-    this.state = { live: store.get(), marks: null, marksAt: null, marksError: null };
+    this.state = {
+      live: store.get(), activity: null, activityError: null,
+      rangeS: rangeSeconds(RANGE_VALUES, DEFAULT_RANGE_S),
+    };
   }
 
   componentDidMount() {
     this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
-    this.readMarks();
+    this.readActivity();
   }
 
   componentWillUnmount() { if (this.unsubscribe) this.unsubscribe(); }
 
-  /** The one read this screen makes. A failure is reported beside the chart, never as a zero. */
-  async readMarks() {
+  /**
+   * The one read this screen makes. A failure is reported beside the chart, never as a zero.
+   *
+   * **Counts, not marks** (v0.20.0, F144). This asked for a thousand rows and counted them in the
+   * browser — 108.5 KiB per load for twenty-four numbers, truncated at a thousand alarms so the
+   * chart covered whatever span those happened to span. The bucketed form is 0.2 KiB and covers
+   * the range the operator picked.
+   */
+  async readActivity() {
     try {
-      const data = await get(`/api/timeline?limit=${MARK_LIMIT}`);
-      this.setState({ marks: data.marks || [], marksAt: Date.now() / 1000, marksError: null });
+      const { rangeS } = this.state;
+      this.setState({
+        activity: await get(`/api/timeline?buckets=${RANGE_BUCKETS}&range_s=${rangeS}`),
+        activityError: null,
+      });
     } catch (error) {
-      this.setState({ marksError: error });
+      this.setState({ activityError: error });
     }
   }
 
-  render(_props, { live, marks, marksAt, marksError }) {
+  /** Change the range, remember it for next time, and re-read at the new resolution. */
+  pick(rangeS) {
+    this.setState({ rangeS, activity: null }, () => {
+      setRangeSeconds(rangeS, RANGE_VALUES, DEFAULT_RANGE_S);
+      this.readActivity();
+    });
+  }
+
+  render(_props, { live, activity, activityError, rangeS }) {
     const stats = live.stats;
     // The panel below is titled "Open situations" and the store now holds all three states, so the
     // filter is here rather than in the transport — the same expression the sidebar count and the
@@ -121,50 +156,54 @@ export class Overview extends Component {
         Situations may extend beyond it; members you cannot see are shown as a redacted count.
       </p>` : null}
 
-      <${Severity} census=${stats.severity} />
-      ${/* **Directly under the alarm summary, and above everything else.** The maintainer's
-            standing request is to migrate correlation from the fixed formula to a learned
-            model; until v0.19.0 the console said nothing at all about how that was going, on
-            any screen. It is one line and one bar, so the position costs an operator who does
-            not care about it a single glance. */ null}
-      <${ModelHealth} admin=${can("model.register")} />
-      <${Happening} situations=${live.situations || []} marks=${marks} at=${marksAt}
-                    error=${marksError} retry=${() => this.readMarks()} />
-      <${Where} nodes=${nodes} />
-      <${Worst} nodes=${nodes} />
-      <${Keeping} stats=${stats} ring=${live.ring} rate=${live.trapRate} />
-      <${Learned} stats=${stats} />
+      ${/* **The range belongs at the top, once, and it drives the activity chart** (v0.20.0).
+            Before this the charts each derived an axis from whatever their own data happened to
+            cover, so nothing on the screen said what period was being looked at and nothing let
+            an operator change it. */ null}
+      <${RangePicker} value=${rangeS} onPick=${(seconds) => this.pick(seconds)} />
 
-      <${SectionHeading} title="Open situations"
-        hint="Newest first. Open one to see the per-term contributions that produced each link." />
-      ${situations.length
-        ? html`<ul class="mini-list">${situations.slice(0, 8).map((s) => html`
-            <li key=${s.id}>
-              <a href=${`#/situations/${s.id}`}>#${s.id}</a>
-              <span>${plural(s.alarm_count, "alarm")}</span>
-              <span class="muted" title=${timeTitle(s.updated_at)}
-                >${relative(s.updated_at)}</span>
-            </li>`)}</ul>`
-        : html`<p class="hint">No open situations — alarms are arriving, nothing has
-            correlated.</p>`}
-
-      ${/* **"Your labelling" left here in v0.16.7** (#318). A heading, a 24-word paragraph and
-            two stat tiles that answered *"how many situations can I judge"* — a count on a screen
-            with nothing to do about it. The Labelling screen answers the same question with the
-            situations themselves in front of the operator, and its link is in the sidebar with
-            every other screen's. What replaced it above is the count that decides whether an
-            operator stands up. */ null}
-      ${/* **The two on-demand panels left in v0.19.0.**
-            They sat at the foot of this screen reading *"Not computed yet"* beside a
-            `Compute now` button, which is what an operator saw every time they opened the
-            console — two dead boxes at the end of the page they use most.
-            `Judge and promotion` answered *"is a model running, and what has the gate
-            decided"*, which the model line at the top of this screen now answers live and
-            without a click. `What capture is holding` answered *"how big is the corpus"*,
-            which is the Corpus screen's whole subject and is linked from the sidebar. Both
-            were a second, colder copy of a question that already had a home. The seal's
-            query count and the decision history stay on **Judge & promotion**, which is
-            where an auditor looks for them. */ null}
+      ${/* **Two per row** (v0.20.0). Every panel used to take a full row, so the severity card —
+            six short rows of counts — occupied as much of the screen as the estate grid, and an
+            operator scrolled past a great deal of whitespace to reach anything. `.grid-2` is one
+            column under 900 px, so the phone layout is unchanged. */ null}
+      <div class="grid-2">
+        <section class="panel-block"><${Severity} census=${stats.severity} /><//>
+        <section class="panel-block">
+          <${SectionHeading} title="What is happening" />
+          <${Happening} data=${activity} rangeS=${rangeS} error=${activityError}
+                        retry=${() => this.readActivity()} />
+        <//>
+        <${Estate} nodes=${nodes} />
+        <${Keeping} stats=${stats} ring=${live.ring} rate=${live.trapRate} />
+        <section class="panel-block">
+          <${SectionHeading} title="Open situations" />
+          ${situations.length
+            ? html`<ul class="mini-list">${situations.slice(0, 8).map((s) => html`
+                <li key=${s.id}>
+                  <a href=${`#/situations/${s.id}`}>#${s.id}</a>
+                  <span>${plural(s.alarm_count, "alarm")}</span>
+                  <span class="muted" title=${timeTitle(s.updated_at)}
+                    >${relative(s.updated_at)}</span>
+                </li>`)}</ul>`
+            : html`<p class="hint">Nothing open.</p>`}
+          ${/* **The two "learned, not configured" tiles moved in here** (v0.20.0). They were a
+                row of their own carrying two numbers and a four-word caption each, under no
+                heading, between the health panel and the situation list — "a bit thrown
+                together" is exactly right. They are facts about the estate this appliance has
+                discovered, so they sit under the list of what it is currently working. */ null}
+          <p class="learned-line">
+            <b>${count(stats.devices)}</b>${" "}devices${" "}·${" "}
+            <b>${count(stats.classes)}</b>${" "}alarm classes${" "}·${" "}learned from the stream
+          </p>
+        <//>
+        <section class="panel-block">
+          <${SectionHeading} title="The models" />
+          ${/* **Moved down from directly under the alarm summary** (v0.20.0). It led the screen
+                in v0.19.0, which put a sentence about training above the thing an operator opens
+                the console for. It keeps its place on Labelling, where judging happens. */ null}
+          <${ModelHealth} admin=${can("model.register")} />
+        <//>
+      </div>
     </div>`;
   }
 }

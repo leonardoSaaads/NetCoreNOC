@@ -23,6 +23,14 @@ from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
 
+#: The range the bucketed timeline covers when the caller names none: two hours, which is the
+#: window the health sampler already keeps and the one an operator reaches for first.
+DEFAULT_TIMELINE_RANGE_S = 2 * 60 * 60.0
+
+#: Buckets a caller may ask for. A chart a few hundred pixels wide cannot resolve more, and the
+#: ceiling is what stops a caller turning one request into an unbounded number of GROUP BY rows.
+MAX_TIMELINE_BUCKETS = 240
+
 #: The longest needle `GET /api/situations?q=` will honour. Bounded rather than rejected, like every
 #: other untrusted string on this API: a 4 KB query string would otherwise reach `LIKE` and be
 #: scanned against every alarm of every listed situation. 100 characters is longer than any device
@@ -183,15 +191,23 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             detail = shaping.project_situation_detail(detail, scope, member_ne_ids=member_ne)
         if detail is None:
             raise HTTPException(status_code=404, detail="no such situation")
-        # v0.6.0: every link carries its explanation as a typed, *named* term list — the same
-        # three numbers, from one source (`LinkScore.terms`) rather than three ad-hoc columns.
-        # The columns stay for compatibility and remain byte-identical (DECISIONS #50).
-        for link in detail.get("links", []):
-            link["terms"] = [
-                {"name": "temporal", "contribution": link["term_t"]},
-                {"name": "class_affinity", "contribution": link["term_a"]},
-                {"name": "entity_affinity", "contribution": link["term_e"]},
-            ]
+        # **The named term list is built in the console, not on the wire** (v0.20.0, F145).
+        #
+        # v0.6.0 added `terms` here — `[{"name": "temporal", "contribution": …}, …]` — as the
+        # typed source of the explanation, keeping `term_t`/`term_a`/`term_e` beside it for
+        # compatibility (DECISIONS #50). Six releases later, **measured** on a 1 051-member
+        # storm: this response is 1 843.9 KiB, of which `links` is 1 535.0 KiB, of which
+        # **993 KiB is the same three floats written a second time** — 194 bytes per link,
+        # 5 240 links, rebuilt in a Python loop on every read. A held card keeps it for as long
+        # as the operator has the situation open, which is the memory growth the maintainer
+        # reported and the reason the card is slow to arrive.
+        #
+        # Nothing is lost. `views/parts/why.js::termsOf` has always built the named list from
+        # the three columns when `terms` is absent — that is the path every link now takes —
+        # and the names live in that file already, because `TERM_LABEL` and `TERM_KEY` are
+        # keyed on them. What left the wire is the restatement; what carries the decomposition
+        # is the columns, which is what the database stores and what DECISIONS #50 promised
+        # would stay. Principle 2 is unchanged and is asserted over the columns.
         # `None` when the configuration row is gone, never a default: a threshold the console
         # guessed would be worse than one it says it does not have.
         detail["threshold"] = float(config["threshold"]) if config is not None else None
@@ -203,9 +219,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         ne_id: int | None = None,
         since: float | None = None,
         until: float | None = None,
+        buckets: int = 0,
+        range_s: float | None = None,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Recent raise/clear marks, optionally narrowed to one element and one window.
+
+        **`buckets` switches the shape** (v0.20.0): with it, the answer is per-bucket raise and
+        clear *counts* over the last `range_s` seconds rather than the marks themselves. Same
+        route because it is the same question at a different resolution, and the same scope
+        predicate decides what is counted.
 
         **v0.7.1 (F35 + F38):** the scope filter lives in the query and is keyed on `ne_id`. v0.7.0
         truncated globally and then compared the *rendered* `device` string — `COALESCE(label, ip)`
@@ -223,6 +246,25 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         which is the same non-answer they would get for an element that does not exist.
         """
         scope = await scope_for(principal)
+        if buckets:
+            # **The aggregate form** (v0.20.0, F144). The Overview's chart is about twenty-four
+            # numbers and was being served as a thousand rows — 108.5 KiB to draw a histogram.
+            # `buckets` asks for the counts instead, computed in SQL through the same scope
+            # predicate the marks go through.
+            #
+            # No mark leaves the database here, so there is nothing for `shaping` to coarsen: a
+            # count of raises in a five-minute bucket names no device and no address. The
+            # principal's scope still decides *which alarms are counted*, in SQL.
+            span = max(1.0, float(range_s or DEFAULT_TIMELINE_RANGE_S))
+            wanted = min(max(buckets, 2), MAX_TIMELINE_BUCKETS)
+            async with store.lock:
+                return await store.timeline_buckets(
+                    bucket_s=span / wanted,
+                    buckets=wanted,
+                    now=time.time(),
+                    ne_ids=None if scope.unrestricted else scope.ne_ids,
+                    device_ne_id=ne_id,
+                )
         async with store.lock:
             marks = await store.timeline_marks(
                 min(max(limit, 1), 1000),

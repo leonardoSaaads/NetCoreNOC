@@ -44,13 +44,13 @@
 import { html, Component } from "../../dom.js";
 import { Icon } from "../../icons.js";
 import { WhyGrouped } from "./why.js";
-import { History, NameField, RESOLUTION_TEXT, Restructure } from "./lifecycle.js";
+import { History, NameField, RESOLUTION_TEXT } from "./lifecycle.js";
+import { Restructure } from "./restructure.js";
 import { post } from "../../api.js";
 import { Loading, Failed } from "../../widgets.js";
-import { age, alarmName, deviceName, lastJudgement, percent, plural, timeTitle }
-  from "../../format.js";
+import { alarmName, deviceName, lastJudgement, percent, plural } from "../../format.js";
 import { Members } from "./members.js";
-import { BulkClear } from "./bulkclear.js";
+import { Decide } from "./decide.js";
 import { canEdit } from "../../session.js";
 
 export class Detail extends Component {
@@ -232,12 +232,21 @@ export class Detail extends Component {
           This situation is larger than what is shown here.</p>
       </div>` : null}
 
-      ${editable && activeCount > 0
-        ? html`<${BulkClear} active=${activeCount} marked=${markedActive}
-                   confirming=${this.state.confirmingClear} sending=${this.state.sending}
-                   onAsk=${(on) => this.setState({ confirmingClear: on })}
-                   onGo=${() => this.clearMany(markedActive > 0)} />`
-        : null}
+      ${/* **One bar, above the table** (v0.20.0, DECISIONS #358's sibling). What may be
+            pressed and in what words is `views/parts/decide.js`; this file owns when a press
+            sends, what it sends and what the server answered. */ null}
+      ${editable ? html`<${Decide}
+        status=${detail.status} judged=${judged} adjusting=${this.state.adjusting}
+        grouping=${grouping} restructurable=${restructurable} sending=${this.state.sending}
+        marked=${this.state.marked.size}
+        activeCount=${activeCount} markedActive=${markedActive}
+        confirmingClear=${this.state.confirmingClear}
+        onAdjust=${() => this.setState({ adjusting: true })}
+        onPromote=${() => this.promote()}
+        onVerdict=${(kind) => this.verdict(kind)}
+        onClose=${() => this.close()}
+        onAskClear=${(on) => this.setState({ confirmingClear: on })}
+        onClearMany=${() => this.clearMany(markedActive > 0)} />` : null}
 
       <${Members} alarms=${detail.alarms} editable=${editable}
                   marked=${this.state.marked}
@@ -245,42 +254,6 @@ export class Detail extends Component {
                   onMarkAll=${(on) => this.markAll(on)}
                   onClear=${(id) => this.clearAlarm(id)}
                   onDeclared=${() => this.props.onChanged()} />
-
-      ${/* **The decision precedes the analysis** (v0.19.0): judging 1 051 alarms meant scrolling
-            past the member table and the score breakdown to reach the buttons. */ null}
-      ${editable && detail.status === "new" ? html`<div class="fb">
-        <button type="button" disabled=${this.state.sending} title=${PROMOTE_TITLE}
-                onClick=${() => this.promote()}>
-          <${Icon} name="chevron" /> Start working this
-        </button>
-      </div>` : null}
-
-      ${editable && judged && !this.state.adjusting ? html`<div class="judged">
-        <p class="judged-note">
-          <${Icon} name="check" />${" "}
-          <b>${JUDGED_TEXT[judged.kind] ?? "This grouping has been judged"}</b>
-          ${judged.actor ? ` by ${judged.actor_name || judged.actor}` : ""}${" "}
-          <span class="age" title=${timeTitle(judged.at)}>${age(judged.at)} ago</span>
-        </p>
-        <button type="button" onClick=${() => this.setState({ adjusting: true })}
-                title=${ADJUST_TITLE}>Adjust the grouping</button>
-      </div>` : null}
-
-      ${editable && grouping ? html`<div class="fb">
-        <button type="button" class="primary" disabled=${this.state.sending}
-                onClick=${() => this.verdict("confirm")}>
-          <${Icon} name="check" /> Confirm grouping
-        </button>
-        <button type="button" class="warn" disabled=${this.state.sending}
-                onClick=${() => this.verdict("split")}>
-          <${Icon} name="cross" />${" "}
-          ${this.state.marked.size
-            ? `Split — ${plural(this.state.marked.size, "member")} marked as not belonging`
-            : "Split (wrong grouping)"}
-        </button>
-        ${restructurable ? html`<button type="button" disabled=${this.state.sending}
-                onClick=${() => this.close()}>Close situation</button>` : null}
-      </div>` : null}
 
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
 
@@ -308,27 +281,6 @@ export class Detail extends Component {
     </div>`;
   }
 }
-
-const PROMOTE_TITLE =
-  "Moves this to Open so the shift can see somebody has it. It records nothing about whether " +
-  "the grouping is right — Confirm is how you say that.";
-
-/* What is already on record, in the words of the gesture that recorded it.
- *
- * Keyed on `ASSERTING_KINDS` and nothing wider: `rename`, `manual_clear` and the three closes all
- * promote a situation and none of them judges its grouping, so none of them belongs here. Each
- * line says what the appliance was TOLD, not what it concluded — the distinction v0.16.2 drew
- * between promoting and affirming, in the one place an operator reads it back. */
-const JUDGED_TEXT = {
-  verdict: "This grouping has been judged",
-  move: "An alarm has been moved out of this grouping",
-  merge: "Another situation has been merged into this one",
-  operator_split: "Members have been split out of this grouping",
-};
-
-const ADJUST_TITLE =
-  "Reopens the grouping controls. The judgement already on record is kept — a second one is a " +
-  "second row of evidence, not a correction to the first.";
 
 const OUTCOME_TEXT = {
   promote: "Open, and yours. Nothing was recorded about whether the grouping is right.",

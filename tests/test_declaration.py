@@ -646,7 +646,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # `GET /app/views/parts/models.js`, the console module that draws them. The register POST is
     # the first HTTP route that can create a `model_version`; what kept that CLI-only was that a
     # request must not be able to assert a model, and it still cannot — see the route's docstring.
-    assert len(served) == 125, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # **v0.20.0: 125 -> 127 served, /api unchanged at 55.** Two static assets and **no API route**:
+    # `GET /app/views/parts/restructure.js` (the three restructuring gestures, off `lifecycle.js`)
+    # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
+    # module-graph ceiling. A release that rearranged the console this much and added no route to
+    # do it is the fact worth recording here.
+    assert len(served) == 127, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -783,7 +789,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # `GET /app/views/parts/models.js`, the console module that draws them. The register POST is
     # the first HTTP route that can create a `model_version`; what kept that CLI-only was that a
     # request must not be able to assert a model, and it still cannot — see the route's docstring.
-    assert len(served) == 125, f"the served surface moved: {len(served)} method/path pairs"
+    #
+    # **v0.20.0: 125 -> 127 served, /api unchanged at 55.** Two static assets and **no API route**:
+    # `GET /app/views/parts/restructure.js` (the three restructuring gestures, off `lifecycle.js`)
+    # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
+    # module-graph ceiling. A release that rearranged the console this much and added no route to
+    # do it is the fact worth recording here.
+    assert len(served) == 127, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.

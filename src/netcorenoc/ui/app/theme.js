@@ -136,3 +136,30 @@ export function setNavState(value) {
 export function nextNavState(from = navState()) {
   return from === "collapsed" ? "expanded" : "collapsed";
 }
+
+/* ---------- the Overview's time range (v0.20.0) --------------------------------------------
+ *
+ * A **third** preference, and it goes here for the reason the second one did. It was written
+ * against `localStorage` first, and `tests/test_security_ui.py` refused it — correctly, and
+ * exactly as ADR #172 says an absolute should behave. A rule that is only enforced when the
+ * author remembers it is not an absolute; this one is enforced by a test, which is why it
+ * caught a preference added four years after it was written.
+ *
+ * **The closed set is passed in, not restated here.** `views/parts/pulse.js` owns the list of
+ * ranges because the chart's axis and the picker's labels have to mean the same thing, and its
+ * own header says that two lists of durations is how they come to differ by one entry. This
+ * file owns the *mechanism* — a cookie, validated on read — and the caller owns the vocabulary.
+ * The validation is not weaker for that: a value outside the set the caller names is discarded
+ * exactly as a bad theme name is, so a hostile cookie can at worst select a supported range.
+ */
+const RANGE_COOKIE = "ncn_range";
+
+/** The stored range in seconds, or `fallback` when the cookie is absent or not in `allowed`. */
+export function rangeSeconds(allowed, fallback) {
+  const stored = Number(readCookie(RANGE_COOKIE));
+  return allowed.includes(stored) ? stored : fallback;
+}
+
+export function setRangeSeconds(value, allowed, fallback) {
+  writeCookie(RANGE_COOKIE, String(allowed.includes(value) ? value : fallback));
+}

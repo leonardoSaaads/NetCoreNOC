@@ -42,6 +42,7 @@ from netcorenoc.engine.correlate.correlate import (
     WindowAlarm,
 )
 from netcorenoc.engine.correlate.scoring import LINK_THRESHOLD, LinkScore
+from netcorenoc.engine.dataset import sweep
 from netcorenoc.engine.dataset.labels import (
     MAX_CLIENT_MEMBERS,
     ClientFingerprint,
@@ -57,6 +58,7 @@ from netcorenoc.engine.dataset.retention_policy import (
     TIER_NAMES,
     RetentionPolicy,
 )
+from netcorenoc.engine.model.training import MAX_PAIRS_PER_BAG
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.engine.correlate.learn import Learner
@@ -64,6 +66,34 @@ if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_l
     from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")
+
+#: Sink pairs kept for **one situation**, after which capture stops adding rows for it.
+#:
+#: ## The measurement (v0.20.0, F143)
+#:
+#: 2 847 traps across five corpus scenarios produced **191 250 sink pairs — 26.2 MB of a 29 MB
+#: database**, and 99.4 % of them were captured during a storm. One storm situation held **105 100
+#: pairs on its own**.
+#:
+#: Training can never read most of that. `training.MAX_PAIRS_PER_BAG` caps a bag at **256** pairs,
+#: so of those 105 100 rows at most 256 will ever become a training row — **0.24 %**. Across the
+#: whole run: 191 250 stored against at most 1 280 usable. The sink was not holding evidence; it
+#: was holding the same storm written down ninety-seven times per alarm.
+#:
+#: ## Why a multiple of the training cap rather than the cap itself
+#:
+#: A bag's membership changes — a merge widens it, a move rewrites it — and `MAX_PAIRS_PER_BAG`
+#: samples from whatever is there when the fit runs. Capturing exactly the training cap would mean
+#: a situation that later grows has no pairs to sample for its new members. Four times gives the
+#: sampler a pool it can still choose within, and is still **two orders of magnitude** below what
+#: was being written.
+#:
+#: **The first N by arrival, deterministically, with the rest counted.** Not a random sample: this
+#: runs under the batch lock on the ingest path, an RNG there would make the corpus a property of
+#: the machine, and `MAX_PAIRS_PER_BAG` already truncates deterministically for the same reason.
+#: The count of what was refused is surfaced, because a corpus that is truncated and does not say
+#: so is a corpus whose `n` is a lie.
+MAX_SINK_PAIRS_PER_SITUATION = MAX_PAIRS_PER_BAG * 4
 
 # Re-exported so `engine.py` and the API keep one import site for "the capture surface", while
 # the verdict-path code lives in `labels.py`. See that module for why the split is by *path*.
@@ -126,6 +156,14 @@ class Capture:
     # Bounded by pruning it against the correlator's own window on every activation, so it cannot
     # outgrow the window it mirrors.
     _observations: dict[int, int] = field(default_factory=dict)
+    # situation_id -> sink pairs already captured for it, seeded from the database the first time
+    # this process sees the situation so a restart cannot reopen the cap. Bounded with the
+    # observation index, against the correlator's own window.
+    _per_situation: dict[int, int] = field(default_factory=dict)
+    # Pairs this process declined to write because their situation was already at the cap.
+    # Surfaced rather than silent: a corpus that is truncated and does not say so is a corpus
+    # whose `n` is a lie.
+    pairs_over_cap: int = 0
     # What the audit sweep has destroyed in this process's lifetime, by row kind. Deleting a label
     # is the most consequential thing this product does, so the count is kept and surfaced rather
     # than discarded the way `store.prune`'s is.
@@ -250,8 +288,19 @@ class Capture:
                 alarm_count=count,
             )
             kept = {link.other.alarm_id for link in outcome.links}
+            # **The per-situation cap** (F143). `room` is how many more pairs this situation may
+            # contribute; `None` means the pair has no situation yet and is not capped by one.
+            room: int | None = None
+            if situation_id is not None:
+                held = await self._held_for(store, situation_id)
+                room = max(0, MAX_SINK_PAIRS_PER_SITUATION - held)
             rows: list[tuple[Any, ...]] = []
             for pair in outcome.evaluated:
+                if room is not None and len(rows) >= room:
+                    # Count every pair refused, not just the first, so the figure is the size of
+                    # what the corpus does not contain.
+                    self.pairs_over_cap += len(outcome.evaluated) - len(rows)
+                    break
                 other = pair.other
                 rows.append(
                     (
@@ -280,6 +329,10 @@ class Capture:
                     )
                 )
             await store.add_pairs(rows)
+            if situation_id is not None:
+                self._per_situation[situation_id] = self._per_situation.get(situation_id, 0) + len(
+                    rows
+                )
             self._forget_outside(set(store_window_ids(outcome)) | {entry.alarm_id})
         except Exception as exc:
             self._degrade(exc)
@@ -313,68 +366,26 @@ class Capture:
         return obs_id
 
     async def prune(self, store: Store, now: float, retention: RetentionPolicy) -> None:
-        """The maintenance-time dataset pass: the policy's two **background** bounds, then one
-        **verification**.
-
-        The bounds are the sink's dual bound (age, then a row cap — unchanged from v0.8.0) and the
-        **audit bound**, the outer edge of the data's life and the only background path that may
-        delete a human label.
-
-        **The training tier is deliberately absent**: it *selects* rather than deletes
-        (DECISIONS #110). v0.8.0's directive 9 — this loop must never *silently* destroy labels —
-        is satisfied rather than repealed, because the audit sweep destroys nothing the operator
-        did not configure a bound for, and every deletion is counted here and reported.
-
-        Degrades exactly as capture does. A sweep that failed is a disk-space problem; a
-        maintenance pass that raised would also skip the learned-state flush behind it.
-
-        **Why the verification's call site is here** (v0.9.2): it belongs to the maintenance
-        cadence, it must run inside the lock the pass already holds, and `engine.py` is
-        `COHESION_EXEMPT` at a ceiling equal to its exact size, so this release may not add a call
-        site to it. This is the one method the maintenance pass already calls on the dataset, on the
-        `PRUNE_EVERY_TICKS` schedule the verification wants. Named in the docstring rather than
-        left to be discovered.
-        """
-        if not self.enabled:
-            return
-        try:
-            await store.prune_sink(now - retention.sink_days * 86400.0, retention.sink_rows)
-            swept = await store.prune_dataset_audit(now - retention.audit_days * 86400.0)
-        except Exception as exc:
-            self._degrade(exc)
-        else:
-            for key, count in swept.items():
-                self.audit_swept[key] = self.audit_swept.get(key, 0) + count
-        await self.verify_evidence(store)
+        """The maintenance-time dataset pass. See :mod:`netcorenoc.engine.dataset.sweep`."""
+        await sweep.prune(self, store, now, retention)
 
     async def verify_evidence(self, store: Store) -> None:
-        """Recompute the reconciled exclusion count from the child tables and **report** drift.
+        """Recompute the reconciled exclusion count and **report** drift. Never corrects."""
+        await sweep.verify_evidence(self, store)
 
-        The denormalized `feedback.excluded_reconciled` is a **rebuildable copy**;
-        `feedback_exclusion` and `feedback_member(source='server')` remain the source of truth. So
-        the system carries a reconciliation query and drift monitoring rather than trusting the
-        copy — which is the ordinary discipline for a denormalized aggregate, applied literally.
+    async def _held_for(self, store: Store, situation_id: int) -> int:
+        """Sink pairs already captured for this situation, counted once per process.
 
-        **It does not correct, and that is the decision rather than an omission** (DECISIONS #134).
-        A disagreement means a **write path is broken**. Repairing the row silently would destroy
-        the evidence of that, which is the entire reason this release exists: had this check shipped
-        in v0.9.1 as a corrector, F46 would have been invisible — every hostile row quietly repaired
-        on the next pass, the reports looking right, and the write path staying broken indefinitely.
-
-        Surfaced through :meth:`warnings`, and counted durably by `dataset bias`, which recomputes
-        it from the database on every run. **No audit row**: the audit catalog is frozen and this
-        release adds no action to it, and a detection that changes no behaviour is not an event in
-        the sense the catalog records. The report is the durable record; the warning is the alert.
-
-        Degrades like everything else here. A verification that raised would take the maintenance
-        pass with it, which would be a worse outcome than an unverified sweep.
+        **Seeded from the database, not from zero.** An in-memory counter alone would let every
+        restart grant the situation another `MAX_SINK_PAIRS_PER_SITUATION`, which on an appliance
+        that restarts is no cap at all. One `COUNT` per situation per process lifetime, served by
+        `idx_pair_situation`, and every later activation reads the cached number.
         """
-        if not self.enabled:
-            return
-        try:
-            self.drift_rows = len(await store.reconciliation_drift())
-        except Exception as exc:
-            self._degrade(exc)
+        held = self._per_situation.get(situation_id)
+        if held is None:
+            held = await store.sink_pairs_for_situation(situation_id)
+            self._per_situation[situation_id] = held
+        return held
 
     def _forget_outside(self, live: set[int]) -> None:
         """Keep the observation index bounded by the correlator's own window.
@@ -384,6 +395,12 @@ class Capture:
         """
         if len(self._observations) > MAX_CANDIDATES * 4:
             self._observations = {k: v for k, v in self._observations.items() if k in live}
+        # The per-situation counter is bounded the same way and for the same reason. It is keyed
+        # by situation rather than by alarm, so it is trimmed to the situations of the live
+        # window's alarms — a situation that falls out and comes back is re-seeded from the
+        # database, which is the correct number rather than a fresh allowance.
+        if len(self._per_situation) > MAX_CANDIDATES * 4:
+            self._per_situation.clear()
 
 
 def store_window_ids(outcome: CorrelationResult) -> list[int]:

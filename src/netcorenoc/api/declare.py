@@ -168,6 +168,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/verdict.js",
         # v0.16.0: the operator gestures, their confidence control and the history list.
         "/app/views/parts/lifecycle.js",
+        "/app/views/parts/restructure.js",
         "/app/views/parts/declare.js",
         "/app/views/parts/members.js",
         "/app/views/parts/why.js",
@@ -182,6 +183,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
         "/app/views/parts/judge.js",
         "/app/views/parts/bulkclear.js",
+        "/app/views/parts/decide.js",
         # v0.16.4: the controls that narrow the situation list — the count cards, the search box
         # and the tabs — split out when they became a block (DECISIONS #288, item 3, item 5).
         "/app/views/parts/finder.js",

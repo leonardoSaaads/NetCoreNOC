@@ -4411,3 +4411,91 @@ From this release an entry is about six lines: decision, reason, release.*
   **~3 ms** warm, and a fresh verdict moved `split_bags` from 5 to 6 on the very next read.
 - **Not a TTL**, deliberately: a TTL makes the bar lag the click by exactly the interval chosen,
   which is the defect the card exists to disprove.
+
+## 357. The value is the control: a declaration opens by clicking the thing it declares (v0.20.0)
+
+- **The complaint**: *"instead of clicking on a specific action button, it would be more intuitive
+  to simply click on the device to change its name. It would be easier to click on the severity
+  level to change it, rather than clicking 'Edit severity' and then changing it."*
+- **What was there**: three buttons — `Declare element`, `Declare class`, `Declare severity` — in
+  one actions cell at the end of every member row, to edit three values that were already on the
+  same row, one to four columns away. On a table that reaches 1 051 rows that is 3 153 buttons,
+  none of them beside the thing it changes.
+- **What ships**: `Declaration` takes a `face`, which is what goes **inside** its opener. The
+  class, the title and the click stay in `declare.js`, so a control that opens this editor is the
+  same control to every reader — the DOM harness still finds all three by `.declare-open`, and
+  the worded opener is still the default for a caller with no value to click.
+- **The affordance is at rest, not on hover.** Measured in Chromium at 1280 px: with the underline
+  only on `:hover`, a column of device names is indistinguishable from the plain text it replaced,
+  and an operator who never happens to hover never learns the value is editable. A faint dotted
+  underline says so; hover makes it solid and takes the accent.
+- **The actions cell keeps the hand-clear alone.** A hand-clear has no value to click: it asserts
+  that an alarm which never cleared should be treated as cleared, which is not a property of
+  anything on the row.
+
+## 358. Restructure asks for a selection, then a destination — and the typed id is gone (v0.20.0)
+
+- **The complaint**, and it is the sharpest in the brief: *"The most serious issue for me is the
+  'Restructure this situation' section. It completely violates UI/UX principles. Users should be
+  able to select alarms (with the 'Move' option appearing only after selection)... clicking 'Move'
+  could immediately display open situations where the alarms could be moved — the same applies to
+  'Merge'."*
+- **What was there**: a heading, a paragraph, a confidence slider, **two number fields asking an
+  operator to type a situation id from memory**, and three buttons, two of which were disabled
+  with a tooltip explaining what to do first. The stylesheet had **no rule for any of it**.
+- **The old defence, and why it no longer holds.** This module's header argued that *"the id is
+  the identity — it is what an operator pastes into a chat during an incident"* and that *"a
+  dropdown of every open situation is a search problem, which is v0.16.1's"*. The id is still the
+  identity and the picker still shows it; what changed is that recalling it is no longer the
+  operator's job. v0.16.1 shipped, and the filter in the picker is that search.
+- **Split is not removed; it is where it belongs.** `operator_split` is *"move these to a situation
+  that does not exist yet"*, so it is the first row of the same destination list rather than a
+  third control asking a different question. The route and the evidence it writes are unchanged.
+- **A multi-member move is several `/move` calls**, in order, reporting the first refusal. The
+  route moves one alarm because what it asserts is about one alarm's membership, and the console
+  does not invent a batch route to make its own layout tidier.
+
+## 359. `Split (wrong grouping)` is renamed and not removed (v0.20.0)
+
+- **The ask**: *"'Split (wrong grouping)' will likely never be used and should be removed."*
+- **They are right about the word and it cannot be right about the gesture.** `split` is the name
+  of the *route*; the question the operator is answering is whether the appliance got the grouping
+  right. But `confirm` asserts every pair positive and `split` asserts the negatives, so a console
+  that offered only the first would feed the correlator a corpus with no negative evidence in it —
+  a worse defect than a badly-named button, and an invisible one.
+- **What ships**: the button reads `Grouping is wrong`, beside `Confirm grouping`, which is the
+  same question's two answers. The route, the payload and `PREREGISTRATION-0.16.0.md` §2's row are
+  untouched.
+- **The harness locates both verdicts by class** (`.verdict-confirm`, `.verdict-split`), because
+  four scenarios found this button by the word `Split` and a rewording broke all four — a harness
+  pinning wording it was never asserting.
+
+## 360. The grouping section is one disclosure, and its closed state is the verdict (v0.20.0)
+
+- **The complaint**: *"the correlation panel is not very intuitive... too much information; the
+  user doesn't want to know all that — they want to know what to do right away"*, and separately
+  that *"'Why these were grouped' should be hidden by default"*.
+- **What was there**: a heading, three figures, a paragraph, three mean bars, and a **second**
+  disclosure holding the per-link decomposition — all of it before the operator reached the
+  decision, and the decomposition two presses from an expanded card.
+- **What may not go behind the press**: the **verdict**. The band — computed from every link, not
+  from a sample — is the one bit that changes what the operator does, so it is the toggle's own
+  label, in a sentence, with the band's colour on the toggle's left edge exactly as on the panel
+  it opens.
+- **This is better for principle 2, not worse.** The per-term contributions are now **one** press
+  away rather than two, and they are still complete when opened — no cap, which is how this screen
+  stops carrying the product's central claim while still looking like it does (#245).
+
+## 361. Three preferences, three cookies, and no first carve-out (v0.20.0)
+
+- **What happened**: the Overview's time range was written against `localStorage` and
+  `tests/test_security_ui.py` refused it, exactly as ADR #172 says an absolute should behave.
+- **Why the guard is right**: the value of *"no `localStorage` anywhere"* is that it is an
+  absolute. The first carve-out turns it into a judgement call on every future diff, and this one
+  would have been made four years after the rule was written, by an author who had not read it.
+- **What ships**: `ncn_range`, beside `ncn_theme` and `ncn_nav`, with the same threat model — a
+  value outside the closed set is discarded, so a hostile cookie can at worst select a supported
+  range. The **closed set is passed in** rather than restated in `theme.js`, because
+  `views/parts/pulse.js` owns the list of durations and its own header says that two lists of
+  durations is how they come to differ by one entry.
+

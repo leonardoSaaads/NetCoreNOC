@@ -113,7 +113,7 @@ NOT_DRIVEN = frozenset({("GET", "/api/events")})
 #:
 #: **1. Query parameters — none are driven.** `_request` builds every URL from the route's path
 #: template and sends no query string at all, so each of these routes is recorded at its *defaults*
-#: only. Measured at v0.16.7: **nine parameters across four routes**, and `q` is the server-side
+#: only. Measured at v0.20.0: **eleven parameters across four routes**, and `q` is the server-side
 #: situation search added in v0.16.1. A regression in search, in `status` filtering, or in the
 #: timeline's `since`/`until`/`ne_id` window leaves this record byte-identical. That is the largest
 #: gap in it, and until v0.17.0 it was not written down anywhere — unlike `NOT_DRIVEN`, which at
@@ -146,7 +146,12 @@ NOT_DRIVEN = frozenset({("GET", "/api/events")})
 #: that mentioned the module moved it by four lines.
 UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/situations"): ("limit", "q", "status"),
-    ("GET", "/api/timeline"): ("limit", "ne_id", "since", "until"),
+    # v0.20.0 adds `buckets` and `range_s`, which switch this route from marks to per-bucket
+    # counts (F144). Undriven like the other four: this record builds every URL from the
+    # path template and sends no query string, so the route is recorded at its defaults —
+    # which is the marks shape, unchanged. The bucketed shape is driven by
+    # `tests/uifixtures.py` and asserted by the DOM invariants instead.
+    ("GET", "/api/timeline"): ("buckets", "limit", "ne_id", "range_s", "since", "until"),
     ("GET", "/api/quarantine"): ("limit",),
     ("GET", "/api/audit"): ("limit",),
 }

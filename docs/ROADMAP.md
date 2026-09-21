@@ -125,6 +125,15 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   `undefined` and every invariant would still pass.
 - **`make dom` reports executed DOM tests; nothing reports them in CI** — a step failing when the
   executed count drops to zero is one line of workflow and closes the last anti-skip gap.
+- **A situation's links are fetched for a disclosure that is closed by default** (F145's open
+  half). Measured after v0.20.0 removed the duplicated term list: one 1 051-member situation is
+  **1 028.3 KiB**, of which **719 KiB** is 5 240 link rows the operator usually never opens, held
+  for as long as the card is open. The repair is for `/api/situations/{id}` to carry the aggregate
+  — weakest, strongest, count, per-term means, the same arithmetic `summarise` does — and for the
+  rows to arrive from a second route when the section is opened. Principle 2 survives it: the
+  contributions stay reachable without leaving the screen and complete when opened. Not done in
+  v0.20.0 because it is a new route with its own capability, `ROUTE_SCOPE` posture and scope
+  predicate, and half a route is worse than a measured line here.
 - The measured console defects are sequenced into v0.15.2:
   [`plans/v0.15.2-console.md`](plans/v0.15.2-console.md).
 

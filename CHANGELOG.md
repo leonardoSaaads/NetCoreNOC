@@ -9,8 +9,80 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-three rows, two ask for an
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-four rows, two ask for an
 action, thirteen ask you to read a paragraph, and eighteen are start-the-new-binary.
+
+## [0.20.0] - 2026-09-21 — "the value is the control"
+
+The brief was the operator's own reading of what v0.19.0 shipped: *"the Overview needs to be more
+compact, direct and intuitive"*, *"the user doesn't want to know all that — they want to know what
+to do right away"*, *"instead of clicking on a specific action button, it would be more intuitive
+to simply click on the device to change its name"*, and, marked **extremely important**, *"the
+database needs optimization to prevent waste and improve integration with the UI"*.
+
+### The three measurements
+
+| | before | after |
+|---|---|---|
+| sink rows on identical traffic (F143) | 29.1 MB | **3.5 MB** |
+| Overview activity chart, per load (F144) | 108.5 KiB | **0.2 KiB** |
+| one 1 051-member situation (F145) | 1 843.9 KiB / 73 ms | **1 028.3 KiB / 40.7 ms** |
+
+**F143** — the sink wrote one row per evaluated pair with no per-situation cap, so a storm's rows
+grew with the square of its membership while the bag that can ever be built from them is capped at
+256 pairs. 99.3 % of what was written could never be drawn on. **F144** — the activity chart asked
+for a thousand alarm marks and counted them in the browser, so the window it drew was whatever
+those thousand happened to span rather than the window it was captioned with. It counts in SQL now
+and covers the range the operator picked. **F145** — every link carried its decomposition twice,
+once as the three stored columns and once as a `terms` list rebuilt on every read: 194 bytes per
+link, 5 240 links, held for as long as the card was open. The names are built in the console now,
+where `TERM_LABEL` and `TERM_KEY` already knew all three.
+
+### The Overview
+
+Two panels per row (`.grid-2`, one column below 900 px, so the phone layout is unchanged). A
+**time range** at the top — 15m, 1h, 2h, 6h, 12h, 1d, 3d, 7d — that drives the activity chart and
+is remembered in a cookie beside the theme and the sidebar, because ADR #172's *"no `localStorage`
+anywhere"* is an absolute and `tests/test_security_ui.py` refused the first draft that forgot it.
+"Where it is happening" and "Busiest 5 elements" merged into one estate panel; the two
+learned-from-the-stream counters folded into the open-situations card; the model line moved down
+from above the alarm summary.
+
+### The situation card
+
+**One decision bar above the member table.** The promote was a strip of its own, the verdicts a
+second strip below the judged note and the bulk clear a third block — three rows of buttons around
+one table, which is why the clear *"felt completely tacked on"* and the promote *"disconnected"*.
+`.fb` keeps its exact membership (the controls that assert something about the grouping, and what
+the judged disclosure folds); the bar is around it.
+
+**The value is the control.** The device, the class and the severity are each wrapped in the
+button that declares them, with a dotted underline at rest so an operator who never hovers still
+sees it is editable. The three `Declare element` / `Declare class` / `Declare severity` buttons are
+gone from the actions cell, which now holds the hand-clear alone — a hand-clear has no value to
+click.
+
+**"Why these were grouped" is one disclosure, closed.** Its closed state carries the verdict —
+the band, in a sentence, computed from every link — because that is the one bit that changes what
+the operator does. Everything else is one press away, and it is *one* press now rather than two:
+the per-link decomposition had a disclosure of its own nested inside the section.
+
+**Restructure is a selection, then a destination.** Tick members, then `Move N elsewhere` or
+`Merge another situation in`; either opens a list of the situations that exist, filtered by id or
+name, with `A new situation` as the first row of the move list — which is what an operator-split
+is. The two typed situation-id fields are gone. This section had **no rules in the stylesheet at
+all** until now.
+
+`Split (wrong grouping)` reads `Grouping is wrong`. It is renamed and **not removed**: `split` is
+the name of the route, and a console offering only `confirm` would feed the correlator a corpus
+with no negative evidence in it. The DOM harness locates both verdicts by class now, so a future
+rewording costs a label and not four scenarios.
+
+### Structure
+
+`store/timeline_models.py` and `engine/dataset/sweep.py` came off `store/read_models.py` and
+`engine/dataset/capture.py` at the 400-line guard, each on a seam the parent's own header already
+drew. Migration `0019` is not needed; `0018`'s indexes are still the ones the dataset reads use.
 
 ## [0.19.0] - 2026-09-20 — "the operator's day"
 
