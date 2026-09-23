@@ -17,7 +17,7 @@ and the three properties that make it hold:
    have and the reason a resumed or reordered fit cannot silently differ.
 3. **The draw order is documented and asserted.** Tree `t` draws `n` indices for `j = 0 … n-1`, in
    that order, with replacement, from `[0, n)`. Then, if `mtry < 3`, it draws its feature subset.
-   `tests/test_forest.py` asserts both halves of the seed's contract: same seed → byte-identical
+   `tests/test_tree_kinds.py` asserts both halves of the seed's contract: same seed → byte-identical
    trees across two processes; **different seed → different trees**. Only the pair proves the seed
    is doing anything.
 

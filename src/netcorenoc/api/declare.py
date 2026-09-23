@@ -154,6 +154,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/labelling.js",
         "/app/views/overview.js",
         "/app/views/promotion.js",
+        "/app/views/maintenance.js",
         "/app/views/quarantine.js",
         "/app/views/scorer.js",
         "/app/views/settings.js",
@@ -193,6 +194,16 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/keeping.js",
         # v0.16.7: active alarms by band, and what is on no band (DECISIONS #312).
         "/app/views/parts/severity.js",
+        # v0.21.0: the maintenance window. Four modules, on the seams Part IV draws — the
+        # stepper, the per-target rule chips, the two time controls, and the marker every
+        # role sees. Each is listed individually for F41's reason: a line here is the
+        # reviewable claim "fetching this needs no capability", and a glob would make that
+        # claim unreadable.
+        "/app/views/parts/mwform.js",
+        "/app/views/parts/mwdraft.js",
+        "/app/views/parts/mwrules.js",
+        "/app/views/parts/mwtime.js",
+        "/app/views/parts/mwmarker.js",
         # v0.16.6: the Graph screen's second projection and its tables (DECISIONS #307, #310).
         "/app/views/parts/estate.js",
         # v0.16.6: the timeline's controls, column chart and summary (DECISIONS #311).

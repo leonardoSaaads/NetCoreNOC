@@ -108,6 +108,18 @@ def create_app(
     routes.models.register(app, ctx)
     routes.governance.register(app, ctx)
     routes.audit.register(app, ctx)
+    # v0.21.0. **`maintenance` before `inventory`**, and it is behaviour rather than taste:
+    # `tests/behaviour_identity.py` drives every route in registration order against one
+    # database, and a window created before the organizations are listed makes the listing's
+    # `ne_count` say something. Registered after `audit` so the audit rows a window write
+    # produces are already in the record the audit routes read.
+    # **`maintenance_ops` before `maintenance`**, and it is behaviour: FastAPI resolves the
+    # first matching route, so `POST /api/maintenance-windows/preview` has to be declared
+    # before `POST /api/maintenance-windows/{wid}` or it is read as a window whose id is
+    # the literal string `preview`.
+    routes.maintenance_ops.register(app, ctx)
+    routes.maintenance.register(app, ctx)
+    routes.inventory.register(app, ctx)
     routes.events.register(app, ctx)
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the

@@ -33,10 +33,12 @@ from typing import TYPE_CHECKING
 
 from netcorenoc.engine.correlate.correlate import Correlator
 from netcorenoc.engine.correlate.learn import Learner
-from netcorenoc.engine.correlate.rootcause import Precedence
+from netcorenoc.engine.correlate.rootcause import Member, Precedence
 from netcorenoc.engine.correlate.varbind_profile import VarbindProfiler
 from netcorenoc.engine.dataset.capture import Capture, RetentionPolicy
 from netcorenoc.engine.evaluation.shadow import Shadow
+from netcorenoc.engine.mw import index as mw_index
+from netcorenoc.engine.mw.ledger import StateLedger
 from netcorenoc.store import Store
 
 if TYPE_CHECKING:
@@ -97,6 +99,17 @@ class EngineBase:
     # assign there. The default is only ever read by an `Engine` whose maintenance loop has not run
     # a pass, and zero is the right answer for it — it has observed nothing, and reports nothing.
     _idle_active_count: int = 0
+    # v0.21.0. The maintenance-window snapshot the ingest path reads, and the state ledger for
+    # what a window suppressed. Declared here because `MaintenanceMixin._maintenance_windows`
+    # rebuilds the first and flushes the second, and both are assigned in `Engine.__init__`.
+    windows: mw_index.WindowIndex
+    ledger: StateLedger
+    # The open-situation maps, assigned in `Engine.__init__` and declared here for the same reason
+    # the two above are: `WindowSweepMixin` writes to them when it surfaces a fault, so that a
+    # later real trap for the same fingerprint joins the situation the sweep opened rather than
+    # opening a second one beside it.
+    sit_of: dict[int, int]
+    members: dict[int, list[Member]]
 
     if TYPE_CHECKING:  # pragma: no cover - declaration only; no runtime attribute exists
 

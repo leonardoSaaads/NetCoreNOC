@@ -491,15 +491,18 @@ async def test_a_vendor_scale_is_counted_apart_and_never_placed_on_the_bands(sto
     placing it needs *that NE's* whole rank set — which an aggregate does not have. Counting it
     as `low` would let this panel and the alarm's own pill disagree about the same alarm."""
     engine, _queue, _app = await authutil.make_env(store)
+    # **Driven through the learned arm rather than written into the column** (v0.21.0). D5 made
+    # `severity_source` a column the ingest path writes, so an `UPDATE` that set `severity` alone
+    # would leave a row claiming a value with no provenance — a state the code cannot produce.
+    # Confirming the NE's severity field and sending a trap that carries a vendor number on it is
+    # what actually happens on such an estate.
+    ne_id = await store.ne_id(DEV, BASE)
+    engine.ne_severity[ne_id] = SEV_OID
     async with store.lock:
-        await engine._process(_event(CLS_A, "vendor", "chartreuse", BASE))
-        await store.commit()
-        # What `severity.py::_candidate_ranks` writes for a vendor numbering severity 10/20/30.
-        await store.conn.execute(
-            "UPDATE alarm SET severity='20', severity_rank=20 WHERE instance='vendor'"
-        )
+        await engine._process(_event(CLS_A, "vendor", "20", BASE))
         await store.commit()
 
+    assert await _alarm_severity(store, "vendor") == ("20", 20)
     census = await _census(store)
     assert census["vendor_scaled"] == 1, "a rank outside the vocabulary was silently dropped"
     assert census["placed"] == {}, "a vendor's own number was placed on the bundled scale"
@@ -552,6 +555,11 @@ async def test_the_census_scope_is_a_query_filter_and_not_a_render_filter(store:
 # --------------------------------------------------------------------------------------------
 
 
+#: The ALARM-MIB perceived-severity column the lab's NEs emit (RFC 3877). Named rather than
+#: repeated, because v0.21.0 has three tests that need to send a trap carrying it.
+STD_SEV_OID = "1.3.6.1.2.1.118.1.2.2.1.4"
+
+
 def _carrying(cls: str, inst: str, word: str, ts: float) -> TrapEvent:
     """A trap whose ALARM-MIB severity column carries `word`, as the lab's NEs emit it."""
     return TrapEvent(
@@ -561,7 +569,7 @@ def _carrying(cls: str, inst: str, word: str, ts: float) -> TrapEvent:
         ts=ts,
         varbinds=[
             Varbind(oid=ID_OID, kind="str", value=inst),
-            Varbind(oid="1.3.6.1.2.1.118.1.2.2.1.4", kind="str", value=word),
+            Varbind(oid=STD_SEV_OID, kind="str", value=word),
         ],
     )
 
@@ -630,16 +638,35 @@ async def test_a_declaration_outranks_the_word_the_trap_carried(store: Store) ->
 async def test_the_standard_read_outranks_a_learned_severity(store: Store) -> None:
     """#338's second edge. The trap's own word is a statement by the device about this alarm; the
     learned rank is an inference this appliance drew across many. When they disagree the
-    statement wins, and the census says which one it used."""
+    statement wins, and the census says which one it used.
+
+    **v0.21.0 moves where the precedence is decided, not what it decides** (D5). It used to be a
+    read-time comparison in `severity_census`; it is now `severity.place`, once, on the ingest
+    path — which is the only place D4's severity rule can read it from. So this drives a trap that
+    carries BOTH a standard word and a value on the NE's confirmed learned field, which is the
+    situation the precedence exists for, instead of writing a disagreement into the column that
+    the code can no longer produce.
+    """
     engine, _queue, _app = await authutil.make_env(store)
+    ne_id = await store.ne_id(DEV, BASE)
+    engine.ne_severity[ne_id] = SEV_OID
+    conflicted = TrapEvent(
+        device=DEV,
+        trap_oid=CLS_A,
+        instance="olt-1",
+        ts=BASE,
+        varbinds=[
+            Varbind(oid=SEV_OID, kind="str", value="minor"),  # what the appliance LEARNED to read
+            Varbind(oid=STD_SEV_OID, kind="str", value="major"),  # what the DEVICE said
+        ],
+    )
     async with store.lock:
-        await engine._process(_carrying(CLS_A, "olt-1", "major", BASE))
-        await store.commit()
-        await store.conn.execute(
-            "UPDATE alarm SET severity='minor', severity_rank=2 WHERE instance='olt-1'"
-        )
+        await engine._process(conflicted)
         await store.commit()
 
+    assert await _alarm_severity(store, "olt-1") == ("major", 1), (
+        "the learned inference overrode the device's own word on the alarm row itself"
+    )
     census = await _census(store)
     assert census["placed"] == {"1": 1}, "the learned inference overrode the device's own word"
     assert census["provenance"] == {"declared": 0, "standard": 1, "learned": 0}
@@ -649,16 +676,27 @@ async def test_a_learned_severity_still_places_an_alarm_whose_trap_said_nothing(
     store: Store,
 ) -> None:
     """The learned arm is not removed by this release, only outranked. An estate large enough to
-    confirm an ordinality (F124) still gets its severities, and they are still labelled."""
+    confirm an ordinality (F124) still gets its severities, and they are still labelled.
+
+    Driven through the confirmed field rather than written into the column, for the reason the
+    vendor-scale test above gives: since D5 the provenance is written beside the value by the one
+    call that places it, so a direct `UPDATE` produces a row the code cannot.
+
+    **The learned field carries `2`, not `minor`, and that is the point of the arm.** The standard
+    read is keyed on the VALUE and not on the OID (`known_oids.standard_severity` says why at
+    length), so a field whose values happen to be X.733 words is read as `standard` whichever OID
+    carries it — correctly, because the device did transmit the word. The learned arm exists for
+    the other estate: the one whose severity field is a vendor numbering that means nothing until
+    `confirm_ordinality` has ordered it against observed lifetimes.
+    """
     engine, _queue, _app = await authutil.make_env(store)
+    ne_id = await store.ne_id(DEV, BASE)
+    engine.ne_severity[ne_id] = SEV_OID
     async with store.lock:
-        await engine._process(_event(CLS_A, "learned-1", "chartreuse", BASE))
-        await store.commit()
-        await store.conn.execute(
-            "UPDATE alarm SET severity='minor', severity_rank=2 WHERE instance='learned-1'"
-        )
+        await engine._process(_event(CLS_A, "learned-1", "2", BASE))
         await store.commit()
 
+    assert await _alarm_severity(store, "learned-1") == ("2", 2)
     census = await _census(store)
     assert census["placed"] == {"2": 1}
     assert census["provenance"] == {"declared": 0, "standard": 0, "learned": 1}
@@ -671,15 +709,17 @@ async def test_the_provenance_arms_account_for_every_placed_alarm(store: Store) 
     without being counted fails here instead of making the panel quietly not add up.
     """
     engine, _queue, _app = await authutil.make_env(store)
+    ne_id = await store.ne_id(DEV, BASE)
     async with store.lock:
         await engine._process(_carrying(CLS_A, "std-1", "critical", BASE))
         await engine._process(_carrying(CLS_A, "std-2", "minor", BASE + 1))
         await engine._process(_event(CLS_B, "none-1", "chartreuse", BASE + 2))
-        await engine._process(_event(CLS_B, "learn-1", "chartreuse", BASE + 3))
-        await store.commit()
-        await store.conn.execute(
-            "UPDATE alarm SET severity='warning', severity_rank=3 WHERE instance='learn-1'"
-        )
+        # Confirmed only now, so the three traps above took the arms they were meant to: the
+        # first two the standard read, the third nothing at all.
+        engine.ne_severity[ne_id] = SEV_OID
+        # `3`, not `warning`: a vocabulary word would be read by the standard arm whichever OID
+        # carried it, which is the correct precedence and the wrong arm for this assertion.
+        await engine._process(_event(CLS_B, "learn-1", "3", BASE + 3))
         await store.commit()
     class_a = await store.class_id(CLS_A, BASE)
     async with store.lock:
@@ -700,13 +740,24 @@ async def test_the_provenance_arms_account_for_every_placed_alarm(store: Store) 
     assert census["unplaced"] == 1
 
 
-async def test_a_varbinds_blob_that_cannot_be_read_leaves_the_alarm_unplaced(store: Store) -> None:
+async def test_a_torn_varbinds_blob_cannot_reach_the_census_at_all(store: Store) -> None:
     """A stats route the console polls must not 500 the whole estate over one unreadable row.
 
-    `alarm.varbinds` is `TEXT NOT NULL DEFAULT '[]'` and only ever written as `json.dumps` of
-    validated models, so this row should not exist — but the failure mode if it does is the whole
-    Overview going dark for every operator, and the honest reading of varbinds nobody can parse
-    is that this alarm carries no severity word.
+    **v0.21.0 changes how this is true, and the change is a declared behaviour change** (D5). The
+    census used to parse `alarm.varbinds` on every row to find a severity word, so it needed a
+    defence — `_varbinds_of` — against a blob that would not parse. The placement moved to the
+    ingest path, the provenance is a column, and **this read touches no JSON at all**, so there is
+    nothing left on the route for a torn blob to break.
+
+    The visible consequence, stated rather than discovered: corrupting `alarm.varbinds` after
+    ingest **no longer unplaces the alarm**. That is the better answer. The severity was placed
+    when the trap arrived and was recorded on the row; a later corruption of a different column is
+    not evidence that the device never said `critical`. The old behaviour re-derived the answer on
+    every read and so could lose it to damage that happened afterwards.
+
+    What is asserted here is the property, not the implementation: torn rows, well-formed rows
+    that are not varbind lists, and an intact neighbour — the census answers, and answers the same
+    thing it would have with no damage at all.
     """
     engine, _queue, _app = await authutil.make_env(store)
     async with store.lock:
@@ -720,17 +771,122 @@ async def test_a_varbinds_blob_that_cannot_be_read_leaves_the_alarm_unplaced(sto
 
     census = await _census(store)
     assert census["active"] == 2
-    assert census["unplaced"] == 1, "the torn row was given a severity nobody could read"
-    assert census["placed"] == {"1": 1}, "the intact row lost its severity to its neighbour"
-    assert census["provenance"] == {"declared": 0, "standard": 1, "learned": 0}
+    assert census["unplaced"] == 0, "a column the census does not read changed what it reported"
+    assert census["placed"] == {"0": 1, "1": 1}, (
+        "the severity placed at ingest was lost to damage in an unrelated column"
+    )
+    assert census["provenance"] == {"declared": 0, "standard": 2, "learned": 0}
 
-    # **Well-formed JSON that is not a list of varbinds.** The blob parses, so the `except` above
-    # never fires — a reader who tested only the truncated case would leave this path to find out
-    # about itself in production, where `for vb in 42` raises inside a stats route.
-    for blob in ("42", '"critical"', '{"oid": "1.3.6.1"}', "null"):
+    # **Well-formed JSON that is not a list of varbinds**, and the truncated case above. Both used
+    # to be paths through a parser on this route; now neither is a path at all. The assertion is
+    # that the census is *indifferent* to every one of them — which is a stronger claim than the
+    # old "it degrades gracefully", and the only one worth making once the parser is gone.
+    for blob in ("42", '"critical"', '{"oid": "1.3.6.1"}', "null", "", "[{"):
         async with store.lock:
             await store.conn.execute("UPDATE alarm SET varbinds=? WHERE instance='torn'", (blob,))
             await store.commit()
         again = await _census(store)
-        assert again["unplaced"] == 1, f"varbinds={blob} placed a severity: {again}"
-        assert again["placed"] == {"1": 1}, f"varbinds={blob} disturbed the intact row: {again}"
+        assert again == census, f"varbinds={blob!r} changed a census that does not read it: {again}"
+
+
+# -- v0.21.0, D5: the row is placed, and the severity column is never an entity ----------------
+#
+# II.1's bar, stated by the brief and asserted here: *"a trap that carries a registered
+# perceived-severity column is placed from it, every time, with provenance `standard`"*.
+
+
+async def test_the_alarm_row_itself_carries_the_severity_and_its_source(store: Store) -> None:
+    """**The measurement this release was written for.**
+
+    Fourteen cut/repair cycles of the shipped lab at v0.20.0: 30 alarms, 29 of whose traps carried
+    an X.733 severity word, and `alarm.severity` NULL in **every row**. v0.17.1 taught the CENSUS
+    to read the word; the ingest path never learned to. D4's severity rule runs at ingest, where
+    there is no census, so *"collect only critical alarms"* would have admitted nothing on any
+    estate and looked like it worked.
+
+    This asserts the row rather than the census, because the row is what the rule reads.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await engine._process(_carrying(CLS_A, "olt-1", "critical", BASE))
+        await engine._process(_carrying(CLS_A, "olt-2", "major", BASE + 1))
+        await engine._process(_event(CLS_B, "no-severity-column", "chartreuse", BASE + 2))
+        await store.commit()
+        cur = await store.conn.execute(
+            "SELECT instance, severity, severity_rank, severity_source FROM alarm ORDER BY instance"
+        )
+        rows = [tuple(r) for r in await cur.fetchall()]
+
+    assert rows == [
+        ("no-severity-column", None, None, None),
+        ("olt-1", "critical", 0, "standard"),
+        ("olt-2", "major", 1, "standard"),
+    ], "the severity a device transmitted is not on the alarm row the ingest path writes"
+
+
+async def test_a_severity_column_is_never_promoted_as_the_entity_discriminator() -> None:
+    """II.1(c), and the defect it actually caused. `critical` is not a piece of equipment.
+
+    **Measured at v0.20.0**, fourteen cycles of the lab: `1.3.6.1.2.1.118.1.2.2.1.4` — the RFC 3877
+    perceived-severity column — promoted as the entity discriminator on NE 1 with `n_obs=230,
+    n_distinct=2, score=0.659`. It wins because `ENTITY_PROMOTE_OBS = 200` and it is the
+    most-observed varbind on any NE: every trap carries it, so it crosses the observation floor
+    first, and on that lab it was the only candidate to cross it at all.
+
+    The consequence is not confined to severity. `_resolve_entity` makes the finest chain value the
+    dedup INSTANCE, so every alarm on that NE was then keyed on its severity word: six ONUs' loss
+    of signal collapsed into one row called `major`, and the appliance created four entities named
+    `major`, `minor`, `critical` and `cleared`.
+
+    The fixture below is that estate in miniature: a severity column observed far more often than
+    the real identifier, which is exactly the shape that made it win.
+    """
+    profiler = VarbindProfiler()
+    ne_id = 1
+    for i in range(300):
+        cls_id = 1 if i % 2 == 0 else 2
+        profiler.observe(
+            ne_id,
+            cls_id,
+            [
+                ("1.3.6.1.2.1.118.1.2.2.1.4", _SEV_CYCLE[i % 3]),  # the severity column
+                (ID_OID, f"port-{i % 7}"),  # the real identifier
+            ],
+            BASE + i,
+        )
+
+    assert profiler.speaks_severity(ne_id, "1.3.6.1.2.1.118.1.2.2.1.4")
+    assert not profiler.speaks_severity(ne_id, ID_OID)
+
+    chain = profiler.promotion_chain(ne_id)
+    promoted = [c.varbind_oid for c in chain or []]
+    assert "1.3.6.1.2.1.118.1.2.2.1.4" not in promoted, (
+        f"the X.733 severity column was promoted as an entity discriminator: {promoted}"
+    )
+    best = profiler.best_promotable(ne_id)
+    assert best is None or best.varbind_oid != "1.3.6.1.2.1.118.1.2.2.1.4"
+
+
+async def test_a_real_discriminator_that_happens_to_take_one_severity_word_still_promotes() -> None:
+    """The control for the test above, and the reason it tests **all** the values.
+
+    A per-port identifier where one port is called `minor` is a real discriminator with an
+    unfortunate value. Excluding it would be the guard guessing, and would silently stop the
+    profiler subdividing an NE because of one string.
+    """
+    profiler = VarbindProfiler()
+    ne_id = 1
+    names = ["minor", "port-b", "port-c", "port-d", "port-e", "port-f", "port-g"]
+    for i in range(300):
+        profiler.observe(
+            ne_id,
+            1 if i % 2 == 0 else 2,
+            [(ID_OID, names[i % len(names)])],
+            BASE + i,
+        )
+
+    assert not profiler.speaks_severity(ne_id, ID_OID), (
+        "one severity-shaped value among seven disqualified a genuine discriminator"
+    )
+    chain = profiler.promotion_chain(ne_id)
+    assert chain is not None and [c.varbind_oid for c in chain] == [ID_OID]

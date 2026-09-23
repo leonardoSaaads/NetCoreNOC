@@ -127,10 +127,65 @@ class VarbindProfiler:
         co = self.cooccur.get((ne_id, lo, hi))
         return co is not None and co.determines(child_is_x=child_oid < parent_oid)
 
+    def speaks_severity(self, ne_id: int, varbind_oid: str) -> bool:
+        """Are **all** of this varbind's observed values X.733 perceived-severity words?
+
+        If they are, it is a severity column and it is **never** an entity discriminator (v0.21.0,
+        II.1c). `critical` is not a piece of equipment.
+
+        ## Why this is needed, measured rather than argued
+
+        On fourteen cut/repair cycles of the shipped lab, `1.3.6.1.2.1.118.1.2.2.1.4` — the RFC
+        3877 perceived-severity column — was promoted as the entity discriminator on NE 1 with
+        `n_obs=230, n_distinct=2, score=0.659`. It won because it is the **most-observed varbind
+        on any NE**: every trap carries it, so it crosses `ENTITY_PROMOTE_OBS` first, and on that
+        lab it was the only candidate to cross it at all. It was the lowest-scoring of five
+        candidates and it won uncontested.
+
+        The damage is not confined to severity. `Engine._resolve_entity` makes the finest chain
+        value the **dedup instance**, so from that moment every alarm on the NE was keyed on its
+        severity word: six ONUs' loss of signal collapsed into one alarm row called `major`, and
+        the appliance created four entities named `major`, `minor`, `critical` and `cleared`.
+
+        ## Why **all** the values, and not one of them
+
+        A genuine discriminator that happens to take the value `minor` for one entity among two
+        hundred is a genuine discriminator with an unfortunate value, and excluding it would be
+        this method guessing. A column whose *entire* observed vocabulary is X.733's six words is
+        a severity column — that is what those six words are for.
+
+        ## Why this refuses to answer when it cannot see the values
+
+        `display_values` returns `None` when an accumulator exceeded the display cap, which means
+        the varbind is too high-cardinality to be a severity field anyway. `False` there is both
+        the safe answer and the true one: a field with thousands of values is not the X.733
+        vocabulary, and a guard that excluded what it could not see would silently stop the
+        profiler promoting anything on a busy NE.
+        """
+        values = self.display_values(ne_id, varbind_oid)
+        if not values:
+            return False
+        return all(known_oids.severity_rank(value) is not None for value in values)
+
+    def _promotable(self, ne_id: int) -> list[Candidate]:
+        """Candidates eligible to be an entity discriminator: floor-passing, and not a severity.
+
+        The one place both promotion decisions and the containment test read their population, so
+        a varbind excluded here cannot reach any of them — including as an FD **parent**, which is
+        how a coarse two-valued column gets into a chain it could never have led.
+        """
+        return [
+            cand
+            for cand in self.candidates(ne_id)
+            if cand.meets_floor() and not self.speaks_severity(ne_id, cand.varbind_oid)
+        ]
+
     def _emerging_finer_child(self, ne_id: int, cand: Candidate) -> bool:
         """Is a finer varbind that ``cand`` functionally contains still accumulating evidence?
         If so, promoting ``cand`` now would lock in a coarse parent and lose the child (S6)."""
         for other in self.candidates(ne_id):
+            if self.speaks_severity(ne_id, other.varbind_oid):
+                continue  # a severity column is never the child a promotion should wait for
             if (
                 other.n_distinct > cand.n_distinct
                 and other.n_distinct >= ENTITY_MIN_DISTINCT
@@ -146,10 +201,12 @@ class VarbindProfiler:
         floor-passing candidate is the entity; coarser candidates that functionally contain it
         become its parents (capped at MAX_ENTITY_LEVEL). Deferred while a finer FD-child is still
         emerging, or an unrelated candidate is within the 1.25x margin — an early wrong
-        promotion costs trust (§13)."""
-        valid = sorted(
-            (c for c in self.candidates(ne_id) if c.meets_floor()), key=lambda c: c.n_distinct
-        )
+        promotion costs trust (§13).
+
+        v0.21.0: the population is `_promotable`, which excludes a varbind whose values are the
+        X.733 severity vocabulary. See :meth:`speaks_severity` for the measurement that made that
+        necessary."""
+        valid = sorted(self._promotable(ne_id), key=lambda c: c.n_distinct)
         if not valid:
             return None
         finest = valid[-1]
@@ -239,8 +296,11 @@ class VarbindProfiler:
         constant (distinct 1) or a timestamp (unique per trap) scores high but is not a
         competing entity discriminator — the floor gates exist precisely to exclude them, so
         they neither win nor block a genuine discriminator.
+
+        v0.21.0: and neither does a severity column, for the same reason one level up — see
+        :meth:`speaks_severity`.
         """
-        valid = [c for c in self.candidates(ne_id) if c.meets_floor()]
+        valid = self._promotable(ne_id)
         if not valid:
             return None
         if len(valid) > 1 and valid[0].score < ENTITY_MARGIN * max(valid[1].score, 1e-9):

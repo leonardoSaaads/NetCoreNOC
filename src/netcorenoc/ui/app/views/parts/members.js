@@ -53,6 +53,7 @@ import { html } from "../../dom.js";
 import { SeverityBadge, SeverityCell, DataTable, cell } from "../../widgets.js";
 import { alarmName, classVendor, deviceName, plural } from "../../format.js";
 import { DeclareNe, DeclareClass, DeclareSeverity } from "./declare.js";
+import { SurfacedMark } from "./mwmarker.js";
 
 export function Members({ alarms, editable, marked, onMark, onMarkAll, onClear, onDeclared }) {
   const markable = alarms.map((a) => a.id);
@@ -121,7 +122,13 @@ export function Members({ alarms, editable, marked, onMark, onMarkAll, onClear, 
           ? html`<${DeclareClass} alarm=${a} onDone=${onDeclared} face=${body} />`
           : html`<span>${body}</span>`;
       })(),
-      instance: a.instance || "—",
+      // **II.2's alarm, marked where an operator meets it.** An alarm the ledger surfaced was
+      // raised inside a window and never cleared: the appliance knows it happened and nothing
+      // else, because the trap itself was never collected. Saying so beside the instance is the
+      // difference between *"the appliance could not place a severity"* and *"there was no trap
+      // to place one from"* — and an operator who reads the first when the second is true will
+      // go looking for a defect in the appliance.
+      instance: html`${a.instance || "—"}<${SurfacedMark} alarm=${a} />`,
       // A `<td class="sev">` either way, so the column reads the same for a viewer and an editor;
       // an editor's badge is simply inside the button that declares it. `SeverityCell` IS that
       // `<td>`, so the editable branch builds its own around the badge rather than nesting one

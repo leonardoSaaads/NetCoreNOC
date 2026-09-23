@@ -141,6 +141,29 @@ ACTIONS: frozenset[str] = frozenset(
         "promotion.refused",  # admin: a promotion was proposed and the evidence did not support it
         "seal.construct",  # system actor: the sealed holdout was cut, once, ever
         "seal.spend",  # the sealed membership was read; the query count moved
+        # v0.21.0 — maintenance windows. **Six actions rather than one `maintenance.window`
+        # carrying a verb**, for the reason the five operator gestures are five actions
+        # (DECISIONS #255): an auditor asking *"who declared that this estate would go quiet, and
+        # who agreed to it"* must not have to read a details blob to find out which kind of change
+        # a row records. They differ in who may do them, in what they assert, and in what an
+        # operator does about them.
+        #
+        # `.create` and `.update` carry `agent: true` when the actor authenticated with a service
+        # token, because **an agent-created window is marked** (Part III) and the audit log is the
+        # record that cannot be edited afterwards.
+        "maintenance.window.create",  # editor+ or an agent: planned work was declared
+        "maintenance.window.update",  # editor+: its schedule, targets or rules changed
+        "maintenance.window.confirm",  # D6: an editor or admin agreed to a window over six hours
+        "maintenance.window.cancel",  # editor+: called off before it ran. A STATE, not a delete.
+        "maintenance.window.extend",  # editor+: the work is running long
+        # system actor: a window stopped being in force, and what its ledger surfaced (II.2). The
+        # one row an operator reads to answer *"did anything break while we were not looking"*.
+        "maintenance.window.end",
+        # **Creating an organization is not here, and that is deliberate.** It is inventory
+        # structure an admin edits, which is what `config.change` already names; a seventh action
+        # would split one auditor question — *"what did an admin reconfigure?"* — across two
+        # catalog entries. The window actions are separate because they answer a *different*
+        # question, about who declared an outage and who agreed to it.
     }
 )
 

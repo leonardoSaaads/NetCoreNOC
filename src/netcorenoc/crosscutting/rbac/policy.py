@@ -27,12 +27,12 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from netcorenoc.crosscutting.rbac.route_map import ROUTE_PERMISSIONS
 from netcorenoc.crosscutting.rbac.tables import (
     _CEILINGS,
     PERMISSIONS,
     RECOVERY_CAPABILITIES,
     ROLE_RANK,
-    ROUTE_PERMISSIONS,
 )
 
 
@@ -58,7 +58,7 @@ def role_allows(role: str, permission: str) -> bool:
 
 def permission_for(method: str, path: str) -> str | None:
     """Required capability for a route, or None if the route is not in the map."""
-    return ROUTE_PERMISSIONS.get((method, path))
+    return ROUTE_PERMISSIONS.get((method, path), None)
 
 
 # -- the stored capability policy (v0.7.0) -------------------------------------------------

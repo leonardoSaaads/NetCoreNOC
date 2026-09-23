@@ -110,7 +110,23 @@ COHESION_EXEMPT: dict[str, str] = {
 # Paid for the same way: `test_the_engine_holds_no_monitoring_logic` below asserts the thing the
 # number is a proxy for. Every counter, every histogram bucket and every rate lives in
 # `engine/correlate/monitor.py`; `engine.py` gets one call.
-COHESION_EXEMPT_CEILING: dict[str, int] = {"engine/operate/engine.py": 566}
+#
+# v0.21.0: 566 -> 599, and it is the v0.8.0 and v0.18.0 shape for the third time — **call sites,
+# not decisions**. The 33 lines are: two attributes in `__init__` with the comment saying what
+# they are; the `windows.decide(...)` call and the comment placing it in the batch (Part V); the
+# `ledger.observe_suppressed(...)` call and its early return; one `teaches` assignment with the
+# comment that is ADR #372 in four lines; three `if teaches:` guards around calls that already
+# existed; the `_seed_clear_pair` move and the measurement that forced it; and one
+# `_maintenance_windows(now)` line in the sweep.
+#
+# **Every decision is elsewhere and the compensating control says so.** `engine/mw/rules.py` holds
+# what a rule admits, `engine/mw/index.py` holds the per-trap check, `engine/mw/ledger.py` holds
+# what a suppressed trap leaves behind, and `engine/operate/maintenance.py` holds the sweep.
+# `test_the_engine_holds_no_maintenance_window_logic` below asserts that, and
+# `tests/test_maintenance_window.py::test_the_per_trap_check_performs_no_query` reads the AST of
+# the whole `engine/mw/` package and fails on an `await` or an I/O call — which is the property
+# the exemption is actually about, rather than the number.
+COHESION_EXEMPT_CEILING: dict[str, int] = {"engine/operate/engine.py": 599}
 
 # The invariant names a COHESION_EXEMPT reason may cite, taken from MODULE-ARCHITECTURE.md §1.
 # A reason that cites nothing in this set is an assertion nobody has had to defend.
@@ -406,6 +422,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/labelling.js"),
     ("GET", "/app/views/overview.js"),
     ("GET", "/app/views/promotion.js"),
+    ("GET", "/app/views/maintenance.js"),
     ("GET", "/app/views/quarantine.js"),
     ("GET", "/app/views/scorer.js"),
     ("GET", "/app/views/settings.js"),
@@ -418,8 +435,6 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/retention.js"),
     ("GET", "/app/views/parts/verdict.js"),
     ("GET", "/app/views/parts/lifecycle.js"),
-    # v0.20.0: registered beside the file each came off, because the order here is the
-    # order the app declares and a module that moved should read as having moved.
     ("GET", "/app/views/parts/restructure.js"),
     ("GET", "/app/views/parts/declare.js"),
     ("GET", "/app/views/parts/members.js"),
@@ -428,13 +443,16 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/correlation.js"),
     ("GET", "/app/views/parts/judge.js"),
     ("GET", "/app/views/parts/bulkclear.js"),
+    ("GET", "/app/views/parts/mwform.js"),
+    ("GET", "/app/views/parts/mwdraft.js"),
+    ("GET", "/app/views/parts/mwrules.js"),
+    ("GET", "/app/views/parts/mwtime.js"),
+    ("GET", "/app/views/parts/mwmarker.js"),
     ("GET", "/app/views/parts/decide.js"),
     ("GET", "/app/views/parts/finder.js"),
     ("GET", "/app/views/parts/pulse.js"),
     ("GET", "/app/views/parts/keeping.js"),
     ("GET", "/app/views/parts/severity.js"),
-    # v0.19.0: the Overview's model line, registered after `severity.js` because that is where
-    # `views/overview.js` mounts it — directly under the alarm summary.
     ("GET", "/app/views/parts/models.js"),
     ("GET", "/app/views/parts/estate.js"),
     ("GET", "/app/views/parts/marks.js"),
@@ -486,16 +504,12 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/dataset/retention"),
     ("POST", "/api/dataset/retention"),
     ("GET", "/api/scorer"),
-    # v0.18.0 (Part II): registered immediately after `GET /api/scorer` because it is the other
-    # half of the same question — that route says what formula is running, this one says whether
-    # it is working — and route order is the declaration order, which is what this pin records.
     ("GET", "/api/correlation"),
     ("POST", "/api/scorer/preview"),
     ("POST", "/api/scorer"),
     ("POST", "/api/scorer/rollback"),
     ("GET", "/api/promotion"),
     ("POST", "/api/promotion"),
-    # v0.19.0: `routes/models.register` runs straight after `routes/promotion.register`.
     ("GET", "/api/models"),
     ("POST", "/api/models/register"),
     ("GET", "/api/rbac"),
@@ -506,6 +520,19 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/audit"),
     ("GET", "/api/audit/export"),
     ("POST", "/api/audit/prune"),
+    ("POST", "/api/maintenance-windows/preview"),
+    ("POST", "/api/maintenance-windows/{wid}/confirm"),
+    ("POST", "/api/maintenance-windows/{wid}/cancel"),
+    ("POST", "/api/maintenance-windows/{wid}/end"),
+    ("POST", "/api/maintenance-windows/{wid}/extend"),
+    ("GET", "/api/maintenance-windows"),
+    ("POST", "/api/maintenance-windows"),
+    ("GET", "/api/maintenance-windows/{wid}"),
+    ("POST", "/api/maintenance-windows/{wid}"),
+    ("GET", "/api/organizations"),
+    ("POST", "/api/organizations"),
+    ("POST", "/api/entities/{ne_id}/organization"),
+    ("GET", "/api/timezones"),
     ("GET", "/api/events"),
 ]
 
@@ -574,12 +601,24 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     live = [entry for entry in route_order(app) if entry[1].startswith("/api")]
     assert live == API_ORDER_BASELINE
     # v0.19.0: 53 -> 55, `GET /api/models` and `POST /api/models/register`.
-    assert len(live) == 55, (
+    #
+    # **v0.21.0: 55 -> 68.** Thirteen: nine for the maintenance-window resource and its explicit
+    # operations, two for organizations, one for time zones, and
+    # `POST /api/entities/{ne_id}/organization` — without which an organization is a row nothing
+    # can be put into. **One of them can shadow another and
+    # is ordered against it deliberately**: `POST /api/maintenance-windows/preview` is a concrete
+    # segment where `POST /api/maintenance-windows/{wid}` has a template, so FastAPI would match
+    # the template first if it were declared first and read `preview` as a window id.
+    # `routes.maintenance_ops` therefore registers **before** `routes.maintenance`, and the
+    # baseline above is what pins that ordering — `test_route_table_order_is_unchanged` is the
+    # test that would catch a reordering, and this count is what makes an addition visible.
+    assert len(live) == 68, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
-        f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — and v0.18.0 "
-        f"exactly one, `GET /api/correlation`. None can shadow another: each is a distinct "
-        f"literal, and a concrete segment and a template segment differ in length before they "
-        f"differ in shape (DECISIONS #301)."
+        f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
+        f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
+        f"organizations and time zones. Only one pair in the whole table can shadow another — "
+        f"`…/preview` against `…/{{wid}}` — and its registration order is pinned by the baseline "
+        f"above (DECISIONS #301)."
     )
 
 
@@ -667,6 +706,52 @@ def test_the_engine_holds_no_monitoring_logic() -> None:
     )
     assert "self.monitor.observe(" in source, (
         "engine.py no longer calls the monitor, so the ceiling raise bought nothing"
+    )
+
+
+def test_the_engine_holds_no_maintenance_window_logic() -> None:
+    """**The control that pays for v0.21.0's ceiling raise** (Part V).
+
+    The third time this bargain is struck, on the same terms as capture in v0.8.0 and the monitor
+    in v0.18.0: the window check needs a call site, a call site is at the call, and that is only
+    acceptable while the *reason* for the exemption holds. So this asserts what the number is a
+    proxy for: **no rule evaluation, no OID matching, no ledger arithmetic and no window state
+    machine in `engine.py`.** It may hold the index and the ledger, ask them, and nothing more.
+
+    The list of needles is the vocabulary of the thing being kept out, not of the thing being kept
+    in — `under_subtree`, `admits`, `covers`, `compile_windows`, and the status literals. A release
+    that moved any of them here would be moving a decision onto the ingest path, which is exactly
+    what the exemption does not cover.
+    """
+    source = (PKG / "engine" / "operate" / "engine.py").read_text(encoding="utf-8")
+    leaks = [
+        needle
+        for needle in (
+            "under_subtree",
+            "startswith(",
+            ".admits(",
+            ".covers(",
+            "compile_windows",
+            "pending_confirmation",
+            "TargetRules",
+            "observe_raise",
+            "observe_clear",
+        )
+        if needle in source
+    ]
+    assert not leaks, (
+        f"engine.py contains maintenance-window logic: {leaks}\n\n"
+        "The COHESION_EXEMPT entry covers the ingest reasoning, not code that lands nearby. "
+        "What a rule admits belongs in engine/mw/rules.py, the per-trap check in "
+        "engine/mw/index.py, what a suppressed trap leaves behind in engine/mw/ledger.py, and "
+        "the sweep in engine/operate/maintenance.py; engine.py gets a call site."
+    )
+    assert "self.windows.decide(" in source, (
+        "engine.py no longer calls the window check, so the ceiling raise bought nothing"
+    )
+    assert "self.ledger.observe_suppressed(" in source, (
+        "engine.py no longer records what a window suppressed, so a fault that outlives a window "
+        "cannot surface (prime directive 3)"
     )
 
 
@@ -1067,8 +1152,18 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: source vocabulary was written there first, on the *"one place where a token becomes a name"*
 #: argument that put `band()` there — and it pushed the file 1 146 bytes over the module-graph
 #: ceiling, because `format.js` had 228 bytes of headroom (F127). It moved to its only consumer.
-SRC_TREE_DIGEST = "8a3828ce94361db827082a885279a2d1b1a514adb8e6dcc83176b92d3c5aff50"
-SRC_FILE_COUNT = 226
+#:
+#: **v0.21.0: 226 -> 253 files.** Twenty-seven, and the count is worth reading as the shape of the
+#: release rather than as a number: three migrations (`0019` severity provenance, `0020`
+#: organization, `0021` the window tables), four engine modules under a new `engine/mw/` package
+#: plus `engine/operate/window_sweep.py`, five store modules, five API modules (two route modules
+#: for one resource, because Part III's verbs and the resource itself split at the 400-line guard,
+#: plus the request models, the shaping and the inventory routes), `crosscutting/rbac/route_map.py`
+#: and `crosscutting/shaping/timezones.py`, and six console modules. **No file was deleted and none
+#: moved**; what was removed this release is named in `HANDOFF.md` §7.4 and is smaller than a file
+#: in every case.
+SRC_TREE_DIGEST = "71033bee73c149eb879abb7a5ae862b612f03e2368afe79ce65fc42ed978a8ac"
+SRC_FILE_COUNT = 253
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1134,7 +1229,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.20.0", "the version this release carries"
+    assert __version__ == "0.21.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

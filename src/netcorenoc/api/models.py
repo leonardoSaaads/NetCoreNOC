@@ -9,6 +9,15 @@ Pydantic bounds the *shape*. Where a field has semantics beyond its shape — th
 the governance documents — the single semantic authority is named in the model's own docstring and
 runs in addition, so the precise reason for a rejection always comes from the one validator.
 
+**v0.21.0: the maintenance-window models live in `models_maintenance.py` and are re-exported here
+by identity** (ADR #374). The one-file claim above is unchanged in what it is for — a reviewer
+still reads one import list and one set of names to see everything a caller may send — and the
+split is mechanical: the window surface is a third of a file on its own, and this module was
+already eleven lines from the 400-line guard. The re-export is **by identity, never by copy**, and
+`tests/test_maintenance_api.py` asserts that, for the same reason `crosscutting/rbac/__init__.py`
+carries the same guard: a second definition of a request bound would be a second place to change
+it, and the one that is forgotten is invisible until it is exploited.
+
 `QuietServer` lives here rather than in `app.py` because it is a shipped type `main.py` imports,
 not part of building the application.
 """
@@ -22,6 +31,27 @@ from typing import Any, Literal
 import uvicorn
 from pydantic import BaseModel, Field, field_validator
 
+from netcorenoc.api.models_maintenance import (
+    CollectionRuleIn as CollectionRuleIn,
+)
+from netcorenoc.api.models_maintenance import (
+    MaintenanceWindowIn as MaintenanceWindowIn,
+)
+from netcorenoc.api.models_maintenance import (
+    MaintenanceWindowPreviewIn as MaintenanceWindowPreviewIn,
+)
+from netcorenoc.api.models_maintenance import (
+    MaintenanceWindowUpdateIn as MaintenanceWindowUpdateIn,
+)
+from netcorenoc.api.models_maintenance import (
+    NeOrganizationIn as NeOrganizationIn,
+)
+from netcorenoc.api.models_maintenance import (
+    OrganizationIn as OrganizationIn,
+)
+from netcorenoc.api.models_maintenance import (
+    WindowExtendIn as WindowExtendIn,
+)
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.correlate import scoring
 from netcorenoc.ingest.receiver import parse_allowlist

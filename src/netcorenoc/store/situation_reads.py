@@ -297,7 +297,17 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             # alarm row of every situation detail and rendered by **nothing** — F84's shape with
             # the arrow reversed, and a column no writer fills either way.
             "a.last_seen, a.severity, a.severity_rank, a.ne_id, d.ip AS device_ip, "
-            "dl.label AS device_label, c.oid AS class_oid, "
+            # v0.21.0 (`0021`): which window's ledger surfaced this alarm, or NULL. The console
+            # draws a different badge for it, because *"raised during maintenance, still active"*
+            # is a different sentence from *"unplaced"* — the appliance did not fail to place a
+            # severity, it never saw the trap. Chosen by the schema probe, like `_label_join`, so
+            # the frozen-migration upgrade tests still run this query.
+            + (
+                "a.surfaced_from_window_id AS surfaced_from_window_id, "
+                if self._has_surfaced_window
+                else "NULL AS surfaced_from_window_id, "
+            )
+            + "dl.label AS device_label, c.oid AS class_oid, "
             "c.id AS class_id, cl.label AS class_label, sl.label AS class_severity_label "
             "FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
             "JOIN device d ON d.id=a.device_id JOIN alarm_class c ON c.id=a.class_id "

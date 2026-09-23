@@ -82,6 +82,7 @@ _UI_MODULES = (
     "app/views/labelling.js",
     "app/views/overview.js",
     "app/views/promotion.js",
+    "app/views/maintenance.js",
     "app/views/quarantine.js",
     "app/views/scorer.js",
     "app/views/settings.js",
@@ -115,6 +116,16 @@ _UI_MODULES = (
     # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
     "app/views/parts/judge.js",
     "app/views/parts/bulkclear.js",
+    # v0.21.0: the maintenance window, on the seams Part IV draws. `mwform.js` is the
+    # four-card stepper; `mwrules.js` the per-target chips that express D4; `mwtime.js` the
+    # hand-written timeline bar and the city-to-zone combobox (hand-written because the DOM
+    # harness cannot see d3 and cannot see whitespace); `mwmarker.js` the marker every role
+    # sees on a device or a situation.
+    "app/views/parts/mwform.js",
+    "app/views/parts/mwdraft.js",
+    "app/views/parts/mwrules.js",
+    "app/views/parts/mwtime.js",
+    "app/views/parts/mwmarker.js",
     # v0.20.0: the decision bar — what may be pressed on a situation right now, and in what
     # words — off `judge.js`, which keeps when a press sends and what the server answered.
     "app/views/parts/decide.js",

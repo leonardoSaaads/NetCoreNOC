@@ -209,6 +209,22 @@ class Principal:
             return f"token:{self.token_id}"
         return None
 
+    @property
+    def is_token(self) -> bool:
+        """Did this caller authenticate with a service token rather than a session? (v0.21.0)
+
+        **The one place "is this an agent?" is decided**, and it is a property of `kind` rather
+        than a guess from the actor's name — a user may perfectly well be called `robot`. Phase 2
+        is an AI agent reaching this appliance through MCP with a service token, and two things
+        turn on the answer: an agent-created maintenance window is **marked** in the API and on
+        screen (Part III), and an agent may not confirm a window over six hours that it created
+        itself (D6, ADR #370).
+
+        Derived rather than stored, so it cannot drift from the credential that was actually
+        presented. `kind` is set by `resolve_bearer` and `resolve_session` and by nothing else.
+        """
+        return self.kind == "token"
+
 
 def hash_token(token: str) -> str:
     """SHA-256 hex of a session id or service-token value (never store the value)."""

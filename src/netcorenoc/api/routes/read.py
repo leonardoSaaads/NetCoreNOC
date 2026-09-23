@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.livestats import live_stats
+from netcorenoc.api.mw_shape import situation_marker
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
@@ -153,6 +154,18 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 match_addresses=shaping.sees_raw_addresses(principal.role),
             )
             rows = await store.with_idle_active(rows, stale_cutoff)
+            # IV.3 on the situation list. **Read once, and free when no window is in force**: an
+            # appliance with nothing planned gets one empty query and takes neither branch below,
+            # so the member lookup this needs is paid only by an estate that actually has planned
+            # work. A situation is marked when ANY of its member elements is under a window —
+            # which is the honest reading, because the situation is the thing an operator opens
+            # and one suppressed element is enough to make its alarm counts incomplete.
+            markers = await store.window_markers(
+                time.time(), None if scope.unrestricted else scope.ne_ids
+            )
+            situation_nes = (
+                await store.situation_member_nes([int(r["id"]) for r in rows]) if markers else {}
+            )
             if scope.unrestricted:
                 # **v0.16.0: shaped, which this route did not have to be before.** Until `0014` a
                 # situation row carried an id, a status, two timestamps and two counts — not one
@@ -160,12 +173,21 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 # `derived_name` is built from device addresses, and `fields.py`'s rule is that an
                 # endpoint returning a protected field passes its body through. The stream beside
                 # this route always did; this route now does too.
-                return shaping.shape(rows, principal.role)
-            members = await store.situation_member_nes([int(r["id"]) for r in rows])
+                return shaping.shape(
+                    [
+                        {**row, "maintenance": situation_marker(row, situation_nes, markers)}
+                        for row in rows
+                    ],
+                    principal.role,
+                )
+            members = situation_nes or await store.situation_member_nes(
+                [int(r["id"]) for r in rows]
+            )
         out: list[dict[str, Any]] = []
         for row in rows:
             projected = shaping.project_situation_row(row, members.get(int(row["id"]), []), scope)
             if projected is not None:
+                projected["maintenance"] = situation_marker(row, situation_nes, markers)
                 out.append(projected)
         return shaping.shape(out, principal.role)
 
@@ -175,6 +197,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with store.lock:
             detail = await store.situation_detail(sid)
             member_ne = await store.situation_member_ne(sid) if detail is not None else {}
+            markers = await store.window_markers(
+                time.time(), None if scope.unrestricted else scope.ne_ids
+            )
             # The threshold every link in THIS situation had to clear, read from the scorer
             # configuration the situation was decided under rather than from the active one
             # (F84, DECISIONS #247). Without it the console can show a score and not what it
@@ -211,6 +236,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         # `None` when the configuration row is gone, never a default: a threshold the console
         # guessed would be worse than one it says it does not have.
         detail["threshold"] = float(config["threshold"]) if config is not None else None
+        # IV.3 on the card an operator actually works from. Same marker, same rule: every role is
+        # told that planned work is in force on one of these elements, and no role is told what it
+        # is from here.
+        detail["maintenance"] = next(
+            (markers[ne] for ne in member_ne.values() if ne is not None and ne in markers), None
+        )
         return shaping.shape(detail, principal.role)  # coarsen alarm device IPs below editor
 
     @route.get("/api/timeline")
@@ -279,13 +310,34 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/entities")
     async def entities(principal: auth.Principal = Depends(security)) -> list[dict[str, Any]]:
+        """Every in-scope element, and **whether planned work is in force on it** (IV.3).
+
+        The `maintenance` marker's *existence* ignores `visibility` entirely, which is prime
+        directive 4 and the failure this whole feature would otherwise create: a host that goes
+        quiet with no marker reads as a healthy host. So every authenticated role gets the marker;
+        what it carries is a window id, a status and when it ends, and never a name, an owner, a
+        description or a rule. Those are `visibility`'s, and they are served by a different query
+        on a different route.
+
+        Scoped in the WHERE clause, not here — a marker on an element this principal cannot see
+        would answer *"does this exist?"*, which is the oracle the scope exists to close.
+        """
         scope = await scope_for(principal)
+        now = time.time()
         async with store.lock:
             nes = shaping.filter_rows(await store.list_ne(), scope, ne_key="id")
+            markers = await store.window_markers(now, None if scope.unrestricted else scope.ne_ids)
             out: list[dict[str, Any]] = []
             for ne in nes:
                 ents = await store.entities_for_ne(int(ne["id"]))
-                out.append({**ne, "entity_count": len(ents), "entities": ents})
+                out.append(
+                    {
+                        **ne,
+                        "entity_count": len(ents),
+                        "entities": ents,
+                        "maintenance": markers.get(int(ne["id"])),
+                    }
+                )
         return shaping.shape(out, principal.role)  # coarsen NE IPs below editor
 
     @route.get("/api/entities/{ne_id}")
@@ -297,6 +349,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             ne = next((n for n in await store.list_ne() if int(n["id"]) == ne_id), None)
             entities_rows = await store.entities_for_ne(ne_id) if ne else []
             profiles = await store.varbind_profiles_for_ne(ne_id) if ne else []
+            markers = await store.window_markers(
+                time.time(), None if scope.unrestricted else scope.ne_ids
+            )
         # An out-of-scope NE takes the SAME branch as a nonexistent one — same status, same body,
         # same timing. Existence is not disclosed (DECISIONS #60).
         if ne is None or not scope.allows_ne(ne_id):
@@ -321,6 +376,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "entities": entities_rows,
             "profiles": profiles,
             "candidates": candidates,
+            # IV.3, as on the list: existence for every role, details for none of them.
+            "maintenance": markers.get(ne_id),
         }
         return shaping.shape(detail, principal.role)  # coarsen NE ip below editor
 

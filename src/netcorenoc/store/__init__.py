@@ -38,6 +38,11 @@ from netcorenoc.store.idle import IdleMixin
 from netcorenoc.store.ingest_gaps import IngestGapMixin
 from netcorenoc.store.learned import LearnedMixin
 from netcorenoc.store.lifecycle import LifecycleMixin
+from netcorenoc.store.maintenance_windows import MaintenanceWindowMixin
+from netcorenoc.store.mw_compile import MaintenanceCompileMixin
+from netcorenoc.store.mw_ledger import MaintenanceLedgerMixin
+from netcorenoc.store.mw_reads import MaintenanceReadMixin
+from netcorenoc.store.organizations import OrganizationMixin
 from netcorenoc.store.promotion import PromotionMixin
 from netcorenoc.store.read_models import ReadModelsMixin
 from netcorenoc.store.restructure import RestructureMixin
@@ -100,6 +105,17 @@ class Store(
     # fragments over `StoreBase`, and it is a sibling rather than a base of `SituationMixin` so the
     # lifecycle writes and the population reads stay separable.
     IdleMixin,
+    # v0.21.0, the maintenance window. Four mixins on the seam this package already uses: the
+    # writes and the state machine, the projections, the state ledger, and the organization an
+    # element and a window belong to. `MaintenanceLedgerMixin` is listed above `AlarmMixin`
+    # because it calls `entity_level0`, which `DeviceMixin` owns — the same sibling-resolution
+    # rule the three existing inheritance edges follow, and the reason this list is ordered
+    # most-derived first rather than alphabetically.
+    MaintenanceWindowMixin,
+    MaintenanceCompileMixin,
+    MaintenanceReadMixin,
+    MaintenanceLedgerMixin,
+    OrganizationMixin,
     LearnedMixin,
     AlarmMixin,
     DeviceMixin,
@@ -132,3 +148,9 @@ class Store(
         # direction: a store nobody opened writes no bag key and keeps `0007`'s two-column bound.
         self._has_bag_key: bool = False
         self._has_label_qualifier: bool = False
+        # Likewise, from `PRAGMA table_info(alarm)`. `False` means `0019` has not run, so the
+        # provenance column is not written and the census does not select it — a v0.20.0 database
+        # driven by this code keeps placing severities, it just does not record where they came
+        # from, which is the state it was already in.
+        self._has_severity_source: bool = False
+        self._has_surfaced_window: bool = False

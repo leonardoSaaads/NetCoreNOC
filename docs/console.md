@@ -4,7 +4,7 @@ One static web UI, loaded directly by the browser: **no build step, no npm, no l
 bundle.** The files a browser fetches are the files on disk. That is a test
 (`tests/test_build_step.py`), not an intention.
 
-Seventeen views in three groups, plus an overview and one reachable only by address. **A view you
+Eighteen views in three groups, plus an overview and one reachable only by address. **A view you
 cannot use is not rendered** — a viewer sees no `Administer` group at all, rather than a group of
 disabled controls.
 
@@ -17,6 +17,7 @@ disabled controls.
 | **Timeline** | Raises and clears over time — element, window, depth, chart type and element split, all in the address so the configured screen can be sent to a colleague |
 | **Entities** | What the appliance has learned about each element, and the evidence for it |
 | **Alarm classes** | Every trap type it has learned, with no configuration |
+| **Maintenance** | Planned work: what is scheduled, what is running, and **what it still collects** |
 
 ## Evidence — what has been learned, and what is refused
 
@@ -295,3 +296,77 @@ difference is the one to read.
 **And it cannot see everything.** The harness cannot see whitespace and cannot see emptiness: v0.13.0
 shipped six visual defects with 1428 tests green, and v0.14.0 five with 1542. If you change anything
 rendered, open a browser.
+
+## Maintenance: declaring planned work (v0.21.0)
+
+A **maintenance window** says *"this equipment is going quiet on purpose, between these two
+instants, in this time zone."* A target under a window is **not collected by default**; what still
+gets through is the set of rules you write.
+
+### The form is four cards, one at a time
+
+Never two hundred fields at once. Each card collapses to a one-line summary, so you can see where
+you are without scrolling:
+
+1. **What** — a name, an optional description, the organization, and who may see the details.
+2. **When** — start, end, the time zone, and the patch band either side. The bar under the fields
+   draws the window and both patch bands to scale; it is hand-written SVG, so the test suite can
+   read each band's width as a number rather than look at a picture.
+3. **Where** — the elements. The card shows a live count of devices and active alarms this would
+   affect, computed by the **same code the API's `preview` runs**, so the number you read and the
+   number an agent reads cannot disagree.
+4. **What still gets through** — the per-target rules.
+
+### The time zone is mandatory, and it is a zone rather than a city
+
+Search for the city you think in: *Brasília*, *Washington*, *Beijing*. The picker shows the city
+and stores the canonical IANA zone (`America/Sao_Paulo`, `America/New_York`, `Asia/Shanghai`) —
+none of those three cities has a zone of its own, and a window stored under a label its `zoneinfo`
+cannot load would schedule at the wrong hour. Every time is shown twice: **site time** and **your
+time**, because the person declaring the work and the person on shift are often not in one place.
+
+### Three kinds of rule, and how they compose
+
+| Rule | *"Collect only…"* |
+|---|---|
+| **Severity** | …alarms at or above a severity |
+| **OID subtree** | …traps whose trap-OID, or whose varbinds, sit under an arc |
+| **Time slot** | …traps inside a narrower window than the whole |
+
+> **Rules of different kinds are ANDed; rules of the same kind are ORed.**
+
+So *"only critical alarms"* on one host and *"only traps between 11:15 and 11:20, and only OIDs
+under `1.3.6.1.4.1.2011.5.25.31.1.1.1.1`"* on another is one window with two targets — and the
+second host's trap at 11:17 on an unrelated OID does not pass, because the slot and the subtree
+intersect. Two subtrees on one target are a union, because you wrote the second one to admit more.
+
+An OID rule matches on **arc boundaries**. A rule for `…1.1.1.1` admits `…1.1.1.1.4.2` and does
+**not** admit `…1.1.1.10`: the tenth column of a table is not inside the first column's subtree.
+
+### Over six hours, somebody has to agree
+
+Up to six hours the window takes effect as scheduled. Over six hours it waits in **Pending
+confirmation** and **suppresses nothing at all** until an editor or an admin confirms it — if
+nobody does, it expires having suppressed nothing, which is the safe direction. A window an **agent**
+created always waits for a human; a window you created yourself you may confirm yourself, with an
+explicit second gesture. A deployment that wants two different people can withhold the confirm
+capability from the role that holds the write capability; they are separate for that reason.
+
+### What happens to a fault that outlives the window
+
+The appliance keeps a **state ledger** while a window is in force: per element, class and instance,
+whether it saw a raise and whether it saw a clear. Six numbers, and **no varbinds, no severity and
+no payload** — recording those would be collecting the trap you asked it not to collect.
+
+When the window closes, anything raised inside it that never cleared **surfaces as an alarm**,
+marked *"raised during maintenance, still active"*. That alarm carries **no severity**, and the
+reason is worth knowing: the appliance is not failing to place one, it never saw the trap. You can
+turn the ledger off per window; the card says in plain words what you lose if you do.
+
+### The marker every role sees
+
+A device or a situation under planned work carries a badge saying so, with how long is left — on
+**every** screen, for **every** role, including a viewer looking at a window whose details are
+restricted. A host that goes quiet with no marker reads as a healthy host, which is the one way
+this feature could make an outage harder to see. What the window *is* — its name, its owner, its
+rules — follows its visibility setting. That it exists does not.

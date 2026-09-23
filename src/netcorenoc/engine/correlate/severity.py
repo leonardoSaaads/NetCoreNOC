@@ -1,6 +1,22 @@
-"""Learned severity with an honest fallback (S8, §5.3).
+"""Placing a severity on a trap, and learning one when the trap does not carry it (S8, §5.3).
 
-A varbind is treated as severity only when two independent tests agree:
+**Two sources, and the standard one wins** (v0.21.0, D5, ADR #365). :func:`place` is the decision
+the ingest path makes on every trap:
+
+1. **The trap's own word**, read in the X.733 vocabulary — provenance ``standard``. This requires
+   no learning at all: an IETF-registered perceived-severity column carries a word the ITU
+   standardised, and reading it for what the standard says it is is not an inference.
+2. **A learned severity field**, when the NE has one confirmed by the two tests below — provenance
+   ``learned``.
+3. **Nothing.** Honestly unplaced, never a default.
+
+Until v0.21.0 the ingest path knew only (2), so `alarm.severity` was NULL in every row of a lab
+that had been running for fourteen cut/repair cycles while 29 of its 30 alarms carried a severity
+word. v0.17.1 had added the standard read to the **census** — the read model — which made the
+Overview's numbers right and left every row unplaced. D4's severity rule runs at ingest, where
+there is no census, so the rule would have admitted nothing on any estate.
+
+A varbind is treated as a **learned** severity only when two independent tests agree:
 
 1. **Shape** (from the profiler's bounded accumulators): a small ordinal range seen across
    at least two alarm classes, whose values are either integers or members of the bundled
@@ -11,8 +27,8 @@ A varbind is treated as severity only when two independent tests agree:
    spread — i.e. the values genuinely stratify how long alarms live. If lifetimes cannot
    confirm the ordering, the field stays **unknown**: a fabricated severity is worse than none.
 
-This module only judges. The engine acts on the judgement in the maintenance sweep and sets
-``alarm.severity``/``severity_rank`` at ingest; the store never assumes a default.
+This module judges, and — since v0.21.0 — it also **decides**, in :func:`place`. The engine calls
+that one function per trap and writes what it returns; the store never assumes a default.
 """
 
 from __future__ import annotations
@@ -23,11 +39,77 @@ from itertools import pairwise
 
 from netcorenoc.engine.correlate.varbind_profile import MAX_DISPLAY_CHARS, VarbindProfiler
 from netcorenoc.ingest import known_oids
+from netcorenoc.ingest.events import Varbind
 
 SEVERITY_MAX_DISTINCT = 8  # a severity field has a small range; more is an identifier or a count
 SEVERITY_MIN_OBS = 200  # observations of the varbind on the NE before it can be confirmed
 SEVERITY_MIN_CLOSED = 50  # closed alarms needed to validate ordinality against lifetimes
 SEVERITY_MIN_PER_VALUE = 5  # closed alarms per value before its median lifetime is trusted
+
+
+#: The provenance of a placed severity, in precedence order. `declared` is not here: an operator's
+#: declaration is a row of `label` against an alarm CLASS and is resolved at read time, where one
+#: row moves every active alarm of that class at once (#338).
+STANDARD = "standard"
+LEARNED = "learned"
+
+
+@dataclass(frozen=True)
+class Placement:
+    """What the appliance decided about one trap's severity, and where it got it.
+
+    `source is None` is the honest unknown: the trap carried no word in the X.733 vocabulary and
+    the NE has no confirmed severity field. It is counted as **unplaced** and rendered as such —
+    never as a default band, and never as `indeterminate`, which is a severity a device can
+    legitimately *assert* and therefore cannot double as "we do not know".
+    """
+
+    value: str | None = None
+    rank: int | None = None
+    source: str | None = None
+
+    @property
+    def placed(self) -> bool:
+        return self.source is not None
+
+
+#: The answer for a trap nothing can place. Shared because it is immutable and, on an estate whose
+#: equipment does not implement ALARM-MIB, it is every trap.
+UNPLACED = Placement()
+
+
+def place(varbinds: list[Varbind], learned_oid: str | None) -> Placement:
+    """**THE** per-trap severity decision: the trap's own word first, then the learned field.
+
+    Called once per trap from the ingest path, so it does no I/O and allocates nothing beyond the
+    result. The precedence is the standard read first, and that ordering is the whole of D5:
+
+    * **The trap said so.** An IETF-registered perceived-severity column carries a word the ITU
+      standardised, and believing it requires no evidence this appliance has to gather. Keyed on
+      the **value** rather than on the OID, for the reason `known_oids.standard_severity` gives at
+      length: the registries are unreachable from this build environment, and a value-keyed read
+      works at whatever OID a vendor chose — which an OID table would miss.
+    * **Otherwise, what the NE taught us.** The learned field needs 200 observations and 50 closed
+      alarms to confirm, which is minutes to days of traffic; an estate is not unplaced for that
+      whole period any more.
+    * **Otherwise nothing**, and `unplaced` stays a first-class, visible count.
+
+    The false positive the standard read admits is real, bounded and unchanged from v0.17.1: a
+    varbind whose value happens to be `minor` for an unrelated reason is read as a severity. The
+    provenance says `standard`, the console says so, and an operator's declaration outranks it — so
+    the recourse is one gesture. The alternative is what every release before this one shipped:
+    nothing placed on any row, ever.
+    """
+    standard = known_oids.standard_severity([{"oid": vb.oid, "value": vb.value} for vb in varbinds])
+    if standard is not None:
+        return Placement(value=standard[0], rank=standard[1], source=STANDARD)
+    if learned_oid is not None:
+        value = next((vb.value for vb in varbinds if vb.oid == learned_oid), None)
+        if value is not None:
+            token, rank = normalize(value)
+            if token is not None:
+                return Placement(value=token, rank=rank, source=LEARNED)
+    return UNPLACED
 
 
 @dataclass(frozen=True)

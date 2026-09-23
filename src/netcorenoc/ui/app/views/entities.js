@@ -16,6 +16,7 @@ import { Loader, Empty, DataTable, SectionHeading, Loading, Failed, Badge } from
 import { score, percent, count, plural } from "../format.js";
 import { can } from "../session.js";
 import { Destructive } from "../destructive.js";
+import { MaintenanceMark } from "./parts/mwmarker.js";
 
 export class Entities extends Loader {
   constructor(props) {
@@ -83,6 +84,9 @@ function NeCard({ ne, open, onToggle }) {
         <span class="sid">${ne.label || ne.ip}</span>
         ${ne.label ? html`<span class="muted">(declared)</span>` : null}
         <${Badge}>${plural(ne.entity_count, "entity", "entities")}<//>
+        <!-- IV.3. On the row, beside the name, because the question it answers is asked
+             while reading the list: is this host quiet because somebody meant it to be? -->
+        <${MaintenanceMark} marker=${ne.maintenance} />
       </button>
     </div>
     ${open ? html`<div class="detail"><${NeDetail} neId=${ne.id} /></div>` : null}

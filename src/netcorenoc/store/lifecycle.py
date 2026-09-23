@@ -66,6 +66,17 @@ class LifecycleMixin(StoreBase):
         # which is exactly right for a database that has not been migrated.
         cur = await self.conn.execute("PRAGMA table_info(label)")
         self._has_label_qualifier = "qualifier" in {str(row[1]) for row in await cur.fetchall()}
+        # v0.21.0, migration `0019`. Same probe, one more table: `alarm` gained `severity_source`,
+        # which `ingest` writes on **every trap**. Inferring that from a caught `OperationalError`
+        # would pay an exception per trap on the busiest write path there is, and `tests/
+        # test_upgrade.py` drives this store against migration directories frozen as far back as
+        # schema 4 — where naming the column unconditionally raises on the first packet.
+        cur = await self.conn.execute("PRAGMA table_info(alarm)")
+        alarm_columns = {str(row[1]) for row in await cur.fetchall()}
+        self._has_severity_source = "severity_source" in alarm_columns
+        # Migration `0021`. Read from the SAME result: two probes of one table would be two
+        # answers resolved at two moments, which is the shape of drift `_label_join` avoids.
+        self._has_surfaced_window = "surfaced_from_window_id" in alarm_columns
 
     async def _migrate(self) -> None:
         """Apply the pending scripts, and **say which** (DECISIONS #227).

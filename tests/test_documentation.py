@@ -297,7 +297,16 @@ def test_the_release_table_parses() -> None:
     # said v0.18.0 was *archetypes*; the release that governs it is *the audit*, whose brief opens
     # "this one is not a feature release". Archetypes moves to v0.18.1. v0.17.2 keeps its row and
     # loses F76, which the audit closed. Twenty-six rows.
-    assert len(table) == 26, f"expected v0.8.0…v0.18.1, parsed {sorted(table)}"
+    #
+    # v0.21.0 adds three rows and RE-KEYS one (DECISIONS #375). Two shipped releases had no row at
+    # all — the table ended at v0.18.1 while the tree read `0.20.0` — so the document that calls
+    # itself the single source of truth answered "what is v0.19.0?" with silence. Worse, **v0.16.8
+    # claimed `maintenance-windows`**, which is this release. That is the third, fourth, sixth and
+    # seventh edits' defect again, and the guard could not see it: a table row whose key appears in
+    # no other document is consistent with everything. v0.16.8 is re-keyed to
+    # `planned-work-deferred` rather than deleted, so a reader who meets the number in an old brief
+    # is told where the content went (#199's rule about condensing a record). Twenty-nine rows.
+    assert len(table) == 29, f"expected v0.8.0…v0.21.0, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -325,6 +334,9 @@ def test_the_release_table_parses() -> None:
         "v0.17.3",
         "v0.18.0",
         "v0.18.1",
+        "v0.19.0",
+        "v0.20.0",
+        "v0.21.0",
     }
     claims = [claim for _theme, claim in table.values()]
     assert len(set(claims)) == len(claims), f"two releases share a claim key: {claims}"

@@ -84,6 +84,13 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("classes.read", "/api/classes"),
     ("promotion.read", "/api/promotion"),
     ("config.read", "/api/dataset/retention"),
+    # v0.21.0: the Maintenance screen reads the upcoming list on mount, and the form reads
+    # the organizations and the zones. Captured for every other entry's reason — a screen
+    # driven against a 404 renders its error state, and a test that read that as the screen's
+    # behaviour would be measuring the fixture.
+    ("mw.read", "/api/maintenance-windows?limit=5"),
+    ("organizations.read", "/api/organizations"),
+    ("timezones.read", "/api/timezones?q="),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.

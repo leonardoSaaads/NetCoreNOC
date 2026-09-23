@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of thirty-four ask
-you to do something; fourteen more ask you to read a paragraph first. The other eighteen are
+Read only the rows between your version and the one you are installing. **Two of thirty-six ask
+you to do something; sixteen more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
@@ -64,6 +64,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.16.6 → v0.16.7 | Nothing to run — **no migration**. The Overview leads with active alarms by severity, and on a fresh appliance that panel reads *not measured* rather than zero. Read below |
 | v0.18.0 → v0.19.0 | Nothing to run. **Two migrations apply at boot** (`0017`, `0018`) and both are additive: two nullable columns on `challenger_run` for the learning curve, and two indexes on `dataset_pair`. Correlation groups differently on estates of many elements — deliberately, and narrower. Read below |
 | v0.19.0 → v0.20.0 | Nothing to run. **No migration.** The console is rearranged again — the Overview, the situation card and the restructure controls — and one API field is gone from `/api/situations/{id}`. Read below |
+| v0.20.0 → v0.21.0 | Nothing to run. **Three migrations apply at boot** (`0019`, `0020`, `0021`), all additive. But **read below**: your existing alarms start carrying a severity they did not carry before, some of your entities were never entities, and the container image needs one new OS package |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -521,3 +522,88 @@ evidence. If you have a runbook that names the button, it is the one beside `Con
 `Merge another situation in`, and pick the destination from the list of situations that exist.
 The two typed situation-id fields are gone; `A new situation` at the top of the move list is what
 the old `Split the marked members out` did, and it posts to the same `/split` route.
+
+### v0.21.0 — planned work, a severity your alarms already carried, and one new OS package
+
+**Three migrations, all additive, all automatic.** Nothing is exported and nothing is reimported.
+But three of the changes below are visible in data you already have, so read them before you
+upgrade a production appliance rather than after.
+
+**One thing to do if you build your own image: install `tzdata`.** Time zones are mandatory on a
+maintenance window and `zoneinfo` reads the **operating system's** IANA database. The shipped
+`Dockerfile` gains one `apt-get install -y --no-install-recommends tzdata` line in its final stage;
+a Debian or Ubuntu host generally has the package already, an Alpine one generally does not, and a
+`FROM scratch` image never will. **The appliance tells you** rather than failing quietly: a startup
+self-check resolves every curated zone against the `tzdata` that image actually has and reports the
+ones that do not through the same operator-warning channel that already carries eight others. No
+Python dependency is added — `pyproject.toml` is unchanged.
+
+**Your existing alarms start carrying a severity (`0019`).** Until this release the ingest path
+could only place a severity it had *learned*, so `alarm.severity` was NULL on every row whose NE
+had not yet been confirmed — including rows whose trap carried a standardised X.733 severity word
+in the RFC 3877 column all along. In the reference lab, 29 of 30 alarms carried the word and **none
+of the 30 rows had a severity placed**. From v0.21.0 the standard column is read at ingest and
+wins over the learned path.
+
+* **History is not rewritten.** `0019` adds `alarm.severity_source` and backfills it to `learned`
+  for every row that already had a severity — true by construction, because the learned path was
+  the only writer that had ever existed. It does **not** go back and place severities on old rows.
+* **New alarms will read `critical`, `major`, `minor`, `warning` where they used to read `—`.**
+  If you have an alerting rule keyed on "unplaced", it will fire less. That is the fix, not a
+  regression.
+* **The Overview's severity census does not change**, because v0.17.1 had already taught the
+  *census* to read the standard column. What changes is the **row**, which is what a maintenance
+  window's severity rule reads.
+
+**Some of your "entities" were never entities (`0019`).** The severity varbind is usually the
+most-observed varbind on an NE, so it crossed the entity-promotion floor first and was promoted to
+the entity role uncontested. Where that happened, the dedup instance became a severity word: one
+alarm row reading `inst='major'` with a count of eight, **eight separate faults collapsed into
+one**, and inventory entries literally named `major`, `cleared` and `critical`.
+
+* `0019` **withdraws the entity role** from any varbind whose promoted keys are *all* X.733
+  vocabulary tokens. It touches the role only; no alarm, no situation and no history is edited.
+* **After the upgrade, those alarms separate again** as new traps arrive — you will see the count
+  on affected rows fall and the number of distinct alarms rise. In the reference lab, 30 alarms
+  became 26, which is the true fingerprint count.
+* **Check for the inventory entries** on the Entities screen and delete any named after a severity
+  word. They are inert once the role is withdrawn; the migration leaves them because deleting rows
+  an operator may have annotated is not an upgrade's job.
+
+**Maintenance windows exist, and nothing is in one (`0020`, `0021`).** The tables are created
+empty. No trap is suppressed until somebody declares a window, and a window over six hours
+suppresses nothing until an editor or an admin confirms it. Your ingest path gains **one dictionary
+lookup per trap**, measured at **+82 ns** on an appliance with no windows.
+
+**Every network element gains an organization, and there is exactly one (`0020`).** The migration
+seeds a single `Default organization` and assigns every existing element to it. Rename it on the
+Admin screen; add more when you have more, and move elements between them with
+`POST /api/entities/{ne_id}/organization` (admin).
+
+**Devices and situations under planned work carry a marker**, on every screen and for **every
+role** — a badge saying a window is in force and when it ends, never its name or its owner. A
+member alarm the end-of-window sweep surfaced carries a second, different badge: *"raised during
+maintenance, still active"*, which means the appliance knows the fault happened and knows nothing
+else about it, because the trap itself was never collected.
+
+> **This is not tenant isolation, and it does not become tenant isolation by being used.**
+> Correlation still learns across every network element and a situation may still form across an
+> organization boundary. The column answers *"whose equipment is this?"*, nothing else. The same
+> warning `docs/security.md` carries about visibility scoping applies here word for word.
+
+**New routes and capabilities.** `/api/maintenance-windows` (list, read, create, update, preview,
+confirm, cancel, end, extend), `/api/organizations`, `POST /api/entities/{ne_id}/organization` and
+`/api/timezones`. The capabilities are
+`mw.read`, `organizations.read` and `timezones.read` at **viewer**; `mw.write` and `mw.confirm` at
+**editor**; `organizations.write` at **admin**. Nothing is granted that was not granted before —
+`resolve_capabilities` is still `ceiling ∩ policy`, so a deployment that has narrowed a role keeps
+its narrowing. If you want the *declare* and *approve* powers held by different people, withhold
+`mw.confirm` from the role that holds `mw.write`; they are two capabilities for exactly that.
+
+**Two API responses gain a key.** `GET /api/situations` and `GET /api/entities` now carry
+`maintenance`, which is `null` when nothing is in force and otherwise a window id, a status and
+when it ends — never a name. A client that ignores unknown keys is unaffected; one that asserts an
+exact key set will see it.
+
+**No SNMP polling.** It was planned for this release and it is not in it — see `HANDOFF.md` §1.
+Nothing polls your elements, no credential is stored and no capability promises otherwise.

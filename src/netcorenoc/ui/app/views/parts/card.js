@@ -30,6 +30,7 @@ import { RESOLUTION_TEXT } from "./lifecycle.js";
 import { Badge } from "../../widgets.js";
 import { age, plural, timeTitle } from "../../format.js";
 import { Detail } from "./judge.js";
+import { MaintenanceMark } from "./mwmarker.js";
 import * as store from "../../store.js";
 
 export function SituationCard({ situation, onToggle, onChanged }) {
@@ -55,6 +56,11 @@ export function SituationCard({ situation, onToggle, onChanged }) {
                  >${situation.resolution.replace("_", " ")}<//>` : null}
         <${Badge}>${plural(situation.alarm_count, "alarm")}<//>
         ${situation.stale ? html`<${Badge} tone="stale" title=${STALE_TITLE}>stale<//>` : null}
+        ${/* **IV.3.** At least one member element is under planned work, so this situation's
+              alarm counts may be incomplete — and an operator reading it is entitled to know
+              that before they conclude the incident is over. Every role sees the badge; what
+              the window IS follows `visibility` and is not here. */ null}
+        <${MaintenanceMark} marker=${situation.maintenance} />
         ${situation.redacted_count ? html`<${Badge} tone="redacted" title=${SCOPE_TITLE}>
           +${situation.redacted_count} outside your scope<//>` : null}
         ${/* **v0.16.4: a symbol, not a count.** This badge read `held while open` and the panel

@@ -9,6 +9,12 @@ same `asyncio.Lock` object `_commit_batch` takes, because there is only one — 
 `_close_situation`, which directive 4 names as must-stay. The methods here run *inside* the lock
 `maintenance` already holds and must never take it themselves.
 
+**v0.21.0 splits the maintenance-window sweep out**, to `window_sweep.py`, at the 400-line
+guard and on a seam this module's own docstring already draws: everything here reasons about
+*accumulated evidence* — how many observations a varbind has, how many alarms have closed — while
+the window sweep reasons about *the clock*, which is a different question with a different failure
+mode. `MaintenanceMixin` inherits it, so `Engine` is assembled exactly as before.
+
 **`maintenance_loop` DID leave, in v0.9.0 (DECISIONS #121).** It takes no lock and calls no
 must-stay method, and as of this release its body is no longer one call to `maintenance()`: it
 sequences **two** periodic activities with *different* lock disciplines — the maintenance pass,
@@ -29,7 +35,7 @@ from netcorenoc.engine.correlate import severity
 from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE
 from netcorenoc.engine.dataset import census, seal
 from netcorenoc.engine.dataset.retention_policy import RETENTION_META_KEY, RetentionPolicy
-from netcorenoc.engine.operate.engine_base import EngineBase
+from netcorenoc.engine.operate.window_sweep import WindowSweepMixin
 
 MAINT_INTERVAL_S = 5.0
 # Train once every this many maintenance ticks. The fit reads the whole labelled corpus and runs a
@@ -45,7 +51,7 @@ TRAIN_EVERY_TICKS = 60
 PLAN_SHA256 = "c03aef0181554c0c71482e57d03677f25964c3a5ac20a7bf1b1d74bff1ba1e01"
 
 
-class MaintenanceMixin(EngineBase):
+class MaintenanceMixin(WindowSweepMixin):
     async def maintenance_loop(self, retention_provider: Callable[[], float]) -> None:
         """The slow loop: the maintenance pass, then — **off the lock** — the challenger's training.
 

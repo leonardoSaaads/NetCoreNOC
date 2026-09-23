@@ -2480,3 +2480,90 @@ this into a sentence in a build report instead of a failed gate.
   fix is for the server to send the aggregate and the rows on demand; that is a new route with its
   own scope posture, and it is a ROADMAP line with this measurement beside it.
 - **Disposition**: **fixed in v0.20.0** (the duplication); the remainder is recorded above.
+
+## F146 — the maintenance marker was a component nobody rendered and a query nobody called
+
+- **What**: v0.21.0 built `ui/app/views/parts/mwmarker.js` (three exported components, a 17-line
+  header explaining prime directive 4) and `store/mw_reads.py::window_markers` (a scoped query
+  written specifically so **every role** learns that planned work is in force). Four other modules
+  cited `window_markers` in prose as the mechanism that serves a redacted existence. **No route
+  called it and no view imported the components.** IV.3 — *"markers on every device and situation,
+  visible to every role"* — was documented, tested at the unit level, and did not happen.
+- **Reproduce**: `python -m vulture src/netcorenoc vulture_allowlist.py`, which reported
+  `window_markers` as unused the moment its only caller (a dead `nes_under_window_count`) was
+  removed. Nothing else could have: every test that mentioned markers asserted them over a
+  **fixture payload** rather than over a response the appliance produced.
+- **Why nothing caught it**: this is F84's shape with the arrow reversed and v0.16.3's shape
+  exactly. v0.16.3 rendered `ne.label` for three releases while `/api/entities` never served the
+  field, so the fallback to the address was permanent and invisible. Here the console had the
+  component and the server had the query, and neither had the other's half.
+- **Repair**: `/api/entities`, `/api/entities/{ne_id}`, `/api/situations` and
+  `/api/situations/{sid}` carry a `maintenance` marker; `entities.js` and `parts/card.js` render
+  it; `parts/members.js` renders `SurfacedMark` beside the instance, which needed
+  `alarm.surfaced_from_window_id` on the member projection and a schema probe to reach it. A
+  situation is marked when **any** member element is under a window, and the **earliest-ending**
+  window wins.
+- **What now catches it**: `tests/test_maintenance_api.py::
+  test_a_viewer_sees_the_marker_on_a_device_under_planned_work` drives a real editors-only window
+  through a real viewer's `/api/entities`, with the absent-marker control beside it — an assertion
+  over the response rather than over a fixture, which is the only kind that could have failed.
+- **What was also removed with it**: `MaintenanceStat`, a component for *"the Overview's one new
+  number"*, and `nes_under_window_count`, the query behind it. Neither was wired either, and
+  rather than wire a third surface this release did not measure, both are deleted.
+
+## F147 — the time-zone search was case-blind and not accent-blind, and said otherwise
+
+- **What**: `search_zones` compared with `.casefold()` only. Typing **`Brasilia`** returned an
+  empty list; only `Brasília`, with the accent, matched. The same held for `Zurich` / `Zürich`.
+- **Why the docstring believed otherwise**: it claimed the search was *"case- and accent-blind for
+  the ASCII cases that matter (`Sao Paulo` finds `São Paulo` because the identifier matches)"*.
+  That reasoning is sound and applies to exactly one of the cities in the list — the one whose
+  **zone identifier** carries the ASCII spelling. Brasília's identifier is `America/Sao_Paulo`, so
+  nothing in the row it needed to match spelled the city the way an operator types it.
+- **Reproduce**: `GET /api/timezones?q=Brasilia` against a running appliance → `{"zones": []}`.
+- **Why nothing caught it**: `tests/test_timezones.py` asserted that every curated entry resolves
+  and that the three no-zone cities map correctly — over the **data**, never over a search a person
+  would actually type. The one accent case the docstring reasoned about was the one case that
+  worked.
+- **Found by**: the live pass, on its second assertion, against a booted appliance. It is the
+  clearest thing this release's live pass produced: the city the brief names most often, unfindable
+  from a US keyboard, in a feature whose entire premise is *"mandatory time zones"*.
+- **Repair**: `timezones.fold()` — NFKD decompose, drop combining marks, casefold. Standard library,
+  no dependency. Comparison only: what is shown is the label as written (`Brasília`) and what is
+  stored is the canonical identifier (`America/Sao_Paulo`), because folding what is displayed would
+  be a worse defect than the one it fixes.
+- **What now catches it**: `test_the_three_named_cities_are_found_from_an_ascii_keyboard`, which
+  types each city the way a person would and asserts the **first** hit is the governing zone, with
+  the accented spelling beside it as the control.
+
+## F148 — a fault that outlived its window surfaced into a table nobody reads
+
+- **What**: the end-of-window sweep wrote the surfaced alarm straight into `alarm` and stopped
+  there. **Situations is the only view in the console that lists alarms**, and it lists them as
+  situation members — so an alarm belonging to no situation appears on no screen at all. II.2's
+  promise, *"a fault that starts during a window and never clears will surface"*, was true of the
+  database and false of the product.
+- **Reproduce**: against a booted appliance, declare a window, send a trap the window's rules
+  suppress, end the window. `POST …/end` answers `{"ended": true, "surfaced": 2}` and
+  `GET /api/situations` shows nothing new. In the database:
+
+  ```
+  id=4  instance='onu-dark-7'  severity=None  surfaced_from_window_id=1  status=active
+  situation_alarm: (1,1) (2,2) (3,3)          <- 4 and 5 are in no situation
+  ```
+
+- **Why nothing caught it**: every unit test asserted the `alarm` row, which is exactly what the
+  sweep writes. `test_a_fault_raised_inside_the_window_and_never_cleared_surfaces` passed
+  throughout, because *surfacing* is what it checked and *visibility* is what was missing. The
+  console half was tested against fixture payloads that already contained members.
+- **Found by**: the live pass, on its last assertion — the one that walked situations looking for
+  the alarm the appliance had just told it about.
+- **Repair**: `WindowSweepMixin._open_situation_for` gives each surfaced alarm a **singleton
+  situation**. Not correlated: the alarm carries no varbinds and no severity, so there is nothing
+  to score and scoring an absence would invent links. The engine's `sit_of` and `members` maps are
+  updated in the same step, which is the half that is not cosmetic — without it the element's next
+  real trap lands on the same `(device, class, instance)` row and opens a **second** situation for
+  an alarm that is already in one.
+- **What now catches it**:
+  `test_a_surfaced_fault_lands_in_a_situation_an_operator_can_actually_see`, which asserts the
+  alarm is in exactly one situation **and** that the engine's own map agrees.

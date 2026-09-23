@@ -27,7 +27,7 @@ import netcorenoc.api
 
 PKG_DIR = Path(netcorenoc.api.__file__).resolve().parent
 
-# Infrastructure first, then the twelve route groups in the order `create_app` registers them.
+# Infrastructure first, then the route groups in the order `create_app` registers them.
 #
 # **v0.16.2: paths relative to the package, not bare basenames** (DECISIONS #278, F98). The route
 # modules moved to `api/routes/`, and the walk below moved with them — see `modules()`.
@@ -35,6 +35,8 @@ MODULE_ORDER: tuple[str, ...] = (
     "__init__.py",
     "context.py",
     "models.py",
+    "models_maintenance.py",
+    "mw_shape.py",
     "governance_cache.py",
     "perimeter.py",
     "declare.py",
@@ -58,6 +60,11 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/models.py",
     "routes/governance.py",
     "routes/audit.py",
+    # v0.21.0: the maintenance-window resource and the two readable resources it is
+    # written against, in the order `create_app` registers them.
+    "routes/maintenance_ops.py",
+    "routes/maintenance.py",
+    "routes/inventory.py",
     "routes/events.py",
 )
 

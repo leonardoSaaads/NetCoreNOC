@@ -29,6 +29,7 @@ import { GraphView } from "./views/graph.js";
 import { Timeline } from "./views/timeline.js";
 import { Entities } from "./views/entities.js";
 import { Classes } from "./views/classes.js";
+import { Maintenance } from "./views/maintenance.js";
 import { Labelling } from "./views/labelling.js";
 import { Corpus } from "./views/corpus.js";
 import { Promotion } from "./views/promotion.js";
@@ -81,6 +82,14 @@ export const VIEWS = [
     id: "classes", label: "Alarm classes", icon: "classes", group: "operations",
     capability: "classes.read", component: Classes,
     summary: "Every trap type the appliance has learned, with no configuration.",
+  },
+  {
+    // v0.21.0. `mw.read` is `viewer` and that is prime directive 4 rather than a convenience: a
+    // viewer who cannot see that planned work exists reads a quiet estate as a healthy one. The
+    // screen offers the form only where `mw.write` is held, which `can()` decides on the control.
+    id: "maintenance", label: "Maintenance", icon: "maintenance", group: "operations",
+    capability: "mw.read", component: Maintenance,
+    summary: "Planned work: what is scheduled, what is running, and what it still collects.",
   },
 
   /* ---------- Evidence: what has been learned, and what is refused ---------- */
