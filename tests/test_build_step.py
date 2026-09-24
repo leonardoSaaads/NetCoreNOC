@@ -361,7 +361,7 @@ def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
 #: visible at a glance rather than to be argued.
 UI_HASHES: dict[str, str] = {
     "app.js": "426f5fc2e948536a3b337a874c6dcc090f8e2714af74740c864db965a9a10bfd",
-    "app/api.js": "186f79e412a22550a061bc7fd0354a97398e41a153d60c1d19f8e9f03965e977",
+    "app/api.js": "db042593c344a37f646c3ab5df2c1a8b2abbae18d06bf0b2ffce789406d9ed1a",
     "app/chartdata.js": "23e1cbc075be1b37ad0558e4f95e3c4066ad70a328ca89aa14699a5e5daeb990",
     "app/charts.js": "937dc8bc1e2b7962cdadd9491e43b64eb825688edb4469c7d100448d7c9a109b",
     "app/compare.js": "223c60ae00c056e33514900559f2ef053a43c6340937c5e5a8e1916f2e0b0669",
@@ -390,8 +390,8 @@ UI_HASHES: dict[str, str] = {
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
     "app/views/graph.js": "05f282c80124a41ec1716c6dd1f1d06386d4c63f3aa71eecfd36963ca8235a9c",
     "app/views/labelling.js": "e163b0f1ca9d7af77404d50c45a2797c0ea8d038e4ce176d56eb7396b6d01aa1",
-    "app/views/maintenance.js": "9e112b8ff97d40c143a3c5bb06ad9cb09a8aa832f7ae5486777fd84b2fd0c12f",
-    "app/views/overview.js": "a2566866611592e79064766d6eed25611c403ceafb19fb6c9faa28423fb2d138",
+    "app/views/maintenance.js": "f55970018b9b4215f7b6317bd5027636cfeb8c0b3a0538d5b729c6f22f836a4e",
+    "app/views/overview.js": "a08308f0a84bb55726da3aa932d4ce371be1e7bb57adb95ee4a877486879ec36",
     "app/views/parts/bulkclear.js": (
         "efdd15fe669b8a65b2a8c02745f07c0f1903fa619a60179f55b369025dc01298"
     ),
@@ -423,14 +423,20 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/model.js": "c30966786ff8e78e8c326b3b0206fe171298e86ef784b0841d68999ef068e81d",
     "app/views/parts/models.js": "b954899695a6710f21c657f83ccd035f887fabfdecd8414fa8111b83bc1adf7c",
     "app/views/parts/mwdraft.js": (
-        "c41684639d971f0b42cbba51ff5f1b820de543bacd4daa7c188643a1c6461e20"
+        "95383f3a2419166711b5c5e885b957608ed00656623df3b69d75521ead0fb503"
     ),
-    "app/views/parts/mwform.js": "7b4ddb3f5cc3958e9a860d62e9962d10f4ba3a535925d1ddb4b4e959c610b319",
+    "app/views/parts/mwform.js": "f75fb9c38e9776f122b1a493b8d9e9cb2e7b094ad0c26a6d95e4fb91645b8781",
     "app/views/parts/mwmarker.js": (
         "6d7adf8d09098515ac5978aa3bb13bce13db86a3039be34f137f528621733084"
     ),
+    "app/views/parts/mwreview.js": (
+        "bef29714505c9b1f891eed83cd228ecfb0996bd37a8356ac37f78793ba49d795"
+    ),
     "app/views/parts/mwrules.js": (
-        "73c8a431d47e3cb17bd642cb0cf5d3f0966a318bf9c1ae29bd7885d569819be4"
+        "c77b970377ec6eed2c90607c41b03399783ee9348f3fa357d01425f95a554327"
+    ),
+    "app/views/parts/mwsummary.js": (
+        "a74238e7c30cd52e08b8ad7ad65da198115113792981727c0b77ce192ee802a9"
     ),
     "app/views/parts/mwtime.js": "a57748bfb2e409e3e2db5835fd7178f68161a8a3861b82b331a24ffd39c04252",
     "app/views/parts/pulse.js": "f3318885214127a54e9df912810abd3f7b4f114fa8636c02b7b8cb7ec4555e75",
@@ -458,7 +464,7 @@ UI_HASHES: dict[str, str] = {
     "app/widgets.js": "abe9f6d9342f0335ead13cef4061b54ace36f31e28b0d92308918c96a3561e21",
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "73f4206c6fa3dc1ae5ff0476f56c1c29e93e6bc38e2510c50311e96a1f833c1d",
-    "style.css": "3faf01f05fdc978f0c882388160e2e0f5097a2a7c8cfc045ee75cb754285c79c",
+    "style.css": "b74211b325ef03ef0563dfb50cd379de1f73ff2a459c22b14ae77694a52668f6",
     "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
     "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
     "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
@@ -476,7 +482,7 @@ UI_HASHES: dict[str, str] = {
 #: `app.js` went from **52 738 bytes in one file** to an entry point plus 36 modules.
 UI_SIZES: dict[str, int] = {
     "app.js": 5_540,
-    "app/api.js": 3_424,
+    "app/api.js": 5_405,
     "app/chartdata.js": 8_181,
     "app/charts.js": 14_731,
     "app/compare.js": 7_285,
@@ -505,8 +511,8 @@ UI_SIZES: dict[str, int] = {
     "app/views/governance.js": 10_218,
     "app/views/graph.js": 13_704,
     "app/views/labelling.js": 6_105,
-    "app/views/maintenance.js": 7_127,
-    "app/views/overview.js": 11_064,
+    "app/views/maintenance.js": 7_104,
+    "app/views/overview.js": 11_723,
     "app/views/parts/bulkclear.js": 3_374,
     "app/views/parts/card.js": 6_611,
     "app/views/parts/correlation.js": 7_185,
@@ -523,10 +529,12 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/members.js": 10_813,
     "app/views/parts/model.js": 10_290,
     "app/views/parts/models.js": 11_698,
-    "app/views/parts/mwdraft.js": 5_297,
-    "app/views/parts/mwform.js": 14_489,
+    "app/views/parts/mwdraft.js": 6_692,
+    "app/views/parts/mwform.js": 14_779,
     "app/views/parts/mwmarker.js": 2_938,
-    "app/views/parts/mwrules.js": 7_300,
+    "app/views/parts/mwreview.js": 4_728,
+    "app/views/parts/mwrules.js": 7_636,
+    "app/views/parts/mwsummary.js": 6_324,
     "app/views/parts/mwtime.js": 9_551,
     "app/views/parts/pulse.js": 7_983,
     "app/views/parts/restructure.js": 12_859,
@@ -545,7 +553,7 @@ UI_SIZES: dict[str, int] = {
     "app/widgets.js": 11_923,
     "favicon.svg": 608,
     "index.html": 2_159,
-    "style.css": 98_707,
+    "style.css": 111_066,
     "vendor/CHECKSUMS.txt": 2_039,
     "vendor/d3.LICENSE": 764,
     "vendor/d3.v7.min.js": 279_706,

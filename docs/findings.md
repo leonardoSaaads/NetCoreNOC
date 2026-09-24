@@ -2567,3 +2567,136 @@ this into a sentence in a build report instead of a failed gate.
 - **What now catches it**:
   `test_a_surfaced_fault_lands_in_a_situation_an_operator_can_actually_see`, which asserts the
   alarm is in exactly one situation **and** that the engine's own map agrees.
+
+## F149 — "Schedule it" sent `targets: [null]`, and the screen answered `[object Object]`
+
+- **What**: `parts/mwform.js` read `host.ne_id` from `/api/entities`, which serves the element's id
+  as **`id`**. Every host the operator picked became `undefined`, every request body carried
+  `"targets": [null]`, and the appliance answered **422** to the live preview and to the create
+  alike. The button was not broken; it worked perfectly and the window never existed. What the
+  operator saw was nothing happening.
+- **And the error was unreadable**: FastAPI returns a validation `detail` as a **list of dicts**,
+  and `ApiError` passed it to `super(detail)`. `String([{...}])` is `[object Object]`, so the one
+  sentence that would have explained the failure — *"targets.0: Input should be a valid integer"* —
+  rendered as the phrase the operator reported five times in one screenshot.
+- **Reproduce**: pick a host, press Next, watch `POST /api/maintenance-windows/preview`:
+
+  ```
+  422 {"detail":[{"type":"int_type","loc":["body","targets",0],
+                  "msg":"Input should be a valid integer, got null"}]}
+  ```
+
+- **Why nothing caught it**: `tests/uifixtures.py` fabricated entity rows carrying `ne_id` — a field
+  the real route has never served. The DOM tests drove the form against a payload shaped the way
+  the form wished the API were shaped, so the one assertion that mattered was made against the
+  bug's own premise. **This is F146 with the arrow reversed and v0.16.3's shape exactly**: the
+  console had one spelling of a field and the server had another, and nothing in between read both.
+- **Repair**: `normaliseHosts()` in `parts/mwdraft.js` — one adapter at the boundary, accepting
+  `id` or `ne_id`, accepting a bare list or an `{entities: []}` envelope, and dropping any row
+  whose id is not an integer. `readableDetail()` in `api.js` turns a 422 body into
+  *"field: message"* sentences **once**, for every screen, so no view can print `[object Object]`
+  again.
+- **What now catches it**:
+  `tests/test_maintenance_roles.py::test_a_viewer_reads_planned_work_and_changes_nothing` asserts
+  `/api/entities` answers a **bare list** — against the response, not a fixture — and the browser
+  pass drives pick-host → Next → Schedule it end to end against a booted appliance.
+
+## F150 — the maintenance screen shipped without a single CSS rule
+
+- **What**: `ui/style.css` had no selector matching anything the maintenance screen renders. Not a
+  wrong rule — **no rule**. Every symptom the operator reported is one consequence of that:
+  `51020` (the three step buttons and the list-size buttons, unspaced, run together into a
+  number), `2When23:30–01:30 Buenos Aires3What still gets throughnothing gets through4Review` (the
+  collapsed cards with no padding and no line box), `Patch windowminutes either side`,
+  `SeverityTime slotOID subtree`, and a timeline bar that rendered as a **solid black blob**
+  because an SVG `<rect>` with no `fill` paints black.
+- **Why nothing caught it**: the DOM harness asserts structure — that a node exists, that a label
+  is present, that a click changes state. It executes the console without a stylesheet mattering,
+  so *"the text of four cards concatenated into one unreadable line"* is invisible to it: every
+  string it looks for is there, in the right node, in the right order. **This is ADR #358's
+  recorded failure repeated in the next feature**, which is the part worth keeping.
+- **Found by**: the operator, in one sentence — *"the UI/UX is terrible"* — with a screenshot that
+  contained five distinct defects and one root cause.
+- **Repair**: ~200 lines under a `/* maintenance */` block: the stepper as a flex row with a gap,
+  card padding and a heading line box, `.mw-card-n/-t/-s` for the step number, title and summary
+  with `:empty::before { content: "not set yet" }`, `.mw-hosts [aria-pressed="true"]::before` for
+  the ✓, labels for the rule composer, explicit `fill` on every timeline rect, and a
+  `max-width: 720px` block.
+- **What now catches it**: the browser pass screenshots each step and a human reads them. That is
+  weaker than a test and it is honest about what it is: **a stylesheet's absence is not a property
+  a DOM assertion can hold**, and pretending otherwise is how this shipped.
+
+## F151 — the list said "showing 1 of 3", and the two numbers were a count of what the caller may not see
+
+- **What**: `GET /api/maintenance-windows` filtered the page seven ways — status, organization,
+  element, owner, since, until, **and the caller's visibility scope** — and reported a `total` from
+  `count_maintenance_windows(statuses)`, which applied **one** of them. Two defects in one number:
+  - the device card's `?ne_id=` view said *"showing 1 of 3"* for an element with one window, which
+    is the console's own honesty claim being false on the screen that makes it;
+  - a **scoped viewer's** total counted the windows the scope had just withheld, so the difference
+    between the page and the total was a census of the estate they may not see.
+- **Reproduce**: three windows, one on `10.50.0.1` and two on `10.99.0.1`, a viewer scoped to
+  `10.50.0.0/24`:
+
+  ```
+  page=1  new total=1  old total (unscoped COUNT(*))=3
+  ```
+
+- **Why nothing caught it**: `total` was asserted exactly once, as `== 0`, in a test whose subject
+  was that the preview writes nothing. A zero agrees with every filter. The scope tests asserted
+  the **rows**, which were right, and never the number printed beside them.
+- **The deeper cause, and why the repair is not "pass the filters too"**: the scope was applied in
+  the **handler**, by dropping rows the query had returned. That is the render-side filtering prime
+  directive 6 forbids, and F151 is what it produces — a second statement that does not know what the
+  first one hid. `_window_filters()` is now one function building the WHERE clause both statements
+  run, scope included, so the page and the total cannot disagree by construction. The handler's
+  drop survives only as the documented fallback for a scope too large to bind
+  (`MAX_SCOPE_PARAMS`), which `count_maintenance_windows` answers by projecting id pairs.
+- **What now catches it**: `test_the_total_counts_the_windows_the_caller_can_actually_see` and
+  `test_the_total_follows_every_filter_and_not_only_the_status`, which assert
+  `total == len(windows)` across seven filters rather than asserting a constant.
+
+## F152 — an idempotency key handed back a window the caller could not open
+
+- **What**: the retry answer in `POST /api/maintenance-windows` looked the key up, found the
+  window, and returned `shape(window, principal, now)`. `shape` redacts on `may_see_details`, which
+  is **true for every editor and admin** — the visibility scope is a different question, asked by
+  `visible_or_404` on every other route on this resource and by this one on none. A scoped editor
+  replaying a key they did not create received the name, description, owner and organization of
+  work over elements `GET /api/maintenance-windows/{wid}` answers **404** for.
+- **Reproduce**: an admin creates a window on `10.99.0.1` with `idempotency_key: "shared-key"`; an
+  editor scoped to `10.50.0.0/24` posts any window with the same key. Before: `200` carrying
+  `"name": "core router swap"`. After: `200` carrying `"redacted": true` and no name.
+- **Why nothing caught it**: the idempotency test and the scope tests were both correct and neither
+  crossed. One asserted a retry returns the same id; the other asserted a scoped caller gets 404
+  from the read route. The route that returns a window **without being asked for that window** was
+  in neither's subject.
+- **Repair**: `WindowAccess.in_scope()` — the scope half of `visible_or_404`, lifted so two callers
+  can ask it — and `shape(..., in_scope=False)`, which forces the public half whatever the role.
+  The replay still answers `200`, because the key **is** taken and refusing would tell the caller
+  less while costing them a retry loop; what it no longer does is describe the work.
+- **What now catches it**: `test_an_idempotency_key_does_not_hand_back_a_window_out_of_scope`,
+  which asserts the 404 from the read route and the redaction from the replay **in the same test**,
+  so the two can never again be separately correct.
+
+## F153 — every scope denial on a window was filed as an attempted update
+
+- **What**: `visible_or_404` audited its denial with the literal `"maintenance.window.update"`, and
+  nine handlers share it. A viewer opening a card they may not see, an editor confirming an
+  out-of-scope window, an operator ending one — all three wrote the same row. The perimeter's own
+  contract says a denial is recorded *"under the action the caller attempted, so a scoped principal
+  probing the write surface leaves a trail"*, and the trail said they had tried to change things.
+- **Why it matters more than it looks**: an auditor reading `maintenance.window.update / denied ×5`
+  sees a principal attempting writes, which is an incident. Reading `read / confirm / cancel / end
+  / extend` they see a principal walking a resource, which is a misconfigured scope. The log's job
+  is to tell those apart.
+- **Why nothing caught it**: the audit tests drive **successful** actions through
+  `_drive_every_action` and assert the catalog is complete. A denial's action string is written on
+  a path no completeness test walks, and the one action it wrote was already in the catalog — so
+  the guard that would have caught a *new* wrong action could not catch a *reused* one.
+- **Repair**: `visible_or_404(..., action)` — each handler names what it was attempting — and
+  `maintenance.window.read` added to `crosscutting/audit.py::ACTIONS`, written **only** as a
+  denial. The registry caught the addition immediately, which is the guard working: the first run
+  after the change failed with `unknown audit action 'maintenance.window.read'`.
+- **What now catches it**: `test_a_scope_denial_is_audited_under_the_action_that_was_attempted`,
+  which drives all five refusals and asserts the five distinct action strings in order.

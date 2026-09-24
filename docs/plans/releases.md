@@ -44,6 +44,7 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.19.0** | **The operator's day** — set the appliance up from the boot banner, point real traffic at it, work the queue over several shifts, and fix what hurt. Five defects no test in this repository could have found, the worst of which merged an entire estate. **Shipped.** | `operators-day` |
 | **v0.20.0** | **The value is the control** — the Overview made compact and direct, the situation panel's verdict promoted over its arithmetic, editing where the value is shown rather than behind a button, and the read models the console was waiting on. **Shipped.** | `value-is-the-control` |
 | **v0.21.0** | **Maintenance windows** — planned work as a first-class declaration with a mandatory time zone and an organization, per-target collection rules composed from severity, OID subtree and time slot, a state ledger so a fault outliving its window still surfaces, and severity placed at ingest so the rules have something to read. **Shipped.** | `maintenance-windows` |
+| **v0.21.1** | **Planned work, repaired** — the maintenance screen made usable by an operator rather than by a test: the form that could not submit, the stylesheet that was never written, the API errors that rendered as `[object Object]`, an Overview card for what is scheduled, and the three disclosure defects a role-by-role pass found behind them. No new capability, no migration. **Shipped.** | `planned-work-repaired` |
 
 ## Why the order cannot be permuted
 
@@ -615,6 +616,7 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 <!-- release-claim: v0.19.0 = operators-day -->
 <!-- release-claim: v0.20.0 = value-is-the-control -->
 <!-- release-claim: v0.21.0 = maintenance-windows -->
+<!-- release-claim: v0.21.1 = planned-work-repaired -->
 
 ## What this document does not decide
 

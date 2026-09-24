@@ -1404,16 +1404,35 @@ def test_every_indirect_scope_call_really_resolves_the_scope() -> None:
 
     Without it, the previous test degrades from *"this handler resolves the caller's scope"* to
     *"this handler mentions a word"*, which is the shape of guard F35 was about.
+
+    **One level of indirection is allowed and it is enumerated here.** v0.21.1 lifted the scope
+    half of `visible_or_404` into :meth:`WindowAccess.in_scope`, because the idempotency replay in
+    `create_window` needed to ask the same question and was not asking it (F152) — so a method may
+    reach `scope_for` through another method **on this class whose own source this test reads**.
+    That is the whole allowance: a call to anything else still fails, which is what stops this
+    from becoming the name-matching guard it exists to replace.
     """
     import inspect
 
     from netcorenoc.api.mw_shape import WindowAccess
 
-    for name in ("scope_ne_ids", "permitted_targets", "visible_or_404"):
+    #: Methods that must resolve a scope directly. Anything they may delegate to is a key below.
+    resolvers = {"scope_ne_ids", "permitted_targets", "in_scope"}
+    delegates = {"visible_or_404": "self.in_scope("}
+    for name in sorted(resolvers):
         source = inspect.getsource(getattr(WindowAccess, name))
         assert "self.scope_for(" in source or "self.scope_ne_ids(" in source, (
             f"WindowAccess.{name} no longer resolves a scope, so every maintenance-window write "
             "that relies on it is outside the write perimeter while still passing F34"
+        )
+    for name, call in delegates.items():
+        source = inspect.getsource(getattr(WindowAccess, name))
+        assert call in source, (
+            f"WindowAccess.{name} no longer reaches {call.rstrip('(')}, so the scope check it is "
+            "trusted for has gone missing behind a name this test still accepts"
+        )
+        assert call.removeprefix("self.").rstrip("(") in resolvers, (
+            f"{name} delegates to a method this test does not read the source of"
         )
 
 

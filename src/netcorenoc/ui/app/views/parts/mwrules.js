@@ -69,9 +69,13 @@ export class TargetRules extends Component {
     const { adding, draft } = this.state;
     const mine = rules.filter((r) => r.ne_id === target.ne_id);
     return html`<li class="mw-target" data-ne=${target.ne_id}>
+      ${/* `.ip`, not `.address` — F149's field-name family again. A target comes from
+            `/api/entities` through `normaliseHosts`, which carries `ip`; `target.address` is
+            `undefined`, so this heading rendered an empty `<strong>` and the operator could not
+            tell which host the rules below belonged to. */ null}
       <div class="mw-target-head">
-        <strong>${target.label || target.address}</strong>
-        ${target.label ? html`<span class="muted mono">${target.address}</span>` : null}
+        <strong>${target.label || target.ip}</strong>
+        ${target.label ? html`<span class="muted mono">${target.ip}</span>` : null}
       </div>
       <div class="mw-chips" data-role="chips">
         ${mine.length === 0

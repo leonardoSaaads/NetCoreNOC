@@ -4740,3 +4740,83 @@ From this release an entry is about six lines: decision, reason, release.*
   the severity census, and #364 is the rest of the answer — a severity *rule* needs a severity
   *placed*, which is D5, which had not been built. Shipping windows at v0.16.8 would have shipped a
   filter that admitted nothing on any real estate.
+
+## 376. The scope filter for the window list moves into the query, and the total is built from the same clause (v0.21.1)
+
+- **The bug is F151; the decision is where the filter lives.** `list_windows` resolved the caller's
+  scope, ran an unscoped query, and dropped rows in the handler. That is the render-side filtering
+  prime directive 6 forbids, and it produced exactly what the directive predicts: a second
+  statement — `COUNT(*)` — that did not know what the first had hidden, printed beside the page as
+  its total.
+- **One WHERE clause, two statements.** `_window_filters()` is a module-level function returning
+  `(clause, args)`; the list and the count both call it. Not a shared method, because a reviewer
+  asking *"do these two agree?"* should be able to answer from one function's body rather than
+  from two call sites' argument lists.
+- **A window with no targets is in every scope.** It names no element, so no scope can withhold it.
+  That reading was already in the handler's Python and is now the first half of the disjunction,
+  where it is reviewable.
+- **The handler's drop survives, as the `MAX_SCOPE_PARAMS` fallback only.** A scope of more than
+  30 000 elements binds no id list, and truncating one would answer a different question quietly —
+  `window_markers` and `severity_census` both make this same choice. The count answers the
+  oversized case by projecting `(window_id, ne_id)` pairs and counting in Python, which is
+  affordable here and nowhere else in this codebase: `maintenance_window` holds **declared** work,
+  not traffic.
+- **What was considered and rejected**: returning `total: null` for a scoped caller. It is honest
+  and it makes the console's *"showing 5 of 23"* unrenderable for exactly the principals most
+  likely to be reading a filtered list.
+
+## 377. The idempotency replay answers with the public half, not a 404 and not a refusal (v0.21.1)
+
+- **The key is unique across the appliance, not per caller**, and that is deliberate: a retry after
+  a timeout must find the window whoever holds the token retried with. It makes
+  `POST /api/maintenance-windows` the one route that can hand a caller a window they did not ask
+  for by id, which is how F152 happened.
+- **Three answers were possible** for a key belonging to work outside the caller's scope:
+  1. **409, "this key is taken"** — refuses the retry and tells them the key exists, which is the
+     oracle without the usefulness;
+  2. **create a second window** — impossible; the partial unique index exists precisely to stop it,
+     so this is a 500;
+  3. **`200`, the public half** — the key is taken, the window exists, its timing and status are
+     public to every role already (prime directive 4), and its name, owner and organization are
+     not disclosed.
+- **Three is chosen** because it is the only one that is both a working retry and a non-disclosure,
+  and because prime directive 4 has already decided that a window's *existence* is public. The
+  redaction it applies is the redaction a viewer gets from the list, which means there is one
+  answer to *"what may a caller see of a window they cannot open?"* rather than two.
+- **`in_scope()` is a method on `WindowAccess`, not a second copy of the check.**
+  `tests/test_governance.py::test_every_indirect_scope_call_really_resolves_the_scope` reads the
+  source of every method the write-perimeter guard trusts, and it now enumerates the one permitted
+  level of delegation. A guard that accepted *any* helper name would be the name-matching guard it
+  exists to replace.
+
+## 378. A scope denial names the action the caller attempted (v0.21.1)
+
+- **Nine handlers shared one literal**, so the audit log said `maintenance.window.update` for a
+  read, a confirm, a cancel, an end and an extend (F153). The perimeter's docstring already stated
+  the rule the code was breaking.
+- **`maintenance.window.read` is written only as a denial**, and the catalog entry says so. A
+  successful read of a window is not audited — this resource is not a sensitive read like
+  `quarantine.read`, and auditing every card an operator opens would bury the denials that matter
+  in a log of ordinary work.
+- **The action is a parameter rather than derived from the request.** Deriving it from the method
+  and path would re-implement the route table in the helper, and the one place it went wrong would
+  be a path the router matched differently from the string.
+
+## 379. The Overview gets a planned-work card, and it is built so that it cannot take the dashboard down (v0.21.1)
+
+- **The Overview answered *"what is broken?"* completely and *"is any of this on purpose?"* not at
+  all.** A quiet estate at 02:00 looked identical whether nobody had touched it or somebody had a
+  window open over half of it. The per-device marker (F146) answers that once you are already
+  looking at the device; this answers it before you go looking.
+- **A running window leads, and it is a sentence rather than a row.** It is the only state that
+  changes how the rest of the screen should be read: while it is in force, the alarm counts above
+  it are incomplete by construction. Scheduled work is context; running work is a caveat.
+- **Three upcoming rows, then a link.** A fourth is a scroll on a summary whose subject is one
+  click away.
+- **Its own fetch, its own error state, its own failure.** `/api/maintenance-windows` needs
+  `mw.read`; a deployment that withheld it, or an appliance mid-migration, answers 403 or 500 here.
+  This is v0.12.0's `Promise.all` lesson as a component boundary — the panel renders one quiet line
+  and the other panels are untouched. **A blank Overview during an incident is the worst thing this
+  console can do**, and a card added for convenience must not be able to cause one.
+- **A redacted row still shows that the window exists** — *"Maintenance on 3 hosts"* — because
+  prime directive 4 does not stop at the device card.

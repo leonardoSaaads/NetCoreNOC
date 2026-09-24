@@ -448,6 +448,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/mwrules.js"),
     ("GET", "/app/views/parts/mwtime.js"),
     ("GET", "/app/views/parts/mwmarker.js"),
+    ("GET", "/app/views/parts/mwsummary.js"),
+    ("GET", "/app/views/parts/mwreview.js"),
     ("GET", "/app/views/parts/decide.js"),
     ("GET", "/app/views/parts/finder.js"),
     ("GET", "/app/views/parts/pulse.js"),
@@ -1162,8 +1164,13 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: and `crosscutting/shaping/timezones.py`, and six console modules. **No file was deleted and none
 #: moved**; what was removed this release is named in `HANDOFF.md` §7.4 and is smaller than a file
 #: in every case.
-SRC_TREE_DIGEST = "85cf11bcffd476066fae183862212f03f823976c9b6f153219c475799139a297"
-SRC_FILE_COUNT = 253
+#:
+#: **v0.21.1: 253 -> 255.** Two console modules. `views/parts/mwsummary.js` is the Overview's
+#: planned-work card, and `views/parts/mwreview.js` is the stepper's card 4, split out of
+#: `mwform.js` when the UX repairs pushed it to 448 lines — split along a noun rather than the
+#: limit being raised, which is what MODULE-ARCHITECTURE.md §2 asks for.
+SRC_TREE_DIGEST = "b0a33f015d6172c9b1b295883766393c29b74dbab46820a2680c4db2853f2afc"
+SRC_FILE_COUNT = 255
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1229,7 +1236,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.21.0", "the version this release carries"
+    assert __version__ == "0.21.1", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

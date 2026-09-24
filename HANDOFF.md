@@ -737,3 +737,77 @@ Both are fixed, both have a test that fails without the fix, and both are in `do
 * **No caches** in the tree handed over: `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`
   and `node_modules` are excluded.
 * **This file is at the root.**
+
+---
+
+# Addendum — v0.21.1, "planned work, repaired"
+
+**This file above documents v0.21.0 and is not rewritten.** What follows is what happened after it
+was handed over, because the first thing an operator did with the feature was fail to use it.
+
+## A.1 The report
+
+> *"The UI/UX is terrible — unintuitive and buggy. The 'Schedule it' button doesn't work. I even
+> suspect the API call isn't working, as nothing happens when I click the button."*
+
+Five distinct defects were in that message and one screenshot. §8 of this document reports every
+gate green for the release that shipped them, which is the fact worth keeping: **the gates measured
+the appliance and nobody had measured the screen.**
+
+## A.2 What the five were
+
+| symptom | cause | finding |
+|---|---|---|
+| the button did nothing | the form sent `targets: [null]` — it read `ne_id`, `/api/entities` serves `id` | F149 |
+| `[object Object]` | FastAPI's `detail` is a list of dicts; `ApiError` stringified it | F149 |
+| `51020`, run-together card text, a black timeline bar | the screen had **no CSS rules at all** | F150 |
+| `Owner:` empty | `me.username`; the session carries `me.user` | F149's family |
+| "Pick at least one host" with hosts picked | the preview had 422'd, so the card had no counts | F149 |
+
+**F149's root cause is F146 with the arrow reversed**, and the mechanism is the one §7 of this
+document named: `tests/uifixtures.py` fabricated entity rows carrying a field the real route has
+never served, so every DOM test drove the form against a payload shaped the way the form wished the
+API were shaped. The fix is an adapter at the boundary (`normaliseHosts`) and a test that asserts
+the **response**'s shape rather than a fixture's.
+
+## A.3 What driving it as each role then found
+
+Four narratives — viewer, editor, admin, agent — each doing its actual job end to end. The
+permission matrix beside them found nothing; v0.21.0's authorization table was right. The four days
+found three defects that a matrix cannot see, because each is the behaviour *around* a refusal:
+
+- **F151** — `total` applied the status filter and no other, and ignored the caller's scope. The
+  device card said *"showing 1 of 3"*, and a scoped viewer's total was a count of the windows the
+  scope had just withheld. The scope was being applied in the **handler**, which is the render-side
+  filtering prime directive 6 forbids; it is now in the query, and one `_window_filters()` builds
+  the clause both statements run (#376).
+- **F152** — the idempotency replay was the one route on this resource that skipped the scope
+  check, so a scoped editor replaying a key received the name and owner of work `GET /{wid}`
+  answers 404 for. It now answers with the public half (#377).
+- **F153** — every scope denial was audited as an attempted `maintenance.window.update`, whatever
+  had been attempted. An auditor reading that log sees a principal probing the write surface (#378).
+
+## A.4 Verification
+
+| gate | result |
+|---|---|
+| `pytest` | **2 220 passed** (2 219 + the oversized-scope fallback test), 0 failed |
+| `make dom` | 85 passed |
+| `make lint typecheck deadcode scan` | clean — ruff, mypy 279 files, vulture, bandit |
+| `make eval` | **no gated regressions**; every metric ±0.0000 against the frozen baseline |
+| coverage | **94.91 %** against an 85 % floor; `mw_shape.py` 100 %, `inventory.py` 100 % |
+| behaviour identity | **every API response byte-identical.** The only rows that moved are the
+  console assets, `/openapi.json` and `/healthz` — the version string |
+| live pass | a booted appliance, a real Chromium: preview → create → **200 POST** → the window in
+  the list; the Overview card at 8 panels for editor **and** viewer, the viewer's row redacted to
+  *"Maintenance on 2 hosts"* |
+
+The behaviour-identity row is the one worth reading twice: three security defects were repaired and
+**no API response changed**, because all three were about what a caller may see rather than about
+what the resource is.
+
+## A.5 What is still not in it
+
+D3 — basic SNMP polling — is still not built, for the reasons §1 gives in full. This release
+repaired a screen and closed three disclosure defects; it did not start a credential-handling
+subsystem, and sizing that work by the convenience of having the tree open is what §1 refused.

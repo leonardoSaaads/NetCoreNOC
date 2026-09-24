@@ -50,28 +50,41 @@ class WindowAccess:
         scope = await self.scope_for(principal)
         return None if scope.unrestricted else scope.ne_ids
 
+    async def in_scope(self, window: dict[str, Any], principal: auth.Principal) -> bool:
+        """Whether this caller's visibility scope reaches any element the window names.
+
+        A window naming **no** element is in every scope: it belongs to no device, so there is no
+        device a scope could withhold. That is the reading `list_windows` and `visible_or_404`
+        have always had; it is a method now because :meth:`visible_or_404` is not the only route
+        that must ask — the idempotency replay in `create_window` asks too, and did not (F152).
+        """
+        targets = await self.store.window_targets(int(window["id"]))
+        scope = await self.scope_for(principal)
+        if scope.unrestricted or not targets:
+            return True
+        return any(scope.allows_ne(t["ne_id"]) for t in targets)
+
     async def visible_or_404(
-        self, wid: int, principal: auth.Principal, request: Any
+        self, wid: int, principal: auth.Principal, request: Any, action: str
     ) -> dict[str, Any]:
         """One window the caller may see in full, or the 404 a nonexistent one takes.
 
         **Out of scope and nonexistent are one code path** — same status, same body, same timing
         (DECISIONS #60, #65). A viewer looking at an `editors`-visibility window gets the 404, and
         learns the window exists only from the marker on the device, which carries no details.
+
+        `action` is what the caller was attempting, and it is a parameter because the perimeter's
+        contract is that a denial is *"audited under the action the caller attempted"*. Every
+        window route passed the literal `maintenance.window.update` until v0.21.1, so an auditor
+        reading the log saw a scoped principal probing the write surface when what they had
+        actually done was read a card or confirm a window (F153).
         """
         window: dict[str, Any] | None = await self.store.maintenance_window(wid)
         if window is None:
             raise HTTPException(status_code=404, detail="no such maintenance window")
-        if not may_see_details(window, principal):
+        if not may_see_details(window, principal) or not await self.in_scope(window, principal):
             await self.audit_scope_denial(
-                request, principal, "maintenance.window.update", "maintenance_window", str(wid)
-            )
-            raise HTTPException(status_code=404, detail="no such maintenance window")
-        targets = await self.store.window_targets(wid)
-        scope = await self.scope_for(principal)
-        if not scope.unrestricted and not any(scope.allows_ne(t["ne_id"]) for t in targets):
-            await self.audit_scope_denial(
-                request, principal, "maintenance.window.update", "maintenance_window", str(wid)
+                request, principal, action, "maintenance_window", str(wid)
             )
             raise HTTPException(status_code=404, detail="no such maintenance window")
         return window
@@ -151,13 +164,20 @@ def may_see_details(window: dict[str, Any], principal: auth.Principal) -> bool:
     return str(window["owner_ref"]) == (principal.ref or "\x00")
 
 
-def shape(window: dict[str, Any], principal: auth.Principal, now: float) -> dict[str, Any]:
+def shape(
+    window: dict[str, Any], principal: auth.Principal, now: float, *, in_scope: bool = True
+) -> dict[str, Any]:
     """One window as this caller may see it.
 
     The public half is every field prime directive 4 requires every role to have: that it exists,
     what state it is in, when it runs, and **how long until it starts as a number** — D7's *"in 2 h
     15 min"*, computed here so the console and an agent read the same figure rather than each
     subtracting for themselves.
+
+    `in_scope=False` forces the public half whatever the role. It is how the idempotency replay
+    answers a key that belongs to a window over elements the caller cannot see: the key is taken
+    and the window exists — both of which prime directive 4 already makes public — and the name,
+    the owner and the organization are not disclosed to a caller `GET /{wid}` would 404 (F152).
     """
     public = {
         "id": window["id"],
@@ -173,7 +193,7 @@ def shape(window: dict[str, Any], principal: auth.Principal, now: float) -> dict
         "site_offset": shaping.offset_label(str(window["tz"]), float(window["starts_at"])),
         "redacted": True,
     }
-    if not may_see_details(window, principal):
+    if not in_scope or not may_see_details(window, principal):
         return public
     return {
         **public,

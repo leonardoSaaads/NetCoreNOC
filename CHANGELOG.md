@@ -9,8 +9,76 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-six rows, two ask for an
-action, sixteen ask you to read a paragraph, and eighteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-seven rows, two ask for an
+action, seventeen ask you to read a paragraph, and eighteen are start-the-new-binary.
+
+## [0.21.1] - 2026-09-24 — "planned work, repaired"
+
+v0.21.0 shipped maintenance windows with every gate green and the screen unusable. An operator
+opened it, filled the form, pressed **Schedule it**, and nothing happened — no window, no error, no
+sign that the appliance had been asked anything. This release is what that report was worth: two
+console defects, one missing stylesheet, and three disclosure defects found by driving the feature
+as each role in turn rather than as a test fixture.
+
+### The report, and what each line of it was
+
+| what the operator saw | what it was |
+|---|---|
+| "the Schedule it button doesn't work" | the form sent `targets: [null]`; every call was a 422 (F149) |
+| `[object Object]`, five times on one screen | FastAPI's `detail` is a list of dicts and `ApiError` stringified it (F149) |
+| `51020`, `Patch windowminutes either side` | the screen had **no CSS rules at all** (F150) |
+| `Owner:` followed by nothing | `me.username`; the session carries `me.user` |
+| "Pick at least one host" with a host picked | the preview had 422'd, so the card had no counts |
+
+### Fixed
+
+- **The form submits.** `normaliseHosts()` in `views/parts/mwdraft.js` adapts `/api/entities` at
+  the boundary — it serves `id`, the form read `ne_id` — and accepts either spelling and either
+  envelope. **F149.**
+- **No screen can print `[object Object]` again.** `readableDetail()` in `app/api.js` turns a
+  validation body into *"field: message"* sentences once, for every view. **F149.**
+- **The maintenance screen has a stylesheet.** ~200 lines: the stepper as a spaced row, card
+  padding and line boxes, `not set yet` for an unfilled summary, a ✓ on a chosen host, labels on
+  the rule composer, explicit `fill` on the timeline rects (an SVG rect with no fill paints
+  **black**, which is what the "solid bar" was), and a narrow-screen block. **F150.**
+- **`GET /api/maintenance-windows` counts what it returns.** `total` applied the status filter and
+  no other, and ignored the caller's visibility scope entirely — so a device card said *"showing 1
+  of 3"* and a scoped viewer's total was a census of the windows they may not see. One WHERE
+  clause now builds both statements, and the scope moved **into the query**, where prime directive
+  6 says it belongs. **F151, #376.**
+- **An idempotency key no longer discloses a window the caller cannot open.** The retry answer was
+  the one route on this resource that skipped the scope check; it now answers with the public half.
+  **F152, #377.**
+- **A scope denial is audited under the action attempted** — `read`, `confirm`, `cancel`, `end`,
+  `extend` — rather than all five as `maintenance.window.update`. **F153, #378.**
+- The rules card rendered a blank host heading (`target.address`; the field is `target.ip`), the
+  upcoming list printed *"1 1 device"* (`plural()` already carries the number), and two lines ran
+  together where htm collapsed a newline between expressions.
+
+### Added
+
+- **A *Planned work* card on the Overview.** A running window leads as a sentence, because it is a
+  caveat on every alarm count above it; then up to three upcoming rows and a link. It fetches its
+  own data and holds its own error state, so a deployment that withholds `mw.read` or an appliance
+  mid-migration costs one quiet line rather than the dashboard. **#379.**
+- **`tests/test_maintenance_roles.py`** — anonymous, viewer, editor, admin and a service-token
+  agent, driven across all thirteen routes of the surface as a permission matrix, then each one
+  doing its actual job end to end. The matrix found nothing; the four days found F151, F152 and
+  F153, which is the point of writing both.
+- `maintenance.window.read` in the audit catalog, written **only** as a denial.
+
+### Changed
+
+- `count_maintenance_windows()` takes the filters `list_maintenance_windows()` takes, and both
+  build their WHERE clause from `_window_filters()`.
+- `WindowAccess.visible_or_404()` takes the attempted action; `WindowAccess.in_scope()` is the
+  scope half, lifted so the create route can ask it too.
+
+### Not in this release
+
+- **No migration, no new capability, no new route.** The served surface moves 146 → 148 and both
+  additions are console modules.
+- SNMP polling. Still `HANDOFF.md` §1.
 
 ## [0.21.0] - 2026-09-21 — "planned work, and the severity that was there all along"
 

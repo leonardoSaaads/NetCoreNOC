@@ -48,6 +48,7 @@
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Empty, Loading, Failed, SectionHeading } from "../widgets.js";
+import { PlannedWork } from "./parts/mwsummary.js";
 import {
   DEFAULT_RANGE_S, Estate, Happening, RANGE_BUCKETS, RANGES, RangePicker,
 } from "./parts/pulse.js";
@@ -173,6 +174,13 @@ export class Overview extends Component {
           <${Happening} data=${activity} rangeS=${rangeS} error=${activityError}
                         retry=${() => this.readActivity()} />
         <//>
+        ${/* **Planned work sits third, and the position is the argument** (v0.21.1). It is not
+              another statistic: while a window is in force the alarm counts in the two panels
+              above are incomplete by construction, so it has to be read before the estate grid
+              and the situation list rather than after them. It is behind `mw.read`, which is
+              `viewer` — prime directive 4 again: an operator who cannot see that planned work
+              exists reads a quiet estate as a healthy one. */ null}
+        ${can("mw.read") ? html`<${PlannedWork} />` : null}
         <${Estate} nodes=${nodes} />
         <${Keeping} stats=${stats} ring=${live.ring} rate=${live.trapRate} />
         <section class="panel-block">
