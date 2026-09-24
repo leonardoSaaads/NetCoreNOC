@@ -113,7 +113,8 @@ NOT_DRIVEN = frozenset({("GET", "/api/events")})
 #:
 #: **1. Query parameters — none are driven.** `_request` builds every URL from the route's path
 #: template and sends no query string at all, so each of these routes is recorded at its *defaults*
-#: only. Measured at v0.20.0: **eleven parameters across four routes**, and `q` is the server-side
+#: only. Measured at v0.21.0: **twenty-two parameters across six routes** (eleven across four
+#: at v0.20.0), and `q` is the server-side
 #: situation search added in v0.16.1. A regression in search, in `status` filtering, or in the
 #: timeline's `since`/`until`/`ne_id` window leaves this record byte-identical. That is the largest
 #: gap in it, and until v0.17.0 it was not written down anywhere — unlike `NOT_DRIVEN`, which at
@@ -154,6 +155,27 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/timeline"): ("buckets", "limit", "ne_id", "range_s", "since", "until"),
     ("GET", "/api/quarantine"): ("limit",),
     ("GET", "/api/audit"): ("limit",),
+    # v0.21.0. The window list's filters, undriven for the reason every entry above is: this
+    # record builds each URL from the path template alone, so the route is recorded at its
+    # defaults — an empty estate's first page. **`offset` and `limit` are the two worth naming**:
+    # a paging regression leaves this record byte-identical, and the list is the screen D7 is
+    # about. They are driven instead by `tests/test_maintenance_api.py`, over a real estate with
+    # more windows than one page holds, which is the shape this harness cannot build.
+    ("GET", "/api/maintenance-windows"): (
+        "limit",
+        "mine",
+        "ne_id",
+        "offset",
+        "organization_id",
+        "since",
+        "status",
+        "until",
+    ),
+    # `q` is the city search and `at` is the instant the offsets are computed for — the second is
+    # the one that matters, because a window across a DST transition has two offsets and `at` is
+    # how the console asks for the right one. Recorded at its default (now, frozen by this
+    # harness), and driven against a real transition by `tests/test_timezones.py`.
+    ("GET", "/api/timezones"): ("at", "limit", "q"),
 }
 
 #: Headers dropped from the record, with the reason each one is not a behaviour of this project.

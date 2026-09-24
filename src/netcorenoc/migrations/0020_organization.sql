@@ -51,8 +51,25 @@ CREATE TABLE organization (
 --
 -- Named for what it is rather than for a customer nobody named. An admin renames it in one gesture
 -- and every element follows, because the elements reference the row and not the string.
+-- `created_at` is **0.0, not a clock reading**, and that is the second thing this migration got
+-- wrong before it shipped. The first draft wrote `strftime('%s', 'now')`, which is **SQLite's own
+-- clock** — the only place in this codebase where a timestamp comes from anywhere but Python's
+-- `time.time()`. Two consequences, and the second is why it had to go:
+--
+--   1. `tests/behaviour_identity.py` freezes `time.time` and cannot reach SQLite's clock, so this
+--      one row made the whole HTTP record irreproducible across processes. The harness said so in
+--      the words it was written to say: *"something in a response varies for a reason this harness
+--      has not named."* It was right, and the unnamed thing was here.
+--   2. The value was never true anyway. This row is created **by the migration**, so its honest
+--      creation time is the database's, which this appliance does not record. Stamping it with
+--      the instant a schema upgrade happened to run would answer *"when was this organization
+--      created?"* with *"when did you upgrade?"*.
+--
+-- So the default organization is **as old as the database**, written as 0.0, and the column means
+-- what it says for every organization an operator actually creates: `POST /api/organizations`
+-- passes `time.time()` like every other write in this tree.
 INSERT INTO organization (name, slug, created_at, is_default)
-VALUES ('Default organization', 'default', strftime('%s', 'now') + 0.0, 1);
+VALUES ('Default organization', 'default', 0.0, 1);
 
 -- The attribution itself. NULL is possible only in the instant between an element being discovered
 -- and the sweep attributing it, and the read models coalesce it to the default — so a new element

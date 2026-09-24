@@ -1162,7 +1162,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: and `crosscutting/shaping/timezones.py`, and six console modules. **No file was deleted and none
 #: moved**; what was removed this release is named in `HANDOFF.md` §7.4 and is smaller than a file
 #: in every case.
-SRC_TREE_DIGEST = "71033bee73c149eb879abb7a5ae862b612f03e2368afe79ce65fc42ed978a8ac"
+SRC_TREE_DIGEST = "18cad2d793c56411e3954b8b6840443e49b1ca902a618a821b0d4d3407e53b1d"
 SRC_FILE_COUNT = 253
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
@@ -1266,3 +1266,55 @@ def test_no_runtime_path_is_derived_by_counting_parents() -> None:
         + "\n\nResolve from `netcorenoc.__file__` instead: a count is wrong the moment the module "
         "moves, which is what happened to `routes/static.py` in v0.16.2 (F102)."
     )
+
+
+def test_no_migration_reads_a_clock_of_its_own() -> None:
+    """**Every timestamp in this appliance comes from Python's `time.time()`** (v0.21.0).
+
+    `0020` seeded the default organization with `strftime('%s', 'now')` — SQLite's clock, the one
+    place in the tree a timestamp came from anywhere else. It cost the release its
+    behaviour-identity record: `tests/behaviour_identity.py` freezes `time.time` and cannot reach
+    a clock inside the database engine, so one seeded row made the whole HTTP record irreproducible
+    across processes, and the harness reported exactly that — *"something in a response varies for
+    a reason this harness has not named"*.
+
+    The deeper reason is not the test. A row created **by a migration** has no creation instant of
+    its own to record; stamping it with the moment a schema upgrade happened to run answers *"when
+    was this created?"* with *"when did you upgrade?"*. A seeded row is as old as the database, and
+    `0.0` says so.
+
+    Scanned rather than listed, so a migration added later cannot reintroduce it quietly.
+    """
+    import re
+
+    clocks = re.compile(
+        r"strftime\s*\(|datetime\s*\(\s*'now'|CURRENT_TIMESTAMP|julianday\s*\(", re.I
+    )
+    offenders: list[str] = []
+    for path in sorted((PKG / "migrations").glob("*.sql")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("--"):
+                continue  # prose may name the thing it is explaining
+            if clocks.search(line):
+                offenders.append(f"{path.name}:{lineno}: {stripped[:80]}")
+    assert not offenders, (
+        "these migrations read a clock inside SQLite rather than taking one from the "
+        "application:\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_the_migration_clock_scanner_would_see_one() -> None:
+    """The control. Without it the test above passes on a regex that matches nothing."""
+    import re
+
+    clocks = re.compile(
+        r"strftime\s*\(|datetime\s*\(\s*'now'|CURRENT_TIMESTAMP|julianday\s*\(", re.I
+    )
+    for sample in (
+        "VALUES ('x', strftime('%s', 'now'), 1);",
+        "created_at REAL DEFAULT CURRENT_TIMESTAMP",
+        "SELECT datetime('now')",
+    ):
+        assert clocks.search(sample), f"the scanner cannot see {sample!r}"
+    assert not clocks.search("INSERT INTO organization VALUES ('Default organization', 0.0);")

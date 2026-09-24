@@ -104,28 +104,6 @@ export function age(epochSeconds, now = Date.now() / 1000) {
   return `${(seconds / 86400).toFixed(1)}d`;
 }
 
-/**
- * `HH:MM` in the **browser's own zone** (v0.21.0, D2).
- *
- * The one deliberate exception to "every rendered time carries its offset", and it earns the
- * exception by never appearing alone: it is the second half of the maintenance form's one line —
- * *"10:00 Riyadh · 04:00 your time (Brasília)"* — where the zone is named in the prose beside it
- * and the site's own clock is right there for comparison. Appending `-03:00` to a number that is
- * already labelled *your time* would make the line longer and no clearer, on a control an
- * operator reads at 390 px with one thumb.
- *
- * It lives here rather than in the form for the reason every other time helper does: `format.js`
- * is the one module allowed to reach for a `Date`'s fields, and
- * `tests/test_ui_invariants.py::test_no_screen_renders_a_bare_locale_timestamp` is what keeps
- * that true. Built from the local getters rather than from `Intl`, so the output does not move
- * with the runner's locale — which is also what lets the DOM harness assert on it.
- */
-export function clock(epochSeconds) {
-  if (epochSeconds == null || Number.isNaN(epochSeconds)) return "—";
-  const d = new Date(epochSeconds * 1000);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 /** Both forms plus the zone, for a `title=`. One string, so no screen invents its own. */
 export function timeTitle(epochSeconds) {
   if (epochSeconds == null) return "no timestamp recorded";

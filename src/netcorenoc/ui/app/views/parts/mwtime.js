@@ -26,7 +26,7 @@
 
 import { html, Component } from "../../dom.js";
 import { get } from "../../api.js";
-import { TIMEZONE, clock } from "../../format.js";
+import { TIMEZONE } from "../../format.js";
 
 /* Where a maintenance window's bands sit on a 0..1 axis, and where `now` falls on it.
  *
@@ -75,6 +75,33 @@ export function TimelineBar({ startsAt, endsAt, patchS, now }) {
   </svg>`;
 }
 
+/* `HH:MM` in the **browser's own zone** (v0.21.0, D2).
+ *
+ * The one deliberate exception to *"every rendered time carries its offset"*, and it earns the
+ * exception by never appearing alone: it is the second half of the line below —
+ * *"10:00 Riyadh · 04:00 your time (Brasília)"* — where the zone is named in the prose beside it
+ * and the site's own clock is right there for comparison. Appending `-03:00` to a number already
+ * labelled *your time* would make the line longer and no clearer, on a control an operator reads
+ * at 390 px with one thumb.
+ *
+ * **It lives here rather than in `format.js`, for two reasons.** With it, `format.js` was 1 023
+ * bytes over the module-graph ceiling — F127's shape exactly, and the same remedy: the addition
+ * moves to its only consumer. And `chartdata.js` already exports a `clock(ts, spanS)`: a different
+ * function, a different arity, the same word. A second `clock` in the module every view imports is
+ * two things under one name, which is how a caller comes to get the other one.
+ *
+ * Built from the local getters rather than from `Intl`, so the output does not move with the
+ * runner's locale — which is what lets the DOM harness assert on it. It is not a `toLocale*` call,
+ * so `test_no_screen_renders_a_bare_locale_timestamp` is unaffected: that guard is about a time
+ * whose zone nothing states, and this one's zone is named in the sentence around it.
+ */
+function localClock(epochSeconds) {
+  if (epochSeconds == null || Number.isNaN(epochSeconds)) return "—";
+  const d = new Date(epochSeconds * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /* **The line D2 exists for.** The site's clock and the operator's own, side by side.
  *
  * Both are computed from the SERVER's rendering of the site zone (`site_time`, `site_offset`) and
@@ -83,7 +110,7 @@ export function TimelineBar({ startsAt, endsAt, patchS, now }) {
  */
 export function SiteAndYourTime({ instant, siteZone, siteTime, siteOffset }) {
   const site = (siteTime || "").slice(11, 16);
-  const mine = clock(instant);
+  const mine = localClock(instant);
   const sameZone = siteZone === TIMEZONE;
   return html`<p class="mw-clocks" data-role="clocks">
     <strong>${site || "—"}</strong> ${cityOf(siteZone)}
