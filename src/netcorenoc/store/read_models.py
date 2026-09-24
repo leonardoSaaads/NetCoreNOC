@@ -17,7 +17,6 @@ authorization key). ``ne_ids=None`` runs the unmodified v0.7.0 SQL, so parity is
 from __future__ import annotations
 
 import hashlib
-import json
 from typing import Any
 
 from netcorenoc.ingest import known_oids
@@ -34,27 +33,11 @@ from netcorenoc.store.types import MAX_SCOPE_PARAMS
 VOCAB_MAX_RANK = max(known_oids.SEVERITY_VOCAB.values())
 
 
-def _varbinds_of(blob: Any) -> list[dict[str, Any]]:
-    """The varbind list stored on an alarm row, or `[]` when it cannot be read (v0.17.1, #337).
-
-    `alarm.varbinds` is `TEXT NOT NULL DEFAULT '[]'` and only ever written by
-    `store/alarms.py` as `json.dumps` of validated models, so the unhappy path here should not
-    exist. It is written anyway because this runs on a **stats route the console polls**: one
-    truncated blob — a disk that filled mid-write, a row restored from a partial backup — would
-    otherwise 500 the Overview for the whole estate rather than cost that one alarm its severity.
-    Falling back to `[]` leaves the alarm **unplaced**, which is the honest reading of a row whose
-    varbinds cannot be read, and the count it lands in is one the screen already shows.
-
-    `store/entities.py` parses the same column with a bare `json.loads`; that is a background
-    sweep where a raise is visible in the logs and costs nothing a user is waiting on.
-    """
-    try:
-        parsed = json.loads(blob)
-    except (TypeError, ValueError):
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [vb for vb in parsed if isinstance(vb, dict)]
+# `_varbinds_of` was here until v0.21.0. It defended the census against a truncated `alarm.varbinds`
+# blob, which mattered while the census re-parsed that blob on every row to find a severity word.
+# D5 moved the placement to the ingest path and the census now reads three scalar columns, so there
+# is no JSON on this route to fail — the defence protects nothing and is removed rather than kept
+# as a helper nobody calls.
 
 
 class ReadModelsMixin(StoreBase):
@@ -95,15 +78,40 @@ class ReadModelsMixin(StoreBase):
         select = (
             # nosec B608 - one fixed literal from `_label_join`, chosen by a schema probe; every
             # other token here is a column name written in this string.
-            "SELECT s.label AS declared, a.severity AS learned, "  # nosec B608
-            "a.severity_rank AS learned_rank, a.ne_id AS ne_id, a.varbinds AS varbinds "
-            "FROM alarm a " + self._label_join("s", "severity", "a.class_id")
+            "SELECT s.label AS declared, a.severity AS placed, "  # nosec B608
+            "a.severity_rank AS placed_rank, a.ne_id AS ne_id, "
+            # Chosen by the schema probe, exactly as `_label_join` is. A database from before
+            # migration `0019` has no provenance column; `'learned'` is what every severity on
+            # such a database can only have come from, because the learned path was the sole
+            # writer of `alarm.severity` that has ever existed before this release.
+            + (
+                "a.severity_source AS source "
+                if self._has_severity_source
+                else "CASE WHEN a.severity IS NULL THEN NULL ELSE 'learned' END AS source "
+            )
+            + "FROM alarm a "
+            + self._label_join("s", "severity", "a.class_id")
         )
         # **v0.17.1: no GROUP BY, one row per active alarm** (DECISIONS #340). The standard read
-        # resolves from the alarm's own varbinds, which are unique per row, so there is nothing left
-        # to aggregate on. Measured before the change: 3.8 us to parse one varbinds blob, so a
-        # 2000-alarm estate costs about 7.6 ms per census — off the trap path, on a route the
-        # console polls, and paid only by the read.
+        # resolved from the alarm's own varbinds, which are unique per row, so there was nothing
+        # left to aggregate on.
+        #
+        # **v0.21.0 stops reading the varbinds at all** (#365). The provenance is now a column the
+        # ingest path writes — D5 — so this read is three scalars per row instead of a JSON parse
+        # and a vocabulary walk per row. Measured on the lab's own database amplified to **737
+        # active alarms**, mean of 20 runs:
+        #
+        #     v0.20.0  (JSON parse per row)        5 105.2 us
+        #     v0.21.0  (three scalar columns)      1 374.8 us     3.7x
+        #
+        # The saving is linear in the estate, and it is paid on a route the console polls every few
+        # seconds. It is a **consequence** of D5 rather than its purpose: the reason the placement
+        # moved to ingest is that the ingest path is where D4's severity rule is evaluated and
+        # there is no census there.
+        #
+        # The GROUP BY did not come back with it. It could now — the fields are per-class again —
+        # but the census counts ALARMS and grouping would count classes, which is a different
+        # number with the same name.
         group = ""
         rows: list[Any]
         if ne_ids is None:
@@ -143,16 +151,15 @@ class ReadModelsMixin(StoreBase):
             source: str
             if declared is not None:
                 rank, source = known_oids.severity_rank(declared), "declared"
+            elif row["source"] is not None:
+                # **What the ingest path placed, and where it got it** (v0.21.0, D5). `standard`
+                # is the trap's own word read in X.733's vocabulary — not an inference and not a
+                # claim about a vendor: the device said `critical` and this believes it. `learned`
+                # is the NE's confirmed severity field. The read no longer re-derives either;
+                # `engine/correlate/severity.py::place` decided once, per trap, and wrote it down.
+                rank, source = row["placed_rank"], str(row["source"])
             else:
-                # The trap's own word, read in X.733's vocabulary (#337). Not an inference and not
-                # a claim about a vendor: the device said `critical` and this believes it.
-                standard = known_oids.standard_severity(_varbinds_of(row["varbinds"]))
-                if standard is not None:
-                    rank, source = standard[1], "standard"
-                elif row["learned"] is not None:
-                    rank, source = row["learned_rank"], "learned"
-                else:
-                    rank, source = None, "unplaced"
+                rank, source = None, "unplaced"
             if rank is None:
                 # **`unplaced` stays a first-class count, never a zero** (prime directive 1). An
                 # alarm whose trap carried no severity word, whose NE confirmed no severity field

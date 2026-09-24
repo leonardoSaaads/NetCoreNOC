@@ -70,7 +70,7 @@ def used() -> dict[str, set[str]]:
 def test_the_table_and_the_call_sites_were_both_found() -> None:
     """Guard the guard. Two regexes that matched nothing would make every assertion below pass."""
     assert len(defined()) >= 20, f"the icon table did not parse: {sorted(defined())}"
-    assert len(used()) >= 17, f"the call sites did not parse: {sorted(used())}"
+    assert len(used()) >= 18, f"the call sites did not parse: {sorted(used())}"
 
 
 def test_every_icon_in_the_set_is_rendered_somewhere() -> None:
@@ -92,11 +92,11 @@ def test_every_view_in_the_registry_names_an_icon() -> None:
     """The sidebar renders one per view, so a view without one is a gap in the navigation."""
     registry = (UI / "app" / "registry.js").read_text(encoding="utf-8")
     ids = re.findall(r'id: "([a-z]+)", label: "[^"]+", icon: "([a-z-]+)"', registry)
-    assert len(ids) == 17, f"expected 17 views with icons, parsed {len(ids)}: {ids}"
+    assert len(ids) == 18, f"expected 18 views with icons, parsed {len(ids)}: {ids}"
     known = defined()
     for view_id, icon in ids:
         assert icon in known, f"view {view_id!r} names icon {icon!r}, which is not in the set"
-    assert len({icon for _v, icon in ids}) == 17, (
+    assert len({icon for _v, icon in ids}) == 18, (
         "two views share an icon; they are not the same screen"
     )
 

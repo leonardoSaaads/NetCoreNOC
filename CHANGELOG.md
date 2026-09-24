@@ -9,8 +9,115 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-four rows, two ask for an
-action, thirteen ask you to read a paragraph, and eighteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-six rows, two ask for an
+action, sixteen ask you to read a paragraph, and eighteen are start-the-new-binary.
+
+## [0.21.0] - 2026-09-21 — "planned work, and the severity that was there all along"
+
+The brief was **maintenance windows**: a target under planned work is not collected by default, and
+the exceptions are rules the operator writes. Building it found that the rule had nothing to read.
+
+### The headline measurement (II.1)
+
+In the reference lab, after fourteen cut/repair cycles:
+
+| | before | after |
+|---|---|---|
+| alarms carrying an X.733 severity word | 29 of 30 | 25 of 25 |
+| **rows with a severity placed** | **0 of 30** | **25 of 25** |
+| carried a severity, unplaced | 29 | **0** |
+| distinct alarms | 30 | **26** (the true fingerprint count) |
+| entities named after a severity word | 4 | **0** |
+
+v0.17.1 taught the **census** to read the standard column, which made the Overview's numbers right
+and left every row unplaced. A maintenance window's severity rule runs at **ingest**, where there
+is no census — so `alarm.severity` would have been NULL for every rule to test. That is why D5
+ships in this release rather than a later one (#364, #365).
+
+### Added
+
+- **Maintenance windows.** `maintenance_window`, `maintenance_window_target` and
+  `maintenance_window_rule` (`0021`), six statuses, a mandatory IANA zone stored beside the
+  instants (#362), and a patch band that widens the window equally at both ends.
+- **Per-target collection rules** in three kinds — severity, OID subtree, time slot. **Different
+  kinds are ANDed; the same kind is ORed** (#368). An OID rule matches on **arc boundaries, never
+  string prefixes** — `…1.1.1.1` does not admit `…1.1.1.10` — and says whether it looks at the
+  trap OID or at the varbinds (#369).
+- **The state ledger** (`maintenance_ledger`): per `(window, device, class, instance)`, raise seen,
+  clear seen, and two instants. Six scalars, **no varbinds, no severity, no payload** (#371). A
+  fault raised inside a window that never clears surfaces when the window closes; one that cleared
+  inside it does not.
+- **`/api/maintenance-windows`** — list, read, create, update, preview (dry-run through the same
+  code the form uses), confirm, cancel, end now, extend. RFC 3339 with an explicit offset always;
+  **a naive datetime is rejected**. Idempotency keys, machine-readable refusals naming field and
+  rule, `Literal` enums so `/openapi.json` carries the permitted values.
+- **Organizations** (`0020`, `/api/organizations`): every network element belongs to one, seeded
+  with a single default. **Attribution, not isolation**, and the migration says so in a banner
+  (#366, #367).
+- **`/api/timezones`**: 114 curated cities over 94 canonical zones, plus a **startup self-check**
+  that resolves every one against the `tzdata` the running image actually has (#363).
+- **The Maintenance console**: a four-card form opened one card at a time, an upcoming list of the
+  next 5/10/20, a hand-written SVG timeline drawing the window and both patch bands, and a marker
+  on every device and situation under planned work — **visible to every role**, with the details
+  following visibility.
+- **`alarm.severity_source`** (`0019`): `standard`, `learned` or absent. Provenance, never a guess.
+- **`POST /api/entities/{ne_id}/organization`** (admin): move one element between organizations.
+  Without it an organization is a row nothing can be put into and D1 is a column whose only
+  reachable value is its seeded default.
+
+### Fixed
+
+- **Severity is placed at ingest from the RFC 3877 / X.733 column** and wins over the learned path
+  (#365). The learned path is unchanged and still runs second.
+- **The severity varbind is no longer promoted to the entity role** (`0019`,
+  `varbind_profile.speaks_severity`). It was the most-observed varbind on every NE, so it crossed
+  the promotion floor first and won uncontested as the lowest-scoring of five candidates; the dedup
+  instance then became a severity word and **six ONUs collapsed into one alarm row**. `0019`
+  withdraws the role where every promoted key is an X.733 token.
+- **The census read is 3.7× cheaper**: 5 105.2 µs → 1 374.8 µs over 737 active alarms.
+- **The maintenance marker reaches the screens (F146).** The component and the query were both
+  written and **neither end was wired** — no route served a marker and no view rendered one, so
+  IV.3's *"visible to every role"* was documented and did not happen. It is v0.16.3's `ne.label`
+  again, found by `vulture` rather than by a test, because every marker assertion ran over a
+  fixture instead of a response. Markers now ship on `/api/entities`, `/api/entities/{ne_id}`,
+  `/api/situations` and `/api/situations/{sid}`, with `SurfacedMark` beside the member instance,
+  and the test that would have caught it drives a real window through a real viewer.
+
+### Changed
+
+- `models.py` splits mechanically at the 400-line guard and **re-exports by identity** (#374).
+- `crosscutting/rbac/` splits the route map out of the capability table, same rule, same guard.
+- `docs/plans/releases.md` is brought current — v0.19.0 and v0.20.0 had no row at all, and v0.16.8
+  still claimed `maintenance-windows` (#375).
+
+### Found by the live pass
+
+A real process, a real UDP socket, a real database and a real Chromium found two defects that no
+test in this repository could have:
+
+- **The time-zone search was not accent-blind (F147).** Typing **`Brasilia`** returned nothing —
+  the one city the brief names most often, unfindable from an ASCII keyboard, in the feature whose
+  premise is mandatory time zones. `timezones.fold()` now folds for comparison only; what is shown
+  is still `Brasília` and what is stored is still `America/Sao_Paulo`.
+- **A surfaced fault belonged to no situation (F148).** `POST …/end` answered `{"surfaced": 2}` and
+  the console showed nothing, because Situations is the only view that lists alarms and it lists
+  them as members. II.2 was true of the database and false of the product. Each surfaced alarm now
+  opens a **singleton** situation — never correlated, because it carries nothing to score — and the
+  engine's own membership map is updated with it, so the element's next real trap joins that
+  situation instead of opening a second.
+
+### Not in this release
+
+- **D3, basic SNMP polling.** It slips to **v0.21.1** rather than ship below the security minimum
+  II.6 defines (#373). `HANDOFF.md` §1 carries the plan. The placeholder capabilities `poll.read`
+  and `poll.write` and the `poll.target.update` audit action are **removed**, not left: a
+  capability with no route behind it is a promise of a feature nobody built.
+
+### Cost
+
+**+82 ns per trap** on an appliance with no windows, or with windows on other elements — one
+dictionary lookup, no query, no lock, no I/O. A suppressed trap is *cheaper* than a collected one,
+because it writes no alarm.
 
 ## [0.20.0] - 2026-09-21 — "the value is the control"
 

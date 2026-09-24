@@ -1147,6 +1147,62 @@ const scenarios = {
     };
   },
 
+  /**
+   * The Maintenance screen: the D7 list, and the four-card form (v0.21.0).
+   *
+   * Two things this reads that nothing else can: **a viewer sees a redacted row rather than no
+   * row** — prime directive 4, and the one property of this feature that a screenshot would show
+   * and a unit test would not — and **the form opens one card at a time**, which is D8 and is a
+   * claim about what is in the DOM rather than about what a component intends.
+   *
+   * The timeline bar's geometry is read too, because it is hand-written SVG precisely so that it
+   * can be: the harness has no layout engine, and every band carries a `data-band` so its width
+   * is a number this can assert rather than a picture somebody looks at.
+   */
+  async maintenance(params) {
+    const env = await boot(params);
+    env.navigate("#/maintenance");
+    await settle(env);
+    const rows = [...env.document.querySelectorAll("li.mw-row")].map((li) => ({
+      status: li.getAttribute("data-status") ?? "",
+      redacted: li.querySelector('[data-role="redacted"]') !== null,
+      countdown: (li.querySelector('[data-role="countdown"]')?.textContent ?? "").trim(),
+      text: li.textContent.replace(/\s+/g, " ").trim(),
+      confirm: li.querySelector('[data-role="confirm"]') !== null,
+      endNow: li.querySelector('[data-role="end-now"]') !== null,
+    }));
+    const open = env.document.querySelector('[data-role="new-window"]');
+    let cards = [];
+    let bands = [];
+    if (open && params.openForm) {
+      open.dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+      // Open a specific card by tapping its shut summary, which is how an operator moves
+      // backwards through the stepper. `Next` is the forward path and is disabled until the card
+      // it is on is complete, so it cannot be used to reach card 2 from an empty form.
+      if (params.card !== undefined && params.card !== null) {
+        const shut = env.document
+          .querySelectorAll("[data-card]")
+          .find((el) => Number(el.getAttribute("data-card")) === params.card);
+        if (shut && shut.getAttribute("data-open") !== "true") {
+          shut.dispatchEvent(new env.DomEvent("click"));
+          await settle(env);
+        }
+      }
+      cards = [...env.document.querySelectorAll("[data-card]")].map((el) => ({
+        index: Number(el.getAttribute("data-card")),
+        open: el.getAttribute("data-open") === "true",
+        heading: (el.querySelector(".mw-card-t")?.textContent
+          ?? el.querySelector("h3")?.textContent ?? "").trim(),
+      }));
+      bands = [...env.document.querySelectorAll("svg.mw-timeline [data-band]")].map((el) => ({
+        band: el.getAttribute("data-band"),
+        width: Number(el.getAttribute("width") ?? 0),
+      }));
+    }
+    return { rows, cards, bands, canCreate: open !== null, proof: proofOf(env) };
+  },
+
   /** The instrument's own conformance suite. Nothing about the UI. */
   async selfTest() {
     return runSelfTests();

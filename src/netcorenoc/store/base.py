@@ -67,6 +67,28 @@ class StoreBase:
     # `device` to `ne` in the same step that widened the primary key — so a schema that has the
     # column has the kind, and one that has neither has neither.
     _has_label_qualifier: bool
+    # v0.21.0: does `alarm` carry `severity_source` (migration 0019)? The same probe, for the same
+    # reason one table over — `ingest` runs on every trap, so it may not learn the schema from a
+    # caught `OperationalError`. `False` is the fail-safe direction and is exactly right for a
+    # database that has not been migrated: the severity is still written, and the provenance the
+    # old schema has nowhere to put is simply not written.
+    _has_severity_source: bool
+    # v0.21.0: does `alarm` carry `surfaced_from_window_id` (migration 0021)? Read from the
+    # SAME `PRAGMA table_info(alarm)` as the line above rather than a second query — one
+    # probe answers for every column of one table, and two probes of one table is how they
+    # come to be resolved against different moments.
+    _has_surfaced_window: bool
+    # v0.21.0: do the maintenance-window and organization tables exist (migrations 0020 and
+    # 0021)? **The fifth probe, and the one that guards a loop rather than a column.** The
+    # maintenance sweep runs every five seconds whether or not anybody has declared planned
+    # work, and `/api/entities` and `/api/situations` ask for markers on every request — so
+    # unlike the four above, these run *unbidden*. On a database frozen below schema 20 the
+    # queries behind them name tables that do not exist, and `tests/test_upgrade.py` drives
+    # this store against migration directories frozen as far back as schema 4.
+    #
+    # One probe for both tables, because `0020` and `0021` are the same feature and no schema
+    # has one without the other: `0021` is what a database gains next after `0020`.
+    _has_maintenance: bool
 
     @property
     def conn(self) -> aiosqlite.Connection:

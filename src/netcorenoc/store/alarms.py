@@ -24,6 +24,7 @@ class AlarmMixin(DeviceMixin):
         instance: str | None = None,
         severity: str | None = None,
         severity_rank: int | None = None,
+        severity_source: str | None = None,
     ) -> IngestResult:
         """Dedup by fingerprint: a repeat bumps count/last_seen; a re-raise re-activates.
 
@@ -47,11 +48,20 @@ class AlarmMixin(DeviceMixin):
         )
         existing = await cur.fetchone()
         varbinds = json.dumps([v.model_dump() for v in event.varbinds])
+        # v0.21.0: the provenance column exists only from migration `0019`, and the schema probe
+        # answers that once at `open()` rather than per trap. On an older schema the severity is
+        # still placed and still written — only the column that would say where it came from is
+        # absent, which is the state that database was already in.
+        source_column = ", severity_source" if self._has_severity_source else ""
+        source_value = (severity_source,) if self._has_severity_source else ()
         if existing is None:
+            marks = ", ".join("?" * (11 + len(source_value)))
             cur = await self.conn.execute(
-                "INSERT INTO alarm (device_id, ne_id, entity_id, class_id, instance, first_seen, "
-                "last_seen, varbinds, community_tag, severity, severity_rank) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                # nosec B608 - `source_column` and `marks` are literals chosen by a schema probe;
+                # every value is bound.
+                "INSERT INTO alarm (device_id, ne_id, entity_id, class_id, instance, first_seen, "  # nosec B608
+                f"last_seen, varbinds, community_tag, severity, severity_rank{source_column}) "
+                f"VALUES ({marks}) RETURNING id",
                 (
                     device_id,
                     ne_id,
@@ -64,18 +74,33 @@ class AlarmMixin(DeviceMixin):
                     event.community_tag or None,
                     severity,
                     severity_rank,
+                    *source_value,
                 ),
             )
             row = await cur.fetchone()
             assert row is not None
             return IngestResult(int(row[0]), device_id, class_id, True, 1, entity_id)
-        # A learned severity refreshes the active alarm's current severity; COALESCE keeps the
-        # last known value when a later trap omits the field (never silently downgrades to NULL).
+        # A placed severity refreshes the active alarm's current severity; COALESCE keeps the last
+        # known value when a later trap omits the field (never silently downgrades to NULL).
+        #
+        # **The provenance moves with the value, in the same statement** (v0.21.0). Two COALESCEs
+        # over one source would let a trap that carries no severity leave the previous value beside
+        # a provenance that had been overwritten, and a row claiming `standard` for a value no trap
+        # ever stated is exactly the fabrication prime directive 2 forbids. They are written from
+        # the same `severity` parameter, so the pair is always one trap's statement.
+        source_set = (
+            ", severity_source=CASE WHEN ? IS NULL THEN severity_source ELSE ? END "
+            if self._has_severity_source
+            else " "
+        )
+        source_args = (severity, severity_source) if self._has_severity_source else ()
         cur = await self.conn.execute(
-            "UPDATE alarm SET count=count+1, last_seen=?, varbinds=?, status='active', "
+            # nosec B608 - `source_set` is one of two literals chosen by a schema probe.
+            "UPDATE alarm SET count=count+1, last_seen=?, varbinds=?, status='active', "  # nosec B608
             "cleared_at=NULL, severity=COALESCE(?, severity), "
-            "severity_rank=COALESCE(?, severity_rank) WHERE id=? RETURNING count",
-            (event.ts, varbinds, severity, severity_rank, int(existing["id"])),
+            f"severity_rank=COALESCE(?, severity_rank){source_set}"
+            "WHERE id=? RETURNING count",
+            (event.ts, varbinds, severity, severity_rank, *source_args, int(existing["id"])),
         )
         row = await cur.fetchone()
         assert row is not None

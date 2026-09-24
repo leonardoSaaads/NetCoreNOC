@@ -33,6 +33,7 @@ from netcorenoc.api.app import create_app
 from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError, require_declaration
 from netcorenoc.api.routes import static as routes_static
 from netcorenoc.crosscutting import auth, rbac
+from netcorenoc.crosscutting.rbac import route_map as _route_map  # noqa: F401  (rbac.route_map)
 from netcorenoc.store import Store
 
 import authutil
@@ -647,16 +648,22 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # the first HTTP route that can create a `model_version`; what kept that CLI-only was that a
     # request must not be able to assert a model, and it still cannot — see the route's docstring.
     #
+    # **v0.21.0: 127 -> 145 served, /api 55 -> 67.** Twelve API routes (nine for the
+    # maintenance-window resource and its operations, two for organizations, one for time
+    # zones) and six static console modules. The count is a ratchet, not a limit: a release
+    # that adds a route changes this line in the same commit, which is what makes the surface
+    # a reviewable diff rather than a thing that grows quietly.
+    #
     # **v0.20.0: 125 -> 127 served, /api unchanged at 55.** Two static assets and **no API route**:
     # `GET /app/views/parts/restructure.js` (the three restructuring gestures, off `lifecycle.js`)
     # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
-    assert len(served) == 127, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 146, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 55, (
+    assert len(api_pairs) == 68, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -790,16 +797,22 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # the first HTTP route that can create a `model_version`; what kept that CLI-only was that a
     # request must not be able to assert a model, and it still cannot — see the route's docstring.
     #
+    # **v0.21.0: 127 -> 145 served, /api 55 -> 67.** Twelve API routes (nine for the
+    # maintenance-window resource and its operations, two for organizations, one for time
+    # zones) and six static console modules. The count is a ratchet, not a limit: a release
+    # that adds a route changes this line in the same commit, which is what makes the surface
+    # a reviewable diff rather than a thing that grows quietly.
+    #
     # **v0.20.0: 125 -> 127 served, /api unchanged at 55.** Two static assets and **no API route**:
     # `GET /app/views/parts/restructure.js` (the three restructuring gestures, off `lifecycle.js`)
     # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
-    assert len(served) == 127, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 146, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 55, (
+    assert len(api_pairs) == 68, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -867,7 +880,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     A comment is not a proof — the behavioural test below is — but an `"unscoped"` entry with no
     stated reason is an assertion nobody has had to defend, which is how F34 happened.
     """
-    source = (Path(rbac.tables.__file__)).read_text(encoding="utf-8")
+    # v0.21.0: `ROUTE_SCOPE` moved to `route_map.py` when `tables.py` was split at the
+    # 400-line guard. The guard follows the table rather than the filename.
+    source = (Path(rbac.route_map.__file__)).read_text(encoding="utf-8")
     table = source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0]
     lines = table.splitlines()
     entries = [i for i, line in enumerate(lines) if line.strip().endswith(': "unscoped",')]
@@ -877,7 +892,10 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # v0.18.0: 6 -> 7, for `GET /api/correlation` (Part II).
     # v0.19.0: 7 -> 8, for `GET /api/models` — floors, counts and a loss curve, which
     # are arithmetic and tallies of judgements, naming no network element.
-    assert len(entries) == 8, entries
+    # v0.21.0: 8 -> 10, for `GET /api/organizations` and `GET /api/timezones`. Neither names a
+    # network element: one is a row naming a provider, the other a property of the host's own
+    # `tzdata`, which is public information about a public database.
+    assert len(entries) == 10, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -897,6 +915,8 @@ _CONCRETE = {
     # the scoped half of the route — a class and a severity are kinds of trap and are not scoped.
     "{kind}": "ne",
     "{target_id}": "1",
+    # v0.21.0: a maintenance window.
+    "{wid}": "1",
 }
 
 
@@ -914,6 +934,40 @@ async def _seed(store: Store) -> None:
             ne_id = await store.ne_id(ip, BASE)
             await store.entity_level0(ne_id, ip, BASE)
         await store.commit()
+
+
+async def _out_of_scope_window(store: Store, ne_id: int) -> int:
+    """A maintenance window over one element, written straight to the store (v0.21.0).
+
+    Not through the API: `POST /api/maintenance-windows` narrows the target list to what the
+    caller may see, which is exactly the property under test — so building the fixture through it
+    would produce a window over nothing and the assertion would pass for the wrong reason.
+    """
+    from netcorenoc.store.maintenance_windows import WindowDraft
+
+    draft = WindowDraft(
+        name="somebody else's window",
+        description="",
+        organization_id=await store.default_organization_id(),
+        tz="UTC",
+        starts_at=BASE + 3600,
+        ends_at=BASE + 7200,
+        all_day=False,
+        patch_s=0.0,
+        ledger_enabled=True,
+        visibility="editors",
+        owner_ref="user:999",
+        owner_role="editor",
+        created_by_agent=False,
+        needs_confirmation=False,
+        status="scheduled",
+        idempotency_key=None,
+    )
+    async with store.lock:
+        window_id = await store.create_maintenance_window(draft, BASE)
+        await store.set_window_targets(window_id, [ne_id])
+        await store.commit()
+    return window_id
 
 
 async def _activate_scope(store: Store, document: dict[str, Any] | None) -> None:
@@ -949,12 +1003,20 @@ def test_the_three_postures_are_all_populated() -> None:
     # correlator's arithmetic names no network element.
     # v0.19.0: 25 -> 26. `POST /api/models/register` is `admin_only` by the same
     # derivation — its capability's minimum role is `admin`.
-    assert len(ADMIN_ONLY) == 26, len(ADMIN_ONLY)
+    # v0.21.0: 26 -> 28. The two `organizations.write` routes — `POST /api/organizations` and
+    # `POST /api/entities/{ne_id}/organization` — are `admin_only` by the same derivation, because
+    # that capability's minimum role is `admin`. **Note what this does NOT mean**: an organization
+    # is attribution and not a security boundary (#366), so the posture is about who may edit
+    # inventory structure, never about who may see it.
+    assert len(ADMIN_ONLY) == 28, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
     # v0.19.0: 7 -> 8, `GET /api/models`, for the reason above.
-    assert len(UNSCOPED) == 8, UNSCOPED
+    # v0.21.0: 8 -> 10. `GET /api/organizations` is a row naming a provider and the table
+    # carries no NE reference; `GET /api/timezones` is a property of the host's own `tzdata`,
+    # which is public information about a public database. Both name no network element.
+    assert len(UNSCOPED) == 10, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
@@ -968,7 +1030,14 @@ def test_the_three_postures_are_all_populated() -> None:
     #
     # v0.16.5: 19 -> 20. The bulk hand-clear names one situation and its capability,
     # `alarm.clear`, is below `admin` — the same perimeter as the single-alarm form it batches.
-    assert len(SCOPED) == 20, SCOPED
+    #
+    # v0.21.0: 20 -> 29. **All nine maintenance-window routes are scoped**, and it is the
+    # strongest scoping in the API rather than the weakest: a window names network elements,
+    # so every route resolves the caller's visibility and narrows what it reads, what it
+    # writes and what it counts. Six are targeted — they name one window and 404 on one the
+    # caller cannot see — and three are collections that narrow silently, because a 404 on an
+    # out-of-scope element would confirm that the element exists.
+    assert len(SCOPED) == 29, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1014,6 +1083,24 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
         "threshold": 0.5,
     },
     ("POST", "/api/scorer/rollback"): {"config_id": 1},
+    # v0.21.0. Both name the two seeded elements, so a policy hiding one must change the
+    # answer — which for these routes means a smaller count and a smaller window, never an error.
+    ("POST", "/api/maintenance-windows"): {
+        "name": "guard",
+        "tz": "UTC",
+        "starts_at": "2030-01-01T10:00:00+00:00",
+        "ends_at": "2030-01-01T12:00:00+00:00",
+        "targets": [1, 2],
+        "rules": [],
+    },
+    ("POST", "/api/maintenance-windows/preview"): {
+        "name": "guard",
+        "tz": "UTC",
+        "starts_at": "2030-01-01T10:00:00+00:00",
+        "ends_at": "2030-01-01T12:00:00+00:00",
+        "targets": [1, 2],
+        "rules": [],
+    },
     ("POST", "/api/rbac"): {"clear": True},
     ("POST", "/api/scope"): {"clear": True},
 }
@@ -1072,6 +1159,17 @@ SCOPED_TARGETED = [
     ("POST", "/api/situations/{sid}/split"),
     ("POST", "/api/situations/{sid}/name"),
     ("POST", "/api/alarms/{aid}/clear"),
+    # v0.21.0: a maintenance window names network elements, so naming one the caller cannot see
+    # is indistinguishable from naming one that does not exist — the same 404, the same body.
+    # **The create and the preview are NOT here** and that is deliberate: they name elements in a
+    # BODY and answer by narrowing rather than by refusing, because a 404 on an out-of-scope
+    # element would confirm that the element exists. They are collections below.
+    ("GET", "/api/maintenance-windows/{wid}"),
+    ("POST", "/api/maintenance-windows/{wid}"),
+    ("POST", "/api/maintenance-windows/{wid}/confirm"),
+    ("POST", "/api/maintenance-windows/{wid}/cancel"),
+    ("POST", "/api/maintenance-windows/{wid}/end"),
+    ("POST", "/api/maintenance-windows/{wid}/extend"),
     # v0.16.5: the bulk clear names its situation in the BODY and not in the path, which is the
     # same shape `POST /api/labels` above already has — a route with no path parameter that is
     # nonetheless targeted, because it acts on one named resource and must 404 on one the caller
@@ -1115,12 +1213,31 @@ async def test_scoped_routes_404_an_out_of_scope_target(
         body = {"from_situation_id": out_of_scope_ne["situation"], "confidence": 0.9}
     if path == "/api/alarms/clear":
         body = {"situation_id": out_of_scope_ne["situation"]}
+    # v0.21.0: a maintenance window over the element this caller cannot see. Created directly
+    # rather than through the API, because the API would narrow it to the caller's own scope —
+    # which is the right behaviour and the wrong fixture for a test about reading someone
+    # else's window.
+    window_id = await _out_of_scope_window(store, out_of_scope_ne["ne"])
+    if path.startswith("/api/maintenance-windows/{wid}") and method == "POST":
+        body = body or {
+            "name": "guard",
+            "tz": "UTC",
+            "starts_at": "2030-01-01T10:00:00+00:00",
+            "ends_at": "2030-01-01T12:00:00+00:00",
+            "targets": [out_of_scope_ne["ne"]],
+            "rules": [],
+        }
+    if path.endswith("/extend"):
+        body = {"ends_at": "2030-01-01T14:00:00+00:00"}
+    if path.endswith(("/confirm", "/cancel", "/end")):
+        body = {}
     concrete = (
         path.replace("{sid}", str(out_of_scope_ne["situation"]))
         .replace("{ne_id}", str(out_of_scope_ne["ne"]))
         .replace("{aid}", str(out_of_scope_ne["alarm"]))
         .replace("{kind}", "ne")
         .replace("{target_id}", str(out_of_scope_ne["ne"]))
+        .replace("{wid}", str(window_id))
     )
     client = await authutil.client_as(app, "editor")
     try:
@@ -1153,7 +1270,10 @@ async def test_scoped_collection_routes_answer_differently_under_a_policy(
 async def _first_payload(app: object, client: httpx.AsyncClient, method: str, path: str) -> bytes:
     """The response body, or — for the SSE stream — its first `data:` frame."""
     if path != "/api/events":
-        resp = await client.request(method, _concrete(path))
+        # v0.21.0: two of the scoped collections are POSTs with a required body. `_BODIES` is
+        # where every such body already lives, so this reads it rather than growing a second
+        # table beside it.
+        resp = await client.request(method, _concrete(path), json=_BODIES.get((method, path)))
         assert resp.status_code == 200, (path, resp.status_code, resp.text)
         return resp.content
     cookie = client.cookies.get(auth.COOKIE_NAME)

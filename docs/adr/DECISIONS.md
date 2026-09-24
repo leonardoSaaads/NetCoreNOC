@@ -4499,3 +4499,244 @@ From this release an entry is about six lines: decision, reason, release.*
   `views/parts/pulse.js` owns the list of durations and its own header says that two lists of
   durations is how they come to differ by one entry.
 
+
+## 362. A window stores both instants and its IANA zone; a city label is never stored (v0.21.0)
+
+- **D2 is "mandatory time zones", and the schema is where that becomes true.** `starts_at` and
+  `ends_at` are epoch seconds — the same type every other instant in this database has — and `tz`
+  is the canonical IANA name beside them. Neither replaces the other.
+- **Why not instants alone**: a window declared as *"22:00 to 06:00, Brasília"* across a DST
+  transition is **not** a fixed number of seconds. The wall clock is the operator's intent; the
+  instants are what the check compares against. Keeping only the instants loses the intent, and
+  `extend` on such a window would move the wrong edge.
+- **Why not the label**: three of the cities the maintainer named — Washington, Brasília, Beijing —
+  have **no zone of their own** (`America/Washington`, `America/Brasilia` and `Asia/Beijing` are
+  all invalid against this build's own `zoneinfo`). Storing the label would store something
+  `ZoneInfo` cannot load. The picker shows cities; the column holds `America/New_York`,
+  `America/Sao_Paulo`, `Asia/Shanghai`.
+- **A naive datetime is rejected** at the API rather than assumed to be UTC or to be the
+  appliance's local zone (`AwareInstant`, `api/models_maintenance.py`). *"10:00"* means nothing
+  without a place, and an appliance that guessed would schedule Brasília for Riyadh's hour — the
+  exact failure D2 exists to prevent.
+
+## 363. `tzdata` is an operating-system package, not a Python runtime dependency (v0.21.0)
+
+- **The constraint was explicit**: mandatory time zones *"with no new Python dependency"*.
+- `zoneinfo` is standard library since 3.9 and reads the **system** IANA database. So the appliance
+  gains one `apt-get install tzdata` line in `Dockerfile`'s final stage and `pyproject.toml` is
+  untouched. The PyPI `tzdata` wheel would have been a second copy of the same database on a
+  release cadence nobody watches.
+- **The risk this creates, and the instrument for it.** A host without the package has a
+  `zoneinfo` that resolves nothing, and every window would fail to compile — silently, at runtime,
+  on a machine no test ran on. `tests/test_timezones.py` asserts the curated list resolves on the
+  **build** machine, which is not the same machine; :func:`timezone_selfcheck` runs in the
+  **running appliance** against the `tzdata` that image actually has and reports a curated entry
+  that does not resolve through the operator-warning channel that already carries eight others.
+  This is `docs/findings.md` F131's shape exactly — a thing validated where it does not run.
+
+## 364. D5 ships in the same release as D4, because a severity rule cannot precede a severity (v0.21.0)
+
+- **The dependency is mechanical.** D4 lets an operator write *"on host A, collect only critical
+  alarms"*. That rule is evaluated at ingest, on a trap that has just been decoded. If nothing has
+  placed a severity on that trap by then, the rule admits nothing on any estate — the feature would
+  ship, pass its unit tests against synthetic ranks, and do nothing in the field.
+- **The measurement that settled it** (II.1): in the v0.20.0 lab, after fourteen cut/repair cycles,
+  30 alarms existed, **29 carried an X.733 severity word, and 0 of 30 rows had a severity placed**.
+  v0.17.1 had added the standard read to the **census** (the read model), which made the Overview's
+  numbers right and left every row unplaced. There is no census at ingest.
+- So D5 is not a favour done to a neighbouring feature; it is D4's precondition, and the scope
+  order in `docs/plans/releases.md` puts it first for that reason.
+
+## 365. Severity is read from the standard column first, learned second, and unplaced is a value (v0.21.0)
+
+- **Order, stated once**: the trap's own word in the X.733 vocabulary (provenance `standard`), then
+  a learned severity field the NE has confirmed (`learned`), then **nothing** (`unplaced`).
+- **The standard read is not an inference.** RFC 3877's `alarmActiveResourceId` neighbourhood
+  registers a perceived-severity column (`1.3.6.1.2.1.118.1.2.2.1.4`) whose values are the ones
+  ITU-T X.733 standardised. Reading it for what the standard says it is needs no learning, no
+  confirmation and no ordinality test — which is why it wins over the learned path rather than
+  being one more candidate in it.
+- **`alarm.severity_source` is added by `0019` and backfilled to `learned`** for every non-NULL
+  severity, because the learned path was the only writer that had ever existed. That is a fact
+  about the code, not a guess about the data.
+- **Unplaced is honest.** No default, no `indeterminate` stand-in. A severity rule refuses a trap
+  with no placed severity, and `tests/test_maintenance_window.py` asserts that rather than leaving
+  it to be discovered.
+- **The defect this exposed beyond the brief.** The severity column was the most-observed varbind
+  on every NE, so it crossed `ENTITY_PROMOTE_OBS=200` first and was promoted to the **entity**
+  role uncontested — the lowest-scoring of five candidates, winning because it was the only one
+  over the floor. `_resolve_entity` then made the finest chain value the dedup instance, so alarms
+  became keyed on severity words: the alarm row `id=27` held `inst='major'` with `count=8`, **six ONUs
+  collapsed into one row**, and entities named `major`, `cleared`, `critical` and `minor` existed
+  in the inventory. `0019` withdraws the entity role from varbinds whose promoted keys are *all*
+  X.733 tokens, and `varbind_profile.speaks_severity` stops it recurring.
+
+## 366. An organization is attribution, and the schema says it is not isolation (v0.21.0)
+
+- **D1**: the appliance may monitor two, three or four providers; every element belongs to one,
+  every window belongs to one, every list filters by it.
+- **II.4 asked for the line to be drawn, so it is drawn in the migration itself**, in a banner:
+  *"⚠ THIS IS NOT TENANT ISOLATION, AND NOTHING BELOW MAKES IT ONE."* Correlation still learns
+  across every network element; a situation may still form across an organization boundary; no read
+  path denies on the column. It is a label answering *"whose equipment is this?"*.
+- **Why say it that loudly.** `crosscutting/shaping/scope.py` has carried the same warning about
+  visibility scoping since v0.7.0 and it was still being misread four years later. A column named
+  `organization_id` **looks** like a tenant key; the failure mode is an operator who believes two
+  providers' data cannot mix and finds out from a customer that it did. Claiming isolation this
+  schema does not provide would be worse than not having the column at all.
+- **`device` deliberately does not gain the column.** A device belongs to whatever NE reports it;
+  a second, independently-writable answer to the same question is a second answer that can disagree.
+
+## 367. Organization and scope stay two mechanisms, and F35 is why (v0.21.0)
+
+- **The question II.4 raises**: the appliance already has a visibility-scope resolver. Why not fold
+  organization into it?
+- **Because F35's rule is that no resolver input may be writable by a scopable role**, and
+  `test_f35_no_resolver_input_is_writable_by_a_scopable_role` enforces it. An organization name is
+  written through `POST /api/organizations` by an admin. Admin-written is not engine-written, and
+  admitting a second admin-writable axis would widen that test's surface for a feature that is
+  explicitly not a security control (#366).
+- **Two questions, two mechanisms.** Scope answers *"which elements may this principal see?"*;
+  organization answers *"whose are they?"*. Collapsing them would make the answer to the first
+  depend on an editable label, which is the whole of what F35 forbids.
+
+## 368. Rules of different kinds are ANDed; rules of the same kind are ORed (v0.21.0)
+
+- **D4's default is nothing**: a target under a window with no rule on it collects no trap at all.
+  Rules are the exceptions an operator writes, in three kinds — severity, OID subtree, time slot.
+- **The maintainer's own example settles the composition.** *"On host B, collect traps only from
+  11:15 to 11:20, and only OIDs under `1.3.6.1.4.1.2011.5.25.31.1.1.1.1`."* A trap at 11:17 on an
+  unrelated OID must not pass, so slot and subtree **intersect**. Two subtrees on the same target
+  are plainly a **union**, because the operator wrote the second one in order to admit more.
+- **One sentence, in one place** (`engine/mw/rules.py`), because a composition rule restated per
+  kind is a composition rule that will differ per kind within two releases.
+- The example is the acceptance test, end to end, in
+  `tests/test_maintenance_window.py::test_the_maintainers_example_end_to_end`.
+
+## 369. An OID rule matches on arc boundaries and says where it looks (v0.21.0)
+
+- **Arc boundaries, never string prefixes** (II.3). A rule for `…1.1.1.1` must admit `…1.1.1.1.4.2`
+  and must **not** admit `…1.1.1.10`, which `startswith` does: the tenth column of a table is not a
+  member of the first column's subtree. :func:`under_subtree` is the whole fix —
+  `oid == root or oid.startswith(root + ".")` — and the prefix match is run as a standing injection
+  rather than described.
+- **Trap-OID or varbind, and the rule carries which** (`MatchOn`). `trap` matches `snmpTrapOID.0`,
+  which is what an operator means by *"only link traps"*. `varbind` matches any varbind OID the
+  trap carries, which is what they mean when the subtree is a **table column** — the maintainer's
+  arc is shaped like `…Entry.column` under Huawei's `hwEntityMIB` and its further arcs read as
+  instance suffixes, so the example is expressed with `varbind`.
+- **Explicit per rule rather than guessed per estate.** A default that matched both would admit
+  traps the operator did not ask for; a default that matched only the trap OID would silently do
+  nothing for the maintainer's own example. Neither is a failure an operator can see.
+
+## 370. Who confirms a long window, and why `mw.confirm` is its own capability (v0.21.0)
+
+- **D6**: up to six hours, no confirmation. Over six hours, an editor or admin confirms and the
+  window waits in `pending_confirmation` — **collecting nothing** — until they do. An unconfirmed
+  window that expires suppresses not one trap, which is II.7's second edge answered in the only
+  direction that is safe: the failure mode of "waiting" is noise, the failure mode of "assume
+  confirmed" is silence.
+- **II.7's first edge — who.** A window created by an **agent** waits for a human editor or admin,
+  and the agent may not confirm its own; `Principal.is_token` is the one place that is decided, and
+  it reads `kind` rather than guessing from an actor's name. A window created by a **human** editor
+  or admin may be confirmed by that same person: the form asks for an explicit second gesture, not
+  a second person.
+- **Four-eyes is not invented here.** This appliance has no four-eyes policy anywhere else, and
+  adding one in the single place nobody asked for it is how a product acquires rules its operators
+  cannot predict. Instead `mw.confirm` is a **separate capability** from `mw.write`, exactly as
+  #256 separated its pair: `resolve_capabilities` is `ceiling ∩ policy`, so a deployment that wants
+  four eyes withholds `mw.confirm` from the role holding `mw.write`. One capability would make that
+  arrangement unreachable.
+
+## 371. The ledger and the poll compose, and the ledger is the load-bearing half (v0.21.0)
+
+- **The gap II.2 names**: an NE raises Loss of Signal at 11:40 inside the window and sends the trap
+  **once**. Suppressed, the appliance has no record; at 12:00 the window closes with the fibre
+  still dark and nothing will ever say so.
+- II.2 offers two closures — a state ledger, or D3's end-of-window poll — and asks which. **They
+  compose**: the ledger is what the appliance *saw* and costs nothing; a poll is what the element
+  *says now* and needs a credential the operator may not have given. An appliance with no poll
+  credentials must still surface the fault, so the ledger is the half that carries the property.
+- **What the ledger holds**: per `(window, device, class, instance)` — raise seen, clear seen, and
+  the two instants. Six scalars. **No varbinds, no severity, no community tag, no payload**, because
+  storing those would be collecting the trap, which is what the operator said not to do.
+- **The consequence is stated rather than hidden**: an alarm surfaced from the ledger says *"raised
+  during the window, never cleared"* and does **not** say how serious it is, because the appliance
+  genuinely does not know. Inventing a severity would be prime directive 2's fabrication.
+- **Not an alarm, not shown, not correlated, not trained on, not in the dataset.** Two readers
+  exist — the end-of-window sweep and the admin-only window detail — and each of the other four
+  paths is a standing injection.
+- **`ledger_enabled` defaults on and may be turned off**, with the risk in the operator's own words
+  on the card: *"a fault that starts during this window and never clears will not be recorded at
+  all."* The project's first principle is *"you may, and here is the risk"*, not a switch nobody is
+  trusted with.
+
+## 372. A trap collected under a window forms situations and teaches nothing (v0.21.0)
+
+- **Three states, not two.** No window: collect, nothing else happens. Under a window with a rule
+  that admits: collect, correlate, show — and **exclude from learning and from the dataset**. Under
+  a window with no admitting rule: suppressed, ledger only.
+- **Why the middle state exists.** The operator asked to see critical alarms during the work; they
+  did not ask for the appliance to learn that a splice technician's traps co-occur. Maintenance
+  traffic teaches affinities that are not the network's, and a model trained on them will group
+  unrelated elements for the rest of its life.
+- **`teaches` is the one new term on the hot path** — `not decision.under_window` — guarding three
+  calls that already existed. `tests/test_architecture.py` pins it so the comment and the guards
+  cannot drift apart.
+- **The ordering defect this found.** `_seed_clear_pair` originally ran *after* the window check,
+  so a suppressed `linkUp` was never recognised as the clear for a suppressed `linkDown` and two
+  phantom alarms surfaced at window end. It now runs **before** the check and the comment says why;
+  the ordering is load-bearing, not incidental.
+
+## 373. D3 slips to v0.21.1 rather than shipping below II.6's bar (v0.21.0)
+
+- **Part VII permits exactly this** — *"if D3 cannot ship at the quality II.6 defines, it moves to
+  v0.21.1 with a written plan, and the report says so on its first page"* — and it does; see
+  `HANDOFF.md` §1.
+- **II.6 calls polling a security surface and sets a minimum**: credentials never in the database
+  in the clear, SNMPv3 where the element offers it, a bounded target set, a rate ceiling that
+  cannot be raised by a request, and every read audited. That is a credential-handling design, not
+  a feature flag, and the release's own scope order puts it behind the analysis.
+- **What ships instead is not nothing**: #371's ledger closes the gap that mattered — a fault
+  outliving its window surfaces — and does it without a credential. The poll was corroboration.
+- **The placeholders are removed, not left.** `poll.read` and `poll.write` and the
+  `poll.target.update` audit action are deleted from this release: a capability with no route
+  behind it is a promise of a feature nobody built, which `ui/app/registry.js` already refuses for
+  screens on the same ground. `engine/mw/ledger.py`'s claim that a poll reading attaches to a
+  surfaced alarm is corrected to the future tense it actually holds.
+
+## 374. `models.py` splits mechanically and re-exports by identity (v0.21.0)
+
+- **The one-file claim stands.** SCOPE-0.7.2 §3.4's reason for keeping every request model in one
+  file is that the boundary between untrusted bytes and a handler is easier to audit as one list
+  than as fragments. A reviewer asking *"what can a caller send this appliance?"* still gets one
+  import list and one set of names.
+- **The split is the 400-line guard and nothing else.** The window surface is a third of a file on
+  its own and `models.py` was already eleven lines from the ceiling.
+- **By identity, never by copy**, asserted in `tests/test_maintenance_api.py` for the same reason
+  `crosscutting/rbac/__init__.py` carries the same guard: a second definition of a request bound is
+  a second place to change it, and the one that is forgotten is invisible until it is exploited.
+- **The window surface is stricter than the rest, deliberately.** Phase 2 is an agent that cannot
+  read a docstring and corrects its request from the error it gets back, so every refusal names the
+  field and the rule, and every enum is a `Literal` so `/openapi.json` carries the permitted values
+  rather than the word `string`. An MCP tool generated from a vague schema is a vague tool.
+
+## 375. The release table is brought current, and maintenance windows move from v0.16.8 to v0.21.0 (v0.21.0)
+
+- **The table had gone stale in the exact way it exists to prevent.** `docs/plans/releases.md` calls
+  itself *"the single source of truth for what each release is"*, and it ended at **v0.18.1** while
+  the tree read `0.20.0`. Two shipped releases had no row, so the document answered *"what is
+  v0.19.0?"* with silence and `CHANGELOG.md` answered it with a theme.
+- **Worse, it answered a question wrongly.** The **v0.16.8** row claimed `maintenance-windows`.
+  That is what #100 built this whole guard for — two documents answering the same question
+  differently — and the guard could not see it, because a row with no `<!-- release-claim -->`
+  marker anywhere else in the tree is consistent with everything.
+- **What ships**: rows for v0.19.0 (`operators-day`) and v0.20.0 (`value-is-the-control`), both
+  written from `CHANGELOG.md` rather than from memory, and v0.21.0 (`maintenance-windows`).
+- **The v0.16.8 row is re-keyed, not deleted.** `planned-work-deferred` says where the content went.
+  Deleting the row would leave a reader who finds `v0.16.8` in an old brief with a hole and no
+  explanation, which is the failure #199 names about condensing a record.
+- **Why the content moved at all**: the v0.16 block's own reasoning put maintenance windows after
+  the severity census, and #364 is the rest of the answer — a severity *rule* needs a severity
+  *placed*, which is D5, which had not been built. Shipping windows at v0.16.8 would have shipped a
+  filter that admitted nothing on any real estate.

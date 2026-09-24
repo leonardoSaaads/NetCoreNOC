@@ -237,23 +237,31 @@ async def test_a_policy_never_makes_a_route_reachable_that_the_ceiling_forbids(
 
 # --- v0.7.4: the split must not create a second source of authority ----------------------
 
-# The eight tables `rbac/tables.py` owns. Re-exporting any of them by **copy** rather than by
-# reference would leave every test above green and create exactly the second source of truth this
-# package exists to prevent — the two objects diverge the first time anything mutates or shadows
-# one, and `tests/test_declaration.py` already mutates `rbac.ROUTE_PERMISSIONS` in a fixture.
-AUTHORITY_TABLES = (
-    "ROLE_RANK",
-    "PERMISSIONS",
-    "ROUTE_PERMISSIONS",
-    "PUBLIC_ROUTES",
-    "ROUTE_SCOPE",
-    "AUDITED_DENIED_PERMISSIONS",
-    "RECOVERY_CAPABILITIES",
-    "_CEILINGS",
-)
+# The eight authorization tables, and **which module owns each** (v0.21.0).
+#
+# Re-exporting any of them by **copy** rather than by reference would leave every test above green
+# and create exactly the second source of truth this package exists to prevent — the two objects
+# diverge the first time anything mutates or shadows one, and `tests/test_declaration.py` already
+# mutates `rbac.ROUTE_PERMISSIONS` in a fixture.
+#
+# v0.7.4 had one owner and this was a flat tuple. v0.21.0 split `tables.py` at the 400-line guard —
+# capabilities in `tables.py`, the route map in `route_map.py`, on the seam the file already had —
+# so the guard now checks identity against **the module that actually owns each name**. A tuple of
+# names with no owner would have passed a copy in the wrong module, which is the defect one level
+# up from the one it is guarding.
+AUTHORITY_TABLES: dict[str, str] = {
+    "ROLE_RANK": "tables",
+    "PERMISSIONS": "tables",
+    "AUDITED_DENIED_PERMISSIONS": "tables",
+    "RECOVERY_CAPABILITIES": "tables",
+    "_CEILINGS": "tables",
+    "ROUTE_PERMISSIONS": "route_map",
+    "PUBLIC_ROUTES": "route_map",
+    "ROUTE_SCOPE": "route_map",
+}
 
 
-@pytest.mark.parametrize("name", AUTHORITY_TABLES)
+@pytest.mark.parametrize("name", sorted(AUTHORITY_TABLES))
 def test_the_tables_are_re_exported_by_identity_not_by_copy(name: str) -> None:
     """**Equality is not enough; require identity** (v0.7.4, DECISIONS #96).
 
@@ -264,14 +272,16 @@ def test_the_tables_are_re_exported_by_identity_not_by_copy(name: str) -> None:
     Shown to fail against a deliberately-copying `__init__.py` before being accepted — see
     `docs/gates/v0.7.4-phase-4.md` §2.
     """
-    from netcorenoc.crosscutting.rbac import tables
+    import importlib
 
+    owner_name = AUTHORITY_TABLES[name]
+    owner = importlib.import_module(f"netcorenoc.crosscutting.rbac.{owner_name}")
     exported = getattr(rbac, name)
-    owned = getattr(tables, name)
+    owned = getattr(owner, name)
     assert exported is owned, (
-        f"rbac.{name} is not rbac.tables.{name} — it is a copy. A copy is a second source of "
-        "authority: the two drift the moment either is mutated or shadowed. Re-export the name, "
-        "do not rebuild the container."
+        f"rbac.{name} is not rbac.{owner_name}.{name} — it is a copy. A copy is a second source "
+        "of authority: the two drift the moment either is mutated or shadowed. Re-export the "
+        "name, do not rebuild the container."
     )
 
 
@@ -281,7 +291,7 @@ def test_no_module_but_tables_binds_an_authorization_table() -> None:
     Identity holds against whatever `__init__.py` happens to import. It would still hold if
     `policy.py` defined its own `PERMISSIONS` and used that internally — the tables would agree at
     import and the resolver would read the wrong one. So: **no module under `rbac/` other than
-    `tables.py` may bind any of these names at module level.**
+    the module that OWNS a name may bind it at module level.**
 
     Parsed from the AST rather than grepped, so an assignment inside a function body (a genuine
     local) does not trip it and a module-level one cannot hide behind formatting.
@@ -292,8 +302,9 @@ def test_no_module_but_tables_binds_an_authorization_table() -> None:
     pkg = Path(rbac.__file__).resolve().parent
     offenders: list[str] = []
     for path in sorted(pkg.glob("*.py")):
-        if path.name == "tables.py":
-            continue
+        # Each table's OWNER may bind it; nothing else may, including the other authority module.
+        # `route_map.py` imports `PERMISSIONS` to assert against it and must not rebind it.
+        owned_here = {n for n, owner in AUTHORITY_TABLES.items() if f"{owner}.py" == path.name}
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:  # module level only — nested scopes are not bindings of the table
             targets: list[str] = []
@@ -302,12 +313,13 @@ def test_no_module_but_tables_binds_an_authorization_table() -> None:
             elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 targets = [node.target.id]
             for name in targets:
-                if name in AUTHORITY_TABLES:
+                if name in AUTHORITY_TABLES and name not in owned_here:
                     offenders.append(f"{path.name}:{node.lineno} binds {name}")
     assert not offenders, (
-        "module(s) under rbac/ binding an authorization table outside tables.py:\n  "
+        "module(s) under rbac/ binding an authorization table they do not own:\n  "
         + "\n  ".join(offenders)
-        + "\n\ntables.py is the single source of authority. Import the name; never rebind it."
+        + "\n\nEach table has exactly one owning module — tables.py for the capabilities, "
+        "route_map.py for the route map. Import the name; never rebind it."
     )
 
 
@@ -381,6 +393,35 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         "rbac.write": "admin",
         "scope.read": "admin",
         "scope.write": "admin",
+        # v0.21.0 — maintenance windows. Seven capabilities, and each one costs the reviewer's
+        # attention this test exists to charge:
+        #
+        # `mw.read` is **viewer**, and that is prime directive 4 rather than convenience: a host
+        # that goes quiet with no marker reads as healthy, so every authenticated role must be
+        # able to learn that planned work exists. What they may not see is its name, owner and
+        # rules, which is `visibility` and is enforced in the query.
+        "mw.read": "viewer",
+        # **editor**, the same rank as closing a situation — the engineer about to do the work is
+        # the person who knows when it starts. Deliberately not admin.
+        "mw.write": "editor",
+        # **A separate capability from `mw.write`**, and #256's reasoning exactly: one is the
+        # power to declare, the other the power to agree. Two capabilities are what let a
+        # deployment grant scheduling without self-approval, which one makes unreachable.
+        "mw.confirm": "editor",
+        # **admin**, and its own capability rather than a role test in the handler — which is F28's
+        # rule: authorization goes through `resolve_capabilities`, never through a comparison a
+        # reader has to find in a route body. `GET /api/maintenance-windows/{wid}` is the only
+        # place a window's ledger counts can be read at all, so a deployment that wants nobody
+        # reading them withholds this and keeps the rest of the resource working.
+        "mw.ledger": "admin",
+        # Attribution, read by every role because a window's card names an organization and a
+        # screen showing a name nobody can look up is a dead end; written by admin because it is
+        # inventory structure rather than operation.
+        "organizations.read": "viewer",
+        "organizations.write": "admin",
+        # A property of the host's own `tzdata`. Public information about a public database,
+        # naming no network element and no principal.
+        "timezones.read": "viewer",
     }, (
         "the capability table changed. Every derived check — role_allows, the resolver, the "
         "route table, the authorization matrix — reads this dict and will agree with whatever it "

@@ -1262,7 +1262,14 @@ async def test_f38_truncation_is_applied_after_the_scope_filter(store: Store) ->
 #: DECISIONS #274). Named here rather than tolerated by a loose comparison: F38's parity claim is
 #: that the **unscoped** path is untouched, and a comparison that ignored unknown keys would keep
 #: passing while the route quietly grew a scoped one.
-ROUTE_DERIVED_KEYS = {"stale"}
+#:
+#: **v0.21.0 adds `maintenance`** (IV.3). Like `stale` it is derived from the clock — which windows
+#: are in force *now* — and like `stale` it is computed for every row on both the unscoped and the
+#: scoped path, so it does not weaken F38's parity claim. What it carries is `window_markers`'
+#: output and nothing of the route's own, and that query is scoped in its WHERE clause, so a
+#: scoped viewer's marker set can only shrink relative to an admin's, never name an element they
+#: could not otherwise see.
+ROUTE_DERIVED_KEYS = {"stale", "maintenance"}
 
 
 async def test_f38_the_unrestricted_result_set_is_unchanged(store: Store) -> None:
@@ -1316,6 +1323,16 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
     # `POST /api/logout` and `POST /api/password` act on the caller's own session and account.
     # Neither carries an NE reference, and neither can name another principal's resource.
     session_only = {("POST", "/api/logout"), ("POST", "/api/password")}
+    # The four spellings of *"this handler resolved the caller's visibility"*. The first is the
+    # literal every route wrote until v0.21.0; the other three are `WindowAccess`'s, and
+    # `test_every_indirect_scope_call_really_resolves_the_scope` reads their source so that
+    # accepting a name here is not accepting a word.
+    scope_calls = (
+        "scope_for(principal)",
+        "scope_ne_ids(principal)",
+        "permitted_targets(",
+        "visible_or_404(",
+    )
     handlers = {
         ("POST", "/api/situations/{sid}/feedback"): "async def feedback(",
         ("POST", "/api/labels"): "async def set_label(",
@@ -1340,6 +1357,19 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         # the perimeter for exactly the reason every other one is — it names a situation, and its
         # capability is below `admin` (DECISIONS #273).
         ("POST", "/api/situations/{sid}/promote"): "async def promote_situation(",
+        # v0.21.0: the maintenance-window writes. Every one names network elements and every one
+        # is below `admin`, so every one is inside F34's perimeter — and each reaches the scope
+        # through `WindowAccess` rather than calling `scope_for` in its own body, which is why
+        # `scope_calls` below names three spellings rather than one. `WindowAccess` is a single
+        # object built once per `register()`; nine handlers threading the same three dependencies
+        # is how the one that forgot would have been the one that answered without checking.
+        ("POST", "/api/maintenance-windows"): "async def create_window(",
+        ("POST", "/api/maintenance-windows/{wid}"): "async def update_window(",
+        ("POST", "/api/maintenance-windows/preview"): "async def preview_window(",
+        ("POST", "/api/maintenance-windows/{wid}/confirm"): "async def confirm_window(",
+        ("POST", "/api/maintenance-windows/{wid}/cancel"): "async def cancel_window(",
+        ("POST", "/api/maintenance-windows/{wid}/end"): "async def end_window(",
+        ("POST", "/api/maintenance-windows/{wid}/extend"): "async def extend_window(",
     }
     unprotected: list[str] = []
     for (method, path), capability in sorted(rbac.ROUTE_PERMISSIONS.items()):
@@ -1357,9 +1387,34 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
             continue
         start = source.index(anchor)
         body = source[start : source.index("\n    @route.", start + 1)]
-        if "scope_for(principal)" not in body:
-            unprotected.append(f"{method} {path} ({capability}) does not call scope_for()")
+        if not any(call in body for call in scope_calls):
+            unprotected.append(
+                f"{method} {path} ({capability}) resolves no scope: it calls none of "
+                f"{sorted(scope_calls)}"
+            )
     assert not unprotected, "routes outside the write perimeter:\n" + "\n".join(unprotected)
+
+
+def test_every_indirect_scope_call_really_resolves_the_scope() -> None:
+    """**The control for the widening above** (v0.21.0), and the reason it is not a hole.
+
+    `scope_calls` accepts three `WindowAccess` methods in place of a literal `scope_for(principal)`.
+    A test that accepted a *name* would pass on a method that had quietly stopped resolving
+    anything — so this reads those methods' own source and asserts each reaches `scope_for`.
+
+    Without it, the previous test degrades from *"this handler resolves the caller's scope"* to
+    *"this handler mentions a word"*, which is the shape of guard F35 was about.
+    """
+    import inspect
+
+    from netcorenoc.api.mw_shape import WindowAccess
+
+    for name in ("scope_ne_ids", "permitted_targets", "visible_or_404"):
+        source = inspect.getsource(getattr(WindowAccess, name))
+        assert "self.scope_for(" in source or "self.scope_ne_ids(" in source, (
+            f"WindowAccess.{name} no longer resolves a scope, so every maintenance-window write "
+            "that relies on it is outside the write perimeter while still passing F34"
+        )
 
 
 def test_f35_no_resolver_input_is_writable_by_a_scopable_role() -> None:
@@ -1432,6 +1487,19 @@ def test_f39_every_mutating_handler_uses_the_transaction_helper() -> None:
             if route in ("/api/login",):
                 continue  # multi-branch: commits each audited outcome explicitly, then raises
             body = source[start : source.index("\n    @route.", start + 1)]
+            if route == "/api/maintenance-windows/preview":
+                # **A POST that writes nothing** (v0.21.0). It is the dry run Part III asks for —
+                # *"how many devices and how many active alarms would this affect?"* — and it is a
+                # POST only because the thing being previewed is a request body. Wrapping a read
+                # in the transaction helper would say a write happened here.
+                #
+                # The exception is not taken on trust: this reads the handler and fails the moment
+                # it gains one, which is what keeps the carve-out from becoming a hole.
+                assert not any(
+                    write in body
+                    for write in ("INSERT", "UPDATE ", "DELETE ", "audit_row(", "commit()")
+                ), "the preview route started writing; it needs write_txn() after all"
+                continue
             # `/api/rbac` and `/api/scope` delegate to `_write_policy`, the single write path for
             # both policy kinds, which takes the helper once on their behalf.
             reaches = "write_txn()" in body or "await _write_policy(" in body

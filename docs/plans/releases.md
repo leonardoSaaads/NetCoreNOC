@@ -34,13 +34,16 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.16.5** | **The shell, corrected** — six things a browser found in v0.16.4's console, and the host metrics v0.16.4 believed needed a dependency. **Shipped.** | `shell-corrected` |
 | **v0.16.6** | **The evidence screens** — overview charts, the estate map, a configurable timeline, and the model metrics beside the grouping they explain. | `evidence-screens` |
 | **v0.16.7** | **Severity, and the screen an operator runs a shift from** — active alarms by band on the Overview, with the ones the appliance has **not** been able to place counted and named. | `severity-census` |
-| **v0.16.8** | **Maintenance windows** — a planned-work declaration, and the composed severity/time filters that read it. | `maintenance-windows` |
+| **v0.16.8** | **Planned work, deferred** — the maintenance-window slot the v0.16 block reserved. **The content moved to v0.21.0** (#375) and nothing else took the number; the row stays so a reader who finds `v0.16.8` in an old document is told where it went rather than finding a hole. | `planned-work-deferred` |
 | **v0.17.0** | **The foundations** — an eval baseline that can be re-cut with a recorded reason, guards that derive their sets instead of listing them, and `testbed/`: a two-host fibre cut a newcomer can deploy and trigger. **Shipped.** | `foundations` |
 | **v0.17.1** | **The standard alarm vocabulary and vendor severity defaults** — a vendor-published severity shown immediately, with provenance and an operator override, beside the learned one. | `alarm-vocabulary` |
 | **v0.17.2** | **The corpus and the correlation window** — scenarios whose alarms clear, a scenario spanning two enterprise subtrees in ONE incident (the case v0.18.0's gate is unmeasured against), and the window the correlator reasons over. **F76 left this release**: v0.18.0 closed it. | `corpus-window` |
 | **v0.17.3** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. [Brief](cartridge.md), which also argues it should slip again. | `external-cartridge` |
 | **v0.18.0** | **The audit** — no theme: use the product, find what is broken, fix it. Nine defects found by driving it, F76 closed, and the first measurement of the scorer that is actually running. **Shipped.** | `audit` |
 | **v0.18.1** | **Archetypes** — per-archetype weights (PON/access, transport/DWDM, IP core). Marked *likely, review before committing*. [Brief](archetypes.md). | `archetypes` |
+| **v0.19.0** | **The operator's day** — set the appliance up from the boot banner, point real traffic at it, work the queue over several shifts, and fix what hurt. Five defects no test in this repository could have found, the worst of which merged an entire estate. **Shipped.** | `operators-day` |
+| **v0.20.0** | **The value is the control** — the Overview made compact and direct, the situation panel's verdict promoted over its arithmetic, editing where the value is shown rather than behind a button, and the read models the console was waiting on. **Shipped.** | `value-is-the-control` |
+| **v0.21.0** | **Maintenance windows** — planned work as a first-class declaration with a mandatory time zone and an organization, per-target collection rules composed from severity, OID subtree and time slot, a state ledger so a fault outliving its window still surfaces, and severity placed at ingest so the rules have something to read. **Shipped.** | `maintenance-windows` |
 
 ## Why the order cannot be permuted
 
@@ -602,13 +605,16 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 <!-- release-claim: v0.16.5 = shell-corrected -->
 <!-- release-claim: v0.16.6 = evidence-screens -->
 <!-- release-claim: v0.16.7 = severity-census -->
-<!-- release-claim: v0.16.8 = maintenance-windows -->
+<!-- release-claim: v0.16.8 = planned-work-deferred -->
 <!-- release-claim: v0.17.0 = foundations -->
 <!-- release-claim: v0.17.1 = alarm-vocabulary -->
 <!-- release-claim: v0.17.2 = corpus-window -->
 <!-- release-claim: v0.17.3 = external-cartridge -->
 <!-- release-claim: v0.18.0 = audit -->
 <!-- release-claim: v0.18.1 = archetypes -->
+<!-- release-claim: v0.19.0 = operators-day -->
+<!-- release-claim: v0.20.0 = value-is-the-control -->
+<!-- release-claim: v0.21.0 = maintenance-windows -->
 
 ## What this document does not decide
 
@@ -618,6 +624,9 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
   `tests/test_documentation.py` exists to prevent.
 * **v0.7.5.** Not in this chain: a runtime-behaviour fix to the feedback acquisition path, a
   prerequisite for v0.8.0 rather than a member of the sequence.
-* **Anything after v0.18.0.** [`../ROADMAP.md`](../ROADMAP.md) keeps the unsequenced items.
+* **Anything after v0.21.0.** [`../ROADMAP.md`](../ROADMAP.md) keeps the unsequenced items,
+  among them the two this release deliberately did not take: D3's SNMP poller, which slips to
+  v0.21.1 at the quality II.6 defines (#373), and real per-organization isolation, which the
+  organization column is explicitly **not** (#366).
 * **Whether v0.17.3 happens at all.** *Likely, review before committing.* It is the one release here
   that may reasonably be dropped. (It was numbered v0.17.0 until #336 renumbered the block.)

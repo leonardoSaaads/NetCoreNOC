@@ -52,6 +52,8 @@ from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE, Var
 from netcorenoc.engine.dataset import capture as capture_mod
 from netcorenoc.engine.dataset.capture import Capture, LabelContext, RetentionPolicy
 from netcorenoc.engine.evaluation.shadow import Shadow
+from netcorenoc.engine.mw import index as mw_index
+from netcorenoc.engine.mw.ledger import StateLedger
 from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
 from netcorenoc.engine.operate.maintenance import MaintenanceMixin
@@ -153,6 +155,12 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # decisions — the thing nothing measured. In memory, aggregate, never persisted and
         # never evidence: `GET /api/correlation` reads it and no promotion path can.
         self.monitor = CorrelationMonitor()
+        # **Maintenance windows** (v0.21.0). Two objects, both call sites only — every decision is
+        # in `engine/mw/`, which this file's COHESION_EXEMPT entry does not cover. `windows` is an
+        # immutable snapshot the maintenance loop rebuilds and swaps; `ledger` is raise-seen /
+        # clear-seen for what a window suppressed, flushed by the same loop.
+        self.windows: mw_index.WindowIndex = mw_index.EMPTY
+        self.ledger = StateLedger()
 
     def forget_situation(self, sid: int) -> None:
         """Drop in-memory membership after an operator manually closes a situation."""
@@ -270,9 +278,34 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # Resolve the alarmed entity and the dedup instance. At level 0 (no promotion) this is
         # the level-0 entity and the heuristic instance — exact parity with v0.2.0.
         entity_id, instance = await self._resolve_entity(ne_id, item)
-        sev, sev_rank = self._resolve_severity(ne_id, item)
+        placed = severity.place(item.varbinds, self.ne_severity.get(ne_id))
+        # **Before the window check, and that is load-bearing** (v0.21.0). This registers the
+        # universally-valid raise/clear pairs from `known_oids.CLEAR_PAIR_SEEDS` — bundled public
+        # data, not anything learned from this estate's traffic — and the ledger needs them: a
+        # suppressed `linkUp` has to be recognised as the clear for `linkDown` and filed under the
+        # RAISE fingerprint, or the repaired fault surfaces at the end of the window as one that
+        # never cleared. Measured: with this line after the check, a cut and its repair inside one
+        # window surfaced two phantom alarms instead of none.
         await self._seed_clear_pair(item.trap_oid, class_id, item.ts)
-        if len(self.correlator.index) < STORM_ALARMS:
+        # **The maintenance-window check** (v0.21.0, Part V). After decode and after severity,
+        # because D4's rules need the OID, the varbinds and the placed rank; before the store,
+        # because a suppressed trap is one this appliance does not record. No query, no lock, no
+        # I/O: `self.windows` is an immutable snapshot the maintenance loop swaps in, and every
+        # decision in `engine/mw/` is a pure function of arguments already in hand.
+        decision = self.windows.decide(
+            ne_id, item.ts, item.trap_oid, tuple(vb.oid for vb in item.varbinds), placed.rank
+        )
+        if decision.suppressed:
+            self.ledger.observe_suppressed(
+                decision, ne_id, device_id, class_id, instance, item, self.learner, self.windows
+            )
+            return
+        # `teaches` is v0.21.0's one new term on this path (ADR #372). A trap a window's rules let
+        # through is a real alarm and forms real situations — the operator asked to see it — but
+        # the reboots, flaps and reconvergence of planned work teach affinities that are not the
+        # network's. So it is collected and correlated, and it moves no learned state.
+        teaches = not decision.under_window
+        if teaches and len(self.correlator.index) < STORM_ALARMS:
             # Storms teach confounders: random class interleavings would falsely
             # register raise/clear pairs, so alternation learning pauses too.
             self.learner.clears.observe(device_id, item.instance, class_id)
@@ -288,7 +321,12 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             await self._handle_state_clear(device_id, class_id, item, instance)
             return
         result = await self.store.ingest(
-            item, entity_id=entity_id, instance=instance, severity=sev, severity_rank=sev_rank
+            item,
+            entity_id=entity_id,
+            instance=instance,
+            severity=placed.value,
+            severity_rank=placed.rank,
+            severity_source=placed.source,
         )
         if not result.activated:
             return
@@ -307,20 +345,23 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         outcome = self.correlator.process(entry, self.learner)
         recent = outcome.considered[-LEARN_CAP:]
         item_pair = (class_id, device_id)
-        self.learner.observe_activation(item_pair)
-        self.learner.observe_pairs(
-            item_pair, [(c.class_id, c.device_id) for c in recent], outcome.storm
-        )
-        lead_weight = STORM_DAMPING if outcome.storm else 1.0
-        for candidate in recent:
-            self.precedence.observe(
-                (candidate.class_id, candidate.device_id), item_pair, lead_weight
+        if teaches:
+            self.learner.observe_activation(item_pair)
+            self.learner.observe_pairs(
+                item_pair, [(c.class_id, c.device_id) for c in recent], outcome.storm
             )
+            lead_weight = STORM_DAMPING if outcome.storm else 1.0
+            for candidate in recent:
+                self.precedence.observe(
+                    (candidate.class_id, candidate.device_id), item_pair, lead_weight
+                )
         merged = await self._assign_situation(entry, outcome.links)
         # **Observability, not evidence** (v0.18.0, Part II). Counters over the decisions the
         # champion just made, in memory, read by `GET /api/correlation` and drawn by the console.
         # It writes nothing and reaches no promotion path. `observe` never raises.
         self.monitor.observe(entry, outcome, merged)
+        if not teaches:
+            return  # collected and correlated; out of the dataset and out of shadow mode (#372)
         # After `_assign_situation`, so the situation id is where the alarm landed, and last on
         # this path so a capture failure precedes no decision. `capture.record` never raises.
         await self.capture.record(
@@ -331,8 +372,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             self.learner,
             ne_id=ne_id,
             count=result.count,
-            severity=sev,
-            severity_rank=sev_rank,
+            severity=placed.value,
+            severity_rank=placed.rank,
             instance=instance,
             situation_id=self.sit_of.get(entry.alarm_id),
         )
@@ -383,17 +424,6 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             entity_id = parent
             instance = value  # the finest value becomes the dedup instance
         return entity_id, instance
-
-    def _resolve_severity(self, ne_id: int, event: TrapEvent) -> tuple[str | None, int | None]:
-        """(severity, rank) for a trap on an NE with a confirmed severity field, else
-        (None, None) — an honest unknown, never a default (S8)."""
-        oid = self.ne_severity.get(ne_id)
-        if oid is None:
-            return None, None
-        value = next((vb.value for vb in event.varbinds if vb.oid == oid), None)
-        if value is None:
-            return None, None
-        return severity.normalize(value)
 
     async def reset_entity(self, ne_id: int, now: float) -> None:
         """Forget an NE's learned entity discriminator and severity field (admin recourse for a
@@ -577,6 +607,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             await self._capture_run(now)  # same reload point, same reason
             for sid in await self.store.idle_open_situations(now - IDLE_CLOSE_S):
                 await self._close_situation(sid, now)
+            await self._maintenance_windows(now)  # v0.21.0: advance, surface, rebuild the index
             await self._promotion_sweep(now)
             await self.learner.save(self.store, now)
             await self.precedence.save(self.store, now)

@@ -20,7 +20,24 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   (v0.15.3, #238). Today a password is the only factor this appliance has. Whatever ships must not
   reintroduce F79's shape: a second factor an admin can lose is a second way to lock the appliance
   out of itself, so enrolment and recovery are the same design question, not two.
-- **SNMPv3** — needs credentials, hence configuration, hence deliberately post-MVP.
+- **Basic SNMP polling, read-only — v0.21.1** (#373, `HANDOFF.md` §1). Planned for v0.21.0 and
+  **deliberately slipped**, not dropped: II.6 describes a credential-handling subsystem, not a
+  feature flag — credentials never in the database in the clear, SNMPv3 where the element offers
+  it, a bounded target set, a rate ceiling no request can raise, every read audited. The gap it was
+  wanted for is already closed by the maintenance ledger (#371), which costs no credential; a poll
+  is corroboration. The written plan, down to the table and the key derivation, is in `HANDOFF.md`
+  §1. **Nothing in v0.21.0 promises it** — the placeholder capabilities were removed rather than
+  left, because a capability with no route is a promise of a feature nobody built.
+- **SNMPv3** — needs credentials, hence configuration, hence deliberately post-MVP. The poller
+  above is where it lands first.
+- **Real per-organization isolation.** v0.21.0 gives every network element an **organization**, and
+  the migration that adds it carries a banner saying in capitals that it is **not tenant
+  isolation** (#366): correlation still learns across every element, a situation may still form
+  across the boundary, and no authorization decision reads the column. Making it real is three
+  separate pieces of work, each of which changes what the product *is*: correlation that does not
+  cross organizations, learned affinities held per organization, and RBAC bound to one. None is
+  scheduled, and the appliance says so rather than implying otherwise — `GET /api/organizations`
+  returns `"isolation": false` in its own body.
 - **Export to ticketing systems** — phase 3 of the three-phase design ([`architecture.md`](architecture.md)).
 - **Automatic MIB enrichment** — readable names without any user obligation.
 - **A precursor/gauge layer** — performance-monitoring signals ahead of alarms.

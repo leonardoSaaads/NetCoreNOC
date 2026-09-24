@@ -227,13 +227,45 @@ second move out of the same situation is recorded in full and adds no second lab
 (`docs/findings.md` F89). Restructuring five situations once teaches more than restructuring one
 situation five times.
 
-## 7. Running it alongside your existing NMS
+## 7. Before you take equipment down
+
+Declare a **maintenance window** on **Operations → Maintenance**, or through
+`POST /api/maintenance-windows` if a script or an agent is doing it. An element under a window is
+**not collected by default**; what still gets through is the rules you write. The full account of
+the form, the three rule kinds and how they compose is in
+[`console.md`](console.md#maintenance-declaring-planned-work-v0210); the four things an operator
+most often needs to know are here.
+
+**The time zone is not optional, and it is not your browser's.** Search the city you think in; the
+appliance stores the canonical IANA zone behind it. Every instant on the screen is shown in **site
+time** and in **your time**, because the engineer who declares the work and the operator on shift
+are usually not in one place.
+
+**Over six hours, somebody has to agree.** Longer windows wait in *Pending confirmation* and
+suppress **nothing at all** until an editor or an admin confirms — an unconfirmed window that
+expires has suppressed nothing. A window an agent created always waits for a human.
+
+**A fault that outlives the window surfaces by itself.** While a window is in force the appliance
+records, per element/class/instance, whether it saw a raise and whether it saw a clear — and
+nothing else, no varbinds and no severity, because storing those would be collecting the trap you
+asked it not to collect. Anything raised inside the window and never cleared becomes an alarm when
+the window closes, marked *"raised during maintenance, still active"*. It carries **no severity**:
+the appliance is not failing to place one, it never saw the trap.
+
+**Check before you leave.** After a window closes, look for that badge before you call the job
+done. It is the appliance telling you it saw something start and never saw it stop.
+
+**It does not poll.** Nothing in this release reaches out to your equipment, no credential is
+stored, and no capability implies otherwise. Everything above is derived from the traps you already
+send it.
+
+## 8. Running it alongside your existing NMS
 
 It only needs a **copy** of the traps, so you can run it in parallel with whatever you have today
 from day one, with nothing at risk. Cold start is honest and documented in
 [`correlation.md`](correlation.md#cold-start).
 
-## 8. Operational commands
+## 9. Operational commands
 
 ```sh
 python -m netcorenoc audit verify        # walk the audit hash chain, report the first broken link

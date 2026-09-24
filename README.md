@@ -43,16 +43,25 @@ Other install routes — plain Docker, pip, Nix, systemd — are in [`docs/insta
 
 ## What you see
 
-Seventeen views in three groups: **Operations** (situations, network graph, timeline, entities,
-alarm classes), **Evidence** (labelling, corpus, judge & promotion) and **Administer** (users,
-tokens, settings, link scorer, governance, quarantine, audit). A view you cannot use is not
+Eighteen views in three groups: **Operations** (situations, network graph, timeline, entities,
+alarm classes, maintenance), **Evidence** (labelling, corpus, judge & promotion) and **Administer**
+(users, tokens, settings, link scorer, governance, quarantine, audit). A view you cannot use is not
 rendered — a viewer sees no `Administer` group at all.
 
 Three roles (`viewer`, `editor`, `admin`) and an optional per-principal visibility scope
 narrow what a signed-in identity may see. **Visibility scoping is not tenant isolation**, and the
 distinction is load-bearing: correlation learns across the whole estate, so a scoped principal sees
-a filtered view of one shared engine rather than a private one.
-[`docs/security.md`](docs/security.md) states exactly what it does and does not give you.
+a filtered view of one shared engine rather than a private one. The same is true of an
+**organization**, which says whose equipment an element is and decides nothing about who may see
+it. [`docs/security.md`](docs/security.md) states exactly what both do and do not give you.
+
+**Planned work is declared, not endured.** A maintenance window names elements, an interval and a
+mandatory time zone, and a target under one is not collected by default — what still gets through
+is the rules you write, composed from severity, OID subtree and time slot. A fault that starts
+inside a window and never clears **surfaces when the window closes**, so planned work cannot hide
+an outage, and a device under a window is marked on screen for every role, including one who may
+not see what the window is. [`docs/console.md`](docs/console.md#maintenance-declaring-planned-work-v0210)
+is the operator's account of it.
 
 The screen the product exists for is **Situations**: dense cards that expand in place to show the
 probable root cause, the member alarms, and then *Why these were grouped* — one row per link with

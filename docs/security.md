@@ -87,6 +87,41 @@ True multi-tenant isolation — per-tenant learning, per-tenant situation bounda
 retention and audit segmentation — is a larger, separate feature on the [roadmap](ROADMAP.md).
 **NetCoreNOC does not claim it today.**
 
+### ⚠ An organization is attribution, and it is **not** tenant isolation either (v0.21.0)
+
+Every network element belongs to an organization, every maintenance window belongs to one, and
+lists filter by it. The column answers one question — *"whose equipment is this?"* — and
+
+* **no authorization decision anywhere reads it.** It is not an RBAC subject and not a scope input;
+* **correlation still learns across every element**, and a situation may still form across an
+  organization boundary, exactly as the scoping warning above says;
+* it is **admin-written**, which is why it is deliberately *not* folded into the visibility-scope
+  resolver: F35's rule is that no resolver input may be writable by a scopable role, and admitting
+  a second admin-writable axis would widen that guarantee for a feature that is not a security
+  control.
+
+`GET /api/organizations` says so in its own response body (`"isolation": false`, with a sentence
+naming what still crosses the boundary), because an agent reading a field called `organization_id`
+is otherwise entitled to read it as a boundary. Migration `0020` carries the same warning as a
+banner in the schema itself.
+
+### Maintenance windows suppress collection, and the suppression is visible (v0.21.0)
+
+A window can stop an element's traps being recorded, which makes it a way to hide an outage. Three
+things bound that:
+
+* **Every role sees the marker.** A device or situation under planned work is badged on every
+  screen, for a viewer as much as an admin, with when it ends. What the window *is* — its name, its
+  owner, its rules — follows its visibility; **that it exists does not**, because a host that goes
+  quiet with no marker reads as a healthy host.
+* **A fault that outlives the window surfaces anyway.** The state ledger records, per fingerprint,
+  a raise seen and a clear seen — six scalars, no payload — and anything raised inside a window
+  that never cleared becomes an alarm when the window closes.
+* **Every write is audited**, under six actions of its own rather than one carrying a verb, with
+  the actor and whether they authenticated with a session or a service token. A window over six
+  hours suppresses nothing until a human editor or admin confirms it, and an agent may never
+  confirm one it created.
+
 ## Sessions, passwords, throttling
 
 * `scrypt` (n = 2¹⁷). Policy is **length only**: 12–128 characters, no composition rules, no forced

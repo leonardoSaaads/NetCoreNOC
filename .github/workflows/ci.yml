@@ -85,7 +85,8 @@ jobs:
       - name: Evaluation gate (pairwise_f1, ari, entity_accuracy)
         run: make eval PYTHON=python
       - name: The eval hash, recorded
-        # Held at c2e8a0ce… since v0.7.0. Printed so a release note never has to be taken on trust,
+        # `c75b42aa…` today; `c2e8a0ce…` from v0.7.0 until the corpus was re-cut, which
+        # `CHANGELOG.md` records. Printed so a release note never has to be taken on trust,
         # and so a baseline re-cut (`make eval-baseline REASON=…`) is visible in the log that ran it.
         run: |
           python eval/harness.py | sha256sum | tee eval-hash.txt
@@ -184,10 +185,15 @@ jobs:
           # The console, from the wheel — this is the assertion F85 needed.
           curl -fsS -o /dev/null http://127.0.0.1:8080/app.js
           curl -fsS -o /dev/null http://127.0.0.1:8080/app/views/overview.js
+          # v0.21.0: 18 -> 21 (`0019` severity provenance, `0020` organization, `0021` the
+          # maintenance-window tables). A literal, deliberately: a release that adds a migration
+          # changes this line in the same commit, which is what makes the schema a reviewable
+          # diff rather than a thing that grew. `tests/test_upgrade.py` and
+          # `tests/test_bag_identity.py` carry the same pin for the same reason.
           python - <<'PY'
           import sqlite3
           v = sqlite3.connect("/tmp/ci.db").execute("PRAGMA user_version").fetchone()[0]
-          assert v == 18, f"the appliance booted at schema {v}, not 18"
+          assert v == 21, f"the appliance booted at schema {v}, not 21"
           print(f"schema version {v}, all migrations applied")
           PY
           kill %1

@@ -203,3 +203,32 @@ UNKEYED_BAG  # the pre-0015 sentinel (netcorenoc/store/feedback.py)
 # into one mapping, adding a table needs no change to this file at all: the guard fails until the
 # citation is written, which is the thing that should be required.
 BUNDLED_SOURCES  # every bundled table's citation (netcorenoc/ingest/known_oids.py)
+# --- v0.21.0, maintenance windows -----------------------------------------------------------
+# **Route handlers, registered by a decorator and never called by name.** `split_situation` above
+# is here for the identical reason and has been since v0.16.0: FastAPI holds the reference, `src/`
+# holds none, and a static scan sees a function nobody calls. They are listed one per line rather
+# than suppressed by a pattern, because a pattern would also hide a handler that had genuinely
+# stopped being registered — which is the failure `tests/test_declaration.py` exists to catch and
+# this file must not undo.
+list_windows  # GET /api/maintenance-windows (netcorenoc/api/routes/maintenance.py)
+create_window  # POST /api/maintenance-windows
+read_window  # GET /api/maintenance-windows/{wid}
+update_window  # POST /api/maintenance-windows/{wid}
+preview_window  # POST /api/maintenance-windows/preview (routes/maintenance_ops.py)
+end_window  # POST /api/maintenance-windows/{wid}/end
+extend_window  # POST /api/maintenance-windows/{wid}/extend
+list_timezones  # GET /api/timezones (netcorenoc/api/routes/inventory.py)
+# **Pydantic validators**, held by the model's own schema rather than by a caller. Same shape as
+# the handlers above: the decorator is the reference. Each one is the single semantic authority
+# for the field it names, so the refusal an agent reads comes from exactly one place.
+_check_oid  # CollectionRuleIn: an OID rule's arc shape
+_check_kind  # CollectionRuleIn: the fields a rule kind may carry
+_check_tz  # _WindowBody: the zone must be one THIS host can resolve
+_check_window  # _WindowBody: starts before ends, and the duration is sane
+# **The index horizons**, read by `tests/test_maintenance_window.py` and by nothing in `src/` —
+# they are the engine's declaration of how far either side of now the snapshot reaches, and
+# `store/mw_compile.py` restates them as literals because the layer model forbids the store
+# importing the engine. The test asserts the two against each other, so a scan that could see it
+# would find them used; this file is what stands in for that.
+TRAILING_GRACE_S  # netcorenoc/engine/mw/index.py
+LEADING_HORIZON_S  # netcorenoc/engine/mw/index.py

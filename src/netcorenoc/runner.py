@@ -31,7 +31,7 @@ from typing import Any
 import uvicorn
 
 from netcorenoc.api import QuietServer, create_app
-from netcorenoc.crosscutting import administration
+from netcorenoc.crosscutting import administration, shaping
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import (
     ENV_PREFIX,
@@ -332,6 +332,16 @@ async def _serve(settings: Settings, store: Store) -> None:
     )
     resources.sample()  # one reading now, so CPU has a baseline to difference the next one against
 
+    # **D2's startup self-check** (v0.21.0). Computed once, here, in the *running* appliance —
+    # against the `tzdata` this image actually has rather than the one the build machine had.
+    # `tests/test_timezones.py` asserts the curated list resolves on the build machine, and that
+    # is exactly the trap F131 records one layer up: a list validated where it was written and not
+    # where it runs. Silent on a healthy install; on an image with no time-zone database it is the
+    # one sentence that explains why every window is being refused.
+    timezone_warnings = shaping.timezone_selfcheck()
+    for warning in timezone_warnings:
+        log.warning("%s", warning)
+
     def receiver_stats() -> dict[str, Any]:
         return {"receiver": asdict(receiver.stats), "resources": resources.snapshot()}
 
@@ -358,6 +368,9 @@ async def _serve(settings: Settings, store: Store) -> None:
             + engine.shadow.warnings()
             + engine.capture.warnings()
             + list(store.integrity_warnings)
+            # v0.21.0: a curated time zone this host cannot resolve. A constant per process,
+            # so it is computed once above rather than per request like the rest of this list.
+            + timezone_warnings
             + supervisor.warnings()
         ),
     )
