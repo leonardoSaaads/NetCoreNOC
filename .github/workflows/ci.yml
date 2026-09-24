@@ -85,7 +85,8 @@ jobs:
       - name: Evaluation gate (pairwise_f1, ari, entity_accuracy)
         run: make eval PYTHON=python
       - name: The eval hash, recorded
-        # Held at c2e8a0ce… since v0.7.0. Printed so a release note never has to be taken on trust,
+        # `c75b42aa…` today; `c2e8a0ce…` from v0.7.0 until the corpus was re-cut, which
+        # `CHANGELOG.md` records. Printed so a release note never has to be taken on trust,
         # and so a baseline re-cut (`make eval-baseline REASON=…`) is visible in the log that ran it.
         run: |
           python eval/harness.py | sha256sum | tee eval-hash.txt

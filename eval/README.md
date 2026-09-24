@@ -13,7 +13,12 @@ through the engine — then aligns every predicted alarm to ground truth and pri
 the frozen baseline. It **exits non-zero** on a regression in `pairwise_f1`, `ari` or
 `entity_accuracy`.
 
-Releases quote `python eval/harness.py | sha256sum`. That hash has held at `c2e8a0ce…` since v0.7.0.
+Releases quote `python eval/harness.py | sha256sum`. It is **`c75b42aa…`** today. It held at
+`c2e8a0ce…` from v0.7.0 until the corpus was re-cut, and `CHANGELOG.md` records that move with
+its reason — this line said *"held at `c2e8a0ce…` since v0.7.0"* for several releases after it
+stopped being true, which is the one thing a quoted hash must not do. What makes the number
+useful is that it moves **only** when somebody meant it to, so the value here is the current
+one and the history is in the log.
 
 **What it can and cannot see.** It is a snapshot of *aggregate* metrics, so it sees a change that
 moves one and nothing else. Measured in v0.17.0: forcing every pair unlinked collapses it to two

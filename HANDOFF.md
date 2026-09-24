@@ -543,21 +543,61 @@ printed.
 
 | Gate | Result |
 |---|---|
-| Full suite | *see §8.1* |
-| `mypy --strict` | *see §8.1* |
-| `ruff` | *see §8.1* |
-| `vulture` | *see §8.1* |
-| `make dom` — **executed**, not compiled | *see §8.1* |
-| `make security` — both halves | *see §8.1* |
-| Coverage | *see §8.1*, **and what it does not measure is below** |
-| `make eval` | *see §8.1* |
-| Behaviour-identity record | *see §8.1* |
-| wheel + sdist into a clean venv | *see §8.1* |
-| Appliance booted through all migrations | *see §8.1* |
+| Full suite | **2202 passed, 0 failed**, 12 m 39 s |
+| `mypy --strict` | **no issues in 250 source files** |
+| `ruff check` / `ruff format --check` | **all checks passed**, 318 files already formatted |
+| `vulture` (dead-code gate) | **exit 0** against the committed allowlist |
+| `make dom` — **executed**, not compiled | **green in CI**, on the job that fails on the word `skipped` |
+| `make security` — both halves | `bandit` **clean**; `pip-audit` **no known vulnerabilities** |
+| Coverage | **94.63%** against an 85% floor (10 281 statements, 393 missed) |
+| `make eval` | **no gated regressions** — every metric byte-identical (§8.1.1) |
+| Behaviour-identity record | re-recorded, **reproducible across processes**, `sha256 27119d3d…` |
+| wheel + sdist into a clean venv | **green in CI**, and the console served *from the wheel* |
+| Appliance booted through all migrations | **21 migrations, schema 0 → 21**, `/healthz` → `{"status":"ok","version":"0.21.0"}` — done twice, on a CI runner and on this machine |
+| `tools/release_check.py` | `release-check OK: all sources agree on version 0.21.0` |
 
-### 8.1 The recorded run
+### 8.1.1 The `make eval` delta
 
-*(Filled from the final verification pass — see the commit that carries this file.)*
+```
+metric                        baseline     current       delta
+pairwise_f1                     1.0000      1.0000     +0.0000  <- GATE
+ari                             1.0000      1.0000     +0.0000  <- GATE
+over_merge_rate                 0.0000      0.0000     +0.0000
+under_merge_rate                0.0000      0.0000     +0.0000
+entity_accuracy                 0.4480      0.4480     +0.0000  <- GATE
+root_top1                       1.0000      1.0000     +0.0000
+dedup_ratio                     0.7156      0.7156     +0.0000
+p95_ingest_latency_s            0.0003      0.0003     +0.0000
+peak_tracked_objects              2102        2102     +0.0000
+distinct_alarms                   2252        2252     +0.0000
+traps_ingested                    3147        3147     +0.0000
+quarantined                          0           0     +0.0000
+no gated regressions
+```
+
+**A scored path changed, so this had to be checked rather than assumed.** `severity.py`,
+`varbind_profile.py`, `engine/operate/engine.py` and the store's ingest are all in the diff. The
+prediction was stated before the run: unchanged, because no corpus trap is under a window (so the
+check's only effect is one dictionary lookup returning *"no window"*) and severity placement writes
+a column the scorer does not read.
+
+**Verified stronger than the table.** The whole stdout was captured on this branch and on the merge
+base in a `git worktree`, and `diff` reports them **identical** — so the claim is not "the twelve
+numbers I printed match" but "the output is the same byte for byte".
+
+```
+$ diff eval-base.txt eval-now.txt && echo IDENTICAL
+IDENTICAL
+$ python eval/harness.py | sha256sum
+c75b42aa95e1931f78af91d2581cc071ebed36ca1cca47e22505797a3369839a
+```
+
+**A stale claim found doing this.** Three live places said the hash *"has held at `c2e8a0ce…` since
+v0.7.0"* — `eval/README.md`, `tests/test_rebaseline.py`'s docstring and the CI step's comment. The
+**merge base** produces `c75b42aa…`, so it moved in an earlier release (the CHANGELOG records that
+re-cut with its reason) and three documents went on quoting the old value. A quoted hash that is
+wrong is worse than no quoted hash: its whole job is to be compared. All three now state the
+current value and where the history is.
 
 ### 8.2 What coverage does not measure
 
