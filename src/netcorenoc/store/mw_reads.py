@@ -36,6 +36,63 @@ from netcorenoc.store.types import MAX_SCOPE_PARAMS
 MAX_WINDOW_LIMIT = 200
 
 
+def _window_filters(
+    *,
+    statuses: tuple[str, ...] = (),
+    organization_id: int | None = None,
+    ne_id: int | None = None,
+    owner_ref: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
+    scope_ne_ids: frozenset[int] | None = None,
+) -> tuple[str, list[Any]]:
+    """The WHERE clause the list and the count **both** run, and its bound arguments.
+
+    One function rather than two similar blocks, because F151 is precisely what two similar blocks
+    produce: the page was filtered seven ways and the total was filtered one way, so the console
+    reported *"showing 2 of 40"* for a device with two windows, and a scoped viewer's total
+    counted the windows they had just been prevented from seeing.
+
+    Every clause is a placeholder; the only interpolation is the placeholder run itself, whose
+    length comes from `len()` and never from a caller's text.
+    """
+    where: list[str] = []
+    args: list[Any] = []
+    if statuses:
+        where.append(f"w.status IN ({','.join('?' * len(statuses))})")
+        args.extend(statuses)
+    if organization_id is not None:
+        where.append("w.organization_id = ?")
+        args.append(organization_id)
+    if owner_ref is not None:
+        where.append("w.owner_ref = ?")
+        args.append(owner_ref)
+    if since is not None:
+        where.append("(w.ends_at + w.patch_s) >= ?")
+        args.append(since)
+    if until is not None:
+        where.append("(w.starts_at - w.patch_s) <= ?")
+        args.append(until)
+    if ne_id is not None:
+        where.append(
+            "EXISTS (SELECT 1 FROM maintenance_window_target t "
+            "WHERE t.window_id = w.id AND t.ne_id = ?)"
+        )
+        args.append(ne_id)
+    if scope_ne_ids is not None and len(scope_ne_ids) <= MAX_SCOPE_PARAMS:
+        # **A window naming nothing is visible to everybody**, which is why the first half of this
+        # disjunction is here: an estate-wide window with no target rows belongs to no element and
+        # cannot be out of anybody's scope. The route's own drop said the same thing in Python.
+        marks = ",".join("?" * len(scope_ne_ids)) or "NULL"
+        where.append(
+            "(NOT EXISTS (SELECT 1 FROM maintenance_window_target t WHERE t.window_id = w.id) "
+            f"OR EXISTS (SELECT 1 FROM maintenance_window_target t "  # nosec B608 - placeholders
+            f"WHERE t.window_id = w.id AND t.ne_id IN ({marks})))"  # nosec B608 - placeholders
+        )
+        args.extend(sorted(scope_ne_ids))
+    return (f"WHERE {' AND '.join(where)} " if where else ""), args
+
+
 class MaintenanceReadMixin(StoreBase):
     async def list_maintenance_windows(
         self,
@@ -46,6 +103,7 @@ class MaintenanceReadMixin(StoreBase):
         owner_ref: str | None = None,
         since: float | None = None,
         until: float | None = None,
+        scope_ne_ids: frozenset[int] | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -56,33 +114,24 @@ class MaintenanceReadMixin(StoreBase):
         F38's rule, one resource over: a `LIMIT` must bound the **filtered** set and must not be
         the caller's to widen.
 
+        `scope_ne_ids` is the caller's resolved visibility, and it is applied **here, in the
+        WHERE clause** rather than by the route dropping rows from the answer. That is prime
+        directive 6 (F151): v0.21.0 filtered the page in the handler and then reported a `total`
+        the query had produced, so the two disagreed and the difference was the count of windows
+        the caller may not see.
+
         Ordered by `starts_at` so *"the next five"* is the first five rows, which is what D7 asks
         for and what makes the *"in 2 h 15 min"* column monotonic down the page.
         """
-        where: list[str] = []
-        args: list[Any] = []
-        if statuses:
-            where.append(f"w.status IN ({','.join('?' * len(statuses))})")
-            args.extend(statuses)
-        if organization_id is not None:
-            where.append("w.organization_id = ?")
-            args.append(organization_id)
-        if owner_ref is not None:
-            where.append("w.owner_ref = ?")
-            args.append(owner_ref)
-        if since is not None:
-            where.append("(w.ends_at + w.patch_s) >= ?")
-            args.append(since)
-        if until is not None:
-            where.append("(w.starts_at - w.patch_s) <= ?")
-            args.append(until)
-        if ne_id is not None:
-            where.append(
-                "EXISTS (SELECT 1 FROM maintenance_window_target t "
-                "WHERE t.window_id = w.id AND t.ne_id = ?)"
-            )
-            args.append(ne_id)
-        clause = f"WHERE {' AND '.join(where)} " if where else ""
+        clause, args = _window_filters(
+            statuses=statuses,
+            organization_id=organization_id,
+            ne_id=ne_id,
+            owner_ref=owner_ref,
+            since=since,
+            until=until,
+            scope_ne_ids=scope_ne_ids,
+        )
         cur = await self.conn.execute(
             "SELECT w.*, (SELECT COUNT(*) FROM maintenance_window_target t "  # nosec B608
             "WHERE t.window_id = w.id) AS target_count, o.name AS organization_name "
@@ -92,18 +141,65 @@ class MaintenanceReadMixin(StoreBase):
         )
         return [_row(row) for row in await cur.fetchall()]
 
-    async def count_maintenance_windows(self, statuses: tuple[str, ...] = ()) -> int:
-        """The total behind a page, so the console can say *"showing 5 of 23"* honestly."""
-        if statuses:
-            cur = await self.conn.execute(
-                "SELECT COUNT(*) FROM maintenance_window "  # nosec B608 - placeholders only
-                f"WHERE status IN ({','.join('?' * len(statuses))})",  # nosec B608
-                statuses,
-            )
-        else:
-            cur = await self.conn.execute("SELECT COUNT(*) FROM maintenance_window")
+    async def count_maintenance_windows(
+        self,
+        statuses: tuple[str, ...] = (),
+        *,
+        organization_id: int | None = None,
+        ne_id: int | None = None,
+        owner_ref: str | None = None,
+        since: float | None = None,
+        until: float | None = None,
+        scope_ne_ids: frozenset[int] | None = None,
+    ) -> int:
+        """The total behind a page, so the console can say *"showing 5 of 23"* honestly.
+
+        **The same filters as :meth:`list_maintenance_windows`, built by the same function.** It
+        took the status filter and nothing else until v0.21.1, which made every other filter a lie
+        on screen — *"showing 2 of 40"* for a device with two windows — and made the difference
+        between the page and the total a count of the windows a scoped caller may not see. F151.
+        """
+        clause, args = _window_filters(
+            statuses=statuses,
+            organization_id=organization_id,
+            ne_id=ne_id,
+            owner_ref=owner_ref,
+            since=since,
+            until=until,
+            scope_ne_ids=scope_ne_ids,
+        )
+        if scope_ne_ids is not None and len(scope_ne_ids) > MAX_SCOPE_PARAMS:
+            return await self._count_windows_over_a_huge_scope(clause, args, scope_ne_ids)
+        cur = await self.conn.execute(
+            f"SELECT COUNT(*) FROM maintenance_window w {clause}",  # nosec B608 - placeholders
+            tuple(args),
+        )
         row = await cur.fetchone()
         return int(row[0]) if row else 0
+
+    async def _count_windows_over_a_huge_scope(
+        self, clause: str, args: list[Any], scope_ne_ids: frozenset[int]
+    ) -> int:
+        """The total for a scope too large to bind, counted in Python over id pairs.
+
+        See :data:`MAX_SCOPE_PARAMS`. An estate with more elements in one scope than SQLite will
+        bind is filtered here rather than having its id list truncated, which would answer a
+        different question quietly — the choice `window_markers` and `severity_census` both make.
+        The projection is two columns over the window table and its target table, both of which
+        hold **declared** work rather than traffic, so this reads a few hundred rows on the
+        appliance where it is reachable at all.
+        """
+        cur = await self.conn.execute(
+            "SELECT w.id AS wid, t.ne_id AS ne FROM maintenance_window w "  # nosec B608
+            f"LEFT JOIN maintenance_window_target t ON t.window_id = w.id {clause}",  # nosec B608
+            tuple(args),
+        )
+        seen: dict[int, bool] = {}
+        for row in await cur.fetchall():
+            ne = row["ne"]
+            visible = ne is None or int(ne) in scope_ne_ids
+            seen[int(row["wid"])] = seen.get(int(row["wid"]), False) or visible
+        return sum(1 for visible in seen.values() if visible)
 
     async def maintenance_window(self, window_id: int) -> dict[str, Any] | None:
         cur = await self.conn.execute(

@@ -659,7 +659,7 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
-    assert len(served) == 146, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 148, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -808,7 +808,7 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
-    assert len(served) == 146, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 148, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.

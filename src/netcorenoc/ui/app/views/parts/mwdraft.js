@@ -10,6 +10,32 @@
  * naive datetime precisely so this conversion has to happen somewhere a reader can find.
  */
 
+/* `/api/entities` rows as the form's own host shape. **The adapter F149 was missing.**
+ *
+ * The route serves a network element with its primary key as `id`. Everything downstream of this
+ * form — `windowBody`, the rule chips, the target toggle — speaks `ne_id`, because that is what
+ * the API's *request* body calls it. Those two names are both correct and they are not the same
+ * name, and for one release nothing converted between them: the form read `host.ne_id` off a row
+ * that has `id`, got `undefined` on every host, and sent `"targets": [null]`.
+ *
+ * Every request the form made came back **422** — the live preview, and the create behind
+ * *"Schedule it"*. The screen looked like it worked and could not create a window at all.
+ *
+ * So the conversion is a named function with a test, rather than a property access repeated in
+ * five places. A row with no usable id is **dropped**: a host that cannot be named in a request
+ * cannot be a target, and offering it would put the operator back where they started.
+ */
+export function normaliseHosts(payload) {
+  const rows = Array.isArray(payload) ? payload : payload && payload.entities ? payload.entities : [];
+  return rows
+    .map((row) => ({
+      ne_id: row.ne_id === undefined ? row.id : row.ne_id,
+      ip: row.ip || "",
+      label: row.label || "",
+    }))
+    .filter((host) => Number.isInteger(host.ne_id));
+}
+
 /* The next quarter hour, as a `datetime-local` value.
  *
  * The commonest start anyone wants, and a default that is never in the past — which matters more

@@ -86,29 +86,37 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         existence, status and timing — prime directive 4 — and sees the name, owner and description
         only where `visibility` permits. Dropping the row would recreate the quiet-host problem in
         the list instead of on the device.
+
+        **A row naming nothing the caller may see is a different case and is dropped** — by the
+        query, since v0.21.1. It is not their window at all, and `total` counts what the same
+        predicate returns, so the page and the total cannot disagree (F151).
         """
         statuses = parse_statuses(status)
-        rows = await store.list_maintenance_windows(
-            statuses=statuses,
-            organization_id=organization_id,
-            ne_id=ne_id,
-            owner_ref=principal.ref if mine else None,
-            since=since,
-            until=until,
-            limit=limit,
-            offset=offset,
-        )
+        scope_ne_ids = await access.scope_ne_ids(principal)
+        filters: dict[str, Any] = {
+            "statuses": statuses,
+            "organization_id": organization_id,
+            "ne_id": ne_id,
+            "owner_ref": principal.ref if mine else None,
+            "since": since,
+            "until": until,
+            "scope_ne_ids": scope_ne_ids,
+        }
+        rows = await store.list_maintenance_windows(**filters, limit=limit, offset=offset)
         scope = await ctx.scope_for(principal)
         out: list[dict[str, Any]] = []
         for row in rows:
             if not scope.unrestricted:
+                # The belt for the one case the query cannot carry: a scope larger than
+                # `MAX_SCOPE_PARAMS` binds no id list, so the statement above returns unscoped rows
+                # and the drop happens here — the same fallback `window_markers` makes.
                 targets = await store.window_targets(int(row["id"]))
                 if targets and not any(scope.allows_ne(t["ne_id"]) for t in targets):
-                    continue  # names nothing this caller may see: not their window at all
+                    continue
             out.append(shape(row, principal, time.time()))
         return {
             "windows": out,
-            "total": await store.count_maintenance_windows(statuses),
+            "total": await store.count_maintenance_windows(**filters),
             "limit": limit,
             "offset": offset,
             "now": time.time(),
@@ -126,9 +134,23 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             if existing is not None:
                 # **The retry answer** (Part III). Same id, same body, no second window and no
                 # 409 for the agent to interpret.
+                #
+                # The key is unique across the appliance rather than per caller, so this is also
+                # the one route that can hand a caller a window they did not create. It asks the
+                # scope question every other window route asks, and a key belonging to work over
+                # elements this caller cannot see answers with the **public half**: the key is
+                # taken, the window exists, and nothing else (F152).
                 window = await store.maintenance_window(existing)
                 assert window is not None
-                return {"created": False, **shape(window, principal, time.time())}
+                return {
+                    "created": False,
+                    **shape(
+                        window,
+                        principal,
+                        time.time(),
+                        in_scope=await access.in_scope(window, principal),
+                    ),
+                }
         organization_id = body.organization_id or await store.default_organization_id()
         if not await store.organization_exists(organization_id):
             raise HTTPException(
@@ -197,7 +219,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         wid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         """One window in full, with its targets and its rules — **if the caller may see it.**"""
-        window = await access.visible_or_404(wid, principal, request)
+        window = await access.visible_or_404(wid, principal, request, "maintenance.window.read")
         now = time.time()
         async with store.lock:
             await governance.load()
@@ -229,7 +251,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         and it says so in the response rather than quietly re-arming a gate the operator thought
         they had passed.
         """
-        window = await access.visible_or_404(wid, principal, request)
+        window = await access.visible_or_404(wid, principal, request, "maintenance.window.update")
         if window["status"] not in LIVE_STATUSES:
             raise HTTPException(
                 status_code=409,

@@ -87,7 +87,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         wid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, bool]:
         """D6's human gesture. **An agent may not confirm** — see the module docstring, ADR #370."""
-        window = await access.visible_or_404(wid, principal, request)
+        window = await access.visible_or_404(wid, principal, request, "maintenance.window.confirm")
         if principal.is_token:
             raise HTTPException(
                 status_code=403,
@@ -118,7 +118,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         wid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, bool]:
         """Call a window off. **A state, not a delete** — the plan and its audit row survive."""
-        window = await access.visible_or_404(wid, principal, request)
+        window = await access.visible_or_404(wid, principal, request, "maintenance.window.cancel")
         now = time.time()
         async with write_txn():
             if not await store.cancel_window(wid, now):
@@ -146,7 +146,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         The sweep that follows surfaces whatever the window suppressed and never saw clear (II.2),
         so ending early is not a way to lose a fault — it is a way to stop suppressing one.
         """
-        window = await access.visible_or_404(wid, principal, request)
+        window = await access.visible_or_404(wid, principal, request, "maintenance.window.end")
         now = time.time()
         async with write_txn():
             if not await store.end_window_now(wid, now):
@@ -174,7 +174,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """*"The work is running long."* **D6 is re-decided**, and the answer is in the response."""
-        window = await access.visible_or_404(wid, principal, request)
+        window = await access.visible_or_404(wid, principal, request, "maintenance.window.extend")
         if window["status"] not in LIVE_STATUSES:
             raise HTTPException(
                 status_code=409, detail=f"this window has {window['status']}; reload the card"

@@ -306,7 +306,12 @@ def test_the_release_table_parses() -> None:
     # no other document is consistent with everything. v0.16.8 is re-keyed to
     # `planned-work-deferred` rather than deleted, so a reader who meets the number in an old brief
     # is told where the content went (#199's rule about condensing a record). Twenty-nine rows.
-    assert len(table) == 29, f"expected v0.8.0…v0.21.0, parsed {sorted(table)}"
+    #
+    # v0.21.1 adds one row. A patch release earns one here for the reason #375 gives about
+    # silence: it changed no capability and no schema, and it changed the console's whole
+    # maintenance surface plus three disclosure defects — a reader meeting the number in
+    # `CHANGELOG.md` must not be told by this table that it does not exist. Thirty rows.
+    assert len(table) == 30, f"expected v0.8.0…v0.21.1, parsed {sorted(table)}"
     assert set(table) == {
         "v0.8.0",
         "v0.9.0",
@@ -337,6 +342,7 @@ def test_the_release_table_parses() -> None:
         "v0.19.0",
         "v0.20.0",
         "v0.21.0",
+        "v0.21.1",
     }
     claims = [claim for _theme, claim in table.values()]
     assert len(set(claims)) == len(claims), f"two releases share a claim key: {claims}"

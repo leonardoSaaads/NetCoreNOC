@@ -1827,3 +1827,241 @@ p.corr-line { cursor: default; }
   margin: var(--space-3) 0 0; padding-top: var(--space-2); border-top: 1px solid var(--line);
   font-size: var(--fs-sm); color: var(--fg-muted);
 }
+
+/* --- Maintenance (v0.21.1, F151) -------------------------------------------------------------
+   **v0.21.0 shipped this screen with no rule in this file at all.** That is ADR #358's finding
+   repeated one screen over, and it produced exactly what unstyled markup produces: three
+   list-size buttons rendered as the single word `51020`; four collapsed step summaries running
+   together as `2When02:45-04:45 UTC3What still gets throughnothing gets through4Review`; a
+   number field whose label read `Patch windowminutes either side`. None of it was a layout that
+   went wrong — there was no layout.
+
+   The rules below are ordinary and deliberately so: a stepper, a chip row, a host picker. What
+   they buy is the thing the maintainer asked for — *"the form is understood by UI/UX principles
+   alone"* — which an operator cannot get from markup with no spacing in it. */
+
+.mw-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+/* The list-size control. `5 10 20` says nothing on its own, so the group is labelled and the
+   buttons are spaced — `51020` was a number, not three choices. */
+.mw-sizes { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
+.mw-sizes::before {
+  content: "Show next"; margin-right: var(--space-2);
+  color: var(--fg-muted); font-size: var(--fs-sm);
+}
+.mw-sizes button {
+  min-width: var(--tap); min-height: var(--tap); padding: 0 var(--space-2);
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-1);
+  color: var(--fg-dim); font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.mw-sizes button:hover { border-color: var(--line-strong); color: var(--fg); }
+.mw-sizes button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+/* ---- the stepper ---- */
+.mw-form { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.mw-card {
+  display: block; width: 100%; padding: var(--space-4);
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-2);
+  color: inherit; font: inherit; text-align: left;
+}
+.mw-card[data-open="true"] { border-color: var(--line-strong); box-shadow: var(--shadow-1); }
+.mw-card > h3 {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin: 0 0 var(--space-4); font-size: var(--fs-lg);
+}
+/* A SHUT card is a row: number, title, then the answer pushed right. Three spans with no rule
+   between them is what produced `2When02:45-04:45 UTC`. */
+.mw-card-shut {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); cursor: pointer;
+}
+.mw-card-shut:hover { border-color: var(--line-strong); background: var(--bg-hover); }
+.mw-card-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 22px; height: 22px;
+  background: var(--bg-sunken); border: 1px solid var(--line-strong); border-radius: 50%;
+  color: var(--fg-muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+}
+.mw-card[data-open="true"] .mw-card-n {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-fg);
+}
+.mw-card-t { color: var(--fg); }
+/* The answer, right-aligned and allowed to shrink — it is the one part that can be long. */
+.mw-card-s {
+  margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--fg-muted); font-size: var(--fs-sm); text-align: right;
+}
+.mw-card-s:empty::before { content: "not set yet"; color: var(--fg-dim); font-style: italic; }
+
+/* Every label in the form is its own block, so a field and its caption never share a line by
+   accident — `Patch windowminutes either side` was two labels and one line. */
+.mw-card label {
+  display: block; margin-bottom: var(--space-4);
+  color: var(--fg-muted); font-size: var(--fs-sm);
+}
+.mw-card label > input[type="text"],
+.mw-card label > input[type="search"],
+.mw-card label > input[type="number"],
+.mw-card label > input[type="date"],
+.mw-card label > input[type="datetime-local"],
+.mw-card label > select,
+.mw-card label > textarea {
+  display: block; width: 100%; max-width: 380px; margin-top: var(--space-1);
+  min-height: var(--tap); padding: 0 var(--space-2);
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-1);
+  color: var(--fg); font: inherit;
+}
+.mw-card label > textarea { min-height: 72px; padding: var(--space-2); }
+.mw-card label > input:focus, .mw-card label > select:focus, .mw-card label > textarea:focus {
+  border-color: var(--accent); outline: none;
+}
+.mw-card input[aria-invalid="true"] { border-color: var(--alarm); }
+/* A checkbox label is a ROW — the control beside its words, not above them. */
+.mw-allday, .mw-ledger {
+  display: flex !important; align-items: center; gap: var(--space-2);
+  color: var(--fg) !important;
+}
+.mw-allday input, .mw-ledger input { width: auto; margin: 0; }
+.mw-when { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.mw-when label { margin-bottom: 0; }
+/* `Patch window [10] minutes either side` — the unit reads as part of the field, so the input is
+   inline and narrow rather than a full-width block with its unit orphaned on the next line. */
+.mw-patch > input[type="number"] {
+  display: inline-block !important; width: 5em !important; margin: 0 var(--space-2);
+  text-align: right;
+}
+
+/* ---- the host picker ---- */
+.mw-hosts {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  max-height: 220px; overflow-y: auto; margin: 0 0 var(--space-4); padding: 0; list-style: none;
+}
+.mw-hosts button {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: var(--tap); padding: 0 var(--space-3);
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-2);
+  color: var(--fg); font: inherit; cursor: pointer;
+}
+.mw-hosts button:hover { border-color: var(--line-strong); background: var(--bg-hover); }
+/* A picked host is stated twice — colour and a tick — because colour alone is not a state. */
+.mw-hosts button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-fg);
+}
+.mw-hosts button[aria-pressed="true"]::before { content: "✓"; font-size: var(--fs-sm); }
+.mw-hosts button[aria-pressed="true"] .muted { color: var(--accent-fg); opacity: 0.8; }
+
+/* ---- rules, clocks, the timeline bar ---- */
+.mw-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.mw-compose { margin: var(--space-2) 0; font-size: var(--fs-sm); }
+/* `.mw-add` is the ROW of three kind buttons, not a button. Unstyled it read `SeverityTime
+   slotOID subtree`, which is three words an operator has to parse into three controls. It is
+   labelled, because a bare row of nouns does not say what pressing one does. */
+.mw-add { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.mw-add::before {
+  content: "Let through:"; color: var(--fg-muted); font-size: var(--fs-sm);
+}
+.mw-add button, .mw-draft button {
+  min-height: var(--tap); padding: 0 var(--space-3);
+  background: var(--bg-raised); border: 1px dashed var(--line-strong); border-radius: var(--radius-2);
+  color: var(--fg-dim); font: inherit; cursor: pointer;
+}
+.mw-add button:hover, .mw-draft button:hover { border-style: solid; color: var(--fg); }
+.mw-add button.on, .mw-draft button.on {
+  background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg);
+}
+/* The second step of composing a rule — the severity bands, or the two slot fields. It appears
+   under the kind it belongs to, indented, so it reads as that button's continuation. */
+.mw-draft {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-2);
+  margin: var(--space-2) 0 0 var(--space-4); padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
+}
+.mw-draft label { margin-bottom: 0; }
+.mw-draft input[type="text"] { min-width: 260px; }
+.mw-chip {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 2px var(--space-2);
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-1);
+  font-size: var(--fs-sm);
+}
+.mw-chip-none { color: var(--fg-dim); font-style: italic; }
+.mw-chip-x { background: none; border: 0; color: var(--fg-muted); cursor: pointer; }
+.mw-chip-x:hover { color: var(--alarm); }
+/* The per-host rule list. `list-style: none` because a bullet beside a host name reads as a
+   second, empty item — which is what it looked like. */
+.mw-targets { margin: 0; padding: 0; list-style: none; }
+.mw-target { margin-bottom: var(--space-4); }
+.mw-target + .mw-target { padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.mw-target-head {
+  display: flex; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2);
+}
+.mw-clocks {
+  margin: var(--space-4) 0; padding: var(--space-3);
+  background: var(--bg-sunken); border-radius: var(--radius-1);
+}
+/* The bar D8 asks for, and **it needs fills**: an SVG `<rect>` with no `fill` is painted black,
+   so v0.21.0 drew the window, its two patch bands and the now-line as one solid black blob. The
+   three bands are deliberately different weights rather than three hues — the window is the thing
+   being declared, the patch bands are the margin around it. */
+.mw-timeline { display: block; width: 100%; margin-top: var(--space-4); }
+.mw-timeline rect[data-band="window"] { fill: var(--accent); }
+.mw-timeline rect[data-band="lead"], .mw-timeline rect[data-band="trail"] {
+  fill: var(--accent); opacity: 0.35;
+}
+.mw-timeline line[data-band="now"] { stroke: var(--fg); stroke-width: 2; stroke-dasharray: 3 2; }
+.mw-zone { position: relative; }
+.mw-zone-list {
+  max-height: 200px; overflow-y: auto; margin: var(--space-1) 0 0; padding: 0; list-style: none;
+  border: 1px solid var(--line); border-radius: var(--radius-1);
+}
+.mw-zone-city {
+  display: block; width: 100%; min-height: var(--tap); padding: 0 var(--space-3);
+  background: none; border: 0; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+}
+.mw-zone-city:hover { background: var(--bg-hover); }
+
+/* ---- review and submit ---- */
+.mw-preview {
+  margin: 0 0 var(--space-3); padding: var(--space-3);
+  background: var(--bg-sunken); border-left: 3px solid var(--accent); border-radius: var(--radius-1);
+}
+.mw-preview .sep { color: var(--fg-dim); }
+.mw-owner { margin: var(--space-3) 0; font-size: var(--fs-sm); }
+/* The button and the reason it is disabled, on one line: a dead control that does not say why is
+   the defect this screen shipped with. */
+.mw-submit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.mw-submit .muted { font-size: var(--fs-sm); }
+
+/* ---- the upcoming list ---- */
+.mw-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.mw-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-2);
+}
+.mw-row-name { font-weight: 600; }
+.mw-row-when { color: var(--fg-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.mw-row .row-actions, .mw-row .mw-actions { margin-left: auto; display: flex; gap: var(--space-2); }
+.mw-mark, .mw-surfaced { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+@media (max-width: 720px) {
+  .mw-card { padding: var(--space-3); }
+  .mw-card-s { max-width: 45%; }
+  .mw-sizes { margin-left: 0; }
+  .mw-when { flex-direction: column; gap: var(--space-3); }
+  .mw-card label > input, .mw-card label > select, .mw-card label > textarea { max-width: 100%; }
+}
+
+/* The Overview's planned-work card (v0.21.1). A running window is a caveat on every number above
+   it, so it is a sentence with a badge rather than another row in a list. */
+.mw-running {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  margin: 0 0 var(--space-3); padding: var(--space-3);
+  background: var(--alarm-bg); border-radius: var(--radius-1);
+}
+.mw-sum-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-role="planned-work"] .mini-list li { display: flex; align-items: center; gap: var(--space-2); }
+[data-role="planned-work"] .mini-list .mw-row-when { margin-left: auto; }

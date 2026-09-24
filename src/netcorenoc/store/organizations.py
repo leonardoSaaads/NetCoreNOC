@@ -69,10 +69,18 @@ class OrganizationMixin(StoreBase):
         """The organization a newly-discovered element belongs to.
 
         `0020` creates exactly one row with `is_default = 1` and nothing deletes it, so the
-        fallback below is unreachable on any migrated database. It is written anyway because this
-        is called from the element-discovery path: a `None` here would mean a trap from a new
-        device could not be attributed, and returning 1 — the id `0020` created — degrades to the
-        right answer rather than raising on the ingest path.
+        fallback below is unreachable on any migrated database. It is written anyway because the
+        alternative is a `None` propagating into `create_maintenance_window`'s foreign key, and
+        returning 1 — the id `0020` created — degrades to the right answer instead.
+
+        **No `_has_maintenance` probe, unlike its neighbours, and that is the rule rather than an
+        omission.** The probe guards the methods that run *unbidden* — the sweep's
+        :meth:`attribute_unassigned_nes` and the reads the ingest path makes — because
+        `tests/test_upgrade.py` drives this store against migration directories frozen below
+        schema 20. This one is reached only from a route, and a route only exists on an appliance
+        whose migrations have run. (An earlier draft of this docstring called it *"the
+        element-discovery path"*, which it is not: discovery leaves `organization_id` NULL and the
+        sweep attributes it, which is the whole point of the method below.)
         """
         cur = await self.conn.execute(
             "SELECT id FROM organization WHERE is_default=1 ORDER BY id LIMIT 1"

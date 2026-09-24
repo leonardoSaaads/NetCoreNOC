@@ -159,6 +159,12 @@ ACTIONS: frozenset[str] = frozenset(
         # system actor: a window stopped being in force, and what its ledger surfaced (II.2). The
         # one row an operator reads to answer *"did anything break while we were not looking"*.
         "maintenance.window.end",
+        # v0.21.1 — **written only as a denial.** A successful read of a window is not audited;
+        # this exists because the perimeter's contract is that a scope denial is recorded under
+        # the action the caller attempted, and until F153 every denial on this resource — a read,
+        # a confirm, an end — was filed as an attempted `.update`. An auditor reading the log saw
+        # a scoped principal probing the write surface when they had opened a card.
+        "maintenance.window.read",
         # **Creating an organization is not here, and that is deliberate.** It is inventory
         # structure an admin edits, which is what `config.change` already names; a seventh action
         # would split one auditor question — *"what did an admin reconfigure?"* — across two

@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of thirty-six ask
-you to do something; sixteen more ask you to read a paragraph first. The other eighteen are
+Read only the rows between your version and the one you are installing. **Two of thirty-seven ask
+you to do something; seventeen more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
@@ -65,6 +65,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.18.0 → v0.19.0 | Nothing to run. **Two migrations apply at boot** (`0017`, `0018`) and both are additive: two nullable columns on `challenger_run` for the learning curve, and two indexes on `dataset_pair`. Correlation groups differently on estates of many elements — deliberately, and narrower. Read below |
 | v0.19.0 → v0.20.0 | Nothing to run. **No migration.** The console is rearranged again — the Overview, the situation card and the restructure controls — and one API field is gone from `/api/situations/{id}`. Read below |
 | v0.20.0 → v0.21.0 | Nothing to run. **Three migrations apply at boot** (`0019`, `0020`, `0021`), all additive. But **read below**: your existing alarms start carrying a severity they did not carry before, some of your entities were never entities, and the container image needs one new OS package |
+| v0.21.0 → v0.21.1 | Nothing to run. **No migration.** The Maintenance screen is rebuilt, the Overview gains a *Planned work* card, and `GET /api/maintenance-windows` returns a **smaller `total`** than it did — it now counts what the filters and your visibility scope actually permit. Read below if you read that field |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -607,3 +608,32 @@ exact key set will see it.
 
 **No SNMP polling.** It was planned for this release and it is not in it — see `HANDOFF.md` §1.
 Nothing polls your elements, no credential is stored and no capability promises otherwise.
+
+### v0.21.1 — the maintenance screen is rebuilt, and one API number gets smaller
+
+**Nothing to run. No migration.** Start the new binary.
+
+**`GET /api/maintenance-windows` returns a smaller `total`, and the old one was wrong.** It counted
+every window in the table, whatever you filtered by and whatever your visibility scope permitted —
+so `?ne_id=7` on a device with one window reported `"total": 40`, and a scoped principal's total
+was a count of the windows the scope had just withheld (F151). It now counts exactly what the same
+call's `windows` array contains. **If you built a client that derived a page count from it, it will
+now agree with the page.** No other field changed.
+
+**The idempotency replay may answer redacted.** `POST /api/maintenance-windows` with a key that
+already exists still returns `{"created": false, ...}` and the same window id. If the window covers
+elements your visibility scope does not reach, the body is now the **public half** — status,
+timing, target count, `"redacted": true` — instead of the full record (F152). On an appliance with
+no scope policy, which is the default, nothing changes.
+
+**Your audit log gains one action string.** `maintenance.window.read`, written only when a scope
+denies somebody a window's details. Denials that would previously have been filed as
+`maintenance.window.update` are now filed as the action attempted — `read`, `confirm`, `cancel`,
+`end` or `extend` (F153). A dashboard counting `maintenance.window.update / denied` will see that
+number fall and the others appear.
+
+**The console.** The Maintenance screen is restyled from nothing — v0.21.0 shipped it with no CSS
+rules at all (F150) — the four-card form now submits (F149), and the Overview gains a **Planned
+work** card between the alarm counts and the estate. The card needs `mw.read`; a role without it
+does not see it, and a deployment where the route fails renders one line rather than taking the
+dashboard with it.

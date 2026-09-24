@@ -126,6 +126,12 @@ _UI_MODULES = (
     "app/views/parts/mwrules.js",
     "app/views/parts/mwtime.js",
     "app/views/parts/mwmarker.js",
+    # v0.21.1: the Overview's planned-work card. It reads its own route and owns its own
+    # failure, so a deployment that has withheld `mw.read` gets one quiet line on the
+    # dashboard rather than five panels that never render.
+    "app/views/parts/mwsummary.js",
+    # v0.21.1: card 4 of the stepper, split from `mwform.js` at the 400-line guard.
+    "app/views/parts/mwreview.js",
     # v0.20.0: the decision bar — what may be pressed on a situation right now, and in what
     # words — off `judge.js`, which keeps when a press sends and what the server answered.
     "app/views/parts/decide.js",

@@ -97,7 +97,7 @@ export class Maintenance extends Loader {
     const editable = can("mw.write");
     if (this.state.creating) {
       return html`<div>
-        <${SectionHeading} title="Schedule maintenance" />
+        <${SectionHeading} title="New maintenance window" />
         <${WindowForm}
           onSaved=${() => this.setState({ creating: false }, () => this.reload())}
         />
@@ -163,7 +163,7 @@ export class Maintenance extends Loader {
           : null}
       </span>
       ${w.redacted ? null : html`<span class="muted">${w.organization_name}</span>`}
-      <span class="muted">${count(w.target_count)} ${plural(w.target_count, "host", "hosts")}</span>
+      <span class="muted">${plural(w.target_count, "host", "hosts")}</span>
       <span class="mw-row-when" data-role="countdown">
         ${starting
           ? `in ${humanise(w.starts_in_s)}`

@@ -24,11 +24,11 @@
 import { html, Component } from "../../dom.js";
 import { get, post } from "../../api.js";
 import { ApiError } from "../../api.js";
-import { TIMEZONE, count, plural } from "../../format.js";
-import { session } from "../../session.js";
+import { TIMEZONE, plural } from "../../format.js";
+import { ReviewCard } from "./mwreview.js";
 import { RulesCard } from "./mwrules.js";
 import { SiteAndYourTime, TimelineBar, ZonePicker, cityOf } from "./mwtime.js";
-import { humanise, nextQuarter, plusHours, windowBody, withOffset } from "./mwdraft.js";
+import { nextQuarter, normaliseHosts, plusHours, windowBody, withOffset } from "./mwdraft.js";
 
 const CARDS = ["What and where", "When", "What still gets through", "Review"];
 
@@ -67,7 +67,12 @@ export class WindowForm extends Component {
       this.setState({
         organizations: orgs.organizations || [],
         organizationId: orgs.default_organization_id,
-        hosts: entities.entities || entities || [],
+        // **Normalised here, once** (F149). `/api/entities` serves a network element as `id`; this
+        // form spent its whole life reading `host.ne_id`, which is `undefined` on every row — so
+        // `targets` serialised to `[null]`, every preview and every create came back 422, and the
+        // operator saw a form that did nothing. Adapting the shape at the one place it enters the
+        // component means a caller below cannot read a field the server never sent.
+        hosts: normaliseHosts(entities),
       });
     } catch (e) {
       this.setState({ error: e.message });
@@ -113,6 +118,15 @@ export class WindowForm extends Component {
     this.set({ targets, rules });
   }
 
+  /* **The one gesture that changes the estate, and it has to say so** (F150).
+   *
+   * Before: a failure set `error` at the bottom of a four-card form the operator had scrolled
+   * past, and a success did nothing visible here at all. Pressing *"Schedule it"* on a form that
+   * was 422-ing looked exactly like pressing a dead button — which is what it was.
+   *
+   * Now the button reports its own outcome in place: it is disabled and reads *"Scheduling…"*
+   * while the request is out, and a refusal lands **beside the button**, where the finger is.
+   */
   async save() {
     this.setState({ busy: true, error: null });
     try {
@@ -153,7 +167,11 @@ export class WindowForm extends Component {
       onSubmit=${(e) => { e.preventDefault(); if (s.card === 3) this.save(); }}
     >
       ${CARDS.map((title, i) => this.card(i, title))}
-      ${s.error ? html`<p class="error" role="alert">${s.error}</p>` : null}
+      ${/* A refusal is rendered inside the card that can act on it (review()), not here: a message
+            under four collapsed cards is a message below the fold on a phone. */ null}
+      ${s.error && s.card !== 3
+        ? html`<p class="error" role="alert" data-role="form-error">${s.error}</p>`
+        : null}
     </form>`;
   }
 
@@ -314,7 +332,7 @@ export class WindowForm extends Component {
         siteTime=${withOffset(s.localStart, s.siteOffset)}
         siteOffset=${s.siteOffset}
       />
-      <label
+      <label class="mw-patch"
         >Patch window
         <input
           type="number"
@@ -359,41 +377,20 @@ export class WindowForm extends Component {
     </div>`;
   }
 
+  /* Card 4 lives in `mwreview.js`. Moved there when this module crossed the 400-line guard:
+   * the review card is the one card with a clean props boundary — it reads the preview and the
+   * visibility and emits two events — so it is the seam that costs the least to cut. */
   review() {
     const s = this.state;
-    const p = s.preview;
-    const me = session();
-    return html`<div>
-      <p class="mw-preview" data-role="preview">
-        ${p
-          ? html`<strong>${count(p.devices)}</strong> ${plural(p.devices, "device", "devices")} ·
-              <strong>${count(p.active_alarms)}</strong>
-              ${plural(p.active_alarms, "active alarm", "active alarms")} ·
-              ${p.starts_in_s > 0 ? `starts in ${humanise(p.starts_in_s)}` : "starts now"}`
-          : "Pick at least one host to see what this would cover."}
-      </p>
-      ${p && p.targets_with_no_rule.length
-        ? html`<p class="hint" data-role="silent-hosts">
-            ${plural(p.targets_with_no_rule.length, "host", "hosts")} will send nothing at all.
-          </p>`
-        : null}
-      ${p && p.needs_confirmation
-        ? html`<p class="warn" data-role="needs-confirmation">
-            Over six hours, so an editor or an admin has to confirm it before it takes effect.
-          </p>`
-        : null}
-      <label
-        >Who sees the details
-        <select onChange=${(e) => this.set({ visibility: e.target.value })}>
-          <option value="editors" selected=${s.visibility === "editors"}>Editors and admins</option>
-          <option value="everyone" selected=${s.visibility === "everyone"}>Everyone</option>
-        </select>
-      </label>
-      <p class="hint">Everyone sees that the window exists, whichever you pick.</p>
-      <p class="muted">Owner: ${me ? me.username : "you"}</p>
-      <button type="submit" class="primary" disabled=${s.busy || !this.complete(0)} data-role="save">
-        ${s.busy ? "Saving…" : "Schedule it"}
-      </button>
-    </div>`;
+    return html`<${ReviewCard}
+      preview=${s.preview}
+      visibility=${s.visibility}
+      busy=${s.busy}
+      error=${s.error}
+      ready=${this.complete(0) && this.complete(1)}
+      whatIsMissing=${this.complete(0) ? "" : "step 1"}
+      whenIsMissing=${this.complete(1) ? "" : "step 2"}
+      onVisibility=${(value) => this.set({ visibility: value })}
+    />`;
   }
 }
