@@ -408,6 +408,12 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         # power to declare, the other the power to agree. Two capabilities are what let a
         # deployment grant scheduling without self-approval, which one makes unreachable.
         "mw.confirm": "editor",
+        # **admin**, and its own capability rather than a role test in the handler — which is F28's
+        # rule: authorization goes through `resolve_capabilities`, never through a comparison a
+        # reader has to find in a route body. `GET /api/maintenance-windows/{wid}` is the only
+        # place a window's ledger counts can be read at all, so a deployment that wants nobody
+        # reading them withholds this and keeps the rest of the resource working.
+        "mw.ledger": "admin",
         # Attribution, read by every role because a window's card names an organization and a
         # screen showing a name nobody can look up is a dead end; written by admin because it is
         # inventory structure rather than operation.

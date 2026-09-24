@@ -77,6 +77,16 @@ class LifecycleMixin(StoreBase):
         # Migration `0021`. Read from the SAME result: two probes of one table would be two
         # answers resolved at two moments, which is the shape of drift `_label_join` avoids.
         self._has_surfaced_window = "surfaced_from_window_id" in alarm_columns
+        # Migrations `0020` and `0021`, in one query over the catalogue rather than two
+        # `PRAGMA table_info` calls: the question is whether the tables exist at all, which
+        # `table_info` answers with an empty result and not an error, so asking it would read the
+        # same as a table with no columns.
+        cur = await self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name IN ('organization', 'maintenance_window')"
+        )
+        present = {str(row[0]) for row in await cur.fetchall()}
+        self._has_maintenance = present == {"organization", "maintenance_window"}
 
     async def _migrate(self) -> None:
         """Apply the pending scripts, and **say which** (DECISIONS #227).

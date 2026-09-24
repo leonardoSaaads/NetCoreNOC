@@ -1162,7 +1162,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: and `crosscutting/shaping/timezones.py`, and six console modules. **No file was deleted and none
 #: moved**; what was removed this release is named in `HANDOFF.md` §7.4 and is smaller than a file
 #: in every case.
-SRC_TREE_DIGEST = "18cad2d793c56411e3954b8b6840443e49b1ca902a618a821b0d4d3407e53b1d"
+SRC_TREE_DIGEST = "85cf11bcffd476066fae183862212f03f823976c9b6f153219c475799139a297"
 SRC_FILE_COUNT = 253
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

@@ -78,6 +78,17 @@ class StoreBase:
     # probe answers for every column of one table, and two probes of one table is how they
     # come to be resolved against different moments.
     _has_surfaced_window: bool
+    # v0.21.0: do the maintenance-window and organization tables exist (migrations 0020 and
+    # 0021)? **The fifth probe, and the one that guards a loop rather than a column.** The
+    # maintenance sweep runs every five seconds whether or not anybody has declared planned
+    # work, and `/api/entities` and `/api/situations` ask for markers on every request — so
+    # unlike the four above, these run *unbidden*. On a database frozen below schema 20 the
+    # queries behind them name tables that do not exist, and `tests/test_upgrade.py` drives
+    # this store against migration directories frozen as far back as schema 4.
+    #
+    # One probe for both tables, because `0020` and `0021` are the same feature and no schema
+    # has one without the other: `0021` is what a database gains next after `0020`.
+    _has_maintenance: bool
 
     @property
     def conn(self) -> aiosqlite.Connection:

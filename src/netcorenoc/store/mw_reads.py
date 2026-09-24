@@ -167,6 +167,9 @@ class MaintenanceReadMixin(StoreBase):
         element a viewer cannot see would answer *"does this exist?"*, which is the oracle the
         scope exists to close.
         """
+        if not self._has_maintenance:
+            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
+            return {}
         args: list[Any] = [now, now]
         clause = ""
         if ne_ids is not None:

@@ -154,3 +154,4 @@ class Store(
         # from, which is the state it was already in.
         self._has_severity_source: bool = False
         self._has_surfaced_window: bool = False
+        self._has_maintenance: bool = False

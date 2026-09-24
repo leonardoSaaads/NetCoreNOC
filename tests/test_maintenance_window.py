@@ -746,3 +746,53 @@ def test_the_store_and_the_engine_agree_on_the_index_horizons() -> None:
 
     assert mw_compile.INDEX_LOOKAHEAD_S == mw_index.LEADING_HORIZON_S
     assert mw_compile.INDEX_LOOKBEHIND_S == mw_index.TRAILING_GRACE_S
+
+
+async def test_the_sweep_and_the_markers_are_inert_on_a_pre_0020_schema(store: Store) -> None:
+    """**The fifth schema probe, asserted** (`base.py::_has_maintenance`).
+
+    Four of this store's probes guard a *column*. This one guards a *loop*: the maintenance sweep
+    runs every five seconds whether or not anybody has declared planned work, and `/api/entities`
+    and `/api/situations` ask for markers on every request. Unlike a column read, those run
+    **unbidden** — so on a database frozen below schema 20 they raise `no such table` on their own,
+    with nobody having asked for the feature.
+
+    `tests/test_upgrade.py` drives this store against migration directories frozen as far back as
+    schema 4, and it went red on nine of them for exactly this reason. That is the instrument
+    working: the upgrade path is a contract, not an accident.
+
+    The tables are dropped here rather than reached through the frozen-migration fixtures, because
+    what is under test is the probe's effect and not the migration machinery — and dropping them is
+    the one way to produce the state without also producing a schema-4 database's everything else.
+    """
+    engine, _queue, _app = await authutil.make_env(store)
+    async with store.lock:
+        await store.conn.execute("DROP TABLE maintenance_window_rule")
+        await store.conn.execute("DROP TABLE maintenance_window_target")
+        await store.conn.execute("DROP TABLE maintenance_ledger")
+        await store.conn.execute("DROP TABLE maintenance_window")
+        await store.conn.execute("DROP TABLE organization")
+        await store.commit()
+    await store._probe_schema()
+
+    assert store._has_maintenance is False, "the probe still believes the tables are there"
+    assert await store.advance_statuses(_at(10)) == []
+    assert await store.attribute_unassigned_nes() == 0
+    assert await store.window_index_rows(_at(10)) == []
+    assert await store.window_markers(_at(10)) == {}
+    assert await store.list_organizations() == []
+
+    # The whole sweep, which is what actually went red: it calls all four of the above in order.
+    async with store.lock:
+        await engine._maintenance_windows(_at(10))
+    assert engine.windows.decide(1, _at(10), LINK_DOWN, (), None).collect is True, (
+        "an appliance on an old schema must collect every trap, not suppress on an empty index"
+    )
+
+
+async def test_the_probe_is_true_on_a_current_schema(store: Store) -> None:
+    """The control. Without it the test above passes on a probe hardwired to `False`, which would
+    make the whole feature inert on every database including the ones that have the tables."""
+    await authutil.make_env(store)
+    assert store._has_maintenance is True, "the probe does not see tables migration 0021 created"
+    assert await store.list_organizations(), "the seeded default organization is not readable"

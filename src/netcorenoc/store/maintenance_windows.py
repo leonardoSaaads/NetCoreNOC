@@ -292,6 +292,9 @@ class MaintenanceWindowMixin(StoreBase):
         ingest check uses, and a window that stopped being in force at a different instant from
         the one the sweep believes would leave the ledger holding raises nobody surfaces.
         """
+        if not self._has_maintenance:
+            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
+            return []
         await self.conn.execute(
             "UPDATE maintenance_window SET status='expired', updated_at=? "
             "WHERE status='pending_confirmation' AND (starts_at - patch_s) <= ?",

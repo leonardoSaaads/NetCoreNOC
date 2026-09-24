@@ -43,6 +43,9 @@ class OrganizationMixin(StoreBase):
         is the same expression :meth:`ne_organizations` uses, so the list and the per-element
         lookup cannot disagree.
         """
+        if not self._has_maintenance:
+            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
+            return []
         cur = await self.conn.execute(
             "SELECT o.id, o.name, o.slug, o.is_default, o.created_at, "
             "(SELECT COUNT(*) FROM ne WHERE COALESCE(ne.organization_id, "
@@ -111,6 +114,9 @@ class OrganizationMixin(StoreBase):
         Every read model coalesces NULL to the default anyway, so the window between discovery and
         attribution is not a window in which an element is missing from a filtered list.
         """
+        if not self._has_maintenance:
+            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
+            return 0
         cur = await self.conn.execute(
             "UPDATE ne SET organization_id=(SELECT id FROM organization WHERE is_default=1 "
             "ORDER BY id LIMIT 1) WHERE organization_id IS NULL"

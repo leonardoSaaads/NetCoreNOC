@@ -43,6 +43,9 @@ class MaintenanceCompileMixin(StoreBase):
         to reach the structure the check reads — rather than for the check to remember to exclude
         it.
         """
+        if not self._has_maintenance:
+            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
+            return []
         cur = await self.conn.execute(
             "SELECT id, name, organization_id, starts_at, ends_at, patch_s, ledger_enabled "
             "FROM maintenance_window WHERE status IN ('scheduled', 'active') "
