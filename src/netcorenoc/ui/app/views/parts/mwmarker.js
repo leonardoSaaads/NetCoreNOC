@@ -39,23 +39,29 @@ export function MaintenanceMark({ marker, now }) {
   </span>`;
 }
 
-/* An alarm the appliance only knows the **existence** of: raised inside a window, never cleared.
+/* **A fault that outlived a maintenance window** — the marker, small (v0.22.0, item 8, #388).
  *
- * It carries no severity and no varbinds, because the ledger holds none — storing them would have
- * been collecting the trap the operator said not to collect. The title says so, because an
- * operator looking at an unplaced alarm is entitled to know whether the appliance failed to place
- * it or never saw it.
+ * The maintainer asked for it removed: *"a MW exists precisely to avoid alerts."* It is the one
+ * thing that says a window closed with something still broken — the trap that reported it arrived
+ * inside the window, and traps are sent once. Measured, the defect was its SCOPE: it was drawn on
+ * every alarm the ledger ever surfaced, including ones that had since cleared and ones the element
+ * had re-reported itself. The server now serves `outlived_window_id` only while the marker is true
+ * — active, not seen since it was surfaced, not acknowledged — and this draws it as a badge, with
+ * the sentence in its accessible name and title rather than in the row.
+ *
+ * `onAck` is present for a principal holding `alarm.acknowledge`: the operator has seen it.
  */
-export function SurfacedMark({ alarm }) {
-  if (!alarm || !alarm.surfaced_from_window_id) return null;
-  return html`<span
-    class="mw-surfaced"
-    data-role="surfaced-mark"
-    data-window=${alarm.surfaced_from_window_id}
-    title=${"This was raised while a maintenance window was suppressing this element, and never " +
-    "cleared before the window ended. The appliance recorded that it happened and nothing else — " +
-    "no severity, because the trap itself was not collected."}
-  >
-    <${Badge} tone="bad">Raised during maintenance, still active<//>
+export function SurfacedMark({ alarm, onAck }) {
+  if (!alarm || !alarm.outlived_window_id) return null;
+  const said = `Raised during maintenance window ${alarm.outlived_window_id} and still active ` +
+    "after it ended. The appliance saw the raise and nothing else — no severity, because the " +
+    "trap was not collected.";
+  return html`<span class="mw-outlived" data-role="surfaced-mark"
+      data-window=${alarm.outlived_window_id} title=${said}>
+    <span class="mw-outlived-badge" role="img" aria-label=${said}>after MW</span>
+    ${onAck
+      ? html`<button type="button" class="mw-outlived-ack" aria-label="Acknowledge: seen"
+          title="Seen — stop marking it" onClick=${() => onAck(alarm.id)}>✓</button>`
+      : null}
   </span>`;
 }

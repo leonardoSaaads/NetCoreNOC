@@ -147,3 +147,79 @@ export function ruleBody(rule, siteOffset) {
     slot_ends_at: withOffset(rule.slot_local_to, siteOffset),
   };
 }
+
+/* An instant as the SITE's wall clock, `YYYY-MM-DDTHH:MM` (v0.22.0, item 19).
+ *
+ * The one conversion in this direction, and it only formats: `Intl` renders an instant in any IANA
+ * zone, which is all an edit form needs to show the operator the times they scheduled. Nothing is
+ * computed from it — the offset sent back is still the server's (`withOffset`).
+ */
+export function siteLocal(epoch, tz) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(new Date(epoch * 1000)).map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+/* A window as the server sent it, as the form's state — so an edit opens on what was scheduled. */
+export function draftFrom(detail) {
+  const tz = detail.tz;
+  return {
+    name: detail.name || "",
+    description: detail.description || "",
+    showDescription: Boolean(detail.description),
+    organizationId: detail.organization_id,
+    tz,
+    siteOffset: detail.site_offset || "",
+    localStart: siteLocal(detail.starts_at, tz),
+    localEnd: siteLocal(detail.ends_at, tz),
+    allDay: Boolean(detail.all_day),
+    patchMinutes: Math.round((detail.patch_s || 0) / 60),
+    ledgerEnabled: Boolean(detail.ledger_enabled),
+    visibility: detail.visibility,
+    targets: (detail.targets || []).map((t) => ({ ne_id: t.ne_id, ip: t.address, label: t.label || "" })),
+    rules: (detail.rules || []).map((r) => ({
+      ne_id: r.ne_id,
+      kind: r.kind,
+      severity_rank: r.severity_rank,
+      oid_root: r.oid_root,
+      match_on: r.match_on,
+      slot_local_from: r.slot_starts_at == null ? undefined : siteLocal(r.slot_starts_at, tz),
+      slot_local_to: r.slot_ends_at == null ? undefined : siteLocal(r.slot_ends_at, tz),
+    })),
+  };
+}
+
+/* The request body that changes only the END of a window, from the window as served (item 19).
+ *
+ * Shortening a running window goes through the full update route, which freezes everything else
+ * for an active window; the body therefore repeats what the server already holds, as instants. */
+export function endOnlyBody(detail, endsAt) {
+  const iso = (epoch) => new Date(epoch * 1000).toISOString();
+  return {
+    name: detail.name,
+    description: detail.description || "",
+    organization_id: detail.organization_id,
+    tz: detail.tz,
+    starts_at: iso(detail.starts_at),
+    ends_at: iso(endsAt),
+    all_day: Boolean(detail.all_day),
+    patch_s: detail.patch_s,
+    ledger_enabled: Boolean(detail.ledger_enabled),
+    visibility: detail.visibility,
+    targets: (detail.targets || []).map((t) => t.ne_id),
+    rules: (detail.rules || []).map((r) => {
+      const out = { ne_id: r.ne_id, kind: r.kind };
+      if (r.kind === "severity") out.severity_rank = r.severity_rank;
+      if (r.kind === "oid") { out.oid_root = r.oid_root; out.match_on = r.match_on; }
+      if (r.kind === "slot") {
+        out.slot_starts_at = iso(r.slot_starts_at);
+        out.slot_ends_at = iso(r.slot_ends_at);
+      }
+      return out;
+    }),
+  };
+}

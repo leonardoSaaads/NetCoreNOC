@@ -41,6 +41,7 @@ from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import MaintenanceWindowIn, MaintenanceWindowUpdateIn
 from netcorenoc.api.mw_shape import (
     WindowAccess,
+    frozen_while_active,
     initial_status,
     needs_confirmation,
     parse_statuses,
@@ -258,8 +259,36 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 detail=f"this window has {window['status']}; reload the card",
             )
         targets = await access.permitted_targets(body.targets, principal)
-        needs = needs_confirmation(body.starts_at, body.ends_at)
         now = time.time()
+        if window["status"] == "active":
+            async with store.lock:
+                current_targets = [t["ne_id"] for t in await store.window_targets(wid)]
+                current_rules = await store.window_rules(wid)
+            frozen = frozen_while_active(
+                window,
+                starts_at=body.starts_at,
+                tz=body.tz,
+                patch_s=body.patch_s,
+                ledger_enabled=body.ledger_enabled,
+                targets=targets,
+                rules=[rule.as_row() for rule in body.rules if rule.ne_id in set(targets)],
+                current_targets=current_targets,
+                current_rules=current_rules,
+            )
+            if frozen is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{frozen}: this window is running, so only its end, name, description "
+                    "and visibility can change; end it and schedule another to change the rest",
+                )
+            # Only a CHANGED end is refused: re-saving a window whose end has just passed (the
+            # sweep has not closed it yet) is an edit of its words, not a move into the past.
+            if body.ends_at <= now and abs(body.ends_at - float(window["ends_at"])) > 0.5:
+                raise HTTPException(
+                    status_code=422,
+                    detail="ends_at: a running window cannot end in the past; use End now",
+                )
+        needs = needs_confirmation(body.starts_at, body.ends_at)
         status = restatus(window, needs, body.starts_at, now)
         async with write_txn():
             await store.update_window_fields(

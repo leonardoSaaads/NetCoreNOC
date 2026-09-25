@@ -120,7 +120,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             # because the promotion is a *console* fact rather than a learning one — it must not
             # sit on the same path as the learned-state effect F36 bounds.
             if recorded.exists:
-                await store.promote_situation(sid, time.time())
+                await store.promote_situation(sid, time.time(), "feedback")
                 # **The verdict is an operator gesture and is recorded as one.** Without this row
                 # `situation_event` would hold four of the five gestures and the census would
                 # report that most labelling never happened — and the bag provenance a verdict's

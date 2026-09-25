@@ -4820,3 +4820,170 @@ From this release an entry is about six lines: decision, reason, release.*
   console can do**, and a card added for convenience must not be able to cause one.
 - **A redacted row still shows that the window exists** — *"Maintenance on 3 hosts"* — because
   prime directive 4 does not stop at the device card.
+
+## 380. Host readings are persisted, and the Overview's range reaches SQL (v0.22.0)
+
+- **The defect (F154, item 5).** The Overview's range control offered 15 minutes to 7 days, and the
+  four host charts drew the same in-memory two-hour ring whatever was picked. A restart emptied it.
+  The control changed the axis labels and nothing else.
+- **`host_sample` (migration 0022), one row per 30 s sample, pruned at seven days** — the longest
+  range offered, so a row older than that could never be asked for. `WITHOUT ROWID`, keyed on the
+  instant: one INSERT and one bounded DELETE per sample, off the ingest path.
+- **`GET /api/resources?range_s&buckets` answers bucket means in SQL**; the queue is the bucket's
+  MAX, because a mean draws a burst that filled the queue as a quiet bucket. An unsampled bucket is
+  `null`, never `0` (#289). `measured_from` says how much of the window was measured.
+- **The window ends on a bucket boundary**, so two polls inside one bucket read the same buckets and
+  the chart does not shimmer; it also makes the response stable enough for the declaration tests.
+- **The browser ring was removed**, not kept beside it: two sources for one chart is how the chart
+  came to disagree with its range. The top bar's sparklines keep the appliance's own two-hour ring,
+  which is what a glance needs.
+
+## 381. The Timeline is bounded by its window, never by a row count (v0.22.0)
+
+- **The defect (F155, items 13-15).** `/api/timeline?limit=1000` returned the rows most recently *seen*
+  and the axis followed them: on the lab, **1 000 marks spanned 124 seconds** under a control that
+  said a day, and a hundred raw rows listed the trap OID first.
+- **Three reads under `/api/activity/*`** — per-band raises for the Overview, per-element lanes, and
+  bursts (consecutive marks of one trap on one element less than 5 minutes apart are one row with a
+  count, via a `LAG`/`SUM` window). Each counts everything inside the window in SQL; each is paged
+  or bucketed, never truncated. Measured after: 2 027 marks in 2 h fold into 69 rows.
+- **Every filter is a WHERE clause through `_timeline_scope`**, the one construction of "which alarms
+  may this principal see" (F35, F38). An element outside the scope answers what a nonexistent one
+  answers.
+- **A fault that keeps firing is counted as re-reported.** A repeating trap increments an alarm
+  rather than raising a new one, so a second cut left no mark and the screen said "nothing was
+  raised" during an outage — found in the live pass. `repeated` counts alarms raised before the
+  window and seen in it.
+- **d3 is gone** from this screen; the lanes are a hand-written strip the DOM harness can read.
+
+## 382. The situation lifecycle is a table, and only attention promotes (v0.22.0)
+
+- **The defects (item 9).** Renaming a situation promoted it `new -> open`, recording a label typed
+  in passing as "somebody worked this". An operator's split created its new situation as `new`,
+  showing what an operator had just built as "nobody has looked".
+- **`TRANSITIONS` in `store/situations.py`** names every act and its edges; `ATTENTION` is derived
+  from it (every act with a `new -> open` edge) rather than listed. `rename` has no edge.
+  `operator_split` creates `open`; `correlate` and `surface` create `new`.
+- **`promote_situation(sid, ts, act)` refuses an act without the edge** (`ValueError`), and every
+  caller names its act, so a route that forgot to promote or promoted by accident is visible in a
+  one-line diff. `tests/test_transitions.py` walks every edge.
+
+## 383. The graph is hand-written and deterministic, and d3 leaves the tree (v0.22.0)
+
+- **Items 6, 10, 11, 12.** The force layout never settled the same way twice, labels could not be
+  read without zooming, clicking a host did nothing, the canvas was not reachable by keyboard or by
+  the test harness, and the screen needed paragraphs to explain it.
+- **Item 10's accessibility statement did not vanish; it stopped being true.** It said the drawing
+  was not keyboard-operable and had no screen-reader equivalent. Both are fixed, and what remains
+  worth saying is the drawing's accessible name (*"Network graph: 23 elements, 3 learned
+  relationships. Each element is a button."*).
+- **`layout.js` places nodes from the topology alone** — connected components by a bounded
+  Fruchterman-Reingold run from a seeded start, unlinked elements in a grid band — so the same
+  estate draws the same picture whatever order the API returns it in. Labels are chosen per width
+  (`s`, `m`, `l`) so that labels do not collide on a phone.
+- **Nodes are `<button>`s** with an accessible name ("127.0.0.4: 501 active alarms, 2 learned
+  relationships"). Selecting one writes `?ne=` and opens the element panel (its situations and
+  recent traps); the selection is a permalink.
+- **One table, "Elements by load"** replaces the two that said the same thing (item 12).
+- **d3 (279 706 bytes), `vendor.js` and the lazy loader are deleted**, with their NOTICE entry,
+  licence and checksum. The shipped UI loads one script, `/app.js`, and a guard says so. No charting
+  or map library replaces it.
+
+## 384. OID matching is on arc boundaries, in one place (v0.22.0)
+
+- `known_oids.under_subtree(oid, root)` is `oid == root or oid.startswith(root + ".")`, and
+  `known_oids.ancestors(oid)` walks upwards by whole arcs. The maintenance-window rules and the
+  catalogue both use them; `engine/mw/rules.py` re-exports rather than redefines.
+- **The mistake has no code path**: a rule on `…2011.1.2` covers `…2011.1.2.1` and can never cover
+  `…2011.1.12`. `tests/test_catalogue.py::test_a_branch_rule_stops_at_an_arc_boundary` is the guard,
+  and dropping the dot turns it red.
+- **The branch browser** (`GET /api/catalogue/tree`) lists children by the next arc, and at the
+  enterprises root lists every IANA vendor the appliance knows, so a rule can be placed on a vendor
+  before a single trap from it has arrived.
+
+## 385. The Trap catalogue: rules on an OID or a branch, resolved at read time (v0.22.0)
+
+- **Items 16-18.** The classes screen was an unbounded list of OIDs an operator could name one at a time after
+  traps arrived. It is now a catalogue: search, a branch browser, a table showing which rule wins
+  for each class, and an import.
+- **`class_rule` (migration 0023)**: `(oid, subtree, name, severity, vendor, source)`, unique per
+  `(oid, subtree, source)`, `source` in `declared | imported`.
+- **Precedence**, decided in `Catalogue.resolve`, independently for the name and the severity:
+  1. the per-class declaration (`label`);
+  2. rules matching the OID, most specific first — exact, then the deepest subtree, then shallower;
+     at the same node `declared` before `imported`;
+  3. what the appliance knows untold — a standard trap's name, the severity the trap carried or
+     learned;
+  4. nothing: **unplaced**, which stays a visible state.
+- **Resolution is read time.** A rule changes what a class is called and how it is graded on
+  screen. It never rewrites an alarm, a grouping, a maintenance-window collection or any
+  `dataset_*` row: **imported data is not evidence**, and
+  `tests/test_catalogue.py::test_an_imported_rule_never_reaches_evidence` counts them.
+- **Import** (`POST /api/catalogue/import`): CSV or text with a header naming `trap_oid`, delimiter
+  sniffed from `, ; tab`, parsed by the standard `csv` module — **no MIB compiler, no dependency**.
+  Bounded (256 KiB checked before the body is read, then while streaming; 5 000 rows; 2 s), every
+  row validated with line, field and rule, **all-or-nothing**, idempotent per OID, audited with the
+  file's digest, and undone in one step (`DELETE /api/catalogue/imported`) that leaves declared rules
+  standing. Capabilities `catalogue.write` and `catalogue.import` are separate (editor), so a
+  deployment can grant the form without the bulk path.
+
+## 386. Severity is a shape, a colour and a word, on the X.733 scale (v0.22.0)
+
+- **Items 3 and 4.** The glyphs `▲ ◆ ● ▬ ? ∅` were geometry, not severity, and rank 3 read `low` where the
+  vocabulary says `warning`.
+- **One chip (`widgets.SeverityChip`)**: an octagon, a triangle, a diamond and a square for the four
+  placed bands; an empty ring for `indeterminate` (the element's own "I do not know"); a broken
+  ring for `unplaced` (the appliance never read one). Every chart line carries the same shape and
+  a distinct dash, so the Overview's per-band chart survives greyscale.
+- **`unplaced` is its own band everywhere** — census, chart, element panel — never folded into a
+  placed band and never dropped from a total.
+
+## 387. Dismissing a warning is a per-user snooze, and security posture is never silently invisible (v0.22.0)
+
+- **Item 1, pushed back.** The request was "let me dismiss notifications". The warnings are
+  re-evaluated on every poll from the appliance's state, so a delete would come back in 30 s — and
+  a dismissible *"traffic is accepted from anywhere"* is the warning most worth not dismissing.
+- **`notice_snooze` (migration 0024)**: per user, keyed on the warning's text digest, 24 h, 7 d, or
+  "until it changes" (the text is the key, so a changed warning returns). Audited.
+- **A security-posture warning's snooze always expires** (24 h or 7 d; "until it changes" is a
+  422). `crosscutting/posture.py` defines those texts once, and the runner emits them from there.
+  **An admin always sees who has snoozed one.** The bell keeps a muted count of snoozed warnings.
+- **Only a warning currently shown can be snoozed**: a digest of text nobody is shown is a 404, so
+  the route is not an oracle for what the appliance might warn about.
+
+## 388. The "outlived a maintenance window" marker stays, scoped, and can be acknowledged (v0.22.0)
+
+- **Item 8, pushed back.** The request was to remove the marker. Measured: surfacing was correctly
+  scoped (only alarms still active when a window closed), but the marker never expired. **A fault
+  that outlived a maintenance window must surface**, so it stays.
+- **Scoped**: drawn while the alarm is active, unacknowledged, and has not been re-reported since
+  it was surfaced (`last_seen <= surfaced_at`). A recurrence is a fault of now.
+- **Acknowledged**: `POST /api/alarms/{aid}/outlived/ack` (`alarm.acknowledge`, editor, scoped,
+  audited) records who saw it. The alarm stays active and stays in its situation; the ack is not in
+  any dataset table. A re-surfacing resets it.
+
+## 389. A running maintenance window can be ended, extended and shortened, never rewritten (v0.22.0)
+
+- **Item 19.** A window's row expanded to nothing actionable, and editing reused a form that would
+  have let an operator move the start of a window already in force.
+- **`WindowDetail`**: a timeline bar, both clocks, targets with their rules, history, and the
+  actions the state permits — End now (two steps), +30 min / +1 h / +2 h, Shorten for an active
+  window; Edit, Confirm, Cancel for a scheduled one.
+- **While active, the start, zone, patch band, targets and rules are frozen** (409, naming the
+  field): changing them would make the minutes already past answer to a window that was not the
+  one in force. Name, description and visibility may change. A *changed* end in the past is a 422
+  ("use End now"); re-saving a window whose end has just passed is not.
+
+## 390. The regional heat map is a schematic site map, and it is its own release (v0.22.0)
+
+- **Item 11's second idea**: a map of the region actually affected. Three versions were weighed.
+- **A geographic map is rejected for this appliance**: it needs map tiles from an external provider,
+  a licence, and egress from a NOC that may be isolated — and the console's CSP forbids external
+  fetches. Loosening the CSP for tiles is a security decision this product will not make for a
+  picture.
+- **A schematic site map is the right version**: the operator places elements on a blank canvas or
+  on an image they upload (a floor plan, a network diagram), and the heat is drawn over it. No
+  provider, no licence, no egress.
+- **It is not in this release**: it needs a location on the asset (a schema and a UI for entering
+  it) and an upload path for the image, which is a plan of its own. Nothing here fakes it — no
+  invented coordinates. The deterministic graph (#383) is the estate view this release ships.

@@ -120,6 +120,31 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     # operator describing a thing, and this is a statement about who owns it.
     ("POST", "/api/entities/{ne_id}/organization"): "organizations.write",
     ("GET", "/api/timezones"): "timezones.read",
+    # v0.22.0 (ADR #380): the host's readings over a window. The same capability as the current
+    # reading, which `/api/stats` has served to every role since v0.16.5.
+    ("GET", "/api/resources"): "stats.read",
+    # v0.22.0 (ADR #381): alarm activity over a window, for the Timeline and the Overview. The
+    # same capability as the marks they replace on screen, because they are the same rows counted.
+    ("GET", "/api/activity/severity"): "timeline.read",
+    ("GET", "/api/activity/lanes"): "timeline.read",
+    ("GET", "/api/activity/groups"): "timeline.read",
+    # v0.22.0 (item 11): one element for the graph's selection panel. The Entities screen's
+    # capability, because it is the same element seen from the graph.
+    ("GET", "/api/elements/{ne_id}"): "entities.read",
+    # v0.22.0 (items 1, 8): what is shown, per user or per alarm; never what is known.
+    ("GET", "/api/notices"): "stats.read",
+    ("POST", "/api/notices/snooze"): "notice.snooze",
+    ("DELETE", "/api/notices/snooze/{digest}"): "notice.snooze",
+    ("POST", "/api/alarms/{aid}/outlived/ack"): "alarm.acknowledge",
+    # v0.22.0 (items 16-18): the trap catalogue. Reading it is reading the classes; a rule is a
+    # declaration about a trap OID or a branch; an import is many at once.
+    ("GET", "/api/catalogue"): "classes.read",
+    ("GET", "/api/catalogue/tree"): "classes.read",
+    ("GET", "/api/catalogue/rules"): "classes.read",
+    ("POST", "/api/catalogue/rules"): "catalogue.write",
+    ("DELETE", "/api/catalogue/rules/{rule_id}"): "catalogue.write",
+    ("POST", "/api/catalogue/import"): "catalogue.import",
+    ("DELETE", "/api/catalogue/imported"): "catalogue.import",
 }
 
 # The only /api routes reachable without a resolved identity.
@@ -258,6 +283,39 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     # A property of the host's `tzdata`. Public information about a public database, naming no
     # element and no principal.
     ("GET", "/api/timezones"): "unscoped",
+    # A CPU percentage and a queue depth over time. They describe the appliance's own host, name no
+    # network element and no principal, and every role already reads the current value of each.
+    ("GET", "/api/resources"): "unscoped",
+    ("GET", "/api/activity/severity"): "scoped",
+    ("GET", "/api/activity/lanes"): "scoped",
+    ("GET", "/api/activity/groups"): "scoped",
+    ("GET", "/api/elements/{ne_id}"): "scoped",
+    # The warnings are the appliance's about itself — the same list `/api/stats` has always served
+    # every role unscoped (F107 took the addresses out of them) — and a snooze is the caller's own.
+    ("GET", "/api/notices"): "unscoped",
+    # Writes a row keyed on the caller's own user id and a warning's text; names no element.
+    ("POST", "/api/notices/snooze"): "unscoped",
+    # Deletes only the caller's own snooze row; another user's digest answers the same 404.
+    ("DELETE", "/api/notices/snooze/{digest}"): "unscoped",
+    ("POST", "/api/alarms/{aid}/outlived/ack"): "scoped",
+    # A trap OID is a kind of trap, not a network element, and no catalogue row names one — the
+    # same reasoning as `/api/classes`. The per-class active count is over the whole estate, as
+    # `/api/classes`' existence of a class already is.
+    ("GET", "/api/catalogue"): "unscoped",
+    # The OID branches under a node and the vendors IANA assigned; a property of trap types.
+    ("GET", "/api/catalogue/tree"): "unscoped",
+    # The rules themselves: an OID, a name, a severity, a source. No element column exists.
+    ("GET", "/api/catalogue/rules"): "unscoped",
+    # Names or grades a trap type for the whole estate; it can name no element, so there is no
+    # element for a scope to narrow. The capability is `catalogue.write` (editor).
+    ("POST", "/api/catalogue/rules"): "unscoped",
+    # Withdraws one such rule; same reasoning as the write it reverts.
+    ("DELETE", "/api/catalogue/rules/{rule_id}"): "unscoped",
+    # A file of OID → name/severity rows. Every row is validated to name a trap type only, and
+    # the import is bounded, all-or-nothing and audited (ADR #385).
+    ("POST", "/api/catalogue/import"): "unscoped",
+    # The undo for every import; touches `source='imported'` rows only, never a declared rule.
+    ("DELETE", "/api/catalogue/imported"): "unscoped",
 }
 
 assert set(ROUTE_SCOPE) == set(ROUTE_PERMISSIONS), (

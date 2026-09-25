@@ -16,11 +16,12 @@
  */
 
 import { html } from "../../dom.js";
-import { Failed, SectionHeading } from "../../widgets.js";
+import { Failed, SectionHeading, severityTone } from "../../widgets.js";
 import { Series } from "../../charts.js";
-import { Bars, Map as EstateMap } from "../../compare.js";
+import { Bars } from "../../compare.js";
+import { NetGraph, URGENT_AT } from "../../netgraph.js";
 import { clock, spanText } from "../../chartdata.js";
-import { count, TIMEZONE } from "../../format.js";
+import { SCALE, UNPLACED, count, TIMEZONE } from "../../format.js";
 
 /**
  * The ranges the Overview offers, and the default.
@@ -58,83 +59,56 @@ export function RangePicker({ value, onPick }) {
 /** How many elements the top-elements bars rank. Enough to act on, short enough to read. */
 const TOP_N = 5;
 
-/**
- * The load at which an estate cell starts pulsing (DECISIONS #309).
- *
- * **47 is not arbitrary**: it is where the network graph's node radius saturates —
- * `min(24, 7 + 2.5 * sqrt(n))` reaches its 24 px ceiling there (F77) — so it is exactly the load
- * above which the other projection stops being able to tell two elements apart. Marking the same
- * threshold in both places is what makes the two drawings agree about which elements are urgent.
- */
-export const URGENT_AT = 47;
 
 /**
- * **What is happening** — one chart, over a range the operator chose.
+ * **What is happening** — alarms raised per bucket, **one line per severity band** (v0.22.0).
  *
- * ## What this replaced, and why (v0.20.0, F144)
+ * v0.20.0 drew raises against clears here, and the maintainer read it as broken: a red column at
+ * the right edge and a green hairline along the floor. The question the panel is under is *how
+ * bad*, so the lines are the bands the card beside it counts — and **`unplaced` is a band of its
+ * own, labelled**, rather than a remainder that vanishes. On an estate whose devices send no
+ * severity word it is the tallest line and the others lie flat; that is the chart telling the
+ * truth about the estate, not a rendering fault (item 4).
  *
- * Two column charts sat here. The first plotted *situations by creation time* over **the 50 most
- * recent situations the live list carries**; the second plotted raises and clears by fetching
- * `/api/timeline?limit=1000` and counting in the browser. Both drew their own axis from whatever
- * span their own data happened to cover, so the two charts under one heading were usually over
- * two different periods, neither of them stated in a unit an operator picked — which is what
- * made the panel read as blocks rather than as time passing.
- *
- * The thousand-row read was also 108.5 KiB on every load to produce twenty-four numbers, and it
- * was **truncated**: on the measured estate those thousand marks spanned 15.6 seconds of one
- * storm out of 1 963 raises. `Worst` below already recorded that a chart labelled "last 7 days"
- * over that data would be a lie, and deferred the fix to "a later release" with a `GROUP BY` in
- * it. This is that release: `/api/timeline?buckets=…&range_s=…` counts in SQL, so the axis is
- * the range that was asked for and the counts are all of it.
- *
- * One chart, because raises against clears is the question — five hundred raises with three
- * clears and five hundred with 495 are opposite situations and no counter distinguishes them.
- * Whether situations arrive in a burst is answered by the list beside it.
+ * Counted in SQL over the range chosen above (`/api/activity/severity`), resolved per class with
+ * the census's precedence, so a band here means what it means on the card.
  */
 export function Happening({ data, rangeS, error, retry }) {
   if (error) {
     return html`<${Failed} error=${error} retry=${retry} what="recent alarm activity" />`;
   }
-  const series = (data && data.series) || null;
-  const n = series ? series.raises.length : 0;
-  const bucketS = (data && data.bucket_s) || 0;
-  // Ticks are clock times counted back from the end of the range, so the axis is the range the
-  // operator chose rather than the span the rows happened to cover.
-  const labels = n && data
-    ? Array.from({ length: n }, (_, i) => clock(data.from + (i + 0.5) * bucketS, rangeS))
+  const series = (data && data.series) || {};
+  const n = data ? data.buckets : 0;
+  const labels = n
+    ? Array.from({ length: n }, (_, i) => clock(data.from + (i + 0.5) * data.bucket_s, rangeS))
     : [];
-  const total = series ? series.raises.reduce((a, b) => a + b, 0) : 0;
-  const cleared = series ? series.clears.reduce((a, b) => a + b, 0) : 0;
-  return html`<${Series} title="Alarm activity" mark="column"
-    series=${[
-      { name: "raised", tone: "alarm", values: series ? series.raises : [] },
-      { name: "cleared", tone: "quiet", values: series ? series.clears : [] },
-    ]}
-    labels=${labels}
-    source=${series
-      ? `${count(total)} raised, ${count(cleared)} cleared`
-      : "reading…"}
-    span=${bucketS ? `one column per ${spanText(bucketS)}` : null}
+  const lines = [...SCALE, UNPLACED]
+    .filter((b) => series[b.key])
+    .map((b) => ({ name: b.label, tone: severityTone(b.key), shape: b.shape, values: series[b.key] }));
+  if (series.vendor) {
+    lines.push({ name: "vendor scale", tone: severityTone("vendor"), shape: "square",
+                 values: series.vendor });
+  }
+  const total = lines.reduce((sum, one) => sum + one.values.reduce((a, b) => a + b, 0), 0);
+  return html`<${Series} title="Alarms raised, by severity" mark="line" total=${true}
+    series=${lines} labels=${labels}
+    source=${data ? `${count(total)} raised` : "reading…"}
+    span=${data ? `per ${spanText(data.bucket_s)}` : null}
     note=${TIMEZONE} />`;
 }
 
+/** Elements the Overview's graph draws: the whole estate when it is small, the busiest otherwise. */
+export const CARD_NODES = 40;
+
 /**
- * **The estate** — the grid and the ranking, in one card.
+ * **Where it is happening** — the five busiest, and how the estate is connected (v0.22.0, item 6).
  *
- * They were two panels, each taking a full row, and they are two views of one array: one drew
- * every element as a cell, the other ranked the busiest five of the same elements. An operator
- * reads them together — *is it everywhere or somewhere, and if somewhere, which* — so they are
- * one card under one heading. That is a row of the Overview saved and a question answered once.
- *
- * **No topology is drawn here, and the caption links to the one that is** (v0.16.7, #317).
- * Measured on the three-scenario estate, `edge` holds one row of `kind='device'` at weight 0.0,
- * so a topology here would draw unconnected circles.
- *
- * The ranking is **active alarms now**, not a count over the selected range, and it says so.
- * `/api/graph` serves what is active; a per-element count over a window is a different query and
- * deriving one from this would be inventing it.
+ * The grid of every element became the graph: the maintainer wanted the relationships on the first
+ * screen. It is `app/netgraph.js` at card size — hand-written, deterministic, asserted by the
+ * harness, never the d3 scene — and an element opens on the Graph screen with its panel. Past
+ * `CARD_NODES` elements it draws the busiest, which is the question this card answers.
  */
-export function Estate({ nodes }) {
+export function Estate({ nodes, edges }) {
   const rows = [...nodes]
     .filter((node) => node.active_alarms > 0)
     .sort((a, b) => b.active_alarms - a.active_alarms
@@ -146,18 +120,17 @@ export function Estate({ nodes }) {
       value: node.active_alarms,
       tone: node.active_alarms >= URGENT_AT ? "alarm" : "warn",
     }));
+  const drawn = nodes.length <= CARD_NODES
+    ? nodes
+    : [...nodes].sort((a, b) => b.active_alarms - a.active_alarms).slice(0, CARD_NODES);
   return html`<section class="panel-block">
     <${SectionHeading} title="Where it is happening" />
-    <${Bars} title=${`Busiest ${TOP_N}`} rows=${rows} unit="alarms"
-      source="active now, not over the range above" />
-    <${EstateMap} title="Every element"
-      cells=${nodes.map((node) => ({
-        key: String(node.id),
-        label: node.label || node.ip,
-        value: node.active_alarms,
-      }))}
-      urgentAt=${URGENT_AT}
-      source="load, not topology"
-      note=${html`busiest first —${" "}<a href="#/graph">how they connect</a>`} />
+    <${Bars} title=${`Busiest ${TOP_N}`} rows=${rows} unit="alarms" source="active now" />
+    <${NetGraph} compact nodes=${drawn} edges=${edges || []}
+      onSelect=${(id) => { globalThis.location.hash = `#/graph?ne=${id}`; }} />
+    <p class="chart-caption">
+      ${drawn.length < nodes.length ? `the busiest ${count(drawn.length)} of ${count(nodes.length)} · ` : ""}
+      <a href="#/graph">open the graph</a>
+    </p>
   </section>`;
 }

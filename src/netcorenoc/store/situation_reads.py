@@ -307,6 +307,22 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
                 if self._has_surfaced_window
                 else "NULL AS surfaced_from_window_id, "
             )
+            # v0.22.0 (#388): the MARKER, which is narrower than the provenance above. A fault the
+            # ledger surfaced is marked only while it is still active, has not been re-reported by
+            # the element since (its own trap carries what the ledger could not), and nobody has
+            # acknowledged it. Clearing, a real trap and an acknowledgement each end it.
+            + (
+                "CASE WHEN a.status='active' AND a.surfaced_ack_at IS NULL "
+                "AND a.last_seen <= COALESCE(a.surfaced_at, a.last_seen) "
+                "THEN a.surfaced_from_window_id END AS outlived_window_id, "
+                if self._has_surfaced_ack
+                else (
+                    "CASE WHEN a.status='active' THEN a.surfaced_from_window_id END "
+                    "AS outlived_window_id, "
+                    if self._has_surfaced_window
+                    else "NULL AS outlived_window_id, "
+                )
+            )
             + "dl.label AS device_label, c.oid AS class_oid, "
             "c.id AS class_id, cl.label AS class_label, sl.label AS class_severity_label "
             "FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "

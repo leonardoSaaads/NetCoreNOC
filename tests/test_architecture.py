@@ -411,7 +411,6 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/sidebar.js"),
     ("GET", "/app/store.js"),
     ("GET", "/app/theme.js"),
-    ("GET", "/app/vendor.js"),
     ("GET", "/app/views/account.js"),
     ("GET", "/app/views/audit.js"),
     ("GET", "/app/views/classes.js"),
@@ -456,13 +455,18 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/keeping.js"),
     ("GET", "/app/views/parts/severity.js"),
     ("GET", "/app/views/parts/models.js"),
-    ("GET", "/app/views/parts/estate.js"),
     ("GET", "/app/views/parts/marks.js"),
     ("GET", "/app/views/parts/evidence.js"),
     ("GET", "/app/notices.js"),
     ("GET", "/app/health.js"),
+    ("GET", "/app/info.js"),
+    ("GET", "/app/layout.js"),
+    ("GET", "/app/netgraph.js"),
+    ("GET", "/app/views/parts/element.js"),
+    ("GET", "/app/views/parts/oidtree.js"),
+    ("GET", "/app/views/parts/importbox.js"),
+    ("GET", "/app/views/parts/mwdetail.js"),
     ("GET", "/app/widgets.js"),
-    ("GET", "/vendor/d3.v7.min.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -535,6 +539,22 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/organizations"),
     ("POST", "/api/entities/{ne_id}/organization"),
     ("GET", "/api/timezones"),
+    ("GET", "/api/resources"),
+    ("GET", "/api/activity/severity"),
+    ("GET", "/api/activity/lanes"),
+    ("GET", "/api/activity/groups"),
+    ("GET", "/api/elements/{ne_id}"),
+    ("GET", "/api/notices"),
+    ("POST", "/api/notices/snooze"),
+    ("DELETE", "/api/notices/snooze/{digest}"),
+    ("POST", "/api/alarms/{aid}/outlived/ack"),
+    ("GET", "/api/catalogue"),
+    ("GET", "/api/catalogue/tree"),
+    ("GET", "/api/catalogue/rules"),
+    ("POST", "/api/catalogue/rules"),
+    ("DELETE", "/api/catalogue/rules/{rule_id}"),
+    ("POST", "/api/catalogue/import"),
+    ("DELETE", "/api/catalogue/imported"),
     ("GET", "/api/events"),
 ]
 
@@ -614,11 +634,16 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # `routes.maintenance_ops` therefore registers **before** `routes.maintenance`, and the
     # baseline above is what pins that ordering — `test_route_table_order_is_unchanged` is the
     # test that would catch a reordering, and this count is what makes an addition visible.
-    assert len(live) == 68, (
+    # **v0.22.0: 68 -> 84.** Sixteen, none able to shadow another: each is a new prefix
+    # (`/api/resources`, `/api/activity/*`, `/api/elements/{ne_id}`, `/api/notices*`,
+    # `/api/catalogue*`) or `POST /api/alarms/{aid}/outlived/ack`, three segments below `{aid}`
+    # where the existing `…/clear` routes have one and two.
+    assert len(live) == 84, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
-        f"organizations and time zones. Only one pair in the whole table can shadow another — "
+        f"organizations and time zones, v0.22.0 exactly sixteen (ADR #380-#389). Only one pair "
+        f"in the whole table can shadow another — "
         f"`…/preview` against `…/{{wid}}` — and its registration order is pinned by the baseline "
         f"above (DECISIONS #301)."
     )
@@ -831,7 +856,8 @@ def test_the_javascript_exemption_is_only_vendor() -> None:
     assert all(path.parent.name == "vendor" for path in exempt), (
         f"the exemption reaches outside ui/vendor/: {sorted(str(p) for p in exempt)}"
     )
-    assert len(exempt) == 3, f"expected exactly the three vendored assets, found {len(exempt)}"
+    # Two since v0.22.0: d3 left when its two drawings became hand-written SVG (ADR #383).
+    assert len(exempt) == 2, f"expected exactly the two vendored assets, found {len(exempt)}"
 
 
 def test_the_ui_entry_point_only_boots() -> None:
@@ -1169,8 +1195,15 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: planned-work card, and `views/parts/mwreview.js` is the stepper's card 4, split out of
 #: `mwform.js` when the UX repairs pushed it to 448 lines — split along a noun rather than the
 #: limit being raised, which is what MODULE-ARCHITECTURE.md §2 asks for.
-SRC_TREE_DIGEST = "b0a33f015d6172c9b1b295883766393c29b74dbab46820a2680c4db2853f2afc"
-SRC_FILE_COUNT = 255
+#: **v0.22.0: 255 -> 273.** Twenty-two added and four removed. Added: three migrations
+#: (`0022`-`0024`); five store modules (`host_samples`, `class_rules`, `catalogue_reads`,
+#: `activity`, `attention`); six API modules (the `host`, `activity`, `elements`, `attention` and
+#: `catalogue` routes, and the `catalogue_import` parser); `crosscutting/posture.py`; seven
+#: console modules (`info`, `layout`, `netgraph`, `parts/element`, `parts/oidtree`,
+#: `parts/importbox`, `parts/mwdetail`). Removed: `app/vendor.js`, `views/parts/estate.js`, and d3
+#: with its licence (ADR #383) — what else was removed is named in `HANDOFF.md`.
+SRC_TREE_DIGEST = "405ab7bb5c640c14d12d15e8d32611bd2e30f8b9f93b0f610f48186489f0b16d"
+SRC_FILE_COUNT = 273
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1236,7 +1269,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.21.1", "the version this release carries"
+    assert __version__ == "0.22.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

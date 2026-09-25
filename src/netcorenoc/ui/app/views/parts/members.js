@@ -54,8 +54,11 @@ import { SeverityBadge, SeverityCell, DataTable, cell } from "../../widgets.js";
 import { alarmName, classVendor, deviceName, plural } from "../../format.js";
 import { DeclareNe, DeclareClass, DeclareSeverity } from "./declare.js";
 import { SurfacedMark } from "./mwmarker.js";
+import { can } from "../../session.js";
 
-export function Members({ alarms, editable, marked, onMark, onMarkAll, onClear, onDeclared }) {
+export function Members({
+  alarms, editable, marked, onMark, onMarkAll, onClear, onDeclared, onAck,
+}) {
   const markable = alarms.map((a) => a.id);
   const allMarked = markable.length > 0 && markable.every((id) => marked.has(id));
   const columns = [
@@ -128,7 +131,8 @@ export function Members({ alarms, editable, marked, onMark, onMarkAll, onClear, 
       // difference between *"the appliance could not place a severity"* and *"there was no trap
       // to place one from"* — and an operator who reads the first when the second is true will
       // go looking for a defect in the appliance.
-      instance: html`${a.instance || "—"}<${SurfacedMark} alarm=${a} />`,
+      instance: html`${a.instance || "—"}${" "}<${SurfacedMark} alarm=${a}
+        onAck=${onAck && can("alarm.acknowledge") ? onAck : null} />`,
       // A `<td class="sev">` either way, so the column reads the same for a viewer and an editor;
       // an editor's badge is simply inside the button that declares it. `SeverityCell` IS that
       // `<td>`, so the editable branch builds its own around the badge rather than nesting one

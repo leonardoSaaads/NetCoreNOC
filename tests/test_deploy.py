@@ -194,5 +194,11 @@ def test_the_ignore_matcher_follows_dockers_ordering_and_wildcard_rules() -> Non
 
 def test_notice_and_third_party_license_present() -> None:
     assert (REPO_ROOT / "NOTICE").is_file(), "Apache-2.0 NOTICE required"
-    assert "d3" in _read("NOTICE")
-    assert (REPO_ROOT / "src/netcorenoc/ui/vendor/d3.LICENSE").is_file()
+    # v0.22.0: d3 left with the timeline rewrite; the two libraries still bundled are named with
+    # their licences beside them, and d3's name does not linger in a notice for code not shipped.
+    notice = _read("NOTICE")
+    for lib in ("preact", "htm"):
+        assert lib in notice
+        assert (REPO_ROOT / f"src/netcorenoc/ui/vendor/{lib}.LICENSE").is_file()
+    assert "d3" not in notice
+    assert not (REPO_ROOT / "src/netcorenoc/ui/vendor/d3.LICENSE").exists()

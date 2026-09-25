@@ -415,7 +415,8 @@ async def test_every_write_is_audited_with_the_actor_and_whether_it_was_an_agent
     (ne,) = await _seed_hosts(store, "10.50.0.1")
     client = await authutil.client_as(app, "editor")
     wid = (await client.post("/api/maintenance-windows", json=_body([ne]))).json()["id"]
-    await client.post(f"/api/maintenance-windows/{wid}", json=_body([ne], name="renamed"))
+    upd = await client.post(f"/api/maintenance-windows/{wid}", json=_body([ne], name="renamed"))
+    assert upd.status_code == 200, upd.text
     await client.post(f"/api/maintenance-windows/{wid}/cancel")
 
     async with store.lock:

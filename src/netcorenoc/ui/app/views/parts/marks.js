@@ -1,223 +1,154 @@
-/* The timeline's **hand-written half**: the five controls, the column alternative to the d3
- * scatter, and the per-element summary (v0.16.6, DECISIONS #311).
+/* The Timeline's parts: the controls, the lanes, and the list of bursts (v0.22.0, F155, #381).
  *
- * The same boundary `views/parts/estate.js` draws for the Graph screen, for the same reason: the
- * scatter in `views/timeline.js` runs against a recording double and is asserted by nothing, and
- * everything here produces real DOM and is asserted. Splitting on that line means the import list
- * of each screen states which half is covered.
- *
- * ## Two of the five controls are presentational, and the file says which
- *
- * `ne`, `win` and `depth` become `ne_id`, `since` and `limit` and are answered **in SQL** —
- * `views/timeline.js::query` builds them and nothing here filters a row. `chart` and `split`
- * choose how the rows the server already returned are drawn.
- *
- * That split is not a nicety. v0.7.0 truncated globally and then compared the rendered
- * `COALESCE(label, ip)` string against a scope's address set, which made a non-unique display
- * string an authorization key (F35, F38). **A scope-bearing control is a query filter, always**,
- * and `chart`/`split` are safe to be presentational precisely because neither can name an element.
+ * Everything here is hand-written DOM and SVG, so the harness asserts it — the d3 scatter this
+ * replaced ran against a recording double and was asserted by nothing. Every control is a query
+ * parameter answered in SQL (`/api/activity/*`); nothing here filters a row it was sent.
  */
 
-import { html } from "../../dom.js";
-import { DataTable, SectionHeading } from "../../widgets.js";
-import { Series } from "../../charts.js";
-import { buckets, spanText, tally } from "../../chartdata.js";
-import { count, plural } from "../../format.js";
+import { html, cx } from "../../dom.js";
+import { clock, spanText } from "../../chartdata.js";
+import { absolute, count, relative, timeTitle } from "../../format.js";
 
-/** The windows the control offers, in seconds. `0` means "everything retention still holds". */
+/** The windows offered, in seconds, and the column count that keeps a bucket readable. */
 export const WINDOWS = [
-  [0, "all retained"],
-  [3600, "last hour"],
-  [21600, "last 6 hours"],
-  [86400, "last 24 hours"],
-  [604800, "last 7 days"],
+  { label: "15m", seconds: 15 * 60 },
+  { label: "1h", seconds: 60 * 60 },
+  { label: "6h", seconds: 6 * 60 * 60 },
+  { label: "24h", seconds: 24 * 60 * 60 },
+  { label: "7d", seconds: 7 * 24 * 60 * 60 },
 ];
 
-/** How deep to read. **A query filter**: `limit` bounds what SQL returns, never what is drawn. */
-export const DEPTHS = [
-  [100, "100 alarms"],
-  [300, "300 alarms"],
-  [1000, "1 000 alarms"],
+export const KINDS = [
+  ["both", "raises and clears"],
+  ["raise", "raises"],
+  ["clear", "clears"],
 ];
 
-/** The two ways to draw the same marks. Presentational, and the caption says so. */
-export const CHARTS = [
-  ["scatter", "one row per element"],
-  ["column", "counts over time"],
-];
+/** A parameter's value when it is absent from the address, so a default is never written. */
+export const DEFAULTS = { win: 3600, ne: "", kind: "both", page: 0 };
 
-/** Combine every element into one series, or draw one series per element. Presentational. */
-export const SPLITS = [
-  ["combined", "combined"],
-  ["host", "separate by element"],
-];
+export const PAGE = 25;
+export const LANE_BUCKETS = 48;
 
-/**
- * The value each control carries when it is **absent from the address**.
- *
- * `views/timeline.js::set` deletes a parameter that equals its default rather than writing it, so
- * the address of an unconfigured screen is `#/timeline` and not `#/timeline?win=0&chart=scatter&…`.
- * A permalink whose every default is spelled out is a permalink nobody can read, and a reader
- * cannot tell which parts of it the sender actually chose.
- */
-export const DEFAULTS = { ne: "", win: 0, chart: "scatter", split: "combined", depth: 300 };
-
-/**
- * The five controls, each writing one parameter into the address.
- *
- * `onChange` calls `set`, `set` navigates, the router publishes, and `componentDidUpdate` reloads.
- * There is no second copy of the configuration anywhere in that loop, which is what makes the
- * address and the screen unable to disagree.
- */
-export function Controls({ config, options, set, onClear }) {
-  const { ne, windowS, chart, split, depth } = config;
-  const configured = Boolean(ne || windowS || chart !== DEFAULTS.chart
-    || split !== DEFAULTS.split || depth !== DEFAULTS.depth);
-  return html`<div class="filters" role="group" aria-label="Timeline filters">
-    <label for="tlNe">Element</label>
-    <select id="tlNe" value=${ne} onChange=${(e) => set("ne", e.target.value)}>
-      <option value="">every element in your scope</option>
-      ${options.map(([id, name]) => html`<option key=${id} value=${id}>${name}</option>`)}
+/** The three controls. Each writes one parameter into the address; the address is the state. */
+export function Controls({ config, elements, set }) {
+  return html`<div class="filters tl-controls" role="group" aria-label="Timeline filters">
+    <div class="ranges" role="group" aria-label="Window">
+      ${WINDOWS.map((w) => html`<button type="button" key=${w.label}
+          class=${cx("range", w.seconds === config.win && "on")}
+          aria-pressed=${w.seconds === config.win}
+          onClick=${() => set("win", w.seconds)}>${w.label}</button>`)}
+    </div>
+    <label class="visually-hidden" for="tlNe">Element</label>
+    <select id="tlNe" value=${config.ne} onChange=${(e) => set("ne", e.target.value)}>
+      <option value="">every element</option>
+      ${elements.map(([id, name]) => html`<option key=${id} value=${String(id)}>${name}</option>`)}
     </select>
-
-    <label for="tlWindow">Window</label>
-    <select id="tlWindow" value=${String(windowS)}
-            onChange=${(e) => set("win", Number(e.target.value))}>
-      ${WINDOWS.map(([value, label]) => html`
-        <option key=${value} value=${String(value)}>${label}</option>`)}
+    <label class="visually-hidden" for="tlKind">Show</label>
+    <select id="tlKind" value=${config.kind} onChange=${(e) => set("kind", e.target.value)}>
+      ${KINDS.map(([value, label]) => html`<option key=${value} value=${value}>${label}</option>`)}
     </select>
-
-    <label for="tlDepth">Depth</label>
-    <select id="tlDepth" value=${String(depth)}
-            onChange=${(e) => set("depth", Number(e.target.value))}>
-      ${DEPTHS.map(([value, label]) => html`
-        <option key=${value} value=${String(value)}>${label}</option>`)}
-    </select>
-
-    <label for="tlChart">Chart</label>
-    <select id="tlChart" value=${chart} onChange=${(e) => set("chart", e.target.value)}>
-      ${CHARTS.map(([value, label]) => html`
-        <option key=${value} value=${value}>${label}</option>`)}
-    </select>
-
-    <label for="tlSplit">Elements</label>
-    <select id="tlSplit" value=${split} onChange=${(e) => set("split", e.target.value)}
-            disabled=${chart !== "column"}
-            title=${chart === "column"
-              ? "Combine every element into one series, or draw one series each."
-              : "The scatter already draws one row per element; this applies to the column chart."}>
-      ${SPLITS.map(([value, label]) => html`
-        <option key=${value} value=${value}>${label}</option>`)}
-    </select>
-
-    ${configured ? html`<button type="button" class="tap" onClick=${onClear}
-    >Clear filters</button>` : null}
   </div>`;
 }
 
 /**
- * The column alternative to the scatter — **the same marks, counted per bucket**.
+ * **Where and when, as a matrix**: one row per busy element, one column per slice of the window,
+ * each cell shaded by how many alarms were raised there. The axis IS the window — equal slices of
+ * it — so a burst is one dark cell and a quiet hour is a row of empty ones, whatever the row count.
  *
- * It answers a question the scatter cannot: *how many*. A scatter with 1 000 marks over two minutes
- * is a solid band, and an operator asking whether the rate is rising reads nothing from it. It is
- * also the half of `chart` that is hand-written, so this screen's chart choice is now one drawing a
- * test executes and one it does not.
- *
- * `split` decides whether the estate is one series or one per element. **Both are arithmetic over
- * the marks the server already returned** — no row is dropped here, because dropping a row in the
- * render is exactly what F35 was.
+ * Shade encodes a magnitude on one hue, never a category, and every cell carries its count as a
+ * `<title>`; each row's label carries its total as text.
  */
-export function Columns({ marks, split }) {
-  const grid = buckets(marks.map((m) => m.ts), 24);
-  const series = split === "host"
-    ? [...new Set(marks.map((m) => m.device))].slice(0, SERIES_CAP).map((device, index) => ({
-        name: device,
-        tone: TONES[index % TONES.length],
-        values: tally(grid, marks.filter((m) => m.device === device).map((m) => m.ts)),
-      }))
-    : [
-        {
-          name: "raises",
-          tone: "alarm",
-          values: tally(grid, marks.filter((m) => m.kind !== "clear").map((m) => m.ts)),
-        },
-        {
-          name: "clears",
-          tone: "quiet",
-          values: tally(grid, marks.filter((m) => m.kind === "clear").map((m) => m.ts)),
-        },
-      ];
-  const hidden = split === "host"
-    ? Math.max(0, new Set(marks.map((m) => m.device)).size - SERIES_CAP)
-    : 0;
-  return html`<section class="panel-block">
-    <${Series} title=${split === "host" ? "Marks per element" : "Raises and clears"} mark="column"
-      series=${series} labels=${grid.labels}
-      source=${`${plural(marks.length, "mark")} from /api/timeline`}
-      span=${grid.n ? `over ${spanText(grid.spanS)}, one column per ${spanText(grid.bucketS)}`
-        : null}
-      note=${hidden
-        ? `${count(hidden)} further elements are not drawn; narrow with the Element control`
-        : null} />
-  </section>`;
+export function Lanes({ data }) {
+  const lanes = [...(data.lanes || [])];
+  const others = data.others || { elements: 0, counts: [] };
+  if (others.elements) {
+    lanes.push({ ne_id: null, device: `${count(others.elements)} more`, counts: others.counts,
+                 total: others.counts.reduce((a, b) => a + b, 0) });
+  }
+  if (!lanes.length) return null;
+  const n = data.buckets;
+  const peak = Math.max(1, ...lanes.flatMap((lane) => lane.counts));
+  const span = data.to - data.from;
+  const ticks = [0, Math.floor(n / 2), n].map((i) => clock(data.from + i * data.bucket_s, span));
+  return html`<figure class="lanes" data-chart="lanes">
+    <div class="lanes-grid" role="img"
+         aria-label=${`Alarms raised per element over the last ${spanText(span)}, in slices of ${
+           spanText(data.bucket_s)}.`}>
+      ${lanes.map((lane) => html`<div class="lane" key=${lane.ne_id ?? "rest"}>
+        <span class="lane-name" title=${lane.device}>${lane.device}</span>
+        <svg class="lane-cells" viewBox=${`0 0 ${n} 1`} preserveAspectRatio="none"
+             aria-hidden="true" focusable="false">
+          ${lane.counts.map((c, i) => (c
+            ? html`<rect key=${i} x=${i} y="0" width="1" height="1"
+                 fill-opacity=${(0.15 + 0.85 * (c / peak)).toFixed(3)}>
+                 <title>${`${count(c)} at ${clock(data.from + i * data.bucket_s, span)}`}</title>
+               </rect>`
+            : null))}
+        </svg>
+        <span class="lane-total">${count(lane.total)}</span>
+      </div>`)}
+    </div>
+    <div class="lanes-axis" aria-hidden="true">
+      ${ticks.map((t, i) => html`<span key=${i}>${t}</span>`)}
+    </div>
+  </figure>`;
 }
 
-/** How many per-element series the column chart will draw before it says it stopped. */
-const SERIES_CAP = 4;
-
-/** The tones a per-element series cycles through. Four, because a fifth is not distinguishable. */
-const TONES = [null, "alarm", "warn", "quiet"];
-
-/** `[[ne_id, rendered name]]` for the element control, from marks the server already sent. */
-export function elementOptions(marks) {
-  const byId = new Map();
-  for (const mark of marks) {
-    if (mark.ne_id != null && !byId.has(mark.ne_id)) byId.set(mark.ne_id, mark.device);
-  }
-  return [...byId.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+/** `×14 over 2 min`, or nothing for a single mark. */
+export function repeats(group) {
+  if (group.n < 2) return "";
+  const over = group.last - group.first;
+  return `×${count(group.n)}${over >= 1 ? ` over ${spanText(over)}` : ""}`;
 }
 
 /**
- * Raises and clears per element, over the marks on screen. **Ordinary DOM, not a drawing.**
- *
- * The one derived figure this screen carries, and it answers a question an operator actually asks
- * during an incident: *which element is still shouting?* An element with raises and no clears has
- * something outstanding; one with equal counts has finished flapping. It is arithmetic over marks
- * the server already sent — no route, no chart library, no new dependency (Part VII rules 1 and
- * 2), and it is testable, which the SVG above is not.
+ * **The list, as an operator reads it**: one row per burst — the same trap on the same element,
+ * less than five minutes between marks — newest first, with the trap's name when anything gives
+ * it one and its OID beneath. Raise and clear are words with a glyph, never a colour alone.
  */
-export function Summary({ marks }) {
-  const tally = new Map();
-  for (const mark of marks) {
-    const row = tally.get(mark.device) || { raises: 0, clears: 0 };
-    if (mark.kind === "clear") row.clears += 1; else row.raises += 1;
-    tally.set(mark.device, row);
-  }
-  const rows = [...tally.entries()]
-    .sort((a, b) => (b[1].raises - b[1].clears) - (a[1].raises - a[1].clears))
-    .slice(0, 10)
-    .map(([device, row]) => ({
-      key: device,
-      tone: row.raises > row.clears ? "alarm" : null,
-      cells: {
-        device,
-        raises: count(row.raises),
-        clears: count(row.clears),
-        outstanding: count(row.raises - row.clears),
-      },
-    }));
-  if (rows.length < 2) return null;
+export function Bursts({ data, onPage }) {
+  const rows = data.groups || [];
+  const first = data.offset + 1;
+  const last = data.offset + rows.length;
   return html`<section class="panel-block">
-    <${SectionHeading} title="Raises and clears, per element"
-      hint=${"Over the marks shown. An element with more raises than clears has something " +
-             "outstanding in this window; equal counts mean it raised and recovered. Sorted by " +
-             "what is outstanding, which is the question an incident asks first."} />
-    <${DataTable} columns=${[
-      { key: "device", label: "element" },
-      { key: "raises", label: "raises", numeric: true },
-      { key: "clears", label: "clears", numeric: true },
-      { key: "outstanding", label: "outstanding", numeric: true,
-        title: "raises minus clears over the marks shown" },
-    ]} rows=${rows} />
+    <div class="table-scroll"><table class="data bursts">
+      <caption class="visually-hidden">
+        Alarm activity, newest first. Each row is one trap on one element; repeats less than
+        ${spanText(data.gap_s)} apart are one row with their count.
+      </caption>
+      <thead><tr>
+        <th scope="col">when</th><th scope="col">element</th><th scope="col">trap</th>
+        <th scope="col">what</th><th scope="col" class="num">repeats</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map((g) => html`<tr key=${`${g.ne_id}-${g.class_id}-${g.kind}-${g.last}`}
+            class=${g.kind === "clear" ? "burst-clear" : "burst-raise"}>
+          <td title=${timeTitle(g.last)}>
+            <span class="burst-when">${relative(g.last)}</span>
+            <span class="burst-abs">${absolute(g.last)}</span>
+          </td>
+          <td>${g.device}</td>
+          <td title=${g.class_oid}>
+            ${g.class_named
+              ? html`<span class="burst-name">${g.class}</span>`
+              : html`<span class="burst-name burst-vendor">${g.class_vendor || "unnamed trap"}</span>`}
+            <code class="burst-oid">${g.class_oid}</code>
+          </td>
+          <td><span class=${cx("kind", `kind-${g.kind}`)}>
+            <span aria-hidden="true">${g.kind === "clear" ? "✓" : "▲"}</span>${" "}<span
+              class="kind-word">${g.kind}</span>
+          </span></td>
+          <td class="num">${repeats(g)}</td>
+        </tr>`)}
+      </tbody>
+    </table></div>
+    <div class="pager">
+      <span>${rows.length ? `${count(first)}–${count(last)} of ${count(data.total)}` : "0"}</span>
+      <button type="button" disabled=${data.offset === 0}
+              onClick=${() => onPage(-1)}>Newer</button>
+      <button type="button" disabled=${last >= data.total}
+              onClick=${() => onPage(1)}>Older</button>
+    </div>
   </section>`;
 }

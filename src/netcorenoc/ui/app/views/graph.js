@@ -1,252 +1,173 @@
-/* The network graph — **the force drawing below is executed by no test, and it is now the only
- * thing on this screen that is not.**
+/* The network graph (v0.22.0, #383; items 10, 11, 12).
  *
- * ## The sentence this header used to carry, corrected rather than deleted (v0.16.6)
+ * ## What changed
  *
- * It said *"the one screen in this console that no test executes"*, and that stopped being true of
- * the SCREEN when this release added a second projection. What is still exactly true is the claim
- * about **this file**: every line below that touches `d3.*` runs against a recording double.
+ * The d3 force scene re-laid out between glances, clamped nodes to its box edges, set 11 px labels
+ * over each other, did nothing when clicked, and ran against a recording double in the harness —
+ * asserted by nothing, and served 279 706 bytes to do it. It is replaced by `app/netgraph.js`:
+ * hand-written, deterministic (positions follow the topology, never the load), every element a
+ * button, labels shown where they fit at the width the drawing has.
  *
- * The screen's other three parts moved to `views/parts/estate.js` and are hand-written, produce
- * real DOM, and are asserted — the deterministic estate map (DECISIONS #310) and the two derived
- * tables. So the honest boundary is no longer drawing-versus-text, it is **d3-versus-hand-written**,
- * and it runs along this module's own import list. A reader who wants to know what is covered can
- * read that list rather than take a sentence's word for it.
+ * Selecting an element — click, tap, or Enter — opens its panel (`parts/element.js`) and writes
+ * `?ne=` into the address, so a selection is a link and the Overview's card can open one.
  *
- * ## Say this plainly, because a green suite would otherwise imply otherwise
+ * ## What left the screen
  *
- * d3 is kept (Part III, closing draft §12.2, and DECISIONS #307 re-measured it): replacing it means
- * writing a force layout, and the measurement that settled it is that a d3 chart is invisible to
- * every assertion here while a hand-written one is not — so the new work is hand-written and the
- * existing drawing is left alone. Two costs are real and are recorded rather than absorbed:
- *
- *   * **279 706 bytes serving one view** — twenty-two times the two framework assets combined,
- *     and this is the only screen that uses it.
- *   * **The harness does not execute it.** `tests/domharness/env.mjs` substitutes d3 with a
- *     recording double, so every line below that touches `d3.*` runs against a proxy that
- *     records the call and returns another proxy. Nothing about node placement, edge rendering,
- *     zoom, drag or the simulation is asserted by any test in this repository.
- *
- * What the double DOES buy: it throws on any d3 API it has not been told about, so the day this
- * file reaches for a new one the harness says so instead of silently returning undefined. That is
- * a drift alarm, not coverage, and calling it coverage would be the exact dishonesty Part XI
- * warns about.
- *
- * The escaping property still holds here, and for the same reason as everywhere else: every
- * operator-supplied string reaches the document through `.text()`, which is `textContent`
- * underneath, never through markup.
- *
- * The accessibility limit below used to be rendered to the operator with a citation —
- * `docs/gates/v0.13.0-phase-6.md` — which v0.15.0 deleted. `record.md`'s reading rule resolves such
- * a path for someone holding the repository; it cannot help someone holding a screen (F71). The
- * citation is here now, where a reader can use it, and the sentence on screen says what an
- * operator can do instead.
+ * The paragraph explaining the encoding is behind the info icon. The accessibility statement is
+ * **gone because it stopped being true**: the drawing is now keyboard-operable and every element
+ * has an accessible name, which the group's own label says. The second projection and its
+ * paragraph repeating the first's limitation became one table, *Elements by load*, whose only
+ * job is the ranking the drawing cannot give exactly.
  */
 
 import { html, Component } from "../dom.js";
-import { Empty } from "../widgets.js";
-import { plural } from "../format.js";
+import { Empty, DataTable, SectionHeading } from "../widgets.js";
+import { count, plural, score } from "../format.js";
 import * as store from "../store.js";
-import { d3Ready } from "../vendor.js";
-import { Busiest, Projection, Strongest, URGENT_AT } from "./parts/estate.js";
+import { NetGraph } from "../netgraph.js";
+import { InfoTip } from "../info.js";
+import { ElementPanel } from "./parts/element.js";
 
-const NODE_BASE_RADIUS = 7;
-/* **The radius is capped at the collision radius** (F77, v0.15.2).
- *
- * `r = 7 + 2.5 * sqrt(active_alarms)` had no ceiling, so a device carrying a storm grew without
- * bound. Measured against a live appliance on a 1172x460 canvas: radii of 12, 12, **62.96** and
- * **80.70** px — two of the four nodes larger than `forceCollide(26)`'s own radius by 2.4x and
- * 3.1x, and three of the four pushed off the canvas entirely. An operator opening the screen whose
- * whole purpose is the relationships between elements saw one circle and nothing else.
- *
- * Saturating just under the collision radius keeps the encoding monotone where it can be honest
- * and stops it where the layout stops agreeing with it. Nothing is lost: the exact count is in the
- * node's `<title>` and on the Entities screen as text, which is the pairing this console uses
- * everywhere a drawing carries a number. */
-const NODE_MAX_RADIUS = 24;
-const LINK_CAP = 30;
+/** Rows of the load table before "show every element". */
+const TOP_N = 15;
+
+function name(node) { return node.label || node.ip; }
 
 export class GraphView extends Component {
   constructor(props) {
     super(props);
-    this.state = { live: store.get() };
-    this.svgRef = null;
-    this.built = false;
+    this.state = { live: store.get(), all: false };
+    this.onKey = this.onKey.bind(this);
   }
 
   componentDidMount() {
-    this.unsubscribe = store.subscribe((live) => {
-      this.setState({ live: { ...live } });
-      this.draw();
-    });
-    // d3 arrives with this screen rather than with the console (DECISIONS #228). `draw()` already
-    // returned early when `globalThis.d3` was absent, so the only change is that the moment it
-    // becomes present is now here.
-    d3Ready().then(() => this.draw());
+    this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
+    globalThis.document.addEventListener("keydown", this.onKey);
   }
 
   componentWillUnmount() {
     if (this.unsubscribe) this.unsubscribe();
-    if (this.sim) this.sim.stop();
+    globalThis.document.removeEventListener("keydown", this.onKey);
   }
 
-  /** Build the d3 scene once, then update it. Everything below is unexecuted by any test. */
-  draw() {
-    const graph = this.state.live.graph;
-    if (!graph || !this.svgRef) return;
-    const d3 = globalThis.d3;
-    if (!d3) return;
-
-    if (!this.built) {
-      this.built = true;
-      this.svg = d3.select("#graph");
-      this.zoomLayer = this.svg.append("g");
-      this.edgeLayer = this.zoomLayer.append("g");
-      this.nodeLayer = this.zoomLayer.append("g");
-      this.labelLayer = this.zoomLayer.append("g");
-      this.svg.call(d3.zoom().scaleExtent([0.3, 4])
-        .on("zoom", (event) => this.zoomLayer.attr("transform", event.transform)));
-      this.nodesById = new Map();
-      this.sim = d3.forceSimulation()
-        .force("charge", d3.forceManyBody().strength(-220))
-        .force("link", d3.forceLink().id((d) => d.id).distance(90)
-          .strength((l) => 0.2 + 0.5 * l.weight))
-        .force("collide", d3.forceCollide(26))
-        // **A centring force, added in v0.15.2 (F77).** There was none: charge repels at -220,
-        // link pulls only where an edge exists, collide only pushes apart, and nothing at all
-        // pulled toward the middle — so an unlinked or weakly linked node drifted outward until it
-        // left the box, and the SVG has no `viewBox` to scale it back in. Measured against a live
-        // appliance: **three of four nodes outside the canvas**, on the one screen whose entire
-        // purpose is the relationships between elements, and the one screen no test executes.
-        .force("centre", d3.forceCenter())
-        .on("tick", () => this.tick());
-    }
-    // Re-centred on every draw rather than once at build: the panel is a grid cell, so its width
-    // changes with the window and with the sidebar, and a centre fixed at first paint is wrong
-    // from the first resize.
-    const box = this.svgRef.getBoundingClientRect();
-    this.sim.force("centre").x((box.width || 640) / 2).y((box.height || 460) / 2);
-
-    for (const raw of graph.nodes) {
-      const existing = this.nodesById.get(raw.id);
-      if (existing) Object.assign(existing, raw);
-      else this.nodesById.set(raw.id, { ...raw });
-    }
-    const links = graph.edges
-      .map((e) => ({ source: e.a_id, target: e.b_id, weight: e.weight, n: e.n }))
-      .filter((l) => this.nodesById.has(l.source) && this.nodesById.has(l.target));
-    const nodes = [...this.nodesById.values()];
-
-    const selection = this.nodeLayer.selectAll("circle").data(nodes, (d) => d.id)
-      .join((enter) => enter.append("circle")
-        .call(globalThis.d3.drag()
-          .on("start", (_e, d) => { this.sim.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
-          .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
-          .on("end", (_e, d) => { this.sim.alphaTarget(0); d.fx = null; d.fy = null; })));
-    // **v0.16.6: `urgent` on a heavily-alarming node** (DECISIONS #309). The class is all this
-    // file contributes; the pulse, the static stroke that survives reduced motion, and the
-    // `prefers-reduced-motion` block that turns the pulse off are all in `style.css`. That is the
-    // whole reason the animation is CSS: the stylesheet already ends with
-    // `@media (prefers-reduced-motion: reduce) { * { animation: none !important } }`, so honouring
-    // the preference is a property of WHERE the animation lives rather than of anyone remembering.
-    //
-    // `URGENT_AT` is `47` and it is imported rather than written here, because it is the load at
-    // which `NODE_MAX_RADIUS` saturates — so the encoding that replaces the radius begins exactly
-    // where the radius stops meaning anything. The other projection uses the same constant.
-    selection
-      .attr("r", (d) => Math.min(NODE_MAX_RADIUS, NODE_BASE_RADIUS + 2.5 * Math.sqrt(d.active_alarms)))
-      .attr("class", (d) => `node ${d.active_alarms > 0 ? "alarm" : "ok"}`
-        + (d.active_alarms >= URGENT_AT ? " urgent" : ""));
-    selection.selectAll("title").remove();
-    // v0.16.4 (F105): the middle line read `unknown vendor` for every node ever drawn, because
-    // `ne.vendor` has no writer. A tooltip that says the appliance could not identify a device,
-    // when the truth is that nothing ever tried, is worse than one line shorter.
-    selection.append("title").text((d) =>
-      `${displayName(d)}\n${plural(d.active_alarms, "active alarm")}`);
-
-    this.labelLayer.selectAll("text").data(nodes, (d) => d.id)
-      .join("text").attr("class", "node-label").text(displayName);
-
-    this.edgeLayer.selectAll("line")
-      .data(links.slice(0, LINK_CAP * 10), (d) => `${d.source.id ?? d.source}-${d.target.id ?? d.target}`)
-      .join("line").attr("class", "edge")
-      .attr("stroke-opacity", (d) => 0.25 + 0.6 * d.weight)
-      .attr("stroke-width", (d) => 1 + 2 * d.weight)
-      .selectAll("title").data((d) => [d]).join("title")
-      .text((d) => `affinity ${d.weight.toFixed(2)} (n=${d.n.toFixed(1)})`);
-
-    this.sim.nodes(nodes);
-    this.sim.force("link").links(links);
-    this.sim.alpha(0.6).restart();
+  onKey(event) {
+    if (event.key === "Escape" && this.selected() != null) this.select(null);
   }
 
-  /**
-   * Keep every node inside the box, on every tick (F77).
-   *
-   * A centring force moves the centre of mass; it does not constrain anything, and on a panel that
-   * is 1 172 x 460 — wide and short — charge at -220 still pushes nodes past the short edge. So the
-   * property is asserted rather than hoped for: a node's position is clamped to the box, inset by
-   * its own radius so the circle is whole rather than half-drawn at the edge. Zoom and drag are
-   * unaffected: zoom transforms the layer and drag writes `fx`/`fy`, both of which this reads
-   * after the simulation has resolved them.
-   */
-  clamp(d) {
-    const box = this.svgRef ? this.svgRef.getBoundingClientRect() : null;
-    const width = (box && box.width) || 640;
-    const height = (box && box.height) || 460;
-    const r = Math.min(NODE_MAX_RADIUS, NODE_BASE_RADIUS + 2.5 * Math.sqrt(d.active_alarms));
-    d.x = Math.max(r, Math.min(width - r, d.x));
-    d.y = Math.max(r, Math.min(height - r, d.y));
-    return d;
+  /** The selected element, read from the address: a selection is a link. */
+  selected() {
+    const raw = this.props.query && this.props.query.get("ne");
+    return raw && /^\d+$/.test(raw) ? Number(raw) : null;
   }
 
-  tick() {
-    for (const node of this.nodesById.values()) this.clamp(node);
-    this.nodeLayer.selectAll("circle").attr("cx", (d) => d.x).attr("cy", (d) => d.y);
-    this.labelLayer.selectAll("text").attr("x", (d) => d.x + 12).attr("y", (d) => d.y + 4);
-    this.edgeLayer.selectAll("line")
-      .attr("x1", (d) => d.source.x).attr("y1", (d) => d.source.y)
-      .attr("x2", (d) => d.target.x).attr("y2", (d) => d.target.y);
+  select(id) {
+    const same = id === this.selected();
+    this.props.navigate(id == null || same ? "#/graph" : `#/graph?ne=${id}`);
   }
 
-  render(_props, { live }) {
+  render(_props, { live, all }) {
     const graph = live.graph;
-    const empty = !graph || !graph.nodes.length;
+    if (!graph || !graph.nodes.length) {
+      return html`<${Empty} title="No network elements yet."
+        will="An element appears for each device the appliance hears from; a line joins two once
+              their alarms have appeared together often enough." />`;
+    }
+    const selected = this.selected();
+    const known = graph.nodes.some((node) => node.id === selected);
     return html`<div class="graphview">
-      <p class="hint">An edge is a learned affinity — how often two elements' alarms appeared
-        together. Opacity and thickness both encode it; node size follows active alarms and stops
-        at ${NODE_MAX_RADIUS} px. A node above ${URGENT_AT} alarms is ringed and pulses — the ring
-        is what remains if you have asked for reduced motion. Hover for exact counts.</p>
-      ${empty ? html`<${Empty}
-          title="No network elements yet."
-          will=${"A node appears for each device the appliance hears from, and an edge appears " +
-                 "once two devices' alarms have co-occurred often enough to be worth drawing."}
-          meanwhile=${"Send a trap. The first node appears immediately; edges need correlated " +
-                      "activity across at least two devices."} />` : null}
-      <div id="graphwrap" class=${empty ? "hidden-visually" : ""}>
-        <svg id="graph" role="img"
-             aria-label=${graph
-               ? `Network affinity graph: ${plural(graph.nodes.length, "device")}, ${plural(graph.edges.length, "learned edge")}. A text equivalent is on the Entities screen.`
-               : "Network affinity graph, empty"}
-             ref=${(node) => { this.svgRef = node; }}></svg>
-        <div class="legend">
-          <span><i class="alarm"></i>alarming device</span>
-          <span><i class="ok"></i>quiet device</span>
-          <span><i class="edge"></i>learned edge (opacity = affinity)</span>
-        </div>
+      <div class="graph-bar">
+        <span class="muted">${plural(graph.nodes.length, "element")}${" · "}${
+          plural(graph.edges.length, "learned relationship")}</span>
+        <${InfoTip} label="How to read the graph">
+          A line is a learned affinity: how often two elements' alarms appeared together. It is
+          thicker and darker the stronger it is. A dot grows with the element's active alarms and
+          is ringed from ${URGENT_AT_TEXT}. Elements with no learned relationship sit in the band
+          at the bottom. Positions follow the relationships only, so they do not move while the
+          estate is unchanged.
+        <//>
       </div>
-      ${!empty ? html`<p class="hint">
-        <b>The drawing itself is not keyboard-operable and has no screen-reader equivalent beyond
-        its label.</b> The projection and the two tables below carry what it encodes. Everything
-        about an element is on <a class="tap" href="#/entities">Entities</a>, and an element is
-        named from the situation it appears in.</p>` : null}
-
-      ${!empty ? html`<${Projection} nodes=${graph.nodes} />` : null}
-      ${!empty ? html`<${Busiest} nodes=${graph.nodes} />` : null}
-      ${!empty ? html`<${Strongest} graph=${graph} />` : null}
+      <div class=${known ? "graph-split" : ""}>
+        <${NetGraph} nodes=${graph.nodes} edges=${graph.edges} selected=${known ? selected : null}
+                     onSelect=${(id) => this.select(id)} />
+        ${known
+          ? html`<${ElementPanel} neId=${selected} onClose=${() => this.select(null)} />`
+          : null}
+      </div>
+      <${Load} nodes=${graph.nodes} edges=${graph.edges} all=${all}
+        onAll=${() => this.setState({ all: !all })} onSelect=${(id) => this.select(id)} />
+      <${Strongest} graph=${graph} />
     </div>`;
   }
 }
 
-function displayName(node) { return node.label || node.ip; }
+const URGENT_AT_TEXT = "47 active alarms";
 
+/**
+ * **Elements by load** — the exact ranking the drawing only approximates (a dot stops growing),
+ * with how many relationships each element has. One table, where two sections used to say the
+ * same thing twice (item 12).
+ */
+function Load({ nodes, edges, all, onAll, onSelect }) {
+  const degree = new Map();
+  for (const e of edges) {
+    degree.set(e.a_id, (degree.get(e.a_id) || 0) + 1);
+    degree.set(e.b_id, (degree.get(e.b_id) || 0) + 1);
+  }
+  const ranked = [...nodes].sort((a, b) => b.active_alarms - a.active_alarms
+    || String(a.id).localeCompare(String(b.id), "en", { numeric: true }));
+  const peak = Math.max(1, ranked[0] ? ranked[0].active_alarms : 1);
+  const rows = (all ? ranked : ranked.slice(0, TOP_N)).map((node) => ({
+    key: node.id,
+    tone: node.active_alarms ? "alarm" : null,
+    cells: {
+      element: html`<button type="button" class="cell-edit" onClick=${() => onSelect(node.id)}
+        >${name(node)}</button>`,
+      load: html`<span class="load-bar"><span class="load-fill"
+        style=${`width:${((node.active_alarms / peak) * 100).toFixed(1)}%`}></span></span>`,
+      alarms: count(node.active_alarms),
+      links: count(degree.get(node.id) || 0),
+    },
+  }));
+  return html`<section class="panel-block">
+    <${SectionHeading} title="Elements by load" />
+    <${DataTable} caption="Every element, busiest first; the name opens it on the graph."
+      columns=${[
+        { key: "element", label: "element" },
+        { key: "load", label: "" },
+        { key: "alarms", label: "active alarms", numeric: true },
+        { key: "links", label: "relationships", numeric: true },
+      ]} rows=${rows} />
+    ${ranked.length > TOP_N
+      ? html`<button type="button" class="tap" onClick=${onAll}>
+          ${all ? `Show the busiest ${TOP_N}` : `Show all ${count(ranked.length)}`}</button>`
+      : null}
+  </section>`;
+}
+
+/** The learned relationships as numbers, with the evidence behind each. */
+function Strongest({ graph }) {
+  const named = new Map(graph.nodes.map((node) => [node.id, name(node)]));
+  const rows = [...graph.edges]
+    .filter((edge) => named.has(edge.a_id) && named.has(edge.b_id))
+    .sort((a, b) => b.weight - a.weight || b.n - a.n)
+    .slice(0, 10);
+  if (!rows.length) return null;
+  return html`<section class="panel-block">
+    <${SectionHeading} title="Strongest learned relationships"
+      hint=${"Evidence is how many times the pair was observed together. A pair seen a handful " +
+             "of times can already score highly, and that is a weaker claim than the same score " +
+             "over hundreds."} />
+    <${DataTable} columns=${[
+      { key: "pair", label: "pair" },
+      { key: "weight", label: "affinity", numeric: true },
+      { key: "n", label: "evidence (n)", numeric: true },
+    ]} rows=${rows.map((edge) => ({
+      key: `${edge.a_id}-${edge.b_id}`,
+      cells: {
+        pair: `${named.get(edge.a_id)} ↔ ${named.get(edge.b_id)}`,
+        weight: score(edge.weight),
+        n: score(edge.n),
+      },
+    }))} />
+  </section>`;
+}

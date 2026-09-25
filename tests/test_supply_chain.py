@@ -1,4 +1,4 @@
-"""§A.6 supply-chain integrity: the vendored d3 checksum pin, and the F12 packaging regression.
+"""§A.6 supply-chain integrity: the vendored checksum pins, and the F12 packaging regression.
 
 The strict CSP forbids a CDN, so d3 is vendored. Its exact bytes are pinned in CHECKSUMS.txt and
 asserted here (and by a CI job). F12: a built wheel shipped only index.html, so the container UI
@@ -29,21 +29,24 @@ def test_vendored_assets_match_pinned_checksums() -> None:
         actual = hashlib.sha256((VENDOR / name).read_bytes()).hexdigest()
         assert actual == expected, f"{name} changed; if intentional, update CHECKSUMS.txt"
         verified += 1
-    assert verified >= 1  # at least d3 is pinned
+    assert verified >= 1  # preact and htm are pinned
 
 
-def test_d3_is_pinned() -> None:
-    assert (VENDOR / "d3.v7.min.js").exists()
-    assert "d3.v7.min.js" in (VENDOR / "CHECKSUMS.txt").read_text()
+def test_d3_is_gone_and_nothing_loads_it() -> None:
+    """v0.22.0 (ADR #383): d3 was removed when both drawings that used it became hand-written.
 
+    The control is the served surface: no asset, no loader module and no page may name it, so a
+    screen that reached for it again would fail here rather than 404 in a browser.
+    """
+    from netcorenoc.api.routes.static import STATIC_ASSETS
 
-def test_vendored_license_shipped_beside_asset() -> None:
-    """Third-party licence compliance: the upstream d3 licence ships next to the vendored asset
-    (and is covered by the ``ui/vendor/*`` package-data glob, so a wheel carries it too)."""
-    lic = VENDOR / "d3.LICENSE"
-    assert lic.exists(), "d3.LICENSE must ship beside src/netcorenoc/ui/vendor/d3.v7.min.js"
-    text = lic.read_text()
-    assert "Mike Bostock" in text and "d3" in text
+    assert not (VENDOR / "d3.v7.min.js").exists()
+    assert "d3" not in " ".join(STATIC_ASSETS)
+    ui = VENDOR.parent
+    for module in ui.rglob("*.js"):
+        if "vendor" in module.parts:
+            continue
+        assert "d3.v7" not in module.read_text(encoding="utf-8"), f"{module.name} still loads d3"
 
 
 def _covered_by(patterns: list[str], root: Path) -> set[str]:
@@ -144,7 +147,7 @@ def test_every_vendored_asset_is_pinned_by_name() -> None:
         f"  present, unpinned: {sorted(present - pinned)}\n"
         f"  pinned, missing:   {sorted(pinned - present)}"
     )
-    assert len(pinned) >= 3, f"only {len(pinned)} assets pinned; d3, preact and htm are expected"
+    assert len(pinned) >= 2, f"only {len(pinned)} assets pinned; preact and htm are expected"
 
 
 def test_every_vendored_asset_ships_its_licence() -> None:
@@ -158,7 +161,7 @@ def test_every_vendored_asset_ships_its_licence() -> None:
         for line in (VENDOR / "CHECKSUMS.txt").read_text().splitlines()
         if line.strip() and not line.strip().startswith("#")
     }
-    # `d3.v7.min.js` -> `d3`; `preact-10.29.8.module.js` -> `preact`;
+    # `preact-10.29.8.module.js` -> `preact`;
     # `htm-3.1.1.module.js` -> `htm`.
     for asset in pinned:
         package = asset.split(".")[0].split("-")[0]
@@ -170,7 +173,7 @@ def test_every_vendored_asset_ships_its_licence() -> None:
 def test_every_vendored_asset_is_attributed_in_notice() -> None:
     """Apache-2.0 §4(c) and plain honesty: NOTICE names what this product bundles."""
     notice = (REPO_ROOT / "NOTICE").read_text(encoding="utf-8")
-    for asset in ("d3.v7.min.js", "preact-10.29.8.module.js", "htm-3.1.1.module.js"):
+    for asset in ("preact-10.29.8.module.js", "htm-3.1.1.module.js"):
         assert asset in notice, f"{asset} is bundled but is not attributed in NOTICE"
     assert "No other third-party code is bundled." in notice
 

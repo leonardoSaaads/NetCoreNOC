@@ -35,17 +35,6 @@
   </div>
 </noscript>
 
-<!--
-  d3 is NOT loaded here (v0.15.2, DECISIONS #228).
-
-  It used to be a classic script on this line, so all seventeen screens paid 279 706 bytes for the
-  two that draw with it. `app/vendor.js` now appends the same same-origin element when the
-  graph or the timeline mounts, which the CSP's `script-src 'self'` permits and which introduces no
-  inline script. It stays a UMD bundle defining the `d3` global, vendored, checksummed and
-  licensed exactly as before; only the moment it is fetched has moved.
-
-  The graph is also the only screen no test executes — `app/views/graph.js` says so, in full.
--->
 <script type="module" src="/app.js"></script>
 </body>
 </html>

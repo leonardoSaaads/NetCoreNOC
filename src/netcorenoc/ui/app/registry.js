@@ -79,9 +79,11 @@ export const VIEWS = [
     summary: "What the appliance has learned about each network element, and the evidence.",
   },
   {
-    id: "classes", label: "Alarm classes", icon: "classes", group: "operations",
+    // v0.22.0 (item 16): named for what it holds — trap OIDs, their names and severities, whole
+    // vendor branches and imported lists — not "Alarm classes". The address stays `#/classes`.
+    id: "classes", label: "Trap catalogue", icon: "classes", group: "operations",
     capability: "classes.read", component: Classes,
-    summary: "Every trap type the appliance has learned, with no configuration.",
+    summary: "Trap OIDs by name and severity.",
   },
   {
     // v0.21.0. `mw.read` is `viewer` and that is prime directive 4 rather than a convenience: a
@@ -105,7 +107,9 @@ export const VIEWS = [
   },
   {
     id: "promotion", label: "Judge & promotion", icon: "promotion", group: "evidence",
-    capability: "promotion.read", component: Promotion,
+    // Both reads, because the screen issues both on mount (v0.22.0: the running scorer's panel
+    // moved here from Situations) — the rule the Governance entry states.
+    capability: ["promotion.read", "correlation.read"], component: Promotion,
     summary: "What the gate decided, why it refused, and the seal's query count.",
   },
 

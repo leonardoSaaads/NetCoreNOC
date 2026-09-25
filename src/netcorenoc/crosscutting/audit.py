@@ -165,6 +165,17 @@ ACTIONS: frozenset[str] = frozenset(
         # a confirm, an end — was filed as an attempted `.update`. An auditor reading the log saw
         # a scoped principal probing the write surface when they had opened a card.
         "maintenance.window.read",
+        # v0.22.0 — acknowledgements that change what is SHOWN (ADR #387, #388). A snooze is per
+        # user and says which warning, for how long, and whether it was a security warning.
+        "notice.snooze",
+        "notice.unsnooze",
+        "alarm.outlived.ack",
+        # v0.22.0 — the trap catalogue (ADR #384, #385). A rule names and grades an OID or a
+        # branch; an import writes many, and its row carries the counts and the file's digest,
+        # never its contents.
+        "catalogue.rule.set",
+        "catalogue.rule.delete",
+        "catalogue.import",
         # **Creating an organization is not here, and that is deliberate.** It is inventory
         # structure an admin edits, which is what `config.change` already names; a seventh action
         # would split one auditor question — *"what did an admin reconfigure?"* — across two

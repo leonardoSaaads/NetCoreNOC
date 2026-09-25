@@ -91,6 +91,17 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("mw.read", "/api/maintenance-windows?limit=5"),
     ("organizations.read", "/api/organizations"),
     ("timezones.read", "/api/timezones?q="),
+    # v0.22.0: the persisted host series and the activity reads the Overview and the Timeline
+    # make on mount, at their default windows; the bell's notices; the Trap catalogue's first page,
+    # its imported-row count and the root of its branch browser.
+    ("stats.read", "/api/resources?range_s=7200&buckets=24"),
+    ("timeline.read", "/api/activity/severity?buckets=24&range_s=7200"),
+    ("timeline.read", "/api/activity/lanes?range_s=3600&buckets=48&top=8"),
+    ("timeline.read", "/api/activity/groups?range_s=3600&kind=both&limit=25&offset=0"),
+    ("stats.read", "/api/notices"),
+    ("classes.read", "/api/catalogue?limit=25&offset=0"),
+    ("classes.read", "/api/catalogue/rules?source=imported&limit=1"),
+    ("classes.read", "/api/catalogue/tree?node=1.3.6.1.4.1"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.
@@ -123,9 +134,31 @@ async def capture(app: Any, role: str, *, hostile_label: str | None = None) -> d
                 continue
             routes[path] = {"status": 200, "json": response.json()}
         await _capture_situations(client, routes)
+        await _capture_elements(client, routes)
         return routes
     finally:
         await client.aclose()
+
+
+async def _capture_elements(client: httpx.AsyncClient, routes: dict[str, Any]) -> None:
+    """v0.22.0: the three reads the graph's element panel makes, for every node on the graph.
+
+    Captured from the real routes for the reason every other entry is: a panel driven against a
+    404 renders its error state, and a test reading that would be measuring the fixture.
+    """
+    graph = routes.get("/api/graph")
+    if graph is None:
+        return
+    for node in graph["json"].get("nodes", []):
+        ne = node["id"]
+        for path in (
+            f"/api/elements/{ne}",
+            f"/api/situations?ne_id={ne}&limit=8",
+            f"/api/activity/groups?range_s=86400&ne_id={ne}&limit=5",
+        ):
+            response = await client.get(path)
+            if response.status_code == 200:
+                routes[path] = {"status": 200, "json": response.json()}
 
 
 async def _capture_situations(client: httpx.AsyncClient, routes: dict[str, Any]) -> None:

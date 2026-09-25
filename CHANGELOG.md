@@ -9,8 +9,55 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-seven rows, two ask for an
-action, seventeen ask you to read a paragraph, and eighteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-eight rows, two ask for an
+action, eighteen ask you to read a paragraph, and eighteen are start-the-new-binary.
+
+## [0.22.0] - 2026-09-25 — "the console, repaired"
+
+A repair pass over twenty console items the maintainer found by using the product, not a feature
+release. Every item was checked in Chromium at 390, 820 and 1440 px as viewer, editor and admin.
+**Prose on the seven screens in scope went from 9 582 words to 1 821** across those 63 views (admin
+at 1440 px: 1 089 → 204); what still needed saying moved behind one shared info icon.
+
+### Fixed — defects that misled
+
+- **The Overview's range control reached no query** (F154, #380). Host readings are persisted and
+  bucketed in SQL for the window picked; an unsampled bucket is a gap, not a zero.
+- **The Timeline's axis followed a row limit** (F155, #381): 1 000 marks spanned 124 s under a
+  "24 h" control. Now window-bounded reads; bursts of one trap on one element are one row.
+- **During an outage the Timeline said nothing had happened** (F157): re-fired active alarms are
+  counted as *re-reported*.
+- **Health bars were drawn at the wrong width** — at 390 px, not at all — because another screen's
+  stylesheet reused `.meter` (F156). A stylesheet guard now refuses the collision.
+- **Renaming a situation promoted it; an operator's split created it `new`** (#382). The lifecycle
+  is a table and only attention promotes.
+- **Bar values read "1 alarms".**
+
+### Changed
+
+- **Graph** (#383): deterministic layout, keyboard-operable nodes, an element panel, one "Elements
+  by load" table. **d3 is removed.**
+- **Trap catalogue** (#384, #385): search, a branch browser by OID arc, rules on an OID or a
+  branch, a table showing which rule wins, and a bounded, all-or-nothing CSV import. Imported data
+  names and grades; it is never evidence.
+- **Severity** (#386): one chip — shape, colour, word — on the X.733 scale; `low` is `warning`;
+  `unplaced` is its own band everywhere. The Overview charts raises per band.
+- **Maintenance** (#389): a detail view with End now, extend and shorten; a running window's
+  start, targets and rules are frozen.
+- **Correlation health** moved from Situations to Judge & promotion (item 7).
+- **Every section hint** in the console renders behind the info icon.
+
+### Pushed back, and what shipped instead
+
+- **Dismiss notifications (item 1)** → a per-user, audited snooze; a security-posture warning's
+  snooze always expires and an admin can see who snoozed it (#387).
+- **Remove the "raised during maintenance" marker (item 8)** → kept, scoped to faults still active
+  and not re-reported since, and acknowledgeable (#388).
+
+### Deferred
+
+- The regional heat map (item 11) is a schematic site map over a canvas or an uploaded image — no
+  tile provider — and it is its own release (#390).
 
 ## [0.21.1] - 2026-09-24 — "planned work, repaired"
 

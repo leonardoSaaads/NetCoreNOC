@@ -65,7 +65,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             subject = await gestures.snapshot(store, sid)
             if not await store.set_operator_name(sid, body.name, now):
                 raise HTTPException(status_code=404, detail="no such situation")
-            await store.promote_situation(sid, now)
+            # No promotion: a name is cosmetic, and `rename` has no edge in `TRANSITIONS` (#382).
             await gestures.record(
                 store,
                 gestures.Gesture(
@@ -149,7 +149,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(
                     status_code=409, detail="that situation has resolved; reload the card"
                 )
-            await store.promote_situation(sid, time.time())
+            await store.promote_situation(sid, time.time(), "promote")
             await audit_row(
                 request,
                 principal,
@@ -212,7 +212,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(status_code=409, detail="that alarm is not active")
             membership.cleared(engine, aid)
             if sid is not None:
-                await store.promote_situation(sid, now)
+                await store.promote_situation(sid, now, "hand_clear")
                 await gestures.record(
                     store,
                     gestures.Gesture(
@@ -322,7 +322,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     details={"situation_id": sid, "bulk": True},
                 )
             if cleared:
-                await store.promote_situation(sid, now)
+                await store.promote_situation(sid, now, "hand_clear")
                 if await store.all_cleared(sid):
                     await store.resolve_situation(sid, "manual_clear", now)
                     engine.forget_situation(sid)

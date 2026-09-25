@@ -224,7 +224,6 @@ const scenarios = {
         line: readLine(),
         chartLatest: readCharts(),
         rate: store.get().trapRate,
-        ring: { ...store.get().ring },
       });
     }
     return { samples, proof: proofOf(env) };
@@ -268,6 +267,18 @@ const scenarios = {
       sparks: readSparks(env.document),
       unmeasured: env.document.querySelectorAll(".chart-unmeasured").map((n) => n.textContent.trim()),
       captions: env.document.querySelectorAll(".chart-caption").map((n) => n.textContent.trim()),
+      // v0.22.0: the health meters — the percentage printed beside each and its fill's width.
+      meters: env.document.querySelectorAll(".meter").map((m) => ({
+        name: m.querySelector(".meter-name")?.textContent.trim() ?? null,
+        printed: m.querySelector(".meter-pct")?.textContent.trim() ?? null,
+        // Preact sets a string style through CSSOM (the CSP forbids inline style attributes).
+        fill: m.querySelector(".meter-fill")?.style.cssText ?? null,
+      })),
+      // v0.22.0: every info tip's full text — in the DOM always, clipped until opened.
+      tips: env.document.querySelectorAll(".info-text").map((n) => n.textContent.replace(/\s+/g, " ").trim()),
+      // v0.22.0: the severity chips' shapes, in document order, for the legibility guard.
+      shapes: env.document.querySelectorAll(".chart-bar-label .sev-glyph")
+        .map((n) => n.getAttribute("data-shape")),
       requestPaths: env.network.requests.map((r) => `${r.method} ${r.path}`),
       dump: dumpTree(env.document.getElementById("root")).join("\n"),
       proof: proofOf(env),
@@ -506,7 +517,7 @@ const scenarios = {
         const pill = td.querySelector(".sev-pill");
         return {
           classes: pill ? (pill.getAttribute("class") ?? "") : "",
-          glyph: pill ? (pill.querySelector(".sev-glyph")?.textContent ?? "") : "",
+          glyph: pill ? (pill.querySelector(".sev-glyph")?.getAttribute("data-shape") ?? "") : "",
           text: pill ? (pill.querySelector(".sev-text")?.textContent ?? "") : "",
           // The whole cell's text, so a pill that dropped its word but kept a `title=` is not
           // mistaken for one that renders it: a tooltip is not a rendering.
@@ -957,6 +968,29 @@ const scenarios = {
   async hostilePayload(params) {
     const hostile = params.hostile;
     if (!hostile) throw new Error("hostilePayload needs the `hostile` string the fixture labelled with");
+    const steps = [
+      (env) => env.navigate("#/situations"),
+      (env) => cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click")),
+      (env) => env.navigate("#/entities"),
+      (env) => env.navigate("#/classes"),
+    ];
+
+    /* **The control is the same walk over benign text** (v0.22.0). Until this release the census
+     * was compared with the Overview at boot, which carried every element any later screen drew —
+     * until the Trap catalogue gained a real `<form>` (search, go-to-OID) and that comparison
+     * reported a form "introduced" by a payload that had built nothing. Each step is now compared
+     * with the SAME step over the unlabelled capture, so a screen's own structure cancels and only
+     * what the payload built remains. Without `benign` it falls back to the boot census. */
+    const benignTags = [];
+    if (params.benign) {
+      const control = await boot({ ...params, routes: params.benign });
+      for (const step of steps) {
+        step(control);
+        await settle(control);
+        benignTags.push(census(control.document).tags);
+      }
+    }
+
     const env = await boot(params);
     const baseline = census(env.document);
 
@@ -973,31 +1007,25 @@ const scenarios = {
     let attrHits = 0;
     const introduced = {};
     const tagsSeen = new Set();
-    const record = () => {
+    const record = (index) => {
       const now = census(env.document);
+      const against = benignTags[index] ?? baseline.tags;
       textHits += now.texts.filter((t) => t.includes(hostile)).length;
       attrHits += now.attrs.filter((a) => a.includes(hostile)).length;
       for (const [tag, count] of Object.entries(now.tags)) {
         tagsSeen.add(tag);
-        const delta = count - (baseline.tags[tag] ?? 0);
+        const delta = count - Math.max(against[tag] ?? 0, baseline.tags[tag] ?? 0);
         if (delta > 0 && DANGEROUS.has(tag)) {
           introduced[tag] = Math.max(introduced[tag] ?? 0, delta);
         }
       }
     };
 
-    env.navigate("#/situations");
-    await settle(env);
-    record();
-    cardFor(env, params.sid).toggle.dispatchEvent(new env.DomEvent("click"));
-    await settle(env);
-    record();
-    env.navigate("#/entities");
-    await settle(env);
-    record();
-    env.navigate("#/classes");
-    await settle(env);
-    record();
+    for (const [index, step] of steps.entries()) {
+      step(env);
+      await settle(env);
+      record(index);
+    }
 
     return {
       hostile,
@@ -1223,7 +1251,13 @@ const scenarios = {
  * asserts rather than describes.
  */
 function readCharts(document) {
-  return document.querySelectorAll(".chart").map((chart) => ({
+  // v0.22.0: the graph and the timeline's lanes are charts that are not `.chart` boxes; each
+  // carries `data-chart`, so both are read. The harness DOM has no selector lists, hence two reads.
+  const extra = [
+    ...document.querySelectorAll('[data-chart="graph"]'),
+    ...document.querySelectorAll('[data-chart="lanes"]'),
+  ];
+  return [...document.querySelectorAll(".chart"), ...extra].map((chart) => ({
     kind: chart.dataset.chart ?? null,
     label: chart.getAttribute("aria-label"),
     role: chart.getAttribute("role"),
@@ -1247,6 +1281,12 @@ function readCharts(document) {
       value: row.querySelector(".chart-bar-value")?.textContent.trim() ?? null,
       width: row.querySelector(".chart-bar-fill")?.getAttribute("style") ?? null,
       text: row.textContent.trim(),
+    })),
+    // v0.22.0: a graph's marks are buttons positioned by style, named by `aria-label`.
+    nodes: chart.querySelectorAll(".gnode").map((node) => ({
+      label: node.getAttribute("aria-label"),
+      style: node.getAttribute("style"),
+      cls: node.getAttribute("class"),
     })),
     cells: chart.querySelectorAll(".map-cell").map((cell) => ({
       cls: cell.getAttribute("class"),

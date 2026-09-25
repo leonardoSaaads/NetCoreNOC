@@ -95,8 +95,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         status: Literal["new", "open", "resolved"] | None = None,
         limit: int = 100,
         q: str | None = None,
+        ne_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """Situations with at least one in-scope member; counts are of visible members only.
+
+        **v0.22.0: `ne_id` narrows to situations with a member on that element**, in SQL, through
+        the scoped branch — so an element outside the caller's scope answers the same empty list a
+        nonexistent one does. The graph's element panel reads it.
 
         **v0.16.1: `q` searches, and it is a query filter** (`store._search_clause`). A parameter
         on the route that already lists situations rather than a `/api/search` of its own: the
@@ -144,10 +149,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         needle = (q or "").strip()[:MAX_SEARCH_CHARS] or None
         stale_cutoff = time.time() - IDLE_CLOSE_S
         async with store.lock:
+            wanted = None if scope.unrestricted else scope.ne_ids
+            if ne_id is not None:
+                wanted = frozenset({ne_id}) if scope.allows_ne(ne_id) else frozenset()
             rows = await store.list_situations(
                 status,
                 min(max(limit, 1), 500),
-                None if scope.unrestricted else scope.ne_ids,
+                wanted,
                 needle,
                 # Derived from `FIELD_RULES["ip"]`, never restated: a role whose responses coarsen
                 # an address may not confirm one by typing it (`shaping.sees_raw_addresses`).
@@ -346,7 +354,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     ) -> dict[str, Any]:
         scope = await scope_for(principal)
         async with store.lock:
-            ne = next((n for n in await store.list_ne() if int(n["id"]) == ne_id), None)
+            ne = await store.get_ne(ne_id)
             entities_rows = await store.entities_for_ne(ne_id) if ne else []
             profiles = await store.varbind_profiles_for_ne(ne_id) if ne else []
             markers = await store.window_markers(

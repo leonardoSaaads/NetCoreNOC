@@ -131,7 +131,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             # incident. Promoting it claimed somebody had looked at a situation nobody had opened,
             # and moved its card out of the **New** tab, which is where the operator who has not
             # looked at it would find it.
-            await store.promote_situation(sid, now)
+            await store.promote_situation(sid, now, "move")
             await gestures.record(
                 store,
                 gestures.Gesture(
@@ -191,7 +191,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             peer = await gestures.snapshot(store, body.from_situation_id)
             await store.operator_merge(sid, body.from_situation_id, now)
             membership.merged(engine, sid, body.from_situation_id)
-            await store.promote_situation(sid, now)
+            await store.promote_situation(sid, now, "merge")
             await gestures.record(
                 store,
                 gestures.Gesture(
@@ -255,7 +255,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
             new_id = await store.operator_split(sid, departing, now)
             membership.split(engine, sid, new_id, set(departing))
-            await store.promote_situation(sid, now)
+            await store.promote_situation(sid, now, "split")
             peer = await gestures.snapshot(store, new_id)
             await gestures.record(
                 store,

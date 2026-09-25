@@ -28,7 +28,9 @@ import { TIMEZONE, plural } from "../../format.js";
 import { ReviewCard } from "./mwreview.js";
 import { RulesCard } from "./mwrules.js";
 import { SiteAndYourTime, TimelineBar, ZonePicker, cityOf } from "./mwtime.js";
-import { nextQuarter, normaliseHosts, plusHours, windowBody, withOffset } from "./mwdraft.js";
+import {
+  draftFrom, nextQuarter, normaliseHosts, plusHours, windowBody, withOffset,
+} from "./mwdraft.js";
 
 const CARDS = ["What and where", "When", "What still gets through", "Review"];
 
@@ -58,6 +60,8 @@ export class WindowForm extends Component {
       preview: null,
       busy: false,
       error: null,
+      // v0.22.0 (item 19): an edit opens on what was scheduled.
+      ...(props.initial ? draftFrom(props.initial) : {}),
     };
   }
 
@@ -66,7 +70,9 @@ export class WindowForm extends Component {
       const [orgs, entities] = await Promise.all([get("/api/organizations"), get("/api/entities")]);
       this.setState({
         organizations: orgs.organizations || [],
-        organizationId: orgs.default_organization_id,
+        organizationId: this.props.initial
+          ? this.props.initial.organization_id
+          : orgs.default_organization_id,
         // **Normalised here, once** (F149). `/api/entities` serves a network element as `id`; this
         // form spent its whole life reading `host.ne_id`, which is `undefined` on every row — so
         // `targets` serialised to `[null]`, every preview and every create came back 422, and the
@@ -118,19 +124,14 @@ export class WindowForm extends Component {
     this.set({ targets, rules });
   }
 
-  /* **The one gesture that changes the estate, and it has to say so** (F150).
-   *
-   * Before: a failure set `error` at the bottom of a four-card form the operator had scrolled
-   * past, and a success did nothing visible here at all. Pressing *"Schedule it"* on a form that
-   * was 422-ing looked exactly like pressing a dead button — which is what it was.
-   *
-   * Now the button reports its own outcome in place: it is disabled and reads *"Scheduling…"*
-   * while the request is out, and a refusal lands **beside the button**, where the finger is.
-   */
+  /* The one gesture that changes the estate reports its own outcome beside the button (F150). */
   async save() {
     this.setState({ busy: true, error: null });
     try {
-      const created = await post("/api/maintenance-windows", this.body());
+      const wid = this.props.initial && this.props.initial.id;
+      const created = wid
+        ? await post(`/api/maintenance-windows/${wid}`, this.body())
+        : await post("/api/maintenance-windows", this.body());
       this.props.onSaved(created);
     } catch (e) {
       this.setState({ busy: false, error: e instanceof ApiError ? e.message : String(e) });
@@ -382,7 +383,7 @@ export class WindowForm extends Component {
    * visibility and emits two events — so it is the seam that costs the least to cut. */
   review() {
     const s = this.state;
-    return html`<${ReviewCard}
+    return html`<${ReviewCard} editing=${Boolean(this.props.initial)}
       preview=${s.preview}
       visibility=${s.visibility}
       busy=${s.busy}

@@ -232,3 +232,12 @@ _check_window  # _WindowBody: starts before ends, and the duration is sane
 # would find them used; this file is what stands in for that.
 TRAILING_GRACE_S  # netcorenoc/engine/mw/index.py
 LEADING_HORIZON_S  # netcorenoc/engine/mw/index.py
+
+# v0.22.0: route handlers registered by decorator; FastAPI calls them, vulture cannot see it.
+notices  # netcorenoc/api/routes/attention.py
+unsnooze  # netcorenoc/api/routes/attention.py
+put_rule  # netcorenoc/api/routes/catalogue.py
+delete_rule  # netcorenoc/api/routes/catalogue.py
+import_file  # netcorenoc/api/routes/catalogue.py
+clear_imported  # netcorenoc/api/routes/catalogue.py
+element  # netcorenoc/api/routes/elements.py

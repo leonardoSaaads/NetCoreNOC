@@ -158,6 +158,19 @@ PERMISSIONS: dict[str, str] = {
     # property of the operating system's `tzdata`, which is public information about a public
     # database.
     "timezones.read": "viewer",
+    # v0.22.0. **Snoozing a warning for oneself** (ADR #387). `viewer`, because every role is
+    # shown the warnings and a snooze is per user — it changes one operator's bell and nothing
+    # anyone else sees. Its own capability so a deployment can refuse snoozing outright.
+    "notice.snooze": "viewer",
+    # v0.22.0. **Acknowledging the marker on a fault that outlived a maintenance window** (#388).
+    # `editor`, the rank that clears an alarm: it stops a marker being drawn for everybody, so it
+    # is an operational act on the alarm, and weaker than a clear — the alarm stays active.
+    "alarm.acknowledge": "editor",
+    # v0.22.0. **Declaring and importing trap-catalogue rules** (#384, #385). A rule names and
+    # grades a trap OID or a whole branch — `label.write`'s power over a class, generalised — and an
+    # import is many of them at once, so it is a capability of its own a deployment can withhold.
+    "catalogue.write": "editor",
+    "catalogue.import": "editor",
     # **The poller's two capabilities are NOT here**, and their absence is the decision rather
     # than an oversight. D3 slips to v0.21.1 (ADR #373, HANDOFF §1), and a capability with no
     # route behind it is a placeholder — which `ui/app/registry.js` already refuses, on the ground

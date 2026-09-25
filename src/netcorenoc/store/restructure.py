@@ -85,8 +85,8 @@ class RestructureMixin(SituationMixin):
     async def operator_split(self, situation_id: int, departing: list[int], ts: float) -> int:
         """Split `departing` out of a situation into a new one. Returns the new situation's id.
 
-        The new situation is `new`, not `open`: it has never been triaged, and the operator who
-        created it by splitting has judged the *original* grouping rather than the new one.
+        **The new situation is `open`** (v0.22.0, ADR #382): the operator who moved these members
+        together has made the judgement `new -> open` means. It was `new` until this release.
 
         **Links whose two endpoints both depart move with them**, because they are still the
         correlator's explanation of a grouping that still exists — the sub-bag simply lives
@@ -99,7 +99,7 @@ class RestructureMixin(SituationMixin):
         exactly as `move_alarm`'s `DELETE` matches nothing, and the count the route compares is what
         makes that visible rather than silent.
         """
-        new_id = await self.create_situation(ts)
+        new_id = await self.create_situation(ts, act="operator_split")
         marks = ",".join("?" * len(departing))
         if departing:
             await self.conn.execute(
