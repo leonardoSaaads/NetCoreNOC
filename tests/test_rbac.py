@@ -422,6 +422,17 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         # A property of the host's own `tzdata`. Public information about a public database,
         # naming no network element and no principal.
         "timezones.read": "viewer",
+        # v0.22.0. A snooze quiets a warning for the caller alone and always expires on a
+        # security one (ADR #387), so every role that sees the bell may use it.
+        "notice.snooze": "viewer",
+        # Seeing that a fault outlived a window is an operator's act on an alarm, the same rank as
+        # clearing one — and it changes what is drawn, never the alarm (ADR #388).
+        "alarm.acknowledge": "editor",
+        # Naming and grading trap OIDs changes what every screen calls a class, so it is an
+        # editor's decision, as declaring a class's severity already was (ADR #385). Import is
+        # its own capability so a deployment can grant the form without the bulk path (ADR #385).
+        "catalogue.write": "editor",
+        "catalogue.import": "editor",
     }, (
         "the capability table changed. Every derived check — role_allows, the resolver, the "
         "route table, the authorization matrix — reads this dict and will agree with whatever it "

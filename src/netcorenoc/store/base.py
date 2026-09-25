@@ -89,6 +89,10 @@ class StoreBase:
     # One probe for both tables, because `0020` and `0021` are the same feature and no schema
     # has one without the other: `0021` is what a database gains next after `0020`.
     _has_maintenance: bool
+    # v0.22.0: the alarm-class catalogue (`0023`) and the per-user warning snoozes (`0024`).
+    _has_class_rules: bool
+    _has_surfaced_ack: bool
+    _has_notice_snooze: bool
 
     @property
     def conn(self) -> aiosqlite.Connection:

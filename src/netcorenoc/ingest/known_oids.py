@@ -225,6 +225,37 @@ def standard_severity(varbinds: list[dict[str, Any]]) -> tuple[str, int, str] | 
     return best
 
 
+def under_subtree(oid: str, root: str) -> bool:
+    """Is `oid` the node `root` or a descendant of it? **Arc boundaries, never string prefixes.**
+
+    An OID is a sequence of arcs written with dots, so membership of a subtree is a statement
+    about arcs, with `root = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1"`:
+
+        under_subtree("1.3.6.1.4.1.2011.5.25.31.1.1.1.1",     root)  -> True   (the node itself)
+        under_subtree("1.3.6.1.4.1.2011.5.25.31.1.1.1.1.4.2", root)  -> True   (a descendant)
+        under_subtree("1.3.6.1.4.1.2011.5.25.31.1.1.1.10",    root)  -> False  (a SIBLING)
+
+    The third line is the one that matters: `startswith(root)` returns `True` for it, and
+    `1.1.1.10` is the tenth column of a table whose first column the operator named. Appending the
+    separator before comparing is what makes the comparison about arcs. Moved here from
+    `engine/mw/rules.py` in v0.22.0 so the alarm-class catalogue uses the same predicate the
+    maintenance-window rules do (ADR #384).
+    """
+    return oid == root or oid.startswith(root + ".")
+
+
+def ancestors(oid: str) -> list[str]:
+    """`oid` and every node above it, **most specific first**, split on arcs.
+
+    `ancestors("1.3.6.1.4.1.2011.1.12")` is `["1.3.6.1.4.1.2011.1.12", "1.3.6.1.4.1.2011.1", …,
+    "1"]` and can never contain `"1.3.6.1.4.1.2011.1.1"`: a node is reached by dropping whole arcs,
+    so the string-prefix mistake has no way in. The catalogue resolves a class by looking each of
+    these up — O(arcs) dictionary reads rather than a scan of every rule.
+    """
+    arcs = oid.split(".")
+    return [".".join(arcs[:n]) for n in range(len(arcs), 0, -1)]
+
+
 def vendor_of(oid: str) -> str | None:
     """Vendor for an enterprise OID; ``enterprise-<n>`` if unknown; None if not enterprise."""
     if not oid.startswith(ENTERPRISE_PREFIX):

@@ -33,8 +33,11 @@ export function unitText(value, unit) {
   const n = Number(value);
   if (unit === "%") return `${n.toFixed(n < 10 ? 1 : 0)}%`;
   if (unit === "s") return `${score(n, 4)} s`;
-  const rounded = count(Math.round(n));
-  return unit ? `${rounded} ${unit}` : rounded;
+  const whole = Math.round(n);
+  const rounded = count(whole);
+  // Units are plural nouns ("alarms", "rows"); one of them is singular — "1 alarms" shipped.
+  const word = whole === 1 && /[a-z]s$/.test(unit) ? unit.slice(0, -1) : unit;
+  return unit ? `${rounded} ${word}` : rounded;
 }
 
 /**

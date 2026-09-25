@@ -37,6 +37,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+# The arc-boundary predicate lives in the ingest layer since v0.22.0, because the alarm-class
+# catalogue needs the same rule one layer down (ADR #384). One implementation, imported by both.
+from netcorenoc.ingest.known_oids import under_subtree
+
 #: Where an OID rule looks. **Both, and the rule says which** (ADR #369).
 #:
 #: `trap` matches `snmpTrapOID.0` — the notification's own identity, which is what an operator
@@ -48,24 +52,7 @@ from typing import Literal
 #: choice is explicit in every stored rule rather than guessed per estate.
 MatchOn = Literal["trap", "varbind"]
 
-
-def under_subtree(oid: str, root: str) -> bool:
-    """Is `oid` the node `root` or a descendant of it? **Arc boundaries, never string prefixes.**
-
-    The whole of D4's OID rule, and the most likely bug in this feature if it is written any other
-    way. An OID is a sequence of arcs written with dots, so membership of a subtree is a statement
-    about arcs:
-
-        under_subtree("1.3.6.1.4.1.2011.5.25.31.1.1.1.1",     root)  -> True   (the node itself)
-        under_subtree("1.3.6.1.4.1.2011.5.25.31.1.1.1.1.4.2", root)  -> True   (a descendant)
-        under_subtree("1.3.6.1.4.1.2011.5.25.31.1.1.1.10",    root)  -> False  (a SIBLING)
-
-    where `root = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1"`. The third line is the one that matters: a
-    `startswith(root)` returns `True` for it, and `1.1.1.10` is the tenth column of a table whose
-    first column the operator named. Appending the separator before comparing is what makes the
-    comparison about arcs — `"…1.1.1.10"` does not start with `"…1.1.1.1."`.
-    """
-    return oid == root or oid.startswith(root + ".")
+__all__ = ["MatchOn", "under_subtree"]
 
 
 @dataclass(frozen=True)

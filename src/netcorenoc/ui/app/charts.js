@@ -47,6 +47,7 @@
 import { html, cx } from "./dom.js";
 import { count } from "./format.js";
 import { ceiling, runs, unitText } from "./chartdata.js";
+import { SeverityShape } from "./widgets.js";
 
 // Re-exported for `compare.js`, which draws the categorical marks and needs the same
 // rounding rule: two chart families that round differently are two chart families an
@@ -76,12 +77,21 @@ export function Unmeasured({ what, why }) {
   </div>`;
 }
 
-/** The series names, so a multi-series chart is never colour alone. */
+/**
+ * The series names, so a multi-series chart is never colour alone. A series carrying a `shape`
+ * (a severity band) shows that band's shape and a sample of its line's dash pattern as well, so
+ * the plot's lines are told apart by dash and the legend by shape and word — three encodings.
+ */
 export function Legend({ series }) {
   if (series.length < 2) return null;
   return html`<ul class="chart-legend">
-    ${series.map((one) => html`<li key=${one.name}>
-      <i class=${cx("chart-swatch", one.tone && `chart-${one.tone}`)} aria-hidden="true"></i>
+    ${series.map((one) => html`<li key=${one.name} class=${cx(one.tone && `chart-${one.tone}`)}>
+      ${one.shape
+        ? html`<${SeverityShape} shape=${one.shape} />
+            <svg class="chart-dash-sample" viewBox="0 0 16 4" aria-hidden="true" focusable="false">
+              <line x1="0" y1="2" x2="16" y2="2" /></svg>`
+        : html`<i class=${cx("chart-swatch", one.tone && `chart-${one.tone}`)}
+               aria-hidden="true"></i>`}
       ${one.name}
     </li>`)}
   </ul>`;
@@ -150,6 +160,7 @@ export function percentTop(observed) {
 
 export function Series({
   title, hint, series, mark = "line", unit = "", source, span, note, max, labels = [], height,
+  total = false,
 }) {
   // **A `line` needs TWO readings and a `column` needs one**, and that difference is a defect the
   // live pass found: `some(v => v != null)` let a one-point series through, so a freshly started
@@ -185,8 +196,10 @@ export function Series({
   // BUCKET, and the summary an operator reads as "how many" is the sum over the window. Summing a
   // gauge and taking the last count are each the other's defect, so the mark decides, and
   // `summary` names which was taken so the two can never again be read as the same thing.
-  const perBucketCount = mark === "column";
-  const latest = lines.map((one) => {
+  // `total` says a LINE is also a count per bucket (the severity lines, v0.22.0), so its
+  // summary is the sum like a column's, not the last bucket's reading.
+  const perBucketCount = mark === "column" || total;
+  const perSeries = lines.map((one) => {
     const readable = (one.values || []).filter((v) => v != null);
     if (!readable.length) return { name: one.name, value: null };
     const value = perBucketCount
@@ -194,6 +207,11 @@ export function Series({
       : readable[readable.length - 1];
     return { name: one.name, value };
   });
+  // A `total` chart of many series prints ONE sum: the legend already names each series, and a
+  // header repeating six of them wrapped onto three lines at 1440 px (v0.22.0).
+  const latest = total && perSeries.length > 2
+    ? [{ name: "all", value: perSeries.reduce((sum, one) => sum + (one.value ?? 0), 0) }]
+    : perSeries;
   const summary = perBucketCount ? "Total" : "Latest";
   const ticks = [0, Math.floor((n - 1) / 2), n - 1]
     .filter((i, at, all) => i >= 0 && all.indexOf(i) === at)

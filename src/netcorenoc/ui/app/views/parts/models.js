@@ -106,13 +106,13 @@ export function summarise(data) {
 /** One floor as a bar. The numbers are beside it, so the bar never has to be read precisely. */
 function Meter({ label, have, need }) {
   const share = need > 0 ? Math.min(1, have / need) : 1;
-  return html`<div class="meter">
-    <span class="meter-label">${label}</span>
-    <span class="meter-track" role="img"
+  return html`<div class="floor">
+    <span class="floor-label">${label}</span>
+    <span class="floor-track" role="img"
           aria-label=${`${label}: ${have} of ${need}`}>
-      <span class="meter-fill" style=${`width:${(share * 100).toFixed(1)}%`}></span>
+      <span class="floor-fill" style=${`width:${(share * 100).toFixed(1)}%`}></span>
     </span>
-    <span class="meter-value"><b>${count(have)}</b>${" "}/${" "}${count(need)}</span>
+    <span class="floor-value"><b>${count(have)}</b>${" "}/${" "}${count(need)}</span>
   </div>`;
 }
 
@@ -196,11 +196,11 @@ export class ModelHealth extends Component {
             between two paragraphs, which is what the first cut of this looked like on screen. */
         null}
       <div class="models-bar">
-        <span class="meter-track meter-wide" role="img"
+        <span class="floor-track floor-wide" role="img"
               aria-label=${`${(share * 100).toFixed(0)}% of the evidence a model needs`}>
-          <span class="meter-fill" style=${`width:${(share * 100).toFixed(1)}%`}></span>
+          <span class="floor-fill" style=${`width:${(share * 100).toFixed(1)}%`}></span>
         </span>
-        <span class="meter-value">${percent(share, 0)}${" "}ready</span>
+        <span class="floor-value">${percent(share, 0)}${" "}ready</span>
       </div>
       ${open ? this.panel(data, admin, busy) : null}
       ${said ? html`<p class="models-said">${said}</p>` : null}

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import httpx
 import pytest
@@ -124,8 +123,8 @@ async def test_static_assets_served_with_correct_types(client: httpx.AsyncClient
         assert media_type.split(";")[0] in response.headers["content-type"], asset
     css = await client.get("/style.css")
     assert "text/css" in css.headers["content-type"]
-    d3 = await client.get("/vendor/d3.v7.min.js")
-    assert d3.status_code == 200 and "d3js.org v7" in d3.text  # vendored locally, pinned
+    # d3 left in v0.22.0 (ADR #383); what it served is now a 404 like any undeclared path.
+    assert (await client.get("/vendor/d3.v7.min.js")).status_code == 404
     # The framework is served from this origin too — no CDN, ever.
     preact = await client.get("/vendor/preact-10.29.8.module.js")
     assert preact.status_code == 200 and "preact" in preact.text.lower()
@@ -198,11 +197,6 @@ def test_ui_source_has_no_f1_antipatterns() -> None:
     # scanner that did not strip them would fail above. If this ever stops being true, the scan
     # has quietly become a scan of a tree that no longer explains itself.
     assert "dangerouslySetInnerHTML" in (UI_DIR / "app" / "dom.js").read_text(encoding="utf-8")
-
-
-def test_d3_is_vendored_and_pinned() -> None:
-    d3 = (Path(UI_DIR) / "vendor" / "d3.v7.min.js").read_text()
-    assert "v7.9.0" in d3.splitlines()[0]  # pinned version banner
 
 
 # -- A.4 role-gated UI, v0.13.0 form ------------------------------------------------------

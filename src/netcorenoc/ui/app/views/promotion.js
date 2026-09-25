@@ -23,11 +23,13 @@
 import { html, Component } from "../dom.js";
 import { get, post } from "../api.js";
 import { Loader, Empty, DataTable, SectionHeading, Stat, TimeCell, cell } from "../widgets.js";
+import { InfoTip } from "../info.js";
 import { count, plural } from "../format.js";
 import { can } from "../session.js";
 import { Destructive } from "../destructive.js";
 import { Decision } from "./parts/verdict.js";
 import { Evidence } from "./parts/evidence.js";
+import { CorrelationHealth } from "./parts/correlation.js";
 
 export class Promotion extends Loader {
   constructor(props) {
@@ -42,6 +44,11 @@ export class Promotion extends Loader {
     const promotions = data.promotions || [];
     const versions = data.model_versions || [];
     return html`<div class="promotionview">
+      ${/* The running scorer, observed (v0.22.0, item 7): moved here from Situations. */ null}
+      <section class="panel-block">
+        <${SectionHeading} title="The running scorer" />
+        <${CorrelationHealth} open=${true} />
+      </section>
       <section class="panel-block param-structural">
         <${SectionHeading} title="The sealed holdout"
           hint="Displayed, never actionable: the query count is a property of what has been read,
@@ -55,8 +62,9 @@ export class Promotion extends Loader {
           <${Stat} label="active model version" value=${data.active_model_version_id ?? "—"} />
           <${Stat} label="active scorer configuration" value=${data.active_config_id ?? "—"} />
         </div>
-        <p class="hint">Ratified plan: <code class="mono">${data.plan_sha256}</code>. Every
-          decision below was taken against this plan and records the hash it was taken against.</p>
+        <p class="hint">Ratified plan <code class="mono">${data.plan_sha256}</code>${" "}
+          <${InfoTip} label="About the ratified plan">Every decision below was taken against this
+            plan and records the hash it was taken against.<//></p>
       </section>
 
       <${SectionHeading} title="Decisions"
@@ -64,9 +72,7 @@ export class Promotion extends Loader {
                "A refusal writes a row exactly as an application does."} />
       ${promotions.length
         ? html`<${DataTable} columns=${DECISION_COLUMNS} rows=${promotions.map(toDecision)} />
-            <${Decision} row=${promotions[0]} />
-            <p class="hint">Expanded above: the most recent decision, written when the gate
-              decided and never recomputed.</p>`
+            <${Decision} row=${promotions[0]} />`
         : html`<${Empty}
             title="No promotion has been proposed."
             will=${"Every proposal — applied or refused — is recorded here with its verdict, " +

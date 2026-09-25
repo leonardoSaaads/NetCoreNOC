@@ -317,9 +317,10 @@ def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
         named |= set(
             re.findall(r'loadVendorScript\(\s*"([^"]+)"', module.read_text(encoding="utf-8"))
         )
-    assert "/vendor/d3.v7.min.js" in named, (
-        "no console file names the vendored d3 asset, so either it stopped being loaded or it is "
-        "being loaded by something this guard cannot see"
+    # v0.22.0: d3 is gone, so `app.js` is the one script any console file names — and a second,
+    # whether a vendored library brought back or a script appended at runtime, fails here.
+    assert named == {"/app.js"}, (
+        f"a console file names a script other than /app.js: {sorted(named - {'/app.js'})}"
     )
     for src in sorted(named):
         assert src.startswith("/"), f"{src!r} is not a root-relative same-origin path"
@@ -362,75 +363,85 @@ def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
 UI_HASHES: dict[str, str] = {
     "app.js": "426f5fc2e948536a3b337a874c6dcc090f8e2714af74740c864db965a9a10bfd",
     "app/api.js": "db042593c344a37f646c3ab5df2c1a8b2abbae18d06bf0b2ffce789406d9ed1a",
-    "app/chartdata.js": "23e1cbc075be1b37ad0558e4f95e3c4066ad70a328ca89aa14699a5e5daeb990",
-    "app/charts.js": "937dc8bc1e2b7962cdadd9491e43b64eb825688edb4469c7d100448d7c9a109b",
-    "app/compare.js": "223c60ae00c056e33514900559f2ef053a43c6340937c5e5a8e1916f2e0b0669",
+    "app/chartdata.js": "20dd4efbb54f3d54632017069ef0d0c13800f70921c625b12469f1fa043ced82",
+    "app/charts.js": "0df790d9b35da090f3390101e5bafdd8f5a3a3f2332655aca57a41170174f6d6",
+    "app/compare.js": "c13ceb94e46894d6c1cae3013ba9e600e8e8ff07db75b5528df49fdd96663758",
     "app/destructive.js": "51994f0640e3e170061ec0f9bea068f7b3fff7348ca153ffb00d64cfb11838e0",
     "app/dom.js": "b0e279c902ae6f76a902dbc24bb8595d6936aff13f46354870120c4fe42b119b",
-    "app/format.js": "67b1f92858adeea52195158def6369af3f9df05d1eb3041e5c35ecca2e3dca0b",
-    "app/health.js": "b88e3c4d10d35cc0975fc3360a2faf79d7d08fd680ae4dc538fc689066a7bf94",
+    "app/format.js": "5a38f569320584884da480028350c160c09f3052cf2d034de989fb5b2a9a861f",
+    "app/health.js": "8f397a8de15131917ff8567f849f468dce8e4b87bc54afd6e9bd502baf8cf921",
     "app/icons.js": "636ab2b8ee498925f675256acf0fc33de3d621a5ccd017e28c2788cab6a92ff6",
+    "app/info.js": "15e06186daadead308f180d23feb479eccf2506d70bfadbda477ccc6f7d3c11f",
+    "app/layout.js": "447b775510c160d906ed6c54831954734c1f8bd70e90079a1fc280d6a9bad577",
     "app/login.js": "ee936acd5ec82c2299416c9c87e594ab954b42dad137db4e8662eb6eded104fc",
-    "app/notices.js": "01b6937821ee048a64369966f8247843f4327fef55cb41218d84347633877dec",
+    "app/netgraph.js": "895b00fb5d3a741f48bb445940e75e9af899d381fa761dc88f12873440ac724e",
+    "app/notices.js": "65f1adc13ddbb4a1f5d4fd85e8c1d476079e3872ab64e74f4dd41df76dcab7c1",
     "app/parameters.js": "e661fcc6136f849f565a16c1326a786b0a149c9553d64115e9a591da9fc2545d",
     "app/password.js": "6c85d8111fcaa2da415910744064c84e41adf5db57fc953cad9f1f14543ec11d",
-    "app/registry.js": "fc6cd3bceba331db1a1ba0c2a9f883f24cf8882cffd01f3cee6ea4f9ad8ef643",
+    "app/registry.js": "c08b65d2724600616e6f7e24f4272f7acf7ed6c5f012eee8b0e45f93960896d9",
     "app/router.js": "5abc5927a6e355c1271f4e9cf6295e4211441bdac5e3b38d287c32536e83bb4e",
     "app/session.js": "4d78e2ace8974ba3ce63aae9be06f3b1730f19784c25b7cb7ddc4c194401449f",
     "app/shell.js": "ee698932858da28345c7592382532815ef1b2bea0d841556ff807848d091b59e",
     "app/sidebar.js": "8625e151e0ec4d15f4d64c1d16eace797e4341e5c8361694f9bad371d3536bfe",
-    "app/store.js": "8dca26639caac1cd931eeec8a36092f9825ccbbdc409616a3020cba91f0d83c6",
+    "app/store.js": "266b38b349e0f33f3bf5643055aa75057abfcb629d609f6179a3abaa64244411",
     "app/theme.js": "69856ea8f1f66ac7a3f74c98151ad8854a41daeef315a908a630243c306ee031",
-    "app/vendor.js": "43293c5da446191dcd8563dea51635804c3d65bae5bc40892e9bb91a6b14a177",
     "app/views/account.js": "9459ec67e2288914ebd66b22e5f50c80abb2da53b7f0972474bed45f84ed453b",
     "app/views/audit.js": "5f6de01c2eb9ed02f920f9c0165be345ea127aafe186e6d67ad05f7e00b5ce71",
-    "app/views/classes.js": "34a0ed86e2724ff763818fb10d22d0401d69e41f822d0a1401340952fa911a44",
+    "app/views/classes.js": "7c59d23974fc89bbc2fd92c0d80ea55119c8feb570cb6ff5977c72cc2b87e143",
     "app/views/corpus.js": "5493886eb9c3023f3a94bd555d20dc613aba3570f34a4519148d9191bfb6d131",
     "app/views/entities.js": "ff1c89ba7f2ff40df876d017c6b04eae72f7c8d3f0c6965eb3234c07b1b51ade",
     "app/views/governance.js": "66ec220c5e12b347cecab20a4319825cfdf8ec0a4e888e1070bcccbb7536f5ce",
-    "app/views/graph.js": "05f282c80124a41ec1716c6dd1f1d06386d4c63f3aa71eecfd36963ca8235a9c",
+    "app/views/graph.js": "6424fbfb5dac54f07742c5cd7f081b227636e1d16a0d3a6fdbdc8e70e696d84f",
     "app/views/labelling.js": "e163b0f1ca9d7af77404d50c45a2797c0ea8d038e4ce176d56eb7396b6d01aa1",
-    "app/views/maintenance.js": "f55970018b9b4215f7b6317bd5027636cfeb8c0b3a0538d5b729c6f22f836a4e",
-    "app/views/overview.js": "a08308f0a84bb55726da3aa932d4ce371be1e7bb57adb95ee4a877486879ec36",
+    "app/views/maintenance.js": "f9f6b0c68bbe9666d6e38e7a40af4902a39ed6459431ea18eea73a1314af1c3c",
+    "app/views/overview.js": "878b280a0282d5c4a6d8c7c2c53550d3a380a7a8a0ecc42edb63f8ccc0f9286c",
     "app/views/parts/bulkclear.js": (
         "efdd15fe669b8a65b2a8c02745f07c0f1903fa619a60179f55b369025dc01298"
     ),
     "app/views/parts/card.js": "4850e11f8cbbb852f22a545dca660719769047f53e5b98ddb7504f54cb5e6578",
     "app/views/parts/correlation.js": (
-        "715d11c2a3e393ec4ba2f46e5b5fa649670ffc4deb4d1ca4f1a86dedb0b66776"
+        "a29a11b819187876b40d8e37d72c21f51c057d0e397a28f32a2d98dac0b171de"
     ),
     "app/views/parts/decide.js": "6474cd33ca0ffc92a0317d965d0c9dc78e7b7277d9160f34abfb6c1cd9cf4f11",
     "app/views/parts/declare.js": (
         "9d177b9c1a5e1c3207583b560eb9aeeeaae33b8fb50b5ab04fee3809f238912f"
     ),
-    "app/views/parts/estate.js": "2be4c170193f28c3ce6df8597adff904c1d242ca777692c9869ed4618133831d",
+    "app/views/parts/element.js": (
+        "2f87b09b0b34decbf7a9729dc220a6eb7f484d093209f7a7119c77c454947494"
+    ),
     "app/views/parts/evidence.js": (
-        "44e19d816d873d5f720f5eca67fa641189daec53a8f065671606d59eb65239df"
+        "98cc15c6870dcb3a2b004353adaac5ce411e7937ab2cd6bdeb7f94b76c1098e6"
     ),
     "app/views/parts/facts.js": "2befcc9ed54b18d57de942f3f9583e00a0a39170bb2b45d68b29933881858f12",
     "app/views/parts/finder.js": "b0652368970a0631d24987c4d1a4dd92b40affe833d1d7959db2a3933fc03274",
-    "app/views/parts/judge.js": "bbaf23873c06534b2db35edeb1ad956073025549dbeb3de7f245c3195953cdc1",
+    "app/views/parts/importbox.js": (
+        "5e549b9dec2f8518d9c399d40e978cc461017cfd9845d0f4a1770acb3cd98319"
+    ),
+    "app/views/parts/judge.js": "782fcc72404267718802e91b1b194694656cf577a9b9fa19284c5b82028ffc3d",
     "app/views/parts/keeping.js": (
-        "c45aea8c2da99a2375e6e120de9638465f17c3c693b048ce34b1bdfb99457905"
+        "ff4420d8c732100f83e11d0ba3a8f6a83f295522c655c5c49afd84bf0c9ff9b4"
     ),
     "app/views/parts/lifecycle.js": (
         "f6200404a808fc1cc31105991fa1fe65c0af133acb1dd3686c2b0c7a85ed551c"
     ),
-    "app/views/parts/marks.js": "6b88cb14195de0370654069619986e4e8358c4c64771be5a54bb29efbb2ec172",
+    "app/views/parts/marks.js": "acae9c72f73ee398d05d7c0e87ba8edda1ab9f2d52c96c15fa8aaac1c8fc5dfb",
     "app/views/parts/members.js": (
-        "0296ffd118f86de5ecd9e281699c1910146df89a806efdf717e457b4194b39d4"
+        "1435449d80e78e62d3390d12818a235b13055e05b51e1063d813dc8721591f42"
     ),
     "app/views/parts/model.js": "c30966786ff8e78e8c326b3b0206fe171298e86ef784b0841d68999ef068e81d",
-    "app/views/parts/models.js": "b954899695a6710f21c657f83ccd035f887fabfdecd8414fa8111b83bc1adf7c",
-    "app/views/parts/mwdraft.js": (
-        "95383f3a2419166711b5c5e885b957608ed00656623df3b69d75521ead0fb503"
+    "app/views/parts/models.js": "6bec6d279b4d61395147d46bc4def7bda8ee219cae47ea953f669ab3b2d13dda",
+    "app/views/parts/mwdetail.js": (
+        "f66649c7d172a5e864891926ea4bd9c04a00fad02d173648688aff83899f775a"
     ),
-    "app/views/parts/mwform.js": "f75fb9c38e9776f122b1a493b8d9e9cb2e7b094ad0c26a6d95e4fb91645b8781",
+    "app/views/parts/mwdraft.js": (
+        "9773ea5ea47bc0f49cb1d2367be91c275b31a05f1ff36600d27abba8fff732de"
+    ),
+    "app/views/parts/mwform.js": "f617a0510f1f40b47e379105a66ded4e822ef13bf6790419ca51f7d6b906bc77",
     "app/views/parts/mwmarker.js": (
-        "6d7adf8d09098515ac5978aa3bb13bce13db86a3039be34f137f528621733084"
+        "c3e7ed23febacd82a4fd7142064b3d1d26fc7d8cade7e29bd7930454d2e3bd9a"
     ),
     "app/views/parts/mwreview.js": (
-        "bef29714505c9b1f891eed83cd228ecfb0996bd37a8356ac37f78793ba49d795"
+        "459a85fd5647c2be815bf7dd208253a24603ba1a1289566d880701d1113f7f16"
     ),
     "app/views/parts/mwrules.js": (
         "c77b970377ec6eed2c90607c41b03399783ee9348f3fa357d01425f95a554327"
@@ -439,7 +450,10 @@ UI_HASHES: dict[str, str] = {
         "a74238e7c30cd52e08b8ad7ad65da198115113792981727c0b77ce192ee802a9"
     ),
     "app/views/parts/mwtime.js": "a57748bfb2e409e3e2db5835fd7178f68161a8a3861b82b331a24ffd39c04252",
-    "app/views/parts/pulse.js": "f3318885214127a54e9df912810abd3f7b4f114fa8636c02b7b8cb7ec4555e75",
+    "app/views/parts/oidtree.js": (
+        "3458a69deca0eab3513684c67b37e2409f16b4db60d6713b64622f1cd8bb41e9"
+    ),
+    "app/views/parts/pulse.js": "fd6fef0aa8637c41d1c13e693986bd1b26144dcf40993dbabb57062c66e05c04",
     "app/views/parts/restructure.js": (
         "89cadfe5fb4cc6f25d51d72f97589632287cecd672b103f054650934eb17382c"
     ),
@@ -447,27 +461,25 @@ UI_HASHES: dict[str, str] = {
         "d740766714ad72e1bae480f2e954f355aab286c84f6badf58dfa33d62d12bc85"
     ),
     "app/views/parts/severity.js": (
-        "0046277f0abd9c05f7f159513949230b2d057f9e8c60c89f25375d8f4fc58eca"
+        "b04098d03bc3721956f2d2b64ba14cfc28597c06ba0b2d4aae9c6cf9d826bee7"
     ),
     "app/views/parts/verdict.js": (
         "bfedceae5645684afeaf50c636bc56f2626f6822a7b03e6f45af9f6f9bc2a9d3"
     ),
     "app/views/parts/why.js": "2a67688fa82815b28b640e6a8dfa9e6109cf4f1969b112b5a8f93311d5a7b948",
-    "app/views/promotion.js": "eec55a64a73acad88ef7316b0b1a7b2d687d0e516ea93cbd896a4d8015b0c3a4",
+    "app/views/promotion.js": "0b6df8114a912042dd54b9736b8874145020a990aeede6a684705a90bbf542f4",
     "app/views/quarantine.js": "04ed768d8180e7d3182086e8dd12c69c8a497196bfb0086ea5023e34a5470b5b",
     "app/views/scorer.js": "bd3126b1928b72b840f80a7c5a7916fd4ac8c482aa92f8532cb40aeafcb5dce1",
     "app/views/settings.js": "87ecd031c5ab16f549223f5fdaf6711ae8ae97b12aa65f643b21f998a256584d",
-    "app/views/situations.js": "8f81a9361f3c5ed3d79bedefa53776248fffc09c431ea8f7ba0b5ca5e52b592d",
-    "app/views/timeline.js": "0b53b512c66656f9d35ebf1055960a31f3facdafd550ebae2c13f7b9f67c4a80",
+    "app/views/situations.js": "afe374be8e8e920369da6fe767294cc29a7cec7fea9899a6deace262f1509241",
+    "app/views/timeline.js": "4bf664ab790ac4e5738957a0a77275e2c17cc72ff03d4ed7e5e8d1a12d2c129f",
     "app/views/tokens.js": "f1195d816ebc5e2a9a431d9d618c05299b4497eb60d8a26774be2edb99fbb676",
     "app/views/users.js": "c3fc89f35a09b0c4c748c609d3d45777842f877a59ef88dfdd70ef9a4ea31b19",
-    "app/widgets.js": "abe9f6d9342f0335ead13cef4061b54ace36f31e28b0d92308918c96a3561e21",
+    "app/widgets.js": "3c2fb3ec6c87bf4f2341341938da02b6a7f9caebb25a1f86ae95424766494154",
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
-    "index.html": "73f4206c6fa3dc1ae5ff0476f56c1c29e93e6bc38e2510c50311e96a1f833c1d",
-    "style.css": "b74211b325ef03ef0563dfb50cd379de1f73ff2a459c22b14ae77694a52668f6",
-    "vendor/CHECKSUMS.txt": "0b492939937a27e94d1b27d4a304ce20d3ee8e1a5b139f748c1e979e6c28670a",
-    "vendor/d3.LICENSE": "a823f856687522c6fdca3cc259f6f1e8f75c3349ac3d76398a0e5095600a35ca",
-    "vendor/d3.v7.min.js": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
+    "index.html": "d057123e5cfc1ab497db465df016c598e38b049fbde26ecc9ee868eb4899fad7",
+    "style.css": "a0490fd231623800e4a468bec8fb04ed3bff6fc19c2bd5c17f7b44559098c1ea",
+    "vendor/CHECKSUMS.txt": "989f0c2f0be99057149737c0d1bad41e59effb0c64357679f6c46257059ba2e3",
     "vendor/htm-3.1.1.module.js": (
         "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
     ),
@@ -483,80 +495,83 @@ UI_HASHES: dict[str, str] = {
 UI_SIZES: dict[str, int] = {
     "app.js": 5_540,
     "app/api.js": 5_405,
-    "app/chartdata.js": 8_181,
-    "app/charts.js": 14_731,
-    "app/compare.js": 7_285,
+    "app/chartdata.js": 8_379,
+    "app/charts.js": 15_828,
+    "app/compare.js": 3_080,
     "app/destructive.js": 4_152,
     "app/dom.js": 2_142,
-    "app/format.js": 17_351,
-    "app/health.js": 7_383,
+    "app/format.js": 14_076,
+    "app/health.js": 7_606,
     "app/icons.js": 7_565,
+    "app/info.js": 2_407,
+    "app/layout.js": 9_799,
     "app/login.js": 7_137,
-    "app/notices.js": 12_205,
+    "app/netgraph.js": 5_017,
+    "app/notices.js": 14_370,
     "app/parameters.js": 10_264,
     "app/password.js": 5_442,
-    "app/registry.js": 8_056,
+    "app/registry.js": 8_415,
     "app/router.js": 5_035,
     "app/session.js": 3_482,
     "app/shell.js": 14_096,
     "app/sidebar.js": 9_434,
-    "app/store.js": 7_847,
+    "app/store.js": 5_485,
     "app/theme.js": 8_125,
-    "app/vendor.js": 2_385,
     "app/views/account.js": 4_614,
     "app/views/audit.js": 6_490,
-    "app/views/classes.js": 7_106,
+    "app/views/classes.js": 7_931,
     "app/views/corpus.js": 6_232,
     "app/views/entities.js": 9_671,
     "app/views/governance.js": 10_218,
-    "app/views/graph.js": 13_704,
+    "app/views/graph.js": 7_461,
     "app/views/labelling.js": 6_105,
-    "app/views/maintenance.js": 7_104,
-    "app/views/overview.js": 11_723,
+    "app/views/maintenance.js": 8_087,
+    "app/views/overview.js": 11_779,
     "app/views/parts/bulkclear.js": 3_374,
     "app/views/parts/card.js": 6_611,
-    "app/views/parts/correlation.js": 7_185,
+    "app/views/parts/correlation.js": 7_762,
     "app/views/parts/decide.js": 6_460,
     "app/views/parts/declare.js": 13_089,
-    "app/views/parts/estate.js": 9_325,
-    "app/views/parts/evidence.js": 13_062,
+    "app/views/parts/element.js": 4_962,
+    "app/views/parts/evidence.js": 12_652,
     "app/views/parts/facts.js": 6_340,
     "app/views/parts/finder.js": 6_220,
-    "app/views/parts/judge.js": 14_943,
-    "app/views/parts/keeping.js": 15_185,
+    "app/views/parts/importbox.js": 5_982,
+    "app/views/parts/judge.js": 15_306,
+    "app/views/parts/keeping.js": 7_006,
     "app/views/parts/lifecycle.js": 7_033,
-    "app/views/parts/marks.js": 9_929,
-    "app/views/parts/members.js": 10_813,
+    "app/views/parts/marks.js": 7_130,
+    "app/views/parts/members.js": 10_935,
     "app/views/parts/model.js": 10_290,
     "app/views/parts/models.js": 11_698,
-    "app/views/parts/mwdraft.js": 6_692,
-    "app/views/parts/mwform.js": 14_779,
-    "app/views/parts/mwmarker.js": 2_938,
-    "app/views/parts/mwreview.js": 4_728,
+    "app/views/parts/mwdetail.js": 7_956,
+    "app/views/parts/mwdraft.js": 9_873,
+    "app/views/parts/mwform.js": 14_711,
+    "app/views/parts/mwmarker.js": 3_574,
+    "app/views/parts/mwreview.js": 4_757,
     "app/views/parts/mwrules.js": 7_636,
     "app/views/parts/mwsummary.js": 6_324,
     "app/views/parts/mwtime.js": 9_551,
-    "app/views/parts/pulse.js": 7_983,
+    "app/views/parts/oidtree.js": 6_358,
+    "app/views/parts/pulse.js": 6_547,
     "app/views/parts/restructure.js": 12_859,
     "app/views/parts/retention.js": 5_003,
-    "app/views/parts/severity.js": 13_873,
+    "app/views/parts/severity.js": 3_875,
     "app/views/parts/verdict.js": 8_420,
     "app/views/parts/why.js": 13_210,
-    "app/views/promotion.js": 11_378,
+    "app/views/promotion.js": 11_652,
     "app/views/quarantine.js": 2_247,
     "app/views/scorer.js": 13_216,
     "app/views/settings.js": 11_331,
-    "app/views/situations.js": 15_856,
-    "app/views/timeline.js": 14_921,
+    "app/views/situations.js": 15_602,
+    "app/views/timeline.js": 4_969,
     "app/views/tokens.js": 5_104,
     "app/views/users.js": 8_994,
-    "app/widgets.js": 11_923,
+    "app/widgets.js": 13_221,
     "favicon.svg": 608,
-    "index.html": 2_159,
-    "style.css": 111_066,
-    "vendor/CHECKSUMS.txt": 2_039,
-    "vendor/d3.LICENSE": 764,
-    "vendor/d3.v7.min.js": 279_706,
+    "index.html": 1_549,
+    "style.css": 125_262,
+    "vendor/CHECKSUMS.txt": 1_996,
     "vendor/htm-3.1.1.module.js": 1_207,
     "vendor/htm.LICENSE": 11_341,
     "vendor/preact-10.29.8.module.js": 11_693,

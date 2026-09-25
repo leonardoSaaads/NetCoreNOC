@@ -37,6 +37,8 @@ MODULE_ORDER: tuple[str, ...] = (
     "models.py",
     "models_maintenance.py",
     "mw_shape.py",
+    # v0.22.0: the trap-list parser the catalogue's import route calls.
+    "catalogue_import.py",
     "governance_cache.py",
     "perimeter.py",
     "declare.py",
@@ -65,6 +67,12 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/maintenance_ops.py",
     "routes/maintenance.py",
     "routes/inventory.py",
+    # v0.22.0, in the order `create_app` registers them.
+    "routes/host.py",
+    "routes/activity.py",
+    "routes/elements.py",
+    "routes/attention.py",
+    "routes/catalogue.py",
     "routes/events.py",
 )
 

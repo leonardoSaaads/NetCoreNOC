@@ -31,7 +31,7 @@ from typing import Any
 import uvicorn
 
 from netcorenoc.api import QuietServer, create_app
-from netcorenoc.crosscutting import administration, shaping
+from netcorenoc.crosscutting import administration, posture, shaping
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import (
     ENV_PREFIX,
@@ -118,17 +118,20 @@ class HttpServerStartError(RuntimeError):
     """
 
 
-async def _sample_resources(sampler: ResourceSampler) -> None:
-    """Read CPU, memory and storage every ``SAMPLE_INTERVAL_S``, forever.
+async def _sample_resources(
+    sampler: ResourceSampler, store: Store, queue: asyncio.Queue[QueueItem]
+) -> None:
+    """Read CPU, memory, storage and queue depth every ``SAMPLE_INTERVAL_S``, and keep each.
 
-    Supervised like the maintenance loop, and for the same reason: if it crashes the appliance keeps
-    correlating traps and the operator loses a graph, so a restart with backoff is the right
-    recovery and a crash that stops the process is not. Nothing here touches the store or the event
-    loop's hot path — three file reads and a deque append.
+    Supervised: a crash costs a graph, never the process. Each reading is also a `host_sample` row
+    (v0.22.0, #380, F154): one INSERT and one bounded DELETE per 30 s, off the datagram path.
     """
     while True:
         await asyncio.sleep(SAMPLE_INTERVAL_S)
         sampler.sample()
+        async with store.lock:
+            await store.record_host_sample(time.time(), sampler.reading(), queue.qsize())
+            await store.commit()
 
 
 async def _serve_http(server: QuietServer, url: str) -> None:
@@ -212,14 +215,9 @@ def operator_warnings(allowlist: str, tls_enabled: bool, http_host: str) -> list
     """F6: persistent, admin-visible warnings about insecure deployment defaults."""
     warns: list[str] = []
     if not allowlist.strip():
-        warns.append(
-            "Trap allowlist is empty: all sources are accepted. Set an allowlist to enforce."
-        )
+        warns.append(posture.ALLOWLIST_EMPTY)
     if not tls_enabled and http_host not in LOOPBACK_HOSTS:
-        warns.append(
-            "HTTP is not using TLS on a non-loopback bind. Set NETCORENOC_TLS_CERT/KEY or "
-            "front NetCoreNOC with a TLS reverse proxy."
-        )
+        warns.append(posture.CLEAR_TEXT_HTTP)
     return warns
 
 
@@ -410,7 +408,9 @@ async def _serve(settings: Settings, store: Store) -> None:
                 lambda: engine.maintenance_loop(lambda: runtime.retention_days),
             )
         ),
-        asyncio.create_task(supervisor.run("resources", lambda: _sample_resources(resources))),
+        asyncio.create_task(
+            supervisor.run("resources", lambda: _sample_resources(resources, store, queue))
+        ),
         asyncio.create_task(_serve_http(server, url)),
     ]
     try:

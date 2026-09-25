@@ -68,9 +68,14 @@ async def test_the_correlator_creates_new_and_a_gesture_makes_it_open(store: Sto
 
     client = await authutil.client_as(app, "editor")
     try:
+        # v0.22.0 (item 9, ADR #382): a rename is a label, not a judgement. It leaves `new` as it
+        # found it — the control for the promotion below, which must still happen.
         assert (
             await client.post(f"/api/situations/{sid}/name", json={"name": "mine"})
         ).status_code == 200
+        renamed = {int(r["id"]): str(r["status"]) for r in await store.list_situations(None, 100)}
+        assert renamed[sid] == "new", "a rename advanced the situation's state"
+        assert (await client.post(f"/api/situations/{sid}/promote")).status_code == 200
     finally:
         await client.aclose()
 

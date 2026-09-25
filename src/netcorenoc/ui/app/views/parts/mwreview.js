@@ -81,7 +81,7 @@ export function ReviewCard(props) {
     ${error ? html`<p class="error" role="alert" data-role="save-error">${error}</p>` : null}
     <div class="mw-submit">
       <button type="submit" class="primary" disabled=${busy || !ready} data-role="save">
-        ${busy ? "Scheduling…" : "Schedule it"}
+        ${busy ? "Saving…" : props.editing ? "Save changes" : "Schedule it"}
       </button>
       ${blocker ? html`<span class="muted" data-role="save-blocked">${blocker}</span>` : null}
     </div>

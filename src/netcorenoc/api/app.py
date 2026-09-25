@@ -120,6 +120,11 @@ def create_app(
     routes.maintenance_ops.register(app, ctx)
     routes.maintenance.register(app, ctx)
     routes.inventory.register(app, ctx)
+    routes.host.register(app, ctx)
+    routes.activity.register(app, ctx)
+    routes.elements.register(app, ctx)
+    routes.attention.register(app, ctx)
+    routes.catalogue.register(app, ctx)
     routes.events.register(app, ctx)
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the

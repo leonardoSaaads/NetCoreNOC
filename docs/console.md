@@ -13,10 +13,10 @@ disabled controls.
 | View | The question it answers |
 |---|---|
 | **Situations** | Correlated groups of alarms, and **why each alarm was grouped** |
-| **Network graph** | Learned affinity between network elements, plus the same estate ordered by load — because a node's radius stops growing at 24 px, so two elements 2.7x apart draw identically |
-| **Timeline** | Raises and clears over time — element, window, depth, chart type and element split, all in the address so the configured screen can be sent to a colleague |
+| **Network graph** | Learned affinity between network elements, drawn the same way every time; select an element (click, or Tab and Enter) for its situations and recent traps. *Elements by load* ranks the estate exactly, because a node stops growing at a size |
+| **Timeline** | Raises and clears over the window you pick, per element, with repeats of one trap folded into one row; window, element, kind and page are in the address, so the screen can be sent to a colleague |
 | **Entities** | What the appliance has learned about each element, and the evidence for it |
-| **Alarm classes** | Every trap type it has learned, with no configuration |
+| **Trap catalogue** | Every trap type, by name and severity: search, browse by vendor branch, name or grade a trap or a whole branch, import a trap list |
 | **Maintenance** | Planned work: what is scheduled, what is running, and **what it still collects** |
 
 ## Evidence — what has been learned, and what is refused
@@ -65,15 +65,13 @@ was none (F79).
 The landing screen answers six, top to bottom, and the order is the decision rather than the
 layout:
 
-1. **How bad is it** — active alarms by severity: critical, major, minor, low, `indeterminate`, and
-   **not placed**. The last row is the one to read first on a new appliance, and it is explained
+1. **How bad is it** — active alarms by severity: critical, major, minor, warning, `indeterminate`,
+   and **unplaced**. The last row is the one to read first on a new appliance, and it is explained
    below.
-2. **What is happening** — situations by creation time, and alarm raises against clears. The second
-   is the one that says whether it is *recovering*: five hundred raises with three clears and five
-   hundred with 495 are opposite situations, and no counter can tell them apart.
-3. **Where** — the estate as a deterministic grid, one cell per element, sorted by load. It is a map
-   of **load, not topology**; the affinity drawing on the Graph screen is the one that says which
-   elements are related, and the caption links to it.
+2. **What is happening** — alarms raised over the range you pick, one line per severity band,
+   `unplaced` included. The range reaches the query: *7d* reads seven days.
+3. **Where** — the busiest five, and a compact graph of the estate in the same deterministic layout
+   as the Graph screen, linking to it.
 4. **Which element is worst** — the busiest five, by alarms active **now**.
 5. **Is the appliance itself keeping up** — CPU, memory, storage and queue depth as series.
 6. **What it has learned** — devices and alarm classes, learned and not configured.
@@ -186,8 +184,8 @@ member row itself — the row where the trap appears, while you are looking at i
 * **which equipment this is.** The name appears on this row, on **Entities**, and on the **Network
   Graph**, because all three read the same record. It is a label, not a rename: correlation is
   keyed on the address and is unaffected.
-* **what this trap means.** The name appears on every alarm of that class, on **Alarm Classes**,
-  and on the timeline. Where you have not named one, the row shows the vendor the appliance
+* **what this trap means.** The name appears on every alarm of that class, on the **Trap
+  catalogue**, and on the timeline. Where you have not named one, the row shows the vendor the appliance
   resolved from the OID's enterprise arc, beside the OID — a vendor is not a name, so it never
   takes the name's place.
 * **how serious it is.** Per kind of trap, from the five severities the appliance renders.
@@ -246,6 +244,11 @@ What replaced them is two disclosures:
   (`/proc/stat`, the cgroup's limit, `os.statvfs`) and the dependency count is still five. It opens
   on hover as well as on click, because health is a glance; the bell keeps click only, because a
   warning is something you act on.
+
+**A warning can be snoozed, not deleted** (v0.22.0): for yourself, for 24 hours, 7 days, or until
+its text changes. A security-posture warning — traffic accepted from anywhere, a console in clear
+text — can only be snoozed for a time, and an admin can always see who snoozed one. The bell keeps
+a muted count of what is snoozed, and *Restore* brings it back.
 
 An **ingest gap** is still a banner above the work area as well as being in the bell: a panel an
 operator has to open is the wrong home for *"traps are being lost now"*.
@@ -363,6 +366,17 @@ marked *"raised during maintenance, still active"*. That alarm carries **no seve
 reason is worth knowing: the appliance is not failing to place one, it never saw the trap. You can
 turn the ledger off per window; the card says in plain words what you lose if you do.
 
+The marker stays while the alarm is still active and has not been reported again since the window
+closed; an editor who has seen it can acknowledge it (the ✓ beside it), which records who and when
+and leaves the alarm exactly where it is.
+
+### Changing a window that is running
+
+Open the window's row. A running window can be **ended now**, **extended** (+30 min, +1 h, +2 h) or
+**shortened**, and its name, description and visibility edited. Its start, zone, patch band,
+targets and rules cannot change while it is in force — end it and schedule another — because the
+minutes already past must answer to the window that was actually in force.
+
 ### The marker every role sees
 
 A device or a situation under planned work carries a badge saying so, with how long is left — on
@@ -370,3 +384,10 @@ A device or a situation under planned work carries a badge saying so, with how l
 restricted. A host that goes quiet with no marker reads as a healthy host, which is the one way
 this feature could make an outage harder to see. What the window *is* — its name, its owner, its
 rules — follows its visibility setting. That it exists does not.
+
+## Explanations live behind the `i` (v0.22.0)
+
+A sentence the console still needs sits behind a small **i** beside the thing it explains, never as
+a paragraph above it. The **i** is a button: Tab reaches it, Enter or Space opens it, Escape closes
+it, and a screen reader hears the text on focus without opening anything. Nothing is hover-only.
+

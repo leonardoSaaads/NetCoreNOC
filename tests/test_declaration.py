@@ -37,6 +37,7 @@ from netcorenoc.crosscutting.rbac import route_map as _route_map  # noqa: F401  
 from netcorenoc.store import Store
 
 import authutil
+import util
 
 PKG = Path(__file__).resolve().parent.parent / "src" / "netcorenoc" / "api"
 _RAW_DECORATORS = ("@app.get(", "@app.post(", "@app.delete(", "@app.put(", "@app.patch(")
@@ -659,11 +660,19 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
-    assert len(served) == 148, f"the served surface moved: {len(served)} method/path pairs"
+    # **v0.22.0: 148 -> 168 served, /api 68 -> 84.** Sixteen API routes — `GET /api/resources`
+    # (the host series over the window asked for, F154), three `/api/activity/*` reads (F155),
+    # `GET /api/elements/{ne_id}` (the graph's element panel), four acknowledgements (notice
+    # snooze/restore, the list of notices, the "outlived a window" ack) and seven catalogue routes
+    # (read, tree, rules, rule write and withdraw, import and withdraw-imported) — and four more
+    # static modules net: seven added (`info`, `layout`, `netgraph`, `parts/element`,
+    # `parts/oidtree`, `parts/importbox`, `parts/mwdetail`), three removed with d3 (`vendor.js`,
+    # the d3 bundle, `parts/estate.js`).
+    assert len(served) == 168, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 68, (
+    assert len(api_pairs) == 84, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -808,11 +817,11 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
-    assert len(served) == 148, f"the served surface moved: {len(served)} method/path pairs"
+    assert len(served) == 168, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 68, (
+    assert len(api_pairs) == 84, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -895,7 +904,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # v0.21.0: 8 -> 10, for `GET /api/organizations` and `GET /api/timezones`. Neither names a
     # network element: one is a row naming a provider, the other a property of the host's own
     # `tzdata`, which is public information about a public database.
-    assert len(entries) == 10, entries
+    # v0.22.0: 10 -> 21 — the host series, the three notice routes and the seven catalogue
+    # routes; each justification is written beside its row in `route_map.py`.
+    assert len(entries) == 21, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1016,7 +1027,11 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.21.0: 8 -> 10. `GET /api/organizations` is a row naming a provider and the table
     # carries no NE reference; `GET /api/timezones` is a property of the host's own `tzdata`,
     # which is public information about a public database. Both name no network element.
-    assert len(UNSCOPED) == 10, UNSCOPED
+    # v0.22.0: 10 -> 21. `GET /api/resources` is the host's own CPU, memory and disk — no network
+    # element. The notice routes are a user's own snoozes of the appliance's own warnings. The
+    # seven catalogue routes read and write rules keyed on trap OIDs, which name a trap type and
+    # never an element (ADR #385).
+    assert len(UNSCOPED) == 21, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
@@ -1037,7 +1052,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # writes and what it counts. Six are targeted — they name one window and 404 on one the
     # caller cannot see — and three are collections that narrow silently, because a 404 on an
     # out-of-scope element would confirm that the element exists.
-    assert len(SCOPED) == 29, SCOPED
+    # v0.22.0: 29 -> 34. The three `/api/activity/*` reads narrow by the caller's visible set
+    # (collections), `GET /api/elements/{ne_id}` and `POST /api/alarms/{aid}/outlived/ack` name
+    # one element or alarm and 404 on one the caller cannot see (targeted).
+    assert len(SCOPED) == 34, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1179,6 +1197,10 @@ SCOPED_TARGETED = [
     ("POST", "/api/alarms/clear"),
     # v0.16.2: the bare promotion names one situation, so it is targeted for the same reason.
     ("POST", "/api/situations/{sid}/promote"),
+    # v0.22.0: the element panel and the "outlived a window" acknowledgement name one element or
+    # one alarm, so an out-of-scope one takes the same 404 a nonexistent one does.
+    ("GET", "/api/elements/{ne_id}"),
+    ("POST", "/api/alarms/{aid}/outlived/ack"),
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 
@@ -1256,15 +1278,42 @@ async def test_scoped_collection_routes_answer_differently_under_a_policy(
     engine, queue, app = await authutil.make_env(store)
     await _out_of_scope_ids(store, engine, queue)
     method, path = route
+    if path.startswith("/api/activity/"):
+        # v0.22.0: these read a window ending NOW, and the fixture's traffic is from 2023 — so
+        # both answers were empty and differed only in their `from`/`to`, which moved between the
+        # two calls. The X5 injection (drop the scope) stayed green on exactly that. So: traffic
+        # inside the window, and the clock fields removed before comparing.
+        await util.drive(
+            engine,
+            queue,
+            [
+                # A fresh instance, so each is a RAISE — the fixture already raised these traps,
+                # and a repeat moves `last_seen` without leaving a mark in the window.
+                util.event(device="192.168.50.1", trap_oid=util.CIENA_TRAP, instance="now"),
+                util.event(device="10.0.0.1", trap_oid=util.HUAWEI_TRAP, instance="now"),
+            ],
+        )
     seen: list[bytes] = []
     for document in (None, NARROW):
         await _activate_scope(store, document)
         client = await authutil.client_as(app, "editor")
         try:
-            seen.append(await _first_payload(app, client, method, path))
+            seen.append(_without_clock(await _first_payload(app, client, method, path)))
         finally:
             await client.aclose()
     assert seen[0] != seen[1], f"{method} {path} is declared scoped but the policy changed nothing"
+
+
+def _without_clock(body: bytes) -> bytes:
+    """A JSON object's body minus `from`/`to`, which are the wall clock and not the answer."""
+    try:
+        parsed = json.loads(body)
+    except ValueError:
+        return body
+    if isinstance(parsed, dict) and {"from", "to"} <= set(parsed):
+        parsed = {k: v for k, v in parsed.items() if k not in ("from", "to")}
+        return json.dumps(parsed, sort_keys=True).encode()
+    return body
 
 
 async def _first_payload(app: object, client: httpx.AsyncClient, method: str, path: str) -> bytes:

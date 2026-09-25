@@ -1323,6 +1323,17 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
     # `POST /api/logout` and `POST /api/password` act on the caller's own session and account.
     # Neither carries an NE reference, and neither can name another principal's resource.
     session_only = {("POST", "/api/logout"), ("POST", "/api/password")}
+    # v0.22.0: a warning snooze is the caller's own row — keyed on their user id and the text of a
+    # warning about the appliance itself — and the catalogue writes name a trap TYPE by OID, never
+    # an element: there is no network element in any of them for a scope to narrow (ADR #385, #387).
+    session_only |= {
+        ("POST", "/api/notices/snooze"),
+        ("DELETE", "/api/notices/snooze/{digest}"),
+        ("POST", "/api/catalogue/rules"),
+        ("DELETE", "/api/catalogue/rules/{rule_id}"),
+        ("POST", "/api/catalogue/import"),
+        ("DELETE", "/api/catalogue/imported"),
+    }
     # The four spellings of *"this handler resolved the caller's visibility"*. The first is the
     # literal every route wrote until v0.21.0; the other three are `WindowAccess`'s, and
     # `test_every_indirect_scope_call_really_resolves_the_scope` reads their source so that
@@ -1370,6 +1381,8 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/maintenance-windows/{wid}/cancel"): "async def cancel_window(",
         ("POST", "/api/maintenance-windows/{wid}/end"): "async def end_window(",
         ("POST", "/api/maintenance-windows/{wid}/extend"): "async def extend_window(",
+        # v0.22.0: the "outlived a window" acknowledgement names one alarm, hence one element.
+        ("POST", "/api/alarms/{aid}/outlived/ack"): "async def acknowledge_outlived(",
     }
     unprotected: list[str] = []
     for (method, path), capability in sorted(rbac.ROUTE_PERMISSIONS.items()):

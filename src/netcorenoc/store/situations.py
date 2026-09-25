@@ -53,6 +53,55 @@ HAS_ACTIVE = (
 )
 
 
+#: **The situation state machine — one table, one place** (v0.22.0, ADR #382).
+#:
+#: The principle that decides every edge: **the state reflects human attention, and only a human
+#: act that constitutes attention advances it.** `new` means nobody has looked; `open` means an
+#: operator has looked and accepts the grouping as something to work; `resolved` means it left.
+#:
+#: `act -> {state before: state after}`; `None` before means the act CREATES the situation, and an
+#: act missing a state leaves that state unchanged. `tests/test_lifecycle.py` drives every edge
+#: through the real route or store method.
+#:
+#: Two edges changed in v0.22.0, both reported by the maintainer (item 9):
+#:
+#:   * **`rename` has no edge.** A name is cosmetic; it promoted `new` to `open`, which said an
+#:     operator had accepted a grouping they had only labelled.
+#:   * **`operator_split` creates `open`.** Moving alarms out into a new situation is the operator
+#:     judging that they belong together — exactly what `new -> open` means — so the situation
+#:     they made is not waiting for anyone to look at it. It was created `new`.
+#:
+#: What is written as EVIDENCE is untouched by both: `situation_event` and the snapshots carry no
+#: status (`engine/dataset/gestures.Snapshot`), so this changes which tab a card is on and nothing
+#: a model trains on.
+TRANSITIONS: dict[str, dict[str | None, str]] = {
+    # -- creation --
+    "correlate": {None: "new"},  # the correlator grouped alarms nobody has looked at
+    "surface": {None: "new"},  # a maintenance window's ledger surfaced a fault that outlived it
+    "operator_split": {None: "open"},  # an operator put these alarms together
+    # -- attention: an operator worked the situation --
+    "promote": {"new": "open"},
+    "feedback": {"new": "open"},
+    "move": {"new": "open"},  # the SOURCE; the destination is an id they typed (#273)
+    "merge": {"new": "open"},
+    "split": {"new": "open"},  # the situation the members left
+    "hand_clear": {"new": "open"},
+    # -- cosmetic: never a state change --
+    "rename": {},
+    # -- leaving --
+    "close": {"new": "resolved", "open": "resolved"},  # an operator closed it
+    "self_cleared": {"new": "resolved", "open": "resolved"},  # every member cleared
+    "idle": {"new": "resolved", "open": "resolved"},  # empty, and nobody touched it
+    "merged_away": {"new": "resolved", "open": "resolved"},  # folded into another
+    "manual_clear": {"new": "resolved", "open": "resolved"},  # the last member hand-cleared
+}
+
+#: The acts that are ATTENTION: every act with the `new -> open` edge. Derived, not listed.
+ATTENTION: frozenset[str] = frozenset(
+    act for act, edges in TRANSITIONS.items() if edges.get("new") == "open"
+)
+
+
 class SituationMixin(SituationEventMixin):
     """Inherits the event mixin for **one** method: `refresh_derived_name`.
 
@@ -63,7 +112,9 @@ class SituationMixin(SituationEventMixin):
     and do nothing, which is the silent no-op that decision rejects.
     """
 
-    async def create_situation(self, ts: float, scorer_config_id: int | None = None) -> int:
+    async def create_situation(
+        self, ts: float, scorer_config_id: int | None = None, act: str = "correlate"
+    ) -> int:
         """Open a situation, recording which scorer configuration formed it (v0.6.0 provenance).
 
         The engine passes the active `config_id`; it is written here, on the store side under the
@@ -87,7 +138,7 @@ class SituationMixin(SituationEventMixin):
         others reference by foreign key in order to state a value one INSERT already states. The
         `_has_lifecycle` branch is what keeps this call working against a schema-13 database.
         """
-        status = "new" if self._has_lifecycle else "open"
+        status = TRANSITIONS[act][None] if self._has_lifecycle else "open"
         if scorer_config_id is None:
             cur = await self.conn.execute(
                 "INSERT INTO situation (status, created_at, updated_at) VALUES (?, ?, ?) "
@@ -104,13 +155,15 @@ class SituationMixin(SituationEventMixin):
         assert row is not None
         return int(row[0])
 
-    async def promote_situation(self, situation_id: int, ts: float) -> None:
-        """`new` -> `open`: an operator has touched this situation (v0.16.0, DECISIONS #254).
+    async def promote_situation(self, situation_id: int, ts: float, act: str) -> None:
+        """`new` -> `open` for an act that constitutes attention (`ATTENTION`, ADR #382).
 
-        Idempotent and one-directional. `WHERE status='new'` means a second gesture is a no-op and
-        a gesture on a **resolved** situation does not resurrect it — reopening is a decision
-        nobody has made, and doing it as a side effect of a rename would be making it silently.
+        **Refuses an act the table gives no such edge**, so a cosmetic act wired here by mistake
+        fails loudly instead of flipping a state. Idempotent and one-directional: `WHERE
+        status='new'` makes a second gesture a no-op and never resurrects a resolved situation.
         """
+        if act not in ATTENTION:
+            raise ValueError(f"{act!r} is not an act of attention; it cannot promote a situation")
         if not self._has_lifecycle:
             return
         await self.conn.execute(

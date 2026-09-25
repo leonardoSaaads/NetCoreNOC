@@ -143,7 +143,6 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/sidebar.js",
         "/app/store.js",
         "/app/theme.js",
-        "/app/vendor.js",
         "/app/views/account.js",
         "/app/views/audit.js",
         "/app/views/classes.js",
@@ -207,7 +206,6 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/mwsummary.js",
         "/app/views/parts/mwreview.js",
         # v0.16.6: the Graph screen's second projection and its tables (DECISIONS #307, #310).
-        "/app/views/parts/estate.js",
         # v0.16.6: the timeline's controls, column chart and summary (DECISIONS #311).
         "/app/views/parts/marks.js",
         # v0.16.6: evidence over time, and what cannot be drawn (DECISIONS #308).
@@ -218,9 +216,15 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # of `shell.js` (DECISIONS #288, #289).
         "/app/notices.js",
         "/app/health.js",
+        "/app/info.js",
+        "/app/layout.js",
+        "/app/netgraph.js",
+        "/app/views/parts/element.js",
+        "/app/views/parts/oidtree.js",
+        "/app/views/parts/importbox.js",
+        "/app/views/parts/mwdetail.js",
         "/app/widgets.js",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
-        "/vendor/d3.v7.min.js",
         "/vendor/htm-3.1.1.module.js",
         "/vendor/preact-10.29.8.module.js",
     }

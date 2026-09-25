@@ -19,6 +19,7 @@
  */
 
 import { html, Component, cx } from "./dom.js";
+import { InfoTip } from "./info.js";
 import { severity as severityOf, count, timeTitle, absolute, relative } from "./format.js";
 
 /* ---------- the four states ---------- */
@@ -163,34 +164,54 @@ export function Badge({ tone, title, children }) {
 }
 
 /**
- * **The severity pill. One component, every severity surface** (DECISIONS #277).
- *
- * A filled badge an operator recognises without reading it, and it still carries all three
- * encodings the rule requires: the **fill** (a luminosity ladder, so the ordering survives when
- * hue does not), a **glyph** whose shape is distinct from every other band's, and the element's
- * own **text**. Any one of the three carries the rank alone.
- *
- * `tests/test_ui_invariants.py::test_every_severity_band_carries_a_glyph_and_text_not_only_colour`
- * drives every band including `unknown` and fails on a badge that carries colour alone.
+ * The six severity shapes, hand-drawn on a 12-unit grid (v0.22.0, item 3). A stop sign, a warning
+ * triangle, a diamond, a square, an empty ring, and a broken ring for "never read". Distinct in
+ * outline, so the band survives greyscale and a colour-blind reading with the word covered.
  */
+const SHAPES = {
+  octagon: html`<polygon points="3.6,.6 8.4,.6 11.4,3.6 11.4,8.4 8.4,11.4 3.6,11.4 .6,8.4 .6,3.6" />`,
+  triangle: html`<polygon points="6,.6 11.5,11.2 .5,11.2" />`,
+  diamond: html`<polygon points="6,.4 11.6,6 6,11.6 .4,6" />`,
+  square: html`<rect x="1.4" y="1.4" width="9.2" height="9.2" />`,
+  ring: html`<circle cx="6" cy="6" r="4.4" class="sev-hollow" />`,
+  broken: html`<circle cx="6" cy="6" r="4.4" class="sev-hollow sev-dashed" />`,
+};
+
+/** The shape alone — for a legend, or anywhere a word already sits beside it. */
+/** The class a chart or bar row uses for a band's colour — the one other place a band is drawn. */
+export function severityTone(key) { return `sev-${key}`; }
+
+export function SeverityShape({ shape }) {
+  return html`<svg class="sev-glyph" data-shape=${shape} viewBox="0 0 12 12"
+       aria-hidden="true" focusable="false">${SHAPES[shape] ?? SHAPES.broken}</svg>`;
+}
+
+/**
+ * **The severity chip: a shape AND a colour AND a word, on every screen** (v0.22.0, item 3).
+ *
+ * `band` is `format.band(rank)` or `format.UNPLACED`. `count` prints beside the word when given.
+ * Any one of the three encodings carries the band alone, which is the rule this repository keeps:
+ * no meaning by colour alone.
+ */
+export function SeverityChip({ band, text, count: n, title, declared }) {
+  return html`<span class=${cx("sev-pill", `sev-${band.key}`)} title=${title}>
+    <${SeverityShape} shape=${band.shape} />
+    <span class="sev-text">${text ?? band.label}</span>
+    ${n != null ? html`${" "}<b class="sev-count">${count(n)}</b>` : null}
+    ${declared ? html`<span class="sev-mark" aria-label="declared by an operator">*</span>` : null}
+  </span>`;
+}
+
+/** The chip for one alarm, with the declared-versus-learned precedence in its title (#284). */
 export function SeverityBadge({ alarm }) {
   const s = severityOf(alarm);
-  // **Which value is in use, and what the other one says** (v0.16.3, DECISIONS #284). A declared
-  // severity wins and the learned one is never overwritten, so the pill marks the declaration and
-  // names the appliance's own judgement beside it — the disagreement is the evidence.
   const title = !s.known
-    ? "This element's severity has not been learned yet. It is not a default — nothing has been " +
-      "assumed about how serious this alarm is."
+    ? "No severity has been read for this alarm. Nothing has been assumed."
     : s.declared
-      ? `severity ${s.text} (rank ${s.rank}), declared by an operator. ` +
-        (s.learned == null
-          ? "The appliance has not learned a severity for this alarm class."
-          : `The appliance learned ${s.learned}.`)
-      : `severity ${s.text} (rank ${s.rank}), learned by the appliance`;
-  return html`<span class=${cx("sev-pill", `sev-${s.key}`)} title=${title}>
-    <span class="sev-glyph" aria-hidden="true">${s.glyph}</span><span class="sev-text">${s.text}</span>
-    ${s.declared ? html`<span class="sev-mark" aria-label="declared by an operator">*</span>` : null}
-  </span>`;
+      ? `severity ${s.text}, declared by an operator` +
+        (s.learned == null ? "." : `; the appliance placed ${s.learned}.`)
+      : `severity ${s.text}, placed by the appliance`;
+  return html`<${SeverityChip} band=${s} text=${s.text} title=${title} declared=${s.declared} />`;
 }
 
 /** The pill in a table cell. The wrapper exists so `DataTable` can insert it verbatim. */
@@ -214,17 +235,22 @@ export function DataTable({ columns, rows, caption, empty, kind }) {
     <table class=${cx("data", kind)}>
       ${caption ? html`<caption>${caption}</caption>` : null}
       <thead><tr>${columns.map((c) => html`
-        <th key=${c.key} scope="col" class=${cx(c.numeric && "num")} title=${c.title}>${c.label}</th>`)}
+        <th key=${c.key} scope="col" class=${cx(c.numeric && "num", c.wideOnly && "wide-only")}
+            title=${c.title}>${c.label}</th>`)}
       </tr></thead>
       <tbody>${rows.map((row) => html`<tr key=${row.key} class=${row.tone && `row-${row.tone}`}>
         ${columns.map((c) => (
           row.cells[c.key] && row.cells[c.key].__cell
             ? row.cells[c.key].node
-            : html`<td key=${c.key} class=${cx(c.numeric && "num")}>${row.cells[c.key]}</td>`))}
+            : html`<td key=${c.key} class=${cx(c.numeric && "num", c.wideOnly && "wide-only")}
+                >${row.cells[c.key]}</td>`))}
       </tr>`)}</tbody>
     </table>
   </div>`;
 }
+
+/* A column may be `wideOnly`: dropped below 560px, where a phone needs the number more than a
+   context column another part of the screen already shows (v0.22.0, item 20). */
 
 /** Wrap a pre-built `<td>` so `DataTable` inserts it verbatim (e.g. `SeverityCell`). */
 export function cell(node) { return { __cell: true, node }; }
@@ -248,9 +274,11 @@ export function Stat({ label, value, note, tone, title }) {
 
 /** A section heading with an optional explanation. Used by every screen, so they read alike. */
 export function SectionHeading({ title, hint, id, children }) {
+  /* v0.22.0: a section's explanation is one `i` beside its title, never a paragraph under it —
+     the console-wide prose budget, applied at the one component every section heading uses. */
   return html`<div class="section-heading">
-    <h3 id=${id}>${title}</h3>
+    <h3 id=${id}>${title}${hint
+      ? html`<${InfoTip} label=${`About ${title}`}>${hint}<//>` : null}</h3>
     ${children}
-    ${hint ? html`<p class="hint">${hint}</p>` : null}
   </div>`;
 }

@@ -50,6 +50,7 @@ import { Bars } from "../../compare.js";
 import { buckets, spanText, tally } from "../../chartdata.js";
 import { plural } from "../../format.js";
 import { SectionHeading } from "../../widgets.js";
+import { InfoTip } from "../../info.js";
 
 /**
  * The four named quantities, in `promotion.QUANTITY_NAMES` order, with the direction each moves in.
@@ -235,22 +236,17 @@ function Gap() {
           learning?" already is. A screen that went on declaring the measurement impossible after
           the release that made it would be the same dishonesty in the other direction. The two
           below are unchanged and still absent. */ null}
-    <h4>Not drawn, because nothing measures it</h4>
-    <p class="hint">A <b>residual distribution</b> — the only label in this schema is in${" "}
-      <code class="mono">feedback</code>, and <code class="mono">incumbent_linked</code> is a
-      comparison basis and never a target. The sampled opinions that could show a score
-      distribution have <b>no route at all</b>: they are captured engine-side where visibility
-      scoping does not exist.</p>
-    <p class="hint"><b>Fold results</b> — <code class="mono">evaluation_fold</code> stores which
-      incident went into which fold, which makes an evaluation reproducible; it does not store
-      what each fold scored.</p>
-    <p class="hint"><b>No chart on this screen is drawn from a sampled table.</b> If one ever is,
-      it must state its sampling rate beside it — the shadow sampler's default is <b>0.01</b> and a
-      deployment may change it, so the rate would have to be read from${" "}
-      <code class="mono">challenger_run.sample_rate</code> rather than assumed.</p>
-    <p class="hint">What each would need is written down in${" "}
-      <code class="mono">docs/plans/releases.md</code>, with its table and its columns. The${" "}
-      <b>loss curve</b> used to be on this list and is now on the <b>Overview</b>: the optimiser
-      records it, so there is a chart instead of a paragraph.</p>
+    <h4>Not drawn: residuals, fold results${" "}
+      <${InfoTip} label="Why these are not drawn">
+        A <b>residual distribution</b> needs a label, and the only one in this schema is in${" "}
+        <code class="mono">feedback</code>; the sampled opinions that could show scores have no
+        route, because they are captured engine-side where visibility scoping does not exist.${" "}
+        <b>Fold results</b>: <code class="mono">evaluation_fold</code> stores which incident went
+        into which fold, not what each fold scored. No chart here is drawn from a sampled table;
+        one that is must state its rate — the shadow sampler's default is 0.01, read from${" "}
+        <code class="mono">challenger_run.sample_rate</code>. What each would need is in${" "}
+        <code class="mono">docs/plans/releases.md</code>; the loss curve left this list and is
+        drawn on the Overview.
+      <//></h4>
   </div>`;
 }

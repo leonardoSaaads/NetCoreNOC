@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of thirty-seven ask
-you to do something; seventeen more ask you to read a paragraph first. The other eighteen are
+Read only the rows between your version and the one you are installing. **Two of thirty-eight ask
+you to do something; eighteen more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
@@ -66,6 +66,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.19.0 → v0.20.0 | Nothing to run. **No migration.** The console is rearranged again — the Overview, the situation card and the restructure controls — and one API field is gone from `/api/situations/{id}`. Read below |
 | v0.20.0 → v0.21.0 | Nothing to run. **Three migrations apply at boot** (`0019`, `0020`, `0021`), all additive. But **read below**: your existing alarms start carrying a severity they did not carry before, some of your entities were never entities, and the container image needs one new OS package |
 | v0.21.0 → v0.21.1 | Nothing to run. **No migration.** The Maintenance screen is rebuilt, the Overview gains a *Planned work* card, and `GET /api/maintenance-windows` returns a **smaller `total`** than it did — it now counts what the filters and your visibility scope actually permit. Read below if you read that field |
+| v0.21.1 → v0.22.0 | Nothing to run. **Three migrations apply at boot** (`0022`, `0023`, `0024`), all additive. The console is repaired screen by screen, d3 is gone, four capabilities are new, and a running maintenance window can no longer be re-timed from its start. Read below |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -637,3 +638,26 @@ rules at all (F150) — the four-card form now submits (F149), and the Overview 
 work** card between the alarm counts and the estate. The card needs `mw.read`; a role without it
 does not see it, and a deployment where the route fails renders one line rather than taking the
 dashboard with it.
+
+### v0.22.0 — the console repaired, three additive migrations, four new capabilities
+
+- **Migrations.** `0022` adds `host_sample` (one row per 30 s host reading, pruned at seven days)
+  and two alarm indexes; `0023` adds `class_rule` (the Trap catalogue); `0024` adds `notice_snooze`
+  and three nullable `alarm` columns for the "outlived a window" acknowledgement, backfilling
+  `surfaced_at` from `last_seen`. Schema version 21 → 24. Nothing is rewritten.
+- **Capabilities** (`crosscutting/rbac/tables.py`): `notice.snooze` (viewer), `alarm.acknowledge`,
+  `catalogue.write` and `catalogue.import` (editor). A governance policy that lists capabilities
+  explicitly will not grant them until you add them.
+- **API.** New: `GET /api/resources`, `GET /api/activity/{severity,lanes,groups}`,
+  `GET /api/elements/{ne_id}`, `GET /api/notices` and the snooze routes,
+  `POST /api/alarms/{aid}/outlived/ack`, and seven `/api/catalogue*` routes. `GET /api/situations`
+  accepts `ne_id`. `/api/timeline` is unchanged and no longer read by the console.
+- **Behaviour you may notice.** Renaming a situation no longer marks it `open`; an operator's split
+  creates it `open`. While a maintenance window is running, `POST /api/maintenance-windows/{wid}`
+  refuses a change to its start, zone, patch band, targets or rules (409, naming the field) and a
+  changed end in the past (422); name, description, visibility and the end remain editable.
+- **Severity words.** Rank 3 reads `warning` (it read `low`), and alarms nothing can grade read
+  `unplaced`. A script scraping the console's text will see the new words; the API's fields are
+  unchanged.
+- **d3 is removed** from the image (279 706 bytes); the console loads one script.
+

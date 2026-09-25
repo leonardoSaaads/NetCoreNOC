@@ -99,7 +99,7 @@ export class Overview extends Component {
     try {
       const { rangeS } = this.state;
       this.setState({
-        activity: await get(`/api/timeline?buckets=${RANGE_BUCKETS}&range_s=${rangeS}`),
+        activity: await get(`/api/activity/severity?buckets=${RANGE_BUCKETS}&range_s=${rangeS}`),
         activityError: null,
       });
     } catch (error) {
@@ -181,8 +181,8 @@ export class Overview extends Component {
               `viewer` — prime directive 4 again: an operator who cannot see that planned work
               exists reads a quiet estate as a healthy one. */ null}
         ${can("mw.read") ? html`<${PlannedWork} />` : null}
-        <${Estate} nodes=${nodes} />
-        <${Keeping} stats=${stats} ring=${live.ring} rate=${live.trapRate} />
+        <${Estate} nodes=${nodes} edges=${(live.graph && live.graph.edges) || []} />
+        <${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} />
         <section class="panel-block">
           <${SectionHeading} title="Open situations" />
           ${situations.length

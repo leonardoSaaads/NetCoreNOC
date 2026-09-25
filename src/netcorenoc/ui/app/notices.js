@@ -1,48 +1,16 @@
-/* The two disclosures in the top bar: what is wrong, and whether the appliance is keeping up.
+/* The two disclosures in the top bar: what is wrong (the bell), and whether the appliance is
+ * keeping up (`health.js`, which imports the mechanism from here).
  *
- * ## Why they exist, and what left to make room for them (DECISIONS #288, #289)
- *
- * The top bar carried four counters — devices, classes, active alarms, open situations — and at
- * 390 px they wrapped it onto **four rows, 126 px tall**, above 187 px of banners, so **360 px of
- * an 844 px phone** were spent before the work area began. Every one of those numbers is on the
- * Overview and two are on the Situations screen; none of them is something an operator acts on
- * from a chrome strip. They are gone.
- *
- * What replaces them is two controls that hold what an operator *does* act on:
- *
- *   * **the bell** — the operator warnings, which already existed and already interrupted, in a
- *     banner strip that an operator could only read and never return to. Each warning that names a
- *     parameter this console knows about links to Settings; each that does not renders as text
- *     with no affordance, because a control that navigates somewhere unhelpful teaches an operator
- *     that the bell's links are noise;
- *   * **the health control** — CPU, memory and storage, each with a two-hour sparkline. It lives
- *     in `health.js` from v0.16.5, because this file reached the module graph's 17 579-byte
- *     ceiling; the disclosure mechanism it uses is still here and is exported to it.
- *
- * ## Both panels are anchored to the bar, and F111 is why that sentence is repeated
- *
- * v0.16.4 wrote `.topbar { position: relative }` to anchor them and left `.disclosure` positioned
- * above it, so the panels resolved `100%` against a 28 px button and rendered **26 px wide at every
- * width**. Both are in the right-hand group now, beside the account controls, and both open from
- * the bar's right edge.
- *
- * ## The ingest gap stays a banner
- *
- * *"Traps are being dropped right now"* is the single most urgent thing this appliance can say and
- * it is not something an operator should have to open a panel to learn. The bell **also** holds it,
- * so the panel is a complete list rather than a partial one, and the banner above the work area is
- * unchanged in meaning from v0.12.0.
- *
- * ## Both are disclosures, and both close the three ways a disclosure must
- *
- * Escape, a second press of the opener, and a click outside. `aria-expanded` on the opener and
- * `role="dialog"` with a label on the panel, because a collapsed icon-only control is its
- * accessible name and nothing else.
+ * They replaced four counters that wrapped the phone's top bar onto four rows (DECISIONS #288,
+ * #289). Both panels are anchored to the bar's right edge (F111), both close on Escape, a second
+ * press, and a click outside, and the ingest gap stays a banner as well as a bell entry — "traps
+ * are being dropped now" is not something to open a panel to learn.
  */
 
 import { html, Component, cx } from "./dom.js";
 import { Icon } from "./icons.js";
-import { count, plural, score } from "./format.js";
+import { absolute, count, plural } from "./format.js";
+import { get, post, del } from "./api.js";
 import { warningTarget } from "./parameters.js";
 
 /**
@@ -216,38 +184,136 @@ export class Disclosure extends Component {
   }
 }
 
-/** The warnings, with a link to the setting that resolves each one that has one. */
-export function Bell({ stats }) {
-  const items = notices(stats);
-  const urgent = items.some((item) => item.urgent);
-  const label = items.length
-    ? `${plural(items.length, "warning")} — open the list`
-    : "No warnings. Open the list.";
-  return html`<${Disclosure} id="noticePanel" icon="bell" label=${label}
-      title="What needs attention"
-      tone=${urgent ? "alarm" : items.length ? "warn" : null}
-      badge=${items.length || null}>
-    ${items.length === 0
-      ? html`<p class="hint">Nothing. The appliance has raised no warnings and no ingest gap is
-          open.</p>`
-      : html`<ul class="notice-list">${items.map((item, index) => html`
-          <li key=${index} class=${cx(item.urgent && "notice-urgent")}>
-            <${Icon} name=${item.urgent ? "warn" : "info"} />
-            <div class="notice-body">
-              <p class="notice-text">${item.text}</p>
-              ${item.href
-                ? html`<a class="tap notice-link" href=${item.href}>Open the setting →</a>`
-                : null}
-            </div>
-          </li>`)}</ul>`}
-  <//>`;
-}
+/** The snooze intervals, in the words the control uses. `change` is refused for security. */
+const SNOOZES = [["24h", "24 h"], ["7d", "7 days"], ["change", "until it changes"]];
 
 /**
- * Queue depth, p95 latency, the derived trap rate, and the two receiver counters that mean loss.
+ * **The bell** — the warnings, a link to the setting that resolves each one that has one, and a
+ * per-user snooze (v0.22.0, item 1, ADR #387).
  *
- * Every figure here is one `/api/stats` already serves on every poll. The rate is derived in the
- * client between two samples and prints the window it covers, because a rate with no window is a
- * number nobody can act on (DECISIONS #222); until a second sample arrives it says so rather than
- * showing a zero.
+ * The maintainer asked for an ×. A permanently dismissible security warning is how appliances ship
+ * insecure, so the × is a **snooze**: for an interval the operator picks, for them alone, audited,
+ * and keyed on the warning's text so a changed warning returns. A security warning cannot be
+ * snoozed "until it changes". A snoozed warning is not gone: the bell counts it in a muted badge
+ * and lists it under the live ones, where it can be restored. A warning whose condition is fixed
+ * stops being emitted on the next poll whether or not anyone snoozed it.
  */
+export class Bell extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { snoozes: {}, security: {}, offer: null, showSnoozed: false, error: null };
+    this.seen = "";
+  }
+
+  componentDidMount() { this.read(); }
+
+  componentDidUpdate() {
+    const now = (this.props.stats?.warnings ?? []).join("\n");
+    if (now !== this.seen) this.read();
+  }
+
+  /** Which of the current warnings this user has snoozed. Read when the set of warnings changes. */
+  async read() {
+    this.seen = (this.props.stats?.warnings ?? []).join("\n");
+    try {
+      const body = await get("/api/notices");
+      const snoozes = {};
+      const security = {};
+      const digests = {};
+      for (const n of body.notices || []) {
+        digests[n.text] = n.digest;
+        security[n.text] = n.security;
+        if (n.snoozed) snoozes[n.text] = n.snoozed;
+      }
+      this.digests = digests;
+      this.setState({ snoozes, security, error: null });
+    } catch (error) {
+      this.setState({ error });
+    }
+  }
+
+  async snooze(text, mode) {
+    try {
+      await post("/api/notices/snooze", { digest: this.digests[text], mode });
+      this.setState({ offer: null });
+      await this.read();
+    } catch (error) {
+      this.setState({ error });
+    }
+  }
+
+  async restore(text) {
+    try {
+      await del(`/api/notices/snooze/${this.digests[text]}`);
+      await this.read();
+    } catch (error) {
+      this.setState({ error });
+    }
+  }
+
+  render({ stats }, { snoozes, security, offer, showSnoozed, error }) {
+    const items = notices(stats);
+    const live = items.filter((item) => item.urgent || !snoozes[item.text]);
+    const quiet = items.filter((item) => !item.urgent && snoozes[item.text]);
+    const urgent = live.some((item) => item.urgent);
+    const label = live.length
+      ? `${plural(live.length, "warning")}${quiet.length ? `, ${count(quiet.length)} snoozed` : ""}`
+        + " — open the list"
+      : quiet.length ? `${plural(quiet.length, "snoozed warning")}. Open the list.`
+        : "No warnings. Open the list.";
+    const row = (item, snoozed) => html`<li key=${item.text}
+        class=${cx(item.urgent && "notice-urgent", snoozed && "notice-snoozed")}>
+      <${Icon} name=${item.urgent ? "warn" : "info"} />
+      <div class="notice-body">
+        <p class="notice-text">
+          ${security[item.text] ? html`<span class="notice-kind">security</span>${" "}` : null}
+          ${item.text}
+        </p>
+        <div class="notice-acts">
+          ${item.href && !snoozed
+            ? html`<a class="tap notice-link" href=${item.href}>Open the setting →</a>` : null}
+          ${snoozed
+            ? html`<span class="muted">snoozed ${snoozeText(snoozed)}</span>
+                <button type="button" class="tap" onClick=${() => this.restore(item.text)}
+                >Restore</button>`
+            : item.urgent ? null
+              : offer === item.text
+                ? html`<span class="notice-snooze" role="group" aria-label="Snooze for">
+                    ${SNOOZES.filter(([mode]) => !(mode === "change" && security[item.text]))
+                      .map(([mode, words]) => html`<button type="button" class="tap" key=${mode}
+                        onClick=${() => this.snooze(item.text, mode)}>${words}</button>`)}
+                  </span>`
+                : html`<button type="button" class="tap"
+                    onClick=${() => this.setState({ offer: item.text })}>Snooze</button>`}
+        </div>
+      </div>
+    </li>`;
+    return html`<${Disclosure} id="noticePanel" icon="bell" label=${label}
+        title="What needs attention"
+        tone=${urgent ? "alarm" : live.length ? "warn" : null}
+        badge=${live.length || (quiet.length ? html`<span class="notice-muted-count">${quiet.length}</span>`
+          : null)}>
+      ${error ? html`<p class="hint">${error.message}</p>` : null}
+      ${live.length === 0 && !quiet.length
+        ? html`<p class="hint">Nothing to attend to.</p>`
+        : html`<ul class="notice-list">${live.map((item) => row(item, null))}</ul>`}
+      ${quiet.length
+        ? html`<button type="button" class="tap notice-quiet"
+              aria-expanded=${showSnoozed ? "true" : "false"}
+              onClick=${() => this.setState({ showSnoozed: !showSnoozed })}>
+            ${plural(quiet.length, "snoozed warning")}${
+              quiet.some((item) => security[item.text]) ? " (security)" : ""}
+          </button>
+          ${showSnoozed
+            ? html`<ul class="notice-list">${quiet.map((item) => row(item, snoozes[item.text]))}</ul>`
+            : null}`
+        : null}
+    <//>`;
+  }
+}
+
+/** `for 7 days (until 02 Oct 14:00)` / `until it changes`. */
+function snoozeText(snoozed) {
+  if (snoozed.until == null) return "until it changes";
+  return `until ${absolute(snoozed.until)}`;
+}

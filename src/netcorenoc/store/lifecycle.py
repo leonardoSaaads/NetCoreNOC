@@ -77,16 +77,23 @@ class LifecycleMixin(StoreBase):
         # Migration `0021`. Read from the SAME result: two probes of one table would be two
         # answers resolved at two moments, which is the shape of drift `_label_join` avoids.
         self._has_surfaced_window = "surfaced_from_window_id" in alarm_columns
+        # Migration `0024`: when a surfaced alarm was surfaced, and who acknowledged it (#388).
+        self._has_surfaced_ack = "surfaced_at" in alarm_columns
         # Migrations `0020` and `0021`, in one query over the catalogue rather than two
         # `PRAGMA table_info` calls: the question is whether the tables exist at all, which
         # `table_info` answers with an empty result and not an error, so asking it would read the
         # same as a table with no columns.
         cur = await self.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' "
-            "AND name IN ('organization', 'maintenance_window')"
+            "AND name IN ('organization', 'maintenance_window', 'class_rule', 'notice_snooze')"
         )
         present = {str(row[0]) for row in await cur.fetchall()}
-        self._has_maintenance = present == {"organization", "maintenance_window"}
+        self._has_maintenance = {"organization", "maintenance_window"} <= present
+        # v0.22.0: `0023` and `0024`, from the same catalogue read. The catalogue is consulted on
+        # every census poll and the snoozes on every warning read, so on a database frozen below
+        # them both answer "nothing declared" instead of naming a table that is not there.
+        self._has_class_rules = "class_rule" in present
+        self._has_notice_snooze = "notice_snooze" in present
 
     async def _migrate(self) -> None:
         """Apply the pending scripts, and **say which** (DECISIONS #227).

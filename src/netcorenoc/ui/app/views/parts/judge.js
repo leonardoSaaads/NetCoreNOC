@@ -118,6 +118,16 @@ export class Detail extends Component {
     }
   }
 
+  /** The "outlived a window" marker has been seen (#388). The alarm stays active. */
+  async ackOutlived(alarmId) {
+    try {
+      await post(`/api/alarms/${alarmId}/outlived/ack`, {});
+      this.props.onChanged();
+    } catch (error) {
+      this.setState({ outcome: { ok: false, error } });
+    }
+  }
+
   /**
    * Clear every active member at once, or only the marked ones.
    *
@@ -253,6 +263,7 @@ export class Detail extends Component {
                   onMark=${(id, on) => this.toggleMark(id, on)}
                   onMarkAll=${(on) => this.markAll(on)}
                   onClear=${(id) => this.clearAlarm(id)}
+                  onAck=${(id) => this.ackOutlived(id)}
                   onDeclared=${() => this.props.onChanged()} />
 
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />

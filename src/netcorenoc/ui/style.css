@@ -103,16 +103,18 @@
    * the red-orange axis and are the pair that collides under deuteranopia, so the ladder
    * descends in weight from a deep saturated red to a light neutral — an operator who cannot
    * separate the hues still reads the order, and the glyph and the word carry the rest. */
-  --sev-crit-fill: #a01d12;
-  --sev-crit-ink: #ffe9e6;
+  --sev-critical-fill: #a01d12;
+  --sev-critical-ink: #ffe9e6;
   --sev-major-fill: #c8620a;
   --sev-major-ink: #fff3e4;
   --sev-minor-fill: #d8b02a;
   --sev-minor-ink: #221a00;
-  --sev-low-fill: #35617f;
-  --sev-low-ink: #e6f2fb;
-  --sev-unknown-fill: #2b323d;
-  --sev-unknown-ink: #a8b2be;
+  --sev-warning-fill: #35617f;
+  --sev-warning-ink: #e6f2fb;
+  --sev-minor-line: #d8b02a;
+  --sev-warning-line: #6fa8d6;
+  --sev-unplaced-fill: #2b323d;
+  --sev-unplaced-ink: #a8b2be;
 }
 
 /* System preference decides only when no explicit choice is stamped. */
@@ -146,16 +148,20 @@
 
     /* The same ladder, re-derived for a light ground: the fills darken and the inks invert
      * where they must, so the luminosity ORDER is preserved rather than the literal colours. */
-    --sev-crit-fill: #a3170b;
-    --sev-crit-ink: #fff1ef;
+    --sev-critical-fill: #a3170b;
+    --sev-critical-ink: #fff1ef;
     --sev-major-fill: #b4600a;
     --sev-major-ink: #fff6ea;
     --sev-minor-fill: #f0d264;
     --sev-minor-ink: #2e2400;
-    --sev-low-fill: #cfe0ec;
-    --sev-low-ink: #123c58;
-    --sev-unknown-fill: #e6e9ee;
-    --sev-unknown-ink: #5a6472;
+    --sev-warning-fill: #cfe0ec;
+    --sev-warning-ink: #123c58;
+    --sev-minor-line: #8a6d00;
+    --sev-warning-line: #35617f;
+    --sev-minor-line: #8a6d00;
+  --sev-warning-line: #35617f;
+  --sev-unplaced-fill: #e6e9ee;
+    --sev-unplaced-ink: #5a6472;
   }
 }
 
@@ -189,16 +195,16 @@
 
   /* The light ladder again, so the explicit choice wins over the system setting in BOTH
    * directions — the rule this stylesheet's header states, applied to the pills. */
-  --sev-crit-fill: #a3170b;
-  --sev-crit-ink: #fff1ef;
+  --sev-critical-fill: #a3170b;
+  --sev-critical-ink: #fff1ef;
   --sev-major-fill: #b4600a;
   --sev-major-ink: #fff6ea;
   --sev-minor-fill: #f0d264;
   --sev-minor-ink: #2e2400;
-  --sev-low-fill: #cfe0ec;
-  --sev-low-ink: #123c58;
-  --sev-unknown-fill: #e6e9ee;
-  --sev-unknown-ink: #5a6472;
+  --sev-warning-fill: #cfe0ec;
+  --sev-warning-ink: #123c58;
+  --sev-unplaced-fill: #e6e9ee;
+  --sev-unplaced-ink: #5a6472;
 }
 
 * { box-sizing: border-box; }
@@ -492,6 +498,8 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   border-bottom: 1px solid var(--line);
   background: var(--bg-raised);
   flex-wrap: wrap;
+  /* The containing block for both disclosure panels (F111) — see `.disclosure-panel`. */
+  position: relative;
 }
 .topbar-live, .topbar-who { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 /* A hairline between the operator's two status controls and the operator's identity. Both belong
@@ -551,7 +559,6 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
    from the **right** edge — the convention every console the operators also use follows, and the
    one that keeps the panel under the control that opened it. Only one is ever open: pressing the
    second opener is a click outside the first, which is what closes it. */
-.topbar { position: relative; }
 .disclosure-panel {
   position: absolute; top: calc(100% + var(--space-1)); z-index: 30;
   right: var(--space-3); left: auto;
@@ -601,7 +608,19 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 .notice-urgent .icon-svg { color: var(--alarm); }
 .notice-body { flex: 1 1 auto; min-width: 0; }
 .notice-text { margin: 0; overflow-wrap: anywhere; line-height: 1.45; }
-.notice-link { display: inline-block; margin-top: var(--space-1); white-space: nowrap; }
+.notice-link { display: inline-block; white-space: nowrap; }
+/* v0.22.0 (item 1): the snooze. Security warnings say so in words; a snoozed one is dimmed and
+   listed under the live ones, and the bell keeps a muted count of them. */
+.notice-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-1); }
+.notice-snooze { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+.notice-kind {
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  color: var(--alarm);
+}
+.notice-snoozed .notice-text { color: var(--fg-muted); }
+.notice-quiet { margin-top: var(--space-2); }
+/* The bell's count when every warning is snoozed: still a number, visibly quieter. */
+.notice-muted-count { opacity: 0.6; }
 .health-state {
   font-size: var(--fs-lg); font-weight: 600; margin: 0 0 var(--space-3);
 }
@@ -645,6 +664,7 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
 }
 .meter-detail { font-size: var(--fs-xs); color: var(--fg-dim); min-width: 0; }
+.meter-span { margin: 0; font-size: var(--fs-xs); color: var(--fg-dim); text-align: right; }
 /* `preserveAspectRatio="none"` on the svg means the 100x24 viewBox stretches to whatever box it
    lands in, so the stroke must not scale with it: `vector-effect` keeps the line 1px at any width.
    Without it a 208px-wide sparkline draws a 2px-thick horizontal and a hairline vertical. */
@@ -674,6 +694,19 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
  * The height is a custom property so a caller can ask for a taller plot without a second class. */
 .chart-block { margin: var(--space-4) 0; }
 .chart-block:first-child { margin-top: 0; }
+/* **Inside a grid a chart has no vertical margin, and every head is one line** (v0.22.0, #380).
+   `:first-child` above zeroed the FIRST chart's top margin and left the rest at --space-4, so in a
+   row of four the first plot sat 16 px above its neighbours; and a head that wrapped ("QUEUE DEPTH
+   LATEST 0 traps") pushed one plot a line lower again. The grid's gap is the spacing. */
+.chart-grid > .chart-block { margin: 0; }
+.chart-grid .chart-head { flex-wrap: nowrap; }
+.chart-grid .chart-title {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chart-grid .chart-latest { white-space: nowrap; }
+.chart-grid .chart-latest-kind {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+}
 /* Four host charts. `auto-fit` with a **150 px** minimum, so they are two columns at 390 px and
    four at 1440 with no breakpoint, and the reading order never changes — which is what lets an
    operator learn where CPU is and find it there at every width.
@@ -852,40 +885,13 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 .severity-none { margin-block: var(--space-2); }
 /* The glyph leads the label, so the band is legible by SHAPE before colour or width — the fourth
    encoding the accessibility floor asks for, and the one that survives a greyscale monitor. */
-.severity-band .chart-bar-label { font-variant-numeric: tabular-nums; }
-
-/* The estate map (DECISIONS #310): one cell per element, sorted by load, deterministic.
-   `auto-fill` with a minimum, so the same grid is four columns at 390 px and twelve at 1440 without
-   a breakpoint — and the reading order is unchanged at every width, which is what makes two glances
-   comparable. */
-.chart-map {
-  display: grid; gap: var(--space-1);
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+.severity-band .chart-bar-label { font-variant-numeric: tabular-nums; overflow: visible; }
+.severity-band .chart-bar-row { grid-template-columns: minmax(0, 10.5em) 1fr auto; }
+/* A severity bar is drawn in its band's colour; `unplaced` in the muted ink, dashed like its chip. */
+.chart-bar-fill[class*="chart-sev-"] { background: currentColor; }
+.chart-bar-fill.chart-sev-unplaced {
+  background: repeating-linear-gradient(90deg, currentColor 0 6px, transparent 6px 9px);
 }
-.map-cell {
-  display: grid; gap: 2px; padding: var(--space-2) var(--space-2) var(--space-1);
-  border: 1px solid var(--line); border-radius: var(--radius-1);
-  background: var(--bg-sunken); min-width: 0;
-}
-.map-name {
-  font-size: var(--fs-xs); color: var(--fg-muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.map-value {
-  font-family: var(--mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
-  color: var(--fg);
-}
-.map-share { display: block; height: 3px; border-radius: 999px; background: var(--bg); }
-.map-share-fill { display: block; height: 100%; border-radius: 999px; background: var(--fg-dim); }
-/* The four-step band. One of three encodings per cell — the band, the share bar and the printed
-   count — so none of them is load-bearing alone (#277's rule for severity, applied here). */
-.map-band-0 { border-color: var(--line); }
-.map-band-1 { border-color: var(--line-strong); }
-.map-band-2 { border-color: var(--warn); background: var(--warn-bg); }
-.map-band-2 .map-share-fill { background: var(--warn); }
-.map-band-3 { border-color: var(--alarm); background: var(--alarm-bg); }
-.map-band-3 .map-share-fill { background: var(--alarm); }
-.map-band-3 .map-value { color: var(--alarm); font-weight: 600; }
 
 /* ---------- urgency: animated, and never ONLY animated (v0.16.6, DECISIONS #309) -------------
  *
@@ -898,19 +904,11 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
  * the preference is a property of WHERE the animation lives rather than of anyone remembering to
  * check. A JS-driven pulse would have had to re-implement that rule, and a guard could not check it
  * by reading one file. */
-.chart-urgent { outline: 3px solid var(--alarm); outline-offset: -1px; }
-.chart-urgent { animation: ncn-urgent 1.8s ease-in-out infinite; }
 @keyframes ncn-urgent {
-  0%, 100% { outline-color: var(--alarm); }
-  50% { outline-color: transparent; }
+  0%, 100% { box-shadow: 0 0 0 2px var(--bg-sunken), 0 0 0 5px var(--alarm); }
+  50% { box-shadow: 0 0 0 2px var(--bg-sunken), 0 0 0 5px transparent; }
 }
-circle.node.urgent { animation: ncn-urgent-node 1.8s ease-in-out infinite; }
-/* The node's static half is its stroke, for the same reason the cell's is its ring. */
-circle.node.urgent { stroke: var(--fg); stroke-width: 2; }
-@keyframes ncn-urgent-node {
-  0%, 100% { stroke-opacity: 0.9; }
-  50% { stroke-opacity: 0.15; }
-}
+
 /* The four correlation counters that used to be the whole panel, now one secondary line: the word
    above answers "is it keeping up" and these are for when the answer is no. */
 .health-sub {
@@ -1016,31 +1014,32 @@ tr.row-quiet { color: var(--fg-muted); }
 /* ---------- severity: colour AND glyph AND text ---------- */
 
 td.sev { white-space: nowrap; }
-.sev-glyph { font-family: var(--mono); margin-right: var(--space-1); }
-
-/* The pill: filled, rounded, and read at a glance rather than parsed (DECISIONS #277). It is an
- * inline-flex so the glyph and the word share one baseline at 11 px, and it never wraps — a
- * severity broken across two lines is the opposite of what a badge is for. */
+/* The chip: a shape AND a fill AND a word (v0.22.0, item 3; DECISIONS #277, #386). Filled and
+ * rounded so it is read at a glance; inline-flex so shape and word share one baseline; never
+ * wrapped. The shape is SVG drawn in the ink colour, so it keeps its outline in greyscale. */
+.sev-glyph { width: 0.95em; height: 0.95em; flex: none; fill: currentColor; }
+.sev-hollow { fill: none; stroke: currentColor; stroke-width: 1.7; }
+.sev-dashed { stroke-dasharray: 2.4 1.9; }
 .sev-pill {
   display: inline-flex; align-items: center; gap: var(--space-1);
   min-height: 18px; padding: 0 var(--space-2);
   border-radius: 999px; font-size: var(--fs-xs); font-weight: 600;
   letter-spacing: 0.03em; text-transform: uppercase; white-space: nowrap;
 }
-.sev-pill .sev-glyph { margin-right: 0; }
-/* The declaration mark (v0.16.3). A fourth encoding on the pill, and deliberately not a fifth
- * colour: the four fills are the luminosity ladder that carries the RANK, and reusing that channel
- * to also carry the PROVENANCE would make two facts share one signal. `*` is inside the pill so it
- * cannot separate from what it qualifies, and the pill's `title` says it in words. */
+.sev-count { font-family: var(--mono); font-weight: 600; letter-spacing: 0; }
+/* The declaration mark: a fourth encoding, and deliberately not a fifth colour — the fills are the
+ * luminosity ladder carrying the RANK, and the title says it in words. */
 .sev-pill .sev-mark { font-weight: 700; opacity: 0.75; margin-left: -1px; }
-.sev-crit { background: var(--sev-crit-fill); color: var(--sev-crit-ink); }
+.sev-critical { background: var(--sev-critical-fill); color: var(--sev-critical-ink); }
 .sev-major { background: var(--sev-major-fill); color: var(--sev-major-ink); }
 .sev-minor { background: var(--sev-minor-fill); color: var(--sev-minor-ink); }
-.sev-low { background: var(--sev-low-fill); color: var(--sev-low-ink); }
-/* The one band that is not a placement on the scale, and it says so by not being solid: a dashed
- * outline rather than a fill, because a filled pill would read as a level. */
-.sev-unknown {
-  background: var(--sev-unknown-fill); color: var(--sev-unknown-ink);
+.sev-warning { background: var(--sev-warning-fill); color: var(--sev-warning-ink); }
+/* The two that are not placements on the scale say so by not being solid. */
+.sev-indeterminate {
+  background: transparent; color: var(--fg-muted); border: 1px solid var(--line-strong);
+}
+.sev-unplaced {
+  background: var(--sev-unplaced-fill); color: var(--sev-unplaced-ink);
   border: 1px dashed var(--line-strong); font-weight: 500;
 }
 
@@ -1268,13 +1267,13 @@ table.members th:first-child, table.members td:first-child { width: 44px; }
   background: none; color: inherit;
   font: inherit; line-height: inherit;
   cursor: pointer;
+  text-decoration: underline dotted var(--line-strong); text-underline-offset: 3px;
 }
 /* **The affordance has to be visible at rest, not on hover.** Measured in Chromium at 1280 px:
    with the underline only on `:hover`, a column of device names is indistinguishable from the
    plain text it replaced, and an operator who never happens to hover never learns the value is
    the control. A faint dotted underline at rest is the long-standing "edit in place" cue; it
    goes solid and takes the accent on hover, so the hover still says "this one". */
-.cell-edit { text-decoration: underline dotted var(--line-strong); text-underline-offset: 3px; }
 .cell-edit:hover { text-decoration: underline solid var(--accent); color: var(--accent); }
 .cell-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* The severity badge carries its own colour and padding; the button around it adds neither. */
@@ -1355,24 +1354,82 @@ td.sev .cell-edit { display: inline-block; width: auto; }
 .term-num { font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-muted); }
 .linkpair { color: var(--fg-muted); }
 
-/* ---------- graph + timeline ---------- */
+/* ---------- the network graph (v0.22.0, #383; items 6, 11) ----------------------------------
+   `app/netgraph.js`: a box of a fixed aspect, an SVG layer of edges stretched to it, and nodes and
+   labels as HTML positioned by percentage, so a node is the same size and a label the same type at
+   every width. The container query picks which labels show: `layout.labels` decided, for three
+   reference widths, which fit without overlapping a label or a node. */
+.graph-bar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.netgraph {
+  position: relative; width: 100%; container: netgraph / inline-size;
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-sunken);
+  margin-bottom: var(--space-4); overflow: hidden;
+}
+.netgraph-edges { position: absolute; inset: 0; width: 100%; height: 100%; }
+.gedge { stroke: var(--fg-dim); vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.gedge-lit { stroke: var(--accent); }
+.gnode {
+  position: absolute; width: calc(2 * var(--r)); height: calc(2 * var(--r));
+  min-width: 0; min-height: 0; padding: 0; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 1.5px solid var(--bg-raised); cursor: pointer;
+}
+/* The hit area meets the tap floor even where the dot is small: an invisible ring around it. */
+.gnode::after {
+  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: max(var(--tap), 100%); height: max(var(--tap), 100%); border-radius: 50%;
+}
+.gnode-alarm { background: var(--alarm); }
+.gnode-quiet { background: var(--quiet); }
+/* Urgent: a static ring (what reduced motion leaves) and a pulse (what draws an eye) — #309. */
+.gnode-urgent {
+  box-shadow: 0 0 0 2px var(--bg-sunken), 0 0 0 5px var(--alarm);
+  animation: ncn-urgent 1.8s ease-in-out infinite;
+}
+.gnode-on, .gnode:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.glabel {
+  position: absolute; display: none; transform: translateY(-50%); white-space: nowrap;
+  font-size: 11px; line-height: 14px; color: var(--fg-muted); pointer-events: none;
+  padding: 0 3px; border-radius: 3px; background: color-mix(in srgb, var(--bg-sunken) 80%, transparent);
+}
+.glabel-r { margin-left: calc(var(--r) + 3px); }
+.glabel-l { margin-left: calc(-1 * var(--r) - 3px); transform: translate(-100%, -50%); }
+.glabel-b { margin-top: calc(var(--r) + 1px); transform: translate(-50%, 0); }
+@container netgraph (max-width: 520px) { .gl-s { display: block; } }
+@container netgraph (min-width: 521px) and (max-width: 900px) { .gl-m { display: block; } }
+@container netgraph (min-width: 901px) { .gl-l { display: block; } }
+.gnode:hover + .glabel, .gnode:focus-visible + .glabel, .glabel.gl-on {
+  display: block; z-index: 3; color: var(--fg); background: var(--bg-raised);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+}
+.netgraph-compact { margin-bottom: var(--space-2); }
 
-#graphwrap { position: relative; height: 460px; border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-sunken); }
-#graph, #timeline { width: 100%; height: 100%; display: block; }
-#timeline { height: 240px; }
-.legend { position: absolute; bottom: var(--space-2); left: var(--space-2); display: flex; gap: var(--space-3); font-size: var(--fs-xs); color: var(--fg-muted); }
-.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: var(--space-1); }
-.legend i.alarm { background: var(--alarm); }
-.legend i.ok { background: var(--quiet); }
-.legend i.edge { background: var(--line-strong); border-radius: 0; height: 2px; }
-circle.node { fill: var(--quiet); }
-circle.node.alarm { fill: var(--alarm); }
-line.edge { stroke: var(--line-strong); }
-text.node-label { fill: var(--fg-muted); font-size: 10px; }
-circle.tl-raise { fill: var(--alarm); }
-circle.tl-clear { fill: var(--quiet); }
-.axis text { fill: var(--fg-muted); font-size: 10px; }
-.axis path, .axis line { stroke: var(--line); }
+/* The selected element's panel: beside the graph on a wide screen, beneath it on a narrow one. */
+.graph-split { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: var(--space-4); align-items: start; }
+@media (max-width: 900px) { .graph-split { grid-template-columns: minmax(0, 1fr); } }
+.elpanel {
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised);
+  padding: var(--space-3); margin-bottom: var(--space-4); font-size: var(--fs-sm);
+}
+.elpanel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.elpanel-name { margin: 0; font-size: var(--fs-lg); overflow-wrap: anywhere; }
+.elpanel-sub { margin: var(--space-1) 0 var(--space-2); color: var(--fg-muted); }
+.elpanel-sev { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-2); }
+.elpanel-title {
+  margin: var(--space-3) 0 var(--space-1); font-size: var(--fs-xs); text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-muted);
+}
+.elpanel .mini-list li { flex-wrap: wrap; }
+.elpanel-sname, .elpanel-trap { overflow-wrap: anywhere; min-width: 0; }
+.elpanel-trap { font-family: var(--mono); font-size: var(--fs-xs); }
+.elpanel-acts {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+  margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--line);
+}
+.load-bar {
+  display: block; width: 100%; min-width: 4rem; height: 6px; margin-top: 0.5em;
+  border-radius: 999px; background: var(--bg-sunken); overflow: hidden;
+}
+.load-fill { display: block; height: 100%; background: var(--alarm); }
 
 /* ---------- v0.16.1: the search note and the inline name form ---------- */
 
@@ -1758,7 +1815,7 @@ p.corr-line { cursor: default; }
 }
 .verdict-ok { border-left-color: var(--quiet); }
 .verdict-warn { border-left-color: var(--warn); background: var(--warn-bg); }
-.verdict-bad { border-left-color: var(--sev-crit-fill); background: var(--warn-bg); }
+.verdict-bad { border-left-color: var(--sev-critical-fill); background: var(--warn-bg); }
 .verdict-quiet { color: var(--fg-dim); }
 
 /* --- how far the evidence is from a model (v0.19.0) -----------------------------------------
@@ -1766,13 +1823,13 @@ p.corr-line { cursor: default; }
    "2 of 50" and that is the figure an operator is actually tracking, so the bar carries the
    shape and the pair beside it carries the fact. */
 .models { margin-bottom: var(--space-4); }
-.meter {
+.floor {
   display: grid; grid-template-columns: minmax(0, 1fr) 2fr auto;
   align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);
   font-size: var(--fs-sm);
 }
-.meter-label { color: var(--fg-dim); min-width: 0; }
-.meter-track {
+.floor-label { color: var(--fg-dim); min-width: 0; }
+.floor-track {
   display: block; height: 8px; border-radius: 4px; background: var(--bg-sunken);
   border: 1px solid var(--line); overflow: hidden;
 }
@@ -1780,9 +1837,9 @@ p.corr-line { cursor: default; }
   display: flex; align-items: center; gap: var(--space-2);
   margin-top: var(--space-2); font-size: var(--fs-xs);
 }
-.meter-wide { flex: 1 1 auto; }
-.meter-fill { display: block; height: 100%; background: var(--accent); }
-.meter-value { font-variant-numeric: tabular-nums; color: var(--fg-dim); white-space: nowrap; }
+.floor-wide { flex: 1 1 auto; }
+.floor-fill { display: block; height: 100%; background: var(--accent); }
+.floor-value { font-variant-numeric: tabular-nums; color: var(--fg-dim); white-space: nowrap; }
 .models-head {
   margin: 0 0 var(--space-2); font-size: var(--fs-xs); text-transform: uppercase;
   letter-spacing: .04em; color: var(--fg-muted);
@@ -1794,8 +1851,8 @@ p.corr-line { cursor: default; }
   display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
 }
 @media (max-width: 560px) {
-  .meter { grid-template-columns: minmax(0, 1fr) auto; }
-  .meter-track { grid-column: 1 / -1; }
+  .floor { grid-template-columns: minmax(0, 1fr) auto; }
+  .floor-track { grid-column: 1 / -1; }
 }
 
 .models-next {
@@ -1812,6 +1869,7 @@ p.corr-line { cursor: default; }
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4); align-items: start;
 }
+.grid-2 > .panel-block { margin: 0; }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: minmax(0, 1fr); } }
 
 .ranges { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-4); }
@@ -2036,7 +2094,7 @@ p.corr-line { cursor: default; }
 .mw-submit .muted { font-size: var(--fs-sm); }
 
 /* ---- the upcoming list ---- */
-.mw-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.mw-list { display: flex; flex-direction: column; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
 .mw-row {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -2045,7 +2103,7 @@ p.corr-line { cursor: default; }
 .mw-row-name { font-weight: 600; }
 .mw-row-when { color: var(--fg-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .mw-row .row-actions, .mw-row .mw-actions { margin-left: auto; display: flex; gap: var(--space-2); }
-.mw-mark, .mw-surfaced { display: inline-flex; align-items: center; gap: var(--space-2); }
+.mw-mark { display: inline-flex; align-items: center; gap: var(--space-2); }
 
 @media (max-width: 720px) {
   .mw-card { padding: var(--space-3); }
@@ -2065,3 +2123,186 @@ p.corr-line { cursor: default; }
 .mw-sum-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-role="planned-work"] .mini-list li { display: flex; align-items: center; gap: var(--space-2); }
 [data-role="planned-work"] .mini-list .mw-row-when { margin-left: auto; }
+
+/* ---------- the timeline (v0.22.0, F155, #381) ----------------------------------------------
+   The lanes are a matrix of equal slices of the chosen window, so a cell's position is its time.
+   One hue at a varying opacity carries a magnitude, never a category, and every cell has its count
+   as a `<title>`. The name column is fixed, so rows align at every width; at 390 px the name
+   column narrows and truncates with the full name in its `title`. */
+.tl-controls { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.tl-controls .ranges { margin-bottom: 0; }
+.lanes { margin: 0 0 var(--space-4); }
+.lanes-grid { display: grid; gap: 2px; }
+.lane {
+  display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) 4.5rem;
+  align-items: center; gap: var(--space-2); font-size: var(--fs-xs);
+}
+.lane-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-muted); }
+.lane-cells {
+  display: block; width: 100%; height: 18px;
+  background: var(--bg-sunken); border-radius: var(--radius-1);
+}
+.lane-cells rect { fill: var(--alarm); }
+.lane-total { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lanes-axis {
+  display: flex; justify-content: space-between; margin: 2px 4.5rem 0 11rem;
+  padding-left: var(--space-2); padding-right: var(--space-2);
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim);
+}
+@media (max-width: 460px) {
+  .lane { grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr) 3rem; }
+  .lanes-axis { margin-left: 6.5rem; margin-right: 3rem; }
+}
+.bursts .burst-when { display: block; }
+.bursts .burst-abs, .bursts .burst-oid {
+  display: block; font-size: var(--fs-xs); color: var(--fg-dim); font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+.bursts .burst-name { overflow-wrap: break-word; }
+.bursts .burst-vendor { color: var(--fg-muted); }
+.kind { white-space: nowrap; }
+.kind-raise { color: var(--alarm); }
+.kind-clear { color: var(--quiet); }
+.pager {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2);
+  font-size: var(--fs-sm); color: var(--fg-muted);
+}
+.pager span { margin-right: auto; }
+@media (max-width: 460px) {
+  /* A phone keeps when, where, which trap, the mark and the count; the OID stays in the cell's
+     title and the word "raise"/"clear" in the accessibility tree. */
+  .bursts .burst-abs, .bursts .burst-oid { display: none; }
+  .bursts .kind-word {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+  }
+}
+
+/* ---------- the info icon (v0.22.0) ---------------------------------------------------------
+   One component (`app/info.js`). The text is ALWAYS rendered and only clipped while closed, so a
+   screen reader reaches it through `aria-describedby` without the popover ever opening. The
+   opener meets the tap floor through its padding while drawing a small circle. */
+.info { position: relative; display: inline-flex; vertical-align: middle; margin-left: var(--space-1); }
+.info-open {
+  min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; background: none;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  color: var(--fg-dim);
+}
+.info-open span {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%; border: 1px solid currentColor;
+  font: italic 600 11px/1 var(--serif, Georgia, serif); text-transform: none; letter-spacing: 0;
+}
+.info-open:hover, .info-open[aria-expanded="true"] { color: var(--accent); }
+.info-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 50%; }
+.info-text {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+  white-space: normal;
+}
+.info-text.info-shown {
+  width: min(22rem, calc(100vw - 2 * var(--space-4))); height: auto; clip: auto; overflow: visible;
+  top: calc(100% + 2px); left: 50%; transform: translateX(-50%); z-index: 40;
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-2); background: var(--bg-raised); color: var(--fg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 25%);
+  font: 400 var(--fs-sm)/1.5 var(--sans); text-transform: none; letter-spacing: 0;
+}
+@media (max-width: 460px) {
+  .info { position: static; }
+  .info-text.info-shown { left: var(--space-4); right: var(--space-4); transform: none; width: auto; }
+}
+
+/* ---------- severity over time (v0.22.0, item 4) --------------------------------------------
+   One line per band, told apart by DASH as well as colour, and the legend carries the band's
+   shape and word: three encodings, none of them colour alone. `unplaced` is a band like the others
+   and is drawn, labelled, in the muted ink. */
+.chart-sev-critical { color: var(--sev-critical-fill); }
+.chart-sev-major { color: var(--sev-major-fill); }
+.chart-sev-minor { color: var(--sev-minor-line); }
+.chart-sev-warning { color: var(--sev-warning-line); }
+.chart-sev-indeterminate { color: var(--fg-muted); }
+.chart-sev-unplaced { color: var(--fg-dim); }
+.chart-sev-vendor { color: var(--accent); }
+.chart-line[class*="chart-sev-"] polyline { stroke: currentColor; stroke-width: 1.8; }
+.chart-sev-major polyline, .chart-sev-major .chart-dash-sample line { stroke-dasharray: 7 3; }
+.chart-sev-minor polyline, .chart-sev-minor .chart-dash-sample line { stroke-dasharray: 2 2.5; }
+.chart-sev-warning polyline, .chart-sev-warning .chart-dash-sample line { stroke-dasharray: 8 2 2 2; }
+.chart-sev-indeterminate polyline, .chart-sev-indeterminate .chart-dash-sample line {
+  stroke-dasharray: 1 3;
+}
+.chart-sev-unplaced polyline, .chart-sev-unplaced .chart-dash-sample line { stroke-dasharray: 4 4; }
+.chart-legend .sev-glyph { width: 11px; height: 11px; }
+.chart-dash-sample { width: 16px; height: 4px; flex: none; overflow: visible; }
+.chart-dash-sample line { stroke: currentColor; stroke-width: 2; }
+
+/* ---------- the "outlived a maintenance window" marker (v0.22.0, item 8, #388) --------------
+   A small badge, not a sentence in the row; the sentence is its accessible name and title. */
+.mw-outlived { display: inline-flex; align-items: center; gap: 2px; margin-left: var(--space-1); }
+.mw-outlived-badge {
+  font-size: var(--fs-xs); font-weight: 600; padding: 0 var(--space-1); border-radius: var(--radius-1);
+  border: 1px solid var(--alarm); color: var(--alarm); white-space: nowrap;
+}
+.mw-outlived-ack {
+  min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; background: none;
+  color: var(--fg-dim); cursor: pointer;
+}
+.mw-outlived-ack:hover { color: var(--accent); }
+.disclosure-badge:has(.notice-muted-count) { background: var(--fg-dim); }
+
+/* ---------- the trap catalogue (v0.22.0, items 16-18) ---------------------------------------- */
+.cat-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.cat-bar input[type="search"] { flex: 1 1 14rem; min-width: 0; }
+.cat-name { font-weight: 500; overflow-wrap: anywhere; }
+/* The chip and where it came from wrap under each other on a phone instead of leaving the cell. */
+@media (max-width: 560px) { .wide-only { display: none; } }
+.cat-sev { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); white-space: normal; }
+.cat-oid {
+  display: block; font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim);
+  overflow-wrap: anywhere;
+}
+.cat-source {
+  font-size: var(--fs-xs); color: var(--fg-muted); border: 1px solid var(--line);
+  border-radius: var(--radius-1); padding: 0 var(--space-1); white-space: nowrap;
+}
+.oid-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+.oid-crumbs [aria-current] { font-weight: 700; color: var(--fg); }
+.oid-jump { margin-left: auto; }
+.oid-jump input { width: 13rem; max-width: 100%; font-family: var(--mono); font-size: var(--fs-sm); }
+.oid-here { margin: var(--space-2) 0; overflow-wrap: anywhere; }
+.oid-rule { margin: var(--space-1) 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+.oid-name { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; }
+.oid-name input { flex: 1 1 12rem; min-width: 0; }
+.oid-exact { font-size: var(--fs-sm); color: var(--fg-muted); }
+.oid-children {
+  list-style: none; margin: var(--space-2) 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: var(--space-1);
+  max-height: 16rem; overflow-y: auto;
+}
+.oid-child {
+  width: 100%; display: flex; gap: var(--space-2); align-items: baseline; text-align: left;
+  padding: var(--space-1) var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-1);
+  background: var(--bg-sunken); cursor: pointer; overflow: hidden;
+}
+.oid-child span:nth-child(2) { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oid-child:hover { border-color: var(--accent); }
+.importbox .import-pick { display: block; margin: var(--space-2) 0; }
+.import-report { margin-top: var(--space-2); }
+.import-refused { border-left: 3px solid var(--alarm); padding-left: var(--space-2); }
+.import-held { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+
+/* ---------- a maintenance window, opened (v0.22.0, item 19) --------------------------------- */
+button.mw-row-name {
+  border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer;
+  text-align: left; min-height: var(--tap);
+}
+.mw-detail {
+  flex-basis: 100%; margin-top: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised);
+}
+.mw-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: var(--space-2); margin: var(--space-2) 0; }
+.mw-facts dt { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--fg-muted); }
+.mw-facts dd { margin: 0; }
+.mw-sub { margin: var(--space-3) 0 var(--space-1); font-size: var(--fs-sm); }
+.mw-dtargets, .mw-history { margin: 0; padding-left: var(--space-4); font-size: var(--fs-sm); }
+.mw-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
+.mw-shorten { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+.timeline-repeated { margin: 0 0 var(--space-2); font-size: var(--fs-sm); }

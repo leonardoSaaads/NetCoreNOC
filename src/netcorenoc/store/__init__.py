@@ -22,10 +22,14 @@ import asyncio
 
 import aiosqlite
 
+from netcorenoc.store.activity import ActivityMixin
 from netcorenoc.store.alarms import AlarmMixin
+from netcorenoc.store.attention import AttentionMixin
 from netcorenoc.store.audit_log import AuditLogMixin
 from netcorenoc.store.auth import AuthMixin
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.catalogue_reads import CatalogueReadMixin
+from netcorenoc.store.class_rules import ClassRuleMixin
 from netcorenoc.store.dataset import (
     MAX_CLIENT_MEMBERS,
     DatasetMixin,
@@ -34,6 +38,7 @@ from netcorenoc.store.devices import DeviceMixin
 from netcorenoc.store.entities import EntityMixin
 from netcorenoc.store.feedback import FeedbackMixin
 from netcorenoc.store.governance import GovernanceMixin
+from netcorenoc.store.host_samples import HostSampleMixin
 from netcorenoc.store.idle import IdleMixin
 from netcorenoc.store.ingest_gaps import IngestGapMixin
 from netcorenoc.store.learned import LearnedMixin
@@ -87,11 +92,16 @@ class Store(
     IngestGapMixin,
     StateClearMixin,
     EntityMixin,
+    ActivityMixin,
+    CatalogueReadMixin,
     ReadModelsMixin,
+    ClassRuleMixin,
     # v0.20.0. The timeline's two reads and their shared scope builder, off
     # `ReadModelsMixin` at the 400-line guard. A plain `StoreBase` mixin: it overrides no
     # name and nothing overrides it, so its position here is only readability.
     TimelineMixin,
+    HostSampleMixin,
+    AttentionMixin,
     SituationReadsMixin,
     GovernanceMixin,
     FeedbackMixin,
@@ -155,3 +165,6 @@ class Store(
         self._has_severity_source: bool = False
         self._has_surfaced_window: bool = False
         self._has_maintenance: bool = False
+        self._has_class_rules: bool = False
+        self._has_surfaced_ack: bool = False
+        self._has_notice_snooze: bool = False

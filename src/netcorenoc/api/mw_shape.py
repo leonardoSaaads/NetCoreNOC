@@ -108,6 +108,56 @@ class WindowAccess:
         ]
 
 
+#: The rule-row fields compared when deciding whether an edit changed what a window collects.
+_RULE_KEYS = (
+    "ne_id",
+    "kind",
+    "severity_rank",
+    "oid_root",
+    "match_on",
+    "slot_starts_at",
+    "slot_ends_at",
+)
+
+
+def frozen_while_active(
+    window: dict[str, Any],
+    *,
+    starts_at: float,
+    tz: str,
+    patch_s: float,
+    ledger_enabled: bool,
+    targets: list[int],
+    rules: list[dict[str, Any]],
+    current_targets: list[int],
+    current_rules: list[dict[str, Any]],
+) -> str | None:
+    """**What an edit may not change once a window is running** (v0.22.0, item 19, ADR #389).
+
+    Returns the first frozen field the edit changes, or None. Shortening and ending are safe — the
+    appliance starts collecting sooner — and so is extending, which `extend` already offers. What
+    is not safe is anything that rewrites the part already in force: moving the start, the zone or
+    the patch band, which targets it covers, or what it lets through. Those would make the ledger
+    and the alarms of the minutes already past answer to a window that was not the one in force.
+    Name, description and visibility are words, and they may change.
+    """
+    if window["status"] != "active":
+        return None
+
+    def rule_key(rule: dict[str, Any]) -> tuple[Any, ...]:
+        return tuple(rule.get(k) for k in _RULE_KEYS)
+
+    checks = (
+        ("starts_at", abs(float(window["starts_at"]) - starts_at) > 0.5),
+        ("tz", str(window["tz"]) != tz),
+        ("patch_s", abs(float(window["patch_s"]) - patch_s) > 0.5),
+        ("ledger_enabled", bool(window["ledger_enabled"]) != ledger_enabled),
+        ("targets", sorted(current_targets) != sorted(targets)),
+        ("rules", sorted(map(rule_key, current_rules)) != sorted(map(rule_key, rules))),
+    )
+    return next((name for name, changed in checks if changed), None)
+
+
 def needs_confirmation(starts_at: float, ends_at: float) -> bool:
     """D6, in one expression. Up to six hours no human agrees; over six hours one must."""
     return (ends_at - starts_at) > CONFIRMATION_THRESHOLD_S

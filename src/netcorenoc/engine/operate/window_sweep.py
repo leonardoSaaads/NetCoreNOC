@@ -105,7 +105,7 @@ class WindowSweepMixin(EngineBase):
         """
         _window_id, _ne_id, device_id, class_id, _instance, raised_at, _cleared, _s = row
         first_seen = float(raised_at) if raised_at is not None else now
-        sid = await self.store.create_situation(first_seen, self.scorer_config_id)
+        sid = await self.store.create_situation(first_seen, self.scorer_config_id, act="surface")
         await self.store.add_alarm_to_situation(sid, alarm_id)
         self.sit_of[alarm_id] = sid
         self.members[sid] = [Member(alarm_id, int(class_id), int(device_id), first_seen)]

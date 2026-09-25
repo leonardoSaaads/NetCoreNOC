@@ -24,12 +24,17 @@ It is the collision `ruff` found during the move, kept visible rather than alias
 """
 
 from netcorenoc.api.routes import (
+    activity,
     admin,
     annotate,
+    attention,
     audit,
     auth,
+    catalogue,
+    elements,
     events,
     governance,
+    host,
     inventory,
     lifecycle,
     maintenance,
@@ -43,12 +48,17 @@ from netcorenoc.api.routes import (
 )
 
 __all__ = [
+    "activity",
     "admin",
     "annotate",
+    "attention",
     "audit",
     "auth",
+    "catalogue",
+    "elements",
     "events",
     "governance",
+    "host",
     "inventory",
     "lifecycle",
     "maintenance",

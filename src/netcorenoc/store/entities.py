@@ -43,6 +43,21 @@ class EntityMixin(StoreBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def get_ne(self, ne_id: int) -> dict[str, Any] | None:
+        """One element by id, with its label — `list_ne`'s row for it, by primary key (v0.22.0).
+
+        `entity_detail` and the graph's element panel used to read EVERY element to find one; on
+        an estate of thousands that is a full table read per click.
+        """
+        cur = await self.conn.execute(
+            "SELECT n.id, n.ip, n.first_seen, n.last_seen, l.label FROM ne n "  # nosec B608
+            + self._label_join("l", "ne", "n.id", legacy_target="NULL")
+            + "WHERE n.id=?",
+            (ne_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def entities_for_ne(self, ne_id: int) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
             "SELECT id, ne_id, parent_id, level, key, key_source, confidence, first_seen, "

@@ -94,7 +94,6 @@ export function Health({ stats, rate }) {
   const receiver = stats?.receiver;
   const res = stats?.resources;
   const hours = res?.window_s ? Math.round(res.window_s / 3600) : 2;
-  const span = `last ${plural(hours, "hour")}`;
   /* `hover` on the health control and NOT on the bell. Health is a glance — the operator wants to
      know the appliance is fine and carry on, and making them click for that is a tax on the common
      case. A warning is something they are going to act on: opening that panel by accidentally
@@ -109,13 +108,13 @@ export function Health({ stats, rate }) {
           <${Meter} name="CPU" pct=${res.cpu_pct} series=${res.cpu_series}
             detail=${res.cpu_pct == null
               ? "not measured"
-              : `${plural(res.cpu_count ?? 0, "core")} · ${span}`}
+              : `of ${plural(res.cpu_count ?? 0, "core")}`}
             title=${`Busy time across all cores, sampled every ${res.interval_s ?? 30} s.`} />
           <${Meter} name="Memory" pct=${res.mem_pct} series=${res.mem_series}
             detail=${res.mem_total == null
               ? "not measured"
               : `${bytes(res.mem_used)} of ${bytes(res.mem_total)}` +
-                `${res.mem_source === "cgroup" ? " (container limit)" : ""}`}
+                `${res.mem_source === "cgroup" ? " (container)" : ""}`}
             title=${res.mem_source === "cgroup"
               ? "The container's limit, not the host's memory."
               : "The host's memory. No container limit is set."} />
@@ -124,6 +123,10 @@ export function Health({ stats, rate }) {
               ? "not measured"
               : `${bytes(res.disk_used)} of ${bytes(res.disk_total)}`}
             title="The filesystem holding the database — the one that stops this appliance." />
+          ${/* The sparklines' window, stated once for all three. It used to sit under CPU alone
+                ("16 cores · last 2 hours"), where it read as a qualifier of the percentage. */
+            null}
+          <p class="meter-span">lines: last ${plural(hours, "hour")}</p>
         </div>`
       : html`<p class="hint">No <code>resources</code> block in <code>/api/stats</code>: this API is
           running without the process runner, so nothing is sampling the host.</p>`}

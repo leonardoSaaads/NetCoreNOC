@@ -195,12 +195,12 @@ def test_normalize_maps_vocab_and_integers_and_rejects_junk() -> None:
 #: `warning` is rank 3 and IS a placement; `indeterminate` is rank 4 and is not; a `None` severity
 #: is the never-learned case, which a zero-config appliance is in on its first day.
 BANDS: list[tuple[str | None, int | None, str]] = [
-    ("critical", 0, "sev-crit"),
+    ("critical", 0, "sev-critical"),
     ("major", 1, "sev-major"),
     ("minor", 2, "sev-minor"),
-    ("warning", 3, "sev-low"),
-    ("indeterminate", 4, "sev-unknown"),
-    (None, None, "sev-unknown"),
+    ("warning", 3, "sev-warning"),
+    ("indeterminate", 4, "sev-indeterminate"),
+    (None, None, "sev-unplaced"),
 ]
 
 
@@ -238,7 +238,7 @@ async def test_every_severity_band_carries_a_glyph_and_text_not_only_colour(
     Three properties, and each is a different way the pill could quietly stop being three
     encodings:
 
-    * every pill carries a non-empty **glyph** and a non-empty **word**;
+    * every pill carries a non-empty **shape** (`data-shape`, v0.22.0) and a non-empty **word**;
     * the glyphs are distinct **shapes** — `critical` and `major` both drew `▲` until this release,
       which made two adjacent bands one encoding rather than three, and they are the pair that also
       collides on hue under deuteranopia;
@@ -349,7 +349,7 @@ async def test_a_declared_severity_renders_in_the_pill_and_is_marked_as_declared
         },
     )
     cell = declared["cells"][0]
-    assert "sev-crit" in cell["classes"].split(), cell["classes"]
+    assert "sev-critical" in cell["classes"].split(), cell["classes"]
     assert "critical" in cell["cellText"], cell["cellText"]
     assert "*" in cell["cellText"], "the pill does not mark the value as declared"
 
@@ -395,7 +395,7 @@ async def test_an_integer_rank_above_the_vocabulary_no_longer_renders_as_one_ban
     result = domdriver.run_scenario("severityBands", {"routes": doctored, "sid": sid})
     bands = [c["classes"].split()[-1] for c in result["cells"][:3]]
     assert len(set(bands)) == 3, f"three validated severities render as {bands}"
-    assert bands[0] == "sev-crit", f"the most severe is not the most severe band: {bands}"
+    assert bands[0] == "sev-critical", f"the most severe is not the most severe band: {bands}"
     for cell, shown in zip(result["cells"][:3], ("10", "20", "30"), strict=False):
         assert shown in cell["cellText"], (
             f"the element's own value {shown!r} is not on screen: {cell['cellText']!r}"
@@ -410,7 +410,7 @@ async def test_an_integer_rank_above_the_vocabulary_no_longer_renders_as_one_ban
             "sid": sid,
         },
     )
-    assert "sev-unknown" in control["cells"][0]["classes"].split(), (
+    assert "sev-indeterminate" in control["cells"][0]["classes"].split(), (
         "rank 4 was placed on the scale; `indeterminate` is the vocabulary's word for "
         "'I do not know how serious this is', which is a placement on no scale at all"
     )
@@ -544,7 +544,7 @@ async def test_the_census_scope_is_a_query_filter_and_not_a_render_filter(store:
         # v0.17.1: three zeros here are not the defect prime directive 1 names. That one is a band
         # count of zero over alarms nobody placed — a claim about alarms. This is a breakdown of
         # the empty set, read by a principal who can see no NE, and every arm of it is genuinely 0.
-        "provenance": {"declared": 0, "standard": 0, "learned": 0},
+        "provenance": {"declared": 0, "imported": 0, "standard": 0, "learned": 0},
     }, "a principal who can see no NE was given a count of something"
 
 
@@ -597,7 +597,7 @@ async def test_a_trap_that_carried_its_own_severity_is_placed_from_the_standard(
         "every alarm, and the trap carried the word all along"
     )
     assert census["provenance"]["standard"] == 2, "a placed severity has no stated provenance"
-    assert census["provenance"] == {"declared": 0, "standard": 2, "learned": 0}
+    assert census["provenance"] == {"declared": 0, "imported": 0, "standard": 2, "learned": 0}
     assert census["unplaced"] == 1, (
         "the alarm whose trap carried no severity word stopped being unplaced — which is the "
         "fabrication prime directive 2 forbids, dressed as an improvement in the number"
@@ -630,7 +630,7 @@ async def test_a_declaration_outranks_the_word_the_trap_carried(store: Store) ->
         "the operator declared `warning` over a trap that said `critical` and the appliance kept "
         "its own reading — the overrule this release exists to give them does not work"
     )
-    assert after["provenance"] == {"declared": 1, "standard": 0, "learned": 0}
+    assert after["provenance"] == {"declared": 1, "imported": 0, "standard": 0, "learned": 0}
     assert after["declared"] == 1
     assert after["active"] == 1 and after["unplaced"] == 0
 
@@ -669,7 +669,7 @@ async def test_the_standard_read_outranks_a_learned_severity(store: Store) -> No
     )
     census = await _census(store)
     assert census["placed"] == {"1": 1}, "the learned inference overrode the device's own word"
-    assert census["provenance"] == {"declared": 0, "standard": 1, "learned": 0}
+    assert census["provenance"] == {"declared": 0, "imported": 0, "standard": 1, "learned": 0}
 
 
 async def test_a_learned_severity_still_places_an_alarm_whose_trap_said_nothing(
@@ -699,7 +699,7 @@ async def test_a_learned_severity_still_places_an_alarm_whose_trap_said_nothing(
     assert await _alarm_severity(store, "learned-1") == ("2", 2)
     census = await _census(store)
     assert census["placed"] == {"2": 1}
-    assert census["provenance"] == {"declared": 0, "standard": 0, "learned": 1}
+    assert census["provenance"] == {"declared": 0, "imported": 0, "standard": 0, "learned": 1}
 
 
 async def test_the_provenance_arms_account_for_every_placed_alarm(store: Store) -> None:
@@ -736,7 +736,7 @@ async def test_the_provenance_arms_account_for_every_placed_alarm(store: Store) 
         f"placed {placed_total} + unplaced {census['unplaced']} != active {census['active']}: "
         "an alarm is in neither column, so the panel does not add up"
     )
-    assert census["provenance"] == {"declared": 2, "standard": 0, "learned": 1}
+    assert census["provenance"] == {"declared": 2, "imported": 0, "standard": 0, "learned": 1}
     assert census["unplaced"] == 1
 
 
@@ -775,7 +775,7 @@ async def test_a_torn_varbinds_blob_cannot_reach_the_census_at_all(store: Store)
     assert census["placed"] == {"0": 1, "1": 1}, (
         "the severity placed at ingest was lost to damage in an unrelated column"
     )
-    assert census["provenance"] == {"declared": 0, "standard": 2, "learned": 0}
+    assert census["provenance"] == {"declared": 0, "imported": 0, "standard": 2, "learned": 0}
 
     # **Well-formed JSON that is not a list of varbinds**, and the truncated case above. Both used
     # to be paths through a parser on this route; now neither is a path at all. The assertion is

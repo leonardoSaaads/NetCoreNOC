@@ -412,7 +412,13 @@ async def test_no_render_path_turns_operator_supplied_text_into_markup(
     hostile = routes["editor_hostile"]
     sid, _ = uifixtures.largest_situation(hostile)
     result = domdriver.run_scenario(
-        "hostilePayload", {"routes": hostile, "sid": sid, "hostile": uifixtures.HOSTILE}
+        "hostilePayload",
+        {
+            "routes": hostile,
+            "benign": routes["editor"],
+            "sid": sid,
+            "hostile": uifixtures.HOSTILE,
+        },
     )
 
     assert result["dangerousElementsIntroduced"] == {}, (
@@ -1050,17 +1056,11 @@ async def test_the_health_tiles_render_what_api_stats_already_served(
     assert line["denied"]["name"] == "refused", line["denied"]
     assert line["received"]["name"] == "received", line["received"]
 
-    # `queue_depth` is now a series, and the number the chart prints IS the latest value of the
-    # array it drew. A chart whose caption disagreed with its plot is the defect this release was
-    # most likely to ship, and this is the assertion that would see it.
+    # v0.22.0 (F154, ADR #380): the queue-depth chart is drawn from `/api/resources` — readings the
+    # appliance persisted — and no longer from a ring the browser kept, which a reload emptied and
+    # which could not hold the ranges the picker offered. The chart is still there; what it plots
+    # is the server's, which `tests/test_host_series.py` asserts reaches SQL.
     assert "Queue depth" in sample["chartLatest"], sample["chartLatest"]
-    assert "7" in sample["chartLatest"]["Queue depth"], sample["chartLatest"]
-    # And the store really kept the reading, rather than the chart having been handed a literal.
-    # The ring already holds the boot poll's reading, so this asserts that it **accumulated**: the
-    # newest entry is the pushed 7, and it did not replace what was there.
-    ring = sample["ring"]["queue"]
-    assert ring[-1] == 7, ring
-    assert len(ring) >= 2, f"the ring replaced its contents instead of appending: {ring}"
 
 
 @dom_test
@@ -1281,10 +1281,8 @@ async def test_the_graph_screen_answers_its_two_questions_in_ordinary_dom(
 ) -> None:
     """**Part of the graph's coverage gap, closed** (§V.7).
 
-    `tests/domharness/env.mjs` substitutes d3 with a recording double, so nothing about node
-    placement, edge rendering, zoom, drag or the simulation is asserted anywhere in this
-    repository — and `views/graph.js` has said so at the top since v0.13.0. That does not change
-    here and the file still says it.
+    *(v0.22.0: d3 is gone. The drawing is `netgraph.js` — buttons and SVG lines the harness can
+    execute, and `test_graph_layout.py` asserts the placement as a pure function.)*
 
     What changes is that the screen's two answers are no longer *only* in the drawing. "Which
     elements alarm most" and "which relationships are strongest" are rendered as tables, from
@@ -1300,7 +1298,9 @@ async def test_the_graph_screen_answers_its_two_questions_in_ordinary_dom(
         "render", {"routes": _with_edges(routes["editor"]), "navigate": "#/graph"}
     )
     dump = result["dump"]
-    assert "Elements alarming most" in dump, "the busiest-element table is not on the screen"
+    # v0.22.0 (item 12): the table is ranked by load — active alarms, then edges — under the name
+    # the screen now uses. The question it answers is unchanged.
+    assert "Elements by load" in dump, "the busiest-element table is not on the screen"
     assert "Strongest learned relationships" in dump, "the affinity table is not on the screen"
     # `n` beside the weight, because a strong-looking edge over six observations is a weaker claim
     # than the same score over hundreds (F61) and a table that hid it would say they were equal.
@@ -1316,7 +1316,20 @@ async def test_the_graph_screen_answers_its_two_questions_in_ordinary_dom(
         "where the operator already is and where all three declarations are made together."
     )
     # …and it still links to where the element's situations are, which is where the naming went.
-    assert "situations" in dump, "the graph no longer points at where an element is worked on"
+    # v0.22.0: that link is in the element panel, which opens on the element named in `?ne=` —
+    # so the busiest node is selected, the way a click on it would select it.
+    graph = routes["editor"]["/api/graph"]["json"]
+    busiest = max(graph["nodes"], key=lambda node: node.get("active_alarms", 0))
+    selected = domdriver.run_scenario(
+        "render",
+        {"routes": _with_edges(routes["editor"]), "navigate": f"#/graph?ne={busiest['id']}"},
+    )["dump"]
+    # The dump prints text, not `href`: the panel's "Situations" list is asserted by its heading
+    # and by an entry in it, which is a link to the situation in the markup.
+    head = selected.find('"Situations"')
+    assert head != -1 and "<ul .mini-list>" in selected[head:], (
+        "the graph no longer points at where an element is worked on"
+    )
 
 
 @dom_test
@@ -3003,10 +3016,12 @@ async def test_the_overview_lost_its_prose_and_gained_charts(routes: dict[str, A
     kinds = [c["kind"] for c in result["charts"]]
     # All three types from decision 2 are on this one screen, which is what "reused everywhere"
     # has to mean if the ceiling is to be worth anything.
-    assert "column" in kinds, kinds
+    # v0.22.0: the activity columns became one line per severity band (item 3) and the estate
+    # map a compact graph of the busiest elements (item 6); the busiest list is still bars.
     assert "line" in kinds, kinds
-    assert "map" in kinds, kinds
+    assert "graph" in kinds, kinds
     assert "bars" in kinds, kinds
+    assert "column" not in kinds and "map" not in kinds, kinds
     # Every chart names where its numbers came from. A chart whose source nobody can name is a
     # chart nobody can check, which is why `charts.js` takes it as a required argument.
     assert len(result["captions"]) >= len(result["charts"]), (result["captions"], kinds)
@@ -3015,9 +3030,8 @@ async def test_the_overview_lost_its_prose_and_gained_charts(routes: dict[str, A
     # The four host/queue line charts drew real geometry rather than an empty frame.
     lines = [c for c in result["charts"] if c["kind"] == "line"]
     assert any(c["polylines"] for c in lines), lines
-    # And the columns drew rects, each carrying a title so the exact count is one hover away.
-    cols = [c for c in result["charts"] if c["kind"] == "column"]
-    assert any(c["rects"] for c in cols), cols
+    # Every line chart states its source in a caption; the severity one sums its window once.
+    assert any("raised" in caption for caption in result["captions"]), result["captions"]
 
 
 @dom_test
@@ -3049,21 +3063,18 @@ async def test_every_chart_is_hand_written_and_therefore_visible_to_this_harness
     drawn = sum(len(c["polylines"]) + len(c["rects"]) for c in overview["charts"])
     assert drawn > 0, overview["charts"]
 
-    # THE CONTROL, in the same harness, same fixture, same run: the two d3 surfaces.
-    for fragment, svg_id in (("#/graph", "graph"), ("#/timeline", "timeline")):
-        d3_screen = domdriver.run_scenario(
-            "render", {"routes": routes["admin"], "navigate": fragment}
-        )
-        dump = d3_screen["dump"]
-        assert f"<svg #{svg_id}" in dump, f"{fragment} no longer renders its d3 canvas at all"
-        inside = _descendants_of(dump, f"<svg #{svg_id}")
-        assert inside == [], (
-            f"{fragment}'s d3 drawing produced assertable DOM, which would mean the harness's "
-            f"double has been replaced and decision 4's whole premise needs re-measuring: {inside}"
-        )
-        # The second control: hand-written SVG in that SAME document is visible. Without this the
-        # empty list above could mean the harness sees no SVG at all.
-        assert "<path" in dump, "icons.js's hand-written paths are missing from the dump"
+    # THE CONTROL, inverted in v0.22.0: the two screens that were d3 canvases — geometry this
+    # harness could not see — are hand-written now, and the proof is that their marks are here.
+    graph = domdriver.run_scenario("charts", {"routes": routes["admin"], "navigate": "#/graph"})
+    drawn_graph = [c for c in graph["charts"] if c["kind"] == "graph"]
+    assert drawn_graph and drawn_graph[0]["nodes"], "the graph drew no assertable node"
+    assert "<svg #graph" not in graph["dump"], "a d3 canvas is back on #/graph"
+    timeline = domdriver.run_scenario(
+        "render", {"routes": routes["admin"], "navigate": "#/timeline"}
+    )
+    assert "<svg #timeline" not in timeline["dump"], "a d3 canvas is back on #/timeline"
+    # The negative control: the harness sees hand-written SVG in the same document at all.
+    assert "<path" in timeline["dump"], "icons.js's hand-written paths are missing from the dump"
 
 
 def _descendants_of(dump: str, needle: str) -> list[str]:
@@ -3083,15 +3094,13 @@ def _descendants_of(dump: str, needle: str) -> list[str]:
 
 @dom_test
 async def test_the_estate_map_is_a_pure_function_of_the_payload(routes: dict[str, Any]) -> None:
-    """**Decision 7's second reason**, and the one the force graph can never satisfy.
+    """**Decision 7's second reason**, kept by the graph that replaced the map (v0.22.0, item 6).
 
-    The graph's layout comes from a force simulation with drag and a re-centring force, so two
-    glances at an unchanged estate do not agree — which is why an operator cannot use it to compare
-    this morning with now. The map is sorted by load then by key, so the same payload draws the same
-    grid, and the same payload in a different ORDER draws the same grid too.
-
-    That second half is the assertion worth having: a map that merely rendered its input in order
-    would pass a repeat-render test and fail the day the API's node order changed.
+    The d3 force layout was why the map existed: two glances at an unchanged estate did not agree.
+    `layout.js` is deterministic — it reads the topology and never the payload's order — so the
+    Overview's compact graph draws the same nodes in the same places whatever order they arrive in.
+    That second half is the assertion worth having: a drawing that merely followed its input would
+    pass a repeat-render test and fail the day the API's node order changed.
     """
     nodes = [
         {"id": 1, "ip": "127.0.0.1", "label": None, "active_alarms": 1359},
@@ -3099,38 +3108,44 @@ async def test_the_estate_map_is_a_pure_function_of_the_payload(routes: dict[str
         {"id": 3, "ip": "127.0.0.3", "label": None, "active_alarms": 4},
         {"id": 4, "ip": "127.0.0.4", "label": None, "active_alarms": 501},
     ]
+    edges = [{"a_id": 1, "b_id": 4, "weight": 0.8, "n": 40.0}]
     stats = _stats_with_resources(cpu_pct=6.0, cpu_series=[6.0, 6.0])
 
-    def draw(order: list[dict[str, Any]]) -> list[str]:
+    def draw(order: list[dict[str, Any]]) -> list[tuple[str, str]]:
         result = domdriver.run_scenario(
             "charts",
             {
                 "routes": routes["admin"],
                 "navigate": "#/overview",
-                "updates": [{"stats": stats, "graph": {"nodes": order, "edges": []}}],
+                "updates": [{"stats": stats, "graph": {"nodes": order, "edges": edges}}],
             },
         )
-        maps = [c for c in result["charts"] if c["kind"] == "map"]
-        assert maps, result["charts"]
-        return [cell["tip"] for cell in maps[0]["cells"]]
+        graphs = [c for c in result["charts"] if c["kind"] == "graph"]
+        assert graphs, result["charts"]
+        return [(node["label"], node["style"]) for node in graphs[0]["nodes"]]
 
     forward = draw(nodes)
     shuffled = draw([nodes[2], nodes[0], nodes[3], nodes[1]])
     assert forward == shuffled, (
-        "the estate map is not order-independent, so two glances at one estate can differ:\n"
+        "the estate graph is not order-independent, so two glances at one estate can differ:\n"
         f"  {forward}\n  {shuffled}"
     )
-    # Sorted by load, busiest first, with the exact count in the cell's title — which is the fact
-    # the graph's saturating radius throws away: 1 359 and 501 both draw at 24.0 px there.
-    assert "1,359" in forward[0], forward
-    assert "501" in forward[1], forward
-    # Ties break on the key, so the order of two equally loaded elements is decided and not
-    # whatever the payload happened to hold.
-    assert "127.0.0.2" in forward[2], forward
-    assert "127.0.0.3" in forward[3], forward
+    # Busiest first, with the exact count in the node's accessible name — the fact a saturating
+    # radius throws away. Ties break on the id, so equal loads have a decided order.
+    labels = [label for label, _style in forward]
+    assert "1,359" in labels[0], labels
+    assert "501" in labels[1], labels
+    assert "127.0.0.2" in labels[2], labels
+    assert "127.0.0.3" in labels[3], labels
 
 
 # --- v0.16.6: the timeline's configuration, and the half of it that must stay in SQL ------------
+
+
+def _activity(paths: list[str], route: str) -> str:
+    asked = [p for p in paths if f"/api/activity/{route}" in p]
+    assert asked, paths
+    return asked[-1]
 
 
 @dom_test
@@ -3140,19 +3155,21 @@ async def test_the_timeline_reads_its_whole_configuration_out_of_the_address(
     """**Decision 8: the configured screen is a permalink**, so every control is in the address.
 
     Driven as a deep link, which is what a colleague's pasted URL is. The assertion is on the
-    request the client **issues** — element, window and depth all have to appear in it — because
-    that is the only evidence that they were applied by the server rather than in the render.
+    requests the client **issues** — element, window, kind and page all appear in them — because
+    that is the only evidence they were applied by the server rather than in the render (v0.22.0:
+    the window is `range_s` on `/api/activity/*`, never a row count that could truncate it).
     """
     result = domdriver.run_scenario(
         "render",
-        {"routes": routes["admin"], "navigate": "#/timeline?ne=2&win=3600&depth=1000"},
+        {"routes": routes["admin"], "navigate": "#/timeline?ne=2&win=21600&kind=raise&page=1"},
     )
-    asked = [p for p in result["requestPaths"] if "/api/timeline" in p]
-    assert asked, result["requestPaths"]
-    last = asked[-1]
-    assert "ne_id=2" in last, last
-    assert "since=" in last, last
-    assert "limit=1000" in last, last
+    groups = _activity(result["requestPaths"], "groups")
+    lanes = _activity(result["requestPaths"], "lanes")
+    for asked in (groups, lanes):
+        assert "ne_id=2" in asked, asked
+        assert "range_s=21600" in asked, asked
+    assert "kind=raise" in groups, groups
+    assert "offset=25" in groups, groups
 
 
 @dom_test
@@ -3161,70 +3178,51 @@ async def test_the_timeline_element_filter_is_a_query_filter(routes: dict[str, A
 
     v0.7.0 truncated globally and then compared the rendered `COALESCE(label, ip)` string against a
     scope's address set, which made a **non-unique display string an authorization key**. So the
-    element control sends an `ne_id` — the same key the scope predicate uses — and the depth control
-    sends a `limit`, so `LIMIT` bounds the *filtered* set.
+    element control sends an `ne_id` — the same key the scope predicate uses — and every filter is
+    a parameter the SQL applies.
 
-    **This guard has two halves and each was demonstrated red by its own injection.**
-
-    1. Move the element and depth filters into the render — filter `marks` by device after the
-       fetch, then `slice(0, depth)`. The request loses its parameters, the screen still looks
-       right, and three assertions here go red. That is v0.7.0's defect exactly.
-    2. Send a presentational parameter to the server — `parts.push("chart=" + chart)`. Also red.
-       Measured, and it is worth stating because the first attempt at this docstring called it a
-       control that *stays* green: it does not. The guard asserts the absence as well as the
-       presence, so the surface is pinned in both directions and neither mistake can be made
-       quietly.
-
-    **The green that means something** is the bare case at the end: with no configuration the
-    request carries only the default depth. An implementation that always sent all five parameters
-    would satisfy every "is present" assertion above and fail that one.
+    The guard is pinned in both directions: what is the server's business is present, and what is
+    not (a pasted `chart=`, a device NAME) is absent. **The green that means something** is the
+    bare case: with no configuration the requests carry no element and the default window — so the
+    parameters above are there because they were asked for, not because they always are.
     """
     scoped = domdriver.run_scenario(
         "render",
-        {
-            "routes": routes["admin"],
-            "navigate": "#/timeline?ne=2&win=21600&depth=100&chart=column&split=host",
-        },
+        {"routes": routes["admin"], "navigate": "#/timeline?ne=2&win=21600&chart=column"},
     )
-    asked = [p for p in scoped["requestPaths"] if "/api/timeline" in p][-1]
-    # The three that are the server's business.
+    asked = _activity(scoped["requestPaths"], "groups")
     assert "ne_id=2" in asked, asked
-    assert "since=" in asked, asked
-    assert "limit=100" in asked, asked
-    # The two that are not. A presentational choice reaching the server invites the reverse
-    # mistake later — a scope-bearing one being "applied" client-side.
+    assert "range_s=21600" in asked, asked
     assert "chart" not in asked, asked
-    assert "split" not in asked, asked
-    # And nothing sends a device NAME, ever. This is the string v0.7.0 compared.
     assert "device=" not in asked, asked
 
-    # THE CONTROL: with no configuration at all, the request carries only the default depth — so
-    # the parameters above are present because they were asked for, not because they are always
-    # there.
     bare = domdriver.run_scenario("render", {"routes": routes["admin"], "navigate": "#/timeline"})
-    plain = [p for p in bare["requestPaths"] if "/api/timeline" in p][-1]
+    plain = _activity(bare["requestPaths"], "groups")
     assert "ne_id" not in plain, plain
-    assert "since" not in plain, plain
-    assert "limit=300" in plain, plain
+    assert "range_s=3600" in plain, plain
+    assert "kind=both" in plain and "offset=0" in plain, plain
 
 
 @dom_test
 async def test_a_hand_edited_address_cannot_widen_the_read(routes: dict[str, Any]) -> None:
     """An address is untrusted input, and this screen's controls are in the address.
 
-    `limit=999999` and `win=31536000` are what a curious operator types. The client clamps both to
-    the values its own controls offer — and the server clamps `limit` again at 1 000 regardless, so
-    this is the affordance and not the control. Both layers, as everywhere else in this console.
+    `win=31536000`, `ne=1 OR 1=1` and `limit=999999` are what a curious operator types. The client
+    falls back to the values its own controls offer, never forwards what it does not know, and the
+    server clamps the window and the page again regardless — the affordance and the control.
     """
     result = domdriver.run_scenario(
         "render",
-        {"routes": routes["admin"], "navigate": "#/timeline?depth=999999&win=31536000&chart=pie"},
+        {
+            "routes": routes["admin"],
+            "navigate": "#/timeline?win=31536000&ne=1%20OR%201%3D1&limit=999999&kind=all",
+        },
     )
-    asked = [p for p in result["requestPaths"] if "/api/timeline" in p][-1]
-    assert "limit=300" in asked, f"an out-of-range depth was not clamped to the default: {asked}"
-    assert "since=" not in asked, f"an out-of-range window was not discarded: {asked}"
-    # An unrecognised chart type falls back rather than rendering nothing.
-    assert "<svg #timeline" in result["dump"], result["dump"][:400]
+    asked = _activity(result["requestPaths"], "groups")
+    assert "range_s=3600" in asked, f"an out-of-range window was not discarded: {asked}"
+    assert "ne_id" not in asked, f"a malformed element reached the server: {asked}"
+    assert "limit=25" in asked, f"the page size came from the address: {asked}"
+    assert "kind=both" in asked, asked
 
 
 def test_the_urgency_animation_is_css_and_therefore_reducible() -> None:
@@ -3255,14 +3253,16 @@ def test_the_urgency_animation_is_css_and_therefore_reducible() -> None:
     # Every urgency rule is an `animation` in THIS file, so the block above reaches it.
     animated = re.findall(r"^([^\n{]*\{[^}]*animation:[^}]*\})", css, re.M)
     urgent = [rule for rule in animated if "urgent" in rule]
-    assert len(urgent) >= 2, f"expected the cell and the node to animate here: {animated}"
+    # v0.22.0: the estate map's cell went with the map; the graph node is the urgency mark now,
+    # on the Graph screen and in the Overview's compact graph alike.
+    assert len(urgent) >= 1, f"expected the graph node to animate here: {animated}"
 
     # **And urgency is not encoded by motion alone.** `outline` on the cell and `stroke-width` on
     # the node are static, so the mark is still marked with the animation suppressed. An urgency
     # carried only by movement fails for exactly the operator colour-alone fails for.
-    assert re.search(r"\.chart-urgent\s*\{[^}]*outline:", css), "the cell has no static ring"
-    assert re.search(r"circle\.node\.urgent\s*\{[^}]*stroke-width:", css), (
-        "the node has no static stroke, so its urgency is motion-only"
+    # v0.22.0: the graph's node is a button now, and its static mark is a ring (`box-shadow`).
+    assert re.search(r"\.gnode-urgent\s*\{[^}]*box-shadow:", css), (
+        "the node has no static ring, so its urgency is motion-only"
     )
 
 
@@ -3286,6 +3286,8 @@ async def test_every_charted_mark_reads_as_a_sentence_not_a_run_of_digits(
     """
     nodes = [
         {"id": 1, "ip": "127.0.0.1", "label": None, "active_alarms": 1458},
+        {"id": 2, "ip": "127.0.0.2", "label": None, "active_alarms": 12},
+        {"id": 3, "ip": "127.0.0.3", "label": None, "active_alarms": 7},
         {"id": 4, "ip": "127.0.0.4", "label": None, "active_alarms": 501},
     ]
     result = domdriver.run_scenario(
@@ -3317,7 +3319,9 @@ async def test_every_charted_mark_reads_as_a_sentence_not_a_run_of_digits(
             )
     # Without this the loop above passes vacuously over a screen that drew nothing, which is how a
     # guard comes to be green for the wrong reason.
-    assert marks >= 4, f"expected the map's cells and the bars' rows to be drawn; saw {marks}"
+    # v0.22.0: the map's cells went with the map; the bars (busiest elements, severity census)
+    # remain the marks that carry a label and a value side by side.
+    assert marks >= 4, f"expected the bars' rows to be drawn; saw {marks}"
 
 
 @dom_test
@@ -3335,29 +3339,30 @@ async def test_a_presentational_change_does_not_re_read_the_server(
     """
 
     def timeline_reads(fragments: list[str]) -> list[int]:
-        """How many `/api/timeline` requests EACH navigation issued. `paths` is already a delta."""
+        """How many activity requests EACH navigation issued. `paths` is already a delta."""
         result = domdriver.run_scenario(
             "navigateTo", {"routes": routes["admin"], "fragments": fragments}
         )
         return [
-            len([p for p in result["outcomes"][fragment]["paths"] if "/api/timeline" in p])
+            len([p for p in result["outcomes"][fragment]["paths"] if "/api/activity/" in p])
             for fragment in fragments
         ]
 
-    # Arriving mounts the screen and reads once. Changing only `chart` must read zero more times.
+    # Arriving mounts the screen and reads once. A parameter the screen does not use must not
+    # read again (v0.22.0: the reload key is the parsed configuration, not the raw address).
     mounted, after_chart = timeline_reads(
         ["#/timeline?win=3600", "#/timeline?win=3600&chart=column"]
     )
     assert mounted >= 1, "arriving on the timeline did not read it at all"
     assert after_chart == 0, (
-        f"a presentational change re-read the server: it issued {after_chart} timeline request(s)"
+        f"a presentational change re-read the server: it issued {after_chart} activity request(s)"
     )
 
     # THE CONTROL: a change to a query parameter must re-read, or the screen would show a page it
     # no longer matches — which is the opposite defect and just as bad.
-    _again, after_depth = timeline_reads(["#/timeline?win=3600", "#/timeline?win=3600&depth=1000"])
-    assert after_depth >= 1, (
-        f"a depth change did not re-read the server: it issued {after_depth} timeline request(s)"
+    _again, after_kind = timeline_reads(["#/timeline?win=3600", "#/timeline?win=3600&kind=raise"])
+    assert after_kind >= 1, (
+        f"a kind change did not re-read the server: it issued {after_kind} activity request(s)"
     )
 
 
@@ -3648,7 +3653,9 @@ async def test_the_evidence_screen_records_what_nothing_measures(
     result = domdriver.run_scenario(
         "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
     )
-    dump = result["dump"]
+    # v0.22.0: the three absences are one info tip beside the heading, in the DOM always; the
+    # dump prints text lines truncated, so the tip's full text is read beside it.
+    dump = result["dump"] + "\n" + "\n".join(result["tips"])
     for absent in ("loss curve", "residual distribution", "Fold results"):
         assert absent in dump, f"the screen does not say that {absent!r} cannot be drawn"
     # The sample-rate rule is stated even though nothing here is sampled, because the next release
@@ -3875,14 +3882,14 @@ async def test_a_band_the_appliance_cannot_grade_reads_a_dash_and_never_zero(
     bars = _severity_rows(result)
     assert bars, f"no severity chart rendered at all: {[c['kind'] for c in result['charts']]}"
     by_label = {row["label"]: row["value"] for row in bars}
-    graded = [label for label in by_label if "not placed" not in label]
+    graded = [label for label in by_label if label != "unplaced"]
     assert graded, f"the severity chart has no bands: {by_label}"
     for label in graded:
         assert by_label[label] == "—", (
             f"{label!r} reads {by_label[label]!r} over 1 684 alarms the appliance has not placed. "
             f"A zero there says 'I checked and there are none', which is not what happened."
         )
-    unplaced = [value for label, value in by_label.items() if "not placed" in label]
+    unplaced = [value for label, value in by_label.items() if label == "unplaced"]
     assert unplaced and "1,684" in unplaced[0], f"the unplaced count is not on screen: {by_label}"
 
 
@@ -3937,8 +3944,8 @@ async def test_the_unplaced_count_is_never_folded_into_a_placed_band(
         for row in rows
         if row["value"] and row["value"][0].isdigit()
     }
-    placed = sum(n for label, n in numbers.items() if "not placed" not in label)
-    unplaced = sum(n for label, n in numbers.items() if "not placed" in label)
+    placed = sum(n for label, n in numbers.items() if label != "unplaced")
+    unplaced = sum(n for label, n in numbers.items() if label == "unplaced")
     assert placed == 1, f"the placed bands sum to {placed}, not to the 1 the census reported"
     assert unplaced == 99, f"the unplaced row reads {unplaced}, not the 99 the census reported"
 
@@ -3959,12 +3966,15 @@ async def test_every_severity_row_is_legible_without_colour(routes: dict[str, An
         },
     )
     rows = _severity_rows(result)
-    glyphs = [row["label"].split()[0] for row in rows]
-    assert len(glyphs) == len(set(glyphs)), (
-        f"two severity rows share a glyph, so shape encodes less than colour does: {glyphs}"
+    # v0.22.0: every row's face is the severity chip — an SVG shape and the band's word — so the
+    # shapes are read from the chart's markup and the words from the row labels.
+    shapes = result["shapes"]
+    assert len(shapes) == len(rows), (shapes, rows)
+    assert len(shapes) == len(set(shapes)), (
+        f"two severity rows share a shape, so shape encodes less than colour does: {shapes}"
     )
     for row in rows:
-        assert len(row["label"].split()) >= 2, f"a row has a glyph and no word: {row['label']!r}"
+        assert row["label"].strip(), f"a row has a shape and no word: {row!r}"
 
 
 @dom_test
@@ -3985,10 +3995,10 @@ async def test_the_severity_band_names_that_a_declaration_can_move_it(
         },
     )
     captions = " ".join(result["captions"])
-    assert "declaration" in captions, (
+    assert any("declaration wins" in tip for tip in result["tips"]), (
         f"the panel does not say a declaration takes precedence: {result['captions']}"
     )
-    assert "3 from an operator's declaration" in captions, (
+    assert "3 declared by an operator" in captions, (
         f"the panel does not say how many bands came from a declaration: {captions}"
     )
 
@@ -4023,10 +4033,10 @@ async def test_the_panel_names_every_source_a_placed_severity_came_from(
         },
     )
     captions = " ".join(result["captions"])
-    assert "12 read from the word the trap carried" in captions, (
+    assert "12 the trap's own word" in captions, (
         f"the standard read is on screen with no source named: {captions}"
     )
-    assert "1 from an operator's declaration" in captions, (
+    assert "1 declared by an operator" in captions, (
         f"the declared severity is on screen with no source named: {captions}"
     )
     assert "0 learned from the trap stream" not in captions, (
@@ -4040,14 +4050,12 @@ async def test_the_panel_names_every_source_a_placed_severity_came_from(
     # appliance learned", which made a guard about *the precedence being on screen* fail when the
     # sentence was shortened without losing an arm. The property is that an operator can see the
     # panel has three sources and which one wins; the wording is not part of it.
-    for arm in ("declaration", "trap", "learned"):
-        assert arm in captions, (
-            f"the source line stopped naming the {arm!r} arm of the precedence chain: {captions}"
-        )
-    # CONTROL: the arms are named in the source line, not merely somewhere in the page's captions
-    # — a chart elsewhere mentioning "trap" must not be able to satisfy the assertion above.
-    precedence = next((c for c in captions.split(" · ") if "declaration wins" in c), None)
-    assert precedence is not None, f"no precedence line on screen at all: {captions}"
+    # v0.22.0: the precedence is one sentence behind the panel's info tip — in the DOM always,
+    # clipped until asked for — so it is read from the tip and not from the captions.
+    tip = next((one for one in result["tips"] if "declaration wins" in one), None)
+    assert tip is not None, "no precedence sentence on screen at all"
+    for arm in ("declaration", "imported", "trap", "learned"):
+        assert arm in tip, f"the precedence stopped naming the {arm!r} arm: {tip}"
 
 
 @dom_test
@@ -4115,12 +4123,11 @@ async def test_the_unplaced_row_still_reads_a_dash_when_nothing_was_placed(
     )
     rows = {row["label"]: row["value"] for row in _severity_rows(result)}
     assert rows, "the severity chart was not found, so this asserts nothing"
-    graded = [label for label, value in rows.items() if "not placed" not in label]
+    graded = [label for label, value in rows.items() if label != "unplaced"]
     assert all(rows[label] in ("\u2014", "—", None, "") for label in graded), (
         f"a band reported a number over nine alarms the appliance placed nowhere: {rows}"
     )
-    captions = " ".join(result["captions"])
-    assert "9 not placed" in captions, f"the unplaced count left the note: {captions}"
+    assert rows.get("unplaced") == "9 alarms", f"the unplaced count left the panel: {rows}"
 
 
 def _severity_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -4268,17 +4275,19 @@ async def test_a_count_chart_summarises_its_window_and_a_gauge_its_last_reading(
     # what this still asserts — a COUNT PER BUCKET series summarises its window, a sampled gauge
     # reports its last reading, and neither may claim the other's summary. F133 was exactly that
     # confusion, so the guard follows the column chart rather than the chart it first found it in.
+    # v0.22.0: the gauges read `/api/resources` — persisted readings — so the fixture carries a
+    # series there, bucketed the way the route answers, with the older half unmeasured.
     stats = _stats_with_resources(cpu_pct=12.5, cpu_series=[9.0, 11.0, 12.5])
     result = domdriver.run_scenario(
         "charts",
         {
-            "routes": routes["admin"],
+            "routes": _with_host_series(routes["admin"], [None] * 21 + [9.0, 11.0, 12.5]),
             "navigate": "#/overview",
             "updates": [{"situations": [], "stats": stats}],
         },
     )
     labels = [c["label"] for c in result["charts"] if c["label"]]
-    activity = next((label for label in labels if label.startswith("Alarm activity")), None)
+    activity = next((label for label in labels if label.startswith("Alarms raised")), None)
     assert activity is not None, labels
     # A column series is a count per bucket, so the honest summary is the window's total.
     assert "Total" in activity, activity
@@ -4294,36 +4303,42 @@ async def test_a_count_chart_summarises_its_window_and_a_gauge_its_last_reading(
 # --- v0.18.0: correlation health is one line on Situations, and the detail is behind a click ---
 
 
+def _with_host_series(captured: dict[str, Any], cpu: list[float | None]) -> dict[str, Any]:
+    """The captured routes with `/api/resources` answering `cpu` for every gauge (v0.22.0)."""
+    path = "/api/resources?range_s=7200&buckets=24"
+    body = dict(captured[path]["json"])
+    body["series"] = {
+        key: list(cpu) for key in ("cpu_pct", "mem_pct", "disk_pct", "db_mb", "queue_depth")
+    }
+    body["samples"] = sum(1 for value in cpu if value is not None)
+    return {**captured, path: {"status": 200, "json": body}}
+
+
 @dom_test
 async def test_the_correlation_verdict_is_one_line_until_it_is_clicked(
     routes: dict[str, Any],
 ) -> None:
-    """**The maintainer's correction, asserted as behaviour.**
+    """**The maintainer's correction, asserted as behaviour — and moved in v0.22.0 (item 7).**
 
-    This shipped first as a whole view. The instruction that replaced it is specific: *"the user
-    doesn't want to know this information; they only want to know the result — whether the events
-    are well correlated … it should be very compact, meaning these metrics only appear if the
-    user clicks."*
+    It first shipped as a whole view, then as one line above the Situations list: *"the user only
+    wants to know the result — whether the events are well correlated."* v0.22.0 took it off the
+    work queue altogether, because it is a statement about the scorer and the queue is where an
+    operator works alarms. It lives on *Judge & promotion*, beside the scorer it describes, and it
+    opens there — that screen is where someone goes to read those numbers.
 
-    So the collapsed state is **one sentence and no numbers panel in the DOM at all** — not a
-    hidden panel, not a panel with `display: none`, which a screen reader still reaches and a
-    DOM dump still shows. Clicking renders it.
+    Asserted both ways: Situations carries neither the line nor the panel; Judge & promotion
+    carries the panel without a click.
     """
-    collapsed = domdriver.run_scenario(
+    situations = domdriver.run_scenario(
         "charts", {"routes": routes["admin"], "navigate": "#/situations"}
     )
-    dump = collapsed["dump"]
-    assert ".corr-line" in dump or "corr-line" in dump, "the verdict line is not on Situations"
-    assert "corrPanel" not in dump, (
-        "the detail panel is in the DOM before anyone asked for it; it must not be rendered "
-        "until the line is clicked"
-    )
+    assert "corr-line" not in situations["dump"], "the verdict line is back on the work queue"
+    assert "corrPanel" not in situations["dump"], "the correlation panel is back on Situations"
 
-    opened = domdriver.run_scenario(
-        "charts",
-        {"routes": routes["admin"], "navigate": "#/situations", "click": [".corr-line"]},
+    promotion = domdriver.run_scenario(
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
     )
-    assert "corrPanel" in opened["dump"], "clicking the verdict line did not open the detail"
+    assert "corrPanel" in promotion["dump"], "the correlation panel is not beside the scorer"
 
 
 def test_the_correlation_verdict_states_the_rule_it_applied() -> None:
@@ -4368,3 +4383,45 @@ def test_the_correlation_verdict_states_the_rule_it_applied() -> None:
     # A correlator that has decided nothing is not "healthy"; it is silent, and says so.
     assert out["nothing"]["tone"] == "quiet"
     assert "%" not in out["nothing"]["text"], "a verdict with no data must not print a rate"
+
+
+@dom_test
+async def test_every_health_bar_is_as_wide_as_the_percentage_printed_beside_it(
+    routes: dict[str, Any],
+) -> None:
+    """**Item 2** (v0.22.0, F156). The bar and the figure come from one number, so they must agree.
+
+    This is the half a DOM can check — the width the markup asks for. The other half, that no
+    stylesheet overrides it, is `tests/test_stylesheet.py`'s, and the pixels were measured in
+    Chromium in the live pass (fill within 0.4 points of the figure at 390, 820 and 1440 px).
+    """
+    stats = _stats_with_resources(
+        cpu_pct=37.4,
+        cpu_series=[30.0, 37.4],
+        mem_pct=61.0,
+        mem_series=[60.0, 61.0],
+        mem_total=536870912,
+        mem_used=327155712,
+        disk_pct=88.0,
+        disk_series=[88.0, 88.0],
+        disk_total=100,
+        disk_used=88,
+    )
+    result = domdriver.run_scenario(
+        "charts",
+        {
+            "routes": routes["admin"],
+            "navigate": "#/overview",
+            "updates": [{"stats": stats}],
+            "openHealth": True,
+        },
+    )
+    meters = {m["name"]: m for m in result["meters"]}
+    assert set(meters) >= {"CPU", "Memory", "Storage"}, result["meters"]
+    for name, pct in (("CPU", 37.4), ("Memory", 61.0), ("Storage", 88.0)):
+        meter = meters[name]
+        assert meter["printed"] == f"{pct:.0f}%", meter
+        found = re.search(r"width:\s*([0-9.]+)%", meter["fill"] or "")
+        assert found is not None, f"{name}'s fill carries no width: {meter['fill']!r}"
+        width = float(found.group(1))
+        assert abs(width - pct) < 0.05, f"{name} prints {meter['printed']} and draws {width}%"

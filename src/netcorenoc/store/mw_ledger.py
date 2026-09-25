@@ -80,11 +80,19 @@ class MaintenanceLedgerMixin(DeviceMixin):
         if existing is not None and str(existing["status"]) == "active":
             return None
         raised = raised_at if raised_at is not None else now
+        # v0.22.0 (#388): the instant of surfacing and a fresh acknowledgement, so the marker's
+        # lifetime can be read — active, not seen since, not acknowledged.
+        stamp = (
+            ", surfaced_at=?, surfaced_ack_at=NULL, surfaced_ack_by=NULL"
+            if self._has_surfaced_ack
+            else ""
+        )
+        stamp_args = (now,) if self._has_surfaced_ack else ()
         if existing is not None:
             await self.conn.execute(
-                "UPDATE alarm SET status='active', cleared_at=NULL, last_seen=?, "
-                "surfaced_from_window_id=? WHERE id=?",
-                (now, window_id, int(existing["id"])),
+                "UPDATE alarm SET status='active', cleared_at=NULL, last_seen=?, "  # nosec B608
+                f"surfaced_from_window_id=?{stamp} WHERE id=?",
+                (now, window_id, *stamp_args, int(existing["id"])),
             )
             return int(existing["id"])
         entity_id = await self.entity_level0_by_id(device_id, ne_id, raised)
@@ -92,9 +100,14 @@ class MaintenanceLedgerMixin(DeviceMixin):
             # `varbinds` is `'[]'` and both severity columns are NULL, deliberately — see the
             # module docstring. The appliance saw a raise and nothing else, and says so.
             "INSERT INTO alarm (device_id, ne_id, entity_id, class_id, instance, first_seen, "
-            "last_seen, varbinds, surfaced_from_window_id) VALUES (?,?,?,?,?,?,?,'[]',?) "
-            "RETURNING id",
-            (device_id, ne_id, entity_id, class_id, instance, raised, now, window_id),
+            "last_seen, varbinds, surfaced_from_window_id"  # nosec B608 - probe-chosen literal
+            + (
+                ", surfaced_at) VALUES (?,?,?,?,?,?,?,'[]',?,?) "
+                if self._has_surfaced_ack
+                else ") VALUES (?,?,?,?,?,?,?,'[]',?) "
+            )
+            + "RETURNING id",
+            (device_id, ne_id, entity_id, class_id, instance, raised, now, window_id, *stamp_args),
         )
         created = await cur.fetchone()
         return int(created[0]) if created is not None else None

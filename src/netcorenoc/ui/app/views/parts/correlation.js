@@ -1,4 +1,12 @@
-/* "Are these groupings any good right now?" — one line on Situations, detail behind a click.
+/* "Are these groupings any good right now?" — the running scorer, observed.
+ *
+ * ## v0.22.0: it moved to Judge & promotion (item 7)
+ *
+ * It sat on Situations, and the maintainer was right that it does not belong there: an operator
+ * triaging an incident does not care how many pairs were scored. It is also the only place the
+ * RUNNING scorer is visible at all — the release before this one existed because nothing measured
+ * the models — so it moved rather than went, to the screen where the models are measured, and
+ * opens expanded there.
  *
  * ## Why this is not a screen
  *
@@ -28,6 +36,7 @@ import { html } from "../../dom.js";
 import { Component } from "../../dom.js";
 import { get } from "../../api.js";
 import { count, percent, score } from "../../format.js";
+import { InfoTip } from "../../info.js";
 
 /** A rate the appliance has not measured renders `—`, never `0 %` (#289). */
 function rate(value) {
@@ -90,7 +99,7 @@ export function summarise(data) {
 export class CorrelationHealth extends Component {
   constructor(props) {
     super(props);
-    this.state = { open: false, data: null, error: null };
+    this.state = { open: Boolean(props.open), data: null, error: null };
   }
 
   componentDidMount() {
@@ -162,9 +171,9 @@ export class CorrelationHealth extends Component {
               : null}
           </p>`
         : null}
-      <p class="corr-since">
-        Counted as the scorer decided, since this appliance started. Not stored, and not evidence.
-      </p>
+      <p class="corr-since">Since start${" "}
+        <${InfoTip} label="About these counts">Counted as the scorer decided, since this
+          appliance started. Not stored, and not evidence.<//></p>
     </div>`;
   }
 }

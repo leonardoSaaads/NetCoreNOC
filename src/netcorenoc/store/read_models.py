@@ -20,7 +20,7 @@ import hashlib
 from typing import Any
 
 from netcorenoc.ingest import known_oids
-from netcorenoc.store.base import StoreBase
+from netcorenoc.store.class_rules import ClassRuleMixin
 from netcorenoc.store.situations import LIVE
 from netcorenoc.store.types import MAX_SCOPE_PARAMS
 
@@ -40,7 +40,9 @@ VOCAB_MAX_RANK = max(known_oids.SEVERITY_VOCAB.values())
 # as a helper nobody calls.
 
 
-class ReadModelsMixin(StoreBase):
+class ReadModelsMixin(ClassRuleMixin):
+    """Inherits the catalogue (v0.22.0) because the census and the class list both resolve it."""
+
     async def severity_census(self, ne_ids: frozenset[int] | None = None) -> dict[str, Any]:
         """Active alarms by band, resolved **declared first, then learned** (v0.16.7, #312).
 
@@ -89,7 +91,10 @@ class ReadModelsMixin(StoreBase):
                 if self._has_severity_source
                 else "CASE WHEN a.severity IS NULL THEN NULL ELSE 'learned' END AS source "
             )
-            + "FROM alarm a "
+            # v0.22.0: the class OID, so the catalogue's rules can grade what nobody declared
+            # per class (ADR #385). One join; the rules themselves are resolved once per class.
+            + ", c.oid AS class_oid "
+            + "FROM alarm a JOIN alarm_class c ON c.id=a.class_id "
             + self._label_join("s", "severity", "a.class_id")
         )
         # **v0.17.1: no GROUP BY, one row per active alarm** (DECISIONS #340). The standard read
@@ -139,8 +144,9 @@ class ReadModelsMixin(StoreBase):
         # exactly one of these, so they sum to `active - unplaced` and a reader can check that.
         # `declared` is kept at the top level too, because v0.16.7's console already reads it there
         # and this release does not get to move a key the previous one shipped.
-        by_source: dict[str, int] = {"declared": 0, "standard": 0, "learned": 0}
+        by_source: dict[str, int] = {"declared": 0, "imported": 0, "standard": 0, "learned": 0}
         unplaced = vendor_scaled = declared_n = active = 0
+        catalogue = await self.catalogue()
         for row in rows:
             active += 1
             # **The precedence chain, and it is the whole of #338**: declared > standard > learned.
@@ -149,8 +155,13 @@ class ReadModelsMixin(StoreBase):
             declared = row["declared"]
             rank: int | None
             source: str
+            rule = None if declared is not None else catalogue.resolve(row["class_oid"])
             if declared is not None:
                 rank, source = known_oids.severity_rank(declared), "declared"
+            elif rule is not None and rule.severity_rule is not None:
+                # A rule on the class's OID or a branch above it (v0.22.0, ADR #385): the second
+                # rung, below the per-class declaration and above anything the trap carried.
+                rank, source = rule.severity_rank, rule.severity_rule.source
             elif row["source"] is not None:
                 # **What the ingest path placed, and where it got it** (v0.21.0, D5). `standard`
                 # is the trap's own word read in X.733's vocabulary — not an inference and not a

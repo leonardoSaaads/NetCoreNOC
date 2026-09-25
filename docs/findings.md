@@ -2700,3 +2700,53 @@ this into a sentence in a build report instead of a failed gate.
   after the change failed with `unknown audit action 'maintenance.window.read'`.
 - **What now catches it**: `test_a_scope_denial_is_audited_under_the_action_that_was_attempted`,
   which drives all five refusals and asserts the five distinct action strings in order.
+
+## F154 — the Overview's range control changed the labels and not the data
+
+- **What**: the four host charts under the Overview's range picker (15 min to 7 days) drew the same
+  in-memory two-hour ring whatever was picked, and a restart emptied it. Choosing "7d" relabelled
+  two hours of data as a week.
+- **Why nothing caught it**: every chart test handed the chart an array and checked the drawing.
+  None asked whether a different range produced a different query — the range never reached one.
+- **Repair**: `host_sample` (migration 0022), `GET /api/resources?range_s&buckets`, bucketed in SQL,
+  unsampled buckets `null` (ADR #380).
+- **What now catches it**: `tests/test_host_series.py::test_the_range_reaches_the_query` — a reading
+  three days old is in the 7-day answer and absent from the 2-hour one.
+
+## F155 — the Timeline's axis followed the rows, and a row limit truncated the window
+
+- **What**: `/api/timeline?limit=1000` returned the alarms most recently seen; the axis ran from the
+  oldest to the newest mark. Measured on the lab: **1 000 marks spanning 124 seconds** under a
+  window control reading 24 hours.
+- **Why nothing caught it**: the timeline tests asserted the request carried `since=` and `limit=`
+  — both true — and never that the limit could not cut the window short.
+- **Repair**: `/api/activity/*`, counted in SQL over the window, bucketed or paged, never truncated
+  (ADR #381). 2 027 marks in 2 h now fold into 69 burst rows.
+- **What now catches it**: `tests/test_activity.py::test_the_axis_is_proportional_to_time_not_to_rows`.
+
+## F156 — a stylesheet section for one screen redrew another screen's bars
+
+- **What**: the model screen's floor gauge declared `.meter` and `.meter-fill` again at top level
+  (a three-column grid). The cascade handed the health control's bars to it: measured in Chromium,
+  at 390 px the bars collapsed to zero width beside correct percentages.
+- **Why no test could have caught it**: the DOM was right — `style="width:13%"` — and the pixels
+  were wrong. The DOM harness has no layout.
+- **Repair**: the gauge's classes became `.floor*`. Two more whole-selector duplicates the new guard
+  found were merged or renamed (`.badge-quiet`, and a `.mw-targets` this release had reused).
+- **What now catches it**: `tests/test_stylesheet.py` — a bare class is the whole selector of at
+  most one top-level rule — and the live pass's meter measurement (fill within 0.4 points of its
+  figure at 390, 820 and 1440 px).
+
+## F157 — during an outage the Timeline said nothing had happened
+
+- **What**: found in the v0.22.0 live pass. A second fibre cut re-fired alarms already active; a
+  repeating trap increments the alarm (`last_seen`, `count`) and raises nothing, so the Timeline's
+  raise/clear marks were empty and the screen read *"Nothing was raised or cleared in this window"*
+  while the network was down.
+- **Why no test could have caught it**: every fixture raised fresh alarms. The case needs a fault
+  that is already active before the window opens and keeps firing inside it — a live network's
+  normal state and no fixture's.
+- **Repair**: the groups read counts `repeated` — alarms raised before the window and seen in it,
+  scoped like every other count — and the screen says *"N active alarms re-reported"* with a link to
+  Situations (ADR #381).
+- **What now catches it**: `tests/test_activity.py::test_a_fault_that_keeps_firing_is_counted_as_re_reported_not_as_nothing`.

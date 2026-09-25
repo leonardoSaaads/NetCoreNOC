@@ -27,6 +27,7 @@ import { count, plural } from "../format.js";
 import { can } from "../session.js";
 import { WindowForm } from "./parts/mwform.js";
 import { humanise } from "./parts/mwdraft.js";
+import { WindowDetail } from "./parts/mwdetail.js";
 
 /* D7's three sizes. */
 const SIZES = [5, 10, 20];
@@ -56,7 +57,7 @@ export class Maintenance extends Loader {
     super(props);
     this.what = "planned maintenance";
     this.loadingLabel = "Reading planned maintenance";
-    this.state = { ...this.state, limit: 5, creating: false, busy: null };
+    this.state = { ...this.state, limit: 5, creating: false, busy: null, open: null, editing: null };
   }
 
   async load() {
@@ -95,6 +96,17 @@ export class Maintenance extends Loader {
   view(body) {
     const rows = body.windows || [];
     const editable = can("mw.write");
+    if (this.state.editing) {
+      // v0.22.0 (item 19): the same four cards, opened on what was scheduled.
+      return html`<div>
+        <${SectionHeading} title=${`Edit — ${this.state.editing.name}`} />
+        <${WindowForm} initial=${this.state.editing}
+          onSaved=${() => this.setState({ editing: null }, () => this.reload())} />
+        <button type="button" class="link" onClick=${() => this.setState({ editing: null })}>
+          Cancel
+        </button>
+      </div>`;
+    }
     if (this.state.creating) {
       return html`<div>
         <${SectionHeading} title="New maintenance window" />
@@ -152,7 +164,9 @@ export class Maintenance extends Loader {
     const confirmable = w.status === "pending_confirmation" && can("mw.confirm");
     return html`<li class="mw-row" key=${w.id} data-window=${w.id} data-status=${w.status}>
       <${Badge} tone=${TONE[w.status] || "muted"}>${LABEL[w.status] || w.status}<//>
-      <span class="mw-row-name">
+      <button type="button" class="mw-row-name" data-role="mw-open"
+              aria-expanded=${this.state.open === w.id ? "true" : "false"}
+              onClick=${() => this.setState({ open: this.state.open === w.id ? null : w.id })}>
         ${w.redacted
           ? html`<span class="muted" data-role="redacted"
               >Maintenance on ${plural(w.target_count, "host", "hosts")}</span
@@ -161,7 +175,7 @@ export class Maintenance extends Loader {
         ${w.created_by_agent
           ? html`<${Badge} tone="info" title="Created through the API by a service token">agent<//>`
           : null}
-      </span>
+      </button>
       ${w.redacted ? null : html`<span class="muted">${w.organization_name}</span>`}
       <span class="muted">${plural(w.target_count, "host", "hosts")}</span>
       <span class="mw-row-when" data-role="countdown">
@@ -190,6 +204,10 @@ export class Maintenance extends Loader {
           >
             End now
           </button>`
+        : null}
+      ${this.state.open === w.id
+        ? html`<${WindowDetail} wid=${w.id} onChanged=${() => this.reload()}
+            onEdit=${(detail) => this.setState({ editing: detail })} />`
         : null}
     </li>`;
   }

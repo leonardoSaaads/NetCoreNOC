@@ -146,7 +146,9 @@ NOT_DRIVEN = frozenset({("GET", "/api/events")})
 #: Measured: renaming `store/idle.py` left the record byte-identical; rewriting one route docstring
 #: that mentioned the module moved it by four lines.
 UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
-    ("GET", "/api/situations"): ("limit", "q", "status"),
+    # v0.22.0 adds `ne_id` (the element panel's situations), driven by
+    # `tests/test_elements.py` rather than here.
+    ("GET", "/api/situations"): ("limit", "ne_id", "q", "status"),
     # v0.20.0 adds `buckets` and `range_s`, which switch this route from marks to per-bucket
     # counts (F144). Undriven like the other four: this record builds every URL from the
     # path template and sends no query string, so the route is recorded at its defaults —
@@ -176,6 +178,19 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # how the console asks for the right one. Recorded at its default (now, frozen by this
     # harness), and driven against a real transition by `tests/test_timezones.py`.
     ("GET", "/api/timezones"): ("at", "limit", "q"),
+    # v0.22.0. Every one of these is a window, a page or a filter, recorded here at its default
+    # for the reason every entry above is. They are driven instead where the shape can be built:
+    # `range_s`/`buckets` reach SQL in `tests/test_host_series.py` and `tests/test_activity.py`;
+    # the catalogue's `q`/`under`/`node`/`source` and paging in `tests/test_catalogue.py`; the
+    # import's `dry_run` in `tests/test_catalogue_import.py`.
+    ("GET", "/api/resources"): ("buckets", "range_s"),
+    ("GET", "/api/activity/severity"): ("buckets", "range_s"),
+    ("GET", "/api/activity/lanes"): ("buckets", "ne_id", "range_s", "top"),
+    ("GET", "/api/activity/groups"): ("class_id", "kind", "limit", "ne_id", "offset", "range_s"),
+    ("GET", "/api/catalogue"): ("limit", "offset", "q", "under"),
+    ("GET", "/api/catalogue/rules"): ("limit", "offset", "source"),
+    ("GET", "/api/catalogue/tree"): ("node",),
+    ("POST", "/api/catalogue/import"): ("dry_run",),
 }
 
 #: Headers dropped from the record, with the reason each one is not a behaviour of this project.

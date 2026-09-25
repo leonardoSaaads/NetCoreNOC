@@ -188,6 +188,7 @@ class ResourceSampler:
     _disk: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
     _db: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
     _latest: dict[str, Any] = field(default_factory=dict)
+    _db_mb: float | None = None
 
     def sample(self) -> None:
         """Take one reading. Safe in a supervised loop: it raises nothing an OS read can."""
@@ -216,6 +217,7 @@ class ResourceSampler:
         self._mem.append(mem_pct)
         self._disk.append(disk_pct)
         self._db.append(db_mb)
+        self._db_mb = db_mb
         self._latest = {
             "db_bytes": database[0] if database else None,
             "db_journal_bytes": database[1] if database else None,
@@ -228,6 +230,15 @@ class ResourceSampler:
             "disk_pct": disk_pct,
             "disk_used": storage[0] if storage else None,
             "disk_total": storage[1] if storage else None,
+        }
+
+    def reading(self) -> dict[str, float | None]:
+        """The four numbers `host_sample` persists (v0.22.0): the latest reading, in chart units."""
+        return {
+            "cpu_pct": self._latest.get("cpu_pct"),
+            "mem_pct": self._latest.get("mem_pct"),
+            "disk_pct": self._latest.get("disk_pct"),
+            "db_mb": self._db_mb,
         }
 
     def _per_bucket(self) -> int:
