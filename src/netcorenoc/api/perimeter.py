@@ -151,7 +151,11 @@ class Perimeter:
         response = await call_next(request)
         for header, value in SECURITY_HEADERS.items():
             response.headers.setdefault(header, value)
-        if request.url.path.startswith("/api"):
+        # v0.25.0 (ADR #402): a profile photo is the one API answer a browser should keep. Its URL
+        # carries the photo's digest, so a kept copy can never be stale, and `private` keeps it out
+        # of any shared cache. Every other /api answer is still never stored.
+        photo = request.url.path.startswith("/api/avatars/") and response.status_code in (200, 304)
+        if request.url.path.startswith("/api") and not photo:
             response.headers["Cache-Control"] = "no-store"
         return response
 

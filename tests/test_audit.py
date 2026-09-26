@@ -108,15 +108,19 @@ async def _drive_every_action(store: Store) -> tuple[Engine, httpx.AsyncClient]:
     )
     await engine.maintenance(BASE + 20, retention_days=365.0)
 
-    # password.change: a throwaway user changes its own password.
+    # password.change: a throwaway user sets its own password. From v0.25.0 an account an admin
+    # creates must choose its own at first sign-in (ADR #401), so the change rides the login.
     await admin.post(
         "/api/users", json={"username": "pwu", "password": "pw-user-123456", "role": "viewer"}
     )
     async with authutil.new_client(app) as pwc:
-        await pwc.post("/api/login", json={"username": "pwu", "password": "pw-user-123456"})
         await pwc.post(
-            "/api/password",
-            json={"old_password": "pw-user-123456", "new_password": "pw-user-new-9999"},
+            "/api/login",
+            json={
+                "username": "pwu",
+                "password": "pw-user-123456",
+                "new_password": "pw-user-new-9999",
+            },
         )  # password.change
 
     # A denied sensitive read (viewer -> quarantine), before we poison the source IP.

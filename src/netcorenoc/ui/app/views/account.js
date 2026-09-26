@@ -1,96 +1,159 @@
-/* Change your own password while signed in.
+/* Your account: who you are here, your password, and what you can do (v0.25.0, ADR #401).
  *
- * `POST /api/password` is `self.read` — every authenticated principal holds it — and in v0.12.0
- * it had **no UI surface at all** (draft §4). The login overlay handled a *forced* change on
- * first sign-in, so a signed-in operator had no way to change their password. That is a security
- * affordance missing from a product that ships a password policy, and it is the smallest and
- * least arguable of the eight gaps this release closes.
+ * Three cards, in the order a person comes here for them:
+ *
+ *   * **Profile** — your photo and the name the console shows beside it. Both save on their own,
+ *     at once; the username is the sign-in and does not change here.
+ *   * **Security** — change your password (`POST /api/password`, `self.read`). It signs out every
+ *     session this account holds, including this one, and the card says so before the click.
+ *   * **Access** — your role and what it lets you do, by category, as counts; the full list is one
+ *     click away instead of a wall of identifiers. It is the set the SERVER resolved for this
+ *     session (`/api/me`), a display of it and never a second copy.
  */
 
 import { html, Component } from "../dom.js";
-import { post } from "../api.js";
-import { SectionHeading } from "../widgets.js";
-import { session } from "../session.js";
+import { get, post, del } from "../api.js";
+import { session, setSession, scopeSummary } from "../session.js";
 import { PasswordInput, PasswordMeter, pairProblem } from "../password.js";
-import { Icon } from "../icons.js";
+import { PhotoPicker, uploadPhoto } from "../avatar.js";
+import { InfoTip } from "../info.js";
+import { CATEGORIES } from "./parts/capgrid.js";
 
-export class Account extends Component {
+async function refreshSession() {
+  setSession(await get("/api/me"));
+}
+
+class Profile extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { name: session().displayName || "", status: null, busy: false };
+  }
+
+  async photo(blob) {
+    this.setState({ busy: true, status: null });
+    try {
+      if (blob) await uploadPhoto("/api/me/avatar", blob);
+      else await del("/api/me/avatar");
+      await refreshSession();
+      this.setState({ busy: false, status: { ok: true, text: blob ? "Photo saved." : "Photo removed." } });
+    } catch (error) {
+      this.setState({ busy: false, status: { ok: false, text: error.detail || error.message } });
+    }
+  }
+
+  async saveName(event) {
+    event.preventDefault();
+    this.setState({ busy: true, status: null });
+    try {
+      await post("/api/me/profile", { display_name: this.state.name.trim() || null });
+      await refreshSession();
+      this.setState({ busy: false, status: { ok: true, text: "Name saved." } });
+    } catch (error) {
+      this.setState({ busy: false, status: { ok: false, text: error.detail || error.message } });
+    }
+  }
+
+  render(_props, { name, status, busy }) {
+    const me = session();
+    const dirty = name.trim() !== (me.displayName || "");
+    return html`<section class="panel-block acct-profile">
+      <${PhotoPicker} person=${{ id: me.userId, digest: me.avatar, name: me.displayName, username: me.user }}
+        size=${104} label="Your photo" onChange=${(blob) => this.photo(blob)} />
+      <form class="acct-id" onSubmit=${(e) => this.saveName(e)}>
+        <label class="pe-field"><span>Name</span>
+          <span class="acct-name-row">
+            <input value=${name} maxlength="80" placeholder=${me.user}
+              onInput=${(e) => this.setState({ name: e.currentTarget.value })} />
+            <button type="submit" class="primary" disabled=${busy || !dirty}>Save</button>
+          </span></label>
+        <p class="acct-handle"><span class="muted">@${me.user}</span>
+          <span class=${`role-pill role-${me.role}`}>${me.role}</span></p>
+        ${status ? html`<p class=${status.ok ? "ok-note" : "err"} role="status">${status.text}</p>` : null}
+      </form>
+    </section>`;
+  }
+}
+
+class Security extends Component {
   constructor(props) {
     super(props);
     this.state = { current: "", next: "", confirm: "", busy: false, outcome: null };
-    this.submit = this.submit.bind(this);
   }
 
   async submit(event) {
     event.preventDefault();
-    // One refusal, shared with the sign-in card, so the two screens say the same words about the
-    // same policy — and so a change to `MIN_PASSWORD` moves both.
     const problem = pairProblem(this.state.next, this.state.confirm);
     if (problem) { this.setState({ outcome: { ok: false, message: problem } }); return; }
     this.setState({ busy: true, outcome: null });
     try {
-      await post("/api/password", {
-        old_password: this.state.current,
-        new_password: this.state.next,
-      });
-      this.setState({
-        busy: false, current: "", next: "", confirm: "",
-        // F82: this said "Other sessions are unaffected." The route calls
-        // `revoke_user_sessions(principal.user_id)`, which revokes EVERY session this account
-        // holds — the caller's included — and its own return says "sign in again". Driven: two
-        // sessions for one account, one changes the password, both go to 401.
-        outcome: {
-          ok: true,
-          message: "Password changed. Every session this account holds was signed out, "
-                   + "including this one — sign in again with the new password.",
-        },
-      });
+      await post("/api/password", { old_password: this.state.current, new_password: this.state.next });
+      // F82: every session this account holds is revoked, this one included.
+      this.setState({ busy: false, current: "", next: "", confirm: "", outcome: { ok: true,
+        message: "Password changed. Every session was signed out — sign in again." } });
     } catch (error) {
-      this.setState({
-        busy: false,
-        outcome: { ok: false, message: error.detail || error.message },
-      });
+      this.setState({ busy: false, outcome: { ok: false, message: error.detail || error.message } });
     }
   }
 
-  render(_props, { busy, outcome }) {
-    const active = session();
-    return html`<div class="account">
-      <${SectionHeading} title="Signed in as"
-        hint="Your role and resolved capabilities come from the server on every request; this is
-              a display of them, not a second copy." />
-      <dl class="kv">
-        <dt>user</dt><dd>${active.user}</dd>
-        <dt>role</dt><dd><span class="role-tag">${active.role}</span></dd>
-        <dt>capabilities</dt>
-        <dd class="cap-list">${[...active.capabilities].sort()
-          .map((c) => html`<code class="mono cap" key=${c}>${c}</code>`)}</dd>
-      </dl>
-
-      <${SectionHeading} title="Change your password"
-        hint="It stores a hash and never the password. Changing it signs out every session this
-              account holds, including this one." />
-      <form class="stack" onSubmit=${this.submit} autocomplete="off">
+  render(_props, { current, next, confirm, busy, outcome }) {
+    return html`<section class="panel-block acct-security">
+      <h3>Password <${InfoTip} label="About passwords">Stored as a hash, never as the password.
+        Changing it signs out every session of this account, this one included. Two-factor
+        sign-in is on the roadmap.<//></h3>
+      <form class="stack" onSubmit=${(e) => this.submit(e)} autocomplete="off">
         <${PasswordInput} id="pwCurrent" label="Current password" autocomplete="current-password"
-          value=${this.state.current} onInput=${(v) => this.setState({ current: v })} />
+          value=${current} onInput=${(v) => this.setState({ current: v })} />
         <${PasswordInput} id="pwNext" label="New password" autocomplete="new-password"
-          describedBy="pwNext-meter" value=${this.state.next}
-          onInput=${(v) => this.setState({ next: v })} />
-        <${PasswordMeter} id="pwNext-meter" value=${this.state.next} />
+          describedBy="pwNext-meter" value=${next} onInput=${(v) => this.setState({ next: v })} />
+        <${PasswordMeter} id="pwNext-meter" value=${next} />
         <${PasswordInput} id="pwConfirm" label="New password again" autocomplete="new-password"
-          value=${this.state.confirm} onInput=${(v) => this.setState({ confirm: v })} />
+          value=${confirm} onInput=${(v) => this.setState({ confirm: v })} />
         <button type="submit" disabled=${busy}>${busy ? "Changing…" : "Change password"}</button>
       </form>
       ${outcome ? html`<p class=${outcome.ok ? "ok-note" : "err"} role="alert">${outcome.message}</p>` : null}
+    </section>`;
+  }
+}
 
-      <${SectionHeading} title="Second factor" />
-      <p class="note-line">
-        <${Icon} name="shield" /><span>
-          <b>Not available yet.</b>${" "}Two-factor authentication is on the roadmap and will
-          be${" "}<b>required for admin accounts</b> when it arrives. There is nothing to enrol
-          here today, and this appliance holds no secret, no recovery code and no address for
-          you.</span>
-      </p>
+function Access() {
+  const me = session();
+  const held = me.capabilities;
+  const scope = scopeSummary();
+  return html`<section class="panel-block acct-access">
+    <h3>What you can do <${InfoTip} label="Where this comes from">Your role, narrowed by any access
+      an admin set for you. Resolved by the server on every request.<//></h3>
+    <p class="acct-summary"><span class=${`role-pill role-${me.role}`}>${me.role}</span>
+      <b>${held.size}</b> capabilities${scope ? html` · <span title=${scope.title}>sees
+      ${scope.neCount} network elements</span>` : ""}</p>
+    <ul class="acct-cats">
+      ${CATEGORIES.map(([name, caps]) => {
+        const mine = caps.filter(([id]) => held.has(id));
+        return html`<li key=${name}>
+          <span class="acct-cat">${name}</span>
+          <span class="acct-bar" aria-hidden="true"><span style=${`width:${Math.round((mine.length / caps.length) * 100)}%`}></span></span>
+          <span class="acct-n">${mine.length}/${caps.length}</span>
+        </li>`;
+      })}
+    </ul>
+    <details class="acct-all">
+      <summary>Show each capability</summary>
+      ${CATEGORIES.map(([name, caps]) => {
+        const mine = caps.filter(([id]) => held.has(id));
+        return mine.length ? html`<div key=${name} class="acct-chips"><b>${name}</b>
+          ${mine.map(([id, label]) => html`<span key=${id} class="chip-static" title=${id}>${label}</span>`)}</div>` : null;
+      })}
+    </details>
+  </section>`;
+}
+
+export class Account extends Component {
+  render() {
+    return html`<div class="account-v2">
+      <${Profile} />
+      <div class="acct-grid">
+        <${Security} />
+        <${Access} />
+      </div>
     </div>`;
   }
 }

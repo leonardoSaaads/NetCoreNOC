@@ -78,7 +78,6 @@ _UI_MODULES = (
     "app/views/classes.js",
     "app/views/corpus.js",
     "app/views/entities.js",
-    "app/views/governance.js",
     "app/views/graph.js",
     "app/views/labelling.js",
     "app/views/overview.js",
@@ -89,8 +88,6 @@ _UI_MODULES = (
     "app/views/settings.js",
     "app/views/situations.js",
     "app/views/timeline.js",
-    "app/views/tokens.js",
-    "app/views/users.js",
     # `views/parts/` — modules under `views/` that are NOT views. `registry.js` imports seventeen
     # screens; these four are imported by SIBLING views (`settings` takes facts and retention,
     # `scorer` takes model, `promotion` takes verdict). They lived beside the screens until
@@ -180,6 +177,13 @@ _UI_MODULES = (
     "app/views/parts/tlfilters.js",
     "app/views/parts/sequence.js",
     "app/views/parts/nedetail.js",
+    "app/avatar.js",
+    "app/views/access.js",
+    "app/views/parts/capgrid.js",
+    "app/views/parts/people.js",
+    "app/views/parts/roles.js",
+    "app/views/parts/tokenspanel.js",
+    "app/views/parts/visibility.js",
     "app/widgets.js",
 )
 

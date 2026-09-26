@@ -686,7 +686,15 @@ def test_every_destructive_control_goes_through_one_component() -> None:
     # The apply step does not exist until a preview has been seen — absent, not disabled.
     assert 'stage === "previewed" || stage === "applying"' in destructive
     # v0.23.0 (#395): the Entities screen's two resets moved into the element it opens.
-    for name in ("audit", "settings", "users", "tokens", "parts/nedetail", "promotion", "scorer"):
+    for name in (
+        "audit",
+        "settings",
+        "parts/people",
+        "parts/tokenspanel",
+        "parts/nedetail",
+        "promotion",
+        "scorer",
+    ):
         source = (UI_DIR / "app" / "views" / f"{name}.js").read_text(encoding="utf-8")
         assert "Destructive" in source, f"{name}.js has no destructive-preview machinery"
     # And no screen may reach for a bare `confirm()` instead.

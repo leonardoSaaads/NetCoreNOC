@@ -21,7 +21,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.models import PolicyIn
+from netcorenoc.api.models import PolicyIn, SubjectAccessIn
 from netcorenoc.crosscutting import auth, rbac, shaping
 
 MAX_POLICY_HISTORY = 50
@@ -146,6 +146,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             history = await store.list_governance_policies("rbac", MAX_POLICY_HISTORY)
             active = await _active_policy("rbac")
         policy = governance.capability
+        named = policy if policy is not None and not policy.malformed else None
         return {
             "kind": "rbac",
             "active": _policy_row(active) if active else None,
@@ -159,6 +160,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             },
             "recovery_capabilities": sorted(rbac.RECOVERY_CAPABILITIES),
             "all_capabilities": sorted(rbac.PERMISSIONS),
+            # v0.25.0 (ADR #403): the minimum role of each capability, and every subject the policy
+            # names — so a console can draw each role's and each person's grid without parsing
+            # the document itself.
+            "minimum_role": dict(sorted(rbac.PERMISSIONS.items())),
+            "subjects": {
+                "roles": {k: sorted(v) for k, v in (named.roles if named else {}).items()},
+                "principals": {
+                    k: sorted(v) for k, v in (named.principals if named else {}).items()
+                },
+            },
             "history": [_policy_row(row) for row in history],
         }
 
@@ -174,6 +185,48 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
         return await _write_policy(
             "rbac", body, request, principal, "rbac.policy.update", _capability_problems
+        )
+
+    @route.post("/api/rbac/subject")
+    async def set_subject_access(
+        body: SubjectAccessIn, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Set or clear ONE subject's entry — a role's baseline, or one user's or token's set.
+
+        A new version of the whole policy, through `_write_policy`: versioned, audited with before
+        and after, and reversible from the history like any other. `capabilities: null` removes
+        the entry, so the subject inherits again. What it can express is still only a narrowing:
+        the resolver intersects every entry with the compiled ceiling (DECISIONS #53).
+        """
+        kind, key = body.subject.split(":", 1)
+        async with store.lock:
+            if kind == "user" and await store.get_user(int(key)) is None:
+                raise HTTPException(status_code=404, detail="no such user")
+            if kind == "token" and not any(
+                int(t["id"]) == int(key) for t in await store.list_tokens()
+            ):
+                raise HTTPException(status_code=404, detail="no such token")
+            await governance.load()
+            active = await _active_policy("rbac")
+        if governance.capability is not None and governance.capability.malformed:
+            raise HTTPException(
+                status_code=409, detail="the stored policy is malformed; clear or repair it first"
+            )
+        document: dict[str, Any] = json.loads(active["document"]) if active else {}
+        section, name = ("roles", key) if kind == "role" else ("principals", body.subject)
+        entries = dict(document.get(section) or {})
+        if body.capabilities is None:
+            entries.pop(name, None)
+        else:
+            entries[name] = sorted(set(body.capabilities))
+        document = {**document, "version": 1, section: entries}
+        return await _write_policy(
+            "rbac",
+            PolicyIn(document=document, note=body.note or f"access: {body.subject}"),
+            request,
+            principal,
+            "rbac.policy.update",
+            _capability_problems,
         )
 
     @route.get("/api/scope", dependencies=guarded)

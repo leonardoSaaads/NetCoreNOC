@@ -12,6 +12,7 @@
 
 import { html, Component } from "../../dom.js";
 import { age, percent, timeTitle } from "../../format.js";
+import { Avatar } from "../../avatar.js";
 
 /**
  * The operator's own name for a situation.
@@ -100,14 +101,22 @@ const NAME_TITLE =
  * The second half is why this is not a one-line CSS commit. Appendix B's blind spot is exactly
  * *"the DOM harness cannot see whitespace"*, and half a repair reads as a whole one until the other
  * half is measured. */
+/** `user:12` -> 12; a token or anything else -> null (no photo). */
+function userId(actor) {
+  const m = /^user:(\d+)$/.exec(actor || "");
+  return m ? Number(m[1]) : null;
+}
+
 export function History({ events }) {
   return html`<section class="history">
     <h3>What has been done to this situation</h3>
     <ol class="history-list">
       ${events.map((e, index) => html`<li key=${index}>
         <span class="history-kind">${e.kind.replace("_", " ")}</span>
+        ${e.actor_name ? html`<${Avatar} id=${userId(e.actor)} digest=${e.actor_avatar}
+                               name=${e.actor_display} username=${e.actor_name} size=${20} />` : null}
         ${e.actor ? html`<span class="muted" title=${e.actor_name ? e.actor : ACTOR_TITLE}
-                         >${" by "}${e.actor_name || e.actor}</span>` : null}
+                         >${" by "}${e.actor_display || e.actor_name || e.actor}</span>` : null}
         ${e.confidence != null
           ? html`<span class="muted">${` at ${percent(e.confidence)} confidence`}</span>` : null}
         ${" "}<span class="age" title=${timeTitle(e.at)}>${age(e.at)}</span>

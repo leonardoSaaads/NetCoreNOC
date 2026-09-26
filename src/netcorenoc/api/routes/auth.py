@@ -128,8 +128,17 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
         capabilities: frozenset[str] = request.state.capabilities
         scope = await scope_for(principal)
+        person = None
+        if principal.user_id is not None:
+            async with store.lock:
+                person = await store.person(int(principal.user_id))
         return {
             "user": principal.actor,
+            # v0.25.0 (ADR #401, #402): who you are as a person — your id, the name you chose and
+            # your photo's digest (the console builds the photo's URL from the two).
+            "user_id": principal.user_id,
+            "display_name": person["display_name"] if person else None,
+            "avatar": person["avatar"] if person else None,
             "role": principal.role,
             "must_change_password": principal.must_change_password,
             "capabilities": sorted(capabilities),

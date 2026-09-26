@@ -107,6 +107,7 @@ def create_app(
     routes.annotate.register(app, ctx)
     routes.operate.register(app, ctx)
     routes.admin.register(app, ctx)
+    routes.people.register(app, ctx)  # v0.25.0: names and photos, after the accounts they belong to
     routes.scorer.register(app, ctx)
     routes.promotion.register(app, ctx)
     routes.models.register(app, ctx)

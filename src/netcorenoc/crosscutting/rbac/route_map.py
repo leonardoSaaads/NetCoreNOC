@@ -31,6 +31,13 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/logout"): "self.read",
     ("GET", "/api/me"): "self.read",
     ("POST", "/api/password"): "self.read",
+    # v0.25.0 (ADR #401, #402): your own name and photo are yours, like your password. Reading a
+    # photo is `self.read`; whose photo a caller may read is decided in the handler, by the rule
+    # the gesture history's names follow (`shaping.sees_people`).
+    ("GET", "/api/avatars/{uid}"): "self.read",
+    ("POST", "/api/me/avatar"): "self.read",
+    ("DELETE", "/api/me/avatar"): "self.read",
+    ("POST", "/api/me/profile"): "self.read",
     ("GET", "/api/stats"): "stats.read",
     ("GET", "/api/graph"): "graph.read",
     ("GET", "/api/classes"): "classes.read",
@@ -73,6 +80,9 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/users"): "users.manage",
     ("DELETE", "/api/users/{uid}"): "users.manage",
     ("POST", "/api/users/{uid}/role"): "users.manage",
+    ("POST", "/api/users/{uid}/profile"): "users.manage",
+    ("POST", "/api/users/{uid}/avatar"): "users.manage",
+    ("DELETE", "/api/users/{uid}/avatar"): "users.manage",
     ("GET", "/api/tokens"): "tokens.manage",
     ("POST", "/api/tokens"): "tokens.manage",
     ("DELETE", "/api/tokens/{tid}"): "tokens.manage",
@@ -94,6 +104,7 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/promotion"): "promotion.write",
     ("GET", "/api/rbac"): "rbac.read",
     ("POST", "/api/rbac"): "rbac.write",
+    ("POST", "/api/rbac/subject"): "rbac.write",
     ("GET", "/api/scope"): "scope.read",
     ("POST", "/api/scope"): "scope.write",
     ("GET", "/api/quarantine"): "quarantine.read",
@@ -184,6 +195,14 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("GET", "/api/me"): "scoped",
     # Acts on the caller's own password; references no network element.
     ("POST", "/api/password"): "unscoped",
+    # A person's photo, and the caller's own name and photo: an account, never a network element.
+    ("GET", "/api/avatars/{uid}"): "unscoped",
+    # The caller's own photo: bytes about an account, never about a network element.
+    ("POST", "/api/me/avatar"): "unscoped",
+    # Removing the caller's own photo, for the same reason.
+    ("DELETE", "/api/me/avatar"): "unscoped",
+    # The caller's own display name: a label on an account, naming no network element.
+    ("POST", "/api/me/profile"): "unscoped",
     ("GET", "/api/stats"): "scoped",
     ("GET", "/api/graph"): "scoped",
     # An alarm class is a *kind of trap*, not a network element, and the table carries no NE
@@ -221,6 +240,9 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/users"): "admin_only",
     ("DELETE", "/api/users/{uid}"): "admin_only",
     ("POST", "/api/users/{uid}/role"): "admin_only",
+    ("POST", "/api/users/{uid}/profile"): "admin_only",
+    ("POST", "/api/users/{uid}/avatar"): "admin_only",
+    ("DELETE", "/api/users/{uid}/avatar"): "admin_only",
     ("GET", "/api/tokens"): "admin_only",
     ("POST", "/api/tokens"): "admin_only",
     ("DELETE", "/api/tokens/{tid}"): "admin_only",
@@ -255,6 +277,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/scorer/rollback"): "admin_only",
     ("GET", "/api/rbac"): "admin_only",
     ("POST", "/api/rbac"): "admin_only",
+    ("POST", "/api/rbac/subject"): "admin_only",
     ("GET", "/api/scope"): "admin_only",
     ("POST", "/api/scope"): "admin_only",
     ("GET", "/api/quarantine"): "admin_only",

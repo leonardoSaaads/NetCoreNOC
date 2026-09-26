@@ -296,9 +296,12 @@ class SituationEventMixin(StoreBase):
         with it (DECISIONS #269).
         """
         cur = await self.conn.execute(
-            "SELECT e.kind, e.at, e.actor, e.confidence, "
-            "       (SELECT u.username FROM user u WHERE 'user:' || u.id = e.actor) AS actor_name "
+            "SELECT e.kind, e.at, e.actor, e.confidence, u.username AS actor_name, "
+            # v0.25.0 (ADR #401): the person's display name and photo digest, shaped like the name.
+            "       u.display_name AS actor_display, a.sha256 AS actor_avatar "
             "FROM situation_event e "
+            "LEFT JOIN user u ON 'user:' || u.id = e.actor "
+            "LEFT JOIN user_avatar a ON a.user_id = u.id "
             "WHERE e.situation_id=? OR e.peer_situation_id=? ORDER BY e.at, e.id",
             (situation_id, situation_id),
         )

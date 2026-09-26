@@ -12,6 +12,28 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-eight rows, two ask for an
 action, eighteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
+## [0.25.0] - 2026-09-26 — "people"
+
+### Added
+
+- **Profile photos** (#402): a round photo per person in the navbar, the People list, a
+  situation's history and the account page; initials on a colour when there is none. Re-encoded to
+  192 px in the browser (EXIF stripped), re-checked on the server from its own bytes (PNG, WebP or
+  JPEG; ≤ 320 px; ≤ 64 KiB), served `nosniff` under a closed CSP and cached once per browser.
+- **Display names** (#401), editable by the person and by an admin.
+- **Per-person access** (#403): a capability grid, grouped by category, on each person and each
+  service token; role baselines in the same grid. Every change is a versioned, audited, restorable
+  policy version, and can only narrow.
+- **Service token purpose** (#404), a copy button and a working example for the value shown once.
+
+### Changed
+
+- **People & access** replaces Users, Service tokens and Governance (#403); the old addresses open
+  the matching tab.
+- **Your account** is redesigned: profile (photo, name), password, and what you can do by category.
+- An account an admin creates must set its own password at first sign-in (#401).
+- A destructive control inside a list row is one small button until opened (`compact`).
+
 ## [0.24.0] - 2026-09-26 — "plug and play"
 
 Seven items from the maintainer's third pass. No migration, no new capability, no new route.

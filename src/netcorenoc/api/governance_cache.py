@@ -96,12 +96,12 @@ class GovernancePolicies:
             out.append(
                 f"The stored capability policy could not be read ({self._capability.reason}); "
                 "authorization has fallen back to the built-in role permissions. Fix or clear it "
-                "under Governance — no principal has gained anything."
+                "under People & access, Roles — no principal has gained anything."
             )
         if self._scope is not None and self._scope.malformed:
             out.append(
                 f"The stored visibility scope could not be read ({self._scope.reason}); viewers "
-                "and editors are seeing nothing until it is fixed or cleared under Governance. "
-                "Admins are never scoped, so this is repairable."
+                "and editors are seeing nothing until it is fixed or cleared under People & "
+                "access, Visibility. Admins are never scoped, so this is repairable."
             )
         return out
