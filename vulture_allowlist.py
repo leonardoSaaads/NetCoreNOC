@@ -241,3 +241,4 @@ delete_rule  # netcorenoc/api/routes/catalogue.py
 import_file  # netcorenoc/api/routes/catalogue.py
 clear_imported  # netcorenoc/api/routes/catalogue.py
 element  # netcorenoc/api/routes/elements.py
+grade  # netcorenoc/ingest/trappack.py — called by tools/trappack_build.py, which builds the pack

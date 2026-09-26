@@ -54,7 +54,7 @@ export class WindowForm extends Component {
       localEnd: plusHours(start, 2),
       allDay: false,
       patchMinutes: 10,
-      ledgerEnabled: true,
+      ledgerEnabled: false, // v0.24.0 (#397): a window discards what it suppresses
       visibility: "editors",
       rules: [],
       preview: null,
@@ -368,11 +368,11 @@ export class WindowForm extends Component {
           checked=${s.ledgerEnabled}
           onChange=${(e) => this.set({ ledgerEnabled: e.target.checked })}
         />
-        Surface faults that outlive this window</label
+        When it ends, report faults it suppressed that never cleared</label
       >
-      ${!s.ledgerEnabled
-        ? html`<p class="warn" data-role="ledger-risk">
-            A fault that starts during this window and never clears will not be recorded at all.
+      ${s.ledgerEnabled
+        ? html`<p class="hint" data-role="ledger-on">
+            They appear together, as one situation for this window.
           </p>`
         : null}
     </div>`;

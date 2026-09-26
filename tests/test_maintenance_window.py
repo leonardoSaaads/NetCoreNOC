@@ -796,3 +796,56 @@ async def test_the_probe_is_true_on_a_current_schema(store: Store) -> None:
     await authutil.make_env(store)
     assert store._has_maintenance is True, "the probe does not see tables migration 0021 created"
     assert await store.list_organizations(), "the seeded default organization is not readable"
+
+
+async def test_what_a_window_surfaces_is_one_situation_not_one_per_trap(store: Store) -> None:
+    """**v0.24.0 (ADR #397).** Found by the maintainer: a test window over an element that sent a
+    burst of traps closed and opened one situation per trap — which read as *"the window let every
+    trap through, late"*. What surfaces is one fact about one window, so it is one situation."""
+    engine, _queue, _app = await authutil.make_env(store)
+    ne_a = await store.ne_id(HOST_A, _at(9))
+    ne_b = await store.ne_id(HOST_B, _at(9))
+    await _window(store, starts_at=_at(10), ends_at=_at(12), ne_ids=[ne_a, ne_b], rules=[])
+    async with store.lock:
+        await engine._maintenance_windows(_at(11))
+        for n in range(6):
+            host = HOST_A if n % 2 else HOST_B
+            await engine._process(_trap(host, LOS, f"onu-{n}", _at(11, 10 + n), "critical"))
+        await engine._maintenance_windows(_at(12, 1))
+        await store.commit()
+        alarms = await _scalar(
+            store, "SELECT COUNT(*) FROM alarm WHERE surfaced_from_window_id IS NOT NULL"
+        )
+        situations = await _scalar(
+            store,
+            "SELECT COUNT(DISTINCT sa.situation_id) FROM situation_alarm sa "
+            "JOIN alarm a ON a.id=sa.alarm_id WHERE a.surfaced_from_window_id IS NOT NULL",
+        )
+    assert alarms == 6
+    assert situations == 1, f"{situations} situations for one window's surfaced faults"
+
+
+async def test_a_window_created_without_saying_so_reports_nothing_afterwards(
+    store: Store,
+) -> None:
+    """**v0.24.0 (ADR #397): the ledger is opt-in.** A window's purpose is that what it covers is
+    not processed; one created through the API without `ledger_enabled` discards what it
+    suppresses, so nothing arrives late when it ends."""
+    _engine, _queue, app = await authutil.make_env(store)
+    ne_a = await store.ne_id(HOST_A, _at(9))
+    async with store.lock:
+        await store.commit()
+    editor = await authutil.client_as(app, "editor")
+    try:
+        body = {
+            "name": "splice",
+            "tz": "America/Sao_Paulo",
+            "starts_at": "2030-01-01T10:00:00-03:00",
+            "ends_at": "2030-01-01T12:00:00-03:00",
+            "targets": [ne_a],
+        }
+        created = await editor.post("/api/maintenance-windows", json=body)
+    finally:
+        await editor.aclose()
+    assert created.status_code in (200, 201), created.text
+    assert created.json()["ledger_enabled"] is False

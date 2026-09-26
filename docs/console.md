@@ -16,7 +16,7 @@ disabled controls.
 | **Network graph** | Learned affinity between network elements, drawn the same way every time. Zoom with the wheel, `+`/`−`, double-click or pinch; drag or the arrow keys pan; `0` fits. *Find* centres an address or name. Select an element (click, or Tab and Enter) for its panel: situations and the last day's traps. *Elements by load* ranks the estate exactly |
 | **Timeline** | Raises and clears over the window you pick, per element, with repeats of one trap folded into one row. Narrow by organization, element, trap (a name, or an OID meaning its branch) and kind; every filter is in the address and shown as a removable chip. From a situation card, the timeline opens as that situation's **sequence of events** |
 | **Entities** | The estate as an inventory: counts that filter, search and sort, one row per element with its severity mix, situations, components and last trap. Open one for its last day and busiest components; the identification evidence is behind a disclosure |
-| **Trap catalogue** | Every trap type, by name and severity: search, browse by vendor branch, name or grade a trap or a whole branch, import a trap list |
+| **Trap catalogue** | Every trap type, by name and severity: search, browse by vendor branch, name or grade a trap or a whole branch, import a trap list. Traps of 28 network vendors and the standard MIBs are named out of the box, with a default severity marked *built-in* that any rule or declaration overrides |
 | **Maintenance** | Planned work: what is scheduled, what is running, and **what it still collects** |
 
 ## Evidence — what has been learned, and what is refused
@@ -360,14 +360,17 @@ capability from the role that holds the write capability; they are separate for 
 
 ### What happens to a fault that outlives the window
 
-The appliance keeps a **state ledger** while a window is in force: per element, class and instance,
-whether it saw a raise and whether it saw a clear. Six numbers, and **no varbinds, no severity and
-no payload** — recording those would be collecting the trap you asked it not to collect.
+**By default, nothing** (v0.24.0). A window discards what it covers: no alarm, no situation, during
+the window or after it. That is what a window is for.
 
-When the window closes, anything raised inside it that never cleared **surfaces as an alarm**,
-marked *"raised during maintenance, still active"*. That alarm carries **no severity**, and the
-reason is worth knowing: the appliance is not failing to place one, it never saw the trap. You can
-turn the ledger off per window; the card says in plain words what you lose if you do.
+If you want to know about faults that started during the window and never cleared, tick *"When it
+ends, report faults it suppressed that never cleared"* on the window. The appliance then keeps a
+**state ledger** while the window is in force: per element, class and instance, whether it saw a
+raise and whether it saw a clear. Six numbers, and **no varbinds, no severity and no payload** —
+recording those would be collecting the trap you asked it not to collect. When the window closes,
+everything raised inside it that never cleared appears **together, as one situation for the
+window**, each alarm marked *"raised during maintenance, still active"* and with **no severity**:
+the appliance is not failing to place one, it never saw the trap.
 
 The marker stays while the alarm is still active and has not been reported again since the window
 closed; an editor who has seen it can acknowledge it (the ✓ beside it), which records who and when

@@ -5051,3 +5051,61 @@ From this release an entry is about six lines: decision, reason, release.*
 - "Copy as text (RFO)" gives the same rows as plain text for the outage report.
 - Trap names come from the catalogue rules as well as learned labels, so a step reads as a name,
   not an OID.
+
+## 397. A maintenance window discards what it covers; reporting what outlived it is opt-in (v0.24.0)
+
+- **Supersedes the default of #371 and #388.** The maintainer set up a test window, sent traps,
+  and saw no situations during it — then one alarm per trap when it closed. That is the ledger doing
+  what #371 designed, and it is the wrong default: the purpose of a window is that what it covers is
+  not processed, unless the operator wrote a rule (severity, time slot or OID subtree) saying so.
+- `ledger_enabled` now defaults to **off** (API and form). A window created without it discards
+  what it suppresses, during and after. Existing windows keep the value they were saved with.
+- **Opted in, it reports one fact about one window**: everything it saw raised and never cleared
+  surfaces as the members of **one situation** for that window, not one situation per fault.
+
+## 398. The Overview's charts, tightened (v0.24.0)
+
+- **The critical count reads 0, never `—`, once a census has arrived.** `—` was meant as "not
+  graded", but beside "of 98 active alarms" it read as broken. Ungraded alarms are counted on their
+  own row, *unplaced*, directly below.
+- **The active-alarm chart has headroom**: its top is a round number at least 12 % above the peak
+  (100 reads on 0–120), with four dashed gridlines labelled on the left, each band a translucent fill
+  under a solid edge, and a vertical cursor on the bucket under the pointer — the conventions of a
+  Grafana stacked time series, so the top of the stack is never the frame.
+- The estate graph is bounded (240–340 px) and sits in the narrower column; the "keeping up" card
+  prints its verdict line only when there is a problem.
+
+## 399. The network graph pans freely (v0.24.0)
+
+- The view centre may be anywhere inside the drawing at every zoom, 1× included; it was clamped so
+  that at 1× the map could not move at all.
+- **The drag itself lost movement**: each pointer move read the view from component state, which
+  Preact applies at the next render, so several moves between two frames each started from the same
+  stale view. The component now keeps the view the next gesture starts from synchronously. Measured
+  in Chromium: a 10 % drag moves the map 10 %.
+
+## 400. A built-in trap pack: the vendors' names, and a default severity (v0.24.0)
+
+- **Plug and play.** An operator should not have to type `hwEntityStandbyStatus` for
+  `1.3.6.1.4.1.2011.5.25.31.1.1.1.1.3`. The appliance ships the names from the vendors' own MIB
+  modules: 15 117 notifications of 28 network vendors (Huawei, Cisco and Cisco ONS, Juniper, Nokia
+  SR OS and 1830 PSS, ZTE, H3C, Ciena, ADVA, Arista, Fortinet, Palo Alto, Extreme, Ericsson,
+  Datacom, Raisecom, Ruijie, Coriant, Alcatel-Lucent, HPE, MikroTik…) and the standard IETF modules,
+  and 115 771 objects those modules declare — the varbinds their traps carry.
+- **Built by a tool, from sources a reader can open**: `tools/trappack_build.py` parses the MIB
+  text (SMIv1 and SMIv2), resolves every notification to its numeric OID (RFC 3584 for v1 traps)
+  and writes two deterministic gzipped TSVs into `ingest/`. This release was built from the LibreNMS
+  MIB collection, which carries the vendors' own modules; the vendors' web sites are unreachable
+  from the build environment.
+- **The severity is a default, and says so.** A MIB almost never states a severity, so each
+  notification name is graded by a published category table (`ingest/trappack.CATEGORIES`): power,
+  board and signal failures critical; links, sessions, fans, temperature, optics major; utilisation
+  thresholds minor; configuration, login, topology warnings; recoveries `cleared`. A name no category
+  matches is left ungraded (3 969 of them) rather than guessed.
+- **The lowest rung.** An operator's declaration and any declared or imported rule, at any depth,
+  beat the pack; the severity a trap carried and a learned severity field beat its default. Source
+  `builtin` everywhere a provenance is shown; it is not a row, so it cannot be listed or withdrawn,
+  only outranked.
+- **Free at ingest.** Nothing on the trap path changes. The notifications load once at startup
+  (~0.4 s, ~10 MB) into a dict the catalogue reads with one lookup per class, memoised; the objects
+  load only when a varbind name is first asked for. `make eval` is byte-identical.

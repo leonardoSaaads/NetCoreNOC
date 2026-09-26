@@ -33,8 +33,11 @@ function Source({ source, rule }) {
     declared: rule ? (rule.subtree ? "branch rule" : "rule") : "declared",
     imported: "imported",
     standard: "standard",
+    builtin: "built-in",
   };
-  const where = rule ? ` on ${rule.oid}${rule.subtree ? " and beneath" : ""}` : "";
+  const where = rule && rule.source === "builtin"
+    ? ` — the vendor's MIB (${rule.origin}); the severity is a default you can change`
+    : rule ? ` on ${rule.oid}${rule.subtree ? " and beneath" : ""}` : "";
   return html`<span class="cat-source" title=${`${words[source] ?? source}${where}`}>
     ${words[source] ?? source}</span>`;
 }

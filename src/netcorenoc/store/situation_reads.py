@@ -348,8 +348,10 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             resolved = catalogue.resolve(str(alarm["class_oid"]))
             if resolved.name and not alarm.get("class_label"):
                 alarm["class_name"] = resolved.name
-            alarm["rule_severity"] = resolved.severity
-            alarm["rule_severity_rank"] = resolved.severity_rank
+            # The built-in default yields to what the trap carried or the appliance learned.
+            ruled = not (resolved.is_default and alarm.get("severity_rank") is not None)
+            alarm["rule_severity"] = resolved.severity if ruled else None
+            alarm["rule_severity_rank"] = resolved.severity_rank if ruled else None
         cur = await self.conn.execute(
             "SELECT alarm_a, alarm_b, score, term_t, term_a, term_e FROM link "
             "WHERE situation_id=? ORDER BY id",

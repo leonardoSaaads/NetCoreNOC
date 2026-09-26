@@ -114,7 +114,8 @@ function Evidence({ neId, data, onDone }) {
     ]} rows=${(data.candidates || []).map((c) => ({
       key: c.varbind_oid, tone: c.meets_floor ? null : "quiet",
       cells: {
-        oid: html`<code>${c.varbind_oid}</code>`, r: score(c.r), x: score(c.x), d: score(c.d),
+        oid: c.varbind_name ? html`<b>${c.varbind_name}</b> <code>${c.varbind_oid}</code>`
+          : html`<code>${c.varbind_oid}</code>`, r: score(c.r), x: score(c.x), d: score(c.d),
         score: html`<b>${score(c.score)}</b>`, obs: count(c.n_obs), ok: c.meets_floor ? "yes" : "no",
       },
     }))} />

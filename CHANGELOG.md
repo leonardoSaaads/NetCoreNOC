@@ -12,6 +12,35 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-eight rows, two ask for an
 action, eighteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
+## [0.24.0] - 2026-09-26 — "plug and play"
+
+Seven items from the maintainer's third pass. No migration, no new capability, no new route.
+
+### Fixed
+
+- **A maintenance window let every trap through, late** (#397): each raise it had suppressed became
+  an alarm and a situation when it closed. Windows now discard what they cover by default; reporting
+  what outlived a window is opt-in, and arrives as one situation for the window.
+- **The network graph barely moved when dragged** (#399): the drag read a stale view between
+  frames, and at 1× the view could not move at all. It now pans 1:1, at every zoom.
+- **"— critical of 98 active alarms"** (#398): the count reads 0 once a census has arrived.
+- **The top of the active-alarm chart touched the frame** (#398): the axis now has 12 % headroom on
+  round steps (100 → 120).
+
+### Changed
+
+- The active-alarm chart is drawn as a Grafana-style stacked series: translucent bands under solid
+  edges, labelled dashed gridlines, a hover cursor (#398).
+- The estate graph on the Overview is bounded and sits in the narrower column; the "Keeping up."
+  line is gone — the card prints a verdict only when something is wrong (#398).
+
+### Added
+
+- **A built-in trap pack** (#400): 15 117 notifications and 115 771 varbind objects from 28
+  network vendors' own MIB modules and the standard MIBs, named with no configuration, each
+  notification with a default severity from a published category table. The lowest rung of the
+  catalogue; free on the ingest path (`make eval` unchanged). Built by `tools/trappack_build.py`.
+
 ## [0.23.0] - 2026-09-26 — "the console, round two"
 
 Nine items from the maintainer's second pass over the console. No migration and no new capability;

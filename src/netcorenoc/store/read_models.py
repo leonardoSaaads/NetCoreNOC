@@ -144,7 +144,13 @@ class ReadModelsMixin(ClassRuleMixin):
         # exactly one of these, so they sum to `active - unplaced` and a reader can check that.
         # `declared` is kept at the top level too, because v0.16.7's console already reads it there
         # and this release does not get to move a key the previous one shipped.
-        by_source: dict[str, int] = {"declared": 0, "imported": 0, "standard": 0, "learned": 0}
+        by_source: dict[str, int] = {
+            "declared": 0,
+            "imported": 0,
+            "standard": 0,
+            "learned": 0,
+            "builtin": 0,  # v0.24.0 (ADR #400): the built-in trap pack's default
+        }
         unplaced = vendor_scaled = declared_n = active = 0
         catalogue = await self.catalogue()
         for row in rows:
@@ -158,7 +164,13 @@ class ReadModelsMixin(ClassRuleMixin):
             rule = None if declared is not None else catalogue.resolve(row["class_oid"])
             if declared is not None:
                 rank, source = known_oids.severity_rank(declared), "declared"
-            elif rule is not None and rule.severity_rule is not None:
+            elif (
+                rule is not None
+                and rule.severity_rule is not None
+                and not (rule.is_default and row["source"] is not None)
+            ):
+                # v0.24.0 (ADR #400): the built-in pack's default is the lowest rung — it fills
+                # in only where the trap carried no word and nothing was learned.
                 # A rule on the class's OID or a branch above it (v0.22.0, ADR #385): the second
                 # rung, below the per-class declaration and above anything the trap carried.
                 rank, source = rule.severity_rank, rule.severity_rule.source

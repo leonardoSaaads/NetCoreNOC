@@ -1217,8 +1217,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: console modules (`info`, `layout`, `netgraph`, `parts/element`, `parts/oidtree`,
 #: `parts/importbox`, `parts/mwdetail`). Removed: `app/vendor.js`, `views/parts/estate.js`, and d3
 #: with its licence (ADR #383) — what else was removed is named in `HANDOFF.md`.
-SRC_TREE_DIGEST = "43762033e8c8c870b997868c434e0016b96724feed886c07f315a1a6076e4853"
-SRC_FILE_COUNT = 282
+SRC_TREE_DIGEST = "e68c83f5c2002a4479fcd7790261d277d99de968f5a2db87ad1ff58b531b8cdd"
+SRC_FILE_COUNT = 285
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1284,7 +1284,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.23.0", "the version this release carries"
+    assert __version__ == "0.24.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

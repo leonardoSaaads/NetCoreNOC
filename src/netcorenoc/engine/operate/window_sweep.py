@@ -74,28 +74,34 @@ class WindowSweepMixin(EngineBase):
         The rows are the store's eight scalars rather than the ledger's own types: `store` is the
         data layer and may not import them, so the crossing happens once, here, at the engine's
         boundary. `engine/mw/ledger.py::to_rows` is the other direction.
+
+        **v0.24.0 (ADR #397): one situation per window, not one per fault.** A window over an
+        element that sent forty traps surfaced forty singleton situations when it closed — what an
+        operator read as *"the window let every trap through, late"*. What surfaces is one fact
+        about one window, so it is one situation holding every fault that window saw raised and
+        never cleared.
         """
         surfaced = 0
+        situation: int | None = None
         for row in unresolved:
             alarm_id = await self.store.surface_ledger_entry(row, now)
             if alarm_id is not None:
-                await self._open_situation_for(alarm_id, row, now)
+                situation = await self._file_surfaced(alarm_id, row, now, situation)
                 surfaced += 1
             await self.store.mark_ledger_surfaced(row, now)
         return surfaced
 
-    async def _open_situation_for(self, alarm_id: int, row: Any, now: float) -> None:
-        """Put a surfaced alarm in a situation of its own. **Found by the live pass** (F148).
+    async def _file_surfaced(
+        self, alarm_id: int, row: Any, now: float, situation: int | None
+    ) -> int:
+        """Put a surfaced alarm in its window's situation, opening it for the first. **F148.**
 
-        Without this the alarm exists in the `alarm` table and appears on **no screen**: Situations
-        is the only view that lists alarms, and it lists them as members. A fault that outlived its
-        window was being written to a table nobody reads, which is II.2 satisfied on paper and not
-        at all in the product.
+        Without a situation the alarm exists in the `alarm` table and appears on **no screen**:
+        Situations is the only view that lists alarms, and it lists them as members.
 
-        **A singleton, never correlated.** The alarm carries no varbinds and no severity — the
-        ledger holds none — so there is nothing for the correlator to score, and running it anyway
-        would invent links out of an absence. It is a situation an operator can open, work and
-        close like any other, and it joins nothing.
+        **Never correlated.** The alarm carries no varbinds and no severity — the ledger holds none
+        — so there is nothing for the correlator to score, and running it anyway would invent
+        links out of an absence. The window is the reason these alarms belong together.
 
         The engine's in-memory maps are updated in the same step, and that is the part that is not
         cosmetic: `_assign_situation` reads `sit_of` to decide whether an activation needs a
@@ -105,10 +111,17 @@ class WindowSweepMixin(EngineBase):
         """
         _window_id, _ne_id, device_id, class_id, _instance, raised_at, _cleared, _s = row
         first_seen = float(raised_at) if raised_at is not None else now
-        sid = await self.store.create_situation(first_seen, self.scorer_config_id, act="surface")
-        await self.store.add_alarm_to_situation(sid, alarm_id)
-        self.sit_of[alarm_id] = sid
-        self.members[sid] = [Member(alarm_id, int(class_id), int(device_id), first_seen)]
+        if situation is None:
+            situation = await self.store.create_situation(
+                first_seen, self.scorer_config_id, act="surface"
+            )
+            self.members[situation] = []
+        await self.store.add_alarm_to_situation(situation, alarm_id)
+        self.sit_of[alarm_id] = situation
+        self.members.setdefault(situation, []).append(
+            Member(alarm_id, int(class_id), int(device_id), first_seen)
+        )
+        return situation
 
     async def _surface_window(self, window_id: int, now: float) -> None:
         """**A fault that outlives its window surfaces** (II.2, prime directive 3).

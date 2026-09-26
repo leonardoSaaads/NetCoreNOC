@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of thirty-nine ask
-you to do something; nineteen more ask you to read a paragraph first. The other eighteen are
+Read only the rows between your version and the one you are installing. **Two of forty ask
+you to do something; twenty more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
@@ -68,6 +68,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.21.0 → v0.21.1 | Nothing to run. **No migration.** The Maintenance screen is rebuilt, the Overview gains a *Planned work* card, and `GET /api/maintenance-windows` returns a **smaller `total`** than it did — it now counts what the filters and your visibility scope actually permit. Read below if you read that field |
 | v0.21.1 → v0.22.0 | Nothing to run. **Three migrations apply at boot** (`0022`, `0023`, `0024`), all additive. The console is repaired screen by screen, d3 is gone, four capabilities are new, and a running maintenance window can no longer be re-timed from its start. Read below |
 | v0.22.0 → v0.23.0 | Nothing to run. **No migration.** Four read-only API routes, no new capability. The Overview's activity chart now counts alarms **active** at each point rather than raises per bucket, and `/api/situations/{sid}` carries two more fields per alarm. Read below |
+| v0.23.0 → v0.24.0 | Nothing to run. **No migration.** A maintenance window created from now on **discards** what it suppresses — nothing surfaces when it ends unless the window opts in — and alarms the appliance could not grade may now carry a default severity from the built-in trap pack. Read below |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -679,3 +680,22 @@ dashboard with it.
   active no longer drops to zero after its bucket. Severity is drawn as a four-bar level instead of
   a shape. The console's files are served `Cache-Control: no-cache` with an `ETag`, so the first
   load after an upgrade fetches the new console.
+
+### v0.24.0 — windows discard what they cover, and a built-in trap pack
+
+- **No migration**; schema version stays 24. No capability and no route is added.
+- **Maintenance windows (ADR #397).** `ledger_enabled` now defaults to **false** in
+  `POST /api/maintenance-windows` and in the form: a window that does not ask for it discards what
+  it suppresses, and nothing surfaces when it ends. **Windows you already saved keep their setting**
+  — one saved with the old default still reports when it ends; edit it and clear *"When it ends,
+  report faults it suppressed that never cleared"* if you do not want that. A window that does
+  report now opens **one situation** for everything it surfaces, not one per fault.
+- **Built-in trap pack (ADR #400).** Traps and varbinds from 28 network vendors and the standard
+  MIBs are named without configuration, and a notification whose name falls in a published category
+  gets a default severity. It is the lowest rung: your declarations, your rules and imported files,
+  the severity a trap carries and a learned field all outrank it. What changes on screen: some
+  alarms counted as *unplaced* before are now counted in a band, with provenance `built-in`; the
+  census's `provenance` object gains a `builtin` key. To overrule a default, declare the severity or
+  write a rule — as before.
+- The wheel carries two new data files, `ingest/trappack.tsv.gz` and `ingest/trapobjects.tsv.gz`
+  (1.1 MB together).

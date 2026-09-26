@@ -22,6 +22,7 @@ const SOURCES = {
   standard: "the trap's own word",
   learned: "learned from the stream",
   vendor: "a bundled vendor row",
+  builtin: "the built-in trap pack",
 };
 
 /** `1,467 placed — 1,467 the trap's own word`: the arms present, largest first. */
@@ -66,7 +67,7 @@ export function Severity({ census }) {
   ];
   return html`<div class="severity-band">
     <h2 class=${cx("severity-head", !graded && "severity-ungraded")}>
-      <span class="severity-now">${graded ? count(at(0)) : "—"}</span>${" "}
+      <span class="severity-now">${known ? count(raw(0)) : "—"}</span>${" "}
       <span class="severity-word">critical</span>${" "}
       <span class="severity-of">of ${known ? plural(active, "active alarm") : "an unread count"}</span>
       <${InfoTip} label="Where a severity comes from">

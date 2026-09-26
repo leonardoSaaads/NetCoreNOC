@@ -245,15 +245,15 @@ are usually not in one place.
 suppress **nothing at all** until an editor or an admin confirms — an unconfirmed window that
 expires has suppressed nothing. A window an agent created always waits for a human.
 
-**A fault that outlives the window surfaces by itself.** While a window is in force the appliance
-records, per element/class/instance, whether it saw a raise and whether it saw a clear — and
-nothing else, no varbinds and no severity, because storing those would be collecting the trap you
-asked it not to collect. Anything raised inside the window and never cleared becomes an alarm when
-the window closes, marked *"raised during maintenance, still active"*. It carries **no severity**:
-the appliance is not failing to place one, it never saw the trap.
+**A window discards what it covers** (v0.24.0). Nothing it suppresses becomes an alarm, during
+the window or after it. A window can **opt in** to reporting what outlived it: while it is in
+force the appliance records, per element/class/instance, whether it saw a raise and whether it saw
+a clear — and nothing else, no varbinds and no severity. When such a window closes, everything
+raised inside it and never cleared appears as **one situation for the window**, each alarm marked
+*"raised during maintenance, still active"*, with no severity: the appliance never saw the trap.
 
-**Check before you leave.** After a window closes, look for that badge before you call the job
-done. It is the appliance telling you it saw something start and never saw it stop.
+**Check before you leave.** On a window that reports, look for that situation before you call the
+job done. It is the appliance telling you it saw something start and never saw it stop.
 
 **It does not poll.** Nothing in this release reaches out to your equipment, no credential is
 stored, and no capability implies otherwise. Everything above is derived from the traps you already
