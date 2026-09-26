@@ -48,6 +48,9 @@
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
 import { Empty, Loading, Failed, SectionHeading } from "../widgets.js";
+
+/** The two counted reads re-read on this period, so the screen is never older than it. */
+const REFRESH_MS = 30_000;
 import { PlannedWork } from "./parts/mwsummary.js";
 import {
   DEFAULT_RANGE_S, Estate, Happening, RANGE_BUCKETS, RANGES, RangePicker,
@@ -55,7 +58,9 @@ import {
 import { Keeping } from "./parts/keeping.js";
 import { ModelHealth } from "./parts/models.js";
 import { Severity } from "./parts/severity.js";
-import { plural, relative, count, timeTitle } from "../format.js";
+import { SituationSummary } from "./parts/sitsummary.js";
+import { TopAssets } from "./parts/topassets.js";
+import { plural, count } from "../format.js";
 import { can, scopeSummary } from "../session.js";
 import { rangeSeconds, setRangeSeconds } from "../theme.js";
 import * as store from "../store.js";
@@ -76,16 +81,25 @@ export class Overview extends Component {
     super(props);
     this.state = {
       live: store.get(), activity: null, activityError: null,
-      rangeS: rangeSeconds(RANGE_VALUES, DEFAULT_RANGE_S),
+      rangeS: rangeSeconds(RANGE_VALUES, DEFAULT_RANGE_S), tick: 0,
     };
   }
 
   componentDidMount() {
     this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
     this.readActivity();
+    // v0.23.0: the activity chart and the Top 10 are counted reads, not stream updates; without a
+    // period they showed the moment the screen was opened for as long as it stayed open.
+    this.timer = setInterval(() => {
+      this.readActivity();
+      this.setState({ tick: this.state.tick + 1 });
+    }, REFRESH_MS);
   }
 
-  componentWillUnmount() { if (this.unsubscribe) this.unsubscribe(); }
+  componentWillUnmount() {
+    if (this.unsubscribe) this.unsubscribe();
+    if (this.timer) clearInterval(this.timer);
+  }
 
   /**
    * The one read this screen makes. A failure is reported beside the chart, never as a zero.
@@ -99,7 +113,7 @@ export class Overview extends Component {
     try {
       const { rangeS } = this.state;
       this.setState({
-        activity: await get(`/api/activity/severity?buckets=${RANGE_BUCKETS}&range_s=${rangeS}`),
+        activity: await get(`/api/activity/active?buckets=${RANGE_BUCKETS}&range_s=${rangeS}`),
         activityError: null,
       });
     } catch (error) {
@@ -115,7 +129,7 @@ export class Overview extends Component {
     });
   }
 
-  render(_props, { live, activity, activityError, rangeS }) {
+  render(_props, { live, activity, activityError, rangeS, tick }) {
     const stats = live.stats;
     // The panel below is titled "Open situations" and the store now holds all three states, so the
     // filter is here rather than in the transport — the same expression the sidebar count and the
@@ -163,53 +177,30 @@ export class Overview extends Component {
             an operator change it. */ null}
       <${RangePicker} value=${rangeS} onPick=${(seconds) => this.pick(seconds)} />
 
-      ${/* **Two per row** (v0.20.0). Every panel used to take a full row, so the severity card —
-            six short rows of counts — occupied as much of the screen as the estate grid, and an
-            operator scrolled past a great deal of whitespace to reach anything. `.grid-2` is one
-            column under 900 px, so the phone layout is unchanged. */ null}
-      <div class="grid-2">
-        <section class="panel-block"><${Severity} census=${stats.severity} /><//>
-        <section class="panel-block">
+      ${/* **Rows, not columns** (v0.23.0). v0.20.0's two independent columns left holes wherever
+            a short card sat beside a tall one — the empty half-screen under "Planned work". Each
+            row now pairs cards of similar height on a 12-column grid and stretches them to one
+            height, so every row ends level. Order is the order of the questions: is planned work
+            skewing the counts; how bad; what needs someone; where; is the appliance coping. */ null}
+      <div class="ov-grid">
+        ${can("mw.read") ? html`<div class="ov-12 ov-slot"><${PlannedWork} /></div>` : null}
+        <section class="panel-block ov-5"><${Severity} census=${stats.severity} /><//>
+        <section class="panel-block ov-7">
           <${SectionHeading} title="What is happening" />
           <${Happening} data=${activity} rangeS=${rangeS} error=${activityError}
                         retry=${() => this.readActivity()} />
         <//>
-        ${/* **Planned work sits third, and the position is the argument** (v0.21.1). It is not
-              another statistic: while a window is in force the alarm counts in the two panels
-              above are incomplete by construction, so it has to be read before the estate grid
-              and the situation list rather than after them. It is behind `mw.read`, which is
-              `viewer` — prime directive 4 again: an operator who cannot see that planned work
-              exists reads a quiet estate as a healthy one. */ null}
-        ${can("mw.read") ? html`<${PlannedWork} />` : null}
-        <${Estate} nodes=${nodes} edges=${(live.graph && live.graph.edges) || []} />
-        <${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} />
-        <section class="panel-block">
-          <${SectionHeading} title="Open situations" />
-          ${situations.length
-            ? html`<ul class="mini-list">${situations.slice(0, 8).map((s) => html`
-                <li key=${s.id}>
-                  <a href=${`#/situations/${s.id}`}>#${s.id}</a>
-                  <span>${plural(s.alarm_count, "alarm")}</span>
-                  <span class="muted" title=${timeTitle(s.updated_at)}
-                    >${relative(s.updated_at)}</span>
-                </li>`)}</ul>`
-            : html`<p class="hint">Nothing open.</p>`}
-          ${/* **The two "learned, not configured" tiles moved in here** (v0.20.0). They were a
-                row of their own carrying two numbers and a four-word caption each, under no
-                heading, between the health panel and the situation list — "a bit thrown
-                together" is exactly right. They are facts about the estate this appliance has
-                discovered, so they sit under the list of what it is currently working. */ null}
+        <div class="ov-5 ov-slot"><${SituationSummary} stats=${stats} situations=${situations} /></div>
+        <div class="ov-7 ov-slot"><${TopAssets} rangeS=${rangeS} tick=${tick} /></div>
+        <div class="ov-7 ov-slot"><${Estate} nodes=${nodes} edges=${(live.graph && live.graph.edges) || []} /></div>
+        <div class="ov-5 ov-slot"><${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} /></div>
+        <section class="panel-block ov-12 ov-models">
+          <${SectionHeading} title="The models" />
+          <${ModelHealth} admin=${can("model.register")} />
           <p class="learned-line">
             <b>${count(stats.devices)}</b>${" "}devices${" "}·${" "}
             <b>${count(stats.classes)}</b>${" "}alarm classes${" "}·${" "}learned from the stream
           </p>
-        <//>
-        <section class="panel-block">
-          <${SectionHeading} title="The models" />
-          ${/* **Moved down from directly under the alarm summary** (v0.20.0). It led the screen
-                in v0.19.0, which put a sentence about training above the thing an operator opens
-                the console for. It keeps its place on Labelling, where judging happens. */ null}
-          <${ModelHealth} admin=${can("model.register")} />
         <//>
       </div>
     </div>`;

@@ -102,6 +102,12 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("classes.read", "/api/catalogue?limit=25&offset=0"),
     ("classes.read", "/api/catalogue/rules?source=imported&limit=1"),
     ("classes.read", "/api/catalogue/tree?node=1.3.6.1.4.1"),
+    # v0.23.0: the Overview's active-alarm chart and its Top 10, the Entities inventory, and the
+    # Timeline's filter options (the inventory again, and the catalogue's names).
+    ("timeline.read", "/api/activity/active?buckets=24&range_s=7200"),
+    ("timeline.read", "/api/activity/top?range_s=7200&buckets=24&limit=10&bands=critical,major"),
+    ("entities.read", "/api/inventory"),
+    ("classes.read", "/api/catalogue?limit=200"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.
@@ -153,8 +159,10 @@ async def _capture_elements(client: httpx.AsyncClient, routes: dict[str, Any]) -
         ne = node["id"]
         for path in (
             f"/api/elements/{ne}",
-            f"/api/situations?ne_id={ne}&limit=8",
+            f"/api/situations?ne_id={ne}&limit=30",
             f"/api/activity/groups?range_s=86400&ne_id={ne}&limit=5",
+            f"/api/elements/{ne}/components",
+            f"/api/activity/active?range_s=86400&buckets=24&ne_id={ne}",
         ):
             response = await client.get(path)
             if response.status_code == 200:

@@ -383,6 +383,9 @@ const HANDLER_EVENTS = [
   // nothing dispatches, the panel rendered perfectly and responded to nothing, and every markup
   // assertion still passed. The harness refused to boot instead, which is the whole point of it.
   "mouseenter", "mouseleave",
+  // v0.23.0: the network graph zooms with the wheel and pans with pointer events (#394), and the
+  // Entities screen reads its evidence when a `<details>` opens (#395).
+  "wheel", "pointerdown", "pointermove", "pointerup", "pointercancel", "toggle",
 ];
 for (const type of HANDLER_EVENTS) {
   Object.defineProperty(Element.prototype, `on${type}`, {

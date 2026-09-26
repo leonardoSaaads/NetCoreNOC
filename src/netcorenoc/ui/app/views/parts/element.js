@@ -1,8 +1,12 @@
-/* The element panel: what opens when an operator selects a host on the graph (v0.22.0, item 11).
+/* The element panel: what opens when an operator selects a host on the graph (v0.22.0 item 11;
+ * redesigned v0.23.0, #394).
  *
- * Clicking a host did nothing. Now it answers the four things an operator asks of one element —
- * how bad, which incidents, what it just sent, what to do next — from three scoped reads, each of
- * which fails on its own line rather than taking the panel down.
+ * It answers four things in the order they are asked — how bad, which incidents, what it just
+ * sent, what next — from three scoped reads, each failing on its own line. v0.23.0 made it a
+ * panel rather than a dump: a header that is the element, one number and its severity mix, the
+ * LIVE situations (resolved ones are a count, not a list), the last day's traps by NAME, and the
+ * actions in a footer. The panel is the map's height and scrolls inside itself, so the two stay
+ * aligned whatever the element carries.
  */
 
 import { html, Component } from "../../dom.js";
@@ -31,7 +35,7 @@ export class ElementPanel extends Component {
     this.setState({ element: null, situations: null, recent: null, errors: {} });
     const [element, situations, recent] = await Promise.allSettled([
       get(`/api/elements/${id}`),
-      get(`/api/situations?ne_id=${id}&limit=8`),
+      get(`/api/situations?ne_id=${id}&limit=30`),
       get(`/api/activity/groups?range_s=${DAY}&ne_id=${id}&limit=5`),
     ]);
     if (id !== this.props.neId) return;
@@ -54,56 +58,70 @@ export class ElementPanel extends Component {
       ? [...SCALE.map((b) => [b, Number((census.placed || {})[String(b.rank)] || 0)]),
          [UNPLACED, Number(census.unplaced || 0)]].filter(([, n]) => n > 0)
       : [];
+    const live = (situations || []).filter((s) => s.status !== "resolved");
+    const resolved = (situations || []).length - live.length;
     return html`<aside class="elpanel" aria-label="Selected element" data-ne=${neId}>
-      <div class="elpanel-head">
-        <h2 class="elpanel-name">${element ? element.device : "…"}</h2>
-        <button type="button" class="disclosure-close" aria-label="Close" title="Close (Esc)"
+      <header class="elp-head">
+        <div class="elp-id">
+          <h2 class="elp-name">${element ? element.device : "…"}</h2>
+          ${element ? html`<p class="elp-meta">
+            ${element.label ? html`<code>${element.ip}</code>` : null}
+            <span>${element.organization || ""}</span>
+            ${element.maintenance ? html`<${MaintenanceMark} marker=${element.maintenance} />` : null}
+          </p>` : null}
+        </div>
+        <button type="button" class="elp-close" aria-label="Close" title="Close (Esc)"
                 onClick=${onClose}>×</button>
-      </div>
+      </header>
       ${errors.element ? html`<p class="hint">Could not read this element.</p>` : null}
-      ${element
-        ? html`<p class="elpanel-sub">
-            ${element.label ? html`<code class="mono">${element.ip}</code>${" · "}` : null}
-            ${element.organization || null}
-            ${element.maintenance
-              ? html`${" "}<${MaintenanceMark} marker=${element.maintenance} />` : null}
-          </p>
-          <div class="elpanel-sev" aria-label="Active alarms by severity">
+      ${element ? html`<div class="elp-kpi">
+          <div class="elp-total"><b>${count(element.active_alarms)}</b><span>active alarms</span></div>
+          <ul class="elp-bands" aria-label="Active alarms by severity">
             ${bands.length
-              ? bands.map(([b, n]) => html`<${SeverityChip} key=${b.key} band=${b} count=${n} />`)
-              : html`<span class="muted">No active alarms.</span>`}
-          </div>`
-        : null}
+              ? bands.map(([b, n]) => html`<li key=${b.key}><${SeverityChip} band=${b} count=${n} /></li>`)
+              : html`<li class="muted">None active.</li>`}
+          </ul>
+        </div>` : null}
 
-      <h3 class="elpanel-title">Situations</h3>
-      ${errors.situations ? html`<p class="hint">Could not read its situations.</p>` : null}
-      ${situations && situations.length
-        ? html`<ul class="mini-list">${situations.map((s) => html`<li key=${s.id}>
-            <a href=${`#/situations/${s.id}`}>#${s.id}</a>
-            <span class="elpanel-sname">${s.operator_name || s.derived_name || ""}</span>
-            <${Badge} tone=${s.status === "new" ? "warn" : null}>${s.status}<//>
-            <span class="muted">${plural(s.alarm_count, "alarm")}</span>
-          </li>`)}</ul>`
-        : situations ? html`<p class="muted">None live.</p>` : null}
+      <section class="elp-sec">
+        <h3>Situations${situations ? html` <span class="elp-n">${count(live.length)}</span>` : null}</h3>
+        ${errors.situations ? html`<p class="hint">Could not read its situations.</p>` : null}
+        ${live.length
+          ? html`<ul class="elp-list">${live.slice(0, 6).map((s) => html`<li key=${s.id}>
+              <a class="elp-row" href=${`#/situations/${s.id}`}>
+                <span class="elp-sid">#${s.id}</span>
+                <span class="elp-body">
+                  <span class="elp-text">${s.operator_name || s.derived_name || "unnamed"}</span>
+                  <span class="elp-sub"><${Badge} tone=${s.status === "new" ? "warn" : null}>${s.status}<//>
+                    ${" "}${plural(s.alarm_count, "alarm")}</span>
+                </span>
+              </a></li>`)}</ul>`
+          : situations ? html`<p class="muted">None live.</p>` : null}
+        ${resolved ? html`<p class="muted elp-foot">${plural(resolved, "resolved situation")} recently</p>` : null}
+      </section>
 
-      <h3 class="elpanel-title">Recent traps</h3>
-      ${errors.recent ? html`<p class="hint">Could not read its recent traps.</p>` : null}
-      ${recent && recent.groups.length
-        ? html`<ul class="mini-list">${recent.groups.map((g) => html`<li
-              key=${`${g.class_id}-${g.kind}-${g.last}`}>
-            <span class="elpanel-trap">${g.class_named ? g.class : g.class_oid}</span>
-            <span class=${`kind kind-${g.kind}`}>${g.kind}</span>
-            <span class="muted" title=${timeTitle(g.last)}>${relative(g.last)}</span>
-            <span class="muted">${repeats(g)}</span>
-          </li>`)}</ul>`
-        : recent ? html`<p class="muted">Nothing in the last 24 hours.</p>` : null}
+      <section class="elp-sec">
+        <h3>Last 24 hours</h3>
+        ${errors.recent ? html`<p class="hint">Could not read its recent traps.</p>` : null}
+        ${recent && recent.groups.length
+          ? html`<ul class="elp-list">${recent.groups.map((g) => html`<li
+                key=${`${g.class_id}-${g.kind}-${g.last}`} class="elp-row">
+              <span class=${`kind kind-${g.kind}`} title=${g.kind}>
+                <span aria-hidden="true">${g.kind === "clear" ? "✓" : "▲"}</span>
+                <span class="visually-hidden">${g.kind}</span></span>
+              <span class="elp-body">
+                <span class="elp-text" title=${g.class_oid}>${g.class_named ? g.class : g.class_oid}</span>
+                <span class="elp-sub"><span title=${timeTitle(g.last)}>${relative(g.last)}</span>
+                  ${repeats(g) ? ` · ${repeats(g)}` : ""}</span>
+              </span>
+            </li>`)}</ul>`
+          : recent ? html`<p class="muted">Nothing raised or cleared.</p>` : null}
+      </section>
 
-      <div class="elpanel-acts">
+      <nav class="elp-acts" aria-label="Open this element in">
         <a class="tap" href=${`#/timeline?ne=${neId}&win=86400`}>Timeline</a>
-        <a class="tap" href="#/entities">Entities</a>
-        ${element && element.active_alarms
-          ? html`<span class="muted">${count(element.active_alarms)} active</span>` : null}
-      </div>
+        <a class="tap" href=${`#/entities?ne=${neId}`}>Details</a>
+      </nav>
     </aside>`;
   }
 }

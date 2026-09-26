@@ -1,3 +1,3 @@
 """NetCoreNOC — zero-configuration SNMP trap correlator."""
 
-__version__ = "0.22.0"
+__version__ = "0.23.0"

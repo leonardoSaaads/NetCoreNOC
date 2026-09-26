@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of thirty-eight ask
-you to do something; eighteen more ask you to read a paragraph first. The other eighteen are
+Read only the rows between your version and the one you are installing. **Two of thirty-nine ask
+you to do something; nineteen more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
@@ -67,6 +67,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.20.0 → v0.21.0 | Nothing to run. **Three migrations apply at boot** (`0019`, `0020`, `0021`), all additive. But **read below**: your existing alarms start carrying a severity they did not carry before, some of your entities were never entities, and the container image needs one new OS package |
 | v0.21.0 → v0.21.1 | Nothing to run. **No migration.** The Maintenance screen is rebuilt, the Overview gains a *Planned work* card, and `GET /api/maintenance-windows` returns a **smaller `total`** than it did — it now counts what the filters and your visibility scope actually permit. Read below if you read that field |
 | v0.21.1 → v0.22.0 | Nothing to run. **Three migrations apply at boot** (`0022`, `0023`, `0024`), all additive. The console is repaired screen by screen, d3 is gone, four capabilities are new, and a running maintenance window can no longer be re-timed from its start. Read below |
+| v0.22.0 → v0.23.0 | Nothing to run. **No migration.** Four read-only API routes, no new capability. The Overview's activity chart now counts alarms **active** at each point rather than raises per bucket, and `/api/situations/{sid}` carries two more fields per alarm. Read below |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -661,3 +662,20 @@ dashboard with it.
   unchanged.
 - **d3 is removed** from the image (279 706 bytes); the console loads one script.
 
+### v0.23.0 — the console, round two: no migration, no new capability
+
+- **No migration**; schema version stays 24. No capability is added: the four new routes are reads
+  under capabilities you already grant (`timeline.read`, `entities.read`), scoped like their
+  neighbours.
+- **API.** New: `GET /api/activity/active` (alarms active at each point, per severity band),
+  `GET /api/activity/top` (the elements with the most active alarms), `GET /api/inventory` and
+  `GET /api/elements/{ne_id}/components`. `GET /api/activity/{lanes,groups}` accept
+  `organization_id`, `oid` (a branch) and `sid`. `/api/activity/severity` is unchanged and no
+  longer read by the console.
+- **`GET /api/situations/{sid}`**: each alarm also carries `rule_severity` and
+  `rule_severity_rank` (the catalogue's severity for its trap, when a rule names one), and
+  `class_name` is filled from the catalogue when no label was learned. Additive.
+- **Behaviour you may notice.** The Overview's chart reads *active alarms*: a burst that is still
+  active no longer drops to zero after its bucket. Severity is drawn as a four-bar level instead of
+  a shape. The console's files are served `Cache-Control: no-cache` with an `ETag`, so the first
+  load after an upgrade fetches the new console.

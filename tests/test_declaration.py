@@ -668,11 +668,16 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # static modules net: seven added (`info`, `layout`, `netgraph`, `parts/element`,
     # `parts/oidtree`, `parts/importbox`, `parts/mwdetail`), three removed with d3 (`vendor.js`,
     # the d3 bundle, `parts/estate.js`).
-    assert len(served) == 168, f"the served surface moved: {len(served)} method/path pairs"
+    # **v0.23.0: 168 -> 178 served, /api 84 -> 88.** Four API routes — `GET /api/activity/active`
+    # (active alarms over time, #393), `GET /api/activity/top` (the Top 10), `GET /api/inventory`
+    # and `GET /api/elements/{ne_id}/components` (the Entities screen, #395) — and six static
+    # modules: `stack`, `parts/sitsummary`, `parts/topassets`, `parts/tlfilters`,
+    # `parts/sequence`, `parts/nedetail`.
+    assert len(served) == 178, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 84, (
+    assert len(api_pairs) == 88, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -817,11 +822,16 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
-    assert len(served) == 168, f"the served surface moved: {len(served)} method/path pairs"
+    # **v0.23.0: 168 -> 178 served, /api 84 -> 88.** Four API routes — `GET /api/activity/active`
+    # (active alarms over time, #393), `GET /api/activity/top` (the Top 10), `GET /api/inventory`
+    # and `GET /api/elements/{ne_id}/components` (the Entities screen, #395) — and six static
+    # modules: `stack`, `parts/sitsummary`, `parts/topassets`, `parts/tlfilters`,
+    # `parts/sequence`, `parts/nedetail`.
+    assert len(served) == 178, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 84, (
+    assert len(api_pairs) == 88, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1055,7 +1065,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.22.0: 29 -> 34. The three `/api/activity/*` reads narrow by the caller's visible set
     # (collections), `GET /api/elements/{ne_id}` and `POST /api/alarms/{aid}/outlived/ack` name
     # one element or alarm and 404 on one the caller cannot see (targeted).
-    assert len(SCOPED) == 34, SCOPED
+    # v0.23.0: 34 -> 38. The two new activity reads and the inventory narrow by the caller's
+    # visible set (collections); an element's components 404 on one the caller cannot see.
+    assert len(SCOPED) == 38, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1201,6 +1213,8 @@ SCOPED_TARGETED = [
     # one alarm, so an out-of-scope one takes the same 404 a nonexistent one does.
     ("GET", "/api/elements/{ne_id}"),
     ("POST", "/api/alarms/{aid}/outlived/ack"),
+    # v0.23.0: one element's learned components, opened from the Entities screen (#395).
+    ("GET", "/api/elements/{ne_id}/components"),
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 

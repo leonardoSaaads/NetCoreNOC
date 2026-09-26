@@ -1327,7 +1327,8 @@ async def test_the_graph_screen_answers_its_two_questions_in_ordinary_dom(
     # The dump prints text, not `href`: the panel's "Situations" list is asserted by its heading
     # and by an entry in it, which is a link to the situation in the markup.
     head = selected.find('"Situations"')
-    assert head != -1 and "<ul .mini-list>" in selected[head:], (
+    # v0.23.0 (#394): the panel was redrawn and its list carries the panel's own class.
+    assert head != -1 and "<ul .elp-list>" in selected[head:], (
         "the graph no longer points at where an element is worked on"
     )
 
@@ -2923,8 +2924,10 @@ async def test_an_unavailable_metric_renders_a_dash_and_the_words_not_measured(
     assert "0%" not in unmeasured, result["unmeasured"]
     # And the readable ones DID draw, which is the control: an assertion that found no chart at all
     # would pass the line above for the wrong reason.
-    drawn = [c for c in result["charts"] if c["polylines"]]
-    assert drawn, f"no chart drew a line at all: {result['charts']}"
+    # v0.23.0: the fixture's host history is empty, so the drawn chart is the active-alarm one, a
+    # stacked area of polygons (#393).
+    drawn = [c for c in result["charts"] if c["polylines"] or c["polygons"]]
+    assert drawn, f"no chart drew anything at all: {result['charts']}"
 
 
 def _stats_with_resources(**resources: Any) -> dict[str, Any]:
@@ -3016,22 +3019,23 @@ async def test_the_overview_lost_its_prose_and_gained_charts(routes: dict[str, A
     kinds = [c["kind"] for c in result["charts"]]
     # All three types from decision 2 are on this one screen, which is what "reused everywhere"
     # has to mean if the ceiling is to be worth anything.
-    # v0.22.0: the activity columns became one line per severity band (item 3) and the estate
-    # map a compact graph of the busiest elements (item 6); the busiest list is still bars.
-    assert "line" in kinds, kinds
+    # v0.23.0 (#393): the severity lines became one stacked area of ACTIVE alarms, and the estate
+    # lost its busiest-element bars to the Top 10 card, which is a ranked list rather than a chart.
+    assert "stack" in kinds, kinds
     assert "graph" in kinds, kinds
-    assert "bars" in kinds, kinds
     assert "column" not in kinds and "map" not in kinds, kinds
     # Every chart names where its numbers came from. A chart whose source nobody can name is a
     # chart nobody can check, which is why `charts.js` takes it as a required argument.
     assert len(result["captions"]) >= len(result["charts"]), (result["captions"], kinds)
     for caption in result["captions"]:
         assert caption.strip(), result["captions"]
-    # The four host/queue line charts drew real geometry rather than an empty frame.
-    lines = [c for c in result["charts"] if c["kind"] == "line"]
-    assert any(c["polylines"] for c in lines), lines
-    # Every line chart states its source in a caption; the severity one sums its window once.
-    assert any("raised" in caption for caption in result["captions"]), result["captions"]
+    # The active-alarm chart drew real geometry rather than an empty frame.
+    stacks = [c for c in result["charts"] if c["kind"] == "stack"]
+    assert any(c["polygons"] for c in stacks), stacks
+    # …and its caption says it is a level at each point, not a sum of raises.
+    assert any("active at each point" in caption for caption in result["captions"]), result[
+        "captions"
+    ]
 
 
 @dom_test
@@ -3060,7 +3064,9 @@ async def test_every_chart_is_hand_written_and_therefore_visible_to_this_harness
             ],
         },
     )
-    drawn = sum(len(c["polylines"]) + len(c["rects"]) for c in overview["charts"])
+    drawn = sum(
+        len(c["polylines"]) + len(c["polygons"]) + len(c["rects"]) for c in overview["charts"]
+    )
     assert drawn > 0, overview["charts"]
 
     # THE CONTROL, inverted in v0.22.0: the two screens that were d3 canvases — geometry this
@@ -3297,7 +3303,12 @@ async def test_every_charted_mark_reads_as_a_sentence_not_a_run_of_digits(
             "navigate": "#/overview",
             "updates": [
                 {
-                    "stats": _stats_with_resources(cpu_pct=6.0, cpu_series=[5.0, 6.0]),
+                    # v0.23.0: the busiest-element bars are gone (#393), so the marks that carry
+                    # a label and a value side by side are the severity census's bars.
+                    "stats": _stats_with_severity(
+                        active=1978,
+                        placed={"critical": 1458, "major": 501, "minor": 12, "warning": 7},
+                    ),
                     "graph": {"nodes": nodes, "edges": []},
                 }
             ],
@@ -4287,11 +4298,13 @@ async def test_a_count_chart_summarises_its_window_and_a_gauge_its_last_reading(
         },
     )
     labels = [c["label"] for c in result["charts"] if c["label"]]
-    activity = next((label for label in labels if label.startswith("Alarms raised")), None)
+    # v0.23.0 (#393): the Overview's count chart is of ACTIVE alarms — a level at each point, like a
+    # gauge — so its figure is the level NOW, and it must not claim a total over the window: adding
+    # up how many were active at 24 points is the meaningless sum this test exists to forbid.
+    activity = next((label for label in labels if label.startswith("Active alarms")), None)
     assert activity is not None, labels
-    # A column series is a count per bucket, so the honest summary is the window's total.
-    assert "Total" in activity, activity
-    assert "Latest" not in activity, f"a count series must not claim a latest reading: {activity}"
+    assert "Now" in activity, activity
+    assert "Total" not in activity, f"a level must not be summed over its window: {activity}"
 
     # The control: a gauge on the same screen still reports its last sample, not a sum.
     gauges = [label for label in labels if "Latest" in label]
@@ -4425,3 +4438,36 @@ async def test_every_health_bar_is_as_wide_as_the_percentage_printed_beside_it(
         assert found is not None, f"{name}'s fill carries no width: {meter['fill']!r}"
         width = float(found.group(1))
         assert abs(width - pct) < 0.05, f"{name} prints {meter['printed']} and draws {width}%"
+
+
+@dom_test
+async def test_a_situation_opens_as_its_sequence_of_events_first_step_marked(
+    routes: dict[str, Any],
+) -> None:
+    """**#396: the RFO question — what happened first, and what followed.**
+
+    `#/timeline?sid=N` reads the situation and renders its alarms as one ordered chain: one step
+    per (element, trap), the earliest first and marked as where the chain starts. The lanes and
+    bursts under it are the ordinary reads with `sid` added; they are answered here from the
+    captured unfiltered ones, because what is asserted is the sequence, not those reads.
+    """
+    sid, _count = uifixtures.largest_situation(routes["editor"])
+    table = dict(routes["editor"])
+    first = domdriver.run_scenario("render", {"routes": table, "navigate": f"#/timeline?sid={sid}"})
+    for request in first["requestPaths"]:
+        path = request.split(" ", 1)[1]
+        if f"sid={sid}" in path and path not in table:
+            like = "/api/activity/lanes?" if "/lanes?" in path else "/api/activity/groups?"
+            source = next(k for k in routes["editor"] if k.startswith(like))
+            table[path] = routes["editor"][source]
+    assert f"GET /api/situations/{sid}" in first["requestPaths"], first["requestPaths"]
+    dump = domdriver.run_scenario("render", {"routes": table, "navigate": f"#/timeline?sid={sid}"})[
+        "dump"
+    ]
+    assert "Sequence of events" in dump, dump[-3000:]
+    steps = _descendants_of(dump, "<ol .seq-list>")
+    rows = [line for line in steps if "<li .seq-row" in line]
+    assert rows and ".seq-first" in rows[0], rows
+    assert sum(".seq-first" in row for row in rows) == 1, rows
+    # The situation is named in the filter chips, so the narrowing is on screen and removable.
+    assert f"Situation #{sid}" in dump

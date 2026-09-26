@@ -1,200 +1,171 @@
-/* Entities: what the appliance has learned about each network element, and the evidence for it.
+/* Entities: every network element, its state, and what it is made of (v0.23.0, #395).
  *
- * This screen is the text equivalent of the network graph, and that is deliberate: the graph is
- * the one drawing no test executes and no keyboard can operate, so everything it shows has to be
- * reachable here as ordinary DOM.
+ * The screen was a list of addresses with "1 entity" beside each — accurate, and useless: nothing
+ * said which element was in trouble, which organization it belonged to, what vendor it was, or why
+ * it had 186 "entities". It is rebuilt around what an operator asks of an inventory:
  *
- * The varbind-profiler table is the product's explainability claim applied one level below
- * correlation: not "this is the entity key" but "here are the R, X and D scores, the observation
- * counts, and whether the candidate met the floor". An admin can reset a poisoned decision, and
- * both resets are destructive and preview first.
+ *   1. **the estate at a glance** — six counts, each of which is also the filter for itself;
+ *   2. **find one** — search by address, name or vendor, narrow by organization, sort;
+ *   3. **each element in one row** — its load and severity mix, its live situations, how many
+ *      components (ports, ONUs, slots) the appliance learned beneath it, and when it last spoke;
+ *   4. **one element opened** — its last day, its busiest components, where to go next, and the
+ *      identification evidence behind one disclosure (`parts/nedetail.js`).
+ *
+ * One read (`/api/inventory`), counted and scoped in SQL. `?ne=` opens an element, so the graph's
+ * panel can link here.
  */
 
-import { html, Component } from "../dom.js";
-import { get, post } from "../api.js";
-import { Loader, Empty, DataTable, SectionHeading, Loading, Failed, Badge } from "../widgets.js";
-import { score, percent, count, plural } from "../format.js";
-import { can } from "../session.js";
-import { Destructive } from "../destructive.js";
+import { html, Component, cx } from "../dom.js";
+import { get } from "../api.js";
+import { Empty, Loading, Failed, DataTable, SeverityMix } from "../widgets.js";
 import { MaintenanceMark } from "./parts/mwmarker.js";
+import { ElementDetail } from "./parts/nedetail.js";
+import { SCALE, UNPLACED, count, plural, relative, timeTitle } from "../format.js";
 
-export class Entities extends Loader {
+const MIX = [...SCALE, UNPLACED];
+
+const TILES = [
+  ["all", "elements", (t) => t.elements],
+  ["alarming", "with active alarms", (t) => t.alarming],
+  ["critical", "with critical", (t) => t.critical],
+  ["silent", "silent for 24 h", (t) => t.silent],
+  ["maintenance", "in maintenance", (t) => t.maintenance],
+];
+
+const KEEP = {
+  all: () => true,
+  alarming: (r) => r.active > 0,
+  critical: (r) => r.bands.critical > 0,
+  silent: (r) => r.silent,
+  maintenance: (r) => r.maintenance,
+};
+
+const SORTS = {
+  load: ["most alarms", (a, b) => b.active - a.active || b.bands.critical - a.bands.critical],
+  critical: ["most critical", (a, b) => b.bands.critical - a.bands.critical || b.active - a.active],
+  name: ["name", (a, b) => a.device.localeCompare(b.device, "en", { numeric: true })],
+  recent: ["last trap", (a, b) => (b.last_seen || 0) - (a.last_seen || 0)],
+  parts: ["most components", (a, b) => b.components - a.components],
+};
+
+export class Entities extends Component {
   constructor(props) {
     super(props);
-    this.what = "the entity list";
-    this.loadingLabel = "Reading network elements";
-    this.state = { ...this.state, open: null };
+    this.state = { data: null, error: null, q: "", org: "", show: "all", sort: "load", open: null };
   }
 
-  async load() {
-    const [nes, states] = await Promise.all([get("/api/entities"), get("/api/state-clears")]);
-    return { nes, states };
+  componentDidMount() {
+    this.read();
+    this.follow();
   }
 
-  view({ nes, states }) {
-    if (!nes.length) {
-      return html`<${Empty}
-        title="No network elements yet."
-        will=${"One row appears for every device the appliance has heard a trap from, with the " +
-               "entity tree it inferred and the varbind evidence behind that inference."}
-        meanwhile=${"Nothing has to be imported. Point a device at this appliance and it appears " +
-                    "here after its first trap."} />`;
+  /** `?ne=` opens that element; the view is kept when only the address's query changes. */
+  componentDidUpdate(previous) {
+    if (String(previous.query || "") !== String(this.props.query || "")) this.follow();
+    if (this.state.scroll && this.state.data) {
+      this.setState({ scroll: false });
+      const row = globalThis.document.querySelector(".inv-item.open");
+      if (row) row.scrollIntoView({ block: "start", behavior: "smooth" });
     }
-    return html`<div class="entitiesview">
-      <p class="hint">${plural(nes.length, "network element")}. Everything below was inferred
-        from traps: no inventory was imported and no MIB was loaded.</p>
-      <ul class="cards">
-        ${nes.map((ne) => html`<li key=${ne.id}>
-          <${NeCard} ne=${ne} open=${this.state.open === ne.id}
-                     onToggle=${() => this.setState({ open: this.state.open === ne.id ? null : ne.id })} />
-        </li>`)}
-      </ul>
-      ${states.length ? html`<section class="panel-block">
-        <${SectionHeading} title="Learned state-clear fields"
-          hint=${"Which varbind tells the appliance an alarm has cleared, per class. Learned " +
-                 "from the traffic; keyed on (class, varbind OID) and not on any device."} />
-        <${DataTable} columns=${[
-          { key: "class", label: "class" },
-          { key: "oid", label: "varbind OID" },
-          { key: "raise", label: "raise value" },
-          { key: "clear", label: "clear value" },
-        ]} rows=${states.map((s, i) => ({
-          key: `${s.class}-${i}`,
-          cells: {
-            class: s.class,
-            oid: html`<code class="mono">${s.varbind_oid}</code>`,
-            raise: s.raise_value,
-            clear: s.clear_value,
-          },
-        }))} />
-      </section>` : null}
+  }
+
+  follow() {
+    const ne = this.props.query && this.props.query.get("ne");
+    if (ne && /^\d+$/.test(ne)) this.setState({ open: Number(ne), show: "all", q: "", org: "", scroll: true });
+  }
+
+  async read() {
+    try { this.setState({ data: await get("/api/inventory"), error: null }); }
+    catch (error) { this.setState({ error }); }
+  }
+
+  render(_props, { data, error, q, org, show, sort, open }) {
+    if (error) return html`<${Failed} error=${error} retry=${() => this.read()} what="the inventory" />`;
+    if (!data) return html`<${Loading} label="Reading the estate" />`;
+    if (!data.elements.length) {
+      return html`<${Empty} title="No network elements yet."
+        will="One row appears for every device the appliance hears a trap from; nothing has to be imported." />`;
+    }
+    const t = data.totals;
+    const orgs = [...new Map(data.elements.filter((e) => e.organization_id != null)
+      .map((e) => [e.organization_id, e.organization])).entries()];
+    const needle = q.trim().toLowerCase();
+    const rows = data.elements
+      .filter(KEEP[show])
+      .filter((e) => !org || String(e.organization_id) === org)
+      .filter((e) => !needle || [e.device, e.ip, e.vendor, e.organization]
+        .some((v) => v && String(v).toLowerCase().includes(needle)))
+      .sort(SORTS[sort][1]);
+    return html`<div class="inventory">
+      <div class="inv-tiles" role="group" aria-label="The estate, and filters">
+        ${TILES.map(([key, word, pick]) => html`<button type="button" key=${key}
+            class=${cx("inv-tile", `inv-${key}`, show === key && "on")} aria-pressed=${show === key}
+            onClick=${() => this.setState({ show: show === key ? "all" : key })}>
+          <b>${count(pick(t))}</b><span>${word}</span></button>`)}
+        <div class="inv-tile inv-static"><b>${count(t.components)}</b><span>components learned</span></div>
+      </div>
+      <div class="inv-bar">
+        <input type="search" placeholder="Search address, name or vendor" aria-label="Search elements"
+               value=${q} onInput=${(e) => this.setState({ q: e.currentTarget.value })} />
+        ${orgs.length > 1 ? html`<select aria-label="Organization" value=${org}
+            onChange=${(e) => this.setState({ org: e.currentTarget.value })}>
+            <option value="">every organization</option>
+            ${orgs.map(([id, name]) => html`<option key=${id} value=${String(id)}>${name}</option>`)}
+          </select>` : null}
+        <label class="inv-sort">Sort <select value=${sort} onChange=${(e) => this.setState({ sort: e.currentTarget.value })}>
+          ${Object.entries(SORTS).map(([k, [label]]) => html`<option key=${k} value=${k}>${label}</option>`)}
+        </select></label>
+        <span class="muted">${plural(rows.length, "element")}</span>
+      </div>
+      ${rows.length ? html`<ul class="inv-list">${rows.map((e) => html`<li key=${e.ne_id}
+          class=${cx("inv-item", open === e.ne_id && "open")}>
+        <${Row} e=${e} open=${open === e.ne_id}
+          onToggle=${() => this.setState({ open: open === e.ne_id ? null : e.ne_id })} />
+        ${open === e.ne_id ? html`<${ElementDetail} neId=${e.ne_id} />` : null}
+      </li>`)}</ul>` : html`<p class="muted">No element matches.</p>`}
+      <${Clears} />
     </div>`;
   }
 }
 
-function NeCard({ ne, open, onToggle }) {
-  return html`<article class=${open ? "sit expanded" : "sit"}>
-    <div class="sit-head">
-      <button type="button" class="sit-toggle" aria-expanded=${open ? "true" : "false"}
-              onClick=${onToggle}>
-        <!-- v0.16.3: this line rendered \`ne.label\` for three releases and \`/api/entities\` never
-             served the field, so the fallback to the address was permanent — the whole of *"I
-             renamed the host and nothing changed in Entities"*. \`list_ne\` joins the label now,
-             and the marker says which value is in use (DECISIONS #281, #284). -->
-        <span class="sid">${ne.label || ne.ip}</span>
-        ${ne.label ? html`<span class="muted">(declared)</span>` : null}
-        <${Badge}>${plural(ne.entity_count, "entity", "entities")}<//>
-        <!-- IV.3. On the row, beside the name, because the question it answers is asked
-             while reading the list: is this host quiet because somebody meant it to be? -->
-        <${MaintenanceMark} marker=${ne.maintenance} />
-      </button>
-    </div>
-    ${open ? html`<div class="detail"><${NeDetail} neId=${ne.id} /></div>` : null}
-  </article>`;
+function Row({ e, open, onToggle }) {
+  return html`<button type="button" class="inv-row" aria-expanded=${open ? "true" : "false"}
+      onClick=${onToggle}>
+    <span class="inv-name">
+      <b>${e.device}</b>
+      ${e.label ? html`<code>${e.ip}</code>` : null}
+      <span class="inv-sub">${[e.organization, e.vendor].filter(Boolean).join(" · ") || "—"}</span>
+    </span>
+    <span class="inv-load">
+      <b>${count(e.active)}</b>
+      <${SeverityMix} bands=${MIX} counts=${e.bands} />
+    </span>
+    <span class="inv-fact"><b class=${e.situations ? null : "inv-zero"}>${count(e.situations)}</b><span>situations</span></span>
+    <span class="inv-fact"><b class=${e.components ? null : "inv-zero"}>${count(e.components)}</b><span>components</span></span>
+    <span class="inv-fact" title=${timeTitle(e.last_seen)}>
+      <b class=${e.silent ? "inv-silent" : null}>${relative(e.last_seen)}</b><span>last trap</span></span>
+    <span class="inv-mw">${e.maintenance ? html`<${MaintenanceMark} marker=${e.maintenance} />` : null}</span>
+  </button>`;
 }
 
-class NeDetail extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { status: "loading", data: null, error: null };
-    this.reload = this.reload.bind(this);
+/** The learned clear fields: per trap class, which varbind value means "cleared". Reference data. */
+class Clears extends Component {
+  async toggle(event) {
+    if (!event.currentTarget.open || this.state.rows) return;
+    try { this.setState({ rows: await get("/api/state-clears") }); }
+    catch { this.setState({ rows: [] }); }
   }
 
-  componentDidMount() { this.reload(); }
-
-  async reload() {
-    this.setState({ status: "loading" });
-    try { this.setState({ status: "ready", data: await get(`/api/entities/${this.props.neId}`) }); }
-    catch (error) { this.setState({ status: "error", error }); }
-  }
-
-  render({ neId }, { status, data, error }) {
-    if (status === "loading") return html`<${Loading} label="Reading the entity tree" />`;
-    if (status === "error") {
-      return html`<${Failed} error=${error} retry=${this.reload} what="this network element" />`;
-    }
-    return html`<div class="detail-body">
-      <${SectionHeading} title="Entity tree"
-        hint="What the appliance decided this element's sub-entities are, and from which OID." />
-      <${DataTable} columns=${[
-        { key: "level", label: "level", numeric: true },
-        { key: "key", label: "key" },
-        { key: "source", label: "key source (OID)" },
-        { key: "confidence", label: "confidence", numeric: true },
-      ]} rows=${data.entities.map((e, i) => ({
-        key: `${e.level}-${i}`,
-        cells: {
-          level: String(e.level),
-          key: e.key,
-          source: e.key_source === "self"
-            ? html`<span class="muted">— (the NE itself)</span>`
-            : html`<code class="mono">${e.key_source}</code>`,
-          confidence: e.confidence != null ? percent(e.confidence) : "—",
-        },
-      }))} />
-
-      <${SectionHeading} title="Varbind profiler — the evidence behind the choice"
-        hint=${"R, X and D are the three components of the discriminator score. A candidate is " +
-               "promotable only when it meets the floor; the ones that did not are shown too, " +
-               "because a decision is only checkable against what it rejected."} />
-      <${DataTable} columns=${[
-        { key: "oid", label: "varbind OID" },
-        { key: "r", label: "R", numeric: true, title: "repeatability" },
-        { key: "x", label: "X", numeric: true, title: "cross-device distinctness" },
-        { key: "d", label: "D", numeric: true, title: "within-device distinctness" },
-        { key: "score", label: "score", numeric: true },
-        { key: "obs", label: "obs", numeric: true },
-        { key: "distinct", label: "distinct", numeric: true },
-        { key: "promotable", label: "meets floor" },
-      ]} rows=${data.candidates.map((c) => ({
-        key: c.varbind_oid,
-        tone: c.meets_floor ? null : "quiet",
-        cells: {
-          oid: html`<code class="mono">${c.varbind_oid}</code>`,
-          r: score(c.r), x: score(c.x), d: score(c.d),
-          score: html`<b>${score(c.score)}</b>`,
-          obs: count(c.n_obs), distinct: count(c.n_distinct),
-          promotable: c.meets_floor
-            ? html`<span class="outcome outcome-ok">yes</span>`
-            : html`<span class="muted">no</span>`,
-        },
-      }))} />
-
-      ${can("entity.reset") ? html`<${Destructive}
-        title="Forget the learned identity decision"
-        hint="Re-decides the entity key and severity from the evidence that exists now."
-        previewLabel="Reset identity…"
-        confirmLabel="Forget the decision"
-        consequence=${"The learned entity key and severity for this element are discarded and " +
-                      "re-decided. The accumulated evidence is kept, so the same decision will " +
-                      "usually be reached again — this repairs a decision, not the data."}
-        preview=${async () => ({
-          measured: false,
-          message: "No count to preview: this discards one decision for one network element. " +
-                   "History is kept and the profiler evidence below is untouched.",
-        })}
-        apply=${async () => post(`/api/entities/${neId}/reset`, {})}
-        onDone=${this.reload} />` : null}
-
-      ${can("profile.reset") ? html`<${Destructive}
-        title="Wipe the profiler evidence"
-        hint="Drops the accumulated observations so identity and severity re-measure from scratch."
-        previewLabel="Wipe evidence…"
-        confirmLabel="Wipe the evidence"
-        consequence=${`Every observation in the table above is deleted for this element — ` +
-                      `${count(data.candidates.reduce((n, c) => n + c.n_obs, 0))} observations ` +
-                      `across ${plural(data.candidates.length, "candidate OID")}. The appliance ` +
-                      `re-learns from traffic that arrives after this point, and what has ` +
-                      `already been observed cannot be recovered.`}
-        preview=${async () => ({
-          measured: true,
-          candidates: data.candidates.length,
-          observations: data.candidates.reduce((n, c) => n + c.n_obs, 0),
-        })}
-        renderPreview=${(p) => html`<p><b>Would delete</b> ${count(p.observations)} observations
-          across ${plural(p.candidates, "candidate OID")}, for this element only.</p>`}
-        apply=${async () => post(`/api/profiles/${neId}/reset`, {})}
-        onDone=${this.reload} />` : null}
-    </div>`;
+  render(_props, { rows }) {
+    return html`<details class="inv-clears" onToggle=${(e) => this.toggle(e)}>
+      <summary>Learned clear fields — which varbind value tells the appliance a trap has cleared</summary>
+      ${rows ? html`<${DataTable} kind="compact" columns=${[
+          { key: "class", label: "trap" }, { key: "oid", label: "varbind OID" },
+          { key: "raise", label: "raise value" }, { key: "clear", label: "clear value" },
+        ]} rows=${rows.map((s, i) => ({ key: `${s.class}-${i}`, cells: {
+          class: s.class, oid: html`<code>${s.varbind_oid}</code>`,
+          raise: s.raise_value, clear: s.clear_value } }))}
+        empty=${html`<p class="muted">None learned yet.</p>`} />` : null}
+    </details>`;
   }
 }

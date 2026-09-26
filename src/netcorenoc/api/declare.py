@@ -223,6 +223,12 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/oidtree.js",
         "/app/views/parts/importbox.js",
         "/app/views/parts/mwdetail.js",
+        "/app/stack.js",
+        "/app/views/parts/sitsummary.js",
+        "/app/views/parts/topassets.js",
+        "/app/views/parts/tlfilters.js",
+        "/app/views/parts/sequence.js",
+        "/app/views/parts/nedetail.js",
         "/app/widgets.js",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/htm-3.1.1.module.js",

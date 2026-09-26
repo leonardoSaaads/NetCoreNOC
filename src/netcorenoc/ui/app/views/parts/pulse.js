@@ -16,10 +16,9 @@
  */
 
 import { html } from "../../dom.js";
-import { Failed, SectionHeading, severityTone } from "../../widgets.js";
-import { Series } from "../../charts.js";
-import { Bars } from "../../compare.js";
-import { NetGraph, URGENT_AT } from "../../netgraph.js";
+import { Failed, SectionHeading } from "../../widgets.js";
+import { StackedArea } from "../../stack.js";
+import { NetGraph } from "../../netgraph.js";
 import { clock, spanText } from "../../chartdata.js";
 import { SCALE, UNPLACED, count, TIMEZONE } from "../../format.js";
 
@@ -56,44 +55,36 @@ export function RangePicker({ value, onPick }) {
   </div>`;
 }
 
-/** How many elements the top-elements bars rank. Enough to act on, short enough to read. */
-const TOP_N = 5;
-
 
 /**
- * **What is happening** — alarms raised per bucket, **one line per severity band** (v0.22.0).
+ * **What is happening** — alarms ACTIVE over the range, stacked by severity (v0.23.0, #393).
  *
- * v0.20.0 drew raises against clears here, and the maintainer read it as broken: a red column at
- * the right edge and a green hairline along the floor. The question the panel is under is *how
- * bad*, so the lines are the bands the card beside it counts — and **`unplaced` is a band of its
- * own, labelled**, rather than a remainder that vanishes. On an estate whose devices send no
- * severity word it is the tallest line and the others lie flat; that is the chart telling the
- * truth about the estate, not a rendering fault (item 4).
- *
- * Counted in SQL over the range chosen above (`/api/activity/severity`), resolved per class with
- * the census's precedence, so a band here means what it means on the card.
+ * v0.22.0 plotted alarms RAISED per bucket, and the maintainer read the moment ten critical alarms
+ * appeared as a drop to zero: a fault that keeps firing re-reports an existing alarm and raises
+ * nothing, so the flow was empty while the stock was at its highest. The chart is the stock now —
+ * how many are active at each point, stacked by band with the most severe at the bottom — so its
+ * top edge is the total and its last point is the number on the severity card beside it.
+ * `unplaced` is a band of its own, labelled, never folded into another.
  */
 export function Happening({ data, rangeS, error, retry }) {
   if (error) {
-    return html`<${Failed} error=${error} retry=${retry} what="recent alarm activity" />`;
+    return html`<${Failed} error=${error} retry=${retry} what="active alarms over time" />`;
   }
   const series = (data && data.series) || {};
   const n = data ? data.buckets : 0;
+  // A point is the count at its bucket's END, so it is labelled there; the last one is "now".
   const labels = n
-    ? Array.from({ length: n }, (_, i) => clock(data.from + (i + 0.5) * data.bucket_s, rangeS))
+    ? Array.from({ length: n }, (_, i) => clock(data.from + (i + 1) * data.bucket_s, rangeS))
     : [];
-  const lines = [...SCALE, UNPLACED]
+  const bands = [...SCALE, UNPLACED]
     .filter((b) => series[b.key])
-    .map((b) => ({ name: b.label, tone: severityTone(b.key), shape: b.shape, values: series[b.key] }));
+    .map((b) => ({ key: b.key, label: b.label, level: b.level, values: series[b.key] }));
   if (series.vendor) {
-    lines.push({ name: "vendor scale", tone: severityTone("vendor"), shape: "square",
-                 values: series.vendor });
+    bands.push({ key: "vendor", label: "vendor scale", level: 1, values: series.vendor });
   }
-  const total = lines.reduce((sum, one) => sum + one.values.reduce((a, b) => a + b, 0), 0);
-  return html`<${Series} title="Alarms raised, by severity" mark="line" total=${true}
-    series=${lines} labels=${labels}
-    source=${data ? `${count(total)} raised` : "reading…"}
-    span=${data ? `per ${spanText(data.bucket_s)}` : null}
+  return html`<${StackedArea} title="Active alarms, by severity" bands=${bands} labels=${labels}
+    source=${data ? "active at each point" : "reading…"}
+    span=${data ? `every ${spanText(data.bucket_s)}` : null}
     note=${TIMEZONE} />`;
 }
 
@@ -101,31 +92,18 @@ export function Happening({ data, rangeS, error, retry }) {
 export const CARD_NODES = 40;
 
 /**
- * **Where it is happening** — the five busiest, and how the estate is connected (v0.22.0, item 6).
+ * **The estate** — how the elements are connected, busiest first (v0.22.0 item 6; v0.23.0).
  *
- * The grid of every element became the graph: the maintainer wanted the relationships on the first
- * screen. It is `app/netgraph.js` at card size — hand-written, deterministic, asserted by the
- * harness, never the d3 scene — and an element opens on the Graph screen with its panel. Past
- * `CARD_NODES` elements it draws the busiest, which is the question this card answers.
+ * `app/netgraph.js` at card size — hand-written, deterministic, asserted by the harness — and an
+ * element opens on the Graph screen with its panel. Past `CARD_NODES` elements it draws the
+ * busiest. The "busiest five" bars that sat above it became the Top 10 card (#393).
  */
 export function Estate({ nodes, edges }) {
-  const rows = [...nodes]
-    .filter((node) => node.active_alarms > 0)
-    .sort((a, b) => b.active_alarms - a.active_alarms
-      || String(a.id).localeCompare(String(b.id)))
-    .slice(0, TOP_N)
-    .map((node) => ({
-      key: String(node.id),
-      label: node.label || node.ip,
-      value: node.active_alarms,
-      tone: node.active_alarms >= URGENT_AT ? "alarm" : "warn",
-    }));
   const drawn = nodes.length <= CARD_NODES
     ? nodes
     : [...nodes].sort((a, b) => b.active_alarms - a.active_alarms).slice(0, CARD_NODES);
-  return html`<section class="panel-block">
-    <${SectionHeading} title="Where it is happening" />
-    <${Bars} title=${`Busiest ${TOP_N}`} rows=${rows} unit="alarms" source="active now" />
+  return html`<section class="panel-block estate">
+    <${SectionHeading} title="The estate" />
     <${NetGraph} compact nodes=${drawn} edges=${edges || []}
       onSelect=${(id) => { globalThis.location.hash = `#/graph?ne=${id}`; }} />
     <p class="chart-caption">

@@ -25,31 +25,10 @@ export const KINDS = [
 ];
 
 /** A parameter's value when it is absent from the address, so a default is never written. */
-export const DEFAULTS = { win: 3600, ne: "", kind: "both", page: 0 };
+export const DEFAULTS = { win: 3600, ne: "", org: "", oid: "", sid: "", kind: "both", page: 0 };
 
 export const PAGE = 25;
 export const LANE_BUCKETS = 48;
-
-/** The three controls. Each writes one parameter into the address; the address is the state. */
-export function Controls({ config, elements, set }) {
-  return html`<div class="filters tl-controls" role="group" aria-label="Timeline filters">
-    <div class="ranges" role="group" aria-label="Window">
-      ${WINDOWS.map((w) => html`<button type="button" key=${w.label}
-          class=${cx("range", w.seconds === config.win && "on")}
-          aria-pressed=${w.seconds === config.win}
-          onClick=${() => set("win", w.seconds)}>${w.label}</button>`)}
-    </div>
-    <label class="visually-hidden" for="tlNe">Element</label>
-    <select id="tlNe" value=${config.ne} onChange=${(e) => set("ne", e.target.value)}>
-      <option value="">every element</option>
-      ${elements.map(([id, name]) => html`<option key=${id} value=${String(id)}>${name}</option>`)}
-    </select>
-    <label class="visually-hidden" for="tlKind">Show</label>
-    <select id="tlKind" value=${config.kind} onChange=${(e) => set("kind", e.target.value)}>
-      ${KINDS.map(([value, label]) => html`<option key=${value} value=${value}>${label}</option>`)}
-    </select>
-  </div>`;
-}
 
 /**
  * **Where and when, as a matrix**: one row per busy element, one column per slice of the window,

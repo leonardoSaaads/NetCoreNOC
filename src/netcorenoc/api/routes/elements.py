@@ -58,3 +58,30 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "maintenance": markers.get(ne_id),
         }
         return shaping.shape(body, principal.role)  # coarsen the address and the name below editor
+
+    @route.get("/api/inventory")
+    async def inventory(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+        """Every in-scope element with its state, and the totals (v0.23.0, #395).
+
+        The Entities screen's one read: organization, vendor, active alarms by band, components
+        learned beneath each element, live situations, last trap, planned work — in a fixed number
+        of grouped queries rather than one per element. Scoped in the WHERE clause.
+        """
+        scope = await scope_for(principal)
+        async with store.lock:
+            body = await store.inventory(None if scope.unrestricted else scope.ne_ids)
+        return shaping.shape(body, principal.role)  # coarsen addresses and names below editor
+
+    @route.get("/api/elements/{ne_id}/components")
+    async def components(
+        ne_id: int, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """The components the appliance learned beneath one element, busiest first (#395)."""
+        scope = await scope_for(principal)
+        if not scope.allows_ne(ne_id):
+            raise HTTPException(status_code=404, detail="no such NE")
+        async with store.lock:
+            if await store.get_ne(ne_id) is None:
+                raise HTTPException(status_code=404, detail="no such NE")
+            body = await store.components(ne_id)
+        return shaping.shape(body, principal.role)

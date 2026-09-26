@@ -29,6 +29,7 @@ from typing import Any, Literal
 
 from netcorenoc.ingest import known_oids
 from netcorenoc.store.class_rules import ClassRuleMixin
+from netcorenoc.store.narrow import Narrow, narrowed
 from netcorenoc.store.timeline_models import TimelineMixin
 
 Kind = Literal["raise", "clear"]
@@ -82,10 +83,11 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
         top: int,
         ne_ids: frozenset[int] | None,
         device_ne_id: int | None = None,
+        narrow: Narrow | None = None,
     ) -> dict[str, Any]:
         """Raises per bucket for the `top` busiest elements, plus everything else as one lane."""
         width = max(1e-6, (until - since) / buckets)
-        where, args = self._timeline_scope(ne_ids, device_ne_id)
+        where, args = narrowed(*self._timeline_scope(ne_ids, device_ne_id), narrow)
         cur = await self.conn.execute(
             "SELECT a.ne_id, CAST((a.first_seen - ?) / ? AS INTEGER) AS b, COUNT(*) "  # nosec B608
             f"FROM alarm a WHERE {where} AND a.first_seen >= ? AND a.first_seen < ? "
@@ -127,9 +129,10 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
         gap_s: float = DEFAULT_GAP_S,
         limit: int = 50,
         offset: int = 0,
+        narrow: Narrow | None = None,
     ) -> dict[str, Any]:
         """Bursts of one trap on one element, newest first, paged — and how many there are."""
-        where, args = self._timeline_scope(ne_ids, device_ne_id)
+        where, args = narrowed(*self._timeline_scope(ne_ids, device_ne_id), narrow)
         cte, order = self._marks_cte(where, kinds, class_id)
         bound: list[Any] = []
         for _ in order:

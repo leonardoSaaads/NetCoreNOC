@@ -340,6 +340,16 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         )
         alarms = [self._project_class(dict(r)) for r in await cur.fetchall()]
         await self._attach_severity_scale(alarms)
+        # v0.23.0: the catalogue's rules reach a situation's members too (ADR #385). v0.22.0
+        # applied them to every count and to the Timeline, and a situation's own rows still showed
+        # the OID and the learned severity — the one screen the sequence of events is read on.
+        catalogue = await self.catalogue()  # type: ignore[attr-defined]
+        for alarm in alarms:
+            resolved = catalogue.resolve(str(alarm["class_oid"]))
+            if resolved.name and not alarm.get("class_label"):
+                alarm["class_name"] = resolved.name
+            alarm["rule_severity"] = resolved.severity
+            alarm["rule_severity_rank"] = resolved.severity_rank
         cur = await self.conn.execute(
             "SELECT alarm_a, alarm_b, score, term_t, term_a, term_e FROM link "
             "WHERE situation_id=? ORDER BY id",

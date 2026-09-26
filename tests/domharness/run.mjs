@@ -278,7 +278,7 @@ const scenarios = {
       tips: env.document.querySelectorAll(".info-text").map((n) => n.textContent.replace(/\s+/g, " ").trim()),
       // v0.22.0: the severity chips' shapes, in document order, for the legibility guard.
       shapes: env.document.querySelectorAll(".chart-bar-label .sev-glyph")
-        .map((n) => n.getAttribute("data-shape")),
+        .map((n) => n.getAttribute("data-level")),
       requestPaths: env.network.requests.map((r) => `${r.method} ${r.path}`),
       dump: dumpTree(env.document.getElementById("root")).join("\n"),
       proof: proofOf(env),
@@ -517,7 +517,7 @@ const scenarios = {
         const pill = td.querySelector(".sev-pill");
         return {
           classes: pill ? (pill.getAttribute("class") ?? "") : "",
-          glyph: pill ? (pill.querySelector(".sev-glyph")?.getAttribute("data-shape") ?? "") : "",
+          glyph: pill ? (pill.querySelector(".sev-glyph")?.getAttribute("data-level") ?? "") : "",
           text: pill ? (pill.querySelector(".sev-text")?.textContent ?? "") : "",
           // The whole cell's text, so a pill that dropped its word but kept a `title=` is not
           // mistaken for one that renders it: a tooltip is not a rendering.
@@ -1257,11 +1257,14 @@ function readCharts(document) {
     ...document.querySelectorAll('[data-chart="graph"]'),
     ...document.querySelectorAll('[data-chart="lanes"]'),
   ];
+  // (The stacked chart, `data-chart="stack"`, is a `.chart` box and is read by the first query.)
   return [...document.querySelectorAll(".chart"), ...extra].map((chart) => ({
     kind: chart.dataset.chart ?? null,
     label: chart.getAttribute("aria-label"),
     role: chart.getAttribute("role"),
     polylines: chart.querySelectorAll("polyline").map((p) => p.getAttribute("points")),
+    // v0.23.0: the Overview's active-alarm chart is a stacked area, drawn as one polygon per band.
+    polygons: chart.querySelectorAll("polygon").map((p) => p.getAttribute("points")),
     rects: chart.querySelectorAll("rect").map((r) => ({
       x: r.getAttribute("x"), y: r.getAttribute("y"),
       w: r.getAttribute("width"), h: r.getAttribute("height"),

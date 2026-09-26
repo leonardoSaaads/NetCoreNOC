@@ -8,9 +8,11 @@ decorator; `tests/test_declaration.py` pins both facts.
 
 from __future__ import annotations
 
+import hashlib
+from functools import cache
 from pathlib import Path
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse
 
 import netcorenoc
@@ -172,6 +174,12 @@ _UI_MODULES = (
     "app/views/parts/oidtree.js",
     "app/views/parts/importbox.js",
     "app/views/parts/mwdetail.js",
+    "app/stack.js",
+    "app/views/parts/sitsummary.js",
+    "app/views/parts/topassets.js",
+    "app/views/parts/tlfilters.js",
+    "app/views/parts/sequence.js",
+    "app/views/parts/nedetail.js",
     "app/widgets.js",
 )
 
@@ -228,15 +236,35 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             return {"status": "not ready"}
         return {"status": "ready"}
 
+    # v0.23.0: every console file is `no-cache` — stored, but revalidated on each load against its
+    # ETag, so an unchanged file costs a 304 and an upgraded one is fetched. Without it a browser
+    # applied heuristic freshness to the modules and kept drawing the previous release's screens
+    # after an upgrade (the report that v0.22.0 still showed the old severity glyphs).
+    # The ETag is the file's content hash, so a 304 is exact; Starlette's FileResponse here does
+    # not answer `If-None-Match`, which would make every revalidation a full download.
+    def _conditional(request: Request, path: Path, media_type: str) -> Response:
+        tag = _content_etag(path)
+        headers = {"Cache-Control": "no-cache", "ETag": tag}
+        if request.headers.get("if-none-match") == tag:
+            return Response(status_code=304, headers=headers)
+        return FileResponse(path, media_type=media_type, headers=headers)
+
     @route.get("/", include_in_schema=False)
-    async def index() -> FileResponse:
-        return FileResponse(UI_FILE, media_type="text/html")
+    async def index(request: Request) -> Response:
+        return _conditional(request, UI_FILE, "text/html")
 
     def _asset_route(asset: str, media_type: str) -> None:
-        async def serve() -> FileResponse:
-            return FileResponse(UI_DIR / asset, media_type=media_type)
+        async def serve(request: Request) -> Response:
+            return _conditional(request, UI_DIR / asset, media_type)
 
         app.add_api_route(f"/{asset}", serve, include_in_schema=False)
 
     for _asset, _media in STATIC_ASSETS.items():
         _asset_route(_asset, _media)
+
+
+@cache
+def _content_etag(path: Path) -> str:
+    """A strong validator from the file's bytes, computed once: shipped files do not change while
+    the process runs, and a new release is a new process."""
+    return '"' + hashlib.sha256(path.read_bytes()).hexdigest()[:32] + '"'

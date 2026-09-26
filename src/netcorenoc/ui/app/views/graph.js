@@ -36,7 +36,7 @@ function name(node) { return node.label || node.ip; }
 export class GraphView extends Component {
   constructor(props) {
     super(props);
-    this.state = { live: store.get(), all: false };
+    this.state = { live: store.get(), all: false, focus: null, query: "", miss: false };
     this.onKey = this.onKey.bind(this);
   }
 
@@ -65,6 +65,26 @@ export class GraphView extends Component {
     this.props.navigate(id == null || same ? "#/graph" : `#/graph?ne=${id}`);
   }
 
+  /** Select an element and bring it into view: the find box and the load table use this. */
+  focus(id) {
+    const seq = (this.state.focus ? this.state.focus.seq : 0) + 1;
+    this.setState({ focus: { id, seq }, miss: false });
+    if (id !== this.selected()) this.props.navigate(`#/graph?ne=${id}`);
+    globalThis.document.querySelector(".graphview .netgraph")
+      ?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }
+
+  /** Find by address or name: exact first, then the first that contains the text. */
+  find(nodes, text) {
+    const q = text.trim().toLowerCase();
+    if (!q) return;
+    const label = (n) => String(n.label || "").toLowerCase();
+    const hit = nodes.find((n) => String(n.ip).toLowerCase() === q || label(n) === q)
+      || nodes.find((n) => String(n.ip).toLowerCase().includes(q) || label(n).includes(q));
+    if (hit) this.focus(hit.id);
+    else this.setState({ miss: true });
+  }
+
   render(_props, { live, all }) {
     const graph = live.graph;
     if (!graph || !graph.nodes.length) {
@@ -74,27 +94,39 @@ export class GraphView extends Component {
     }
     const selected = this.selected();
     const known = graph.nodes.some((node) => node.id === selected);
+    const { focus, query, miss } = this.state;
     return html`<div class="graphview">
       <div class="graph-bar">
+        <form class="graph-find" role="search" onSubmit=${(e) => { e.preventDefault(); this.find(graph.nodes, query); }}>
+          <label class="visually-hidden" for="graph-find">Find an element</label>
+          <input id="graph-find" type="search" list="graph-names" placeholder="Find IP or name"
+                 value=${query} autocomplete="off"
+                 onInput=${(e) => this.setState({ query: e.currentTarget.value, miss: false })} />
+          <datalist id="graph-names">${graph.nodes.map((n) => html`<option key=${n.id}
+            value=${n.label ? `${n.label}` : n.ip}>${n.label ? n.ip : ""}</option>`)}</datalist>
+          <button type="submit" class="tap">Find</button>
+          ${miss ? html`<span class="hint" role="status">No element matches.</span>` : null}
+        </form>
         <span class="muted">${plural(graph.nodes.length, "element")}${" · "}${
           plural(graph.edges.length, "learned relationship")}</span>
         <${InfoTip} label="How to read the graph">
           A line is a learned affinity: how often two elements' alarms appeared together. It is
           thicker and darker the stronger it is. A dot grows with the element's active alarms and
           is ringed from ${URGENT_AT_TEXT}. Elements with no learned relationship sit in the band
-          at the bottom. Positions follow the relationships only, so they do not move while the
-          estate is unchanged.
+          at the bottom. Scroll or pinch to zoom, drag to move, double-click to zoom in; + and −
+          and 0 work on the keyboard.
         <//>
       </div>
-      <div class=${known ? "graph-split" : ""}>
+      <div class=${known ? "graph-split" : "graph-solo"}>
         <${NetGraph} nodes=${graph.nodes} edges=${graph.edges} selected=${known ? selected : null}
-                     onSelect=${(id) => this.select(id)} />
+                     focus=${focus} onSelect=${(id) => this.select(id)} />
         ${known
-          ? html`<${ElementPanel} neId=${selected} onClose=${() => this.select(null)} />`
+          ? html`<div class="elpanel-wrap"><${ElementPanel} neId=${selected}
+              onClose=${() => this.select(null)} /></div>`
           : null}
       </div>
       <${Load} nodes=${graph.nodes} edges=${graph.edges} all=${all}
-        onAll=${() => this.setState({ all: !all })} onSelect=${(id) => this.select(id)} />
+        onAll=${() => this.setState({ all: !all })} onSelect=${(id) => this.focus(id)} />
       <${Strongest} graph=${graph} />
     </div>`;
   }

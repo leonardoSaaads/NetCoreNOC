@@ -22,7 +22,6 @@ import asyncio
 
 import aiosqlite
 
-from netcorenoc.store.activity import ActivityMixin
 from netcorenoc.store.alarms import AlarmMixin
 from netcorenoc.store.attention import AttentionMixin
 from netcorenoc.store.audit_log import AuditLogMixin
@@ -41,6 +40,7 @@ from netcorenoc.store.governance import GovernanceMixin
 from netcorenoc.store.host_samples import HostSampleMixin
 from netcorenoc.store.idle import IdleMixin
 from netcorenoc.store.ingest_gaps import IngestGapMixin
+from netcorenoc.store.inventory import InventoryMixin
 from netcorenoc.store.learned import LearnedMixin
 from netcorenoc.store.lifecycle import LifecycleMixin
 from netcorenoc.store.maintenance_windows import MaintenanceWindowMixin
@@ -92,7 +92,7 @@ class Store(
     IngestGapMixin,
     StateClearMixin,
     EntityMixin,
-    ActivityMixin,
+    InventoryMixin,
     CatalogueReadMixin,
     ReadModelsMixin,
     ClassRuleMixin,

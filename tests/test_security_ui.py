@@ -109,6 +109,20 @@ async def test_api_responses_are_no_store(client: httpx.AsyncClient) -> None:
     assert (await client.get("/app.js")).headers.get("cache-control") != "no-store"
 
 
+@pytest.mark.parametrize("path", ["/", "/app.js", "/style.css", "/app/widgets.js"])
+async def test_console_files_are_revalidated_so_an_upgrade_is_seen(
+    client: httpx.AsyncClient, path: str
+) -> None:
+    """v0.23.0: stored but revalidated. Without `no-cache` a browser applied heuristic freshness
+    to the modules and kept drawing the previous release after an upgrade; with it, an unchanged
+    file costs one 304 (the control: the ETag round-trip still works)."""
+    first = await client.get(path)
+    assert first.headers["cache-control"] == "no-cache", first.headers
+    etag = first.headers["etag"]
+    again = await client.get(path, headers={"If-None-Match": etag})
+    assert again.status_code == 304
+
+
 async def test_static_assets_served_with_correct_types(client: httpx.AsyncClient) -> None:
     """Every asset a browser fetches comes back, with the right type, from this origin.
 
@@ -671,7 +685,8 @@ def test_every_destructive_control_goes_through_one_component() -> None:
     assert "cannot be undone" in destructive
     # The apply step does not exist until a preview has been seen — absent, not disabled.
     assert 'stage === "previewed" || stage === "applying"' in destructive
-    for name in ("audit", "settings", "users", "tokens", "entities", "promotion", "scorer"):
+    # v0.23.0 (#395): the Entities screen's two resets moved into the element it opens.
+    for name in ("audit", "settings", "users", "tokens", "parts/nedetail", "promotion", "scorer"):
         source = (UI_DIR / "app" / "views" / f"{name}.js").read_text(encoding="utf-8")
         assert "Destructive" in source, f"{name}.js has no destructive-preview machinery"
     # And no screen may reach for a bare `confirm()` instead.
