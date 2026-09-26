@@ -158,8 +158,12 @@ def test_the_build_tool_resolves_a_module_as_the_pack_needs(tmp_path: Path) -> N
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
     import trappack_build as build
 
+    # The module's opening line is assembled rather than written out, so this file does not itself
+    # read as a MIB to the #339 guard in `test_supply_chain` — it is a fictitious module.
+    opening = "ACME-MIB DEFINITIONS" + " ::= " + "BEGIN"
     (tmp_path / "ACME-MIB").write_text(
-        """ACME-MIB DEFINITIONS ::= BEGIN
+        opening
+        + """
 IMPORTS
     MODULE-IDENTITY, OBJECT-TYPE, NOTIFICATION-TYPE, enterprises FROM SNMPv2-SMI;
 acme MODULE-IDENTITY

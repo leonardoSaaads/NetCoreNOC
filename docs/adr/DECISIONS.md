@@ -5094,9 +5094,17 @@ From this release an entry is about six lines: decision, reason, release.*
   and 115 771 objects those modules declare — the varbinds their traps carry.
 - **Built by a tool, from sources a reader can open**: `tools/trappack_build.py` parses the MIB
   text (SMIv1 and SMIv2), resolves every notification to its numeric OID (RFC 3584 for v1 traps)
-  and writes two deterministic gzipped TSVs into `ingest/`. This release was built from the LibreNMS
-  MIB collection, which carries the vendors' own modules; the vendors' web sites are unreachable
-  from the build environment.
+  and writes two deterministic gzipped TSVs into `ingest/`. This release was built from the vendors'
+  own modules as collected in https://github.com/librenms/librenms `mibs/` at commit
+  `a28d084223d30d10f8ac65715753eecf34792803`; the vendors' web sites are unreachable from the build
+  environment. Each row names the module it came from.
+- **What changed since #339.** #339 refused vendor rows because no row could be checked against a
+  reachable source, and because a severity asserted on a vendor's behalf is the failure prime
+  directive 1 forbids. Both conditions are now met differently: every OID and name is checkable
+  against a module at a pinned commit, and **no severity is attributed to a vendor** — the grade is
+  this project's published default, shown as `built-in`. #339's other guarantee holds unchanged:
+  no MIB file enters the repository (`tests/test_supply_chain.py`); the pack carries derived rows
+  (OID, name, module name), not MIB text.
 - **The severity is a default, and says so.** A MIB almost never states a severity, so each
   notification name is graded by a published category table (`ingest/trappack.CATEGORIES`): power,
   board and signal failures critical; links, sessions, fans, temperature, optics major; utilisation
