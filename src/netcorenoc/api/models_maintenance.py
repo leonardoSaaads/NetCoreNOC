@@ -198,7 +198,10 @@ class _WindowBody(BaseModel):
     ends_at: AwareInstant
     all_day: bool = False
     patch_s: float = Field(default=600.0, ge=0.0, le=86400.0)
-    ledger_enabled: bool = True
+    #: v0.24.0 (ADR #397): **off unless asked for.** A window discards what it suppresses; an
+    #: operator who wants the faults it saw raised and never cleared reported when it closes turns
+    #: this on, and they surface as one situation for the window.
+    ledger_enabled: bool = False
     visibility: Literal["editors", "everyone"] = "editors"
     targets: list[int] = Field(default_factory=list, max_length=MAX_TARGETS)
     rules: list[CollectionRuleIn] = Field(default_factory=list, max_length=MAX_RULES)

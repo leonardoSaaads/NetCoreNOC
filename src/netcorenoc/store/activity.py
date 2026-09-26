@@ -225,10 +225,8 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
             rank = (
                 known_oids.severity_rank(token)
                 if token is not None
-                else catalogue.resolve(str(oid)).severity_rank
+                else catalogue.resolve(str(oid)).rank_over(placed_rank)
             )
-            if rank is None:
-                rank = placed_rank
             if rank is None:
                 series["unplaced"][int(bucket)] += int(n)
             elif int(rank) < len(BANDS):

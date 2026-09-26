@@ -77,7 +77,9 @@ export class Keeping extends Component {
       : null;
     return html`<section class="panel-block">
       <${SectionHeading} title="Is the appliance keeping up" />
-      <p class=${`verdict verdict-${verdict.tone}`}>${verdict.text}</p>
+      ${/* v0.24.0: only a problem is worth a line; the all-clear is what the charts already show. */
+        verdict.tone === "bad" || verdict.tone === "warn"
+          ? html`<p class=${`verdict verdict-${verdict.tone}`}>${verdict.text}</p>` : null}
       ${error ? html`<p class="hint">Could not read the host history: ${error.message}</p>` : null}
       <div class="chart-grid">
         ${charts(res).map(([title, key, unit, what]) => html`<${Series} key=${key}

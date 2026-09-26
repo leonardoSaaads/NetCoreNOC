@@ -1410,6 +1410,7 @@ td.sev .cell-edit { display: inline-block; width: auto; }
 .netgraph-zoomed .glabel { display: block; }
 .netgraph-home { touch-action: pan-y; cursor: grab; }
 .netgraph-pan { touch-action: none; cursor: grab; }
+.netgraph-home:active, .netgraph-pan:active { cursor: grabbing; }
 .netgraph:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .netgraph-zoom {
   position: absolute; top: var(--space-2); right: var(--space-2); z-index: 4;
@@ -2376,21 +2377,43 @@ button.mw-row-name {
 @media (max-width: 760px) { .ov-5, .ov-7 { grid-column: 1 / -1; } }
 /* The estate's graph grows to the height of its row instead of leaving the card half empty. */
 .estate { display: flex; flex-direction: column; }
-.estate .netgraph { flex: 1 1 auto; min-height: 260px; aspect-ratio: auto !important; }
+/* v0.24.0: bounded — a preview of the Graph screen, never the largest thing on the Overview. */
+.estate .netgraph { flex: 1 1 auto; min-height: 240px; max-height: 340px; aspect-ratio: auto !important; }
 .ov-models .learned-line { margin: var(--space-2) 0 0; }
 
-/* The stacked areas: each band in its own fill, most severe at the bottom; hover targets per
-   bucket carry the counts in a title. */
-.stack-area { stroke: var(--bg-raised); stroke-width: 0.15; vector-effect: non-scaling-stroke; }
-.stack-critical { fill: var(--sev-critical-fill); }
-.stack-major { fill: var(--sev-major-fill); }
-.stack-minor { fill: var(--sev-minor-fill); }
-.stack-warning { fill: var(--sev-warning-line); }
-.stack-indeterminate { fill: var(--fg-muted); opacity: 0.55; }
-.stack-unplaced { fill: var(--fg-dim); opacity: 0.45; }
-.stack-vendor { fill: var(--accent); opacity: 0.7; }
+/* The stacked areas (v0.24.0, #398): drawn the way Grafana draws a stacked time series — each band
+   a translucent fill under a solid edge, faint horizontal gridlines with their values, headroom
+   above the peak, and a vertical cursor on the bucket under the pointer with its counts. */
+.chart-stack { --chart-h: 168px; }
+@media (max-width: 460px) { .chart-stack { --chart-h: 128px; } }
+.stack-plot { background: transparent; border-left: 0; margin-left: 2.6rem; }
+.stack-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
+.stack-area { stroke: none; fill-opacity: 0.38; }
+.stack-edge { fill: none; stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.stack-area.stack-critical { fill: var(--sev-critical-fill); }
+.stack-area.stack-major { fill: var(--sev-major-fill); }
+.stack-area.stack-minor { fill: var(--sev-minor-fill); }
+.stack-area.stack-warning { fill: var(--sev-warning-line); }
+.stack-area.stack-indeterminate { fill: var(--fg-muted); }
+.stack-area.stack-unplaced { fill: var(--fg-dim); fill-opacity: 0.22; }
+.stack-area.stack-vendor { fill: var(--accent); }
+.stack-edge.stack-critical { stroke: var(--sev-critical-fill); }
+.stack-edge.stack-major { stroke: var(--sev-major-fill); }
+.stack-edge.stack-minor { stroke: var(--sev-minor-fill); }
+.stack-edge.stack-warning { stroke: var(--sev-warning-line); }
+.stack-edge.stack-indeterminate { stroke: var(--fg-muted); }
+.stack-edge.stack-unplaced { stroke: var(--fg-dim); stroke-dasharray: 3 2; }
+.stack-edge.stack-vendor { stroke: var(--accent); }
+.stack-cursor { stroke: var(--fg-muted); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: 0; }
+.stack-col:hover .stack-cursor { opacity: 1; }
 .stack-hit { fill: transparent; }
-.stack-hit:hover { fill: color-mix(in srgb, var(--fg) 8%, transparent); }
+.stack-col:hover .stack-hit { fill: color-mix(in srgb, var(--fg) 5%, transparent); }
+.stack-y { position: absolute; top: 0; bottom: 0; left: -2.6rem; width: 2.4rem; pointer-events: none; }
+.stack-y span {
+  position: absolute; right: 0; transform: translateY(-50%);
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim); line-height: 1;
+}
+.chart-stack .chart-x { margin-left: 2.6rem; }
 
 /* The situations card: two counts that are also the tabs, and the rows to open first. */
 .sitsum .section-heading { justify-content: space-between; }

@@ -8,9 +8,12 @@ way and a test can drive the precedence without a database (ADR #385):
      already joins it;
   2. the rules matching the class's OID, **most specific first**: an exact rule, then the deepest
      subtree, then shallower ones; at the same node `declared` before `imported`;
-  3. what the appliance knows without being told — a standard trap's bundled name, the severity
+  3. **the built-in trap pack** (v0.24.0, ADR #400) — the vendor's own name for the exact OID and
+     a published default severity (`ingest/trappack.py`). Consulted only when no declared or
+     imported rule at ANY depth answers, so an operator's branch rule always beats it;
+  4. what the appliance knows without being told — a standard trap's bundled name, the severity
      the trap carried or learned;
-  4. nothing.
+  5. nothing.
 
 A name and a severity are resolved independently: a branch rule that grades without naming leaves
 the name to whatever comes next, which is what an operator writing *"everything under here is
@@ -27,10 +30,14 @@ import time
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from netcorenoc.ingest import known_oids
+from netcorenoc.ingest import known_oids, trappack
 from netcorenoc.store.base import StoreBase
 
 RuleSource = Literal["declared", "imported"]
+
+#: The source a built-in pack entry is reported under. Never a row of `class_rule`: it cannot be
+#: listed, counted, withdrawn or written, only outranked.
+BUILTIN = "builtin"
 
 #: The two sources, in the order they win at the same node.
 SOURCES: tuple[RuleSource, ...] = ("declared", "imported")
@@ -79,6 +86,18 @@ class Resolved:
     def severity_rank(self) -> int | None:
         return known_oids.severity_rank(self.severity) if self.severity is not None else None
 
+    @property
+    def is_default(self) -> bool:
+        """The severity is the built-in pack's default — the lowest rung of all."""
+        return self.severity_rule is not None and self.severity_rule.source == BUILTIN
+
+    def rank_over(self, placed: int | None) -> int | None:
+        """The rank to use given what the ingest path placed. A rule wins; the built-in default
+        yields to the trap's own word or a learned field, and fills in only when neither exists."""
+        if self.severity_rule is None or (self.is_default and placed is not None):
+            return placed
+        return self.severity_rank
+
 
 NOTHING = Resolved()
 
@@ -86,8 +105,9 @@ NOTHING = Resolved()
 class Catalogue:
     """Every rule, indexed by node, and the precedence that picks among the ones that match."""
 
-    def __init__(self, rules: list[Rule]) -> None:
+    def __init__(self, rules: list[Rule], builtin: trappack.Pack | None = None) -> None:
         self.rules = rules
+        self.builtin = builtin
         self._at: dict[str, list[Rule]] = {}
         for rule in rules:
             self._at.setdefault(rule.oid, []).append(rule)
@@ -112,6 +132,21 @@ class Catalogue:
         named = next((r for r in rules if r.name), None)
         graded = next((r for r in rules if r.severity), None)
         vendor = next((r.vendor for r in rules if r.vendor), None)
+        entry = self.builtin.notifications.get(oid) if self.builtin is not None else None
+        if entry is not None and (named is None or graded is None):
+            # The pack answers only what no rule did, and only for its exact OID.
+            stub = Rule(
+                id=0,
+                oid=oid,
+                subtree=False,
+                name=entry.name,
+                severity=entry.severity,
+                vendor=None,
+                source=BUILTIN,
+                origin=entry.module,
+            )
+            named = named or stub
+            graded = graded or (stub if entry.severity else None)
         out = (
             NOTHING
             if named is None and graded is None and vendor is None
@@ -127,13 +162,19 @@ class Catalogue:
         return out
 
 
-EMPTY = Catalogue([])
-
-
 def rule_ref(rule: Rule | None) -> dict[str, Any] | None:
     """The part of a winning rule a screen shows: which node, how, and on whose word."""
     if rule is None:
         return None
+    if rule.source == BUILTIN:
+        # No row to open or withdraw: the reference says where the name came from instead.
+        return {
+            "id": None,
+            "oid": rule.oid,
+            "subtree": False,
+            "source": BUILTIN,
+            "origin": rule.origin,
+        }
     return {"id": rule.id, "oid": rule.oid, "subtree": rule.subtree, "source": rule.source}
 
 
@@ -145,7 +186,7 @@ class ClassRuleMixin(StoreBase):
     async def catalogue(self) -> Catalogue:
         """The current catalogue, read once and reused until a rule changes."""
         if not self._has_class_rules:
-            return EMPTY
+            return Catalogue([], trappack.pack())
         if self._catalogue_cache is None:
             cur = await self.conn.execute(
                 "SELECT id, oid, subtree, name, severity, vendor, source, origin FROM class_rule "
@@ -164,7 +205,8 @@ class ClassRuleMixin(StoreBase):
                         origin=r[7],
                     )
                     for r in await cur.fetchall()
-                ]
+                ],
+                trappack.pack(),
             )
         return self._catalogue_cache
 

@@ -57,6 +57,10 @@ export class NetGraph extends Component {
     const narrow = globalThis.matchMedia?.("(max-width: 600px)")?.matches;
     this.aspect = props.compact ? (narrow ? 1.2 : 1.8) : (narrow ? 0.9 : 2.2);
     this.state = { view: HOME };
+    // v0.24.0 (#399): the view the NEXT gesture starts from. `setState` is applied at the next
+    // render, so reading `state.view` in a pointermove read the view as it was before the moves
+    // since the last frame — a drag moved the map a fraction of the pointer's distance.
+    this.view = HOME;
     this.pointers = new Map();
     this.dragged = false;
     this.box = null;
@@ -67,32 +71,37 @@ export class NetGraph extends Component {
     if (focus && (!previous.focus || focus.seq !== previous.focus.seq)) this.centre(focus.id);
   }
 
+  show(view) {
+    this.view = view;
+    this.setState({ view });
+  }
+
   /** Centre on one element and zoom in enough to separate it from its neighbours. */
   centre(id) {
     const p = this.placed && this.placed[id];
     if (!p) return;
-    const k = Math.max(this.state.view.k, FOCUS_K);
-    this.setState({ view: this.bounded({ k, cx: p.x, cy: p.y }) });
+    const k = Math.max(this.view.k, FOCUS_K);
+    this.show(this.bounded({ k, cx: p.x, cy: p.y }));
   }
 
+  /** v0.24.0 (#399): the centre may go anywhere inside the drawing, at every zoom — so the map
+   *  moves freely, at 1× too, and half the view always still shows part of the estate. */
   bounded({ k, cx, cy }) {
-    const kk = clamp(k, MIN_K, MAX_K);
-    const half = 50 / kk;
-    return { k: kk, cx: clamp(cx, half, 100 - half), cy: clamp(cy, half, 100 - half) };
+    return { k: clamp(k, MIN_K, MAX_K), cx: clamp(cx, 0, 100), cy: clamp(cy, 0, 100) };
   }
 
   /** Zoom by `factor` keeping the stage point under screen percentage (px, py) where it is. */
   zoomAt(factor, px = 50, py = 50) {
-    const { k, cx, cy } = this.state.view;
+    const { k, cx, cy } = this.view;
     const next = clamp(k * factor, MIN_K, MAX_K);
     const sx = (px - 50) / k + cx;
     const sy = (py - 50) / k + cy;
-    this.setState({ view: this.bounded({ k: next, cx: sx - (px - 50) / next, cy: sy - (py - 50) / next }) });
+    this.show(this.bounded({ k: next, cx: sx - (px - 50) / next, cy: sy - (py - 50) / next }));
   }
 
   pan(dxPct, dyPct) {
-    const { k, cx, cy } = this.state.view;
-    this.setState({ view: this.bounded({ k, cx: cx - dxPct / k, cy: cy - dyPct / k }) });
+    const { k, cx, cy } = this.view;
+    this.show(this.bounded({ k, cx: cx - dxPct / k, cy: cy - dyPct / k }));
   }
 
   percent(event) {
@@ -110,7 +119,7 @@ export class NetGraph extends Component {
     if (event.button != null && event.button !== 0) return;
     this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     this.dragged = false;
-    this.start = { view: this.state.view, spread: this.spread() };
+    this.start = { view: this.view, spread: this.spread() };
   }
 
   spread() {
@@ -127,7 +136,7 @@ export class NetGraph extends Component {
       const now = this.spread();
       if (this.start.spread > 0 && now > 0) {
         const k = clamp(this.start.view.k * (now / this.start.spread), MIN_K, MAX_K);
-        this.setState({ view: this.bounded({ ...this.state.view, k }) });
+        this.show(this.bounded({ ...this.view, k }));
         this.dragged = true;
       }
       return;
@@ -155,7 +164,7 @@ export class NetGraph extends Component {
     const moves = { ArrowLeft: [8, 0], ArrowRight: [-8, 0], ArrowUp: [0, 8], ArrowDown: [0, -8] };
     if (event.key === "+" || event.key === "=") this.zoomAt(1.4);
     else if (event.key === "-") this.zoomAt(1 / 1.4);
-    else if (event.key === "0") this.setState({ view: HOME });
+    else if (event.key === "0") this.show(HOME);
     else if (moves[event.key] && event.target === event.currentTarget) this.pan(...moves[event.key]);
     else return;
     event.preventDefault();
@@ -237,7 +246,7 @@ export class NetGraph extends Component {
         <button type="button" aria-label="Zoom out" onClick=${() => this.zoomAt(1 / 1.4)}
                 onPointerDown=${(e) => e.stopPropagation()}>−</button>
         <button type="button" aria-label="Show the whole estate" title="Fit (0)"
-                onClick=${() => this.setState({ view: HOME })}
+                onClick=${() => this.show(HOME)}
                 onPointerDown=${(e) => e.stopPropagation()}>⤢</button>
         <span class="netgraph-k" aria-live="polite">${k.toFixed(1)}×</span>
       </div>`}

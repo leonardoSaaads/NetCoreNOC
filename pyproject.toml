@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.23.0"
+version = "0.24.0"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -70,6 +70,10 @@ netcorenoc = [
     # `ui/**/*` alone shipped 49 UI files and left this one behind.
     "ui/.well-known/*",
     "py.typed",
+    # v0.24.0 (ADR #400): the built-in trap pack — the vendors' trap and object names, built by
+    # `tools/trappack_build.py`. Without these lines a wheel would ship a pack that is empty.
+    "ingest/trappack.tsv.gz",
+    "ingest/trapobjects.tsv.gz",
 ]
 
 [tool.ruff]

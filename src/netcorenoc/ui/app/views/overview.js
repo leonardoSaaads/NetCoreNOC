@@ -192,8 +192,8 @@ export class Overview extends Component {
         <//>
         <div class="ov-5 ov-slot"><${SituationSummary} stats=${stats} situations=${situations} /></div>
         <div class="ov-7 ov-slot"><${TopAssets} rangeS=${rangeS} tick=${tick} /></div>
-        <div class="ov-7 ov-slot"><${Estate} nodes=${nodes} edges=${(live.graph && live.graph.edges) || []} /></div>
-        <div class="ov-5 ov-slot"><${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} /></div>
+        <div class="ov-5 ov-slot"><${Estate} nodes=${nodes} edges=${(live.graph && live.graph.edges) || []} /></div>
+        <div class="ov-7 ov-slot"><${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} /></div>
         <section class="panel-block ov-12 ov-models">
           <${SectionHeading} title="The models" />
           <${ModelHealth} admin=${can("model.register")} />

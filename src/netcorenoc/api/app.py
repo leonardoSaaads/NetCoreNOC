@@ -35,6 +35,7 @@ from netcorenoc.api.perimeter import (
     RateLimiter,
 )
 from netcorenoc.crosscutting import auth
+from netcorenoc.ingest import trappack
 
 if TYPE_CHECKING:
     from netcorenoc.crosscutting.runtime import RuntimeConfig
@@ -54,6 +55,9 @@ def create_app(
     preview_rate_refill: float = PREVIEW_RATE_REFILL,
 ) -> FastAPI:
     app = FastAPI(title="NetCoreNOC", version=__version__, docs_url=None, redoc_url=None)
+    # v0.24.0 (ADR #400): read the built-in trap pack now, so the first screen that resolves a
+    # class does not pay for decompressing it. Cached: every later call is free.
+    trappack.pack()
     preview_limiter = RateLimiter(preview_rate_capacity, preview_rate_refill)
     throttle = throttle or auth.LoginThrottle()
     store = engine.store

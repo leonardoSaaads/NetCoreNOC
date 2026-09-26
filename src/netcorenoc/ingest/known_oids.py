@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from netcorenoc.ingest import trappack
+
 ENTERPRISE_PREFIX = "1.3.6.1.4.1."
 SNMP_TRAP_OID = "1.3.6.1.6.3.1.1.4.1.0"
 SYS_UPTIME_OID = "1.3.6.1.2.1.1.3.0"
@@ -83,6 +85,7 @@ IANA_ENTERPRISES: dict[int, str] = {
     3224: "Juniper (NetScreen)",
     3320: "BDCOM",
     3375: "F5 Networks",
+    3607: "Cisco ONS (Cerent)",
     3709: "Datacom",
     3808: "CyberPower Systems",
     3902: "ZTE",
@@ -101,6 +104,7 @@ IANA_ENTERPRISES: dict[int, str] = {
     6527: "Nokia (SR OS)",
     6574: "Synology",
     6876: "VMware",
+    7483: "Nokia 1830 PSS (Alcatel-Lucent Tropic)",
     8072: "net-snmp",
     8691: "Moxa",
     8741: "SonicWall",
@@ -125,6 +129,7 @@ IANA_ENTERPRISES: dict[int, str] = {
     33049: "Mellanox (NVIDIA)",
     41112: "Ubiquiti",
     41263: "Nutanix",
+    42229: "Coriant (Infinera)",
 }
 
 # Standard SNMPv2 notification OIDs (RFC 3418) plus the two RMON alarm traps.
@@ -273,11 +278,12 @@ def trap_name(oid: str) -> str | None:
 
 
 def varbind_name(oid: str) -> str | None:
-    """Human name of a well-known varbind OID (exact or table-column match)."""
+    """Human name of a varbind OID: a well-known one (exact or table-column match), else the name
+    the vendor's MIB gives it in the built-in trap pack (v0.24.0, ADR #400)."""
     for key, name in WELL_KNOWN_VARBINDS.items():
         if oid == key or (key.endswith(".") and oid.startswith(key)):
             return name
-    return None
+    return trappack.object_name(oid)
 
 
 #: **Where every bundled table above came from**, keyed by the table's own name (v0.17.1, #344).

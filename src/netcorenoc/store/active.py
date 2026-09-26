@@ -45,10 +45,8 @@ class ActiveMixin(ActivityMixin):
             rank = (
                 known_oids.severity_rank(token)
                 if token is not None
-                else catalogue.resolve(oid).severity_rank
+                else catalogue.resolve(oid).rank_over(placed)
             )
-            if rank is None:
-                rank = placed
             out = (
                 "unplaced"
                 if rank is None

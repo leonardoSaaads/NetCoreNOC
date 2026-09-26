@@ -23,6 +23,7 @@ from netcorenoc.api.mw_shape import situation_marker
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
+from netcorenoc.ingest import known_oids
 
 #: The range the bucketed timeline covers when the caller names none: two hours, which is the
 #: window the health sampler already keeps and the one an operator reaches for first.
@@ -369,6 +370,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         candidates = [
             {
                 "varbind_oid": c.varbind_oid,
+                # v0.24.0 (ADR #400): the vendor's name for it, from the built-in pack.
+                "varbind_name": known_oids.varbind_name(c.varbind_oid),
                 "r": round(c.r, 4),
                 "x": round(c.x, 4),
                 "d": round(c.d, 4),
