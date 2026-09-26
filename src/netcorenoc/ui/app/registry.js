@@ -76,7 +76,7 @@ export const VIEWS = [
   {
     id: "entities", label: "Entities", icon: "entities", group: "operations",
     capability: "entities.read", component: Entities,
-    summary: "What the appliance has learned about each network element, and the evidence.",
+    summary: "Every network element: its alarms, its components, and where it stands.",
   },
   {
     // v0.22.0 (item 16): named for what it holds — trap OIDs, their names and severities, whole

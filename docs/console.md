@@ -13,9 +13,9 @@ disabled controls.
 | View | The question it answers |
 |---|---|
 | **Situations** | Correlated groups of alarms, and **why each alarm was grouped** |
-| **Network graph** | Learned affinity between network elements, drawn the same way every time; select an element (click, or Tab and Enter) for its situations and recent traps. *Elements by load* ranks the estate exactly, because a node stops growing at a size |
-| **Timeline** | Raises and clears over the window you pick, per element, with repeats of one trap folded into one row; window, element, kind and page are in the address, so the screen can be sent to a colleague |
-| **Entities** | What the appliance has learned about each element, and the evidence for it |
+| **Network graph** | Learned affinity between network elements, drawn the same way every time. Zoom with the wheel, `+`/`−`, double-click or pinch; drag or the arrow keys pan; `0` fits. *Find* centres an address or name. Select an element (click, or Tab and Enter) for its panel: situations and the last day's traps. *Elements by load* ranks the estate exactly |
+| **Timeline** | Raises and clears over the window you pick, per element, with repeats of one trap folded into one row. Narrow by organization, element, trap (a name, or an OID meaning its branch) and kind; every filter is in the address and shown as a removable chip. From a situation card, the timeline opens as that situation's **sequence of events** |
+| **Entities** | The estate as an inventory: counts that filter, search and sort, one row per element with its severity mix, situations, components and last trap. Open one for its last day and busiest components; the identification evidence is behind a disclosure |
 | **Trap catalogue** | Every trap type, by name and severity: search, browse by vendor branch, name or grade a trap or a whole branch, import a trap list |
 | **Maintenance** | Planned work: what is scheduled, what is running, and **what it still collects** |
 
@@ -68,11 +68,14 @@ layout:
 1. **How bad is it** — active alarms by severity: critical, major, minor, warning, `indeterminate`,
    and **unplaced**. The last row is the one to read first on a new appliance, and it is explained
    below.
-2. **What is happening** — alarms raised over the range you pick, one line per severity band,
-   `unplaced` included. The range reaches the query: *7d* reads seven days.
-3. **Where** — the busiest five, and a compact graph of the estate in the same deterministic layout
-   as the Graph screen, linking to it.
-4. **Which element is worst** — the busiest five, by alarms active **now**.
+2. **What is happening** — alarms **active** at each point of the range you pick, stacked by
+   severity band, `unplaced` included (v0.23.0). A burst that is still active stays on the chart;
+   its last point equals the severity card. The range reaches the query: *7d* reads seven days.
+3. **What needs working** — *Open situations*: how many are New and how many Open, and the six
+   newest of the one you pick.
+4. **Which element is worst** — the ten assets with the most alarms active now, counting Critical,
+   + Major, + Minor or All, each with its trend. The count opens its timeline. Beside it, a compact
+   graph of the estate in the Graph screen's layout.
 5. **Is the appliance itself keeping up** — CPU, memory, storage and queue depth as series.
 6. **What it has learned** — devices and alarm classes, learned and not configured.
 
@@ -115,7 +118,7 @@ console and is lost on reload. The chart says so.
 
 **Situations** is a list of dense cards — id, status, alarm count, age — that expand in place. An
 expanded card shows the probable root cause, the member alarms in a compact table with severity
-encoded in colour **and** glyph **and** text, and then the section the whole product is for:
+encoded in colour **and** a four-bar level **and** text, and then the section the whole product is for:
 
 > **Why these were grouped**
 
@@ -391,3 +394,11 @@ A sentence the console still needs sits behind a small **i** beside the thing it
 a paragraph above it. The **i** is a button: Tab reaches it, Enter or Space opens it, Escape closes
 it, and a screen reader hears the text on focus without opening anything. Nothing is hover-only.
 
+## A situation's sequence of events, for the RFO (v0.23.0)
+
+The situation icon beside a card's permalink opens `#/timeline?sid=N`. Above the usual lanes and
+bursts — narrowed to that situation's alarms and to its whole span — the **Sequence of events**
+lists one step per element and trap, in the order they were first seen, with the offset from the
+first (to the hundredth of a second), the count and the severity, on a time axis. The first step is
+marked *first*: where the chain starts and the likeliest trigger, which is a reading and not a
+verdict. **Copy as text (RFO)** puts the same rows on the clipboard for the outage report.

@@ -12,6 +12,41 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-eight rows, two ask for an
 action, eighteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
+## [0.23.0] - 2026-09-26 — "the console, round two"
+
+Nine items from the maintainer's second pass over the console. No migration and no new capability;
+four read-only API routes. Checked in Chromium at 390 and 1440 px.
+
+### Fixed
+
+- **"What is happening" dropped to zero while alarms were still active** (#393). It counted raises
+  per bucket; it now counts alarms **active** at each point, per severity band, as a stacked area
+  whose last point equals the severity card.
+- **Severity glyphs from v0.21 were still on screen after v0.22** because the console's files had
+  no `Cache-Control`. They are served `no-cache` with a content `ETag` and revalidated (#391).
+- **The Overview had holes** beside short cards. It is a 12-column grid whose rows are level (#393).
+- **The network graph could not zoom** (#394): wheel, buttons, keys, double-click and pinch zoom,
+  drag pans, and a find box centres an element. The element panel is redrawn beside the map.
+- **Sequence steps showed trap OIDs** where a catalogue rule named the trap (#396).
+
+### Changed
+
+- **Severity is a four-bar level** beside its colour and word, replacing the shapes (#391).
+- **Open situations** moved up and summarise New and Open with the six newest (#393).
+- **Entities is an inventory** (#395): estate counts that filter, search, organization and sort,
+  one row per element with its severity mix, situations, components and last trap; an opened
+  element shows its last day, its busiest components, and the evidence behind a disclosure.
+
+### Added
+
+- **Top 10 assets** by active alarms, switchable Critical / + Major / + Minor / All, each with its
+  trend (#393). `GET /api/activity/top`, `GET /api/activity/active`.
+- **Timeline filters** by organization, element, trap (a name or an OID branch) and situation, as
+  query parameters applied in SQL, each shown as a removable chip (#392).
+- **A situation's sequence of events** at `#/timeline?sid=N`: the chain in order with offsets,
+  the first step marked, and "Copy as text" for the RFO (#396). Linked from every situation card.
+- `GET /api/inventory`, `GET /api/elements/{ne_id}/components` (#395).
+
 ## [0.22.0] - 2026-09-25 — "the console, repaired"
 
 A repair pass over twenty console items the maintainer found by using the product, not a feature

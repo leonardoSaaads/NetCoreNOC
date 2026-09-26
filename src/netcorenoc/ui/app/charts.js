@@ -47,7 +47,7 @@
 import { html, cx } from "./dom.js";
 import { count } from "./format.js";
 import { ceiling, runs, unitText } from "./chartdata.js";
-import { SeverityShape } from "./widgets.js";
+import { SeverityLevel } from "./widgets.js";
 
 // Re-exported for `compare.js`, which draws the categorical marks and needs the same
 // rounding rule: two chart families that round differently are two chart families an
@@ -78,16 +78,16 @@ export function Unmeasured({ what, why }) {
 }
 
 /**
- * The series names, so a multi-series chart is never colour alone. A series carrying a `shape`
- * (a severity band) shows that band's shape and a sample of its line's dash pattern as well, so
- * the plot's lines are told apart by dash and the legend by shape and word — three encodings.
+ * The series names, so a multi-series chart is never colour alone. A series carrying a `level`
+ * (a severity band) shows that band's level and a sample of its line's dash pattern as well, so
+ * the plot's lines are told apart by dash and the legend by level and word — three encodings.
  */
 export function Legend({ series }) {
   if (series.length < 2) return null;
   return html`<ul class="chart-legend">
     ${series.map((one) => html`<li key=${one.name} class=${cx(one.tone && `chart-${one.tone}`)}>
-      ${one.shape
-        ? html`<${SeverityShape} shape=${one.shape} />
+      ${one.level != null
+        ? html`<${SeverityLevel} level=${one.level} />
             <svg class="chart-dash-sample" viewBox="0 0 16 4" aria-hidden="true" focusable="false">
               <line x1="0" y1="2" x2="16" y2="2" /></svg>`
         : html`<i class=${cx("chart-swatch", one.tone && `chart-${one.tone}`)}

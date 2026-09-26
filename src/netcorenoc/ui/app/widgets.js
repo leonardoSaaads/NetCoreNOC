@@ -164,30 +164,41 @@ export function Badge({ tone, title, children }) {
 }
 
 /**
- * The six severity shapes, hand-drawn on a 12-unit grid (v0.22.0, item 3). A stop sign, a warning
- * triangle, a diamond, a square, an empty ring, and a broken ring for "never read". Distinct in
- * outline, so the band survives greyscale and a colour-blind reading with the word covered.
+ * **The severity level: four bars, filled by how serious the band is** (v0.23.0, #391).
+ *
+ * `level` is 4 for critical down to 1 for warning, 0 for indeterminate (all bars empty) and -1 for
+ * unplaced (all bars dashed — nothing was read). Drawn on a 12-unit grid, bottom-aligned and rising,
+ * so the count of filled bars is the order and survives greyscale with the word covered.
  */
-const SHAPES = {
-  octagon: html`<polygon points="3.6,.6 8.4,.6 11.4,3.6 11.4,8.4 8.4,11.4 3.6,11.4 .6,8.4 .6,3.6" />`,
-  triangle: html`<polygon points="6,.6 11.5,11.2 .5,11.2" />`,
-  diamond: html`<polygon points="6,.4 11.6,6 6,11.6 .4,6" />`,
-  square: html`<rect x="1.4" y="1.4" width="9.2" height="9.2" />`,
-  ring: html`<circle cx="6" cy="6" r="4.4" class="sev-hollow" />`,
-  broken: html`<circle cx="6" cy="6" r="4.4" class="sev-hollow sev-dashed" />`,
-};
+const BARS = [[0.6, 7.6], [3.5, 5.4], [6.4, 3.2], [9.3, 1]];
 
-/** The shape alone — for a legend, or anywhere a word already sits beside it. */
 /** The class a chart or bar row uses for a band's colour — the one other place a band is drawn. */
 export function severityTone(key) { return `sev-${key}`; }
 
-export function SeverityShape({ shape }) {
-  return html`<svg class="sev-glyph" data-shape=${shape} viewBox="0 0 12 12"
-       aria-hidden="true" focusable="false">${SHAPES[shape] ?? SHAPES.broken}</svg>`;
+/** A severity mix as one bar, each band's share by its count (v0.23.0, #393). `bands` is
+ *  `[{key, label}]` in scale order and `counts` maps a key to its number; zero bands are left out. */
+export function SeverityMix({ bands, counts }) {
+  const shown = bands.filter((b) => Number(counts[b.key]) > 0);
+  const text = shown.map((b) => `${b.label} ${count(counts[b.key])}`).join(", ");
+  return html`<span class="topmix" role="img" aria-label=${text || "no active alarms"}
+      title=${shown.map((b) => `${b.label}: ${count(counts[b.key])}`).join("\n")}>
+    ${shown.map((b) => html`<span key=${b.key} class=${`topmix-part ${severityTone(b.key)}`}
+      style=${`flex-grow:${counts[b.key]}`}></span>`)}
+  </span>`;
+}
+
+/** The level alone — for a legend, or anywhere a word already sits beside it. */
+export function SeverityLevel({ level }) {
+  const n = Number(level);
+  return html`<svg class="sev-glyph" data-level=${n} viewBox="0 0 12 12"
+       aria-hidden="true" focusable="false">
+    ${BARS.map(([x, y], i) => html`<rect key=${i} x=${x} y=${y} width="2.1" height=${11.4 - y}
+      rx="0.5" class=${n < 0 ? "sev-off sev-dashed" : i < n ? "sev-on" : "sev-off"} />`)}
+  </svg>`;
 }
 
 /**
- * **The severity chip: a shape AND a colour AND a word, on every screen** (v0.22.0, item 3).
+ * **The severity chip: a level AND a colour AND a word, on every screen** (v0.22.0; #391).
  *
  * `band` is `format.band(rank)` or `format.UNPLACED`. `count` prints beside the word when given.
  * Any one of the three encodings carries the band alone, which is the rule this repository keeps:
@@ -195,7 +206,7 @@ export function SeverityShape({ shape }) {
  */
 export function SeverityChip({ band, text, count: n, title, declared }) {
   return html`<span class=${cx("sev-pill", `sev-${band.key}`)} title=${title}>
-    <${SeverityShape} shape=${band.shape} />
+    <${SeverityLevel} level=${band.level} />
     <span class="sev-text">${text ?? band.label}</span>
     ${n != null ? html`${" "}<b class="sev-count">${count(n)}</b>` : null}
     ${declared ? html`<span class="sev-mark" aria-label="declared by an operator">*</span>` : null}
@@ -210,7 +221,10 @@ export function SeverityBadge({ alarm }) {
     : s.declared
       ? `severity ${s.text}, declared by an operator` +
         (s.learned == null ? "." : `; the appliance placed ${s.learned}.`)
-      : `severity ${s.text}, placed by the appliance`;
+      : s.ruled
+        ? `severity ${s.text}, from a catalogue rule` +
+          (s.learned == null ? "." : `; the appliance placed ${s.learned}.`)
+        : `severity ${s.text}, placed by the appliance`;
   return html`<${SeverityChip} band=${s} text=${s.text} title=${title} declared=${s.declared} />`;
 }
 

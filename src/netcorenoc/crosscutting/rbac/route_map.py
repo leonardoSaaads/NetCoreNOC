@@ -128,6 +128,12 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/activity/severity"): "timeline.read",
     ("GET", "/api/activity/lanes"): "timeline.read",
     ("GET", "/api/activity/groups"): "timeline.read",
+    # v0.23.0 (#393): active alarms over time, overall and for the busiest elements.
+    ("GET", "/api/activity/active"): "timeline.read",
+    ("GET", "/api/activity/top"): "timeline.read",
+    # v0.23.0 (#395): the Entities screen's inventory, and one element's learned components.
+    ("GET", "/api/inventory"): "entities.read",
+    ("GET", "/api/elements/{ne_id}/components"): "entities.read",
     # v0.22.0 (item 11): one element for the graph's selection panel. The Entities screen's
     # capability, because it is the same element seen from the graph.
     ("GET", "/api/elements/{ne_id}"): "entities.read",
@@ -289,6 +295,10 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("GET", "/api/activity/severity"): "scoped",
     ("GET", "/api/activity/lanes"): "scoped",
     ("GET", "/api/activity/groups"): "scoped",
+    ("GET", "/api/activity/active"): "scoped",
+    ("GET", "/api/activity/top"): "scoped",
+    ("GET", "/api/inventory"): "scoped",
+    ("GET", "/api/elements/{ne_id}/components"): "scoped",
     ("GET", "/api/elements/{ne_id}"): "scoped",
     # The warnings are the appliance's about itself — the same list `/api/stats` has always served
     # every role unscoped (F107 took the addresses out of them) — and a snooze is the caller's own.

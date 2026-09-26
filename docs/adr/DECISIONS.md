@@ -4987,3 +4987,67 @@ From this release an entry is about six lines: decision, reason, release.*
 - **It is not in this release**: it needs a location on the asset (a schema and a UI for entering
   it) and an upload path for the image, which is a plan of its own. Nothing here fakes it — no
   invented coordinates. The deterministic graph (#383) is the estate view this release ships.
+
+## 391. Severity is a level, not a shape; and the console's files are revalidated (v0.23.0)
+
+- **Supersedes the glyph half of #386.** Circle for critical, triangle for major, and so on asked
+  the operator to learn an arbitrary code. A severity is an *ordered* quantity, so it is drawn as
+  one: four bars filled to its level — critical 4, major 3, minor 2, warning 1, indeterminate 0,
+  unplaced dashed — beside its colour and its word. Ordered, legible without colour, and read the
+  same way as a signal meter. One component (`SeverityLevel`) draws it everywhere.
+- **Why the old glyphs survived a release that had removed them**: the UI's files carried no
+  `Cache-Control`, so a browser kept the previous `app.js` heuristically. Every console file is now
+  served `no-cache` with a content `ETag` (sha256), and answers `304` to `If-None-Match`: the
+  browser asks every time, downloads only what changed, and an upgrade is seen on the next load.
+
+## 392. The Timeline narrows by organization, element, trap and situation, in SQL (v0.23.0)
+
+- `organization_id`, `oid` (a branch, on arc boundaries, #384) and `sid` are query parameters of
+  `/api/activity/*`, ANDed onto the caller's scope in the WHERE clause (`store/narrow.py`). Nothing
+  is filtered in the render.
+- The filter bar shows every active filter as a chip that removes it. The element list narrows to
+  the organization chosen; the trap field takes a catalogue name or any OID.
+
+## 393. "What is happening" counts ACTIVE alarms over time; a Top 10 ranks the assets (v0.23.0)
+
+- **The defect**: the chart counted *raises per bucket*. Ten critical alarms raised at once and
+  still active drew a spike and then zero — which reads as "resolved". The operator's question is
+  how many are active, so that is what is drawn: a sweep over each alarm's interval
+  `[first_seen, cleared_at)` gives the count active at the end of each bucket, per band, with the
+  census's severity precedence. The last point equals the severity card, by construction.
+- Drawn as a stacked area, critical at the bottom; the header states the level *now* and never a
+  sum over the window (adding up how many were active at 24 points means nothing).
+- **Top 10 assets**: `GET /api/activity/top` ranks elements by alarms active now in the severities
+  chosen — Critical, + Major, + Minor, All — each with its trend. The count links to the element's
+  timeline, the name to the graph. Ranked in SQL, scoped.
+- The Overview is a 12-column grid whose rows are level: no card leaves a hole beside it. The
+  situations card moved up and summarises New and Open with the six newest.
+
+## 394. The network graph zooms, pans and finds; the element panel is a panel (v0.23.0)
+
+- Wheel, `+`/`−`, double-click and pinch zoom to 12×; drag and the arrow keys pan; `0` or ⤢ fits.
+  Nodes keep their size when zoomed, so dense clusters separate; every label shows from 2.5×.
+- A find box (address or name) centres the element at 3× and opens its panel. A drag never selects.
+- The panel sits beside the map at the map's height and scrolls on its own: name, total and band
+  chips, live situations, the last day's traps, and two actions. Below 900 px it stacks.
+
+## 395. Entities is an inventory (v0.23.0)
+
+- The screen listed addresses with "1 entity" beside each. It now answers what an inventory is
+  asked: the estate's counts (each one a filter), search, organization, sort, and one row per
+  element with its severity mix, live situations, learned components and last trap.
+- Opening an element shows its last day of active alarms, its busiest components, and links to the
+  Graph and the Timeline. The identification evidence and the two admin resets are kept, behind
+  one disclosure: they repair a decision, and nobody reads them to work an incident.
+- `GET /api/inventory` builds the table in a fixed number of grouped reads (the old route issued one
+  query per element); `GET /api/elements/{ne_id}/components` is targeted and 404s out of scope.
+
+## 396. A situation's sequence of events, for the RFO (v0.23.0)
+
+- `#/timeline?sid=N` shows the situation's alarms as an ordered chain: one step per (element,
+  trap), with its offset from the first — to the hundredth of a second, since a storm's chain is
+  that fast — its count and severity, on a real time axis. The first step is marked as where the
+  chain starts: the likeliest trigger, which is a reading and not a verdict.
+- "Copy as text (RFO)" gives the same rows as plain text for the outage report.
+- Trap names come from the catalogue rules as well as learned labels, so a step reads as a name,
+  not an OID.

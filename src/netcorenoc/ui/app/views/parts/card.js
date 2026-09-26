@@ -75,6 +75,12 @@ export function SituationCard({ situation, onToggle, onChanged }) {
           >held while open</span><//>` : null}
         <span class="age" title=${timeTitle(situation.updated_at)}>${age(situation.updated_at)}</span>
       </button>
+      ${/* v0.23.0 (#396): the situation's chain of events, for an RFO, on the Timeline. */ null}
+      <a class="permalink tap" href=${`#/timeline?sid=${sid}`}
+         aria-label=${`Sequence of events of situation #${sid}`}
+         title="Sequence of events: what happened first, and what followed">
+        <${Icon} name="timeline" />
+      </a>
       <a class="permalink tap" href=${`#/situations/${sid}`}
          aria-label=${`Link to situation #${sid} alone`}
          title="A link to this situation alone, shareable during the incident">

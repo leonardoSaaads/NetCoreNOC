@@ -238,7 +238,7 @@ async def test_every_severity_band_carries_a_glyph_and_text_not_only_colour(
     Three properties, and each is a different way the pill could quietly stop being three
     encodings:
 
-    * every pill carries a non-empty **shape** (`data-shape`, v0.22.0) and a non-empty **word**;
+    * every pill carries a non-empty **level** (`data-level`, v0.23.0) and a non-empty **word**;
     * the glyphs are distinct **shapes** — `critical` and `major` both drew `▲` until this release,
       which made two adjacent bands one encoding rather than three, and they are the pair that also
       collides on hue under deuteranopia;

@@ -185,8 +185,31 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # import's `dry_run` in `tests/test_catalogue_import.py`.
     ("GET", "/api/resources"): ("buckets", "range_s"),
     ("GET", "/api/activity/severity"): ("buckets", "range_s"),
-    ("GET", "/api/activity/lanes"): ("buckets", "ne_id", "range_s", "top"),
-    ("GET", "/api/activity/groups"): ("class_id", "kind", "limit", "ne_id", "offset", "range_s"),
+    ("GET", "/api/activity/lanes"): (
+        "buckets",
+        "ne_id",
+        "oid",
+        "organization_id",
+        "range_s",
+        "sid",
+        "top",
+    ),
+    ("GET", "/api/activity/groups"): (
+        "class_id",
+        "kind",
+        "limit",
+        "ne_id",
+        "offset",
+        "oid",
+        "organization_id",
+        "range_s",
+        "sid",
+    ),
+    # v0.23.0, for the same reason: windows, a band list and the narrow filters, recorded at their
+    # defaults. The sweep, the ranking by band, the filters' arc boundaries and their scope are
+    # driven in `tests/test_active.py`.
+    ("GET", "/api/activity/active"): ("buckets", "ne_id", "oid", "organization_id", "range_s"),
+    ("GET", "/api/activity/top"): ("bands", "buckets", "limit", "organization_id", "range_s"),
     ("GET", "/api/catalogue"): ("limit", "offset", "q", "under"),
     ("GET", "/api/catalogue/rules"): ("limit", "offset", "source"),
     ("GET", "/api/catalogue/tree"): ("node",),

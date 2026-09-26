@@ -19,7 +19,7 @@
  * ## Severity is encoded more than once (§IV.1)
  *
  * Colour alone fails for a colour-blind operator and on a bad monitor at 3 a.m. Every severity
- * carries a colour AND a shape AND its word. `unplaced` is a first-class outcome, not a blank: a
+ * carries a colour AND a level AND its word. `unplaced` is a first-class outcome, not a blank: a
  * blank cell would read as "no severity" rather than "not read yet".
  */
 
@@ -147,33 +147,33 @@ export function lastJudgement(events) {
 /* ---------- severity ---------- */
 
 /**
- * The X.733 scale, and the two states beside it (v0.22.0, item 3; DECISIONS #276, #386).
+ * The X.733 scale, and the two states beside it (v0.22.0 item 3; v0.23.0; DECISIONS #276, #386, #391).
  *
  * `known_oids.SEVERITY_VOCAB` ranks `critical 0 … warning 3`, and `indeterminate`/`cleared` 4.
  * Ranks 0-3 are placements; rank 4 is the element saying *"I do not know"*, which is an answer and
  * gets its own band; `unplaced` is the appliance never having read one, which is a state and not an
  * error. No MEDIUM, because no token maps to one.
  *
- * **Every band is a shape AND a colour AND a word** — `widgets.SeverityChip` draws all three — so
- * it survives greyscale, colour-blindness and a phone in sunlight. The shapes carry meaning before
- * the word is read: a stop sign, a warning triangle, a diamond, a square, an empty ring, and a
- * broken ring for nothing read at all. v0.22.0 replaced `▲ ◆ ● ▬ ? ∅`, which were geometry rather
- * than severity, and renamed rank 3 from `low` to the vocabulary's own `warning`.
+ * **Every band is a level AND a colour AND a word** — `widgets.SeverityChip` draws all three. The
+ * level is the ORDER, drawn as four bars filled from the left (critical 4, major 3, minor 2, warning
+ * 1; indeterminate none filled; unplaced dashed): a magnitude reads as more-or-less at a glance and
+ * needs no legend. v0.22.0's shapes (octagon, triangle, diamond, square) were a code to learn — a
+ * triangle means "warning" in every other product — and v0.23.0 replaced them (#391).
  */
 const SEVERITIES = [
-  { rank: 0, key: "critical", shape: "octagon", label: "critical" },
-  { rank: 1, key: "major", shape: "triangle", label: "major" },
-  { rank: 2, key: "minor", shape: "diamond", label: "minor" },
-  { rank: 3, key: "warning", shape: "square", label: "warning" },
+  { rank: 0, key: "critical", level: 4, label: "critical" },
+  { rank: 1, key: "major", level: 3, label: "major" },
+  { rank: 2, key: "minor", level: 2, label: "minor" },
+  { rank: 3, key: "warning", level: 1, label: "warning" },
 ];
-export const INDETERMINATE = { rank: 4, key: "indeterminate", shape: "ring", label: "indeterminate" };
-export const UNPLACED = { key: "unplaced", shape: "broken", label: "unplaced" };
+export const INDETERMINATE = { rank: 4, key: "indeterminate", level: 0, label: "indeterminate" };
+export const UNPLACED = { key: "unplaced", level: -1, label: "unplaced" };
 const UNKNOWN = UNPLACED;
 
 /** The placed bands, most severe first, then `indeterminate` — every band a count can land in. */
 export const SCALE = [...SEVERITIES, INDETERMINATE];
 
-/** `{ rank, key, shape, label }` for a rank — **the only place a rank becomes a band**. */
+/** `{ rank, key, level, label }` for a rank — **the only place a rank becomes a band**. */
 export function band(rank) {
   return SCALE.find((entry) => entry.rank === rank) ?? UNKNOWN;
 }
@@ -212,7 +212,7 @@ function placementApplies(rank, ranks) {
 }
 
 /**
- * `{ key, shape, label, known, text, declared }` for an alarm.
+ * `{ key, level, label, known, text, declared }` for an alarm.
  *
  * **The declared wins and the learned is kept** (DECISIONS #284): precedence is decided at read
  * time, so the appliance's own judgement is never overwritten. `declared` says which value the chip
@@ -221,13 +221,16 @@ function placementApplies(rank, ranks) {
  */
 export function severity(alarm) {
   const declared = alarm.declared_severity != null;
-  const value = declared ? alarm.declared_severity : alarm.severity;
+  // v0.23.0: a catalogue rule sits between the declaration and what was learned (ADR #385).
+  const ruled = !declared && alarm.rule_severity != null;
+  const value = declared ? alarm.declared_severity : ruled ? alarm.rule_severity : alarm.severity;
   if (value == null) return { ...UNKNOWN, known: false, text: "unplaced", declared: false };
-  const raw = declared ? alarm.declared_severity_rank : alarm.severity_rank;
+  const raw = declared ? alarm.declared_severity_rank
+    : ruled ? alarm.rule_severity_rank : alarm.severity_rank;
   // A declared severity is a vocabulary token by construction — the route refuses anything else —
   // so only a learned `int`-kind rank can land outside the bands.
   const rank =
-    !declared && typeof raw === "number" && placementApplies(raw, alarm.severity_ranks)
+    !declared && !ruled && typeof raw === "number" && placementApplies(raw, alarm.severity_ranks)
       ? placeInteger(raw, alarm.severity_ranks)
       : raw;
   return {
@@ -236,6 +239,7 @@ export function severity(alarm) {
     text: String(value),
     rank,
     declared,
+    ruled,
     learned: alarm.severity ?? null,
   };
 }

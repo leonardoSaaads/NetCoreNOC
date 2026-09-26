@@ -466,6 +466,12 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/oidtree.js"),
     ("GET", "/app/views/parts/importbox.js"),
     ("GET", "/app/views/parts/mwdetail.js"),
+    ("GET", "/app/stack.js"),
+    ("GET", "/app/views/parts/sitsummary.js"),
+    ("GET", "/app/views/parts/topassets.js"),
+    ("GET", "/app/views/parts/tlfilters.js"),
+    ("GET", "/app/views/parts/sequence.js"),
+    ("GET", "/app/views/parts/nedetail.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
@@ -543,7 +549,11 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/activity/severity"),
     ("GET", "/api/activity/lanes"),
     ("GET", "/api/activity/groups"),
+    ("GET", "/api/activity/active"),
+    ("GET", "/api/activity/top"),
     ("GET", "/api/elements/{ne_id}"),
+    ("GET", "/api/inventory"),
+    ("GET", "/api/elements/{ne_id}/components"),
     ("GET", "/api/notices"),
     ("POST", "/api/notices/snooze"),
     ("DELETE", "/api/notices/snooze/{digest}"),
@@ -638,11 +648,16 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # (`/api/resources`, `/api/activity/*`, `/api/elements/{ne_id}`, `/api/notices*`,
     # `/api/catalogue*`) or `POST /api/alarms/{aid}/outlived/ack`, three segments below `{aid}`
     # where the existing `…/clear` routes have one and two.
-    assert len(live) == 84, (
+    # **v0.23.0: 84 -> 88.** Four, none able to shadow another: `/api/activity/active` and
+    # `/api/activity/top` are concrete siblings of the existing concrete `/api/activity/*` reads,
+    # `/api/inventory` is a new prefix, and `/api/elements/{ne_id}/components` is a segment below
+    # `{ne_id}` where the existing route has none (ADR #393, #395).
+    assert len(live) == 88, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
-        f"organizations and time zones, v0.22.0 exactly sixteen (ADR #380-#389). Only one pair "
+        f"organizations and time zones, v0.22.0 exactly sixteen (ADR #380-#389), v0.23.0 exactly "
+        f"four (ADR #393, #395). Only one pair "
         f"in the whole table can shadow another — "
         f"`…/preview` against `…/{{wid}}` — and its registration order is pinned by the baseline "
         f"above (DECISIONS #301)."
@@ -1202,8 +1217,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: console modules (`info`, `layout`, `netgraph`, `parts/element`, `parts/oidtree`,
 #: `parts/importbox`, `parts/mwdetail`). Removed: `app/vendor.js`, `views/parts/estate.js`, and d3
 #: with its licence (ADR #383) — what else was removed is named in `HANDOFF.md`.
-SRC_TREE_DIGEST = "405ab7bb5c640c14d12d15e8d32611bd2e30f8b9f93b0f610f48186489f0b16d"
-SRC_FILE_COUNT = 273
+SRC_TREE_DIGEST = "43762033e8c8c870b997868c434e0016b96724feed886c07f315a1a6076e4853"
+SRC_FILE_COUNT = 282
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1269,7 +1284,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.22.0", "the version this release carries"
+    assert __version__ == "0.23.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:
