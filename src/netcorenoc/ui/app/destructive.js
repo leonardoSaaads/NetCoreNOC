@@ -56,6 +56,13 @@ export class Destructive extends Component {
 
   render(props, { stage, preview, error, result }) {
     const { title, hint, consequence, previewLabel, confirmLabel, renderPreview } = props;
+    // v0.25.0: `compact` — inside a list row, the control at rest is one small button. It opens the
+    // whole card below, consequence first, and the sequence from there is unchanged: nothing is
+    // previewed on render, and the apply button does not exist until the preview has been seen.
+    if (props.compact && stage === "idle" && !this.state.open) {
+      return html`<button type="button" class="linkish danger-link"
+        onClick=${() => this.setState({ open: true })}>${previewLabel || "Delete…"}</button>`;
+    }
     return html`<section class="panel-block destructive" data-stage=${stage}>
       <${SectionHeading} title=${title} hint=${hint} />
 
@@ -64,7 +71,8 @@ export class Destructive extends Component {
       ${stage === "idle" || stage === "previewing" ? html`
         <button type="button" disabled=${stage === "previewing"} onClick=${() => this.runPreview()}>
           ${stage === "previewing" ? "Checking…" : (previewLabel || "Preview")}
-        </button>` : null}
+        </button>
+        ${props.compact ? html`<button type="button" onClick=${() => this.setState({ open: false })}>Cancel</button>` : null}` : null}
 
       ${stage === "previewed" || stage === "applying" ? html`<div class="preview-result">
         ${preview && preview.measured === false

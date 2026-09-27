@@ -5117,3 +5117,60 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Free at ingest.** Nothing on the trap path changes. The notifications load once at startup
   (~0.4 s, ~10 MB) into a dict the catalogue reads with one lookup per class, memoised; the objects
   load only when a varbind name is first asked for. `make eval` is byte-identical.
+
+## 401. A person has a display name, and a new account chooses its own password (v0.25.0)
+
+- `user.display_name` (0025): what the console shows beside a face — the navbar, the People list,
+  a situation's history. The username stays the sign-in, unique and unchanged; NULL shows it.
+- Editable by the person (`POST /api/me/profile`, `self.read`) or by an admin
+  (`POST /api/users/{uid}/profile`, `users.manage`), audited as `profile.update` / `user.update`.
+- **An account an admin creates must set its own password at first sign-in.** The admin typed the
+  first one and knows it; the bootstrap admin already went through the same flow. The forced change
+  rides `POST /api/login` with `new_password`, as it always has.
+
+## 402. Profile photos: re-encoded in the browser, re-checked on the server, cached by digest (v0.25.0)
+
+- **In the browser** (`ui/app/avatar.js`): the chosen file is decoded, the centre square cropped
+  and drawn at 192 px on a canvas, and the canvas's re-encoding (WebP, else PNG) is what is sent.
+  That strips EXIF (location included), colour profiles and anything appended to the file. The
+  preview is the canvas, so `img-src 'self'` needs no `blob:`/`data:` exception.
+- **On the server** (`crosscutting/avatar.py`), with no image library: the format from the magic
+  number (PNG, WebP or JPEG — SVG is refused by construction), the dimensions from the format's own
+  header (16–320 px a side), at most 64 KiB, read with a cap so an oversized body is refused before
+  it is held. The declared `Content-Type` is ignored.
+- **Stored** in `user_avatar`, a table of its own, so listing people reads the digest and never
+  the image; deleting the account deletes it. **Served** as the type it was checked to be, with
+  `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, an ETag, and
+  `Cache-Control: private, max-age=31536000, immutable` under `?v=<digest>` — each browser fetches
+  each photo once. Nothing is held in the server's memory; 300 photos are a few MB of database.
+- **Who may see whose**: your own always; another person's only for a role that may see who other
+  people are (`shaping.sees_people`, the rule the history's names already follow, #269). A refusal
+  and an absent photo are the same 404.
+- **No photo** is initials on a colour derived from the username, drawn by CSS: zero bytes.
+
+## 403. People & access: Users, Service tokens and Governance on one screen (v0.25.0)
+
+- The three administer screens answered one question from three places. They are the tabs of
+  **People & access**: People, Roles, Service tokens, Visibility. The old addresses open the
+  matching tab.
+- **A person's access is edited on the person.** Choosing a role checks that role's capabilities,
+  grouped by category; unchecking one makes the access *custom*, stored as that person's entry in
+  the capability policy. **Roles** edits each role's baseline in the same grid.
+- The model is unchanged and still cannot escalate: every entry is an intersection with the role's
+  compiled ceiling (#53). A capability above the ceiling is drawn locked with the role that holds
+  it; one the role's baseline removed is drawn off for the whole role; an admin's recovery set is
+  drawn kept.
+- `POST /api/rbac/subject` writes one subject (`role:<name>`, `user:<id>`, `token:<id>`) as a new
+  version of the whole policy through the one write path (`_write_policy`): versioned, audited with
+  before and after, restorable from the history. `GET /api/rbac` also returns each capability's
+  minimum role and the subjects the policy names, so the console never parses the document.
+- The visibility scope stays a small JSON document on its own tab; "not tenant isolation" stays on
+  the screen, not behind a tip.
+
+## 404. Service tokens say what they are for (v0.25.0)
+
+- `api_token.purpose` (0025): a token is named for the identity it acts as; the purpose says why it
+  exists, so the list is readable a year later.
+- The value is shown once, with a copy button and a working `curl` example; each token can be
+  narrowed like a person (`token:<id>`), and revoked from a one-line control that opens the
+  consequence before anything can be applied.

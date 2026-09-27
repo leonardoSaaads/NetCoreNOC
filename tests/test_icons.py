@@ -92,10 +92,13 @@ def test_every_view_in_the_registry_names_an_icon() -> None:
     """The sidebar renders one per view, so a view without one is a gap in the navigation."""
     registry = (UI / "app" / "registry.js").read_text(encoding="utf-8")
     ids = re.findall(r'id: "([a-z]+)", label: "[^"]+", icon: "([a-z-]+)"', registry)
-    assert len(ids) == 18, f"expected 18 views with icons, parsed {len(ids)}: {ids}"
+    # v0.25.0: Users, Service tokens and Governance became People & access; the three old ids stay
+    # as hidden aliases that open it, so they reuse its icon family (users, tokens, governance).
+    assert len(ids) == 19, f"expected 19 views with icons, parsed {len(ids)}: {ids}"
     known = defined()
     for view_id, icon in ids:
         assert icon in known, f"view {view_id!r} names icon {icon!r}, which is not in the set"
+    # `access` and its `users` alias draw one icon: they are the same screen.
     assert len({icon for _v, icon in ids}) == 18, (
         "two views share an icon; they are not the same screen"
     )

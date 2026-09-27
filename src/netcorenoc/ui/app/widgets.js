@@ -81,7 +81,7 @@ export function Refused({ view, missing }) {
     <p>Your account does not hold ${missing.length === 1 ? "the capability" : "the capabilities"}
       ${missing.map((c, i) => html`${i ? ", " : " "}<code>${c}</code>`)}.</p>
     <p class="hint">Nothing was requested from the server. An administrator can grant this under
-      Governance; the appliance itself would refuse the request too.</p>
+      People & access; the appliance itself would refuse the request too.</p>
   </div>`;
 }
 

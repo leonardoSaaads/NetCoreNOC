@@ -59,9 +59,11 @@ class AuthMixin(StoreBase):
         return dict(row) if row else None
 
     async def list_users(self) -> list[dict[str, Any]]:
+        # v0.25.0: the display name and the photo's DIGEST, never the image (ADR #401, #402).
         cur = await self.conn.execute(
-            "SELECT id, username, role, must_change_password, disabled, created_at "
-            "FROM user ORDER BY username"
+            "SELECT u.id, u.username, u.display_name, u.role, u.must_change_password, u.disabled, "
+            "u.created_at, a.sha256 AS avatar FROM user u "
+            "LEFT JOIN user_avatar a ON a.user_id=u.id ORDER BY u.username"
         )
         return [dict(r) for r in await cur.fetchall()]
 
@@ -167,8 +169,8 @@ class AuthMixin(StoreBase):
 
     async def list_tokens(self) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
-            "SELECT id, name, role, created_at, created_by, last_used_at, revoked "
-            "FROM api_token ORDER BY name"
+            "SELECT id, name, role, purpose, created_at, created_by, last_used_at, revoked "
+            "FROM api_token ORDER BY revoked, name"
         )
         return [dict(r) for r in await cur.fetchall()]
 

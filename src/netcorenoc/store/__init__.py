@@ -48,6 +48,7 @@ from netcorenoc.store.mw_compile import MaintenanceCompileMixin
 from netcorenoc.store.mw_ledger import MaintenanceLedgerMixin
 from netcorenoc.store.mw_reads import MaintenanceReadMixin
 from netcorenoc.store.organizations import OrganizationMixin
+from netcorenoc.store.people import PeopleMixin
 from netcorenoc.store.promotion import PromotionMixin
 from netcorenoc.store.read_models import ReadModelsMixin
 from netcorenoc.store.restructure import RestructureMixin
@@ -87,6 +88,8 @@ class Store(
     DatasetMixin,
     RetentionMixin,
     AuditLogMixin,
+    # v0.25.0: a display name and a photo per account (ADR #401, #402). Plain `StoreBase`.
+    PeopleMixin,
     AuthMixin,
     ScoringConfigMixin,
     IngestGapMixin,

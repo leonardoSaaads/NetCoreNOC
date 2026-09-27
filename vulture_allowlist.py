@@ -242,3 +242,10 @@ import_file  # netcorenoc/api/routes/catalogue.py
 clear_imported  # netcorenoc/api/routes/catalogue.py
 element  # netcorenoc/api/routes/elements.py
 grade  # netcorenoc/ingest/trappack.py — called by tools/trappack_build.py, which builds the pack
+set_subject_access  # netcorenoc/api/routes/governance.py
+set_my_avatar  # netcorenoc/api/routes/people.py
+drop_my_avatar  # netcorenoc/api/routes/people.py
+set_my_profile  # netcorenoc/api/routes/people.py
+set_user_avatar  # netcorenoc/api/routes/people.py
+drop_user_avatar  # netcorenoc/api/routes/people.py
+set_user_profile  # netcorenoc/api/routes/people.py

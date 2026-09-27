@@ -49,6 +49,7 @@ from netcorenoc.crosscutting.shaping.fields import (
     FIELD_RULES,
     coarsen_ip,
     contains_address,
+    sees_people,
     sees_raw_addresses,
     shape,
 )
@@ -119,6 +120,7 @@ __all__ = [
     "resolves",
     "scope_policy_errors",
     "search_zones",
+    "sees_people",
     "sees_raw_addresses",
     "shape",
     "timezone_selfcheck",

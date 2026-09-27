@@ -416,7 +416,6 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/classes.js"),
     ("GET", "/app/views/corpus.js"),
     ("GET", "/app/views/entities.js"),
-    ("GET", "/app/views/governance.js"),
     ("GET", "/app/views/graph.js"),
     ("GET", "/app/views/labelling.js"),
     ("GET", "/app/views/overview.js"),
@@ -427,8 +426,6 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/settings.js"),
     ("GET", "/app/views/situations.js"),
     ("GET", "/app/views/timeline.js"),
-    ("GET", "/app/views/tokens.js"),
-    ("GET", "/app/views/users.js"),
     ("GET", "/app/views/parts/facts.js"),
     ("GET", "/app/views/parts/model.js"),
     ("GET", "/app/views/parts/retention.js"),
@@ -472,6 +469,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/tlfilters.js"),
     ("GET", "/app/views/parts/sequence.js"),
     ("GET", "/app/views/parts/nedetail.js"),
+    ("GET", "/app/avatar.js"),
+    ("GET", "/app/views/access.js"),
+    ("GET", "/app/views/parts/capgrid.js"),
+    ("GET", "/app/views/parts/people.js"),
+    ("GET", "/app/views/parts/roles.js"),
+    ("GET", "/app/views/parts/tokenspanel.js"),
+    ("GET", "/app/views/parts/visibility.js"),
     ("GET", "/app/widgets.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
@@ -515,6 +519,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/config"),
     ("GET", "/api/dataset/retention"),
     ("POST", "/api/dataset/retention"),
+    ("GET", "/api/avatars/{uid}"),
+    ("POST", "/api/me/avatar"),
+    ("DELETE", "/api/me/avatar"),
+    ("POST", "/api/me/profile"),
+    ("POST", "/api/users/{uid}/avatar"),
+    ("DELETE", "/api/users/{uid}/avatar"),
+    ("POST", "/api/users/{uid}/profile"),
     ("GET", "/api/scorer"),
     ("GET", "/api/correlation"),
     ("POST", "/api/scorer/preview"),
@@ -526,6 +537,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/models/register"),
     ("GET", "/api/rbac"),
     ("POST", "/api/rbac"),
+    ("POST", "/api/rbac/subject"),
     ("GET", "/api/scope"),
     ("POST", "/api/scope"),
     ("GET", "/api/quarantine"),
@@ -652,7 +664,11 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # `/api/activity/top` are concrete siblings of the existing concrete `/api/activity/*` reads,
     # `/api/inventory` is a new prefix, and `/api/elements/{ne_id}/components` is a segment below
     # `{ne_id}` where the existing route has none (ADR #393, #395).
-    assert len(live) == 88, (
+    # **v0.25.0: 88 -> 96.** Eight, none able to shadow another: `/api/avatars/{uid}` is a new
+    # prefix, `/api/me/avatar` and `/api/me/profile` are segments below the concrete `/api/me`,
+    # `/api/users/{uid}/avatar` and `…/profile` are concrete siblings of `…/role`, and
+    # `/api/rbac/subject` is a concrete sibling of the `/api/rbac/*` writes (ADR #401-#403).
+    assert len(live) == 96, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1217,8 +1233,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: console modules (`info`, `layout`, `netgraph`, `parts/element`, `parts/oidtree`,
 #: `parts/importbox`, `parts/mwdetail`). Removed: `app/vendor.js`, `views/parts/estate.js`, and d3
 #: with its licence (ADR #383) — what else was removed is named in `HANDOFF.md`.
-SRC_TREE_DIGEST = "e68c83f5c2002a4479fcd7790261d277d99de968f5a2db87ad1ff58b531b8cdd"
-SRC_FILE_COUNT = 285
+SRC_TREE_DIGEST = "a9cbec2aa0f7601a56c6d7ccf585c912bd8f446d0dfea2b916f9c63e18849795"
+SRC_FILE_COUNT = 293
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1284,7 +1300,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.24.0", "the version this release carries"
+    assert __version__ == "0.25.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

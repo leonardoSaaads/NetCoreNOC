@@ -14,8 +14,8 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of forty ask
-you to do something; twenty more ask you to read a paragraph first. The other eighteen are
+Read only the rows between your version and the one you are installing. **Two of forty-one ask
+you to do something; twenty-one more ask you to read a paragraph first. The other eighteen are
 start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
@@ -69,6 +69,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.21.1 → v0.22.0 | Nothing to run. **Three migrations apply at boot** (`0022`, `0023`, `0024`), all additive. The console is repaired screen by screen, d3 is gone, four capabilities are new, and a running maintenance window can no longer be re-timed from its start. Read below |
 | v0.22.0 → v0.23.0 | Nothing to run. **No migration.** Four read-only API routes, no new capability. The Overview's activity chart now counts alarms **active** at each point rather than raises per bucket, and `/api/situations/{sid}` carries two more fields per alarm. Read below |
 | v0.23.0 → v0.24.0 | Nothing to run. **No migration.** A maintenance window created from now on **discards** what it suppresses — nothing surfaces when it ends unless the window opts in — and alarms the appliance could not grade may now carry a default severity from the built-in trap pack. Read below |
+| v0.24.0 → v0.25.0 | Nothing to run. **One migration applies at boot** (`0025`, additive). Users, Service tokens and Governance are now one screen, **People & access**, and an account an admin creates must set its own password at first sign-in. Read below |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -699,3 +700,20 @@ dashboard with it.
   write a rule — as before.
 - The wheel carries two new data files, `ingest/trappack.tsv.gz` and `ingest/trapobjects.tsv.gz`
   (1.1 MB together).
+
+### v0.25.0 — people: names, photos, and access on one screen
+
+- **Migration `0025`**: `user.display_name`, a `user_avatar` table, `api_token.purpose`. All
+  additive; schema version 24 → 25. Existing accounts read exactly as before.
+- **Console.** *Users*, *Service tokens* and *Governance* are one screen, **People & access**, with
+  four tabs. `#/users`, `#/tokens` and `#/governance` still open the matching tab. The capability
+  policy is now edited as a grid per role and per person; the JSON editor is gone for capabilities
+  (the visibility scope keeps it). Existing policies are read and shown unchanged.
+- **Behaviour you may notice.** An account created by an admin (`POST /api/users`) now has to set
+  its own password at first sign-in. A script that creates an account and signs in with it must use
+  the forced-change flow (`POST /api/login` with `new_password`), as the bootstrap admin does.
+- **API.** New: `GET /api/avatars/{uid}`, `POST|DELETE /api/me/avatar`, `POST /api/me/profile`,
+  `POST|DELETE /api/users/{uid}/avatar`, `POST /api/users/{uid}/profile`, `POST /api/rbac/subject`.
+  `GET /api/me` adds `user_id`, `display_name`, `avatar`; `GET /api/users` adds `display_name`,
+  `avatar`; `POST /api/users` and `POST /api/tokens` accept `display_name` / `purpose`;
+  `GET /api/rbac` adds `minimum_role` and `subjects`. No capability is added.

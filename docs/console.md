@@ -31,16 +31,30 @@ disabled controls.
 
 | View | The question it answers |
 |---|---|
-| **Users** | Accounts and their roles |
-| **Service tokens** | Non-interactive credentials, shown once |
+| **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts, each with a photo, a name, a role and its own capability grid), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once) and **Visibility** (which network elements viewers and editors see) |
 | **Settings** | Every parameter, in three classes, with its precedence and its impact |
 | **Link scorer** | The formula that decides which alarms group. Preview before you apply |
-| **Governance** | Who may do what, and who may see which network elements |
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | The hash-chained record of every change, and its verification state |
 
-**Your account** is reachable by address but not offered in navigation: it shows who the server
-says you are, and changes your own password.
+**Your account** opens from your photo and name in the top bar: your photo and display name (both
+save at once), your password, and what you can do, by category, with each capability one click
+away.
+
+### Access: roles and people (v0.25.0)
+
+A role is the most a person can ever hold. On **Roles** you can give every person of a role less;
+on a person you can give that one person less again. Neither can give more: a capability above the
+role is drawn locked with the role that holds it. Every change is a new version of the policy,
+audited, and **Roles → History** restores any earlier one. An account you create has to set its
+own password at first sign-in.
+
+### Photos
+
+A photo is cropped to a square and re-encoded at 192 px in your browser before it is sent, which
+removes its location data; the appliance checks it again and keeps at most 64 KB. Without one, the
+console shows initials. Viewers see only their own photo; editors and admins see everyone's, as
+they see names in a situation's history.
 
 ### Passwords, and the two things the appliance will not let you do
 
@@ -55,7 +69,7 @@ Changing your password **signs out every session the account holds, including th
 using.** The screen says so before the click and after it.
 
 The appliance also refuses to remove its own last administrator — a role change, a deletion, and
-(when one exists) a disable are all refused while exactly one enabled admin remains. **Users** shows
+(when one exists) a disable are all refused while exactly one enabled admin remains. **People** shows
 that account's role as locked rather than offering a control that would fail. If an appliance ends
 up with no admin anyway, [`troubleshoot.md`](troubleshoot.md) has the recovery; before v0.15.3 there
 was none (F79).

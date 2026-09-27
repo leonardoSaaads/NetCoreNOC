@@ -37,7 +37,8 @@ import { Sidebar } from "./sidebar.js";
 import { Refused, Unknown } from "./widgets.js";
 import { Icon } from "./icons.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
-import { session, scopeSummary } from "./session.js";
+import { session, scopeSummary, onSessionChange } from "./session.js";
+import { Avatar } from "./avatar.js";
 import { theme, setTheme, nextTheme, navState, setNavState, nextNavState } from "./theme.js";
 import { Bell } from "./notices.js";
 import { Health } from "./health.js";
@@ -64,9 +65,12 @@ export class Shell extends Component {
   componentDidMount() {
     this.stopRouting = startRouting((fragment) => this.setState({ fragment }));
     this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
+    // v0.25.0: a name or photo changed on the account page reaches the top bar at once.
+    this.stopSession = onSessionChange(() => this.setState({ person: Date.now() }));
   }
 
   componentWillUnmount() {
+    if (this.stopSession) this.stopSession();
     if (this.stopRouting) this.stopRouting();
     if (this.unsubscribe) this.unsubscribe();
   }
@@ -194,8 +198,14 @@ function TopBar({ live, onSignOut, nav, onNav }) {
       <span class="topbar-sep" aria-hidden="true"></span>
       ${scope ? html`<span class="badge badge-scope" title=${scope.title}>
         scoped: ${plural(scope.neCount, "NE", "NE")}</span>` : null}
-      <span class="role-tag">${active.role}</span>
-      <a class="who-name" href="#/account" title="Your account">${active.user}</a>
+      <a class="who" href="#/account" title=${`Your account — ${active.user} (${active.role})`}>
+        <${Avatar} id=${active.userId} digest=${active.avatar} name=${active.displayName}
+          username=${active.user} size=${28} />
+        <span class="who-text">
+          <span class="who-name">${active.displayName || active.user}</span>
+          <span class="role-tag">${active.role}</span>
+        </span>
+      </a>
       <${ThemeButton} />
       <button type="button" onClick=${onSignOut}>Sign out</button>
     </div>

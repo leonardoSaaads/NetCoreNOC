@@ -673,11 +673,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # and `GET /api/elements/{ne_id}/components` (the Entities screen, #395) — and six static
     # modules: `stack`, `parts/sitsummary`, `parts/topassets`, `parts/tlfilters`,
     # `parts/sequence`, `parts/nedetail`.
-    assert len(served) == 178, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.25.0: 178 -> 190 and 88 -> 96 — eight /api pairs (photos, display names, per-subject
+    # access; ADR #401-#403) and four UI modules net (seven added, users/tokens/governance gone).
+    assert len(served) == 190, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 88, (
+    assert len(api_pairs) == 96, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -827,11 +829,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # and `GET /api/elements/{ne_id}/components` (the Entities screen, #395) — and six static
     # modules: `stack`, `parts/sitsummary`, `parts/topassets`, `parts/tlfilters`,
     # `parts/sequence`, `parts/nedetail`.
-    assert len(served) == 178, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.25.0: 178 -> 190 and 88 -> 96 — eight /api pairs (photos, display names, per-subject
+    # access; ADR #401-#403) and four UI modules net (seven added, users/tokens/governance gone).
+    assert len(served) == 190, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 88, (
+    assert len(api_pairs) == 96, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -916,7 +920,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # `tzdata`, which is public information about a public database.
     # v0.22.0: 10 -> 21 — the host series, the three notice routes and the seven catalogue
     # routes; each justification is written beside its row in `route_map.py`.
-    assert len(entries) == 21, entries
+    # v0.25.0: 21 -> 25 — `GET /api/avatars/{uid}` and the three `/api/me/*` profile writes. A
+    # person's own photo and name name no network element; the photo read is gated by role instead.
+    assert len(entries) == 25, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1029,7 +1035,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # that capability's minimum role is `admin`. **Note what this does NOT mean**: an organization
     # is attribution and not a security boundary (#366), so the posture is about who may edit
     # inventory structure, never about who may see it.
-    assert len(ADMIN_ONLY) == 28, len(ADMIN_ONLY)
+    # v0.25.0: 28 -> 32. Another person's photo (POST and DELETE) and name, by `users.manage`, and
+    # `POST /api/rbac/subject` by `rbac.write` — both capabilities' minimum role is `admin`.
+    assert len(ADMIN_ONLY) == 32, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
@@ -1041,7 +1049,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # element. The notice routes are a user's own snoozes of the appliance's own warnings. The
     # seven catalogue routes read and write rules keyed on trap OIDs, which name a trap type and
     # never an element (ADR #385).
-    assert len(UNSCOPED) == 21, UNSCOPED
+    # v0.25.0: 21 -> 25, the four routes named at the justification test above.
+    assert len(UNSCOPED) == 25, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.

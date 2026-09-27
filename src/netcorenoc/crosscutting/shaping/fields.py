@@ -89,6 +89,9 @@ FIELD_RULES: dict[str, tuple[str, str]] = {
     # `editor` rather than `admin` because an editor is who makes gestures and reads their own
     # history, which is the whole reason the name exists (DECISIONS #269).
     "actor_name": ("editor", _DROP),
+    # v0.25.0: the same person's display name and photo digest, under the same rule (ADR #401).
+    "actor_display": ("editor", _DROP),
+    "actor_avatar": ("editor", _DROP),
     "source_ip": ("admin", _DROP),  # who connected from where (audit / session detail)
     "community_tag": ("editor", _DROP),  # SNMP community grouping tag (F4)
 }
@@ -116,6 +119,15 @@ def sees_raw_addresses(role: str | None) -> bool:
     v0.16.1 search is that an operator who has just named a situation can find it by that name.
     """
     return _allowed(role, FIELD_RULES["ip"][0])
+
+
+def sees_people(role: str | None) -> bool:
+    """May this role be shown who ANOTHER person is — a name, a photo? (v0.25.0, ADR #402)
+
+    Derived from `actor_name`'s rule, never restated, so the photo route and the history's name
+    move together: a viewer receives `user:2` in a history and may not fetch user 2's face either.
+    """
+    return _allowed(role, FIELD_RULES["actor_name"][0])
 
 
 def contains_address(text: str) -> bool:

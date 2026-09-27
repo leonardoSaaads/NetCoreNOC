@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Iterator
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import uvicorn
 from pydantic import BaseModel, Field, field_validator
@@ -58,6 +58,8 @@ from netcorenoc.ingest.receiver import parse_allowlist
 
 MAX_LABEL_CHARS = 120
 MAX_NOTE_CHARS = 500
+#: v0.25.0 (ADR #401): a person's display name.
+MAX_DISPLAY_NAME = 80
 
 
 class FeedbackIn(BaseModel):
@@ -278,10 +280,28 @@ class PasswordIn(BaseModel):
     new_password: str = Field(min_length=1, max_length=auth.MAX_PASSWORD)
 
 
+def _printable(value: str | None) -> str | None:
+    """A display name without control characters — a name is one line of text, and a newline or
+    a bidi override in it would rearrange every sentence it is shown in."""
+    if value is None:
+        return None
+    return "".join(ch for ch in value if ch.isprintable()).strip() or None
+
+
 class UserIn(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=auth.MAX_PASSWORD)
     role: Literal["viewer", "editor", "admin"]
+    # v0.25.0 (ADR #401): what the console shows beside the photo; the username stays the login.
+    display_name: str | None = Field(default=None, max_length=MAX_DISPLAY_NAME)
+
+    _clean = field_validator("display_name")(_printable)
+
+
+class ProfileIn(BaseModel):
+    display_name: str | None = Field(default=None, max_length=MAX_DISPLAY_NAME)
+
+    _clean = field_validator("display_name")(_printable)
 
 
 class RoleIn(BaseModel):
@@ -291,6 +311,24 @@ class RoleIn(BaseModel):
 class TokenIn(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     role: Literal["viewer", "editor", "admin"]
+    # v0.25.0 (ADR #404): what the token is for, so a list read a year later still says.
+    purpose: str | None = Field(default=None, max_length=200)
+
+
+class SubjectAccessIn(BaseModel):
+    """One subject's entry in the capability policy (v0.25.0, ADR #403). `subject` is
+    `role:<name>`, `user:<id>` or `token:<id>`; `capabilities` None removes the entry, so the
+    subject inherits again. Nothing written here can add a capability above a role's ceiling."""
+
+    subject: str = Field(
+        min_length=6,
+        max_length=40,
+        pattern=r"^(role:(viewer|editor|admin)|(user|token):[1-9][0-9]{0,9})$",
+    )
+    capabilities: list[Annotated[str, Field(max_length=64)]] | None = Field(
+        default=None, max_length=200
+    )
+    note: str = Field(default="", max_length=500)
 
 
 # **`ConfigIn` carries no docstring, deliberately.** FastAPI publishes a model's docstring as its

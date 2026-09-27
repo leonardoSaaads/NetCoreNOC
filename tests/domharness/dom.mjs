@@ -386,6 +386,8 @@ const HANDLER_EVENTS = [
   // v0.23.0: the network graph zooms with the wheel and pans with pointer events (#394), and the
   // Entities screen reads its evidence when a `<details>` opens (#395).
   "wheel", "pointerdown", "pointermove", "pointerup", "pointercancel", "toggle",
+  // v0.25.0: a profile photo falls back to initials when it fails to load (ADR #402).
+  "error",
 ];
 for (const type of HANDLER_EVENTS) {
   Object.defineProperty(Element.prototype, `on${type}`, {

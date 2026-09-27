@@ -18,6 +18,14 @@
 
 let current = null;
 let policy = null;
+const listeners = new Set();
+
+/** Called with the new session whenever it changes — a photo or a name edited on the account page
+ *  reaches the top bar without a reload (v0.25.0). Returns the unsubscribe function. */
+export function onSessionChange(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
 /** `{ user, role, capabilities: Set, scope, mustChangePassword }`, or null when signed out. */
 export function session() { return current; }
@@ -25,12 +33,17 @@ export function session() { return current; }
 export function setSession(me) {
   current = me === null ? null : {
     user: me.user,
+    // v0.25.0 (ADR #401, #402): the person — id, chosen name, photo digest.
+    userId: me.user_id ?? null,
+    displayName: me.display_name || null,
+    avatar: me.avatar || null,
     role: me.role,
     capabilities: new Set(me.capabilities || []),
     scope: me.scope || { scoped: false, ne_count: null },
     mustChangePassword: !!me.must_change_password,
   };
   if (me && me.password_policy) setPasswordPolicy(me.password_policy);
+  for (const listener of listeners) listener(current);
   return current;
 }
 

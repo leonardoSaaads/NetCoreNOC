@@ -48,6 +48,9 @@ ACTIONS: frozenset[str] = frozenset(
         "login.lockout",
         "logout",
         "password.change",
+        # v0.25.0: a person's own display name or photo (ADR #401, #402). One action for both, the
+        # field in `details`; an admin changing someone else's is `user.update`.
+        "profile.update",
         # management
         "user.create",
         "user.update",

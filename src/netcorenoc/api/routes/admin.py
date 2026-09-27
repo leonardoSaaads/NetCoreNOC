@@ -63,9 +63,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with write_txn():
             if await store.get_user_by_name(body.username) is not None:
                 raise HTTPException(status_code=409, detail="username already exists")
+            now = time.time()
+            # v0.25.0 (ADR #401): the admin knows this password, so the person sets their own.
             uid = await store.create_user(
-                body.username, auth.hash_password(body.password), body.role, False, time.time()
+                body.username, auth.hash_password(body.password), body.role, True, now
             )
+            if display := (body.display_name or "").strip() or None:
+                await store.set_display_name(uid, display, now)
             await audit_row(
                 request,
                 principal,
@@ -73,9 +77,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type="user",
                 object_id=str(uid),
-                details={"username": body.username, "role": body.role},
+                details={"username": body.username, "role": body.role, "display_name": display},
             )
-        return {"id": uid, "username": body.username, "role": body.role}
+        return {"id": uid, "username": body.username, "role": body.role, "display_name": display}
 
     @route.post("/api/users/{uid}/role")
     async def change_role(
@@ -144,6 +148,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 )
             except Exception as exc:  # duplicate name (UNIQUE)
                 raise HTTPException(status_code=409, detail="token name already exists") from exc
+            purpose = body.purpose.strip() if body.purpose else None
+            if purpose:
+                await store.set_token_purpose(tid, purpose)
             await audit_row(
                 request,
                 principal,
@@ -151,9 +158,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type="token",
                 object_id=str(tid),
-                details={"name": body.name, "role": body.role},
+                details={"name": body.name, "role": body.role, "purpose": purpose},
             )
-        return {"id": tid, "name": body.name, "role": body.role, "token": token_value}
+        return {
+            "id": tid,
+            "name": body.name,
+            "role": body.role,
+            "purpose": purpose,
+            "token": token_value,
+        }
 
     @route.delete("/api/tokens/{tid}")
     async def revoke_token(

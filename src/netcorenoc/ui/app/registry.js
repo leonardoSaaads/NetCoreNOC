@@ -33,11 +33,10 @@ import { Maintenance } from "./views/maintenance.js";
 import { Labelling } from "./views/labelling.js";
 import { Corpus } from "./views/corpus.js";
 import { Promotion } from "./views/promotion.js";
-import { Users } from "./views/users.js";
-import { Tokens } from "./views/tokens.js";
+import { Access } from "./views/access.js";
+import { html } from "./dom.js";
 import { Settings } from "./views/settings.js";
 import { Scorer } from "./views/scorer.js";
-import { Governance } from "./views/governance.js";
 import { Quarantine } from "./views/quarantine.js";
 import { Audit } from "./views/audit.js";
 import { Account } from "./views/account.js";
@@ -115,14 +114,11 @@ export const VIEWS = [
 
   /* ---------- Administer: the machine itself ---------- */
   {
-    id: "users", label: "Users", icon: "users", group: "administer",
-    capability: "users.manage", component: Users,
-    summary: "Accounts and their roles.",
-  },
-  {
-    id: "tokens", label: "Service tokens", icon: "tokens", group: "administer",
-    capability: "tokens.manage", component: Tokens,
-    summary: "Non-interactive credentials, shown once.",
+    // v0.25.0 (ADR #403): Users, Service tokens and Governance, as the tabs of one screen. Mounting
+    // reads the accounts; every other tab reads only when opened, and only if the session may.
+    id: "access", label: "People & access", icon: "users", group: "administer",
+    capability: "users.manage", component: Access,
+    summary: "Who can sign in, what each person and program may do, and what they see.",
   },
   {
     id: "settings", label: "Settings", icon: "settings", group: "administer",
@@ -139,14 +135,6 @@ export const VIEWS = [
     summary: "The formula that decides which alarms group. Preview before you apply.",
   },
   {
-    id: "governance", label: "Governance", icon: "governance", group: "administer",
-    // BOTH reads, because the screen issues both on mount. Declaring only `rbac.read` would let a
-    // principal narrowed to it alone mount the screen and then request `/api/scope`, which the
-    // appliance refuses — a client leaking a 403 into every such operator's access log.
-    capability: ["rbac.read", "scope.read"], component: Governance,
-    summary: "Who may do what, and who may see which network elements.",
-  },
-  {
     id: "quarantine", label: "Quarantine", icon: "quarantine", group: "administer",
     capability: "quarantine.read", component: Quarantine,
     summary: "Datagrams the parser refused. Reading this list is audited.",
@@ -161,7 +149,23 @@ export const VIEWS = [
   {
     id: "account", label: "Your account", icon: "account", group: null, hidden: true,
     capability: "self.read", component: Account,
-    summary: "Change your own password.",
+    summary: "Your name, photo, password and what you can do.",
+  },
+  // The three addresses v0.24.0 had, kept so links and bookmarks still land (v0.25.0).
+  {
+    id: "users", label: "People", icon: "users", group: null, hidden: true,
+    capability: "users.manage", component: (p) => html`<${Access} ...${p} tab="people" />`,
+    summary: "Who can sign in, what each person and program may do, and what they see.",
+  },
+  {
+    id: "tokens", label: "Service tokens", icon: "tokens", group: null, hidden: true,
+    capability: "tokens.manage", component: (p) => html`<${Access} ...${p} tab="tokens" />`,
+    summary: "Credentials for programs, shown once.",
+  },
+  {
+    id: "governance", label: "Roles", icon: "governance", group: null, hidden: true,
+    capability: ["rbac.read", "scope.read"], component: (p) => html`<${Access} ...${p} tab="roles" />`,
+    summary: "What each role holds, and what it sees.",
   },
 ];
 

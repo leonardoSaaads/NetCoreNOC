@@ -540,7 +540,8 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
         # v0.13.0: index.html is a mount point and carries no copy. The claim moved to the
         # module that renders the Governance screen, which is where an operator reads it — and
         # that is what this control is about, not which file it lives in.
-        "src/netcorenoc/ui/app/views/governance.js",
+        # v0.25.0: the Visibility tab of People & access (ADR #403).
+        "src/netcorenoc/ui/app/views/parts/visibility.js",
         "src/netcorenoc/crosscutting/shaping/__init__.py",
     ):
         # Normalise typesetting before matching: strip Markdown/HTML emphasis and collapse
@@ -1333,6 +1334,12 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("DELETE", "/api/catalogue/rules/{rule_id}"),
         ("POST", "/api/catalogue/import"),
         ("DELETE", "/api/catalogue/imported"),
+    }
+    # v0.25.0: your own display name and photo are rows of your own account (ADR #401, #402).
+    session_only |= {
+        ("POST", "/api/me/avatar"),
+        ("DELETE", "/api/me/avatar"),
+        ("POST", "/api/me/profile"),
     }
     # The four spellings of *"this handler resolved the caller's visibility"*. The first is the
     # literal every route wrote until v0.21.0; the other three are `WindowAccess`'s, and

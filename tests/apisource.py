@@ -57,6 +57,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/annotate.py",
     "routes/operate.py",
     "routes/admin.py",
+    "routes/people.py",
     "routes/scorer.py",
     "routes/promotion.py",
     "routes/models.py",
