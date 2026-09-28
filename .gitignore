@@ -26,3 +26,5 @@ testbed/logs/
 
 # v0.26.0: recorded training streams (reproducible from the pinned seed; see eval/synth/dataset.py)
 eval/synth/.cache/
+# v0.26.0: a model that missed the quality bar leaves only this, with every check; never shipped.
+src/netcorenoc/engine/model/*.candidate
