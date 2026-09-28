@@ -5258,9 +5258,10 @@ From this release an entry is about six lines: decision, reason, release.*
   by the concurrency pairs, so it drove the join bias to the edge of its grid and split 43 % of
   real incidents. `repair_gestures` — one merge per extra piece of an incident, one move per
   foreign incident in a situation, per incident — prices a split and a contamination the way an
-  operator pays for them. The biases are the **fewest gestures among the settings that merge
-  concurrent incidents no more often than the formula does** (`split_bag_intact_rate` ≤ the
-  formula's, on the same validation streams).
+  operator pays for them. The biases are the **fewest gestures among the settings that pass every
+  check of the quality bar on the validation streams** — its pooled checks on the pooled streams,
+  its per-family checks on every family in them. The first rule (only `split_bag_intact_rate` ≤ the
+  formula's) is what made the first test reading miss the bar; #420 records it.
 - **Diagnosed before it was chosen**: of the activations that ended up away from their incident,
   the largest share had a same-incident candidate the model scored as linked but the situation's
   mean evidence did not clear the bias (grouping), then the model scoring every same-incident pair
@@ -5439,3 +5440,49 @@ From this release an entry is about six lines: decision, reason, release.*
   benchmark pairs. The console shows its provenance.
 - **Reproducible**: `make train` from the same commit and seed writes a byte-identical document
   (a test re-fits with the same seed and compares hashes; a different seed changes it).
+
+## 420. The first test reading missed the bar; grouping is now chosen under the bar; the test streams were redrawn (v0.26.0)
+
+- **What happened**: the first `make train` of this release (commit `7868ec5`, dataset
+  `1975d4aa68012de2`, grouping join 0.5 / merge 1.0 / 2 pairs, chosen as the fewest repair gestures
+  with pooled split-bag no higher than the formula's) read the four test splits once and **missed
+  7 of the bar's 70 checks**. By #409's rule it wrote no model. Model / formula on that reading:
+
+  | where | F1 | over-merge | under-merge | split-bag | repair gestures |
+  |---|---|---|---|---|---|
+  | `test_iid` (32 streams, 4 628 incidents) | 0.903 / 0.885 | 0.063 / 0.027 | 0.095 / 0.134 | 0.298 / 0.249 | 0.341 / 0.453 |
+  | `test_concurrency` (24, 2 846) | 0.901 / 0.836 | 0.068 / 0.036 | 0.105 / 0.125 | 0.231 / 0.295 | 0.407 / 0.455 |
+  | `test_optical` (24, 3 032) | 0.959 / 0.953 | 0.071 / 0.031 | 0.081 / 0.122 | **0.336 / 0.151** | 0.279 / 0.443 |
+  | `test_protocol` (24, 3 276) | 0.957 / 0.960 | 0.050 / 0.018 | 0.093 / 0.132 | **0.340 / 0.192** | 0.360 / 0.452 |
+  | `dwdm_degradation` (122 incidents) | 0.494 / 0.201 | **0.697 / 0.451** | 0.770 / 0.861 | — | 3.147 / 3.934 |
+  | `dwdm_line_cut` (146) | 0.640 / 0.243 | **0.644 / 0.479** | 0.384 / 0.870 | — | 1.657 / 3.199 |
+  | `optical_protection` (141) | 0.724 / 0.759 | 0.440 / 0.397 | 0.007 / 0.007 | — | **0.539 / 0.298** |
+  | `bgp_flap` (172) | 0.326 / 0.332 | **0.471 / 0.320** | 0.576 / 0.814 | — | 2.517 / 2.936 |
+  | `ospf_flap` (191) | 0.411 / 0.304 | **0.398 / 0.278** | 0.544 / 0.791 | — | 2.178 / 2.686 |
+
+  The model cost operators less repair work than the formula on every pooled split and on four of
+  the five unseen families, and paid for it by merging more: concurrent incidents on the held-out
+  splits (split-bag +0.18, +0.15 against +0.10 allowed), foreign alarms into unseen families'
+  incidents (+0.12 … +0.25 against +0.10), and 1.8 × the formula's repair on `optical_protection`.
+- **Diagnosed on validation only**: the per-family validation lines printed *before* the test was
+  read already showed it — `olt_uplink_failure` over-merge 0.45 against the formula's 0.08,
+  `ne_reboot` +0.20, `port_flapping` +0.16. Applied to validation, the bar's own checks failed
+  **eleven** times on the chosen setting; the pooled numbers hid it because 2 254 of the 2 854
+  validation incidents are single noise alarms. What contaminates an incident is mostly another
+  real incident, for both deciders; the model's excess sits in a few families and in noise it
+  absorbs (0.09 of noise alarms against 0.02). **The defect was the selection rule, not the bar**:
+  a selection weaker than the acceptance selects what acceptance refuses.
+- **Decision**: grouping is the fewest repair gestures among the settings that pass
+  `report.check_bar` on validation — the bar's function, so selection and acceptance cannot drift
+  apart (`train.tune_grouping`; `test_grouping_is_chosen_under_the_bar_itself`, injection 12). On
+  the first run's validation streams that admits exactly one region of the old grid (join 2.0,
+  merge 2.0), at 0.346 gestures per incident against the formula's 0.405. The grid now extends to
+  join 3.0 so the choice is not clamped at its edge. **The bar is unchanged.**
+- **The test streams were redrawn** (`dataset.TEST_DRAW = 2`, names `test_*-d2-*`): the shipped
+  numbers are read from streams no decision has seen. Train and validation are the same streams.
+- **What the redraw does not restore**, stated so nobody has to infer it: the knowledge that
+  unseen families over-merge came from the first reading. The correction is generic (select under
+  the acceptance criteria), was made and checked on validation alone, and changes no threshold —
+  but the second reading is a second attempt, and should be weighed as one. Both readings are here.
+- **Result of the second reading**: {{SECOND_READING}}
+
