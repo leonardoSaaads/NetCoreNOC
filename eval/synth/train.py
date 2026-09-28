@@ -92,10 +92,13 @@ QUALITY_BAR: tuple[tuple[str, str, str, float], ...] = (
     ("over_merge_rate", "held_out", "diff_max", 0.10),
 )
 
-#: The grouping grid (ADR #409): the biases are chosen on validation as the **fewest repair
-#: gestures** among the settings that keep concurrent incidents apart at least as well as the
-#: formula does (``split_bag_intact_rate`` no higher than the formula's on the same streams).
-JOIN_GRID = (-0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
+#: The grouping grid (ADRs #409, #420): the biases are chosen on validation as the **fewest repair
+#: gestures among the settings that pass every check of the quality bar on the validation
+#: streams** — the ``splits`` checks on the pooled streams, the ``held_out`` checks on every family
+#: in them. The first rule (pooled ``split_bag_intact_rate`` no higher than the formula's) chose a
+#: setting that already failed eleven of those checks on validation, and it missed the bar on test
+#: (#420): a selection rule weaker than the acceptance rule selects what acceptance refuses.
+JOIN_GRID = (-0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
 MERGE_GRID = (0.5, 1.0, 2.0, 4.0)
 PAIRS_GRID = (2, 3, 6)
 
@@ -188,8 +191,13 @@ def _evidence_cache(logs: list[StreamLog], scorer: gam.GamScorer) -> dict[int, l
 def tune_grouping(
     logs: list[StreamLog], scorer: gam.GamScorer
 ) -> tuple[GroupingParams, list[dict[str, float]]]:
-    """The fewest repair gestures, subject to no more concurrent merges than the formula's."""
-    ceiling = situation_metrics([group(log, FormulaDecider()) for log in logs])
+    """The fewest repair gestures among the settings that pass the quality bar on validation."""
+    from synth import report  # the bar's own check, so selection and acceptance cannot drift apart
+
+    formula = [group(log, FormulaDecider()) for log in logs]
+    families = sorted({f for o in formula for f in o.family} & set(dataset.TRAIN_FAMILIES))
+    formula_pooled = _points(situation_metrics(formula))
+    formula_by = {f: _points(situation_metrics(formula, f)) for f in families}
     cache = _evidence_cache(logs, scorer)
     rows: list[dict[str, float]] = []
     best: tuple[float, GroupingParams] | None = None
@@ -199,25 +207,43 @@ def tune_grouping(
                 continue
             for pairs in PAIRS_GRID:
                 params = GroupingParams(join, merge, pairs)
-                decider = CachedDecider(cache, "cluster", params)
-                m = situation_metrics([group(log, decider) for log in logs])
-                admissible = m["split_bag_intact_rate"] <= ceiling["split_bag_intact_rate"]
+                outs = [group(log, CachedDecider(cache, "cluster", params)) for log in logs]
+                m = situation_metrics(outs)
+                verdict = report.check_bar(
+                    {
+                        "splits": {"valid": {"model": _points(m), "formula": formula_pooled}},
+                        "held_out_families": {
+                            f: {
+                                "model": _points(situation_metrics(outs, f)),
+                                "formula": formula_by[f],
+                            }
+                            for f in families
+                        },
+                    },
+                    QUALITY_BAR,
+                )
                 rows.append(
                     {
                         "join_bias": join,
                         "merge_bias": merge,
                         "merge_min_pairs": float(pairs),
-                        "admissible": float(admissible),
+                        "admissible": float(verdict["passed"]),
+                        "checks_missed": float(len(verdict["missed"])),
                         **{k: m[k] for k in (*_REPORTED, "repair_gestures")},
                     }
                 )
-                if admissible and (best is None or m["repair_gestures"] < best[0] - 1e-12):
+                if verdict["passed"] and (best is None or m["repair_gestures"] < best[0] - 1e-12):
                     best = (m["repair_gestures"], params)
-    if best is None:  # nothing keeps concurrent incidents apart as well as the formula: say so
+    if best is None:  # no setting passes the bar even on the streams it is tuned on: say so
         raise SystemExit(
-            "no grouping setting is admissible on validation; the model is not shipped"
+            "no grouping setting passes the quality bar on validation; the model is not shipped"
         )
     return best[1], rows
+
+
+def _points(metrics: dict[str, float]) -> dict[str, dict[str, float]]:
+    """`situation_metrics` in the shape `report.check_bar` reads (a point, no interval)."""
+    return {k: {"point": v} for k, v in metrics.items()}
 
 
 _REPORTED = (

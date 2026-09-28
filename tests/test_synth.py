@@ -167,3 +167,52 @@ def test_a_recording_captures_the_full_feature_vector() -> None:
     vectors = [v for a in log.activations() for _c, _w, v in a.candidates]
     assert vectors, "the recording scored no pair at all"
     assert {len(v) for v in vectors} == {len(FEATURE_NAMES)}
+
+
+def test_grouping_is_chosen_under_the_bar_itself(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR #420: the grouping is the fewest repair gestures among the settings that pass every
+    check of the quality bar **on validation** — `splits` checks pooled, `held_out` checks per
+    family. The first rule (pooled split-bag alone) chose a setting that already failed eleven of
+    the bar's checks on validation, and the model missed the bar on test.
+
+    Bars are built from the data so the test does not depend on a small recording's numbers: a
+    bar every setting passes picks the fewest gestures; a bar that excludes exactly those settings
+    picks the next; a per-family bar nothing can meet ships nothing."""
+    from netcorenoc.engine.model import gam
+
+    from modelutil import TEST_MODEL
+    from synth.record import record
+
+    logs = [record(compose(replace(s, hours=1.0))) for s in dataset.specs(scale=1.0)["valid"][:2]]
+    scorer = gam.load(TEST_MODEL)
+    monkeypatch.setattr(train, "JOIN_GRID", (-0.5, 0.5, 2.0))
+    monkeypatch.setattr(train, "MERGE_GRID", (2.0, 4.0))
+    monkeypatch.setattr(train, "PAIRS_GRID", (2,))
+
+    monkeypatch.setattr(train, "QUALITY_BAR", (("pairwise_f1", "splits", "min", 0.0),))
+    chosen, rows = train.tune_grouping(logs, scorer)
+    assert all(r["admissible"] == 1.0 for r in rows)
+    fewest = min(r["repair_gestures"] for r in rows)
+    pick = next(
+        r
+        for r in rows
+        if r["join_bias"] == chosen.join_bias and r["merge_bias"] == chosen.merge_bias
+    )
+    assert pick["repair_gestures"] == fewest
+
+    distinct = sorted({r["repair_gestures"] for r in rows})
+    if len(distinct) > 1:  # exclude the cheapest settings through the bar, and only through it
+        floor = ("repair_gestures", "splits", "min", distinct[1])
+        monkeypatch.setattr(train, "QUALITY_BAR", (floor,))
+        again, rows = train.tune_grouping(logs, scorer)
+        pick = next(
+            r
+            for r in rows
+            if r["join_bias"] == again.join_bias and r["merge_bias"] == again.merge_bias
+        )
+        assert pick["repair_gestures"] == distinct[1]
+        assert all(r["admissible"] == 0.0 for r in rows if r["repair_gestures"] == distinct[0])
+
+    monkeypatch.setattr(train, "QUALITY_BAR", (("repair_gestures", "held_out", "ratio_max", -1.0),))
+    with pytest.raises(SystemExit, match="passes the quality bar on validation"):
+        train.tune_grouping(logs, scorer)

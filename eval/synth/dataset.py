@@ -81,12 +81,21 @@ HOLDOUT_PROTOCOL = ("bgp_flap", "ospf_flap")
 
 CACHE = HERE / ".cache"
 
+#: Which draw of the test streams this release reads (ADR #420). **A test split is read once.** The
+#: first draw was read by the first `make train` of v0.26.0, which missed the quality bar; the
+#: selection rule was then corrected on validation alone, and the test streams were drawn afresh so
+#: the shipped numbers come from streams no decision had seen. Train and validation are unchanged.
+#: A later release that reads the test splits again after changing anything must increment this.
+TEST_DRAW = 2
+
 
 def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
-    rng = derived_rng("split", split, seed)
+    draw = TEST_DRAW if split.startswith("test_") else 1
+    first = draw == 1  # train and validation are always the first draw: their names never move
+    rng = derived_rng("split", split, seed) if first else derived_rng("split", split, seed, draw)
     out: list[StreamSpec] = []
     for i in range(count):
-        name = f"{split}-{i:03d}"
+        name = f"{split}-{i:03d}" if first else f"{split}-d{draw}-{i:03d}"
         s = seed * 1000 + i
         if split == "train_long":
             out.append(
