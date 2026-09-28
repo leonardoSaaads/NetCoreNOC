@@ -70,6 +70,17 @@ PERMISSIONS: dict[str, str] = {
     # a different act and is admin — it creates an artefact a promotion could later name.
     "model.read": "viewer",
     "model.register": "admin",
+    # v0.26.0 (ADRs #405, #412, #413). Choosing what decides links, switching autonomy on, and
+    # starting a search each change what the appliance does to every alarm: admin. STOPPING
+    # autonomy is the one exception — the kill switch is cheap to grant and dangerous to withhold,
+    # so an editor may press it from any screen. An operator's severity for a situation is a
+    # gesture on one situation, scoped, like every other.
+    "decider.write": "admin",
+    "autonomy.write": "admin",
+    "autonomy.audit": "admin",
+    "autonomy.stop": "editor",
+    "search.write": "admin",
+    "situation.severity": "editor",
     # operate (editor+)
     "feedback.write": "editor",
     "label.write": "editor",

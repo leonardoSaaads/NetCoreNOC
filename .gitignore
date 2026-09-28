@@ -23,3 +23,6 @@ result
 # The testbed's runtime state: the phase file, the lab database, per-process logs (v0.17.0).
 testbed/state/
 testbed/logs/
+
+# v0.26.0: recorded training streams (reproducible from the pinned seed; see eval/synth/dataset.py)
+eval/synth/.cache/

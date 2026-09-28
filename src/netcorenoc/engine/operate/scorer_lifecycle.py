@@ -34,7 +34,7 @@ import logging
 
 from netcorenoc.crosscutting import audit
 from netcorenoc.engine.correlate import scoring
-from netcorenoc.engine.model import model_version
+from netcorenoc.engine.model import model_version, shipped
 from netcorenoc.engine.operate.engine_base import EngineBase
 
 log = logging.getLogger("netcorenoc")
@@ -55,11 +55,20 @@ class ScorerLifecycleMixin(EngineBase):
         for want of one.
         """
         try:
+            mode = await self.store.decider_mode()
             row = await self.store.active_scorer_config()
             model_row = None if row is not None else await self.store.active_model_version()
         except Exception as exc:  # a config read must never stop correlation
             self._loaded_key = None  # retry on the next pass; the DB may come back
             self._use_default_scorer(f"scoring configuration unreadable ({type(exc).__name__})")
+            return
+
+        # **v0.26.0 (ADR #405): which family decides.** The shipped model unless an admin chose
+        # otherwise; a site model when one is active and chosen; the formula only when chosen.
+        if mode == "shipped" or (mode == "site" and model_row is None):
+            self._load_shipped(
+                None if mode == "shipped" else "no site model is active, so the shipped one runs"
+            )
             return
 
         # THE POINTER NAMES A MODEL VERSION. The database's CHECK makes "both at once" impossible,
@@ -82,6 +91,7 @@ class ScorerLifecycleMixin(EngineBase):
             self.correlator.set_scorer(scoring.default_scorer())
             self.scorer_config_id = None
             self.scorer_model_version_id = None
+            self.decider_ref = "additive:default"
             self.scorer_warnings = []
             return
         try:
@@ -96,6 +106,7 @@ class ScorerLifecycleMixin(EngineBase):
         except (scoring.ScorerParamsError, scoring.ContractVersionError) as exc:
             self._use_default_scorer(f"stored scoring configuration rejected: {exc}")
             return
+        self.decider_ref = f"additive:{int(row['id'])}"
         self.correlator.set_scorer(
             scoring.AdditiveScorer(
                 w_t=float(row["w_t"]),
@@ -110,6 +121,28 @@ class ScorerLifecycleMixin(EngineBase):
         self.scorer_config_id = int(row["id"])
         self.scorer_model_version_id = None
         self.scorer_warnings = []
+
+    def _load_shipped(self, note: str | None) -> None:
+        """Activate the packaged model, or fall back to the formula and say why. Never raises."""
+        try:
+            model = shipped.load()
+        except Exception as exc:
+            reason = exc.args[0] if exc.args else type(exc).__name__
+            key = (-1, f"refused:{reason}")
+            if key == self._loaded_key:
+                return
+            self._loaded_key = key
+            self._use_default_scorer(f"the shipped model could not be used: {reason}")
+            return
+        key = (-1, model.sha256)
+        if key == self._loaded_key:
+            return
+        self._loaded_key = key
+        self.correlator.set_scorer(model.scorer)
+        self.scorer_config_id = None
+        self.scorer_model_version_id = None
+        self.decider_ref = model.ref
+        self.scorer_warnings = [] if note is None else [note]
 
     def _load_model_version(self, row: dict[str, object]) -> None:
         """Activate the scorer a `model_version` row describes, or fall back. **Never raises.**
@@ -143,6 +176,7 @@ class ScorerLifecycleMixin(EngineBase):
         self.correlator.set_scorer(scorer)
         self.scorer_config_id = None
         self.scorer_model_version_id = key[0]
+        self.decider_ref = f"site:{key[0]}"
         self.scorer_warnings = []
 
     def _use_default_scorer(self, reason: str) -> None:
@@ -152,6 +186,7 @@ class ScorerLifecycleMixin(EngineBase):
             log.warning("%s; using the built-in default scoring parameters", reason)
         self.correlator.set_scorer(scoring.default_scorer())
         self.scorer_config_id = None
+        self.decider_ref = "additive:default"
         # Cleared too, and this is the line that makes §6.9 true: the fallback goes to the BUILT-IN
         # DEFAULT, never to the previously-loaded model. Leaving this set would leave the engine
         # claiming to run a model it had just refused to load.

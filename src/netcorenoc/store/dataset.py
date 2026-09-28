@@ -101,13 +101,24 @@ class DatasetMixin(StoreBase):
         """
         if not rows:
             return
+        if self._has_pair_features:
+            # v0.26.0 (`0026`): the seventeenth value is the v2 feature vector as captured.
+            await self.conn.executemany(
+                "INSERT INTO dataset_pair ("
+                "capture_run_id, alarm_a, alarm_b, observation_a, observation_b, situation_id, "
+                "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
+                "incumbent_linked, storm, truncated, evaluated_at, features"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [row if len(row) == 17 else (*row, None) for row in rows],
+            )
+            return
         await self.conn.executemany(
             "INSERT INTO dataset_pair ("
             "capture_run_id, alarm_a, alarm_b, observation_a, observation_b, situation_id, "
             "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
             "incumbent_linked, storm, truncated, evaluated_at"
             ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            rows,
+            [row[:16] for row in rows],
         )
 
     # -- promotion on label --------------------------------------------------------------------

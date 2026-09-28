@@ -184,6 +184,23 @@ ACTIONS: frozenset[str] = frozenset(
         # would split one auditor question — *"what did an admin reconfigure?"* — across two
         # catalog entries. The window actions are separate because they answer a *different*
         # question, about who declared an outage and who agreed to it.
+        #
+        # v0.26.0 — what decides links, and autonomy (ADRs #405, #412, #413). Each is a change to
+        # what the appliance does to every alarm, or an act it performed with nobody asking, so
+        # each is a row: the switch of decider, a search started or stopped, autonomy set,
+        # stopped by a person, or stopped by itself — and every act autonomy performed, one row
+        # per act, with the model that performed it as the actor.
+        "decider.set",
+        "search.start",
+        "search.stop",
+        "autonomy.set",
+        "autonomy.stop",
+        "autonomy.suspend",
+        "autonomy.grouping",
+        "autonomy.naming",
+        "autonomy.closing",
+        "autonomy.severity",
+        "situation.severity",
     }
 )
 

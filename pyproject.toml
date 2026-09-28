@@ -74,6 +74,9 @@ netcorenoc = [
     # `tools/trappack_build.py`. Without these lines a wheel would ship a pack that is empty.
     "ingest/trappack.tsv.gz",
     "ingest/trapobjects.tsv.gz",
+    # v0.26.0 (ADR #405): the shipped model and its manifest — data, validated on load. Without
+    # these lines a wheel would ship an appliance whose default decider is missing.
+    "engine/model/shipped/*.json",
 ]
 
 [tool.ruff]

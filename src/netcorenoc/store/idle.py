@@ -80,6 +80,28 @@ class IdleMixin(StoreBase):
         )
         return [int(r[0]) for r in await cur.fetchall()]
 
+    async def cleared_open_situations(self, before: float) -> list[int]:
+        """**Live, every member cleared, and nothing has happened since ``before``** (v0.26.0,
+        ADR #410).
+
+        The clear-hold's population. A situation whose last alarm cleared used to resolve on that
+        clear, in the same transaction — so a port bouncing every few minutes, a BGP session
+        flapping, or a repair followed by one late re-raise opened a new situation per bounce.
+        The engine now leaves such a situation live for `CLEAR_HOLD_S` and the sweep resolves it
+        from here once neither a join (``updated_at``) nor a clear (the latest member
+        ``cleared_at``) is newer than ``before``. A member that re-raises in the meantime is still
+        mapped to it and rejoins it, which is the whole point.
+        """
+        cur = await self.conn.execute(
+            # `LIVE` and `HAS_ACTIVE` are module literals; `before` is bound. Suppression on the
+            # reported line, as above.
+            f"SELECT id FROM situation WHERE {LIVE} AND NOT {HAS_ACTIVE} AND updated_at <= ? "  # nosec B608
+            "AND COALESCE((SELECT MAX(a.cleared_at) FROM situation_alarm sa JOIN alarm a "
+            "ON a.id=sa.alarm_id WHERE sa.situation_id=situation.id), 0) <= ?",
+            (before, before),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]
+
     async def idle_active_situations(self, cutoff: float) -> list[int]:
         """**Live, untouched since `cutoff`, and one of its alarms is still on** (v0.16.2, #274).
 

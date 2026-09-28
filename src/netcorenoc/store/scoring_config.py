@@ -76,6 +76,12 @@ class ScoringConfigMixin(StoreBase):
         assert row is not None
         return int(row[0])
 
+    async def latest_scorer_config(self) -> dict[str, Any] | None:
+        """The newest formula configuration written — what opting back into the formula runs."""
+        cur = await self.conn.execute("SELECT * FROM scorer_config ORDER BY id DESC LIMIT 1")
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def set_active_scorer_config(
         self, config_id: int, activated_by: str | None, ts: float
     ) -> bool:

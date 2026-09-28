@@ -54,6 +54,12 @@ class LifecycleMixin(StoreBase):
         cur = await self.conn.execute("PRAGMA table_info(situation)")
         columns = {str(row[1]) for row in await cur.fetchall()}
         self._has_lifecycle = "resolution" in columns
+        # v0.26.0, migration `0026`: which decider formed a situation, and the decider setting.
+        self._has_situation_decider = "decider" in columns
+        cur = await self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='decider_setting'"
+        )
+        self._has_decider = await cur.fetchone() is not None
         # v0.16.1, migration `0015`. Same probe, same reason, one table over: `add_feedback` is on
         # the write path of every verdict and every gesture, so it may not learn the schema from a
         # caught `OperationalError` either. `False` means the two-column key of `0007` is still the
@@ -71,6 +77,11 @@ class LifecycleMixin(StoreBase):
         # would pay an exception per trap on the busiest write path there is, and `tests/
         # test_upgrade.py` drives this store against migration directories frozen as far back as
         # schema 4 — where naming the column unconditionally raises on the first packet.
+        # v0.26.0, migration `0026`: the whole-explanation column on `link` and the episode table.
+        cur = await self.conn.execute("PRAGMA table_info(link)")
+        self._has_link_terms = "terms" in {str(row[1]) for row in await cur.fetchall()}
+        cur = await self.conn.execute("PRAGMA table_info(dataset_pair)")
+        self._has_pair_features = "features" in {str(row[1]) for row in await cur.fetchall()}
         cur = await self.conn.execute("PRAGMA table_info(alarm)")
         alarm_columns = {str(row[1]) for row in await cur.fetchall()}
         self._has_severity_source = "severity_source" in alarm_columns

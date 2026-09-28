@@ -53,7 +53,7 @@ __all__ = [
 ]
 
 # The contract version this code implements. Only the MAJOR component gates activation.
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.1"
 DEFAULT_SCORER_ID = "additive"
 
 # -- the feature vocabulary ------------------------------------------------------------------
@@ -178,6 +178,11 @@ class LinkFeatures(NamedTuple):
     # `None` means "not computed", which is what every caller built before this release passes,
     # and what keeps this a minor contract bump rather than a breaking one.
     same_oid_root: bool | None = None
+
+    # **v0.26.0: the v2 feature vector** (`features.FEATURE_NAMES` order), built once per pair by
+    # `features.vector` when the active decider reads it; `None` for the additive formula, which
+    # reads the seven fields above. Optional and appended: a minor contract bump, 1.0 -> 1.1.
+    vector: tuple[float, ...] | None = None
 
 
 # How a scorer derived its terms (v0.14.0, DECISIONS #186). A tree predicts a leaf value, not a

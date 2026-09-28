@@ -42,8 +42,14 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from netcorenoc.engine.correlate import features as pair_features
 from netcorenoc.engine.correlate import severity
-from netcorenoc.engine.correlate.correlate import Correlator, ScoredLink, WindowAlarm
+from netcorenoc.engine.correlate.correlate import (
+    CorrelationResult,
+    Correlator,
+    WindowAlarm,
+    explained_terms,
+)
 from netcorenoc.engine.correlate.learn import STORM_ALARMS, STORM_DAMPING, Learner
 from netcorenoc.engine.correlate.monitor import CorrelationMonitor
 from netcorenoc.engine.correlate.rootcause import Member, Precedence
@@ -69,6 +75,7 @@ BATCH_SIZE = 500
 LATENCY_SAMPLES = 4096
 LEARN_CAP = 20  # window members observed per activation (bounded work per event)
 IDLE_CLOSE_S = 3600.0  # open situations idle this long are closed by maintenance
+CLEAR_HOLD_S = 300.0  # an all-cleared situation stays live this long for a bounce to rejoin (#410)
 MAINT_INTERVAL_S = 5.0
 PRUNE_EVERY_TICKS = 12  # prune once a minute
 PROFILE_STALE_S = 7 * 86400.0  # profiler accumulators untouched this long are pruned (§6)
@@ -97,6 +104,11 @@ class FlapDetector:
             return False  # simultaneous repeats are a storm, not flapping
         cv = statistics.pstdev(intervals) / mean
         return mean <= self.max_mean_interval and cv <= self.max_cv
+
+    def recent(self, fingerprint: Fingerprint, ts: float) -> int:
+        """Activations of ``fingerprint`` in the past hour, from the history already kept (≤ 8)."""
+        raises = self.history.get(fingerprint)
+        return 0 if raises is None else sum(1 for t in raises if ts - t <= 3600.0)
 
 
 class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
@@ -166,12 +178,14 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         """Drop in-memory membership after an operator manually closes a situation."""
         for member in self.members.pop(sid, []):
             self.sit_of.pop(member.alarm_id, None)
+        self.correlator.grouper.forget(sid)
 
     async def start(self) -> None:
         """Reload learned state and open-situation membership after a restart."""
         await self.load_scorer_config()
         await self._capture_run(time.time())
         await self.learner.load(self.store)
+        self.correlator.episodes.load(await self.store.load_episodes())
         await self.precedence.load(self.store)
         for row in await self.store.load_varbind_profiles():
             self.profiler.load_row(
@@ -332,8 +346,9 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             return
         if await self._is_flapping(item, instance, result.alarm_id):
             return
-        # `oid_root` is computed here, once per activation, not once per candidate pair — the
-        # pair-level question is a string comparison of two values already in hand (F135).
+        # Everything a pair feature needs is computed here, once per activation (F135, ADR #405):
+        # the OID's root and arcs, the placed severity rank, and how often this fingerprint has
+        # activated in the past hour — never once per candidate pair.
         entry = WindowAlarm(
             result.alarm_id,
             class_id,
@@ -341,8 +356,20 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             item.ts,
             result.entity_id,
             oid_root(item.trap_oid),
+            tuple(item.trap_oid.split(".")),
+            -1 if placed.rank is None else placed.rank,
+            self.flap.recent((item.device, item.trap_oid, instance), item.ts),
+            item.device,
+            pair_features.references([vb.value for vb in item.varbinds], item.device),
         )
-        outcome = self.correlator.process(entry, self.learner)
+        self.learner.advance_to(item.ts)
+        outcome = self.correlator.process(
+            entry,
+            self.learner,
+            sit_of=self.sit_of,
+            own=self.sit_of.get(entry.alarm_id),
+            teaches=teaches,
+        )
         recent = outcome.considered[-LEARN_CAP:]
         item_pair = (class_id, device_id)
         if teaches:
@@ -355,7 +382,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 self.precedence.observe(
                     (candidate.class_id, candidate.device_id), item_pair, lead_weight
                 )
-        merged = await self._assign_situation(entry, outcome.links)
+        merged = await self._assign_situation(entry, outcome)
         # **Observability, not evidence** (v0.18.0, Part II). Counters over the decisions the
         # champion just made, in memory, read by `GET /api/correlation` and drawn by the console.
         # It writes nothing and reaches no promotion path. `observe` never raises.
@@ -472,10 +499,9 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         for alarm_id in (cleared, stale):
             if alarm_id is None:
                 continue  # a clear with no matching raise is only alternation evidence
+            # The situation is NOT resolved here (ADR #410): it stays live for `CLEAR_HOLD_S` so a
+            # bounce rejoins it, and the maintenance sweep resolves it once the hold has passed.
             self.correlator.remove(alarm_id)
-            sid = self.sit_of.get(alarm_id)
-            if sid is not None and await self.store.all_cleared(sid):
-                await self._close_situation(sid, event.ts)
 
     async def _handle_state_clear(
         self, device_id: int, class_id: int, event: TrapEvent, instance: str
@@ -485,54 +511,54 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         cleared = await self.store.clear_alarm(device_id, class_id, instance, event.ts)
         if cleared is None:
             return  # a clear-state trap with no open alarm is only alternation evidence
-        self.correlator.remove(cleared)
-        sid = self.sit_of.get(cleared)
-        if sid is not None and await self.store.all_cleared(sid):
-            await self._close_situation(sid, event.ts)
+        self.correlator.remove(cleared)  # resolved by the sweep after `CLEAR_HOLD_S` (ADR #410)
 
     async def _close_situation(self, sid: int, ts: float) -> None:
-        """Close and run a learning epoch — every closed situation updates A and E."""
+        """Close a situation. **It teaches nothing** (ADR #406): its membership is the champion's
+        opinion, and the champion's opinion never feeds the features it is scored with."""
         members = self.members.pop(sid, [])
         for member in members:
             self.sit_of.pop(member.alarm_id, None)
+        self.correlator.grouper.forget(sid)
         await self.store.close_situation(sid, ts)
-        if len(members) > 1:
-            self.learner.learn_epoch([(m.class_id, m.device_id) for m in members])
 
-    async def _assign_situation(self, entry: WindowAlarm, links: list[ScoredLink]) -> int:
-        """Connected components: join the linked situations, merging when links bridge.
+    async def _assign_situation(self, entry: WindowAlarm, outcome: CorrelationResult) -> int:
+        """Execute the correlator's placement: join, open, and merge — the database half.
 
-        Returns **how many existing situations this activation fused** — 0 when it started one
-        or joined exactly one, which is the ordinary case. The correlator cannot know this (it
-        scores pairs; membership lives here), and a rising merge rate is the over-merge
-        signature F76 turned out to be, so the number goes to the monitor (v0.18.0, Part II).
+        **The decision is not made here** (ADR #405): `grouping.Grouper.place` made it, as a pure
+        function of the scored pairs and the open situations, and this method only writes it.
+        Returns **how many existing situations this activation fused**, which the correlator
+        cannot know and the monitor wants (a rising merge rate is the over-merge signature, F76).
         """
-        sids = {
-            self.sit_of[link.other.alarm_id] for link in links if link.other.alarm_id in self.sit_of
-        }
-        own = self.sit_of.get(entry.alarm_id)
-        if own is not None:
-            sids.add(own)
-        merged = max(0, len(sids) - 1)
-        if not sids:
+        placement = outcome.placement
+        sid = placement.join
+        if sid is None or sid not in self.members:
             # Provenance (v0.6.0): the situation records the scoring configuration that formed
             # it. Written here — engine side, under the batch lock — never on the datagram path.
-            sid = await self.store.create_situation(entry.ts, self.scorer_config_id)
+            sid = await self.store.create_situation(
+                entry.ts, self.scorer_config_id, decider=self.decider_ref
+            )
             self.members[sid] = []
-        else:
-            sid = min(sids)
-            for other_sid in sorted(sids - {sid}):
-                await self.store.merge_situations(sid, other_sid, entry.ts)
-                for member in self.members.pop(other_sid, []):
-                    self.sit_of[member.alarm_id] = sid
-                    self.members[sid].append(member)
+        merged = 0
+        for other_sid in placement.merge:
+            if other_sid == sid or other_sid not in self.members:
+                continue
+            await self.store.merge_situations(sid, other_sid, entry.ts)
+            merged += 1
+            for member in self.members.pop(other_sid, []):
+                self.sit_of[member.alarm_id] = sid
+                self.members[sid].append(member)
         if self.sit_of.get(entry.alarm_id) != sid:
             await self.store.add_alarm_to_situation(sid, entry.alarm_id)
             self.sit_of[entry.alarm_id] = sid
             self.members[sid].append(
                 Member(entry.alarm_id, entry.class_id, entry.device_id, entry.ts)
             )
-        for link in links:
+        # Only links into the situation the alarm actually joined are its explanation; a pair it
+        # was scored against in a situation it did NOT merge with explains nothing about it.
+        for link in outcome.links:
+            if self.sit_of.get(link.other.alarm_id) != sid:
+                continue
             await self.store.add_link(
                 sid,
                 link.other.alarm_id,
@@ -542,7 +568,9 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 link.term_a,
                 link.term_e,
                 entry.ts,
+                terms=explained_terms(link.result),
             )
+        self.correlator.commit(sid, outcome, self.sit_of)
         await self.store.touch_situation(sid, entry.ts)
         root = self.precedence.pick_root(self.members[sid])
         if root is not None:
@@ -606,6 +634,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             await self.load_scorer_config()
             await self._capture_run(now)  # same reload point, same reason
             for sid in await self.store.idle_open_situations(now - IDLE_CLOSE_S):
+                await self._close_situation(sid, now)
+            for sid in await self.store.cleared_open_situations(now - CLEAR_HOLD_S):
                 await self._close_situation(sid, now)
             await self._maintenance_windows(now)  # v0.21.0: advance, surface, rebuild the index
             await self._promotion_sweep(now)

@@ -39,6 +39,7 @@ from netcorenoc.engine.correlate.correlate import (
     MAX_LINKS_PER_ALARM,
     WINDOW_S,
     CorrelationResult,
+    EvaluatedPair,
     WindowAlarm,
 )
 from netcorenoc.engine.correlate.scoring import LINK_THRESHOLD, LinkScore
@@ -111,6 +112,18 @@ __all__ = [
     "record_label",
     "server_bag",
 ]
+
+
+def _affinities(pair: EvaluatedPair) -> tuple[float, float]:
+    """``(class_affinity, entity_affinity)`` as the scorer saw them for this pair."""
+    if pair.vector is not None:
+        return pair.vector[4], pair.vector[5]
+    assert pair.result is not None  # the formula's path always carries its verdict
+    return _value_of(pair.result, "class_affinity"), _value_of(pair.result, "entity_affinity")
+
+
+def _vector_json(vector: tuple[float, ...]) -> str:
+    return json.dumps([round(v, 9) for v in vector], separators=(",", ":"))
 
 
 def _value_of(result: LinkScore, name: str) -> float:
@@ -313,19 +326,21 @@ class Capture:
                         # Exactly `LinkFeatures.delta_t_s` — both timestamps are immutable, so this
                         # is the value the scorer saw, recomputed rather than stored twice.
                         abs(entry.ts - other.ts),
-                        # The VALUES, read back from the terms the scorer emitted. See `_value_of`
-                        # for why these are not re-derived from the learner.
-                        _value_of(pair.result, "class_affinity"),
-                        _value_of(pair.result, "entity_affinity"),
+                        # The VALUES the scorer saw: from the v2 vector when one was built,
+                        # else read back from the terms it emitted. See `_value_of` for why
+                        # neither is re-derived from the learner.
+                        *_affinities(pair),
                         learner.A.epoch,
                         learner.E.epoch,
-                        pair.result.score,
-                        1 if pair.result.linked else 0,
+                        pair.result.score if pair.result is not None else pair.evidence,
+                        1 if pair.linked else 0,
                         1 if outcome.storm else 0,
                         # An ACCEPTED link the cap dropped — not a rejection. Phase 0 measured this
                         # as 94% of what the engine discards, so the distinction is load-bearing.
-                        1 if (pair.result.linked and other.alarm_id not in kept) else 0,
+                        1 if (pair.linked and other.alarm_id not in kept) else 0,
                         entry.ts,
+                        # v0.26.0: the whole v2 vector, as scored — what a site model trains on.
+                        None if pair.vector is None else _vector_json(pair.vector),
                     )
                 )
             await store.add_pairs(rows)

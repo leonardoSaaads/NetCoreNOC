@@ -79,8 +79,11 @@ class EngineBase:
     # through `load_scorer_config` assigns this field, so the default is only ever read by an
     # `Engine` that has not started — which is the same state `scorer_config_id` is in there.
     scorer_model_version_id: int | None = None
+    # v0.26.0: which decider is running, as every situation and autonomous decision records it —
+    # 'shipped:<sha12>', 'site:<model version>', 'additive:<config id>' or 'additive:default'.
+    decider_ref: str = "additive:default"
     scorer_warnings: list[str]
-    _loaded_key: tuple[int, str] | None
+    _loaded_key: tuple[int, str] | None  # (config/model id, or -1 for the shipped model; hash)
     # Feedback-dataset capture (v0.8.0), read by the maintenance mixin's `_capture_run`. Every
     # decision about what to write lives in `netcorenoc.capture`; these two are state the engine
     # owns and the mixin marshals.
@@ -110,6 +113,10 @@ class EngineBase:
     # opening a second one beside it.
     sit_of: dict[int, int]
     members: dict[int, list[Member]]
+    # v0.26.0: when the correlator's memories were last bounded (`MaintenanceMixin._memory_sweep`).
+    # A class-level default for the reason `_idle_active_count` gives: nothing reads it before a
+    # sweep has run, and zero means "prune on the first one".
+    _memory_pruned_at: float = 0.0
 
     if TYPE_CHECKING:  # pragma: no cover - declaration only; no runtime attribute exists
 

@@ -29,6 +29,8 @@ from netcorenoc.store.auth import AuthMixin
 from netcorenoc.store.base import StoreBase
 from netcorenoc.store.catalogue_reads import CatalogueReadMixin
 from netcorenoc.store.class_rules import ClassRuleMixin
+from netcorenoc.store.autonomy import AutonomyMixin
+from netcorenoc.store.decider import DeciderMixin
 from netcorenoc.store.dataset import (
     MAX_CLIENT_MEMBERS,
     DatasetMixin,
@@ -82,6 +84,8 @@ __all__ = [
 
 
 class Store(
+    AutonomyMixin,
+    DeciderMixin,
     PromotionMixin,
     SealMixin,
     ShadowMixin,
@@ -171,3 +175,8 @@ class Store(
         self._has_class_rules: bool = False
         self._has_surfaced_ack: bool = False
         self._has_notice_snooze: bool = False
+        # v0.26.0 (`0026`): the link's whole explanation, and the captured v2 feature vector.
+        self._has_link_terms: bool = False
+        self._has_pair_features: bool = False
+        self._has_situation_decider: bool = False
+        self._has_decider: bool = False

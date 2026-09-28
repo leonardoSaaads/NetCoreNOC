@@ -73,6 +73,11 @@ class StoreBase:
     # database that has not been migrated: the severity is still written, and the provenance the
     # old schema has nowhere to put is simply not written.
     _has_severity_source: bool
+    # v0.26.0: does `link` carry `terms`, and `dataset_pair` carry `features` (migration 0026)?
+    _has_link_terms: bool
+    _has_pair_features: bool
+    _has_situation_decider: bool
+    _has_decider: bool
     # v0.21.0: does `alarm` carry `surfaced_from_window_id` (migration 0021)? Read from the
     # SAME `PRAGMA table_info(alarm)` as the line above rather than a second query — one
     # probe answers for every column of one table, and two probes of one table is how they

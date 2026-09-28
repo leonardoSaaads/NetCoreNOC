@@ -162,6 +162,18 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("DELETE", "/api/catalogue/rules/{rule_id}"): "catalogue.write",
     ("POST", "/api/catalogue/import"): "catalogue.import",
     ("DELETE", "/api/catalogue/imported"): "catalogue.import",
+    # v0.26.0: what decides, autonomy, the search, the judge (ADRs #405, #412, #413).
+    ("GET", "/api/decider"): "scorer.read",
+    ("POST", "/api/decider"): "decider.write",
+    ("GET", "/api/autonomy"): "scorer.read",
+    ("GET", "/api/autonomy/decisions"): "autonomy.audit",
+    ("POST", "/api/autonomy"): "autonomy.write",
+    ("POST", "/api/autonomy/stop"): "autonomy.stop",
+    ("POST", "/api/situations/{sid}/severity"): "situation.severity",
+    ("GET", "/api/search"): "model.read",
+    ("POST", "/api/search"): "search.write",
+    ("POST", "/api/search/stop"): "search.write",
+    ("GET", "/api/judge"): "model.read",
 }
 
 # The only /api routes reachable without a resolved identity.
@@ -349,6 +361,27 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/catalogue/import"): "unscoped",
     # The undo for every import; touches `source='imported'` rows only, never a declared rule.
     ("DELETE", "/api/catalogue/imported"): "unscoped",
+    # Which family decides, its provenance and its history: arithmetic, naming no element — the
+    # reasoning `/api/scorer` has carried since v0.6.0.
+    ("GET", "/api/decider"): "unscoped",
+    ("POST", "/api/decider"): "admin_only",
+    # Autonomy's status is counts and switches; no situation is named in it.
+    ("GET", "/api/autonomy"): "unscoped",
+    # Every act names a situation, across every scope: admin, whose scope is the estate.
+    ("GET", "/api/autonomy/decisions"): "admin_only",
+    ("POST", "/api/autonomy"): "admin_only",
+    # The kill switch turns autonomy off for the whole estate and reveals nothing: unscoped, and
+    # deliberately below admin (see `autonomy.stop` in PERMISSIONS).
+    ("POST", "/api/autonomy/stop"): "unscoped",
+    # A gesture on one situation: scope-checked through the not-found branch like every other.
+    ("POST", "/api/situations/{sid}/severity"): "scoped",
+    # Trials, losses and verdicts: statements about models, counts of the operators' own labels.
+    ("GET", "/api/search"): "unscoped",
+    ("POST", "/api/search"): "admin_only",
+    ("POST", "/api/search/stop"): "admin_only",
+    # The judge: the shipped model's generated-data numbers, this site's label counts and verdicts,
+    # and the live monitor — the reasoning `/api/models` and `/api/correlation` already carry.
+    ("GET", "/api/judge"): "unscoped",
 }
 
 assert set(ROUTE_SCOPE) == set(ROUTE_PERMISSIONS), (

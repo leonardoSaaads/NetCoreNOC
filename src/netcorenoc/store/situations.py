@@ -86,6 +86,9 @@ TRANSITIONS: dict[str, dict[str | None, str]] = {
     "merge": {"new": "open"},
     "split": {"new": "open"},  # the situation the members left
     "hand_clear": {"new": "open"},
+    # v0.26.0 (ADR #412): autonomy accepted the grouping as an incident. The model's attention,
+    # attributed in `autonomy_decision` — the table records who; this records only the edge.
+    "autonomy": {"new": "open"},
     # -- cosmetic: never a state change --
     "rename": {},
     # -- leaving --
@@ -113,7 +116,12 @@ class SituationMixin(SituationEventMixin):
     """
 
     async def create_situation(
-        self, ts: float, scorer_config_id: int | None = None, act: str = "correlate"
+        self,
+        ts: float,
+        scorer_config_id: int | None = None,
+        act: str = "correlate",
+        *,
+        decider: str | None = None,
     ) -> int:
         """Open a situation, recording which scorer configuration formed it (v0.6.0 provenance).
 
@@ -139,6 +147,17 @@ class SituationMixin(SituationEventMixin):
         `_has_lifecycle` branch is what keeps this call working against a schema-13 database.
         """
         status = TRANSITIONS[act][None] if self._has_lifecycle else "open"
+        if decider is not None and self._has_situation_decider:
+            # v0.26.0: which decider formed it — the shipped model by hash, a site model by id,
+            # or the formula by configuration. The attribution an autonomous decision cites.
+            cur = await self.conn.execute(
+                "INSERT INTO situation (status, created_at, updated_at, scorer_config_id, decider) "
+                "VALUES (?, ?, ?, ?, ?) RETURNING id",
+                (status, ts, ts, scorer_config_id, decider),
+            )
+            row = await cur.fetchone()
+            assert row is not None
+            return int(row[0])
         if scorer_config_id is None:
             cur = await self.conn.execute(
                 "INSERT INTO situation (status, created_at, updated_at) VALUES (?, ?, ?) "
@@ -353,7 +372,18 @@ class SituationMixin(SituationEventMixin):
         term_a: float,
         term_e: float,
         ts: float,
+        *,
+        terms: str | None = None,
     ) -> None:
+        """One accepted link and its explanation. ``terms`` is a trained model's whole
+        decomposition (`correlate.explained_terms`); the formula's lives in the three columns."""
+        if self._has_link_terms:
+            await self.conn.execute(
+                "INSERT INTO link (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, "
+                "created_at, terms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, ts, terms),
+            )
+            return
         await self.conn.execute(
             "INSERT INTO link (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, "
             "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

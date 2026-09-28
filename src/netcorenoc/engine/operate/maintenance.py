@@ -26,6 +26,7 @@ covers the **ingest path's** readability, which a loop that runs between batches
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Callable
 
@@ -35,7 +36,10 @@ from netcorenoc.engine.correlate import severity
 from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE
 from netcorenoc.engine.dataset import census, seal
 from netcorenoc.engine.dataset.retention_policy import RETENTION_META_KEY, RetentionPolicy
+from netcorenoc.engine.model import site_search
 from netcorenoc.engine.operate.window_sweep import WindowSweepMixin
+
+log = logging.getLogger("netcorenoc")
 
 MAINT_INTERVAL_S = 5.0
 # Train once every this many maintenance ticks. The fit reads the whole labelled corpus and runs a
@@ -74,9 +78,41 @@ class MaintenanceMixin(WindowSweepMixin):
             # v0.16.2: **after** the sweep, so this counts what the sweep could not resolve rather
             # than what it was about to. See `_observe_idle_active`.
             await self._observe_idle_active(time.time())
+            await self._model_ops(time.time())
             if self.shadow.enabled and tick % TRAIN_EVERY_TICKS == 0:
                 await self.shadow.train(self.store, time.time(), self.store.lock)
                 await self._seal_once(time.time())
+
+    @property
+    def search_runner(self) -> site_search.Runner:
+        """The in-product search's one worker slot, created on first use (v0.26.0, ADR #413)."""
+        runner: site_search.Runner | None = self.__dict__.get("_search_runner")
+        if runner is None:
+            runner = site_search.Runner()
+            self.__dict__["_search_runner"] = runner
+        return runner
+
+    async def _model_ops(self, now: float) -> None:
+        """Autonomy's sweep and the search's tick (v0.26.0) — each its own short transaction.
+
+        After the maintenance pass and outside it, for `_observe_idle_active`'s reason: the pass is
+        one `async with self.store.lock` block, and these take the lock only for their own reads
+        and writes. **A failure in either rolls back its own transaction and is logged**; it never
+        reaches the next step or the ingest path, the discipline capture and shadow already keep.
+        """
+        from netcorenoc.engine.operate import autonomy
+
+        for name, step in (
+            ("autonomy", lambda: autonomy.sweep(self, now)),  # type: ignore[arg-type]
+            ("search", lambda: self.search_runner.tick(self, now)),  # type: ignore[arg-type]
+        ):
+            async with self.store.lock:
+                try:
+                    await step()
+                    await self.store.commit()
+                except Exception:
+                    await self.store.rollback()
+                    log.exception("%s step failed; ingestion is unaffected", name)
 
     async def _observe_idle_active(self, now: float) -> None:
         """Count the situations the sweep just refused to resolve (v0.16.2, DECISIONS #275).
@@ -331,3 +367,19 @@ class MaintenanceMixin(WindowSweepMixin):
         rows = self.profiler.flush_rows(now)
         if rows:
             await self.store.upsert_varbind_profiles(rows)
+        await self._memory_sweep(now)
+
+    async def _memory_sweep(self, now: float) -> None:
+        """Persist the episode memory and bound the correlator's three memories (v0.26.0).
+
+        Beside the profiler flush because it is the same kind of work — learned state leaving
+        memory for the store on the maintenance cadence, never per trap — and because
+        `engine.py`'s sweep already calls that helper, so the engine gains no line for it.
+        """
+        correlator = self.correlator
+        await self.store.upsert_episodes(correlator.episodes.flush())
+        correlator.grouper.prune(set(self.members))
+        if now - self._memory_pruned_at >= 60.0:
+            self._memory_pruned_at = now
+            correlator.prune(now)
+            await self.store.prune_episodes(now - 365 * 86400.0)
