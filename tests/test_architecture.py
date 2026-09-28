@@ -1265,7 +1265,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `autonomy_judge` and `flap` (split out of `engine.py`); `store/autonomy` and `store/decider`;
 #: three API modules (`routes/decider`, `models_decider`, `public_paths`); six console modules.
 #: **No model file is among them** — the build ships none (ADR #422).
-SRC_TREE_DIGEST = "d16bd31e6c7f4b75bde1c84993d4651427e058c845255ca3913778bd4ed42df6"
+SRC_TREE_DIGEST = "6c9e80f3e2fbd9dab2596a5cb0bd06b4fa08a3af5d856a1a149786e356a5055b"
 SRC_FILE_COUNT = 322
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

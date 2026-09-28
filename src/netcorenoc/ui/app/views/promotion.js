@@ -65,7 +65,8 @@ export class Promotion extends Loader {
           <span class="muted"> (${judge.mode})</span>${" "}
           <a href="#/settings?tab=correlation">change in Settings</a></p>
         <${ShippedJudge} shipped=${judge.shipped} />
-        <${SiteJudge} site=${judge.site} />` : html`<p class="hint">The judge's measurements could not be read.</p>`}
+        <${SiteJudge} site=${judge.site} canSearch=${Boolean(judge.shipped && judge.shipped.available)} />`
+        : html`<p class="hint">The judge's measurements could not be read.</p>`}
       ${/* The running scorer, observed (v0.22.0, item 7): moved here from Situations. */ null}
       <section class="judge-block">
         <header class="judge-head"><h3>Live</h3>

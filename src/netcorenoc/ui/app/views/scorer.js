@@ -272,7 +272,9 @@ class History extends Component {
           id: row.active ? html`<b>${row.id} (active)</b>` : String(row.id),
           params: html`<code class="mono">${`${row.w_t}/${row.w_a}/${row.w_e} tau=${row.tau_s} thr=${row.threshold}`}</code>`,
           by: row.created_by || "—",
-          when: cell(html`<${TimeCell} ts=${row.created_at} />`),
+          // The seeded default (0005) has no author and time 0: "1970, 20 000 days ago" is a
+          // date nobody chose, the same fault the decider history had (v0.26.0).
+          when: row.created_at ? cell(html`<${TimeCell} ts=${row.created_at} />`) : "at install",
           note: row.note || "—",
           action: row.active ? "" : html`<button type="button" disabled=${busy === row.id}
             onClick=${() => this.rollback(row.id)}>

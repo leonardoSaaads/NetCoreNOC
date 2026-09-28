@@ -199,6 +199,8 @@ async def test_settings_has_four_tabs_and_the_old_scorer_address_lands_on_correl
     assert "in place of the chosen decider" not in settings["dump"]
     old = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/scorer"})
     assert "What decides links" in old["dump"] and "Configured parameters" in old["dump"]
+    # The seeded configuration (0005) has time 0: it reads "at install", never 1970.
+    assert "at install" in old["dump"] and "1970" not in old["dump"]
 
 
 async def _autonomy_routes(store: Store, role: str) -> dict[str, Any]:
@@ -274,6 +276,9 @@ async def test_a_build_without_a_model_says_so_as_a_state_not_a_fault(
     assert "Deciding now, in place of the chosen decider" in settings["dump"]
     assert "stored, not deciding" not in settings["dump"], "the running formula called idle"
     judge = domdriver.run_scenario("judge", {"routes": routes})
+    judge_page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})
+    assert "Search starts one" not in judge_page["dump"], "offers a search that cannot start"
+    assert "this build carries none" in judge_page["dump"]
     generated = [b for b in judge["blocks"] if b["dataset"] == "generated data"]
     assert not [c for b in generated for c in b["charts"] if c["drawn"]], "a chart with no model"
     page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})

@@ -168,6 +168,32 @@ async def test_without_a_model_the_formula_decides_and_the_bell_says_why(
     assert not any("/" in w for w in warnings), "a path in the bell"
 
 
+async def test_a_search_is_refused_at_the_request_when_there_is_nothing_to_adapt(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A search adapts the shipped model; without one the admin is told why at once, and no run
+    is opened for the runner to refuse a tick later. The same request with a model opens a run."""
+    import authutil
+
+    def absent() -> shipped.Shipped:
+        raise shipped.NoShippedModelError(shipped.NOT_SHIPPED)
+
+    monkeypatch.setattr(shipped, "load", absent)
+    _engine, _queue, app = await authutil.make_env(store)
+    admin = await authutil.client_as(app, "admin")
+    try:
+        body = {"trials": 2, "max_rounds": 20, "minutes": 1}
+        refused = await admin.post("/api/search", json=body)
+        assert refused.status_code == 409, refused.text
+        assert "no shipped model to adapt" in refused.json()["detail"]
+        assert await store.search_runs(1) == [], "a run was opened anyway"
+        model = shipped.load_from(TEST_MODEL, json.dumps(_passing_manifest(TEST_MODEL)))
+        monkeypatch.setattr(shipped, "load", lambda: model)
+        assert (await admin.post("/api/search", json=body)).status_code == 200
+    finally:
+        await admin.aclose()
+
+
 def test_differences_compares_exactly_and_treats_nan_as_nan() -> None:
     assert differences({"a": [1.0, float("nan")]}, {"a": [1.0, float("nan")]}) == []
     assert differences({"a": 0.5}, {"a": 0.5000001}) == ["/a: published 0.5, measured 0.5000001"]

@@ -326,8 +326,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def start_search(
         body: SearchIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        """Start a search. Admin (`search.write`). One at a time: a second is a 409."""
+        """Start a search. Admin (`search.write`). One at a time: a second is a 409. A search
+        adapts the shipped model, so a build that carries none refuses here, with the reason, rather
+        than accepting a run the runner would refuse a tick later (#422)."""
         now = time.time()
+        try:
+            shipped.load()
+        except shipped.ShippedModelError as exc:
+            raise HTTPException(409, f"no shipped model to adapt: {exc}") from exc
         async with write_txn():
             runs = await store.search_runs(1)
             if runs and runs[0]["status"] == "running":

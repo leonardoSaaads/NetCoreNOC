@@ -23,7 +23,7 @@ const FLOOR_LABELS = {
   label_days: "distinct days labelled",
 };
 
-export function SiteJudge({ site }) {
+export function SiteJudge({ site, canSearch = true }) {
   if (!site) return null;
   const stats = site.stats || {};
   const floors = site.floors || {};
@@ -50,7 +50,9 @@ export function SiteJudge({ site }) {
         note="floors from the paired comparison's power (ADR #411)" />
       ${judgement ? html`<${Judgement} j=${judgement} run=${latest} />`
         : html`<section class="chart-block"><h4 class="chart-title">Latest comparison</h4>
-            <p class="hint">No search has been judged on this appliance. Settings → Search starts one.</p>
+            <p class="hint">No search has been judged on this appliance. ${canSearch
+              ? "Settings → Search starts one."
+              : "A search adapts the shipped model, and this build carries none (ADR #422)."}</p>
             <p class="judge-caption">${SITE}</p></section>`}
     </div>
     ${trials.length ? html`<h4 class="judge-sub">The latest search on this site</h4>

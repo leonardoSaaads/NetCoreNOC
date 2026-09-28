@@ -490,7 +490,7 @@ UI_HASHES: dict[str, str] = {
         "ba524fbf4cb9b2f89e8992a08e330de2578097f765ec808b7d4aad4c9ee7a3eb"
     ),
     "app/views/parts/sitejudge.js": (
-        "5d7c0e5aff6dcc18a6f96002883e3d3a8c93f0c818ba3a693dee903dec8986e2"
+        "9abdcfd8029ea4b8f668863b4a459206f19a4b4fa12e8e9e7d4a5cdf25b2e94a"
     ),
     "app/views/parts/sitsummary.js": (
         "7e82edc2fa043820c08fe10e515c794284858d896898278771246675021a59a3"
@@ -511,9 +511,9 @@ UI_HASHES: dict[str, str] = {
         "cfb004d75fa0c23592771e173ebbc62c579c49d95a203d4334bfcfd93dc2f724"
     ),
     "app/views/parts/why.js": "2a67688fa82815b28b640e6a8dfa9e6109cf4f1969b112b5a8f93311d5a7b948",
-    "app/views/promotion.js": "ee20250c87a2eca4f9ffdbb49c51e88868c3bbe22c008c762d7ed1a966d6d207",
+    "app/views/promotion.js": "2f05c88a512a007f169011fbbe373bf83a2cd6328ba69d04ddcb87abbd97ae4d",
     "app/views/quarantine.js": "04ed768d8180e7d3182086e8dd12c69c8a497196bfb0086ea5023e34a5470b5b",
-    "app/views/scorer.js": "1f2bbfac4e82bd75e6e1fcbb371e578eff202515398ffe3e7f2d97d7ff880b2e",
+    "app/views/scorer.js": "0ed95cd927706a5ab1c9452e6d935363fab28b95f565ac0d232d41195f9de4c2",
     "app/views/settings.js": "0231716afb0c5cef2143b5076bf6c47b4215ca66600f6acb812a339bafc27f2a",
     "app/views/situations.js": "afe374be8e8e920369da6fe767294cc29a7cec7fea9899a6deace262f1509241",
     "app/views/timeline.js": "f023cedba738a32c4961e4c0cb051f82bd4244be5548556c4c2633c6cfe9fe54",
@@ -611,7 +611,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/sequence.js": 5_776,
     "app/views/parts/severity.js": 3_912,
     "app/views/parts/shippedjudge.js": 11_683,
-    "app/views/parts/sitejudge.js": 4_278,
+    "app/views/parts/sitejudge.js": 4_420,
     "app/views/parts/sitsummary.js": 3_596,
     "app/views/parts/tlfilters.js": 5_030,
     "app/views/parts/tokenspanel.js": 7_287,
@@ -619,9 +619,9 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/verdict.js": 8_420,
     "app/views/parts/visibility.js": 4_041,
     "app/views/parts/why.js": 13_210,
-    "app/views/promotion.js": 13_286,
+    "app/views/promotion.js": 13_357,
     "app/views/quarantine.js": 2_247,
-    "app/views/scorer.js": 13_254,
+    "app/views/scorer.js": 13_462,
     "app/views/settings.js": 12_882,
     "app/views/situations.js": 15_602,
     "app/views/timeline.js": 7_227,
