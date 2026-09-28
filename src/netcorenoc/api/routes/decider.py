@@ -58,7 +58,7 @@ def _shipped_block() -> dict[str, Any]:
     m = model.manifest
     evaluation = m.get("evaluation", {})
     trials = m.get("search", {}).get("trials", [])
-    return _finite(
+    block: dict[str, Any] = _finite(
         {
             "available": True,
             "dataset": "generated",
@@ -94,6 +94,7 @@ def _shipped_block() -> dict[str, Any]:
             ],
         }
     )
+    return block
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -202,7 +203,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """Status for every screen's top bar, and the settings. `viewer+`, unscoped: counts and
         switches, no situation named."""
         async with store.lock:
-            state = await autonomy.status(engine)  # type: ignore[arg-type]
+            state = await autonomy.status(engine)
             settings = autonomy.Settings.from_row(await store.autonomy_setting())
             history = await store.autonomy_history(10)
         return {**state, "settings": settings.values(), "history": history}

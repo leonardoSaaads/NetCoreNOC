@@ -29,6 +29,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from typing import Any
 
 from netcorenoc import __version__
 from netcorenoc.crosscutting import audit
@@ -102,10 +103,15 @@ class MaintenanceMixin(WindowSweepMixin):
         """
         from netcorenoc.engine.operate import autonomy
 
-        for name, step in (
-            ("autonomy", lambda: autonomy.sweep(self, now)),  # type: ignore[arg-type]
-            ("search", lambda: self.search_runner.tick(self, now)),  # type: ignore[arg-type]
-        ):
+        engine: Any = self  # the mixin is only ever an `Engine`; the two steps take one
+
+        async def sweep() -> None:
+            await autonomy.sweep(engine, now)
+
+        async def search() -> None:
+            await self.search_runner.tick(engine, now)
+
+        for name, step in (("autonomy", sweep), ("search", search)):
             async with self.store.lock:
                 try:
                     await step()
@@ -230,7 +236,7 @@ class MaintenanceMixin(WindowSweepMixin):
             self.store,
             now=now,
             scorer_config_id=self.scorer_config_id,
-            scorer_params_hash=self._loaded_key[1] if self._loaded_key else None,
+            scorer_params_hash=str(self._loaded_key[1]) if self._loaded_key else None,
             learner=self.learner,
             retention=self.retention,
         )

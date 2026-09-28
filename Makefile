@@ -3,7 +3,7 @@
 PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list loadtest burst \
-	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim train train-validate \
+	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim train train-validate train-verify \
 	lab lab-demo lab-cut lab-repair lab-status \
 	bias-report dataset-stats agreement-report shadow-report census
 
@@ -154,6 +154,11 @@ train:
 # The same pipeline on the validation streams only; writes nothing, reads no test split.
 train-validate:
 	PYTHONPATH=eval $(PYTHON) -m synth.train --stage validate
+
+# Reproduce the shipped model's published numbers from the installed package: equality, not
+# tolerance. Re-records the generated dataset when eval/synth/.cache is absent (~15 min).
+train-verify:
+	PYTHONPATH=eval $(PYTHON) -m synth.verify
 
 # Regenerate the labelled corpus from its deterministic generator.
 corpus:

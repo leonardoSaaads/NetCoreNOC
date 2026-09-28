@@ -129,7 +129,7 @@ def rows_from(pairs: list[dict[str, Any]], features: dict[int, str]) -> list[Sit
 
 def split_by_time(rows: list[SiteRow]) -> tuple[list[SiteRow], list[SiteRow]]:
     """Older bags train, the newest :data:`TEST_FRACTION` of bags test. Whole bags, never pairs."""
-    first_label = {}
+    first_label: dict[tuple[str, int], float] = {}
     for r in rows:
         first_label[r.bag] = min(first_label.get(r.bag, math.inf), r.label_at)
     ordered = sorted(first_label, key=lambda b: (first_label[b], b))
@@ -231,7 +231,7 @@ def judge(
         }
     difference: dict[str, float] = {"incidents": float(len(diffs))}
     if diffs:
-        rng = random.Random(seed)
+        rng = random.Random(seed)  # nosec B311 - seeded statistical sampling, never a secret
         means = sorted(
             sum(diffs[rng.randrange(len(diffs))] for _ in diffs) / len(diffs)
             for _ in range(REPLICATES)

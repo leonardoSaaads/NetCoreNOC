@@ -80,9 +80,11 @@ class ScorerLifecycleMixin(EngineBase):
             # impossible, so this is reached only when `config_id` is NULL.
             self._load_model_version(model_row)
             return
-        fallback = [] if refused is None else [
-            f"{refused}. Correlation is running on the additive formula as configured."
-        ]
+        fallback = (
+            []
+            if refused is None
+            else [f"{refused}. Correlation is running on the additive formula as configured."]
+        )
 
         key = None if row is None else (int(row["id"]), str(row["params_hash"]), refused)
         if key == self._loaded_key:

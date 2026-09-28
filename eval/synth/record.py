@@ -38,6 +38,7 @@ sys.path.insert(0, str(HERE.parent.parent / "tools"))
 
 from netcorenoc.engine.correlate.correlate import CorrelationResult, WindowAlarm  # noqa: E402
 from netcorenoc.engine.correlate.learn import Learner  # noqa: E402
+from netcorenoc.engine.correlate.scorer_contract import CONTRACT_VERSION  # noqa: E402
 from netcorenoc.engine.model import gam  # noqa: E402
 from netcorenoc.engine.operate.engine import Engine  # noqa: E402
 from netcorenoc.ingest.events import TrapEvent  # noqa: E402
@@ -170,7 +171,7 @@ async def _record(stream: Stream) -> StreamLog:
     try:
         mv = await store.insert_model_version(
             kind=gam.KIND,
-            contract_version="1.1",
+            contract_version=CONTRACT_VERSION,
             params_document=PROBE,
             params_hash=gam.fingerprint(PROBE),
             challenger_run_id=None,
@@ -179,6 +180,9 @@ async def _record(stream: Stream) -> StreamLog:
             note="recording probe",
         )
         await store.set_active_model_version(mv, "recorder", EPOCH)
+        # The probe is a site-family model; without this the default decider — the shipped model,
+        # or the formula when none is installed — would run, and the formula reads no v2 vector.
+        await store.set_decider_mode("site", "recorder", EPOCH, "recording probe")
         await store.commit()
         engine = Engine(store, asyncio.Queue())
         await engine.start()

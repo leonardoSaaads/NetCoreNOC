@@ -218,6 +218,6 @@ def test_a_site_row_does_not_move_when_the_incumbent_changes_its_mind() -> None:
         for k in range(12)
     ]
     features = dict.fromkeys(range(12), vec)
-    flipped = [{**p, "incumbent_linked": 1 - p["incumbent_linked"]} for p in pairs]
+    flipped = [{**p, "incumbent_linked": 1 - int(p["incumbent_linked"] or 0)} for p in pairs]
     assert site.rows_from(pairs, features) == site.rows_from(flipped, features)
     assert {r.y for r in site.rows_from(pairs, features)} == {0, 1}

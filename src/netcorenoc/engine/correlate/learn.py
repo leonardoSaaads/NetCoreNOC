@@ -171,7 +171,7 @@ class Matrix:
         self.total, self.total_e = float(data["total"][0]), int(data["total"][1])
         self.marginals = {int(k): (float(m), int(e)) for k, m, e in data["marginals"]}
         self.pairs = {_pair(e.a_id, e.b_id): (e.n, e.g) for e in edges}
-        return data.get("clock") == CLOCK
+        return bool(data.get("clock") == CLOCK)
 
 
 class Learner:

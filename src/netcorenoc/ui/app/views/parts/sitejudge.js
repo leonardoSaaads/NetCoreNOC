@@ -39,12 +39,12 @@ export function SiteJudge({ site }) {
         : "every floor met — a search can be judged"}</span>
     </header>
     <div class="judge-grid">
-      <${Bars} title="Sufficiency" max=${1}
+      <${Bars} title="Sufficiency" max=${100} unit="%"
         rows=${Object.entries(FLOOR_LABELS).map(([k, label]) => {
           const have = stats[k] ?? 0;
           const need = floors[k] ?? 1;
           return { key: k, label, face: `${label} — ${have} of ${need}`,
-                   value: Math.min(have / need, 1), tone: have >= need ? null : "warn" };
+                   value: Math.min(have / need, 1) * 100, tone: have >= need ? null : "warn" };
         })}
         source=${SITE} span=${`${stats.rows ?? 0} labelled pairs`}
         note="floors from the paired comparison's power (ADR #411)" />

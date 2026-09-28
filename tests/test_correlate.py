@@ -395,7 +395,7 @@ def test_evaluated_carries_every_candidate_and_links_is_unchanged() -> None:
     assert len(result.evaluated) == len(result.considered)
     assert len(result.links) <= MAX_LINKS_PER_ALARM
 
-    accepted = [e for e in result.evaluated if e.result.linked]
+    accepted = [e for e in result.evaluated if e.linked]
     assert len(accepted) >= len(result.links), "links cannot exceed what the scorer accepted"
     # Every persisted link appears in `evaluated` carrying the identical score object.
     by_id = {e.other.alarm_id: e.result for e in result.evaluated}
@@ -419,6 +419,7 @@ def test_evaluated_records_rejected_pairs_that_links_discards() -> None:
     assert result.links == [], "a cold learner 100 s apart on another device must not link"
     assert len(result.evaluated) == 1
     rejected = result.evaluated[0]
+    assert rejected.result is not None, "the additive formula always explains its verdict"
     assert rejected.result.linked is False
     assert rejected.result.score < rejected.result.threshold
     # The score exists and is a real number — this is exactly what v0.7.5 computed and discarded.
@@ -439,7 +440,7 @@ def test_truncated_links_are_derivable_from_what_process_returns() -> None:
         c.process(wa(i, class_id=5, device_id=10, ts=1000.0 + i * 0.1), learner)
     result = c.process(wa(50, class_id=5, device_id=10, ts=1001.0), learner)
 
-    accepted = [e for e in result.evaluated if e.result.linked]
+    accepted = [e for e in result.evaluated if e.linked]
     kept = {link.other.alarm_id for link in result.links}
     truncated = [e for e in accepted if e.other.alarm_id not in kept]
 
@@ -448,7 +449,7 @@ def test_truncated_links_are_derivable_from_what_process_returns() -> None:
     assert len(truncated) == len(accepted) - MAX_LINKS_PER_ALARM
     # A truncated pair is an ACCEPTED link the cap dropped — not a rejection.
     for pair in truncated:
-        assert pair.result.linked is True
+        assert pair.linked is True
 
 
 def test_correlation_result_still_constructs_without_evaluated() -> None:

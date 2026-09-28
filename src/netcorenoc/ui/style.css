@@ -2793,7 +2793,7 @@ button.mw-row-name {
 .decider-mode-label { font-weight: 600; }
 .decider-mode-label em { font-style: normal; font-size: var(--fs-xs); color: var(--accent); margin-left: var(--space-1); }
 .decider-mode-note { font-size: var(--fs-sm); color: var(--fg-muted); }
-.dimmed > .scorerview { opacity: 0.85; }
+.formula-folded > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; color: var(--accent); font-weight: 600; }
 .grade-list { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .grade { display: grid; grid-template-columns: var(--tap) 1fr; gap: var(--space-2); align-items: start; }
 .grade > span { display: flex; flex-direction: column; }

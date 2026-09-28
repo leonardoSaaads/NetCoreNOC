@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import pickle
 import random
+from typing import Any
 
 import pytest
 
@@ -12,7 +13,7 @@ from netcorenoc.engine.correlate.features import FEATURE_NAMES
 from netcorenoc.engine.model import gam, gam_fit, model_version, search
 from netcorenoc.engine.model.gam import GamDocumentError
 
-GOOD = {
+GOOD: dict[str, Any] = {
     "features": ["dt", "same_ne"],
     "format": gam.FORMAT,
     "grouping": {"join_bias": 0.0, "merge_bias": 1.0, "merge_min_pairs": 3.0},
@@ -60,7 +61,7 @@ def test_a_valid_document_scores_and_its_terms_sum_exactly() -> None:
                 ]
             },
             "increasing",
-        ),  # type: ignore[index]
+        ),
         (
             {
                 "shapes": [
@@ -69,7 +70,7 @@ def test_a_valid_document_scores_and_its_terms_sum_exactly() -> None:
                 ]
             },
             "hard switch",
-        ),  # type: ignore[index]
+        ),
         (
             {
                 "shapes": [
@@ -78,7 +79,7 @@ def test_a_valid_document_scores_and_its_terms_sum_exactly() -> None:
                 ]
             },
             "number",
-        ),  # type: ignore[index]
+        ),
     ],
 )
 def test_malformed_documents_are_refused(change: dict[str, object], reason: str) -> None:

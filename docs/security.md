@@ -122,6 +122,21 @@ things bound that:
   hours suppresses nothing until a human editor or admin confirms it, and an agent may never
   confirm one it created.
 
+## The model file is data, and can be replaced (v0.26.0)
+
+The shipped link model is two JSON files inside the package — `engine/model/linkmodel.json` and its
+manifest — and **nothing in either is ever executed**: no `pickle`, no `eval`, no import, no field
+that names code. Loading one is a validation: exact keys, finite numbers within stated bounds,
+strictly increasing bin edges, only features this build computes, a size cap, and the manifest's
+SHA-256 of the document (integrity, so the console can never describe one model while the engine
+runs another — **not** an authenticity check). A file that fails is refused with its reason and the
+appliance runs the additive formula as configured. Anyone who can write the package directory can
+change what groups alarms, so treat it like the rest of the installed code (#419).
+
+**Autonomy** acts as the model, never as a person: every act is written to the audit log under
+`model:<ref>`, and the kill switch (`POST /api/autonomy/stop`) is deliberately **below** admin so
+that an editor can always stop it. Turning a grade on is admin-only (#412).
+
 ## Sessions, passwords, throttling
 
 * `scrypt` (n = 2¹⁷). Policy is **length only**: 12–128 characters, no composition rules, no forced

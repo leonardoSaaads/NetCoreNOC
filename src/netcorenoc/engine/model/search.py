@@ -51,7 +51,7 @@ def draw(
     seed: int, index: int, space: dict[str, tuple[str, float, float]] = SPACE
 ) -> dict[str, float]:
     """Trial ``index``'s parameters: a pure function of ``(seed, index)``."""
-    rng = random.Random(f"gam-search|{seed}|{index}")
+    rng = random.Random(f"gam-search|{seed}|{index}")  # nosec B311 - seeded statistical sampling, never a secret
     out: dict[str, float] = {}
     for name in sorted(space):
         kind, lo, hi = space[name]

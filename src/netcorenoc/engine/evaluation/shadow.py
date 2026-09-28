@@ -188,14 +188,14 @@ class Shadow:
                     class_affinity=(
                         pair.vector[4]
                         if pair.vector is not None
-                        else _value_of(pair.result, "class_affinity")  # type: ignore[arg-type]
+                        else _value_of(pair.result, "class_affinity")
                     ),
                     ne_i=entry.device_id,
                     ne_j=other.device_id,
                     entity_affinity=(
                         pair.vector[5]
                         if pair.vector is not None
-                        else _value_of(pair.result, "entity_affinity")  # type: ignore[arg-type]
+                        else _value_of(pair.result, "entity_affinity")
                     ),
                     same_oid_root=(
                         (entry.oid_root == other.oid_root)

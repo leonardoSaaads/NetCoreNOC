@@ -324,9 +324,9 @@ class SafeScorer:
         degrades to the built-in formula for the rest of the process, and ``None`` tells the
         caller to take the full path for this pair, which then runs on the fallback.
         """
-        if not self.fast_path:
+        logit = getattr(self.delegate, "logit", None)
+        if self.degraded or logit is None:
             return None
-        logit = self.delegate.logit
         threshold = float(getattr(self.delegate, "threshold", 0.0))
         started = time.monotonic()
         try:

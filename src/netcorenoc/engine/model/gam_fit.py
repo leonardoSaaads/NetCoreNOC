@@ -169,7 +169,7 @@ def fit(
     n = len(train)
     if n == 0:
         raise ValueError("cannot fit on an empty dataset")
-    rng = random.Random(params.seed)
+    rng = random.Random(params.seed)  # nosec B311 - seeded statistical sampling, never a secret
     if edges is None:
         edges = {
             f: bin_edges(list(col), params.max_bins)
@@ -276,12 +276,12 @@ def fit(
     tables: list[tuple[int, int, tuple[float, ...], tuple[float, ...], list[list[float]]]] = []
     if params.interactions > 0:
         tables = _interactions(train, binned, edges, pred, params, rng, names)
-    merged = [
-        [a + b for a, b in zip(shape, base_shapes[f], strict=True)]
-        if base_shapes[f] is not None
-        else shape
-        for f, shape in enumerate(shapes)
-    ]
+    merged: list[list[float]] = []
+    for f, shape in enumerate(shapes):
+        extra = base_shapes[f]
+        merged.append(
+            shape if extra is None else [a + b for a, b in zip(shape, extra, strict=True)]
+        )
     document = _document(
         names, edges, merged, tables, intercept, binned, train, threshold, grouping
     )

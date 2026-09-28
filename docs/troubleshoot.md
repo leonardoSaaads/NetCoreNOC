@@ -126,13 +126,13 @@ damping (10× above 50 alarms in the window) exists for this, and [F58 and
 F61](findings.md#f58--a-storm-defeats-min_edge_n-for-every-ne-in-the-window) record the cases where
 it is not enough. **Split** the situation — that is the signal that teaches it.
 
-If it happens outside a storm, the **Link scorer** preview will show you what a higher threshold
+If it happens outside a storm, the **Settings → Correlation** preview will show you what a higher threshold
 would do to your own recent alarms before you change anything.
 
 ### Grouping changed and you do not know why
 
 Every situation records the scorer configuration that formed it (`scorer_config_id`), and the
-configuration history is immutable and append-only. The **Link scorer** screen shows the history and
+configuration history is immutable and append-only. **Settings → Correlation** shows the history and
 rollback is one click — it moves a pointer, it never edits history.
 
 ## Load

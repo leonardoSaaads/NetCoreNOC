@@ -249,3 +249,17 @@ set_my_profile  # netcorenoc/api/routes/people.py
 set_user_avatar  # netcorenoc/api/routes/people.py
 drop_user_avatar  # netcorenoc/api/routes/people.py
 set_user_profile  # netcorenoc/api/routes/people.py
+
+# v0.26.0: route handlers registered by decorator (ADRs #405, #412, #413).
+get_decider  # netcorenoc/api/routes/decider.py
+set_decider  # netcorenoc/api/routes/decider.py
+get_autonomy  # netcorenoc/api/routes/decider.py
+stop_autonomy  # netcorenoc/api/routes/decider.py
+get_search  # netcorenoc/api/routes/decider.py
+start_search  # netcorenoc/api/routes/decider.py
+stop_search  # netcorenoc/api/routes/decider.py
+get_judge  # netcorenoc/api/routes/decider.py
+# Dataclass fields serialised by `asdict` into the manifest, the search record and the settings row.
+trace_every  # netcorenoc/engine/model/gam_fit.py — FitResult, charted as the train/validation trace
+train_loss  # netcorenoc/engine/model/search.py — Trial, charted beside the validation loss
+set_at  # netcorenoc/engine/operate/autonomy.py — Settings, shown in the autonomy history

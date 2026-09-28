@@ -269,6 +269,11 @@ def main() -> int:
         long_logs, seed=args.seed, time_window=(0.0, 0.7)
     )
     rows_valid = dataset.training_rows(valid_logs, seed=args.seed)
+    # A recording that lost its feature vectors (a decider that reads none ran instead of the
+    # probe) must stop here, loudly, rather than train on empty rows.
+    short = [r for r in rows_train[:1000] + rows_valid[:1000] if len(r.x) != len(FEATURE_NAMES)]
+    if short or not rows_train:
+        raise SystemExit(f"the recorded vectors are not {len(FEATURE_NAMES)} long; re-record")
     rows_train = _cap(rows_train, MAX_TRAIN_ROWS, args.seed)
     rows_valid = _cap(rows_valid, MAX_VALID_ROWS, args.seed + 1)
     print(f"rows: train {len(rows_train)}, valid {len(rows_valid)}", file=sys.stderr)

@@ -50,7 +50,7 @@ async def _one_situation(engine: Engine, store: Store) -> int:
         engine, store, [trap("10.0.0.1", oid, "a", T), trap("10.0.0.1", oid, "b", T + 2.0)]
     )
     cur = await store.conn.execute("SELECT id FROM situation")
-    rows = await cur.fetchall()
+    rows = list(await cur.fetchall())
     assert len(rows) == 1
     return int(rows[0][0])
 
@@ -96,7 +96,9 @@ async def test_every_act_is_attributed_and_explained(store: Store, test_model: o
     cur = await store.conn.execute(
         "SELECT status, model_name, operator_name FROM situation WHERE id=?", (sid,)
     )
-    status, name, operator_name = await cur.fetchone()
+    found = await cur.fetchone()
+    assert found is not None
+    status, name, operator_name = found
     assert status == "open" and name, "accepted and named"
     assert operator_name is None, "the model wrote the operator's column"
     # A second pass acts no further: each grade acts once per situation.
@@ -105,12 +107,16 @@ async def test_every_act_is_attributed_and_explained(store: Store, test_model: o
 
 
 async def test_the_schema_refuses_an_unexplained_act(store: Store) -> None:
+    """The CHECK itself, on a real situation, so no other constraint can be what refuses it."""
+    insert = (
+        "INSERT INTO autonomy_decision (situation_id, grade, action, decider, confidence, "
+        "explanation, at) VALUES (?, 'naming', 'named', 'shipped:x', 0.9, ?, 1.0)"
+    )
     async with store.lock:
-        with pytest.raises(sqlite3.IntegrityError):
-            await store.conn.execute(
-                "INSERT INTO autonomy_decision (situation_id, grade, action, decider, confidence, "
-                "explanation, at) VALUES (1, 'naming', 'named', 'shipped:x', 0.9, '{}', 1.0)"
-            )
+        sid = await store.create_situation(T)
+        await store.conn.execute(insert, (sid, '{"why":"control"}'))  # the control is accepted
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+            await store.conn.execute(insert, (sid, "{}"))
 
 
 async def test_the_formula_never_acts(store: Store, test_model: object) -> None:

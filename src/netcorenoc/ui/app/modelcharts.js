@@ -204,12 +204,14 @@ export function Versus({ label, model, formula, lower }) {
   if (!model) return null;
   const better = formula && (lower ? model.point < formula.point : model.point > formula.point);
   const worse = formula && (lower ? model.point > formula.point : model.point < formula.point);
+  // The explicit spaces are F112's: four boxes on four rows still concatenate in textContent,
+  // which is what a copy-paste and a screen reader get.
   return html`<div class=${cx("versus", better && "versus-better", worse && "versus-worse")}>
-    <div class="versus-label">${label}</div>
-    <div class="versus-value">${fmt(model.point, 3)}
+    <div class="versus-label">${label}</div>${" "}
+    <div class="versus-value">${fmt(model.point, 3)}${" "}
       <span class="versus-mark" aria-label=${better ? "better than the formula" : worse ? "worse than the formula" : "same as the formula"}
-        >${better ? "▲" : worse ? "▼" : "="}</span></div>
-    <div class="versus-ci">${fmt(model.low, 3)} – ${fmt(model.high, 3)}</div>
+        >${better ? "▲" : worse ? "▼" : "="}</span></div>${" "}
+    <div class="versus-ci">${fmt(model.low, 3)} – ${fmt(model.high, 3)}</div>${" "}
     ${formula ? html`<div class="versus-formula">formula ${fmt(formula.point, 3)}</div>` : null}
   </div>`;
 }

@@ -4,6 +4,46 @@ The product's central claim is that it starts knowing nothing about your network
 from the trap stream alone. This page is how, and how to read the evidence when you disagree with
 it.
 
+## What decides, since v0.26.0
+
+Three families can decide which alarms belong together, and an admin picks one in
+**Settings → Correlation** ([ADR #405](adr/DECISIONS.md)):
+
+| Family | What it is | When it runs |
+|---|---|---|
+| **Shipped model** | A boosted generalised additive model trained before release on generated incidents, validated on families it never saw | **The default**, from the first trap |
+| **Site model** | The shipped model adapted to this appliance's labels by the in-product search | When the judge says it is better here and an admin switches to it |
+| **Additive formula** | The three-term score below, unchanged | Opt-in; also the fallback if the shipped model cannot be loaded |
+
+A trained model sees **fifteen relations** between two alarms, not three — time apart, same element,
+same trap type, shared OID arcs, the learned class and element affinities, how often these two
+elements (and these two faults) have failed together **on separate occasions** before, severity,
+burst size, chatter, how many elements each has co-failed with, and whether one trap's varbinds name
+the other's address. Each was measured by ablation; three that did not pay were dropped (#409).
+None is an identifier, and none is derived from what the running decider decided.
+
+It also sees **more candidates**: besides the 120-second window, bounded rings over the last hour
+recall live alarms on the same element, under the same OID parent and on elements this one has
+co-failed with before (#418). That is what lets an optical degradation whose stages are ten minutes
+apart, or a BGP session that times out three minutes after its link, be one situation.
+
+And it **groups differently**: an alarm joins the situation whose members it agrees with *on
+average* (log-odds evidence above a bias), and two situations merge only when the evidence between
+them, accumulated over many pairs, says so — correlation clustering rather than connected
+components, so one weak bridge no longer merges two concurrent incidents (#418). The biases are
+chosen on validation as the fewest **operator repair gestures** among the settings that keep
+concurrent incidents apart at least as well as the formula (#409).
+
+Every link a model makes stores its **whole explanation** — each feature's contribution to the
+log-odds, and the intercept — and they sum to the decision exactly (#407). The model file is
+**data**: a JSON table of numbers, validated field by field before it is used, never code (#419).
+
+An all-cleared situation stays live for **five minutes** so a bounce rejoins it instead of opening a
+new one (#410).
+
+The rest of this page describes the additive formula, which is what a model's explanation is
+compared against and what runs when you choose it.
+
 ## Every trap becomes three numbers
 
 A trap is reduced to a **device** (the source IP), a **class** (the trap OID, as an opaque token —
@@ -55,8 +95,8 @@ On screen both terms show their gated values, so the three printed numbers still
 exactly. How many pairs were refused is in the correlation-health panel on **Situations**, under
 *"how it decided"*.
 
-A **situation** is a connected component of the resulting link graph. Within one, learned temporal
-precedence flags the probable root cause.
+Under the formula, a **situation** is a connected component of the resulting link graph — exactly
+as before v0.26.0. Within one, learned temporal precedence flags the probable root cause.
 
 ## What is learned, and how
 
@@ -128,7 +168,7 @@ How to read one:
   it.
 * **An entity-affinity term of exactly 0.35** means the two alarms are on the same network element —
   structural, not learned. A term of exactly **0.0** means the pair has not cleared `MIN_EDGE_N`.
-* **A score just over 0.5** is a marginal decision. The **Link scorer** screen's preview will show
+* **A score just over 0.5** is a marginal decision. The **Settings → Correlation** preview will show
   you how many of your recent situations sit there.
 
 Every situation also records **which scorer configuration formed it** (`scorer_config_id`), so a
@@ -138,7 +178,9 @@ grouping stays explainable after the parameters change.
 
 The three-term score is the *default implementation of an interface*, not a hard-coded expression.
 An admin — and only an admin, there is no editor delegation — can retune `w_t`, `w_a`, `w_e`, `τ`
-and the threshold from the **Link scorer** screen.
+and the threshold from **Settings → Correlation** (the *Link scorer* screen until v0.26.0; its
+address still opens that tab). The numbers group alarms only while the additive formula is the
+chosen decider.
 
 Four things make that safe to offer:
 
@@ -156,12 +198,13 @@ parity is a release gate, not a claim.
 
 ## The model kinds
 
-Five scorer kinds exist. Four of them are trained; all five run **in this process, in pure Python,
+Six scorer kinds exist. Five of them are trained; all six run **in this process, in pure Python,
 with no new dependency**:
 
 | Kind | What it is |
 |---|---|
-| `additive` | The five-number formula above, tuned by hand. The default and the champion |
+| `gam` | A boosted generalised additive model over the fifteen relations. **The shipped default** (v0.26.0) |
+| `additive` | The five-number formula above, tuned by hand. Opt-in since v0.26.0 |
 | `logistic` | The same three features with coefficients fitted from labelled evidence |
 | `tree` | A CART over the three features |
 | `forest` | A bagged ensemble of them |
@@ -204,7 +247,20 @@ project's own outcome today. The floors it refuses against were registered in
 
 Two limits worth knowing when you read a verdict:
 
-* **`INSUFFICIENT_EVIDENCE` is a terminal answer, not an error.** *"The challenger is not better"*
-  and *"this corpus cannot tell"* are opposite claims and the report never conflates them.
+* **`INSUFFICIENT_EVIDENCE` is an answer, not an error.** *"The challenger is not better"* and
+  *"this corpus cannot tell"* are opposite claims and the report never conflates them. Since
+  v0.26.0 it is final **for the labels it was computed on**, not for the release: the next search,
+  on more labels, asks again (#417).
+
+## Adapting to this site (v0.26.0)
+
+**Settings → Search** starts a hyperparameter search over this appliance's labelled situations:
+random search with successive halving, seeded, bounded by a budget you set, stoppable, in its own
+process so ingestion never waits on it (#413). Its result is a *site model* that decides nothing on
+its own. It is judged against the shipped model on **your newest labels**, paired per incident, and
+on a generated benchmark packaged with the shipped model so that it cannot forget what it knew
+(#411). Only a `BETTER` verdict lets an admin switch to it, and the server re-derives the verdict
+when asked. The floors — 20 labelled incidents, 6 of them in the newest part, 4 splits asserting a
+negative, labels from 3 days — and their reasoning are on the Judge screen and in #411.
 * Beside every floor the report prints the **minimum detectable difference** at your corpus's `n`,
   because a corpus can meet every floor and still be unable to resolve anything.

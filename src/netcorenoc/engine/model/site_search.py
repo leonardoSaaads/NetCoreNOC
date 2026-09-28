@@ -28,6 +28,7 @@ import queue
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
+from netcorenoc.engine.correlate.features import FEATURE_NAMES
 from netcorenoc.engine.correlate.scorer_contract import CONTRACT_VERSION
 from netcorenoc.engine.model import gam, gam_fit, search, shipped, site
 
@@ -154,7 +155,7 @@ class Runner:
         }
         payload = {
             "base": base.document,
-            "names": list(site.FEATURE_NAMES),
+            "names": list(FEATURE_NAMES),
             "train": [[r.y, r.w, *r.x] for r in fit_rows],
             "valid": [[r.y, r.w, *r.x] for r in (valid_rows or fit_rows)],
             "budget": budget,

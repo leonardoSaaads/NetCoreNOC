@@ -19,10 +19,13 @@ import { Curve, Scatter, Steps, Confusion, Versus, Diverging } from "../../model
 
 const GEN = "generated data (eval/synth), held-out test streams";
 const HEADLINE = [
+  ["repair_gestures", "repair gestures / incident", true],
   ["pairwise_f1", "pairwise F1", false],
   ["ari", "adjusted Rand", false],
   ["over_merge_rate", "over-merge rate", true],
   ["under_merge_rate", "under-merge rate", true],
+  ["split_bag_intact_rate", "concurrent incidents merged", true],
+  ["asserted_negative_respected_rate", "negatives kept apart", false],
 ];
 const SPLITS = {
   test_iid: "unseen streams, trained families",
@@ -102,6 +105,7 @@ export function ShippedJudge({ shipped }) {
 
 function SplitBars({ splits, held }) {
   const rows = [];
+  const counts = Object.entries(splits).map(([k, s]) => `${k} ${s.model.streams}`).join(", ");
   for (const [key, label] of Object.entries(SPLITS)) {
     const s = splits[key];
     if (!s) continue;
@@ -112,8 +116,8 @@ function SplitBars({ splits, held }) {
     rows.push({ key: `${fam}-m`, label: `${fam} (held out) — model`, value: s.model.pairwise_f1.point, tone: null });
     rows.push({ key: `${fam}-f`, label: `${fam} (held out) — formula`, value: s.formula.pairwise_f1.point, tone: "muted" });
   }
-  return html`<${Bars} title="Pairwise F1 by test split" rows=${rows} max=${1}
-    source=${GEN} span="each split is its own set of streams"
+  return html`<${Bars} title="Pairwise F1 by test split" rows=${rows} max=${1} unit="ratio"
+    source=${GEN} span=${`streams per split: ${counts}`}
     note="held-out families were never in training or validation" />`;
 }
 
@@ -130,8 +134,8 @@ function Calibration({ cal, n }) {
 
 function FirstHour({ fh }) {
   if (!fh || !fh.model) return null;
-  return html`<${Bars} title="A fresh appliance's first hour" max=${1}
-    rows=${HEADLINE.map(([k, label]) => [
+  return html`<${Bars} title="A fresh appliance's first hour" max=${1} unit="ratio"
+    rows=${HEADLINE.filter(([k]) => k !== "repair_gestures").map(([k, label]) => [
       { key: `${k}-m`, label: `${label} — model`, value: fh.model[k].point, tone: null },
       { key: `${k}-f`, label: `${label} — formula`, value: fh.formula[k].point, tone: "muted" },
     ]).flat()}
@@ -167,7 +171,7 @@ export class SearchCharts extends Component {
           points=${trials.filter((t) => t.rung === 0).map((t) => ({ x: t.params[chosen], y: t.valid_loss }))}
           xLabel=${chosen} yLabel="validation log loss" source=${source} n=${`${trials.filter((t) => t.rung === 0).length} first-rung fits`} />
       </section>
-      <${Bars} title="Hyperparameter importance" max=${1}
+      <${Bars} title="Hyperparameter importance" max=${1} unit="ratio"
         rows=${importance.map(([k, v]) => ({ key: k, label: k, value: v, tone: null }))}
         source=${source} span=${`${trials.filter((t) => t.rung === 0).length} first-rung fits`}
         note="Spearman ρ² with the loss — a rank correlation, not fANOVA" />

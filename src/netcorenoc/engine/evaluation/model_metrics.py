@@ -272,7 +272,7 @@ def cluster_bootstrap(
     point = statistic(everything)
     if len(clusters) < 2:
         return Interval(point, point, point, len(clusters))
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # nosec B311 - seeded statistical sampling, never a secret
     values = []
     for _ in range(replicates):
         pick: list[int] = []

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pytest
 
 from netcorenoc.engine.evaluation import model_metrics as mm
@@ -38,7 +40,7 @@ def test_the_cluster_bootstrap_resamples_clusters_and_is_seeded() -> None:
     clusters = [[0, 1], [2, 3], [4, 5], [6, 7]]
     values = [1, 1, 0, 0, 1, 0, 1, 1]
 
-    def mean(idx: list[int] | tuple[int, ...]) -> float:
+    def mean(idx: Sequence[int]) -> float:
         return sum(values[i] for i in idx) / len(idx)
 
     a = mm.cluster_bootstrap(clusters, mean, replicates=100, seed=3)

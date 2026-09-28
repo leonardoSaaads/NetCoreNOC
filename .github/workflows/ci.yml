@@ -188,16 +188,20 @@ jobs:
           # v0.21.0: 18 -> 21 (`0019` severity provenance, `0020` organization, `0021` the
           # maintenance-window tables); v0.22.0: 21 -> 24 (`0022` host samples, `0023` class
           # rules, `0024` notice snooze and the outlived-window ack); v0.25.0: 24 -> 25 (`0025` people: display
-          # names, photos, token purpose). A literal, deliberately: a release that adds a migration
+          # names, photos, token purpose); v0.26.0: 25 -> 26 (`0026` the learned decider, autonomy,
+          # search). A literal, deliberately: a release that adds a migration
           # changes this line in the same commit, which is what makes the schema a reviewable
           # diff rather than a thing that grew. `tests/test_upgrade.py` and
           # `tests/test_bag_identity.py` carry the same pin for the same reason.
           python - <<'PY'
           import sqlite3
           v = sqlite3.connect("/tmp/ci.db").execute("PRAGMA user_version").fetchone()[0]
-          assert v == 25, f"the appliance booted at schema {v}, not 25"
+          assert v == 26, f"the appliance booted at schema {v}, not 26"
           print(f"schema version {v}, all migrations applied")
           PY
+          # v0.26.0: the shipped model is package data. A wheel without it would boot on the
+          # formula and say so in the bell — correct, and exactly the silent loss F85 was.
+          /tmp/clean/bin/python -c "from netcorenoc.engine.model import shipped; m = shipped.load(); print(m.ref, m.manifest['verdict']['passed'])"
           kill %1
 
       - name: Build the container image

@@ -72,9 +72,21 @@ distribution behind it, and is collapsed until then.
 
 ## How it works
 
+**Since v0.26.0 a pre-trained model decides from the first trap.** It was trained on generated
+incidents, recorded through this appliance's own engine, validated on incident families it never
+saw, and it ships as a JSON table of numbers that is validated before it is used — never code. It
+sees fifteen relations between two alarms (time, element, trap type, shared OID arcs, learned
+affinities, how often the two have failed together before, severity, storm and chatter levels,
+references between traps), recalls candidates back an hour, and groups by correlation clustering, so
+one weak link no longer merges two concurrent incidents. Every link carries its exact per-feature
+explanation. The additive formula below is one choice away in Settings, and it is the fallback.
+Autonomy — the model accepting, naming, closing or grading situations itself — is off until an admin
+turns a grade on, turns itself off when operators disagree with it, and stops on one click from any
+screen. [`docs/correlation.md`](docs/correlation.md) is the full account.
+
 Every trap is reduced to a **device** (source IP), a **class** (the trap OID as an opaque token — no
-MIB is ever consulted) and an **instance**. Alarms deduplicate on that fingerprint. Two alarms
-inside a 120-second window are linked when
+MIB is ever consulted) and an **instance**. Alarms deduplicate on that fingerprint. Under the
+additive formula, two alarms inside a 120-second window are linked when
 
 ```
 s = 0.3·e^(−Δt/30s) + 0.35·A[class_i, class_j] + 0.35·E[ne_i, ne_j] > 0.5
@@ -100,9 +112,9 @@ hour. Everything beyond that — cross-device correlation,
 raise/clear pairs, which varbind names the alarmed entity — is learned from *your* stream. Run it
 alongside your existing NMS from day one; it only needs a copy of the traps.
 
-The formula is a seam, not a constant: five scorer kinds exist (`additive`, `logistic`, `tree`,
-`forest`, `gradient_boosting`), all running in this process in pure Python with **no new
-dependency**. Each decomposes its own decision into the same three contributions, **exactly** — a
+The formula is a seam, not a constant: six scorer kinds exist (`gam` — the shipped default —
+`additive`, `logistic`, `tree`, `forest`, `gradient_boosting`), all running in this process in pure
+Python with **no new dependency**. Each decomposes its own decision into named contributions that sum to it **exactly** — a
 model too large to explain exactly is refused rather than approximated. Nothing is promoted without
 evidence measured against floors registered before the data existed, and there is no HTTP route that
 creates a model version.

@@ -164,8 +164,9 @@ def evaluate(root: Path, scorer: gam.GamScorer, seed: int) -> dict[str, Any]:
             o = group(log, dec)
             if not o.ts:
                 continue
-            cut = o.ts[0] + 0.7 * (o.ts[-1] - o.ts[0])
-            bucket.append(restrict(o, [i for i, t in enumerate(o.ts) if t > cut]))
+            # Whole incidents, by their first activation: the complement of what trained.
+            older = dataset.incident_side(log.activations(), (0.0, 0.7))
+            bucket.append(restrict(o, [i for i, t in enumerate(o.truth) if not older[t]]))
     out["splits"]["test_time"] = {
         "model": _metrics_ci(tm, seed=seed),
         "formula": _metrics_ci(tf, seed=seed),

@@ -54,13 +54,15 @@ export class Correlation extends Component {
       <${Picker} decider=${decider} onDone=${this.read} />
       <${Provenance} shipped=${decider.shipped} />
       <${SiteModels} models=${decider.site_models} />
-      ${data.scorer.ok ? html`<section class=${cx("panel-block", decider.mode !== "additive" && "dimmed")}>
+      ${data.scorer.ok && decider.mode === "additive" ? html`<section class="panel-block">
         <${SectionHeading} title="The additive formula"
-          hint=${decider.mode === "additive"
-            ? "Deciding now. Changes apply at the next engine reload."
-            : "Stored, not deciding: choose the additive formula above for these numbers to group anything."} />
+          hint="Deciding now. Changes apply at the next engine reload." />
         <${Formula} config=${data.scorer.value} onChanged=${this.read} />
       </section>` : null}
+      ${data.scorer.ok && decider.mode !== "additive" ? html`<details class="panel-block formula-folded">
+        <summary>The additive formula — stored, not deciding</summary>
+        <${Formula} config=${data.scorer.value} onChanged=${this.read} />
+      </details>` : null}
       <${History} rows=${decider.history} />
     </div>`;
   }
@@ -183,7 +185,9 @@ function History({ rows }) {
     ]} rows=${rows.map((r) => ({
       key: r.id,
       cells: {
-        when: cell(html`<${TimeCell} ts=${r.set_at} />`),
+        // The migration's seed row carries 0.0 — a seeded row is as old as the database — so it
+        // says when it happened in words rather than as 1970.
+        when: r.set_at ? cell(html`<${TimeCell} ts=${r.set_at} />`) : "at upgrade",
         mode: html`<b class="mono">${r.mode}</b>`,
         by: r.set_by || "—",
         reason: r.reason || "—",

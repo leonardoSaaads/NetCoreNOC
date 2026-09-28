@@ -356,11 +356,46 @@ const scenarios = {
   async render(params) {
     const env = await boot(params);
     if (params.navigate) { env.navigate(params.navigate); await settle(env); }
+    // v0.26.0: live updates pushed through the store, as the stream would push them — the top
+    // bar's autonomy mark reads `stats.autonomy` from there and nowhere else.
+    if (params.updates) {
+      const entry = [...env.modules.entries()].find(([file]) => file.endsWith("app/store.js"));
+      for (const update of params.updates) { entry[1].namespace.applyUpdate(update); await settle(env); }
+    }
     return {
       ...view(env),
       dump: dumpTree(env.document.getElementById("root")).join("\n"),
       requests: requests(env),
       requestPaths: env.network.requests.map((r) => `${r.method} ${r.path}`),
+      proof: proofOf(env),
+    };
+  },
+
+  /**
+   * **The Judge dashboard, block by block** (v0.26.0, ADR #414). For each `.judge-block`: the
+   * dataset its chip names, and every chart inside it with its title, its caption and whether a
+   * plot was drawn — so a test can assert that every chart names its dataset and its n, and that
+   * no block holds another dataset's chart. The block is the unit because "generated data and site
+   * data never on one unlabelled axis" is a statement about which block a chart sits in.
+   */
+  async judge(params) {
+    const env = await boot(params);
+    env.navigate(params.navigate ?? "#/promotion");
+    await settle(env);
+    const blocks = env.document.querySelectorAll(".judge-block").map((block) => ({
+      dataset: block.querySelector(".dataset-chip")?.textContent.trim() ?? null,
+      heading: block.querySelector("h3")?.textContent.trim() ?? null,
+      charts: block.querySelectorAll(".chart-block").map((c) => ({
+        title: c.querySelector(".chart-title")?.textContent.trim() ?? null,
+        caption: c.querySelector(".chart-caption")?.textContent.trim() ?? null,
+        drawn: c.querySelectorAll(".chart").length > 0,
+      })),
+      tiles: block.querySelectorAll(".versus").map((t) => t.textContent.trim()),
+      notes: block.querySelectorAll(".judge-caption").map((n) => n.textContent.trim()),
+    }));
+    return {
+      blocks,
+      dump: dumpTree(env.document.getElementById("root")).join("\n"),
       proof: proofOf(env),
     };
   },

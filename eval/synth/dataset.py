@@ -225,6 +225,18 @@ class Row:
     ts: float
 
 
+def incident_side(acts: list[Activation], window: tuple[float, float]) -> dict[str, bool]:
+    """Per incident: does its **first** activation fall inside ``window`` (fractions of the stream's
+    span)? The time-ordered split is by incident, never by activation."""
+    start, end = acts[0].ts, acts[-1].ts
+    span = max(end - start, 1.0)
+    lo, hi = start + span * window[0], start + span * window[1]
+    first: dict[str, float] = {}
+    for act in acts:
+        first.setdefault(act.incident, act.ts)
+    return {incident: lo <= ts <= hi for incident, ts in first.items()}
+
+
 def training_rows(
     logs: Iterator[StreamLog] | list[StreamLog],
     *,
@@ -238,7 +250,10 @@ def training_rows(
     candidates, drawn uniformly; each kept pair is weighted by (candidates of its class) / (kept of
     its class) / (all candidates), so every activation's positive and negative mass is exactly what
     it was before sampling and the activation sums to one. ``time_window`` is a fraction of the
-    stream's span, ``(0.0, 0.7)`` for the older part — the time-ordered split.
+    stream's span, ``(0.0, 0.7)`` for the older part — the time-ordered split — and it is applied
+    **per incident, by its first activation**: an incident that straddles the cut belongs wholly
+    to the side it started on, so no incident trains on its early pairs and is scored on its late
+    ones (`incident_side`, which `report.evaluate` uses for ``test_time`` too).
     """
     out: list[Row] = []
     for log in logs:
@@ -246,14 +261,10 @@ def training_rows(
         acts = log.activations()
         if not acts:
             continue
-        start, end = acts[0].ts, acts[-1].ts
-        lo = hi = None
-        if time_window is not None:
-            span = max(end - start, 1.0)
-            lo, hi = start + span * time_window[0], start + span * time_window[1]
+        side = incident_side(acts, time_window) if time_window is not None else None
         truth_of: dict[int, str] = {}
         for act in acts:
-            if lo is not None and hi is not None and not (lo <= act.ts <= hi):
+            if side is not None and not side[act.incident]:
                 truth_of[act.alarm_id] = act.incident
                 continue
             _sample(act, truth_of, rng, per_class, out, log.name)
