@@ -5,15 +5,17 @@
 Every split is a list of **streams**, and a stream is never cut in two — so no incident, and no
 pair, can appear on both sides of any split (Part V: *group by incident, never by pair*).
 
-| split | streams | families | what it answers |
-|---|---|---|---|
-| ``train`` | 96 | the training families | what the model is fitted on |
-| ``train_long`` | 12 | training families, 7–14 days, high recurrence | memory: first 70 % trains, last 30 % is ``test_time`` |
-| ``valid`` | 24 | training families | early stopping, grouping parameters, the search |
-| ``test_iid`` | 32 | training families | new estates, familiar faults |
-| ``test_optical`` | 24 | **held-out** optical families + context | DWDM degradation, line cuts, protection — never trained on |
-| ``test_protocol`` | 24 | **held-out** routing-protocol families + context | BGP and OSPF flaps — never trained on |
-| ``test_concurrency`` | 24 | training families, 80 % concurrency | the `dual_incident` failure at scale |
+* ``train`` — 96 streams of the training families: what the model is fitted on.
+* ``train_long`` — 12 streams of training families, 7-14 days, high recurrence: memory: first 70 %
+  trains, last 30 % is ``test_time``.
+* ``valid`` — 24 streams of training families: early stopping, grouping parameters, the search.
+* ``test_iid`` — 32 streams of training families: new estates, familiar faults.
+* ``test_optical`` — 24 streams of **held-out** optical families + context: DWDM degradation, line
+  cuts, protection — never trained on.
+* ``test_protocol`` — 24 streams of **held-out** routing-protocol families + context: BGP and OSPF
+  flaps — never trained on.
+* ``test_concurrency`` — 24 streams of training families, 80 % concurrency: the `dual_incident`
+  failure at scale.
 
 **Held-out families are held out of everything the model is fitted or tuned on**, including
 validation: a family that informed early stopping has informed the model. The shipped artifact is
@@ -88,11 +90,19 @@ def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
         s = seed * 1000 + i
         if split == "train_long":
             out.append(
-                StreamSpec(name, s, TRAIN_FAMILIES, rng.uniform(168, 336), rng.uniform(0.1, 0.25),
-                           rng.uniform(0.5, 2.5), concurrency=0.2, recurrence=0.45)
+                StreamSpec(
+                    name,
+                    s,
+                    TRAIN_FAMILIES,
+                    rng.uniform(168, 336),
+                    rng.uniform(0.1, 0.25),
+                    rng.uniform(0.5, 2.5),
+                    concurrency=0.2,
+                    recurrence=0.45,
+                )
             )
             continue
-        families = TRAIN_FAMILIES
+        families: tuple[str, ...] = TRAIN_FAMILIES
         weights: tuple[tuple[str, float], ...] = ()
         concurrency = rng.uniform(0.1, 0.4)
         if split == "test_optical":
@@ -104,9 +114,17 @@ def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
         elif split == "test_concurrency":
             concurrency = 0.8
         out.append(
-            StreamSpec(name, s, families, rng.uniform(4, 28), rng.uniform(0.6, 3.0),
-                       rng.uniform(1.0, 14.0), concurrency=concurrency, recurrence=0.08,
-                       weights=weights)
+            StreamSpec(
+                name,
+                s,
+                families,
+                rng.uniform(4, 28),
+                rng.uniform(0.6, 3.0),
+                rng.uniform(1.0, 14.0),
+                concurrency=concurrency,
+                recurrence=0.08,
+                weights=weights,
+            )
         )
     return out
 
@@ -124,20 +142,34 @@ SPLITS: dict[str, int] = {
 
 def specs(scale: float = 1.0, seed: int = SEED) -> dict[str, list[StreamSpec]]:
     """Every split's stream specs. ``scale`` shrinks the stream counts for tests and smoke runs."""
-    return {
-        split: _specs(split, max(1, int(round(n * scale))), seed) for split, n in SPLITS.items()
-    }
+    return {split: _specs(split, max(1, round(n * scale)), seed) for split, n in SPLITS.items()}
+
+
+#: The appliance code a recording runs through (`record.py` drives the real `Engine`), so a change
+#: to what the engine computes is a new dataset rather than a stale cache.
+RECORDING_SOURCES = ("engine", "ingest", "store", "migrations")
 
 
 def digest(all_specs: dict[str, list[StreamSpec]]) -> str:
-    """SHA-256 over the specs and the generator's own source: a cache key and a provenance line."""
+    """SHA-256 over the specs, the generator's source and the engine code a recording runs
+    through: a cache key and a provenance line."""
     h = hashlib.sha256()
-    h.update(json.dumps({k: [asdict(s) for s in v] for k, v in all_specs.items()}, sort_keys=True).encode())
+    h.update(
+        json.dumps(
+            {k: [asdict(s) for s in v] for k, v in all_specs.items()}, sort_keys=True
+        ).encode()
+    )
     for path in sorted((HERE).glob("*.py")):
         if path.name in {"dataset.py", "train.py", "report.py", "evaluate.py"}:
             continue  # consumers of the data, not producers of it
         h.update(path.name.encode())
         h.update(path.read_bytes())
+    package = HERE.parent.parent / "src" / "netcorenoc"
+    for sub in RECORDING_SOURCES:
+        for path in sorted((package / sub).rglob("*")):
+            if path.suffix in {".py", ".sql"} and "__pycache__" not in path.parts:
+                h.update(str(path.relative_to(package)).encode())
+                h.update(path.read_bytes())
     return h.hexdigest()
 
 
@@ -168,7 +200,9 @@ def build(scale: float = 1.0, seed: int = SEED, workers: int | None = None) -> P
                 if done % 10 == 0 or done == len(todo):
                     print(f"  recorded {done}/{len(todo)}", file=sys.stderr)
     (root / "specs.json").write_text(
-        json.dumps({k: [asdict(s) for s in v] for k, v in all_specs.items()}, indent=1, sort_keys=True)
+        json.dumps(
+            {k: [asdict(s) for s in v] for k, v in all_specs.items()}, indent=1, sort_keys=True
+        )
     )
     return root
 

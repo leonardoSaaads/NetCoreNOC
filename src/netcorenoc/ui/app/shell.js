@@ -37,11 +37,12 @@ import { Sidebar } from "./sidebar.js";
 import { Refused, Unknown } from "./widgets.js";
 import { Icon } from "./icons.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
-import { session, scopeSummary, onSessionChange } from "./session.js";
+import { session, scopeSummary, onSessionChange, can } from "./session.js";
 import { Avatar } from "./avatar.js";
 import { theme, setTheme, nextTheme, navState, setNavState, nextNavState } from "./theme.js";
 import { Bell } from "./notices.js";
 import { Health } from "./health.js";
+import { StopButton } from "./views/parts/autonomy.js";
 import * as store from "./store.js";
 import { plural, utcOffset, TIMEZONE } from "./format.js";
 
@@ -193,6 +194,7 @@ function TopBar({ live, onSignOut, nav, onNav }) {
           never further from their opener than the account controls are wide. */
       null}
     <div class="topbar-who">
+      <${AutonomyMark} state=${live.stats && live.stats.autonomy} />
       <${Bell} stats=${live.stats} />
       <${Health} stats=${live.stats} rate=${live.trapRate} />
       <span class="topbar-sep" aria-hidden="true"></span>
@@ -210,6 +212,25 @@ function TopBar({ live, onSignOut, nav, onNav }) {
       <button type="button" onClick=${onSignOut}>Sign out</button>
     </div>
   </header>`;
+}
+
+/**
+ * **Autonomy, on every screen** (v0.26.0, ADR #412). Absent while no grade is on — the usual case
+ * says nothing — and, while one is, a mark naming the grades and the kill switch beside it, one
+ * click from wherever the operator is. When autonomy stopped itself the mark says so and links to
+ * the explanation; the kill switch is not offered because there is nothing left to stop.
+ */
+function AutonomyMark({ state }) {
+  if (!state || (!state.active && !state.suspended)) return null;
+  if (!state.active) {
+    return html`<a class="autonomy-mark autonomy-suspended" href="#/settings?tab=autonomy"
+      title="Autonomy stopped itself; an admin must switch it back on">autonomy stopped</a>`;
+  }
+  return html`<span class="autonomy-mark autonomy-on" role="status">
+    <a href="#/settings?tab=autonomy" title=${`Autonomy is acting: ${state.grades.join(", ")}`}>
+      autonomy: ${state.grades.join(", ")}</a>
+    ${can("autonomy.stop") ? html`<${StopButton} compact=${true} />` : null}
+  </span>`;
 }
 
 const TZ_TITLE =

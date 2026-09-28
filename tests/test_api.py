@@ -488,12 +488,14 @@ async def test_f36_a_changed_verdict_still_applies_once(
     assert learner.A.pair_mass(*pair) > after_split
 
 
-async def test_f36_closing_a_situation_still_ticks_the_epoch(
+async def test_f36_closing_a_situation_teaches_nothing_and_the_epoch_is_the_clock(
     engine_env: tuple[Engine, asyncio.Queue[QueueItem]], client: httpx.AsyncClient
 ) -> None:
-    """The epoch belongs to a **closed situation** — which is what `learn.py` already says it is.
+    """v0.26.0 (ADR #406) supersedes F36's rule: the epoch is an hour of **stream time**, and a
+    closed situation teaches nothing — its membership is the running decider's own opinion, and
+    learning from it would feed that opinion back into the features it is scored with.
 
-    Moving the tick off the feedback path must not remove it from the path that owns it.
+    Closing therefore moves neither the epoch nor a single affinity mass; the stream's clock does.
     """
     engine, _queue = engine_env
     await replay_fiber(engine_env)
@@ -501,13 +503,16 @@ async def test_f36_closing_a_situation_still_ticks_the_epoch(
         s["id"] for s in (await client.get("/api/situations")).json() if s["status"] == "new"
     )
     before = engine.learner.A.epoch
+    masses = (dict(engine.learner.A.pairs), dict(engine.learner.A.marginals))
     async with engine.store.lock:
         await engine._close_situation(sid, BASE + 5000.0)
         await engine.store.commit()
-    assert engine.learner.A.epoch == before + 1, (
-        f"closing a situation must advance the epoch exactly once: {before} -> "
-        f"{engine.learner.A.epoch}"
+    assert engine.learner.A.epoch == before, "closing a situation moved the epoch"
+    assert (dict(engine.learner.A.pairs), dict(engine.learner.A.marginals)) == masses, (
+        "closing a situation taught the learner"
     )
+    engine.learner.advance_to(BASE + 5000.0 + 2 * 3600.0)
+    assert engine.learner.A.epoch > before, "two hours of stream time did not advance the epoch"
 
 
 async def test_f36_feedback_records_its_author(

@@ -25,7 +25,11 @@ The situation-level quantities (IV.2 of the brief):
   decider leaves it intact;
 * ``asserted_negative_respected_rate`` — **generated analogue**: of the candidate pairs that truly
   belong to different incidents (every negative the decider actually compared), the fraction kept
-  in different situations.
+  in different situations;
+* ``repair_gestures`` — the operator's work to repair the partition, per incident: one merge for
+  every extra piece an incident was split into, one move for every foreign incident in a situation.
+  The single number the grouping biases are chosen on (ADR #409), because it prices a split and a
+  contamination the way an operator pays for them.
 """
 
 from __future__ import annotations
@@ -58,7 +62,6 @@ except ImportError:  # pragma: no cover - the engine before ADR #410
     CLEAR_HOLD_S = 0.0
 
 import metrics
-
 from synth.record import Activation, StreamLog
 
 __all__ = [
@@ -93,8 +96,7 @@ class ModelDecider:
         return cls(
             scorer,
             MODE_CLUSTER,
-            params
-            or GroupingParams(g["join_bias"], g["merge_bias"], int(g["merge_min_pairs"])),
+            params or GroupingParams(g["join_bias"], g["merge_bias"], int(g["merge_min_pairs"])),
         )
 
     def evidence(self, act: Activation) -> list[Scored]:
@@ -201,7 +203,8 @@ def group(log: StreamLog, decider: Decider, clear_hold_s: float | None = None) -
             # The engine's idle sweep resolves only a situation with no member still active
             # (v0.16.2, #274): a burning situation is never idle, however long nobody touched it.
             for sid in [
-                s for s, t in touched.items()
+                s
+                for s, t in touched.items()
                 if act.ts - t > IDLE_CLOSE_S and not any(active.get(m, False) for m in members[s])
             ]:
                 close(sid)
@@ -296,6 +299,12 @@ def situation_metrics(outcomes: Iterable[Outcome], family: str | None = None) ->
             concurrent_merged += bool(by_incident[key] & by_incident[anchor])
     incidents = len(incident_sits)
     split = sum(1 for sits in incident_sits.values() if len(sits) >= 2)
+    # The operator's repair work (ADR #409): one merge per extra piece of an incident, one move per
+    # foreign incident in a situation holding one of these incidents. Per incident, so a split of
+    # 2 854 incidents and one of 600 read on one scale.
+    merges = sum(len(sits) - 1 for sits in incident_sits.values())
+    held = {(name, s) for (name, _t), sits in incident_sits.items() for s in sits}
+    moves = sum(len(sit_incidents[key]) - 1 for key in held)
     contaminated = sum(
         1
         for (name, _t), sits in incident_sits.items()
@@ -308,6 +317,7 @@ def situation_metrics(outcomes: Iterable[Outcome], family: str | None = None) ->
         "pairwise_f1": metrics.pairwise_f1(pred, truth),
         "ari": metrics.adjusted_rand_index(pred, truth),
         "under_merge_rate": split / incidents if incidents else 0.0,
+        "repair_gestures": (merges + moves) / incidents if incidents else 0.0,
         "split_bag_intact_rate": concurrent_merged / concurrent_pairs if concurrent_pairs else 0.0,
         "concurrent_pairs": float(concurrent_pairs),
         "asserted_negative_respected_rate": respected / compared if compared else 1.0,

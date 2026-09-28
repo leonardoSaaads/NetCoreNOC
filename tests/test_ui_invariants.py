@@ -795,6 +795,8 @@ async def _routes_with_a_promoted_tree(store: Store) -> dict[str, Any]:
             note="v0.14.0 console fixture",
         )
         await store.set_active_model_version(version, "admin", 1_700_000_000.0)
+        # v0.26.0: an applied promotion also chooses the site family (ADR #405).
+        await store.set_decider_mode("site", "admin", 1_700_000_000.0, "promotion applied")
         await store.commit()
     await engine.load_scorer_config()
     assert engine.scorer_model_version_id == version, "the tree did not become the champion"

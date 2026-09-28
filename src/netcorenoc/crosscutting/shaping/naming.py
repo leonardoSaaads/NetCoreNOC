@@ -8,9 +8,11 @@ never a key. What this module adds is the label the server derives.
 
 A **derived** name is a *projection* of facts already in the database: recomputable, it changes
 when membership changes, and it is evidence of nothing. An **operator's** name is a *label* and
-carries provenance. They live in two columns for that reason, and **no model proposes either** in
-this release — a model writing *"fibre cut"* above a grouping the operator is about to judge
-contaminates that judgement, which is the `incumbent_linked` mistake in a new register.
+carries provenance. They live in two columns for that reason. Since v0.26.0 a model may name a
+situation too — autonomy's `naming` grade, off until an admin switches it on (ADR #412) — and it
+writes a third column, `model_name`, never an operator's; the console says which name it shows.
+A model's name above a grouping an operator is judging can lean on the judgement, which is why the
+grade is opt-in, attributed, and judged by the operators' renames.
 
 ## Why membership, and only membership
 

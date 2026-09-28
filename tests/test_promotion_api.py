@@ -93,6 +93,10 @@ async def _document_for(kind: str) -> str:
         )
     if kind == model_version.KIND_LOGISTIC:
         return model_version.canonical_document(FITTED)
+    if kind == model_version.KIND_GAM:
+        from modelutil import TEST_MODEL  # v0.26.0: a valid `gam` document, validated on load
+
+        return TEST_MODEL
     rows = modelfixtures.training_rows()
     fitters = {
         model_version.KIND_TREE: lambda: tree.fit_document(
@@ -565,7 +569,7 @@ async def test_every_supported_kind_can_be_scored_by_the_gate(store: Store) -> N
     """
     from netcorenoc.api.routes.promotion import _candidate_scorer
 
-    assert len(model_version.SUPPORTED_KINDS) == 5
+    assert len(model_version.SUPPORTED_KINDS) == 6  # v0.26.0: `gam` (ADR #407)
     for kind in sorted(model_version.SUPPORTED_KINDS):
         document = await _document_for(kind)
         scorer = _candidate_scorer(

@@ -225,7 +225,9 @@ def _roles() -> dict[str, dict[str, Notification]]:
         },
         # -- routing -------------------------------------------------------------------------
         "bgp_down": {
-            "cisco": _pair("cbgpPeer2BackwardTransNotification", "cbgpPeer2EstablishedNotification"),
+            "cisco": _pair(
+                "cbgpPeer2BackwardTransNotification", "cbgpPeer2EstablishedNotification"
+            ),
             "juniper": _pair("jnxBgpM2BackwardTransition", "jnxBgpM2Established"),
             "nokia": _pair("tBgpNgBackwardTransition", "tBgpNgEstablished"),
             "*": _pair("bgpBackwardTransNotification", "bgpEstablishedNotification"),
@@ -241,7 +243,9 @@ def _roles() -> dict[str, dict[str, Notification]]:
                 "hwGponOltPonLos", "1.3.6.1.4.1.2011.2.248.12.1.1", "1.3.6.1.4.1.2011.2.248.12.1.2"
             ),
             "zte": _illustrative(
-                "zxGponOltPonLos", "1.3.6.1.4.1.3902.1082.500.20.2.2.1", "1.3.6.1.4.1.3902.1082.500.20.2.2.2"
+                "zxGponOltPonLos",
+                "1.3.6.1.4.1.3902.1082.500.20.2.2.1",
+                "1.3.6.1.4.1.3902.1082.500.20.2.2.2",
             ),
         },
         "onu_los": {
@@ -249,15 +253,21 @@ def _roles() -> dict[str, dict[str, Notification]]:
                 "hwGponOntLos", "1.3.6.1.4.1.2011.2.248.12.2.1", "1.3.6.1.4.1.2011.2.248.12.2.2"
             ),
             "zte": _illustrative(
-                "zxGponOnuLos", "1.3.6.1.4.1.3902.1082.500.20.3.1.1", "1.3.6.1.4.1.3902.1082.500.20.3.1.2"
+                "zxGponOnuLos",
+                "1.3.6.1.4.1.3902.1082.500.20.3.1.1",
+                "1.3.6.1.4.1.3902.1082.500.20.3.1.2",
             ),
         },
         "onu_dying_gasp": {
             "huawei": _illustrative(
-                "hwGponOntDyingGasp", "1.3.6.1.4.1.2011.2.248.12.2.3", "1.3.6.1.4.1.2011.2.248.12.2.2"
+                "hwGponOntDyingGasp",
+                "1.3.6.1.4.1.2011.2.248.12.2.3",
+                "1.3.6.1.4.1.2011.2.248.12.2.2",
             ),
             "zte": _illustrative(
-                "zxGponOnuDyingGasp", "1.3.6.1.4.1.3902.1082.500.20.3.1.3", "1.3.6.1.4.1.3902.1082.500.20.3.1.2"
+                "zxGponOnuDyingGasp",
+                "1.3.6.1.4.1.3902.1082.500.20.3.1.3",
+                "1.3.6.1.4.1.3902.1082.500.20.3.1.2",
             ),
         },
     }

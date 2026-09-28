@@ -47,6 +47,7 @@ HEADLINE = (
     "under_merge_rate",
     "split_bag_intact_rate",
     "asserted_negative_respected_rate",
+    "repair_gestures",
 )
 TEST_SPLITS = ("test_iid", "test_optical", "test_protocol", "test_concurrency")
 HELD_OUT = {"test_optical": dataset.HOLDOUT_OPTICAL, "test_protocol": dataset.HOLDOUT_PROTOCOL}
@@ -57,15 +58,19 @@ def _sigmoid(z: float) -> float:
     return 1.0 / (1.0 + math.exp(-z))
 
 
-def _metrics_ci(outcomes: Sequence[Outcome], family: str | None = None, seed: int = 0) -> dict[str, Any]:
+def _metrics_ci(
+    outcomes: Sequence[Outcome], family: str | None = None, seed: int = 0
+) -> dict[str, Any]:
     """Point, interval and n for every headline quantity, bootstrapped over streams."""
     point = situation_metrics(outcomes, family)
     rng = random.Random(seed)
     samples: dict[str, list[float]] = {k: [] for k in HEADLINE}
     if len(outcomes) >= 2:
         for _ in range(REPLICATES):
-            pick = [replace(outcomes[rng.randrange(len(outcomes))], name=f"b{k}")
-                    for k in range(len(outcomes))]
+            pick = [
+                replace(outcomes[rng.randrange(len(outcomes))], name=f"b{k}")
+                for k in range(len(outcomes))
+            ]
             m = situation_metrics(pick, family)
             for key in HEADLINE:
                 samples[key].append(m[key])
@@ -110,10 +115,18 @@ def _pairs(logs: Sequence[Any], scorer: gam.GamScorer, seed: int) -> dict[str, A
         "streams": len(clusters),
         "positive_rate_weighted": round(baseline, 4),
         "positive_rate_unweighted": round(raw_rate, 4),
-        "average_precision": mm.cluster_bootstrap(clusters, stat(mm.average_precision), replicates=REPLICATES, seed=seed).as_dict(),
-        "roc_auc": mm.cluster_bootstrap(clusters, stat(mm.roc_auc), replicates=60, seed=seed).as_dict(),
-        "log_loss": mm.cluster_bootstrap(clusters, stat(mm.log_loss), replicates=REPLICATES, seed=seed).as_dict(),
-        "brier": mm.cluster_bootstrap(clusters, stat(mm.brier), replicates=REPLICATES, seed=seed).as_dict(),
+        "average_precision": mm.cluster_bootstrap(
+            clusters, stat(mm.average_precision), replicates=REPLICATES, seed=seed
+        ).as_dict(),
+        "roc_auc": mm.cluster_bootstrap(
+            clusters, stat(mm.roc_auc), replicates=60, seed=seed
+        ).as_dict(),
+        "log_loss": mm.cluster_bootstrap(
+            clusters, stat(mm.log_loss), replicates=REPLICATES, seed=seed
+        ).as_dict(),
+        "brier": mm.cluster_bootstrap(
+            clusters, stat(mm.brier), replicates=REPLICATES, seed=seed
+        ).as_dict(),
         "calibration": cal.as_dict(),
         "confusion": conf.as_dict(),
         "threshold_probability": thr,
@@ -130,16 +143,22 @@ def evaluate(root: Path, scorer: gam.GamScorer, seed: int) -> dict[str, Any]:
         logs = list(dataset.load_split(root, split))
         mo = [group(log, model) for log in logs]
         fo = [group(log, formula) for log in logs]
-        out["splits"][split] = {"model": _metrics_ci(mo, seed=seed), "formula": _metrics_ci(fo, seed=seed)}
+        out["splits"][split] = {
+            "model": _metrics_ci(mo, seed=seed),
+            "formula": _metrics_ci(fo, seed=seed),
+        }
         out["pairs"][split] = _pairs(logs, scorer, seed)
         for fam in HELD_OUT.get(split, ()):
             out["held_out_families"][fam] = {
-                "model": _metrics_ci(mo, fam, seed), "formula": _metrics_ci(fo, fam, seed)}
+                "split": split,
+                "model": _metrics_ci(mo, fam, seed),
+                "formula": _metrics_ci(fo, fam, seed),
+            }
         if split == "test_iid":
-            out["first_hour"] = {
-                "model": _first_hour(mo, seed), "formula": _first_hour(fo, seed)}
+            out["first_hour"] = {"model": _first_hour(mo, seed), "formula": _first_hour(fo, seed)}
     long_logs = list(dataset.load_split(root, "train_long"))
-    tm, tf = [], []
+    tm: list[Outcome] = []
+    tf: list[Outcome] = []
     for log in long_logs:
         for dec, bucket in ((model, tm), (formula, tf)):
             o = group(log, dec)
@@ -147,7 +166,10 @@ def evaluate(root: Path, scorer: gam.GamScorer, seed: int) -> dict[str, Any]:
                 continue
             cut = o.ts[0] + 0.7 * (o.ts[-1] - o.ts[0])
             bucket.append(restrict(o, [i for i, t in enumerate(o.ts) if t > cut]))
-    out["splits"]["test_time"] = {"model": _metrics_ci(tm, seed=seed), "formula": _metrics_ci(tf, seed=seed)}
+    out["splits"]["test_time"] = {
+        "model": _metrics_ci(tm, seed=seed),
+        "formula": _metrics_ci(tf, seed=seed),
+    }
     out["recurrence"] = _recurrence(long_logs, model, formula)
     return out
 
@@ -163,7 +185,9 @@ def _first_hour(outcomes: Sequence[Outcome], seed: int) -> dict[str, Any]:
     return {"decisions": joins, **_metrics_ci(firsts, seed=seed)}
 
 
-def _recurrence(logs: Sequence[Any], model: ModelDecider, formula: FormulaDecider) -> dict[str, Any]:
+def _recurrence(
+    logs: Sequence[Any], model: ModelDecider, formula: FormulaDecider
+) -> dict[str, Any]:
     """How recurrences are grouped: first occurrences against later ones, per decider."""
     out: dict[str, Any] = {}
     for name, dec in (("model", model), ("formula", formula)):
@@ -173,8 +197,13 @@ def _recurrence(logs: Sequence[Any], model: ModelDecider, formula: FormulaDecide
             o = group(log, dec)
             rec = set(log.recurs)
             later.append(restrict(o, [i for i, t in enumerate(o.truth) if t in rec]))
-            first.append(restrict(o, [i for i, t in enumerate(o.truth) if t in set(log.recurs.values())]))
-        out[name] = {"first_occurrence": situation_metrics(first), "recurrence": situation_metrics(later)}
+            first.append(
+                restrict(o, [i for i, t in enumerate(o.truth) if t in set(log.recurs.values())])
+            )
+        out[name] = {
+            "first_occurrence": situation_metrics(first),
+            "recurrence": situation_metrics(later),
+        }
     return out
 
 
@@ -186,31 +215,71 @@ def print_validation(logs: Sequence[Any], scorer: gam.GamScorer) -> None:
     print(f"VALIDATION ({len(logs)} streams) — the only numbers the quality bar may be set against")
     for name, outs in (("model", mo), ("formula", fo)):
         m = situation_metrics(outs)
-        print(f"  {name:8s} " + "  ".join(f"{k}={m[k]:.3f}" for k in HEADLINE)
-              + f"  (activations {int(m['activations'])}, incidents {int(m['incidents'])}, "
-              f"unrecognised clears {int(m['unrecognised_clears'])})")
+        print(
+            f"  {name:8s} "
+            + "  ".join(f"{k}={m[k]:.3f}" for k in HEADLINE)
+            + f"  (activations {int(m['activations'])}, incidents {int(m['incidents'])}, "
+            f"unrecognised clears {int(m['unrecognised_clears'])})"
+        )
     fams = sorted({f for o in mo for f in o.family})
     for fam in fams:
         a, b = situation_metrics(mo, fam), situation_metrics(fo, fam)
-        print(f"    {fam:22s} incidents {int(a['incidents']):4d}  "
-              + "  ".join(f"{k[:12]} {a[k]:.2f}/{b[k]:.2f}" for k in
-                          ("over_merge_rate", "under_merge_rate", "pairwise_f1")))
+        print(
+            f"    {fam:22s} incidents {int(a['incidents']):4d}  "
+            + "  ".join(
+                f"{k[:12]} {a[k]:.2f}/{b[k]:.2f}"
+                for k in ("over_merge_rate", "under_merge_rate", "pairwise_f1", "repair_gestures")
+            )
+        )
 
 
-def check_bar(evaluation: dict[str, Any], bar: dict[str, tuple[str, float]]) -> dict[str, Any]:
-    """Every threshold on every test split and every held-out family, on the point estimate."""
+def check_bar(
+    evaluation: dict[str, Any], bar: Sequence[tuple[str, str, str, float]]
+) -> dict[str, Any]:
+    """Every check of the bar, on every test split or held-out family its scope names.
+
+    ``min``/``max`` read the model's point estimate; ``diff_min``/``diff_max`` read model - formula
+    on the same streams; ``ratio_max`` reads model / formula. A ratio against a formula at zero is
+    met only by a model at zero.
+    """
+    places = {
+        "splits": [(f"split {k}", v) for k, v in evaluation["splits"].items()],
+        "held_out": [
+            (f"held-out family {k}", v) for k, v in evaluation["held_out_families"].items()
+        ],
+    }
     missed: list[str] = []
-    checked = 0
-    places = [(f"split {k}", v["model"]) for k, v in evaluation["splits"].items()]
-    places += [(f"held-out family {k}", v["model"]) for k, v in evaluation["held_out_families"].items()]
-    for where, m in places:
-        for key, (op, limit) in bar.items():
-            value = m[key]["point"]
-            checked += 1
-            ok = value >= limit if op == ">=" else value <= limit
+    results: list[dict[str, Any]] = []
+    for quantity, scope, kind, limit in bar:
+        for where, arms in places[scope]:
+            model = arms["model"][quantity]["point"]
+            formula = arms["formula"][quantity]["point"]
+            if kind == "min":
+                value, ok = model, model >= limit
+            elif kind == "max":
+                value, ok = model, model <= limit
+            elif kind == "diff_min":
+                value, ok = model - formula, model - formula >= limit
+            elif kind == "diff_max":
+                value, ok = model - formula, model - formula <= limit
+            elif kind == "ratio_max":
+                value = model / formula if formula else (0.0 if model == 0 else math.inf)
+                ok = value <= limit
+            else:
+                raise ValueError(f"unknown check kind {kind!r}")
+            results.append(
+                {
+                    "quantity": quantity,
+                    "where": where,
+                    "kind": kind,
+                    "limit": limit,
+                    "value": round(value, 4),
+                    "passed": ok,
+                }
+            )
             if not ok:
-                missed.append(f"{where}: {key} = {value:.4f}, required {op} {limit}")
-    return {"passed": not missed, "missed": missed, "checked": checked}
+                missed.append(f"{where}: {quantity} {kind} {value:.4f}, required {limit}")
+    return {"passed": not missed, "missed": missed, "checked": len(results), "checks": results}
 
 
 def manifest(**kw: Any) -> dict[str, Any]:
@@ -257,6 +326,10 @@ def manifest(**kw: Any) -> dict[str, Any]:
         },
         "grouping_grid": kw["grouping_grid"],
         "evaluation": kw["evaluation"],
-        "quality_bar": {k: list(v) for k, v in kw["bar"].items()},
+        "quality_bar": [
+            {"quantity": q, "scope": sc, "kind": k, "limit": lim} for q, sc, k, lim in kw["bar"]
+        ],
         "verdict": kw["verdict"],
+        # `[y, w, *vector]` per generated test pair: the site judge's do-no-harm benchmark.
+        "benchmark": kw["benchmark"],
     }

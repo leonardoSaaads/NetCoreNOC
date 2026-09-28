@@ -52,9 +52,33 @@ def test_a_valid_document_scores_and_its_terms_sum_exactly() -> None:
         ({"features": ["dt", "device_id"]}, "unknown feature"),
         ({"intercept": 99.0}, "magnitude"),
         ({"threshold": 50.0}, "attainable logit range"),
-        ({"shapes": [{"edges": [60.0, 5.0], "feature": "dt", "scores": [0, 0, 0]}, GOOD["shapes"][1]]}, "increasing"),  # type: ignore[index]
-        ({"shapes": [{"edges": [5.0], "feature": "dt", "scores": [30.0, 0.0]}, GOOD["shapes"][1]]}, "hard switch"),  # type: ignore[index]
-        ({"shapes": [{"edges": ["__import__('os')"], "feature": "dt", "scores": [0, 0]}, GOOD["shapes"][1]]}, "number"),  # type: ignore[index]
+        (
+            {
+                "shapes": [
+                    {"edges": [60.0, 5.0], "feature": "dt", "scores": [0, 0, 0]},
+                    GOOD["shapes"][1],
+                ]
+            },
+            "increasing",
+        ),  # type: ignore[index]
+        (
+            {
+                "shapes": [
+                    {"edges": [5.0], "feature": "dt", "scores": [30.0, 0.0]},
+                    GOOD["shapes"][1],
+                ]
+            },
+            "hard switch",
+        ),  # type: ignore[index]
+        (
+            {
+                "shapes": [
+                    {"edges": ["__import__('os')"], "feature": "dt", "scores": [0, 0]},
+                    GOOD["shapes"][1],
+                ]
+            },
+            "number",
+        ),  # type: ignore[index]
     ],
 )
 def test_malformed_documents_are_refused(change: dict[str, object], reason: str) -> None:
@@ -63,7 +87,8 @@ def test_malformed_documents_are_refused(change: dict[str, object], reason: str)
 
 
 def test_non_json_and_executable_content_is_refused() -> None:
-    """Part VI.3: a model file is data. A pickle, or JSON smuggling a non-finite constant, is not."""
+    """Part VI.3: a model file is data. A pickle, or JSON smuggling a non-finite constant, is
+    not."""
     blob = pickle.dumps({"shapes": []}).decode("latin-1")
     with pytest.raises(GamDocumentError, match="not valid JSON"):
         gam.validate(blob)
@@ -74,10 +99,10 @@ def test_non_json_and_executable_content_is_refused() -> None:
 
 
 def test_the_dispatch_validates_the_gam_kind() -> None:
-    scorer = model_version.scorer_for(gam.KIND, "1.1", _doc())
+    scorer = model_version.scorer_for(gam.KIND, "1.0", _doc())
     assert isinstance(scorer, gam.GamScorer)
     with pytest.raises(model_version.ModelPayloadError):
-        model_version.scorer_for(gam.KIND, "1.1", _doc(extra=1))
+        model_version.scorer_for(gam.KIND, "1.0", _doc(extra=1))
 
 
 def _toy(n: int, seed: int) -> gam_fit.Dataset:
@@ -88,7 +113,7 @@ def _toy(n: int, seed: int) -> gam_fit.Dataset:
         same = float(rng.random() < 0.5)
         logit = 2.0 - dt / 100.0 + 1.5 * same
         rows.append((dt, same))
-        y.append(1 if rng.random() < 1 / (1 + 2.718281828 ** -logit) else 0)
+        y.append(1 if rng.random() < 1 / (1 + 2.718281828**-logit) else 0)
     return gam_fit.Dataset.from_rows(("dt", "same_ne"), rows, y)
 
 
@@ -98,7 +123,9 @@ def test_the_fit_is_deterministic_and_learns_the_shape() -> None:
     a = gam_fit.fit(train, valid, params)
     b = gam_fit.fit(train, valid, params)
     assert a.document == b.document, "same rows, same parameters, same bytes"
-    c = gam_fit.fit(train, valid, gam_fit.FitParams(rounds=80, subsample=0.7, seed=4, interactions=1))
+    c = gam_fit.fit(
+        train, valid, gam_fit.FitParams(rounds=80, subsample=0.7, seed=4, interactions=1)
+    )
     assert c.document != a.document, "the seed is what varies the subsample"
     scorer = gam.load(a.document)
     near = scorer.logit(_vector(dt=10.0, same_ne=1.0))
@@ -135,8 +162,9 @@ def test_search_draws_are_pure_and_a_resumed_search_refits_nothing() -> None:
     trials = first.run()
     assert {t.rung for t in trials} == {0, 1}
     fitted: list[int] = []
-    resumed = search.Search(train, valid, budget, seed=1, done=list(trials),
-                            on_trial=lambda t: fitted.append(t.index))
+    resumed = search.Search(
+        train, valid, budget, seed=1, done=list(trials), on_trial=lambda t: fitted.append(t.index)
+    )
     resumed.run()
     assert fitted == [], "every trial was already recorded"
     stopped = search.Search(train, valid, budget, seed=2, stop=lambda: True).run()

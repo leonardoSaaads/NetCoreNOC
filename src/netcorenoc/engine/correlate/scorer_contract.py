@@ -53,7 +53,7 @@ __all__ = [
 ]
 
 # The contract version this code implements. Only the MAJOR component gates activation.
-CONTRACT_VERSION = "1.1"
+CONTRACT_VERSION = "1.0"
 DEFAULT_SCORER_ID = "additive"
 
 # -- the feature vocabulary ------------------------------------------------------------------
@@ -181,7 +181,10 @@ class LinkFeatures(NamedTuple):
 
     # **v0.26.0: the v2 feature vector** (`features.FEATURE_NAMES` order), built once per pair by
     # `features.vector` when the active decider reads it; `None` for the additive formula, which
-    # reads the seven fields above. Optional and appended: a minor contract bump, 1.0 -> 1.1.
+    # reads the seven fields above. Optional and appended, exactly as `same_oid_root` was in
+    # v0.18.0 — and, like it, **without** moving `CONTRACT_VERSION`: the version is inside every
+    # stored configuration's params hash, so a bump would make the seeded configuration and the
+    # coded defaults disagree about their own identity and orphan F23's provenance (ADR #418).
     vector: tuple[float, ...] | None = None
 
 

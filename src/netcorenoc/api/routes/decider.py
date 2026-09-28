@@ -19,6 +19,7 @@ Five groups, one module, because the console's two redesigned screens read them 
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Any
 
@@ -38,6 +39,17 @@ __all__ = ["register"]
 _SHIPPED_CHART_KEYS = ("ablation", "final_fit", "quality_bar", "verdict", "provenance", "artifact")
 
 
+def _finite(value: Any) -> Any:
+    """NaN and infinities as ``None``: a failed trial's loss is NaN, and JSON has no NaN."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _finite(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_finite(v) for v in value]
+    return value
+
+
 def _shipped_block() -> dict[str, Any]:
     try:
         model = shipped.load()
@@ -46,28 +58,42 @@ def _shipped_block() -> dict[str, Any]:
     m = model.manifest
     evaluation = m.get("evaluation", {})
     trials = m.get("search", {}).get("trials", [])
-    return {
-        "available": True,
-        "dataset": "generated",
-        "ref": model.ref,
-        "features": list(model.scorer.model.features),
-        "grouping": model.scorer.model.grouping,
-        **{k: m.get(k) for k in _SHIPPED_CHART_KEYS},
-        "search": {
-            "trials": [
-                {k: t.get(k) for k in ("index", "rung", "rounds", "valid_loss", "train_loss",
-                                       "seconds", "status", "params", "best_round")}
-                for t in trials
+    return _finite(
+        {
+            "available": True,
+            "dataset": "generated",
+            "ref": model.ref,
+            "features": list(model.scorer.model.features),
+            "grouping": model.scorer.model.grouping,
+            **{k: m.get(k) for k in _SHIPPED_CHART_KEYS},
+            "search": {
+                "trials": [
+                    {
+                        k: t.get(k)
+                        for k in (
+                            "index",
+                            "rung",
+                            "rounds",
+                            "valid_loss",
+                            "train_loss",
+                            "seconds",
+                            "status",
+                            "params",
+                            "best_round",
+                        )
+                    }
+                    for t in trials
+                ],
+                "importance": m.get("search", {}).get("importance", {}),
+                "space": m.get("search", {}).get("space", {}),
+            },
+            "evaluation": evaluation,
+            "shapes": [
+                {"feature": s.feature, "edges": list(s.edges), "scores": list(s.scores)}
+                for s in model.scorer.model.shapes
             ],
-            "importance": m.get("search", {}).get("importance", {}),
-            "space": m.get("search", {}).get("space", {}),
-        },
-        "evaluation": evaluation,
-        "shapes": [
-            {"feature": s.feature, "edges": list(s.edges), "scores": list(s.scores)}
-            for s in model.scorer.model.shapes
-        ],
-    }
+        }
+    )
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -111,7 +137,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 }
                 for v in versions
             ],
-            "additive": None if config is None else {
+            "additive": None
+            if config is None
+            else {
                 "config_id": int(config["id"]),
                 "params": {k: config[k] for k in ("w_t", "w_a", "w_e", "tau_s", "threshold")},
             },
@@ -132,8 +160,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 if verdict.verdict != "BETTER":
                     raise HTTPException(
                         409,
-                        f"the newest site model is {verdict.verdict}: {verdict.reason}. The shipped "
-                        "model keeps deciding.",
+                        f"the newest site model is {verdict.verdict}: {verdict.reason}. "
+                        "The shipped model keeps deciding.",
                     )
                 await store.set_active_model_version(version, principal.actor, now)
                 details["model_version_id"] = version
@@ -142,8 +170,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 if config is not None:
                     await store.set_active_scorer_config(int(config["id"]), principal.actor, now)
             await store.set_decider_mode(body.mode, principal.actor, now, body.reason)
-            await audit_row(request, principal, "decider.set", "ok", object_type="decider",
-                            object_id=body.mode, details=details)
+            await audit_row(
+                request,
+                principal,
+                "decider.set",
+                "ok",
+                object_type="decider",
+                object_id=body.mode,
+                details=details,
+            )
         return {"mode": body.mode, "effective": "at the next maintenance pass, within seconds"}
 
     async def _site_verdict() -> tuple[int, site.Judgement]:
@@ -190,22 +225,41 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         values = {k: (int(v) if isinstance(v, bool) else v) for k, v in values.items()}
         async with write_txn():
             new_id = await store.set_autonomy(values, principal.actor, now, body.reason)
-            await audit_row(request, principal, "autonomy.set", "ok", object_type="autonomy",
-                            object_id=str(new_id), details={**values, "reason": body.reason})
+            await audit_row(
+                request,
+                principal,
+                "autonomy.set",
+                "ok",
+                object_type="autonomy",
+                object_id=str(new_id),
+                details={**values, "reason": body.reason},
+            )
         return {"id": new_id, **values}
 
     @route.post("/api/autonomy/stop")
     async def stop_autonomy(
         request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        """**The kill switch.** Every grade off, now, attributed. Editor+ (`autonomy.stop`)."""
+        """**The kill switch.** Every grade off, now, attributed. Editor+ (`autonomy.stop`).
+        Idempotent: when nothing is on, it writes nothing."""
         now = time.time()
         async with write_txn():
             current = autonomy.Settings.from_row(await store.autonomy_setting())
+            if not current.enabled:
+                # Already off: pressing the kill switch again changes nothing and writes nothing,
+                # so two operators hitting it in the same second leave one row, not two.
+                return {"id": None, "active": False}
             off = current.values(grouping=0, naming=0, closing=0, severity=0)
             new_id = await store.set_autonomy(off, principal.actor, now, "stopped from the console")
-            await audit_row(request, principal, "autonomy.stop", "ok", object_type="autonomy",
-                            object_id=str(new_id), details={"was": list(current.enabled)})
+            await audit_row(
+                request,
+                principal,
+                "autonomy.stop",
+                "ok",
+                object_type="autonomy",
+                object_id=str(new_id),
+                details={"was": list(current.enabled)},
+            )
         return {"id": new_id, "active": False}
 
     @route.post("/api/situations/{sid}/severity")
@@ -218,13 +272,21 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """An operator's severity for a situation. Scoped: out of scope and absent are one 404."""
         scope = await scope_for(principal)
         if not await situation_in_scope(sid, scope):
-            await audit_scope_denial(request, principal, "situation.severity", "situation", str(sid))
+            await audit_scope_denial(
+                request, principal, "situation.severity", "situation", str(sid)
+            )
             raise HTTPException(404, "no such situation")
         async with write_txn():
             await store.set_situation_severity(sid, body.severity, principal.actor)
-            await audit_row(request, principal, "situation.severity", "ok",
-                            object_type="situation", object_id=str(sid),
-                            details={"severity": body.severity})
+            await audit_row(
+                request,
+                principal,
+                "situation.severity",
+                "ok",
+                object_type="situation",
+                object_id=str(sid),
+                details={"severity": body.severity},
+            )
         return {"severity": body.severity}
 
     # -- the search --------------------------------------------------------------------------
@@ -235,10 +297,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with store.lock:
             runs = await store.search_runs(10)
             trials = await store.search_trials(int(runs[0]["id"])) if runs else []
-        return {"runs": runs, "trials": trials, "busy": engine.search_runner.busy,
-                "defaults": {"trials": site_search.DEFAULT_BUDGET.trials,
-                             "max_rounds": site_search.DEFAULT_BUDGET.max_rounds,
-                             "minutes": int(site_search.DEFAULT_BUDGET.seconds // 60)}}
+        return {
+            "runs": runs,
+            "trials": trials,
+            "busy": engine.search_runner.busy,
+            "defaults": {
+                "trials": site_search.DEFAULT_BUDGET.trials,
+                "max_rounds": site_search.DEFAULT_BUDGET.max_rounds,
+                "minutes": int(site_search.DEFAULT_BUDGET.seconds // 60),
+            },
+        }
 
     @route.post("/api/search")
     async def start_search(
@@ -250,13 +318,25 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             runs = await store.search_runs(1)
             if runs and runs[0]["status"] == "running":
                 raise HTTPException(409, "a search is already running; stop it first")
-            budget = {"trials": body.trials, "max_rounds": body.max_rounds,
-                      "min_rounds": max(10, body.max_rounds // 9), "eta": 3,
-                      "seconds": float(body.minutes * 60)}
-            run_id = await store.open_search_run(by=principal.actor, seed=body.seed,
-                                                 budget=budget, at=now)
-            await audit_row(request, principal, "search.start", "ok", object_type="search_run",
-                            object_id=str(run_id), details=budget)
+            budget = {
+                "trials": body.trials,
+                "max_rounds": body.max_rounds,
+                "min_rounds": max(10, body.max_rounds // 9),
+                "eta": 3,
+                "seconds": float(body.minutes * 60),
+            }
+            run_id = await store.open_search_run(
+                by=principal.actor, seed=body.seed, budget=budget, at=now
+            )
+            await audit_row(
+                request,
+                principal,
+                "search.start",
+                "ok",
+                object_type="search_run",
+                object_id=str(run_id),
+                details=budget,
+            )
         return {"run_id": run_id, "status": "running"}
 
     @route.post("/api/search/stop")
@@ -271,8 +351,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(409, "no search is running")
             run_id = int(runs[0]["id"])
             await store.finish_search_run(run_id, "stopped", now, f"stopped by {principal.actor}")
-            await audit_row(request, principal, "search.stop", "ok", object_type="search_run",
-                            object_id=str(run_id), details={})
+            await audit_row(
+                request,
+                principal,
+                "search.stop",
+                "ok",
+                object_type="search_run",
+                object_id=str(run_id),
+                details={},
+            )
         return {"run_id": run_id, "status": "stopped"}
 
     # -- the judge ---------------------------------------------------------------------------
@@ -293,16 +380,17 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "mode": mode,
             "running": engine.decider_ref,
             "shipped": _shipped_block(),
-            "site": {
-                "dataset": "site",
-                "floors": {**site.FLOORS, "label_days": site.MIN_LABEL_DAYS},
-                "stats": stats,
-                "unmet": unmet,
-                "runs": runs,
-                "trials": trials,
-                "labelled_pairs_without_features": len(pairs) - sum(
-                    1 for p in pairs if int(p["pair_id"]) in features
-                ),
-            },
+            "site": _finite(
+                {
+                    "dataset": "site",
+                    "floors": {**site.FLOORS, "label_days": site.MIN_LABEL_DAYS},
+                    "stats": stats,
+                    "unmet": unmet,
+                    "runs": runs,
+                    "trials": trials,
+                    "labelled_pairs_without_features": len(pairs)
+                    - sum(1 for p in pairs if int(p["pair_id"]) in features),
+                }
+            ),
             "live": {"dataset": "live", **engine.monitor.snapshot()},
         }

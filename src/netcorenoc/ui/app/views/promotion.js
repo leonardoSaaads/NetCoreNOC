@@ -1,4 +1,14 @@
-/* Judge and promotion — what the gate decided, and **why it refused**.
+/* Judge and promotion — **how good the model deciding links is**, and what the gate decided.
+ *
+ * ## Chart-first since v0.26.0 (ADR #414)
+ *
+ * The screen leads with measurements: the shipped model on **generated data** (its four headline
+ * quantities beside the formula's, with intervals and n; precision–recall against its baseline;
+ * ROC; calibration; confusion; the search that chose it; one shape per feature), then **this
+ * site's labels** (sufficiency, the latest paired comparison, the latest search), then the **live**
+ * monitor. Each block names its dataset in every caption and nothing shares an axis across them.
+ * The v0.11.0 promotion record below is unchanged and folded: it is the audit trail, and it stopped
+ * being the screen.
  *
  * `GET /api/promotion` and `POST /api/promotion` had no UI surface in v0.12.0 (draft §4). The
  * read was deferred in v0.11.0 for a stated reason (#163): the v0.7.5 defect was a click gesture
@@ -21,7 +31,7 @@
  */
 
 import { html, Component } from "../dom.js";
-import { get, post } from "../api.js";
+import { post, readAll } from "../api.js";
 import { Loader, Empty, DataTable, SectionHeading, Stat, TimeCell, cell } from "../widgets.js";
 import { InfoTip } from "../info.js";
 import { count, plural } from "../format.js";
@@ -30,6 +40,8 @@ import { Destructive } from "../destructive.js";
 import { Decision } from "./parts/verdict.js";
 import { Evidence } from "./parts/evidence.js";
 import { CorrelationHealth } from "./parts/correlation.js";
+import { ShippedJudge } from "./parts/shippedjudge.js";
+import { SiteJudge } from "./parts/sitejudge.js";
 
 export class Promotion extends Loader {
   constructor(props) {
@@ -38,17 +50,30 @@ export class Promotion extends Loader {
     this.loadingLabel = "Reading the promotion record";
   }
 
-  async load() { return get("/api/promotion"); }
+  async load() {
+    const got = await readAll({ promotion: "/api/promotion", judge: "/api/judge" });
+    if (!got.promotion.ok) throw got.promotion.error;
+    return { ...got.promotion.value, judge: got.judge.ok ? got.judge.value : null };
+  }
 
   view(data) {
     const promotions = data.promotions || [];
     const versions = data.model_versions || [];
-    return html`<div class="promotionview">
+    const judge = data.judge;
+    return html`<div class="promotionview judgeview">
+      ${judge ? html`<p class="judge-now">Deciding now: <b class="mono">${judge.running}</b>
+          <span class="muted"> (${judge.mode})</span>${" "}
+          <a href="#/settings?tab=correlation">change in Settings</a></p>
+        <${ShippedJudge} shipped=${judge.shipped} />
+        <${SiteJudge} site=${judge.site} />` : html`<p class="hint">The judge's measurements could not be read.</p>`}
       ${/* The running scorer, observed (v0.22.0, item 7): moved here from Situations. */ null}
-      <section class="panel-block">
-        <${SectionHeading} title="The running scorer" />
+      <section class="judge-block">
+        <header class="judge-head"><h3>Live</h3>
+          <span class="dataset-chip dataset-live">live traffic</span></header>
         <${CorrelationHealth} open=${true} />
       </section>
+      <details class="judge-record">
+      <summary>The promotion record — seal, decisions, model versions</summary>
       <section class="panel-block param-structural">
         <${SectionHeading} title="The sealed holdout"
           hint="Displayed, never actionable: the query count is a property of what has been read,
@@ -95,6 +120,7 @@ export class Promotion extends Loader {
       <${Evidence} data=${data} />
 
       ${can("promotion.write") && versions.length ? html`<${Propose} versions=${versions} onDone=${this.reload} />` : null}
+      </details>
     </div>`;
   }
 }

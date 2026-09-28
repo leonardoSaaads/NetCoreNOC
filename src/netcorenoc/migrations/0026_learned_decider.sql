@@ -77,7 +77,7 @@ SELECT
         ELSE 'shipped'
     END,
     'migration',
-    CAST(strftime('%s', 'now') AS REAL),
+    0.0,  -- a seeded row is as old as the database (see test_no_migration_reads_a_clock_of_its_own)
     'v0.26.0: the shipped model is the default decider; an appliance whose formula an admin had '
     || 'retuned keeps it, and one running a promoted model keeps that'
 WHERE NOT EXISTS (SELECT 1 FROM decider_setting);
@@ -144,6 +144,12 @@ CREATE INDEX IF NOT EXISTS idx_autonomy_decision_situation ON autonomy_decision 
 ALTER TABLE situation ADD COLUMN severity TEXT
     CHECK (severity IS NULL OR severity IN ('critical', 'major', 'minor', 'warning', 'indeterminate'));
 ALTER TABLE situation ADD COLUMN severity_by TEXT;
+
+-- The name autonomy's `naming` grade gave a situation — a column of its own, because
+-- `operator_name` has exactly one writer, the rename route, and a model does not write there
+-- (`tests/test_gesture_boundary.py`). The console shows operator_name, then model_name, then
+-- derived_name; an operator's rename supersedes the model's without touching it.
+ALTER TABLE situation ADD COLUMN model_name TEXT;
 
 -- -- The hyperparameter search, one row per trial (ADR #413) -------------------------------------------
 --

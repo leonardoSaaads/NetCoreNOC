@@ -45,18 +45,18 @@ from typing import TYPE_CHECKING, Any
 from netcorenoc.crosscutting import audit
 from netcorenoc.engine.dataset import gestures
 from netcorenoc.engine.operate import membership
+from netcorenoc.engine.operate.autonomy_judge import judge
 from netcorenoc.ingest import trappack
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge
     from netcorenoc.engine.operate.engine import Engine
 
-__all__ = ["GRADES", "Settings", "status", "sweep", "warnings"]
+__all__ = ["GRADES", "Settings", "status", "sweep"]
 
 GRADES = ("grouping", "naming", "closing", "severity")
 MAX_ACTS = 50
 SETTLE_S = 120.0  # a situation this young may still be growing; grouping waits
 STALE_S = 1800.0  # quiet this long before closing may act
-CLOSE_JUDGE_S = 3600.0  # a stale-clear that holds this long agreed with the network
 SPREAD_ELEMENTS = 5  # a situation over this many elements is one level more severe
 SEVERITIES = ("critical", "major", "minor", "warning", "indeterminate")
 
@@ -146,19 +146,13 @@ async def status(engine: Engine) -> dict[str, Any]:
     }
 
 
-def warnings(snapshot: dict[str, Any]) -> list[str]:
-    if snapshot.get("suspended"):
-        return [f"Autonomy stopped itself: {snapshot.get('reason', '')}"]
-    return []
-
-
 async def sweep(engine: Engine, now: float) -> None:
     """One autonomy pass. Caller holds ``store.lock`` and commits."""
     store = engine.store
     settings = Settings.from_row(await store.autonomy_setting())
     if not settings.enabled:
         return
-    await _judge(engine, now)
+    await judge(engine, now)
     verdicts = await store.recent_verdicts(settings.window)
     if len(verdicts) >= settings.min_judged:
         rate = verdicts.count("agreed") / len(verdicts)
@@ -195,27 +189,46 @@ async def _act(engine: Engine, settings: Settings, row: dict[str, Any], now: flo
         and confidence >= settings.confidence_floor
     ):
         await store.promote_situation(sid, now, "autonomy")
-        await _record(engine, sid, "grouping", "accepted as an incident", confidence, explanation, now)
+        await _record(
+            engine, sid, "grouping", "accepted as an incident", confidence, explanation, now
+        )
         acts += 1
     if (
         settings.naming
         and "naming" not in done
         and row["operator_name"] is None
+        and row["model_name"] is None
         and len(members) >= 2
         and confidence >= settings.confidence_floor
     ):
         name = _name(members)
         if await store.set_situation_name_by_model(sid, name):
-            await _record(engine, sid, "naming", f"named {name!r}", confidence,
-                          {**explanation, "name": name}, now)
+            await _record(
+                engine,
+                sid,
+                "naming",
+                f"named {name!r}",
+                confidence,
+                {**explanation, "name": name},
+                now,
+            )
             acts += 1
-    if settings.severity and (row["severity_by"] is None or str(row["severity_by"]).startswith("model:")):
+    if settings.severity and (
+        row["severity_by"] is None or str(row["severity_by"]).startswith("model:")
+    ):
         word, why = _severity(members)
         if word is not None and word != row["severity"]:
             placed = sum(1 for m in members if m["severity_rank"] is not None)
             await store.set_situation_severity(sid, word, ref)
-            await _record(engine, sid, "severity", f"set to {word}", placed / len(members),
-                          {"members": len(members), "placed": placed, "why": why}, now)
+            await _record(
+                engine,
+                sid,
+                "severity",
+                f"set to {word}",
+                placed / len(members),
+                {"members": len(members), "placed": placed, "why": why},
+                now,
+            )
             acts += 1
     if settings.closing and "closing" not in done and float(row["updated_at"]) <= now - STALE_S:
         acts += await _close(engine, sid, members, now)
@@ -246,18 +259,20 @@ def _grouping_evidence(links: list[dict[str, Any]]) -> tuple[float, dict[str, An
 
 
 def _name(members: list[dict[str, Any]]) -> str:
-    """"<most common trap> ×N · <root element> (+k elements)" — from what the situation holds."""
+    """ "<most common trap> xN · <root element> (+k elements)" — from what the situation holds."""
     names = Counter(_class_name(str(m["class_oid"])) for m in members)
     top, count = names.most_common(1)[0]
     devices = sorted({str(m["device_ip"]) for m in members})
     root = next((str(m["device_ip"]) for m in members if m.get("is_root")), devices[0])
     more = f" (+{len(devices) - 1} elements)" if len(devices) > 1 else ""
-    return f"{top} ×{count} · {root}{more}"[:120]
+    return f"{top} x{count} · {root}{more}"[:120]
 
 
 def _class_name(oid: str) -> str:
     entry = trappack.pack().notifications.get(oid)
-    return entry.name if entry is not None else oid.rsplit(".", 2)[-2] + "." + oid.rsplit(".", 1)[-1]
+    return (
+        entry.name if entry is not None else oid.rsplit(".", 2)[-2] + "." + oid.rsplit(".", 1)[-1]
+    )
 
 
 def _severity(members: list[dict[str, Any]]) -> tuple[str | None, str]:
@@ -295,78 +310,71 @@ async def _close(engine: Engine, sid: int, members: list[dict[str, Any]], now: f
         membership.cleared(engine, aid)
         await gestures.record(
             store,
-            gestures.Gesture(kind="manual_clear", situation_id=sid, at=now,
-                             actor=f"model:{engine.decider_ref}", role=None, alarm_id=aid),
+            gestures.Gesture(
+                kind="manual_clear",
+                situation_id=sid,
+                at=now,
+                actor=f"model:{engine.decider_ref}",
+                role=None,
+                alarm_id=aid,
+            ),
             subject,
         )
     if await store.all_cleared(sid):
         await store.resolve_situation(sid, "manual_clear", now)
         engine.forget_situation(sid)
     await _record(
-        engine, sid, "closing", "resolved: remaining alarms were quiet and cannot clear themselves",
+        engine,
+        sid,
+        "closing",
+        "resolved: remaining alarms were quiet and cannot clear themselves",
         confidence,
-        {"stale_cleared": [int(m["alarm_id"]) for m in active], "cleared_by_network": cleared,
-         "quiet_s": STALE_S},
+        {
+            "stale_cleared": [int(m["alarm_id"]) for m in active],
+            "cleared_by_network": cleared,
+            "quiet_s": STALE_S,
+        },
         now,
     )
     return 1
 
 
 async def _record(
-    engine: Engine, sid: int, grade: str, action: str, confidence: float,
-    explanation: dict[str, Any], now: float,
+    engine: Engine,
+    sid: int,
+    grade: str,
+    action: str,
+    confidence: float,
+    explanation: dict[str, Any],
+    now: float,
 ) -> None:
     store = engine.store
     await store.add_autonomy_decision(
-        situation_id=sid, grade=grade, action=action, decider=engine.decider_ref,
-        confidence=max(0.0, min(1.0, confidence)), explanation=explanation, at=now,
+        situation_id=sid,
+        grade=grade,
+        action=action,
+        decider=engine.decider_ref,
+        confidence=max(0.0, min(1.0, confidence)),
+        explanation=explanation,
+        at=now,
     )
     await audit.write_event(
-        store, ts=now, actor=f"model:{engine.decider_ref}", role=None, source_ip=None,
-        action=f"autonomy.{grade}", outcome="ok", object_type="situation", object_id=str(sid),
+        store,
+        ts=now,
+        actor=f"model:{engine.decider_ref}",
+        role=None,
+        source_ip=None,
+        action=f"autonomy.{grade}",
+        outcome="ok",
+        object_type="situation",
+        object_id=str(sid),
         details={"action": action, "confidence": round(confidence, 4)},
     )
 
 
-async def _judge(engine: Engine, now: float) -> None:
-    """Give every pending decision a verdict from what happened after it, where something has."""
-    store = engine.store
-    for d in await store.autonomy_decisions(pending=True, limit=500):
-        sid, at, grade = int(d["situation_id"]), float(d["at"]), str(d["grade"])
-        if grade == "closing":
-            raised = await store.any_reactivated(d["explanation"].get("stale_cleared", []), at)
-            if raised:
-                await store.judge_autonomy_decision(int(d["id"]), "disagreed", now, "network",
-                                                    "a stale-cleared alarm raised again")
-            elif now - at >= CLOSE_JUDGE_S:
-                await store.judge_autonomy_decision(int(d["id"]), "agreed", now, "network",
-                                                    "no stale-cleared alarm raised again within an hour")
-            continue
-        after = await store.situation_gestures_after(sid, at)
-        if grade == "severity":
-            row = await store.situation_severity(sid)
-            if row is not None and row[1] is not None and not str(row[1]).startswith("model:"):
-                await store.judge_autonomy_decision(int(d["id"]), "disagreed", now, str(row[1]),
-                                                    "an operator set a different severity")
-                continue
-        if not after:
-            continue
-        who = str(after[0]["actor"])
-        contradicting = {
-            "grouping": {"move", "merge", "operator_split", "split"},
-            "naming": {"rename"},
-            "severity": set(),
-        }[grade]
-        kinds = {("split" if g["kind"] == "verdict" and g.get("verdict") == "split" else g["kind"]) for g in after}
-        if kinds & contradicting:
-            await store.judge_autonomy_decision(int(d["id"]), "disagreed", now, who,
-                                                f"an operator then did {sorted(kinds & contradicting)}")
-        else:
-            await store.judge_autonomy_decision(int(d["id"]), "agreed", now, who,
-                                                f"an operator worked it without contradicting it ({sorted(kinds)})")
-
-
-async def _suspend(engine: Engine, now: float, settings: Settings, rate: float, judged: int) -> None:
+async def _suspend(
+    engine: Engine, now: float, settings: Settings, rate: float, judged: int
+) -> None:
     reason = (
         f"agreement with the operators was {rate:.0%} over the last {judged} judged decisions, "
         f"below the {settings.agreement_floor:.0%} floor"
@@ -374,7 +382,14 @@ async def _suspend(engine: Engine, now: float, settings: Settings, rate: float, 
     off = settings.values(grouping=0, naming=0, closing=0, severity=0)
     await engine.store.set_autonomy(off, "autonomy", now, reason)
     await audit.write_event(
-        engine.store, ts=now, actor="autonomy", role=None, source_ip=None,
-        action="autonomy.suspend", outcome="ok", object_type="autonomy", object_id=None,
+        engine.store,
+        ts=now,
+        actor="autonomy",
+        role=None,
+        source_ip=None,
+        action="autonomy.suspend",
+        outcome="ok",
+        object_type="autonomy",
+        object_id=None,
         details={"rate": round(rate, 4), "judged": judged, "floor": settings.agreement_floor},
     )

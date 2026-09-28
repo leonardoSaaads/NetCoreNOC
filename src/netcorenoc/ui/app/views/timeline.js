@@ -129,7 +129,7 @@ export class Timeline extends Component {
       return html`<${Failed} error=${error} retry=${this.reload} what="the timeline" />`;
     }
     const config = this.config();
-    const sname = situation ? situation.operator_name || situation.derived_name : null;
+    const sname = situation ? situation.operator_name || situation.model_name || situation.derived_name : null;
     return html`<div class="timelineview">
       <${FilterBar} config=${config} elements=${elements} orgs=${orgs} traps=${traps}
         situation=${sname} set=${(key, value) => this.set(key, value)} clear=${() => this.clear()} />

@@ -2706,3 +2706,109 @@ button.mw-row-name {
 .danger-link { color: var(--alarm); }
 .token-row .destructive, .pe-foot .destructive { flex-basis: 100%; }
 .pe-foot .danger-link { margin-left: auto; }
+
+/* ---------- v0.26.0 (ADR #414): the model's charts, the Judge dashboard, Settings' tabs ---------- */
+/* Mobile first: one column at 390 px, two from 720, three from 1200. The grid, not a breakpoint per
+   chart, decides — so the reading order is the same at every width. */
+.judgeview { display: flex; flex-direction: column; gap: var(--space-4); }
+.judge-now { margin: 0; font-size: var(--fs-sm); }
+.judge-block { border: 1px solid var(--line); border-radius: var(--radius-2); padding: var(--space-3); }
+.judge-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-3); }
+.judge-head h3 { margin: 0; font-size: var(--fs-lg); }
+.judge-sub { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-sm); color: var(--fg-muted); }
+.judge-grid { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); }
+.judge-grid > .chart-block { margin: 0; min-width: 0; }
+@media (min-width: 720px) { .judge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .judge-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.judge-record > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; color: var(--accent); }
+
+/* The dataset every chart was drawn from, as a chip on each block's head: generated, site or live
+   are different claims, and a colour alone would not say which. */
+.dataset-chip {
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 1px var(--space-2); border-radius: 999px; border: 1px solid var(--line-strong);
+}
+.dataset-generated { border-style: dashed; }
+.dataset-site { border-color: var(--accent); color: var(--accent); }
+.dataset-live { border-color: var(--quiet); color: var(--quiet); }
+
+.mchart .chart { --chart-h: 132px; }
+.mchart-tall.chart { --chart-h: 180px; }
+@media (max-width: 460px) { .mchart .chart { --chart-h: 110px; } }
+.mchart-svg .mchart-line, .mchart-svg .mchart-step {
+  fill: none; stroke: var(--accent); stroke-width: 1.75; stroke-linejoin: round;
+  stroke-linecap: round; vector-effect: non-scaling-stroke;
+}
+.mchart-svg .mchart-step { stroke-width: 1.25; stroke-dasharray: 4 3; }
+.mchart-svg .mchart-ref { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.mchart-svg .mchart-dot { stroke: var(--accent); stroke-width: 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.mchart-svg .chart-muted { stroke: var(--fg-dim); }
+.mchart-svg .chart-alarm { stroke: var(--alarm); }
+.mchart-svg .mchart-up { fill: var(--accent); }
+.mchart-svg .mchart-down { fill: var(--alarm); opacity: 0.8; }
+.chart-bars .chart-muted, .diverging .chart-muted { background: var(--fg-dim); }
+.chart-legend .chart-muted { background: var(--fg-dim); }
+.mchart-axis { color: var(--fg-muted); font-family: var(--sans); }
+.mchart-ylabel { margin: 0; font-size: var(--fs-xs); color: var(--fg-muted); }
+.mchart-pick { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-xs); color: var(--fg-muted); }
+.mchart-pick select { font-size: var(--fs-sm); }
+
+.shape-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); margin-top: var(--space-3); }
+.mchart-shape-head { display: flex; justify-content: space-between; gap: var(--space-1); font-size: var(--fs-xs); }
+.mchart-shape-head span { font-family: var(--mono); color: var(--fg-dim); }
+.mchart-shape-plot { --chart-h: 64px; height: var(--chart-h); }
+
+.diverging { display: grid; gap: var(--space-1); }
+.diverging-track { position: relative; height: 10px; background: var(--bg-sunken); border-radius: 999px; }
+.diverging-track::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; border-left: 1px solid var(--line-strong); }
+.diverging-track .chart-bar-fill { position: absolute; top: 0; }
+.diverging .chart-alarm { background: var(--alarm); }
+
+.mchart-cm { display: grid; grid-template-columns: auto 1fr 1fr; gap: 2px; margin-top: var(--space-2); font-size: var(--fs-sm); }
+.mchart-cm-h { font-size: var(--fs-xs); color: var(--fg-muted); align-self: center; padding: 0 var(--space-1); }
+.mchart-cm-cell { padding: var(--space-2); background: var(--bg-sunken); display: flex; flex-direction: column; }
+.mchart-cm-cell b { font-family: var(--mono); font-size: var(--fs-md); }
+.mchart-cm-cell span { font-size: var(--fs-xs); color: var(--fg-muted); }
+.mchart-cm-cell.good { box-shadow: inset 3px 0 var(--quiet); }
+.mchart-cm-cell.bad { box-shadow: inset 3px 0 var(--alarm); }
+
+/* One quantity, the model against the formula, with the interval: the headline tiles. */
+.versus-row { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.versus { border: 1px solid var(--line); border-radius: var(--radius-2); padding: var(--space-2); min-width: 0; }
+.versus-label { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.versus-value { font-family: var(--mono); font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
+.versus-mark { font-size: var(--fs-sm); margin-left: var(--space-1); }
+.versus-better .versus-mark { color: var(--quiet); }
+.versus-worse .versus-mark { color: var(--alarm); }
+.versus-ci, .versus-formula { font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim); }
+
+/* Settings → Correlation: three families, one choice. Cards rather than a select, because each
+   carries its sentence of consequence. */
+.decider-form { display: flex; flex-direction: column; gap: var(--space-2); }
+.decider-modes { border: 0; padding: 0; margin: 0; display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.decider-mode { display: grid; grid-template-columns: var(--tap) 1fr; gap: 0 var(--space-2); padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-2); cursor: pointer; }
+.decider-mode.on { border-color: var(--accent); box-shadow: inset 0 -2px var(--accent); }
+.decider-mode.off { opacity: 0.6; cursor: not-allowed; }
+.decider-mode input { grid-row: 1 / span 2; }
+.decider-mode-label { font-weight: 600; }
+.decider-mode-label em { font-style: normal; font-size: var(--fs-xs); color: var(--accent); margin-left: var(--space-1); }
+.decider-mode-note { font-size: var(--fs-sm); color: var(--fg-muted); }
+.dimmed > .scorerview { opacity: 0.85; }
+.grade-list { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.grade { display: grid; grid-template-columns: var(--tap) 1fr; gap: var(--space-2); align-items: start; }
+.grade > span { display: flex; flex-direction: column; }
+.warn-note { color: var(--warn); }
+
+/* Autonomy in the top bar: absent while off; a mark and the kill switch while on. */
+.autonomy-mark { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-xs); white-space: nowrap; }
+.autonomy-on a { color: var(--warn); font-weight: 600; }
+.autonomy-suspended { color: var(--alarm); font-weight: 600; }
+.killswitch { display: inline-flex; align-items: center; gap: var(--space-1); }
+button.danger { border-color: var(--alarm); color: var(--alarm); }
+button.danger:hover { background: var(--alarm); color: var(--bg); }
+@media (max-width: 460px) {
+  .autonomy-on a { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; }
+  .fact { grid-template-columns: minmax(0, 1fr); }
+}
+.judge-caption { margin: var(--space-1) 0 0; font-size: var(--fs-xs); color: var(--fg-dim); line-height: 1.6; }
+.mchart-cm.chart { --chart-h: auto; }

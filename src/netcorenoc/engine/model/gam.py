@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import bisect
 import hashlib
+import itertools
 import json
 import math
 from dataclasses import dataclass
@@ -75,7 +76,9 @@ MAX_INTERACTION_BINS = 16
 MAX_ABS_SCORE = 25.0
 MAX_DOCUMENT_BYTES = 256 * 1024
 
-_KEYS = frozenset({"format", "features", "intercept", "threshold", "shapes", "interactions", "grouping"})
+_KEYS = frozenset(
+    {"format", "features", "intercept", "threshold", "shapes", "interactions", "grouping"}
+)
 _SHAPE_KEYS = frozenset({"feature", "edges", "scores"})
 _PAIR_KEYS = frozenset({"features", "edges", "scores"})
 _GROUPING_KEYS = frozenset({"join_bias", "merge_bias", "merge_min_pairs"})
@@ -114,7 +117,7 @@ class Pair:
 
     @property
     def name(self) -> str:
-        return f"{self.features[0]} × {self.features[1]}"
+        return f"{self.features[0]} x {self.features[1]}"
 
 
 def _num(value: Any, what: str) -> float:
@@ -130,7 +133,7 @@ def _edges(raw: Any, what: str, limit: int) -> tuple[float, ...]:
     if not isinstance(raw, list) or len(raw) > limit - 1:
         raise GamDocumentError(f"{what} must be a list of at most {limit - 1} bin edges")
     edges = tuple(_num(v, what) for v in raw)
-    if any(b <= a for a, b in zip(edges, edges[1:], strict=False)):
+    if any(b <= a for a, b in itertools.pairwise(edges)):
         raise GamDocumentError(f"{what} must be strictly increasing")
     return edges
 
@@ -189,7 +192,12 @@ def validate(document: str) -> Model:
             raise GamDocumentError(f"shape for {name!r} is malformed")
         edges = _edges(raw["edges"], f"{name}.edges", MAX_BINS)
         shapes.append(
-            Shape(name, _feature(name), edges, _scores(raw["scores"], f"{name}.scores", len(edges) + 1))
+            Shape(
+                name,
+                _feature(name),
+                edges,
+                _scores(raw["scores"], f"{name}.scores", len(edges) + 1),
+            )
         )
     pairs_raw = payload["interactions"]
     if not isinstance(pairs_raw, list) or len(pairs_raw) > MAX_INTERACTIONS:

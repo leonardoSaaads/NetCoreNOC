@@ -67,7 +67,12 @@ def test_consistent_cross_evidence_merges() -> None:
     """Both ends of one fibre cut opened two situations; the next alarm is confident about both."""
     g = _cluster(merge_min_pairs=3)
     sit_of = {1: 10, 2: 20, 3: 20, 4: 20}
-    scored = [Scored(1, 3.0, True), Scored(2, 2.0, True), Scored(3, 2.2, True), Scored(4, 1.9, True)]
+    scored = [
+        Scored(1, 3.0, True),
+        Scored(2, 2.0, True),
+        Scored(3, 2.2, True),
+        Scored(4, 1.9, True),
+    ]
     placement = g.place(scored, sit_of, None)
     assert placement.join == 10
     assert placement.merge == (20,)
@@ -76,8 +81,11 @@ def test_consistent_cross_evidence_merges() -> None:
 def test_join_is_by_mean_not_by_sum() -> None:
     """A hundred faint maybes into a storm must not outvote two confident pairs elsewhere."""
     g = _cluster()
-    sit_of = {i: 10 for i in range(100)} | {500: 20, 501: 20}
-    scored = [Scored(i, 0.05, True) for i in range(100)] + [Scored(500, 2.0, True), Scored(501, 1.8, True)]
+    sit_of = dict.fromkeys(range(100), 10) | {500: 20, 501: 20}
+    scored = [Scored(i, 0.05, True) for i in range(100)] + [
+        Scored(500, 2.0, True),
+        Scored(501, 1.8, True),
+    ]
     assert g.place(scored, sit_of, None).join == 20
 
 

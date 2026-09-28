@@ -47,7 +47,9 @@ SPACE: dict[str, tuple[str, float, float]] = {
 }
 
 
-def draw(seed: int, index: int, space: dict[str, tuple[str, float, float]] = SPACE) -> dict[str, float]:
+def draw(
+    seed: int, index: int, space: dict[str, tuple[str, float, float]] = SPACE
+) -> dict[str, float]:
     """Trial ``index``'s parameters: a pure function of ``(seed, index)``."""
     rng = random.Random(f"gam-search|{seed}|{index}")
     out: dict[str, float] = {}
@@ -130,7 +132,11 @@ class Search:
                     return self.done
                 self._fit(index, rung, rung_rounds)
             scored = sorted(
-                (t for t in self.done if t.rung == rung and t.index in alive and t.status == "done"),
+                (
+                    t
+                    for t in self.done
+                    if t.rung == rung and t.index in alive and t.status == "done"
+                ),
                 key=lambda t: (t.valid_loss, t.index),
             )
             keep = max(1, len(scored) // self.budget.eta)
@@ -191,7 +197,9 @@ def importance(trials: Sequence[Trial]) -> dict[str, float]:
     not fANOVA (Hutter et al., ICML 2014) — that needs a random-forest surrogate and more trials
     than an appliance search will run — and the Judge screen labels it for what it is.
     """
-    first = [t for t in trials if t.rung == 0 and t.status == "done" and math.isfinite(t.valid_loss)]
+    first = [
+        t for t in trials if t.rung == 0 and t.status == "done" and math.isfinite(t.valid_loss)
+    ]
     if len(first) < 3:
         return {}
     losses = _ranks([t.valid_loss for t in first])

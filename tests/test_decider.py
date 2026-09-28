@@ -8,77 +8,25 @@ shipped model's quality, which `make train` measures and `tests/test_shipped.py`
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
-from collections.abc import Iterator
 
 import pytest
 
-from netcorenoc.engine.model import gam, shipped
+from netcorenoc.engine.model import shipped
 from netcorenoc.engine.operate.engine import CLEAR_HOLD_S, Engine
 from netcorenoc.ingest.events import TrapEvent, Varbind
 from netcorenoc.store import Store
 
 import authutil
-
-T = 1_800_000_000.0
-
-TEST_MODEL = json.dumps(
-    {
-        "features": ["dt", "same_ne", "same_class", "oid_arcs"],
-        "format": gam.FORMAT,
-        "grouping": {"join_bias": 0.0, "merge_bias": 1.0, "merge_min_pairs": 3.0},
-        "interactions": [],
-        "intercept": -1.0,
-        "shapes": [
-            {"edges": [5.0, 60.0, 600.0], "feature": "dt", "scores": [2.0, 1.0, 0.0, -1.0]},
-            {"edges": [0.5], "feature": "same_ne", "scores": [-1.0, 2.5]},
-            {"edges": [0.5], "feature": "same_class", "scores": [-0.5, 1.5]},
-            # 1271.2.1.x vs 1271.2.1.y share 9 arcs; incident A (1271.2.1) vs B (1271.2.9) share 8.
-            {"edges": [8.5], "feature": "oid_arcs", "scores": [-1.5, 1.0]},
-        ],
-        "threshold": 0.0,
-    },
-    sort_keys=True,
-    separators=(",", ":"),
-)
+from modelutil import TEST_MODEL, T
+from modelutil import ingest as _ingest
+from modelutil import manifest as _manifest
+from modelutil import open_groups as _situations
+from modelutil import trap as _trap
 
 
-def _manifest(document: str) -> str:
-    return json.dumps({"artifact": {"sha256": hashlib.sha256(document.encode()).hexdigest()}})
-
-
-@pytest.fixture
-def test_model(monkeypatch: pytest.MonkeyPatch) -> Iterator[shipped.Shipped]:
-    model = shipped.load_from(TEST_MODEL, _manifest(TEST_MODEL))
-    monkeypatch.setattr(shipped, "load", lambda: model)
-    yield model
-
-
-def _trap(device: str, oid: str, instance: str, ts: float) -> TrapEvent:
-    return TrapEvent(device=device, trap_oid=oid, instance=instance, ts=ts,
-                     varbinds=[Varbind(oid="1.3.6.1.4.1.1271.9.1", kind="str", value=instance)])
-
-
-async def _ingest(engine: Engine, store: Store, traps: list[TrapEvent]) -> None:
-    async with store.lock:
-        for trap in traps:
-            await engine._process(trap)
-        await store.commit()
-
-
-async def _situations(store: Store) -> list[set[int]]:
-    cur = await store.conn.execute(
-        "SELECT sa.situation_id, sa.alarm_id FROM situation_alarm sa JOIN situation s "
-        "ON s.id = sa.situation_id WHERE s.status IN ('new','open') ORDER BY 1, 2"
-    )
-    out: dict[int, set[int]] = {}
-    for sid, aid in await cur.fetchall():
-        out.setdefault(int(sid), set()).add(int(aid))
-    return list(out.values())
-
-
-async def test_a_fresh_appliance_runs_the_shipped_model(store: Store, test_model: shipped.Shipped) -> None:
+async def test_a_fresh_appliance_runs_the_shipped_model(
+    store: Store, test_model: shipped.Shipped
+) -> None:
     assert await store.decider_mode() == "shipped"
     engine = Engine(store, asyncio.Queue())
     await engine.start()
@@ -96,7 +44,7 @@ async def test_a_refused_shipped_model_falls_back_to_the_formula_and_says_why(
     monkeypatch.setattr(shipped, "load", refuse)
     engine = Engine(store, asyncio.Queue())
     await engine.start()
-    assert engine.decider_ref == "additive:default"
+    assert engine.decider_ref.startswith("additive:"), "the formula as configured decides"
     assert not engine.correlator.two_stage
     assert any("shipped model could not be used" in w for w in engine.scorer_warning_list())
 
@@ -123,12 +71,16 @@ async def test_the_additive_formula_is_opt_in_and_still_reachable(
     assert not engine.correlator.two_stage
 
 
-async def test_recall_joins_a_slow_fault_beyond_the_window(store: Store, test_model: shipped.Shipped) -> None:
+async def test_recall_joins_a_slow_fault_beyond_the_window(
+    store: Store, test_model: shipped.Shipped
+) -> None:
     """Ten minutes apart on one element: outside the 120 s window, inside recall's hour."""
     engine = Engine(store, asyncio.Queue())
     await engine.start()
     oid = "1.3.6.1.4.1.1271.2.1.1"
-    await _ingest(engine, store, [_trap("10.0.0.1", oid, "a", T), _trap("10.0.0.1", oid, "b", T + 590.0)])
+    await _ingest(
+        engine, store, [_trap("10.0.0.1", oid, "a", T), _trap("10.0.0.1", oid, "b", T + 590.0)]
+    )
     assert await _situations(store) == [{1, 2}]
 
 
@@ -150,7 +102,9 @@ async def test_two_concurrent_incidents_on_one_vendor_stay_apart(
         ]
     await _ingest(engine, store, traps)
     groups = await _situations(store)
-    cur = await store.conn.execute("SELECT a.id, d.ip FROM alarm a JOIN device d ON d.id=a.device_id")
+    cur = await store.conn.execute(
+        "SELECT a.id, d.ip FROM alarm a JOIN device d ON d.id=a.device_id"
+    )
     ip = {int(r[0]): str(r[1]) for r in await cur.fetchall()}
     incidents = [{ip[a].rsplit(".", 1)[1] in ("1", "2") for a in g} for g in groups]
     assert all(len(kinds) == 1 for kinds in incidents), f"a situation mixes incidents: {groups}"
@@ -164,7 +118,10 @@ async def test_a_bounce_inside_the_clear_hold_rejoins_its_situation(
     await engine.start()
     down, up = "1.3.6.1.6.3.1.1.5.3", "1.3.6.1.6.3.1.1.5.4"
     port = [Varbind(oid="1.3.6.1.2.1.2.2.1.1.7", kind="int", value="7")]
-    ev = lambda oid, ts: TrapEvent(device="10.0.0.9", trap_oid=oid, instance="7", ts=ts, varbinds=port)  # noqa: E731
+
+    def ev(oid: str, ts: float) -> TrapEvent:
+        return TrapEvent(device="10.0.0.9", trap_oid=oid, instance="7", ts=ts, varbinds=port)
+
     await _ingest(engine, store, [ev(down, T), ev(up, T + 5.0), ev(down, T + 60.0)])
     groups = await _situations(store)
     assert len(groups) == 1, "the re-raise inside the hold joined the same situation"
@@ -192,7 +149,9 @@ async def test_the_decider_routes_are_admin_and_a_site_switch_needs_a_verdict(
     assert (await viewer.get("/api/decider")).json()["mode"] == "additive"
     site = await admin.post("/api/decider", json={"mode": "site", "reason": "no model yet"})
     assert site.status_code == 409 and "no site model" in site.text
-    assert (await admin.post("/api/decider", json={"mode": "shipped", "reason": ""})).status_code == 422
+    assert (
+        await admin.post("/api/decider", json={"mode": "shipped", "reason": ""})
+    ).status_code == 422
 
 
 async def test_the_kill_switch_is_an_editor_gesture_and_enabling_is_admin(
@@ -207,6 +166,8 @@ async def test_the_kill_switch_is_an_editor_gesture_and_enabling_is_admin(
     status = (await editor.get("/api/autonomy")).json()
     assert status["active"] and status["grades"] == ["grouping", "naming"]
     assert (await editor.post("/api/autonomy/stop")).status_code == 200
+    again = await editor.post("/api/autonomy/stop")
+    assert again.json() == {"id": None, "active": False}, "a second press writes nothing"
     status = (await editor.get("/api/autonomy")).json()
     assert not status["active"] and not status["suspended"], "stopped by a person, not suspended"
     assert status["history"][0]["reason"] == "stopped from the console"

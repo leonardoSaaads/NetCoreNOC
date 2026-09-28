@@ -28,6 +28,7 @@ import queue
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
+from netcorenoc.engine.correlate.scorer_contract import CONTRACT_VERSION
 from netcorenoc.engine.model import gam, gam_fit, search, shipped, site
 
 if TYPE_CHECKING:  # pragma: no cover - type-only
@@ -35,7 +36,7 @@ if TYPE_CHECKING:  # pragma: no cover - type-only
 
     from netcorenoc.engine.operate.engine import Engine
 
-__all__ = ["DEFAULT_BUDGET", "Runner", "MIN_BAGS"]
+__all__ = ["DEFAULT_BUDGET", "MIN_BAGS", "Runner"]
 
 log = logging.getLogger("netcorenoc")
 
@@ -124,7 +125,9 @@ class Runner:
         try:
             base = shipped.load()
         except Exception as exc:
-            await store.finish_search_run(int(run["id"]), "refused", now, f"no shipped model: {exc}")
+            await store.finish_search_run(
+                int(run["id"]), "refused", now, f"no shipped model: {exc}"
+            )
             return
         pairs = await store.labelled_pairs() + await store.gesture_positive_pairs()
         features = await store.pair_features([int(p["pair_id"]) for p in pairs])
@@ -132,15 +135,23 @@ class Runner:
         bags = {r.bag for r in rows}
         if len(bags) < MIN_BAGS:
             await store.finish_search_run(
-                int(run["id"]), "refused", now,
-                f"{len(bags)} labelled bag(s) carry the v2 features; at least {MIN_BAGS} are needed "
-                "to fit anything. Label situations from the console and start the search again.",
+                int(run["id"]),
+                "refused",
+                now,
+                f"{len(bags)} labelled bag(s) carry the v2 features; at least {MIN_BAGS} are "
+                "needed to fit anything. Label situations from the console and start the search "
+                "again.",
                 rows=len(rows),
             )
             return
         train, test = site.split_by_time(rows)
-        fit_rows, valid_rows = site.split_by_time(train) if len({r.bag for r in train}) > 2 else (train, [])
-        budget = {**asdict(DEFAULT_BUDGET), **{k: v for k, v in run["budget"].items() if k in asdict(DEFAULT_BUDGET)}}
+        fit_rows, valid_rows = (
+            site.split_by_time(train) if len({r.bag for r in train}) > 2 else (train, [])
+        )
+        budget = {
+            **asdict(DEFAULT_BUDGET),
+            **{k: v for k, v in run["budget"].items() if k in asdict(DEFAULT_BUDGET)},
+        }
         payload = {
             "base": base.document,
             "names": list(site.FEATURE_NAMES),
@@ -180,13 +191,19 @@ class Runner:
             await store.finish_search_run(job.run_id, "failed", now, "the search process exited")
             self._reap()
 
-    async def _finish(self, engine: Engine, now: float, body: dict[str, Any] | None, *, stopped: bool) -> None:
+    async def _finish(
+        self, engine: Engine, now: float, body: dict[str, Any] | None, *, stopped: bool
+    ) -> None:
         job = self.job
         assert job is not None
         store = engine.store
         if body is None:
-            await store.finish_search_run(job.run_id, "stopped" if stopped else "failed", now,
-                                          "stopped before a model was fitted" if stopped else "no trial finished")
+            await store.finish_search_run(
+                job.run_id,
+                "stopped" if stopped else "failed",
+                now,
+                "stopped before a model was fitted" if stopped else "no trial finished",
+            )
             return
         base = shipped.load()
         candidate = gam.load(body["document"], scorer_id="site")
@@ -195,7 +212,7 @@ class Runner:
         verdict = site.judge(base.scorer, candidate, rows, job.test, bench)
         mv = await store.insert_model_version(
             kind=gam.KIND,
-            contract_version="1.1",
+            contract_version=CONTRACT_VERSION,
             params_document=body["document"],
             params_hash=gam.fingerprint(body["document"]),
             challenger_run_id=None,
@@ -204,8 +221,13 @@ class Runner:
             note=f"site-adapted from {base.ref} by search run {job.run_id}: {verdict.verdict}",
         )
         await store.finish_search_run(
-            job.run_id, "stopped" if stopped else "done", now, verdict.reason,
-            model_version_id=mv, rows=len(rows), judgement=verdict.as_dict(),
+            job.run_id,
+            "stopped" if stopped else "done",
+            now,
+            verdict.reason,
+            model_version_id=mv,
+            rows=len(rows),
+            judgement=verdict.as_dict(),
         )
 
     def _reap(self) -> None:
@@ -217,4 +239,3 @@ class Runner:
         job.process.join(timeout=5)
         if job.process.is_alive():  # pragma: no cover - a wedged worker
             job.process.terminate()
-

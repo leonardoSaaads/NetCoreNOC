@@ -312,6 +312,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 body.note,
             )
             await store.set_active_scorer_config(config_id, principal.actor, now)
+            # v0.26.0 (ADR #405): applying formula weights IS choosing the formula. The switch is
+            # its own append-only row, so "why is the formula deciding?" has an answer.
+            await store.set_decider_mode(
+                "additive", principal.actor, now, "formula weights applied"
+            )
             await audit_row(
                 request,
                 principal,
@@ -347,6 +352,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(status_code=404, detail="no such scorer configuration")
             previous = await store.active_scorer_config()
             await store.set_active_scorer_config(body.config_id, principal.actor, now)
+            await store.set_decider_mode(
+                "additive",
+                principal.actor,
+                now,
+                f"formula rolled back to configuration {body.config_id}",
+            )
             await audit_row(
                 request,
                 principal,

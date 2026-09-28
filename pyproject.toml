@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.25.0"
+version = "0.26.0"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -76,7 +76,8 @@ netcorenoc = [
     "ingest/trapobjects.tsv.gz",
     # v0.26.0 (ADR #405): the shipped model and its manifest — data, validated on load. Without
     # these lines a wheel would ship an appliance whose default decider is missing.
-    "engine/model/shipped/*.json",
+    "engine/model/linkmodel.json",
+    "engine/model/linkmodel.manifest.json",
 ]
 
 [tool.ruff]
@@ -103,6 +104,8 @@ known-local-folder = [
     # `tests/test_testbed.py` the same way `harness` is imported from `eval/` — a local dev module,
     # never part of the distributed package, which `MANIFEST.in` prunes and a guard asserts.
     "ne",
+    # v0.26.0: the training pipeline's package (`eval/synth/`) and the tests' model helper.
+    "synth", "modelutil",
 ]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
@@ -112,6 +115,7 @@ known-local-folder = [
 # exactly the property that makes them evidence, so E501 is lifted here and nowhere else.
 "tools/evidence/*" = ["T20", "E501"]
 "src/netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
+"eval/synth/*" = ["T20"]  # `make train` reports each stage to the person running it (v0.26.0)
 
 [tool.mypy]
 strict = true

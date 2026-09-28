@@ -90,7 +90,9 @@ def _draw_family(rng: random.Random, spec: StreamSpec, estate: Estate) -> str | 
     return rng.choices(names, weights=[weights.get(n, 1.0) for n in names])[0]
 
 
-def _run(spec: Spec, rng_seed: tuple[object, ...], estate: Estate, key: str, fam: str) -> list[Event]:
+def _run(
+    spec: Spec, rng_seed: tuple[object, ...], estate: Estate, key: str, fam: str
+) -> list[Event]:
     builder = Builder(derived_rng(*rng_seed), estate, key, fam)
     spec.function(builder)
     return builder.events
@@ -104,7 +106,9 @@ def compose(spec: StreamSpec) -> Stream:
     stream = Stream(spec, [])
     placed: list[tuple[float, str]] = []
 
-    def place(key: str, family: str, fam_spec: Spec, seed_key: tuple[object, ...], t0: float) -> None:
+    def place(
+        key: str, family: str, fam_spec: Spec, seed_key: tuple[object, ...], t0: float
+    ) -> None:
         events = _run(fam_spec, seed_key, estate, key, family)
         if not events:
             return
@@ -160,14 +164,19 @@ def compose(spec: StreamSpec) -> Stream:
     return stream
 
 
-def _deliver(rng: random.Random, estate: Estate, events: list[Event], horizon: float) -> list[Event]:
+def _deliver(
+    rng: random.Random, estate: Estate, events: list[Event], horizon: float
+) -> list[Event]:
     """The management network between the elements and the appliance, applied to every trap."""
     latency: dict[str, float] = {}
     for ip in sorted(estate.elements):
         roll = rng.random()
         latency[ip] = (
-            rng.uniform(0.0, 0.3) if roll < 0.7 else rng.uniform(0.3, 3.0) if roll < 0.95 else
-            rng.uniform(3.0, 15.0)
+            rng.uniform(0.0, 0.3)
+            if roll < 0.7
+            else rng.uniform(0.3, 3.0)
+            if roll < 0.95
+            else rng.uniform(3.0, 15.0)
         )
     loss = rng.uniform(0.0, 0.04)
     dup = rng.uniform(0.0, 0.03)

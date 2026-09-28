@@ -108,7 +108,9 @@ class Grouper:
 
     # -- the decision -----------------------------------------------------------------------
 
-    def place(self, scored: Sequence[Scored], sit_of: Mapping[int, int], own: int | None) -> Placement:
+    def place(
+        self, scored: Sequence[Scored], sit_of: Mapping[int, int], own: int | None
+    ) -> Placement:
         if self.mode == MODE_COMPONENTS:
             return self._components(scored, sit_of, own)
         support: dict[int, list[float]] = {}
@@ -157,7 +159,9 @@ class Grouper:
 
     # -- the bookkeeping, after the engine has executed the decision --------------------------
 
-    def commit(self, sid: int, placement: Placement, scored: Sequence[Scored], sit_of: Mapping[int, int]) -> None:
+    def commit(
+        self, sid: int, placement: Placement, scored: Sequence[Scored], sit_of: Mapping[int, int]
+    ) -> None:
         """Fold the merged situations into ``sid`` and add this activation's cross evidence.
 
         ``sit_of`` is read **after** the engine applied the placement, so every member of a merged

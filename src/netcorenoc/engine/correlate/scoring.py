@@ -326,7 +326,7 @@ class SafeScorer:
         """
         if not self.fast_path:
             return None
-        logit = getattr(self.delegate, "logit")
+        logit = self.delegate.logit
         threshold = float(getattr(self.delegate, "threshold", 0.0))
         started = time.monotonic()
         try:
@@ -338,7 +338,9 @@ class SafeScorer:
             self._degrade(f"scorer {self.delegate.scorer_id!r} returned a non-finite logit")
             return None
         if time.monotonic() - started > self.budget_s:
-            self._degrade(f"scorer {self.delegate.scorer_id!r} exceeded the {self.budget_s}s budget")
+            self._degrade(
+                f"scorer {self.delegate.scorer_id!r} exceeded the {self.budget_s}s budget"
+            )
         return value - threshold, value > threshold
 
     def warnings(self) -> list[str]:

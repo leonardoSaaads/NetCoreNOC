@@ -1,4 +1,5 @@
-"""Recording a generated stream **through the real appliance**, so training cannot skew from serving.
+"""Recording a generated stream **through the real appliance**, so training cannot skew from
+serving.
 
 The usual way a model trained offline goes wrong in production is that the offline features were
 computed by different code, or from different state, than the online ones. This module removes the
@@ -43,7 +44,6 @@ from netcorenoc.ingest.events import TrapEvent  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
 import harness  # noqa: E402
-
 from synth.compose import EPOCH, Stream  # noqa: E402
 
 __all__ = ["PROBE", "Activation", "StreamLog", "record"]
@@ -106,8 +106,16 @@ class StreamLog:
             if kind == "a":
                 a: Activation = payload
                 ops.append(
-                    ["a", a.alarm_id, a.ts, a.incident, a.family, a.teaches, int(a.clear),
-                     [[c, int(w), list(v)] for c, w, v in a.candidates]]
+                    [
+                        "a",
+                        a.alarm_id,
+                        a.ts,
+                        a.incident,
+                        a.family,
+                        a.teaches,
+                        int(a.clear),
+                        [[c, int(w), list(v)] for c, w, v in a.candidates],
+                    ]
                 )
             else:
                 ops.append(["c", payload[0], payload[1]])
@@ -138,8 +146,18 @@ class StreamLog:
         for op in body["ops"]:
             if op[0] == "a":
                 log.ops.append(
-                    ("a", Activation(op[1], op[2], op[3], op[4], op[5], bool(op[6]),
-                                     [(c, bool(w), tuple(v)) for c, w, v in op[7]]))
+                    (
+                        "a",
+                        Activation(
+                            op[1],
+                            op[2],
+                            op[3],
+                            op[4],
+                            op[5],
+                            bool(op[6]),
+                            [(c, bool(w), tuple(v)) for c, w, v in op[7]],
+                        ),
+                    )
                 )
             else:
                 log.ops.append(("c", (op[1], op[2])))
@@ -204,7 +222,9 @@ async def _record(stream: Stream) -> StreamLog:
         engine.capture.record = no_capture  # type: ignore[method-assign]
         original_clear = store.clear_alarm
 
-        async def listening_clear(device_id: int, raise_class_id: int, instance: str, ts: float) -> int | None:
+        async def listening_clear(
+            device_id: int, raise_class_id: int, instance: str, ts: float
+        ) -> int | None:
             cleared = await original_clear(device_id, raise_class_id, instance, ts)
             if cleared is not None:
                 log.ops.append(("c", (cleared, ts)))
@@ -237,7 +257,9 @@ async def _record(stream: Stream) -> StreamLog:
         await store.close()
 
 
-def _parse(event: dict[str, Any], ts: float, cache: dict[str, TrapEvent | None]) -> TrapEvent | None:
+def _parse(
+    event: dict[str, Any], ts: float, cache: dict[str, TrapEvent | None]
+) -> TrapEvent | None:
     """The real encode-and-parse, memoised on the datagram's content.
 
     Two traps with the same source, OID and varbinds encode to the same bytes (the encoder's uptime

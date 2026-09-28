@@ -477,6 +477,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/tokenspanel.js"),
     ("GET", "/app/views/parts/visibility.js"),
     ("GET", "/app/widgets.js"),
+    # v0.26.0 (ADR #414): the model's charts, Settings' three new tabs and the Judge's two blocks.
+    ("GET", "/app/modelcharts.js"),
+    ("GET", "/app/views/parts/decider.js"),
+    ("GET", "/app/views/parts/autonomy.js"),
+    ("GET", "/app/views/parts/searchpanel.js"),
+    ("GET", "/app/views/parts/shippedjudge.js"),
+    ("GET", "/app/views/parts/sitejudge.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -535,6 +542,19 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/promotion"),
     ("GET", "/api/models"),
     ("POST", "/api/models/register"),
+    # v0.26.0 (ADRs #405, #412, #413): the decider, autonomy, a situation's severity, the search
+    # and the judge — registered by `routes/decider.py`, after `routes/models.py`.
+    ("GET", "/api/decider"),
+    ("POST", "/api/decider"),
+    ("GET", "/api/autonomy"),
+    ("GET", "/api/autonomy/decisions"),
+    ("POST", "/api/autonomy"),
+    ("POST", "/api/autonomy/stop"),
+    ("POST", "/api/situations/{sid}/severity"),
+    ("GET", "/api/search"),
+    ("POST", "/api/search"),
+    ("POST", "/api/search/stop"),
+    ("GET", "/api/judge"),
     ("GET", "/api/rbac"),
     ("POST", "/api/rbac"),
     ("POST", "/api/rbac/subject"),
@@ -668,7 +688,11 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # prefix, `/api/me/avatar` and `/api/me/profile` are segments below the concrete `/api/me`,
     # `/api/users/{uid}/avatar` and `…/profile` are concrete siblings of `…/role`, and
     # `/api/rbac/subject` is a concrete sibling of the `/api/rbac/*` writes (ADR #401-#403).
-    assert len(live) == 96, (
+    # **v0.26.0: 96 -> 107.** Eleven, none able to shadow another: `/api/decider`, `/api/autonomy`,
+    # `/api/search` and `/api/judge` are new prefixes whose sub-paths (`…/decisions`, `…/stop`) are
+    # concrete; `POST /api/situations/{sid}/severity` is a concrete segment below `{sid}`, beside
+    # the existing concrete siblings (ADRs #405, #412, #413).
+    assert len(live) == 107, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1300,7 +1324,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.25.0", "the version this release carries"
+    assert __version__ == "0.26.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

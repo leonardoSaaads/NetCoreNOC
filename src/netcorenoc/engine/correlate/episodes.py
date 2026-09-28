@@ -151,7 +151,7 @@ class EpisodeMemory:
     def prune(self, now: float) -> None:
         for table in (self.ne, self.cls, self.item):
             table.prune(now)
-        live = {k for k in self.ne.counts}
+        live = set(self.ne.counts)
         for ne, mine in list(self.partners.items()):
             for other in list(mine):
                 if _pair((ne,), (other,)) not in live:

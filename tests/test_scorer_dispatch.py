@@ -66,6 +66,8 @@ async def _activate(store: Store, kind: str, document: str, contract_version: st
             created_at=BASE,
         )
         await store.set_active_model_version(model_version_id, "tester", BASE)
+        # v0.26.0: an applied promotion also chooses the site family (ADR #405).
+        await store.set_decider_mode("site", "tester", BASE, "promotion applied")
         await store.commit()
     return model_version_id
 

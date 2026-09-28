@@ -21,9 +21,7 @@ class DeciderMixin(StoreBase):
         and reading it as anything else would change its behaviour without its migration."""
         if not self._has_decider:
             return "additive"
-        cur = await self.conn.execute(
-            "SELECT mode FROM decider_setting ORDER BY id DESC LIMIT 1"
-        )
+        cur = await self.conn.execute("SELECT mode FROM decider_setting ORDER BY id DESC LIMIT 1")
         row = await cur.fetchone()
         return str(row[0]) if row else "shipped"
 

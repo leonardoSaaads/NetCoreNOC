@@ -108,6 +108,12 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("timeline.read", "/api/activity/top?range_s=7200&buckets=24&limit=10&bands=critical,major"),
     ("entities.read", "/api/inventory"),
     ("classes.read", "/api/catalogue?limit=200"),
+    # v0.26.0: Settings' Correlation, Autonomy and Search tabs, and the Judge dashboard.
+    ("scorer.read", "/api/decider"),
+    ("scorer.read", "/api/autonomy"),
+    ("autonomy.audit", "/api/autonomy/decisions"),
+    ("model.read", "/api/search"),
+    ("model.read", "/api/judge"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.

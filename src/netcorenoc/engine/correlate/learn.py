@@ -11,10 +11,11 @@ the scorer's past decisions fed the numbers it scored with, which is Part VI.4's
 step removed from `incumbent_linked`. It also made the features of a replayed stream depend on
 which model grouped it, so no training set could be built once and scored by many models. Now `A`
 and `E` are statistics of the alarm stream alone: co-occurrence in the window, forgetting by the
-clock. Operator feedback still moves them (a human's verdict is not the champion's opinion). Updates during mass storms are
-damped 10x so confounders (e.g. a regional power outage) are not learned as structure. Operator
-feedback flows back in: ``confirm`` re-applies a situation's pairwise updates; ``split`` halves them
-— every pair, or **only the ones asserted** when v0.9.1's exclusion set names which do not belong.
+clock. Operator feedback still moves them (a human's verdict is not the champion's opinion).
+Updates during mass storms are damped 10x so confounders (e.g. a regional power outage) are not
+learned as structure. Operator feedback flows back in: ``confirm`` re-applies a situation's
+pairwise updates; ``split`` halves them — every pair, or **only the ones asserted** when v0.9.1's
+exclusion set names which do not belong.
 
 Raise/clear pairs are learned from strict alternation of two classes on one (device, instance),
 seeded with the universal standard pairs (linkDown → linkUp). **Both alternation learners moved to

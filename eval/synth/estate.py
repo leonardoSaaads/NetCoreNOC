@@ -22,7 +22,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-__all__ = ["Element", "Estate", "Link", "LineSystem", "build_estate"]
+__all__ = ["Element", "Estate", "LineSystem", "Link", "build_estate"]
 
 ROUTER_VENDORS = ("cisco", "juniper", "nokia", "huawei")
 OLT_VENDORS = ("huawei", "zte")
@@ -160,8 +160,14 @@ def build_estate(rng: random.Random) -> Estate:
         else:
             a_peer, b_peer = b.ip, a.ip
         link = Link(
-            a.ip, a_port, b.ip, b_port, bgp=routed and rng.random() < 0.6, ospf=routed,
-            a_peer=a_peer, b_peer=b_peer,
+            a.ip,
+            a_port,
+            b.ip,
+            b_port,
+            bgp=routed and rng.random() < 0.6,
+            ospf=routed,
+            a_peer=a_peer,
+            b_peer=b_peer,
         )
         links.append(link)
         return link
@@ -193,8 +199,7 @@ def build_estate(rng: random.Random) -> Estate:
             ta = add("dwdm", dwdm_vendor, elements[link.a].site)
             tb = add("dwdm", dwdm_vendor, elements[link.b].site)
             amps = tuple(
-                add("dwdm", dwdm_vendor, rng.randrange(sites)).ip
-                for _ in range(rng.randint(1, 4))
+                add("dwdm", dwdm_vendor, rng.randrange(sites)).ip for _ in range(rng.randint(1, 4))
             )
             lines.append(LineSystem((ta.ip, tb.ip), amps, (link,)))
     return Estate(elements, links, lines, sites)

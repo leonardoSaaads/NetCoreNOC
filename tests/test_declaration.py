@@ -675,11 +675,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # `parts/sequence`, `parts/nedetail`.
     # v0.25.0: 178 -> 190 and 88 -> 96 — eight /api pairs (photos, display names, per-subject
     # access; ADR #401-#403) and four UI modules net (seven added, users/tokens/governance gone).
-    assert len(served) == 190, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.26.0: 190 -> 207 and 96 -> 107 — eleven /api pairs (the decider, autonomy, severity, the
+    # search and the judge; ADRs #405, #412, #413) and six UI modules (ADR #414).
+    assert len(served) == 207, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 96, (
+    assert len(api_pairs) == 107, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -831,11 +833,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # `parts/sequence`, `parts/nedetail`.
     # v0.25.0: 178 -> 190 and 88 -> 96 — eight /api pairs (photos, display names, per-subject
     # access; ADR #401-#403) and four UI modules net (seven added, users/tokens/governance gone).
-    assert len(served) == 190, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.26.0: 190 -> 207 and 96 -> 107 — eleven /api pairs (the decider, autonomy, severity, the
+    # search and the judge; ADRs #405, #412, #413) and six UI modules (ADR #414).
+    assert len(served) == 207, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 96, (
+    assert len(api_pairs) == 107, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -922,7 +926,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # routes; each justification is written beside its row in `route_map.py`.
     # v0.25.0: 21 -> 25 — `GET /api/avatars/{uid}` and the three `/api/me/*` profile writes. A
     # person's own photo and name name no network element; the photo read is gated by role instead.
-    assert len(entries) == 25, entries
+    # v0.26.0: 25 -> 30 — the decider, autonomy's status and kill switch, the search and the judge:
+    # statements about models and switches, naming no network element (ADRs #405, #412, #413).
+    assert len(entries) == 30, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1037,7 +1043,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # inventory structure, never about who may see it.
     # v0.25.0: 28 -> 32. Another person's photo (POST and DELETE) and name, by `users.manage`, and
     # `POST /api/rbac/subject` by `rbac.write` — both capabilities' minimum role is `admin`.
-    assert len(ADMIN_ONLY) == 32, len(ADMIN_ONLY)
+    # v0.26.0: 32 -> 37. Switching the decider, autonomy's settings and its per-act log, and
+    # starting and stopping a search — each capability's minimum role is `admin`.
+    assert len(ADMIN_ONLY) == 37, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
@@ -1050,7 +1058,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # seven catalogue routes read and write rules keyed on trap OIDs, which name a trap type and
     # never an element (ADR #385).
     # v0.25.0: 21 -> 25, the four routes named at the justification test above.
-    assert len(UNSCOPED) == 25, UNSCOPED
+    # v0.26.0: 25 -> 30, the five routes named there too.
+    assert len(UNSCOPED) == 30, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
@@ -1076,7 +1085,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # one element or alarm and 404 on one the caller cannot see (targeted).
     # v0.23.0: 34 -> 38. The two new activity reads and the inventory narrow by the caller's
     # visible set (collections); an element's components 404 on one the caller cannot see.
-    assert len(SCOPED) == 38, SCOPED
+    # v0.26.0: 38 -> 39. An operator's severity names one situation and 404s on one the caller
+    # cannot see (targeted, ADR #412).
+    assert len(SCOPED) == 39, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1142,6 +1153,11 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     },
     ("POST", "/api/rbac"): {"clear": True},
     ("POST", "/api/scope"): {"clear": True},
+    # v0.26.0 (ADRs #405, #412, #413).
+    ("POST", "/api/decider"): {"mode": "shipped", "reason": "declaration test"},
+    ("POST", "/api/autonomy"): {"reason": "declaration test"},
+    ("POST", "/api/situations/{sid}/severity"): {"severity": "major"},
+    ("POST", "/api/search"): {"trials": 2, "max_rounds": 20, "minutes": 1},
 }
 
 
@@ -1224,6 +1240,8 @@ SCOPED_TARGETED = [
     ("POST", "/api/alarms/{aid}/outlived/ack"),
     # v0.23.0: one element's learned components, opened from the Entities screen (#395).
     ("GET", "/api/elements/{ne_id}/components"),
+    # v0.26.0: an operator's severity names one situation (ADR #412).
+    ("POST", "/api/situations/{sid}/severity"),
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 

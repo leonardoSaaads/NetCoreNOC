@@ -5,7 +5,7 @@ Part V of the v0.26.0 brief, and each item is a way of getting a number that is 
 * **Under extreme class imbalance ROC-AUC looks excellent and means little** (Saito & Rehmsmeier,
   *The Precision-Recall Plot Is More Informative than the ROC Plot When Evaluating Binary
   Classifiers on Imbalanced Datasets*, PLoS ONE 10(3), 2015). The headline is therefore the area
-  under the precision–recall curve (average precision), **always printed beside its baseline** —
+  under the precision-recall curve (average precision), **always printed beside its baseline** —
   the positive rate, which is what a model that knows nothing scores.
 * **A classifier's "error dispersion around zero" is its calibration**, not MAE or RMSE, which are
   regression metrics. So: the reliability curve (does 0.8 mean 80 %?) and the Brier score with
@@ -23,6 +23,7 @@ screen for a site model's numbers, so the two are the same code.
 
 from __future__ import annotations
 
+import itertools
 import math
 import random
 from collections.abc import Callable, Sequence
@@ -89,7 +90,9 @@ class Confusion:
 
 @dataclass(frozen=True)
 class Calibration:
-    """The reliability curve and Murphy's decomposition. ``bins`` rows: (mean p, observed, weight)."""
+    """The reliability curve and Murphy's decomposition.
+
+    ``bins`` rows: (mean p, observed, weight)."""
 
     bins: tuple[tuple[float, float, float], ...]
     brier: float
@@ -124,7 +127,11 @@ def log_loss(y: Sequence[int], p: Sequence[float], w: Sequence[float] | None = N
 def brier(y: Sequence[int], p: Sequence[float], w: Sequence[float] | None = None) -> float:
     ws = _w(w, len(y))
     mass = sum(ws)
-    return sum(wi * (pi - yi) ** 2 for yi, pi, wi in zip(y, p, ws, strict=True)) / mass if mass else 0.0
+    return (
+        sum(wi * (pi - yi) ** 2 for yi, pi, wi in zip(y, p, ws, strict=True)) / mass
+        if mass
+        else 0.0
+    )
 
 
 def confusion(
@@ -144,7 +151,9 @@ def confusion(
     return Confusion(tp, fp, tn, fn)
 
 
-def _ranked(y: Sequence[int], p: Sequence[float], w: Sequence[float]) -> list[tuple[float, float, float]]:
+def _ranked(
+    y: Sequence[int], p: Sequence[float], w: Sequence[float]
+) -> list[tuple[float, float, float]]:
     """Distinct scores, descending, with the positive and negative weight at each."""
     by: dict[float, list[float]] = {}
     for yi, pi, wi in zip(y, p, w, strict=True):
@@ -153,8 +162,10 @@ def _ranked(y: Sequence[int], p: Sequence[float], w: Sequence[float]) -> list[tu
     return [(s, v[0], v[1]) for s, v in sorted(by.items(), key=lambda kv: -kv[0])]
 
 
-def average_precision(y: Sequence[int], p: Sequence[float], w: Sequence[float] | None = None) -> float:
-    """Area under the precision–recall curve as average precision (step-wise, no interpolation)."""
+def average_precision(
+    y: Sequence[int], p: Sequence[float], w: Sequence[float] | None = None
+) -> float:
+    """Area under the precision-recall curve as average precision (step-wise, no interpolation)."""
     ws = _w(w, len(y))
     positives = sum(wi for yi, wi in zip(y, ws, strict=True) if yi)
     if positives <= 0:
@@ -202,7 +213,9 @@ def roc_curve(
 
 def roc_auc(y: Sequence[int], p: Sequence[float], w: Sequence[float] | None = None) -> float:
     curve = roc_curve(y, p, w, points=10**9)
-    return sum((x2 - x1) * (y1 + y2) / 2.0 for (x1, y1, _), (x2, y2, _) in zip(curve, curve[1:], strict=False))
+    return sum(
+        (x2 - x1) * (y1 + y2) / 2.0 for (x1, y1, _), (x2, y2, _) in itertools.pairwise(curve)
+    )
 
 
 def _thin(rows: list[tuple[float, float, float]], points: int) -> list[tuple[float, float, float]]:

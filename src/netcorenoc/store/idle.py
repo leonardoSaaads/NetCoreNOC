@@ -144,3 +144,27 @@ class IdleMixin(StoreBase):
         """
         stale = set(await self.idle_active_situations(cutoff))
         return [{**row, "stale": int(row["id"]) in stale} for row in rows]
+
+    async def manual_close_situation(self, situation_id: int, ts: float) -> bool:
+        """Operator ack: resolve a live situation. Returns False if it was not live.
+
+        Moved here from `situations.py` in v0.26.0 (module guard): it is a way a situation
+        closes, beside the idle and clear-hold sweeps.
+
+        `resolution='operator'` — the value that used to be indistinguishable from the idle
+        sweep's. A `new` situation closes exactly as an `open` one does: an operator who reads a
+        card and closes it has looked at it, whether or not they touched it first.
+        """
+        if not self._has_lifecycle:
+            cur = await self.conn.execute(
+                "UPDATE situation SET status='closed', closed_at=?, updated_at=? "
+                "WHERE id=? AND status='open' RETURNING id",
+                (ts, ts, situation_id),
+            )
+            return await cur.fetchone() is not None
+        cur = await self.conn.execute(
+            "UPDATE situation SET status='resolved', resolution='operator', closed_at=?, "
+            f"updated_at=? WHERE id=? AND {LIVE} RETURNING id",  # nosec B608 - module literal
+            (ts, ts, situation_id),
+        )
+        return await cur.fetchone() is not None

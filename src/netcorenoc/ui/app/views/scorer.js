@@ -1,4 +1,4 @@
-/* The link scorer: the formula that decides which alarms group.
+/* The additive formula: four weights and a threshold, opt-in since v0.26.0 (ADR #405).
  *
  * ## The hardening-only refusal, live (draft §6.2, §7.4)
  *
@@ -21,8 +21,8 @@
  */
 
 import { html, Component } from "../dom.js";
-import { get, post } from "../api.js";
-import { Loader, DataTable, SectionHeading, TimeCell, Loading, Failed, cell } from "../widgets.js";
+import { post } from "../api.js";
+import { DataTable, SectionHeading, TimeCell, cell } from "../widgets.js";
 import { score, count, plural } from "../format.js";
 import { scorerRefusals } from "../parameters.js";
 import { Running } from "./parts/model.js";
@@ -37,32 +37,27 @@ const FIELDS = [
   ["threshold", "threshold — link when the score exceeds this"],
 ];
 
-export class Scorer extends Loader {
-  constructor(props) {
-    super(props);
-    this.what = "the scorer configuration";
-    this.loadingLabel = "Reading the scorer";
-  }
-
-  async load() { return get("/api/scorer"); }
-
-  view(config) {
-    // `running` is v0.14.0's addition and the screen leads with it: **what is deciding** comes
-    // before **what is configured**, because until v0.14.0 the two were conflated and the second
-    // was rendered under the first's heading whenever a model version was active (F60).
-    const running = config.running || {
-      kind: config.scorer_id, scorer_id: config.scorer_id,
-      contract_version: config.contract_version, params_hash: config.params_hash,
-      tunable: true, model_version: null,
-    };
-    return html`<div class="scorerview">
-      <${Running} running=${running} degraded=${config.degraded}
-                  degradedReason=${config.degraded_reason} />
-      <${Configured} config=${config} running=${running} />
-      <${Form} config=${config} onApplied=${this.reload} />
-      <${History} config=${config} onRolledBack=${this.reload} />
-    </div>`;
-  }
+/**
+ * The formula's running banner, its five numbers, the retune form and the history — the whole of
+ * v0.25.0's *Link scorer* screen, which v0.26.0 folds into Settings → Correlation (ADR #414). The
+ * address `#/scorer` still lands, on that tab.
+ */
+export function Formula({ config, onChanged }) {
+  // `running` is v0.14.0's addition and the section leads with it: **what is deciding** comes
+  // before **what is configured**, because until v0.14.0 the two were conflated and the second
+  // was rendered under the first's heading whenever a model version was active (F60).
+  const running = config.running || {
+    kind: config.scorer_id, scorer_id: config.scorer_id,
+    contract_version: config.contract_version, params_hash: config.params_hash,
+    tunable: true, model_version: null,
+  };
+  return html`<div class="scorerview">
+    <${Running} running=${running} degraded=${config.degraded}
+                degradedReason=${config.degraded_reason} />
+    <${Configured} config=${config} running=${running} />
+    ${can("scorer.write") ? html`<${Form} config=${config} onApplied=${onChanged} />
+      <${History} config=${config} onRolledBack=${onChanged} />` : null}
+  </div>`;
 }
 
 /**
@@ -289,4 +284,3 @@ class History extends Component {
   }
 }
 
-void Loading; void Failed;

@@ -117,8 +117,9 @@ def _olt(b: Builder) -> Element:
 
 
 def gpon_fibre_cut(b: Builder) -> None:
-    """A feeder (whole PON) or distribution (part of one) fibre cut. G.984.3: the OLT raises LOS on
-    the PON port only when every ONU is lost; each ONU's LOS/LOF follows within the ranging cycle."""
+    """A feeder (whole PON) or distribution (part of one) fibre cut. G.984.3: the OLT raises LOS
+    on the PON port only when every ONU is lost; each ONU's LOS/LOF follows within the ranging
+    cycle."""
     olt = _olt(b)
     pon = b.rng.choice(sorted(olt.onus))
     onus = olt.onus[pon]
@@ -276,8 +277,15 @@ def bgp_flap(b: Builder) -> None:
     for n in range(b.rng.randint(1, 6)):
         up = b.rng.uniform(5.0, 240.0)
         for end, peer in ((link.a, link.a_peer), (link.b, link.b_peer)):
-            b.say(_el(b, end), ("bgp_down",), peer, t + b.spread(1.0), root=n == 0 and end == link.a,
-                  clear_after=up, peer=peer)
+            b.say(
+                _el(b, end),
+                ("bgp_down",),
+                peer,
+                t + b.spread(1.0),
+                root=n == 0 and end == link.a,
+                clear_after=up,
+                peer=peer,
+            )
         t += up + b.rng.uniform(20.0, 900.0)
 
 
@@ -288,15 +296,24 @@ def ospf_flap(b: Builder) -> None:
     for n in range(b.rng.randint(1, 5)):
         up = b.rng.uniform(10.0, 120.0)
         for end, peer in ((link.a, link.a_peer), (link.b, link.b_peer)):
-            b.say(_el(b, end), ("ospf_nbr",), peer, t + b.spread(2.0), root=n == 0 and end == link.a,
-                  clear_after=up, peer=peer)
+            b.say(
+                _el(b, end),
+                ("ospf_nbr",),
+                peer,
+                t + b.spread(2.0),
+                root=n == 0 and end == link.a,
+                clear_after=up,
+                peer=peer,
+            )
         t += up + b.rng.uniform(30.0, 1200.0)
 
 
 def port_flapping(b: Builder) -> None:
     """One port bouncing for a while — sometimes regular (the flap detector's case), often not.
     The irregular kind is what bridges unrelated incidents if a correlator lets it."""
-    el = b.rng.choice([e for e in b.estate.elements.values() if e.kind in ("router", "switch", "olt")])
+    el = b.rng.choice(
+        [e for e in b.estate.elements.values() if e.kind in ("router", "switch", "olt")]
+    )
     port = f"access-{b.rng.randint(1, 48)}"
     regular = b.rng.random() < 0.4
     period = b.rng.uniform(15.0, 300.0)
@@ -315,13 +332,22 @@ def ne_reboot(b: Builder) -> None:
     if b.rng.random() < 0.5:
         b.say(router, ("dying_gasp", "cold_start"), "chassis", 0.0, root=True)
     for link in b.estate.links_of(router.ip):
-        far, port, peer = (link.b, link.b_port, link.b_peer) if link.a == router.ip else (
-            link.a, link.a_port, link.a_peer)
+        far, port, peer = (
+            (link.b, link.b_port, link.b_peer)
+            if link.a == router.ip
+            else (link.a, link.a_port, link.a_peer)
+        )
         at = b.spread(1.5)
         b.say(_el(b, far), ("link_down",), port, at, clear_after=back - at)
         if link.bgp:
-            b.say(_el(b, far), ("bgp_down",), peer, at + b.rng.uniform(0.0, 180.0),
-                  clear_after=back + 30.0, peer=peer)
+            b.say(
+                _el(b, far),
+                ("bgp_down",),
+                peer,
+                at + b.rng.uniform(0.0, 180.0),
+                clear_after=back + 30.0,
+                peer=peer,
+            )
     b.say(router, ("cold_start",), "chassis", back, root=not b.events)
     if b.rng.random() < 0.6:
         b.say(router, ("config_change",), "chassis", back + b.spread(20.0))
@@ -333,8 +359,14 @@ def planned_maintenance(b: Builder) -> None:
     el = b.rng.choice([e for e in b.estate.elements.values() if e.kind in ("router", "olt")])
     t = 0.0
     for n in range(b.rng.randint(1, 4)):
-        b.say(el, ("board_removed",), f"slot-{b.rng.randint(1, 8)}", t, root=n == 0,
-              clear_after=b.rng.uniform(60.0, 900.0))
+        b.say(
+            el,
+            ("board_removed",),
+            f"slot-{b.rng.randint(1, 8)}",
+            t,
+            root=n == 0,
+            clear_after=b.rng.uniform(60.0, 900.0),
+        )
         t += b.rng.uniform(60.0, 1200.0)
         b.say(el, ("config_change",), "chassis", t + b.spread(5.0))
     if b.rng.random() < 0.5:
@@ -347,7 +379,7 @@ def planned_maintenance(b: Builder) -> None:
 def site_power_loss(b: Builder) -> None:
     """Mains fails at a site. The UPS reports; power supplies with one feed fault; if the battery
     runs out the site goes dark and the neighbours see it go — minutes to an hour later."""
-    ups = [e for e in b.estate.of_kind("ups")]
+    ups = list(b.estate.of_kind("ups"))
     site = b.rng.choice(ups).site if ups else b.rng.randrange(b.estate.sites)
     local = b.estate.at_site(site)
     fix = b.repair(20, 300)
@@ -367,8 +399,13 @@ def site_power_loss(b: Builder) -> None:
                     far, port = (link.b, link.b_port) if link.a == el.ip else (link.a, link.a_port)
                     if b.estate.elements[far].site != site:
                         down = battery + b.spread(20.0)
-                        b.say(_el(b, far), ("link_down",), port, down,
-                              clear_after=None if fix is None else fix - down + 120.0)
+                        b.say(
+                            _el(b, far),
+                            ("link_down",),
+                            port,
+                            down,
+                            clear_after=None if fix is None else fix - down + 120.0,
+                        )
         if fix is not None:
             for el in local:
                 if el.kind in ("router", "olt", "switch"):
@@ -383,8 +420,14 @@ def environment(b: Builder) -> None:
     if b.rng.random() < 0.6:
         b.say(el, ("fan_fail", "temp_high"), "fan-1", 0.0, root=True, clear_after=fix)
         t = b.rng.uniform(120.0, 2400.0)
-    b.say(el, ("temp_high", "fan_fail"), "sensor-1", t, root=t == 0.0,
-          clear_after=None if fix is None else max(60.0, fix - t))
+    b.say(
+        el,
+        ("temp_high", "fan_fail"),
+        "sensor-1",
+        t,
+        root=t == 0.0,
+        clear_after=None if fix is None else max(60.0, fix - t),
+    )
 
 
 # -- background: independent faults nobody should group with anything ------------------------
@@ -403,15 +446,27 @@ def noise(b: Builder) -> None:
         return
     el = b.rng.choice(list(b.estate.elements.values()))
     if kind < 0.65:
-        b.say(el, ("link_down",), f"cust-{b.rng.randint(1, 96)}", 0.0, root=True,
-              clear_after=b.rng.uniform(2.0, 600.0))
+        b.say(
+            el,
+            ("link_down",),
+            f"cust-{b.rng.randint(1, 96)}",
+            0.0,
+            root=True,
+            clear_after=b.rng.uniform(2.0, 600.0),
+        )
     elif kind < 0.8:
         b.say(el, ("auth_failure",), "snmp", 0.0, root=True)
     elif kind < 0.92:
         b.say(el, ("config_change",), "chassis", 0.0, root=True)
     else:
-        b.say(el, ("cpu_high", "config_change"), "cpu-0", 0.0, root=True,
-              clear_after=b.rng.uniform(30.0, 900.0))
+        b.say(
+            el,
+            ("cpu_high", "config_change"),
+            "cpu-0",
+            0.0,
+            root=True,
+            clear_after=b.rng.uniform(30.0, 900.0),
+        )
 
 
 @dataclass(frozen=True)
@@ -451,7 +506,9 @@ NOISE = _spec(noise, (), "noise")
 def hosts(estate: Estate, spec: Spec) -> bool:
     """Whether ``estate`` can host a family with these needs."""
     have = {e.kind for e in estate.elements.values()}
-    if any(estate.elements[lk.a].kind == estate.elements[lk.b].kind == "router" for lk in estate.links):
+    if any(
+        estate.elements[lk.a].kind == estate.elements[lk.b].kind == "router" for lk in estate.links
+    ):
         have.add("backbone")
     if estate.lines:
         have.add("line")

@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.situations import LIVE
 
 __all__ = ["AutonomyMixin"]
 
@@ -48,7 +49,9 @@ class AutonomyMixin(StoreBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
-    async def set_autonomy(self, values: dict[str, Any], set_by: str, ts: float, reason: str) -> int:
+    async def set_autonomy(
+        self, values: dict[str, Any], set_by: str, ts: float, reason: str
+    ) -> int:
         cols = [c for c in _SETTING_COLUMNS if c in values]
         marks = ", ".join("?" * (len(cols) + 3))
         cur = await self.conn.execute(
@@ -133,7 +136,9 @@ class AutonomyMixin(StoreBase):
         )
         return [str(r[0]) for r in await cur.fetchall()]
 
-    async def situation_gestures_after(self, situation_id: int, after: float) -> list[dict[str, Any]]:
+    async def situation_gestures_after(
+        self, situation_id: int, after: float
+    ) -> list[dict[str, Any]]:
         """Operator gestures on a situation after ``after`` — never the model's own. A verdict
         event carries its feedback's `confirm`/`split` as ``verdict``."""
         cur = await self.conn.execute(
@@ -148,8 +153,9 @@ class AutonomyMixin(StoreBase):
     async def autonomy_candidates(self, settled_before: float, limit: int) -> list[dict[str, Any]]:
         """Live situations formed at least a settling period ago, newest activity first."""
         cur = await self.conn.execute(
-            "SELECT id, status, created_at, updated_at, decider, operator_name, severity, "
-            "severity_by FROM situation WHERE status IN ('new','open') AND created_at <= ? "
+            # nosec B608 - `LIVE` is the store's one module literal; every value is bound.
+            "SELECT id, status, created_at, updated_at, decider, operator_name, model_name, "
+            f"severity, severity_by FROM situation WHERE {LIVE} AND created_at <= ? "  # nosec B608
             "ORDER BY updated_at DESC LIMIT ?",
             (settled_before, limit),
         )
@@ -195,25 +201,27 @@ class AutonomyMixin(StoreBase):
         row = await cur.fetchone()
         return None if row is None else (row[0], row[1])
 
-    async def set_situation_severity(
-        self, situation_id: int, severity: str, by: str
-    ) -> None:
+    async def set_situation_severity(self, situation_id: int, severity: str, by: str) -> None:
         await self.conn.execute(
-            "UPDATE situation SET severity=?, severity_by=? WHERE id=?", (severity, by, situation_id)
+            "UPDATE situation SET severity=?, severity_by=? WHERE id=?",
+            (severity, by, situation_id),
         )
 
     async def set_situation_name_by_model(self, situation_id: int, name: str) -> bool:
-        """Name a situation nobody has named. Refuses (False) once an operator has named it."""
+        """Name a situation nobody has named, in `model_name` — never `operator_name`, whose one
+        writer is the rename route. Refuses (False) once an operator or the model has named it."""
         cur = await self.conn.execute(
-            "UPDATE situation SET operator_name=? WHERE id=? AND operator_name IS NULL "
-            "RETURNING id",
+            "UPDATE situation SET model_name=? "
+            "WHERE id=? AND operator_name IS NULL AND model_name IS NULL RETURNING id",
             (name, situation_id),
         )
         return await cur.fetchone() is not None
 
     # -- the search ------------------------------------------------------------------------
 
-    async def open_search_run(self, *, by: str, seed: int, budget: dict[str, Any], at: float) -> int:
+    async def open_search_run(
+        self, *, by: str, seed: int, budget: dict[str, Any], at: float
+    ) -> int:
         cur = await self.conn.execute(
             "INSERT INTO search_run (started_at, started_by, seed, budget, status) "
             "VALUES (?, ?, ?, ?, 'running') RETURNING id",
@@ -251,7 +259,8 @@ class AutonomyMixin(StoreBase):
     async def add_search_trial(self, run_id: int, trial: dict[str, Any]) -> None:
         await self.conn.execute(
             "INSERT OR IGNORE INTO search_trial (run_id, trial, rung, params, rounds, best_round, "
-            "train_loss, valid_loss, seconds, status, trace) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "train_loss, valid_loss, seconds, status, trace) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 trial["index"],

@@ -5174,3 +5174,266 @@ From this release an entry is about six lines: decision, reason, release.*
 - The value is shown once, with a copy button and a working `curl` example; each token can be
   narrowed like a person (`token:<id>`), and revoked from a one-line control that opens the
   consequence before anything can be applied.
+
+## 405. What decides links: a shipped model by default; the additive formula is opt-in (v0.26.0)
+
+- **Decision**: three families can decide, chosen in Settings → Correlation and stored append-only
+  in `decider_setting` (0026): the **shipped model** (the default on every appliance, new or
+  upgraded), a **site model** (the shipped model adapted to this appliance's labels, #411), and the
+  **additive formula** (v0.25.0's four weights and threshold, unchanged, opt-in). A switch needs a
+  reason and is audited (`decider.set`); switching to *site* re-derives the paired judgement on the
+  server and is refused (409) unless it is `BETTER` — the request names a mode, never a verdict.
+- **Fail-safe**: a shipped model that is absent, malformed, or does not match its manifest's
+  SHA-256 is refused with the reason; the engine then runs the additive formula as configured (the
+  active configuration, else the coded defaults), so every situation still records the
+  configuration that formed it, and says why in the bell. Correlation never stops for want of a
+  model.
+- **What each family gets**: a trained model gets two-stage recall and correlation clustering
+  (#418); the formula keeps the 120-second window and connected components, because that is what
+  its documentation promises and an operator who opts back into it gets what the page says.
+- **Applying a v0.14.0 promotion** (`POST /api/promotion`, `applied`) now also writes `site`: a
+  promoted model was fitted on this site's labels, so it is a site model.
+- **Reachability is tested**, not asserted: `tests/test_decider.py::
+  test_the_additive_formula_is_opt_in_and_still_reachable` is one of Part VIII's injections.
+
+## 406. A closed situation teaches nothing; a learning epoch is an hour of stream time (v0.26.0)
+
+- **Decision**: `learn.py` no longer reinforces class and entity affinity from the membership of a
+  closed situation, and its epochs are hours of *stream* time rather than situation closes.
+- **Reason**: a closed situation's membership is the running decider's own output. Learning from
+  it makes every feature a function of the incumbent's past decisions — `incumbent_linked` by
+  another name — so a model trained on those features learns to agree with whatever decided
+  before it (Part VI.4). Stream-only statistics are the same whatever decided, which is also what
+  lets the offline replay build training pairs once and evaluate any decider against them.
+- **Cost accepted**: affinity learns more slowly on a quiet appliance. Episode memory (#418) carries
+  the recurrence signal instead, from co-occurrence counted in separate occasions.
+
+## 407. The model family: a boosted generalised additive model, in pure Python (v0.26.0)
+
+- **Decision**: `engine/model/gam.py` (serving) and `gam_fit.py` (fitting): cyclic gradient boosting
+  of per-feature step functions, at most three leaves per step, stochastic row subsampling, and up
+  to four pairwise interactions chosen by the FAST heuristic, centred so the intercept carries the
+  base rate — the GA²M/EBM construction (Lou, Caruana & Gehrke, KDD 2012; Lou et al., KDD 2013;
+  Friedman, *Stochastic gradient boosting*, 2002; InterpretML's EBM). No dependency.
+- **Why this family**: its decision is a sum of per-feature lookups, so the explanation of every
+  link is **exact** — the terms add up to the logit — not a post-hoc approximation (Part VI.1). It
+  serves in a handful of dictionary reads per pair, on the ingest path, with no lock or I/O. A
+  tree ensemble of the same accuracy would need an approximate explainer; a neural model would
+  need a dependency and would still need one.
+- **Kind**: `gam` in `model_version.KIND_GAM`, beside the v0.14.0 kinds, which stay loadable.
+
+## 408. The generated training set: families, held-out families, what it cannot produce (v0.26.0)
+
+- **Decision**: `eval/synth/` generates appliance histories — a seeded estate (vendors, elements,
+  ONUs, links), incident families (fibre cut, optical degradation, power, BGP after link, card
+  failure, flaps, maintenance, storms, concurrent incidents, …) and randomised nuisances (noise
+  traps, chatter, clock skew, missing clears, interface-addressed peers) — encodes every trap as
+  BER, parses it with the appliance's own parser and runs it **through the real `Engine`**, so
+  the features trained on are the features served (no train/serve skew).
+- **Splits** (`dataset.py`): streams, never pairs, are the unit — an incident's pairs never straddle
+  train and test. `train`, `train_long` (older 70 % for training, newer 30 % as `test_time`),
+  `valid` (the only data tuning ever reads), `test_iid`, `test_concurrency`, and two **whole
+  held-out families** sets, `test_optical` and `test_protocol`, whose families never appear in
+  training or validation.
+- **Never tuned on** `eval/corpus`, the lab, or any test split. The bar (#409) is fixed from
+  validation before the test splits are read once.
+- **What it cannot produce**: a real vendor's undocumented trap semantics; operators' naming
+  habits; topology the estate model does not have (DWDM, microwave, SD-WAN overlays); incident
+  families nobody wrote; the joint distribution of a real network's faults. The held-out families
+  measure generalisation *across the generator's own families*, which is necessary and not
+  sufficient; the site adaptation (#411) is how a real network corrects it.
+
+## 409. Features are ablated; grouping is chosen on operator effort; the bar is fixed before the test (v0.26.0)
+
+- **Ablation** (`eval/synth/train.py`): every candidate feature is fitted with and without; one
+  whose removal does not worsen validation log loss by at least 0.0005 nats is dropped. Measured on
+  the shipped run: `same_ne` (+0.0004 — `entity_affinity` already carries it structurally),
+  `class_episodes` (−0.0029: it hurt) and `hour` (−0.0002) are dropped; `dt` (+0.058) matters most,
+  then `entity_affinity`, `same_class`, `ne_episodes`, `class_affinity`. Twelve are kept. The
+  numbers are in the manifest and charted on the Judge screen.
+- **Grouping is chosen on the operator's repair work**, not on the mean of four rates. The first
+  objective was dominated by the ~2 250 single-alarm noise incidents in the validation streams and
+  by the concurrency pairs, so it drove the join bias to the edge of its grid and split 43 % of
+  real incidents. `repair_gestures` — one merge per extra piece of an incident, one move per
+  foreign incident in a situation, per incident — prices a split and a contamination the way an
+  operator pays for them. The biases are the **fewest gestures among the settings that merge
+  concurrent incidents no more often than the formula does** (`split_bag_intact_rate` ≤ the
+  formula's, on the same validation streams).
+- **Diagnosed before it was chosen**: of the activations that ended up away from their incident,
+  the largest share had a same-incident candidate the model scored as linked but the situation's
+  mean evidence did not clear the bias (grouping), then the model scoring every same-incident pair
+  against (model), then no same-incident alarm recalled at all (recall) — the last dominant only
+  for `port_flapping`, whose earlier raise has cleared. A top-k join statistic only slid along the
+  same frontier, so it was not adopted.
+- **The quality bar** (`QUALITY_BAR`) was fixed from the validation streams, from the paired
+  stream-bootstrap of model − formula (95 %): pairwise F1 +0.005 [−0.001, +0.012], over-merge
+  +0.020 [+0.014, +0.028], under-merge −0.032 [−0.044, −0.022], split-bag −0.016 [−0.133,
+  +0.137], negatives respected +0.069 [+0.020, +0.145], repair gestures ×0.725 [0.659, 0.809].
+  Tolerances are about twice those intervals. On every pooled test split: F1 and ARI ≥ 0.80 and
+  ≥ formula − 0.02; over-merge ≤ 0.15 and ≤ formula + 0.05; under-merge ≤ 0.20 and ≤ formula;
+  split-bag ≤ formula + 0.10; negatives respected ≥ formula − 0.02; repair gestures ≤ 0.90 ×
+  formula. On every held-out family: repair gestures ≤ formula, under-merge ≤ formula + 0.05,
+  over-merge ≤ formula + 0.10. **The argument is relative on purpose**: the model replaces the
+  formula as the default, so the bar is that it does less harm than what it replaces, and on a
+  family it never saw it costs operators no more repair work.
+- **Missed means not written**: `make train` exits non-zero and writes only
+  `linkmodel.manifest.json.candidate`, with every check and its value.
+- **What the bar does not claim**: that the absolute numbers are good. On validation the model
+  still splits a large share of the incidents of slow families (site power, NE reboots, planned
+  work); the bar says it splits fewer than the formula and costs less repair, not that the problem
+  is solved. The Judge screen shows the per-family numbers beside the headline.
+
+## 410. A cleared situation is held open for a bounce (v0.26.0)
+
+- **Decision**: when every member of a situation has cleared, it is not resolved at once; it stays
+  live for `CLEAR_HOLD_S` = 300 s, and an alarm that re-raises inside the hold rejoins it. The
+  maintenance sweep resolves it (`self_cleared`) once the hold has passed with nothing raised.
+- **Reason**: measured on generated flapping and power-bounce families, immediate resolution split
+  one incident into several situations — the dominant under-merge cause after the window itself.
+  Five minutes is the X.733/ITU-T M.3703 practice of alarm hysteresis, applied to situations.
+
+## 411. Site adaptation is a paired comparison; its floors replace `operators ≥ 3` (v0.26.0)
+
+- **Decision**: a site model is judged against the shipped model on **this site's newest labelled
+  incidents** (held out by time, 30 %), paired per incident on log loss, with a 95 % bootstrap
+  interval over incidents; plus a **do-no-harm** check on 2 000 generated benchmark pairs packaged
+  in the manifest (the site model may not be worse there by more than 0.02 nats). `BETTER` needs
+  the whole interval below zero. Floors: 20 labelled incidents, 6 in the held-out newest part, 4
+  splits asserting a negative, labels from 3 distinct days.
+- **Why these numbers**: a paired comparison's power comes from the per-incident differences, not
+  from how many people made the labels. With *n* held-out incidents the 95 % interval's half-width
+  is about t₀.₉₇₅,ₙ₋₁ / √n standard deviations of the per-incident difference: at *n* = 6 that is
+  2.571 / 2.449 ≈ 1.05 SD, so six is the least that can declare anything — a difference smaller
+  than one SD returns `INSUFFICIENT_EVIDENCE`, never a false `BETTER`. Detecting a one-SD
+  improvement with 80 % power needs about ten ((1.96 + 0.84)² ≈ 7.8, plus the t correction), which
+  a site reaches as labels accumulate; 20 incidents overall keep the training part at 14 or more.
+  Four negative-asserting splits keep both classes present. `operators ≥ 3` measured independence
+  of opinion, which the temporal-spread floor measures more directly on a one-team appliance:
+  labels from three days cannot be one bad shift.
+- **What did not change**: an admin switches; nothing activates itself.
+
+## 412. Autonomy: four grades, attributed, explained, self-suspending, with a kill switch (v0.26.0)
+
+- **Decision**: `engine/operate/autonomy.py`. Four grades, each its own switch (`grouping`,
+  `naming`, `closing`, `severity`), all off until an admin turns one on. Every act writes an
+  `autonomy_decision` row with the model that made it and its evidence (the schema refuses an
+  empty explanation), and an audit event under the actor `model:<ref>`.
+- **Self-suspension**: each act is judged later by what the operators did (a restructure after an
+  accepted grouping, a rename after a model's name, an operator's severity, a stale-cleared alarm
+  raising again). Below `agreement_floor` over the last `window` judged acts (at least
+  `min_judged`), autonomy writes an all-off row set by `autonomy`, with the rate in the reason, and
+  the bell says so. Only an admin turns it back on.
+- **Kill switch**: `POST /api/autonomy/stop`, `editor+`, idempotent, in the top bar of every screen
+  while any grade is on. Stopping is cheap to grant; starting is admin.
+- **Never**: acts on the formula's situations (it has no probability), undoes an operator, or runs
+  on the ingest path. The model's name goes in its own column, `situation.model_name` (0026):
+  `operator_name` keeps exactly one writer, the rename route (`test_gesture_boundary`), the
+  console shows operator, then model, then derived, and says which. This supersedes v0.16.0's
+  "no model proposes a name" (#257) for the one case an admin opts into: a model's name above a
+  grouping can lean on an operator's judgement of it, which is why naming is its own grade,
+  attributed, and judged by the renames that follow.
+
+## 413. Hyperparameter search in the product, without a library (v0.26.0)
+
+- **Decision**: `engine/model/search.py` — random search (Bergstra & Bengio, JMLR 2012) over a
+  bounded space, successive halving on validation log loss (Jamieson & Talwalkar, AISTATS 2016;
+  the Hyperband bracket of Li et al., JMLR 2018), seeded (trial *k*'s parameters are a pure
+  function of the seed), resumable (it continues from the trials it is handed), bounded (trials,
+  rounds, wall clock), one record per trial. Importance is Spearman ρ² on the first rung — stated
+  as such on screen, not fANOVA.
+- **In the product**: Settings → Search sets the budget; `POST /api/search` starts, `/stop` stops.
+  The fit runs in a **separate process** (spawn), so pure-Python arithmetic never holds the event
+  loop's GIL; the maintenance tick moves rows in and trials out in short transactions. The result
+  is a registered site model that decides nothing until judged `BETTER` and chosen (#405, #411).
+
+## 414. Settings absorbs the Link scorer; Judge & promotion is chart-first (v0.26.0)
+
+- **Settings** has four tabs: **Correlation** (what decides, the shipped model's provenance, site
+  models, and the additive formula's editor — the old Link scorer screen, whose address still
+  lands there), **Autonomy**, **Search**, **System** (v0.25.0's three classes).
+- **Judge & promotion** leads with measurements: the shipped model on generated data (four
+  headline quantities beside the formula's with intervals and n; precision–recall against its
+  baseline rate; ROC; calibration with Murphy's decomposition; confusion at the threshold; the
+  search's history, score × hyperparameter, importance, time × performance and train vs
+  validation; one shape per feature; the ablation), then this site's labels (sufficiency, latest
+  comparison, latest search), then the live monitor. Every chart names its dataset and n in its
+  caption and generated, site and live data never share an axis. The v0.11.0 record is folded
+  below, unchanged.
+- **Hand-written SVG** (`ui/app/modelcharts.js`), as `charts.js`: geometry in a stretched viewBox,
+  every label HTML, `Unmeasured` rather than zero. Mobile first: one column at 390 px.
+
+## 415. Superseding "do not replace the formula with ML" (v0.26.0)
+
+- **The position**: since v0.6.0 the additive formula decided and learned models were challengers
+  that a gate might, one day, promote (#93, #184, #351, #354). No promotion ever happened (#184's
+  own measurement), so every appliance ran a formula over three numbers.
+- **Why it ends**: the leverage was never the estimator; it was what the estimator could see and
+  how its links became situations (Part 0.3's measurement). A model trained before release on
+  generated incidents, validated on families it never saw and shipped as checked data can decide
+  from the first trap — the gate's question ("is this site's model better than what runs?") is
+  still asked, of the site model, by #411.
+- **What survives**: the formula, opt-in and reachable (#405); every explanation rule; the
+  refusal of executable model files (#419).
+
+## 416. Superseding "synthetic truth never enters the promotion path" (v0.26.0)
+
+- **The position**: PREREGISTRATION-0.10.0 and #332 kept generated labels away from anything that
+  could change what decides, because the only thing that could was the promotion gate over
+  operator labels.
+- **Why it ends**: the shipped model is trained on generated truth by design; that is the only way
+  a model can act on day 0. The boundary moves to where it still protects something: **generated
+  truth never enters a site judgement**. A site model is judged on this site's labels only; the
+  generated benchmark is used for one thing — do no harm — and is labelled as generated wherever
+  it appears.
+- **Still enforced**: the lab cannot carry truth (#329), nothing under `src/` imports the lab or
+  the generator (#332's AST guard, extended to `eval/synth`), and the console never puts generated
+  and site numbers on one axis (#414).
+
+## 417. Superseding "`INSUFFICIENT_EVIDENCE` is terminal within a release" (v0.26.0)
+
+- **The position**: PREREGISTRATION-0.10.0 §6.2 — no later analysis in the same release may turn
+  an `INSUFFICIENT_EVIDENCE` into another verdict, so a promotion could not be argued into being.
+- **Why it ends**: it made sense for a release-scoped, pre-registered analysis over one frozen
+  corpus. A site's labels grow every day, and an appliance that waited for the next release to ask
+  again would never adapt. `INSUFFICIENT_EVIDENCE` is now terminal **for the labels it was
+  computed on**: the next search, on more labels, asks again (#411).
+- **What protects against arguing a verdict into being** now: the judgement is re-derived by the
+  server on every switch request, never accepted from the client; the held-out part is the newest
+  labels by time, so a search cannot choose its own test; every run and verdict is recorded.
+
+## 418. Candidate recall, episode memory and grouping (v0.26.0)
+
+- **Two-stage recall** (`correlate/retrieval.py`): besides the 120-second window, bounded rings
+  over the last hour recall live alarms on the same element, under the same OID parent, and on
+  learned neighbours. Recall reads no situation, so training pairs are independent of any
+  decider. Every ring is a fixed-size deque; the union is capped.
+- **Episode memory** (`correlate/episodes.py`): co-occurrence counted in separate *occasions*
+  (alarms within 300 s, occasions separated by 1 800 s), for element pairs, class pairs and
+  fault-item pairs; the current occasion is excluded from its own prior. "Join an existing
+  situation or start a new one" is then a question about recurrence, not only about time.
+- **Grouping** (`correlate/grouping.py`): greedy online correlation clustering (Bansal, Blum &
+  Chawla 2004; Keuper et al. 2015) by mean log-odds evidence — join the best situation whose mean
+  clears `join_bias`; merge two situations only when accumulated cross evidence averages above
+  `merge_bias` over at least `merge_min_pairs` pairs. It replaces connected components, whose
+  single-linkage chaining (Jain, Murty & Flynn 1999) merged every concurrent same-vendor incident.
+  The biases are part of the model document, tuned on validation streams.
+- **Features** (`correlate/features.py`): fifteen relations offered, each ablated (#409); none is
+  an identifier and none derives from `incumbent_linked` (a guard enforces both). They reach a
+  scorer as `LinkFeatures.vector`, an appended optional field; `CONTRACT_VERSION` stays `1.0`, as
+  it did when v0.18.0 appended `same_oid_root`, because the version is inside every stored
+  configuration's params hash and a bump would orphan the provenance of every one (F23).
+
+## 419. The artifact is data, versioned, hashed, reproducible and bounded (v0.26.0)
+
+- **Format**: `linkmodel.json` (`netcorenoc.gam/1`) — features by name, bin edges, per-bin
+  scores, intercept, threshold, grouping biases. `gam.validate` checks exact keys, finite numbers,
+  strictly increasing edges, only features this build serves, at most 64 bins a shape, at most 8
+  interactions of at most 16 × 16 bins, every score within ±25 (no hard switch), and 256 KiB,
+  before a scorer exists. No `pickle`, no `eval`, no import, no field that names
+  code: a customer can replace the file, and this appliance holds credentials.
+- **Manifest**: `linkmodel.manifest.json` — the document's SHA-256 (checked at load: integrity,
+  not security), dataset digest, seed, commit, command, every trial, the ablation, the final fit's
+  traces, every held-out number with its interval and n, the quality bar and its verdict, and the
+  benchmark pairs. The console shows its provenance.
+- **Reproducible**: `make train` from the same commit and seed writes a byte-identical document
+  (a test re-fits with the same seed and compares hashes; a different seed changes it).

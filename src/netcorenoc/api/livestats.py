@@ -19,6 +19,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from netcorenoc.crosscutting.shaping import Scope
+from netcorenoc.engine.operate import autonomy
 
 if TYPE_CHECKING:
     from netcorenoc.main import Engine
@@ -50,6 +51,17 @@ async def live_stats(
     out["latency_p95_s"] = round(engine.latency_p95(), 4)
     out["queue_depth"] = engine.queue.qsize()
     out["warnings"] = all_warnings()
+    # v0.26.0 (ADR #412): the top bar of every screen shows whether autonomy is acting and offers
+    # the kill switch, so its state travels with the counters rather than as a second poll. One
+    # indexed row; no situation named, so the same object for every scope.
+    settings = autonomy.Settings.from_row(await store.autonomy_setting())
+    out["autonomy"] = {
+        "active": bool(settings.enabled),
+        "grades": list(settings.enabled),
+        "suspended": settings.suspended,
+    }
+    if settings.suspended:
+        out["warnings"] = [*out["warnings"], f"Autonomy stopped itself: {settings.reason}"]
     if extra_stats is not None:
         out.update(extra_stats())
     return out

@@ -286,7 +286,12 @@ def test_the_provenance_columns_are_read_by_the_report_and_by_nothing_else() -> 
 
 
 def test_no_server_derivation_reaches_operator_name() -> None:
-    """Part I.2: **a model does not propose names in this release.**
+    """Part I.2: **a model never writes an operator's name.**
+
+    v0.26.0 (ADR #412) lets a model name a situation — autonomy's `naming` grade, off until an
+    admin switches it on — and the column it writes is `model_name`, never this one. The console
+    labels which is which, and an operator's rename supersedes the model's. What stays true is the
+    property below: the operator's column has one writer, the rename route's.
 
     A model writing *"fibre cut"* above a grouping the operator is about to judge contaminates that
     judgement, which is the `incumbent_linked` mistake in a new register. The guard is that exactly

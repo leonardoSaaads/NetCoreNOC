@@ -104,7 +104,7 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
     def _lifecycle_columns(self) -> str:
         """The v0.16.0 situation columns, or nothing on a schema that predates them.
 
-        A **literal chosen by the schema probe**, never by a caller: the string is one of two
+        A **literal chosen by the schema probe**, never by a caller: the string is one of three
         constants and no value from outside this class reaches it. It exists because
         `tests/test_upgrade.py` drives the current store against a migration directory frozen at an
         older version — the property that makes "the migration changes behaviour and the code does
@@ -113,7 +113,11 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         `situation_detail` needs no such guard: it is `SELECT *`, which is exactly the shape that
         adapts to whichever columns the schema has.
         """
-        return "s.resolution, s.derived_name, s.operator_name, " if self._has_lifecycle else ""
+        if not self._has_lifecycle:
+            return ""
+        if not self._has_situation_decider:  # v0.26.0: `model_name` arrives with `0026`
+            return "s.resolution, s.derived_name, s.operator_name, "
+        return "s.resolution, s.derived_name, s.operator_name, s.model_name, "
 
     def _search_clause(
         self, query: str | None, *, addresses: bool, scope_ids: list[int] | None
@@ -174,6 +178,8 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             member_columns.append("LOWER(COALESCE(dl3.label, ''))")
             if self._has_lifecycle:
                 head_columns.append("LOWER(COALESCE(s.operator_name, ''))")
+                if self._has_situation_decider:
+                    head_columns.append("LOWER(COALESCE(s.model_name, ''))")
         # **The derived class name is a call now, not a column** (`0016`, DECISIONS #280), so it
         # cannot be a `LIKE` — and dropping it would have quietly narrowed the search this
         # release's predecessor built. `trap_name` is a lookup over eight bundled OIDs, so the

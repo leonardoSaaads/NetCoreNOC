@@ -36,7 +36,6 @@ import { Promotion } from "./views/promotion.js";
 import { Access } from "./views/access.js";
 import { html } from "./dom.js";
 import { Settings } from "./views/settings.js";
-import { Scorer } from "./views/scorer.js";
 import { Quarantine } from "./views/quarantine.js";
 import { Audit } from "./views/audit.js";
 import { Account } from "./views/account.js";
@@ -108,8 +107,9 @@ export const VIEWS = [
     id: "promotion", label: "Judge & promotion", icon: "promotion", group: "evidence",
     // Both reads, because the screen issues both on mount (v0.22.0: the running scorer's panel
     // moved here from Situations) — the rule the Governance entry states.
-    capability: ["promotion.read", "correlation.read"], component: Promotion,
-    summary: "What the gate decided, why it refused, and the seal's query count.",
+    // v0.26.0 (ADR #414): chart-first; it reads `/api/judge` (`model.read`) as well.
+    capability: ["promotion.read", "correlation.read", "model.read"], component: Promotion,
+    summary: "How good the model deciding links is, measured, and what the site's labels say.",
   },
 
   /* ---------- Administer: the machine itself ---------- */
@@ -122,17 +122,9 @@ export const VIEWS = [
   },
   {
     id: "settings", label: "Settings", icon: "settings", group: "administer",
+    // v0.26.0 (ADR #414): Link scorer folded in as the Correlation tab, beside Autonomy and Search.
     capability: "config.read", component: Settings,
-    summary: "Every parameter, in three classes, with its precedence and its impact.",
-  },
-  {
-    id: "scorer", label: "Link scorer", icon: "scorer", group: "administer",
-    // What MOUNTING costs: the read, plus the write this screen exists for. The preview is a
-    // separate capability (`scorer.preview`) and is gated on the control rather than here — a
-    // stored policy can narrow one without the other, and a screen that demanded both to open
-    // would hide the history from an admin who may still roll back.
-    capability: ["scorer.read", "scorer.write"], component: Scorer,
-    summary: "The formula that decides which alarms group. Preview before you apply.",
+    summary: "What decides links, how autonomous it is, the search budget, and every parameter.",
   },
   {
     id: "quarantine", label: "Quarantine", icon: "quarantine", group: "administer",
@@ -150,6 +142,13 @@ export const VIEWS = [
     id: "account", label: "Your account", icon: "account", group: null, hidden: true,
     capability: "self.read", component: Account,
     summary: "Your name, photo, password and what you can do.",
+  },
+  // v0.25.0's Link scorer address, kept so links and bookmarks still land (v0.26.0).
+  {
+    id: "scorer", label: "Link scorer", icon: "scorer", group: null, hidden: true,
+    capability: ["scorer.read", "scorer.write"],
+    component: (p) => html`<${Settings} ...${p} tab="correlation" />`,
+    summary: "The formula that decides which alarms group, when the formula is chosen.",
   },
   // The three addresses v0.24.0 had, kept so links and bookmarks still land (v0.25.0).
   {

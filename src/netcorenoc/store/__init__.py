@@ -26,15 +26,15 @@ from netcorenoc.store.alarms import AlarmMixin
 from netcorenoc.store.attention import AttentionMixin
 from netcorenoc.store.audit_log import AuditLogMixin
 from netcorenoc.store.auth import AuthMixin
+from netcorenoc.store.autonomy import AutonomyMixin
 from netcorenoc.store.base import StoreBase
 from netcorenoc.store.catalogue_reads import CatalogueReadMixin
 from netcorenoc.store.class_rules import ClassRuleMixin
-from netcorenoc.store.autonomy import AutonomyMixin
-from netcorenoc.store.decider import DeciderMixin
 from netcorenoc.store.dataset import (
     MAX_CLIENT_MEMBERS,
     DatasetMixin,
 )
+from netcorenoc.store.decider import DeciderMixin
 from netcorenoc.store.devices import DeviceMixin
 from netcorenoc.store.entities import EntityMixin
 from netcorenoc.store.feedback import FeedbackMixin

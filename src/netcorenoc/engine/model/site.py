@@ -22,7 +22,7 @@ evidence gets a model that is nearly the shipped one — which is the right prio
 
 The newest 30 % of labelled bags (by label time) are held out — time-ordered, because the model
 predicts the future from the past. On them, per incident, the mean log loss of each model; the
-per-incident difference ``site − shipped`` is bootstrapped over incidents.
+per-incident difference ``site - shipped`` is bootstrapped over incidents.
 
 * ``BETTER`` — the upper end of the 95 % interval is below zero, **and** the site model does no
   harm on the shipped benchmark (below);
@@ -96,7 +96,9 @@ def rows_from(pairs: list[dict[str, Any]], features: dict[int, str]) -> list[Sit
     per bag, times the operator's confidence multiplier; no class balancing, which would bend the
     probabilities this model is judged on.
     """
-    by_bag: dict[tuple[str, int], list[tuple[dict[str, Any], tuple[float, ...]]]] = defaultdict(list)
+    by_bag: dict[tuple[str, int], list[tuple[dict[str, Any], tuple[float, ...]]]] = defaultdict(
+        list
+    )
     for pair in pairs:
         raw = features.get(int(pair["pair_id"]))
         if raw is None or not confidence_rules.admits(pair.get("confidence")):
@@ -131,7 +133,7 @@ def split_by_time(rows: list[SiteRow]) -> tuple[list[SiteRow], list[SiteRow]]:
     for r in rows:
         first_label[r.bag] = min(first_label.get(r.bag, math.inf), r.label_at)
     ordered = sorted(first_label, key=lambda b: (first_label[b], b))
-    cut = len(ordered) - max(1, int(round(len(ordered) * TEST_FRACTION))) if ordered else 0
+    cut = len(ordered) - max(1, round(len(ordered) * TEST_FRACTION)) if ordered else 0
     test_bags = set(ordered[cut:])
     return [r for r in rows if r.bag not in test_bags], [r for r in rows if r.bag in test_bags]
 
@@ -221,12 +223,18 @@ def judge(
     if benchmark:
         b_ship, b_site = _ll(shipped, benchmark), _ll(site, benchmark)
         harm = b_site > b_ship + HARM_MARGIN
-        bench = {"shipped": b_ship, "site": b_site, "margin": HARM_MARGIN, "rows": float(len(benchmark))}
+        bench = {
+            "shipped": b_ship,
+            "site": b_site,
+            "margin": HARM_MARGIN,
+            "rows": float(len(benchmark)),
+        }
     difference: dict[str, float] = {"incidents": float(len(diffs))}
     if diffs:
         rng = random.Random(seed)
         means = sorted(
-            sum(diffs[rng.randrange(len(diffs))] for _ in diffs) / len(diffs) for _ in range(REPLICATES)
+            sum(diffs[rng.randrange(len(diffs))] for _ in diffs) / len(diffs)
+            for _ in range(REPLICATES)
         )
         difference.update(
             mean=sum(diffs) / len(diffs),
@@ -235,23 +243,55 @@ def judge(
             site_better_share=sum(1 for d in diffs if d < 0) / len(diffs),
         )
     if unmet:
-        return Judgement("INSUFFICIENT_EVIDENCE", unmet, stats, difference, bench,
-                         "a floor is unmet: " + "; ".join(unmet))
+        return Judgement(
+            "INSUFFICIENT_EVIDENCE",
+            unmet,
+            stats,
+            difference,
+            bench,
+            "a floor is unmet: " + "; ".join(unmet),
+        )
     if harm:
-        return Judgement("NOT_BETTER", [], stats, difference, bench,
-                         "the site model is worse on the shipped benchmark than the margin allows")
+        return Judgement(
+            "NOT_BETTER",
+            [],
+            stats,
+            difference,
+            bench,
+            "the site model is worse on the shipped benchmark than the margin allows",
+        )
     if difference["high"] < 0.0:
-        return Judgement("BETTER", [], stats, difference, bench,
-                         "the site model's log loss is lower on this site's newest incidents, "
-                         "and the whole interval says so")
+        return Judgement(
+            "BETTER",
+            [],
+            stats,
+            difference,
+            bench,
+            "the site model's log loss is lower on this site's newest incidents, "
+            "and the whole interval says so",
+        )
     if difference["low"] >= 0.0:
-        return Judgement("NOT_BETTER", [], stats, difference, bench,
-                         "the site model is not better on this site's newest incidents")
-    return Judgement("INSUFFICIENT_EVIDENCE", [], stats, difference, bench,
-                     "the interval of the difference includes zero: more labels would tell")
+        return Judgement(
+            "NOT_BETTER",
+            [],
+            stats,
+            difference,
+            bench,
+            "the site model is not better on this site's newest incidents",
+        )
+    return Judgement(
+        "INSUFFICIENT_EVIDENCE",
+        [],
+        stats,
+        difference,
+        bench,
+        "the interval of the difference includes zero: more labels would tell",
+    )
 
 
 def benchmark_rows(raw: list[list[float]]) -> list[SiteRow]:
     """The shipped benchmark's rows: ``[y, w, *vector]`` each, generated and labelled."""
-    return [SiteRow(tuple(r[2:]), int(r[0]), float(r[1]), ("bench", i), i, 0.0)
-            for i, r in enumerate(raw)]
+    return [
+        SiteRow(tuple(r[2:]), int(r[0]), float(r[1]), ("bench", i), i, 0.0)
+        for i, r in enumerate(raw)
+    ]

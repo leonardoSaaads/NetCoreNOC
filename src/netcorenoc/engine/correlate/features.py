@@ -15,23 +15,32 @@ construction, and `tests/test_features.py` replays a stream through both paths t
 Every feature is a **relation between the two alarms**, never an identifier: an element id, a class
 id or an OID in a feature vector teaches a model one customer's estate (migration 0008, rule 2).
 
-| name | what it is | why it can matter |
-|---|---|---|
-| ``dt`` | seconds between the two activations, capped at an hour | fan-out is fast, coincidence is uniform |
-| ``same_ne`` | both on one network element | the strongest structural prior there is |
-| ``same_class`` | the identical trap type | both ends of one span raise the same trap |
-| ``oid_arcs`` | leading OID arcs the two trap types share, on arc boundaries | same vendor module ≈ same subsystem |
-| ``class_affinity`` | learned NPMI of the two classes (``A``) | the stream's own opinion, kept |
-| ``entity_affinity`` | learned NPMI of the two elements (``E``), structural within one element | the stream's own opinion, kept |
-| ``ne_episodes`` | separate past occasions these two elements co-failed | **memory**: relatedness is recurrence |
-| ``class_episodes`` | separate past occasions these two classes co-occurred | memory at the class level |
-| ``item_episodes`` | separate past occasions *this fault here* and *that fault there* co-occurred | memory at its finest: the same fault again |
-| ``severity`` | the less severe of the two X.733 ranks, 5 when either is unknown | two criticals at once are rarely a coincidence |
-| ``burst`` | live alarms in the correlation window when the decision was made | in a storm everything co-occurs |
-| ``chatter`` | the busier of the two fingerprints' activations in the past hour | a chattering port co-occurs with everything |
-| ``degree`` | the larger number of distinct elements either has ever co-failed with | a hub's co-failures say less each |
-| ``cross_ref`` | one alarm's varbinds name the other's management address | topology the trap itself carried |
-| ``hour`` | UTC hour of the newer alarm | offered to the ablation; see ADR #409 for its fate |
+* ``dt`` — seconds between the two activations, capped at an hour; *fan-out is fast, coincidence is
+  uniform*.
+* ``same_ne`` — both on one network element; *the strongest structural prior there is*.
+* ``same_class`` — the identical trap type; *both ends of one span raise the same trap*.
+* ``oid_arcs`` — leading OID arcs the two trap types share, on arc boundaries; *same vendor module ≈
+  same subsystem*.
+* ``class_affinity`` — learned NPMI of the two classes (``A``); *the stream's own opinion, kept*.
+* ``entity_affinity`` — learned NPMI of the two elements (``E``), structural within one element;
+  *the stream's own opinion, kept*.
+* ``ne_episodes`` — separate past occasions these two elements co-failed; ***memory**: relatedness
+  is recurrence*.
+* ``class_episodes`` — separate past occasions these two classes co-occurred; *memory at the class
+  level*.
+* ``item_episodes`` — separate past occasions *this fault here* and *that fault there* co-occurred;
+  *memory at its finest: the same fault again*.
+* ``severity`` — the less severe of the two X.733 ranks, 5 when either is unknown; *two criticals at
+  once are rarely a coincidence*.
+* ``burst`` — live alarms in the correlation window when the decision was made; *in a storm
+  everything co-occurs*.
+* ``chatter`` — the busier of the two fingerprints' activations in the past hour; *a chattering port
+  co-occurs with everything*.
+* ``degree`` — the larger number of distinct elements either has ever co-failed with; *a hub's
+  co-failures say less each*.
+* ``cross_ref`` — one alarm's varbinds name the other's management address; *topology the trap
+  itself carried*.
+* ``hour`` — UTC hour of the newer alarm; *offered to the ablation; see ADR #409 for its fate*.
 
 ``same_oid_root`` (v0.18.0) is ``oid_arcs >= 7`` and is no longer carried separately.
 

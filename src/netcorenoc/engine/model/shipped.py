@@ -16,8 +16,8 @@ evaluated or unpickled, and no field names code. The manifest's SHA-256 of the d
 too, which is **integrity, not security**: it catches a document and a manifest that do not belong
 together, so the console can never describe one model while the engine runs another.
 
-A file that fails either check is refused with a reason; the engine then runs the built-in formula
-and says why, exactly as it does for any other scorer it cannot trust.
+A file that fails either check is refused with a reason; the engine then runs the additive formula
+as configured and says why, exactly as it does for any other scorer it cannot trust.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def load_from(document: str, manifest_text: str) -> Shipped:
 @cache
 def load() -> Shipped:
     """The packaged model. Cached: the files are part of the installed package."""
-    root = resources.files("netcorenoc.engine.model.shipped")
+    root = resources.files("netcorenoc.engine.model")
     try:
         document = root.joinpath(ARTIFACT).read_text(encoding="utf-8")
         manifest = root.joinpath(MANIFEST).read_text(encoding="utf-8")

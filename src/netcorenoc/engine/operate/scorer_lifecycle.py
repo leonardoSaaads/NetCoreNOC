@@ -65,20 +65,26 @@ class ScorerLifecycleMixin(EngineBase):
 
         # **v0.26.0 (ADR #405): which family decides.** The shipped model unless an admin chose
         # otherwise; a site model when one is active and chosen; the formula only when chosen.
+        # A shipped model that is absent or refused falls back to **the formula as configured** —
+        # the active configuration, else the coded defaults — and says why, so every situation it
+        # forms still records the configuration that formed it (F23's provenance).
+        refused: str | None = None
         if mode == "shipped" or (mode == "site" and model_row is None):
-            self._load_shipped(
+            refused = self._load_shipped(
                 None if mode == "shipped" else "no site model is active, so the shipped one runs"
             )
-            return
-
-        # THE POINTER NAMES A MODEL VERSION. The database's CHECK makes "both at once" impossible,
-        # so this branch is reached only when `config_id` is NULL — the `if row is not None` above
-        # is belt to that brace and costs one comparison at a reload point, never per pair.
-        if model_row is not None:
+            if refused is None:
+                return
+        elif model_row is not None:
+            # THE POINTER NAMES A MODEL VERSION. The database's CHECK makes "both at once"
+            # impossible, so this is reached only when `config_id` is NULL.
             self._load_model_version(model_row)
             return
+        fallback = [] if refused is None else [
+            f"{refused}. Correlation is running on the additive formula as configured."
+        ]
 
-        key = None if row is None else (int(row["id"]), str(row["params_hash"]))
+        key = None if row is None else (int(row["id"]), str(row["params_hash"]), refused)
         if key == self._loaded_key:
             # Unchanged since the last reload: leave the live scorer alone. This is what makes a
             # degradation *sticky* — re-instantiating the same configuration every maintenance
@@ -92,7 +98,7 @@ class ScorerLifecycleMixin(EngineBase):
             self.scorer_config_id = None
             self.scorer_model_version_id = None
             self.decider_ref = "additive:default"
-            self.scorer_warnings = []
+            self.scorer_warnings = fallback
             return
         try:
             scoring.check_contract_version(str(row["contract_version"]))
@@ -120,29 +126,28 @@ class ScorerLifecycleMixin(EngineBase):
         )
         self.scorer_config_id = int(row["id"])
         self.scorer_model_version_id = None
-        self.scorer_warnings = []
+        self.scorer_warnings = fallback
 
-    def _load_shipped(self, note: str | None) -> None:
-        """Activate the packaged model, or fall back to the formula and say why. Never raises."""
+    def _load_shipped(self, note: str | None) -> str | None:
+        """Activate the packaged model. Returns ``None``, or why it could not be used — the caller
+        then runs the formula as configured and shows that reason. Never raises."""
         try:
             model = shipped.load()
         except Exception as exc:
             reason = exc.args[0] if exc.args else type(exc).__name__
-            key = (-1, f"refused:{reason}")
-            if key == self._loaded_key:
-                return
-            self._loaded_key = key
-            self._use_default_scorer(f"the shipped model could not be used: {reason}")
-            return
+            if self._loaded_key and self._loaded_key[0] == -1:
+                self._loaded_key = None  # a model was running: the formula must be reloaded
+            return f"the shipped model could not be used: {reason}"
         key = (-1, model.sha256)
         if key == self._loaded_key:
-            return
+            return None
         self._loaded_key = key
         self.correlator.set_scorer(model.scorer)
         self.scorer_config_id = None
         self.scorer_model_version_id = None
         self.decider_ref = model.ref
         self.scorer_warnings = [] if note is None else [note]
+        return None
 
     def _load_model_version(self, row: dict[str, object]) -> None:
         """Activate the scorer a `model_version` row describes, or fall back. **Never raises.**

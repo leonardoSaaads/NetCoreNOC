@@ -57,7 +57,7 @@ export class Sequence extends Component {
   text(rows, t0) {
     const s = this.props.situation;
     return [
-      `Situation #${s.id} — ${s.operator_name || s.derived_name || "unnamed"}`,
+      `Situation #${s.id} — ${s.operator_name || s.model_name || s.derived_name || "unnamed"}`,
       `Sequence of events (times ${TIMEZONE})`,
       ...rows.map((r) => `${offset(r.first - t0).padEnd(10)} ${absolute(r.first)}  ${r.element}  ` +
         `${r.trap}${r.alarms > 1 ? `  (x${r.alarms})` : ""}${r.rank != null ? `  [${band(r.rank).label}]` : ""}`),

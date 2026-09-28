@@ -3,7 +3,7 @@
 PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list loadtest burst \
-	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
+	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim train train-validate \
 	lab lab-demo lab-cut lab-repair lab-status \
 	bias-report dataset-stats agreement-report shadow-report census
 
@@ -142,6 +142,18 @@ eval-baseline:
 		echo 'A baseline re-cut without a recorded reason is the edit this target prevents.'; \
 		exit 2; }
 	$(PYTHON) eval/harness.py --write-baseline eval/baselines/current.json --reason "$(REASON)"
+
+# Train the shipped link model (v0.26.0, ADRs #405-#409, #419): generate the streams, record them
+# through the real engine, ablate the features, search, fit, tune grouping on validation, evaluate
+# once on every test split and held-out family, and write `engine/model/linkmodel.json` and
+# its manifest ONLY if the quality bar is met on every one. Deterministic from the pinned seed;
+# every stage is cached under `eval/synth/.cache/` by the digest of the code it depends on.
+train:
+	PYTHONPATH=eval $(PYTHON) -m synth.train --stage ship
+
+# The same pipeline on the validation streams only; writes nothing, reads no test split.
+train-validate:
+	PYTHONPATH=eval $(PYTHON) -m synth.train --stage validate
 
 # Regenerate the labelled corpus from its deterministic generator.
 corpus:
