@@ -5484,5 +5484,42 @@ From this release an entry is about six lines: decision, reason, release.*
   unseen families over-merge came from the first reading. The correction is generic (select under
   the acceptance criteria), was made and checked on validation alone, and changes no threshold —
   but the second reading is a second attempt, and should be weighed as one. Both readings are here.
-- **Result of the second reading**: {{SECOND_READING}}
+- **Result of the second reading** (draw 2, commit `143cccb`, dataset `516e33c2024dbb8f`, grouping
+  join 2.0 / merge 2.0 / 2 pairs): **missed 2 of 70 checks**, both on `test_concurrency` —
+  under-merge +0.0012 against 0.0 allowed, repair work × 0.927 against × 0.90 required. Every
+  held-out family passed. #421 records it and what followed.
+
+## 421. The second reading missed on the one regime validation lacked; validation now covers every regime the bar checks; the third reading is the last (v0.26.0)
+
+- **The second reading** (#420) — model / formula, fresh streams:
+
+  | where | F1 | over-merge | under-merge | split-bag | repair gestures |
+  |---|---|---|---|---|---|
+  | `test_iid` (32 streams, 4 122 incidents) | 0.969 / 0.948 | 0.028 / 0.025 | 0.106 / 0.116 | 0.092 / 0.231 | 0.316 / 0.370 |
+  | `test_concurrency` (24, 3 160) | 0.945 / 0.801 | 0.033 / 0.030 | **0.114 / 0.113** | 0.128 / 0.261 | **0.376 / 0.406** |
+  | `test_optical` (24, 3 331) | 0.984 / 0.976 | 0.035 / 0.031 | 0.100 / 0.123 | 0.141 / 0.147 | 0.313 / 0.442 |
+  | `test_protocol` (24, 3 209) | 0.979 / 0.892 | 0.029 / 0.020 | 0.132 / 0.145 | 0.144 / 0.193 | 0.445 / 0.497 |
+  | `dwdm_degradation` (143 incidents) | 0.397 / 0.210 | 0.524 / 0.482 | 0.699 / 0.797 | — | 2.881 / 3.622 |
+  | `dwdm_line_cut` (174) | 0.557 / 0.235 | 0.563 / 0.529 | 0.603 / 0.839 | — | 1.885 / 3.310 |
+  | `optical_protection` (140) | 0.676 / 0.667 | 0.386 / 0.393 | 0.007 / 0.000 | — | 0.429 / 0.493 |
+  | `bgp_flap` (194) | 0.393 / 0.304 | 0.402 / 0.433 | 0.629 / 0.706 | — | 2.459 / 2.845 |
+  | `ospf_flap` (205) | 0.351 / 0.320 | 0.268 / 0.346 | 0.761 / 0.820 | — | 2.605 / 3.122 |
+
+  The model did less repair work than the formula on every split and every unseen family. It
+  missed on `test_concurrency` alone: one incident's worth of under-merge, and 7 % less repair
+  where the bar asks for 10 %.
+- **Why the selection could not see it**: the validation streams run at concurrency 0.1–0.4 and
+  `test_concurrency` at 0.8. Choosing under the bar (#420) is only as good as the regimes
+  validation holds, and it held none like that one.
+- **Decision**: a validation split for every non-held-out regime the bar checks —
+  `valid_concurrency` (12 streams at 0.8, training families, never a training row or a search
+  loss) — and the grouping must pass the bar **on each validation split on its own**, as the bar
+  reads each test split on its own; the per-family checks read every validation stream. If no
+  setting passes, nothing ships and no test split is read (`tune_grouping` stops first). The bar
+  is unchanged. The test streams are drawn a third time (`TEST_DRAW = 3`).
+- **Committed before the run**: **the third reading is the last in this release.** If it misses,
+  v0.26.0 ships no model: every appliance runs the additive formula by the fail-safe of #405 (the
+  bell says the shipped model is not installed), the Judge screen says why, and HANDOFF.md says so
+  on its first line. A fourth draw would turn "read once" into "read until it passes".
+- **Result of the third reading**: {{THIRD_READING}}
 

@@ -51,7 +51,7 @@ def test_held_out_families_are_never_trained_or_tuned_on(
     specs: dict[str, list[StreamSpec]],
 ) -> None:
     held_out = set(dataset.HOLDOUT_OPTICAL) | set(dataset.HOLDOUT_PROTOCOL)
-    for split in ("train", "train_long", "valid"):
+    for split in [name for name in specs if not name.startswith("test_")]:
         for spec in specs[split]:
             assert not held_out & set(spec.families), f"{spec.name} trains on a held-out family"
     for split, families in (
@@ -190,7 +190,7 @@ def test_grouping_is_chosen_under_the_bar_itself(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(train, "PAIRS_GRID", (2,))
 
     monkeypatch.setattr(train, "QUALITY_BAR", (("pairwise_f1", "splits", "min", 0.0),))
-    chosen, rows = train.tune_grouping(logs, scorer)
+    chosen, rows = train.tune_grouping({"valid": logs}, scorer)
     assert all(r["admissible"] == 1.0 for r in rows)
     fewest = min(r["repair_gestures"] for r in rows)
     pick = next(
@@ -204,7 +204,7 @@ def test_grouping_is_chosen_under_the_bar_itself(monkeypatch: pytest.MonkeyPatch
     if len(distinct) > 1:  # exclude the cheapest settings through the bar, and only through it
         floor = ("repair_gestures", "splits", "min", distinct[1])
         monkeypatch.setattr(train, "QUALITY_BAR", (floor,))
-        again, rows = train.tune_grouping(logs, scorer)
+        again, rows = train.tune_grouping({"valid": logs}, scorer)
         pick = next(
             r
             for r in rows
@@ -215,4 +215,4 @@ def test_grouping_is_chosen_under_the_bar_itself(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(train, "QUALITY_BAR", (("repair_gestures", "held_out", "ratio_max", -1.0),))
     with pytest.raises(SystemExit, match="passes the quality bar on validation"):
-        train.tune_grouping(logs, scorer)
+        train.tune_grouping({"valid": logs}, scorer)

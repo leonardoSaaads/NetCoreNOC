@@ -81,12 +81,13 @@ HOLDOUT_PROTOCOL = ("bgp_flap", "ospf_flap")
 
 CACHE = HERE / ".cache"
 
-#: Which draw of the test streams this release reads (ADR #420). **A test split is read once.** The
-#: first draw was read by the first `make train` of v0.26.0, which missed the quality bar; the
-#: selection rule was then corrected on validation alone, and the test streams were drawn afresh so
-#: the shipped numbers come from streams no decision had seen. Train and validation are unchanged.
-#: A later release that reads the test splits again after changing anything must increment this.
-TEST_DRAW = 2
+#: Which draw of the test streams this release reads (ADRs #420, #421). **A test split is read
+#: once.** Draw 1 was read by v0.26.0's first `make train` and draw 2 by its second; both missed the
+#: quality bar, and after each the selection was corrected on validation alone and the test streams
+#: drawn afresh, so the shipped numbers come from streams no decision had seen. Train and validation
+#: streams never move. A later release that reads the test splits again after changing anything
+#: must increment this.
+TEST_DRAW = 3
 
 
 def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
@@ -120,7 +121,7 @@ def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
         elif split == "test_protocol":
             families = TRAIN_FAMILIES + HOLDOUT_PROTOCOL
             weights = tuple((f, 8.0) for f in HOLDOUT_PROTOCOL)
-        elif split == "test_concurrency":
+        elif split in ("test_concurrency", "valid_concurrency"):
             concurrency = 0.8
         out.append(
             StreamSpec(
@@ -142,6 +143,9 @@ SPLITS: dict[str, int] = {
     "train": 96,
     "train_long": 12,
     "valid": 24,
+    # Validation for every regime the bar checks (#421): the grouping is chosen under the bar, and a
+    # regime with no validation counterpart is one the choice cannot see.
+    "valid_concurrency": 12,
     "test_iid": 32,
     "test_optical": 24,
     "test_protocol": 24,

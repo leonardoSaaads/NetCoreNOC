@@ -189,15 +189,24 @@ def _evidence_cache(logs: list[StreamLog], scorer: gam.GamScorer) -> dict[int, l
 
 
 def tune_grouping(
-    logs: list[StreamLog], scorer: gam.GamScorer
+    splits: dict[str, list[StreamLog]], scorer: gam.GamScorer
 ) -> tuple[GroupingParams, list[dict[str, float]]]:
-    """The fewest repair gestures among the settings that pass the quality bar on validation."""
+    """The fewest repair gestures among the settings that pass the quality bar on validation.
+
+    Each validation split is checked on its own, as the bar checks each test split (#421): a
+    regime pooled into a larger one is a regime the choice cannot see. The per-family checks read
+    every validation stream; the objective is the pooled repair work over all of them.
+    """
     from synth import report  # the bar's own check, so selection and acceptance cannot drift apart
 
-    formula = [group(log, FormulaDecider()) for log in logs]
-    families = sorted({f for o in formula for f in o.family} & set(dataset.TRAIN_FAMILIES))
-    formula_pooled = _points(situation_metrics(formula))
-    formula_by = {f: _points(situation_metrics(formula, f)) for f in families}
+    logs = [log for split in splits.values() for log in split]
+    formula = {
+        name: [group(log, FormulaDecider()) for log in split] for name, split in splits.items()
+    }
+    every = [o for outs in formula.values() for o in outs]
+    families = sorted({f for o in every for f in o.family} & set(dataset.TRAIN_FAMILIES))
+    formula_split = {name: _points(situation_metrics(outs)) for name, outs in formula.items()}
+    formula_by = {f: _points(situation_metrics(every, f)) for f in families}
     cache = _evidence_cache(logs, scorer)
     rows: list[dict[str, float]] = []
     best: tuple[float, GroupingParams] | None = None
@@ -207,14 +216,24 @@ def tune_grouping(
                 continue
             for pairs in PAIRS_GRID:
                 params = GroupingParams(join, merge, pairs)
-                outs = [group(log, CachedDecider(cache, "cluster", params)) for log in logs]
-                m = situation_metrics(outs)
+                decider = CachedDecider(cache, "cluster", params)
+                outs = {
+                    name: [group(log, decider) for log in split] for name, split in splits.items()
+                }
+                all_outs = [o for group_outs in outs.values() for o in group_outs]
+                m = situation_metrics(all_outs)
                 verdict = report.check_bar(
                     {
-                        "splits": {"valid": {"model": _points(m), "formula": formula_pooled}},
+                        "splits": {
+                            name: {
+                                "model": _points(situation_metrics(split_outs)),
+                                "formula": formula_split[name],
+                            }
+                            for name, split_outs in outs.items()
+                        },
                         "held_out_families": {
                             f: {
-                                "model": _points(situation_metrics(outs, f)),
+                                "model": _points(situation_metrics(all_outs, f)),
                                 "formula": formula_by[f],
                             }
                             for f in families
@@ -291,6 +310,11 @@ def main() -> int:
     train_logs = list(dataset.load_split(root, "train"))
     long_logs = list(dataset.load_split(root, "train_long"))
     valid_logs = list(dataset.load_split(root, "valid"))
+    # Tuning only (#421): never a training row, never a search's validation loss.
+    tuning = {
+        "valid": valid_logs,
+        "valid_concurrency": list(dataset.load_split(root, "valid_concurrency")),
+    }
     rows_train = dataset.training_rows(train_logs, seed=args.seed) + dataset.training_rows(
         long_logs, seed=args.seed, time_window=(0.0, 0.7)
     )
@@ -377,7 +401,7 @@ def main() -> int:
         final_params = search._params(best.params, 600, args.seed)
         fit = gam_fit.fit(train_ds, valid_ds, final_params, threshold=0.0)
         scorer = gam.load(fit.document)
-        grouping, grid = tune_grouping(valid_logs, scorer)
+        grouping, grid = tune_grouping(tuning, scorer)
         document = with_grouping(fit.document, grouping)
         cache.write_text(
             json.dumps(
@@ -397,7 +421,8 @@ def main() -> int:
     scorer = gam.load(document)
     # Printed at both stages, so the ship run's own log shows the validation numbers the bar was
     # fixed against — and that a fresh run reproduces them.
-    report.print_validation(valid_logs, scorer)
+    for name, split_logs in tuning.items():
+        report.print_validation(split_logs, scorer, name)
     if args.stage == "validate":
         return 0
 

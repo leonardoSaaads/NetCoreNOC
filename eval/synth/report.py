@@ -208,12 +208,12 @@ def _recurrence(
     return out
 
 
-def print_validation(logs: Sequence[Any], scorer: gam.GamScorer) -> None:
+def print_validation(logs: Sequence[Any], scorer: gam.GamScorer, split: str = "valid") -> None:
     """The validation streams only — what the bar may be set against. Never a test split."""
     model = ModelDecider.of(scorer)
     mo = [group(log, model) for log in logs]
     fo = [group(log, FormulaDecider()) for log in logs]
-    print(f"VALIDATION ({len(logs)} streams) — the only numbers the quality bar may be set against")
+    print(f"VALIDATION {split} ({len(logs)} streams) — the only numbers the bar may be set against")
     for name, outs in (("model", mo), ("formula", fo)):
         m = situation_metrics(outs)
         print(
