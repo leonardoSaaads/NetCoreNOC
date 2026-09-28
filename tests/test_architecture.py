@@ -1258,15 +1258,16 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `parts/importbox`, `parts/mwdetail`). Removed: `app/vendor.js`, `views/parts/estate.js`, and d3
 #: with its licence (ADR #383) — what else was removed is named in `HANDOFF.md`.
 #:
-#: **v0.26.0: 293 -> 322.** Twenty-nine added, none removed: one migration (`0026`); the correlation
+#: **v0.26.0: 293 -> 323.** Thirty added, none removed: one migration (`0026`); the correlation
 #: core's five (`features`, `retrieval`, `episodes`, `grouping`, and `pairs` split out of
 #: `correlate.py`); the model's eight (`gam`, `gam_data`, `gam_fit`, `gam_interactions`, `search`,
 #: `shipped`, `site`, `site_search`) and `evaluation/model_metrics`; `operate/autonomy`,
 #: `autonomy_judge` and `flap` (split out of `engine.py`); `store/autonomy` and `store/decider`;
-#: three API modules (`routes/decider`, `models_decider`, `public_paths`); six console modules.
-#: **No model file is among them** — the build ships none (ADR #422).
-SRC_TREE_DIGEST = "6c9e80f3e2fbd9dab2596a5cb0bd06b4fa08a3af5d856a1a149786e356a5055b"
-SRC_FILE_COUNT = 322
+#: four API modules (`routes/decider`, `models_decider`, `public_paths`, `shipped_view` — split off
+#: the routes at the 400-line guard); six console modules. **No model file is among them** — the
+#: build ships none (ADR #422).
+SRC_TREE_DIGEST = "e230b6a56b6f04dcadd010216c6e44e18d1112abca0d5d6a8d9372eb11667691"
+SRC_FILE_COUNT = 323
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

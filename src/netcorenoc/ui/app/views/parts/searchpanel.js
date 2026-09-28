@@ -74,7 +74,9 @@ export class SearchPanel extends Component {
                 onInput=${(e) => this.setState({ form: { ...form, [key]: e.target.value } })} />
               <p class="impact">${note}</p>
             </div>`)}
-            <div class="wide"><button type="submit" disabled=${busy}>${busy ? "Starting…" : "Start a search"}</button></div>
+            <div class="wide">${data.blocked
+              ? html`<p class="hint" role="status">A search cannot start: ${data.blocked}.</p>` : null}
+              <button type="submit" disabled=${busy || Boolean(data.blocked)}>${busy ? "Starting…" : "Start a search"}</button></div>
           </form>`
         : html`<p class="hint">Only an admin can start or stop a search.</p>`}
         ${outcome ? html`<p class="err" role="alert">${outcome.detail || outcome.message}</p>` : null}

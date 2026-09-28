@@ -279,6 +279,13 @@ async def test_a_build_without_a_model_says_so_as_a_state_not_a_fault(
     judge_page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})
     assert "Search starts one" not in judge_page["dump"], "offers a search that cannot start"
     assert "this build carries none" in judge_page["dump"]
+    assert routes["/api/search"]["json"]["blocked"].startswith("no shipped model to adapt")
+    search = domdriver.run_scenario(
+        "render", {"routes": routes, "navigate": "#/settings?tab=search"}
+    )
+    # The reason is on the screen; the refusal itself is the server's (409, test_shipped).
+    assert '"A search cannot start:"' in search["dump"]
+    assert '"no shipped model to adapt: this build ships no model' in search["dump"]
     generated = [b for b in judge["blocks"] if b["dataset"] == "generated data"]
     assert not [c for b in generated for c in b["charts"] if c["drawn"]], "a chart with no model"
     page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})

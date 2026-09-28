@@ -478,7 +478,7 @@ UI_HASHES: dict[str, str] = {
     ),
     "app/views/parts/roles.js": "d498e21afbf8d00c04f5a70e082e5868912d3fa0a96010777e1f30793b71511f",
     "app/views/parts/searchpanel.js": (
-        "0e3acd5bca9e445433e205d65fa5710fd104ffc9e977be65ead3a658fa966ae3"
+        "022a372baad3b98b1531467e1ef94e9f9945727357d3ae67082df44ce6684600"
     ),
     "app/views/parts/sequence.js": (
         "9a70f2aa94a13c41c9d7e8a8fa4c59e5e6ce87814a9607305cbf524e9c7643f3"
@@ -607,7 +607,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/restructure.js": 12_891,
     "app/views/parts/retention.js": 5_003,
     "app/views/parts/roles.js": 4_816,
-    "app/views/parts/searchpanel.js": 5_069,
+    "app/views/parts/searchpanel.js": 5_227,
     "app/views/parts/sequence.js": 5_776,
     "app/views/parts/severity.js": 3_912,
     "app/views/parts/shippedjudge.js": 11_683,

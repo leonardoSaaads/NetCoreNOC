@@ -757,5 +757,7 @@ are where the *Link scorer* screen had them, and `#/scorer` still opens them.
 
 **API.** Eleven routes are new (`/api/decider`, `/api/autonomy*`, `/api/situations/{sid}/severity`,
 `/api/search*`, `/api/judge`); `/api/stats` carries an `autonomy` object; `/api/situations` rows
-carry `model_name` beside the two other names. No field was removed.
+carry `model_name` beside the two other names. With no shipped model — this build — `GET
+/api/search` carries `blocked` (the reason) and `POST /api/search` answers 409 with it;
+`/api/decider` and `/api/judge` mark the shipped block `absent`. No field was removed.
 

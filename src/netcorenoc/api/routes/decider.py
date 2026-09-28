@@ -19,7 +19,6 @@ Five groups, one module, because the console's two redesigned screens read them 
 
 from __future__ import annotations
 
-import math
 import time
 from typing import Any
 
@@ -28,83 +27,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import AutonomyIn, DeciderIn, SearchIn, SituationSeverityIn
+from netcorenoc.api.shipped_view import finite, search_blocked, shipped_block, unavailable
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.model import gam, shipped, site, site_search
 from netcorenoc.engine.operate import autonomy
 
 __all__ = ["register"]
-
-#: The manifest keys the console charts. The manifest holds more (every trial's trace, the whole
-#: grouping grid); the screen needs these, and serving the rest would be a megabyte nobody reads.
-_SHIPPED_CHART_KEYS = ("ablation", "final_fit", "quality_bar", "verdict", "provenance", "artifact")
-
-
-def _finite(value: Any) -> Any:
-    """NaN and infinities as ``None``: a failed trial's loss is NaN, and JSON has no NaN."""
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
-    if isinstance(value, dict):
-        return {k: _finite(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_finite(v) for v in value]
-    return value
-
-
-def _unavailable(exc: Exception) -> dict[str, Any]:
-    """Why no shipped model runs. ``absent`` separates a build that carries none (#422) — a state,
-    shown as a note — from one whose files were refused, which is a fault."""
-    return {
-        "available": False,
-        "absent": isinstance(exc, shipped.NoShippedModelError),
-        "reason": str(exc.args[0] if exc.args else exc),
-    }
-
-
-def _shipped_block() -> dict[str, Any]:
-    try:
-        model = shipped.load()
-    except Exception as exc:
-        return _unavailable(exc)
-    m = model.manifest
-    evaluation = m.get("evaluation", {})
-    trials = m.get("search", {}).get("trials", [])
-    block: dict[str, Any] = _finite(
-        {
-            "available": True,
-            "dataset": "generated",
-            "ref": model.ref,
-            "features": list(model.scorer.model.features),
-            "grouping": model.scorer.model.grouping,
-            **{k: m.get(k) for k in _SHIPPED_CHART_KEYS},
-            "search": {
-                "trials": [
-                    {
-                        k: t.get(k)
-                        for k in (
-                            "index",
-                            "rung",
-                            "rounds",
-                            "valid_loss",
-                            "train_loss",
-                            "seconds",
-                            "status",
-                            "params",
-                            "best_round",
-                        )
-                    }
-                    for t in trials
-                ],
-                "importance": m.get("search", {}).get("importance", {}),
-                "space": m.get("search", {}).get("space", {}),
-            },
-            "evaluation": evaluation,
-            "shapes": [
-                {"feature": s.feature, "edges": list(s.edges), "scores": list(s.scores)}
-                for s in model.scorer.model.shapes
-            ],
-        }
-    )
-    return block
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -131,7 +59,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         try:
             ship = shipped.summary(shipped.load())
         except Exception as exc:
-            ship = _unavailable(exc)
+            ship = unavailable(exc)
         judged = {int(r["model_version_id"]): r for r in runs if r.get("model_version_id")}
         return {
             "mode": mode,
@@ -307,7 +235,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/search", dependencies=guarded)
     async def get_search() -> dict[str, Any]:
-        """Recent searches and every trial of the newest. `viewer+`, unscoped."""
+        """Recent searches and every trial of the newest. `viewer+`, unscoped. ``blocked`` is why a
+        search cannot start on this build (no shipped model to adapt, #422), else ``None``."""
         async with store.lock:
             runs = await store.search_runs(10)
             trials = await store.search_trials(int(runs[0]["id"])) if runs else []
@@ -315,6 +244,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "runs": runs,
             "trials": trials,
             "busy": engine.search_runner.busy,
+            "blocked": search_blocked(),
             "defaults": {
                 "trials": site_search.DEFAULT_BUDGET.trials,
                 "max_rounds": site_search.DEFAULT_BUDGET.max_rounds,
@@ -330,10 +260,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         adapts the shipped model, so a build that carries none refuses here, with the reason, rather
         than accepting a run the runner would refuse a tick later (#422)."""
         now = time.time()
-        try:
-            shipped.load()
-        except shipped.ShippedModelError as exc:
-            raise HTTPException(409, f"no shipped model to adapt: {exc}") from exc
+        blocked = search_blocked()
+        if blocked is not None:
+            raise HTTPException(409, blocked)
         async with write_txn():
             runs = await store.search_runs(1)
             if runs and runs[0]["status"] == "running":
@@ -399,8 +328,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         return {
             "mode": mode,
             "running": engine.decider_ref,
-            "shipped": _shipped_block(),
-            "site": _finite(
+            "shipped": shipped_block(),
+            "site": finite(
                 {
                     "dataset": "site",
                     "floors": {**site.FLOORS, "label_days": site.MIN_LABEL_DAYS},
