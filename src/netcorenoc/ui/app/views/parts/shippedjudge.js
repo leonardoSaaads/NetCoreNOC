@@ -39,8 +39,10 @@ const n = (m) => (m ? `${m.streams} streams · ${m.incidents} incidents · ${m.a
 
 export function ShippedJudge({ shipped }) {
   if (!shipped || !shipped.available) {
+    // A build that carries no model (#422) is a state, shown as a note; refused files are a fault.
     return html`<section class="panel-block"><${SectionHeading} title="Shipped model" />
-      <p class="err">${shipped ? shipped.reason : "not available"}</p></section>`;
+      <p class=${shipped && shipped.absent ? "hint" : "err"}>${shipped ? shipped.reason : "not available"}</p>
+    </section>`;
   }
   const ev = shipped.evaluation || {};
   const iid = (ev.splits || {}).test_iid || {};

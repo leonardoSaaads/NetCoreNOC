@@ -240,3 +240,38 @@ async def test_no_kill_switch_while_autonomy_is_off(store: Store, judged: None) 
         },
     )
     assert "Stop autonomy" not in result["dump"] and "autonomy:" not in result["dump"]
+
+
+@pytest.fixture
+def no_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    def absent() -> shipped.Shipped:
+        raise shipped.NoShippedModelError(shipped.NOT_SHIPPED)
+
+    monkeypatch.setattr(shipped, "load", absent)
+
+
+@dom_test
+async def test_a_build_without_a_model_says_so_as_a_state_not_a_fault(
+    store: Store, no_model: None
+) -> None:
+    """v0.26.0 ships no model (#422), so this is every appliance's screen: the reason in words, as a
+    note rather than an error, the shipped card disabled with it, and no generated-data chart."""
+    routes = await _routes(store)
+    assert routes["/api/decider"]["json"]["shipped"] == {
+        "available": False,
+        "absent": True,
+        "reason": shipped.NOT_SHIPPED,
+    }
+    settings = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/settings"})
+    assert shipped.NOT_SHIPPED in settings["dump"]
+    assert "This build ships no model." in settings["dump"], "the shipped card does not say why"
+    assert "could not be loaded" not in settings["dump"], "absence shown as a fault"
+    judge = domdriver.run_scenario("judge", {"routes": routes})
+    generated = [b for b in judge["blocks"] if b["dataset"] == "generated data"]
+    assert not [c for b in generated for c in b["charts"] if c["drawn"]], "a chart with no model"
+    page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})
+    note = re.compile(r"<p \.hint>\s*\"" + re.escape(shipped.NOT_SHIPPED))
+    fault = re.compile(r"<p \.err>\s*\"" + re.escape(shipped.NOT_SHIPPED))
+    for dump in (settings["dump"], page["dump"]):
+        assert note.search(dump), "the reason is not shown as a note"
+        assert not fault.search(dump), "a build without a model shown as an error"

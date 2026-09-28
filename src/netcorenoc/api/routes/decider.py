@@ -50,11 +50,21 @@ def _finite(value: Any) -> Any:
     return value
 
 
+def _unavailable(exc: Exception) -> dict[str, Any]:
+    """Why no shipped model runs. ``absent`` separates a build that carries none (#422) — a state,
+    shown as a note — from one whose files were refused, which is a fault."""
+    return {
+        "available": False,
+        "absent": isinstance(exc, shipped.NoShippedModelError),
+        "reason": str(exc.args[0] if exc.args else exc),
+    }
+
+
 def _shipped_block() -> dict[str, Any]:
     try:
         model = shipped.load()
     except Exception as exc:
-        return {"available": False, "reason": str(exc.args[0] if exc.args else exc)}
+        return _unavailable(exc)
     m = model.manifest
     evaluation = m.get("evaluation", {})
     trials = m.get("search", {}).get("trials", [])
@@ -121,7 +131,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         try:
             ship = shipped.summary(shipped.load())
         except Exception as exc:
-            ship = {"available": False, "reason": str(exc.args[0] if exc.args else exc)}
+            ship = _unavailable(exc)
         judged = {int(r["model_version_id"]): r for r in runs if r.get("model_version_id")}
         return {
             "mode": mode,

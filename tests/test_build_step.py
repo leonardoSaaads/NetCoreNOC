@@ -413,7 +413,7 @@ UI_HASHES: dict[str, str] = {
     ),
     "app/views/parts/decide.js": "6474cd33ca0ffc92a0317d965d0c9dc78e7b7277d9160f34abfb6c1cd9cf4f11",
     "app/views/parts/decider.js": (
-        "351c12a4cc7bef2667724e803b17600bcb5acf48082e00c1ff56e373ef2a4793"
+        "995a8a2c1029081cf5d4e9832552e51eb22186137f019dd9148c8cf4d973572c"
     ),
     "app/views/parts/declare.js": (
         "9d177b9c1a5e1c3207583b560eb9aeeeaae33b8fb50b5ab04fee3809f238912f"
@@ -487,7 +487,7 @@ UI_HASHES: dict[str, str] = {
         "799c125f48183a7de1a6597cfac400f4d0d0974de7daee4b1ddea7e485f53b08"
     ),
     "app/views/parts/shippedjudge.js": (
-        "1d59af1077c6098f2dd31e0eb91d0023c98e09e6ef7d1d71155b6d25262b48be"
+        "fdd43165200ec0bae849eb236e0ca55774265afadcc43dac46a2bd6b775b5962"
     ),
     "app/views/parts/sitejudge.js": (
         "5d7c0e5aff6dcc18a6f96002883e3d3a8c93f0c818ba3a693dee903dec8986e2"
@@ -578,7 +578,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/card.js": 7_239,
     "app/views/parts/correlation.js": 7_762,
     "app/views/parts/decide.js": 6_460,
-    "app/views/parts/decider.js": 9_493,
+    "app/views/parts/decider.js": 9_614,
     "app/views/parts/declare.js": 13_089,
     "app/views/parts/element.js": 6_168,
     "app/views/parts/evidence.js": 12_652,
@@ -610,7 +610,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/searchpanel.js": 5_069,
     "app/views/parts/sequence.js": 5_776,
     "app/views/parts/severity.js": 3_912,
-    "app/views/parts/shippedjudge.js": 11_385,
+    "app/views/parts/shippedjudge.js": 11_530,
     "app/views/parts/sitejudge.js": 4_278,
     "app/views/parts/sitsummary.js": 3_596,
     "app/views/parts/tlfilters.js": 5_030,

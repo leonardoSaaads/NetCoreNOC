@@ -106,7 +106,8 @@ class Picker extends Component {
               <span class="decider-mode-label">${label}${decider.mode === key ? html` <em>current</em>` : null}</span>
               <span class="decider-mode-note">${unavailable && key === "site"
                 ? "No site model has been judged better yet."
-                : unavailable ? "The shipped model could not be loaded." : note}</span>
+                : unavailable ? (decider.shipped.absent ? "This build ships no model."
+                  : "The shipped model could not be loaded.") : note}</span>
             </label>`;
           })}
         </fieldset>
@@ -127,7 +128,8 @@ class Picker extends Component {
 function Provenance({ shipped }) {
   if (!shipped || shipped.available === false) {
     return html`<section class="panel-block"><${SectionHeading} title="Shipped model" />
-      <p class="err">${shipped ? shipped.reason : "not available"}</p></section>`;
+      <p class=${shipped && shipped.absent ? "hint" : "err"}>${shipped ? shipped.reason : "not available"}</p>
+    </section>`;
   }
   const p = shipped.provenance || {};
   const verdict = shipped.verdict || {};

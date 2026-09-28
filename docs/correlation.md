@@ -18,8 +18,9 @@ Three families can decide which alarms belong together, and an admin picks one i
 **Why v0.26.0 has no model** ([#420–#422](adr/DECISIONS.md)): the model trained for it did less
 repair work than the formula on every generated split and every unseen family, but it missed its
 bar — 10 % less repair on *every* split — on heavily concurrent streams (7 %), and once validation
-covered that regime, no grouping setting passed the bar there. A model is packaged only when it
-passes, so the rest of this section describes what a model does once a build carries one.
+covered that regime, no grouping setting passed the bar there. On the hand-labelled corpus
+`make eval` replays it split five of eleven scenarios. A model is packaged only when it passes, so
+the rest of this section describes what a model does once a build carries one.
 
 A trained model sees **fifteen relations** between two alarms, not three — time apart, same element,
 same trap type, shared OID arcs, the learned class and element affinities, how often these two

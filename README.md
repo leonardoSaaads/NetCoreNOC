@@ -75,8 +75,9 @@ distribution behind it, and is collapsed until then.
 **v0.26.0 built a pre-trained model to decide from the first trap — and ships without one.** The
 model trained for it did less repair work than the formula on every generated split and on every
 incident family it never saw, but it did not pass its own quality bar (10 % less repair on *every*
-split; it reached 7 % on heavily concurrent streams), and a model is packaged only when it passes
-([`DECISIONS.md` #420–#422](docs/adr/DECISIONS.md)). So this build groups with the **additive
+split; it reached 7 % on heavily concurrent streams), and on the hand-labelled corpus `make eval`
+replays — built by a different program — it split five of eleven scenarios. A model is packaged
+only when it passes ([`DECISIONS.md` #420–#422](docs/adr/DECISIONS.md)). So this build groups with the **additive
 formula below**, as before, and the bell says why. Everything the model needs is in place and runs
 as soon as a build carries one: training (`make train`), a model kind that is validated as data and
 never code, fifteen pair relations, recall back an hour, episode memory, correlation clustering,

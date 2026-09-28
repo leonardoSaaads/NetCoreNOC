@@ -20,8 +20,10 @@ model missed that bar on its first test reading (7 of 70 checks: it merged more 
 unseen families), was corrected on validation alone, and missed again on fresh test streams (2 of
 70, both on heavily concurrent streams: 7 % less repair work than the formula where the bar asks
 10 %). Once validation covered that regime, no setting passed it there, so no third reading was
-taken (#420, #421). Every appliance therefore keeps grouping with the additive formula, and the
-bell says why. Relaxing the one binding limit is left to the maintainer (#422).
+taken (#420, #421). On `make eval`'s hand-labelled corpus, which no training step reads, the same
+model separated the two concurrent-incident scenarios perfectly and split five of the other nine
+(aggregate pairwise F1 1.000 → 0.388) — validation on generated streams did not transfer (#422).
+Every appliance therefore keeps grouping with the additive formula, and the bell says why.
 
 ### Added
 
