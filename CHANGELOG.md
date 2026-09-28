@@ -12,27 +12,33 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-eight rows, two ask for an
 action, eighteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
-## [0.26.0] - 2026-09-28 — "the model decides"
+## [0.26.0] - 2026-09-28 — "the model, and the bar it did not pass"
 
-A pre-trained model decides which alarms belong together from the first trap. Its measured quality
-is on the **Judge & promotion** screen and in `HANDOFF.md`; the headline, on generated streams it
-never trained on, is: {{HEADLINE}}
+**This release ships no model** (#422). It builds everything a pre-trained model needs to decide
+from the first trap, trains one, and holds it to a quality bar fixed before the test was read. The
+model missed that bar on its first test reading (7 of 70 checks: it merged more than the formula on
+unseen families), was corrected on validation alone, and missed again on fresh test streams (2 of
+70, both on heavily concurrent streams: 7 % less repair work than the formula where the bar asks
+10 %). Once validation covered that regime, no setting passed it there, so no third reading was
+taken (#420, #421). Every appliance therefore keeps grouping with the additive formula, and the
+bell says why. Relaxing the one binding limit is left to the maintainer (#422).
 
 ### Added
 
-- **A shipped link model** (#405, #407, #419): a boosted generalised additive model over fifteen
-  pair relations, trained by `make train` on generated incidents recorded through the appliance's
-  own engine, validated on two whole incident families it never saw, and packaged as a JSON document
-  plus a manifest (dataset digest, seed, commit, every trial, every held-out number with its
-  interval and n). Validated field by field on load; never code. Every link stores its exact
-  per-feature explanation.
+- **The shipped-model path** (#405, #407, #419): a boosted generalised additive model kind over
+  fifteen pair relations, trained by `make train` on generated incidents recorded through the
+  appliance's own engine, judged on two whole incident families it never saw, and packaged — only
+  when it passes the bar — as a JSON document plus a manifest (dataset digest, seed, commit, every
+  trial, every held-out number with its interval and n). Validated field by field on load; never
+  code. Every link stores its exact per-feature explanation. **This build packages none** (#422).
 - **Two-stage recall, episode memory and correlation clustering** (#418): candidates back an hour on
   the same element, OID parent and learned neighbours; co-failure counted in separate occasions;
   situations joined and merged on average evidence, so one bridge no longer merges two incidents.
-- **Autonomy** (#412): four grades (grouping, naming, closing, severity), off by default,
+- **Autonomy** (#412, inert until a build carries a model — it never acts on the formula): four grades (grouping, naming, closing, severity), off by default,
   attributed to the model, explained, judged by what operators do next, self-suspending below an
   agreement floor, with a kill switch in the top bar of every screen.
-- **Site adaptation** (#411, #413): an in-product hyperparameter search (random search with
+- **Site adaptation** (#411, #413; refuses to start without a shipped model, its base and
+  benchmark): an in-product hyperparameter search (random search with
   successive halving, seeded, bounded, stoppable, in its own process) fits a site model; a paired
   comparison on the newest labels, plus a do-no-harm benchmark, decides whether it may be switched
   to.
@@ -42,9 +48,10 @@ never trained on, is: {{HEADLINE}}
 
 ### Changed
 
-- **The additive formula is opt-in** (#405, #415). Upgrades keep a retuned formula or a promoted
-  model; otherwise the shipped model decides. If the shipped model cannot be loaded, the formula as
-  configured runs and the bell says why.
+- **The additive formula becomes opt-in once a build carries a model** (#405, #415). The decider
+  mode is `shipped` unless an admin had retuned the formula or promoted a model; with no model
+  packaged — this build — the formula as configured runs by the fail-safe and the bell says
+  *"This build ships no model; one is packaged only when it passes its quality bar."*
 - **Settings absorbs the Link scorer** (#414): Correlation, Autonomy, Search and System tabs;
   `#/scorer` still lands on Correlation.
 - **Judge & promotion is chart-first** (#414): hand-written SVG charts, each naming its dataset and

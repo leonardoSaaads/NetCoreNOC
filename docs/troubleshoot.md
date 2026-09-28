@@ -180,6 +180,15 @@ pre-registration, not a setting — see [`findings.md`](findings.md) for where a
 The four CLI reports are byte-frozen against expectations in the test suite, so a genuine drift
 turns the suite red. If you are seeing movement in a *live* report, it is your corpus changing.
 
+### The bell says "This build ships no model"
+
+Expected on v0.26.0, and not a fault on the appliance: the model trained for this release did not
+pass its quality bar, and a model is packaged only when it passes (DECISIONS #422). The additive
+formula groups exactly as before. Autonomy has nothing to act with and a site search refuses with
+*"no shipped model"*. A message that instead reads *"the shipped model could not be used: …"* is a
+fault — a document and manifest that do not belong together, or one of the two missing — and names
+which.
+
 ## The console
 
 ### There used to be a detail panel on the right and now there is not

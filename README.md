@@ -72,17 +72,17 @@ distribution behind it, and is collapsed until then.
 
 ## How it works
 
-**Since v0.26.0 a pre-trained model decides from the first trap.** It was trained on generated
-incidents, recorded through this appliance's own engine, validated on incident families it never
-saw, and it ships as a JSON table of numbers that is validated before it is used — never code. It
-sees fifteen relations between two alarms (time, element, trap type, shared OID arcs, learned
-affinities, how often the two have failed together before, severity, storm and chatter levels,
-references between traps), recalls candidates back an hour, and groups by correlation clustering, so
-one weak link no longer merges two concurrent incidents. Every link carries its exact per-feature
-explanation. The additive formula below is one choice away in Settings, and it is the fallback.
-Autonomy — the model accepting, naming, closing or grading situations itself — is off until an admin
-turns a grade on, turns itself off when operators disagree with it, and stops on one click from any
-screen. [`docs/correlation.md`](docs/correlation.md) is the full account.
+**v0.26.0 built a pre-trained model to decide from the first trap — and ships without one.** The
+model trained for it did less repair work than the formula on every generated split and on every
+incident family it never saw, but it did not pass its own quality bar (10 % less repair on *every*
+split; it reached 7 % on heavily concurrent streams), and a model is packaged only when it passes
+([`DECISIONS.md` #420–#422](docs/adr/DECISIONS.md)). So this build groups with the **additive
+formula below**, as before, and the bell says why. Everything the model needs is in place and runs
+as soon as a build carries one: training (`make train`), a model kind that is validated as data and
+never code, fifteen pair relations, recall back an hour, episode memory, correlation clustering,
+exact per-feature explanations, graded self-suspending autonomy with a one-click stop, and site
+adaptation. Autonomy and site adaptation stay inert until then: both need a model.
+[`docs/correlation.md`](docs/correlation.md) is the full account.
 
 Every trap is reduced to a **device** (source IP), a **class** (the trap OID as an opaque token — no
 MIB is ever consulted) and an **instance**. Alarms deduplicate on that fingerprint. Under the

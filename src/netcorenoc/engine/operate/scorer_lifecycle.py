@@ -139,6 +139,8 @@ class ScorerLifecycleMixin(EngineBase):
             reason = exc.args[0] if exc.args else type(exc).__name__
             if self._loaded_key and self._loaded_key[0] == -1:
                 self._loaded_key = None  # a model was running: the formula must be reloaded
+            if isinstance(exc, shipped.NoShippedModelError):
+                return str(reason)[:1].upper() + str(reason)[1:]  # a state of the build (#422)
             return f"the shipped model could not be used: {reason}"
         key = (-1, model.sha256)
         if key == self._loaded_key:

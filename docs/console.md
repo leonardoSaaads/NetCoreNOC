@@ -25,7 +25,7 @@ disabled controls.
 |---|---|
 | **Labelling** | Confirm or split a grouping, and what your labels have produced |
 | **Corpus** | What capture costs in rows, and the three retention tiers |
-| **Judge & promotion** | How good the model deciding links is, **measured** — chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged |
+| **Judge & promotion** | How good the model deciding links is, **measured** — chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged. **On v0.26.0 the shipped-model block says the build carries no model, and why** (#422) |
 
 ## Administer — the machine itself
 

@@ -267,12 +267,17 @@ from day one, with nothing at risk. Cold start is honest and documented in
 
 ## 8.5 What decides, and letting the model act (v0.26.0)
 
-A fresh appliance groups with the **shipped model** from the first trap; nothing is learned before
+A build that carries a shipped model groups with it from the first trap; nothing is learned before
 it is useful. **Settings → Correlation** shows which model is running, its SHA-256 and where it came
 from, and lets an admin choose the additive formula instead (a reason is required and audited).
 **Judge & promotion** shows how good it measured, on data it never trained on.
 
-To let it act without a person, an admin switches on a grade in **Settings → Autonomy** — start with
+**v0.26.0 carries no model** (DECISIONS #422): the bell reads *"This build ships no model; one is
+packaged only when it passes its quality bar"*, the formula groups as before, Settings → Correlation
+shows the shipped card disabled with that reason, and autonomy and site search have nothing to act
+with. None of this is a fault to fix on the appliance.
+
+Once a build carries a model: to let it act without a person, an admin switches on a grade in **Settings → Autonomy** — start with
 *naming* or *severity*, which are the cheapest to be wrong about. Watch *Recent acts*: each one says
 which model did it and why, and turns *agreed* or *disagreed* once an operator has worked the
 situation. Autonomy stops itself below the agreement floor; **Stop autonomy** in the top bar stops
@@ -285,7 +290,7 @@ To retrain the shipped model from source (a contributor's task, not an operator'
 
 ```sh
 make train-validate   # the pipeline on validation streams only; writes nothing
-make train            # evaluates once on every test split; writes the model only if the bar is met
+make train            # reads the test splits once; writes the model only if the bar is met
 make train-verify     # loads the installed model as the appliance does; reproduces every number
 ```
 

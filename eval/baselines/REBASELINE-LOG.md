@@ -22,3 +22,17 @@ metrics moved.
   - pairwise_f1: 0.999955 -> 1.0
   - quarantined: 400 -> 0
   - traps_ingested: 2747 -> 3147
+
+## 0.26.0 — current.json
+
+- **Reason**: v0.26.0 adds eval/corpus/dual_incident_same_vendor.json: two concurrent incidents on one vendor's elements, the case v0.18.0's vendor gate (F76) cannot separate. The additive formula merges them (pairwise_f1 0.6364, ari 0.0000, over_merge_rate 1.0000), measured identically on v0.25.0 at a53e6e1. The ten existing scenarios do not move on any metric. This build ships no model (DECISIONS #422), so the formula decides; the aggregate moves only by the new scenario's contribution.
+- **Replaced digest**: `c19ccd99fe21d3def3f414db9eef3d594f9f7a5131b06315017cda7eda63dbbb`
+- **New digest**: `1199ae7b3ce20454cc705f1bc6c62cd19bc2b18b1683d7da017bc8f67e66aa3a`
+- **Aggregate metrics that moved** (7):
+  - ari: 1.0 -> 0.99994
+  - dedup_ratio: 0.715602 -> 0.717041
+  - distinct_alarms: 2252 -> 2268
+  - entity_accuracy: 0.448046 -> 0.45194
+  - over_merge_rate: 0.0 -> 0.028571
+  - pairwise_f1: 1.0 -> 0.999958
+  - traps_ingested: 3147 -> 3163

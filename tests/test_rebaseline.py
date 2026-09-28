@@ -1,11 +1,11 @@
 """The re-baseline mechanism (v0.17.0, DECISIONS #324).
 
 `make eval` hashes its own stdout, and what makes that useful is that the hash moves only when
-somebody meant it to — **`c75b42aa…`** today, `c2e8a0ce…` from v0.7.0 until the corpus was
-re-cut by the mechanism this module tests. (This docstring named the old value for several
-releases after the re-cut; v0.21.0 corrected it.) That is what
-makes it useful to a refactor — *did this change correlation behaviour when I did not mean to?* —
-and it is **not** a reason the corpus may never grow. Before this release the only way to grow it
+somebody meant it to — **`31ea7583…`** today (v0.26.0 grew the corpus), `c75b42aa…` from v0.18.0,
+`c2e8a0ce…` from v0.7.0 until the corpus was re-cut by the mechanism this module tests. (This
+docstring named the old value for several releases after the re-cut; v0.21.0 corrected it.) That is
+what makes it useful to a refactor — *did this change correlation behaviour when I did not mean to?*
+— and it is **not** a reason the corpus may never grow. Before this release the only way to grow it
 was to overwrite `eval/baselines/v0.2.0.json` by hand, which is an edit no reviewer can tell apart
 from a behaviour change that was papered over.
 

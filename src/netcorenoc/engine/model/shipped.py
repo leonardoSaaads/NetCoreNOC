@@ -27,11 +27,21 @@ import json
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
+from importlib.resources.abc import Traversable
 from typing import Any
 
 from netcorenoc.engine.model import gam
 
-__all__ = ["ARTIFACT", "MANIFEST", "MAX_MANIFEST_BYTES", "Shipped", "load", "load_from"]
+__all__ = [
+    "ARTIFACT",
+    "MANIFEST",
+    "MAX_MANIFEST_BYTES",
+    "NOT_SHIPPED",
+    "NoShippedModelError",
+    "Shipped",
+    "load",
+    "load_from",
+]
 
 ARTIFACT = "linkmodel.json"
 MANIFEST = "linkmodel.manifest.json"
@@ -51,8 +61,18 @@ class Shipped:
         return f"shipped:{self.sha256[:12]}"
 
 
+#: What an appliance says when its build carries no model. True of any such build, because
+#: `make train` writes a model only when it passes the quality bar (ADR #409) — v0.26.0 is one
+#: (ADR #422). No path and no exception text: every role can read the bell.
+NOT_SHIPPED = "this build ships no model; one is packaged only when it passes its quality bar"
+
+
 class ShippedModelError(ValueError):
-    """The shipped files are absent, malformed, or do not belong together."""
+    """The shipped files are malformed, incomplete, or do not belong together."""
+
+
+class NoShippedModelError(ShippedModelError):
+    """Neither file is packaged: a deliberate state of the build, not a fault in it."""
 
 
 def load_from(document: str, manifest_text: str) -> Shipped:
@@ -80,12 +100,26 @@ def load_from(document: str, manifest_text: str) -> Shipped:
 @cache
 def load() -> Shipped:
     """The packaged model. Cached: the files are part of the installed package."""
-    root = resources.files("netcorenoc.engine.model")
+    return load_dir(resources.files("netcorenoc.engine.model"))
+
+
+def load_dir(root: Traversable) -> Shipped:
+    """The two files under ``root``: absent together is a build without a model; one without the
+    other is a broken build. Neither message names a path."""
+    document_file, manifest_file = root.joinpath(ARTIFACT), root.joinpath(MANIFEST)
+    present = (document_file.is_file(), manifest_file.is_file())
+    if not any(present):
+        raise NoShippedModelError(NOT_SHIPPED)
+    if not all(present):
+        missing = ARTIFACT if not present[0] else MANIFEST
+        raise ShippedModelError(f"the shipped model is incomplete: {missing} is missing")
     try:
-        document = root.joinpath(ARTIFACT).read_text(encoding="utf-8")
-        manifest = root.joinpath(MANIFEST).read_text(encoding="utf-8")
-    except (FileNotFoundError, OSError) as exc:
-        raise ShippedModelError(f"the shipped model is not installed ({exc})") from exc
+        document = document_file.read_text(encoding="utf-8")
+        manifest = manifest_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ShippedModelError(
+            f"the shipped model could not be read ({type(exc).__name__})"
+        ) from exc
     return load_from(document, manifest)
 
 

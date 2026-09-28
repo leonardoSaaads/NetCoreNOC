@@ -5521,5 +5521,38 @@ From this release an entry is about six lines: decision, reason, release.*
   v0.26.0 ships no model: every appliance runs the additive formula by the fail-safe of #405 (the
   bell says the shipped model is not installed), the Judge screen says why, and HANDOFF.md says so
   on its first line. A fourth draw would turn "read once" into "read until it passes".
-- **Result of the third reading**: {{THIRD_READING}}
+- **Result**: there was no third reading. With `valid_concurrency` in validation, **no grouping
+  setting passes the bar on validation**, so `make train` stopped before reading any test split
+  (commit `17590e3`, dataset `b7a7260ccf6e2fdc`); draw 3 is recorded and unread. #422 records what
+  ships as a consequence.
+
+## 422. v0.26.0 ships no model (v0.26.0)
+
+- **Decision**: this build packages no `linkmodel.json`. Every appliance, new or upgraded, runs the
+  additive formula by #405's fail-safe, and the bell says so in words every role may read: *"This
+  build ships no model; one is packaged only when it passes its quality bar."* The decider mode
+  stays `shipped`, so the first build that carries a passing model takes over on upgrade without an
+  admin's action; an admin who chose `additive` keeps it. `make train` wrote nothing, as #409
+  requires; `tests/test_shipped.py` holds the package to *a passing model or none*.
+- **Why**: the model trained for this release did not pass its own quality bar — on test twice
+  (#420: 7 of 70 checks; #421: 2 of 70), and then not on validation once validation covered every
+  regime the bar reads (#421). On validation the frontier is two limits no grouping setting meets
+  together: at lower join biases the harm limit on `olt_uplink_failure` over-merge (+0.102 …
+  +0.153 against +0.10); at higher ones the requirement of × 0.90 repair work on the concurrency
+  regime (× 0.91 … × 0.93 on `valid_concurrency`, × 0.927 on the second test reading).
+- **What this leaves inert until a model ships**, said plainly: autonomy (it never acts on the
+  formula's situations, #412), and site adaptation — a search refuses with *"no shipped model"*,
+  because the shipped model is both the base a site model is judged against and the owner of the
+  do-no-harm benchmark (#411). Everything else ships and runs: the generator and training pipeline,
+  the `gam` kind and its validation, recall, episode memory, clustering, the clear hold (#410), the
+  learner change (#406), the Settings and Judge screens (which say why there is no model).
+- **Not decided here — the maintainer's call**: the binding requirement is one limit,
+  `("repair_gestures", "splits", "ratio_max", 0.90)` — that the model do at least 10 % less repair
+  work than the formula on *every* split. It is a benefit requirement, not a harm limit. At 1.00
+  ("no more repair work than the formula on every split"), selection on validation admits settings,
+  the cheapest in the grid being join 2.0 / merge 2.0 / 2 pairs, whose second reading (#421) did
+  less repair work than the formula on every split and every unseen family. Changing the bar after
+  two readings is exactly the decision #409 kept away from whoever trains the model, so it is not
+  taken here. If the maintainer takes it: edit that one line in `eval/synth/train.py`, record why in
+  this ledger, run `make train` — it reads the unread draw 3 once, and that result is final.
 

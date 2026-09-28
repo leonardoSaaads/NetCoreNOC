@@ -71,7 +71,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.22.0 → v0.23.0 | Nothing to run. **No migration.** Four read-only API routes, no new capability. The Overview's activity chart now counts alarms **active** at each point rather than raises per bucket, and `/api/situations/{sid}` carries two more fields per alarm. Read below |
 | v0.23.0 → v0.24.0 | Nothing to run. **No migration.** A maintenance window created from now on **discards** what it suppresses — nothing surfaces when it ends unless the window opts in — and alarms the appliance could not grade may now carry a default severity from the built-in trap pack. Read below |
 | v0.24.0 → v0.25.0 | Nothing to run. **One migration applies at boot** (`0025`, additive). Users, Service tokens and Governance are now one screen, **People & access**, and an account an admin creates must set its own password at first sign-in. Read below |
-| v0.25.0 → v0.26.0 | Nothing to run. **One migration applies at boot** (`0026`, additive). **What groups your alarms changes**: unless an admin had retuned the formula or promoted a model, the shipped model decides from the first trap after the upgrade. Autonomy is off. Read below |
+| v0.25.0 → v0.26.0 | Nothing to run. **One migration applies at boot** (`0026`, additive). **This build ships no model** (#422), so the formula keeps grouping and the bell says why; a later build that carries a passing model takes over without an admin's action unless the formula was chosen. Situations that fully clear are held five minutes. Autonomy is off. Read below |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -720,7 +720,7 @@ dashboard with it.
   `avatar`; `POST /api/users` and `POST /api/tokens` accept `display_name` / `purpose`;
   `GET /api/rbac` adds `minimum_role` and `subjects`. No capability is added.
 
-### v0.26.0 — a shipped model decides, and autonomy exists (switched off)
+### v0.26.0 — the model path, without a model; autonomy exists (switched off)
 
 **What changes on upgrade.** Migration `0026` adds the decider setting, autonomy's settings and log,
 the search record, a feature-vector column on captured pairs, a stored explanation on links, and
@@ -730,15 +730,17 @@ decider row, and it respects what your appliance had chosen:
 * if an admin had **promoted a model**, that model keeps deciding (`site`);
 * if an admin had **retuned the formula** (the active configuration is not the one the appliance
   shipped with), the formula keeps deciding (`additive`);
-* otherwise the **shipped model** decides from the first trap after the upgrade (`shipped`).
+* otherwise the **shipped model** is chosen (`shipped`).
 
-Situations formed before the upgrade are not regrouped. New ones are formed by the model: expect
-fewer situations per incident on slow faults (optical degradation, a BGP session after its link, a
-site losing power) and concurrent incidents on one vendor kept apart. The **Judge & promotion**
-screen shows the model's measured quality; **Settings → Correlation** shows its provenance.
+**This build ships no model** (#422): the one trained for it did not pass its quality bar. With
+`shipped` chosen and no model packaged, the formula as configured decides — exactly as before the
+upgrade — and the bell says *"This build ships no model; one is packaged only when it passes its
+quality bar."* A later build that carries a passing model takes over on its own upgrade; if you
+would rather it did not, choose the formula now. Autonomy and site adaptation need a model, so
+both stay inert until then (a search refuses with *"no shipped model"*).
 
-**To keep the formula**, choose *Additive formula* in **Settings → Correlation** (admin; a reason is
-required and audited). Nothing else changes: the preview, the hardening-only floors and the history
+**To keep the formula when a model arrives**, choose *Additive formula* in **Settings →
+Correlation** (admin; a reason is required and audited). Nothing else changes: the preview, the hardening-only floors and the history
 are where the *Link scorer* screen had them, and `#/scorer` still opens them.
 
 **Two things behave differently whatever you choose:**

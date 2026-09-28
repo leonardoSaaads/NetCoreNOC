@@ -11,9 +11,15 @@ Three families can decide which alarms belong together, and an admin picks one i
 
 | Family | What it is | When it runs |
 |---|---|---|
-| **Shipped model** | A boosted generalised additive model trained before release on generated incidents, validated on families it never saw | **The default**, from the first trap |
-| **Site model** | The shipped model adapted to this appliance's labels by the in-product search | When the judge says it is better here and an admin switches to it |
-| **Additive formula** | The three-term score below, unchanged | Opt-in; also the fallback if the shipped model cannot be loaded |
+| **Shipped model** | A boosted generalised additive model trained before release on generated incidents, packaged only if it passes its quality bar on families it never saw | **The default choice** — but **v0.26.0 packages none** (#422), so the formula runs in its place |
+| **Site model** | The shipped model adapted to this appliance's labels by the in-product search | When the judge says it is better here and an admin switches to it; needs a shipped model to start from |
+| **Additive formula** | The three-term score below, unchanged | Opt-in; the fallback whenever no shipped model can run — **every appliance on v0.26.0** |
+
+**Why v0.26.0 has no model** ([#420–#422](adr/DECISIONS.md)): the model trained for it did less
+repair work than the formula on every generated split and every unseen family, but it missed its
+bar — 10 % less repair on *every* split — on heavily concurrent streams (7 %), and once validation
+covered that regime, no grouping setting passed the bar there. A model is packaged only when it
+passes, so the rest of this section describes what a model does once a build carries one.
 
 A trained model sees **fifteen relations** between two alarms, not three — time apart, same element,
 same trap type, shared OID arcs, the learned class and element affinities, how often these two
@@ -31,8 +37,8 @@ And it **groups differently**: an alarm joins the situation whose members it agr
 average* (log-odds evidence above a bias), and two situations merge only when the evidence between
 them, accumulated over many pairs, says so — correlation clustering rather than connected
 components, so one weak bridge no longer merges two concurrent incidents (#418). The biases are
-chosen on validation as the fewest **operator repair gestures** among the settings that keep
-concurrent incidents apart at least as well as the formula (#409).
+chosen on validation as the fewest **operator repair gestures** among the settings that pass the
+quality bar itself on every validation split and family (#409, #420, #421).
 
 Every link a model makes stores its **whole explanation** — each feature's contribution to the
 log-odds, and the intercept — and they sum to the decision exactly (#407). The model file is
@@ -256,8 +262,9 @@ Two limits worth knowing when you read a verdict:
 
 **Settings → Search** starts a hyperparameter search over this appliance's labelled situations:
 random search with successive halving, seeded, bounded by a budget you set, stoppable, in its own
-process so ingestion never waits on it (#413). Its result is a *site model* that decides nothing on
-its own. It is judged against the shipped model on **your newest labels**, paired per incident, and
+process so ingestion never waits on it (#413). It needs a shipped model to start from, so **on
+v0.26.0 a search refuses to start** (*"no shipped model"*, #422). Its result is a *site model* that
+decides nothing on its own. It is judged against the shipped model on **your newest labels**, paired per incident, and
 on a generated benchmark packaged with the shipped model so that it cannot forget what it knew
 (#411). Only a `BETTER` verdict lets an admin switch to it, and the server re-derives the verdict
 when asked. The floors — 20 labelled incidents, 6 of them in the newest part, 4 splits asserting a

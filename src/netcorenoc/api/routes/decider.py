@@ -188,7 +188,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if not versions:
             raise HTTPException(409, "no site model has been fitted yet; run a search first")
         newest = versions[0]
-        base = shipped.load()
+        try:
+            base = shipped.load()
+        except shipped.ShippedModelError as exc:  # the judge compares against it (#411)
+            raise HTTPException(409, f"no shipped model to judge against: {exc}") from exc
         candidate = gam.load(str(newest["params_document"]), scorer_id="site")
         pairs = await store.labelled_pairs() + await store.gesture_positive_pairs()
         rows = site.rows_from(pairs, await store.pair_features([int(p["pair_id"]) for p in pairs]))
