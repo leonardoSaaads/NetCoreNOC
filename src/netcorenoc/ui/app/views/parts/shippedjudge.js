@@ -37,11 +37,14 @@ const SPLITS = {
 
 const n = (m) => (m ? `${m.streams} streams · ${m.incidents} incidents · ${m.activations} activations` : "");
 
+/** A reason the server phrases as a clause, shown as a sentence. */
+const sentence = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
 export function ShippedJudge({ shipped }) {
   if (!shipped || !shipped.available) {
     // A build that carries no model (#422) is a state, shown as a note; refused files are a fault.
     return html`<section class="panel-block"><${SectionHeading} title="Shipped model" />
-      <p class=${shipped && shipped.absent ? "hint" : "err"}>${shipped ? shipped.reason : "not available"}</p>
+      <p class=${shipped && shipped.absent ? "hint" : "err"}>${sentence(shipped ? shipped.reason : "not available")}</p>
     </section>`;
   }
   const ev = shipped.evaluation || {};

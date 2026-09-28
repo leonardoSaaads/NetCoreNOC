@@ -50,16 +50,21 @@ export class Correlation extends Component {
     if (error) return html`<${Failed} error=${error} retry=${this.read} what="the decider" />`;
     if (!data) return html`<${Loading} label="Reading what decides links" />`;
     const decider = data.decider.value;
+    // What RUNS, not what was chosen: with no shipped model (#422) the formula decides under the
+    // mode `shipped`, and a screen that called it "not deciding" would be describing the setting.
+    const formulaRuns = String(decider.running || "").startsWith("additive:");
+    const hint = decider.mode === "additive"
+      ? "Deciding now. Changes apply at the next engine reload."
+      : "Deciding now, in place of the chosen decider, which cannot run. Changes apply at the next engine reload.";
     return html`<div class="stack">
       <${Picker} decider=${decider} onDone=${this.read} />
       <${Provenance} shipped=${decider.shipped} />
       <${SiteModels} models=${decider.site_models} />
-      ${data.scorer.ok && decider.mode === "additive" ? html`<section class="panel-block">
-        <${SectionHeading} title="The additive formula"
-          hint="Deciding now. Changes apply at the next engine reload." />
+      ${data.scorer.ok && formulaRuns ? html`<section class="panel-block">
+        <${SectionHeading} title="The additive formula" hint=${hint} />
         <${Formula} config=${data.scorer.value} onChanged=${this.read} />
       </section>` : null}
-      ${data.scorer.ok && decider.mode !== "additive" ? html`<details class="panel-block formula-folded">
+      ${data.scorer.ok && !formulaRuns ? html`<details class="panel-block formula-folded">
         <summary>The additive formula — stored, not deciding</summary>
         <${Formula} config=${data.scorer.value} onChanged=${this.read} />
       </details>` : null}
@@ -124,11 +129,14 @@ class Picker extends Component {
   }
 }
 
+/** A reason the server phrases as a clause, shown as a sentence. */
+const sentence = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
 /** Where the shipped model came from: the questions an auditor asks, answered from the manifest. */
 function Provenance({ shipped }) {
   if (!shipped || shipped.available === false) {
     return html`<section class="panel-block"><${SectionHeading} title="Shipped model" />
-      <p class=${shipped && shipped.absent ? "hint" : "err"}>${shipped ? shipped.reason : "not available"}</p>
+      <p class=${shipped && shipped.absent ? "hint" : "err"}>${sentence(shipped ? shipped.reason : "not available")}</p>
     </section>`;
   }
   const p = shipped.provenance || {};

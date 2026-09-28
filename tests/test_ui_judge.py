@@ -194,6 +194,9 @@ async def test_settings_has_four_tabs_and_the_old_scorer_address_lands_on_correl
         assert tab in settings["dump"], f"the {tab} tab is missing"
     for text in ("What decides links", "Shipped model", "Additive formula", "provenance"):
         assert text in settings["dump"], text
+    # The control for the no-model test: with a model running, the formula is stored, folded.
+    assert "stored, not deciding" in settings["dump"]
+    assert "in place of the chosen decider" not in settings["dump"]
     old = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/scorer"})
     assert "What decides links" in old["dump"] and "Configured parameters" in old["dump"]
 
@@ -263,15 +266,19 @@ async def test_a_build_without_a_model_says_so_as_a_state_not_a_fault(
         "reason": shipped.NOT_SHIPPED,
     }
     settings = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/settings"})
-    assert shipped.NOT_SHIPPED in settings["dump"]
+    reason = shipped.NOT_SHIPPED[0].upper() + shipped.NOT_SHIPPED[1:]
+    assert reason in settings["dump"]
     assert "This build ships no model." in settings["dump"], "the shipped card does not say why"
     assert "could not be loaded" not in settings["dump"], "absence shown as a fault"
+    # The formula decides here under the mode `shipped`: the screen describes what runs.
+    assert "Deciding now, in place of the chosen decider" in settings["dump"]
+    assert "stored, not deciding" not in settings["dump"], "the running formula called idle"
     judge = domdriver.run_scenario("judge", {"routes": routes})
     generated = [b for b in judge["blocks"] if b["dataset"] == "generated data"]
     assert not [c for b in generated for c in b["charts"] if c["drawn"]], "a chart with no model"
     page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})
-    note = re.compile(r"<p \.hint>\s*\"" + re.escape(shipped.NOT_SHIPPED))
-    fault = re.compile(r"<p \.err>\s*\"" + re.escape(shipped.NOT_SHIPPED))
+    note = re.compile(r"<p \.hint>\s*\"" + re.escape(reason))
+    fault = re.compile(r"<p \.err>\s*\"" + re.escape(reason))
     for dump in (settings["dump"], page["dump"]):
         assert note.search(dump), "the reason is not shown as a note"
         assert not fault.search(dump), "a build without a model shown as an error"
