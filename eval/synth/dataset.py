@@ -160,7 +160,7 @@ def digest(all_specs: dict[str, list[StreamSpec]]) -> str:
         ).encode()
     )
     for path in sorted((HERE).glob("*.py")):
-        if path.name in {"dataset.py", "train.py", "report.py", "evaluate.py"}:
+        if path.name in {"dataset.py", "train.py", "report.py", "evaluate.py", "verify.py"}:
             continue  # consumers of the data, not producers of it
         h.update(path.name.encode())
         h.update(path.read_bytes())
