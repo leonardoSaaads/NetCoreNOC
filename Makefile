@@ -24,8 +24,11 @@ qa: lint typecheck deadcode scan test eval
 scan:
 	$(PYTHON) -m bandit -q -c pyproject.toml -r src/netcorenoc tools
 
+# `--skip-editable` (v0.26.0): this project is installed editable and is not on PyPI, so asking PyPI
+# about it audits nothing — and when PyPI answers that question with a 503 instead of a 404 (twice
+# on this release's CI) the audit of every real dependency fails with it.
 security: scan
-	$(PYTHON) -m pip_audit
+	$(PYTHON) -m pip_audit --skip-editable
 
 # Dead-code gate (§7): vulture over the runtime package with a committed allowlist.
 deadcode:

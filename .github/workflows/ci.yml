@@ -57,7 +57,8 @@ jobs:
       - name: Security scan (bandit; the offline half of `make security`)
         run: make scan PYTHON=python
       - name: Dependency audit (pip-audit; queries PyPI, hence its own step)
-        run: python -m pip_audit
+        # --skip-editable: the project itself is not on PyPI; see the Makefile's `security` target.
+        run: python -m pip_audit --skip-editable
 
   # 2. The suite, the coverage number, the eval gate and the behaviour record.
   tests:
