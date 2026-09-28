@@ -5247,10 +5247,12 @@ From this release an entry is about six lines: decision, reason, release.*
 
 - **Ablation** (`eval/synth/train.py`): every candidate feature is fitted with and without; one
   whose removal does not worsen validation log loss by at least 0.0005 nats is dropped. Measured on
-  the shipped run: `same_ne` (+0.0004 — `entity_affinity` already carries it structurally),
-  `class_episodes` (−0.0029: it hurt) and `hour` (−0.0002) are dropped; `dt` (+0.058) matters most,
-  then `entity_affinity`, `same_class`, `ne_episodes`, `class_affinity`. Twelve are kept. The
-  numbers are in the manifest and charted on the Judge screen.
+  the shipped run (60 000 training and 30 000 validation rows, baseline 0.1404 nats):
+  `class_episodes` (−0.0017: it hurt), `item_episodes` (−0.0001) and `same_ne` (+0.0002 —
+  `entity_affinity` already carries it structurally) are dropped; `dt` (+0.0594) matters most by an
+  order of magnitude, then `ne_episodes` (+0.0042), `entity_affinity` (+0.0038), `class_affinity`,
+  `burst`, `same_class` (each ≈ +0.003); `hour` (+0.0006) is the weakest kept. Twelve are kept.
+  The numbers are in the manifest and charted on the Judge screen.
 - **Grouping is chosen on the operator's repair work**, not on the mean of four rates. The first
   objective was dominated by the ~2 250 single-alarm noise incidents in the validation streams and
   by the concurrency pairs, so it drove the join bias to the edge of its grid and split 43 % of

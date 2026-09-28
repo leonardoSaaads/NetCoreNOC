@@ -117,6 +117,9 @@ def test_the_simulation_is_not_inside_the_frozen_corpus_directory() -> None:
         "chassis_card_fail.json",
         "decoy_varbinds.json",
         "dual_incident.json",
+        # v0.26.0: two concurrent incidents on one vendor's elements — the case v0.18.0's vendor
+        # gate cannot separate, and the over-merge the learned decider is measured on (#418).
+        "dual_incident_same_vendor.json",
         "fiber_cut.json",
         "flapping_noise.json",
         "olt_storm.json",
