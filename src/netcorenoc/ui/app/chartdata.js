@@ -32,6 +32,8 @@ export function unitText(value, unit) {
   if (value == null) return "—";
   const n = Number(value);
   if (unit === "%") return `${n.toFixed(n < 10 ? 1 : 0)}%`;
+  // v0.26.0: a quantity on [0, 1] — an F1, a rate, a ρ² — printed as itself, never rounded to 0 or 1.
+  if (unit === "ratio") return n.toFixed(3);
   if (unit === "s") return `${score(n, 4)} s`;
   const whole = Math.round(n);
   const rounded = count(whole);

@@ -25,15 +25,14 @@ disabled controls.
 |---|---|
 | **Labelling** | Confirm or split a grouping, and what your labels have produced |
 | **Corpus** | What capture costs in rows, and the three retention tiers |
-| **Judge & promotion** | What the gate decided, why it refused, the seal's query count, and the four named quantities over time — **never composed**, and with the three things nothing measures named on the screen |
+| **Judge & promotion** | How good the model deciding links is, **measured** — chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged. **On v0.26.0 the shipped-model block says the build carries no model, and why** (#422) |
 
 ## Administer — the machine itself
 
 | View | The question it answers |
 |---|---|
 | **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts, each with a photo, a name, a role and its own capability grid), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once) and **Visibility** (which network elements viewers and editors see) |
-| **Settings** | Every parameter, in three classes, with its precedence and its impact |
-| **Link scorer** | The formula that decides which alarms group. Preview before you apply |
+| **Settings** | Four tabs since v0.26.0: **Correlation** (what decides links — the shipped model with its provenance, a site model, or the additive formula with its preview and history, which was the *Link scorer* screen), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Search** (the budget, start and stop) and **System** (every parameter, in three classes, with its precedence and its impact) |
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | The hash-chained record of every change, and its verification state |
 
@@ -242,6 +241,16 @@ The sidebar is **one tab stop** with arrow-key navigation, and focus moves into 
 you navigate. Collapsed it is icon-only, so every item keeps its label in the accessible tree and
 gains an explicit name carrying its badge — a collapsed rail's accessible name is the whole of its
 usability for a screen-reader operator.
+
+## Autonomy, and the kill switch (v0.26.0)
+
+Autonomy is off until an admin turns a grade on in **Settings → Autonomy**: *grouping* (accept a
+model-made situation as an incident), *naming*, *closing* (resolve a situation whose remaining alarms
+are quiet and cannot clear themselves), *severity*. Every act names the model that made it and the
+evidence it acted on, and is later judged by what operators did next; when agreement falls below the
+floor, autonomy **turns itself off** and the bell says why. While any grade is on, the top bar of
+every screen says so and carries **Stop autonomy** — one click, for an editor or an admin, that turns
+every grade off. A model's name for a situation is marked as the model's; your rename replaces it.
 
 ## The top bar: what it holds, and what it stopped holding
 

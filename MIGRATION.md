@@ -7,16 +7,17 @@ sessions, tokens and audit chain survive every upgrade in this table.
 Two rules that have held since v0.1.0 and are not going to change:
 
 * **Nothing new is on by default.** A release that adds a capability adds it switched off; the
-  release that changed how a *decision* is made is called out below and there is only one.
+  releases that changed how a *decision* is made are called out below and there are two — v0.26.0,
+  whose change of default decider is the point of the release, is the second.
 * **A removed setting is a startup error, never a silent no-op.** An ignored `OPTICORR_ALLOWLIST`
   would mean every trap source was accepted while you believed otherwise. The process refuses to
   start and names the replacement.
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of forty-one ask
-you to do something; twenty-one more ask you to read a paragraph first. The other eighteen are
-start-the-new-binary.** (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
+Read only the rows between your version and the one you are installing. **Two of forty-two ask
+you to do something; twenty-two more ask you to read a paragraph first. The other eighteen are
+start-the-new-binary.** (v0.26.0 adds a read-a-paragraph row, in its own release.) (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
 read-a-paragraph row: it applies no migration and still changes what your existing situations do.
@@ -70,6 +71,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.22.0 → v0.23.0 | Nothing to run. **No migration.** Four read-only API routes, no new capability. The Overview's activity chart now counts alarms **active** at each point rather than raises per bucket, and `/api/situations/{sid}` carries two more fields per alarm. Read below |
 | v0.23.0 → v0.24.0 | Nothing to run. **No migration.** A maintenance window created from now on **discards** what it suppresses — nothing surfaces when it ends unless the window opts in — and alarms the appliance could not grade may now carry a default severity from the built-in trap pack. Read below |
 | v0.24.0 → v0.25.0 | Nothing to run. **One migration applies at boot** (`0025`, additive). Users, Service tokens and Governance are now one screen, **People & access**, and an account an admin creates must set its own password at first sign-in. Read below |
+| v0.25.0 → v0.26.0 | Nothing to run. **One migration applies at boot** (`0026`, additive). **This build ships no model** (#422), so the formula keeps grouping and the bell says why; a later build that carries a passing model takes over without an admin's action unless the formula was chosen. Situations that fully clear are held five minutes. Autonomy is off. Read below |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -717,3 +719,45 @@ dashboard with it.
   `GET /api/me` adds `user_id`, `display_name`, `avatar`; `GET /api/users` adds `display_name`,
   `avatar`; `POST /api/users` and `POST /api/tokens` accept `display_name` / `purpose`;
   `GET /api/rbac` adds `minimum_role` and `subjects`. No capability is added.
+
+### v0.26.0 — the model path, without a model; autonomy exists (switched off)
+
+**What changes on upgrade.** Migration `0026` adds the decider setting, autonomy's settings and log,
+the search record, a feature-vector column on captured pairs, a stored explanation on links, and
+three columns on situations (`decider`, `severity`/`severity_by`, `model_name`). It seeds **one**
+decider row, and it respects what your appliance had chosen:
+
+* if an admin had **promoted a model**, that model keeps deciding (`site`);
+* if an admin had **retuned the formula** (the active configuration is not the one the appliance
+  shipped with), the formula keeps deciding (`additive`);
+* otherwise the **shipped model** is chosen (`shipped`).
+
+**This build ships no model** (#422): the one trained for it did not pass its quality bar. With
+`shipped` chosen and no model packaged, the formula as configured decides — exactly as before the
+upgrade — and the bell says *"This build ships no model; one is packaged only when it passes its
+quality bar."* A later build that carries a passing model takes over on its own upgrade; if you
+would rather it did not, choose the formula now. Autonomy and site adaptation need a model, so
+both stay inert until then (a search refuses with *"no shipped model"*).
+
+**To keep the formula when a model arrives**, choose *Additive formula* in **Settings →
+Correlation** (admin; a reason is required and audited). Nothing else changes: the preview, the hardening-only floors and the history
+are where the *Link scorer* screen had them, and `#/scorer` still opens them.
+
+**Two things behave differently whatever you choose:**
+
+* a situation whose alarms have all cleared stays live for **five minutes** before it resolves, so a
+  bouncing port rejoins it instead of opening a new situation (#410);
+* the learned affinities no longer learn from closed situations — only from the stream — so a
+  situation closing no longer moves them (#406). The stored matrices counted closed situations as
+  their clock; the first trap after the upgrade rebases them onto the hourly clock once, keeping
+  every mass and its relative age.
+
+**Autonomy is off.** Nothing acts on its own until an admin switches a grade on in
+**Settings → Autonomy**. The kill switch (`POST /api/autonomy/stop`) is available to editors.
+
+**API.** Eleven routes are new (`/api/decider`, `/api/autonomy*`, `/api/situations/{sid}/severity`,
+`/api/search*`, `/api/judge`); `/api/stats` carries an `autonomy` object; `/api/situations` rows
+carry `model_name` beside the two other names. With no shipped model — this build — `GET
+/api/search` carries `blocked` (the reason) and `POST /api/search` answers 409 with it;
+`/api/decider` and `/api/judge` mark the shipped block `absent`. No field was removed.
+

@@ -24,7 +24,8 @@ import util
 BASE = 1_700_000_000.0
 
 #: The columns migration `0014` adds to a situation listing (v0.16.0).
-_LIFECYCLE_KEYS = ("resolution", "derived_name", "operator_name")
+# v0.26.0: `model_name` (0026) is listed beside the other two names (ADR #412).
+_LIFECYCLE_KEYS = ("resolution", "derived_name", "operator_name", "model_name")
 
 #: What `0014` writes for each pre-v0.16.0 `status`, and the whole of DECISIONS #253 as a table.
 #: `merged` is the one historical value that is knowable exactly, because `merge_situations` is
@@ -407,7 +408,7 @@ async def test_v071_upgrade_changes_no_behaviour_except_the_documented_changes(
         # `0014` derives none — a name is written when membership changes, and a migration changes
         # no membership (DECISIONS #257). `resolution` is the decision-1 rewrite, checked by value.
         for listed, was in zip(after, before_situations, strict=True):
-            assert set(listed) - set(was) == {"resolution", "derived_name", "operator_name"}
+            assert set(listed) - set(was) == set(_LIFECYCLE_KEYS)
             assert listed["derived_name"] is None and listed["operator_name"] is None
             assert listed["resolution"] == _EXPECTED_RESOLUTION[was["status"]]
         assert await new.timeline_marks(1000) == before_marks
@@ -555,7 +556,7 @@ async def test_v090_upgrade_applies_0009_and_changes_no_grouping(tmp_path: Path)
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 25
+        assert await new.schema_version() == Store.latest_schema_version() == 26
         assert new.integrity_warnings == []
 
         # Asserted BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -693,7 +694,7 @@ async def test_v091_upgrade_applies_0010_and_leaves_existing_labels_plain(tmp_pa
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 25
+        assert await new.schema_version() == Store.latest_schema_version() == 26
         assert new.integrity_warnings == []
 
         # Asked BEFORE the engine starts, because `Engine.start` legitimately opens a new
@@ -893,7 +894,7 @@ async def test_v092_upgrade_reconciles_and_leaves_tier_three_null(tmp_path: Path
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 25
+        assert await new.schema_version() == Store.latest_schema_version() == 26
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0011"
 
         # **The derivation.** Three ids reported, two of them members of the server's own bag.
@@ -1039,7 +1040,7 @@ async def test_v0100_upgrade_applies_0012_and_seeds_nothing(tmp_path: Path) -> N
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 25
+        assert await new.schema_version() == Store.latest_schema_version() == 26
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0012"
 
         # **Nothing is seeded.** Three empty tables, and that is the claim.
@@ -1199,7 +1200,7 @@ async def test_v0101_upgrade_applies_0013_and_seeds_nothing(tmp_path: Path) -> N
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 25
+        assert await new.schema_version() == Store.latest_schema_version() == 26
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0013"
 
         # **Nothing is seeded.** Three empty tables, and that is the claim.
@@ -1394,7 +1395,7 @@ async def test_v0155_upgrade_applies_0014_and_attributes_nothing_it_cannot(tmp_p
     new = Store(db)
     await new.open()
     try:
-        assert await new.schema_version() == Store.latest_schema_version() == 25
+        assert await new.schema_version() == Store.latest_schema_version() == 26
         assert new.integrity_warnings == [], "integrity_check / foreign_key_check after 0014"
 
         # **Nothing is seeded.** Two empty tables, and that is the claim.

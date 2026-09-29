@@ -176,9 +176,11 @@ def test_proxied_scenarios_attribute_to_the_ne_in_the_baseline(scenario: str) ->
 #: The path is in the digest, so **renaming a scenario file moves it** even when every byte of every
 #: file is unchanged. That matters here more than it does for `src/`: `harness.run_all` enumerates
 #: this directory with `sorted(CORPUS_DIR.glob("*.json"))`, so the filenames are the replay order.
-CORPUS_DIGEST = "85f73f07eb7d9878a7c6d4801a4f3df622b4d6e953bf87e95e989aeda3cfef9a"
-CORPUS_SCENARIOS = 10
-CORPUS_EVENTS = 3159
+#: v0.26.0: 10 -> 11 scenarios, 3 159 -> 3 175 events — `dual_incident_same_vendor.json` added
+#: (`make eval-baseline` entry of the same commit); the ten existing files are byte-identical.
+CORPUS_DIGEST = "3ce5e8ee84fe92a0d73eadc43cda77e806d0f4509d842e5ffc527faf3ec674be"
+CORPUS_SCENARIOS = 11
+CORPUS_EVENTS = 3175
 
 
 def _corpus_digest() -> tuple[str, int, int]:

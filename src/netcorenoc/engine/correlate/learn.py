@@ -1,11 +1,21 @@
 """Incremental co-occurrence learning: matrices A (classxclass) and E (devicexdevice).
 
-Affinity is normalized PMI over co-occurrence masses. Forgetting is exponential per learning epoch
-(an epoch is a closed situation): every stored mass decays lazily by (1-λ)^Δepochs the next time it
-is touched, so forgetting is O(1) per update with no matrix sweeps. Updates during mass storms are
-damped 10x so confounders (e.g. a regional power outage) are not learned as structure. Operator
-feedback flows back in: ``confirm`` re-applies a situation's pairwise updates; ``split`` halves them
-— every pair, or **only the ones asserted** when v0.9.1's exclusion set names which do not belong.
+Affinity is normalized PMI over co-occurrence masses. Forgetting is exponential per learning epoch:
+every stored mass decays lazily by (1-λ)^Δepochs the next time it is touched, so forgetting is O(1)
+per update with no matrix sweeps.
+
+**v0.26.0 (ADR #406): an epoch is an hour of stream time, and a closed situation teaches nothing.**
+Until this release an epoch was a *closed situation*, and closing one reinforced the matrices with
+its members' pairs. Both made the learned features a function of the **champion's own groupings**:
+the scorer's past decisions fed the numbers it scored with, which is Part VI.4's forbidden loop one
+step removed from `incumbent_linked`. It also made the features of a replayed stream depend on
+which model grouped it, so no training set could be built once and scored by many models. Now `A`
+and `E` are statistics of the alarm stream alone: co-occurrence in the window, forgetting by the
+clock. Operator feedback still moves them (a human's verdict is not the champion's opinion).
+Updates during mass storms are damped 10x so confounders (e.g. a regional power outage) are not
+learned as structure. Operator feedback flows back in: ``confirm`` re-applies a situation's
+pairwise updates; ``split`` halves them — every pair, or **only the ones asserted** when v0.9.1's
+exclusion set names which do not belong.
 
 Raise/clear pairs are learned from strict alternation of two classes on one (device, instance),
 seeded with the universal standard pairs (linkDown → linkUp). **Both alternation learners moved to
@@ -31,7 +41,9 @@ from netcorenoc.engine.correlate.alternation import StateClearLearner as StateCl
 from netcorenoc.engine.correlate.alternation import StateRow as StateRow
 from netcorenoc.store import EdgeRow, Store
 
-LAMBDA = 0.05  # forgetting factor per learning epoch (closed situation)
+LAMBDA = 0.05  # forgetting factor per learning epoch
+EPOCH_S = 3600.0  # one learning epoch per hour of stream time (v0.26.0, ADR #406)
+CLOCK = "hourly"  # the epoch clock a persisted matrix was written under
 MIN_EDGE_N = 5.0  # co-occurrence mass before an E edge is trusted
 SAME_NE_AFFINITY = 0.8  # affinity between two distinct entities on the same NE (§5.5)
 STORM_DAMPING = 0.1  # 10x smaller updates during mass storms
@@ -66,6 +78,24 @@ class Matrix:
     def tick(self) -> None:
         """Advance one learning epoch; all masses decay lazily against it."""
         self.epoch += 1
+
+    def advance_to(self, epoch: int) -> None:
+        """Move the clock forward to ``epoch`` (never backward: a late trap does not un-age)."""
+        if epoch > self.epoch:
+            self.epoch = epoch
+
+    def rebase(self, epoch: int) -> None:
+        """Shift every stored epoch so that the current one becomes ``epoch``, keeping each
+        mass's age. Used once, when a matrix written under the old per-situation clock is first
+        advanced by the hourly one: its relative ages survive, its absolute numbers do not."""
+        shift = epoch - self.epoch
+        if shift == 0:
+            return
+        self.epoch += shift
+        self.total_e += shift
+        self.pairs = {k: (m, e + shift) for k, (m, e) in self.pairs.items()}
+        self.marginals = {k: (m, e + shift) for k, (m, e) in self.marginals.items()}
+        self.dirty.update(self.pairs)
 
     def observe_occurrence(self, item: int, weight: float = 1.0) -> None:
         mass, at_e = self.marginals.get(item, (0.0, self.epoch))
@@ -126,18 +156,22 @@ class Matrix:
     def state(self) -> str:
         return json.dumps(
             {
+                "clock": CLOCK,
                 "epoch": self.epoch,
                 "total": [self.total, self.total_e],
                 "marginals": [[k, m, e] for k, (m, e) in self.marginals.items()],
             }
         )
 
-    def load_state(self, raw: str, edges: list[EdgeRow]) -> None:
+    def load_state(self, raw: str, edges: list[EdgeRow]) -> bool:
+        """Adopt a persisted matrix. Returns whether it was written under the hourly clock; a
+        matrix from before v0.26.0 counted closed situations and must be rebased once."""
         data = json.loads(raw)
         self.epoch = int(data["epoch"])
         self.total, self.total_e = float(data["total"][0]), int(data["total"][1])
         self.marginals = {int(k): (float(m), int(e)) for k, m, e in data["marginals"]}
         self.pairs = {_pair(e.a_id, e.b_id): (e.n, e.g) for e in edges}
+        return bool(data.get("clock") == CLOCK)
 
 
 class Learner:
@@ -148,6 +182,20 @@ class Learner:
         self.E = Matrix("device")
         self.clears = ClearPairLearner()
         self.states = StateClearLearner()
+        # False until the first `advance_to`: a fresh learner, or one loaded from a matrix written
+        # under the old clock, has epochs that are not hours and is rebased onto the hour once.
+        self._clocked = False
+
+    def advance_to(self, ts: float) -> None:
+        """The learning clock: one epoch per hour of stream time. O(1) after the first call."""
+        epoch = int(ts // EPOCH_S)
+        if not self._clocked:
+            self._clocked = True
+            for matrix in (self.A, self.E):
+                if matrix.epoch < epoch - 24 * 365 * 10:  # not an hour count: rebase, keep ages
+                    matrix.rebase(epoch)
+        self.A.advance_to(epoch)
+        self.E.advance_to(epoch)
 
     def observe_activation(self, item: Item) -> None:
         self.A.observe_occurrence(item[0])
@@ -247,6 +295,7 @@ class Learner:
             raw = await store.get_meta(key)
             if raw is not None:
                 matrix.load_state(raw, await store.load_edges(matrix.kind))
+        self._clocked = False  # the first activation after a load re-checks the clock
         contradicted = self.clears.load(await store.load_edges("clear_pair"))
         if contradicted:
             # **Said out loud, through the channel that already carries damaged durable state.**

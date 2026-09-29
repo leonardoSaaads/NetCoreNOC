@@ -217,7 +217,7 @@ function Destinations({ sid, kind, filter, busy, marked, onFilter, onPick }) {
   const all = peers(sid);
   const shown = needle
     ? all.filter((s) => String(s.id).includes(needle)
-        || (s.operator_name || s.derived_name || "").toLowerCase().includes(needle))
+        || (s.operator_name || s.model_name || s.derived_name || "").toLowerCase().includes(needle))
     : all;
   return html`<div class="destinations">
     <label class="visually-hidden" for=${`lcFind-${sid}`}>Find a situation</label>
@@ -235,7 +235,7 @@ function Destinations({ sid, kind, filter, busy, marked, onFilter, onPick }) {
       ${shown.map((s) => html`<li key=${s.id}>
         <button type="button" class="destination" disabled=${busy} onClick=${() => onPick(s.id)}>
           <b>#${s.id}</b>${" "}
-          <span>${s.operator_name || s.derived_name || "unnamed"}</span>${" "}
+          <span>${s.operator_name || s.model_name || s.derived_name || "unnamed"}</span>${" "}
           <span class="muted">${plural(s.alarm_count, "alarm")}</span>${" "}
           <span class="age" title=${timeTitle(s.updated_at)}>${age(s.updated_at)}</span>
         </button>

@@ -359,6 +359,15 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         # own fits is `admin`, because it creates the artefact a promotion can name.
         "model.read": "viewer",
         "model.register": "admin",
+        # v0.26.0 (ADRs #405, #412, #413): what decides, autonomy and the search are admin; the
+        # kill switch is the one exception and an editor may press it; an operator's severity is
+        # a gesture on one situation, like every other.
+        "decider.write": "admin",
+        "autonomy.write": "admin",
+        "autonomy.audit": "admin",
+        "autonomy.stop": "editor",
+        "search.write": "admin",
+        "situation.severity": "editor",
         # operate (editor+)
         "feedback.write": "editor",
         "label.write": "editor",

@@ -185,6 +185,14 @@ _UI_MODULES = (
     "app/views/parts/tokenspanel.js",
     "app/views/parts/visibility.js",
     "app/widgets.js",
+    # v0.26.0 (ADR #414): the model's charts, Settings' Correlation, Autonomy and Search tabs, and
+    # the Judge dashboard's two blocks.
+    "app/modelcharts.js",
+    "app/views/parts/decider.js",
+    "app/views/parts/autonomy.js",
+    "app/views/parts/searchpanel.js",
+    "app/views/parts/shippedjudge.js",
+    "app/views/parts/sitejudge.js",
 )
 
 _VENDOR_ASSETS = (

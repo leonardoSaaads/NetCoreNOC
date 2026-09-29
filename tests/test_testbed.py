@@ -40,13 +40,16 @@ def _lab_importables() -> set[str]:
     for path in sorted(TESTBED.rglob("*.py")):
         relative = path.relative_to(TESTBED)
         names.add(relative.parts[0].removesuffix(".py"))
+    # v0.26.0 (ADR #416): the generator is a source of truth too. The shipped model is trained on
+    # it offline; the product may never import it, so generated truth cannot reach a site verdict.
+    names |= {"synth", "eval"}
     return names - {""}
 
 
 def test_the_lab_offers_something_to_import() -> None:
     """Guard the guard: an empty set would make the assertion below vacuous."""
     names = _lab_importables()
-    assert {"testbed", "ne", "control", "run_local"} <= names, names
+    assert {"testbed", "ne", "control", "run_local", "synth"} <= names, names
 
 
 def test_no_runtime_module_imports_the_testbed() -> None:

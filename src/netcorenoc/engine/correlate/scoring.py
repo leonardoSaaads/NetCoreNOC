@@ -309,6 +309,40 @@ class SafeScorer:
             return result  # this call already succeeded; the *next* one uses the default
         return result
 
+    @property
+    def fast_path(self) -> bool:
+        """Whether the active scorer offers a logit-only path over the v2 vector (a trained model).
+        False once degraded: the fallback is the formula, which reads the v0.5.0 features."""
+        return not self.degraded and callable(getattr(self.delegate, "logit", None))
+
+    def fast(self, vector: tuple[float, ...]) -> tuple[float, bool] | None:
+        """``(margin above threshold, linked)`` from the delegate's logit, or ``None``.
+
+        The per-pair hot path for a trained model (v0.26.0): the logit alone, no explanation
+        built — the explanation is built only for the links that are kept. **Under the same
+        fail-safe as** :meth:`score`: an exception, a non-finite logit or an over-budget call
+        degrades to the built-in formula for the rest of the process, and ``None`` tells the
+        caller to take the full path for this pair, which then runs on the fallback.
+        """
+        logit = getattr(self.delegate, "logit", None)
+        if self.degraded or logit is None:
+            return None
+        threshold = float(getattr(self.delegate, "threshold", 0.0))
+        started = time.monotonic()
+        try:
+            value = float(logit(vector))
+        except Exception as exc:  # a scorer must never take the engine down
+            self._degrade(f"{type(exc).__name__} raised by scorer {self.delegate.scorer_id!r}")
+            return None
+        if not math.isfinite(value):
+            self._degrade(f"scorer {self.delegate.scorer_id!r} returned a non-finite logit")
+            return None
+        if time.monotonic() - started > self.budget_s:
+            self._degrade(
+                f"scorer {self.delegate.scorer_id!r} exceeded the {self.budget_s}s budget"
+            )
+        return value - threshold, value > threshold
+
     def warnings(self) -> list[str]:
         """Persistent operator warning after a degradation (surfaced in /api/stats)."""
         if not self.degraded:

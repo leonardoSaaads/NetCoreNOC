@@ -126,13 +126,13 @@ damping (10× above 50 alarms in the window) exists for this, and [F58 and
 F61](findings.md#f58--a-storm-defeats-min_edge_n-for-every-ne-in-the-window) record the cases where
 it is not enough. **Split** the situation — that is the signal that teaches it.
 
-If it happens outside a storm, the **Link scorer** preview will show you what a higher threshold
+If it happens outside a storm, the **Settings → Correlation** preview will show you what a higher threshold
 would do to your own recent alarms before you change anything.
 
 ### Grouping changed and you do not know why
 
 Every situation records the scorer configuration that formed it (`scorer_config_id`), and the
-configuration history is immutable and append-only. The **Link scorer** screen shows the history and
+configuration history is immutable and append-only. **Settings → Correlation** shows the history and
 rollback is one click — it moves a pointer, it never edits history.
 
 ## Load
@@ -179,6 +179,15 @@ pre-registration, not a setting — see [`findings.md`](findings.md) for where a
 
 The four CLI reports are byte-frozen against expectations in the test suite, so a genuine drift
 turns the suite red. If you are seeing movement in a *live* report, it is your corpus changing.
+
+### The bell says "This build ships no model"
+
+Expected on v0.26.0, and not a fault on the appliance: the model trained for this release did not
+pass its quality bar, and a model is packaged only when it passes (DECISIONS #422). The additive
+formula groups exactly as before. Autonomy has nothing to act with and a site search refuses with
+*"no shipped model"*. A message that instead reads *"the shipped model could not be used: …"* is a
+fault — a document and manifest that do not belong together, or one of the two missing — and names
+which.
 
 ## The console
 

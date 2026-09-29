@@ -13,9 +13,10 @@ through the engine — then aligns every predicted alarm to ground truth and pri
 the frozen baseline. It **exits non-zero** on a regression in `pairwise_f1`, `ari` or
 `entity_accuracy`.
 
-Releases quote `python eval/harness.py | sha256sum`. It is **`c75b42aa…`** today. It held at
-`c2e8a0ce…` from v0.7.0 until the corpus was re-cut, and `CHANGELOG.md` records that move with
-its reason — this line said *"held at `c2e8a0ce…` since v0.7.0"* for several releases after it
+Releases quote `python eval/harness.py | sha256sum`. It is **`31ea7583…`** today (v0.26.0 added
+`dual_incident_same_vendor`; `842da337…` before the baseline was re-cut). It was `c75b42aa…` from
+v0.18.0, and `c2e8a0ce…` from v0.7.0 until the corpus was re-cut; `CHANGELOG.md` records each move
+with its reason — this line said *"held at `c2e8a0ce…` since v0.7.0"* for several releases after it
 stopped being true, which is the one thing a quoted hash must not do. What makes the number
 useful is that it moves **only** when somebody meant it to, so the value here is the current
 one and the history is in the log.

@@ -14,7 +14,8 @@ import time
 
 import pytest
 
-from netcorenoc.engine.correlate.correlate import ScoredLink, WindowAlarm
+from netcorenoc.engine.correlate.correlate import CorrelationResult, ScoredLink, WindowAlarm
+from netcorenoc.engine.correlate.grouping import Placement
 from netcorenoc.engine.correlate.rootcause import Member
 from netcorenoc.engine.correlate.scoring import LinkScore, TermContribution
 from netcorenoc.engine.dataset.capture import Capture, RetentionPolicy
@@ -269,8 +270,17 @@ async def test_the_bag_survives_a_merge_that_destroys_every_other_trace(store: S
     assert recorded.id is not None
 
     async with store.lock:  # the bridging alarm merges `absorbed` into `survivor`
+        # v0.26.0: the placement is `grouping`'s decision and the engine only executes it, so the
+        # bridge is stated as the decision it is — join the survivor, fold the absorbed one in.
+        links = [_link(ids[0]), _link(ids[2])]
         await engine._assign_situation(
-            WindowAlarm(*ids[4], TS + 2.0), [_link(ids[0]), _link(ids[2])]
+            WindowAlarm(*ids[4], TS + 2.0),
+            CorrelationResult(
+                links=links,
+                considered=[link.other for link in links],
+                storm=False,
+                placement=Placement(survivor, (absorbed,)),
+            ),
         )
         await store.commit()
 

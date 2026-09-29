@@ -1,183 +1,265 @@
-# NetCoreNOC v0.22.0 — "the console, repaired"
+# NetCoreNOC v0.26.0 — handoff
 
-**The tree I was given reported `0.21.1`, not the `0.21.0` the brief names:**
+**Where my measurements contradict the brief:** (1) **no model ships.** The model trained for this
+release did not pass its own quality bar, so the maintainer's decisions *"models ship pre-trained,
+validated and stored in the repo"* and *"the judge acts from day 0"* are **not met**. Every
+appliance groups with the additive formula, and the bell says why (DECISIONS #420–#422). (2) The
+brief's `dual_incident` over-merge of **1.000 "before" is stale**: v0.18.0's vendor gate (F76)
+made it 0.000. 1.000 is true of the same-vendor variant, `dual_incident_same_vendor`, which this
+release adds to the corpus.
 
-```
-$ python -c "import netcorenoc; print(netcorenoc.__version__)"   # before
-0.21.1
-```
+Verified by execution before any change: `__version__` 0.25.0 at `a53e6e1`, migrations through
+`0025`. This hands over **v0.26.0** on `claude-code/trusting-goldberg-j8xpoo`
+([PR #45](https://github.com/leonardoSaaads/NetCoreNOC/pull/45)).
 
-So this hands over **v0.22.0** from v0.21.1 (`9f00a7e`). My reading of the tree wins, and I say so
-on the first line as the brief asks.
+## The three numbers
 
-## The headline
-
-**7 761 words of prose removed: 9 582 → 1 821**, counted in Chromium over the seven screens in
-scope × three roles × three widths (63 views), same metric before and after (§3).
-
-**Defects fixed that no test could have caught** (each found by looking at a rendered screen):
-
-| | what it was | how it was found |
+| | measured | on |
 |---|---|---|
-| F156 | another screen's stylesheet redefined `.meter`; at 390 px the health bars had **zero width** beside correct percentages | measured fill vs. figure in Chromium |
-| F157 | during a fibre cut the Timeline said *"Nothing was raised or cleared"* — repeating traps move `last_seen`, never `first_seen` | cut the lab and looked |
-| — | bar values read **"1 alarms"** | read the Overview |
-| — | at 390 px the catalogue's severity source was clipped at the screen edge and the alarm count was off-screen | 390 px screenshot |
-| — | at 390 px the Timeline's burst rows broke vendor names mid-word and clipped the repeat count | 390 px screenshot |
-| — | at 390 px a section's info icon fell onto its own line under the title | 390 px screenshot |
-| — | two duplicated top-level CSS rules this release had itself introduced (`.badge-quiet`, a reused `.mw-targets`) | the new stylesheet guard, written after F156 |
+| **1. Shipped model quality, unseen data** | **None shipped.** The best candidate, on fresh test streams (second reading): repair work **0.316 vs the formula's 0.370** per incident on `test_iid` (32 streams, 4 122 incidents; 95 % CI 0.248–0.403 vs 0.291–0.473), and less than the formula on **all five held-out families** (e.g. `dwdm_line_cut` 1.885 vs 3.310, 174 incidents). It missed the bar on `test_concurrency` (× 0.927 against × 0.90) and, on `make eval`'s hand-labelled corpus, **dropped pairwise F1 from 1.000 to 0.388** | generated streams; `eval/corpus` |
+| **2. A fresh appliance's first hour** | What ships (the formula): **2 024 grouping decisions**, pairwise F1 **0.935** [0.795, 0.993], over-merge 0.019, under-merge 0.139, 0.433 repair gestures per incident — 32 fresh streams, 360 incidents, 2 369 alarms. The candidate would have made 2 037 at F1 0.966. Live, day 0: the lab's two-host fibre cut became **one situation of 25 alarms from both hosts** in 40 s | `test_iid`, first 3 600 s of each stream; the lab |
+| **3. `dual_incident` over-merge, before → after** | **0.000 → 0.000** (v0.25.0 → v0.26.0 as shipped). Its same-vendor variant: **1.000 → 1.000**, because the formula still decides. The candidate: 0.000 on both | `make eval`, v0.25.0 at `a53e6e1` and this tree |
 
----
+## What was cut, and why
 
-## 1. The twenty items
+- **The shipped model.** Two test readings missed the bar (7 of 70 checks, then 2 of 70). Once
+  validation covered every regime the bar reads, no grouping setting passed it there, so no third
+  reading was taken. The candidate also fails the hand-labelled corpus, which no bar here read.
+  Relaxing the one binding limit is the maintainer's call, and it would not be enough (#422).
+- **Autonomy and site adaptation in practice**: both need a model. They are built and tested, and
+  they are inert on this build; a search is refused with the reason.
+- **Real-world labels**: none exist. Training is generated data only.
+- **Address or topology features**: the generator's address plan is arbitrary, so such a feature
+  would only learn the generator.
+- **fANOVA importance**: replaced by Spearman ρ² on the first rung, and the screen says so.
+- **Two-dimensional interaction charts**: the manifest carries the tables, and no chart draws them.
+- **The Docker Compose lab**: it needs a registry pull. `testbed/run_local.py` ran instead, as in
+  v0.17.0.
 
-| # | item | verdict |
-|---|---|---|
-| 1 | notifications never go away | **refined (push-back, §2)** — per-user audited snooze; a security warning's snooze always expires and an admin sees who snoozed it (#387) |
-| 2 | System health panel renders wrong | **fixed** — CSS collision (F156); fill within 0.4 pts of the figure at 390/820/1440 |
-| 3 | severity glyphs are placeholders | **fixed** — one chip: shape + colour + word on X.733; `low` → `warning` (#386) |
-| 4 | "What is happening" severity timeline broken | **fixed** — raises per severity band counted in SQL over the chosen range; `unplaced` is its own line (#386, #381) |
-| 5 | "Is the appliance keeping up" — three faults | **fixed** — the range reaches SQL over persisted readings (F154, #380); the four charts align; readings survive a restart |
-| 6 | network graph on the Overview | **done** — compact graph of the busiest elements, same deterministic layout, links to Graph |
-| 7 | scorer panel off the operator's view | **done** — moved (not deleted) to Judge & promotion, open there |
-| 8 | "Raised during maintenance" marker | **refined (push-back, §2)** — kept, scoped to faults still active and not re-reported, acknowledgeable (#388) |
-| 9 | situation state machine wrong | **fixed** — rename no longer promotes; operator split creates `open`; the lifecycle is a table (#382) |
-| 10 | too much prose on the graph | **fixed** — edge explanation behind the info icon; the accessibility statement stopped being true (nodes are buttons) and its content is the drawing's accessible name (#383) |
-| 11 | map unreadable and inert | **fixed** — labels chosen per width, nodes selectable, element panel with severity, situations, recent traps and links; **the regional heat map is deferred** to its own release as a schematic site map with no tile provider (#390) |
-| 12 | "same estate, ordered by load" glued on | **fixed** — one "Elements by load" table |
-| 13 | Timeline prose | **fixed** — both paragraphs cut; the colour-blind/screen-reader point is in the table markup (glyph + hidden word) |
-| 14 | time axis wrong | **fixed** — measured first (1 000 marks spanned 124 s); window-bounded reads, axis proportional to time (F155, #381) |
-| 15 | a hundred raw rows | **fixed** — bursts folded (*×14 over 2 min*), 25 per page, class name first, filters in the query |
-| 16 | name and prose | **fixed** — "Trap catalogue" everywhere including the sidebar; the one kept fact is behind the info icon |
-| 17 | file import | **done** — CSV/text, no MIB compiler, row-level report, all-or-nothing, bounded, audited, `imported` provenance, not evidence (#385) |
-| 18 | OID tree | **done** — branch browser by arc from the IANA vendor list, rules on a subtree with most-specific-wins, winning rule shown, bounded and searchable (#384, #385) |
-| 19 | scheduled MW is a dead end | **done** — detail view; edit/confirm/cancel while scheduled, end/extend/shorten while running; a running window's start, targets and rules are frozen (#389) |
-| 20 | mobile | **checked throughout** — every screen photographed at 390 px for all three roles; no horizontal page scroll at any width; four 390 px defects fixed (above) |
+## How the training data was built, and what it cannot produce
 
-## 2. The two push-backs, with what was measured
+`eval/synth/` generates appliance histories (#408):
 
-**Item 1 — "make the notifications go away".** Measured: the warnings are recomputed from the
-appliance's state on every poll, so a delete comes back on the next poll. Of the ten
-warnings the appliance can emit, two are security posture (traffic accepted from anywhere; the
-console in clear text), and a dismissible *"all sources are accepted"* is the warning least safe to
-lose. **Shipped instead:** a per-user snooze (24 h, 7 d, or until the text changes), audited; a
-security warning cannot be snoozed "until it changes" (422) and its snooze always expires; an admin
-always sees every live snooze of a security warning and by whom; a snoozed warning stays in the bell
-as a muted count with *Restore*. Snoozing a warning nobody is shown is a 404, so the route is not an
-oracle.
+- **Estate**: vendors, elements, ONUs, links.
+- **Eleven training incident families**: GPON fibre cut, ONU power, OLT card, OLT uplink, router
+  link, router board, port flapping, NE reboot, planned maintenance, site power, environment.
+- **Nuisances**: noise traps, chatter, clock skew, missing clears.
 
-**Item 8 — "remove the raised-during-maintenance marker".** Measured: surfacing was correctly
-scoped (only alarms still active when the window closed are surfaced), but the marker **never
-expired** — it outlived a recurrence, a clear, and the operator's attention. A fault that outlived a
-maintenance window must surface, so the marker stays. **Shipped instead:** it is drawn while the
-alarm is active, unacknowledged and not re-reported since surfacing; an editor can acknowledge it
-(who and when are recorded, the alarm is untouched, nothing reaches a dataset table); a re-surfacing
-resets it.
+Every trap is encoded as BER, parsed by the appliance's own parser, and run **through the real
+`Engine`** with a probe model, so the features trained on are the features served.
 
-## 3. Prose, per screen
+Splits are by **stream**:
 
-Words on lines of six or more words in the work area, tables, selects, SVG, the page title and
-closed info tips excluded. Before: the v0.21.1 tree on `before.db`; after: this tree on the lab.
+- `train` 96 streams, plus `train_long` 12 (the older 70 % for training, the newer 30 % as
+  `test_time`, cut by incident);
+- `valid` 24 and `valid_concurrency` 12 (tuning only);
+- `test_iid` 32, `test_concurrency` 24, `test_optical` 24, `test_protocol` 24.
 
-| screen | admin, 1440 px — before | after |
-|---|---:|---:|
-| Overview | 196 | 69 |
-| Situations | 10 | 10 |
-| Network graph | 241 | 0 |
-| Timeline | 176 | 24 |
-| Trap catalogue (was Alarm classes) | 37 | 6 |
-| Maintenance | 61 | 13 |
-| Judge & promotion | 368 | 82 |
-| **all 63 views (7 screens × 3 roles × 3 widths)** | **9 582** | **1 821** |
+Rows: 160 000 training, 50 000 validation.
 
-Viewer and editor differ only on the Overview (before: 156 and 167; after: 69). The remaining
-Overview prose is data sentences (*"1 window in force over 2 hosts"*, the provenance line).
-Judge & promotion is not one of the twenty items; it received the correlation panel (item 7), so
-its section hints moved behind the info icon too, and every `SectionHeading` hint in the console now
-renders that way.
+Recording is deterministic: re-recorded, all 132 train/valid streams came back content-identical.
+Only gzip's timestamp differs, so the cache files differ in bytes but not in content.
 
-## 4. Decisions recorded (docs/adr/DECISIONS.md)
+**What it cannot produce**:
 
-#380 host readings persisted, range reaches SQL · #381 Timeline bounded by its window, re-reported
-alarms counted · #382 lifecycle as a table, only attention promotes · #383 deterministic
-hand-written graph, d3 removed · #384 OID matching on arc boundaries · #385 the Trap catalogue,
-precedence, import · #386 severity as shape + colour + word · #387 warning snooze · #388 the outlived
-marker scoped and acknowledgeable · #389 what a running window may change · #390 the regional map is
-a schematic site map, its own release.
+- a real vendor's undocumented trap semantics;
+- operators' naming habits;
+- topology it does not model (DWDM rings, microwave, SD-WAN);
+- families nobody wrote;
+- a real network's joint fault distribution.
 
-Findings: F154 (range), F155 (axis), F156 (stylesheet collision), F157 (silent Timeline).
+**Measured, not assumed**: a model validated on it split five of the eleven scenarios of
+`eval/corpus`, which a different program generates. That is the gap to close first.
 
-## 5. What was removed, one sentence each
+## Held-out families and their scores (second reading, fresh streams)
 
-- **d3** (279 706 bytes), `app/vendor.js`, `vendor/d3.LICENSE`, its NOTICE entry and checksum — both drawings that used it are hand-written now.
-- **`views/parts/estate.js`** and **`compare.js`'s `Map`** — the Overview's load grid, replaced by the compact graph (item 6).
-- **The browser's queue ring in `store.js`** — the queue chart reads persisted readings (F154).
-- **The Timeline's chart-type, split and depth controls** — a row depth is what truncated the window; there is one drawing now.
-- **Correlation health on Situations** — moved to Judge & promotion (item 7), not deleted.
-- **The graph's accessibility paragraph** — the drawing became keyboard-operable, so the statement became false.
-- **The graph's second "by load" section** — one table (item 12).
-- **Every inline section hint** — each is behind the info icon, unchanged in content.
-- **Four duplicated top-level CSS rules** (`topbar`, `chart-urgent`, `cell-edit`, `mw-row`) — merged, one owner each; a guard now refuses the pattern.
+The model never saw these families. Repair gestures per incident, model vs formula, with 95 %
+bootstrap intervals over 24 streams:
 
-## 6. What the live pass did not cover
+| family | incidents | model | formula | over-merge (model / formula) |
+|---|---|---|---|---|
+| `dwdm_degradation` | 143 | 2.881 [2.527, 3.292] | 3.622 [3.325, 3.866] | 0.524 / 0.482 |
+| `dwdm_line_cut` | 174 | 1.885 [1.579, 2.177] | 3.310 [3.069, 3.521] | 0.563 / 0.529 |
+| `optical_protection` | 140 | 0.429 [0.169, 0.622] | 0.493 [0.182, 0.821] | 0.386 / 0.393 |
+| `bgp_flap` | 194 | 2.459 [2.096, 2.849] | 2.845 [2.555, 3.155] | 0.402 / 0.433 |
+| `ospf_flap` | 205 | 2.605 [2.104, 3.127] | 3.122 [2.792, 3.453] | 0.268 / 0.346 |
 
-- **Screens outside the seven**: Entities, Corpus, Settings, Users, Tokens, Audit, Quarantine were not photographed.
-- **A real phone**: 390 px is Chromium's emulated viewport, not a touch device; Safari and Firefox were not driven.
-- **Assistive technology**: no screen reader was run. Keyboard reachability rests on markup (buttons, `aria-describedby`) and DOM tests, not a manual Tab walk of every screen.
-- **Dark theme**: photographed in the default theme only.
-- **The import's file chooser in a browser**: the import is exercised through its route and the DOM harness, not by picking a file in Chromium.
-- **Clears in the lab**: the testbed's repair does not emit a clear the appliance matches, so no clear mark was seen live (clears are covered by tests).
-- **The "before" side** ran the v0.21.1 appliance on the recorded `before.db` without live traffic.
+Every held-out check passed on this reading. On the first reading, with the earlier grouping rule,
+four of the five failed on over-merge (#420 has both tables).
 
-## 7. Verification
+## The superseding ADRs (`docs/adr/DECISIONS.md`, appended)
+
+- **#415** supersedes *"do not replace the formula with ML"*. The shipped model is the default
+  decider, the formula becomes opt-in, and the formula stays reachable and serves as the fallback.
+- **#416** supersedes *"synthetic truth never enters the promotion path"*. Generated truth trains
+  the shipped model and never enters a site verdict.
+- **#417** supersedes *"`INSUFFICIENT_EVIDENCE` is terminal within a release"*. It is terminal for
+  the labels it was computed on.
+- **#420–#422** are this release's own record:
+  - the first reading, and the selection rule that caused it;
+  - the second reading, and validation for every regime;
+  - why nothing ships, and the maintainer's options.
+
+## Sufficiency floors and their reasoning (#411)
+
+A site model is judged against the shipped one on this site's newest 30 % of labelled incidents,
+paired per incident, with a 95 % bootstrap. A do-no-harm check runs on 2 000 generated benchmark
+pairs (at most 0.02 nats worse).
+
+The floors are **20 labelled incidents, 6 in the newest part, 4 splits asserting a negative, and
+labels from 3 days**. The reasoning:
+
+- A paired interval's half-width is about t₀.₉₇₅,ₙ₋₁/√n SD. At n = 6 that is 2.571/2.449 ≈ 1.05 SD,
+  so six is the least that can declare anything.
+- 80 % power for a 1-SD effect needs about ten.
+- Twenty keeps the training part at 14 or more.
+- Three days means the labels cannot all come from one shift.
+
+The floors replace `operators ≥ 3`, which measured independence of opinion less directly.
+
+## What autonomy can and cannot do (#412)
+
+**It can**, once an admin turns a grade on:
+
+- accept a grouping, name, close or grade a situation — four grades, each its own switch, all off
+  by default;
+- every act is attributed to the model and explained, and the schema refuses an empty explanation;
+- each act is judged by what operators do next;
+- it **turns itself off** below the agreement floor (80 % of the last 30 judged, at least 8);
+- **any editor can stop it from the top bar of every screen**.
+
+**It cannot**:
+
+- act on the formula's situations, since it needs a probability — **so on this build it does
+  nothing**;
+- undo an operator;
+- run on the ingest path;
+- write `operator_name`. It has its own column, `model_name`.
+
+## Charts drawn, and charts that cannot be drawn
+
+- **Drawn when a model ships** (built, and exercised by the DOM tests against a stand-in model),
+  on generated data:
+  - headline tiles with CI and n;
+  - F1 by split and held-out family;
+  - precision–recall against its baseline, and ROC;
+  - calibration with Murphy's decomposition;
+  - confusion at the threshold;
+  - first-hour bars;
+  - the search's history, score × hyperparameter, importance, time × performance;
+  - train vs validation;
+  - the ablation;
+  - one shape per feature.
+- **Drawn on this build**: sufficiency (site data) and the live monitor (live traffic). The
+  generated-data block says there is no model.
+- **Cannot be drawn**:
+  - interaction heat maps (no chart built);
+  - a site calibration curve (needs more held-out labels than the floors);
+  - drift of live scores against training (needs the training score distribution in the
+    manifest);
+  - per-family site charts (sites label incidents, not families);
+  - anything of a model on this build.
+
+## What was removed, one sentence each
+
+- **The Link scorer screen as a navigation entry**: its content is Settings → Correlation, and
+  `#/scorer` still lands there.
+- **Learning from closed situations**: it fed the running decider's opinion back into the
+  features (#406).
+- **Immediate resolution of an all-cleared situation**: it is held 300 s for a bounce (#410).
+- **Connected components for trained models**: it is kept for the formula (#418).
+- **`autonomy.warnings`**: unused, and replaced by the live-stats warning.
+
+## What the live pass did not cover
+
+- **A shipped model live**: there is none. The model screens were exercised only by DOM tests with
+  a stand-in model.
+- **Autonomy acting**: it was switched on and the kill switch was shown. Nothing acted, because
+  there is no model.
+- **A running site search**: it is refused on this build (409, with the reason).
+- **A real phone or other browsers**: 390 px is Chromium's emulated viewport. Safari and Firefox
+  were not driven.
+- **Assistive technology**: no screen reader was run.
+- **The dark theme**: not photographed.
+- **Real traffic**: the lab's two hosts and two corpus replays, not a network.
+- **An upgrade under load**: the v0.25.0 → v0.26.0 boot used a database built from `fiber_cut`.
+
+## Verification (Part VIII)
 
 | gate | result |
 |---|---|
-| full suite | **2 327 passed, 0 failed** (14 min 23 s); v0.21.1 was 2 220 |
-| `mypy --strict` | no issues, 299 files |
-| `ruff check`, `ruff format --check` | clean |
+| full suite (`make coverage`) | **2 602 passed, 0 failed** (25 min) |
+| `mypy --strict` | no issues, 358 files |
+| `ruff check`, `ruff format --check` | clean (398 files) |
 | `vulture` | clean |
-| `make dom` (executed) | 86 passed, none skipped (85 at v0.21.1, plus the health-bar width test) |
-| `make security` | bandit clean; pip-audit: no known vulnerabilities (after upgrading the venv's own `pip` 24.0 → 26.2.1, which is the installer, not a dependency) |
-| coverage | **95 %** of `netcorenoc` (11 089 statements, 390 missed; 2 590 branches, 250 partial) |
-| `make eval` | no gated regressions; every metric unchanged; **stdout byte-identical** to v0.21.1 (`c75b42aa…` both) |
-| behaviour-identity record | re-recorded; every moved line attributed: `/healthz` (version), `/api/me` and `/api/rbac` (four capabilities), `/api/stats` (`imported` provenance), `/api/situations/{sid}` (`outlived_window_id`), the rewritten UI files, and the sixteen new routes |
-| wheel and sdist | built; each installed into a clean Python 3.12 venv; both import as 0.22.0 and carry `0022`-`0024`; `tools/release_check.py` agrees on 0.22.0 |
-| boot through all migrations | the installed wheel booted on an empty database: schema 24, `/healthz` 0.22.0, the console and new modules 200, `/vendor/d3.v7.min.js` 404 |
-| lab up | `testbed/run_local.py` on :18080, driven through cut and repair during the live pass |
-| injections | **23 of 23 red, each with a passing control and a verified revert** (§7.1) |
+| `make dom` (executed) | **97 passed**, none skipped (Node 22.22.2) |
+| `make security` | bandit clean; pip-audit **no known vulnerabilities** — after upgrading the build venv's own pip (24.0, 12 advisories; the installer, not a dependency) and `--skip-editable`, because PyPI answered 503 for `netcorenoc` itself twice on CI |
+| coverage | **93.78 %** of `netcorenoc` (13 917 statements, 627 missed; 3 408 branches, 358 partial) |
+| what coverage does not measure | the console's JavaScript (the DOM harness runs it, reports no lines), layout and wording (the live pass found three defects no test saw — injections 14–16), the training pipeline under `eval/` (outside the package), and correlation quality (that is `make eval` and the bar) |
+| `make eval` | no gated regressions; the ten existing scenarios **unchanged on every metric**; the new `dual_incident_same_vendor` exactly as on v0.25.0. Baseline re-cut with its reason (`c19ccd99…` → `1199ae7b…`, `eval/baselines/REBASELINE-LOG.md`); stdout hash **`31ea7583…`** (`842da337…` before the re-cut), identical from the installed wheel |
+| behaviour-identity record | re-written; 721 → 789 lines, 39 routes moved, **every line attributed**: 11 new routes; the 19 pinned UI files and `/openapi.json`; `/healthz` version; `/api/stats` + `autonomy`; `/api/situations` rows + `model_name`; `/api/situations/{sid}` + `decider`, `severity`, `severity_by`, `model_name`; `/api/me`, `/api/rbac` new capabilities; `/api/decider`, `/api/judge` `absent`; `/api/search` `blocked`, `POST` 409. `/api/audit` ends at v0.25.0's exact length. No field removed |
+| wheel and sdist | built from the final tree; each installed into a clean Python 3.12 venv (3.11 correctly refused): 0.26.0, 26 migrations, the new console modules, and *"this build ships no model"* |
+| boot through all migrations | the installed wheel on an empty database (schema 26, `/healthz` 0.26.0, console 200, integrity ok, 0 FK violations) and on a v0.25.0 database built by v0.25.0's own engine (same; 7-day retention removed the one resolved 2023 situation, as it should) |
+| lab up | `testbed/run_local.py` on :18080; the two-host fibre cut on day 0 became one 25-alarm situation in 40 s; `dual_incident` kept apart, its same-vendor variant merged (the formula) |
+| browser | 54 views (admin/editor/viewer × 390/820/1440 × six screens), real Chromium: **0 px horizontal overflow, 0 console errors**; kill switch for admin and editor only; Settings admin-only, as the Link scorer was |
+| `tools/release_check.py` | all sources agree on 0.26.0 (`flake.nix` was still 0.25.0; fixed) |
 
-### 7.1 Injections
+### Injections
 
-The brief's ten (B), and thirteen more for guards this release added (X). For each: the target test
-passes on the clean tree, the one-edit injection turns it red, the revert is proven by `git diff`,
-and the test passes again. **Two came back green the first time, and both times the test was at
-fault, not the injection**: `test_every_creation_edge` compared the created status with the table
-itself, so changing the table moved both sides (X2); and the scoped-collection guard compared two
-empty `/api/activity/*` answers that differed only by their wall-clock `from`/`to` (X5). Both tests
-were fixed and both injections now go red.
+**The brief's eleven, each red with a passing control, run on a clean worktree of the final tree**
+(`--detach HEAD`, `netcorenoc` resolved to it), plus five for defects this release found in itself:
 
 | | injection | red test |
 |---|---|---|
-| B1 | subtree rule matches on a string prefix (`…1.2` catching `…1.12`) | `test_catalogue::test_a_branch_rule_stops_at_an_arc_boundary` |
-| B2 | a rename advances `new -> open` | `test_transitions::test_attention_is_derived_from_the_table_and_rename_is_not_in_it` |
-| B3 | the range never reaches the query | `test_host_series::test_the_route_answers_the_window_it_was_asked_for_on_a_bucket_boundary` |
-| B4 | the axis follows row index, not time | `test_activity::test_the_axis_is_proportional_to_time_not_to_rows` |
-| B5 | severity by colour alone (shape removed from the chip) | `test_severity::test_every_severity_band_carries_a_glyph_and_text_not_only_colour` |
-| B6 | a snoozed security warning never returns / is visible nowhere (two injections) | `test_attention::test_a_snoozed_security_warning_expires_and_the_admin_sees_who_snoozed_it` |
-| B7 | an outlived alarm loses its marker | `test_attention::test_the_outlived_marker_is_drawn_until_acknowledged_and_the_alarm_is_untouched` |
-| B8 | an imported row reaches the situations the promotion path reads | `test_catalogue::test_an_imported_rule_never_reaches_evidence` |
-| B9 | an import past its size cap / its row cap (two) | `test_catalogue_import::test_an_oversized_body_is_refused_before_it_is_read`, `…::test_the_size_and_row_caps_refuse_rather_than_truncate` |
-| B10 | a health bar at half its printed width / a second stylesheet rule for the fill (two) | `test_ui_invariants::test_every_health_bar_is_as_wide_as_the_percentage_printed_beside_it`, `test_stylesheet::test_a_bare_class_is_the_whole_selector_of_at_most_one_top_level_rule` |
-| X1-X10 | `under_subtree` on a prefix; split creates `new`; bursts unfolded; unplaced folded into `warning`; an activity read unscoped; a security snooze "until it changes"; the marker never expiring; a bad file partly imported; re-reports uncounted; the element panel unscoped | one named test each |
+| 1 | a model file without schema validation (exact-keys check removed) | `test_decider::test_a_manifest_that_does_not_match_its_model_is_refused` |
+| 2 | `incumbent_linked` reaching a target | `test_features::test_no_feature_or_target_module_reads_incumbent_linked`, `…::test_a_site_row_does_not_move_when_the_incumbent_changes_its_mind` |
+| 3 | pairs of one incident across the time cut / one stream in two splits | `test_synth::test_an_incident_is_never_split_across_the_time_cut`, `…::test_no_stream_is_in_two_splits` |
+| 4 | held-out families trained on / a bar with no held-out check | `test_synth::test_held_out_families_are_never_trained_or_tuned_on`, `…::test_the_bar_checks_every_held_out_family` |
+| 5 | a chart mixing generated and site data | `test_ui_judge::test_every_judge_chart_names_its_dataset_and_n` |
+| 6 | a headline metric without its baseline | `test_ui_judge::test_the_headline_tiles_and_the_pr_curve_carry_interval_and_baseline` |
+| 7 | autonomy stays on below its floor | `test_autonomy::test_autonomy_stops_itself_below_the_floor` |
+| 8 | an act with no explanation / a schema that accepts one | `test_autonomy::test_every_act_is_attributed_and_explained`, `…::test_the_schema_refuses_an_unexplained_act` |
+| 9 | training blocking ingestion (the fit inline on the event loop) | `test_site_search::test_the_search_runs_out_of_process_and_never_blocks_a_tick` |
+| 10 | retraining with the same seed changes the artifact | `test_gam::test_the_fit_is_deterministic_and_learns_the_shape` |
+| 11 | the additive formula unreachable | `test_decider::test_the_additive_formula_is_opt_in_and_still_reachable` |
+| 12 | grouping selection ignores the bar (#420) | `test_synth::test_grouping_is_chosen_under_the_bar_itself` |
+| 13 | a build without a model shown as a fault | `test_ui_judge::test_a_build_without_a_model_says_so_as_a_state_not_a_fault` |
+| 14 | the formula section follows the mode, not what runs | same test |
+| 15 | the seeded configuration shown as 1970 | `test_ui_judge::test_settings_has_four_tabs_and_the_old_scorer_address_lands_on_correlation` |
+| 16 | a search accepted with nothing to adapt | `test_shipped::test_a_search_is_refused_at_the_request_when_there_is_nothing_to_adapt` |
 
-**Coverage does not measure** the console's JavaScript (the DOM harness executes it but reports no
-line coverage), layout (F156 is exactly what it cannot see), or behaviour on a live network (F157).
+**Three came back green once, and each time the instrument was at fault, not the injection.**
 
-## 8. Delivery notes
+- **3a**: the test only checked that the incident was present. It was tightened to require the
+  straddling incident's later pair.
+- **8b**: a foreign-key failure masked the CHECK. The test now uses a real situation and a passing
+  control insert.
+- **The DOM cases on the final tree**: the runner's `PATH` found Node 20 before Node 22, so the
+  harness **skipped loudly**, as it is built to. The runner now refuses to count a skip, and the
+  five re-ran red.
 
-- **Tags**: the repository carries one tag, `v0.12.0`, and the ZIP carries it. No `v0.22.0` tag is
-  created: this release is a pull-request branch, and a tag belongs on the merged commit.
-- **Schema**: 21 → 24 (`0022`-`0024`), additive; see MIGRATION.md.
-- **Capabilities**: `notice.snooze` (viewer), `alarm.acknowledge`, `catalogue.write`,
-  `catalogue.import` (editor).
+## Delivery
+
+- **ZIP**:
+  - `HANDOFF.md` at the root, and the tree under `NetCoreNOC/` with its full `.git`.
+  - The clone arrived shallow and was unshallowed: 362+ commits, tag `v0.12.0`, the only tag on
+    the remote. No v0.26.0 tag is created, because a tag belongs on the merged commit.
+  - No caches: the ZIP was packed from `git ls-files` (tracked and unignored files) plus `.git`,
+    after walking the tree to list what was left out, and it is refused if a cache got in. What was
+    left out is listed in the PR.
+- **Verify from the unpacked copy**:
+  - `make qa`
+  - `make dom`
+  - `python -m pytest tests/test_behaviour_identity.py`
+  - `python eval/harness.py | sha256sum` gives `31ea7583…`
+  - `python testbed/run_local.py --demo`
+  - `make dist` then a clean venv (`pip install dist/*.whl`); the installed wheel reproduces the
+    eval hash.
+- **Reproduce the refusal**: `make train` from this tree reproduces *"no grouping setting passes
+  the quality bar on validation; the model is not shipped"*. It takes about 90 minutes without
+  caches, and it reads no test split.
+- **Schema**: 25 → 26 (`0026`, additive). See `MIGRATION.md`.
+- **API**:
+  - 11 routes added: `/api/decider`, `/api/autonomy*`, `/api/search*`, `/api/judge`,
+    `/api/situations/{sid}/severity`.
+  - No field was removed.

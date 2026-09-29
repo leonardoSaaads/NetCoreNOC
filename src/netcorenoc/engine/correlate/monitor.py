@@ -52,6 +52,7 @@ I/O, no lock of its own. `datagram_received` never reaches this module.
 from __future__ import annotations
 
 import contextlib
+import math
 from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -126,14 +127,14 @@ class CorrelationMonitor:
 
     def _observe(self, entry: WindowAlarm, outcome: CorrelationResult, merged: int) -> None:
         evaluated = linked = near = suppressed = 0
-        best_score = -1.0
-        carried = _UNATTRIBUTED
         for pair in outcome.evaluated:
-            result = pair.result
             evaluated += 1
-            bucket = min(HISTOGRAM_BUCKETS - 1, max(0, int(result.score * HISTOGRAM_BUCKETS)))
+            # On a probability scale for both deciders (v0.26.0): the formula's score already is
+            # one, a trained model's is a logit and goes through the logistic link first.
+            p = _probability(pair)
+            bucket = min(HISTOGRAM_BUCKETS - 1, max(0, int(p * HISTOGRAM_BUCKETS)))
             self.histogram[bucket] += 1
-            if abs(result.score - result.threshold) <= NEAR_THRESHOLD:
+            if abs(p - _threshold_probability(pair)) <= NEAR_THRESHOLD:
                 near += 1
             # **The gate's own condition, not a fingerprint of it.** Two alarms on different
             # network elements whose trap OIDs are in different enterprise subtrees: exactly
@@ -147,12 +148,11 @@ class CorrelationMonitor:
                 and entry.oid_root != pair.other.oid_root
             ):
                 suppressed += 1
-            if result.linked:
+            if pair.linked:
                 linked += 1
-                # Which term carried the strongest link this activation made — the drift signal.
-                if result.score > best_score:
-                    best_score = result.score
-                    carried = _dominant_term(result)
+        # Which term carried the strongest link this activation made — the drift signal. The
+        # links are sorted strongest first and every one carries its full explanation.
+        carried = _dominant_term(outcome.links[0].result) if outcome.links else _UNATTRIBUTED
         self.evaluated += evaluated
         self.linked += linked
         self.near_threshold += near
@@ -217,6 +217,28 @@ class CorrelationMonitor:
 def _rate(numerator: int, denominator: int) -> float | None:
     """A ratio, or None when nothing was measured. Never a zero standing in for an absence."""
     return numerator / denominator if denominator else None
+
+
+def _probability(pair: Any) -> float:
+    """The pair's score as a probability: the formula's score is one, a model's is a logit."""
+    if pair.result is not None and pair.result.basis == "weighted-sum":
+        return float(pair.result.score)
+    return _sigmoid(pair.evidence + _threshold(pair))
+
+
+def _threshold(pair: Any) -> float:
+    return float(pair.result.threshold) if pair.result is not None else 0.0
+
+
+def _threshold_probability(pair: Any) -> float:
+    if pair.result is not None and pair.result.basis == "weighted-sum":
+        return float(pair.result.threshold)
+    return _sigmoid(_threshold(pair))
+
+
+def _sigmoid(z: float) -> float:
+    z = max(-700.0, min(700.0, z))
+    return 1.0 / (1.0 + math.exp(-z))
 
 
 def _dominant_term(result: Any) -> str:

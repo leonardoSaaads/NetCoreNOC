@@ -1341,6 +1341,10 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("DELETE", "/api/me/avatar"),
         ("POST", "/api/me/profile"),
     }
+    # v0.26.0: the kill switch turns every autonomy grade off for the whole appliance. It names no
+    # element and reveals nothing; withholding it from a scoped editor would leave autonomy running
+    # on elements that editor is watching (ADR #412).
+    session_only |= {("POST", "/api/autonomy/stop")}
     # The four spellings of *"this handler resolved the caller's visibility"*. The first is the
     # literal every route wrote until v0.21.0; the other three are `WindowAccess`'s, and
     # `test_every_indirect_scope_call_really_resolves_the_scope` reads their source so that
@@ -1390,6 +1394,8 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/maintenance-windows/{wid}/extend"): "async def extend_window(",
         # v0.22.0: the "outlived a window" acknowledgement names one alarm, hence one element.
         ("POST", "/api/alarms/{aid}/outlived/ack"): "async def acknowledge_outlived(",
+        # v0.26.0: an operator's severity for a situation names a situation, hence its elements.
+        ("POST", "/api/situations/{sid}/severity"): "async def situation_severity(",
     }
     unprotected: list[str] = []
     for (method, path), capability in sorted(rbac.ROUTE_PERMISSIONS.items()):

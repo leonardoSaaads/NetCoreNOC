@@ -185,10 +185,18 @@ class Shadow:
                     delta_t_s=delta_t,
                     class_i=entry.class_id,
                     class_j=other.class_id,
-                    class_affinity=_value_of(pair.result, "class_affinity"),
+                    class_affinity=(
+                        pair.vector[4]
+                        if pair.vector is not None
+                        else _value_of(pair.result, "class_affinity")
+                    ),
                     ne_i=entry.device_id,
                     ne_j=other.device_id,
-                    entity_affinity=_value_of(pair.result, "entity_affinity"),
+                    entity_affinity=(
+                        pair.vector[5]
+                        if pair.vector is not None
+                        else _value_of(pair.result, "entity_affinity")
+                    ),
                     same_oid_root=(
                         (entry.oid_root == other.oid_root)
                         if (entry.oid_root and other.oid_root)
@@ -211,7 +219,7 @@ class Shadow:
                         1 if features.same_oid_root else 0,  # None (unknown) records as 0
                         sigmoid(verdict.score),
                         1 if verdict.linked else 0,
-                        1 if pair.result.linked else 0,
+                        1 if pair.linked else 0,
                         entry.ts,
                     )
                 )

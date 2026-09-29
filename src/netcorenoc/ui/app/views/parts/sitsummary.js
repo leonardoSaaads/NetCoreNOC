@@ -56,7 +56,7 @@ export class SituationSummary extends Component {
         ? html`<ul class="sitsum-list" role="tabpanel">${rows.map((s) => html`<li key=${s.id}>
             <a href=${`#/situations/${s.id}`} class="sitsum-row">
               <span class="sitsum-id">#${s.id}</span>
-              <span class="sitsum-name">${s.operator_name || s.derived_name || "unnamed"}</span>
+              <span class="sitsum-name">${s.operator_name || s.model_name || s.derived_name || "unnamed"}</span>
               ${s.maintenance ? html`<${Badge} tone="warn">MW<//>` : null}
               <span class="sitsum-size">${plural(s.alarm_count, "alarm")}</span>
               <span class="sitsum-age" title=${timeTitle(s.updated_at)}>${relative(s.updated_at)}</span>

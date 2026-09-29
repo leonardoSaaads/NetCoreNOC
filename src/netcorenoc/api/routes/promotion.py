@@ -265,6 +265,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 body.model_version_id, principal.actor, now
             ):
                 raise HTTPException(status_code=409, detail="the model version disappeared")
+            if applied:
+                # v0.26.0 (ADR #405): a promoted model is fitted on this site's labels, so applying
+                # one chooses the site family — in the same transaction as the pointer move.
+                await store.set_decider_mode(
+                    "site", principal.actor, now, f"promotion #{promotion_id} applied"
+                )
             await audit_row(
                 request,
                 principal,

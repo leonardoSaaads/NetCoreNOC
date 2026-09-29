@@ -12,6 +12,62 @@ minor bump may break.
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-eight rows, two ask for an
 action, eighteen ask you to read a paragraph, and eighteen are start-the-new-binary.
 
+## [0.26.0] - 2026-09-28 — "the model, and the bar it did not pass"
+
+**This release ships no model** (#422). It builds everything a pre-trained model needs to decide
+from the first trap, trains one, and holds it to a quality bar fixed before the test was read. The
+model missed that bar on its first test reading (7 of 70 checks: it merged more than the formula on
+unseen families), was corrected on validation alone, and missed again on fresh test streams (2 of
+70, both on heavily concurrent streams: 7 % less repair work than the formula where the bar asks
+10 %). Once validation covered that regime, no setting passed it there, so no third reading was
+taken (#420, #421). On `make eval`'s hand-labelled corpus, which no training step reads, the same
+model separated the two concurrent-incident scenarios perfectly and split five of the other nine
+(aggregate pairwise F1 1.000 → 0.388) — validation on generated streams did not transfer (#422).
+Every appliance therefore keeps grouping with the additive formula, and the bell says why.
+
+### Added
+
+- **The shipped-model path** (#405, #407, #419): a boosted generalised additive model kind over
+  fifteen pair relations, trained by `make train` on generated incidents recorded through the
+  appliance's own engine, judged on two whole incident families it never saw, and packaged — only
+  when it passes the bar — as a JSON document plus a manifest (dataset digest, seed, commit, every
+  trial, every held-out number with its interval and n). Validated field by field on load; never
+  code. Every link stores its exact per-feature explanation. **This build packages none** (#422).
+- **Two-stage recall, episode memory and correlation clustering** (#418): candidates back an hour on
+  the same element, OID parent and learned neighbours; co-failure counted in separate occasions;
+  situations joined and merged on average evidence, so one bridge no longer merges two incidents.
+- **Autonomy** (#412, inert until a build carries a model — it never acts on the formula): four grades (grouping, naming, closing, severity), off by default,
+  attributed to the model, explained, judged by what operators do next, self-suspending below an
+  agreement floor, with a kill switch in the top bar of every screen.
+- **Site adaptation** (#411, #413; refuses to start without a shipped model, its base and
+  benchmark): an in-product hyperparameter search (random search with
+  successive halving, seeded, bounded, stoppable, in its own process) fits a site model; a paired
+  comparison on the newest labels, plus a do-no-harm benchmark, decides whether it may be switched
+  to.
+- **`make train` / `make train-validate` / `make train-verify`**, the generator under `eval/synth/`,
+  and the evaluation it prints (#408, #409); `train-verify` loads the installed model as the
+  appliance does and reproduces every published number exactly.
+
+### Changed
+
+- **The additive formula becomes opt-in once a build carries a model** (#405, #415). The decider
+  mode is `shipped` unless an admin had retuned the formula or promoted a model; with no model
+  packaged — this build — the formula as configured runs by the fail-safe and the bell says
+  *"This build ships no model; one is packaged only when it passes its quality bar."*
+- **Settings absorbs the Link scorer** (#414): Correlation, Autonomy, Search and System tabs;
+  `#/scorer` still lands on Correlation.
+- **Judge & promotion is chart-first** (#414): hand-written SVG charts, each naming its dataset and
+  n; generated, site and live data never share an axis; the v0.11.0 record folded below.
+- **A cleared situation is held five minutes** for a bounce to rejoin it (#410).
+- **Closed situations no longer teach the learner**; its epoch is an hour of stream time (#406).
+- `INSUFFICIENT_EVIDENCE` is final for the labels it was computed on, not for the release (#417);
+  generated truth trains the shipped model and never enters a site verdict (#416).
+
+### Superseded positions
+
+- "Do not replace the formula with ML" (#415), "synthetic truth never enters the promotion path"
+  (#416), "`INSUFFICIENT_EVIDENCE` is terminal within a release" (#417).
+
 ## [0.25.0] - 2026-09-26 — "people"
 
 ### Added

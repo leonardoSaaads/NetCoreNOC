@@ -17,9 +17,16 @@
  * The three classes are *visibly* different, not differently styled: a structural value is a
  * fact with no control, never a greyed-out input. A greyed input says "you may not"; a fact says
  * "this is what is true", and they are different sentences (§6.1).
+ *
+ * ## Four tabs (v0.26.0, ADR #414)
+ *
+ * **Correlation** (what decides links — the shipped model, a site model or the additive formula,
+ * whose editor was the *Link scorer* screen), **Autonomy** (four grades and the self-suspension
+ * trigger), **Search** (the hyperparameter search's budget, start and stop) and **System** (the
+ * three classes above). Each tab reads only what it shows; the tab is in the address (`?tab=`).
  */
 
-import { html, Component } from "../dom.js";
+import { html, Component, cx } from "../dom.js";
 import { get, post, readAll } from "../api.js";
 import { Loading, Failed, Partial, DataTable, SectionHeading } from "../widgets.js";
 import { can } from "../session.js";
@@ -27,8 +34,34 @@ import { Destructive } from "../destructive.js";
 import { SETTINGS, MECHANISM, HARDENING, STRUCTURAL } from "../parameters.js";
 import { DatasetRetention } from "./parts/retention.js";
 import { Hardening, Structural, RestartRequired } from "./parts/facts.js";
+import { Correlation } from "./parts/decider.js";
+import { Autonomy } from "./parts/autonomy.js";
+import { SearchPanel } from "./parts/searchpanel.js";
 
-export class Settings extends Component {
+const TABS = [
+  ["correlation", "Correlation", "scorer.read", Correlation],
+  ["autonomy", "Autonomy", "scorer.read", Autonomy],
+  ["search", "Search", "model.read", SearchPanel],
+  ["system", "System", "config.read", null],
+];
+
+export function Settings(props) {
+  const asked = (props.query && props.query.get("tab")) || props.tab || "correlation";
+  const allowed = TABS.filter(([, , cap]) => can(cap));
+  const tab = allowed.find(([key]) => key === asked) || allowed[0];
+  if (!tab) return null;
+  const Body = tab[3] || SystemSettings;
+  return html`<div class="settings">
+    <div class="access-tabs" role="tablist" aria-label="Settings">
+      ${allowed.map(([key, label]) => html`<button type="button" key=${key} role="tab"
+        aria-selected=${tab[0] === key} class=${cx("access-tab", tab[0] === key && "on")}
+        onClick=${() => props.navigate(`#/settings?tab=${key}`)}>${label}</button>`)}
+    </div>
+    <${Body} key=${tab[0]} />
+  </div>`;
+}
+
+class SystemSettings extends Component {
   constructor(props) {
     super(props);
     this.state = { status: "loading", results: null, error: null };

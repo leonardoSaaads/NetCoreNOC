@@ -17,6 +17,7 @@ pre-registration's questions and are answered in `engine/dataset/gestures.py` an
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from netcorenoc.crosscutting.shaping import derive_situation_name
@@ -218,7 +219,22 @@ class SituationEventMixin(StoreBase):
             (situation_id,),
         )
         row = await cur.fetchone()
-        return float(row[0]) if row is not None else None
+        if row is not None:
+            return float(row[0])
+        if not self._has_link_terms:
+            return None
+        # v0.26.0: a situation a trained model formed has no scorer configuration; each of its
+        # links carries its own explanation, threshold included (`correlate.explained_terms`).
+        cur = await self.conn.execute(
+            "SELECT terms FROM link WHERE situation_id = ? AND terms IS NOT NULL "
+            "ORDER BY id LIMIT 1",
+            (situation_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        threshold = json.loads(str(row[0])).get("threshold")
+        return float(threshold) if isinstance(threshold, (int, float)) else None
 
     # -- the event log --------------------------------------------------------------------------
 

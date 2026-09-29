@@ -486,4 +486,5 @@ async def test_the_probe_is_true_on_a_migrated_database(store: Store) -> None:
     nothing at all, which is `test_the_preregistration_exists`'s vacuity trap in a different file.
     """
     assert store._has_bag_key is True
-    assert await store.schema_version() == Store.latest_schema_version() == 25
+    # v0.26.0: 25 -> 26, `0026_learned_decider` (ADRs #405, #412, #413).
+    assert await store.schema_version() == Store.latest_schema_version() == 26

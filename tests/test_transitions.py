@@ -21,7 +21,12 @@ TS = 1_700_000_000.0
 
 
 def test_attention_is_derived_from_the_table_and_rename_is_not_in_it() -> None:
-    assert frozenset({"promote", "feedback", "move", "merge", "split", "hand_clear"}) == ATTENTION
+    # v0.26.0 (ADR #412): `autonomy` — the model accepting a grouping, when an admin has switched
+    # the grouping grade on. Attention by the model, attributed in `autonomy_decision`.
+    assert (
+        frozenset({"promote", "feedback", "move", "merge", "split", "hand_clear", "autonomy"})
+        == ATTENTION
+    )
     assert TRANSITIONS["rename"] == {}, "a rename acquired a state edge"
     assert TRANSITIONS["operator_split"] == {None: "open"}
     assert TRANSITIONS["correlate"] == {None: "new"}

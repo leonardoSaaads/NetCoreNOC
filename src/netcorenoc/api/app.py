@@ -111,6 +111,7 @@ def create_app(
     routes.scorer.register(app, ctx)
     routes.promotion.register(app, ctx)
     routes.models.register(app, ctx)
+    routes.decider.register(app, ctx)  # v0.26.0: what decides, autonomy, the search, the judge
     routes.governance.register(app, ctx)
     routes.audit.register(app, ctx)
     # v0.21.0. **`maintenance` before `inventory`**, and it is behaviour rather than taste:

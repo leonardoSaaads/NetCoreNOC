@@ -395,6 +395,46 @@ def gen_dual_incident() -> None:
     )
 
 
+def gen_dual_incident_same_vendor() -> None:
+    """`dual_incident` with incident B moved onto incident A's vendor (v0.26.0, ADR #418).
+
+    The original stopped merging in v0.18.0, when the entity term was withheld across enterprise
+    subtrees (F76) — a vendor gate, not a grouping fix. Two concurrent incidents on ONE vendor, in
+    different modules of it, still merged under connected components through one weak bridge. This
+    is that case, and it is the one Part I.3 is measured on. Its own addresses, so a replay after
+    `dual_incident` raises new alarms rather than repeating that scenario's."""
+    events: list[dict[str, Any]] = []
+    a1, a2, b1, b2 = "203.0.113.11", "203.0.113.12", "203.0.113.61", "203.0.113.62"
+    optical = "1.3.6.1.4.1.1271.2.1"
+    power = "1.3.6.1.4.1.1271.2.9"
+    t = 0.0
+    for step in range(4):
+        for devs, root, key, port in (
+            ((a1, a2), optical, "incident_A", "port-1/1"),
+            ((b1, b2), power, "incident_B", "psu-0"),
+        ):
+            for dev in devs:
+                t += 0.3
+                events.append(
+                    {
+                        "delay": round(t, 3),
+                        "source": dev,
+                        "trap_oid": f"{root}.{step + 1}",
+                        "varbinds": [_vb(SYS_UPTIME, "10", "ticks"), _vb(f"{root}.9", port)],
+                        "truth": {
+                            "situation_key": key,
+                            "entity_key": dev,
+                            "is_root": step == 0 and dev == devs[0],
+                        },
+                    }
+                )
+    _write(
+        "dual_incident_same_vendor.json",
+        events,
+        "Two unrelated incidents on one vendor overlap in time on disjoint NEs; must stay apart.",
+    )
+
+
 DECOY = "1.3.6.1.4.1.6486.1"  # Alcatel-Lucent Enterprise style root
 DEC_PORT_ID = f"{DECOY}.5.1"  # the true discriminator
 DEC_SERIAL = f"{DECOY}.9.1"  # alarm serial: unique per trap (decoy)
@@ -456,6 +496,7 @@ def main() -> None:
     gen_chassis_card_fail()
     gen_camera_nvr()
     gen_dual_incident()
+    gen_dual_incident_same_vendor()
     gen_decoy_varbinds()
     print(f"wrote {len(list(CORPUS.glob('*.json')))} corpus files to {CORPUS}")  # noqa: T201
 

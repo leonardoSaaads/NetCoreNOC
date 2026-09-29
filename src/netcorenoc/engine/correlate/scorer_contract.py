@@ -179,6 +179,14 @@ class LinkFeatures(NamedTuple):
     # and what keeps this a minor contract bump rather than a breaking one.
     same_oid_root: bool | None = None
 
+    # **v0.26.0: the v2 feature vector** (`features.FEATURE_NAMES` order), built once per pair by
+    # `features.vector` when the active decider reads it; `None` for the additive formula, which
+    # reads the seven fields above. Optional and appended, exactly as `same_oid_root` was in
+    # v0.18.0 — and, like it, **without** moving `CONTRACT_VERSION`: the version is inside every
+    # stored configuration's params hash, so a bump would make the seeded configuration and the
+    # coded defaults disagree about their own identity and orphan F23's provenance (ADR #418).
+    vector: tuple[float, ...] | None = None
+
 
 # How a scorer derived its terms (v0.14.0, DECISIONS #186). A tree predicts a leaf value, not a
 # weighted sum, so a per-feature attribution for one is a Shapley value — neither a weight nor a

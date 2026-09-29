@@ -34,7 +34,8 @@ from netcorenoc.crosscutting.settings import (
     legacy_env_names,
     read_env,
 )
-from netcorenoc.engine.operate.engine import IDLE_CLOSE_S, Engine, FlapDetector
+from netcorenoc.engine.operate.engine import IDLE_CLOSE_S, Engine
+from netcorenoc.engine.operate.flap import FlapDetector
 from netcorenoc.engine.operate.gaps import GAP_CLOSE_S, GapTracker
 from netcorenoc.runner import HttpServerStartError, Supervisor, operator_warnings, run
 

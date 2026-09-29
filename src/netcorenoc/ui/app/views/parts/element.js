@@ -91,7 +91,7 @@ export class ElementPanel extends Component {
               <a class="elp-row" href=${`#/situations/${s.id}`}>
                 <span class="elp-sid">#${s.id}</span>
                 <span class="elp-body">
-                  <span class="elp-text">${s.operator_name || s.derived_name || "unnamed"}</span>
+                  <span class="elp-text">${s.operator_name || s.model_name || s.derived_name || "unnamed"}</span>
                   <span class="elp-sub"><${Badge} tone=${s.status === "new" ? "warn" : null}>${s.status}<//>
                     ${" "}${plural(s.alarm_count, "alarm")}</span>
                 </span>

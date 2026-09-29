@@ -80,6 +80,28 @@ class IdleMixin(StoreBase):
         )
         return [int(r[0]) for r in await cur.fetchall()]
 
+    async def cleared_open_situations(self, before: float) -> list[int]:
+        """**Live, every member cleared, and nothing has happened since ``before``** (v0.26.0,
+        ADR #410).
+
+        The clear-hold's population. A situation whose last alarm cleared used to resolve on that
+        clear, in the same transaction — so a port bouncing every few minutes, a BGP session
+        flapping, or a repair followed by one late re-raise opened a new situation per bounce.
+        The engine now leaves such a situation live for `CLEAR_HOLD_S` and the sweep resolves it
+        from here once neither a join (``updated_at``) nor a clear (the latest member
+        ``cleared_at``) is newer than ``before``. A member that re-raises in the meantime is still
+        mapped to it and rejoins it, which is the whole point.
+        """
+        cur = await self.conn.execute(
+            # `LIVE` and `HAS_ACTIVE` are module literals; `before` is bound. Suppression on the
+            # reported line, as above.
+            f"SELECT id FROM situation WHERE {LIVE} AND NOT {HAS_ACTIVE} AND updated_at <= ? "  # nosec B608
+            "AND COALESCE((SELECT MAX(a.cleared_at) FROM situation_alarm sa JOIN alarm a "
+            "ON a.id=sa.alarm_id WHERE sa.situation_id=situation.id), 0) <= ?",
+            (before, before),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]
+
     async def idle_active_situations(self, cutoff: float) -> list[int]:
         """**Live, untouched since `cutoff`, and one of its alarms is still on** (v0.16.2, #274).
 
@@ -122,3 +144,27 @@ class IdleMixin(StoreBase):
         """
         stale = set(await self.idle_active_situations(cutoff))
         return [{**row, "stale": int(row["id"]) in stale} for row in rows]
+
+    async def manual_close_situation(self, situation_id: int, ts: float) -> bool:
+        """Operator ack: resolve a live situation. Returns False if it was not live.
+
+        Moved here from `situations.py` in v0.26.0 (module guard): it is a way a situation
+        closes, beside the idle and clear-hold sweeps.
+
+        `resolution='operator'` — the value that used to be indistinguishable from the idle
+        sweep's. A `new` situation closes exactly as an `open` one does: an operator who reads a
+        card and closes it has looked at it, whether or not they touched it first.
+        """
+        if not self._has_lifecycle:
+            cur = await self.conn.execute(
+                "UPDATE situation SET status='closed', closed_at=?, updated_at=? "
+                "WHERE id=? AND status='open' RETURNING id",
+                (ts, ts, situation_id),
+            )
+            return await cur.fetchone() is not None
+        cur = await self.conn.execute(
+            "UPDATE situation SET status='resolved', resolution='operator', closed_at=?, "
+            f"updated_at=? WHERE id=? AND {LIVE} RETURNING id",  # nosec B608 - module literal
+            (ts, ts, situation_id),
+        )
+        return await cur.fetchone() is not None

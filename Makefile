@@ -3,7 +3,7 @@
 PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list loadtest burst \
-	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim \
+	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim train train-validate train-verify \
 	lab lab-demo lab-cut lab-repair lab-status \
 	bias-report dataset-stats agreement-report shadow-report census
 
@@ -24,8 +24,11 @@ qa: lint typecheck deadcode scan test eval
 scan:
 	$(PYTHON) -m bandit -q -c pyproject.toml -r src/netcorenoc tools
 
+# `--skip-editable` (v0.26.0): this project is installed editable and is not on PyPI, so asking PyPI
+# about it audits nothing — and when PyPI answers that question with a 503 instead of a 404 (twice
+# on this release's CI) the audit of every real dependency fails with it.
 security: scan
-	$(PYTHON) -m pip_audit
+	$(PYTHON) -m pip_audit --skip-editable
 
 # Dead-code gate (§7): vulture over the runtime package with a committed allowlist.
 deadcode:
@@ -142,6 +145,23 @@ eval-baseline:
 		echo 'A baseline re-cut without a recorded reason is the edit this target prevents.'; \
 		exit 2; }
 	$(PYTHON) eval/harness.py --write-baseline eval/baselines/current.json --reason "$(REASON)"
+
+# Train the shipped link model (v0.26.0, ADRs #405-#409, #419): generate the streams, record them
+# through the real engine, ablate the features, search, fit, tune grouping on validation, evaluate
+# once on every test split and held-out family, and write `engine/model/linkmodel.json` and
+# its manifest ONLY if the quality bar is met on every one. Deterministic from the pinned seed;
+# every stage is cached under `eval/synth/.cache/` by the digest of the code it depends on.
+train:
+	PYTHONPATH=eval $(PYTHON) -m synth.train --stage ship
+
+# The same pipeline on the validation streams only; writes nothing, reads no test split.
+train-validate:
+	PYTHONPATH=eval $(PYTHON) -m synth.train --stage validate
+
+# Reproduce the shipped model's published numbers from the installed package: equality, not
+# tolerance. Re-records the generated dataset when eval/synth/.cache is absent (~15 min).
+train-verify:
+	PYTHONPATH=eval $(PYTHON) -m synth.verify
 
 # Regenerate the labelled corpus from its deterministic generator.
 corpus:

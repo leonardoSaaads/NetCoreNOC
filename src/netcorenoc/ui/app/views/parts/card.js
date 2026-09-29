@@ -48,7 +48,8 @@ export function SituationCard({ situation, onToggle, onChanged }) {
         <span class="sid">#${sid}</span>
         ${situationName(situation)
           ? html`<span class=${cx("sit-name", situation.operator_name && "sit-name-operator")}
-                       title=${NAME_TITLE[situation.operator_name ? "operator" : "derived"]}
+                       title=${NAME_TITLE[situation.operator_name ? "operator"
+                         : situation.model_name ? "model" : "derived"]}
                  >${situationName(situation)}</span>` : null}
         <${Badge} tone=${situation.status === "resolved" ? "quiet" : "alarm"}>${situation.status}<//>
         ${situation.status === "resolved" && situation.resolution
@@ -96,13 +97,16 @@ export function SituationCard({ situation, onToggle, onChanged }) {
 
 /** An operator's own name if there is one, else the server's projection of the membership. */
 export function situationName(situation) {
-  return situation.operator_name || situation.derived_name || "";
+  return situation.operator_name || situation.model_name || situation.derived_name || "";
 }
 
 const NAME_TITLE = {
   operator: "A name an operator gave this situation. The id above it is still the identity.",
+  // v0.26.0 (ADR #412): autonomy's naming grade, when an admin has switched it on.
+  model: "Named by the model deciding links (autonomy). An operator's rename replaces it, and " +
+         "tells autonomy it was wrong.",
   derived: "Derived from this situation's members and recomputed when they change. An operator " +
-           "can override it, and no model proposes one.",
+           "can override it.",
 };
 
 const STALE_TITLE =

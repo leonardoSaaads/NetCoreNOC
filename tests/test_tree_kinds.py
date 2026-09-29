@@ -547,6 +547,7 @@ def test_an_unknown_kind_is_still_refused() -> None:
         "tree",
         "forest",
         "gradient_boosting",
+        "gam",  # v0.26.0 (ADR #407): the boosted generalised additive model
     } == model_version.SUPPORTED_KINDS
     with pytest.raises(ModelPayloadError, match="not one this build implements"):
         model_version.validate_document("xgboost", CV, "{}")

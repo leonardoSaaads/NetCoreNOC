@@ -51,6 +51,7 @@ _COMPOSITE = frozenset(
     {
         "derived_name",
         "operator_name",
+        "model_name",
         "device",
         "device_label",
         "class",
@@ -73,6 +74,9 @@ FIELD_RULES: dict[str, tuple[str, str]] = {
     # fields below take the composite coarsener `derived_name` already has, so what shaping hides
     # stays hidden and what it does not — the name itself — survives (DECISIONS #287).
     "operator_name": ("editor", _COARSEN),
+    # v0.26.0: autonomy's name is built from trap names and a root element's address, exactly as
+    # `derived_name` is, so it takes the same rule (ADR #412).
+    "model_name": ("editor", _COARSEN),
     "device_label": ("editor", _COARSEN),
     "class_label": ("editor", _COARSEN),
     "class": ("editor", _COARSEN),  # the composed class name (timeline, state clears)

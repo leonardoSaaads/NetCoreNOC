@@ -14,6 +14,7 @@ import json
 import pytest
 
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
+from netcorenoc.engine.operate.engine import CLEAR_HOLD_S
 from netcorenoc.ingest.events import TrapEvent
 from netcorenoc.ingest.receiver import QueueItem
 from netcorenoc.main import IDLE_CLOSE_S, Engine
@@ -172,7 +173,8 @@ async def test_flapping_link_is_demoted_and_stops_correlating(
     engine_env: tuple[Engine, asyncio.Queue[QueueItem]], store: Store
 ) -> None:
     engine, queue = engine_env
-    await util.drive(engine, queue, util.fixture_events("flapping_noise.json", BASE))
+    events = util.fixture_events("flapping_noise.json", BASE)
+    await util.drive(engine, queue, events)
     cur = await store.conn.execute(
         "SELECT a.is_flapping, a.count, a.status FROM alarm a "
         "JOIN alarm_class c ON c.id=a.class_id WHERE c.oid='1.3.6.1.6.3.1.1.5.3'"
@@ -182,6 +184,8 @@ async def test_flapping_link_is_demoted_and_stops_correlating(
     assert row["is_flapping"] == 1  # demoted by the periodic-flapping detector
     assert row["count"] == 12  # every raise deduplicated into one fingerprint
     assert row["status"] == "cleared"  # the seeded linkDown→linkUp pair cleared it
+    # v0.26.0 (ADR #410): an all-cleared situation is held for a bounce, then resolved.
+    await engine.maintenance(max(e.ts for e in events) + CLEAR_HOLD_S + 1.0, retention_days=365.0)
     assert (await store.stats())["open_situations"] == 0
 
 
@@ -203,6 +207,8 @@ async def test_vendor_clear_pair_learned_by_alternation(
     cur = await store.conn.execute("SELECT status FROM alarm")
     statuses = [r["status"] for r in await cur.fetchall()]
     assert statuses and all(s == "cleared" for s in statuses)
+    # v0.26.0 (ADR #410): held for a bounce after the last clear, then resolved by the sweep.
+    await engine.maintenance(BASE + 405 + CLEAR_HOLD_S + 1.0, retention_days=365.0)
     assert (await store.stats())["open_situations"] == 0
     # The learned pair survives a restart via the edge table.
     await engine.maintenance(BASE + 1000, retention_days=365.0, tick=1)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
@@ -53,3 +53,15 @@ async def store(tmp_path: Path) -> AsyncIterator[Store]:
     await s.open()
     yield s
     await s.close()
+
+
+@pytest.fixture
+def test_model(monkeypatch: pytest.MonkeyPatch) -> Iterator[object]:
+    """v0.26.0: `modelutil.TEST_MODEL` as the shipped model, for the decider's mechanics."""
+    from netcorenoc.engine.model import shipped
+
+    from modelutil import TEST_MODEL, manifest
+
+    model = shipped.load_from(TEST_MODEL, manifest(TEST_MODEL))
+    monkeypatch.setattr(shipped, "load", lambda: model)
+    yield model

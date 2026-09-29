@@ -58,11 +58,12 @@ from typing import Any
 
 from netcorenoc.engine.correlate import scoring
 from netcorenoc.engine.correlate.correlate import WINDOW_S
-from netcorenoc.engine.model import attribution, boosting, challenger, forest, tree
+from netcorenoc.engine.model import attribution, boosting, challenger, forest, gam, tree
 
 __all__ = [
     "KIND_ADDITIVE",
     "KIND_FOREST",
+    "KIND_GAM",
     "KIND_GRADIENT_BOOSTING",
     "KIND_LOGISTIC",
     "KIND_TREE",
@@ -83,6 +84,9 @@ KIND_LOGISTIC = "logistic"
 KIND_TREE = tree.KIND
 KIND_FOREST = forest.KIND
 KIND_GRADIENT_BOOSTING = boosting.KIND
+#: v0.26.0 (ADR #407): the boosted generalised additive model over the v2 feature vector — the
+#: shipped model's kind, and the kind a site-adapted model is fitted as.
+KIND_GAM = gam.KIND
 
 # The three kinds whose document holds a node list rather than a flat set of weights. Named as a set
 # because three branches that each tested `kind == ...` would be three places to forget one.
@@ -91,7 +95,7 @@ TREE_KINDS = frozenset({KIND_TREE, KIND_FOREST, KIND_GRADIENT_BOOSTING})
 # **A closed set, checked rather than trusted.** An unknown kind is not an error to raise, it is a
 # payload this build does not understand — and the load path falls back to the built-in default for
 # it, exactly as it does for a malformed document.
-SUPPORTED_KINDS = frozenset({KIND_ADDITIVE, KIND_LOGISTIC, *TREE_KINDS})
+SUPPORTED_KINDS = frozenset({KIND_ADDITIVE, KIND_LOGISTIC, KIND_GAM, *TREE_KINDS})
 
 # **The dispatch table**, and it is the whole of what this module knows about a tree kind. Each
 # module publishes `KEYS`, `validate_payload` and `scorer_from_payload`; a fourth tree kind would be
@@ -252,6 +256,14 @@ def validate_document(kind: str, contract_version: str, document: str) -> dict[s
     except scoring.ContractVersionError as exc:
         raise ModelPayloadError(str(exc)) from exc
 
+    if kind == KIND_GAM:
+        # Its own validator, which is the whole of what the kind is: exact keys, finite bounded
+        # numbers, strictly increasing bins, only features this build serves, and reachability.
+        try:
+            gam.validate(document)
+        except gam.GamDocumentError as exc:
+            raise ModelPayloadError(str(exc)) from exc
+        return {}
     payload = _object(document)
     if kind in TREE_KINDS:
         module = _FAMILY[kind]
@@ -298,6 +310,11 @@ def scorer_for(kind: str, contract_version: str, document: str) -> scoring.LinkS
     (build prompt VII.6). v0.14.0 adds three branches and nothing else.
     """
     params = validate_document(kind, contract_version, document)
+    if kind == KIND_GAM:
+        try:
+            return gam.load(document)
+        except gam.GamDocumentError as exc:  # pragma: no cover - validate_document raised first
+            raise ModelPayloadError(str(exc)) from exc
     if kind in TREE_KINDS:
         try:
             return _FAMILY[kind].scorer_from_payload(  # type: ignore[no-any-return]
@@ -343,7 +360,7 @@ def document_for(scorer: Any) -> str:
     function under a different numbering" is the two-hashes-for-one-model failure `cart.fit`'s
     breadth-first construction exists to prevent.
     """
-    if isinstance(scorer, attribution.AttributedScorer):
+    if isinstance(scorer, attribution.AttributedScorer | gam.GamScorer):
         return scorer.params_document
     if isinstance(scorer, challenger.LogisticScorer):
         return canonical_document({"threshold": scorer.threshold, **scorer.coefficients.as_dict()})
