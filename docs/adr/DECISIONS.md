@@ -5750,6 +5750,83 @@ From this release an entry is about six lines: decision, reason, release.*
 - **When**: this was changed **after** the GAM's corpus numbers were read and **before** any other
   member's corpus numbers existed (their evaluations were still running). It is a correction of the
   measurement, not a re-choice of the winner; the order it produces is recorded below as it fell.
-- **Results**: appended to this entry when the league's evaluation completes — the judge's table,
-  every member's corpus scenarios against the formula's, the scorecards, and what `make eval` reads
-  once the champion decides.
+- **The judge's table** (`make train` at seed 2026 on dataset `34c08fafb036b1be`; documents in
+  `engine/model/league/`; scores are pairwise F1, the corpus the mean over its eleven scenarios):
+
+  | # | member | score | iid | concurrency | optical | protocol | corpus | repair/incident | bar |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 1 | random forest | 0.946 | 0.962 | 0.946 | 0.974 | 0.994 | 0.854 | 0.352 | 68/70 |
+  | 2 | logistic regression | 0.947 | 0.963 | 0.924 | 0.973 | 0.964 | 0.909 | 0.360 | 66/70 |
+  | 3 | GAM | 0.948 | 0.963 | 0.968 | 0.972 | 0.993 | 0.842 | 0.374 | 64/70 |
+  | 4 | boosted trees | 0.917 | 0.961 | 0.946 | 0.976 | 0.993 | 0.709 | 0.335 | 69/70 |
+  | 5 | decision tree | 0.902 | 0.965 | 0.986 | 0.977 | 0.992 | 0.593 | 0.357 | 66/70 |
+
+  The first three are within 0.002 of each other — inside `TIE` (0.005) — so #425's tie-break
+  decides: the fewest repair gestures per incident on the generated splits. **The random forest is
+  the champion on day 0**, and the reason it carries says so (`_why_first`). Every member beats the
+  formula on every generated split (on `test_iid` the champion needs 0.344 repair gestures per
+  incident against the formula's 0.403, 32 streams, 3 809 incidents), and none clears the whole
+  quality bar: the champion misses `test_concurrency`'s repair ratio (0.903 against ≤ 0.90) and the
+  held-out `optical_protection` family (1.42× the formula's repair work).
+- **The corpus, scenario by scenario** (pairwise F1; the formula is `make eval` at v0.26.0):
+
+  | scenario | formula | RF | LR | GAM | boosted | tree |
+  |---|---|---|---|---|---|---|
+  | `background_noise` | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+  | `camera_nvr` | 1.000 | 0.713 | 1.000 | 1.000 | 0.713 | 0.615 |
+  | `decoy_varbinds` | 1.000 | 1.000 | 1.000 | 1.000 | 0.838 | 0.819 |
+  | `dual_incident` | 1.000 | 1.000 | 1.000 | 0.833 | 0.727 | 0.353 |
+  | `dual_incident_same_vendor` | 0.636 | 1.000 | 1.000 | 0.833 | 0.727 | 0.353 |
+  | `fiber_cut` | 1.000 | 1.000 | 1.000 | 0.600 | 1.000 | 0.727 |
+  | `pon_dying_gasp` | 1.000 | 1.000 | 1.000 | 1.000 | 0.109 | 0.109 |
+  | `pon_pon_port_down` | 1.000 | 0.680 | 1.000 | 1.000 | 0.680 | 0.549 |
+  | the other three | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
+
+  #426's storm families did their job for the two additive models (the v0.26.0 candidate split five
+  storms; the GAM and the logistic regression split none) and only partly for the trees.
+  **Every member merges `background_noise`**: 24 traps from 24 elements, 4.7 s apart, four of each
+  vendor's enterprise subtree — exactly the shape #426 taught as a proxied storm. The formula's
+  vendor gate (F76) is what keeps them apart; no feature here distinguishes the two.
+- **What `make eval` reads now**: the champion decides the replay. Against the formula it is worse
+  on `background_noise` (1.000 → 0.000), `camera_nvr` (→ 0.713) and `pon_pon_port_down` (→ 0.680),
+  better on `dual_incident_same_vendor` (0.636 → 1.000), and equal on the other seven. The baseline
+  was re-cut with exactly that reason (`eval/baselines/REBASELINE-LOG.md`); the gate guards this
+  behaviour from here, per scenario. The pooled aggregate alone would have moved by 0.013.
+- **Consequences**: the registered rule picked a member that is not the best on the hand-labelled
+  corpus — the logistic regression is (0.909, failing only `background_noise`), tied within 0.001
+  on the score. That is the rule working as registered, not a reason to re-register it after the
+  fact; a maintainer who trusts the corpus over the generated suites has the tool for it: **pin the
+  logistic regression** in Settings → Models, with that reason (audited). Site labels re-order the
+  league in the slow loop either way. Not done here: a feature that separates a proxied storm from
+  same-vendor background noise (the next training data question), and re-training after it.
+- **Reproducing**: `make train-verify` re-evaluates every packaged member. Re-recording with this
+  release's final code gives a different digest (the engine's sources changed after the recording);
+  six streams re-recorded across train, valid and three test splits came back content-identical,
+  so the published numbers are the code's. The provenance `seconds` is the resumed run's (a
+  container restart interrupted the first); search and fit times are per member in each manifest.
+
+## 430. A model's link is explained on the wire: names once, contributions per link (v0.27.0)
+
+- **Context**: `0026` added `link.terms`, a trained model's whole explanation (basis, base value,
+  threshold, `[name, value, contribution]` per term), and the engine writes it on every link a
+  model decides. **No route read it.** `/api/situations/{sid}` served the three formula columns
+  (`term_t`, `term_a`, `term_e`), which for a model hold only the one term whose name matches
+  (`entity_affinity`) — so on the first build that packaged a model, every link the champion decided
+  reached the console with terms that did not sum to its score. `tests/test_operation.py` found it,
+  end to end over a real socket; nothing in-process could, because every in-process test ran on the
+  formula. Principle 2 was broken on exactly the links the league now decides.
+- **Decision** (`store/link_terms.py`): the detail route serves, per situation, `link_terms` — a
+  table of term-name lists, each distinct list once — and, per model link, `basis`, `base`,
+  `threshold`, `names` (an index into the table) and `phi` (the contributions, six decimals). The
+  contract per link is principle 2 per basis: **`base + Σ phi = score`** for a model, the three
+  columns for the formula. F145's measurement is why the names are not repeated per link.
+- **The threshold the console measures against** is the decider's: the model's when a model decided
+  every link (scores are log-odds; `score_scale: "logit"`), the formula's when none did, and *not
+  reported* when they are mixed — a margin against the wrong line would be a confident wrong number.
+  The console reads a model's margin in probability, so "thin / fair / wide" keep their meaning.
+- **The console** names each feature (`why.js::FEATURE_LABEL`), shows the four largest
+  contributions per link by magnitude with their sign (a negative term is hatched, not only
+  coloured), and keeps every term in the tooltip and in the per-term means.
+- **Guards**: `tests/test_link_terms.py` (unit, HTTP and DOM; the HTTP and DOM tests are red with
+  the column unread or the console ignoring it), and `test_operation` now checks the contract per
+  basis.

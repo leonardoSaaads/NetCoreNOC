@@ -36,3 +36,22 @@ metrics moved.
   - over_merge_rate: 0.0 -> 0.028571
   - pairwise_f1: 1.0 -> 0.999958
   - traps_ingested: 3147 -> 3163
+
+## 0.27.0 — current.json
+
+- **Reason**: v0.27.0: the packaged league's champion decides the replay, as on a fresh appliance (DECISIONS #424, #425); the additive formula is only the fail-safe. The champion is the random forest (random_forest:d2cdd3cd10c7): offline score 0.946, tied within 0.005 with logistic regression 0.947 and the GAM 0.948, first on the registered tie-break (fewest repair gestures, 0.352). Against the formula on this corpus it is WORSE on three scenarios and BETTER on one, and the gate now reads every scenario (#429): background_noise pairwise_f1 1.0000 -> 0.0000 (it merges unrelated same-vendor traps from different elements), camera_nvr 1.0000 -> 0.7131 and pon_pon_port_down 1.0000 -> 0.6800 (it splits two proxied storms); dual_incident_same_vendor 0.6364 -> 1.0000 (it separates the two same-vendor incidents the formula merged). The other seven scenarios do not move. Re-cut so the gate guards this behaviour from here; the regressions are recorded in DECISIONS #429 and the HANDOFF, not accepted silently.
+- **Replaced digest**: `1199ae7b3ce20454cc705f1bc6c62cd19bc2b18b1683d7da017bc8f67e66aa3a`
+- **New digest**: `686a915aed330140747574d2204d0d7cd415ad294b42de176eff92cc11ca54a8`
+- **Aggregate metrics that moved** (12):
+  - ari: 0.99994 -> 0.981069
+  - over_merge_rate: 0.028571 -> 0.461538
+  - pairwise_f1: 0.999958 -> 0.986559
+  - under_merge_rate: 0.0 -> 0.055556
+  - background_noise/pairwise_f1: 1.0 -> 0.0
+  - background_noise/ari: 1.0 -> 0.0
+  - camera_nvr/pairwise_f1: 1.0 -> 0.713056
+  - camera_nvr/ari: 1.0 -> 0.0
+  - dual_incident_same_vendor/pairwise_f1: 0.636364 -> 1.0
+  - dual_incident_same_vendor/ari: 0.0 -> 1.0
+  - pon_pon_port_down/pairwise_f1: 1.0 -> 0.68
+  - pon_pon_port_down/ari: 1.0 -> 0.0

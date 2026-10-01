@@ -266,7 +266,8 @@ export class Detail extends Component {
                   onAck=${(id) => this.ackOutlived(id)}
                   onDeclared=${() => this.props.onChanged()} />
 
-      <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold} />
+      <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold}
+        table=${detail.link_terms} scale=${detail.score_scale} />
 
       ${editable && grouping && restructurable ? html`<${Restructure}
           sid=${sid} marked=${this.state.marked} post=${post}

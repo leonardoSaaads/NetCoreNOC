@@ -1348,12 +1348,16 @@ td.sev .cell-edit { display: inline-block; width: auto; }
   padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
 }
 .linkscore { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3.5em; }
-.terms { display: flex; gap: var(--space-3); }
+.terms { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .term { display: flex; align-items: center; gap: var(--space-1); }
 .term-bar { display: inline-block; height: 7px; border-radius: 2px; }
 .term-t { background: var(--term-t); }
 .term-a { background: var(--term-a); }
 .term-e { background: var(--term-e); }
+/* v0.27.0: a model's per-feature term; a term that argued AGAINST the link is hatched, so the sign
+   never rests on colour alone (the number beside it carries the minus too). */
+.term-m { background: var(--fg-muted); }
+.term-neg { background: repeating-linear-gradient(135deg, var(--fg-muted) 0 2px, transparent 2px 4px); }
 .term-num { font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-muted); }
 .linkpair { color: var(--fg-muted); }
 

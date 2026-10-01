@@ -19,7 +19,15 @@ action, twenty-three ask you to read a paragraph, and eighteen are start-the-new
 model can load. Confirmed work stays confirmed: a model never grows a situation an operator has
 opened; what it would add waits in **Pending** for an answer.
 
-<!-- TRAINING-RESULTS -->
+**What ships** (#429): five models, all beating the formula on every generated test split, none
+clearing the whole quality bar. The judge's day-0 champion is the **random forest** — tied within
+0.002 with the logistic regression and the GAM, first on fewer repair gestures (0.344 per incident
+on unseen streams against the formula's 0.403). On the hand-labelled corpus it is better than the
+formula on `dual_incident_same_vendor` (pairwise F1 0.636 → 1.000) and **worse on three
+scenarios** — `background_noise` (1.000 → 0.000), `camera_nvr` (→ 0.713), `pon_pon_port_down`
+(→ 0.680). The logistic regression fails only `background_noise`; an admin who trusts the corpus
+more can pin it. `make eval` now gates every scenario, and its baseline was re-cut with that reason.
+
 
 ### Added
 
@@ -57,8 +65,22 @@ opened; what it would add waits in **Pending** for an answer.
   codes.
 - `make train` trains the league (`synth.league`); `make train-verify` reproduces every member's
   numbers. Training streams are read one at a time.
+- **`make eval` gates every corpus scenario**, not only the pooled aggregate (#429): three storms
+  hold almost all of the corpus's pairs, and a split ten-alarm scenario barely moved the pooled F1.
+  The judge's corpus suite is likewise the mean over scenarios. `--cold` (parity with v0.2.0) runs
+  the fail-safe formula, the only decider v0.2.0 had.
+- The test suite runs on the fail-safe formula unless a test asks for a model (`test_model`,
+  `packaged_league`), so its verdicts do not depend on which model won a release's training.
 - `0027` hands the choice to the judge on an appliance that had chosen the formula or a site model
   (one appended decider row).
+
+### Fixed
+
+- **A model-decided link was not explained on the wire** (#430): the engine stored a trained
+  model's per-feature explanation (`0026`) and no route read it, so the console showed the
+  formula's three terms — not summing to the score — for every link a model decided. The detail
+  route now serves the names once per situation and the contributions per link (`base + Σ terms =
+  score`), and "why grouped" names each feature and reads a model's margin in probability.
 
 ### Removed
 

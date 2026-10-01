@@ -342,15 +342,29 @@ def test_every_link_decomposes_into_terms_that_sum_to_its_score(
     console that renamed a term would still pass a test that asked the console what the terms
     were called. The contract is that *these three columns* are the decomposition and that they
     sum to the score exactly.
+
+    **v0.27.0: per basis.** This appliance is a real subprocess, so the league this build packages
+    decides here, and a model's link is explained by one term per feature (`store/link_terms.py`):
+    its contributions plus the base value are the score. That is the same contract; the three
+    columns are only the formula's decomposition. This test found that a model's links reached the
+    console as the formula's three columns, which did not sum — the explanation was stored and no
+    route read it.
     """
     first, _second = drives
     links = [link for detail in first.details for link in detail.get("links", [])]
     assert links, "no link was explained, so the contract was not exercised"
     columns = {"temporal": "term_t", "class_affinity": "term_a", "entity_affinity": "term_e"}
-    for link in links:
-        assert set(columns.values()) <= link.keys(), sorted(link)
-        total = sum(float(link[column]) for column in columns.values())
-        assert abs(total - float(link["score"])) < 1e-9, (link["score"], link)
+    for detail in first.details:
+        for link in detail.get("links", []):
+            if "phi" in link:
+                names = detail["link_terms"][link["names"]]
+                assert len(names) == len(link["phi"]), link
+                total = float(link["base"]) + sum(float(c) for c in link["phi"])
+                assert abs(total - float(link["score"])) < 1e-5, (link["score"], total, link)
+                continue
+            assert set(columns.values()) <= link.keys(), sorted(link)
+            total = sum(float(link[column]) for column in columns.values())
+            assert abs(total - float(link["score"])) < 1e-9, (link["score"], link)
 
 
 def test_a_viewer_token_is_refused_the_admin_routes_over_tcp(drives: tuple[Drive, Drive]) -> None:

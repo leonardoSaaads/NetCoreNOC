@@ -354,5 +354,20 @@ def choose(
             ineligible,
         )
     if not rows:
-        reason = "first in the offline order; no site labels yet"
+        reason = f"{_why_first(incumbent, candidates)}; no site labels yet"
     return Choice(incumbent.ref, reason, table, [c.as_dict() for c in comparisons], ineligible)
+
+
+def _why_first(first: Member, candidates: Sequence[Member]) -> str:
+    """Why the offline order put ``first`` first, in the words an operator reads: the best score,
+    or — when others are within :data:`TIE` of it — the fewest repair gestures among them."""
+    key = _order_key(first)
+    tied = [m for m in candidates if m is not first and _order_key(m)[:2] == key[:2]]
+    score = offline_score(first)
+    if not tied:
+        return f"the best offline score ({score:.3f}, mean pairwise F1 over five suites)"
+    names = ", ".join(f"{m.name} {offline_score(m):.3f}" for m in tied)
+    return (
+        f"offline score {score:.3f}, tied within {TIE} with {names}; first on the tie-break, "
+        f"the fewest repair gestures per incident ({repair(first):.3f})"
+    )

@@ -1315,8 +1315,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: four API modules (`routes/decider`, `models_decider`, `public_paths`, `shipped_view` — split off
 #: the routes at the 400-line guard); six console modules. **No model file is among them** — the
 #: build ships none (ADR #422).
-SRC_TREE_DIGEST = "e230b6a56b6f04dcadd010216c6e44e18d1112abca0d5d6a8d9372eb11667691"
-SRC_FILE_COUNT = 323
+SRC_TREE_DIGEST = "5673f1e31c4fc710c1f11d40ff81ceb13cf4944eb6f8cadb2b302e10101dd0be"
+SRC_FILE_COUNT = 354
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1382,7 +1382,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.26.0", "the version this release carries"
+    assert __version__ == "0.27.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

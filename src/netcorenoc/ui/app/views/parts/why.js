@@ -49,6 +49,29 @@ const TERM_LABEL = {
   class_affinity: "A — how often these alarm classes co-occur",
   entity_affinity: "E — how often these devices co-occur",
 };
+/* v0.27.0: a trained model explains a link by one term per feature (`engine/correlate/features.py`),
+ * each its exact contribution to the log-odds — Shapley values for the trees, the term itself for
+ * the GAM and the logistic regression. The names come from the server once per situation. */
+const FEATURE_LABEL = {
+  dt: "how close in time",
+  same_ne: "same network element",
+  same_class: "same alarm class",
+  oid_arcs: "how much of the trap OID they share",
+  class_affinity: "how often these alarm classes co-occur",
+  entity_affinity: "how often these devices co-occur",
+  ne_episodes: "past episodes on these elements together",
+  class_episodes: "past episodes of these classes together",
+  item_episodes: "past episodes of these two alarms together",
+  severity: "severity",
+  burst: "how many alarms arrived at once",
+  chatter: "how chatty these alarms are",
+  degree: "how connected the elements are",
+  cross_ref: "one alarm names the other's element",
+  hour: "time of day",
+};
+const labelOf = (name) => TERM_LABEL[name] ?? (FEATURE_LABEL[name] ? `${name} — ${FEATURE_LABEL[name]}` : name);
+const keyOf = (name) => TERM_KEY[name] ?? "m";
+const logistic = (z) => 1 / (1 + Math.exp(-z));
 /** What it means when a term dominates. One clause each, because the fact needs the reading. */
 const TERM_MEANING = {
   temporal: "these alarms are close in time",
@@ -68,8 +91,12 @@ const TERM_MEANING = {
  * A payload that still carries `terms` is honoured, because a scorer with a different term set
  * would announce it that way and this must not silently relabel it as the three it expects.
  */
-export function termsOf(link) {
+export function termsOf(link, table) {
   if (Array.isArray(link.terms) && link.terms.length) return link.terms;
+  // v0.27.0: a model's link — its names from the situation's table, its contributions inline.
+  if (Array.isArray(link.phi) && table && table[link.names]) {
+    return table[link.names].map((name, i) => ({ name, contribution: link.phi[i] }));
+  }
   return [
     { name: "temporal", contribution: link.term_t },
     { name: "class_affinity", contribution: link.term_a },
@@ -83,12 +110,12 @@ export function termsOf(link) {
  * Returns null for an empty list rather than a zeroed object, so a caller cannot render
  * "weakest 0.00" about a situation that has no links at all.
  */
-export function summarise(links) {
+export function summarise(links, table) {
   if (!links || !links.length) return null;
   const scores = links.map((l) => l.score);
   const totals = new Map();
   for (const link of links) {
-    for (const term of termsOf(link)) {
+    for (const term of termsOf(link, table)) {
       totals.set(term.name, (totals.get(term.name) ?? 0) + (term.contribution ?? 0));
     }
   }
@@ -104,10 +131,12 @@ export function summarise(links) {
   };
 }
 
-/** The band a margin falls in, and the one sentence that IS the answer to "can I trust this?". */
-export function bandOf(weakest, threshold) {
+/** The band a margin falls in, and the one sentence that IS the answer to "can I trust this?".
+ * A model's scores are log-odds, so its margin is read as probability (v0.27.0): 0.05 above the
+ * threshold means the same thing whichever decider drew the line. */
+export function bandOf(weakest, threshold, scale) {
   if (threshold == null) return { band: "unknown", margin: null };
-  const margin = weakest - threshold;
+  const margin = scale === "logit" ? logistic(weakest) - logistic(threshold) : weakest - threshold;
   return { band: margin < 0.05 ? "thin" : margin < 0.15 ? "fair" : "wide", margin };
 }
 
@@ -139,15 +168,15 @@ export class WhyGrouped extends Component {
     this.state = { open: false };
   }
 
-  render({ links, byId, threshold }, { open }) {
+  render({ links, byId, threshold, table, scale }, { open }) {
     const all = links || [];
-    const summary = summarise(all);
+    const summary = summarise(all, table);
     if (!summary) {
       return html`<section class="why">
         <p class="hint">This situation has one member, so there is no link to explain.</p>
       </section>`;
     }
-    const { band } = bandOf(summary.weakest, threshold);
+    const { band } = bandOf(summary.weakest, threshold, scale);
     return html`<section class="why">
       <button type="button" class=${cx("why-toggle", `soundness-${band}`)}
               aria-expanded=${open ? "true" : "false"} aria-controls="why-body"
@@ -159,8 +188,8 @@ export class WhyGrouped extends Component {
       </button>
       <div class="why-body" id="why-body" hidden=${!open}>
         ${open ? html`
-          <${Soundness} summary=${summary} threshold=${threshold} band=${band} />
-          <${LinkRows} links=${all} byId=${byId} />` : null}
+          <${Soundness} summary=${summary} threshold=${threshold} band=${band} scale=${scale} />
+          <${LinkRows} links=${all} byId=${byId} table=${table} />` : null}
       </div>
     </section>`;
   }
@@ -175,8 +204,9 @@ export class WhyGrouped extends Component {
 const BAND_ICON = { thin: "warn", fair: "info", wide: "info", unknown: "info" };
 
 /** The answer to "is this grouping sound?", from every link. */
-function Soundness({ summary, threshold, band }) {
-  const margin = threshold != null ? summary.weakest - threshold : null;
+function Soundness({ summary, threshold, band, scale }) {
+  const margin = threshold != null ? bandOf(summary.weakest, threshold, scale).margin : null;
+  const unit = scale === "logit" ? " in probability" : "";
   // Three bands, and the words change with the band as well as the colour — a margin read off a
   // colour alone fails the same operator the severity rules are written for.
   return html`<div class=${cx("soundness", `soundness-${band}`)}>
@@ -186,7 +216,7 @@ function Soundness({ summary, threshold, band }) {
         <div class="stat-label">weakest link</div>
         <div class="stat-note">${margin == null
           ? "the threshold was not reported"
-          : `${score(margin)} above the threshold of ${score(threshold)}`}</div>
+          : `${score(margin)}${unit} above the threshold of ${score(threshold)}`}</div>
       </div>
       <div class="stat">
         <div class="stat-value">${score(summary.strongest)}</div>
@@ -219,12 +249,12 @@ function Carrying({ means }) {
   return html`<div class="carrying">
     <p class="hint">Averaged over every link, the grouping is carried by${" "}
       <b>${TERM_LABEL[top.name]?.split(" — ")[0] ?? top.name}</b>${" — "}
-      ${TERM_MEANING[top.name] ?? "an unnamed term"}.</p>
+      ${TERM_MEANING[top.name] ?? FEATURE_LABEL[top.name] ?? "an unnamed term"}.</p>
     <ul class="term-means">
       ${means.map((m) => html`<li key=${m.name}>
-        <span class="term-mean-label">${TERM_LABEL[m.name] ?? m.name}</span>
-        <span class=${cx("term-bar", `term-${TERM_KEY[m.name] ?? "t"}`)}
-              style=${{ width: `${Math.max(2, Math.round(160 * (m.mean / total)))}px` }}
+        <span class="term-mean-label">${labelOf(m.name)}</span>
+        <span class=${cx("term-bar", `term-${keyOf(m.name)}`, m.mean < 0 && "term-neg")}
+              style=${{ width: `${Math.max(2, Math.round(160 * Math.abs(m.mean / total)))}px` }}
               aria-hidden="true"></span>
         <span class="term-num">${score(m.mean)} mean</span>
       </li>`)}
@@ -244,11 +274,12 @@ function Carrying({ means }) {
  * decomposition two interactions from an expanded card, and the outer one now hides the whole
  * section — so the inner one was a second press to reach what the first press was for.
  */
-function LinkRows({ links, byId }) {
+function LinkRows({ links, byId, table }) {
   return html`<ol class="links" id="why-links">
     ${links.map((link, index) => html`<li class="linkrow" key=${index}>
-      <span class="linkscore" title="the sum of the three terms below">${score(link.score)}</span>
-      <${TermBar} link=${link} />
+      <span class="linkscore" title=${link.phi ? `log-odds: the base ${score(link.base)} plus the terms below`
+        : "the sum of the three terms below"}>${score(link.score)}</span>
+      <${TermBar} link=${link} table=${table} />
       <span class="linkpair">
         ${nameOf(byId, link.alarm_a)} <span aria-hidden="true">↔</span>
         ${nameOf(byId, link.alarm_b)}
@@ -262,17 +293,20 @@ function nameOf(byId, alarmId) {
   return alarm ? alarmName(alarm) : `alarm ${alarmId}`;
 }
 
-export function TermBar({ link }) {
-  const terms = termsOf(link);
-  const title = terms
-    .map((t) => `${TERM_LABEL[t.name] ?? t.name}: ${score(t.contribution)}`)
-    .join("\n");
+export function TermBar({ link, table }) {
+  const terms = termsOf(link, table);
+  const title = terms.map((t) => `${labelOf(t.name)}: ${score(t.contribution)}`).join("\n");
+  // A model's terms are many and signed: the four that moved the score most, by magnitude; the
+  // rest are in the tooltip, and every one is in the summary's means above.
+  const shown = link.phi
+    ? [...terms].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution)).slice(0, 4)
+    : terms;
   return html`<span class="terms" title=${title}>
-    ${terms.map((t) => html`<span class="term" key=${t.name}>
-      <span class=${cx("term-bar", `term-${TERM_KEY[t.name] ?? "t"}`)}
-            style=${{ width: `${Math.max(2, Math.round(120 * (t.contribution / 0.95)))}px` }}
+    ${shown.map((t) => html`<span class="term" key=${t.name}>
+      <span class=${cx("term-bar", `term-${keyOf(t.name)}`, t.contribution < 0 && "term-neg")}
+            style=${{ width: `${Math.max(2, Math.round(120 * Math.abs(t.contribution / 0.95)))}px` }}
             aria-hidden="true"></span>
-      <span class="term-num">${(TERM_KEY[t.name] ?? "?").toUpperCase()} ${score(t.contribution)}</span>
+      <span class="term-num">${TERM_KEY[t.name] ? TERM_KEY[t.name].toUpperCase() : t.name} ${score(t.contribution)}</span>
     </span>`)}
   </span>`;
 }

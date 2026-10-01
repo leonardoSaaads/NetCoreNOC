@@ -1,7 +1,8 @@
 """The re-baseline mechanism (v0.17.0, DECISIONS #324).
 
 `make eval` hashes its own stdout, and what makes that useful is that the hash moves only when
-somebody meant it to — **`31ea7583…`** today (v0.26.0 grew the corpus), `c75b42aa…` from v0.18.0,
+somebody meant it to — **`43328080…`** today (v0.27.0: the league's champion decides the replay),
+`31ea7583…` in v0.26.0 (which grew the corpus), `c75b42aa…` from v0.18.0,
 `c2e8a0ce…` from v0.7.0 until the corpus was re-cut by the mechanism this module tests. (This
 docstring named the old value for several releases after the re-cut; v0.21.0 corrected it.) That is
 what makes it useful to a refactor — *did this change correlation behaviour when I did not mean to?*

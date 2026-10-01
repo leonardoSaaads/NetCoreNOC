@@ -465,7 +465,19 @@ def test_the_package_carries_a_full_league_and_every_member_is_whole() -> None:
         ] == list(train.QUALITY_BAR)
         from synth import report
 
-        assert report.check_bar(m["evaluation"], train.QUALITY_BAR) == m["scorecard"]
+        # The same verdict on every check; order-free, because the manifest is written with
+        # sorted keys and the bar walks the splits in the order it finds them.
+        again = report.check_bar(m["evaluation"], train.QUALITY_BAR)
+
+        def checks(card: dict[str, Any]) -> list[str]:
+            return sorted(json.dumps(c, sort_keys=True) for c in card["checks"])
+
+        assert (again["passed"], again["checked"], sorted(again["missed"]), checks(again)) == (
+            m["scorecard"]["passed"],
+            m["scorecard"]["checked"],
+            sorted(m["scorecard"]["missed"]),
+            checks(m["scorecard"]),
+        ), member.kind
         assert set(league_judge.suites(member)) == set(league_judge.SUITES), member.kind
         pairs = m["evaluation"]["pairs"]["test_iid"]
         for key in ("roc_curve", "pr_curve", "calibration", "confusion", "residuals"):

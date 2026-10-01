@@ -24,6 +24,7 @@ from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.correlate.learn import MIN_EDGE_N
 from netcorenoc.engine.operate.engine import IDLE_CLOSE_S
 from netcorenoc.ingest import known_oids
+from netcorenoc.store import link_terms
 
 #: The range the bucketed timeline covers when the caller names none: two hours, which is the
 #: window the health sampler already keeps and the one an operator reaches for first.
@@ -244,7 +245,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         # would stay. Principle 2 is unchanged and is asserted over the columns.
         # `None` when the configuration row is gone, never a default: a threshold the console
         # guessed would be worse than one it says it does not have.
-        detail["threshold"] = float(config["threshold"]) if config is not None else None
+        formula = float(config["threshold"]) if config is not None else None
+        # v0.27.0: a model's links are log-odds against the model's own threshold (`link_terms`).
+        detail["threshold"] = link_terms.threshold_of(detail["links"], formula)
+        detail["score_scale"] = link_terms.scale_of(detail["links"])
         # IV.3 on the card an operator actually works from. Same marker, same rule: every role is
         # told that planned work is in force on one of these elements, and no role is told what it
         # is from here.
