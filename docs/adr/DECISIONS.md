@@ -5732,3 +5732,24 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Schema**: migration `0027`, additive; `status` gains a value (no CHECK, as since `0001`);
   `LIVE` includes `pending`. On a schema without `0027` the guard proposes nothing and the engine
   behaves exactly as in v0.26.0 (`tests/test_upgrade.py`).
+
+## 429. The corpus suite weighs every scenario the same; the league's first training (v0.27.0)
+
+- **Context**: #425 ranks members by the mean pairwise F1 over five suites, the fifth being the
+  hand-labelled `eval/corpus`, read from each manifest's `corpus.aggregate.pairwise_f1`. That
+  aggregate is **pooled over pairs**, and `olt_storm`, `pon_dying_gasp` and `chassis_card_fail`
+  hold almost all of them. The first member evaluated (the GAM) split the ten-alarm `fiber_cut`
+  (F1 0.60), half-merged both `dual_incident` variants (0.83) and merged every `background_noise`
+  alarm (0.00, over-merge 1.00), and still pooled to **1.000**. `make eval`'s gate reads the same
+  pooled aggregate (`GATE_METRICS` against `current.json`'s `aggregate`), so it is blind to the
+  same scenarios.
+- **Decision**: the judge's corpus suite is the **mean of pairwise F1 over the corpus scenarios**,
+  each weighing the same (`league_judge.corpus_score`). The Judge screen reads the judge's own suite
+  numbers from `/api/judge` (`suites`), so the browser holds no second definition, and draws the
+  corpus scenario by scenario.
+- **When**: this was changed **after** the GAM's corpus numbers were read and **before** any other
+  member's corpus numbers existed (their evaluations were still running). It is a correction of the
+  measurement, not a re-choice of the winner; the order it produces is recorded below as it fell.
+- **Results**: appended to this entry when the league's evaluation completes — the judge's table,
+  every member's corpus scenarios against the formula's, the scorecards, and what `make eval` reads
+  once the champion decides.
