@@ -60,7 +60,7 @@ export class ModelCharts extends Component {
     if (!model) return null;
     if (model.origin === "site") {
       return html`<p class="hint">This model was fitted on this site's labels by the in-product
-        search. It has no generated-data record; its evidence is the paired comparison under
+        search. It has no generated-data record; its evidence is the paired comparison under${" "}
         <b>This site</b>, on labels that arrived after it was fitted.</p>`;
     }
     const trials = ((model.search || {}).trials || []).filter((t) => t.valid_loss != null);
