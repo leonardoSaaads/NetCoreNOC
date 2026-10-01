@@ -98,6 +98,8 @@ def member_block(member: league_model.Member, appliance_us: float | None) -> dic
                 split: {k: values.get(k) for k in _PAIR_KEYS} for split, values in pairs.items()
             },
             "corpus": m.get("corpus") or {},
+            # The judge's own numbers, so no chart re-derives a suite differently (ADR #429).
+            "suites": league_judge.suites(member),
             "latency": {"training": m.get("latency") or {}, "appliance_us": appliance_us},
             "scorecard": m.get("scorecard") or {},
             "grouping_admissible": m.get("grouping_admissible"),

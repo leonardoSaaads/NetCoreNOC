@@ -16,6 +16,14 @@ Pairwise F1 because it is the one grouping measure every suite reports on the sa
 because no suite is the network an appliance will meet, and a member that is excellent on four and
 poor on the fifth is the member the fifth is there to catch.
 
+**The corpus suite is the mean over its scenarios** (:func:`corpus_score`), each scenario weighing
+the same — not the corpus's pooled pairwise F1. The pooled number counts pairs, and three storms of
+a thousand alarms or more hold almost all of them: a member that split a ten-alarm fibre cut and
+merged every background-noise alarm still pooled to 1.000. That is the measurement `make eval`'s
+aggregate gate has always taken, and it was blind to exactly the scenarios the corpus exists for.
+*This definition was corrected after the first member's corpus numbers were read and before any
+other member's were* (ADR #429 records it).
+
 ## The fast loop's budget
 
 A member is **eligible** only if its median scoring time per pair, measured on this appliance at
@@ -47,7 +55,6 @@ A pinned member decides regardless of the ranking, and the table still shows whe
 
 from __future__ import annotations
 
-import contextlib
 import math
 import statistics
 import time
@@ -66,6 +73,7 @@ __all__ = [
     "Comparison",
     "choose",
     "compare",
+    "corpus_score",
     "measure_latency",
     "offline_score",
     "offline_table",
@@ -94,9 +102,22 @@ def suites(member: Member) -> dict[str, float]:
             out[name] = float(splits[name]["model"]["pairwise_f1"]["point"])
         except (KeyError, TypeError, ValueError):
             continue
-    with contextlib.suppress(KeyError, TypeError, ValueError):
-        out["corpus"] = float(m["corpus"]["aggregate"]["pairwise_f1"])
+    corpus = corpus_score(m)
+    if corpus is not None:
+        out["corpus"] = corpus
     return {k: v for k, v in out.items() if math.isfinite(v)}
+
+
+def corpus_score(manifest: dict[str, Any]) -> float | None:
+    """The hand-labelled corpus as one number: pairwise F1 averaged over its scenarios, each
+    weighing the same (see the module docstring for why not the pooled F1)."""
+    try:
+        scenarios = manifest["corpus"]["scenarios"]
+        values = [float(s["pairwise_f1"]) for s in scenarios.values()]
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+    values = [v for v in values if math.isfinite(v)]
+    return statistics.fmean(values) if values else None
 
 
 def repair(member: Member) -> float:

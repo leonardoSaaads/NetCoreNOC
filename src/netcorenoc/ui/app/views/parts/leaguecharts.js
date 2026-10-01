@@ -108,6 +108,10 @@ export class ModelCharts extends Component {
       <${Bars} title=${T(3, "Pairwise F1 on every suite")} max=${1} unit="ratio"
         rows=${suiteRows(model)} source=${`${GEN}; the corpus is hand-labelled`}
         span=${"the five suites the judge averages"} note="higher is better" />
+      <${Bars} title=${T(3, "Hand-labelled corpus, scenario by scenario")} max=${1} unit="ratio"
+        rows=${corpusRows(model)} source="eval/corpus: hand-labelled, replayed through the engine"
+        span=${`${corpusRows(model).length} scenarios; the judge averages them, each weighing the same`}
+        note="pairwise F1; red: below 0.95" />
       <${Bars} title=${T(4, "Hyperparameter importance")} max=${1} unit="ratio"
         rows=${importance.map(([k, v]) => ({ key: k, label: k, value: v, tone: null }))}
         source=${VALID} span=${`${first.length} first-rung fits`}
@@ -158,15 +162,22 @@ export function latencyText(model) {
   return "not measured";
 }
 
+/** The judge's five suite scores, exactly as the server ranked on them (the corpus is the mean
+ * over its scenarios, each weighing the same — ADR #429). */
 export function suiteRows(model) {
-  const rows = [];
-  for (const [key, label] of Object.entries(SUITES)) {
-    const value = key === "corpus"
-      ? ((model.corpus || {}).aggregate || {}).pairwise_f1
-      : (((model.splits || {})[key] || {}).model || {}).pairwise_f1?.point;
-    rows.push({ key, label, value: value ?? null, tone: key === "corpus" ? "warn" : null });
-  }
-  return rows;
+  const got = model.suites || {};
+  return Object.entries(SUITES).map(([key, label]) => ({
+    key, label, value: got[key] ?? null, tone: key === "corpus" ? "warn" : null,
+  }));
+}
+
+/** One bar per corpus scenario: where a model that scores well on the mean still fails. */
+export function corpusRows(model) {
+  const scenarios = (model.corpus || {}).scenarios || {};
+  return Object.entries(scenarios).map(([name, m]) => ({
+    key: name, label: name.replaceAll("_", " "), value: m.pairwise_f1 ?? null,
+    tone: m.pairwise_f1 != null && m.pairwise_f1 < 0.95 ? "alarm" : null,
+  }));
 }
 
 export { pct };

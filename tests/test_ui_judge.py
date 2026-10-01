@@ -135,7 +135,10 @@ def _manifest(document: str, kind: str, f1: float) -> str:
                     "over_merge_rate": 0.0,
                     "under_merge_rate": 0.1,
                 },
-                "scenarios": {},
+                "scenarios": {
+                    "fiber_cut": {"pairwise_f1": f1, "ari": f1},
+                    "olt_storm": {"pairwise_f1": 1.0, "ari": 1.0},
+                },
             },
             "latency": {"logit_us": 4.0, "explain_us": 30.0, "pairs": 2000},
             "scorecard": {"passed": False, "checked": 10, "missed": ["x"], "checks": []},

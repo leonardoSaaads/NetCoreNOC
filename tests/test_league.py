@@ -265,7 +265,12 @@ def _member(kind: str, document: str, f1: dict[str, float], repair: float = 1.0)
     }
     extra: dict[str, Any] = {"evaluation": {"splits": splits}}
     if "corpus" in f1:
-        extra["corpus"] = {"aggregate": {"pairwise_f1": f1["corpus"]}}
+        # The judge reads the corpus per scenario (ADR #429); two scenarios at the same value.
+        scenario = {"pairwise_f1": f1["corpus"]}
+        extra["corpus"] = {
+            "aggregate": {"pairwise_f1": 1.0},
+            "scenarios": {"fiber_cut": scenario, "olt_storm": scenario},
+        }
     return league.member_from(kind, document, _manifest(document, kind, **extra))
 
 
@@ -284,6 +289,26 @@ def test_the_offline_order_is_the_registered_rule(fitted: dict[str, str]) -> Non
     choice = league_judge.choose(league.League((a, b, c, d)))
     assert choice is not None and choice.champion == c.ref
     assert "no site labels" in choice.reason
+
+
+def test_the_corpus_suite_weighs_every_scenario_the_same(fitted: dict[str, str]) -> None:
+    """A storm of a thousand alarms must not hide a split ten-alarm fibre cut (ADR #429): the
+    pooled pairwise F1 is not what the judge reads."""
+    doc = fitted["gam"]
+    manifest = {
+        "corpus": {
+            "aggregate": {"pairwise_f1": 1.0},
+            "scenarios": {
+                "olt_storm": {"pairwise_f1": 1.0},
+                "fiber_cut": {"pairwise_f1": 0.6},
+                "background_noise": {"pairwise_f1": 0.0},
+                "dual_incident": {"pairwise_f1": 0.8},
+            },
+        }
+    }
+    member = league.member_from("gam", doc, _manifest(doc, "gam", **manifest))
+    assert league_judge.suites(member)["corpus"] == pytest.approx(0.6)
+    assert league_judge.corpus_score({"corpus": {"aggregate": {"pairwise_f1": 1.0}}}) is None
 
 
 def test_a_member_over_the_latency_budget_cannot_be_champion(fitted: dict[str, str]) -> None:
