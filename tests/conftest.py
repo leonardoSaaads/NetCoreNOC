@@ -47,6 +47,36 @@ def _fast_scrypt(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth, "SCRYPT_N", 2**14)
 
 
+@pytest.fixture(autouse=True)
+def _no_packaged_league(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test runs on the fail-safe formula unless it asks for a model (v0.27.0).
+
+    The packaged league is data a release retrains; a test of the engine's mechanics must not pass
+    or fail with which model won this release's training, nor time five models at every engine
+    start. So the league is presented empty here — the formula decides, exactly as on an appliance
+    whose league could not be read — and a test that needs a model asks for one: `test_model` (one
+    small GAM), `packaged_league` (what this build ships), or its own league.
+    """
+    from netcorenoc.engine.model import league
+
+    monkeypatch.setattr(league, "load", lambda: league.League(()))
+
+
+@pytest.fixture
+def packaged_league(monkeypatch: pytest.MonkeyPatch) -> Iterator[object]:
+    """The league this build packages, as an appliance loads it (`league.load_dir` on the
+    package's own directory) — undoing `_no_packaged_league` for the tests that are about it."""
+    from importlib import resources
+
+    from netcorenoc.engine.model import league
+
+    packaged = league.load_dir(
+        resources.files("netcorenoc.engine.model").joinpath(league.DIRECTORY)
+    )
+    monkeypatch.setattr(league, "load", lambda: packaged)
+    yield packaged
+
+
 @pytest.fixture
 async def store(tmp_path: Path) -> AsyncIterator[Store]:
     s = Store(str(tmp_path / "test.db"))

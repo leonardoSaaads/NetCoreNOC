@@ -11,6 +11,15 @@ clock, event ordering by ``delay``, no ``time.time()`` in the scored path, and a
 queueing model for latency. ``test_eval.py`` runs the harness twice and asserts identical
 output.
 
+**Who decides** (v0.27.0, ADRs #425, #429): the replay runs the real engine, so the packaged
+league's champion decides, exactly as on a fresh appliance. ``--cold`` (parity mode, which
+reproduces v0.2.0) presents the league empty, so the fail-safe formula decides — the only decider
+v0.2.0 had.
+
+**The gate reads every scenario** (ADR #429): a gated metric that falls beyond the tolerance in
+any one scenario is a regression, not only in the pooled aggregate — three storms hold almost all of
+the corpus's pairs, and a pooled number cannot see a split ten-alarm fibre cut beside them.
+
 Usage::
 
     python eval/harness.py                       # replay, print delta vs the frozen baseline
@@ -22,9 +31,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import hashlib
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -350,9 +361,27 @@ def _round(d: dict[str, float]) -> dict[str, float]:
     return {k: round(v, 6) for k, v in d.items()}
 
 
+@contextlib.contextmanager
+def _formula_only() -> Iterator[None]:
+    """The fail-safe formula decides: the league is presented empty, exactly as on an appliance
+    whose league could not be read. Parity mode reproduces v0.2.0, which had nothing else."""
+    from netcorenoc.engine.model import league
+
+    saved = league.load
+    league.load = lambda: league.League(())  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        league.load = saved
+
+
 async def run_all(promote: bool = True) -> dict[str, Any]:
-    """Replay every corpus file (fixed order) and return the full metrics document."""
-    results = [await run_scenario(p, promote=promote) for p in sorted(CORPUS_DIR.glob("*.json"))]
+    """Replay every corpus file (fixed order) and return the full metrics document. ``promote``
+    off is parity mode, which also hands the decision to the fail-safe formula (see above)."""
+    with contextlib.nullcontext() if promote else _formula_only():
+        results = [
+            await run_scenario(p, promote=promote) for p in sorted(CORPUS_DIR.glob("*.json"))
+        ]
 
     scenarios: dict[str, Any] = {}
     pooled: list[_AlarmScore] = []
@@ -411,6 +440,11 @@ def _delta_table(current: dict[str, Any], baseline: dict[str, Any]) -> str:
             delta = f"{cur - base:+.4f}"
         gate = "  <- GATE" if key in GATE_METRICS else ""
         lines.append(f"{key:<26}{_fmt(base):>12}{_fmt(cur):>12}{delta:>12}{gate}")
+    moves = _scenario_moves(current, baseline)
+    if moves:
+        lines.append("-" * 62)
+        lines.append("gated metrics that moved, per scenario (baseline -> current)")
+        lines.extend(moves)
     regressions = _regressions(current, baseline)
     lines.append("=" * 62)
     if regressions:
@@ -421,17 +455,40 @@ def _delta_table(current: dict[str, Any], baseline: dict[str, Any]) -> str:
 
 
 def _regressions(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
-    base_agg = baseline.get("aggregate", {})
+    """Every gated metric beyond the tolerance below its baseline: the aggregate's, then each
+    scenario's (ADR #429). A scenario the baseline does not carry is new, not a regression."""
+    out = _fallen("", current.get("aggregate", {}), baseline.get("aggregate", {}))
+    base_scenarios = baseline.get("scenarios", {})
+    for name, got in sorted(current.get("scenarios", {}).items()):
+        if name in base_scenarios:
+            out += _fallen(f"{name}/", got, base_scenarios[name])
+    return out
+
+
+def _fallen(prefix: str, current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
     out = []
     for key in GATE_METRICS:
-        cur = current["aggregate"].get(key)
-        base = base_agg.get(key)
+        cur = current.get(key)
+        base = baseline.get(key)
         if (
             isinstance(cur, int | float)
             and isinstance(base, int | float)
             and cur < base - GATE_TOLERANCE
         ):
-            out.append(f"{key} {cur:.4f} < {base:.4f}-{GATE_TOLERANCE}")
+            out.append(f"{prefix}{key} {cur:.4f} < {base:.4f}-{GATE_TOLERANCE}")
+    return out
+
+
+def _scenario_moves(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
+    """Each scenario's gated metrics that differ from the baseline, either way, for the table."""
+    base_scenarios = baseline.get("scenarios", {})
+    out = []
+    for name, got in sorted(current.get("scenarios", {}).items()):
+        base = base_scenarios.get(name, {})
+        for key in GATE_METRICS:
+            cur, was = got.get(key), base.get(key)
+            if isinstance(cur, int | float) and isinstance(was, int | float) and cur != was:
+                out.append(f"{name + '/' + key:<40}{_fmt(was):>11}{_fmt(cur):>11}")
     return out
 
 
@@ -451,6 +508,13 @@ def _moved_metrics(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
         before, after = old_agg.get(key), new_agg.get(key)
         if before != after:
             out.append(f"{key}: {before!r} -> {after!r}")
+    # v0.27.0 (ADR #429): the gate reads each scenario, so the log says which scenarios moved.
+    old_sc, new_sc = old.get("scenarios", {}), new.get("scenarios", {})
+    for name in sorted(set(old_sc) | set(new_sc)):
+        for key in GATE_METRICS:
+            before, after = old_sc.get(name, {}).get(key), new_sc.get(name, {}).get(key)
+            if before != after:
+                out.append(f"{name}/{key}: {before!r} -> {after!r}")
     return out
 
 

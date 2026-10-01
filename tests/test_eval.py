@@ -35,20 +35,40 @@ BASELINE = json.loads((EVAL / "baselines" / "current.json").read_text())
 V020 = json.loads((EVAL / "baselines" / "v0.2.0.json").read_text())
 
 
-async def test_harness_is_deterministic() -> None:
+# v0.27.0: `make eval` replays with the league this build packages, its champion deciding — so the
+# tests of what `make eval` measures ask for it (`packaged_league`); every other test in the suite
+# runs on the fail-safe formula (`conftest._no_packaged_league`). Parity mode stays the formula.
+
+
+async def test_harness_is_deterministic(packaged_league: object) -> None:
     first = await harness.run_all()
     second = await harness.run_all()
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
 
 
-async def test_no_regression_against_frozen_baseline() -> None:
+async def test_no_regression_against_frozen_baseline(packaged_league: object) -> None:
     current = await harness.run_all()
-    base = BASELINE["aggregate"]
-    for metric in harness.GATE_METRICS:
-        cur = current["aggregate"][metric]
-        assert cur >= base[metric] - harness.GATE_TOLERANCE, (
-            f"{metric} regressed: {cur:.4f} < {base[metric]:.4f} - {harness.GATE_TOLERANCE}"
-        )
+    # The aggregate and every scenario (ADR #429), exactly as `make eval` gates.
+    assert harness._regressions(current, BASELINE) == []
+
+
+def test_the_gate_reads_every_scenario_not_only_the_pooled_aggregate() -> None:
+    """A split ten-alarm scenario beside a thousand-alarm storm barely moves the pooled F1; the
+    gate must still see it (ADR #429)."""
+    base = {
+        "aggregate": {"pairwise_f1": 1.0, "ari": 1.0, "entity_accuracy": 0.5},
+        "scenarios": {
+            "olt_storm": {"pairwise_f1": 1.0, "ari": 1.0, "entity_accuracy": 0.5},
+            "fiber_cut": {"pairwise_f1": 1.0, "ari": 1.0, "entity_accuracy": 1.0},
+        },
+    }
+    current = json.loads(json.dumps(base))
+    current["aggregate"]["pairwise_f1"] = 0.999
+    current["scenarios"]["fiber_cut"]["pairwise_f1"] = 0.6
+    assert harness._regressions(current, base) == ["fiber_cut/pairwise_f1 0.6000 < 1.0000-0.01"]
+    current["scenarios"]["new_scenario"] = {"pairwise_f1": 0.0}
+    assert len(harness._regressions(current, base)) == 1, "a new scenario is not a regression"
+    assert harness._regressions(base, base) == []
 
 
 #: Scenarios whose cold-mode metrics have **deliberately** left v0.2.0, each with the release
@@ -83,6 +103,18 @@ async def test_cold_mode_reproduces_the_v020_baseline() -> None:
         )
 
 
+async def test_parity_mode_is_the_formula_even_when_a_model_is_packaged(
+    test_model: object,
+) -> None:
+    """`--cold` reproduces v0.2.0, which had only the formula: a league must not decide there.
+    `test_model` makes a one-GAM league the champion — which, deciding, merges `background_noise`
+    (F1 1.0 -> 0.0) — and parity mode must not even look at it."""
+    cold = await harness.run_all(promote=False)
+    for name, expected in V020["scenarios"].items():
+        if name not in DECLARED_DIVERGENCES:
+            assert cold["scenarios"][name] == expected, f"{name}: a model decided in parity mode"
+
+
 async def test_every_declared_divergence_is_a_real_one() -> None:
     """The control: an entry that no longer diverges is an exemption hiding a passing case.
 
@@ -99,7 +131,7 @@ async def test_every_declared_divergence_is_a_real_one() -> None:
         )
 
 
-async def test_learning_mode_lifts_entity_accuracy() -> None:
+async def test_learning_mode_lifts_entity_accuracy(packaged_league: object) -> None:
     """The headline: with promotion on, entity attribution improves dramatically over the
     proxied storms while grouping (pairwise_f1) never regresses."""
     learned = await harness.run_all(promote=True)
