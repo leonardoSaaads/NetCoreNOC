@@ -28,14 +28,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from netcorenoc.engine.correlate.grouping import Placement
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
     from netcorenoc.engine.operate.engine import Engine
 
-__all__ = ["Route", "route"]
+__all__ = ["Route", "lapse", "route"]
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,11 @@ class Route:
     merges: tuple[int, ...] = ()
     propose: int | None = None
     confidence: float = 0.0
+
+    @property
+    def act(self) -> str:
+        """The lifecycle act that creates ``sid`` when it does not exist yet (`TRANSITIONS`)."""
+        return "correlate" if self.propose is None else "propose"
 
 
 def _probability(evidence: float) -> float:
@@ -112,3 +117,10 @@ async def route(engine: Engine, placement: Placement, own: int | None) -> Route:
         )
     )
     return Route(pending, folds, target, confidence)
+
+
+async def lapse(store: Any, now: float) -> None:
+    """A proposal whose target is no longer `open` has nothing to join: it lapses to `new`. Run
+    by the maintenance pass after its closes, so a target resolved in a pass lapses in it too."""
+    for sid in await store.orphan_proposals():
+        await store.withdraw_proposal(sid, now)

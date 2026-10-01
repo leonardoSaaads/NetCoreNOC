@@ -85,7 +85,7 @@ async def test_every_act_is_attributed_and_explained(store: Store, test_model: o
     grades = {r["grade"] for r in rows}
     assert {"grouping", "naming"} <= grades, grades
     for row in rows:
-        assert row["decider"] == engine.decider_ref and row["decider"].startswith("shipped:")
+        assert row["decider"] == engine.decider_ref and row["decider"].startswith("gam:")
         explanation = row["explanation"]
         assert isinstance(explanation, dict) and explanation, f"{row['grade']} has no explanation"
     grouping = next(r for r in rows if r["grade"] == "grouping")

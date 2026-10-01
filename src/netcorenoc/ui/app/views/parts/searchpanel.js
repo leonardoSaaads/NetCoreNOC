@@ -1,12 +1,13 @@
-/* Settings → Search: the in-product hyperparameter search (v0.26.0, ADR #413).
+/* Settings → Site training: the in-product search that adapts the GAM to this site (ADR #413).
  *
- * Random search over a bounded space with successive halving, seeded and resumable, run by the
- * maintenance loop one boosting round at a time — so it never holds the lock the receiver needs,
- * and **Stop** takes effect at the next round. Its result is a *site model*, which decides nothing
- * until the judge says it is better and an admin switches to it (Correlation).
+ * Random search over a bounded space with successive halving, seeded and resumable, run out of
+ * process by the slow loop — so it never holds the lock the receiver needs, and **Stop** takes
+ * effect at the next round. Its result **joins the league** (v0.27.0, ADR #425) as one more model
+ * the judge ranks: it decides only if it beats the champion on labels that arrived after it was
+ * fitted. Nobody has to switch to it.
  *
  * The budget is the admin's: how many configurations, how many rounds the survivors get, and a
- * wall-clock ceiling. Every trial is kept and charted on Judge & promotion.
+ * wall-clock ceiling. Every trial is kept and charted on Judge.
  */
 
 import { html, Component } from "../../dom.js";
@@ -57,6 +58,14 @@ export class SearchPanel extends Component {
     const running = data.runs.length && data.runs[0].status === "running";
     const writable = can("search.write");
     return html`<div class="stack">
+      <div class="settings-intro">
+        <p><b>Teach the models this network.</b> The pre-trained models learned from generated
+          incidents. A site training run fits an adapted GAM on the groupings your operators have
+          confirmed, corrected, accepted or rejected here, and adds it to the league.</p>
+        <p>The adapted model then competes like any other: the judge lets it decide only if it is
+          better on labels it has not seen. Nothing is switched by hand, and nothing waits for a
+          minimum number of labels — with few labels, it simply cannot prove itself yet.</p>
+      </div>
       <section class="panel-block param-mechanism">
         <${SectionHeading} title="Search budget"
           hint="Runs in the background on the maintenance loop, one round at a time: ingestion and the console are never blocked." />
@@ -88,7 +97,7 @@ export class SearchPanel extends Component {
 
 function Runs({ runs }) {
   return html`<section class="panel-block">
-    <${SectionHeading} title="Searches" hint="Every run and its outcome. The trials are charted on Judge & promotion." />
+    <${SectionHeading} title="Searches" hint="Every run and its outcome. The trials are charted on Judge." />
     <${DataTable} empty="No search has run on this appliance." columns=${[
       { key: "id", label: "#", numeric: true }, { key: "when", label: "started" },
       { key: "by", label: "by" }, { key: "status", label: "status" },

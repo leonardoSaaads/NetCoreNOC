@@ -54,6 +54,14 @@ export class Autonomy extends Component {
     if (error) return html`<${Failed} error=${error} retry=${this.read} what="autonomy" />`;
     if (!status) return html`<${Loading} label="Reading autonomy" />`;
     return html`<div class="stack">
+      <div class="settings-intro">
+        <p><b>Let the deciding model act on its own, one kind of act at a time.</b> Each grade below
+          is off until an admin turns it on. Every act names the model that made it and the
+          evidence it used, and is judged by what operators do next.</p>
+        <p>If operators disagree with too many recent acts, autonomy turns itself off and says why.
+          Anyone who can edit can stop it from the top bar of every screen. A situation an operator
+          has confirmed is never regrouped by a model, autonomous or not.</p>
+      </div>
       <${Status} status=${status} onStopped=${this.read} />
       ${can("autonomy.write") ? html`<${Form} settings=${status.settings} onSaved=${this.read} />` : null}
       ${decisions ? html`<${Decisions} rows=${decisions} />` : null}

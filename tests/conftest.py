@@ -57,11 +57,14 @@ async def store(tmp_path: Path) -> AsyncIterator[Store]:
 
 @pytest.fixture
 def test_model(monkeypatch: pytest.MonkeyPatch) -> Iterator[object]:
-    """v0.26.0: `modelutil.TEST_MODEL` as the shipped model, for the decider's mechanics."""
-    from netcorenoc.engine.model import shipped
+    """`modelutil.TEST_MODEL` as the whole league — one GAM, so it is the champion — for the
+    decider's mechanics (v0.26.0; the league since v0.27.0). Also the GAM a site search adapts."""
+    from netcorenoc.engine.model import league, shipped
 
     from modelutil import TEST_MODEL, manifest
 
     model = shipped.load_from(TEST_MODEL, manifest(TEST_MODEL))
+    member = league.member_from("gam", TEST_MODEL, manifest(TEST_MODEL))
     monkeypatch.setattr(shipped, "load", lambda: model)
+    monkeypatch.setattr(league, "load", lambda: league.League((member,)))
     yield model

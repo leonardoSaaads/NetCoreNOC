@@ -2,7 +2,7 @@
 
 The model stands in for the shipped one so those tests check *mechanics* — which family runs, what
 it groups, what autonomy does with it — and never the shipped model's quality, which `make train`
-measures and `tests/test_shipped.py` pins.
+measures and `tests/test_league.py` pins.
 """
 
 from __future__ import annotations
@@ -42,7 +42,8 @@ TEST_MODEL = json.dumps(
 
 def manifest(document: str) -> str:
     """The least manifest the loader accepts: the document's SHA-256."""
-    return json.dumps({"artifact": {"sha256": hashlib.sha256(document.encode()).hexdigest()}})
+    digest = hashlib.sha256(document.encode()).hexdigest()
+    return json.dumps({"artifact": {"sha256": digest, "kind": gam.KIND}})
 
 
 def trap(device: str, oid: str, instance: str, ts: float) -> TrapEvent:

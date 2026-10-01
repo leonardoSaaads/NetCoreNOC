@@ -45,8 +45,11 @@ export const SEARCH_NOTE =
   "the live list.";
 
 export const TABS = [
-  ["new", "New", "Formed by the correlator, and nobody has looked at it yet"],
-  ["open", "Open", "An operator has touched it: judged, moved, merged, split or named it"],
+  ["new", "New", "Formed by the model, and nobody has looked at it yet"],
+  // v0.27.0 (ADR #428): alarms the model would have added to a confirmed (Open) situation. They
+  // wait here for an operator's answer instead of changing confirmed work behind their back.
+  ["pending", "Pending", "The model proposes adding these alarms to an Open situation; accept or reject"],
+  ["open", "Open", "An operator has confirmed it; the model never changes it"],
   ["resolved", "Resolved", "It has left — and the card says why"],
   ["", "Any", "Every situation this appliance currently holds"],
 ];
@@ -78,9 +81,11 @@ export function Counts({ stats, status, onPick }) {
     ["active alarms", stats.active_alarms, null, "alarm",
      "Alarms the appliance believes are still on. Not situations — one situation can hold many."],
     ["new", stats.new_situations, "new", "warn",
-     "Formed by the correlator and nobody has looked at them yet. This is the queue."],
+     "Formed by the model and nobody has looked at them yet. This is the queue."],
+    ["pending", stats.pending_situations, "pending", "warn",
+     "Alarms the model proposes adding to a confirmed situation. They wait for your answer."],
     ["open", stats.working_situations, "open", null,
-     "An operator has touched them: judged, moved, merged, split or named."],
+     "Confirmed by an operator. The model never adds to them on its own."],
   ];
   return html`<div class="stat-row count-cards">
     ${tiles.map(([label, value, tab, tone, why]) => {

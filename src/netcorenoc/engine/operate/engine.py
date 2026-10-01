@@ -146,12 +146,9 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # clear-seen for what a window suppressed, flushed by the same loop.
         self.windows: mw_index.WindowIndex = mw_index.EMPTY
         self.ledger = StateLedger()
-        # **Pending proposals** (v0.27.0, ADR #428): every (bag, open situation) an operator said
-        # do not belong together. `proposals.route` never proposes one twice. Reloaded at start.
+        # v0.27.0: (bag, open situation) pairs an operator rejected (ADR #428); each league
+        # member's fast-path cost here, and the challengers' live shadow (ADR #423).
         self.rejected_proposals: set[tuple[int, int]] = set()
-        # The league (v0.27.0, ADR #423): each member's fast-path cost on this appliance, measured
-        # once per process at the first reload over the packaged benchmark pairs; and the live
-        # shadow — every challenger scoring a bounded sample of the champion's own pairs.
         self.latency_us: dict[str, float] = {}
         self.league_shadow = LeagueShadow()
 
@@ -389,8 +386,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         )
         # Last on this path, after capture, so no decision follows it. `observe` never raises.
         self.shadow.observe(entry, outcome, self.sit_of.get(entry.alarm_id))
-        # v0.27.0 (ADR #423): the challengers, on a bounded sample of the pairs the champion just
-        # scored — vectors already built, no I/O, no lock. Observability; it decides nothing.
+        # v0.27.0 (ADR #423): challengers on a bounded sample of these pairs; decides nothing.
         self.league_shadow.observe(
             entry.alarm_id, outcome, self.challengers, len(self.correlator.index)
         )
@@ -519,30 +515,21 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         cannot know and the monitor wants (a rising merge rate is the over-merge signature, F76).
         """
         placement = outcome.placement
-        # v0.27.0 (ADR #428): what the engine may DO with the model's opinion. A confirmed (`open`)
-        # situation is never grown by a model; the alarm goes into a pending proposal instead.
+        # v0.27.0 (ADR #428): a model never grows an `open` situation; it proposes instead.
         routed = await proposals.route(self, placement, self.sit_of.get(entry.alarm_id))
         sid = routed.sid
         if sid is None or sid not in self.members:
             # Provenance (v0.6.0): the situation records the scoring configuration that formed
             # it. Written here — engine side, under the batch lock — never on the datagram path.
             sid = await self.store.create_situation(
-                entry.ts,
-                self.scorer_config_id,
-                "correlate" if routed.propose is None else "propose",
-                decider=self.decider_ref,
+                entry.ts, self.scorer_config_id, routed.act, decider=self.decider_ref
             )
             self.members[sid] = []
         if routed.propose is not None:
             await self.store.set_proposal(sid, routed.propose, routed.confidence)
-        merged = 0
-        executed: list[int] = []
-        for other_sid in routed.merges:
-            if other_sid == sid or other_sid not in self.members:
-                continue
+        executed = [m for m in routed.merges if m != sid and m in self.members]
+        for other_sid in executed:
             await self.store.merge_situations(sid, other_sid, entry.ts)
-            executed.append(other_sid)
-            merged += 1
             for member in self.members.pop(other_sid, []):
                 self.sit_of[member.alarm_id] = sid
                 self.members[sid].append(member)
@@ -576,7 +563,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         root = self.precedence.pick_root(self.members[sid])
         if root is not None:
             await self.store.set_root(sid, root)
-        return merged
+        return len(executed)
 
     async def apply_feedback(
         self,
@@ -638,10 +625,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 await self._close_situation(sid, now)
             for sid in await self.store.cleared_open_situations(now - CLEAR_HOLD_S):
                 await self._close_situation(sid, now)
-            # A proposal whose target is no longer `open` has nothing to join: it lapses to `new`
-            # (ADR #428). After the closes above, so a target resolved this pass lapses this pass.
-            for sid in await self.store.orphan_proposals():
-                await self.store.withdraw_proposal(sid, now)
+            await proposals.lapse(self.store, now)  # after the closes: a target gone now lapses now
             await self._maintenance_windows(now)  # v0.21.0: advance, surface, rebuild the index
             await self._promotion_sweep(now)
             await self.learner.save(self.store, now)

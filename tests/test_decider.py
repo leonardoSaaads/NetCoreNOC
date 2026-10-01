@@ -2,7 +2,7 @@
 
 A small hand-written model stands in for the shipped one, so these tests check the *mechanics* —
 which family runs, what candidates it sees, how it groups, what the routes permit — and never the
-shipped model's quality, which `make train` measures and `tests/test_shipped.py` pins.
+shipped models' quality, which `make train` measures and `tests/test_league.py` pins.
 """
 
 from __future__ import annotations
@@ -35,18 +35,20 @@ async def test_a_fresh_appliance_runs_the_shipped_model(
     assert engine.correlator.grouper.mode == "cluster"
 
 
-async def test_a_refused_shipped_model_falls_back_to_the_formula_and_says_why(
+async def test_a_league_with_every_member_refused_falls_back_to_the_formula_and_says_why(
     store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def refuse() -> shipped.Shipped:
-        raise shipped.ShippedModelError("the model document was refused: test")
+    """ADR #425: the formula is the fail-safe — reached only when no model can load, and loudly."""
+    from netcorenoc.engine.model import league
 
-    monkeypatch.setattr(shipped, "load", refuse)
+    refused = league.League((), (("gam", "the model document was refused: test"),))
+    monkeypatch.setattr(league, "load", lambda: refused)
     engine = Engine(store, asyncio.Queue())
     await engine.start()
     assert engine.decider_ref.startswith("additive:"), "the formula as configured decides"
     assert not engine.correlator.two_stage
-    assert any("shipped model could not be used" in w for w in engine.scorer_warning_list())
+    warnings = engine.scorer_warning_list()
+    assert any("No model can decide" in w and "refused" in w for w in warnings), warnings
 
 
 def test_a_manifest_that_does_not_match_its_model_is_refused() -> None:
@@ -134,24 +136,30 @@ async def test_a_bounce_inside_the_clear_hold_rejoins_its_situation(
     assert [r[0] for r in await cur.fetchall()] == ["self_cleared"]
 
 
-async def test_the_decider_routes_are_admin_and_a_site_switch_needs_a_verdict(
+async def test_the_decider_routes_are_admin_and_only_a_pin_or_the_judge_can_decide(
     store: Store, test_model: shipped.Shipped
 ) -> None:
+    """v0.27.0 (ADR #425): the judge chooses; an admin may pin a member, with a reason. The formula
+    and the site mode are retired as choices and refused with the reason."""
     _engine, _queue, app = await authutil.make_env(store)
     viewer = await authutil.client_as(app, "viewer")
     editor = await authutil.client_as(app, "editor")
     admin = await authutil.client_as(app, "admin")
     got = (await viewer.get("/api/decider")).json()
-    assert got["mode"] == "shipped" and got["shipped"]["ref"] == test_model.ref
-    body = {"mode": "additive", "reason": "testing the switch"}
-    assert (await editor.post("/api/decider", json=body)).status_code == 403
-    assert (await admin.post("/api/decider", json=body)).status_code == 200
-    assert (await viewer.get("/api/decider")).json()["mode"] == "additive"
-    site = await admin.post("/api/decider", json={"mode": "site", "reason": "no model yet"})
-    assert site.status_code == 409 and "no site model" in site.text
-    assert (
-        await admin.post("/api/decider", json={"mode": "shipped", "reason": ""})
-    ).status_code == 422
+    assert got["mode"] == "league" and got["champion"]["ref"] == test_model.ref
+    assert got["pinned"] is None and not got["fallback"]
+    pin = {"mode": "shipped", "pin": test_model.ref, "reason": "testing the pin"}
+    assert (await editor.post("/api/decider", json=pin)).status_code == 403
+    assert (await admin.post("/api/decider", json=pin)).status_code == 200
+    assert (await viewer.get("/api/decider")).json()["pinned"] == test_model.ref
+    for retired in ("additive", "site"):
+        r = await admin.post("/api/decider", json={"mode": retired, "reason": "the old way"})
+        assert r.status_code == 409 and "retired" in r.text
+    unknown = {"mode": "shipped", "pin": "gam:000000000000", "reason": "not a member"}
+    assert (await admin.post("/api/decider", json=unknown)).status_code == 409
+    assert (await admin.post("/api/decider", json={"reason": ""})).status_code == 422
+    assert (await admin.post("/api/decider", json={"reason": "the judge again"})).status_code == 200
+    assert (await viewer.get("/api/decider")).json()["pinned"] is None
 
 
 async def test_the_kill_switch_is_an_editor_gesture_and_enabling_is_admin(

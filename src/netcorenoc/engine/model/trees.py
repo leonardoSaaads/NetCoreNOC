@@ -66,6 +66,8 @@ from netcorenoc.engine.correlate.scorer_contract import (
     LinkScore,
     TermContribution,
 )
+from netcorenoc.engine.model import trees_shap
+from netcorenoc.engine.model.trees_shap import LEAF, MAX_DEPTH
 
 __all__ = [
     "FORMAT",
@@ -83,12 +85,10 @@ __all__ = [
 
 FORMAT = "netcorenoc.trees/1"
 METHODS = ("decision_tree", "random_forest", "boosted_trees")
-LEAF = -1
 
 MAX_TREES = 600
 MAX_NODES = 2047  # per tree: a full binary tree of depth 10
 MAX_TOTAL_NODES = 120_000
-MAX_DEPTH = 14
 MAX_ABS_SCORE = 25.0
 MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
 
@@ -295,24 +295,6 @@ def fingerprint(document: str) -> str:
     return hashlib.sha256(f"trees\n{CONTRACT_VERSION}\n{document}".encode()).hexdigest()
 
 
-# Shapley weights for the one-reference game of a leaf: (a-1)! b! / (a+b)! and a! (b-1)! / (a+b)!.
-def _weights(depth: int) -> tuple[tuple[tuple[float, float], ...], ...]:
-    f = [math.factorial(k) for k in range(2 * depth + 2)]
-    return tuple(
-        tuple(
-            (
-                f[a - 1] * f[b] / f[a + b] if a else 0.0,
-                f[a] * f[b - 1] / f[a + b] if b else 0.0,
-            )
-            for b in range(depth + 1)
-        )
-        for a in range(depth + 1)
-    )
-
-
-_W = _weights(MAX_DEPTH)
-
-
 class TreesScorer:
     """A `LinkScorer` over the v2 feature vector. Pure and deterministic."""
 
@@ -355,46 +337,8 @@ class TreesScorer:
         phi = [0.0] * len(self.model.features)
         z = self._reference
         for tree in self._trees:
-            self._walk(tree, vector, z, phi)
+            trees_shap.walk(tree, vector, z, phi, self._scale)
         return phi
-
-    def _walk(
-        self, tree: Tree, x: tuple[float, ...], z: tuple[float, ...], phi: list[float]
-    ) -> None:
-        scale = self._scale
-        # (node, {local feature: (x satisfies, z satisfies)}) — only restricted features are kept.
-        stack: list[tuple[int, dict[int, tuple[bool, bool]]]] = [(0, {})]
-        while stack:
-            i, state = stack.pop()
-            f = tree.feature[i]
-            if f == LEAF:
-                a_set = [k for k, (xo, zo) in state.items() if xo and not zo]
-                b_set = [k for k, (xo, zo) in state.items() if zo and not xo]
-                a, b = len(a_set), len(b_set)
-                if not a and not b:
-                    continue  # the same leaf for every coalition: part of the base value
-                v = scale * tree.value[i]
-                wa, wb = _W[a][b]
-                for k in a_set:
-                    phi[k] += v * wa
-                for k in b_set:
-                    phi[k] -= v * wb
-                continue
-            k = tree.local[i]
-            x_left = x[f] <= tree.threshold[i]
-            z_left = z[f] <= tree.threshold[i]
-            xo, zo = state.get(k, (True, True))
-            for child, x_goes, z_goes in (
-                (tree.left[i], x_left, z_left),
-                (tree.right[i], not x_left, not z_left),
-            ):
-                cx, cz = xo and x_goes, zo and z_goes
-                if not cx and not cz:
-                    continue
-                if (cx, cz) == (xo, zo):
-                    stack.append((child, state))
-                else:
-                    stack.append((child, {**state, k: (cx, cz)}))
 
     def explain(self, vector: tuple[float, ...]) -> LinkScore:
         """The logit **and** its decomposition: one Shapley value per model feature."""
