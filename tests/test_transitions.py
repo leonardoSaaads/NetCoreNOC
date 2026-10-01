@@ -36,8 +36,10 @@ def test_attention_is_derived_from_the_table_and_rename_is_not_in_it() -> None:
     assert TRANSITIONS["accept"] == {"pending": "resolved"}
     assert TRANSITIONS["reject"] == {"pending": "new"}
     assert TRANSITIONS["lapse"] == {"pending": "new"}
-    assert all("open" not in edges.values() or None not in edges or edges[None] != "pending"
-               for edges in TRANSITIONS.values())
+    assert all(
+        "open" not in edges.values() or None not in edges or edges[None] != "pending"
+        for edges in TRANSITIONS.values()
+    )
 
 
 @pytest.mark.parametrize("act", sorted(a for a, e in TRANSITIONS.items() if None in e))
