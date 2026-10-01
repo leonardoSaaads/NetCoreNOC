@@ -1315,7 +1315,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: four API modules (`routes/decider`, `models_decider`, `public_paths`, `shipped_view` — split off
 #: the routes at the 400-line guard); six console modules. **No model file is among them** — the
 #: build ships none (ADR #422).
-SRC_TREE_DIGEST = "5673f1e31c4fc710c1f11d40ff81ceb13cf4944eb6f8cadb2b302e10101dd0be"
+SRC_TREE_DIGEST = "13c2a31d8849372feefa22911fd6ba7398caae86a1cca07cbe0efa758ca72a75"
 SRC_FILE_COUNT = 354
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

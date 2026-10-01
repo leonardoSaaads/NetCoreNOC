@@ -3,8 +3,10 @@
 **Where my measurements contradict the brief:** (1) the models compete from the first trap and the
 formula decides nothing while a model loads — as asked — but **the day-0 champion is worse than the
 retired formula on three of the eleven hand-labelled corpus scenarios** (and better on one). The
-judge's registered rule chose it; the numbers are below and in DECISIONS #429. (2) The pooled
-`make eval` gate could not see that: it now reads every scenario.
+judge's registered rule chose it; the numbers are below and in DECISIONS #429. (2) **Live, the lab's
+two-host fibre cut became two situations, one per OLT, under every model tried** (random forest,
+logistic regression, GAM); v0.26.0's formula made one of 25 alarms. (3) The pooled `make eval` gate
+could not see the corpus regressions: it now reads every scenario.
 
 Verified by execution before any change: `__version__` 0.26.0 at `029ede0`, migrations through
 `0026`. This hands over **v0.27.0** on `claude-code/trusting-goldberg-j8xpoo`
@@ -60,7 +62,9 @@ regression** in Settings → Models; that is what the pin is for.
 ## What was not done
 
 - **A feature that tells a proxied storm from same-vendor background noise** — the reason every
-  member fails `background_noise` — and the retraining after it.
+  member fails `background_noise` — and the retraining after it. The same training-data gap is
+  the likeliest cause of the split two-host lab cut: the generator's cross-element storms do not
+  look like the lab's two OLTs.
 - **Real-world labels**: none exist; training is generated data only.
 - **Re-recording the dataset with the final code**: its digest changes (the engine's sources moved
   after recording); six streams re-recorded across train, valid and three test splits came back
@@ -68,7 +72,18 @@ regression** in Settings → Models; that is what the pin is for.
 
 ## Verification
 
-<!-- VERIFICATION -->
+| gate | result |
+|---|---|
+| full suite | **2 671 passed, 0 failed** (10 min; the league packaged, the suite on the fail-safe formula unless a test asks for a model) |
+| `mypy --strict`, `ruff check`, `ruff format --check` | clean (379 files typed, 419 formatted) |
+| `vulture`, `bandit`, `pip-audit --skip-editable` | clean; no known vulnerabilities |
+| `make dom` (Node 22) | **101 passed**, none skipped |
+| `make eval` | no gated regressions against the re-cut baseline, aggregate **and every scenario**; hash `43328080…`, identical over two runs |
+| behaviour-identity record | re-written and identical over two runs: 16 lines added (three console modules and the proposal route, four roles each), 4 removed (`shippedjudge.js`), the rest attributed to the league (`/api/decider`, `/api/judge`, `/api/search`), the champion grouping the seed scenario, `link_terms`/`score_scale` on situation details, and the console's files. Each member's scoring time is pinned in the record like the clock |
+| wheel | built; installed in a clean Python 3.12 venv: 0.27.0, **five members load, none refused**, champion `random_forest:d2cdd3cd10c7`, 2 000 benchmark pairs |
+| live pass (real appliance, the lab, Chromium) | champion on boot in 2 s; the judge's first decision written and audited; **Pending end to end**: an editor promoted the cut's situation to Open, the next cut's new alarms went to a Pending situation proposing to join it (model probability 0.989), accept merged it (9 → 16 members); live shadow scored 246 pairs per challenger (agreement 94–100 %); both `dual_incident` replays kept apart |
+| browser | Situations, Settings (four tabs), Judge, Corpus, Labelling at 1440 and 390 px: **0 px page overflow, 0 console errors**. Found and fixed here: the league table laid out as a flex box (its class collided with the board's container class), a decision time rendered as a table cell inside a paragraph, and two words glued together |
+| injections (red with the fix removed, green with it) | the corpus suite pooled again; parity mode letting a model decide; the link explanation unread on the server; the console ignoring it |
 
 ## Delivery
 

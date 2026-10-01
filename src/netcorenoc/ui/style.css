@@ -2874,7 +2874,7 @@ button.danger:hover { background: var(--alarm); color: var(--bg); }
 .league-champion-role, .league-champion.league-role { border-color: var(--accent); color: var(--accent); }
 .league-role.league-champion { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .league-role.league-ineligible { border-color: var(--warn); color: var(--warn); }
-table.data.league td, table.data.league th { white-space: nowrap; }
+table.data.league-table td, table.data.league-table th { white-space: nowrap; }
 .league-compare > .chart-legend { margin-bottom: var(--space-3); }
 .league-performance .versus-row { margin-bottom: var(--space-1); }
 

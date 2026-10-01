@@ -151,7 +151,7 @@ function League({ rows }) {
   return html`<section class="panel-block">
     <${SectionHeading} title="The models, in the judge's order"
       hint="Score: mean pairwise F1 on five test suites no model trained on, including a hand-labelled corpus. Higher is better." />
-    <${DataTable} kind="league" columns=${[
+    <${DataTable} kind="league-table" columns=${[
       { key: "rank", label: "#", numeric: true },
       { key: "name", label: "model" },
       { key: "role", label: "role" },

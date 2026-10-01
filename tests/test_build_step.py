@@ -413,7 +413,7 @@ UI_HASHES: dict[str, str] = {
     ),
     "app/views/parts/decide.js": "6474cd33ca0ffc92a0317d965d0c9dc78e7b7277d9160f34abfb6c1cd9cf4f11",
     "app/views/parts/decider.js": (
-        "a7aa5dd864abc0f27a33249579930492038a724b70e76815cdf701970743aea7"
+        "96e03e99982bd620e777bc771b773f1c3e0c71ccf7cb19080ee2c96b8d84930f"
     ),
     "app/views/parts/declare.js": (
         "9d177b9c1a5e1c3207583b560eb9aeeeaae33b8fb50b5ab04fee3809f238912f"
@@ -433,7 +433,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/keeping.js": (
         "10bf18e8e753121f3c51a130c8470aa3858e0d1b4cb7ce954b041228e97dfa56"
     ),
-    "app/views/parts/league.js": "3c47768d686172b51e8c763601057d5649455df169e1fbf338b0974df6c9699e",
+    "app/views/parts/league.js": "ae72a6a6ebdeb1da9ed1fff4c400678bc346dcfb3057e356b947912f11dc38fa",
     "app/views/parts/leaguecharts.js": (
         "4299f0a6e889d4f91655905abf997cd5e83632abec011270970161f6276e0db2"
     ),
@@ -524,7 +524,7 @@ UI_HASHES: dict[str, str] = {
     "app/widgets.js": "32ee7263e4f7b1905b5d8acd68532635a9351df2a5d811a88e814c268052c5c7",
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "d057123e5cfc1ab497db465df016c598e38b049fbde26ecc9ee868eb4899fad7",
-    "style.css": "7971c943593cc5a5d0c2768b0c7c3e5d8dda36cdba8f93532ebfafd2fae0ac41",
+    "style.css": "fe434eece55f9d819801e31c2f9902996eb84027cad4e7496cd4547a684d575a",
     "vendor/CHECKSUMS.txt": "989f0c2f0be99057149737c0d1bad41e59effb0c64357679f6c46257059ba2e3",
     "vendor/htm-3.1.1.module.js": (
         "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
@@ -582,7 +582,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/card.js": 9_467,
     "app/views/parts/correlation.js": 7_762,
     "app/views/parts/decide.js": 6_460,
-    "app/views/parts/decider.js": 9_821,
+    "app/views/parts/decider.js": 9_827,
     "app/views/parts/declare.js": 13_089,
     "app/views/parts/element.js": 6_168,
     "app/views/parts/evidence.js": 12_652,
@@ -591,7 +591,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/importbox.js": 5_982,
     "app/views/parts/judge.js": 15_369,
     "app/views/parts/keeping.js": 7_186,
-    "app/views/parts/league.js": 11_141,
+    "app/views/parts/league.js": 11_542,
     "app/views/parts/leaguecharts.js": 10_489,
     "app/views/parts/leaguecompare.js": 6_080,
     "app/views/parts/lifecycle.js": 7_462,
@@ -634,7 +634,7 @@ UI_SIZES: dict[str, int] = {
     "app/widgets.js": 13_969,
     "favicon.svg": 608,
     "index.html": 1_549,
-    "style.css": 167_569,
+    "style.css": 167_581,
     "vendor/CHECKSUMS.txt": 1_996,
     "vendor/htm-3.1.1.module.js": 1_207,
     "vendor/htm.LICENSE": 11_341,

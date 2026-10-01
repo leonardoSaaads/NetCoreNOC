@@ -18,10 +18,14 @@ import { html, Component, cx } from "../../dom.js";
 import { Bars } from "../../compare.js";
 import { Forest } from "../../modelcharts.js";
 import { DataTable, TimeCell, cell } from "../../widgets.js";
+import { absolute, relative } from "../../format.js";
 import { ModelCharts, SUITES } from "./leaguecharts.js";
 import { CompareCharts, meanF1, toneOf } from "./leaguecompare.js";
 
 const SITE = "site data (this appliance's labels)";
+/** Column heads short enough for the table to fit a desktop; the full suite name is the tooltip. */
+const SHORT = { test_iid: "unseen", test_concurrency: "concurrent", test_optical: "optical",
+  test_protocol: "protocol", corpus: "corpus" };
 const ROLE = { champion: "deciding", challenger: "in shadow", ineligible: "too slow" };
 const f3 = (v) => (v == null ? "—" : Number(v).toFixed(3));
 
@@ -90,7 +94,8 @@ function WhoDecides({ judge }) {
     ${champ && !judge.fallback
       ? html`<p class="league-champion"><b>${champ.name}</b> is deciding every link
           ${judge.pinned ? html`<span class="badge">pinned by an admin</span>` : null}</p>
-        ${latest ? html`<p class="hint">${latest.reason} — <${TimeCell} ts=${latest.at} />.</p>` : null}`
+        ${latest ? html`<p class="hint">${latest.reason}.${" "}
+          <span class="muted" title=${absolute(latest.at)}>Decided ${relative(latest.at)}.</span></p>` : null}`
       : html`<p class="err" role="alert">No model could be loaded, so the built-in formula is
           grouping as a fail-safe. ${(judge.warnings || []).join(" ")}</p>`}
     <div class="league-loops">
@@ -116,13 +121,13 @@ function WhoDecides({ judge }) {
 
 function LeagueTable({ rows, comparisons }) {
   const byRef = Object.fromEntries(comparisons.map((c) => [c.challenger, c]));
-  return html`<${DataTable} kind="league" caption="The league, in the judge's order"
+  return html`<${DataTable} kind="league-table" caption="The league, in the judge's order"
     columns=${[
       { key: "rank", label: "#", numeric: true },
       { key: "model", label: "model" },
       { key: "role", label: "role" },
       { key: "score", label: "score", numeric: true },
-      ...Object.entries(SUITES).map(([k, label]) => ({ key: k, label, numeric: true })),
+      ...Object.entries(SUITES).map(([k, label]) => ({ key: k, label: SHORT[k], title: label, numeric: true })),
       { key: "latency", label: "µs / pair", numeric: true },
       { key: "site", label: "site Δ (95 %)" },
     ]}
@@ -155,7 +160,7 @@ function SiteEvidence({ judge, models }) {
     <header class="judge-head"><h3 id="league-site">This site</h3>
       <span class="dataset-chip dataset-site">site data</span></header>
     <p class="hint">${ev.incidents ? `${ev.incidents} labelled incident(s), ${ev.rows} labelled pairs.`
-      : "No labels yet. Confirming, splitting, moving, merging and answering proposals all label."}
+      : "No labels yet. Confirming, splitting, moving, merging and answering proposals all label."}${" "}
       Labels never gate a model; they re-order the league.</p>
     <div class="judge-grid">
       <${Forest} title="Challenger − champion, log loss per incident"
