@@ -34,7 +34,7 @@ import logging
 
 from netcorenoc.crosscutting import audit
 from netcorenoc.engine.correlate import scoring
-from netcorenoc.engine.model import model_version, shipped
+from netcorenoc.engine.model import league, league_judge, model_version
 from netcorenoc.engine.operate.engine_base import EngineBase
 
 log = logging.getLogger("netcorenoc")
@@ -70,8 +70,9 @@ class ScorerLifecycleMixin(EngineBase):
         # forms still records the configuration that formed it (F23's provenance).
         refused: str | None = None
         if mode == "shipped" or (mode == "site" and model_row is None):
-            refused = self._load_shipped(
-                None if mode == "shipped" else "no site model is active, so the shipped one runs"
+            # v0.27.0 (ADR #423): `shipped` means **the league** — the judge's champion runs.
+            refused = await self._load_league(
+                None if mode == "shipped" else "no site model is active, so the league decides"
             )
             if refused is None:
                 return
@@ -130,27 +131,73 @@ class ScorerLifecycleMixin(EngineBase):
         self.scorer_model_version_id = None
         self.scorer_warnings = fallback
 
-    def _load_shipped(self, note: str | None) -> str | None:
-        """Activate the packaged model. Returns ``None``, or why it could not be used — the caller
-        then runs the formula as configured and shows that reason. Never raises."""
+    async def _league_now(self) -> league.League:
+        """The packaged league plus this site's newest adapted model, if it validates."""
+        members = league.load()
+        row = await self.store.newest_site_model()
+        if row is not None:
+            try:
+                members = members.with_member(
+                    league.site_member(
+                        str(row["kind"]),
+                        str(row["params_document"]),
+                        version_id=int(row["id"]),
+                        created_at=float(row["created_at"]),
+                    )
+                )
+            except league.LeagueError as exc:
+                members = league.League(members.members, (*members.refused, ("site", str(exc))))
+        return members
+
+    async def _load_league(self, note: str | None) -> str | None:
+        """Activate the league's champion (ADRs #423, #425). Returns ``None``, or why no model can
+        decide — the caller then runs the formula as configured, the fail-safe, and says why.
+
+        The champion is the newest `league_decision` the slow loop wrote, an admin's pin, or — on
+        a first boot, before the slow loop has spoken — the first eligible member in the offline
+        order. **The fast loop never judges**: it reads a decision at its reload point, and the
+        latency it measures once per process is the only thing it computes here.
+        """
         try:
-            model = shipped.load()
-        except Exception as exc:
-            reason = exc.args[0] if exc.args else type(exc).__name__
+            members = await self._league_now()
+        except Exception as exc:  # a league that cannot be read must never stop correlation
+            return f"the model league could not be read ({type(exc).__name__})"
+        self.league_members = members
+        refusals = [f"The {kind} model was refused: {reason}." for kind, reason in members.refused]
+        if not members.members:
             if self._loaded_key and self._loaded_key[0] == -1:
                 self._loaded_key = None  # a model was running: the formula must be reloaded
-            if isinstance(exc, shipped.NoShippedModelError):
-                return str(reason)[:1].upper() + str(reason)[1:]  # a state of the build (#422)
-            return f"the shipped model could not be used: {reason}"
-        key = (-1, model.sha256)
+            detail = " ".join(refusals) or "This build ships no model."
+            return f"No model can decide. {detail}".rstrip(".")
+        if not self.latency_us:
+            vectors = league.benchmark_vectors()
+            for member in members.members:
+                self.latency_us[member.ref] = league_judge.measure_latency(member, vectors)
+        for member in members.members:  # a site model fitted since the last measurement
+            if member.ref not in self.latency_us:
+                vectors = league.benchmark_vectors()
+                self.latency_us[member.ref] = league_judge.measure_latency(member, vectors)
+        decision = await self.store.latest_league_decision()
+        choice = league_judge.choose(
+            members,
+            current=None if decision is None else str(decision["champion"]),
+            pinned=await self.store.decider_pin(),
+            latency_us=self.latency_us,
+        )
+        champion = members.by_ref(choice.champion) if choice is not None else None
+        assert champion is not None  # a non-empty league always yields a champion
+        self.challengers = tuple(m for m in members.members if m.ref != champion.ref)
+        key = (-1, champion.sha256)
         if key == self._loaded_key:
             return None
         self._loaded_key = key
-        self.correlator.set_scorer(model.scorer)
+        self.correlator.set_scorer(champion.scorer)
+        self.champion = champion
+        self.league_shadow.reset(champion.ref)
         self.scorer_config_id = None
         self.scorer_model_version_id = None
-        self.decider_ref = model.ref
-        self.scorer_warnings = [] if note is None else [note]
+        self.decider_ref = champion.ref
+        self.scorer_warnings = [*refusals, *([] if note is None else [note])]
         return None
 
     def _load_model_version(self, row: dict[str, object]) -> None:

@@ -1,51 +1,37 @@
-"""The shipped model: a pre-trained `gam` document and its manifest, loaded as **data**.
+"""The shipped GAM: the league member a site adaptation boosts from.
 
-v0.26.0 (ADR #405). The appliance ships a model trained on generated incidents
-(`eval/synth/`, `make train`) and uses it from the first trap. Two files, both JSON:
+v0.26.0 shipped one model, `linkmodel.json`, or none (ADR #422). v0.27.0 ships a **league** of five
+(`engine/model/league.py`, ADR #424) and a judge chooses which one decides. This module keeps one
+job from v0.26.0 and gives up the rest:
 
-* ``linkmodel.json`` — the model document itself, the only thing that can change a decision;
-* ``linkmodel.manifest.json`` — where it came from: dataset digest, seed, command, code version,
-  the search, and every held-out number with its interval and sample size. The console shows it.
+* **kept** — naming the pre-trained **GAM**, because the in-product search (ADR #413) adapts that
+  family to a site by boosting from its logit on its own bins, and needs its document;
+* **given up** — deciding. What decides is the league's champion (`league_judge.choose`), and the
+  engine reads the league, not this module.
 
-## Why loading is a validation, and nothing else (Part VI.3)
-
-A customer can replace either file, and this appliance holds credentials. So the document is parsed
-as JSON and put through `gam.validate` — exact keys, finite bounded numbers, strictly increasing
-bins, only features this build serves, reachability — before a scorer exists. Nothing is imported,
-evaluated or unpickled, and no field names code. The manifest's SHA-256 of the document is checked
-too, which is **integrity, not security**: it catches a document and a manifest that do not belong
-together, so the console can never describe one model while the engine runs another.
-
-A file that fails either check is refused with a reason; the engine then runs the additive formula
-as configured and says why, exactly as it does for any other scorer it cannot trust.
+Loading is the league's: JSON validated by the kind's validator, the manifest's SHA-256 checked, no
+code imported or evaluated, no path in any message.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
-from functools import cache
-from importlib import resources
 from importlib.resources.abc import Traversable
 from typing import Any
 
-from netcorenoc.engine.model import gam
+from netcorenoc.engine.model import gam, league
 
 __all__ = [
-    "ARTIFACT",
-    "MANIFEST",
-    "MAX_MANIFEST_BYTES",
     "NOT_SHIPPED",
     "NoShippedModelError",
     "Shipped",
+    "ShippedModelError",
     "load",
+    "load_dir",
     "load_from",
+    "summary",
 ]
-
-ARTIFACT = "linkmodel.json"
-MANIFEST = "linkmodel.manifest.json"
-MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -57,74 +43,56 @@ class Shipped:
 
     @property
     def ref(self) -> str:
-        """How a decision names this model: kind and the first twelve hex digits of its hash."""
-        return f"shipped:{self.sha256[:12]}"
+        return f"{gam.KIND}:{self.sha256[:12]}"
 
 
-#: What an appliance says when its build carries no model. True of any such build, because
-#: `make train` writes a model only when it passes the quality bar (ADR #409) — v0.26.0 is one
-#: (ADR #422). No path and no exception text: every role can read the bell.
-NOT_SHIPPED = "this build ships no model; one is packaged only when it passes its quality bar"
+#: What an appliance says when its build carries no GAM to adapt. No path and no exception text:
+#: every role can read the bell.
+NOT_SHIPPED = "this build ships no GAM to adapt; the league's other members still compete"
 
 
 class ShippedModelError(ValueError):
-    """The shipped files are malformed, incomplete, or do not belong together."""
+    """The shipped GAM's files are malformed, incomplete, or do not belong together."""
 
 
 class NoShippedModelError(ShippedModelError):
-    """Neither file is packaged: a deliberate state of the build, not a fault in it."""
+    """No GAM is packaged: a state of the build, not a fault in it."""
 
 
-def load_from(document: str, manifest_text: str) -> Shipped:
-    """Validate a document and its manifest. Raises `ShippedModelError` with the reason."""
-    if len(manifest_text.encode("utf-8")) > MAX_MANIFEST_BYTES:
-        raise ShippedModelError("the manifest is larger than any this build would write")
-    try:
-        manifest = json.loads(manifest_text)
-    except ValueError as exc:
-        raise ShippedModelError(f"the manifest is not valid JSON: {exc}") from exc
-    if not isinstance(manifest, dict) or not isinstance(manifest.get("artifact"), dict):
-        raise ShippedModelError("the manifest has no artifact section")
-    digest = hashlib.sha256(document.encode("utf-8")).hexdigest()
-    if manifest["artifact"].get("sha256") != digest:
-        raise ShippedModelError(
-            "the model document does not match its manifest's SHA-256: they are not one artifact"
-        )
-    try:
-        scorer = gam.load(document, scorer_id="shipped")
-    except gam.GamDocumentError as exc:
-        raise ShippedModelError(f"the model document was refused: {exc}") from exc
-    return Shipped(document, digest, manifest, scorer)
+def _of(member: league.Member | None, refused: dict[str, str]) -> Shipped:
+    if member is None:
+        if gam.KIND in refused:
+            raise ShippedModelError(f"the shipped model could not be used: {refused[gam.KIND]}")
+        raise NoShippedModelError(NOT_SHIPPED)
+    assert isinstance(member.scorer, gam.GamScorer)
+    return Shipped(member.document, member.sha256, member.manifest, member.scorer)
 
 
-@cache
 def load() -> Shipped:
-    """The packaged model. Cached: the files are part of the installed package."""
-    return load_dir(resources.files("netcorenoc.engine.model"))
+    """The packaged league's GAM."""
+    packaged = league.load()
+    return _of(packaged.by_kind(gam.KIND), dict(packaged.refused))
 
 
 def load_dir(root: Traversable) -> Shipped:
-    """The two files under ``root``: absent together is a build without a model; one without the
-    other is a broken build. Neither message names a path."""
-    document_file, manifest_file = root.joinpath(ARTIFACT), root.joinpath(MANIFEST)
-    present = (document_file.is_file(), manifest_file.is_file())
-    if not any(present):
-        raise NoShippedModelError(NOT_SHIPPED)
-    if not all(present):
-        missing = ARTIFACT if not present[0] else MANIFEST
-        raise ShippedModelError(f"the shipped model is incomplete: {missing} is missing")
+    found = league.load_dir(root)
+    return _of(found.by_kind(gam.KIND), dict(found.refused))
+
+
+def load_from(document: str, manifest_text: str) -> Shipped:
+    """Validate a GAM document and its manifest (as `league.member_from`)."""
+    manifest = json.loads(manifest_text) if manifest_text else {}
+    if isinstance(manifest, dict) and isinstance(manifest.get("artifact"), dict):
+        manifest["artifact"].setdefault("kind", gam.KIND)
+        manifest_text = json.dumps(manifest)
     try:
-        document = document_file.read_text(encoding="utf-8")
-        manifest = manifest_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise ShippedModelError(
-            f"the shipped model could not be read ({type(exc).__name__})"
-        ) from exc
-    return load_from(document, manifest)
+        member = league.member_from(gam.KIND, document, manifest_text)
+    except league.LeagueError as exc:
+        raise ShippedModelError(str(exc)) from exc
+    return _of(member, {})
 
 
 def summary(shipped: Shipped) -> dict[str, Any]:
-    """What the console shows about the shipped model: provenance and the headline numbers."""
     m = shipped.manifest
     return {
         "ref": shipped.ref,
@@ -132,6 +100,5 @@ def summary(shipped: Shipped) -> dict[str, Any]:
         "features": list(shipped.scorer.model.features),
         "grouping": shipped.scorer.model.grouping,
         "provenance": m.get("provenance", {}),
-        "quality_bar": m.get("quality_bar", {}),
-        "verdict": m.get("verdict", {}),
+        "scorecard": m.get("scorecard", {}),
     }

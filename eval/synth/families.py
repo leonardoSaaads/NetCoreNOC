@@ -168,6 +168,30 @@ def olt_card_failure(b: Builder) -> None:
             b.say(olt, ("onu_los",), onu, at + b.spread(2.0), clear_after=back)
 
 
+def olt_power_failure(b: Builder) -> None:
+    """An OLT's shelf loses a power supply: the OLT reports it, then — **proxied, from its own
+    management address** — loss of signal and dying gasp for most ONUs behind every PON, one or
+    two trap types per ONU, inside a few seconds. Hundreds of traps, one source, several trap types,
+    one incident: the storm `eval/corpus` found the v0.26.0 candidate splitting (ADR #426)."""
+    olt = _olt(b)
+    fix = b.repair(10, 240)
+    b.say(olt, ("psu_fail", "board_fail"), "shelf-0", 0.0, root=True, clear_after=fix)
+    burst = b.rng.uniform(1.0, 15.0)
+    share = b.rng.uniform(0.5, 1.0)
+    roles: tuple[tuple[str, ...], ...] = (("onu_dying_gasp",), ("onu_los",))
+    for pon in sorted(olt.onus):
+        if b.rng.random() < 0.3:
+            back = None if fix is None else fix + b.rng.uniform(5.0, 60.0)
+            b.say(olt, ("pon_los",), pon, b.rng.uniform(0.0, burst), clear_after=back)
+        for onu in olt.onus[pon]:
+            if b.rng.random() > share:
+                continue
+            at = b.rng.uniform(0.0, burst)
+            back = None if fix is None else fix + b.rng.uniform(20.0, 300.0)
+            for role in b.rng.sample(roles, b.rng.randint(1, 2)):
+                b.say(olt, role, onu, at + b.spread(0.2), clear_after=back)
+
+
 def olt_uplink_failure(b: Builder) -> None:
     """An OLT loses its uplink: a failing optic often degrades first, minutes ahead (slow)."""
     olt = _olt(b)
@@ -211,6 +235,26 @@ def router_board_failure(b: Builder) -> None:
     mine = [lk for lk in links if router.ip in (lk.a, lk.b)]
     for link in b.rng.sample(mine, b.rng.randint(1, len(mine))):
         _link_ends(b, link, b.spread(1.0), fix, root=False)
+
+
+def chassis_card_cascade(b: Builder) -> None:
+    """A line card fails in a chassis — a router or an access switch: the chassis reports the board,
+    then every port on it goes down, **all from the chassis's own address**, two trap types and
+    tens of traps inside a few seconds; a card pulled for replacement adds a removal later. The
+    proxied-chassis shape of `eval/corpus`'s `chassis_card_fail` (ADR #426)."""
+    boxes = [e for e in b.estate.elements.values() if e.kind in ("router", "switch")]
+    el = b.rng.choice(boxes)
+    slot = b.rng.randint(1, 12)
+    fix = b.repair(20, 360)
+    b.say(el, ("board_fail",), f"slot-{slot}", 0.0, root=True, clear_after=fix)
+    burst = b.rng.uniform(0.3, 4.0)
+    for port in range(b.rng.randint(8, 48)):
+        back = None if fix is None else fix + b.rng.uniform(1.0, 60.0)
+        b.say(
+            el, ("link_down",), f"ge-{slot}/0/{port}", b.rng.uniform(0.0, burst), clear_after=back
+        )
+    if b.rng.random() < 0.4:
+        b.say(el, ("board_removed",), f"slot-{slot}", b.rng.uniform(30.0, 600.0), clear_after=fix)
 
 
 def _line(b: Builder) -> LineSystem | None:
@@ -486,8 +530,10 @@ FAMILIES: dict[str, Spec] = {
     "onu_power_outage": _spec(onu_power_outage, ("olt",), "gpon"),
     "olt_card_failure": _spec(olt_card_failure, ("olt",), "gpon"),
     "olt_uplink_failure": _spec(olt_uplink_failure, ("olt",), "gpon"),
+    "olt_power_failure": _spec(olt_power_failure, ("olt",), "gpon"),
     "router_link_cut": _spec(router_link_cut, ("backbone",), "routing"),
     "router_board_failure": _spec(router_board_failure, ("backbone",), "routing"),
+    "chassis_card_cascade": _spec(chassis_card_cascade, (), "equipment"),
     "bgp_flap": _spec(bgp_flap, ("backbone",), "protocol"),
     "ospf_flap": _spec(ospf_flap, ("backbone",), "protocol"),
     "dwdm_degradation": _spec(dwdm_degradation, ("line",), "optical"),

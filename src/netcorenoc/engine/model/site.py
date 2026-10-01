@@ -21,35 +21,32 @@ evidence gets a model that is nearly the shipped one — which is the right prio
 ## The judgement (`judge`), three-valued as the project has always had it
 
 The newest 30 % of labelled bags (by label time) are held out — time-ordered, because the model
-predicts the future from the past. On them, per incident, the mean log loss of each model; the
-per-incident difference ``site - shipped`` is bootstrapped over incidents.
+predicts the future from the past. On them, per incident, the mean log loss of each model; a
+**95 % t-interval** is put on the mean per-incident difference ``site - shipped``.
 
-* ``BETTER`` — the upper end of the 95 % interval is below zero, **and** the site model does no
-  harm on the shipped benchmark (below);
+* ``BETTER`` — the whole interval is below zero, **and** the site model does no harm on the shipped
+  benchmark (below);
 * ``NOT_BETTER`` — the interval lies at or above zero, or the site model harms the benchmark;
-* ``INSUFFICIENT_EVIDENCE`` — a floor is unmet or the interval straddles zero. Not terminal (ADR
-  #411): the next search on more labels asks again.
+* ``INSUFFICIENT_EVIDENCE`` — the interval straddles zero, or there are fewer than two held-out
+  incidents to put an interval on. Not terminal (ADR #411): the next search asks again.
 
-## The floors, and what replaced `operators >= 3`
+## No count floors (v0.27.0, ADR #425)
 
-`operators >= 3` protected against one person's idiosyncratic labels teaching the appliance their
-habits. Two checks protect against that and a two-person team can pass both:
+v0.26.0 refused a verdict below 20 labelled incidents, 6 held out, 4 negative bags and 3 days of
+labels. **Those floors are retired**: the t-interval's width is the evidence standard, and it is a
+stricter one at small samples than any floor was — at two incidents its half-width is 12.7 standard
+errors. What the floors protected against is kept by the one check that does not count anything:
 
-* **temporal spread** — labels from at least :data:`MIN_LABEL_DAYS` distinct days, so one bad
-  shift, one mis-configured session or one afternoon's mood cannot be the whole evidence;
 * **do no harm** — the site model's log loss on the **shipped benchmark** (held-out generated pairs
-  packaged with the model) may not exceed the shipped model's by more than :data:`HARM_MARGIN`. One
+  packaged with the league) may not exceed the shipped model's by more than :data:`HARM_MARGIN`. One
   person's labels can make the model better *here*; they cannot make it forget what a fibre cut
   looks like, because the benchmark was written before anyone labelled anything.
-
-The numeric floors and their power argument are in ADR #411 and :data:`FLOORS`.
 """
 
 from __future__ import annotations
 
 import json
 import math
-import random
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -59,9 +56,7 @@ from netcorenoc.engine.model import confidence as confidence_rules
 from netcorenoc.engine.model import gam, gam_fit
 
 __all__ = [
-    "FLOORS",
     "HARM_MARGIN",
-    "MIN_LABEL_DAYS",
     "Judgement",
     "SiteRow",
     "adapt",
@@ -70,12 +65,8 @@ __all__ = [
     "split_by_time",
 ]
 
-#: Minimum labelled incidents overall, in the held-out newer part, and bags asserting a negative.
-FLOORS = {"incidents": 20, "test_incidents": 6, "negative_bags": 4}
-MIN_LABEL_DAYS = 3
 HARM_MARGIN = 0.02  # nats of benchmark log loss
 TEST_FRACTION = 0.3
-REPLICATES = 400
 
 
 @dataclass(frozen=True)
@@ -176,7 +167,7 @@ class Judgement:
         return asdict(self)
 
 
-def _ll(scorer: gam.GamScorer, rows: list[SiteRow]) -> float:
+def _ll(scorer: Any, rows: list[SiteRow]) -> float:
     total = mass = 0.0
     for r in rows:
         z = max(-700.0, min(700.0, scorer.logit(r.x)))
@@ -186,34 +177,31 @@ def _ll(scorer: gam.GamScorer, rows: list[SiteRow]) -> float:
     return total / mass if mass else 0.0
 
 
-def floors(rows: list[SiteRow], test: list[SiteRow]) -> tuple[list[str], dict[str, float]]:
-    incidents = {r.incident for r in rows}
-    test_incidents = {r.incident for r in test}
-    negative_bags = {r.bag for r in rows if r.y == 0}
-    days = {int(r.label_at // 86400) for r in rows}
-    stats = {
-        "incidents": float(len(incidents)),
-        "test_incidents": float(len(test_incidents)),
-        "negative_bags": float(len(negative_bags)),
-        "label_days": float(len(days)),
+def evidence(rows: list[SiteRow], test: list[SiteRow]) -> dict[str, float]:
+    """What the site's labels amount to — counted and shown, and never a gate (ADR #425)."""
+    return {
+        "incidents": float(len({r.incident for r in rows})),
+        "test_incidents": float(len({r.incident for r in test})),
+        "negative_bags": float(len({r.bag for r in rows if r.y == 0})),
+        "label_days": float(len({int(r.label_at // 86400) for r in rows})),
         "rows": float(len(rows)),
     }
-    unmet = [f"{k}: {int(stats[k])} < {v}" for k, v in FLOORS.items() if stats[k] < v]
-    if stats["label_days"] < MIN_LABEL_DAYS:
-        unmet.append(f"label_days: {int(stats['label_days'])} < {MIN_LABEL_DAYS}")
-    return unmet, stats
 
 
 def judge(
-    shipped: gam.GamScorer,
-    site: gam.GamScorer,
+    shipped: Any,
+    site: Any,
     rows: list[SiteRow],
     test: list[SiteRow],
     benchmark: list[SiteRow],
     seed: int = 0,
 ) -> Judgement:
-    """The paired comparison. See the module docstring for each of the three outcomes."""
-    unmet, stats = floors(rows, test)
+    """The paired comparison. See the module docstring for each of the three outcomes. ``seed``
+    is accepted for the v0.26.0 signature; the t-interval draws nothing."""
+    from netcorenoc.engine.model.league_judge import t_quantile
+
+    del seed
+    stats = evidence(rows, test)
     by_incident: dict[int, list[SiteRow]] = defaultdict(list)
     for r in test:
         by_incident[r.incident].append(r)
@@ -230,26 +218,15 @@ def judge(
             "rows": float(len(benchmark)),
         }
     difference: dict[str, float] = {"incidents": float(len(diffs))}
-    if diffs:
-        rng = random.Random(seed)  # nosec B311 - seeded statistical sampling, never a secret
-        means = sorted(
-            sum(diffs[rng.randrange(len(diffs))] for _ in diffs) / len(diffs)
-            for _ in range(REPLICATES)
-        )
+    if len(diffs) >= 2:
+        mean = sum(diffs) / len(diffs)
+        sd = math.sqrt(sum((d - mean) ** 2 for d in diffs) / (len(diffs) - 1))
+        half = t_quantile(len(diffs) - 1) * sd / math.sqrt(len(diffs))
         difference.update(
-            mean=sum(diffs) / len(diffs),
-            low=means[int(0.025 * (REPLICATES - 1))],
-            high=means[int(0.975 * (REPLICATES - 1))],
+            mean=mean,
+            low=mean - half,
+            high=mean + half,
             site_better_share=sum(1 for d in diffs if d < 0) / len(diffs),
-        )
-    if unmet:
-        return Judgement(
-            "INSUFFICIENT_EVIDENCE",
-            unmet,
-            stats,
-            difference,
-            bench,
-            "a floor is unmet: " + "; ".join(unmet),
         )
     if harm:
         return Judgement(
@@ -259,6 +236,15 @@ def judge(
             difference,
             bench,
             "the site model is worse on the shipped benchmark than the margin allows",
+        )
+    if "high" not in difference:
+        return Judgement(
+            "INSUFFICIENT_EVIDENCE",
+            [],
+            stats,
+            difference,
+            bench,
+            "fewer than two held-out incidents: no interval can be put on the difference yet",
         )
     if difference["high"] < 0.0:
         return Judgement(

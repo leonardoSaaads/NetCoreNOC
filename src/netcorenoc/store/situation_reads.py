@@ -117,7 +117,13 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             return ""
         if not self._has_situation_decider:  # v0.26.0: `model_name` arrives with `0026`
             return "s.resolution, s.derived_name, s.operator_name, "
-        return "s.resolution, s.derived_name, s.operator_name, s.model_name, "
+        if not self._has_proposals:
+            return "s.resolution, s.derived_name, s.operator_name, s.model_name, "
+        # v0.27.0 (ADR #428): a pending situation names the one it proposes to join.
+        return (
+            "s.resolution, s.derived_name, s.operator_name, s.model_name, "
+            "s.proposed_into, s.proposal_confidence, "
+        )
 
     def _search_clause(
         self, query: str | None, *, addresses: bool, scope_ids: list[int] | None

@@ -132,6 +132,33 @@ def _pairs(logs: Sequence[Any], scorer: gam.GamScorer, seed: int) -> dict[str, A
         "threshold_probability": thr,
         "pr_curve": [[round(a, 4), round(b, 4), round(c, 4)] for a, b, c in mm.pr_curve(y, p, w)],
         "roc_curve": [[round(a, 4), round(b, 4), round(c, 4)] for a, b, c in mm.roc_curve(y, p, w)],
+        "residuals": residuals(y, p, w),
+    }
+
+
+def residuals(
+    y: Sequence[int], p: Sequence[float], w: Sequence[float], bins: int = 20
+) -> dict[str, Any]:
+    """The distribution of ``y - p`` (v0.27.0, ADR #427): a classifier's residual is its predicted
+    probability's distance from the outcome, in ``[-1, 1]``, and its histogram — split by the true
+    class — shows *where* the model is wrong: mass near ±1 is confident error, mass near 0 is
+    confident truth. Shares of the weighted pairs, so two models on one axis compare directly."""
+    total = sum(w) or 1.0
+    pos = [0.0] * bins
+    neg = [0.0] * bins
+    mean = mean_abs = 0.0
+    for yi, pi, wi in zip(y, p, w, strict=True):
+        r = yi - pi
+        k = min(bins - 1, max(0, int((r + 1.0) / 2.0 * bins)))
+        (pos if yi else neg)[k] += wi / total
+        mean += wi * r / total
+        mean_abs += wi * abs(r) / total
+    return {
+        "edges": [round(-1.0 + 2.0 * k / bins, 4) for k in range(bins + 1)],
+        "positive": [round(v, 6) for v in pos],
+        "negative": [round(v, 6) for v in neg],
+        "mean": round(mean, 6),
+        "mean_abs": round(mean_abs, 6),
     }
 
 

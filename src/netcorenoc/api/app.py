@@ -104,6 +104,7 @@ def create_app(
     # in any of the three handlers. Ordering is free here (every path is a distinct literal and
     # none can shadow another), so it is chosen to make the record say more.
     routes.lifecycle.register(app, ctx)
+    routes.proposals.register(app, ctx)  # v0.27.0: an operator's answer to a pending proposal
     routes.annotate.register(app, ctx)
     routes.operate.register(app, ctx)
     routes.admin.register(app, ctx)

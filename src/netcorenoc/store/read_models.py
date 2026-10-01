@@ -227,6 +227,8 @@ class ReadModelsMixin(ClassRuleMixin):
             # a count, which is exactly the invented number decision 2 refuses one screen over.
             # Two more `COUNT(*)` over the same small table, on a route that already runs five.
             ("new_situations", "SELECT COUNT(*) FROM situation WHERE status='new'"),
+            # v0.27.0 (ADR #428): proposals waiting for an operator's answer.
+            ("pending_situations", "SELECT COUNT(*) FROM situation WHERE status='pending'"),
             ("working_situations", "SELECT COUNT(*) FROM situation WHERE status='open'"),
             ("quarantined", "SELECT COUNT(*) FROM quarantine"),
         ):

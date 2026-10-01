@@ -39,6 +39,7 @@ import sqlite3
 import time
 from collections import deque
 from collections.abc import Callable
+from dataclasses import replace
 
 from netcorenoc.engine.correlate import features as pair_features
 from netcorenoc.engine.correlate import severity
@@ -48,6 +49,7 @@ from netcorenoc.engine.correlate.correlate import (
     WindowAlarm,
     explained_terms,
 )
+from netcorenoc.engine.correlate.grouping import Placement
 from netcorenoc.engine.correlate.learn import STORM_ALARMS, STORM_DAMPING, Learner
 from netcorenoc.engine.correlate.monitor import CorrelationMonitor
 from netcorenoc.engine.correlate.rootcause import Member, Precedence
@@ -55,9 +57,11 @@ from netcorenoc.engine.correlate.scorer_contract import oid_root
 from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler
 from netcorenoc.engine.dataset import capture as capture_mod
 from netcorenoc.engine.dataset.capture import Capture, LabelContext, RetentionPolicy
+from netcorenoc.engine.evaluation.league_shadow import LeagueShadow
 from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
+from netcorenoc.engine.operate import proposals
 from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.engine.operate.flap import FlapDetector
 from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
@@ -142,6 +146,14 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # clear-seen for what a window suppressed, flushed by the same loop.
         self.windows: mw_index.WindowIndex = mw_index.EMPTY
         self.ledger = StateLedger()
+        # **Pending proposals** (v0.27.0, ADR #428): every (bag, open situation) an operator said
+        # do not belong together. `proposals.route` never proposes one twice. Reloaded at start.
+        self.rejected_proposals: set[tuple[int, int]] = set()
+        # The league (v0.27.0, ADR #423): each member's fast-path cost on this appliance, measured
+        # once per process at the first reload over the packaged benchmark pairs; and the live
+        # shadow — every challenger scoring a bounded sample of the champion's own pairs.
+        self.latency_us: dict[str, float] = {}
+        self.league_shadow = LeagueShadow()
 
     def forget_situation(self, sid: int) -> None:
         """Drop in-memory membership after an operator manually closes a situation."""
@@ -178,6 +190,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             ne_id, oid = int(row["ne_id"]), str(row["varbind_oid"])
             self.ne_severity[ne_id] = oid
             self.profiler.set_role(ne_id, oid, "severity")
+        self.rejected_proposals = set(await self.store.rejected_proposals())
         for row in await self.store.open_situation_members():
             sid = int(row["situation_id"])
             member = Member(
@@ -376,6 +389,11 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         )
         # Last on this path, after capture, so no decision follows it. `observe` never raises.
         self.shadow.observe(entry, outcome, self.sit_of.get(entry.alarm_id))
+        # v0.27.0 (ADR #423): the challengers, on a bounded sample of the pairs the champion just
+        # scored — vectors already built, no I/O, no lock. Observability; it decides nothing.
+        self.league_shadow.observe(
+            entry.alarm_id, outcome, self.challengers, len(self.correlator.index)
+        )
 
     async def _seed_clear_pair(self, oid: str, class_id: int, ts: float) -> None:
         """Register the universal raise/clear pairs the first time either side shows up."""
@@ -501,19 +519,29 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         cannot know and the monitor wants (a rising merge rate is the over-merge signature, F76).
         """
         placement = outcome.placement
-        sid = placement.join
+        # v0.27.0 (ADR #428): what the engine may DO with the model's opinion. A confirmed (`open`)
+        # situation is never grown by a model; the alarm goes into a pending proposal instead.
+        routed = await proposals.route(self, placement, self.sit_of.get(entry.alarm_id))
+        sid = routed.sid
         if sid is None or sid not in self.members:
             # Provenance (v0.6.0): the situation records the scoring configuration that formed
             # it. Written here — engine side, under the batch lock — never on the datagram path.
             sid = await self.store.create_situation(
-                entry.ts, self.scorer_config_id, decider=self.decider_ref
+                entry.ts,
+                self.scorer_config_id,
+                "correlate" if routed.propose is None else "propose",
+                decider=self.decider_ref,
             )
             self.members[sid] = []
+        if routed.propose is not None:
+            await self.store.set_proposal(sid, routed.propose, routed.confidence)
         merged = 0
-        for other_sid in placement.merge:
+        executed: list[int] = []
+        for other_sid in routed.merges:
             if other_sid == sid or other_sid not in self.members:
                 continue
             await self.store.merge_situations(sid, other_sid, entry.ts)
+            executed.append(other_sid)
             merged += 1
             for member in self.members.pop(other_sid, []):
                 self.sit_of[member.alarm_id] = sid
@@ -525,9 +553,11 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 Member(entry.alarm_id, entry.class_id, entry.device_id, entry.ts)
             )
         # Only links into the situation the alarm actually joined are its explanation; a pair it
-        # was scored against in a situation it did NOT merge with explains nothing about it.
+        # was scored against in a situation it did NOT merge with explains nothing about it. A
+        # proposal's links to its target's members are kept: they are why it proposes (ADR #428).
+        explains = (sid, routed.propose)
         for link in outcome.links:
-            if self.sit_of.get(link.other.alarm_id) != sid:
+            if self.sit_of.get(link.other.alarm_id) not in explains:
                 continue
             await self.store.add_link(
                 sid,
@@ -540,7 +570,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 entry.ts,
                 terms=explained_terms(link.result),
             )
-        self.correlator.commit(sid, outcome, self.sit_of)
+        executed_placement = Placement(sid, tuple(executed), placement.support)
+        self.correlator.commit(sid, replace(outcome, placement=executed_placement), self.sit_of)
         await self.store.touch_situation(sid, entry.ts)
         root = self.precedence.pick_root(self.members[sid])
         if root is not None:
@@ -607,6 +638,10 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 await self._close_situation(sid, now)
             for sid in await self.store.cleared_open_situations(now - CLEAR_HOLD_S):
                 await self._close_situation(sid, now)
+            # A proposal whose target is no longer `open` has nothing to join: it lapses to `new`
+            # (ADR #428). After the closes above, so a target resolved this pass lapses this pass.
+            for sid in await self.store.orphan_proposals():
+                await self.store.withdraw_proposal(sid, now)
             await self._maintenance_windows(now)  # v0.21.0: advance, surface, rebuild the index
             await self._promotion_sweep(now)
             await self.learner.save(self.store, now)

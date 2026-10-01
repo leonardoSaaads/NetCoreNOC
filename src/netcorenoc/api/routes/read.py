@@ -93,7 +93,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/situations")
     async def situations(
         principal: auth.Principal = Depends(security),
-        status: Literal["new", "open", "resolved"] | None = None,
+        status: Literal["new", "pending", "open", "resolved"] | None = None,
         limit: int = 100,
         q: str | None = None,
         ne_id: int | None = None,

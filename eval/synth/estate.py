@@ -44,6 +44,11 @@ class Element:
     cards: dict[int, list[str]] = field(default_factory=dict)
     #: OLT only: PON port -> ONU identifiers behind it (they have no address of their own).
     onus: dict[str, list[str]] = field(default_factory=dict)
+    #: v0.27.0 (ADR #426): this element's firmware stamps every trap with a sequence number and an
+    #: event time — varbinds unique per trap that look like identifiers and are not. The entity
+    #: profiler must refuse them; `eval/corpus`'s `decoy_varbinds` is the shape.
+    decoys: bool = False
+    serial: int = 0
 
     def port(self, name: str) -> int:
         """The ifIndex of ``name``, allocating the next one on first use."""
@@ -202,4 +207,8 @@ def build_estate(rng: random.Random) -> Estate:
                 add("dwdm", dwdm_vendor, rng.randrange(sites)).ip for _ in range(rng.randint(1, 4))
             )
             lines.append(LineSystem((ta.ip, tb.ip), amps, (link,)))
+    # Drawn last, so every draw above is unchanged by it: which vendors' firmware stamps decoys.
+    stamping = {v for v in sorted({e.vendor for e in elements.values()}) if rng.random() < 0.3}
+    for el in elements.values():
+        el.decoys = el.vendor in stamping
     return Estate(elements, links, lines, sites)

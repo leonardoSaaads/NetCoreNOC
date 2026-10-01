@@ -191,8 +191,12 @@ _UI_MODULES = (
     "app/views/parts/decider.js",
     "app/views/parts/autonomy.js",
     "app/views/parts/searchpanel.js",
-    "app/views/parts/shippedjudge.js",
     "app/views/parts/sitejudge.js",
+    # v0.27.0 (ADRs #423, #427): the league on the Judge screen — the board, one model's ten
+    # charts, and every model on shared axes. `shippedjudge.js` left with the single shipped model.
+    "app/views/parts/league.js",
+    "app/views/parts/leaguecharts.js",
+    "app/views/parts/leaguecompare.js",
 )
 
 _VENDOR_ASSETS = (

@@ -36,7 +36,7 @@ from netcorenoc.store.situation_events import SituationEventMixin
 #: reads the runtime package to assert nothing spells it out a second time. **That guard was cited
 #: from v0.16.0 and did not exist until v0.16.2 wrote it** (F101).
 #:
-LIVE = "status IN ('new','open')"
+LIVE = "status IN ('new','pending','open')"
 
 #: **One member is still on.** The predicate `all_cleared` answers for a single situation, written
 #: as a correlated subquery so the same question can be asked of a whole population in one
@@ -79,24 +79,33 @@ TRANSITIONS: dict[str, dict[str | None, str]] = {
     "correlate": {None: "new"},  # the correlator grouped alarms nobody has looked at
     "surface": {None: "new"},  # a maintenance window's ledger surfaced a fault that outlived it
     "operator_split": {None: "open"},  # an operator put these alarms together
+    # v0.27.0 (ADR #428): the model would have grown an `open` situation, which only an operator
+    # may do — so it opens a `pending` one that PROPOSES to join it, and waits for an answer.
+    "propose": {None: "pending"},
     # -- attention: an operator worked the situation --
-    "promote": {"new": "open"},
-    "feedback": {"new": "open"},
-    "move": {"new": "open"},  # the SOURCE; the destination is an id they typed (#273)
-    "merge": {"new": "open"},
-    "split": {"new": "open"},  # the situation the members left
-    "hand_clear": {"new": "open"},
+    # A pending proposal an operator works on its own terms has been judged a situation of its
+    # own: attention takes it to `open` exactly as it takes a `new` one, and the proposal lapses.
+    "promote": {"new": "open", "pending": "open"},
+    "feedback": {"new": "open", "pending": "open"},
+    "move": {"new": "open", "pending": "open"},  # the SOURCE; the destination is typed (#273)
+    "merge": {"new": "open", "pending": "open"},
+    "split": {"new": "open", "pending": "open"},  # the situation the members left
+    "hand_clear": {"new": "open", "pending": "open"},
     # v0.26.0 (ADR #412): autonomy accepted the grouping as an incident. The model's attention,
     # attributed in `autonomy_decision` — the table records who; this records only the edge.
     "autonomy": {"new": "open"},
+    # -- the answer to a proposal (ADR #428) --
+    "accept": {"pending": "resolved"},  # merged into its target, which stays `open`
+    "reject": {"pending": "new"},  # a situation of its own, which nobody has looked at yet
+    "lapse": {"pending": "new"},  # its target left `open` before anyone answered
     # -- cosmetic: never a state change --
     "rename": {},
     # -- leaving --
-    "close": {"new": "resolved", "open": "resolved"},  # an operator closed it
-    "self_cleared": {"new": "resolved", "open": "resolved"},  # every member cleared
-    "idle": {"new": "resolved", "open": "resolved"},  # empty, and nobody touched it
-    "merged_away": {"new": "resolved", "open": "resolved"},  # folded into another
-    "manual_clear": {"new": "resolved", "open": "resolved"},  # the last member hand-cleared
+    "close": {"new": "resolved", "pending": "resolved", "open": "resolved"},  # operator closed
+    "self_cleared": {"new": "resolved", "pending": "resolved", "open": "resolved"},
+    "idle": {"new": "resolved", "pending": "resolved", "open": "resolved"},  # empty, untouched
+    "merged_away": {"new": "resolved", "pending": "resolved", "open": "resolved"},
+    "manual_clear": {"new": "resolved", "pending": "resolved", "open": "resolved"},
 }
 
 #: The acts that are ATTENTION: every act with the `new -> open` edge. Derived, not listed.
@@ -184,6 +193,13 @@ class SituationMixin(SituationEventMixin):
         if act not in ATTENTION:
             raise ValueError(f"{act!r} is not an act of attention; it cannot promote a situation")
         if not self._has_lifecycle:
+            return
+        if self._has_proposals:  # a pending situation an operator works is theirs (ADR #428)
+            await self.conn.execute(
+                "UPDATE situation SET status='open', proposed_into=NULL, proposal_confidence=NULL, "
+                "updated_at=? WHERE id=? AND status IN ('new','pending')",
+                (ts, situation_id),
+            )
             return
         await self.conn.execute(
             "UPDATE situation SET status='open', updated_at=? WHERE id=? AND status='new'",

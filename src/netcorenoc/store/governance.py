@@ -142,6 +142,13 @@ class GovernanceMixin(StoreBase):
                 f"WHERE s.status='new' AND a.ne_id IN ({ne_marks})",  # nosec B608 - placeholders only
             ),
             (
+                "pending_situations",
+                "SELECT COUNT(DISTINCT s.id) FROM situation s "
+                "JOIN situation_alarm sa ON sa.situation_id=s.id "
+                "JOIN alarm a ON a.id=sa.alarm_id "
+                f"WHERE s.status='pending' AND a.ne_id IN ({ne_marks})",  # nosec B608 - placeholders only
+            ),
+            (
                 "working_situations",
                 "SELECT COUNT(DISTINCT s.id) FROM situation s "
                 "JOIN situation_alarm sa ON sa.situation_id=s.id "

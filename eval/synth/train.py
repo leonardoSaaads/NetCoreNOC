@@ -189,7 +189,7 @@ def _evidence_cache(logs: list[StreamLog], scorer: gam.GamScorer) -> dict[int, l
 
 
 def tune_grouping(
-    splits: dict[str, list[StreamLog]], scorer: gam.GamScorer
+    splits: dict[str, list[StreamLog]], scorer: gam.GamScorer, *, fallback: bool = False
 ) -> tuple[GroupingParams, list[dict[str, float]]]:
     """The fewest repair gestures among the settings that pass the quality bar on validation.
 
@@ -253,6 +253,15 @@ def tune_grouping(
                 )
                 if verdict["passed"] and (best is None or m["repair_gestures"] < best[0] - 1e-12):
                     best = (m["repair_gestures"], params)
+    if best is None and fallback:
+        # v0.27.0 (ADR #426): the bar is a scorecard, not a gate. With no admissible setting the
+        # choice is the fewest missed checks, then the fewest repair gestures — and the manifest
+        # records that no setting was admissible, so the Judge screen can say so.
+        pick = min(rows, key=lambda r: (r["checks_missed"], r["repair_gestures"]))
+        return (
+            GroupingParams(pick["join_bias"], pick["merge_bias"], int(pick["merge_min_pairs"])),
+            rows,
+        )
     if best is None:  # no setting passes the bar even on the streams it is tuned on: say so
         raise SystemExit(
             "no grouping setting passes the quality bar on validation; the model is not shipped"

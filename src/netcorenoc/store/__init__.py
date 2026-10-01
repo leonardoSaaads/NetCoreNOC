@@ -43,6 +43,7 @@ from netcorenoc.store.host_samples import HostSampleMixin
 from netcorenoc.store.idle import IdleMixin
 from netcorenoc.store.ingest_gaps import IngestGapMixin
 from netcorenoc.store.inventory import InventoryMixin
+from netcorenoc.store.league import LeagueMixin
 from netcorenoc.store.learned import LearnedMixin
 from netcorenoc.store.lifecycle import LifecycleMixin
 from netcorenoc.store.maintenance_windows import MaintenanceWindowMixin
@@ -52,6 +53,7 @@ from netcorenoc.store.mw_reads import MaintenanceReadMixin
 from netcorenoc.store.organizations import OrganizationMixin
 from netcorenoc.store.people import PeopleMixin
 from netcorenoc.store.promotion import PromotionMixin
+from netcorenoc.store.proposals import ProposalMixin
 from netcorenoc.store.read_models import ReadModelsMixin
 from netcorenoc.store.restructure import RestructureMixin
 from netcorenoc.store.retention import RetentionMixin
@@ -85,6 +87,10 @@ __all__ = [
 
 class Store(
     AutonomyMixin,
+    # v0.27.0: the league's decisions and pin, and pending proposals (ADRs #425, #428). Plain
+    # `StoreBase` mixins that override nothing.
+    LeagueMixin,
+    ProposalMixin,
     DeciderMixin,
     PromotionMixin,
     SealMixin,
@@ -180,3 +186,5 @@ class Store(
         self._has_pair_features: bool = False
         self._has_situation_decider: bool = False
         self._has_decider: bool = False
+        self._has_proposals: bool = False  # v0.27.0, `0027`
+        self._has_league: bool = False

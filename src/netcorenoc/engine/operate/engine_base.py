@@ -29,14 +29,16 @@ declaration that does not exist at runtime cannot.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from netcorenoc.engine.correlate.correlate import Correlator
 from netcorenoc.engine.correlate.learn import Learner
 from netcorenoc.engine.correlate.rootcause import Member, Precedence
 from netcorenoc.engine.correlate.varbind_profile import VarbindProfiler
 from netcorenoc.engine.dataset.capture import Capture, RetentionPolicy
+from netcorenoc.engine.evaluation.league_shadow import LeagueShadow
 from netcorenoc.engine.evaluation.shadow import Shadow
+from netcorenoc.engine.model import league as league_model
 from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
 from netcorenoc.store import Store
@@ -82,6 +84,17 @@ class EngineBase:
     # v0.26.0: which decider is running, as every situation and autonomous decision records it —
     # 'shipped:<sha12>', 'site:<model version>', 'additive:<config id>' or 'additive:default'.
     decider_ref: str = "additive:default"
+    # v0.27.0 (ADRs #423, #424): the league the fast loop runs one member of — the champion — and
+    # shadows the rest. Class-level defaults for `scorer_model_version_id`'s reason below; the one
+    # mutable table, `latency_us`, is assigned in `Engine.__init__`.
+    league_members: league_model.League | None = None
+    champion: league_model.Member | None = None
+    challengers: tuple[league_model.Member, ...] = ()
+    latency_us: dict[str, float]
+    league_shadow: LeagueShadow
+    #: The slow loop's latest judgement (table, comparisons, labels), served by `/api/judge`.
+    league_view: dict[str, Any] | None = None
+    rejected_proposals: set[tuple[int, int]]
     scorer_warnings: list[str]
     _loaded_key: tuple[object, ...] | None  # (config/model id or -1 for shipped; hash; …)
     # Feedback-dataset capture (v0.8.0), read by the maintenance mixin's `_capture_run`. Every

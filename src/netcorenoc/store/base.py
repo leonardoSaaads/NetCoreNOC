@@ -78,6 +78,9 @@ class StoreBase:
     _has_pair_features: bool
     _has_situation_decider: bool
     _has_decider: bool
+    # v0.27.0, migration `0027`: pending proposals, and the league's decisions and pin.
+    _has_proposals: bool
+    _has_league: bool
     # v0.21.0: does `alarm` carry `surfaced_from_window_id` (migration 0021)? Read from the
     # SAME `PRAGMA table_info(alarm)` as the line above rather than a second query — one
     # probe answers for every column of one table, and two probes of one table is how they

@@ -147,6 +147,12 @@ def trap(
         varbinds = [(f"{rendering.vendor.object_arc}.{hash_index(entity)}", "str", entity)]
     if state_style or (rendering.vendor.carries_severity and oid not in (LINK_DOWN, LINK_UP)):
         varbinds.append((ALARM_SEVERITY_OID, "str", word))
+    if element.decoys:  # a sequence number and an event time, unique per trap (ADR #426)
+        element.serial += 1
+        varbinds.append((f"{rendering.vendor.object_arc}.0.1", "int", str(element.serial)))
+        varbinds.append(
+            (f"{rendering.vendor.object_arc}.0.2", "int", str(1_700_000_000 + 7 * element.serial))
+        )
     return Event(
         t=t,
         source=element.ip,
