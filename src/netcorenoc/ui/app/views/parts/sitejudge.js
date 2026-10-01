@@ -31,7 +31,7 @@ export function SiteJudge({ site, canSearch = true }) {
             <p class="hint">No search has run on this appliance. ${canSearch
               ? "Settings → Site training starts one: it adapts the GAM to this site's labels, and the result joins the league."
               : "A search adapts the league's GAM, and this build carries none."}</p>
-            <p class="judge-caption">${SITE}</p></section>`}
+            <p class="chart-caption">${SITE}: no run yet</p></section>`}
     </div>
     ${trials.length ? html`<h4 class="judge-sub">The latest search on this site</h4>
       <${SearchCharts} search=${{ trials }} fit=${null} source=${`${SITE}, search #${latest.id}`} />` : null}
@@ -52,7 +52,7 @@ function Judgement({ j, run }) {
       ${b.shipped != null ? html`<${Versus} label="benchmark log loss (site model)"
         model=${{ point: b.site, low: b.site, high: b.site }} formula=${null} lower=${true} />` : null}
     </div>
-    <p class="judge-caption">${SITE}, search #${run.id}; ${d.incidents ?? 0} newest incidents, paired;
+    <p class="chart-caption">${SITE}, search #${run.id}; ${d.incidents ?? 0} newest incidents, paired;
       95 % t-interval over incidents. ${b.shipped != null
         ? `Do-no-harm: shipped ${b.shipped.toFixed(4)} on ${b.rows} generated benchmark pairs, margin ${b.margin}.`
         : ""}</p>

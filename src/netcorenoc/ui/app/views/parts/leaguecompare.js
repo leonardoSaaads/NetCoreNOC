@@ -78,17 +78,19 @@ export function CompareCharts({ models }) {
         rows=${trained.map((m, i) => ({ key: m.ref, label: m.name,
           value: (iidPairs(m).residuals || {}).mean_abs ?? null, tone: toneOf(i) }))}
         source=${GEN} span=${span} note="lower is better: the average distance of p from the outcome" />
-      <section class="chart-block mchart">
+      <div class="mchart-wrap">
         <${Scatter} title="10 · Training time × performance"
           points=${trained.map((m, i) => ({ x: searchSeconds(m), y: meanF1(m), tone: toneOf(i) }))}
           xLabel="seconds to search and fit" yLabel="mean pairwise F1 (higher is better)"
-          source="the training machine; the judge's offline score" n=${`${trained.length} models`} />
+          source="generated data: the judge's offline score; seconds on the training machine"
+          n=${`${trained.length} models`} />
         <${Legend} series=${legend} />
-      </section>
+      </div>
       <${Bars} title="10 · Scoring cost per pair on this appliance" unit="µs"
         rows=${trained.map((m, i) => ({ key: m.ref, label: m.name,
           value: (m.latency || {}).appliance_us ?? null, tone: toneOf(i) }))}
-        source="measured at start-up on the packaged benchmark pairs" span="median of three passes"
+        source="generated benchmark pairs, timed on this appliance at start-up"
+        span="median of three passes"
         note="the fast loop's budget is the eligibility line on the league table" />
     </div>
   </div>`;

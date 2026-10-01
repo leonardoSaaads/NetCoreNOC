@@ -176,15 +176,15 @@ export function Steps({ feature, edges, scores, source }) {
 }
 
 /** The confusion matrix at the operating threshold, as a 2 × 2 grid of weighted counts. */
-export function Confusion({ matrix, source, n }) {
+export function Confusion({ matrix, source, n, title = "Confusion at the threshold" }) {
   if (!matrix) return null;
   const total = matrix.tp + matrix.fp + matrix.tn + matrix.fn || 1;
   const cellOf = (label, value, tone) => html`<div class=${cx("mchart-cm-cell", tone)}>
     <b>${(100 * value / total).toFixed(1)}%</b><span>${label}</span></div>`;
   return html`<section class="chart-block mchart">
-    <h4 class="chart-title">Confusion at the threshold</h4>
+    <h4 class="chart-title">${title}</h4>
     <div class="chart mchart-cm" data-chart="confusion" role="img"
-      aria-label=${`Confusion at the threshold. precision ${fmt(matrix.precision, 3)}, recall ${fmt(matrix.recall, 3)}.`}>
+      aria-label=${`${title}. precision ${fmt(matrix.precision, 3)}, recall ${fmt(matrix.recall, 3)}.`}>
       <span></span><span class="mchart-cm-h">same incident</span><span class="mchart-cm-h">different</span>
       <span class="mchart-cm-h">linked</span>
       ${cellOf("true positive", matrix.tp, "good")}${cellOf("false positive", matrix.fp, "bad")}

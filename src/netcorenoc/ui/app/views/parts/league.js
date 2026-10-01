@@ -28,7 +28,9 @@ const f3 = (v) => (v == null ? "—" : Number(v).toFixed(3));
 export class LeagueBoard extends Component {
   constructor(props) {
     super(props);
-    this.state = { view: "compare" };
+    // `#/promotion?model=<kind or ref>` opens one model's charts: a link an operator can share.
+    const asked = (props.judge.models || []).find((m) => m.ref === props.initial || m.kind === props.initial);
+    this.state = { view: asked ? asked.ref : "compare" };
   }
 
   render({ judge }, { view }) {

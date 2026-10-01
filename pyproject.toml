@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.26.0"
+version = "0.27.0"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -74,10 +74,10 @@ netcorenoc = [
     # `tools/trappack_build.py`. Without these lines a wheel would ship a pack that is empty.
     "ingest/trappack.tsv.gz",
     "ingest/trapobjects.tsv.gz",
-    # v0.26.0 (ADR #405): the shipped model and its manifest — data, validated on load. Without
-    # these lines a wheel would ship an appliance whose default decider is missing.
-    "engine/model/linkmodel.json",
-    "engine/model/linkmodel.manifest.json",
+    # v0.27.0 (ADR #424): the league — one document and one manifest per model kind, plus the
+    # benchmark pairs the judge times them on. Data, validated on load. Without this line a wheel
+    # would ship an appliance with no model to decide.
+    "engine/model/league/*.json",
 ]
 
 [tool.ruff]

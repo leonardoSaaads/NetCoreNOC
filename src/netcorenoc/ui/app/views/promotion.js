@@ -60,7 +60,8 @@ export class Promotion extends Loader {
     const versions = data.model_versions || [];
     const judge = data.judge;
     return html`<div class="promotionview judgeview">
-      ${judge ? html`<${LeagueBoard} judge=${judge} />
+      ${judge ? html`<${LeagueBoard} judge=${judge}
+          initial=${this.props.query ? this.props.query.get("model") : null} />
         <${SiteJudge} site=${judge.site} canSearch=${(judge.models || []).some((m) => m.kind === "gam")} />`
         : html`<p class="hint">The judge's measurements could not be read.</p>`}
       ${/* The running scorer, observed (v0.22.0, item 7): moved here from Situations. */ null}

@@ -183,6 +183,8 @@ def evaluate(root: Path, scorer: gam.GamScorer, seed: int) -> dict[str, Any]:
             }
         if split == "test_iid":
             out["first_hour"] = {"model": _first_hour(mo, seed), "formula": _first_hour(fo, seed)}
+        # Released before the next split is read, so one split's streams are in memory at a time.
+        del logs, mo, fo
     long_logs = list(dataset.load_split(root, "train_long"))
     tm: list[Outcome] = []
     tf: list[Outcome] = []

@@ -75,13 +75,18 @@ def fitted() -> dict[str, str]:
     """One small document per kind, fitted by the real fitters (deterministic)."""
     train, valid = _data(3000, 1), _data(800, 2)
     out = {"gam": TEST_MODEL}
-    for method, extra in (
+    kinds: tuple[tuple[str, dict[str, Any]], ...] = (
         ("decision_tree", {"max_depth": 5, "min_leaf": 5.0}),
-        ("random_forest", {"max_depth": 5, "min_leaf": 3.0, "trees": 8, "subsample": 0.5,
-                           "colsample": 0.5}),
-        ("boosted_trees", {"max_depth": 3, "min_leaf": 0.2, "trees": 40, "learning_rate": 0.2,
-                           "subsample": 0.7}),
-    ):
+        (
+            "random_forest",
+            {"max_depth": 5, "min_leaf": 3.0, "trees": 8, "subsample": 0.5, "colsample": 0.5},
+        ),
+        (
+            "boosted_trees",
+            {"max_depth": 3, "min_leaf": 0.2, "trees": 40, "learning_rate": 0.2, "subsample": 0.7},
+        ),
+    )
+    for method, extra in kinds:
         out[method] = trees_fit.fit(train, valid, trees_fit.TreeParams(method, **extra)).document
     out["logistic_regression"] = linear_fit.fit(train, valid, linear_fit.LinearParams()).document
     return out
@@ -107,15 +112,21 @@ def test_every_kind_loads_and_its_terms_add_up_to_its_score(fitted: dict[str, st
 def test_a_tree_ensembles_attribution_is_the_exact_shapley_value(fitted: dict[str, str]) -> None:
     """Brute force over every coalition of the model's features, against the reference pair."""
     scorer = trees.load(fitted["random_forest"])
-    used = sorted({t.local[i] for t in scorer.model.trees for i in range(len(t.feature))
-                   if t.feature[i] != trees.LEAF})
+    used = sorted(
+        {
+            t.local[i]
+            for t in scorer.model.trees
+            for i in range(len(t.feature))
+            if t.feature[i] != trees.LEAF
+        }
+    )
     names = scorer.model.features
     ref = list(scorer._reference)
     rng = random.Random(5)
     for _ in range(10):
         x = tuple(rng.random() * (60 if i in (0, 10) else 1) for i in range(len(FEATURE_NAMES)))
 
-        def hybrid(coalition: set[int]) -> float:
+        def hybrid(coalition: set[int], x: tuple[float, ...] = x) -> float:
             v = list(ref)
             for k in coalition:
                 v[FEATURE_NAMES.index(names[k])] = x[FEATURE_NAMES.index(names[k])]
@@ -157,10 +168,24 @@ def _tree_doc(**changes: Any) -> str:
         ({"features": ["dt", "device_ip"]}, "drawn from"),
         ({"trees": [[[1, 0.5, 0, 2, 0.0], [-1, 0.0, 0, 0, -2.0], [-1, 0, 0, 0, 2.0]]]}, "forward"),
         ({"trees": [[[1, 0.5, 1, 1, 0.0], [-1, 0.0, 0, 0, -2.0]]]}, "forward"),
-        ({"trees": [[[1, 0.5, 2, 3, 0.0], [-1, 0, 0, 0, 1.0], [-1, 0, 0, 0, -1.0],
-                     [-1, 0, 0, 0, 1.0]]]}, "one parent"),
+        (
+            {
+                "trees": [
+                    [
+                        [1, 0.5, 2, 3, 0.0],
+                        [-1, 0, 0, 0, 1.0],
+                        [-1, 0, 0, 0, -1.0],
+                        [-1, 0, 0, 0, 1.0],
+                    ]
+                ]
+            },
+            "one parent",
+        ),
         ({"trees": [[[5, 0.5, 1, 2, 0.0], [-1, 0, 0, 0, -2.0], [-1, 0, 0, 0, 2.0]]]}, "outside"),
-        ({"trees": [[[1, 0.5, 1, 2, 0.0], [-1, 0, 0, 0, -99.0], [-1, 0, 0, 0, 2.0]]]}, "hard switch"),
+        (
+            {"trees": [[[1, 0.5, 1, 2, 0.0], [-1, 0, 0, 0, -99.0], [-1, 0, 0, 0, 2.0]]]},
+            "hard switch",
+        ),
         ({"threshold": 5.0}, "cannot discriminate"),
         ({"scale": 0.0}, "scale"),
         ({"method": "neural_net"}, "method"),
@@ -178,7 +203,9 @@ def test_non_finite_numbers_and_oversize_documents_are_refused() -> None:
         trees.validate(_tree_doc().replace('"base": 0.0', '"base": NaN'))
     with pytest.raises(trees.TreesDocumentError, match="exceeds"):
         trees.validate(" " * (trees.MAX_DOCUMENT_BYTES + 1))
-    lin = json.loads(linear_fit.fit(_data(500, 7), _data(200, 8), linear_fit.LinearParams()).document)
+    lin = json.loads(
+        linear_fit.fit(_data(500, 7), _data(200, 8), linear_fit.LinearParams()).document
+    )
     lin["weights"][0] = 40.0
     with pytest.raises(linear.LinearDocumentError, match="hard switch"):
         linear.validate(json.dumps(lin))
@@ -243,7 +270,7 @@ def _member(kind: str, document: str, f1: dict[str, float], repair: float = 1.0)
 
 
 def _suite(value: float) -> dict[str, float]:
-    return {s: value for s in league_judge.SUITES}
+    return dict.fromkeys(league_judge.SUITES, value)
 
 
 def test_the_offline_order_is_the_registered_rule(fitted: dict[str, str]) -> None:
@@ -301,7 +328,7 @@ def test_site_labels_switch_the_champion_only_when_the_whole_interval_says_so(
     assert kept.comparisons[0]["incidents"] == 2
     many = _rows(40, challenger, champion)
     moved = league_judge.choose(both, rows=many, current=champion.ref)
-    assert moved is not None and moved.champion == challenger.ref, moved.comparisons
+    assert moved is not None and moved.champion == challenger.ref, moved and moved.comparisons
     c = moved.comparisons[0]
     assert c["verdict"] == "better" and c["high"] < 0
     assert "95 % interval" in moved.reason
@@ -345,7 +372,8 @@ async def test_the_slow_loop_records_the_champion_and_the_fast_loop_runs_it(
     decision = await store.latest_league_decision()
     assert decision is not None and decision["champion"] == b.ref and decision["actor"] == "judge"
     cur = await store.conn.execute("SELECT COUNT(*) FROM audit_log WHERE action='league.decide'")
-    assert (await cur.fetchone())[0] == 1
+    row = await cur.fetchone()
+    assert row is not None and row[0] == 1
     # Unchanged: a second pass writes nothing.
     await league_loop.judge_step(engine, 1_800_000_300.0)
     assert len(await store.league_decisions(10)) == 1
@@ -377,7 +405,7 @@ def test_the_live_shadow_is_bounded_and_never_raises() -> None:
     good = league.member_from("gam", TEST_MODEL, _manifest(TEST_MODEL, "gam"))
     shadow = LeagueShadow()
     shadow.reset("champion")
-    shadow.observe(1, outcome, [good, Broken()], burst=1)  # type: ignore[list-item]
+    shadow.observe(1, outcome, [good, Broken()], burst=1)
     snap = shadow.snapshot()
     assert snap["challengers"][good.ref]["pairs"] == SAMPLE_PAIRS
     assert snap["errors"] == 1
@@ -403,11 +431,13 @@ def test_the_package_carries_a_full_league_and_every_member_is_whole() -> None:
         assert set(m["artifact"]["features"]) <= set(FEATURE_NAMES)
         assert not [f for f in m["artifact"]["features"] if "incumbent" in f]
         prov = m["provenance"]
-        assert prov["data"].startswith("generated") and not held_out & set(prov["training_families"])
-        assert set(m["evaluation"]["held_out_families"]) == held_out
-        assert [(c["quantity"], c["scope"], c["kind"], c["limit"]) for c in m["quality_bar"]] == list(
-            train.QUALITY_BAR
+        assert prov["data"].startswith("generated") and not held_out & set(
+            prov["training_families"]
         )
+        assert set(m["evaluation"]["held_out_families"]) == held_out
+        assert [
+            (c["quantity"], c["scope"], c["kind"], c["limit"]) for c in m["quality_bar"]
+        ] == list(train.QUALITY_BAR)
         from synth import report
 
         assert report.check_bar(m["evaluation"], train.QUALITY_BAR) == m["scorecard"]

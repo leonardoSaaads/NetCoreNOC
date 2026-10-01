@@ -146,19 +146,20 @@ eval-baseline:
 		exit 2; }
 	$(PYTHON) eval/harness.py --write-baseline eval/baselines/current.json --reason "$(REASON)"
 
-# Train the shipped link model (v0.26.0, ADRs #405-#409, #419): generate the streams, record them
-# through the real engine, ablate the features, search, fit, tune grouping on validation, evaluate
-# once on every test split and held-out family, and write `engine/model/linkmodel.json` and
-# its manifest ONLY if the quality bar is met on every one. Deterministic from the pinned seed;
-# every stage is cached under `eval/synth/.cache/` by the digest of the code it depends on.
+# Train the model league (v0.27.0, ADRs #424-#426): generate the streams, record them through the
+# real engine, ablate the features once for every member, then per model kind search, fit, tune
+# grouping on validation, evaluate once on every test split, held-out family and the hand-labelled
+# corpus, and write `engine/model/league/<kind>.json` with its manifest and scorecard. Every member
+# is written whatever its scorecard says: the judge ranks them, nothing here withholds one.
+# Deterministic from the pinned seed; every stage is checkpointed under `eval/synth/.cache/`.
 train:
-	PYTHONPATH=eval $(PYTHON) -m synth.train --stage ship
+	PYTHONPATH=eval $(PYTHON) -m synth.league --stage ship
 
 # The same pipeline on the validation streams only; writes nothing, reads no test split.
 train-validate:
-	PYTHONPATH=eval $(PYTHON) -m synth.train --stage validate
+	PYTHONPATH=eval $(PYTHON) -m synth.league --stage validate
 
-# Reproduce the shipped model's published numbers from the installed package: equality, not
+# Reproduce every league member's published numbers from the installed package: equality, not
 # tolerance. Re-records the generated dataset when eval/synth/.cache is absent (~15 min).
 train-verify:
 	PYTHONPATH=eval $(PYTHON) -m synth.verify

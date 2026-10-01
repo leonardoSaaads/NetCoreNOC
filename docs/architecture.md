@@ -67,10 +67,10 @@ order with no cycles between them** (decision #208):
 |---|---|---|
 | `correlate/` | the correlation decision and its vocabulary — `correlate`, `learn`, `scoring`, `scorer_contract`, `rootcause`, `severity`, the varbind profiler, `preview` | no other domain |
 | `dataset/` | the feedback dataset — `capture`, `labels`, `census`, `incidents`, `seal`, `retention_policy` | `correlate` |
-| `model/` | the model family — `attribution`, `cart`, `tree`, `forest`, `boosting`, `challenger`, `training`, `model_version`, `background` | `correlate`, `dataset` |
-| `evaluation/` | shadow mode, the estimator, the judge, the folds, the promotion gate | `correlate`, `dataset`, `model` |
+| `model/` | the model family — the league (`league`, `league_judge`, `trees`, `linear`, `gam`, their `*_fit` trainers), site adaptation (`site`, `site_search`, `site_labels`), and the v0.11.0 family (`cart`, `tree`, `forest`, `boosting`, `challenger`, `training`, `model_version`, `background`) | `correlate`, `dataset` |
+| `evaluation/` | shadow mode, the league's live shadow, the estimator, the judge, the folds, the promotion gate | `correlate`, `dataset`, `model` |
 | `report/` | the three deterministic CLI reports, compute and render | the four above; **nothing imports it but the CLI** |
-| `operate/` | the running appliance — `engine`, `engine_base`, `maintenance`, `gaps`, `scorer_lifecycle` | the four above; nothing imports it but the entry points |
+| `operate/` | the running appliance — `engine`, `engine_base`, `maintenance`, `gaps`, `scorer_lifecycle`, `league_loop`, `proposals` | the four above; nothing imports it but the entry points |
 
 ## Where code goes
 
@@ -116,6 +116,30 @@ is a contract rather than a feature, and it survives the change of model family:
 leaf value, so the contributions are exact marginal Shapley values over all 2³ = 8 coalitions, and
 **a model too large to tabulate is refused rather than approximated**.
 [`correlation.md`](correlation.md#the-model-kinds) is the reader's version.
+
+## Two loops: one groups, one judges (v0.27.0)
+
+Borrowed from O-RAN's near-real-time and non-real-time controllers (decisions #423–#428): a decision
+that must be made per event runs on a short, bounded path; a decision about **who** makes it runs
+elsewhere, on a slower cadence, and reaches the short path only at a reload point.
+
+| | fast loop | slow loop |
+|---|---|---|
+| where | `operate/engine.py`, inside the batch | `operate/league_loop.py`, from `maintenance` (tick 1, then every 60 ticks ≈ 5 min), the work in a thread |
+| what | the **champion** scores every pair and places every alarm; up to 12 pairs of a sample of activations are re-scored by every **challenger** in shadow (`evaluation/league_shadow.py`) | the **judge** (`model/league_judge.py`) re-ranks every member on this site's labels and writes an append-only `league_decision` row with an audit entry |
+| reads | the in-memory scorer only | the store's labels, the packaged scorecards, the measured latencies |
+| bound | no lock, no I/O per trap; shadow work is capped per activation | one decision per run; the champion changes only when a challenger's paired advantage has a 95 % interval wholly below zero, or an admin pins one |
+
+**The league** (`model/league.py`) is five model families over one feature vector — GAM, boosted
+trees, random forest, decision tree, logistic regression — each a JSON document validated field by
+field on load, never code. Every member has a scorecard from `make train`; none is withheld by it.
+The additive formula is only a fail-safe: it groups when no member can be loaded, and the bell says
+so.
+
+**Pending** (`operate/proposals.py`, `store/proposals.py`): a model never grows a situation an
+operator has confirmed (`open`). Alarms it would add become a `pending` situation that proposes
+joining it; an operator's accept is a merge and its answer — either way — is a label the slow loop
+reads.
 
 ## Determinism where it is load-bearing
 

@@ -108,7 +108,8 @@ async def test_accepting_merges_into_the_open_situation_and_labels_the_cross_pai
         "AND peer_situation_id=?",
         (sid, pid),
     )
-    assert (await cur.fetchone())[0] == 1, "accepting did not record the merge gesture"
+    row = await cur.fetchone()
+    assert row is not None and row[0] == 1, "accepting did not record the merge gesture"
     assert await store.proposal_stats() == {engine.decider_ref: {"accept": 1, "reject": 0}}
     assert all(engine.sit_of.get(a) == sid for a in proposed), "the engine's map did not follow"
 

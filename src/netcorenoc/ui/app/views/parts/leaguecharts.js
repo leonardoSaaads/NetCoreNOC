@@ -76,7 +76,7 @@ export class ModelCharts extends Component {
     const nPairs = pairs.pairs ? `${pairs.pairs} pairs, ${pairs.streams} streams` : "";
     const importance = Object.entries((model.search || {}).importance || {}).sort((a, b) => b[1] - a[1]);
     return html`<div class="judge-grid league-charts" data-model=${model.kind}>
-      <section class="chart-block mchart">
+      <div class="mchart-wrap">
         ${names.length > 1 ? html`<label class="mchart-pick">Hyperparameter
           <select value=${chosen} onChange=${(e) => this.setState({ param: e.target.value })}>
             ${names.map((p) => html`<option key=${p} value=${p}>${p}</option>`)}
@@ -86,7 +86,7 @@ export class ModelCharts extends Component {
           points=${first.map((t) => ({ x: t.params[chosen], y: t.valid_loss }))}
           xLabel=${chosen || "—"} yLabel="validation log loss (lower is better)"
           source=${VALID} n=${`${first.length} first-rung fits`} />
-      </section>
+      </div>
       <${Curve} title=${T(2, "Train × validation curve")} xLabel=${CAPACITY[fit.capacity] || "capacity"}
         yLabel="log loss"
         series=${[
@@ -116,7 +116,8 @@ export class ModelCharts extends Component {
         points=${trials.map((t, i) => ({ x: i + 1, y: t.valid_loss, tone: t.rung > 0 ? null : "muted" }))}
         xLabel="fit, in order" yLabel="validation log loss" source=${VALID} n=${`${trials.length} fits`}
         note="dashed: best so far; dark dots survived a halving round" />
-      <${Confusion} matrix=${pairs.confusion} source=${GEN} n=${nPairs} />
+      <${Confusion} title=${T(6, "Confusion matrix")} matrix=${pairs.confusion} source=${GEN}
+        n=${nPairs} />
       <${Curve} title=${T(7, "ROC")} xLabel="false positive rate" yLabel="true positive rate"
         xRange=${[0, 1]} yRange=${[0, 1]} reference="diagonal"
         series=${[{ name: model.name, tone: null, points: (pairs.roc_curve || []).map(([f, t]) => [f, t]) }]}

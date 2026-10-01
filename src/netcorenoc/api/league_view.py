@@ -68,7 +68,7 @@ def member_block(member: league_model.Member, appliance_us: float | None) -> dic
     splits = evaluation.get("splits") or {}
     pairs = evaluation.get("pairs") or {}
     search = m.get("search") or {}
-    return finite(
+    block: dict[str, Any] = finite(
         {
             "ref": member.ref,
             "kind": member.kind,
@@ -103,6 +103,7 @@ def member_block(member: league_model.Member, appliance_us: float | None) -> dic
             "grouping_admissible": m.get("grouping_admissible"),
         }
     )
+    return block
 
 
 def members_table(

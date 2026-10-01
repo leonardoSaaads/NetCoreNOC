@@ -154,7 +154,7 @@ class Proposal extends Component {
     return html`<div class="proposal" role="group" aria-label=${`Proposal to join situation #${target}`}>
       <span>The model proposes adding these alarms to confirmed situation
         ${" "}<a href=${`#/situations/${target}`}>#${target}</a>${p != null
-          ? html`${" "}— it is <b>${Math.round(p * 100)}%</b> sure they belong together` : null}.</span>
+          ? html`${" "}— it is <b>${`${Math.round(p * 100)}%`}</b> sure they belong together` : null}.</span>
       ${can("situation.merge") ? html`<span class="proposal-acts">
         <button type="button" class="primary" disabled=${busy} onClick=${() => this.answer("accept")}>
           Accept — add to #${target}</button>

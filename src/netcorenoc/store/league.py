@@ -64,19 +64,6 @@ class LeagueMixin(StoreBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
-    async def league_evidence(self, decision_id: int) -> dict[str, Any]:
-        cur = await self.conn.execute(
-            "SELECT evidence FROM league_decision WHERE id=?", (decision_id,)
-        )
-        row = await cur.fetchone()
-        if row is None:
-            return {}
-        try:
-            value = json.loads(str(row[0]))
-        except ValueError:
-            return {}
-        return value if isinstance(value, dict) else {}
-
     async def newest_site_model(self) -> dict[str, Any] | None:
         """The newest model this appliance fitted on its own labels (the in-product search's
         output, ADR #413): a `gam` row in `model_version`. The league adds it as a member."""

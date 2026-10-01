@@ -136,10 +136,6 @@ class TreesModel:
     threshold: float
     grouping: dict[str, float]
 
-    @property
-    def node_count(self) -> int:
-        return sum(len(t.feature) for t in self.trees)
-
 
 def _num(value: Any, what: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):

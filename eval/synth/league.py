@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import gc
 import hashlib
 import json
 import multiprocessing
@@ -179,39 +180,37 @@ def _search(kind: str, seed: int, cache: Path) -> list[tuning.Trial]:
     )
 
 
-def train_member(kind: str) -> dict[str, Any]:
-    """Everything for one member, checkpointed under the dataset root. Runs in a child process."""
-    root: Path = _DATA["root"]
-    seed: int = _DATA["seed"]
+def _tag(kind: str) -> str:
     code = train._digest(
         "src/netcorenoc/engine/model/gam_fit.py",
         "src/netcorenoc/engine/model/trees_fit.py",
+        "src/netcorenoc/engine/model/trees_grow.py",
         "src/netcorenoc/engine/model/linear_fit.py",
         "src/netcorenoc/engine/correlate/grouping.py",
         "src/netcorenoc/engine/correlate/features.py",
         "eval/synth/tuning.py",
         "eval/synth/dataset.py",
     )
-    tag = f"{kind}-{seed}-{code}-{'_'.join(_DATA['features'])[:40]}"
-    done_path = root / f"league-{tag}.json"
+    return f"{kind}-{_DATA['seed']}-{code}-{'_'.join(_DATA['features'])[:40]}"
+
+
+def fit_phase(kind: str) -> dict[str, Any]:
+    """Phase 1, in a child process: the search and the final fit. Light on memory — it reads only
+    the column-major training and validation rows — so every kind can run at once."""
+    root: Path = _DATA["root"]
+    seed: int = _DATA["seed"]
+    done_path = root / f"league-fit-{_tag(kind)}.json"
     if done_path.exists():
         print(f"  [{kind}] reusing {done_path.name}", file=sys.stderr, flush=True)
         return dict(json.loads(done_path.read_text()))
     t0 = time.time()
-    trials = _search(kind, seed, root / f"league-trials-{tag}.jsonl")
+    trials = _search(kind, seed, root / f"league-trials-{_tag(kind)}.jsonl")
     best = tuning.best(trials)
     f0 = time.time()
     final = fit_member(kind, best.params, FINAL[kind], seed)
-    fit_seconds = time.time() - f0
-    scorer = league.KINDS[kind][1](final.document, kind)
-    grouping, grid = train.tune_grouping(_DATA["tuning"], scorer, fallback=True)
-    document = train.with_grouping(final.document, grouping)
-    scorer = league.KINDS[kind][1](document, kind)
-    for name, logs in _DATA["tuning"].items():
-        report.print_validation(logs, scorer, f"{name} [{kind}]")
     out: dict[str, Any] = {
         "kind": kind,
-        "document": document,
+        "fit_document": final.document,
         "trials": [t.as_dict() for t in trials],
         "best": best.as_dict(),
         "importance": tuning.importance(trials),
@@ -222,19 +221,53 @@ def train_member(kind: str) -> dict[str, Any]:
             "points": final.points,
             "train_trace": [round(v, 6) for v in final.train_trace],
             "valid_trace": [round(v, 6) for v in final.valid_trace],
-            "seconds": round(fit_seconds, 1),
+            "seconds": round(time.time() - f0, 1),
         },
+        "search_seconds": round(f0 - t0, 1),
+    }
+    done_path.write_text(json.dumps(out))
+    return out
+
+
+def grouping_phase(fitted: dict[str, Any], tuning_logs: dict[str, Any]) -> dict[str, Any]:
+    """Phase 2a, in the parent, one kind at a time: the grouping biases on the validation streams
+    under the quality bar, and the validation numbers printed before any test split is read."""
+    kind = fitted["kind"]
+    path = _DATA["root"] / f"league-grouping-{_tag(kind)}.json"
+    if path.exists():
+        return {**fitted, **json.loads(path.read_text())}
+    scorer = league.KINDS[kind][1](fitted["fit_document"], kind)
+    grouping, grid = train.tune_grouping(tuning_logs, scorer, fallback=True)
+    document = train.with_grouping(fitted["fit_document"], grouping)
+    scorer = league.KINDS[kind][1](document, kind)
+    for name, logs in tuning_logs.items():
+        report.print_validation(logs, scorer, f"{name} [{kind}]")
+    extra = {
+        "document": document,
         "grouping": grouping.as_dict(),
         "grouping_grid": grid,
         "grouping_admissible": any(r["admissible"] for r in grid),
-        "search_seconds": round(f0 - t0, 1),
     }
-    if _DATA["stage"] == "ship":
-        out["evaluation"] = report.evaluate(root, scorer, seed)
-        out["corpus"] = corpus(kind, document)
-        out["latency"] = latency(scorer, _DATA["bench"])
-        done_path.write_text(json.dumps(out))
-    return out
+    path.write_text(json.dumps(extra))
+    return {**fitted, **extra}
+
+
+def evaluation_phase(member: dict[str, Any]) -> dict[str, Any]:
+    """Phase 2b, in the parent, one kind at a time: the test splits, the corpus, the latency."""
+    kind = member["kind"]
+    path = _DATA["root"] / f"league-eval-{_tag(kind)}.json"
+    if path.exists():
+        return {**member, **json.loads(path.read_text())}
+    scorer = league.KINDS[kind][1](member["document"], kind)
+    print(f"  [{kind}] evaluating on the test splits", file=sys.stderr, flush=True)
+    extra = {
+        "evaluation": report.evaluate(_DATA["root"], scorer, _DATA["seed"]),
+        "corpus": corpus(kind, member["document"]),
+        "latency": latency(scorer, _DATA["bench"]),
+    }
+    path.write_text(json.dumps(extra))
+    gc.collect()
+    return {**member, **extra}
 
 
 def corpus(kind: str, document: str) -> dict[str, Any]:
@@ -248,7 +281,7 @@ def corpus(kind: str, document: str) -> dict[str, Any]:
     member = league.member_from(kind, document, json.dumps(manifest))
     saved_league, saved_shipped = league.load, shipped.load
     league.load = lambda: league.League((member,))  # type: ignore[assignment]
-    shipped.load = lambda: shipped.Shipped(  # type: ignore[assignment]
+    shipped.load = lambda: shipped.Shipped(
         member.document,
         member.sha256,
         member.manifest,
@@ -257,7 +290,7 @@ def corpus(kind: str, document: str) -> dict[str, Any]:
     try:
         out = asyncio.run(harness.run_all())
     finally:
-        league.load, shipped.load = saved_league, saved_shipped  # type: ignore[assignment]
+        league.load, shipped.load = saved_league, saved_shipped
     keys = ("pairwise_f1", "ari", "over_merge_rate", "under_merge_rate")
     return {
         "dataset": "eval/corpus (hand-labelled, generated by a different program)",
@@ -353,13 +386,14 @@ def main() -> int:
     t0 = time.time()
     root = args.root.resolve() if args.root else dataset.build(args.scale, args.seed, args.workers)
     print(f"dataset {root.name} ready in {time.time() - t0:.0f}s", file=sys.stderr, flush=True)
-    train_logs = list(dataset.load_split(root, "train"))
-    long_logs = list(dataset.load_split(root, "train_long"))
-    valid_logs = list(dataset.load_split(root, "valid"))
-    rows_train = dataset.training_rows(train_logs, seed=args.seed) + dataset.training_rows(
-        long_logs, seed=args.seed, time_window=(0.0, 0.7)
+    # Streams are read one at a time (`load_split` is a generator): with the proxied storms a
+    # split's logs together are several gigabytes, and only the sampled rows need to stay.
+    rows_train = dataset.training_rows(
+        dataset.load_split(root, "train"), seed=args.seed
+    ) + dataset.training_rows(
+        dataset.load_split(root, "train_long"), seed=args.seed, time_window=(0.0, 0.7)
     )
-    rows_valid = dataset.training_rows(valid_logs, seed=args.seed)
+    rows_valid = dataset.training_rows(dataset.load_split(root, "valid"), seed=args.seed)
     if not rows_train or any(len(r.x) != len(FEATURE_NAMES) for r in rows_train[:1000]):
         raise SystemExit(f"the recorded vectors are not {len(FEATURE_NAMES)} long; re-record")
     rows_train = train._cap(rows_train, train.MAX_TRAIN_ROWS, args.seed)
@@ -379,7 +413,7 @@ def main() -> int:
         [
             [r.y, round(r.w, 6), *(round(v, 6) for v in r.x)]
             for r in train._cap(
-                dataset.training_rows(list(dataset.load_split(root, "test_iid")), seed=args.seed),
+                dataset.training_rows(dataset.load_split(root, "test_iid"), seed=args.seed),
                 train.BENCHMARK_ROWS,
                 args.seed + 2,
             )
@@ -394,19 +428,29 @@ def main() -> int:
         features=features,
         train_ds=train.to_dataset(rows_train, features),
         valid_ds=train.to_dataset(rows_valid, features),
-        tuning={
-            "valid": valid_logs,
-            "valid_concurrency": list(dataset.load_split(root, "valid_concurrency")),
-        },
         bench=bench,
     )
+    # The recorded streams are large (the proxied storms put hundreds of candidates on every
+    # activation): free everything row-shaped before forking, so each child holds only the
+    # column-major arrays, and load the streams once, here, after the children are done.
+    n_train, n_valid = len(rows_train), len(rows_valid)
+    del rows_train, rows_valid
+    gc.collect()
     ctx = multiprocessing.get_context("fork")
     with ProcessPoolExecutor(
         max_workers=args.workers or min(4, len(kinds)), mp_context=ctx
     ) as pool:
-        results = list(pool.map(train_member, kinds))
+        fitted = list(pool.map(fit_phase, kinds))
+    tuning_logs = {
+        "valid": list(dataset.load_split(root, "valid")),
+        "valid_concurrency": list(dataset.load_split(root, "valid_concurrency")),
+    }
+    grouped = [grouping_phase(f, tuning_logs) for f in fitted]
+    del tuning_logs
+    gc.collect()
     if args.stage == "validate":
         return 0
+    results = [evaluation_phase(g) for g in grouped]
     bench_doc = json.dumps(
         {
             "format": BENCHMARK_FORMAT,
@@ -428,8 +472,8 @@ def main() -> int:
             "scale": args.scale,
             "dataset_digest": root.name,
             "command": "make train",
-            "training_rows": len(rows_train),
-            "validation_rows": len(rows_valid),
+            "training_rows": n_train,
+            "validation_rows": n_valid,
             "seconds": round(time.time() - t0, 1),
             "data": "generated (eval/synth), never site data",
             "held_out_families": list(dataset.HOLDOUT_OPTICAL + dataset.HOLDOUT_PROTOCOL),
@@ -450,7 +494,7 @@ def main() -> int:
 def _print_table(out: Path) -> None:
     from netcorenoc.engine.model import league_judge as judge
 
-    members = league.load_dir(out)  # type: ignore[arg-type]
+    members = league.load_dir(out)
     for kind, reason in members.refused:
         print(f"REFUSED {kind}: {reason}", file=sys.stderr)
     table = judge.offline_table(members)
