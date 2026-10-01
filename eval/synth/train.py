@@ -1,8 +1,11 @@
-"""Training the shipped model: one pinned command, from generated streams to a validated artifact.
+"""Training one GAM: the v0.26.0 pipeline, and the shared steps the league reuses.
 
-    make train            # == python -m synth.train  (from eval/)
+    PYTHONPATH=eval python -m synth.train   # one GAM, gated by the bar (kept for comparison)
+    make train                              # the league: `synth.league` (v0.27.0, ADR #424)
 
-The steps, each deterministic from the pinned seed:
+`synth.league` imports this module's rows, ablation, grouping tuning and quality bar, so every
+member is trained exactly as the v0.26.0 GAM was; what changed is that the bar is a scorecard there,
+not a gate. The steps of this module's own command, each deterministic from the pinned seed:
 
 1. **Build** the recorded streams (`dataset.build`, cached by digest).
 2. **Rows**: labelled pairs from ``train`` and the older 70 % of ``train_long``; validation rows
@@ -189,7 +192,7 @@ def _evidence_cache(logs: list[StreamLog], scorer: gam.GamScorer) -> dict[int, l
 
 
 def tune_grouping(
-    splits: dict[str, list[StreamLog]], scorer: gam.GamScorer
+    splits: dict[str, list[StreamLog]], scorer: gam.GamScorer, *, fallback: bool = False
 ) -> tuple[GroupingParams, list[dict[str, float]]]:
     """The fewest repair gestures among the settings that pass the quality bar on validation.
 
@@ -253,6 +256,15 @@ def tune_grouping(
                 )
                 if verdict["passed"] and (best is None or m["repair_gestures"] < best[0] - 1e-12):
                     best = (m["repair_gestures"], params)
+    if best is None and fallback:
+        # v0.27.0 (ADR #426): the bar is a scorecard, not a gate. With no admissible setting the
+        # choice is the fewest missed checks, then the fewest repair gestures — and the manifest
+        # records that no setting was admissible, so the Judge screen can say so.
+        pick = min(rows, key=lambda r: (r["checks_missed"], r["repair_gestures"]))
+        return (
+            GroupingParams(pick["join_bias"], pick["merge_bias"], int(pick["merge_min_pairs"])),
+            rows,
+        )
     if best is None:  # no setting passes the bar even on the streams it is tuned on: say so
         raise SystemExit(
             "no grouping setting passes the quality bar on validation; the model is not shipped"
@@ -307,18 +319,18 @@ def main() -> int:
     root = dataset.build(args.scale, args.seed, args.workers)
     data_digest = root.name
     print(f"dataset {data_digest} ready in {time.time() - t0:.0f}s", file=sys.stderr)
-    train_logs = list(dataset.load_split(root, "train"))
-    long_logs = list(dataset.load_split(root, "train_long"))
-    valid_logs = list(dataset.load_split(root, "valid"))
     # Tuning only (#421): never a training row, never a search's validation loss.
     tuning = {
-        "valid": valid_logs,
+        "valid": list(dataset.load_split(root, "valid")),
         "valid_concurrency": list(dataset.load_split(root, "valid_concurrency")),
     }
-    rows_train = dataset.training_rows(train_logs, seed=args.seed) + dataset.training_rows(
-        long_logs, seed=args.seed, time_window=(0.0, 0.7)
+    # The training streams are read one at a time (`load_split` is a generator); only rows stay.
+    rows_train = dataset.training_rows(
+        dataset.load_split(root, "train"), seed=args.seed
+    ) + dataset.training_rows(
+        dataset.load_split(root, "train_long"), seed=args.seed, time_window=(0.0, 0.7)
     )
-    rows_valid = dataset.training_rows(valid_logs, seed=args.seed)
+    rows_valid = dataset.training_rows(tuning["valid"], seed=args.seed)
     # A recording that lost its feature vectors (a decider that reads none ran instead of the
     # probe) must stop here, loudly, rather than train on empty rows.
     short = [r for r in rows_train[:1000] + rows_valid[:1000] if len(r.x) != len(FEATURE_NAMES)]
@@ -430,7 +442,7 @@ def main() -> int:
     # The do-no-harm benchmark a site model is judged against (ADR #411): generated pairs from the
     # unseen i.i.d. test streams, whole activations, bounded, packaged with the model.
     bench = _cap(
-        dataset.training_rows(list(dataset.load_split(root, "test_iid")), seed=args.seed),
+        dataset.training_rows(dataset.load_split(root, "test_iid"), seed=args.seed),
         BENCHMARK_ROWS,
         args.seed + 2,
     )

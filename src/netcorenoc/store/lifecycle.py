@@ -56,10 +56,16 @@ class LifecycleMixin(StoreBase):
         self._has_lifecycle = "resolution" in columns
         # v0.26.0, migration `0026`: which decider formed a situation, and the decider setting.
         self._has_situation_decider = "decider" in columns
+        # v0.27.0, migration `0027`: a pending situation's proposal, and the league's tables.
+        self._has_proposals = "proposed_into" in columns
         cur = await self.conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='decider_setting'"
         )
         self._has_decider = await cur.fetchone() is not None
+        cur = await self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='league_decision'"
+        )
+        self._has_league = await cur.fetchone() is not None
         # v0.16.1, migration `0015`. Same probe, same reason, one table over: `add_feedback` is on
         # the write path of every verdict and every gesture, so it may not learn the schema from a
         # caught `OperationalError` either. `False` means the two-column key of `0007` is still the

@@ -13,16 +13,18 @@ through the engine — then aligns every predicted alarm to ground truth and pri
 the frozen baseline. It **exits non-zero** on a regression in `pairwise_f1`, `ari` or
 `entity_accuracy`.
 
-Releases quote `python eval/harness.py | sha256sum`. It is **`31ea7583…`** today (v0.26.0 added
-`dual_incident_same_vendor`; `842da337…` before the baseline was re-cut). It was `c75b42aa…` from
+Releases quote `python eval/harness.py | sha256sum`. It is **`43328080…`** today (v0.27.0: the
+league's champion decides the replay, and the gate reads every scenario); it was `31ea7583…` in
+v0.26.0, which added `dual_incident_same_vendor` (`842da337…` before that re-cut), `c75b42aa…` from
 v0.18.0, and `c2e8a0ce…` from v0.7.0 until the corpus was re-cut; `CHANGELOG.md` records each move
 with its reason — this line said *"held at `c2e8a0ce…` since v0.7.0"* for several releases after it
 stopped being true, which is the one thing a quoted hash must not do. What makes the number
 useful is that it moves **only** when somebody meant it to, so the value here is the current
 one and the history is in the log.
 
-**What it can and cannot see.** It is a snapshot of *aggregate* metrics, so it sees a change that
-moves one and nothing else. Measured in v0.17.0: forcing every pair unlinked collapses it to two
+**What it can and cannot see.** Since v0.27.0 (DECISIONS #429) it gates the aggregate **and every
+scenario**: the pooled aggregate counts pairs, three storms hold almost all of them, and a split
+ten-alarm scenario beside them barely moved it. It still sees only a change that moves a metric. Measured in v0.17.0: forcing every pair unlinked collapses it to two
 gated regressions, and **halving the class-affinity term moves nothing at all**, because no link on
 this corpus crossed the threshold differently. Do not read an unchanged hash as "the scorer is
 untouched"; read it as "no grouping decision on these ten scenarios changed".

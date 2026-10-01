@@ -1,4 +1,4 @@
-/* Corpus: what capture is holding, in rows.
+/* Corpus: what capture is holding, in rows — and what it is for (v0.27.0: the judge reads it).
  *
  * `GET /api/dataset/retention` had no UI surface in v0.12.0 (draft §4), so an admin without shell
  * access to the appliance could not see what the feedback corpus cost or what window they
@@ -13,7 +13,7 @@ import { html } from "../dom.js";
 import { get } from "../api.js";
 import { Loader, Empty, DataTable, SectionHeading, Stat } from "../widgets.js";
 import { Bars } from "../compare.js";
-import { count, plural } from "../format.js";
+import { corpusFact, count } from "../format.js";
 
 /**
  * The row counts that are **counts of the same thing** and can therefore share an axis
@@ -42,42 +42,41 @@ export class Corpus extends Loader {
     const empty = entries.every(([, value]) => !value);
 
     return html`<div class="corpusview">
+      <div class="settings-intro">
+        <p><b>The corpus is what the models learn from on this site.</b> Every time an alarm is
+          grouped, the appliance keeps the evidence it scored; every time an operator confirms,
+          corrects, moves, merges or answers a proposal, that judgement is kept beside it.</p>
+        <p>The judge uses these labels every five minutes to re-rank the models, and site training
+          uses them to adapt one. Nothing here is a gate: the models decide from the first trap.</p>
+      </div>
       <${SectionHeading} title="What capture is holding"
-        hint=${"Aggregates only — counts and timestamps, never a row. The corpus is captured " +
-               "engine-side, where visibility scoping does not exist, which is why every route " +
-               "that touches it is admin-only."} />
+        hint=${"Counts and dates only — never a row. Capture happens inside the engine, where " +
+               "visibility scoping does not exist, which is why this screen is admin-only."} />
 
       ${empty ? html`<${Empty}
-        title="The corpus is empty."
-        will=${"Every operator verdict — a confirm, a split, a partial split — is captured here " +
-               "with the evidence that was on screen when it was given. This is the input to " +
-               "every claim the appliance makes about how well it groups."}
-        meanwhile=${"Open a situation with two or more members and confirm or split it. The " +
-                    "first row appears immediately; the pre-registered floors need 50 asserting " +
-                    "bags across 30 incidents before a promotion can be considered."} />`
+        title="Nothing captured yet."
+        will=${"Every grouping the appliance makes is captured with its evidence, and every " +
+               "operator judgement on it is kept beside it."}
+        meanwhile=${"Confirm, split, move or merge a situation, or answer a Pending proposal: " +
+                    "the judge reads the label within five minutes."} />`
         : html`<div class="stat-row">
-          ${entries.map(([key, value]) => html`
-            <${Stat} key=${key} label=${key.replaceAll("_", " ")} value=${value} />`)}
+          ${entries.map(([key, value]) => {
+            const fact = corpusFact(key, value);
+            return html`<${Stat} key=${key} label=${fact.label} value=${fact.text} title=${fact.title} />`;
+          })}
         </div>
-        ${/* **The census, as a shape** (v0.16.6). Eleven tiles answer "how many of each" and
-              cannot answer "and how does that compare" — measured on this project's corpus,
-              `dataset_pair.sink` holds **181 750** rows against `dataset_observation.sink`'s
-              **1 868**, a hundredfold difference that eleven equal-sized boxes render as two
-              similar numbers. The bars are sorted, so the row that dominates retention is the
-              first thing read. */ null}
         <${Bars} title="What capture is holding, by rows" unit="rows"
           rows=${entries
             .filter(([key, value]) => ROW_COUNT_KEYS(key) && typeof value === "number")
             .sort((a, b) => b[1] - a[1])
             .map(([key, value]) => ({
               key,
-              label: key.replaceAll("_", " "),
+              label: corpusFact(key, value).label,
               value,
               tone: value ? null : "warn",
             }))}
-          source="/api/dataset/retention · aggregates only, never a row"
-          note=${"row counts only — the sink's two timestamps and its window are above, because " +
-                 "an epoch on this axis would make every other bar invisible"} />`}
+          source="aggregates only, never a row"
+          note="row counts only; the capture window's dates are in the tiles above" />`}
 
       <p class="hint">Capture is <b>${data.capture_enabled ? "on" : "off"}</b>.</p>
 
@@ -102,16 +101,10 @@ export class Corpus extends Loader {
         cells: { tier: html`<b>${tier}</b>`, value, what },
       }))} />
 
-      <p class="hint">Since this process started, the background sweep has removed
+      <p class="hint">Since this process started, the background sweep has removed${" "}
         ${Object.entries(data.audit_swept || {}).map(([k, v]) => `${count(v)} ${k}`).join(", ")
-          || "nothing"}. Changing a tier is on the <a href="#/settings">Settings</a> screen, where
-        the change previews what it would destroy before it destroys it.</p>
-
-      <p class="structural-note">The corpus <b>census</b> — what the promotion gate would decide
-        on this corpus, stated in advance — is <code class="mono">make census</code>. It is a
-        deterministic offline report that carries its own control and exits non-zero if that
-        control comes back empty. It has no HTTP route and this console does not recompute it
-        (draft §11.11). ${plural(entries.length, "aggregate")} are shown above.</p>
+          || "nothing"}. Tiers are changed on <a href="#/settings?tab=system">Settings → System</a>,
+        which previews what a change would delete before it deletes it.</p>
     </div>`;
   }
 }

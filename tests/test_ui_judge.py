@@ -1,16 +1,15 @@
-"""The v0.26.0 console, driven: the Judge dashboard, Settings' tabs and the kill switch (ADR #414).
+"""The v0.27.0 console, driven: the league on the Judge screen, Settings, Labelling and Pending.
 
-Two of Part VIII's injections live here, each with its control:
+Two of the release's injections live here, each with its control:
 
 * *a chart mixing generated and site data* — `test_every_judge_chart_names_its_dataset_and_n`
-  fails when a chart's caption stops naming the dataset of the block it sits in, or names the other
-  one;
-* *a headline metric without its sample size or baseline* — the same test (every caption carries a
-  count) and `test_the_headline_tiles_and_the_pr_curve_carry_interval_and_baseline`.
+  fails when a chart's caption stops naming the dataset of the block it sits in, or names the other;
+* *a model's ten charts incomplete* — `test_one_models_ten_charts_are_all_drawn` fails when any of
+  the maintainer's ten is missing or drawn empty.
 
-The shipped model here is `modelutil.TEST_MODEL` with a manifest in the shape `eval/synth/report.py`
-writes, so the screen is driven through the real `/api/judge` route whatever `make train` last
-produced.
+The league here is three members — the test GAM, a hand-written decision tree, a small logistic
+regression — each with a manifest in the exact shape `eval/synth/league.py` writes, so the screens
+are driven through the real `/api/judge` and `/api/decider` routes whatever `make train` produced.
 """
 
 from __future__ import annotations
@@ -24,9 +23,10 @@ import pytest
 
 import domdriver
 import uifixtures
-from netcorenoc.engine.model import shipped
+from netcorenoc.engine.model import league, linear_fit, shipped
 from netcorenoc.store import Store
 from test_dom_harness import dom_test
+from test_league import _data, _tree_doc
 
 import authutil
 from modelutil import TEST_MODEL
@@ -40,6 +40,7 @@ HEADLINE = (
     "asserted_negative_respected_rate",
     "repair_gestures",
 )
+SUITES = ("test_iid", "test_concurrency", "test_optical", "test_protocol")
 
 
 def _arm(base: float) -> dict[str, Any]:
@@ -52,13 +53,12 @@ def _arm(base: float) -> dict[str, Any]:
     return arm
 
 
-def _manifest(document: str) -> dict[str, Any]:
+def _manifest(document: str, kind: str, f1: float) -> str:
     curve = [[r / 10, 1 - r / 20, 0.5] for r in range(11)]
     pairs = {
         "pairs": 50000,
         "streams": 32,
         "positive_rate_weighted": 0.21,
-        "positive_rate_unweighted": 0.3,
         "average_precision": {"point": 0.8, "low": 0.78, "high": 0.82, "n": 32.0},
         "roc_auc": {"point": 0.9, "low": 0.89, "high": 0.91, "n": 32.0},
         "log_loss": {"point": 0.13, "low": 0.12, "high": 0.14, "n": 32.0},
@@ -82,66 +82,90 @@ def _manifest(document: str) -> dict[str, Any]:
         "threshold_probability": 0.5,
         "pr_curve": curve,
         "roc_curve": curve,
+        "residuals": {
+            "edges": [-1.0, -0.5, 0.0, 0.5, 1.0],
+            "positive": [0.0, 0.0, 0.05, 0.15],
+            "negative": [0.1, 0.6, 0.1, 0.0],
+            "mean": -0.02,
+            "mean_abs": 0.18,
+        },
     }
     trials = [
         {
             "index": i,
-            "rung": 0,
-            "rounds": 40,
-            "valid_loss": 0.15 - i * 0.002,
+            "rung": 0 if i < 4 else 1,
+            "capacity": 40,
+            "params": {"alpha": 0.1 + i, "depth": 2.0 + i},
+            "best": 30,
             "train_loss": 0.14,
+            "valid_loss": 0.15 - i * 0.002,
             "seconds": 30.0 + i,
             "status": "done",
-            "best_round": 30,
-            "params": {"learning_rate": 0.05 + i * 0.01, "max_bins": 16 + i},
         }
         for i in range(6)
     ]
-    return {
-        "artifact": {"sha256": hashlib.sha256(document.encode()).hexdigest()},
-        "provenance": {
-            "trained_with_version": "0.26.0",
-            "seed": 2026,
-            "data": "generated",
-            "validation_rows": 50000,
-            "held_out_families": ["bgp_flap"],
-        },
-        "ablation": {
-            "delta_without": {"dt": 0.05, "hour": -0.0002},
-            "kept": ["dt"],
-            "dropped": ["hour"],
-        },
-        "search": {
-            "trials": trials,
-            "importance": {"learning_rate": 0.6, "max_bins": 0.1},
-            "space": {"learning_rate": ["log", 0.02, 0.3], "max_bins": ["int", 8, 48]},
-        },
-        "final_fit": {
-            "best_round": 120,
-            "train_trace": [0.2, 0.15, 0.12],
-            "valid_trace": [0.21, 0.16, 0.14],
-            "trace_every": 10,
-        },
-        "evaluation": {
-            "splits": {"test_iid": {"model": _arm(0.9), "formula": _arm(0.88)}},
-            "held_out_families": {
-                "bgp_flap": {"split": "test_protocol", "model": _arm(0.8), "formula": _arm(0.7)}
+    return json.dumps(
+        {
+            "artifact": {"sha256": hashlib.sha256(document.encode()).hexdigest(), "kind": kind},
+            "provenance": {"trained_with_version": "0.27.0", "seed": 2026, "data": "generated"},
+            "search": {
+                "trials": trials,
+                "importance": {"alpha": 0.6, "depth": 0.1},
+                "space": {"alpha": ["log", 0.01, 10.0], "depth": ["int", 2, 8]},
             },
-            "pairs": {"test_iid": pairs},
-            "first_hour": {
-                "model": {"decisions": 120, **_arm(0.85)},
-                "formula": {"decisions": 90, **_arm(0.8)},
+            "final_fit": {
+                "capacity": "rounds",
+                "best": 30,
+                "points": [10, 20, 30],
+                "train_trace": [0.2, 0.15, 0.12],
+                "valid_trace": [0.21, 0.16, 0.14],
+                "seconds": 12.0,
             },
-        },
-        "quality_bar": [],
-        "verdict": {"passed": True, "checked": 60, "missed": []},
-    }
+            "evaluation": {
+                "splits": {s: {"model": _arm(f1), "formula": _arm(0.88)} for s in SUITES},
+                "held_out_families": {
+                    "bgp_flap": {"split": "test_protocol", "model": _arm(0.8), "formula": _arm(0.7)}
+                },
+                "pairs": {"test_iid": pairs},
+            },
+            "corpus": {
+                "aggregate": {
+                    "pairwise_f1": f1,
+                    "ari": f1,
+                    "over_merge_rate": 0.0,
+                    "under_merge_rate": 0.1,
+                },
+                "scenarios": {
+                    "fiber_cut": {"pairwise_f1": f1, "ari": f1},
+                    "olt_storm": {"pairwise_f1": 1.0, "ari": 1.0},
+                },
+            },
+            "latency": {"logit_us": 4.0, "explain_us": 30.0, "pairs": 2000},
+            "scorecard": {"passed": False, "checked": 10, "missed": ["x"], "checks": []},
+        }
+    )
 
 
 @pytest.fixture
-def judged(monkeypatch: pytest.MonkeyPatch) -> None:
-    model = shipped.load_from(TEST_MODEL, json.dumps(_manifest(TEST_MODEL)))
+def leagued(monkeypatch: pytest.MonkeyPatch) -> league.League:
+    logistic = linear_fit.fit(_data(400, 1), _data(200, 2), linear_fit.LinearParams()).document
+    members = league.League(
+        (
+            league.member_from("gam", TEST_MODEL, _manifest(TEST_MODEL, "gam", 0.90)),
+            league.member_from(
+                "decision_tree", _tree_doc(), _manifest(_tree_doc(), "decision_tree", 0.95)
+            ),
+            league.member_from(
+                "logistic_regression", logistic, _manifest(logistic, "logistic_regression", 0.70)
+            ),
+        )
+    )
+    monkeypatch.setattr(league, "load", lambda: members)
+    gam_member = members.by_kind("gam")
+    assert gam_member is not None
+    model = shipped.load_from(gam_member.document, json.dumps(gam_member.manifest))
     monkeypatch.setattr(shipped, "load", lambda: model)
+    return members
 
 
 async def _routes(store: Store, role: str = "admin") -> dict[str, Any]:
@@ -150,57 +174,176 @@ async def _routes(store: Store, role: str = "admin") -> dict[str, Any]:
 
 
 @dom_test
-async def test_every_judge_chart_names_its_dataset_and_n(store: Store, judged: None) -> None:
-    result = domdriver.run_scenario("judge", {"routes": await _routes(store)})
-    blocks = {b["dataset"]: b for b in result["blocks"]}
-    assert {"generated data", "site data", "live traffic"} <= set(blocks), list(blocks)
-    for chip, word, other in (
-        ("generated data", "generated", "site data"),
-        ("site data", "site data", "generated data"),
-    ):
-        drawn = [c for c in blocks[chip]["charts"] if c["drawn"]]
-        assert drawn, f"the {chip} block drew no chart"
-        for chart in drawn:
-            caption = chart["caption"] or ""
-            assert word in caption, f"{chart['title']!r} in the {chip} block does not name it"
-            assert other not in caption, f"{chart['title']!r} names the other dataset: {caption}"
-            assert re.search(r"\d", caption), f"{chart['title']!r} states no sample size"
-
-
-@dom_test
-async def test_the_headline_tiles_and_the_pr_curve_carry_interval_and_baseline(
-    store: Store, judged: None
+async def test_every_judge_chart_names_its_dataset_and_n(
+    store: Store, leagued: league.League
 ) -> None:
     result = domdriver.run_scenario("judge", {"routes": await _routes(store)})
-    generated = next(b for b in result["blocks"] if b["dataset"] == "generated data")
-    headline = [t for t in generated["tiles"] if "formula" in t]
-    assert len(headline) >= 5, generated["tiles"]
-    for tile in headline:
-        interval = re.search(r"\d\.\d{3} \u2013 \d\.\d{3}", tile)
-        assert interval, f"a headline without its interval: {tile}"
-    notes = " ".join(generated["notes"])
-    assert "streams" in notes and "incidents" in notes, "the headline states no n"
-    pr = next(c for c in generated["charts"] if c["title"] == "Precision\u2013recall")
-    assert "baseline" in (pr["caption"] or ""), "a PR curve without its baseline rate"
+    blocks = {b["dataset"]: b for b in result["blocks"] if b["dataset"]}
+    assert {"generated data", "site data", "live traffic"} <= set(blocks), list(blocks)
+    generated = [b for b in result["blocks"] if b["dataset"] == "generated data"]
+    drawn = [c for b in generated for c in b["charts"] if c["drawn"]]
+    assert len(drawn) >= 8, "the comparison view drew too few charts"
+    for chart in drawn:
+        caption = chart["caption"] or ""
+        assert "generated" in caption or "corpus" in caption, (chart["title"], caption)
+        assert "site data" not in caption, f"{chart['title']!r} names the other dataset"
+    for chart in blocks["site data"]["charts"]:
+        caption = chart["caption"] or ""
+        assert "site data" in caption and "generated" not in caption, (chart["title"], caption)
+        assert re.search(r"\d|answers|no run", caption), f"{chart['title']!r} states no sample"
 
 
 @dom_test
-async def test_settings_has_four_tabs_and_the_old_scorer_address_lands_on_correlation(
-    store: Store, judged: None
+async def test_one_models_ten_charts_are_all_drawn(store: Store, leagued: league.League) -> None:
+    routes = await _routes(store)
+    result = domdriver.run_scenario(
+        "judge", {"routes": routes, "navigate": "#/promotion?model=decision_tree"}
+    )
+    charts = [c for b in result["blocks"] for c in b["charts"]]
+    titles = [c["title"] or "" for c in charts]
+    for number in range(1, 11):
+        mine = [c for c in charts if (c["title"] or "").startswith(f"{number} · ")]
+        assert mine, f"chart {number} is missing: {titles}"
+        assert any(c["drawn"] for c in mine), f"chart {number} is drawn empty"
+    assert any("Prediction vs actual" in t for t in titles)
+    assert any("Residual distribution" in t for t in titles)
+    # The two regression charts say what they are for a classifier, in their captions.
+    captions = " ".join(re.sub(r"\s+", " ", c["caption"] or "") for c in charts)
+    assert "a stated 0.8 comes true 80 % of the time" in captions
+    assert "confident and wrong" in captions
+
+
+@dom_test
+async def test_the_league_says_who_decides_why_and_every_models_role(
+    store: Store, leagued: league.League
+) -> None:
+    routes = await _routes(store)
+    payload = routes["/api/judge"]["json"]
+    roles = {m["kind"]: m["role"] for m in payload["members"]}
+    assert roles == {
+        "decision_tree": "champion",
+        "gam": "challenger",
+        "logistic_regression": "challenger",
+    }, roles
+    page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})
+    dump = page["dump"]
+    for text in (
+        "Fast loop",
+        "Slow loop",
+        "Decision tree",
+        "deciding",
+        "in shadow",
+        "Compare all",
+        "Logistic regression",
+        "the reference",
+    ):
+        assert text in dump, text
+    assert "What a model needs before it can decide" not in dump
+    assert "floor" not in dump.lower().replace("floors", ""), "a labelling floor survived"
+
+
+@dom_test
+async def test_settings_explains_models_and_offers_automatic_or_pinned(
+    store: Store, leagued: league.League
 ) -> None:
     routes = await _routes(store)
     settings = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/settings"})
-    for tab in ("Correlation", "Autonomy", "Search", "System"):
+    for tab in ("Models", "Autonomy", "Site training", "System"):
         assert tab in settings["dump"], f"the {tab} tab is missing"
-    for text in ("What decides links", "Shipped model", "Additive formula", "provenance"):
+    for text in (
+        "Models compete; the judge chooses.",
+        "Automatic",
+        "Pinned",
+        "Fail-safe formula",
+        "Decision tree",
+        "chosen by the judge",
+    ):
         assert text in settings["dump"], text
-    # The control for the no-model test: with a model running, the formula is stored, folded.
-    assert "stored, not deciding" in settings["dump"]
-    assert "in place of the chosen decider" not in settings["dump"]
+    assert "Additive formula" not in settings["dump"], "the formula offered as a choice"
     old = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/scorer"})
-    assert "What decides links" in old["dump"] and "Configured parameters" in old["dump"]
-    # The seeded configuration (0005) has time 0: it reads "at install", never 1970.
-    assert "at install" in old["dump"] and "1970" not in old["dump"]
+    assert "Models compete; the judge chooses." in old["dump"]
+    assert "1970" not in old["dump"]
+    for tab in ("search", "autonomy", "system"):
+        page = domdriver.run_scenario(
+            "render", {"routes": routes, "navigate": f"#/settings?tab={tab}"}
+        )
+        assert "settings-intro" in page["dump"], f"the {tab} tab does not say what it is for"
+
+
+@pytest.fixture
+def no_league(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(league, "load", lambda: league.League(()))
+
+
+@dom_test
+async def test_with_no_model_the_fail_safe_is_a_fault_and_says_so(
+    store: Store, no_league: None
+) -> None:
+    routes = await _routes(store)
+    assert routes["/api/decider"]["json"]["fallback"] is True
+    for where in ("#/settings", "#/promotion"):
+        page = domdriver.run_scenario("render", {"routes": routes, "navigate": where})
+        assert "No model could be loaded" in page["dump"], where
+        assert re.search(r"<p \.err[^>]*>", page["dump"]), f"{where}: not shown as a fault"
+
+
+@dom_test
+async def test_labelling_shows_the_proposals_and_no_readiness_floor(
+    store: Store, leagued: league.League
+) -> None:
+    routes = await _routes(store)
+    page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/labelling"})
+    dump = page["dump"]
+    for text in (
+        "Your judgements teach every model.",
+        "Proposals waiting for an answer",
+        "Groupings waiting for a verdict",
+        "models compete",
+    ):
+        assert text in dump, text
+    for gone in ("What a model needs before it can decide", "% ready", "make shadow-report"):
+        assert gone not in dump, gone
+
+
+async def _pending_routes(store: Store, *roles: str) -> dict[str, dict[str, Any]]:
+    _engine, app = await uifixtures.corpus(store)
+    async with store.lock:
+        live = [r for r in await store.list_situations(None, 50) if r["status"] != "resolved"]
+        target = int(live[0]["id"])
+        await store.promote_situation(target, uifixtures.BASE + 20, "promote")
+        proposal = await store.create_situation(uifixtures.BASE + 21, act="propose")
+        await store.set_proposal(proposal, target, 0.93)
+        members = await store.situation_members(target)
+        await store.add_alarm_to_situation(proposal, int(members[0]["id"]))
+        await store.commit()
+    out = {}
+    for role in roles:
+        out[role] = await uifixtures.capture(app, role)
+        out[role][f"POST /api/situations/{proposal}/proposal"] = {
+            "status": 200,
+            "json": {"status": "accepted", "into": target},
+        }
+    return out
+
+
+@dom_test
+async def test_a_pending_card_asks_and_only_an_editor_can_answer(
+    store: Store, leagued: league.League
+) -> None:
+    routes = await _pending_routes(store, "editor", "viewer")
+    # `charts` is the scenario that presses controls; the screen opens on the New tab.
+    shown = {
+        role: domdriver.run_scenario(
+            "charts",
+            {"routes": routes[role], "navigate": "#/situations", "click": ["#tab-pending"]},
+        )["dump"]
+        for role in routes
+    }
+    dump = shown["editor"]
+    assert "Pending" in dump and "pending" in dump
+    assert '"93%"' in dump and "Accept — add to" in dump and "Reject — keep separate" in dump
+    assert "Accept — add to" not in shown["viewer"]
+    assert "An editor can accept or reject it." in shown["viewer"]
 
 
 async def _autonomy_routes(store: Store, role: str) -> dict[str, Any]:
@@ -216,7 +359,7 @@ async def _autonomy_routes(store: Store, role: str) -> dict[str, Any]:
 
 @dom_test
 async def test_the_kill_switch_is_in_the_top_bar_while_autonomy_acts(
-    store: Store, judged: None
+    store: Store, leagued: league.League
 ) -> None:
     routes = await _autonomy_routes(store, "editor")
     editor = domdriver.run_scenario(
@@ -233,7 +376,7 @@ async def test_the_kill_switch_is_in_the_top_bar_while_autonomy_acts(
 
 
 @dom_test
-async def test_no_kill_switch_while_autonomy_is_off(store: Store, judged: None) -> None:
+async def test_no_kill_switch_while_autonomy_is_off(store: Store, leagued: league.League) -> None:
     """The control: the usual case says nothing, so the mark cannot be decoration."""
     routes = await _routes(store, "editor")
     result = domdriver.run_scenario(
@@ -245,52 +388,3 @@ async def test_no_kill_switch_while_autonomy_is_off(store: Store, judged: None) 
         },
     )
     assert "Stop autonomy" not in result["dump"] and "autonomy:" not in result["dump"]
-
-
-@pytest.fixture
-def no_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    def absent() -> shipped.Shipped:
-        raise shipped.NoShippedModelError(shipped.NOT_SHIPPED)
-
-    monkeypatch.setattr(shipped, "load", absent)
-
-
-@dom_test
-async def test_a_build_without_a_model_says_so_as_a_state_not_a_fault(
-    store: Store, no_model: None
-) -> None:
-    """v0.26.0 ships no model (#422), so this is every appliance's screen: the reason in words, as a
-    note rather than an error, the shipped card disabled with it, and no generated-data chart."""
-    routes = await _routes(store)
-    assert routes["/api/decider"]["json"]["shipped"] == {
-        "available": False,
-        "absent": True,
-        "reason": shipped.NOT_SHIPPED,
-    }
-    settings = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/settings"})
-    reason = shipped.NOT_SHIPPED[0].upper() + shipped.NOT_SHIPPED[1:]
-    assert reason in settings["dump"]
-    assert "This build ships no model." in settings["dump"], "the shipped card does not say why"
-    assert "could not be loaded" not in settings["dump"], "absence shown as a fault"
-    # The formula decides here under the mode `shipped`: the screen describes what runs.
-    assert "Deciding now, in place of the chosen decider" in settings["dump"]
-    assert "stored, not deciding" not in settings["dump"], "the running formula called idle"
-    judge = domdriver.run_scenario("judge", {"routes": routes})
-    judge_page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})
-    assert "Search starts one" not in judge_page["dump"], "offers a search that cannot start"
-    assert "this build carries none" in judge_page["dump"]
-    assert routes["/api/search"]["json"]["blocked"].startswith("no shipped model to adapt")
-    search = domdriver.run_scenario(
-        "render", {"routes": routes, "navigate": "#/settings?tab=search"}
-    )
-    # The reason is on the screen; the refusal itself is the server's (409, test_shipped).
-    assert '"A search cannot start:"' in search["dump"]
-    assert '"no shipped model to adapt: this build ships no model' in search["dump"]
-    generated = [b for b in judge["blocks"] if b["dataset"] == "generated data"]
-    assert not [c for b in generated for c in b["charts"] if c["drawn"]], "a chart with no model"
-    page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})
-    note = re.compile(r"<p \.hint>\s*\"" + re.escape(reason))
-    fault = re.compile(r"<p \.err>\s*\"" + re.escape(reason))
-    for dump in (settings["dump"], page["dump"]):
-        assert note.search(dump), "the reason is not shown as a note"
-        assert not fault.search(dump), "a build without a model shown as an error"

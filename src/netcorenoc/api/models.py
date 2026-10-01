@@ -187,6 +187,14 @@ class MergeIn(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class ProposalIn(BaseModel):
+    """An operator's answer to a pending proposal (v0.27.0, ADR #428). ``accept`` merges it into
+    the situation it proposed to join; ``reject`` makes it a situation of its own."""
+
+    decision: Literal["accept", "reject"]
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
 class SplitIn(BaseModel):
     """Split the named members out of this situation into a new one.
 

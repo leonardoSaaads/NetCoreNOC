@@ -9,8 +9,83 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of thirty-eight rows, two ask for an
-action, eighteen ask you to read a paragraph, and eighteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of forty-three rows, two ask for an
+action, twenty-three ask you to read a paragraph, and eighteen are start-the-new-binary.
+
+## [0.27.0] - 2026-10-01 — "the league"
+
+**Five pre-trained models compete from the first trap, and a judge chooses which one decides**
+(#423–#428). The additive formula is retired as a decider: it remains only as the fail-safe when no
+model can load. Confirmed work stays confirmed: a model never grows a situation an operator has
+opened; what it would add waits in **Pending** for an answer.
+
+**What ships** (#429): five models, all beating the formula on every generated test split, none
+clearing the whole quality bar. The judge's day-0 champion is the **random forest** — tied within
+0.002 with the logistic regression and the GAM, first on fewer repair gestures (0.344 per incident
+on unseen streams against the formula's 0.403). On the hand-labelled corpus it is better than the
+formula on `dual_incident_same_vendor` (pairwise F1 0.636 → 1.000) and **worse on three
+scenarios** — `background_noise` (1.000 → 0.000), `camera_nvr` (→ 0.713), `pon_pon_port_down`
+(→ 0.680). The logistic regression fails only `background_noise`; an admin who trusts the corpus
+more can pin it. `make eval` now gates every scenario, and its baseline was re-cut with that reason.
+
+
+### Added
+
+- **The league** (#424): a GAM, gradient-boosted trees, a random forest, a decision tree and a
+  logistic regression, over one shared feature vector. Each is a JSON document validated field by
+  field on load (never code), with a manifest carrying its search, its train × validation trace,
+  every test-split and held-out-family number with its interval, the hand-labelled corpus replayed
+  through the real engine, its latency and its scorecard. Tree ensembles are explained by exact
+  interventional Shapley values against a reference, so every link still decomposes exactly.
+- **Two loops** (#423), after O-RAN's near-real-time and non-real-time controllers: the **fast
+  loop** (the batch) groups every trap with the champion while every challenger scores a sample of
+  the same pairs in shadow; the **slow loop** (every five minutes) re-ranks the league on this
+  site's labels and records each change of champion, append-only and audited.
+- **Pending** (#428): a fourth situation state between New and Open. Accepting merges the bag into
+  the confirmed situation; rejecting makes it New and it is never proposed there again. Both answers
+  are labels. `POST /api/situations/{sid}/proposal`.
+- **Judge: ten charts per model, and every model on one axis** (#427): validation score ×
+  hyperparameter, train × validation curve, performance, hyperparameter importance, optimisation
+  history, confusion matrix, ROC and precision–recall, prediction vs actual (the reliability curve),
+  residual distribution, training time × performance. Each names its dataset and n.
+- **An admin pin** (#425): Settings → Models can pin one model, with a reason, audited; automatic
+  is the default.
+- **Training data covers the corpus's storms** (#426): two proxied-storm families and decoy
+  varbinds join the generator.
+
+### Changed
+
+- **No labelling floors** (#425): models decide from the first trap; labels only re-order the league.
+  The judge switches only when a challenger's per-incident log-loss advantage has a 95 % interval
+  wholly below zero. The Labelling screen no longer shows "what a model needs before it can decide".
+- **The quality bar is a scorecard, not a gate** (#426): every member ships with its scorecard and
+  the judge reads it.
+- **Settings** has four plainly named tabs — Models, Autonomy, Site training, System — each with an
+  introduction; the desktop layout no longer overflows. Corpus and Labelling read as sentences, not
+  codes.
+- `make train` trains the league (`synth.league`); `make train-verify` reproduces every member's
+  numbers. Training streams are read one at a time.
+- **`make eval` gates every corpus scenario**, not only the pooled aggregate (#429): three storms
+  hold almost all of the corpus's pairs, and a split ten-alarm scenario barely moved the pooled F1.
+  The judge's corpus suite is likewise the mean over scenarios. `--cold` (parity with v0.2.0) runs
+  the fail-safe formula, the only decider v0.2.0 had.
+- The test suite runs on the fail-safe formula unless a test asks for a model (`test_model`,
+  `packaged_league`), so its verdicts do not depend on which model won a release's training.
+- `0027` hands the choice to the judge on an appliance that had chosen the formula or a site model
+  (one appended decider row).
+
+### Fixed
+
+- **A model-decided link was not explained on the wire** (#430): the engine stored a trained
+  model's per-feature explanation (`0026`) and no route read it, so the console showed the
+  formula's three terms — not summing to the score — for every link a model decided. The detail
+  route now serves the names once per situation and the contributions per link (`base + Σ terms =
+  score`), and "why grouped" names each feature and reads a model's margin in probability.
+
+### Removed
+
+- The formula and the site mode as selectable deciders (`POST /api/decider` answers 409 for them).
+- The v0.26.0 "shipped model" Judge view (`shippedjudge.js`), replaced by the league board.
 
 ## [0.26.0] - 2026-09-28 — "the model, and the bar it did not pass"
 

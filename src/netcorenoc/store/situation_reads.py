@@ -30,6 +30,7 @@ from typing import Any
 
 from netcorenoc.crosscutting import shaping
 from netcorenoc.ingest import known_oids
+from netcorenoc.store import link_terms
 from netcorenoc.store.governance import GovernanceMixin
 from netcorenoc.store.situation_events import SituationEventMixin
 from netcorenoc.store.types import MAX_SCOPE_PARAMS
@@ -117,7 +118,13 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             return ""
         if not self._has_situation_decider:  # v0.26.0: `model_name` arrives with `0026`
             return "s.resolution, s.derived_name, s.operator_name, "
-        return "s.resolution, s.derived_name, s.operator_name, s.model_name, "
+        if not self._has_proposals:
+            return "s.resolution, s.derived_name, s.operator_name, s.model_name, "
+        # v0.27.0 (ADR #428): a pending situation names the one it proposes to join.
+        return (
+            "s.resolution, s.derived_name, s.operator_name, s.model_name, "
+            "s.proposed_into, s.proposal_confidence, "
+        )
 
     def _search_clause(
         self, query: str | None, *, addresses: bool, scope_ids: list[int] | None
@@ -358,8 +365,10 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             ruled = not (resolved.is_default and alarm.get("severity_rank") is not None)
             alarm["rule_severity"] = resolved.severity if ruled else None
             alarm["rule_severity_rank"] = resolved.severity_rank if ruled else None
+        # v0.27.0: a model-decided link's whole explanation, when the schema stores it (`0026`).
+        terms = ", terms" if self._has_link_terms else ""
         cur = await self.conn.execute(
-            "SELECT alarm_a, alarm_b, score, term_t, term_a, term_e FROM link "
+            f"SELECT alarm_a, alarm_b, score, term_t, term_a, term_e{terms} FROM link "  # nosec B608
             "WHERE situation_id=? ORDER BY id",
             (situation_id,),
         )
@@ -380,6 +389,8 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             **dict(head),
             "alarms": alarms,
             "links": links,
+            # The model terms' names, once per situation; each model link indexes into it.
+            "link_terms": link_terms.compact(links),
             # What happened to this situation, and who did it. Four columns, deliberately — see
             # `situation_events`: the row carries member digests and a peer situation id, and a
             # scoped reader must not learn either from a history panel.

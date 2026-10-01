@@ -7,17 +7,19 @@ sessions, tokens and audit chain survive every upgrade in this table.
 Two rules that have held since v0.1.0 and are not going to change:
 
 * **Nothing new is on by default.** A release that adds a capability adds it switched off; the
-  releases that changed how a *decision* is made are called out below and there are two — v0.26.0,
-  whose change of default decider is the point of the release, is the second.
+  releases that changed how a *decision* is made are called out below and there are three — v0.26.0
+  changed the default decider, and v0.27.0 retires the formula as a decider altogether (it stays
+  only as the fail-safe).
 * **A removed setting is a startup error, never a silent no-op.** An ignored `OPTICORR_ALLOWLIST`
   would mean every trap source was accepted while you believed otherwise. The process refuses to
   start and names the replacement.
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of forty-two ask
-you to do something; twenty-two more ask you to read a paragraph first. The other eighteen are
-start-the-new-binary.** (v0.26.0 adds a read-a-paragraph row, in its own release.) (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
+Read only the rows between your version and the one you are installing. **Two of forty-three ask
+you to do something; twenty-three more ask you to read a paragraph first. The other eighteen are
+start-the-new-binary.** (v0.26.0 adds a read-a-paragraph row, in its own release, and so does
+v0.27.0.) (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
 until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
 v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
 read-a-paragraph row: it applies no migration and still changes what your existing situations do.
@@ -72,6 +74,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.23.0 → v0.24.0 | Nothing to run. **No migration.** A maintenance window created from now on **discards** what it suppresses — nothing surfaces when it ends unless the window opts in — and alarms the appliance could not grade may now carry a default severity from the built-in trap pack. Read below |
 | v0.24.0 → v0.25.0 | Nothing to run. **One migration applies at boot** (`0025`, additive). Users, Service tokens and Governance are now one screen, **People & access**, and an account an admin creates must set its own password at first sign-in. Read below |
 | v0.25.0 → v0.26.0 | Nothing to run. **One migration applies at boot** (`0026`, additive). **This build ships no model** (#422), so the formula keeps grouping and the bell says why; a later build that carries a passing model takes over without an admin's action unless the formula was chosen. Situations that fully clear are held five minutes. Autonomy is off. Read below |
+| v0.26.0 → v0.27.0 | Nothing to run. **One migration applies at boot** (`0027`, additive). **The pre-trained models decide from the first trap and the formula is retired as a decider**: an appliance that had chosen the formula or a site model hands the choice to the league's judge (one appended row; an admin can pin a model). Alarms a model would add to a situation an operator confirmed now wait in **Pending**. Read below |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
@@ -761,3 +764,35 @@ carry `model_name` beside the two other names. With no shipped model — this bu
 /api/search` carries `blocked` (the reason) and `POST /api/search` answers 409 with it;
 `/api/decider` and `/api/judge` mark the shipped block `absent`. No field was removed.
 
+### v0.27.0 — the league decides from the first trap; Pending
+
+**What changes on upgrade.** Migration `0027` adds the `pending` situation state (two columns on
+`situation`: `proposed_into`, `proposal_confidence`), the record of operators' answers to proposals
+(`proposal_decision`, `proposal_decision_member`), the append-only `league_decision` table, and a
+`pinned` column on `decider_setting`. Schema 26 → 27; no table is rebuilt.
+
+**Who decides.** This build packages a **league** of five pre-trained models (GAM, boosted trees,
+random forest, decision tree, logistic regression), each a validated JSON document with its
+scorecard. A judge ranks them offline from the first boot and re-ranks them on this site's labels
+every five minutes; the best eligible one — the **champion** — groups every trap, the others score a
+sample of the same pairs in shadow. There is no labelling floor to wait for (#425).
+
+`0027` appends **one** decider row when your newest one is not `shipped`: if an admin had chosen the
+**additive formula**, or **promoted a site model**, the league's judge now chooses instead. The
+formula is no longer selectable as a decider; it runs only as the fail-safe when no model can be
+loaded, and the bell says so. To keep one model deciding regardless of the judge, **pin** it in
+**Settings → Models** (admin; a reason is required and audited); unpin to give the choice back.
+
+**Pending** (#428). A model never changes the membership of a situation an operator has confirmed
+(**Open**). Alarms it would add go into a **Pending** situation that proposes joining it, with the
+model's probability. An editor accepts (a merge) or rejects (it becomes **New**, and is never
+proposed into that situation again). A proposal lapses when its target is no longer open. Both
+answers are labels the judge reads. Existing situations are untouched by the upgrade.
+
+**API.** New: `POST /api/situations/{sid}/proposal` (`situation.merge`, scoped; `decision` is
+`accept` or `reject`). `GET /api/situations` accepts `status=pending` and its rows carry
+`proposed_into` and `proposal_confidence`. `GET /api/decider` describes the league (`mode` is
+`league`; `champion`, `members`, `pinned`, `fallback`, `decisions`) and `POST /api/decider` takes
+`pin`; `GET /api/judge` adds every member's charts (`models`), the site comparison (`judgement`,
+`site`) and the live shadow (`shadow`). A site search no longer needs labelling floors; it is refused only when the league carries no
+GAM to adapt. No route was removed.

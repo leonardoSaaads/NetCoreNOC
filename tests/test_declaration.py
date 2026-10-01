@@ -677,11 +677,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # access; ADR #401-#403) and four UI modules net (seven added, users/tokens/governance gone).
     # v0.26.0: 190 -> 207 and 96 -> 107 — eleven /api pairs (the decider, autonomy, severity, the
     # search and the judge; ADRs #405, #412, #413) and six UI modules (ADR #414).
-    assert len(served) == 207, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.27.0: 207 -> 210 and 107 -> 108 — one /api pair (an answer to a proposal, ADR #428) and
+    # two UI modules net (the league's three added, `shippedjudge` gone; ADR #427).
+    assert len(served) == 210, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 107, (
+    assert len(api_pairs) == 108, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -835,11 +837,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # access; ADR #401-#403) and four UI modules net (seven added, users/tokens/governance gone).
     # v0.26.0: 190 -> 207 and 96 -> 107 — eleven /api pairs (the decider, autonomy, severity, the
     # search and the judge; ADRs #405, #412, #413) and six UI modules (ADR #414).
-    assert len(served) == 207, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.27.0: 207 -> 210 and 107 -> 108 — one /api pair (an answer to a proposal, ADR #428) and
+    # two UI modules net (the league's three added, `shippedjudge` gone; ADR #427).
+    assert len(served) == 210, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 107, (
+    assert len(api_pairs) == 108, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1087,7 +1091,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # visible set (collections); an element's components 404 on one the caller cannot see.
     # v0.26.0: 38 -> 39. An operator's severity names one situation and 404s on one the caller
     # cannot see (targeted, ADR #412).
-    assert len(SCOPED) == 39, SCOPED
+    # v0.27.0: 39 -> 40. An answer to a proposal names two situations and 404s on either the
+    # caller cannot see (targeted, ADR #428).
+    assert len(SCOPED) == 40, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1116,6 +1122,7 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     },
     ("POST", "/api/situations/{sid}/merge"): {"from_situation_id": 2, "confidence": 0.9},
     ("POST", "/api/situations/{sid}/split"): {"alarm_ids": [1], "confidence": 0.9},
+    ("POST", "/api/situations/{sid}/proposal"): {"decision": "reject", "confidence": 0.9},
     ("POST", "/api/situations/{sid}/name"): {"name": "x"},
     ("POST", "/api/alarms/{aid}/clear"): {},
     ("POST", "/api/alarms/clear"): {"situation_id": 1},
@@ -1212,6 +1219,9 @@ SCOPED_TARGETED = [
     ("POST", "/api/situations/{sid}/move"),
     ("POST", "/api/situations/{sid}/merge"),
     ("POST", "/api/situations/{sid}/split"),
+    # v0.27.0 (ADR #428): an answer to a proposal names the proposal and the situation it would
+    # join, and checks both — the merge's shape.
+    ("POST", "/api/situations/{sid}/proposal"),
     ("POST", "/api/situations/{sid}/name"),
     ("POST", "/api/alarms/{aid}/clear"),
     # v0.21.0: a maintenance window names network elements, so naming one the caller cannot see

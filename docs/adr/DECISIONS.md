@@ -5570,3 +5570,263 @@ From this release an entry is about six lines: decision, reason, release.*
   PON storms, card failures behind a chassis, SNMPv1 cameras, decoy varbinds) to the generator
   and to make the eval gate part of `make train`'s bar.
 
+
+## 423. Two loops: a fast one that groups, a slow one that judges (v0.27.0)
+
+- **Context**: the maintainer asked for the architecture of OpenRAN's RAN Intelligent Controllers —
+  a near-real-time loop and a non-real-time loop — with models competing, and for the process to be
+  visible. Until now one decider ran, chosen by an admin, and nothing measured the others live.
+- **Decision**: the appliance runs **two loops with one table row between them**.
+  - **Fast loop** (the engine's batch, per activation): the **champion** scores the candidate
+    pairs, grouping places the alarm, the lifecycle guard keeps confirmed work confirmed (#428),
+    and every **challenger** scores a bounded sample of the same pairs in shadow
+    (`engine/evaluation/league_shadow.py`: at most 12 pairs per activation, one activation in
+    eight during a storm). No I/O beyond the batch's transaction; it never judges.
+  - **Slow loop** (the maintenance cadence, every 60 ticks ≈ 5 minutes, and on the first tick):
+    reads every label the site has produced, lets the judge re-rank the league (#425) in a worker
+    thread with the store lock released, and when the champion changes writes an append-only
+    `league_decision` row and a `league.decide` audit row. The fast loop picks the decision up at
+    its reload point, never mid-batch.
+- **Why one row**: the slow loop's cost is then independent of the fast loop's, and its reasoning is
+  reviewable after the fact — the row carries the ranking, the latencies and the paired comparisons
+  it was taken on.
+- **Shadow agreement is observability, not evidence**: how often a challenger agrees with the
+  champion says nothing about which is right. It is shown on the Judge screen and read by nothing
+  that decides (the rule `CorrelationMonitor` has kept since v0.18.0).
+- **Controls**: `tests/test_league.py::test_the_slow_loop_records_the_champion_and_the_fast_loop_runs_it`;
+  `tests/test_architecture.py::test_the_engine_holds_no_proposal_or_league_logic` pays for the
+  engine's six added lines (599 → 605).
+
+## 424. The league: five model families over one feature vector, all data (v0.27.0)
+
+- **Decision**: the package ships `engine/model/league/`: one document and one manifest per member,
+  and a shared benchmark of generated test pairs.
+
+  | kind | what it is | document |
+  |---|---|---|
+  | `gam` | explainable boosting (GA²M, #407) | `netcorenoc.gam/1` |
+  | `boosted_trees` | Newton-boosted regression trees | `netcorenoc.trees/1` |
+  | `random_forest` | bagged Gini trees, mean leaf log-odds | `netcorenoc.trees/1` |
+  | `decision_tree` | one Gini tree, m-estimate leaves | `netcorenoc.trees/1` |
+  | `logistic_regression` | L2 logistic regression, `log1p` on counts | `netcorenoc.linear/1` |
+
+  All five read the same v2 feature vector, kept by the same ablation, trained on the same rows,
+  tuned on the same validation streams, measured on the same test streams — so the league compares
+  estimators, not inputs.
+- **Data, never code (#405, kept)**: each document is JSON with exact keys, validated before a
+  scorer exists. A trees document is refused for a child that does not point forward, a node with
+  no parent or two, depth over 14, more than 2 047 nodes per tree or 120 000 in all, a leaf beyond
+  ±25, a feature this build does not serve, or a threshold its logit cannot cross. The manifest's
+  SHA-256 and declared kind are checked; a member that fails is refused **alone**, with its reason
+  and no path.
+- **Explanations stay exact**: a tree ensemble's per-feature contribution is the **interventional
+  Shapley value against one reference pair** (the training median), computed exactly in time linear
+  in the tree (the one-background-sample case of TreeSHAP, Lundberg et al. 2020). Checked against
+  brute-force enumeration in `test_league.py`. The v0.14.0 tree kinds' 2^F enumeration could not
+  scale past three features; this can, and it is built only for the links the correlator keeps.
+- **Fitting is pure Python** (`trees_fit`, `trees_grow`, `linear_fit`): histogram splits with the
+  sibling-subtraction trick, deterministic from the seed, no new runtime dependency.
+- **Search**: every member goes through the same random search with successive halving
+  (`eval/synth/tuning.py`), every trial recorded — the search charts on the Judge screen compare
+  like with like.
+- **The v0.14.0 kinds** (`tree`, `forest`, `gradient_boosting`, `logistic` over three features)
+  and the promotion path built on them stay, unchanged, as the legacy record folded at the bottom
+  of the Judge screen. Retiring them is a separate release's work.
+
+## 425. The judge decides from day 0; the labelling floors and the formula are retired (v0.27.0)
+
+- **Supersedes** #409's "an artifact that misses the bar is not written", #411's floors, #422, and
+  the parts of #405 and #415 that made the formula an admin's choice.
+- **Context**: v0.26.0 shipped no model, so the formula decided, and the Labelling screen told
+  operators what a model needed *before it could decide* — 50 groupings marked wrong, 20 partly
+  right, 30 incidents, 3 people. The maintainer: pre-trained models should compete from the first
+  trap, the judge should pick the best, and the formula should be a thing of the past.
+- **Decision — registered before any member of this release was trained**:
+  1. **Day 0**: rank by the **mean pairwise F1 over five suites** — the four generated test splits
+     (i.i.d., concurrency, held-out optical families, held-out protocol families) and the
+     hand-labelled `eval/corpus` — each weighing the same; ties within 0.005 broken by fewer repair
+     gestures; a member missing a suite ranks after every complete one. The first eligible member
+     decides.
+  2. **The fast loop's budget**: a member whose median scoring time on this appliance's benchmark
+     pairs exceeds **150 µs per pair** is ineligible to be champion, and the table says so.
+  3. **With site labels**: every label is out-of-sample for a pre-trained member. Per incident, the
+     mean log-loss difference challenger − champion; a **95 % t-interval** on its mean. A challenger
+     replaces the champion only when the **whole interval is below zero** (the best such one).
+  4. **No count floor**. The t-interval is the evidence standard and it is stricter than any floor
+     at small samples (12.7 standard errors wide at two incidents). Labels never gate a model; they
+     only re-order the league.
+  5. **A site-adapted model** (the in-product search's output, #413) joins the league and is compared
+     **only on labels newer than its fit**.
+  6. **An admin may pin** any member, with a reason; it is audited, and unpinning hands the choice
+     back to the judge.
+  7. **The formula is the fail-safe** — it runs only when no member can load, and the bell says so.
+     The API refuses `additive` and `site` as modes with that reason; migration `0027` appends a
+     `shipped` (league) row to any appliance whose newest setting named another mode.
+- **A defect found on the way**: v0.26.0's site judge concatenated `labelled_pairs` and
+  `gesture_positive_pairs` and read `verdict` and `feedback_id` off every row; gesture rows carry
+  neither, so the first labelled `move` with a captured vector would have raised. `site_labels`
+  now normalises the three label sources (verdicts, gestures, proposal rejections) into one shape.
+
+## 426. The training data covers the corpus's storms; the bar becomes a scorecard (v0.27.0)
+
+- **Context**: #422's measurement — the v0.26.0 candidate split five of the corpus's eleven
+  scenarios. Diagnosed on `pon_dying_gasp` before any change: the model refused pairs of *different*
+  trap types from **one proxy address** at bursts of hundreds of alarms (burst up to 1 050, beyond
+  anything in training), so a storm of 1 051 traps from one OLT became dozens of situations.
+- **Decision**:
+  - two **training** families written from the phenomenon, not from the corpus files:
+    `olt_power_failure` (a shelf loses power; the OLT reports LOS and dying gasp for most ONUs
+    behind every PON, one or two trap types each, in 1–15 s — hundreds of traps from one address)
+    and `chassis_card_cascade` (a line card fails; the chassis reports the card and 8–48 ports in
+    seconds, from its own address);
+  - a nuisance on every stream: some vendors' firmware stamps each trap with a **sequence number and
+    an event time** — varbinds unique per trap that look like identifiers and are not;
+  - the **quality bar is kept and recorded per member as a scorecard**; it no longer withholds a
+    member. The judge ranks; the scorecard is on the Judge screen beside the ranking.
+- **What this costs, said plainly**: the corpus is no longer fully independent of training for
+  those phenomena — it was generated by a different program with its own parameters, and the
+  generator now produces storms of the same *kind*. It remains the one suite no training stream
+  came from, and it is one fifth of the judge's score rather than a gate.
+
+## 427. The Judge screen: ten charts per model, and every model on one axis (v0.27.0)
+
+- **Decision**: the Judge screen leads with who decides and why, the two loops in plain words, and
+  the league table; then either **every model on shared axes** (performance, corpus F1,
+  optimisation history, ROC, precision–recall, reliability, mean |residual|, training time ×
+  performance, scoring cost) or **one model's ten charts**, in the maintainer's order:
+  validation score × hyperparameter, train × validation curve, model performance, hyperparameter
+  importance, optimisation history, confusion matrix, ROC / precision–recall, prediction vs actual,
+  residual distribution, training time × performance.
+- **Two of the ten are regression charts and these models are classifiers.** They are drawn in the
+  form that means the same thing for a probability, and the captions say so: *prediction vs actual*
+  is the **reliability curve**; the *residual* is ``y − p``, drawn as its distribution per true
+  class (`report.residuals`, new in the manifest).
+- **Overlays only where fair**: every model shares the training rows, the validation streams and
+  the test pairs, so ROC, precision–recall, reliability and the search's best-so-far validation loss
+  overlay. A hyperparameter's axis and the train × validation curve (rounds, trees, depth,
+  iterations) do not, and stay per model.
+- **Each block names its dataset** — generated, site or live — as since #414; one colour per model
+  on every chart, and its name in every legend.
+
+## 428. Pending: a model never grows a situation an operator confirmed (v0.27.0)
+
+- **Context**: the maintainer saw traps added to situations already `open`. #382 made `open` mean
+  *an operator accepts this grouping as something to work*, but the correlator kept growing it like
+  a `new` one — confirmed work changed under the operator, on the model's opinion alone.
+- **Decision**: a fourth state, `pending`, and one rule enforced in one place
+  (`engine/operate/proposals.py`): **an `open` situation's membership changes only by an operator's
+  act.** When the model would place an alarm — or fold a `new` situation — into an `open` one, it
+  goes into a `pending` situation that **proposes** to join it (`proposed_into`, and the model's
+  probability, `proposal_confidence`). Further alarms reuse the proposal. Two `open` situations are
+  never merged by a model, and a pending bag only folds into one proposing the same target.
+- **The answers**, `POST /api/situations/{sid}/proposal`, the merge's capability and scope:
+  - **accept** — the operator's merge exactly: the bag joins its target, which stays `open`, and the
+    cross pairs become **positive labels** through the path every merge already feeds;
+  - **reject** — the bag becomes `new`, a situation of its own; its cross pairs become **negative
+    labels** (`proposal_negative_pairs`), and the engine never proposes that bag to that target
+    again (reloaded at start from `proposal_decision`).
+  - Both write `proposal_decision` with the two bags as they stood, so each model's acceptance rate
+    — the fast loop's report card — is a query, shown on the Judge screen.
+- **Lapse**: a proposal whose target leaves `open` returns to `new` at the next maintenance pass.
+  An operator who works a pending bag on its own terms (promote, split, move…) makes it `open`.
+- **Schema**: migration `0027`, additive; `status` gains a value (no CHECK, as since `0001`);
+  `LIVE` includes `pending`. On a schema without `0027` the guard proposes nothing and the engine
+  behaves exactly as in v0.26.0 (`tests/test_upgrade.py`).
+
+## 429. The corpus suite weighs every scenario the same; the league's first training (v0.27.0)
+
+- **Context**: #425 ranks members by the mean pairwise F1 over five suites, the fifth being the
+  hand-labelled `eval/corpus`, read from each manifest's `corpus.aggregate.pairwise_f1`. That
+  aggregate is **pooled over pairs**, and `olt_storm`, `pon_dying_gasp` and `chassis_card_fail`
+  hold almost all of them. The first member evaluated (the GAM) split the ten-alarm `fiber_cut`
+  (F1 0.60), half-merged both `dual_incident` variants (0.83) and merged every `background_noise`
+  alarm (0.00, over-merge 1.00), and still pooled to **1.000**. `make eval`'s gate reads the same
+  pooled aggregate (`GATE_METRICS` against `current.json`'s `aggregate`), so it is blind to the
+  same scenarios.
+- **Decision**: the judge's corpus suite is the **mean of pairwise F1 over the corpus scenarios**,
+  each weighing the same (`league_judge.corpus_score`). The Judge screen reads the judge's own suite
+  numbers from `/api/judge` (`suites`), so the browser holds no second definition, and draws the
+  corpus scenario by scenario.
+- **When**: this was changed **after** the GAM's corpus numbers were read and **before** any other
+  member's corpus numbers existed (their evaluations were still running). It is a correction of the
+  measurement, not a re-choice of the winner; the order it produces is recorded below as it fell.
+- **The judge's table** (`make train` at seed 2026 on dataset `34c08fafb036b1be`; documents in
+  `engine/model/league/`; scores are pairwise F1, the corpus the mean over its eleven scenarios):
+
+  | # | member | score | iid | concurrency | optical | protocol | corpus | repair/incident | bar |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 1 | random forest | 0.946 | 0.962 | 0.946 | 0.974 | 0.994 | 0.854 | 0.352 | 68/70 |
+  | 2 | logistic regression | 0.947 | 0.963 | 0.924 | 0.973 | 0.964 | 0.909 | 0.360 | 66/70 |
+  | 3 | GAM | 0.948 | 0.963 | 0.968 | 0.972 | 0.993 | 0.842 | 0.374 | 64/70 |
+  | 4 | boosted trees | 0.917 | 0.961 | 0.946 | 0.976 | 0.993 | 0.709 | 0.335 | 69/70 |
+  | 5 | decision tree | 0.902 | 0.965 | 0.986 | 0.977 | 0.992 | 0.593 | 0.357 | 66/70 |
+
+  The first three are within 0.002 of each other — inside `TIE` (0.005) — so #425's tie-break
+  decides: the fewest repair gestures per incident on the generated splits. **The random forest is
+  the champion on day 0**, and the reason it carries says so (`_why_first`). Every member beats the
+  formula on every generated split (on `test_iid` the champion needs 0.344 repair gestures per
+  incident against the formula's 0.403, 32 streams, 3 809 incidents), and none clears the whole
+  quality bar: the champion misses `test_concurrency`'s repair ratio (0.903 against ≤ 0.90) and the
+  held-out `optical_protection` family (1.42× the formula's repair work).
+- **The corpus, scenario by scenario** (pairwise F1; the formula is `make eval` at v0.26.0):
+
+  | scenario | formula | RF | LR | GAM | boosted | tree |
+  |---|---|---|---|---|---|---|
+  | `background_noise` | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+  | `camera_nvr` | 1.000 | 0.713 | 1.000 | 1.000 | 0.713 | 0.615 |
+  | `decoy_varbinds` | 1.000 | 1.000 | 1.000 | 1.000 | 0.838 | 0.819 |
+  | `dual_incident` | 1.000 | 1.000 | 1.000 | 0.833 | 0.727 | 0.353 |
+  | `dual_incident_same_vendor` | 0.636 | 1.000 | 1.000 | 0.833 | 0.727 | 0.353 |
+  | `fiber_cut` | 1.000 | 1.000 | 1.000 | 0.600 | 1.000 | 0.727 |
+  | `pon_dying_gasp` | 1.000 | 1.000 | 1.000 | 1.000 | 0.109 | 0.109 |
+  | `pon_pon_port_down` | 1.000 | 0.680 | 1.000 | 1.000 | 0.680 | 0.549 |
+  | the other three | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
+
+  #426's storm families did their job for the two additive models (the v0.26.0 candidate split five
+  storms; the GAM and the logistic regression split none) and only partly for the trees.
+  **Every member merges `background_noise`**: 24 traps from 24 elements, 4.7 s apart, four of each
+  vendor's enterprise subtree — exactly the shape #426 taught as a proxied storm. The formula's
+  vendor gate (F76) is what keeps them apart; no feature here distinguishes the two.
+- **What `make eval` reads now**: the champion decides the replay. Against the formula it is worse
+  on `background_noise` (1.000 → 0.000), `camera_nvr` (→ 0.713) and `pon_pon_port_down` (→ 0.680),
+  better on `dual_incident_same_vendor` (0.636 → 1.000), and equal on the other seven. The baseline
+  was re-cut with exactly that reason (`eval/baselines/REBASELINE-LOG.md`); the gate guards this
+  behaviour from here, per scenario. The pooled aggregate alone would have moved by 0.013.
+- **Consequences**: the registered rule picked a member that is not the best on the hand-labelled
+  corpus — the logistic regression is (0.909, failing only `background_noise`), tied within 0.001
+  on the score. That is the rule working as registered, not a reason to re-register it after the
+  fact; a maintainer who trusts the corpus over the generated suites has the tool for it: **pin the
+  logistic regression** in Settings → Models, with that reason (audited). Site labels re-order the
+  league in the slow loop either way. Not done here: a feature that separates a proxied storm from
+  same-vendor background noise (the next training data question), and re-training after it.
+- **Reproducing**: `make train-verify` re-evaluates every packaged member. Re-recording with this
+  release's final code gives a different digest (the engine's sources changed after the recording);
+  six streams re-recorded across train, valid and three test splits came back content-identical,
+  so the published numbers are the code's. The provenance `seconds` is the resumed run's (a
+  container restart interrupted the first); search and fit times are per member in each manifest.
+
+## 430. A model's link is explained on the wire: names once, contributions per link (v0.27.0)
+
+- **Context**: `0026` added `link.terms`, a trained model's whole explanation (basis, base value,
+  threshold, `[name, value, contribution]` per term), and the engine writes it on every link a
+  model decides. **No route read it.** `/api/situations/{sid}` served the three formula columns
+  (`term_t`, `term_a`, `term_e`), which for a model hold only the one term whose name matches
+  (`entity_affinity`) — so on the first build that packaged a model, every link the champion decided
+  reached the console with terms that did not sum to its score. `tests/test_operation.py` found it,
+  end to end over a real socket; nothing in-process could, because every in-process test ran on the
+  formula. Principle 2 was broken on exactly the links the league now decides.
+- **Decision** (`store/link_terms.py`): the detail route serves, per situation, `link_terms` — a
+  table of term-name lists, each distinct list once — and, per model link, `basis`, `base`,
+  `threshold`, `names` (an index into the table) and `phi` (the contributions, six decimals). The
+  contract per link is principle 2 per basis: **`base + Σ phi = score`** for a model, the three
+  columns for the formula. F145's measurement is why the names are not repeated per link.
+- **The threshold the console measures against** is the decider's: the model's when a model decided
+  every link (scores are log-odds; `score_scale: "logit"`), the formula's when none did, and *not
+  reported* when they are mixed — a margin against the wrong line would be a confident wrong number.
+  The console reads a model's margin in probability, so "thin / fair / wide" keep their meaning.
+- **The console** names each feature (`why.js::FEATURE_LABEL`), shows the four largest
+  contributions per link by magnitude with their sign (a negative term is hatched, not only
+  coloured), and keeps every term in the tooltip and in the per-term means.
+- **Guards**: `tests/test_link_terms.py` (unit, HTTP and DOM; the HTTP and DOM tests are red with
+  the column unread or the console ignoring it), and `test_operation` now checks the contract per
+  basis.

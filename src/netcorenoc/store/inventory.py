@@ -79,7 +79,7 @@ class InventoryMixin(ActiveMixin):
         cur = await self.conn.execute(
             "SELECT a.ne_id, COUNT(DISTINCT sa.situation_id) FROM situation_alarm sa "  # nosec B608
             "JOIN alarm a ON a.id=sa.alarm_id JOIN situation s ON s.id=sa.situation_id "
-            f"WHERE {a_where} AND s.status IN ('new', 'open') GROUP BY a.ne_id",
+            f"WHERE {a_where} AND s.status IN ('new', 'pending', 'open') GROUP BY a.ne_id",
             a_args,
         )
         situations = {int(r[0]): int(r[1]) for r in await cur.fetchall() if r[0] is not None}

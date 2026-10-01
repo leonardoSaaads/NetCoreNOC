@@ -259,6 +259,8 @@ get_search  # netcorenoc/api/routes/decider.py
 start_search  # netcorenoc/api/routes/decider.py
 stop_search  # netcorenoc/api/routes/decider.py
 get_judge  # netcorenoc/api/routes/decider.py
+# v0.27.0: route handler registered by decorator (ADR #428).
+answer_proposal  # netcorenoc/api/routes/proposals.py
 # Dataclass fields serialised by `asdict` into the manifest, the search record and the settings row.
 trace_every  # netcorenoc/engine/model/gam_fit.py — FitResult, charted as the train/validation trace
 train_loss  # netcorenoc/engine/model/search.py — Trial, charted beside the validation loss

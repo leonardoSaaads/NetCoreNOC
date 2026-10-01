@@ -299,3 +299,33 @@ export function classVendor(alarm) {
   if (alarm.class_label || alarm.class_name) return null;
   return alarm.class_vendor || null;
 }
+
+/**
+ * One corpus aggregate as an operator reads it (v0.27.0). The retention route keys its numbers by
+ * table and tier (`dataset_pair.sink`, `sink_oldest`), which is exact and unreadable: the Corpus and
+ * Settings screens printed those keys as labels and two epoch seconds as plain numbers. The words
+ * here name what each count is; the two timestamps become dates; unknown keys fall back to the
+ * key, spaced, so a new aggregate is never hidden.
+ */
+const CORPUS_WORDS = {
+  "dataset_pair.sink": "candidate pairs captured",
+  "dataset_pair.dataset": "pairs kept for learning",
+  "dataset_observation.sink": "alarm snapshots captured",
+  "dataset_observation.dataset": "alarm snapshots kept",
+  capture_run: "capture sessions",
+  feedback_member: "alarms in judged groupings",
+  "feedback_member.server": "…as the appliance held them",
+  "feedback_member.client": "…as the operator saw them",
+  sink_oldest: "oldest captured",
+  sink_newest: "newest captured",
+  sink_window_days: "days of capture held",
+};
+
+export function corpusFact(key, value) {
+  const label = CORPUS_WORDS[key] || key.replaceAll("_", " ").replaceAll(".", " · ");
+  if (key === "sink_oldest" || key === "sink_newest") {
+    return { label, text: value ? absolute(value) : "—", title: value ? timeTitle(value) : null };
+  }
+  if (key === "sink_window_days") return { label, text: value == null ? "—" : Number(value).toFixed(1) };
+  return { label, text: count(value) };
+}

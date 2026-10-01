@@ -1,18 +1,21 @@
-/* Settings → Correlation: **what decides links**, and the formula's weights (v0.26.0, ADR #405).
+/* Settings → Models: **who decides links**, in plain words, and the one choice an admin has.
  *
- * Three families can decide, and the admin picks one here:
+ * v0.27.0 (ADRs #423, #425). Five pre-trained models compete — a GAM, gradient-boosted trees, a
+ * random forest, a decision tree and a logistic regression — and the judge chooses which one
+ * decides. An admin has exactly one choice to make here:
  *
- *   * **shipped model** — the default. Trained on generated data, validated on families it never
- *     saw, stored in the package with a manifest whose SHA-256 the appliance checks before loading
- *     it. Its provenance is on this screen because a model nobody can trace is a model nobody
- *     should run;
- *   * **site model** — the shipped model adapted to this appliance's labels. Offered only when the
- *     server's own paired comparison said `BETTER`; the request names a mode and never a verdict;
- *   * **additive formula** — v0.25.0's four numbers, opt-in. Its editor (the old *Link scorer*
- *     screen) lives here, and its hardening-only floors and preview are unchanged.
+ *   * **Automatic** (the default): the judge picks the best model, and keeps re-checking it against
+ *     this site's labels every five minutes;
+ *   * **Pinned**: one named model decides regardless of the ranking — for a deliberate reason, which
+ *     is recorded in the audit log, and undone by switching back to automatic.
  *
- * Switching needs a reason, because an unexplained change to the thing that groups every alarm is
- * the change an audit two months later cannot read.
+ * The additive formula is no longer a choice: it is the **fail-safe**, used only when no model can
+ * load, and the screen says so when it is running. Its parameters stay readable and editable below,
+ * folded, because a fail-safe nobody can inspect is not one an operator can trust.
+ *
+ * v0.26.0's version of this screen was reported as confusing on a desktop: three radio cards for
+ * one choice, the explanation in red, a fingerprint running out of its panel. This one leads with
+ * a sentence, keeps the explanation in one place, and wraps identifiers.
  */
 
 import { html, Component, cx } from "../../dom.js";
@@ -21,11 +24,7 @@ import { Loading, Failed, SectionHeading, DataTable, TimeCell, cell } from "../.
 import { can } from "../../session.js";
 import { Formula } from "../scorer.js";
 
-const MODES = [
-  ["shipped", "Shipped model", "Trained and validated before release; the default."],
-  ["site", "Site model", "The shipped model adapted to this appliance's labels, when the judge says it is better."],
-  ["additive", "Additive formula", "Four weights and a threshold, typed by an admin. Opt-in."],
-];
+const ROLE = { champion: "deciding", challenger: "in shadow", ineligible: "too slow for the fast loop" };
 
 export class Correlation extends Component {
   constructor(props) {
@@ -47,160 +46,151 @@ export class Correlation extends Component {
   }
 
   render(_props, { data, error }) {
-    if (error) return html`<${Failed} error=${error} retry=${this.read} what="the decider" />`;
-    if (!data) return html`<${Loading} label="Reading what decides links" />`;
+    if (error) return html`<${Failed} error=${error} retry=${this.read} what="who decides links" />`;
+    if (!data) return html`<${Loading} label="Reading who decides links" />`;
     const decider = data.decider.value;
-    // What RUNS, not what was chosen: with no shipped model (#422) the formula decides under the
-    // mode `shipped`, and a screen that called it "not deciding" would be describing the setting.
-    const formulaRuns = String(decider.running || "").startsWith("additive:");
-    const hint = decider.mode === "additive"
-      ? "Deciding now. Changes apply at the next engine reload."
-      : "Deciding now, in place of the chosen decider, which cannot run. Changes apply at the next engine reload.";
     return html`<div class="stack">
-      <${Picker} decider=${decider} onDone=${this.read} />
-      <${Provenance} shipped=${decider.shipped} />
-      <${SiteModels} models=${decider.site_models} />
-      ${data.scorer.ok && formulaRuns ? html`<section class="panel-block">
-        <${SectionHeading} title="The additive formula" hint=${hint} />
-        <${Formula} config=${data.scorer.value} onChanged=${this.read} />
-      </section>` : null}
-      ${data.scorer.ok && !formulaRuns ? html`<details class="panel-block formula-folded">
-        <summary>The additive formula — stored, not deciding</summary>
+      <div class="settings-intro">
+        <p><b>Models compete; the judge chooses.</b> Every trap is grouped by the model the judge
+          ranks best. The others score the same alarms in shadow, and every five minutes the judge
+          re-checks them against the groupings your operators confirmed or corrected.</p>
+        <p>Full charts for each model — how it learned and how it compares — are on
+          ${" "}<a href="#/promotion">Judge</a>.</p>
+      </div>
+      <${Now} decider=${decider} />
+      <${Choice} decider=${decider} onDone=${this.read} />
+      <${League} rows=${decider.members || []} />
+      <${History} rows=${decider.history || []} decisions=${decider.decisions || []}
+        members=${decider.members || []} />
+      ${data.scorer.ok ? html`<details class="panel-block formula-folded">
+        <summary>Fail-safe formula — used only when no model can load</summary>
+        <p class="hint">Four weights and a threshold. It decides nothing while any model loads.</p>
         <${Formula} config=${data.scorer.value} onChanged=${this.read} />
       </details>` : null}
-      <${History} rows=${decider.history} />
     </div>`;
   }
 }
 
-class Picker extends Component {
+function Now({ decider }) {
+  const champ = decider.champion;
+  return html`<section class="panel-block">
+    <${SectionHeading} title="Deciding now" />
+    ${decider.fallback || !champ
+      ? html`<p class="err" role="alert">No model could be loaded, so the fail-safe formula is
+          grouping. ${(decider.warnings || []).join(" ")}</p>`
+      : html`<p class="league-champion"><b>${champ.name}</b>${decider.pinned
+          ? html`<span class="badge">pinned</span>` : html`<span class="badge">chosen by the judge</span>`}</p>
+        ${(decider.warnings || []).map((w, i) => html`<p class="hint" key=${i}>${w}</p>`)}`}
+  </section>`;
+}
+
+class Choice extends Component {
   constructor(props) {
     super(props);
-    this.state = { mode: props.decider.mode, reason: "", busy: false, error: null, done: null };
+    this.state = { pin: props.decider.pinned || "", reason: "", busy: false, error: null, done: null };
   }
 
   async submit(e) {
     e.preventDefault();
     this.setState({ busy: true, error: null, done: null });
     try {
-      const out = await post("/api/decider", { mode: this.state.mode, reason: this.state.reason });
-      this.setState({ busy: false, reason: "", done: out.effective });
+      const pin = this.state.pin || null;
+      await post("/api/decider", { mode: "shipped", pin, reason: this.state.reason });
+      this.setState({ busy: false, reason: "", done: pin ? "pinned" : "automatic" });
       this.props.onDone();
     } catch (error) {
       this.setState({ busy: false, error });
     }
   }
 
-  render({ decider }, { mode, reason, busy, error, done }) {
+  render({ decider }, { pin, reason, busy, error, done }) {
     const writable = can("decider.write");
-    const siteReady = (decider.site_models || []).some((m) => m.verdict && m.verdict.verdict === "BETTER");
-    const changed = mode !== decider.mode;
+    const members = decider.members || [];
+    const current = decider.pinned || "";
+    const changed = pin !== current;
     return html`<section class="panel-block">
-      <${SectionHeading} title="What decides links"
-        hint=${`Running now: ${decider.running}.`} />
-      ${(decider.warnings || []).map((w, i) => html`<p class="err" role="alert" key=${i}>${w}</p>`)}
-      <form class="decider-form" onSubmit=${(e) => this.submit(e)}>
-        <fieldset class="decider-modes" disabled=${!writable || busy}>
-          <legend class="sr-only">Decider</legend>
-          ${MODES.map(([key, label, note]) => {
-            const unavailable = (key === "site" && !siteReady) ||
-              (key === "shipped" && decider.shipped && decider.shipped.available === false);
-            return html`<label key=${key} class=${cx("decider-mode", mode === key && "on", unavailable && "off")}>
-              <input type="radio" name="decider" value=${key} checked=${mode === key}
-                disabled=${unavailable} onChange=${() => this.setState({ mode: key })} />
-              <span class="decider-mode-label">${label}${decider.mode === key ? html` <em>current</em>` : null}</span>
-              <span class="decider-mode-note">${unavailable && key === "site"
-                ? "No site model has been judged better yet."
-                : unavailable ? (decider.shipped.absent ? "This build ships no model."
-                  : "The shipped model could not be loaded.") : note}</span>
-            </label>`;
-          })}
+      <${SectionHeading} title="How the model is chosen" />
+      <form class="pin-form" onSubmit=${(e) => this.submit(e)}>
+        <fieldset class="pin-choice" disabled=${!writable || busy}>
+          <legend class="sr-only">How the model is chosen</legend>
+          <label class=${cx("decider-mode", !pin && "on")}>
+            <input type="radio" name="pin" checked=${!pin} onChange=${() => this.setState({ pin: "" })} />
+            <span class="decider-mode-label">Automatic${!current ? html` <em>current</em>` : null}</span>
+            <span class="decider-mode-note">Recommended. The judge picks the best model and switches
+              only when your site's labels show, with 95 % confidence, that another one is better.</span>
+          </label>
+          <label class=${cx("decider-mode", pin && "on")}>
+            <input type="radio" name="pin" checked=${Boolean(pin)}
+              onChange=${() => this.setState({ pin: pin || (members[0] || {}).ref || "" })} />
+            <span class="decider-mode-label">Pinned${current ? html` <em>current</em>` : null}</span>
+            <span class="decider-mode-note">One model decides whatever the ranking says. For a
+              deliberate reason — an investigation, a comparison — and recorded in the audit log.</span>
+          </label>
         </fieldset>
+        ${pin ? html`<label for="pin-model">Model to pin</label>
+          <select id="pin-model" value=${pin} disabled=${!writable || busy}
+            onChange=${(e) => this.setState({ pin: e.target.value })}>
+            ${members.map((m) => html`<option key=${m.ref} value=${m.ref}>${m.rank}. ${m.name}</option>`)}
+          </select>` : null}
         ${writable && changed ? html`<label for="decider-reason">Reason (recorded in the audit log)</label>
           <input id="decider-reason" value=${reason} minlength="3" required
             placeholder="why is this changing?" onInput=${(e) => this.setState({ reason: e.target.value })} />
-          <button type="submit" disabled=${busy || reason.trim().length < 3}>
-            ${busy ? "Switching…" : "Switch"}</button>` : null}
-        ${writable ? null : html`<p class="hint">Only an admin can change what decides links.</p>`}
+          <div><button type="submit" class="primary" disabled=${busy || reason.trim().length < 3}>
+            ${busy ? "Saving…" : pin ? "Pin this model" : "Let the judge choose"}</button></div>` : null}
+        ${writable ? null : html`<p class="hint">Only an admin can change how the model is chosen.</p>`}
       </form>
-      ${done ? html`<p class="ok-note" role="status">Switched. Effective ${done}.</p>` : null}
+      ${done ? html`<p class="ok-note" role="status">Saved (${done}). It takes effect within seconds,
+        at the next maintenance pass.</p>` : null}
       ${error ? html`<p class="err" role="alert">${error.detail || error.message}</p>` : null}
     </section>`;
   }
 }
 
-/** A reason the server phrases as a clause, shown as a sentence. */
-const sentence = (text) => text.charAt(0).toUpperCase() + text.slice(1);
-
-/** Where the shipped model came from: the questions an auditor asks, answered from the manifest. */
-function Provenance({ shipped }) {
-  if (!shipped || shipped.available === false) {
-    return html`<section class="panel-block"><${SectionHeading} title="Shipped model" />
-      <p class=${shipped && shipped.absent ? "hint" : "err"}>${sentence(shipped ? shipped.reason : "not available")}</p>
-    </section>`;
-  }
-  const p = shipped.provenance || {};
-  const verdict = shipped.verdict || {};
-  const rows = [
-    ["reference", shipped.ref],
-    ["SHA-256", shipped.sha256],
-    ["trained with", p.trained_with_version ? `NetCoreNOC ${p.trained_with_version}` : "—"],
-    ["commit", p.commit],
-    ["data", p.data],
-    ["dataset digest", p.dataset_digest],
-    ["seed", p.seed],
-    ["training / validation rows", p.training_rows != null ? `${p.training_rows} / ${p.validation_rows}` : "—"],
-    ["held-out families", (p.held_out_families || []).join(", ")],
-    ["features", (shipped.features || []).join(", ")],
-    ["quality bar", verdict.passed ? `met on ${verdict.checked} checks` : "—"],
-  ];
-  return html`<section class="panel-block param-structural">
-    <${SectionHeading} title="Shipped model — provenance"
-      hint="A file in the package, checked against its manifest's SHA-256 before it loads. It is data: a table of numbers, never code." />
-    <dl class="facts">
-      ${rows.map(([k, v]) => html`<div class="fact" key=${k}><dt>${k}</dt><dd class="mono">${v == null || v === "" ? "—" : String(v)}</dd></div>`)}
-    </dl>
-    <p class="hint">Its measured quality is on <a href="#/promotion">Judge & promotion</a>.</p>
-  </section>`;
-}
-
-function SiteModels({ models }) {
-  if (!models || !models.length) return null;
+function League({ rows }) {
+  if (!rows.length) return null;
   return html`<section class="panel-block">
-    <${SectionHeading} title="Site models" hint="Fitted on this appliance by the search. Each is judged against the shipped model on the newest labels." />
-    <${DataTable} columns=${[
-      { key: "id", label: "#", numeric: true },
-      { key: "when", label: "fitted" },
-      { key: "verdict", label: "verdict" },
-      { key: "note", label: "note" },
-    ]} rows=${models.map((m) => ({
-      key: m.id,
+    <${SectionHeading} title="The models, in the judge's order"
+      hint="Score: mean pairwise F1 on five test suites no model trained on, including a hand-labelled corpus. Higher is better." />
+    <${DataTable} kind="league-table" columns=${[
+      { key: "rank", label: "#", numeric: true },
+      { key: "name", label: "model" },
+      { key: "role", label: "role" },
+      { key: "score", label: "score", numeric: true },
+      { key: "latency", label: "µs per pair", numeric: true },
+    ]} rows=${rows.map((r) => ({
+      key: r.ref,
       cells: {
-        id: m.active ? html`<b>${m.id} (active)</b>` : String(m.id),
-        when: cell(html`<${TimeCell} ts=${m.created_at} />`),
-        verdict: m.verdict ? html`<b class="mono">${m.verdict.verdict}</b>` : "—",
-        note: (m.verdict && m.verdict.reason) || m.note || "—",
+        rank: String(r.rank),
+        name: r.name,
+        role: html`<span class=${cx("league-role", `league-${r.role}`)}>${ROLE[r.role] || r.role}</span>`,
+        score: r.score == null ? "—" : r.score.toFixed(3),
+        latency: r.latency_us == null ? "—" : r.latency_us.toFixed(1),
       },
     }))} />
   </section>`;
 }
 
-function History({ rows }) {
-  if (!rows || !rows.length) return null;
+function History({ rows, decisions, members }) {
+  const name = (ref) => (members.find((m) => m.ref === ref) || {}).name || ref;
+  const merged = [
+    ...decisions.map((d) => ({ at: d.at, what: `${name(d.champion)} decides`, by: d.actor, why: d.reason })),
+    ...rows.map((r) => ({ at: r.set_at, what: r.pinned ? `pinned ${name(r.pinned)}` : `mode ${r.mode}`,
+      by: r.set_by, why: r.reason })),
+  ].sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 15);
+  if (!merged.length) return null;
   return html`<section class="panel-block">
-    <${SectionHeading} title="Switches" hint="Append-only: every change of decider, by whom and why." />
+    <${SectionHeading} title="History" hint="Every change of model — by the judge or an admin — and why. Append-only." />
     <${DataTable} columns=${[
-      { key: "when", label: "when" }, { key: "mode", label: "mode" },
-      { key: "by", label: "by" }, { key: "reason", label: "reason" },
-    ]} rows=${rows.map((r) => ({
-      key: r.id,
+      { key: "when", label: "when" }, { key: "what", label: "what" },
+      { key: "by", label: "by" }, { key: "why", label: "why" },
+    ]} rows=${merged.map((r, i) => ({
+      key: i,
       cells: {
-        // The migration's seed row carries 0.0 — a seeded row is as old as the database — so it
-        // says when it happened in words rather than as 1970.
-        when: r.set_at ? cell(html`<${TimeCell} ts=${r.set_at} />`) : "at upgrade",
-        mode: html`<b class="mono">${r.mode}</b>`,
-        by: r.set_by || "—",
-        reason: r.reason || "—",
+        // A seeded row carries 0.0 — as old as the database — so it says so in words, not 1970.
+        when: r.at ? cell(html`<${TimeCell} ts=${r.at} />`) : "at upgrade",
+        what: r.what,
+        by: r.by || "—",
+        why: r.why || "—",
       },
     }))} />
   </section>`;

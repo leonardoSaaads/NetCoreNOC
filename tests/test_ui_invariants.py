@@ -3536,14 +3536,18 @@ async def test_the_four_named_quantities_are_drawn_as_four_and_never_composed(
     # be there.
     registered = {label.lower() for _key, label in _console_quantities().items()}
     assert len(registered) == 4, f"the console declares {len(registered)} quantities, not four"
-    from_metrics = [
-        chart
-        for chart, caption in zip(result["charts"], result["captions"], strict=False)
-        if "promotion.metrics" in caption
+    #
+    # v0.27.0: paired by chart block rather than by position. The two flat lists stopped being
+    # parallel when the league's site comparison began rendering an empty state (its caption names
+    # the dataset; there is nothing to draw before the first label), and a positional zip would
+    # then have read the wrong chart for every caption after it.
+    metric_blocks = [
+        b for b in result["blocks"] if b["caption"] and "promotion.metrics" in b["caption"]
     ]
-    assert len(from_metrics) == len(result["captions"]) - len(
-        [c for c in result["captions"] if "promotion.metrics" not in c]
-    ), "the chart list and the caption list are not parallel; the reader below would be guessing"
+    assert all(b["chart"] for b in metric_blocks), (
+        "a promotion.metrics caption has no chart beside it; the reader below would be guessing"
+    )
+    from_metrics = [{"label": b["chart"]} for b in metric_blocks]
     assert from_metrics, "no chart on this screen is drawn from promotion.metrics at all"
     for chart in from_metrics:
         title = (chart["label"] or "").split(".")[0].strip().lower()

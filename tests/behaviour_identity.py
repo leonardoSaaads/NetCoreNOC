@@ -548,14 +548,23 @@ def _frozen_clock() -> Iterator[None]:
     Every call site in `src/` reaches the clock as `time.time()` after `import time`, so patching
     the attribute on the module reaches all of them — verified by `ast`, not assumed.
     """
+    from netcorenoc.engine.model import league_judge
+
     real_time, real_n = time.time, auth.SCRYPT_N
+    real_latency = league_judge.measure_latency
     time.time = lambda: EPOCH
     auth.SCRYPT_N = SCRYPT_N
+    # v0.27.0: each league member's scoring time is MEASURED at engine start (ADR #423) and shows
+    # in `/api/decider` and `/api/judge`. A measurement is a clock reading, so it is pinned with the
+    # clock: every member reads one fixed figure, inside the budget, and the record still serves the
+    # league this build packages.
+    league_judge.measure_latency = lambda member, vectors: 1.0
     try:
         yield
     finally:
         time.time = real_time
         auth.SCRYPT_N = real_n
+        league_judge.measure_latency = real_latency
 
 
 # --- the record ----------------------------------------------------------------------------

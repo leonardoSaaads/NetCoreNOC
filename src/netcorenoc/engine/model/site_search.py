@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from netcorenoc.engine.correlate.features import FEATURE_NAMES
 from netcorenoc.engine.correlate.scorer_contract import CONTRACT_VERSION
-from netcorenoc.engine.model import gam, gam_fit, search, shipped, site
+from netcorenoc.engine.model import gam, gam_fit, league, search, shipped, site, site_labels
 
 if TYPE_CHECKING:  # pragma: no cover - type-only
     from multiprocessing.process import BaseProcess
@@ -130,7 +130,7 @@ class Runner:
                 int(run["id"]), "refused", now, f"no shipped model: {exc}"
             )
             return
-        pairs = await store.labelled_pairs() + await store.gesture_positive_pairs()
+        pairs = await site_labels.label_pairs(store)
         features = await store.pair_features([int(p["pair_id"]) for p in pairs])
         rows = site.rows_from(pairs, features)
         bags = {r.bag for r in rows}
@@ -209,7 +209,7 @@ class Runner:
         base = shipped.load()
         candidate = gam.load(body["document"], scorer_id="site")
         rows = job.train + job.test
-        bench = site.benchmark_rows(base.manifest.get("benchmark", []))
+        bench = site.benchmark_rows([list(r) for r in league.benchmark_rows()])
         verdict = site.judge(base.scorer, candidate, rows, job.test, bench)
         mv = await store.insert_model_version(
             kind=gam.KIND,

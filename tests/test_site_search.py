@@ -183,19 +183,26 @@ def _rows(bags: int, days: int = 4) -> list[site.SiteRow]:
     return site.rows_from(pairs, features)
 
 
-def test_below_the_floors_the_verdict_is_insufficient_evidence() -> None:
+def test_there_are_no_floors_and_the_interval_is_the_evidence_standard() -> None:
+    """v0.27.0 (ADR #425): no count floors. A comparison with too few held-out incidents for an
+    interval is INSUFFICIENT_EVIDENCE because nothing can be said, not because a floor is unmet."""
     base = shipped.load_from(
         TEST_MODEL,
         json.dumps(
             {"artifact": {"sha256": __import__("hashlib").sha256(TEST_MODEL.encode()).hexdigest()}}
         ),
     ).scorer
+    assert not hasattr(site, "FLOORS") and not hasattr(site, "MIN_LABEL_DAYS")
     rows = _rows(8, days=2)
     _train, test = site.split_by_time(rows)
     verdict = site.judge(base, base, rows, test, [])
-    assert verdict.verdict == "INSUFFICIENT_EVIDENCE"
-    assert any(u.startswith("incidents") for u in verdict.unmet)
-    assert any(u.startswith("label_days") for u in verdict.unmet)
+    assert verdict.unmet == [], "a floor survived"
+    # The same model against itself: every difference is zero, so the interval is [0, 0] — which
+    # says "not better", from evidence, at eight incidents and two days.
+    assert verdict.verdict in ("NOT_BETTER", "INSUFFICIENT_EVIDENCE")
+    one = [r for r in rows if r.incident == rows[0].incident]
+    alone = site.judge(base, base, one, one, [])
+    assert alone.verdict == "INSUFFICIENT_EVIDENCE" and "fewer than two" in alone.reason
 
 
 def test_the_newest_labels_are_the_test_and_whole_bags_never_straddle() -> None:

@@ -73,4 +73,6 @@ def test_the_model_gauge_no_longer_uses_the_health_meter_names() -> None:
         Path(netcorenoc.__file__).resolve().parent / "ui" / "app" / "views" / "parts" / "models.js"
     ).read_text(encoding="utf-8")
     assert "meter" not in models, "the model screen draws with the health control's class names"
-    assert "floor" in models
+    # The control that this read the right file: v0.26.0's gauge drew `.floor*` bars; v0.27.0
+    # retired the floors (ADR #425) and the line draws with its own `.corr-*` classes.
+    assert "corr-line" in models

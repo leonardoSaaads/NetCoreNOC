@@ -39,6 +39,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "models_decider.py",  # v0.26.0: the decider, autonomy and search request models
     "public_paths.py",  # v0.26.0: the unauthenticated-path allowlist, off `declare.py`
     "shipped_view.py",  # v0.26.0: the shipped model as the console sees it, off `routes/decider.py`
+    "league_view.py",  # v0.27.0: the league as the console sees it (ADRs #423, #427)
     "mw_shape.py",
     # v0.22.0: the trap-list parser the catalogue's import route calls.
     "catalogue_import.py",
@@ -57,6 +58,8 @@ MODULE_ORDER: tuple[str, ...] = (
     # v0.16.0: the five operator gestures, in the order `create_app` registers them — the three
     # that assert something about a grouping, then the two that assert nothing about one.
     "routes/lifecycle.py",
+    # v0.27.0: an operator's answer to a pending proposal, registered right after the gestures.
+    "routes/proposals.py",
     "routes/annotate.py",
     "routes/operate.py",
     "routes/admin.py",

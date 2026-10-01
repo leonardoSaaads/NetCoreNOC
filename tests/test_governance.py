@@ -1368,6 +1368,9 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/situations/{sid}/move"): "async def move_alarm(",
         ("POST", "/api/situations/{sid}/merge"): "async def merge_situations(",
         ("POST", "/api/situations/{sid}/split"): "async def split_situation(",
+        # v0.27.0 (ADR #428): accepting a proposal is a merge and rejecting one is the same power
+        # over the same two situations; both are scope-checked, twice, like a merge.
+        ("POST", "/api/situations/{sid}/proposal"): "async def answer_proposal(",
         ("POST", "/api/situations/{sid}/name"): "async def name_situation(",
         ("POST", "/api/alarms/{aid}/clear"): "async def clear_alarm(",
         # v0.16.5: the bulk form, and it is inside the perimeter twice over (DECISIONS #301). It

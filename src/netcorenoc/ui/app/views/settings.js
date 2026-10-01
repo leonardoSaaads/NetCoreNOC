@@ -18,12 +18,13 @@
  * fact with no control, never a greyed-out input. A greyed input says "you may not"; a fact says
  * "this is what is true", and they are different sentences (§6.1).
  *
- * ## Four tabs (v0.26.0, ADR #414)
+ * ## Four tabs (v0.26.0, ADR #414; renamed in v0.27.0)
  *
- * **Correlation** (what decides links — the shipped model, a site model or the additive formula,
- * whose editor was the *Link scorer* screen), **Autonomy** (four grades and the self-suspension
- * trigger), **Search** (the hyperparameter search's budget, start and stop) and **System** (the
- * three classes above). Each tab reads only what it shows; the tab is in the address (`?tab=`).
+ * **Models** (who decides links: the league's champion, chosen by the judge or pinned by an admin;
+ * the fail-safe formula, folded), **Autonomy** (four grades and the self-suspension trigger),
+ * **Site training** (the in-product search that adapts the GAM to this site's labels) and
+ * **System** (the three classes above). Each tab opens with what it is for, reads only what it
+ * shows, and keeps its place in the address (`?tab=`).
  */
 
 import { html, Component, cx } from "../dom.js";
@@ -38,10 +39,12 @@ import { Correlation } from "./parts/decider.js";
 import { Autonomy } from "./parts/autonomy.js";
 import { SearchPanel } from "./parts/searchpanel.js";
 
+// The key stays `correlation` so every address written since v0.26.0 (and `#/scorer`) still lands
+// here; the label says what the tab is about now (v0.27.0): the models and how one is chosen.
 const TABS = [
-  ["correlation", "Correlation", "scorer.read", Correlation],
+  ["correlation", "Models", "scorer.read", Correlation],
   ["autonomy", "Autonomy", "scorer.read", Autonomy],
-  ["search", "Search", "model.read", SearchPanel],
+  ["search", "Site training", "model.read", SearchPanel],
   ["system", "System", "config.read", null],
 ];
 
@@ -95,6 +98,11 @@ class SystemSettings extends Component {
     }
     const config = results.config.value;
     return html`<div class="settingsview">
+      <div class="settings-intro">
+        <p><b>The appliance itself:</b> which sources may send traps, how long history is kept,
+          and the limits it enforces. Each value shows where it comes from — the environment, an
+          override saved here, and the one in effect.</p>
+      </div>
       <${Partial} results=${results} />
       <${ClassLegend} />
       ${can("config.write")

@@ -155,8 +155,11 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/decider.js",
         "/app/views/parts/autonomy.js",
         "/app/views/parts/searchpanel.js",
-        "/app/views/parts/shippedjudge.js",
         "/app/views/parts/sitejudge.js",
+        # v0.27.0 (ADRs #423, #427): the league on the Judge screen.
+        "/app/views/parts/league.js",
+        "/app/views/parts/leaguecharts.js",
+        "/app/views/parts/leaguecompare.js",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/htm-3.1.1.module.js",
         "/vendor/preact-10.29.8.module.js",

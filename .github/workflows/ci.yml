@@ -86,7 +86,8 @@ jobs:
       - name: Evaluation gate (pairwise_f1, ari, entity_accuracy)
         run: make eval PYTHON=python
       - name: The eval hash, recorded
-        # `31ea7583…` today (v0.26.0 grew the corpus); `c75b42aa…` from v0.18.0 and `c2e8a0ce…`
+        # `43328080…` today (v0.27.0: the league's champion decides; the gate reads every
+        # scenario); `31ea7583…` in v0.26.0; `c75b42aa…` from v0.18.0 and `c2e8a0ce…`
         # from v0.7.0 until the corpus was re-cut, which
         # `CHANGELOG.md` records. Printed so a release note never has to be taken on trust,
         # and so a baseline re-cut (`make eval-baseline REASON=…`) is visible in the log that ran it.
@@ -191,30 +192,32 @@ jobs:
           # maintenance-window tables); v0.22.0: 21 -> 24 (`0022` host samples, `0023` class
           # rules, `0024` notice snooze and the outlived-window ack); v0.25.0: 24 -> 25 (`0025` people: display
           # names, photos, token purpose); v0.26.0: 25 -> 26 (`0026` the learned decider, autonomy,
-          # search). A literal, deliberately: a release that adds a migration
+          # search); v0.27.0: 26 -> 27 (`0027` Pending and the league's decisions). A literal,
+          # deliberately: a release that adds a migration
           # changes this line in the same commit, which is what makes the schema a reviewable
           # diff rather than a thing that grew. `tests/test_upgrade.py` and
           # `tests/test_bag_identity.py` carry the same pin for the same reason.
           python - <<'PY'
           import sqlite3
           v = sqlite3.connect("/tmp/ci.db").execute("PRAGMA user_version").fetchone()[0]
-          assert v == 26, f"the appliance booted at schema {v}, not 26"
+          assert v == 27, f"the appliance booted at schema {v}, not 27"
           print(f"schema version {v}, all migrations applied")
           PY
-          # v0.26.0: the shipped model is package data. A wheel that dropped it would boot on the
-          # formula and say so in the bell — correct, and exactly the silent loss F85 was. So the
-          # wheel must carry what the tree carries: a model that loads, or none (ADR #422).
-          if [ -f src/netcorenoc/engine/model/linkmodel.json ]; then
-            /tmp/clean/bin/python -c "from netcorenoc.engine.model import shipped; m = shipped.load(); assert m.manifest['verdict']['passed']; print(m.ref)"
-          else
-            /tmp/clean/bin/python -c "from netcorenoc.engine.model import shipped
-          try:
-              shipped.load()
-          except shipped.NoShippedModelError as e:
-              print('no shipped model in this build:', e)
-          else:
-              raise SystemExit('the wheel carries a model the source tree does not')"
-          fi
+          # v0.27.0: the league is package data (ADR #424). A wheel that dropped a member would boot
+          # on fewer models, or on the fail-safe formula, and say so in the bell — correct, and
+          # exactly the silent loss F85 was. So the wheel must carry every member the tree carries,
+          # each validated as data, none refused.
+          TREE_MEMBERS=$(find src/netcorenoc/engine/model/league -name '*.manifest.json' 2>/dev/null | wc -l)
+          /tmp/clean/bin/python - "$TREE_MEMBERS" <<'PY'
+          import sys
+          from netcorenoc.engine.model import league
+          packaged = league.load()
+          assert not packaged.refused, f"the wheel refused league members: {packaged.refused}"
+          want = int(sys.argv[1])
+          got = len(packaged.members)
+          assert got == want, f"the wheel carries {got} league member(s), the tree {want}"
+          print("league:", ", ".join(m.ref for m in packaged.members) or "no member")
+          PY
           kill %1
 
       - name: Build the container image

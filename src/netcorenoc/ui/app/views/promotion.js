@@ -1,14 +1,13 @@
-/* Judge and promotion — **how good the model deciding links is**, and what the gate decided.
+/* Judge — **which model decides links, how each one learns, and how they compare** (v0.27.0).
  *
- * ## Chart-first since v0.26.0 (ADR #414)
+ * ## The league first (ADRs #423, #427)
  *
- * The screen leads with measurements: the shipped model on **generated data** (its four headline
- * quantities beside the formula's, with intervals and n; precision–recall against its baseline;
- * ROC; calibration; confusion; the search that chose it; one shape per feature), then **this
- * site's labels** (sufficiency, the latest paired comparison, the latest search), then the **live**
- * monitor. Each block names its dataset in every caption and nothing shares an axis across them.
- * The v0.11.0 promotion record below is unchanged and folded: it is the audit trail, and it stopped
- * being the screen.
+ * The screen leads with the league: who decides and why, the two loops in plain words, the table
+ * in the judge's order, and the ten charts per model — or every model on shared axes. Then this
+ * site's labels (the paired comparisons, the answers to proposals), the in-product site training,
+ * and the live monitor. Each block names its dataset in every caption and nothing shares an axis
+ * across them. The v0.11.0–v0.14.0 promotion record is folded at the bottom: it is the audit trail
+ * of the legacy challenger path, and it stopped being the screen in v0.26.0.
  *
  * `GET /api/promotion` and `POST /api/promotion` had no UI surface in v0.12.0 (draft §4). The
  * read was deferred in v0.11.0 for a stated reason (#163): the v0.7.5 defect was a click gesture
@@ -17,7 +16,7 @@
  * executed, and the propose control goes through the same destructive-preview machinery as every
  * other consequential action.
  *
- * ## A refusal is an explanation, not an error state (draft §5.3)
+ ## A refusal is an explanation, not an error state (draft §5.3)
  *
  * The route returns the verdict, the triggers, the refusal reason and what was unavailable. All
  * of it is displayed. A gate that refuses and cannot say why is indistinguishable from a gate
@@ -40,7 +39,7 @@ import { Destructive } from "../destructive.js";
 import { Decision } from "./parts/verdict.js";
 import { Evidence } from "./parts/evidence.js";
 import { CorrelationHealth } from "./parts/correlation.js";
-import { ShippedJudge } from "./parts/shippedjudge.js";
+import { LeagueBoard } from "./parts/league.js";
 import { SiteJudge } from "./parts/sitejudge.js";
 
 export class Promotion extends Loader {
@@ -61,11 +60,9 @@ export class Promotion extends Loader {
     const versions = data.model_versions || [];
     const judge = data.judge;
     return html`<div class="promotionview judgeview">
-      ${judge ? html`<p class="judge-now">Deciding now: <b class="mono">${judge.running}</b>
-          <span class="muted"> (${judge.mode})</span>${" "}
-          <a href="#/settings?tab=correlation">change in Settings</a></p>
-        <${ShippedJudge} shipped=${judge.shipped} />
-        <${SiteJudge} site=${judge.site} canSearch=${Boolean(judge.shipped && judge.shipped.available)} />`
+      ${judge ? html`<${LeagueBoard} judge=${judge}
+          initial=${this.props.query ? this.props.query.get("model") : null} />
+        <${SiteJudge} site=${judge.site} canSearch=${(judge.models || []).some((m) => m.kind === "gam")} />`
         : html`<p class="hint">The judge's measurements could not be read.</p>`}
       ${/* The running scorer, observed (v0.22.0, item 7): moved here from Situations. */ null}
       <section class="judge-block">
@@ -74,7 +71,7 @@ export class Promotion extends Loader {
         <${CorrelationHealth} open=${true} />
       </section>
       <details class="judge-record">
-      <summary>The promotion record — seal, decisions, model versions</summary>
+      <summary>Legacy promotion record (v0.11–v0.14 challenger path) — seal, decisions, model versions</summary>
       <section class="panel-block param-structural">
         <${SectionHeading} title="The sealed holdout"
           hint="Displayed, never actionable: the query count is a property of what has been read,

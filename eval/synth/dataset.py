@@ -68,8 +68,10 @@ TRAIN_FAMILIES = (
     "onu_power_outage",
     "olt_card_failure",
     "olt_uplink_failure",
+    "olt_power_failure",
     "router_link_cut",
     "router_board_failure",
+    "chassis_card_cascade",
     "port_flapping",
     "ne_reboot",
     "planned_maintenance",
@@ -161,6 +163,11 @@ def specs(scale: float = 1.0, seed: int = SEED) -> dict[str, list[StreamSpec]]:
 #: The appliance code a recording runs through (`record.py` drives the real `Engine`), so a change
 #: to what the engine computes is a new dataset rather than a stale cache.
 RECORDING_SOURCES = ("engine", "ingest", "store", "migrations")
+#: Modules under `eval/synth/` that read the recorded streams and never shape them: editing one is
+#: not a new dataset. v0.27.0 adds the league's trainer and its search (`league.py`, `tuning.py`).
+CONSUMERS = frozenset(
+    {"dataset.py", "train.py", "report.py", "evaluate.py", "verify.py", "league.py", "tuning.py"}
+)
 
 
 def digest(all_specs: dict[str, list[StreamSpec]]) -> str:
@@ -173,7 +180,7 @@ def digest(all_specs: dict[str, list[StreamSpec]]) -> str:
         ).encode()
     )
     for path in sorted((HERE).glob("*.py")):
-        if path.name in {"dataset.py", "train.py", "report.py", "evaluate.py", "verify.py"}:
+        if path.name in CONSUMERS:
             continue  # consumers of the data, not producers of it
         h.update(path.name.encode())
         h.update(path.read_bytes())

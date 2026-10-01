@@ -15,7 +15,7 @@
 import { html, Component } from "../../dom.js";
 import { post } from "../../api.js";
 import { SectionHeading } from "../../widgets.js";
-import { count } from "../../format.js";
+import { corpusFact, count } from "../../format.js";
 import { Destructive } from "../../destructive.js";
 import { MECHANISM } from "../../parameters.js";
 
@@ -48,14 +48,16 @@ export class DatasetRetention extends Component {
                "not captured cannot be reconstructed."} />
 
       <div class="stat-row">
-        ${Object.entries(stats).map(([key, value]) => html`
-          <div class="stat" key=${key}>
-            <div class="stat-value">${count(value)}</div>
-            <div class="stat-label">${key.replaceAll("_", " ")}</div>
-          </div>`)}
+        ${Object.entries(stats).map(([key, value]) => {
+          const fact = corpusFact(key, value);
+          return html`<div class="stat" key=${key} title=${fact.title}>
+            <div class="stat-value">${fact.text}</div>
+            <div class="stat-label">${fact.label}</div>
+          </div>`;
+        })}
       </div>
       <p class="hint">Capture is currently <b>${data.capture_enabled ? "on" : "off"}</b>.
-        Since this process started, the background sweep has removed
+        Since this process started, the background sweep has removed${" "}
         ${Object.entries(data.audit_swept || {}).map(([k, v]) => `${count(v)} ${k}`).join(", ") || "nothing"}.</p>
 
       <form class="grid-form" onSubmit=${(e) => e.preventDefault()}>

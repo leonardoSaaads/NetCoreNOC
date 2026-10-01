@@ -126,7 +126,19 @@ COHESION_EXEMPT: dict[str, str] = {
 # `tests/test_maintenance_window.py::test_the_per_trap_check_performs_no_query` reads the AST of
 # the whole `engine/mw/` package and fails on an `await` or an I/O call — which is the property
 # the exemption is actually about, rather than the number.
-COHESION_EXEMPT_CEILING: dict[str, int] = {"engine/operate/engine.py": 599}
+#
+# v0.27.0: 599 -> 605, and it is the same bargain for the fourth time — **call sites, not
+# decisions**. The six lines are: three attributes in `__init__` with one comment (the rejected
+# proposals, the league's latencies, the live shadow); the reload of the rejected proposals in
+# `start`; one `proposals.route(...)` call whose result `_assign_situation` executes (and a
+# `routed.act` where a literal was); one `league_shadow.observe(...)` after the shadow call; and
+# one `proposals.lapse(...)` line in the sweep. The merge loop got *shorter*.
+#
+# Paid for by `test_the_engine_holds_no_proposal_or_league_logic` below: which situation is
+# confirmed, what a proposal folds, what was rejected, which model decides and how the challengers
+# are sampled are all decided in `engine/operate/proposals.py`, `engine/model/league_judge.py` and
+# `engine/evaluation/league_shadow.py`, and the test fails on their vocabulary appearing here.
+COHESION_EXEMPT_CEILING: dict[str, int] = {"engine/operate/engine.py": 605}
 
 # The invariant names a COHESION_EXEMPT reason may cite, taken from MODULE-ARCHITECTURE.md §1.
 # A reason that cites nothing in this set is an assertion nobody has had to defend.
@@ -482,8 +494,11 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/decider.js"),
     ("GET", "/app/views/parts/autonomy.js"),
     ("GET", "/app/views/parts/searchpanel.js"),
-    ("GET", "/app/views/parts/shippedjudge.js"),
     ("GET", "/app/views/parts/sitejudge.js"),
+    # v0.27.0: the league on the Judge screen; `shippedjudge.js` left with the single model.
+    ("GET", "/app/views/parts/league.js"),
+    ("GET", "/app/views/parts/leaguecharts.js"),
+    ("GET", "/app/views/parts/leaguecompare.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -505,6 +520,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/situations/{sid}/move"),
     ("POST", "/api/situations/{sid}/merge"),
     ("POST", "/api/situations/{sid}/split"),
+    # v0.27.0 (ADR #428): an operator's answer to a pending proposal, after the gestures.
+    ("POST", "/api/situations/{sid}/proposal"),
     ("POST", "/api/situations/{sid}/name"),
     ("POST", "/api/situations/{sid}/promote"),
     ("POST", "/api/alarms/{aid}/clear"),
@@ -692,7 +709,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # `/api/search` and `/api/judge` are new prefixes whose sub-paths (`…/decisions`, `…/stop`) are
     # concrete; `POST /api/situations/{sid}/severity` is a concrete segment below `{sid}`, beside
     # the existing concrete siblings (ADRs #405, #412, #413).
-    assert len(live) == 107, (
+    # **v0.27.0: 107 -> 108.** One, `POST /api/situations/{sid}/proposal`: a concrete segment below
+    # `{sid}`, beside `…/merge` and `…/split`, which it cannot shadow (ADR #428).
+    assert len(live) == 108, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -789,6 +808,36 @@ def test_the_engine_holds_no_monitoring_logic() -> None:
     assert "self.monitor.observe(" in source, (
         "engine.py no longer calls the monitor, so the ceiling raise bought nothing"
     )
+
+
+def test_the_engine_holds_no_proposal_or_league_logic() -> None:
+    """**The control that pays for v0.27.0's ceiling raise** (ADRs #423, #428).
+
+    The engine may *execute* the proposal guard's route and *call* the shadow; it may not decide
+    which situation is confirmed, what a proposal folds, what was rejected, which model decides, or
+    how challengers are sampled. The needles are that vocabulary.
+    """
+    source = (PKG / "engine" / "operate" / "engine.py").read_text(encoding="utf-8")
+    leaks = [
+        needle
+        for needle in (
+            "lifecycle_states",
+            "pending_for",
+            "orphan_proposals",
+            "withdraw_proposal",
+            '"pending"',
+            '"open"',
+            "league_judge",
+            "measure_latency",
+            "choose(",
+            "SAMPLE_PAIRS",
+            "STORM_STRIDE",
+        )
+        if needle in source
+    ]
+    assert not leaks, f"proposal or league logic moved onto the ingest path: {leaks}"
+    assert source.count("proposals.route(") == 1 and source.count("proposals.lapse(") == 1
+    assert source.count("league_shadow.observe(") == 1
 
 
 def test_the_engine_holds_no_maintenance_window_logic() -> None:
@@ -1266,8 +1315,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: four API modules (`routes/decider`, `models_decider`, `public_paths`, `shipped_view` — split off
 #: the routes at the 400-line guard); six console modules. **No model file is among them** — the
 #: build ships none (ADR #422).
-SRC_TREE_DIGEST = "e230b6a56b6f04dcadd010216c6e44e18d1112abca0d5d6a8d9372eb11667691"
-SRC_FILE_COUNT = 323
+SRC_TREE_DIGEST = "13c2a31d8849372feefa22911fd6ba7398caae86a1cca07cbe0efa758ca72a75"
+SRC_FILE_COUNT = 354
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1333,7 +1382,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.26.0", "the version this release carries"
+    assert __version__ == "0.27.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

@@ -176,15 +176,15 @@ export function Steps({ feature, edges, scores, source }) {
 }
 
 /** The confusion matrix at the operating threshold, as a 2 × 2 grid of weighted counts. */
-export function Confusion({ matrix, source, n }) {
+export function Confusion({ matrix, source, n, title = "Confusion at the threshold" }) {
   if (!matrix) return null;
   const total = matrix.tp + matrix.fp + matrix.tn + matrix.fn || 1;
   const cellOf = (label, value, tone) => html`<div class=${cx("mchart-cm-cell", tone)}>
     <b>${(100 * value / total).toFixed(1)}%</b><span>${label}</span></div>`;
   return html`<section class="chart-block mchart">
-    <h4 class="chart-title">Confusion at the threshold</h4>
+    <h4 class="chart-title">${title}</h4>
     <div class="chart mchart-cm" data-chart="confusion" role="img"
-      aria-label=${`Confusion at the threshold. precision ${fmt(matrix.precision, 3)}, recall ${fmt(matrix.recall, 3)}.`}>
+      aria-label=${`${title}. precision ${fmt(matrix.precision, 3)}, recall ${fmt(matrix.recall, 3)}.`}>
       <span></span><span class="mchart-cm-h">same incident</span><span class="mchart-cm-h">different</span>
       <span class="mchart-cm-h">linked</span>
       ${cellOf("true positive", matrix.tp, "good")}${cellOf("false positive", matrix.fp, "bad")}
@@ -243,6 +243,71 @@ export function Diverging({ title, rows, source, n, note }) {
           <span class="chart-bar-value">${r.value > 0 ? "+" : ""}${fmt(r.value, 4)}</span>
         </div>`;
       })}
+    </div>
+    <${Caption} source=${source} span=${n} note=${note} />
+  <//>`;
+}
+
+/**
+ * A distribution over fixed bins — a classifier's residuals ``y − p`` split by the true class
+ * (v0.27.0, ADR #427). Series side by side per bin, each a share of the weighted pairs. Mass near
+ * the ends is confident error; mass near zero is confident truth.
+ */
+export function Histogram({ title, edges, series, xLabel, source, n, note, latest }) {
+  const drawn = (series || []).filter((s) => (s.values || []).some((v) => v > 0));
+  if (!drawn.length || !edges || edges.length < 2) {
+    return html`<section class="chart-block mchart"><h4 class="chart-title">${title}</h4>
+      <${Unmeasured} what=${title} why=${note || "not recorded"} />
+      <${Caption} source=${source} span=${n} /><//>`;
+  }
+  const bins = edges.length - 1;
+  const top = Math.max(...drawn.flatMap((s) => s.values)) || 1;
+  const sy = scaler(0, top, H, { invert: true });
+  const slot = W / bins;
+  const bar = slot / (drawn.length + 0.5);
+  return html`<${Frame} title=${title} latest=${latest}
+      yTop=${`${(top * 100).toFixed(1)}%`} yBottom="0" xLow=${fmt(edges[0], 1)} xHigh=${fmt(edges[bins], 1)}
+      xLabel=${xLabel} legend=${drawn.length > 1 ? drawn : null}
+      caption=${html`<${Caption} source=${source} span=${n} note=${note} />`}>
+    <svg viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" class="mchart-svg" focusable="false"
+         aria-label=${`${title}. ${drawn.map((s) => `${s.name}: ${(100 * s.values.reduce((a, b) => a + b, 0)).toFixed(1)}% of pairs`).join("; ")}.`}>
+      <line class="mchart-ref" x1=${W / 2} y1="0" x2=${W / 2} y2=${H} />
+      ${drawn.map((s, k) => s.values.map((v, i) => v > 0 ? html`<rect key=${`${k}-${i}`}
+        class=${cx("mchart-bin", s.tone && `chart-${s.tone}`)}
+        x=${(i * slot + bar * (k + 0.25)).toFixed(2)} width=${(bar * 0.92).toFixed(2)}
+        y=${sy(v).toFixed(2)} height=${(H - sy(v)).toFixed(2)} />` : null))}
+    </svg>
+  <//>`;
+}
+
+/**
+ * Intervals around zero, one row each — a forest plot of paired differences (v0.27.0). `rows` is
+ * `[{ label, mean, low, high, verdict }]`; the zero line is what each interval is read against, and
+ * the verdict is printed beside it, so the reading never rests on colour.
+ */
+export function Forest({ title, rows, unit, source, n, note }) {
+  const readable = (rows || []).filter((r) => r.mean != null && r.low != null && r.high != null);
+  if (!readable.length) {
+    return html`<section class="chart-block mchart"><h4 class="chart-title">${title}</h4>
+      <${Unmeasured} what=${title} why=${note || "no comparison yet"} />
+      <${Caption} source=${source} span=${n} /><//>`;
+  }
+  const reach = Math.max(...readable.flatMap((r) => [Math.abs(r.low), Math.abs(r.high)])) || 1;
+  const at = (v) => `${(50 + (v / reach) * 48).toFixed(2)}%`;
+  return html`<section class="chart-block mchart">
+    <h4 class="chart-title">${title}</h4>
+    <div class="chart forest" role="img"
+      aria-label=${`${title}. ${readable.map((r) => `${r.label}: ${fmt(r.mean, 3)} (${fmt(r.low, 3)} to ${fmt(r.high, 3)}) ${r.verdict || ""}`).join("; ")}.`}>
+      ${readable.map((r) => html`<div class="forest-row" key=${r.label}>
+        <span class="chart-bar-label">${r.label}</span>
+        <span class="forest-track">
+          <span class="forest-zero"></span>
+          <span class=${cx("forest-ci", r.verdict && `forest-${r.verdict}`)}
+            style=${`left:${at(r.low)};width:calc(${at(r.high)} - ${at(r.low)})`}></span>
+          <span class="forest-mean" style=${`left:${at(r.mean)}`}></span>
+        </span>
+        <span class="chart-bar-value">${fmt(r.mean, 3)}${unit ? ` ${unit}` : ""} · ${r.verdict || "—"}</span>
+      </div>`)}
     </div>
     <${Caption} source=${source} span=${n} note=${note} />
   <//>`;

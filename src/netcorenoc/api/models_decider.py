@@ -17,10 +17,14 @@ __all__ = ["AutonomyIn", "DeciderIn", "SearchIn", "SituationSeverityIn"]
 
 
 class DeciderIn(BaseModel):
-    """Choose what decides links (ADR #405). ``reason`` is required: an unexplained switch of the
-    thing that groups every alarm is exactly the change an audit two months later cannot read."""
+    """Who decides links (ADRs #405, #425). v0.27.0: the league's judge chooses, and an admin may
+    **pin** one member by its reference; no pin hands the choice back to the judge. ``mode`` is kept
+    for v0.26.0 clients and only ``shipped`` (the league) is accepted — the formula and the site
+    mode are retired as deciders. ``reason`` is required: an unexplained switch of the thing that
+    groups every alarm is exactly the change an audit two months later cannot read."""
 
-    mode: Literal["shipped", "site", "additive"]
+    mode: Literal["shipped", "site", "additive"] = "shipped"
+    pin: str | None = Field(default=None, max_length=80, pattern=r"^[a-z_-]+:[0-9a-f]{12}$")
     reason: str = Field(min_length=3, max_length=500)
 
 

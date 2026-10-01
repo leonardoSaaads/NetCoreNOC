@@ -1348,12 +1348,16 @@ td.sev .cell-edit { display: inline-block; width: auto; }
   padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
 }
 .linkscore { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3.5em; }
-.terms { display: flex; gap: var(--space-3); }
+.terms { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .term { display: flex; align-items: center; gap: var(--space-1); }
 .term-bar { display: inline-block; height: 7px; border-radius: 2px; }
 .term-t { background: var(--term-t); }
 .term-a { background: var(--term-a); }
 .term-e { background: var(--term-e); }
+/* v0.27.0: a model's per-feature term; a term that argued AGAINST the link is hatched, so the sign
+   never rests on colour alone (the number beside it carries the minus too). */
+.term-m { background: var(--fg-muted); }
+.term-neg { background: repeating-linear-gradient(135deg, var(--fg-muted) 0 2px, transparent 2px 4px); }
 .term-num { font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-muted); }
 .linkpair { color: var(--fg-muted); }
 
@@ -2812,3 +2816,84 @@ button.danger:hover { background: var(--alarm); color: var(--bg); }
 }
 .judge-caption { margin: var(--space-1) 0 0; font-size: var(--fs-xs); color: var(--fg-dim); line-height: 1.6; }
 .mchart-cm.chart { --chart-h: auto; }
+
+/* ---- v0.27.0: the league, Pending, and the desktop fixes ------------------------------------ */
+
+/* A heading focused by the router (so a screen reader announces the new view) is not a control:
+   the ring the maintainer saw around every page title on a desktop was this programmatic focus.
+   Keyboard focus on real controls is untouched. */
+.work-heading h1[tabindex="-1"]:focus, .work-heading h1[tabindex="-1"]:focus-visible { outline: none; }
+
+/* One colour per league member, the same on every chart, legend, bar and table swatch. Chosen for
+   separation on both themes (blue, orange, green, magenta, cyan); every chart also names the model,
+   so colour is never the only encoding. */
+:root { --m0: #4a9eff; --m1: #ff9f43; --m2: #4cc38a; --m3: #d977e8; --m4: #33c6d6; }
+:root[data-theme="light"] { --m0: #0b62d0; --m1: #b85c00; --m2: #1a7a4c; --m3: #9b2fae; --m4: #007c89; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { --m0: #0b62d0; --m1: #b85c00; --m2: #1a7a4c; --m3: #9b2fae; --m4: #007c89; }
+}
+.mchart-svg .chart-m0 { stroke: var(--m0); fill: var(--m0); }
+.mchart-svg .chart-m1 { stroke: var(--m1); fill: var(--m1); }
+.mchart-svg .chart-m2 { stroke: var(--m2); fill: var(--m2); }
+.mchart-svg .chart-m3 { stroke: var(--m3); fill: var(--m3); }
+.mchart-svg .chart-m4 { stroke: var(--m4); fill: var(--m4); }
+.mchart-svg polyline.chart-m0, .mchart-svg polyline.chart-m1, .mchart-svg polyline.chart-m2,
+.mchart-svg polyline.chart-m3, .mchart-svg polyline.chart-m4 { fill: none; }
+.chart-swatch.chart-m0, .chart-legend .chart-m0 .chart-swatch, .chart-bars .chart-m0 { background: var(--m0); }
+.chart-swatch.chart-m1, .chart-legend .chart-m1 .chart-swatch, .chart-bars .chart-m1 { background: var(--m1); }
+.chart-swatch.chart-m2, .chart-legend .chart-m2 .chart-swatch, .chart-bars .chart-m2 { background: var(--m2); }
+.chart-swatch.chart-m3, .chart-legend .chart-m3 .chart-swatch, .chart-bars .chart-m3 { background: var(--m3); }
+.chart-swatch.chart-m4, .chart-legend .chart-m4 .chart-swatch, .chart-bars .chart-m4 { background: var(--m4); }
+.chart-bars .chart-warn { background: var(--warn); }
+.mchart-svg .mchart-bin { fill: var(--accent); stroke: none; }
+.mchart-svg .mchart-bin.chart-alarm { fill: var(--alarm); }
+
+/* Forest plot: an interval per row, read against the zero line. */
+.forest { display: flex; flex-direction: column; gap: var(--space-2); }
+.forest-row { display: grid; grid-template-columns: minmax(6rem, 11rem) minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; font-size: var(--fs-sm); }
+.forest-track { position: relative; height: 14px; }
+.forest-zero { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed var(--line-strong); }
+.forest-ci { position: absolute; top: 6px; height: 2px; background: var(--fg-muted); }
+.forest-better { background: var(--quiet); }
+.forest-worse { background: var(--alarm); }
+.forest-mean { position: absolute; top: 3px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--fg); }
+
+/* The league board. */
+.league { display: flex; flex-direction: column; gap: var(--space-4); }
+.league-champion { font-size: var(--fs-lg); margin: 0 0 var(--space-1); }
+.league-champion .badge { margin-left: var(--space-2); font-size: var(--fs-xs); }
+.league-loops { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); margin: var(--space-3) 0; }
+@media (min-width: 900px) { .league-loops { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.league-loop { border: 1px solid var(--line); border-radius: var(--radius-2); padding: var(--space-3); background: var(--bg-raised); }
+.league-loop h4 { margin: 0 0 var(--space-1); font-size: var(--fs-md); }
+.league-loop p { margin: 0; font-size: var(--fs-sm); color: var(--fg-muted); line-height: 1.55; }
+.league-switch { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
+.league-switch .chart-swatch { margin-right: var(--space-1); }
+.league-model { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.league-role { font-size: var(--fs-xs); padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.league-champion-role, .league-champion.league-role { border-color: var(--accent); color: var(--accent); }
+.league-role.league-champion { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.league-role.league-ineligible { border-color: var(--warn); color: var(--warn); }
+table.data.league-table td, table.data.league-table th { white-space: nowrap; }
+.league-compare > .chart-legend { margin-bottom: var(--space-3); }
+.league-performance .versus-row { margin-bottom: var(--space-1); }
+
+/* Situations: the Pending proposal on a card, and its two answers. */
+.proposal { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px dashed var(--warn); border-radius: var(--radius-2); background: var(--bg-raised); }
+.proposal b { font-variant-numeric: tabular-nums; }
+.proposal-acts { display: inline-flex; gap: var(--space-2); margin-left: auto; }
+.status-pending { color: var(--warn); border-color: var(--warn); }
+
+/* Settings: a page that explains itself. The intro spans the width; the body is a readable column
+   on a desktop instead of the 500 px strip it used to be, and long identifiers wrap. */
+.settings-intro { border-left: 3px solid var(--accent); padding: var(--space-2) var(--space-3); background: var(--bg-raised); border-radius: var(--radius-1); margin-bottom: var(--space-4); }
+.settings-intro p { margin: 0 0 var(--space-1); color: var(--fg-muted); font-size: var(--fs-sm); line-height: 1.55; }
+.settings-intro p:last-child { margin-bottom: 0; }
+.settings .stack { max-width: 1100px; }
+.settings .mono, .settings dd { overflow-wrap: anywhere; }
+.pin-form { display: grid; gap: var(--space-2); max-width: 720px; }
+.pin-choice { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.badge-pending { border-color: var(--warn); color: var(--warn); border-style: dashed; }
+.sit > .proposal { margin: 0 var(--space-3) var(--space-2); }
+.mchart-wrap { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.mchart-wrap > .chart-block { margin: 0; }

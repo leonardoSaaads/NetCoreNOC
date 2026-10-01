@@ -201,6 +201,14 @@ ACTIONS: frozenset[str] = frozenset(
         "autonomy.closing",
         "autonomy.severity",
         "situation.severity",
+        # v0.27.0 — the league and the Pending state (ADRs #425, #428). An operator's answer to a
+        # model's proposal is a gesture on two situations, one row per answer; the judge's change
+        # of champion is a change to what decides every alarm, made with nobody asking, so it is a
+        # row too, with the judge as the actor — and an admin's pin is a `decider.set`.
+        "situation.proposal",  # a scope denial: the answer was never read
+        "situation.proposal.accept",
+        "situation.proposal.reject",
+        "league.decide",
     }
 )
 

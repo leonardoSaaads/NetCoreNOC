@@ -59,6 +59,9 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/situations/{sid}/close"): "situation.close",
     ("POST", "/api/situations/{sid}/move"): "situation.move",
     ("POST", "/api/situations/{sid}/merge"): "situation.merge",
+    # v0.27.0 (ADR #428): accepting a proposal IS a merge, and rejecting one is the same power
+    # over the same two situations — so one capability, the merge's.
+    ("POST", "/api/situations/{sid}/proposal"): "situation.merge",
     ("POST", "/api/situations/{sid}/split"): "situation.split",
     # A rename is a **label**, so it reuses `label.write` rather than inventing a fifth capability
     # (DECISIONS #260): naming a device, naming an alarm class and naming a situation are one power.
@@ -240,6 +243,8 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     # perimeter F34 established. Move and merge name **two** situations and check both.
     ("POST", "/api/situations/{sid}/move"): "scoped",
     ("POST", "/api/situations/{sid}/merge"): "scoped",
+    # Names two situations (the proposal and its target) and checks both, like a merge.
+    ("POST", "/api/situations/{sid}/proposal"): "scoped",
     ("POST", "/api/situations/{sid}/split"): "scoped",
     ("POST", "/api/situations/{sid}/name"): "scoped",
     ("POST", "/api/alarms/{aid}/clear"): "scoped",

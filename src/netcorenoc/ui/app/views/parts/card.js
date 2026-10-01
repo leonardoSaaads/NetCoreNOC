@@ -32,6 +32,8 @@ import { age, plural, timeTitle } from "../../format.js";
 import { Detail } from "./judge.js";
 import { MaintenanceMark } from "./mwmarker.js";
 import * as store from "../../store.js";
+import { post } from "../../api.js";
+import { can } from "../../session.js";
 
 export function SituationCard({ situation, onToggle, onChanged }) {
   const sid = situation.id;
@@ -51,7 +53,8 @@ export function SituationCard({ situation, onToggle, onChanged }) {
                        title=${NAME_TITLE[situation.operator_name ? "operator"
                          : situation.model_name ? "model" : "derived"]}
                  >${situationName(situation)}</span>` : null}
-        <${Badge} tone=${situation.status === "resolved" ? "quiet" : "alarm"}>${situation.status}<//>
+        <${Badge} tone=${situation.status === "resolved" ? "quiet" : situation.status === "pending"
+          ? "pending" : "alarm"}>${situation.status}<//>
         ${situation.status === "resolved" && situation.resolution
           ? html`<${Badge} tone="quiet" title=${RESOLUTION_TEXT[situation.resolution] ?? ""}
                  >${situation.resolution.replace("_", " ")}<//>` : null}
@@ -88,6 +91,8 @@ export function SituationCard({ situation, onToggle, onChanged }) {
         <${Icon} name="link" />
       </a>
     </div>
+    ${situation.status === "pending" && situation.proposed_into
+      ? html`<${Proposal} situation=${situation} onChanged=${onChanged} />` : null}
     <div id=${`sit-detail-${sid}`} class="detail" hidden=${!expanded}>
       ${expanded ? html`<${Detail} sid=${sid} detail=${detail} withheld=${withheld}
                                   onChanged=${onChanged} />` : null}
@@ -118,3 +123,45 @@ const HELD_TITLE =
 const SCOPE_TITLE =
   "Members of this situation are outside your visibility scope and are not shown. Scoping hides " +
   "them from you; it does not stop them correlating.";
+
+/**
+ * A pending proposal's question and its two answers (v0.27.0, ADR #428). The model would have
+ * added these alarms to a situation an operator confirmed; instead they wait here. **Accept** merges
+ * them in (and teaches every model that they belong together); **Reject** makes them a situation of
+ * their own (and teaches that they do not). Shown on the card itself, not behind the fold, because
+ * the answer is the whole point of the state.
+ */
+class Proposal extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { busy: false, error: null };
+  }
+
+  async answer(decision) {
+    this.setState({ busy: true, error: null });
+    try {
+      await post(`/api/situations/${this.props.situation.id}/proposal`, { decision });
+      this.setState({ busy: false });
+      this.props.onChanged();
+    } catch (error) {
+      this.setState({ busy: false, error });
+    }
+  }
+
+  render({ situation }, { busy, error }) {
+    const target = situation.proposed_into;
+    const p = situation.proposal_confidence;
+    return html`<div class="proposal" role="group" aria-label=${`Proposal to join situation #${target}`}>
+      <span>The model proposes adding these alarms to confirmed situation
+        ${" "}<a href=${`#/situations/${target}`}>#${target}</a>${p != null
+          ? html`${" "}— it is <b>${`${Math.round(p * 100)}%`}</b> sure they belong together` : null}.</span>
+      ${can("situation.merge") ? html`<span class="proposal-acts">
+        <button type="button" class="primary" disabled=${busy} onClick=${() => this.answer("accept")}>
+          Accept — add to #${target}</button>
+        <button type="button" disabled=${busy} onClick=${() => this.answer("reject")}>
+          Reject — keep separate</button>
+      </span>` : html`<span class="hint">An editor can accept or reject it.</span>`}
+      ${error ? html`<p class="err" role="alert">${error.detail || error.message}</p>` : null}
+    </div>`;
+  }
+}

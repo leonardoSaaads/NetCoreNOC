@@ -26,10 +26,11 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
+from netcorenoc.api.league_view import decider_payload, finite, member_block
 from netcorenoc.api.models import AutonomyIn, DeciderIn, SearchIn, SituationSeverityIn
-from netcorenoc.api.shipped_view import finite, search_blocked, shipped_block, unavailable
+from netcorenoc.api.shipped_view import search_blocked
 from netcorenoc.crosscutting import auth
-from netcorenoc.engine.model import gam, shipped, site, site_search
+from netcorenoc.engine.model import site, site_labels, site_search
 from netcorenoc.engine.operate import autonomy
 
 __all__ = ["register"]
@@ -46,96 +47,46 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/decider", dependencies=guarded)
     async def get_decider() -> dict[str, Any]:
-        """What decides links now, what could, and every switch. `viewer+`, unscoped: it is
-        about arithmetic and names no network element, exactly as `/api/scorer`."""
+        """Who decides links now: the league's champion, the order it was chosen from, the pin, and
+        every switch. `viewer+`, unscoped: it is about models and names no network element."""
         async with store.lock:
-            mode = await store.decider_mode()
             history = await store.decider_history(20)
-            config = await store.active_scorer_config()
-            versions = [
-                v for v in await store.list_model_versions(20) if str(v["kind"]) == gam.KIND
-            ]
-            runs = await store.search_runs(5)
-        try:
-            ship = shipped.summary(shipped.load())
-        except Exception as exc:
-            ship = unavailable(exc)
-        judged = {int(r["model_version_id"]): r for r in runs if r.get("model_version_id")}
-        return {
-            "mode": mode,
-            "running": engine.decider_ref,
-            "warnings": engine.scorer_warning_list(),
-            "shipped": ship,
-            "site_models": [
-                {
-                    "id": int(v["id"]),
-                    "created_at": v["created_at"],
-                    "note": v["note"],
-                    "active": bool(v.get("active")),
-                    "verdict": (judged.get(int(v["id"])) or {}).get("judgement"),
-                }
-                for v in versions
-            ],
-            "additive": None
-            if config is None
-            else {
-                "config_id": int(config["id"]),
-                "params": {k: config[k] for k in ("w_t", "w_a", "w_e", "tau_s", "threshold")},
-            },
-            "history": history,
-        }
+            pinned = await store.decider_pin()
+            decisions = await store.league_decisions(10)
+        return {**decider_payload(engine, pinned), "history": history, "decisions": decisions}
 
     @route.post("/api/decider")
     async def set_decider(
         body: DeciderIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        """Switch what decides links. Admin (`decider.write`); effective at the next reload."""
+        """Pin one member of the league, or hand the choice back to the judge. Admin
+        (`decider.write`); effective at the next reload. The formula and the site mode are retired
+        as deciders (ADR #425) and are refused with the reason."""
+        if body.mode != "shipped":
+            raise HTTPException(
+                409,
+                f"the {body.mode!r} mode is retired: the league's judge chooses among the models, "
+                "and an admin may pin one of them",
+            )
+        members = engine.league_members
+        if body.pin is not None and (members is None or members.by_ref(body.pin) is None):
+            raise HTTPException(409, f"{body.pin} is not a member of this appliance's league")
         now = time.time()
         async with write_txn():
-            details: dict[str, Any] = {"mode": body.mode, "reason": body.reason}
-            if body.mode == "site":
-                version, verdict = await _site_verdict()
-                details["verdict"] = verdict.verdict
-                if verdict.verdict != "BETTER":
-                    raise HTTPException(
-                        409,
-                        f"the newest site model is {verdict.verdict}: {verdict.reason}. "
-                        "The shipped model keeps deciding.",
-                    )
-                await store.set_active_model_version(version, principal.actor, now)
-                details["model_version_id"] = version
-            elif body.mode == "additive":
-                config = await store.latest_scorer_config()
-                if config is not None:
-                    await store.set_active_scorer_config(int(config["id"]), principal.actor, now)
-            await store.set_decider_mode(body.mode, principal.actor, now, body.reason)
+            await store.set_decider_pin(body.pin, principal.actor, now, body.reason)
             await audit_row(
                 request,
                 principal,
                 "decider.set",
                 "ok",
                 object_type="decider",
-                object_id=body.mode,
-                details=details,
+                object_id=body.pin or "judge",
+                details={"pin": body.pin, "reason": body.reason},
             )
-        return {"mode": body.mode, "effective": "at the next maintenance pass, within seconds"}
-
-    async def _site_verdict() -> tuple[int, site.Judgement]:
-        """The server's own judgement of the newest site model. The request asserts nothing."""
-        versions = [v for v in await store.list_model_versions(20) if str(v["kind"]) == gam.KIND]
-        if not versions:
-            raise HTTPException(409, "no site model has been fitted yet; run a search first")
-        newest = versions[0]
-        try:
-            base = shipped.load()
-        except shipped.ShippedModelError as exc:  # the judge compares against it (#411)
-            raise HTTPException(409, f"no shipped model to judge against: {exc}") from exc
-        candidate = gam.load(str(newest["params_document"]), scorer_id="site")
-        pairs = await store.labelled_pairs() + await store.gesture_positive_pairs()
-        rows = site.rows_from(pairs, await store.pair_features([int(p["pair_id"]) for p in pairs]))
-        _train, test = site.split_by_time(rows)
-        bench = site.benchmark_rows(base.manifest.get("benchmark", []))
-        return int(newest["id"]), site.judge(base.scorer, candidate, rows, test, bench)
+        return {
+            "pin": body.pin,
+            "effective": "at the next maintenance pass, within seconds",
+        }
 
     # -- autonomy ----------------------------------------------------------------------------
 
@@ -315,31 +266,38 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/judge", dependencies=guarded)
     async def get_judge() -> dict[str, Any]:
-        """The Judge screen: shipped (generated data), site (this appliance's labels), live."""
+        """The Judge screen: every member's measurements (**generated**), the slow loop's paired
+        comparisons on this site's labels (**site**), and the two loops' counters (**live**)."""
         async with store.lock:
             runs = await store.search_runs(10)
             trials = await store.search_trials(int(runs[0]["id"])) if runs else []
-            pairs = await store.labelled_pairs() + await store.gesture_positive_pairs()
+            pairs = await site_labels.label_pairs(store)
             features = await store.pair_features([int(p["pair_id"]) for p in pairs])
-            mode = await store.decider_mode()
+            pinned = await store.decider_pin()
+            decisions = await store.league_decisions(20)
+            proposals = await store.proposal_stats()
         rows = site.rows_from(pairs, features)
         _train, test = site.split_by_time(rows)
-        unmet, stats = site.floors(rows, test)
+        members = engine.league_members
+        latency = engine.latency_us
         return {
-            "mode": mode,
-            "running": engine.decider_ref,
-            "shipped": shipped_block(),
+            **decider_payload(engine, pinned),
+            "models": []
+            if members is None
+            else [member_block(m, latency.get(m.ref)) for m in members.members],
+            "judgement": finite(engine.league_view),
+            "decisions": decisions,
             "site": finite(
                 {
                     "dataset": "site",
-                    "floors": {**site.FLOORS, "label_days": site.MIN_LABEL_DAYS},
-                    "stats": stats,
-                    "unmet": unmet,
+                    "evidence": site.evidence(rows, test),
+                    "proposals": proposals,
                     "runs": runs,
                     "trials": trials,
                     "labelled_pairs_without_features": len(pairs)
                     - sum(1 for p in pairs if int(p["pair_id"]) in features),
                 }
             ),
+            "shadow": finite(engine.league_shadow.snapshot()),
             "live": {"dataset": "live", **engine.monitor.snapshot()},
         }

@@ -38,6 +38,7 @@ from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE
 from netcorenoc.engine.dataset import census, seal
 from netcorenoc.engine.dataset.retention_policy import RETENTION_META_KEY, RetentionPolicy
 from netcorenoc.engine.model import site_search
+from netcorenoc.engine.operate import league_loop
 from netcorenoc.engine.operate.window_sweep import WindowSweepMixin
 
 log = logging.getLogger("netcorenoc")
@@ -80,6 +81,13 @@ class MaintenanceMixin(WindowSweepMixin):
             # than what it was about to. See `_observe_idle_active`.
             await self._observe_idle_active(time.time())
             await self._model_ops(time.time())
+            # v0.27.0 (ADR #423): the slow loop's judge — on the first tick, so a fresh appliance
+            # records the champion it started with, and every `JUDGE_EVERY_TICKS` after that.
+            if tick == 1 or tick % league_loop.JUDGE_EVERY_TICKS == 0:
+                try:
+                    await league_loop.judge_step(self, time.time())  # type: ignore[arg-type]
+                except Exception:  # the slow loop's failure never reaches the fast loop
+                    log.exception("the league judge step failed; the champion stays")
             if self.shadow.enabled and tick % TRAIN_EVERY_TICKS == 0:
                 await self.shadow.train(self.store, time.time(), self.store.lock)
                 await self._seal_once(time.time())

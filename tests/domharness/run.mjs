@@ -267,6 +267,14 @@ const scenarios = {
       sparks: readSparks(env.document),
       unmeasured: env.document.querySelectorAll(".chart-unmeasured").map((n) => n.textContent.trim()),
       captions: env.document.querySelectorAll(".chart-caption").map((n) => n.textContent.trim()),
+      // v0.27.0: each chart block's caption WITH the chart it captions (or null when the block is an
+      // empty state — a site comparison with no labels yet names its dataset and draws nothing).
+      // Pairing by block, not by position: the two flat lists above stop being parallel the moment
+      // one block has a caption and no chart.
+      blocks: env.document.querySelectorAll(".chart-block").map((b) => ({
+        caption: b.querySelector(".chart-caption")?.textContent.trim() ?? null,
+        chart: b.querySelector(".chart")?.getAttribute("aria-label") ?? null,
+      })),
       // v0.22.0: the health meters — the percentage printed beside each and its fill's width.
       meters: env.document.querySelectorAll(".meter").map((m) => ({
         name: m.querySelector(".meter-name")?.textContent.trim() ?? null,

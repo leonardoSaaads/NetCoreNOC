@@ -31,6 +31,15 @@ def test_attention_is_derived_from_the_table_and_rename_is_not_in_it() -> None:
     assert TRANSITIONS["operator_split"] == {None: "open"}
     assert TRANSITIONS["correlate"] == {None: "new"}
     assert TRANSITIONS["surface"] == {None: "new"}
+    # v0.27.0 (ADR #428): the model's proposal to grow a confirmed situation, and its answers.
+    assert TRANSITIONS["propose"] == {None: "pending"}
+    assert TRANSITIONS["accept"] == {"pending": "resolved"}
+    assert TRANSITIONS["reject"] == {"pending": "new"}
+    assert TRANSITIONS["lapse"] == {"pending": "new"}
+    assert all(
+        "open" not in edges.values() or None not in edges or edges[None] != "pending"
+        for edges in TRANSITIONS.values()
+    )
 
 
 @pytest.mark.parametrize("act", sorted(a for a, e in TRANSITIONS.items() if None in e))
@@ -41,7 +50,12 @@ async def test_every_creation_edge(store: Store, act: str) -> None:
         row = await cur.fetchone()
     # Pinned literally, not read back from the table: comparing with `TRANSITIONS` would move both
     # sides of the assertion when the table moved (the X2 injection found exactly that).
-    expected = {"correlate": "new", "surface": "new", "operator_split": "open"}
+    expected = {
+        "correlate": "new",
+        "surface": "new",
+        "operator_split": "open",
+        "propose": "pending",
+    }
     assert row is not None and row[0] == expected[act], (act, row)
 
 
@@ -59,6 +73,21 @@ async def test_every_attention_edge_moves_new_to_open_and_leaves_open_alone(
         )
         status = {int(r[0]): str(r[1]) for r in await cur.fetchall()}
     assert status == {fresh: "open", worked: "open"}, (act, status)
+
+
+@pytest.mark.parametrize("act", sorted(ATTENTION))
+async def test_attention_on_a_proposal_makes_it_an_open_situation_of_its_own(
+    store: Store, act: str
+) -> None:
+    """v0.27.0 (ADR #428): an operator who works a pending bag on its own terms has judged it a
+    situation; the proposal lapses with the promotion, and the target is untouched."""
+    async with store.lock:
+        target = await store.create_situation(TS, act="operator_split")
+        proposal = await store.create_situation(TS, act="propose")
+        await store.set_proposal(proposal, target, 0.9)
+        await store.promote_situation(proposal, TS + 1, act)
+        states = await store.lifecycle_states([target, proposal])
+    assert states == {target: ("open", None), proposal: ("open", None)}, (act, states)
 
 
 @pytest.mark.parametrize("act", ["rename", "close", "idle", "correlate", "no-such-act"])
