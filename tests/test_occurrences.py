@@ -22,6 +22,7 @@ import pytest
 
 from netcorenoc.crosscutting.settings import Settings, SettingsError
 from netcorenoc.engine.operate.engine import CLEAR_HOLD_S, Engine
+from netcorenoc.ingest.events import TrapEvent
 from netcorenoc.ingest.receiver import QueueItem, parse_trap
 from netcorenoc.store import Store
 
@@ -39,12 +40,19 @@ COLD_START = "1.3.6.1.6.3.1.1.5.1"
 IF_INDEX = "1.3.6.1.2.1.2.2.1.1"
 
 
-def trap(at: float, oid: str, varbinds: list[tuple[str, str, str]], source: str = "10.60.0.1"):
+def trap(
+    at: float, oid: str, varbinds: list[tuple[str, str, str]], source: str = "10.60.0.1"
+) -> TrapEvent:
+    """One trap through the real wire encoding and the real parser."""
     vbs = [{"oid": o, "kind": k, "value": v} for o, k, v in varbinds]
-    return parse_trap(source, trap_replay.encode_trap(oid, vbs, "public", 1), T0 + at)
+    parsed = parse_trap(source, trap_replay.encode_trap(oid, vbs, "public", 1), T0 + at)
+    assert isinstance(parsed, TrapEvent), parsed
+    return parsed
 
 
-def otm2(at: float, severity: str = "major", port: str = "1/5/1", source: str = "10.60.0.1"):
+def otm2(
+    at: float, severity: str = "major", port: str = "1/5/1", source: str = "10.60.0.1"
+) -> TrapEvent:
     """A Ciena-style alarm: one OID for raise and clear, the state in an X.733 severity word."""
     return trap(
         at,
@@ -54,7 +62,7 @@ def otm2(at: float, severity: str = "major", port: str = "1/5/1", source: str = 
     )
 
 
-def link(at: float, ifindex: int, up: bool = False, source: str = "10.70.0.1"):
+def link(at: float, ifindex: int, up: bool = False, source: str = "10.70.0.1") -> TrapEvent:
     oid = LINK_UP if up else LINK_DOWN
     return trap(at, oid, [(f"{IF_INDEX}.{ifindex}", "int", str(ifindex))], source)
 
