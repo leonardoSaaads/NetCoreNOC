@@ -4,23 +4,15 @@ The product's central claim is that it starts knowing nothing about your network
 from the trap stream alone. This page is how, and how to read the evidence when you disagree with
 it.
 
-## What decides, since v0.26.0
+## What decides
 
-Three families can decide which alarms belong together, and an admin picks one in
-**Settings → Correlation** ([ADR #405](adr/DECISIONS.md)):
-
-| Family | What it is | When it runs |
-|---|---|---|
-| **Shipped model** | A boosted generalised additive model trained before release on generated incidents, packaged only if it passes its quality bar on families it never saw | **The default choice** — but **v0.26.0 packages none** (#422), so the formula runs in its place |
-| **Site model** | The shipped model adapted to this appliance's labels by the in-product search | When the judge says it is better here and an admin switches to it; needs a shipped model to start from |
-| **Additive formula** | The three-term score below, unchanged | Opt-in; the fallback whenever no shipped model can run — **every appliance on v0.26.0** |
-
-**Why v0.26.0 has no model** ([#420–#422](adr/DECISIONS.md)): the model trained for it did less
-repair work than the formula on every generated split and every unseen family, but it missed its
-bar — 10 % less repair on *every* split — on heavily concurrent streams (7 %), and once validation
-covered that regime, no grouping setting passed the bar there. On the hand-labelled corpus
-`make eval` replays it split five of eleven scenarios. A model is packaged only when it passes, so
-the rest of this section describes what a model does once a build carries one.
+Five trained models — GAM, boosted trees, random forest, decision tree and logistic regression —
+are shipped as data and compete from the first trap (ADRs #424–#426). A judge ranks them every few
+minutes on the same evidence and the best decides; an admin can **pin** one in
+**Settings → Correlation** (a reason is required and audited). The **additive formula** below is
+the fail-safe: it decides only when no model can be loaded, or when an admin chooses it. A **site
+model** — a shipped model adapted to this appliance's labels by the in-product search — can take
+over when the judge says it is better here.
 
 A trained model sees **fifteen relations** between two alarms, not three — time apart, same element,
 same trap type, shared OID arcs, the learned class and element affinities, how often these two
@@ -46,7 +38,8 @@ log-odds, and the intercept — and they sum to the decision exactly (#407). The
 **data**: a JSON table of numbers, validated field by field before it is used, never code (#419).
 
 An all-cleared situation stays live for **five minutes** so a bounce rejoins it instead of opening a
-new one (#410).
+new one (#410) — for an hour while the fault keeps bouncing (#433). When an alarm repeats, clears or
+comes back is the same for every decider: [`operate.md`](operate.md#4-how-alarms-repeat-clear-and-come-back).
 
 The rest of this page describes the additive formula, which is what a model's explanation is
 compared against and what runs when you choose it.
@@ -210,8 +203,8 @@ with no new dependency**:
 
 | Kind | What it is |
 |---|---|
-| `gam` | A boosted generalised additive model over the fifteen relations. **The shipped default** (v0.26.0) |
-| `additive` | The five-number formula above, tuned by hand. Opt-in since v0.26.0 |
+| `gam` | A boosted generalised additive model over the fifteen relations. One of the five shipped league members |
+| `additive` | The five-number formula above, tuned by hand. The fail-safe, or an admin's choice |
 | `logistic` | The same three features with coefficients fitted from labelled evidence |
 | `tree` | A CART over the three features |
 | `forest` | A bagged ensemble of them |
@@ -259,12 +252,11 @@ Two limits worth knowing when you read a verdict:
   v0.26.0 it is final **for the labels it was computed on**, not for the release: the next search,
   on more labels, asks again (#417).
 
-## Adapting to this site (v0.26.0)
+## Adapting to this site
 
 **Settings → Search** starts a hyperparameter search over this appliance's labelled situations:
 random search with successive halving, seeded, bounded by a budget you set, stoppable, in its own
-process so ingestion never waits on it (#413). It needs a shipped model to start from, so **on
-v0.26.0 a search refuses to start** (*"no shipped model"*, #422). Its result is a *site model* that
+process so ingestion never waits on it (#413). It starts from the shipped GAM. Its result is a *site model* that
 decides nothing on its own. It is judged against the shipped model on **your newest labels**, paired per incident, and
 on a generated benchmark packaged with the shipped model so that it cannot forget what it knew
 (#411). Only a `BETTER` verdict lets an admin switch to it, and the server re-derives the verdict

@@ -1,93 +1,83 @@
-# NetCoreNOC v0.27.0 — handoff
+# NetCoreNOC v0.28.0 — handoff
 
-**Where my measurements contradict the brief:** (1) the models compete from the first trap and the
-formula decides nothing while a model loads — as asked — but **the day-0 champion is worse than the
-retired formula on three of the eleven hand-labelled corpus scenarios** (and better on one). The
-judge's registered rule chose it; the numbers are below and in DECISIONS #429. (2) **Live, the lab's
-two-host fibre cut became two situations, one per OLT, under every model tried** (random forest,
-logistic regression, GAM); v0.26.0's formula made one of 25 alarms. (3) The pooled `make eval` gate
-could not see the corpus regressions: it now reads every scenario.
+**A field review**: the product used the way a novice, an experienced operator and a team would —
+from the README to a deployment — plus seven new incident scenarios driven through the real parser
+and engine. Verified by execution before any change: `__version__` 0.27.0 at `168ac7c`, schema 27.
+This hands over **v0.28.0** on `claude-code/trusting-goldberg-j8xpoo`. **No migration**, and
+`make eval` is byte-identical (`43328080…`).
 
-Verified by execution before any change: `__version__` 0.26.0 at `029ede0`, migrations through
-`0026`. This hands over **v0.27.0** on `claude-code/trusting-goldberg-j8xpoo`
-([leonardoSaaads/NetCoreNOC#46](https://github.com/leonardoSaaads/NetCoreNOC/pull/46)).
+## The scenarios, before and after
 
-## What was asked, and what was built
+Each was sent as real SNMP PDUs through the parser and the engine, with the maintenance sweep on the
+scenario's clock, under the fail-safe formula and under the shipped champion (random forest).
 
-| asked | built | where |
+| Scenario | v0.27.0 | v0.28.0 |
 |---|---|---|
-| A **Pending** state: traps the model would add to an *Open* situation wait for an operator | `new → pending → open/new`; accept = merge, reject = `new` and never proposed there again; both answers are labels; lapses when the target leaves `open` | #428; `engine/operate/proposals.py`, `store/proposals.py`, `POST /api/situations/{sid}/proposal`, Situations → Pending |
-| No "what a model needs before it can decide" floors; pre-trained models compete from the start | floors removed; the judge ranks the league from day 0 and re-ranks it on site labels | #425; `engine/model/league_judge.py` |
-| Decision tree, random forest, … trained and competing | five families over one feature vector: GAM, boosted trees, random forest, decision tree, logistic regression — data documents, never code | #424, #426; `engine/model/league/` |
-| The formula "a thing of the past"; the judge picks the best | the formula is only the fail-safe when no model loads; an admin may pin a model (audited) | #425; Settings → Models |
-| The ten ML charts, per model, comparable | Judge: every model on shared axes, or one model's ten charts, each naming its dataset and n | #427; `views/parts/league*.js` |
-| OpenRAN-style fast and slow loops | fast loop = the batch (champion + sampled challenger shadow); slow loop = the judge every 5 min, writing an append-only decision | #423; `engine/operate/league_loop.py`, `evaluation/league_shadow.py` |
-| Settings, Judge, Corpus, Labelling UX on a PC | Settings: four named tabs with introductions; Labelling and Corpus read as sentences | see the live pass below |
+| **OTM2 service mismatch, clear lost, raised again 3 h later** | stayed in the old situation, untouched; no new one | old situation resolves *idle* with an event naming the alarm; **a new situation opens** |
+| **…then an operator closes it, and the device repeats the raise** | every repeat absorbed into the resolved situation; alarm active and in no live view | **a new situation opens** |
+| Optical RX power too high, re-sent every 15 min, ends with severity `cleared` | alarm stayed active with severity `cleared`; situation `new` for good | cleared on the first `cleared`; resolves |
+| Site power failure (UPS on battery → neighbours' uplinks down → power back, cold starts) | the cold starts and the UPS alarm kept two situations `new` for good | they end after 5 min of silence; situations resolve |
+| OLT power loss (both upstream uplinks down, back 20 min later, OLT cold start) | cold start situation `new` for good | resolves |
+| Intermittent port, down/up every 10 min, six times | **5 situations**, then demoted as flapping | **3**: from the second bounce the situation is held while it bounces |
+| Access switch, four ports bouncing irregularly | 1 (formula) / 2 (champion) situations, all resolve | unchanged |
+| Standing alarm re-sent every 5 min for 2 h | 1 situation | unchanged (the control) |
 
-## The league, as trained
+**Not fixed, and why** — grouping quality on the power scenarios is the model's, not the lifecycle's:
+under the champion the UPS alarm, the neighbours' uplink failures and the dying gasp of one site
+power failure are **four situations**; under the formula, the two upstream uplinks of one OLT are
+two. That is training data (the generator's cross-element storms), not a rule to patch here. And a
+vendor whose trap carries its *description* before the port gets the description as the alarm's
+instance, so two ports with the same alarm text share one alarm until entity promotion learns the
+port (#432 says why skipping prose is riskier).
 
-`make train` (seed 2026, dataset `34c08fafb036b1be`, 160 000 training and 50 000 validation rows):
+## Found and fixed
 
-| # | member | judge score | corpus (mean of 11) | repair / incident (unseen streams; formula 0.403) | quality bar |
-|---|---|---|---|---|---|
-| 1 | **random forest — champion** | 0.946 | 0.854 | 0.344 | 68 / 70 |
-| 2 | logistic regression | 0.947 | 0.909 | 0.346 | 66 / 70 |
-| 3 | GAM | 0.948 | 0.842 | 0.371 | 64 / 70 |
-| 4 | boosted trees | 0.917 | 0.709 | 0.322 | 69 / 70 |
-| 5 | decision tree | 0.902 | 0.593 | 0.344 | 66 / 70 |
+| Area | Defect (measured) | Fix | ADR |
+|---|---|---|---|
+| lifecycle | the three OTM2 / close / X.733 rows above; a `cleared` with nothing to clear created an active alarm; a severity word first became the instance, so raise and clear never met | `engine/operate/occurrence.py`, `Placement.clears`, `receiver._instance_of`, the maintenance ledger | #431, #432 |
+| lifecycle | standard notifications with no clear held situations for good; intermittent ports opened a situation per bounce | `known_oids.OCCURRENCE_NOTIFICATIONS` (cited), `occurrence.settled` | #433 |
+| security | the login throttle and the rate limiter cleared their whole table past 4 096 keys: a flood of throwaway usernames reset the lockout on the attacked account | evict harmless or soonest-ending entries first | #434 |
+| security | every JSON route read its whole body first, including the unauthenticated login: a few large posts reach the 512 MiB container limit | `api/body_limit.py`: 413 over 1 MiB, inside the perimeter | #434 |
+| deployment | `NETCORENOC_TRAP_PORT` in `.env` was neither passed nor mapped by Compose | passed and mapped | #435 |
+| deployment | `python -m netcorenoc.main --help` started the server | `--help`, `--version`; other arguments refused | #435 |
+| deployment | `audit verify` on a mistyped path created an empty database and said OK | every CLI command refuses a missing database | #435 |
+| operations | no way back for an only admin who forgot a password; no backup procedure | `admin reset-password` (audited, sessions revoked), `backup` (online, integrity-checked) | #435 |
+| operations | nothing said which model was deciding without signing in | start-up log line | #435 |
+| CI | actions on the deprecated Node 20 runtime | checkout v5.0.1, setup-python v6.0.0, action-gh-release v3.0.3, pinned by commit | — |
 
-The first three tie within the judge's 0.005; the registered tie-break (fewest repair gestures)
-puts the random forest first. Every member beats the formula on every generated test split;
-none clears the whole bar (it is a scorecard now, #426).
+## Documentation
 
-**On the hand-labelled corpus** (pairwise F1, formula → champion): `background_noise` 1.000 →
-**0.000** (it merges same-vendor traps from unrelated elements — every member does), `camera_nvr`
-1.000 → **0.713** and `pon_pon_port_down` 1.000 → **0.680** (it splits two proxied storms),
-`dual_incident_same_vendor` 0.636 → **1.000**; the other seven unchanged. The logistic regression
-fails only `background_noise`. **If the corpus is the yardstick you trust most, pin the logistic
-regression** in Settings → Models; that is what the pin is for.
+README, `docs/README.md`, `docs/operate.md` and `docs/troubleshoot.md` rewritten as direct
+guidance: a ten-minute quickstart, a test-traffic path that avoids Docker's source rewriting, a team
+checklist (allowlist, TLS, roles, second admin, tokens, backup, upgrade), and every alarm rule in one
+table. Removed or corrected: the v0.26.0 "ships no model" statements (four places), view and test
+counts, the wrong bootstrap log example, "move the database aside" as password recovery, and the
+`MIGRATION.md` row-counting preamble. Seven stale release briefs left `docs/plans/`
+(`docs/record.md` says where they are); the claim-form convention moved to `CONTRIBUTING.md`.
 
-## Found and fixed in this release's own verification
+## Live passes
 
-- **The corpus suite was pooled over pairs** (#429): three storms hold almost all of them, so a
-  member that split a ten-alarm fibre cut still scored 1.000. The judge now averages scenarios, and
-  `make eval` gates every scenario. Corrected after the first member's corpus numbers were read,
-  before any other member's.
-- **A model's link was not explained on the wire** (#430): the explanation was stored and no route
-  read it, so "why grouped" showed the formula's three terms, not summing to the score. Found by
-  `tests/test_operation.py` over a real socket on the first build with a packaged model.
-- **The training run ran out of memory** holding every test stream for the benchmark; streams are
-  now read one at a time.
-
-## What was not done
-
-- **A feature that tells a proxied storm from same-vendor background noise** — the reason every
-  member fails `background_noise` — and the retraining after it. The same training-data gap is
-  the likeliest cause of the split two-host lab cut: the generator's cross-element storms do not
-  look like the lab's two OLTs.
-- **Real-world labels**: none exist; training is generated data only.
-- **Re-recording the dataset with the final code**: its digest changes (the engine's sources moved
-  after recording); six streams re-recorded across train, valid and three test splits came back
-  content-identical.
+- **Team, over real sockets** (TLS with a self-signed certificate, allowlist, re-arm window 20 s):
+  bootstrap → admin with `Secure` cookie → an editor, a viewer and a second admin; the viewer's
+  close refused (403); OTM2 raised, silent 25 s, raised again → situation 1 *resolved idle* with an
+  `idle_close` event, situation 2 *new*; the editor closes 2, the device repeats → situation 3;
+  the X.733 `cleared` clears the alarm; a 2 MiB login body → 413 with the security headers;
+  `backup` while running → integrity ok; `admin reset-password ana` → her session 401, the one-time
+  password signs in; `audit verify` → OK.
+- **Novice, following the README** without Docker: `make replay` → 2 devices, 8 alarms, 1 situation.
+- **Browser** (Chromium, 1440 and 390 px): the history of a situation concluded by recurrence
+  explains it; 0 px overflow; the only console error is the pre-sign-in `401` from `/api/me`.
+- **Not run**: the Docker image build — this environment's network policy blocks
+  `registry-1.docker.io`. Compose changes are covered by `tests/test_deploy.py`, and the same
+  process was run directly.
 
 ## Verification
 
 | gate | result |
 |---|---|
-| full suite | **2 671 passed, 0 failed** (10 min; the league packaged, the suite on the fail-safe formula unless a test asks for a model) |
-| `mypy --strict`, `ruff check`, `ruff format --check` | clean (379 files typed, 419 formatted) |
+| full suite | see the PR description (re-run after the last change) |
+| `mypy --strict`, `ruff check`, `ruff format --check` | clean |
 | `vulture`, `bandit`, `pip-audit --skip-editable` | clean; no known vulnerabilities |
-| `make dom` (Node 22) | **101 passed**, none skipped |
-| `make eval` | no gated regressions against the re-cut baseline, aggregate **and every scenario**; hash `43328080…`, identical over two runs |
-| behaviour-identity record | re-written and identical over two runs: 16 lines added (three console modules and the proposal route, four roles each), 4 removed (`shippedjudge.js`), the rest attributed to the league (`/api/decider`, `/api/judge`, `/api/search`), the champion grouping the seed scenario, `link_terms`/`score_scale` on situation details, and the console's files. Each member's scoring time is pinned in the record like the clock |
-| wheel | built; installed in a clean Python 3.12 venv: 0.27.0, **five members load, none refused**, champion `random_forest:d2cdd3cd10c7`, 2 000 benchmark pairs |
-| live pass (real appliance, the lab, Chromium) | champion on boot in 2 s; the judge's first decision written and audited; **Pending end to end**: an editor promoted the cut's situation to Open, the next cut's new alarms went to a Pending situation proposing to join it (model probability 0.989), accept merged it (9 → 16 members); live shadow scored 246 pairs per challenger (agreement 94–100 %); both `dual_incident` replays kept apart |
-| browser | Situations, Settings (four tabs), Judge, Corpus, Labelling at 1440 and 390 px: **0 px page overflow, 0 console errors**. Found and fixed here: the league table laid out as a flex box (its class collided with the board's container class), a decision time rendered as a table cell inside a paragraph, and two words glued together |
-| injections (red with the fix removed, green with it) | the corpus suite pooled again; parity mode letting a model decide; the link explanation unread on the server; the console ignoring it |
-
-## Delivery
-
-- **Schema**: 26 → 27 (`0027`, additive). See `MIGRATION.md`.
-- **API**: one route added (`POST /api/situations/{sid}/proposal`); `/api/decider` and `/api/judge`
-  describe the league; `/api/situations/{sid}` adds `link_terms` and `score_scale`. No field removed.
-- **`make eval`**: `43328080…` (baseline re-cut with its reason in `eval/baselines/REBASELINE-LOG.md`).
+| `make eval` | no gated regressions; hash `43328080…` unchanged |
+| behaviour-identity record | 12 lines changed, all attributed: the version string in `/healthz` and `/openapi.json`, and `lifecycle.js` (four roles each) |
+| injections | `tests/test_occurrences.py`: 9 of 14 tests red on the v0.27.0 source, the 5 controls green on both; `tests/test_body_limit.py` red without the middleware |

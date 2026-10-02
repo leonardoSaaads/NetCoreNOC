@@ -1,169 +1,106 @@
 # NetCoreNOC
 
-**Zero-configuration alarm correlation for telecom networks.** Point your equipment at NetCoreNOC as
-an SNMP trap destination — that is the whole setup. From the raw trap stream alone, with no MIBs, no
-inventory and no topology files, it discovers devices, learns a topology graph from alarm
-co-occurrence, groups related alarms into *situations*, and ranks the probable root cause. Every
-grouping decomposes into three named numbers you can read on screen, so you can always answer *why
-did it group these?*
+**SNMP trap correlation for telecom networks, with nothing to configure.** Point your equipment's
+trap destination at NetCoreNOC. It discovers the devices, groups related alarms into
+**situations**, names the probable root cause, and shows *why* each alarm was grouped. No MIBs, no
+inventory and no topology files are needed.
 
-One Python process. One SQLite file. One web console, no build step.
+One Python process, one SQLite file, one web console.
 
 [![CI](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/leonardoSaaads/NetCoreNOC?sort=semver)](https://github.com/leonardoSaaads/NetCoreNOC/releases)
 
-> **Pre-alpha.** Zero users, nothing in production. It is honest engineering and it has not met your
-> network yet.
+> **Early software.** It has not run in production yet. Run it beside your current NMS first — it
+> only needs a copy of the traps.
 
-## Quickstart
+## Quickstart (10 minutes, Docker)
+
+You need Docker with Compose, and a host your equipment can reach on UDP 162.
 
 ```sh
-docker compose up --build
-docker compose logs netcorenoc | grep -A4 bootstrap    # the one-time admin password
+git clone https://github.com/leonardoSaaads/NetCoreNOC.git && cd NetCoreNOC
+cp .env.example .env                       # optional settings; safe to leave as is
+docker compose up -d --build
+docker compose logs netcorenoc | grep -A4 "bootstrap admin"
 ```
 
-Point your equipment's SNMPv2c trap destination at the host and open `http://<host>:8080/`.
+The last command prints a one-time password for the user `admin`. Then:
 
-**One detail that will otherwise look like a bug:** the bootstrap admin must supply a *new* password
-in the same request that signs it in. In the browser the login form does this for you. Against the
-API, a password-only `POST /api/login` returns `200 {"must_change_password": true}` and **no session
-cookie** — that is correct, and [`docs/operate.md`](docs/operate.md) shows both requests side by
-side.
+1. Open `http://<host>:8080/`, sign in as `admin`, and choose a new password (12+ characters).
+2. Point your equipment's **SNMPv2c or v1 trap destination** at `<host>`, UDP port **162**.
+3. Watch **Situations**. Devices and alarm types appear as traps arrive.
 
-No hardware handy? Send real SNMP PDUs over UDP from a bundled scenario:
+Cannot use port 162? Set `NETCORENOC_TRAP_PORT=1162` in `.env`, run `docker compose up -d` again,
+and send traps to port 1162. Other ways to install (plain Docker, pip, systemd, Nix):
+[`docs/install.md`](docs/install.md).
+
+### Try it with test traffic, without equipment or Docker
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install .
-NETCORENOC_TRAP_PORT=1162 .venv/bin/python -m netcorenoc.main &
-make replay
+NETCORENOC_TRAP_PORT=1162 NETCORENOC_HTTP_PORT=8081 .venv/bin/python -m netcorenoc.main
+# in a second terminal: a fibre cut on two devices, sent as real SNMP traps
+make replay                    # `make replay-list` shows the other scenarios
 ```
 
-Other install routes — plain Docker, pip, Nix, systemd — are in [`docs/install.md`](docs/install.md).
+Open `http://localhost:8081/`. Run this without Docker: Docker's port proxy rewrites the source
+address of traps sent from the same machine, so every simulated device would appear as one.
 
-## What you see
+## Before a team relies on it
 
-Eighteen views in three groups: **Operations** (situations, network graph, timeline, entities,
-alarm classes, maintenance), **Evidence** (labelling, corpus, judge & promotion) and **Administer**
-(users, tokens, settings, link scorer, governance, quarantine, audit). A view you cannot use is not
-rendered — a viewer sees no `Administer` group at all.
+| Step | How |
+|---|---|
+| Only accept traps from your equipment | `NETCORENOC_ALLOWLIST=10.0.0.0/8,192.0.2.10` in `.env` |
+| Serve HTTPS | `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY`, or a TLS reverse proxy — [`docs/security.md`](docs/security.md) |
+| One account per person | **People & access**: `viewer` (read), `editor` (work situations), `admin` (everything) |
+| A second admin | so a forgotten password never locks the team out |
+| Programs use service tokens | **People & access → Service tokens**; the value is shown once |
+| Back up the database | `docker compose exec netcorenoc python -m netcorenoc backup /home/netcorenoc/backup.db` |
+| Upgrade | back up, `git pull`, `docker compose up -d --build`; read [`MIGRATION.md`](MIGRATION.md) |
 
-Three roles (`viewer`, `editor`, `admin`) and an optional per-principal visibility scope
-narrow what a signed-in identity may see. **Visibility scoping is not tenant isolation**, and the
-distinction is load-bearing: correlation learns across the whole estate, so a scoped principal sees
-a filtered view of one shared engine rather than a private one. The same is true of an
-**organization**, which says whose equipment an element is and decides nothing about who may see
-it. [`docs/security.md`](docs/security.md) states exactly what both do and do not give you.
+Forgot a password? `docker compose exec netcorenoc python -m netcorenoc admin reset-password <user>`.
+More in [`docs/troubleshoot.md`](docs/troubleshoot.md).
 
-**Planned work is declared, not endured.** A maintenance window names elements, an interval and a
-mandatory time zone, and a target under one is not collected by default — what still gets through
-is the rules you write, composed from severity, OID subtree and time slot. A fault that starts
-inside a window and never clears **surfaces when the window closes**, so planned work cannot hide
-an outage, and a device under a window is marked on screen for every role, including one who may
-not see what the window is. [`docs/console.md`](docs/console.md#maintenance-declaring-planned-work-v0210)
-is the operator's account of it.
+## How it decides
 
-The screen the product exists for is **Situations**: dense cards that expand in place to show the
-probable root cause, the member alarms, and then *Why these were grouped* — one row per link with
-the score and **the three named terms, each with its number beside its bar**. Above the list, one
-line says whether the scorer producing those groupings is currently deciding well — how often it
-lands near its own threshold, and whether that has moved. It expands, on a click, into the
-distribution behind it, and is collapsed until then.
-
-## How it works
-
-**v0.26.0 built a pre-trained model to decide from the first trap — and ships without one.** The
-model trained for it did less repair work than the formula on every generated split and on every
-incident family it never saw, but it did not pass its own quality bar (10 % less repair on *every*
-split; it reached 7 % on heavily concurrent streams), and on the hand-labelled corpus `make eval`
-replays — built by a different program — it split five of eleven scenarios. A model is packaged
-only when it passes ([`DECISIONS.md` #420–#422](docs/adr/DECISIONS.md)). So this build groups with the **additive
-formula below**, as before, and the bell says why. Everything the model needs is in place and runs
-as soon as a build carries one: training (`make train`), a model kind that is validated as data and
-never code, fifteen pair relations, recall back an hour, episode memory, correlation clustering,
-exact per-feature explanations, graded self-suspending autonomy with a one-click stop, and site
-adaptation. Autonomy and site adaptation stay inert until then: both need a model.
-[`docs/correlation.md`](docs/correlation.md) is the full account.
-
-Every trap is reduced to a **device** (source IP), a **class** (the trap OID as an opaque token — no
-MIB is ever consulted) and an **instance**. Alarms deduplicate on that fingerprint. Under the
-additive formula, two alarms inside a 120-second window are linked when
-
-```
-s = 0.3·e^(−Δt/30s) + 0.35·A[class_i, class_j] + 0.35·E[ne_i, ne_j] > 0.5
-```
-
-`A` and `E` are learned incrementally from co-occurrence (normalised PMI, exponential forgetting,
-damped 10× during storms, and an entity pair needs five observations before its edge is trusted).
-**`E` is withheld from a pair on two different network elements whose trap OIDs sit in different
-enterprise subtrees** — two vendors' unrelated alarms inside one window are co-occurrence without
-relatedness, and that was the whole of F76. No MIB is consulted: the enterprise arc is arithmetic
-on the identifier the trap already carried. **`A` is withheld from a pair on two different network
-elements the appliance has learned nothing about** (`E` exactly zero) — an estate where every
-device raises the same two trap classes drove `A` up until seventy independent failures landed in
-one situation, which was F138. A
-**situation** is a connected component of the resulting link graph; learned temporal precedence
-flags the probable root. Raise/clear pairs are learned from strict alternation. `Confirm` reinforces
-a grouping, `Split` penalises it.
-
-**Cold start is honest, and stays honest.** With nothing learned, two alarms group only when they
-are on the same network element and within about 21 seconds — and since v0.19.0 that holds for two
-elements the appliance has learned nothing about at *any* point in its life, not only the first
-hour. Everything beyond that — cross-device correlation,
-raise/clear pairs, which varbind names the alarmed entity — is learned from *your* stream. Run it
-alongside your existing NMS from day one; it only needs a copy of the traps.
-
-The formula is a seam, not a constant: six scorer kinds exist (`gam` — the shipped default —
-`additive`, `logistic`, `tree`, `forest`, `gradient_boosting`), all running in this process in pure
-Python with **no new dependency**. Each decomposes its own decision into named contributions that sum to it **exactly** — a
-model too large to explain exactly is refused rather than approximated. Nothing is promoted without
-evidence measured against floors registered before the data existed, and there is no HTTP route that
-creates a model version.
+* Every trap becomes an **alarm**: device + trap type + instance (for example the port). A repeat
+  of the same alarm increments its count instead of creating a new one.
+* A trained model compares each new alarm with recent ones and decides which belong together. Five
+  models compete and a judge picks the best; an admin can pin one. If no model can be loaded, a
+  simple built-in formula takes over. Every grouping shows the reasons, with numbers.
+* A situation is **New** until someone works on it, **Open** while the team handles it, and
+  **Resolved** when its alarms clear, it goes quiet, or an operator closes it. A model never adds
+  alarms to an Open situation on its own — it proposes them as **Pending** for an operator to
+  accept or reject.
+* A clear (for example `linkUp`, or a trap whose severity reads `cleared`) ends its alarm. An alarm
+  that repeats after a long silence, or after its situation was closed, opens a **new** situation.
+  [`docs/operate.md`](docs/operate.md#4-how-alarms-repeat-clear-and-come-back) has the exact rules.
 
 ## Documentation
 
-Start at [`docs/README.md`](docs/README.md).
-
 | | |
 |---|---|
-| [`docs/install.md`](docs/install.md) | Docker, Compose, pip, Nix, systemd |
-| [`docs/operate.md`](docs/operate.md) | First boot, signing in, sending traps, reading a situation |
-| [`docs/configure.md`](docs/configure.md) | Every environment variable and what it costs |
-| [`docs/correlation.md`](docs/correlation.md) | How two alarms come to be linked |
-| [`docs/console.md`](docs/console.md) | The views, and four things the console does not do |
-| [`docs/security.md`](docs/security.md) | The posture, the perimeter, RBAC, visibility scoping, the audit chain |
-| [`docs/troubleshoot.md`](docs/troubleshoot.md) | What breaks and what the symptom looks like |
-| [`docs/architecture.md`](docs/architecture.md) | The layers, the rules, and the three-phase design |
-| [`docs/findings.md`](docs/findings.md) | Every open finding, with a reproduction command |
+| [`docs/install.md`](docs/install.md) | Every way to install it |
+| [`docs/operate.md`](docs/operate.md) | Signing in, sending traps, working situations, alarm rules |
+| [`docs/configure.md`](docs/configure.md) | Every setting and its default |
+| [`docs/console.md`](docs/console.md) | What each screen is for |
+| [`docs/troubleshoot.md`](docs/troubleshoot.md) | Symptoms and fixes |
+| [`docs/security.md`](docs/security.md) | Accounts, roles, TLS, the audit log |
+| [`docs/README.md`](docs/README.md) | Everything else, including how it works inside |
 
 ## Development
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-make qa        # ruff + mypy --strict + 1500-odd tests with coverage + the eval gate
-make dom       # the DOM tests, reporting how many actually EXECUTED
-make security  # bandit + pip-audit
+make qa         # lint, type check, the test suite and the evaluation gate
+make dom        # the console's tests; needs Node 22+ on PATH
+make security   # bandit and pip-audit
 ```
 
-The console is tested by **executing** it: `tests/domharness/` links and evaluates the whole ES
-module graph in a DOM under `node:vm` and drives it against responses captured from the real server.
-It needs Node ≥ 22 on `PATH` and nothing else — no npm, no `package.json`, no lockfile. Without
-Node the DOM tests **skip loudly**, and `27 skipped` must never be read as `27 passed`.
-
-[`CONTRIBUTING.md`](CONTRIBUTING.md) has the quality bar and the hard constraints.
-
-## Philosophy
-
-- **Zero configuration.** You provide a trap destination and nothing else.
-- **Structure emerges from the stream.** Devices, classes, raise/clear pairs, topology edges and
-  precedence are learned, never declared.
-- **Explainability over sophistication.** Three numbers explain every link, and that survives the
-  arrival of tree ensembles.
-- **Simplicity is a feature.** No brokers, no ORMs, no plugins, no frontend toolchain — and that
-  last one is a test, not an intention.
-- **Mechanism is configurable; the standard of evidence is not.**
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the rules a change must follow.
 
 ## Licence
 
-Apache-2.0 — see [LICENSE](LICENSE). Report vulnerabilities privately per
+Apache-2.0 — see [LICENSE](LICENSE). Report vulnerabilities privately, as described in
 [`SECURITY.md`](SECURITY.md).

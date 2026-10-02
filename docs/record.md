@@ -69,6 +69,19 @@ would change the plan's SHA-256 and turn `tests/test_preregistration.py` red. A 
 immutable document is a reference to the tree as it was; the reading rule above resolves it, and
 `tests/test_structure.py` forgives exactly those four and no others.
 
+## v0.28.0: the release briefs in `docs/plans/`
+
+Seven specifications for releases long built or long abandoned — `v0.15.1-package-tree.md`,
+`v0.15.2-console.md`, `v0.15.3-console-design.md`, `v0.16.0-situation-lifecycle.md`,
+`v0.16.1-visualisation.md`, `cartridge.md` and `archetypes.md` — were removed. Each is at `168ac7c`:
+
+```sh
+git show 168ac7c:docs/plans/v0.16.0-situation-lifecycle.md
+```
+
+A `docs/plans/<one of those>` path in a docstring or the `CHANGELOG` is a path at that commit.
+`plans/releases.md` stays: it is the release table the documentation guard reads.
+
 ## The pre-registration hashes
 
 Seven analysis plans in [`analysis/`](analysis/) are pinned by SHA-256 in

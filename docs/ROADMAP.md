@@ -50,6 +50,14 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 
 ## Correlation and the entity model
 
+- **A site power failure is four situations under the champion** (v0.28.0 field review): the UPS
+  on-battery alarm, its alarm-table entry, the neighbours' uplink failures and the dying gasp do not
+  group; under the formula, an OLT's two upstream uplinks are two situations. Training data, not a
+  rule: the generator has no power-failure family whose evidence spans a UPS and the elements it
+  feeds.
+- **A description-first vendor trap is deduplicated by its description** until entity promotion
+  learns the port (#432): two ports with the same alarm text share one alarm row meanwhile.
+
 - **Unlearning / expiry for learned raise-clear pairs** — permanent once promoted, today.
 - **Typed relations and device-archetype clustering** (#36) — what v0.18.0 needs and does not have.
 - **Finish the `device_id` → `entity_id`/`ne_id` cutover** (#35), forward-only, with a parity re-run.
@@ -69,7 +77,7 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 - **The champion has never changed on any corpus this project holds** — the approve-and-verify steps
   have never run, in either direction.
 - **A behavioural equivalent for the parameter-inspecting degeneracy rules** — a model whose
-  parameters cannot be read defeats every one ([`plans/cartridge.md`](plans/cartridge.md) §2.3).
+  parameters cannot be read defeats every one (`plans/cartridge.md` §2.3, at `168ac7c`).
 - **No retention tier knows what a citation is** — nothing prevents a promotion citing a run whose
   input rows have been pruned, and nothing warns.
 - **The merge graph is unsnapshotted** — an evaluation is *citable* but not *reproducible*, and the
@@ -152,7 +160,7 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   v0.20.0 because it is a new route with its own capability, `ROUTE_SCOPE` posture and scope
   predicate, and half a route is worse than a measured line here.
 - The measured console defects are sequenced into v0.15.2:
-  [`plans/v0.15.2-console.md`](plans/v0.15.2-console.md).
+  `plans/v0.15.2-console.md` (at `168ac7c`).
 
 ## Open after v0.16.1 — asked, and answered with "not here"
 

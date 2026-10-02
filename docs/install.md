@@ -75,7 +75,7 @@ docker logs netcorenoc     # the one-time bootstrap admin password is here
 and everything learned is lost when the container is replaced.
 
 If you would rather not grant `CAP_NET_BIND_SERVICE`, map a high port instead and tell the appliance
-about it:
+about it (with Compose, `NETCORENOC_TRAP_PORT=1162` in `.env` does both):
 
 ```sh
 docker run -d --cap-drop ALL -e NETCORENOC_TRAP_PORT=1162 -p 1162:1162/udp ... netcorenoc
@@ -141,9 +141,17 @@ own work.
 
 ## Upgrading
 
-Stop the process, install the new version, start it again. Schema migrations are **forward-only,
-idempotent, and applied at startup** — there is no separate migration step and no downgrade path.
-Take a copy of the SQLite file first if the data matters; that copy is the rollback.
+Take a backup, then install the new version and start it again. Schema migrations are
+**forward-only, idempotent, and applied at startup** — there is no separate migration step and no
+downgrade path, so the backup is the rollback:
+
+```sh
+docker compose exec netcorenoc python -m netcorenoc backup /home/netcorenoc/before-upgrade.db
+git pull && docker compose up -d --build
+```
+
+`python -m netcorenoc backup <file>` copies the live database safely while it runs; copying the
+file with `cp` while the appliance writes to it can produce a broken copy.
 
 [`MIGRATION.md`](../MIGRATION.md) records what each version changed and the two or three upgrades
 that need you to know something.
