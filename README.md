@@ -53,7 +53,7 @@ address of traps sent from the same machine, so every simulated device would app
 |---|---|
 | Only accept traps from your equipment | `NETCORENOC_ALLOWLIST=10.0.0.0/8,192.0.2.10` in `.env` |
 | Serve HTTPS | `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY`, or a TLS reverse proxy — [`docs/security.md`](docs/security.md) |
-| One account per person | **People & access**: `viewer` (read), `editor` (work situations), `admin` (everything) |
+| One account per person | **People & access**: `viewer` (read), `editor` (work situations), `admin` (everything). A visibility scope narrows what someone sees, but it is **not tenant isolation**: correlation still learns across the whole estate — [`docs/security.md`](docs/security.md) |
 | A second admin | so a forgotten password never locks the team out |
 | Programs use service tokens | **People & access → Service tokens**; the value is shown once |
 | Back up the database | `docker compose exec netcorenoc python -m netcorenoc backup /home/netcorenoc/backup.db` |
