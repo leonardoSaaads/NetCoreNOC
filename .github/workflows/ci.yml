@@ -263,11 +263,38 @@ jobs:
           assert carried is None, (
               f"the alarm meant to be unplaceable carries a severity word: {carried}"
           )
+          # v0.28.0 (#432): the repair's X.733 `cleared` notifications used to be ingested as
+          # alarms and to join the cut's situations — they are what carried the old `largest
+          # situation >= 10` past its bar (9 fault alarms + 7 clears). The storm itself is
+          # unchanged, so it is asserted directly: no clear grouped as an alarm, and each host's
+          # cut alarms together in one situation (the steady phase's link 999 predates the cut).
+          grouped_clears = db.execute(
+              "SELECT COUNT(*) FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
+              "WHERE a.severity='cleared'"
+          ).fetchone()[0]
+          assert grouped_clears == 0, f"{grouped_clears} clear notification(s) grouped as alarms"
+          background = ("1.3.6.1.6.3.1.1.5.3", "999")
+          for ip in sources:
+              faults = db.execute(
+                  "SELECT COUNT(*) FROM alarm a JOIN device d ON d.id=a.device_id "
+                  "JOIN alarm_class c ON c.id=a.class_id WHERE d.ip=? "
+                  "AND NOT (c.oid=? AND a.instance=?)",
+                  (ip, *background),
+              ).fetchone()[0]
+              together = db.execute(
+                  "SELECT MAX(n) FROM (SELECT COUNT(*) n FROM situation_alarm sa "
+                  "JOIN alarm a ON a.id=sa.alarm_id JOIN device d ON d.id=a.device_id "
+                  "JOIN alarm_class c ON c.id=a.class_id WHERE d.ip=? "
+                  "AND NOT (c.oid=? AND a.instance=?) GROUP BY sa.situation_id)",
+                  (ip, *background),
+              ).fetchone()[0]
+              assert faults >= 5 and together == faults, (
+                  f"{ip}'s storm did not correlate: {together} of its {faults} cut alarms together"
+              )
           biggest = db.execute(
               "SELECT situation_id, COUNT(*) n FROM situation_alarm "
               "GROUP BY situation_id ORDER BY n DESC LIMIT 1"
           ).fetchone()
-          assert biggest["n"] >= 10, f"the storm did not correlate: largest situation {biggest['n']}"
           pairs = db.execute("SELECT COUNT(*) FROM edge WHERE kind='clear_pair'").fetchone()[0]
           assert pairs >= 2, f"only {pairs} clear pair(s) learned; the vendor arc needs alternation"
           print(f"sources={sources} alarms={status} largest_situation={biggest['n']} pairs={pairs}")

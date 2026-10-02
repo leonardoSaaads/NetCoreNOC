@@ -43,6 +43,7 @@ port (#432 says why skipping prose is riskier).
 | deployment | `audit verify` on a mistyped path created an empty database and said OK | every CLI command refuses a missing database | #435 |
 | operations | no way back for an only admin who forgot a password; no backup procedure | `admin reset-password` (audited, sessions revoked), `backup` (online, integrity-checked) | #435 |
 | operations | nothing said which model was deciding without signing in | start-up log line | #435 |
+| CI | the lab check `largest situation >= 10` passed only because the repair's `cleared` traps were grouped as alarms (11 rows on `168ac7c`); with #432 it read 9 | asserts no grouped clear and each host's cut in one situation; the grouping itself is unchanged | #432 |
 | CI | actions on the deprecated Node 20 runtime | checkout v5.0.1, setup-python v6.0.0, action-gh-release v3.0.3, pinned by commit | — |
 
 ## Documentation

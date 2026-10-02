@@ -5860,6 +5860,10 @@ From this release an entry is about six lines: decision, reason, release.*
   (device, class, instance), in the engine and in the maintenance ledger (`Placement.clears`); the
   instance heuristic skips X.733 words (`receiver._instance_of`). Reading the standard's word is the
   act #365 already performs; no corpus scenario's instance changes (`make eval` hash unchanged).
+- **The lab's CI check leaned on the defect**: `largest situation >= 10` was met by 9 fault alarms
+  plus 7 repair `cleared` notifications grouped as alarms (measured on `168ac7c`: 11 such rows).
+  It now asserts that no clear is grouped and that each host's cut alarms are in one situation —
+  the storm's grouping is identical before and after (9 and 5).
 - **Known limit**: a vendor that sends a *description* first still gets it as the instance, so two
   ports with the same alarm text share one row until entity promotion learns the port. Skipping
   prose was measured riskier: the next varbind is often a per-trap sequence number.
