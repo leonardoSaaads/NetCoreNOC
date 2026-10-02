@@ -86,6 +86,34 @@ def test_throttle_is_per_ip_too() -> None:
     assert t.locked_for("mallory", "10.0.0.9", 0.0) > 0
 
 
+def test_a_username_flood_does_not_reset_a_lockout() -> None:
+    """v0.28.0. Past 4 096 usernames the throttle cleared its whole table, so a flood of
+    throwaway names from rotating addresses wiped the backoff on the account under attack."""
+    t = auth.LoginThrottle()
+    for _ in range(40):
+        t.record_failure("admin", "10.0.0.1", 0.0)
+    assert t.locked_for("admin", "10.0.0.2", 1.0) > 800.0
+    for i in range(auth.THROTTLE_KEYS + 10):
+        ip = f"2001:db8::{i:x}"
+        for _ in range(auth.LOCKOUT_THRESHOLD):
+            t.record_failure(f"junk{i}", ip, 1.0)
+    assert t.locked_for("admin", "10.0.0.3", 2.0) > 800.0, "the flood reset the lockout"
+    assert len(t._by_user) <= auth.THROTTLE_KEYS and len(t._by_ip) <= auth.THROTTLE_KEYS
+
+
+def test_the_rate_limiter_keeps_the_busy_client_when_many_others_appear() -> None:
+    from netcorenoc.api.perimeter import RateLimiter
+
+    limiter = RateLimiter(capacity=3.0, refill=0.1)
+    for _ in range(3):
+        assert limiter.allow("attacker", 0.0)
+    assert not limiter.allow("attacker", 0.0)
+    for i in range(5000):
+        limiter.allow(f"10.{i // 65536}.{(i // 256) % 256}.{i % 256}", 0.5)
+    assert not limiter.allow("attacker", 0.6), "a crowd of other addresses refilled the bucket"
+    assert len(limiter.buckets) <= 4097
+
+
 # -- login flow: no enumeration ------------------------------------------------------
 
 

@@ -106,6 +106,28 @@ superseded decision is superseded by a new entry rather than rewritten. An entry
 may be removed (#201); one that is cited may be condensed but keeps its number, because 129
 docstrings in `src/` and `tests/` name these numbers.
 
+## Saying what a release is — the claim form
+
+`tests/test_documentation.py` enforces that the repository gives exactly one answer to "what is
+release X". [`docs/plans/releases.md`](docs/plans/releases.md) is the **single source of truth**;
+change its table (with a decision) and let the documents follow, never the other way round. A
+claim is detectable in two marked forms, and a fenced block like the two below is never read as
+one.
+
+**A release claim** — one HTML comment on its own line, above the prose it formalises:
+
+```
+<!-- release-claim: v0.8.0 = operator-feedback-dataset -->
+```
+
+**An element tag** — what a specification element is planned for, in backticks:
+
+```
+## 1. The blessed ONNX path (`v0.16.0: planned`)
+```
+
+A document that carries a release claim may only tag elements for **that** release.
+
 ## The one irreversible act
 
 > **The only irreversible act in this repository is a force-push or a history rewrite of `main`.**

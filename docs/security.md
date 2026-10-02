@@ -142,7 +142,14 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
 * `scrypt` (n = 2¹⁷). Policy is **length only**: 12–128 characters, no composition rules, no forced
   expiry — NIST SP 800-63B.
 * Login throttling is per-username **and** per-IP, with no user enumeration: a wrong username and a
-  wrong password are the same response and the same timing.
+  wrong password are the same response and the same timing. Its memory is bounded without ever
+  forgetting an active lockout first, so a flood of throwaway usernames from many addresses cannot
+  reset the backoff on the account under attack (v0.28.0).
+* No request body over **1 MiB** is read, on any route, authenticated or not (v0.28.0) — a few
+  oversized posts could otherwise exhaust the container's memory and lose traps in flight.
+* A forgotten password is reset from the host (`python -m netcorenoc admin reset-password`), which
+  needs the database file — the same trust boundary as the first-run password. It is audited and
+  ends every session of that account.
 * Sessions are stored server-side by SHA-256 of the id, with a sliding idle timeout **and** an
   absolute one. A stolen cookie expires on the absolute clock whatever the holder does.
 * Service tokens are per-identity and revocable. The value is shown once and stored hashed.

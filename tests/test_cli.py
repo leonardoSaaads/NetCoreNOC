@@ -88,6 +88,91 @@ def test_f26_cli_refuses_a_removed_legacy_env_alias(
     assert "OPTICORR_DB" in err and "NETCORENOC_DB" in err and "MIGRATION.md" in err
 
 
+def test_the_cli_refuses_a_database_that_is_not_there(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """v0.28.0. Opening a missing path creates an empty database, and `audit verify` then said
+    `audit chain OK` about a file that was not the appliance's — the confidently wrong integrity
+    answer F26 exists to prevent, reached by a typo instead of a legacy variable."""
+    missing = tmp_path / "typo.db"
+    monkeypatch.setenv("NETCORENOC_DB", str(missing))
+    with pytest.raises(SystemExit) as caught:
+        cli.main(["audit", "verify"])
+    assert caught.value.code == 2
+    assert "no NetCoreNOC database" in capsys.readouterr().err
+    assert not missing.exists(), "refusing must not leave an empty database behind"
+
+
+def test_admin_reset_password_is_one_time_audited_and_revokes_sessions(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The forgotten-password path when the one who forgot is the only admin (v0.28.0)."""
+    from netcorenoc.crosscutting.auth import verify_password
+
+    db = str(tmp_path / "reset.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+
+    async def seed() -> int:
+        store = Store(db)
+        await store.open()
+        uid = await store.create_user(
+            username="alice", password_hash="x", role="admin", must_change_password=False, now=1.0
+        )
+        await store.create_session("h" * 64, int(uid), 1.0, 1.0, 1e10, 1e10, None)
+        await store.commit()
+        await store.close()
+        return int(uid)
+
+    uid = asyncio.run(seed())
+    assert cli.main(["admin", "reset-password", "alice"]) == 0
+    password = capsys.readouterr().out.split("alice: ", 1)[1].split()[0]
+
+    async def check() -> None:
+        store = Store(db)
+        await store.open()
+        user = await store.get_user(uid)
+        assert user is not None and verify_password(password, str(user["password_hash"]))
+        assert user["must_change_password"] == 1
+        assert await store.get_session("h" * 64) is None, "the old sessions must be revoked"
+        result = await audit.verify_chain(store)
+        assert result.ok
+        cur = await store.conn.execute("SELECT action, actor, object_id FROM audit_log")
+        assert [tuple(r) for r in await cur.fetchall()] == [("user.update", "cli", str(uid))]
+        await store.close()
+
+    asyncio.run(check())
+    assert cli.main(["admin", "reset-password", "nobody"]) == 1
+
+
+def test_backup_copies_a_consistent_database_and_never_overwrites(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = str(tmp_path / "live.db")
+    monkeypatch.setenv("NETCORENOC_DB", db)
+    asyncio.run(_seed(db, ["login.ok", "logout"]))
+    target = tmp_path / "copy.db"
+    assert cli.main(["backup", str(target)]) == 0
+    assert "integrity_check: ok" in capsys.readouterr().out
+    monkeypatch.setenv("NETCORENOC_DB", str(target))
+    assert cli.main(["audit", "verify"]) == 0, "the copy carries the audit chain intact"
+    assert "audit chain OK" in capsys.readouterr().out
+    assert cli.main(["backup", str(target)]) == 2, "an existing file is never overwritten"
+
+
+def test_the_server_entry_point_answers_help_instead_of_starting(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`python -m netcorenoc.main --help` started the appliance (v0.28.0)."""
+    from netcorenoc import main as server
+
+    for argv, code in ((["--help"], 0), (["--version"], 0), (["--port", "1"], 2)):
+        with pytest.raises(SystemExit) as caught:
+            server.main(argv)
+        assert caught.value.code == code, argv
+    out = capsys.readouterr()
+    assert "NETCORENOC_TRAP_PORT" in out.out and "takes no arguments" in out.err
+
+
 def test_cli_requires_subcommand() -> None:
     with pytest.raises(SystemExit):
         cli.main([])

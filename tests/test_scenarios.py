@@ -184,8 +184,13 @@ async def test_flapping_link_is_demoted_and_stops_correlating(
     assert row["is_flapping"] == 1  # demoted by the periodic-flapping detector
     assert row["count"] == 12  # every raise deduplicated into one fingerprint
     assert row["status"] == "cleared"  # the seeded linkDown→linkUp pair cleared it
-    # v0.26.0 (ADR #410): an all-cleared situation is held for a bounce, then resolved.
-    await engine.maintenance(max(e.ts for e in events) + CLEAR_HOLD_S + 1.0, retention_days=365.0)
+    # v0.26.0 (ADR #410): an all-cleared situation is held for a bounce, then resolved. v0.28.0
+    # (ADR #433): a port that bounced repeatedly is intermittent, so its situation is held until
+    # it has been quiet for the flap detector's hour — the next bounce would rejoin it.
+    last = max(e.ts for e in events)
+    await engine.maintenance(last + CLEAR_HOLD_S + 1.0, retention_days=365.0)
+    assert (await store.stats())["open_situations"] == 1, "released while still intermittent"
+    await engine.maintenance(last + 3600.0 + CLEAR_HOLD_S, retention_days=365.0)
     assert (await store.stats())["open_situations"] == 0
 
 

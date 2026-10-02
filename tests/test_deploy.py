@@ -34,12 +34,25 @@ def test_compose_reproduces_the_hardened_run() -> None:
         "restart: unless-stopped",
         "healthcheck:",
         "/healthz",
-        "162:162/udp",
+        "${NETCORENOC_TRAP_PORT:-162}:${NETCORENOC_TRAP_PORT:-162}/udp",
         "8080:8080",
     ):
         assert directive in compose, (
             f"docker-compose.yml missing hardening directive: {directive!r}"
         )
+
+
+def test_the_trap_port_setting_reaches_the_process() -> None:
+    """v0.28.0. `.env.example` told an operator to set `NETCORENOC_TRAP_PORT=1162`, and the compose
+    file neither passed it to the container nor mapped it: the process kept listening on 162 while
+    the host published nothing there. Measured on a fresh deployment following the README."""
+    active = [
+        line.strip()
+        for line in _read("docker-compose.yml").splitlines()
+        if not line.lstrip().startswith("#")
+    ]
+    assert "NETCORENOC_TRAP_PORT: ${NETCORENOC_TRAP_PORT:-162}" in active
+    assert '- "${NETCORENOC_TRAP_PORT:-162}:${NETCORENOC_TRAP_PORT:-162}/udp"' in active
 
 
 def test_compose_binds_trap_port_with_single_added_capability() -> None:

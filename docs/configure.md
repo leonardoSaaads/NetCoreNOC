@@ -25,6 +25,7 @@ Two mechanisms, and the difference matters:
 | `NETCORENOC_RETENTION_DAYS` | `7` | Pruning horizon for cleared/closed **operational** history. It does **not** govern the feedback dataset — those have their own tiers below |
 | `NETCORENOC_AUDIT_RETENTION_DAYS` | `365` | Retention for the audit log. Pruning is admin-triggered only, never automatic |
 | `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging. Anything other than empty, `0`, `false` or `False` enables it |
+| `NETCORENOC_REARM_S` | `3600` | Seconds an active alarm may be silent before its next trap counts as a **new occurrence** (its clear was probably lost) and opens a new situation. `0` = a repeat always stays in its situation. [`operate.md`](operate.md#4-how-alarms-repeat-clear-and-come-back) |
 
 **Every one of them is validated at startup and refuses by name.** A port outside 1–65535, a
 retention that is not a number, an allowlist entry that is not a CIDR, a TLS path that cannot be

@@ -441,7 +441,7 @@ UI_HASHES: dict[str, str] = {
         "e2f1f27b66716e861d3e1492eac4085c61634ebd706ce0b87c73b64f10697e65"
     ),
     "app/views/parts/lifecycle.js": (
-        "93b6b197c7354e8ef9f3ff2a7b3b513b8bd4db56f158c441acef9eb17ed15fba"
+        "b6adfa04f820b995c7f7fdd909625b9a1dad48821cfc0ba89a62e4c872ee6efb"
     ),
     "app/views/parts/marks.js": "28253d0b86ef3dd372ea7f26cf2608648ca5e66c16c682058d3287225780a148",
     "app/views/parts/members.js": (
@@ -594,7 +594,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/league.js": 11_542,
     "app/views/parts/leaguecharts.js": 10_489,
     "app/views/parts/leaguecompare.js": 6_080,
-    "app/views/parts/lifecycle.js": 7_462,
+    "app/views/parts/lifecycle.js": 8_044,
     "app/views/parts/marks.js": 5_998,
     "app/views/parts/members.js": 10_935,
     "app/views/parts/model.js": 10_290,

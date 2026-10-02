@@ -52,6 +52,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from netcorenoc.ingest import known_oids
+
 if TYPE_CHECKING:  # no runtime edge: both are only needed for the signature of `observe_suppressed`
     from netcorenoc.engine.correlate.learn import Learner
     from netcorenoc.engine.mw.index import Decision, WindowIndex
@@ -151,7 +153,12 @@ class StateLedger:
                 LedgerKey(window_id, device_id, raise_class, instance), ne_id, item.ts
             )
             return
-        if learner.states.is_clear(class_id, [(vb.oid, vb.value) for vb in item.varbinds]):
+        # v0.28.0 (ADR #432): a trap whose X.733 severity is `cleared` is a clear here too, or a
+        # fault that ended inside the window would surface at its end as one that never did.
+        varbinds = [(vb.oid, vb.value) for vb in item.varbinds]
+        said = known_oids.standard_severity([{"oid": o, "value": v} for o, v in varbinds])
+        ended = said is not None and said[0] == "cleared"
+        if learner.states.is_clear(class_id, varbinds) or ended:
             self.observe_clear(LedgerKey(window_id, device_id, class_id, instance), ne_id, item.ts)
             return
         self.observe_raise(LedgerKey(window_id, device_id, class_id, instance), ne_id, item.ts)

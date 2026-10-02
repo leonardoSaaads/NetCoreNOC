@@ -132,6 +132,11 @@ def password_policy() -> dict[str, object]:
 # -- login throttle (in-memory, single process; DECISIONS v0.2 #15) ------------------
 
 
+#: How many usernames / addresses the throttle remembers before it starts forgetting the least
+#: dangerous ones. Memory is bounded; **a lockout is never what gets forgotten first** (v0.28.0).
+THROTTLE_KEYS = 4096
+
+
 @dataclass
 class _Attempts:
     fails: int = 0
@@ -166,17 +171,36 @@ class LoginThrottle:
             delay = self._delay(state.fails)
             if delay > 0.0:
                 state.locked_until = now + delay
-        self._bound()
+        self._bound(now)
 
     def record_success(self, username: str, source_ip: str) -> None:
         self._by_user.pop(username, None)
         self._by_ip.pop(source_ip, None)
 
-    def _bound(self) -> None:
-        # Bound memory against username/address churn, like the HTTP rate limiter.
+    def _bound(self, now: float) -> None:
+        """Bound memory against username/address churn **without resetting a lockout**.
+
+        Until v0.28.0 this cleared the whole table past 4 096 keys. Failed logins under 4 097
+        throwaway usernames — trivially sourced from rotating IPv6 addresses, each under its own
+        per-address limit — therefore wiped the backoff on `admin` too, and the guessing resumed
+        at full speed. Now the entries that impose nothing go first (below the threshold, or
+        with their lock long expired), and only then the locks that end soonest; the 15-minute
+        lock on an attacked account outlives a flood of fresh one-second ones.
+        """
         for table in (self._by_user, self._by_ip):
-            if len(table) > 4096:
+            if len(table) <= THROTTLE_KEYS:
+                continue
+            stale = now - LOCKOUT_MAX_S
+            for key in [
+                k
+                for k, st in table.items()
+                if st.fails < LOCKOUT_THRESHOLD or st.locked_until < stale
+            ]:
+                del table[key]
+            if len(table) > THROTTLE_KEYS:
+                keep = sorted(table.items(), key=lambda kv: kv[1].locked_until)[-THROTTLE_KEYS:]
                 table.clear()
+                table.update(keep)
 
 
 # -- identity ------------------------------------------------------------------------

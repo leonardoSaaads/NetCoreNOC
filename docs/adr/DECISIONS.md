@@ -5830,3 +5830,77 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Guards**: `tests/test_link_terms.py` (unit, HTTP and DOM; the HTTP and DOM tests are red with
   the column unread or the console ignoring it), and `test_operation` now checks the contract per
   basis.
+
+## 431. A repeated raise is a new occurrence when its situation is gone or it went silent (v0.28.0)
+
+- **Context**: one `alarm` row is one fingerprint, shared by every occurrence, and a raise of an
+  *active* alarm was always a repeat: `count + 1` and nothing else (`_process` returned before
+  correlation). Driven through the real engine (`tests/test_occurrences.py`): an alarm whose
+  situation an operator **closed** kept reporting into the resolved situation — active, and in no
+  live view; and an OTM2 service mismatch whose **clear was lost** and that came back three hours
+  later stayed in the old situation, untouched, with no new one opened.
+- **Decision** (`engine/operate/occurrence.py::rearm`, one call in `_process`): a repeat is a **new
+  occurrence**, correlated as an activation, when (1) no live situation holds the alarm, or (2) it
+  was silent longer than `NETCORENOC_REARM_S` (3600 s, the idle window; 0 disables) **and** it is
+  the only member of its situation still active. In (2) the old situation resolves as `idle` with an
+  `idle_close` event naming the alarm (no training row; the console explains it). A situation with
+  another active member is a live incident and keeps the repeat: concluding it would repeat
+  #274's defect for the other member. A flap-suppressed fingerprint is never re-armed.
+- **Not done**: a new resolution value (`0014`'s `CHECK` would need a rebuild of `situation`);
+  `idle` is widened instead, from "empty bag" to "nothing arrived for the window".
+
+## 432. X.733 `cleared` is a clear, and a severity word is never an instance (v0.28.0)
+
+- **Context**: equipment that sends one OID for raise and clear says which in the severity word.
+  The engine learned that only after two whole cycles on one (device, instance), so the first
+  `cleared` of every such alarm was a repeat: the alarm stayed active with severity `cleared` and
+  held its situation for good; a `cleared` with no raise created such an alarm. Worse, a vendor
+  that sends the severity *first* gave raise and clear the instances `major` and `cleared`.
+- **Decision**: a trap whose placed severity is `cleared` is handled as a state clear of the same
+  (device, class, instance), in the engine and in the maintenance ledger (`Placement.clears`); the
+  instance heuristic skips X.733 words (`receiver._instance_of`). Reading the standard's word is the
+  act #365 already performs; no corpus scenario's instance changes (`make eval` hash unchanged).
+- **The lab's CI check leaned on the defect**: `largest situation >= 10` was met by 9 fault alarms
+  plus 7 repair `cleared` notifications grouped as alarms (measured on `168ac7c`: 11 such rows).
+  It now asserts that no clear is grouped and that each host's cut alarms are in one situation —
+  the storm's grouping is identical before and after (9 and 5).
+- **Known limit**: a vendor that sends a *description* first still gets it as the instance, so two
+  ports with the same alarm text share one row until entity promotion learns the port. Skipping
+  prose was measured riskier: the next varbind is often a per-trap sequence number.
+
+## 433. Notifications with no clear end on silence; an intermittent fault is held (v0.28.0)
+
+- **Context**: `coldStart`, `warmStart`, `authenticationFailure`, `entConfigChange`,
+  `upsTrapOnBattery` (resent each minute while on battery) and `upsTrapTestCompleted` define no
+  clear, so their alarms stayed active and every reboot left a `new` situation for good. And a port
+  bouncing every ten minutes opened one situation per bounce — the #410 hold had always expired.
+- **Decision** (`occurrence.settled`, replacing the clear-hold query in the sweep): alarms of the
+  bundled, cited `known_oids.OCCURRENCE_NOTIFICATIONS` end after `CLEAR_HOLD_S` of silence and leave
+  the window like a received clear; all other classes keep #274's rule. A cleared situation holding
+  a fingerprint with three activations in the flap detector's hour (its second bounce) stays live
+  until that is no longer true, so later bounces rejoin it. A single bounce keeps #410's hold. The
+  flap memory is in process: after a restart the ordinary hold applies.
+
+## 434. The perimeter bounds what an unauthenticated client can make it hold (v0.28.0)
+
+- **Context**: the login throttle and the HTTP rate limiter both `clear()`ed their whole table past
+  4 096 keys, so throwaway usernames or addresses (rotating IPv6) reset the backoff on the account
+  under attack. And every JSON route read its whole body before validating it, including
+  `POST /api/login`: a few multi-hundred-MiB posts reached the 512 MiB container limit.
+- **Decision**: the throttle forgets entries below the lockout threshold or long expired first, then
+  the soonest-ending locks; the limiter forgets the fullest buckets first (`tests/test_auth.py`).
+  `api/body_limit.py` refuses any body over 1 MiB with 413 before a route reads it, inside the
+  perimeter so the answer carries its headers (`tests/test_body_limit.py`).
+
+## 435. The host recovers an account and takes a backup; the server refuses arguments (v0.28.0)
+
+- **Context**, from a novice and a team deploying from the README: no way back for an only admin who
+  forgot a password; no documented backup (`cp` of a WAL database mid-write is not one); `audit
+  verify` on a mistyped `NETCORENOC_DB` created an empty database and reported it OK;
+  `python -m netcorenoc.main --help` started the server; and `NETCORENOC_TRAP_PORT` in `.env` was
+  neither passed to the container nor mapped by `docker-compose.yml`.
+- **Decision**: `python -m netcorenoc admin reset-password <user>` (one-time password, sessions
+  revoked, audited — the trust boundary of #234) and `python -m netcorenoc backup <file>` (SQLite
+  online backup, integrity-checked, never overwrites); every CLI command refuses a missing database;
+  the server answers `--help`/`--version` and refuses other arguments; Compose passes and maps the
+  trap port. The start-up log names the deciding model and the re-arm window.

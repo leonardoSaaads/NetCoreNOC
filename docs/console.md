@@ -4,7 +4,7 @@ One static web UI, loaded directly by the browser: **no build step, no npm, no l
 bundle.** The files a browser fetches are the files on disk. That is a test
 (`tests/test_build_step.py`), not an intention.
 
-Eighteen views in three groups, plus an overview and one reachable only by address. **A view you
+The views come in three groups, plus the Overview and your account. **A view you
 cannot use is not rendered** — a viewer sees no `Administer` group at all, rather than a group of
 disabled controls.
 
@@ -25,7 +25,7 @@ disabled controls.
 |---|---|
 | **Labelling** | Confirm or split a grouping, and what your labels have produced |
 | **Corpus** | What capture costs in rows, and the three retention tiers |
-| **Judge & promotion** | How good the model deciding links is, **measured** — chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged. **On v0.26.0 the shipped-model block says the build carries no model, and why** (#422) |
+| **Judge & promotion** | How good the model deciding links is, **measured** — chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged. |
 
 ## Administer — the machine itself
 

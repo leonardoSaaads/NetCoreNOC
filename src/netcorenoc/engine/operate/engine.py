@@ -61,7 +61,7 @@ from netcorenoc.engine.evaluation.league_shadow import LeagueShadow
 from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
-from netcorenoc.engine.operate import proposals
+from netcorenoc.engine.operate import occurrence, proposals
 from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.engine.operate.flap import FlapDetector
 from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
@@ -310,7 +310,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             return
         # A learned state field (S9): a single-OID trap at its clear value closes the alarm of
         # the same (device, class, instance) that its raise value opened.
-        if self.learner.states.is_clear(class_id, varbinds):
+        if self.learner.states.is_clear(class_id, varbinds) or placed.clears:  # + X.733, #432
             await self._handle_state_clear(device_id, class_id, item, instance)
             return
         result = await self.store.ingest(
@@ -321,8 +321,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             severity_rank=placed.rank,
             severity_source=placed.source,
         )
-        if not result.activated:
-            return
+        if not result.activated and not await occurrence.rearm(self, result, item, instance):
+            return  # a repeat; `rearm` decides when it is a new occurrence instead (ADR #431)
         if await self._is_flapping(item, instance, result.alarm_id):
             return
         # Everything a pair feature needs is computed here, once per activation (F135, ADR #405):
@@ -623,7 +623,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             await self._capture_run(now)  # same reload point, same reason
             for sid in await self.store.idle_open_situations(now - IDLE_CLOSE_S):
                 await self._close_situation(sid, now)
-            for sid in await self.store.cleared_open_situations(now - CLEAR_HOLD_S):
+            for sid in await occurrence.settled(self, now, CLEAR_HOLD_S):  # ADR #433
                 await self._close_situation(sid, now)
             await proposals.lapse(self.store, now)  # after the closes: a target gone now lapses now
             await self._maintenance_windows(now)  # v0.21.0: advance, surface, rebuild the index

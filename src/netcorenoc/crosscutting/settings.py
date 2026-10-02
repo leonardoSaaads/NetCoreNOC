@@ -77,6 +77,17 @@ def _port(suffix: str, default: int, protocol: str) -> int:
     return value
 
 
+def _non_negative(suffix: str, default: float) -> float:
+    """A duration in seconds, refused by name when it is not a number or is negative."""
+    value = _number(suffix, str(default), float, "a number of seconds")
+    if value < 0 or value != value:  # NaN is not a duration either
+        raise SettingsError(
+            f"{ENV_PREFIX}{suffix}={value} is not a duration (0 or more seconds). Unset it to use "
+            f"the default ({default}). See docs/configure.md."
+        )
+    return value
+
+
 def _tls(cert: str, key: str) -> None:
     """Both or neither, and both readable — refused by name (F69).
 
@@ -114,6 +125,9 @@ class Settings:
     api_token: str = ""
     retention_days: float = 7.0
     audit_retention_days: float = 365.0
+    # v0.28.0 (ADR #431): how long an active alarm may be silent before its next trap is a new
+    # occurrence rather than a repeat. 0 turns the rule off.
+    rearm_s: float = 3600.0
     tls_cert: str = ""
     tls_key: str = ""
     log_json: bool = False
@@ -145,6 +159,7 @@ class Settings:
             audit_retention_days=_number(
                 "AUDIT_RETENTION_DAYS", str(cls.audit_retention_days), float, "a number of days"
             ),
+            rearm_s=_non_negative("REARM_S", cls.rearm_s),
             tls_cert=tls_cert,
             tls_key=tls_key,
             log_json=s("LOG_JSON", "") not in ("", "0", "false", "False"),

@@ -107,12 +107,22 @@ function userId(actor) {
   return m ? Number(m[1]) : null;
 }
 
+/** What an event the appliance wrote itself means, where its kind alone would not say.
+ *
+ * `idle_close` has exactly one writer since v0.28.0 (ADR #431): the alarm went quiet without a
+ * clear and was raised again, so the old occurrence ended here and the new one is a new
+ * situation. The idle sweep resolves only empty situations and records no event. */
+const EVENT_NOTE = {
+  idle_close: "(its alarm went quiet without a clear and was raised again: that opened a new situation)",
+};
+
 export function History({ events }) {
   return html`<section class="history">
     <h3>What has been done to this situation</h3>
     <ol class="history-list">
       ${events.map((e, index) => html`<li key=${index}>
         <span class="history-kind">${e.kind.replace("_", " ")}</span>
+        ${EVENT_NOTE[e.kind] ? html`<span class="muted">${" "}${EVENT_NOTE[e.kind]}</span>` : null}
         ${e.actor_name ? html`<${Avatar} id=${userId(e.actor)} digest=${e.actor_avatar}
                                name=${e.actor_display} username=${e.actor_name} size=${20} />` : null}
         ${e.actor ? html`<span class="muted" title=${e.actor_name ? e.actor : ACTOR_TITLE}
@@ -135,7 +145,7 @@ const ACTOR_TITLE =
 export const RESOLUTION_TEXT = {
   operator: "an operator closed it",
   self_cleared: "every alarm cleared — the network fixed it",
-  idle: "nobody looked at it, and it timed out",
+  idle: "it went quiet and timed out",
   merged: "it was merged into another situation",
   manual_clear: "an operator hand-cleared the last active alarm",
   unattributed: "it closed before this appliance recorded why",

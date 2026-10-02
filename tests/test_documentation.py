@@ -354,17 +354,18 @@ def test_the_release_table_parses() -> None:
 def test_live_documents_are_discovered() -> None:
     """A glob that matched nothing, or that swallowed the whole repository, would both be wrong.
 
-    The two named documents are the ones whose disappearance would make the guard vacuous without
-    making it fail: the release table itself, and a forward specification that carries claims. Until
-    v0.15.0 the second was `MODULE-ARCHITECTURE.md`, which described what is *built* — it moved to
-    `docs/architecture.md` and the drafts moved to `docs/plans/` (DECISIONS #198, #203).
+    The named documents are the ones whose disappearance would make the guard vacuous without
+    making it fail: the release table itself, the roadmap, and the contributor guide that documents
+    the claim forms. Until v0.15.0 the forward specification checked here was
+    `MODULE-ARCHITECTURE.md` (DECISIONS #198, #203); until v0.28.0 it was `plans/cartridge.md`,
+    removed with the other stale briefs (`docs/record.md` says where they went).
     """
     docs = live_docs()
     assert len(docs) >= 8, [str(p) for p in docs]
     names = {p.name for p in docs}
     assert "ROADMAP.md" in names, "the roadmap is a live document and must be scanned"
     assert "releases.md" in names, "the release table itself must be among the documents scanned"
-    assert "cartridge.md" in names, "the forward specifications must be scanned for claims"
+    assert "CONTRIBUTING.md" in names, "the guide that documents the claim forms must be scanned"
     assert not any(_is_historical(p) for p in docs)
 
 

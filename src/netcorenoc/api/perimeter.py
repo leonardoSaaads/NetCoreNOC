@@ -95,12 +95,24 @@ class RateLimiter:
         tokens, last = self.buckets.get(key, (self.capacity, now))
         tokens = min(self.capacity, tokens + (now - last) * self.refill)
         if len(self.buckets) > 4096:
-            self.buckets.clear()
+            self._bound(now)
         if tokens < 1.0:
             self.buckets[key] = (tokens, now)
             return False
         self.buckets[key] = (tokens - 1.0, now)
         return True
+
+    def _bound(self, now: float) -> None:
+        """Forget the fullest buckets first: a full bucket is indistinguishable from no bucket,
+        and the emptiest belong to the clients being limited. Until v0.28.0 this cleared every
+        bucket, so 4 097 addresses touching the API reset the limit for the one client actually
+        hammering it."""
+
+        def level(item: tuple[str, tuple[float, float]]) -> float:
+            tokens, last = item[1]
+            return min(self.capacity, tokens + (now - last) * self.refill)
+
+        self.buckets = dict(sorted(self.buckets.items(), key=level)[:2048])
 
 
 def _client_ip(request: Request) -> str:

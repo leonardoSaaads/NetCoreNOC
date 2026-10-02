@@ -50,6 +50,7 @@ from netcorenoc.store.maintenance_windows import MaintenanceWindowMixin
 from netcorenoc.store.mw_compile import MaintenanceCompileMixin
 from netcorenoc.store.mw_ledger import MaintenanceLedgerMixin
 from netcorenoc.store.mw_reads import MaintenanceReadMixin
+from netcorenoc.store.occurrences import OccurrenceMixin
 from netcorenoc.store.organizations import OrganizationMixin
 from netcorenoc.store.people import PeopleMixin
 from netcorenoc.store.promotion import PromotionMixin
@@ -128,6 +129,9 @@ class Store(
     # fragments over `StoreBase`, and it is a sibling rather than a base of `SituationMixin` so the
     # lifecycle writes and the population reads stay separable.
     IdleMixin,
+    # v0.28.0: an alarm's occurrences — when a repeat starts a new one, when one with no clear
+    # ends (ADRs #431, #433). Plain `StoreBase`; it overrides nothing.
+    OccurrenceMixin,
     # v0.21.0, the maintenance window. Four mixins on the seam this package already uses: the
     # writes and the state machine, the projections, the state ledger, and the organization an
     # element and a window belong to. `MaintenanceLedgerMixin` is listed above `AlarmMixin`

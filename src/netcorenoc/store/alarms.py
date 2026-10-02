@@ -42,7 +42,7 @@ class AlarmMixin(DeviceMixin):
             entity_id = await self.entity_level0(ne_id, event.device, event.ts)
         inst = event.instance if instance is None else instance
         cur = await self.conn.execute(
-            "SELECT id, status, entity_id FROM alarm "
+            "SELECT id, status, entity_id, last_seen FROM alarm "
             "WHERE device_id=? AND class_id=? AND instance=?",
             (device_id, class_id, inst),
         )
@@ -107,7 +107,10 @@ class AlarmMixin(DeviceMixin):
         activated = str(existing["status"]) != "active"
         # A re-raise keeps its original entity (forward-only): use the stored entity_id.
         kept = int(existing["entity_id"]) if existing["entity_id"] is not None else entity_id
-        return IngestResult(int(existing["id"]), device_id, class_id, activated, int(row[0]), kept)
+        previous = float(existing["last_seen"])
+        return IngestResult(
+            int(existing["id"]), device_id, class_id, activated, int(row[0]), kept, previous
+        )
 
     async def clear_alarm(
         self, device_id: int, raise_class_id: int, instance: str, ts: float

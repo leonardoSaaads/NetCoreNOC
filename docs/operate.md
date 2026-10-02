@@ -1,11 +1,12 @@
 # Operating NetCoreNOC
 
-From a fresh install to reading why two alarms were grouped. Everything below was run against a real
-appliance; the outputs are what it actually printed.
+From the first sign-in to closing a situation. Commands assume Docker Compose. Elsewhere, replace the
+`docker compose exec netcorenoc` prefix and point the command at the database — with the bundled
+systemd unit: `sudo NETCORENOC_DB=/var/lib/netcorenoc/netcorenoc.db /opt/netcorenoc/.venv/bin/python -m netcorenoc …`.
 
-## 1. First boot
+## 1. First sign-in
 
-On its first start NetCoreNOC creates one account and prints its password **once**, in a banner:
+On its first start the appliance creates the user `admin` and prints its password **once**:
 
 ```
 ======================================================================
@@ -16,294 +17,147 @@ On its first start NetCoreNOC creates one account and prints its password **once
 ======================================================================
 ```
 
-Where to find it depends on how you started it:
-
 ```sh
-docker compose logs netcorenoc | grep -A4 bootstrap
-docker logs netcorenoc | grep -A4 bootstrap
-journalctl -u netcorenoc | grep -A4 bootstrap
+docker compose logs netcorenoc | grep -A4 "bootstrap admin"    # Compose
+journalctl -u netcorenoc | grep -A4 "bootstrap admin"          # systemd
 ```
 
-If you missed it and no other admin exists, the recovery is to stop the process, move the database
-file aside, and start again — a new bootstrap admin is created for a new database. Everything
-learned is in that file, so this is a real cost, not a reset button.
+Open `http://<host>:8080/`, sign in, and choose a new password: **12 to 128 characters**, no other
+rule. Then create one account per person under **People & access**:
 
-## 2. Signing in — the one detail that looks like a bug
+| Role | Can |
+|---|---|
+| `viewer` | read everything they are allowed to see |
+| `editor` | also work situations: promote, close, move, merge, split, clear, label |
+| `admin` | also manage people, tokens, settings, models and the audit log |
 
-**The bootstrap admin must supply a new password in the same request that signs it in.** Not
-afterwards, not on a second screen: in the same `POST /api/login`.
+Create a **second admin** straight away. Programs use **service tokens**, not passwords.
 
-In the browser this is invisible — the login form asks for a new password on first sign-in and does
-the right thing. Against the API it is not invisible at all, and it has been reported as a defect
-more than once. Here is exactly what happens:
+**Lost a password?** Another admin can reset it on **People & access**. If you are the only admin:
 
 ```sh
-# The way everybody tries first — password only:
+docker compose exec netcorenoc python -m netcorenoc admin reset-password admin
+```
+
+It prints a one-time password, signs that account out everywhere, and is recorded in the audit
+log. If no enabled admin exists at all, restarting the appliance prints a new bootstrap password.
+
+**Signing in through the API.** A first sign-in must send the new password in the same request;
+without it the answer is `200 {"must_change_password": true}` and no session cookie:
+
+```sh
 curl -i -X POST http://localhost:8080/api/login -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"<the bootstrap password>"}'
-
-HTTP/1.1 200 OK
-{"must_change_password":true}
+  -d '{"username":"admin","password":"<one-time>","new_password":"<your new password>"}'
 ```
 
-**200, no error, and no `Set-Cookie`.** That is correct, and it is the whole trap: a success status
-with no session. The server is telling you the credential is right and the account is not usable
-until the password changes.
+## 2. Sending traps
 
-```sh
-# With new_password in the SAME post:
-curl -i -X POST http://localhost:8080/api/login -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"<the bootstrap password>","new_password":"a-long-enough-password-1"}'
+Point each device's **SNMPv2c or v1 trap destination** at the appliance (UDP 162, or the port in
+`NETCORENOC_TRAP_PORT`). Nothing is configured on this side: devices and trap types appear as their
+traps arrive. Set `NETCORENOC_ALLOWLIST` to your equipment's networks so nothing else is accepted.
 
-HTTP/1.1 200 OK
-set-cookie: netcorenoc_session=…; HttpOnly; Path=/; SameSite=strict
-{"user":"admin","role":"admin","must_change_password":false}
-```
-
-The password policy is **length only** — 12 to 128 characters, no composition rules, no forced
-expiry — following NIST SP 800-63B. A rejected password comes back as a 400 naming the rule.
-
-After that, create per-operator accounts under **Users** with the least role each needs, and issue
-**service tokens** for anything non-interactive. A token's value is shown once.
-
-## 3. Sending traps
-
-Point your equipment's SNMPv2c (or SNMPv1) trap destination at the appliance. There is nothing to
-configure on this side: no MIBs to load, no inventory to import, no topology to declare. A trap
-whose OID the appliance has never seen becomes an alarm class the first time it arrives.
-
-### A trap's timestamp is when the APPLIANCE received it
-
-Every time this appliance stores is the moment the **datagram arrived on its socket** — not the
-moment the equipment decided something was wrong, and not any timestamp inside the trap. SNMP traps
-are UDP: they are unordered, they can be delayed by a congested management network, and they can be
-retransmitted. An appliance that trusted a sender's own clock would be trusting one it cannot
-verify from a device that is, by hypothesis, having a bad day.
-
-This matters after an incident, when the question is *"what happened first"*. Two traps 400 ms
-apart here may have been raised in the other order. The correlation window and the temporal term
-are built on reception time and are consistent with themselves; a post-incident narrative that
-reads these stamps as *equipment* time can reach a wrong conclusion, and nothing in the appliance
-will contradict it.
-
-The console shows reception time in **your browser's zone**, with the offset from UTC in the text
-of every absolute stamp — `2026-09-06 14:32:07 -03:00` — and names the zone once in the top bar.
-The database stores epoch UTC.
-
-### Replaying the bundled scenarios
-
-No equipment handy? Send real SNMP PDUs over UDP from the ten labelled corpus scenarios and the
-three DSL ones, without needing to know where either lives:
-
-```sh
-make replay-list                     # every scenario, both kinds, with its one-line command
-make replay                          # the default: a two-NE fibre cut
-make replay SCENARIO=olt_storm       # any name `replay-list` printed
-make sim SCENARIO=login_burst        # the DSL scenarios
-```
-
-```
-sent 8 traps in 7.50s (1/s)
-```
-
-The one-liner, if you would rather not use `make` — the appliance must be running, and the port
-must be the one it is listening on:
-
-```sh
-.venv/bin/python tools/trap_replay.py eval/corpus/olt_storm.json --port 1162
-```
-
-## 4. Checking it is receiving
+**Check it is receiving** — the health control in the top bar, or:
 
 ```sh
 curl -b cookies http://localhost:8080/api/stats
 ```
 
-```json
-{"devices":2,"classes":4,"active_alarms":8,"open_situations":1,"quarantined":0,
- "ingest_gaps":[],"latency_p95_s":0.0053,"queue_depth":0,
- "warnings":["Trap allowlist is empty: all sources are accepted. Set an allowlist to enforce.", …]}
-```
+| Field | Means |
+|---|---|
+| `devices`, `classes` rising | traps are arriving and being understood |
+| `receiver.denied` > 0 | traps arrived from addresses outside the allowlist |
+| `quarantined` > 0 | packets that were not valid traps; see **Quarantine** |
+| `queue_depth` growing | the appliance is not keeping up; see [`troubleshoot.md`](troubleshoot.md) |
 
-Read it in this order:
+Times shown are when the **appliance received** each trap, in your browser's time zone.
 
-* **`devices` and `classes` climbing from zero** is the appliance discovering your network. Neither
-  was configured.
-* **`quarantined` above zero** means datagrams the parser refused. Look at them — the **Quarantine**
-  screen shows why, and reading that list is audited.
-* **`warnings`** are the things an admin should fix. The two above are the zero-config defaults
-  telling you honestly what they cost.
-* **`queue_depth` growing and not falling back** is the one number that means the appliance is not
-  keeping up. See [`troubleshoot.md`](troubleshoot.md).
-* **`receiver.denied` above zero** means datagrams arrived and the allowlist refused them. It says
-  how many entries the allowlist holds and not which — the value is on **Settings**, where the
-  admin who can change it reads it (F107).
-* **`new_situations` and `working_situations`** split `open_situations`: the queue nobody has
-  looked at, and what the shift is working. Both are cards on the **Situations** screen and both
-  are filters there.
+### 3. Sending traps without equipment
 
-All of the above are in the top bar's **health control** since v0.16.4 — on every screen rather
-than on the Overview alone — with a trap rate derived between two polls and labelled with the
-window it covers. There is no CPU, memory, disk or uptime figure, because the appliance does not
-measure one; the control says so rather than leaving the absence to be inferred.
-
-## 5. Reading a situation
-
-A **situation** is a connected component of the link graph — a group of alarms the appliance
-believes are one event.
+The bundled scenarios are sent as real SNMP traps over UDP. Run the appliance **without Docker** for
+this (Docker's port proxy rewrites the source address of local traffic, so every simulated device
+would look like one):
 
 ```sh
-curl -b cookies http://localhost:8080/api/situations
+NETCORENOC_TRAP_PORT=1162 .venv/bin/python -m netcorenoc.main &
+make replay-list                     # every scenario
+make replay SCENARIO=olt_storm       # send one
 ```
 
-```json
-[{"id":1,"status":"open","root_alarm_id":1,"alarm_count":8},
- {"id":2,"status":"merged","root_alarm_id":2,"alarm_count":0}]
+## 4. How alarms repeat, clear and come back
+
+An **alarm** is one device + trap type + instance (usually the port or object the trap names).
+These rules decide what a new trap does to it:
+
+| What arrives | What happens |
+|---|---|
+| The same trap again, while the alarm is active | **A repeat.** The count goes up; the situation stays as it is. A device re-sending every few minutes is one alarm in one situation |
+| A clear: `linkUp` for a `linkDown`, a trap whose severity says `cleared`, or a clear the appliance learned from your traffic | The alarm **clears**. Its situation is kept 5 minutes in case it bounces, then resolves as *every alarm cleared* |
+| The trap again after its clear | The alarm is active again. Within those 5 minutes it rejoins the same situation |
+| The trap again after **more than an hour of silence**, with no clear in between, when it is the only thing still active in its situation | **A new occurrence**: the clear was probably lost. The old situation resolves (*it went quiet*) and the trap opens a **new situation**. The window is `NETCORENOC_REARM_S` (3600 s; `0` turns this off) |
+| The trap again after an operator **closed** its situation, without a clear | **A new occurrence** too: the fault is still being reported, so it opens a new situation |
+| A port that goes down and up repeatedly | After its second bounce in an hour, its situation is kept while it keeps bouncing, so the bounces stay together. After about six regular bounces it is marked **flapping** and its further bounces stop creating work |
+| A reboot (`coldStart`, `warmStart`), an authentication failure, a configuration change, a UPS on battery | These report an **event** and never send a clear. The alarm ends after 5 minutes without a repeat, and its situation resolves |
+
+A fault whose device never sends a clear (a dying gasp, for example) stays active, and its
+situation stays live, until an operator **clears the alarm by hand** or closes the situation.
+**Close** says "we are done with this"; **clear** says "this alarm is over" — a later trap after a
+close opens a new situation, a later trap after a clear is a new activation.
+
+## 5. Working a situation
+
+| State | Means | Moves on when |
+|---|---|---|
+| **New** | grouped by the appliance; nobody has looked at it | an editor works it (promote, label, move, merge, split, clear) → **Open** |
+| **Pending** | the model would add these alarms to an **Open** situation, and waits for a person | **Accept** merges them; **Reject** makes it a New situation of its own |
+| **Open** | the team is handling it | its alarms clear, it goes quiet, or someone closes it → **Resolved** |
+| **Resolved** | over; the card says why | — |
+
+Expand a card for the probable root cause, the member alarms and **Why these were grouped**: one row
+per link, with its score and the contribution of each reason. A model never grows an **Open**
+situation by itself.
+
+**Teach it when it is wrong.** **Move** an alarm to where it belongs, **Split** out the ones that do
+not belong, **Merge** two situations that are one event, or **Confirm** a grouping. Each records how
+sure you said you were; below 50 % the action still happens but teaches nothing. Clearing an alarm
+by hand and renaming a situation teach nothing about grouping.
+
+## 6. Planned work
+
+Before taking equipment down, declare a **maintenance window** (**Operations → Maintenance**): the
+elements, the interval and the site's time zone. Traps from those elements are not collected while
+it runs, except what its rules let through. Windows over six hours wait for an editor or admin to
+confirm them. A window can report, when it closes, the faults that started inside it and never
+cleared — check for that situation before calling the job done. Details:
+[`console.md`](console.md#maintenance-declaring-planned-work-v0210).
+
+## 7. Which model decides
+
+Five trained models compete; a judge re-ranks them every few minutes and the best one decides.
+**Settings → Correlation** shows which one is running. An admin can **pin** a model (a reason is
+required and audited) or fall back to the built-in formula. The startup log names the deciding model:
+
+```
+grouping decided by random_forest:d2cdd3cd10c7; a repeat silent over 3600s is a new occurrence
 ```
 
-`merged` is not an error: two situations that turn out to be one event are merged, and the absorbed
-one keeps its id so that anything referring to it still resolves.
+**Judge** shows how each model measures. **Settings → Autonomy** lets a model act without a person
+(start with *naming* or *severity*); it switches itself off when it disagrees with operators too
+often, and **Stop autonomy** in the top bar stops it at once.
 
-Open one and the answer to *"why were these grouped?"* is in the payload, not in a separate
-explanation endpoint:
-
-```json
-"links": [
-  {"alarm_a": 1, "alarm_b": 3, "score": 0.636,
-   "terms": [{"name": "temporal",        "contribution": 0.286},
-             {"name": "class_affinity",  "contribution": 0.0},
-             {"name": "entity_affinity", "contribution": 0.35}]}
-]
-```
-
-One row per link, carrying the score, the pair, and **the three named terms with each term's
-number**. The contributions sum to the score exactly. In the console the same thing is a bar per
-term on the expanded situation card, and you can answer the question without leaving the screen.
-
-That example is worth reading closely, because it is what a cold start looks like: `class_affinity`
-is **0.0** — the appliance has not yet seen these two trap types together often enough to have an
-opinion — and the link is carried by time proximity plus the two alarms being on the same network
-element. Nothing was configured; nothing was assumed.
-
-See [`correlation.md`](correlation.md) for what each term means and how it is learned.
-
-## 6. Telling it when it is wrong
-
-Every **Confirm** and **Split** on a situation is the only human judgement the system ever receives.
-Confirm reinforces a grouping; Split penalises it. Both are recorded with the evidence the verdict
-was about, which is what every machine-learning release after v0.8.0 is built on.
-
-Use them. A confirm on a grouping where every pair fell on the same side of the threshold contains
-no decision and teaches nothing; a confirm on a *mixed* bag does. Roughly an eighth of labelled bags
-are mixed, and they are where the value is.
-
-### 6.1 Correcting it is stronger than judging it (v0.16.0)
-
-**Confirm** and **Split** judge a grouping the appliance produced. **Moving an alarm corrects one**,
-and it says two things at once: this alarm does not belong here, and it belongs *there*. That is the
-strongest evidence this appliance can be given, and until v0.16.0 there was no way to give it.
-
-Five gestures, and what each one asserts:
-
-* **move** — a negative pair against every member it left, and a positive against every member it
-  joined;
-* **merge** — the cross pairs between the two memberships as they stood when you merged them;
-* **split marked members out** — a negative for each marked member against each unmarked one;
-* **rename** — nothing about the grouping. It is a label on an id that does not change;
-* **clear an alarm by hand** — that the ALARM is stale, and nothing whatever about the grouping.
-
-The last one matters more than it looks. A zombie alarm that never cleared is an alarm-lifecycle
-fact; letting it reach the link scorer would be a signal about one question doing the work of a
-measurement about another, which is the mistake this project has spent six releases not making.
-So a hand-clear carries no confidence, produces no training row, and is recorded in full.
-
-**Say how sure you are.** Every restructuring gesture carries a confidence you set on the card. It
-is stored per gesture and per operator exactly as you gave it, and it shrinks that gesture's weight
-by at most 20 % (`0.6 + 0.4 x c`). **Below 50 % the action still happens and teaches nothing** —
-you are running the network, not labelling it, and the card says so before you commit.
-
-There is one bound worth knowing: a situation contributes **one** labelled bag per verdict, so a
-second move out of the same situation is recorded in full and adds no second label
-(`docs/findings.md` F89). Restructuring five situations once teaches more than restructuring one
-situation five times.
-
-## 7. Before you take equipment down
-
-Declare a **maintenance window** on **Operations → Maintenance**, or through
-`POST /api/maintenance-windows` if a script or an agent is doing it. An element under a window is
-**not collected by default**; what still gets through is the rules you write. The full account of
-the form, the three rule kinds and how they compose is in
-[`console.md`](console.md#maintenance-declaring-planned-work-v0210); the four things an operator
-most often needs to know are here.
-
-**The time zone is not optional, and it is not your browser's.** Search the city you think in; the
-appliance stores the canonical IANA zone behind it. Every instant on the screen is shown in **site
-time** and in **your time**, because the engineer who declares the work and the operator on shift
-are usually not in one place.
-
-**Over six hours, somebody has to agree.** Longer windows wait in *Pending confirmation* and
-suppress **nothing at all** until an editor or an admin confirms — an unconfirmed window that
-expires has suppressed nothing. A window an agent created always waits for a human.
-
-**A window discards what it covers** (v0.24.0). Nothing it suppresses becomes an alarm, during
-the window or after it. A window can **opt in** to reporting what outlived it: while it is in
-force the appliance records, per element/class/instance, whether it saw a raise and whether it saw
-a clear — and nothing else, no varbinds and no severity. When such a window closes, everything
-raised inside it and never cleared appears as **one situation for the window**, each alarm marked
-*"raised during maintenance, still active"*, with no severity: the appliance never saw the trap.
-
-**Check before you leave.** On a window that reports, look for that situation before you call the
-job done. It is the appliance telling you it saw something start and never saw it stop.
-
-**It does not poll.** Nothing in this release reaches out to your equipment, no credential is
-stored, and no capability implies otherwise. Everything above is derived from the traps you already
-send it.
-
-## 8. Running it alongside your existing NMS
-
-It only needs a **copy** of the traps, so you can run it in parallel with whatever you have today
-from day one, with nothing at risk. Cold start is honest and documented in
-[`correlation.md`](correlation.md#cold-start).
-
-## 8.5 What decides, and letting the model act (v0.26.0)
-
-A build that carries a shipped model groups with it from the first trap; nothing is learned before
-it is useful. **Settings → Correlation** shows which model is running, its SHA-256 and where it came
-from, and lets an admin choose the additive formula instead (a reason is required and audited).
-**Judge & promotion** shows how good it measured, on data it never trained on.
-
-**v0.26.0 carries no model** (DECISIONS #422): the bell reads *"This build ships no model; one is
-packaged only when it passes its quality bar"*, the formula groups as before, Settings → Correlation
-shows the shipped card disabled with that reason, and autonomy and site search have nothing to act
-with. None of this is a fault to fix on the appliance.
-
-Once a build carries a model: to let it act without a person, an admin switches on a grade in **Settings → Autonomy** — start with
-*naming* or *severity*, which are the cheapest to be wrong about. Watch *Recent acts*: each one says
-which model did it and why, and turns *agreed* or *disagreed* once an operator has worked the
-situation. Autonomy stops itself below the agreement floor; **Stop autonomy** in the top bar stops
-it at once from any screen.
-
-After a few weeks of labels, **Settings → Search** fits a site model in the background; the Judge
-screen says whether it is better here, and only then can an admin switch to it.
-
-To retrain the shipped model from source (a contributor's task, not an operator's):
+## 8. Backups, upgrades and checks
 
 ```sh
-make train-validate   # the pipeline on validation streams only; writes nothing
-make train            # reads the test splits once; writes the model only if the bar is met
-make train-verify     # loads the installed model as the appliance does; reproduces every number
+# a consistent copy while it runs (never overwrites an existing file)
+docker compose exec netcorenoc python -m netcorenoc backup /home/netcorenoc/backup-$(date +%F).db
+docker compose cp netcorenoc:/home/netcorenoc/backup-$(date +%F).db .
+
+docker compose exec netcorenoc python -m netcorenoc audit verify    # is the audit log intact?
+docker compose exec netcorenoc python -m netcorenoc --help          # every maintenance command
 ```
 
-## 9. Operational commands
+**Upgrade:** take a backup, then `git pull && docker compose up -d --build`. The database is
+upgraded automatically at start and cannot be downgraded — the backup is your way back.
+[`MIGRATION.md`](../MIGRATION.md) lists what each version changed.
 
-```sh
-python -m netcorenoc audit verify        # walk the audit hash chain, report the first broken link
-python -m netcorenoc dataset stats       # what capture is storing, and the window you really have
-make bias-report                         # what the labels look like, and what they cannot tell you
-make agreement-report                    # how well the built-in scorer already agrees with you
-make shadow-report                       # the sufficiency verdict, and the seal's query count
-make census                              # what the promotion gate would decide, on real data
-```
-
-Deterministic offline reports over frozen inputs. They emit aggregates only, and each closes by
-saying what it *cannot* tell you.
+The analysis reports for contributors (`make bias-report`, `make agreement-report`,
+`make shadow-report`, `make census`) are described in [`correlation.md`](correlation.md).

@@ -21,7 +21,9 @@ import asyncio
 import contextlib
 import logging
 import signal
+import sys
 
+from netcorenoc import __version__
 from netcorenoc.crosscutting.logsetup import configure_logging
 from netcorenoc.crosscutting.settings import (
     ENV_PREFIX,
@@ -78,7 +80,41 @@ _OPERATOR_ERRORS = (
 )
 
 
-def main() -> None:
+#: What `--help` prints. The server takes no arguments: every setting is an environment variable,
+#: so this names the few an operator sets first and where the rest are.
+USAGE = """usage: python -m netcorenoc.main [--help | --version]
+
+Runs the NetCoreNOC appliance: the SNMP trap receiver, the correlator and the web console.
+It takes no arguments; it is configured by environment variables. The ones set most often:
+
+  NETCORENOC_DB          database file                     (default netcorenoc.db)
+  NETCORENOC_TRAP_PORT   UDP port traps arrive on          (default 162)
+  NETCORENOC_HTTP_PORT   TCP port of the console and API   (default 8080)
+  NETCORENOC_ALLOWLIST   CIDRs allowed to send traps       (default: any)
+  NETCORENOC_TLS_CERT / NETCORENOC_TLS_KEY   serve HTTPS   (default: plain HTTP)
+
+On first start the log prints a one-time admin password. Every setting: docs/configure.md.
+Tools that read the database (audit, account recovery): python -m netcorenoc --help"""
+
+
+def main(argv: list[str] | None = None) -> None:
+    """The server's entry point. **Arguments are refused, not ignored** (v0.28.0): `--help` used
+    to start the appliance, which on a host where it already runs fails on a bound port and, where
+    it does not, quietly starts a second one."""
+    args = sys.argv[1:] if argv is None else argv
+    if args:
+        if args[0] in ("-h", "--help"):
+            print(USAGE)  # noqa: T201
+            raise SystemExit(0)
+        if args[0] == "--version":
+            print(f"netcorenoc {__version__}")  # noqa: T201
+            raise SystemExit(0)
+        print(  # noqa: T201
+            f"netcorenoc.main takes no arguments (got {' '.join(args)!r}); it is configured by "
+            "environment variables. See --help.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     try:
         _main()
     except _OPERATOR_ERRORS as exc:

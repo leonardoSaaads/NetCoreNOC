@@ -17,6 +17,15 @@ Subcommands:
   both label-derivation policies, partition-level over/under-merge against the human verdicts,
   bag-level calibration, the admission filter run against the champion too, and the
   training/serving skew rate. Deterministic; it re-derives offline and **fits nothing**.
+- ``backup <file>`` — a consistent copy of the live database, taken while the appliance runs
+  (SQLite's online backup), checked with ``PRAGMA integrity_check`` (v0.28.0).
+- ``admin reset-password <username>`` — a new one-time password for an account whose owner
+  forgot theirs (v0.28.0). Needs the database file, so it needs the host: the same trust boundary
+  the bootstrap admin already rests on (DECISIONS #234). Audited, and every session is revoked.
+
+Every command reads ``NETCORENOC_DB`` and refuses when no database is there (v0.28.0): opening a
+missing path *creates* an empty database, and ``audit verify`` then reported a chain that was not
+the appliance's as OK.
 
 The trap correlator itself still runs via ``python -m netcorenoc.main`` (unchanged).
 """
@@ -26,10 +35,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import secrets
 import sys
 import time
 
 from netcorenoc.crosscutting import audit
+from netcorenoc.crosscutting.administration import BOOTSTRAP_PASSWORD_CHARS
+from netcorenoc.crosscutting.auth import hash_password
 from netcorenoc.engine.correlate import scoring
 from netcorenoc.engine.dataset import seal
 from netcorenoc.engine.evaluation import promotion
@@ -56,7 +68,15 @@ def _db_path() -> str:
     if legacy:
         print(str(legacy_env_error(tuple(legacy))), file=sys.stderr)
         raise SystemExit(2)
-    return os.environ.get("NETCORENOC_DB", "netcorenoc.db")
+    path = os.environ.get("NETCORENOC_DB", "netcorenoc.db")
+    if not os.path.isfile(path):
+        print(
+            f"no NetCoreNOC database at {path!r}. Set NETCORENOC_DB to the appliance's database "
+            "file (in the container: docker compose exec netcorenoc python -m netcorenoc ...).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    return path
 
 
 async def _verify(db_path: str) -> int:
@@ -219,6 +239,75 @@ async def _promotion_register(db_path: str, kind: str, params: str, run_id: int 
     return 0
 
 
+async def _reset_password(db_path: str, username: str) -> int:
+    """A fresh one-time password for `username`, printed once; every session of theirs revoked.
+
+    The forgotten-password path the console cannot offer when the person who forgot is the only
+    admin. `must_change_password` is set, so the printed password works for exactly one sign-in.
+    """
+    store = Store(db_path)
+    await store.open()
+    try:
+        async with store.lock:
+            user = await store.get_user_by_name(username)
+            if user is None:
+                print(f"no account named {username!r}", file=sys.stderr)
+                return 1
+            password = secrets.token_urlsafe(BOOTSTRAP_PASSWORD_CHARS)[:BOOTSTRAP_PASSWORD_CHARS]
+            now = time.time()
+            uid = int(user["id"])
+            await store.update_user_password(uid, hash_password(password), now)
+            await store.set_must_change_password(uid, True, now)
+            revoked = await store.revoke_user_sessions(uid)
+            await audit.write_event(
+                store,
+                ts=now,
+                actor="cli",
+                role=None,
+                source_ip=None,
+                action="user.update",
+                outcome="ok",
+                object_type="user",
+                object_id=str(uid),
+                details={"change": "one-time sign-in issued", "sessions_revoked": revoked},
+            )
+            await store.commit()
+    finally:
+        await store.close()
+    print(f"new one-time password for {username}: {password}")
+    print("Sign in with it and choose a new password; it is shown once and not stored.")
+    if user.get("disabled"):
+        print("Note: this account is DISABLED; an admin must enable it before it can sign in.")
+    return 0
+
+
+def _backup(db_path: str, target: str) -> int:
+    """Copy the live database to `target` with SQLite's online backup API, then check the copy.
+
+    Safe while the appliance is running: the backup API copies a consistent snapshot through the
+    WAL, which copying the file with `cp` does not. Refuses to overwrite, so a mistyped target
+    cannot replace an earlier backup.
+    """
+    import sqlite3
+
+    if os.path.exists(target):
+        print(f"{target!r} already exists; choose a new file name", file=sys.stderr)
+        return 2
+    source = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        copy = sqlite3.connect(target)
+        try:
+            source.backup(copy)
+            verdict = copy.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            copy.close()
+    finally:
+        source.close()
+    size = os.path.getsize(target)
+    print(f"backup written to {target} ({size} bytes); integrity_check: {verdict}")
+    return 0 if verdict == "ok" else 1
+
+
 async def _export(db_path: str) -> int:
     store = Store(db_path)
     await store.open()
@@ -260,6 +349,14 @@ def main(argv: list[str] | None = None) -> int:
     register.add_argument("--kind", required=True, choices=sorted(model_version.SUPPORTED_KINDS))
     register.add_argument("--params", required=True, help="the parameter document, as JSON")
     register.add_argument("--challenger-run", type=int, default=None)
+    backup = sub.add_parser("backup", help="copy the live database safely (v0.28.0)")
+    backup.add_argument("target", help="the new file to write; never overwritten")
+    admin_parser = sub.add_parser("admin", help="account recovery (v0.28.0)")
+    admin_sub = admin_parser.add_subparsers(dest="admin_command", required=True)
+    reset = admin_sub.add_parser(
+        "reset-password", help="print a one-time password for an account (audited)"
+    )
+    reset.add_argument("username")
     args = parser.parse_args(argv)
 
     db_path = _db_path()
@@ -284,6 +381,10 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(
                 _promotion_register(db_path, args.kind, args.params, args.challenger_run)
             )
+    if args.command == "backup":
+        return _backup(db_path, args.target)
+    if args.command == "admin" and args.admin_command == "reset-password":
+        return asyncio.run(_reset_password(db_path, args.username))
     parser.error("unknown command")
     return 2
 
