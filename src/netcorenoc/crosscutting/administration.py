@@ -55,7 +55,7 @@ class Bootstrap(NamedTuple):
     """The account a bootstrap minted, and its password — shown once.
 
     Both halves, because the caller prints both. Until v0.15.3 this returned the password alone and
-    `runner._print_bootstrap_banner` printed a hard-coded ``username: admin`` beside it, which was
+    the banner printed a hard-coded ``username: admin`` beside it, which was
     true only because the name could never be anything else. Recovery can take `recovery-admin`
     (#234), so the banner would have printed a username nobody could sign in with — a restated
     truth going stale the moment the thing it restated changed.
@@ -92,6 +92,27 @@ async def bootstrap_admin(store: Store, now: float) -> Bootstrap | None:
         now=now,
     )
     return Bootstrap(username, password)
+
+
+def print_banner(minted: Bootstrap, *, recovery: bool) -> None:
+    """The one place the server prints a secret — once, at startup (F3). Moved from `runner.py`
+    in v0.28.0 (module guard); the account-recovery CLI prints its own, to its own terminal.
+
+    **The username is printed from the row that was created, not restated here.** It said
+    ``username: admin`` until v0.15.3, which was true only while that name was the only one
+    possible; recovery takes `recovery-admin` when the demoted account still holds `admin` (#234),
+    and a banner naming an account nobody can sign in with would be worse than no banner.
+    """
+    line = "=" * 70
+    occasion = "no enabled admin remained" if recovery else "first run"
+    print(f"\n{line}", flush=True)  # noqa: T201
+    print(f"  NetCoreNOC bootstrap admin created ({occasion})", flush=True)  # noqa: T201
+    print(f"      username: {minted.username}", flush=True)  # noqa: T201
+    print(f"      password: {minted.password}", flush=True)  # noqa: T201
+    print("  Sign in and change this password immediately. It is shown ONCE.", flush=True)  # noqa: T201
+    if recovery:
+        print("  Then create a SECOND admin, so this cannot happen again.", flush=True)  # noqa: T201
+    print(f"{line}\n", flush=True)  # noqa: T201
 
 
 # -- the last-admin invariant (F79, DECISIONS #233) -----------------------------------

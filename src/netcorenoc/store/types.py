@@ -65,6 +65,9 @@ class IngestResult:
     activated: bool  # newly active (first ever, or re-raise after clear)
     count: int
     entity_id: int = 0  # the alarmed entity (§5.5); 0 falls back to the device at scoring
+    # v0.28.0: the alarm's `last_seen` BEFORE this trap — `None` for a first sighting. How long a
+    # repeat was silent is what tells a re-notification from a new occurrence (ADR #431).
+    previous_seen: float | None = None
 
 
 @dataclass(frozen=True)

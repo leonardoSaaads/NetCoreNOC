@@ -231,26 +231,6 @@ async def _community_key(store: Store) -> bytes:
     return bytes.fromhex(key_hex)
 
 
-def _print_bootstrap_banner(minted: administration.Bootstrap, *, recovery: bool) -> None:
-    """The single sanctioned place a secret is printed — once, at startup (F3).
-
-    **The username is printed from the row that was created, not restated here.** It said
-    ``username: admin`` until v0.15.3, which was true only while that name was the only one
-    possible; recovery takes `recovery-admin` when the demoted account still holds `admin` (#234),
-    and a banner naming an account nobody can sign in with would be worse than no banner.
-    """
-    line = "=" * 70
-    occasion = "no enabled admin remained" if recovery else "first run"
-    print(f"\n{line}", flush=True)  # noqa: T201
-    print(f"  NetCoreNOC bootstrap admin created ({occasion})", flush=True)  # noqa: T201
-    print(f"      username: {minted.username}", flush=True)  # noqa: T201
-    print(f"      password: {minted.password}", flush=True)  # noqa: T201
-    print("  Sign in and change this password immediately. It is shown ONCE.", flush=True)  # noqa: T201
-    if recovery:
-        print("  Then create a SECOND admin, so this cannot happen again.", flush=True)  # noqa: T201
-    print(f"{line}\n", flush=True)  # noqa: T201
-
-
 async def run(settings: Settings) -> None:
     if settings.legacy_env:
         raise legacy_env_error(settings.legacy_env)
@@ -308,6 +288,7 @@ async def _serve(settings: Settings, store: Store) -> None:
     )
     engine = Engine(store, queue)
     engine.audit_retention_days = settings.audit_retention_days
+    engine.rearm_s = settings.rearm_s  # ADR #431
     engine.dropped_provider = lambda: receiver.stats.dropped  # §5.6 queue-full gap source
     await engine.start()
 
@@ -317,7 +298,7 @@ async def _serve(settings: Settings, store: Store) -> None:
     minted = await administration.bootstrap_admin(store, time.time())
     await store.commit()
     if minted is not None:
-        _print_bootstrap_banner(minted, recovery=existing_users > 0)
+        administration.print_banner(minted, recovery=existing_users > 0)
 
     # The host readings the health control draws (v0.16.5). Sampled by a supervised loop rather
     # than on demand: CPU is a delta between two readings, and a series sampled only while somebody
@@ -397,6 +378,13 @@ async def _serve(settings: Settings, store: Store) -> None:
         if effective_allowlist.strip()
         else "empty - every source is accepted",
         effective_retention,
+    )
+    # v0.28.0: which model groups the traps, and the re-arm window — the two answers an operator
+    # otherwise had to sign in and open Settings to get, on the morning something grouped oddly.
+    log.info(
+        "grouping decided by %s; a repeat silent over %gs is a new occurrence",
+        engine.decider_ref,
+        settings.rearm_s,
     )
     log.info("listening for traps on %s:%d/udp", settings.trap_host, settings.trap_port)
     log.info("web UI and API on %s", url)

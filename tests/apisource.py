@@ -45,6 +45,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "catalogue_import.py",
     "governance_cache.py",
     "perimeter.py",
+    "body_limit.py",  # v0.28.0: the request-body ceiling, wrapped by the perimeter
     "declare.py",
     # v0.16.7 (F115): the live statistics payload, which `routes/read.py` and
     # `routes/events.py` both publish and both used to assemble for themselves. It sits

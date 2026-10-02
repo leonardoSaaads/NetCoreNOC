@@ -72,6 +72,19 @@ class Placement:
     def placed(self) -> bool:
         return self.source is not None
 
+    @property
+    def clears(self) -> bool:
+        """The trap's severity **is** X.733's `cleared`: it reports the end of its alarm (ADR #432).
+
+        The vendors that send one OID for a raise and its clear (ALARM-MIB style) say which it is
+        in this word. Until v0.28.0 the engine learned that only after two full raise/clear cycles
+        on one port, so the first clear of every such alarm was ingested as a *repeat*: the alarm
+        stayed active with the severity `cleared` and held its situation open for good. Reading the
+        word for what the standard says is the same act `place` already performs; this only stops
+        ignoring the one value that means "over".
+        """
+        return self.value == "cleared"
+
 
 #: The answer for a trap nothing can place. Shared because it is immutable and, on an estate whose
 #: equipment does not implement ALARM-MIB, it is every trap.

@@ -164,6 +164,23 @@ CLEAR_PAIR_SEEDS: dict[str, str] = {
     "1.3.6.1.2.1.16.0.1": "1.3.6.1.2.1.16.0.2",  # risingAlarm → fallingAlarm
 }
 
+# Notifications that report an **occurrence**, not a state, so no clear ever follows them (ADR
+# #433). A cold start says the device restarted; nothing later "un-restarts" it. Without this the
+# alarm stayed active for good and, by v0.16.2's rule, kept its situation live for good. An alarm
+# of one of these classes ends after `CLEAR_HOLD_S` of silence, as if its clear had arrived then.
+#
+# `upsTrapOnBattery` is here for a different sentence of its standard: it is *"resent at one minute
+# intervals until the UPS either turns off or is no longer running on battery"*, so its silence is
+# its clear.
+OCCURRENCE_NOTIFICATIONS: dict[str, str] = {
+    "1.3.6.1.6.3.1.1.5.1": "coldStart",
+    "1.3.6.1.6.3.1.1.5.2": "warmStart",
+    "1.3.6.1.6.3.1.1.5.5": "authenticationFailure",
+    "1.3.6.1.2.1.47.2.0.1": "entConfigChange",
+    "1.3.6.1.2.1.33.2.1": "upsTrapOnBattery",
+    "1.3.6.1.2.1.33.2.2": "upsTrapTestCompleted",
+}
+
 # The **X.733 perceived-severity vocabulary**, and its normalised rank (0 = most severe).
 #
 # **Source, cited in v0.17.1 and uncited for the eight releases before it**: ITU-T Recommendation
@@ -311,6 +328,12 @@ BUNDLED_SOURCES: dict[str, str] = {
         "authenticationFailure; RFC 2863 (IF-MIB) — linkDown, linkUp, registered under that same "
         "subtree; RFC 1213 (MIB-II) EGP group — egpNeighborLoss; RFC 2819 (RMON-MIB) "
         "1.3.6.1.2.1.16.0 — risingAlarm, fallingAlarm"
+    ),
+    "OCCURRENCE_NOTIFICATIONS": (
+        "RFC 3418 (SNMPv2-MIB) — coldStart, warmStart and authenticationFailure report an event "
+        "and define no clearing notification; RFC 6933 (ENTITY-MIB) — entConfigChange reports a "
+        "change of entLastChangeTime; RFC 1628 (UPS-MIB) 1.3.6.1.2.1.33.2 — upsTrapOnBattery is "
+        "resent at one-minute intervals while on battery, upsTrapTestCompleted reports a test"
     ),
     "WELL_KNOWN_VARBINDS": (
         "RFC 3418 (SNMPv2-MIB) — sysUpTime and sysName in the system group 1.3.6.1.2.1.1, and "

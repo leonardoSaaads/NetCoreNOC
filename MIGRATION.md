@@ -16,19 +16,11 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-Read only the rows between your version and the one you are installing. **Two of forty-three ask
-you to do something; twenty-three more ask you to read a paragraph first. The other eighteen are
-start-the-new-binary.** (v0.26.0 adds a read-a-paragraph row, in its own release, and so does
-v0.27.0.) (This sentence said *"six of nineteen"* above a table of twenty from v0.15.0
-until v0.15.2 — F78. It counts rows, not sections; recount it when you add one. v0.15.3 did, and
-v0.16.0 did not add its row at all — F94 — so v0.16.1 added both. v0.16.2 adds a
-read-a-paragraph row: it applies no migration and still changes what your existing situations do.
-v0.16.3 adds another: `0016` runs itself, and the names you already set come with it. v0.16.4 adds
-a third: **no migration at all**, and the console you sign in to is rearranged. **v0.16.5 did not
-add its row either — F94's shape, twice now — so v0.16.6 adds both**, which is why the count moves
-by two: v0.16.5's is start-the-new-binary and v0.16.6's is read-a-paragraph, for v0.16.4's reason.
-**v0.16.7 adds its own, in its own release** — read-a-paragraph, because the screen you open first
-now leads with a number that may read `—`, and an operator who reads that as a fault will file one.)
+1. **Back up first**: `python -m netcorenoc backup <file>` (from v0.28.0; before it, stop the
+   appliance and copy the database file and its `-wal` file).
+2. Read the rows of the table between your version and the new one. A row that starts with a bold
+   instruction (for example **Unset …**) needs an action; the rest are "install and start".
+3. Install and start. Migrations run by themselves at start.
 
 | From → to | What you must do |
 |---|---|
@@ -75,6 +67,7 @@ now leads with a number that may read `—`, and an operator who reads that as a
 | v0.24.0 → v0.25.0 | Nothing to run. **One migration applies at boot** (`0025`, additive). Users, Service tokens and Governance are now one screen, **People & access**, and an account an admin creates must set its own password at first sign-in. Read below |
 | v0.25.0 → v0.26.0 | Nothing to run. **One migration applies at boot** (`0026`, additive). **This build ships no model** (#422), so the formula keeps grouping and the bell says why; a later build that carries a passing model takes over without an admin's action unless the formula was chosen. Situations that fully clear are held five minutes. Autonomy is off. Read below |
 | v0.26.0 → v0.27.0 | Nothing to run. **One migration applies at boot** (`0027`, additive). **The pre-trained models decide from the first trap and the formula is retired as a decider**: an appliance that had chosen the formula or a site model hands the choice to the league's judge (one appended row; an admin can pin a model). Alarms a model would add to a situation an operator confirmed now wait in **Pending**. Read below |
+| v0.27.0 → v0.28.0 | Nothing to run; **no migration**. Behaviour you will notice: an alarm that repeats after more than an hour of silence with no clear, or after its situation was closed, now opens a **new** situation (`NETCORENOC_REARM_S`, 0 restores the old behaviour); a trap whose severity reads `cleared` clears its alarm on the first clear; reboots and other notifications without a clear end after 5 minutes; a port that keeps bouncing stays in one situation. With Compose, `NETCORENOC_TRAP_PORT` in `.env` now really moves the trap port. New commands: `python -m netcorenoc backup` and `admin reset-password` |
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 

@@ -279,14 +279,23 @@ def quarantine_packet(source: str, data: bytes, reason: str, ts: float) -> Quara
 
 
 def _instance_of(varbinds: list[Varbind]) -> str:
-    """Instance heuristic: ifIndex when present, else the first payload varbind value."""
+    """Instance heuristic: ifIndex when present, else the first payload varbind value that is not
+    an X.733 severity word.
+
+    **A severity is never an instance** (v0.28.0, ADR #432). A vendor that sends its severity
+    first gave its raise the instance `major` and its clear the instance `cleared`: two alarm rows
+    for one fault, and a clear that could never find its raise — not even after the state field was
+    learned, because the learner's slot is keyed on the instance too. One dictionary lookup per
+    varbind already iterated; nothing else changes on this path.
+    """
     for vb in varbinds:
         if vb.oid.startswith(known_oids.IF_INDEX_PREFIX):
             return vb.value[:MAX_INSTANCE_CHARS]
-    for vb in varbinds:
-        if vb.oid not in _SKIP_FOR_INSTANCE:
+    payload = [vb for vb in varbinds if vb.oid not in _SKIP_FOR_INSTANCE]
+    for vb in payload:
+        if known_oids.severity_rank(vb.value) is None:
             return vb.value[:MAX_INSTANCE_CHARS]
-    return ""
+    return payload[0].value[:MAX_INSTANCE_CHARS] if payload else ""
 
 
 class TrapReceiver(asyncio.DatagramProtocol):

@@ -41,6 +41,7 @@ from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.engine.model import league as league_model
 from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
+from netcorenoc.engine.operate.occurrence import REARM_S
 from netcorenoc.store import Store
 
 if TYPE_CHECKING:
@@ -130,6 +131,9 @@ class EngineBase:
     # A class-level default for the reason `_idle_active_count` gives: nothing reads it before a
     # sweep has run, and zero means "prune on the first one".
     _memory_pruned_at: float = 0.0
+    # v0.28.0 (ADR #431): the re-arm window `engine/operate/occurrence.py` reads. A class-level
+    # default for the reason `_idle_active_count` gives; `runner.py` sets it from the settings.
+    rearm_s: float = REARM_S
 
     if TYPE_CHECKING:  # pragma: no cover - declaration only; no runtime attribute exists
 

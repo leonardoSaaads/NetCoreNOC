@@ -25,6 +25,7 @@ from fastapi import Depends, FastAPI
 
 from netcorenoc import __version__
 from netcorenoc.api import declare, routes
+from netcorenoc.api.body_limit import BodyLimit
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.perimeter import (
     PREVIEW_RATE_CAPACITY,
@@ -66,6 +67,9 @@ def create_app(
     perimeter = Perimeter(
         store, rate_capacity=rate_capacity, rate_refill=rate_refill, warnings=warnings
     )
+    # v0.28.0: no route reads a body over 1 MiB. Added before the perimeter's middleware so the
+    # perimeter wraps it and a 413 carries the same security headers as every other response.
+    app.add_middleware(BodyLimit)
     app.middleware("http")(perimeter.security_headers)
 
     # Everything the route modules need, resolved once. Each `register()` rebinds the fields it

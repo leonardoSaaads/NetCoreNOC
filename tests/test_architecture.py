@@ -1315,8 +1315,11 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: four API modules (`routes/decider`, `models_decider`, `public_paths`, `shipped_view` — split off
 #: the routes at the 400-line guard); six console modules. **No model file is among them** — the
 #: build ships none (ADR #422).
-SRC_TREE_DIGEST = "13c2a31d8849372feefa22911fd6ba7398caae86a1cca07cbe0efa758ca72a75"
-SRC_FILE_COUNT = 354
+#:
+#: **v0.28.0: 354 -> 357.** Three added, none removed: `engine/operate/occurrence.py` and
+#: `store/occurrences.py` (ADRs #431, #433) and `api/body_limit.py` (#434).
+SRC_TREE_DIGEST = "46deba87d170e192c4a7b04e59829cb4e23a29c07f7e1c514fba81afe5a5b63a"
+SRC_FILE_COUNT = 357
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1382,7 +1385,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.27.0", "the version this release carries"
+    assert __version__ == "0.28.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

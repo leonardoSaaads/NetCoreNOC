@@ -9,8 +9,59 @@ minor bump may break.
 [`docs/record.md`](docs/record.md) has the command to read it. `#N` is a decision in
 [`docs/adr/DECISIONS.md`](docs/adr/DECISIONS.md); `FN` is a finding.
 
-What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md): of forty-three rows, two ask for an
-action, twenty-three ask you to read a paragraph, and eighteen are start-the-new-binary.
+What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md).
+
+## [0.28.0] - 2026-10-02 — "the field review"
+
+A review that used the product the way a novice, an experienced operator and a team would — from
+the README to a deployment — and drove new field scenarios (site power failure, faulty switch
+ports, OLT power loss, optical power too high, an OTM2 service mismatch whose clear is lost, an
+intermittent port) through the real engine. No migration; `make eval` is unchanged.
+
+### Fixed — alarm lifecycle (#431–#433)
+
+- An alarm that repeats after its situation was **closed by an operator** opened nothing: every
+  trap went into the resolved situation and the alarm was in no live view. It now opens a new one.
+- An alarm whose **clear was lost** and that came back hours later stayed in the old situation,
+  untouched. After `NETCORENOC_REARM_S` (3600 s) of silence it is a new occurrence: the old
+  situation resolves (*it went quiet*) and a new one opens. A situation with another member still
+  active keeps the repeat.
+- A trap whose X.733 severity is `cleared` is a clear on the **first** occurrence (it needed two
+  learned cycles); a `cleared` with nothing to clear no longer creates an alarm; a severity word is
+  never used as the alarm's instance.
+- `coldStart`, `warmStart`, `authenticationFailure`, `entConfigChange` and the UPS-MIB on-battery
+  and test traps have no clear: their alarms end after 5 minutes of silence instead of keeping a
+  situation open for good.
+- An intermittent port no longer opens a situation per bounce: from its second bounce in an hour its
+  situation is held while it keeps bouncing.
+
+### Fixed — security and robustness (#434)
+
+- The login throttle and the HTTP rate limiter emptied their tables past 4 096 keys, so a flood of
+  throwaway usernames or addresses reset the lockout of the account under attack.
+- No route reads a request body over 1 MiB (an unauthenticated login post could exhaust memory).
+- CI actions moved to their Node 24 releases (checkout v5.0.1, setup-python v6.0.0,
+  action-gh-release v3.0.3), pinned by commit.
+
+### Fixed — deployment (#435)
+
+- `docker-compose.yml` now passes and maps `NETCORENOC_TRAP_PORT`; setting it in `.env` did nothing.
+- `python -m netcorenoc.main --help` started the server; it now prints usage (`--version` too).
+- `python -m netcorenoc audit verify` on a missing database created an empty one and said OK; every
+  CLI command now refuses a database that is not there.
+
+### Added
+
+- `python -m netcorenoc backup <file>` — a consistent copy while the appliance runs.
+- `python -m netcorenoc admin reset-password <user>` — account recovery from the host, audited.
+- `NETCORENOC_REARM_S`; a start-up log line naming the deciding model.
+
+### Documentation
+
+- README, `docs/README.md`, `operate.md` and `troubleshoot.md` rewritten as direct guidance, with a
+  team checklist, backups, password recovery and the alarm rules in one table. Outdated statements
+  removed (the v0.26.0 "no model" notes, view counts, test counts, a wrong log example).
+- Seven stale release briefs removed from `docs/plans/` (`docs/record.md` says where they are).
 
 ## [0.27.0] - 2026-10-01 — "the league"
 
@@ -1603,7 +1654,7 @@ make qa                  1 696 passed (was 1 643); 32 DOM; mypy 227 files; cover
 **The verdict is still `INSUFFICIENT_EVIDENCE`**, which `PREREGISTRATION-0.16.0.md` §7 registers in
 advance as an outcome rather than a failure. What changed is that the quantity is no longer
 structurally zero — and the reason it is 10 rather than 41 is stated in
-[`docs/plans/v0.16.1-visualisation.md`](docs/plans/v0.16.1-visualisation.md) §4 rather than left for
+`docs/plans/v0.16.1-visualisation.md` (at `168ac7c`) §4 rather than left for
 someone to infer.
 
 ### Five operations, and a distinction that is the whole release
@@ -1973,7 +2024,7 @@ encode a fact the import graph already states (#239).
 
 The situation lifecycle — states, self-clear, manual clear, merge, split, move, semantic naming —
 is v0.16.0, deliberately, because it is a schema and domain change. What was noticed while working
-inside `situations.js` is in [`docs/plans/v0.16.0-situation-lifecycle.md`](docs/plans/v0.16.0-situation-lifecycle.md)
+inside `situations.js` is in `docs/plans/v0.16.0-situation-lifecycle.md` (at `168ac7c`)
 rather than half-built here.
 
 ## [0.15.2] - 2026-08-28 — "the fine-toothed comb"
