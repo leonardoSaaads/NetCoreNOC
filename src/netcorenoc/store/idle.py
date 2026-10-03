@@ -15,7 +15,7 @@ One question, asked four ways:
     with_idle_active(rows, ...)   the same answer, spread across a page of list rows
 
 The two middle ones **partition** the live-and-untouched population, which
-`tests/test_store.py::test_idle_open_situations` asserts on a fixture where both halves are
+`tests/store/test_store.py::test_idle_open_situations` asserts on a fixture where both halves are
 non-empty — a partition with an unreachable arm is a state that does not exist.
 
 The `HAS_ACTIVE` fragment and `LIVE` stay in `situations.py`, imported here. `close_situation` uses

@@ -197,7 +197,7 @@ export class WhyGrouped extends Component {
 
 /* The icon per band, as a table rather than a ternary inside the element.
  *
- * `tests/test_icons.py` reads the quoted strings inside an `<${Icon} …/>` element, so
+ * `tests/ui/test_icons.py` reads the quoted strings inside an `<${Icon} …/>` element, so
  * `name=${band === "thin" ? "warn" : "info"}` made it ask for an icon called "thin" — the
  * ternary's CONDITION. The guard could be taught to parse the expression; a lookup keyed on the
  * band is the better answer, because the alternative is a guard with its own JavaScript parser. */

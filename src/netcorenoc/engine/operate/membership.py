@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.operate.engine import Engine
 
 __all__ = ["cleared", "merged", "moved", "split"]

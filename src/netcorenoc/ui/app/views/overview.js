@@ -69,7 +69,7 @@ import * as store from "../store.js";
  * The eight ranges as a set of seconds, which is the closed set `theme.js` validates against.
  *
  * **The preference is a cookie and not `localStorage`** (ADR #172, F2). This was written against
- * `localStorage` first and `tests/test_security_ui.py` refused it, which is the guard doing its
+ * `localStorage` first and `tests/ui/test_security_ui.py` refused it, which is the guard doing its
  * job: the value of *"no `localStorage` anywhere"* is that it is an absolute, and the first
  * carve-out turns it into a judgement call on every future diff. A third preference goes in a
  * third cookie, beside the theme and the sidebar, and nothing new is invented for it.

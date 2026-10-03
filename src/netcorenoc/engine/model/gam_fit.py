@@ -20,7 +20,7 @@ because the appliance ships five runtime dependencies and a model fit is not a r
 
 Deterministic: fixed visiting order, a seeded `random.Random` for subsampling, float sums in a fixed
 order. Two fits from the same rows and parameters produce byte-identical documents, in one process
-or two — the property `tests/test_gam.py` asserts and Part VIII's injection attacks.
+or two — the property `tests/model/test_gam.py` asserts and Part VIII's injection attacks.
 
 **Nothing here holds a lock or reads a store.** :func:`fit` is synchronous arithmetic; the callers
 that run it inside the appliance run it in a worker thread from the maintenance loop.

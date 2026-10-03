@@ -11,7 +11,7 @@ a `split` bag supports no truth partition, that a policy-B fit has no negative c
 that a calibrated probability may route what an operator is asked and may never authorise autonomy.
 
 **Byte-stable for a given mapping** — fixed field widths, fixed float precision, no clock — because
-`tests/test_shadow.py` compares this output against a frozen expectation.
+`tests/model/test_shadow.py` compares this output against a frozen expectation.
 
 This module reads nothing. It takes no `Store`, opens no connection, and holds no state; everything
 it prints was decided by `shadow_report.collect`.
@@ -118,7 +118,7 @@ def render(m: dict[str, Any]) -> str:
     # §2.5's STRUCTURAL MITIGATION: a floor evaluation is NEVER printed without the detection
     # threshold for the same n beside it. A reader who sees "floors met" must not be able to read
     # "the evaluation is trustworthy" — the two are different claims and the second needs this
-    # number. `tests/test_judge.py` fails if one is emitted without the other.
+    # number. `tests/model/test_judge.py` fails if one is emitted without the other.
     add(f"  {'floors met':<34}{('yes' if judgement.floors_met else 'no'):>26}")
     add(f"  {'minimum detectable difference':<34}{judgement.detectable_difference:>26.3f}")
     add(f"  {'  at n incidents':<34}{judgement.incidents:>26}")

@@ -9,8 +9,8 @@ the invariant more auditable. `engine.py` gains call sites and nothing else.
 
 **Where this runs, and where it must never run.** Engine-side, under the batch lock the engine
 already holds, in the transaction the batch already opened. **Nothing here is reachable from
-`receiver.datagram_received`** — prime directive 1, and `tests/test_layers.py` plus the engine's own
-structure are what keep it that way.
+`receiver.datagram_received`** — prime directive 1, and `tests/repo/test_layers.py` plus the
+engine's own structure are what keep it that way.
 
 **The fail-safe, which is the whole reason this module has a `Capture` object at all.**
 
@@ -61,7 +61,7 @@ from netcorenoc.engine.dataset.retention_policy import (
 )
 from netcorenoc.engine.model.training import MAX_PAIRS_PER_BAG
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.correlate.learn import Learner
     from netcorenoc.ingest.events import TrapEvent
     from netcorenoc.store import Store

@@ -21,7 +21,7 @@ from typing import Any
 from netcorenoc.store.base import StoreBase
 
 #: The longest an organization name may be. The API validator enforces it too; this is the
-#: storage-side bound, and the two are asserted equal by `tests/test_maintenance_api.py`.
+#: storage-side bound, and the two are asserted equal by `tests/api/test_maintenance_api.py`.
 MAX_ORGANIZATION_NAME = 120
 
 
@@ -76,7 +76,7 @@ class OrganizationMixin(StoreBase):
         **No `_has_maintenance` probe, unlike its neighbours, and that is the rule rather than an
         omission.** The probe guards the methods that run *unbidden* — the sweep's
         :meth:`attribute_unassigned_nes` and the reads the ingest path makes — because
-        `tests/test_upgrade.py` drives this store against migration directories frozen below
+        `tests/store/test_upgrade.py` drives this store against migration directories frozen below
         schema 20. This one is reached only from a route, and a route only exists on an appliance
         whose migrations have run. (An earlier draft of this docstring called it *"the
         element-discovery path"*, which it is not: discovery leaves `organization_id` NULL and the

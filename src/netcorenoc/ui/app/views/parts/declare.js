@@ -68,7 +68,7 @@ export function disagrees(alarm, declaredRank) {
  * **The confirmation is an element on the page, not `globalThis.confirm`.** A native dialog is
  * unstyled, blocks the event loop, cannot be reached by the DOM harness, and is the one control in
  * a console that no test in this repository can see — which is the shape of defect eight
- * consecutive releases have shipped. `tests/test_security_ui.py` refuses a bare `confirm(` for
+ * consecutive releases have shipped. `tests/ui/test_security_ui.py` refuses a bare `confirm(` for
  * exactly that reason, and it was right to.
  *
  * **The opener names what it declares** (v0.16.4). It read `Declare` alone, which was legible

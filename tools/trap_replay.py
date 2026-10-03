@@ -25,8 +25,8 @@ SCENARIO=dual_incident` — a scenario whose entire point is *"two unrelated inc
 NEs"* — delivered four devices as one, on every machine, every time. The appliance then merged
 them, correctly, because on the wire they really were one device.
 
-`tests/test_operation.py` carried a private ``_to_wire`` rewrite that did the right thing, so the
-one test that drives this scenario over a socket **could not see the tool's defect** — it had
+`tests/ops/test_operation.py` carried a private ``_to_wire`` rewrite that did the right thing, so
+the one test that drives this scenario over a socket **could not see the tool's defect** — it had
 already worked around it. The rewrite now lives here, in the tool an operator actually runs, and
 the test calls it. One implementation, both callers.
 """

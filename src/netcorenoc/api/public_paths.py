@@ -14,7 +14,8 @@ __all__ = ["UNAUTHENTICATED_PATHS"]
 #
 # Deliberately a literal set rather than an import from `routes_static`, which would be a circular
 # import — `routes_static` registers through this module. The derivation is asserted instead of
-# performed, by `tests/test_declaration.py::test_f41_the_allowlist_matches_what_is_actually_served`:
+# performed, by
+# `tests/api/test_declaration.py::test_f41_the_allowlist_matches_what_is_actually_served`:
 #
 #     UNAUTHENTICATED_PATHS == {"/healthz", "/readyz", "/", OPENAPI}
 #                              | {"/" + asset for asset in STATIC_ASSETS}

@@ -2,7 +2,7 @@
  *
  * ## Why a cookie and not `localStorage` (ADR #172, draft §9)
  *
- * `tests/test_security_ui.py` asserts `"localStorage" not in app_js`. That guard is F2's
+ * `tests/ui/test_security_ui.py` asserts `"localStorage" not in app_js`. That guard is F2's
  * remediation and its value is that it is an **absolute**: a first carve-out turns it into a
  * judgement call on every future diff. So the preference goes to a cookie —
  * `SameSite=Strict`, deliberately **not** `HttpOnly` because the client has to read it, carrying
@@ -110,7 +110,7 @@ export function nextTheme(from = theme()) {
 
 /* ---------- the sidebar's state (v0.16.4, DECISIONS #290) ----------------------------------
  *
- * **The same mechanism as the theme, deliberately.** `tests/test_security_ui.py` asserts
+ * **The same mechanism as the theme, deliberately.** `tests/ui/test_security_ui.py` asserts
  * `"localStorage" not in app_js` — F2's remediation, and its value is that it is an absolute — so
  * a second preference goes in a second cookie rather than in a second storage API. Inventing one
  * would give this console two answers to *"where do preferences live"*, and the first carve-out is
@@ -140,7 +140,7 @@ export function nextNavState(from = navState()) {
 /* ---------- the Overview's time range (v0.20.0) --------------------------------------------
  *
  * A **third** preference, and it goes here for the reason the second one did. It was written
- * against `localStorage` first, and `tests/test_security_ui.py` refused it — correctly, and
+ * against `localStorage` first, and `tests/ui/test_security_ui.py` refused it — correctly, and
  * exactly as ADR #172 says an absolute should behave. A rule that is only enforced when the
  * author remembers it is not an absolute; this one is enforced by a test, which is why it
  * caught a preference added four years after it was written.

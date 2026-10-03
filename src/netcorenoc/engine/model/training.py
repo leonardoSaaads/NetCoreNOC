@@ -174,8 +174,9 @@ def derive(pairs: list[LabelledPair], policy: str) -> tuple[list[TrainingRow], d
         # The gate is here as well as at capture time, and the duplication is deliberate: the route
         # refuses to write a *label* below the floor, and this refuses to derive a *row* from one.
         # A corpus that arrived by another path — an upgrade, a restore, a future channel — is
-        # governed by the plan either way, and `tests/test_evidence_boundary.py` injects a row below
-        # the floor to prove this half exists rather than assuming the first half covers it.
+        # governed by the plan either way, and `tests/dataset/test_evidence_boundary.py` injects a
+        # row below the floor to prove this half exists rather than assuming the first half covers
+        # it.
         if not confidence.admits(pair.confidence):
             dropped_below_floor += 1
             continue

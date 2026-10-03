@@ -61,9 +61,10 @@ DEFAULT_SCORER_ID = "additive"
 # Moved here from `challenger.py` in v0.14.0 (DECISIONS #192), and the move is a correction rather
 # than a tidy-up. These three names are **not the challenger's**: the champion reads them too, and
 # from v0.14.0 so do the tree kinds through `attribution.py`. Leaving them in the challenger's
-# module made `tests/test_challenger.py::test_no_code_path_makes_the_challenger_the_active_scorer`
-# — the guard that keeps a shadow model off the champion path — fire on a module that imports a
-# constant. A guard that fires on the wrong thing gets widened until it fires on nothing.
+# module made
+# `tests/model/test_challenger.py::test_no_code_path_makes_the_challenger_the_active_scorer` — the
+# guard that keeps a shadow model off the champion path — fire on a module that imports a constant.
+# A guard that fires on the wrong thing gets widened until it fires on nothing.
 #
 # `challenger.py` re-exports all three, so every existing importer is unchanged.
 

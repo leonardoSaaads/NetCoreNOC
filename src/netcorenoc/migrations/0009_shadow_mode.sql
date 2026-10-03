@@ -20,7 +20,7 @@
 --     had, which would be agreement with the champion.
 --
 -- The schema cannot enforce that on its own — no schema can — so it is asserted by
--- `tests/test_shadow.py::test_the_challenger_cannot_become_the_active_scorer` and by the layer
+-- `tests/model/test_shadow.py::test_the_challenger_cannot_become_the_active_scorer` and by the layer
 -- guard. What the schema DOES do is refuse to make it convenient: there is no pointer from
 -- `scorer_config` to a `challenger_run`, and adding one would be a visible, arguable diff.
 --

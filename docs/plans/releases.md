@@ -2,14 +2,14 @@
 
 **This table is the single source of truth for what each release is.** Every document in `docs/`
 that asserts what a release *is* carries a machine-readable claim checked against it by
-`tests/test_documentation.py`. Where prose and this table disagree, **the table wins and the test
+`tests/repo/test_documentation.py`. Where prose and this table disagree, **the table wins and the test
 fails**.
 
 It plans; it implements nothing and it schedules nothing. A release here is a theme with a reason
 for its position, not a commitment to a date. What each unbuilt release *does* is in the brief
 linked from its row — stated once, there, so that this document and that one cannot drift apart.
 
-<!-- The `claim` column is the machine-readable key. `tests/test_documentation.py` parses this table
+<!-- The `claim` column is the machine-readable key. `tests/repo/test_documentation.py` parses this table
      and every `<!-- release-claim: vX.Y.Z = key -->` marker across the live documents, and fails if
      any two disagree. Do not reformat this table without reading that test. -->
 
@@ -35,7 +35,7 @@ linked from its row — stated once, there, so that this document and that one c
 | **v0.16.6** | **The evidence screens** — overview charts, the estate map, a configurable timeline, and the model metrics beside the grouping they explain. | `evidence-screens` |
 | **v0.16.7** | **Severity, and the screen an operator runs a shift from** — active alarms by band on the Overview, with the ones the appliance has **not** been able to place counted and named. | `severity-census` |
 | **v0.16.8** | **Planned work, deferred** — the maintenance-window slot the v0.16 block reserved. **The content moved to v0.21.0** (#375) and nothing else took the number; the row stays so a reader who finds `v0.16.8` in an old document is told where it went rather than finding a hole. | `planned-work-deferred` |
-| **v0.17.0** | **The foundations** — an eval baseline that can be re-cut with a recorded reason, guards that derive their sets instead of listing them, and `testbed/`: a two-host fibre cut a newcomer can deploy and trigger. **Shipped.** | `foundations` |
+| **v0.17.0** | **The foundations** — an eval baseline that can be re-cut with a recorded reason, guards that derive their sets instead of listing them, and `tests/lab/`: a two-host fibre cut a newcomer can deploy and trigger. **Shipped.** | `foundations` |
 | **v0.17.1** | **The standard alarm vocabulary and vendor severity defaults** — a vendor-published severity shown immediately, with provenance and an operator override, beside the learned one. | `alarm-vocabulary` |
 | **v0.17.2** | **The corpus and the correlation window** — scenarios whose alarms clear, a scenario spanning two enterprise subtrees in ONE incident (the case v0.18.0's gate is unmeasured against), and the window the correlator reasons over. **F76 left this release**: v0.18.0 closed it. | `corpus-window` |
 | **v0.17.3** | **The external cartridge** — ONNX under the proven framework, behind the worker-process harness. Brief: `git show 168ac7c:docs/plans/cartridge.md`, which also argues it should slip again. | `external-cartridge` |
@@ -390,7 +390,7 @@ corpus, not of the learner, and lowering `SEVERITY_MIN_CLOSED` to make a panel f
 exactly the ordering `engine/correlate/severity.py` exists to refuse. **What a later release needs
 is a scenario in which alarms clear** — v0.17.2's corpus work.
 
-> **v0.17.0 changed the second half of that sentence without changing the first.** `testbed/`
+> **v0.17.0 changed the second half of that sentence without changing the first.** `tests/lab/`
 > closes 25 alarms per run, which is the first thing in this repository that produces alarm
 > lifetimes at all. It does **not** make severity placeable: `SEVERITY_MIN_CLOSED = 50` is per NE
 > and the lab is nowhere near it, and v0.17.0 deliberately did not lower it. What the lab supplies
@@ -496,7 +496,7 @@ answering them here would be deciding an analytical question in a release that m
 it.
 
 **What v0.17.0 owes v0.17.1, and delivered**: a scenario format that carries a severity varbind
-(`testbed/scenarios/pon_fiber_cut.json` uses X.733 perceived severity at RFC 3877's ALARM-MIB arc,
+(`tests/lab/scenarios/pon_fiber_cut.json` uses X.733 perceived severity at RFC 3877's ALARM-MIB arc,
 whose six tokens are exactly `known_oids.SEVERITY_VOCAB`), and a `known_oids`-shaped place for the
 table to land. **No vendor MIB file enters this repository, in this release or the next** — vendor MIBs
 carry the vendor's copyright even when published, so v0.17.1 ships derived rows with cited sources
@@ -623,7 +623,7 @@ releases have their detail in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 * **Dates.** None of these releases has one.
 * **What an unbuilt release does.** That is its brief's job, and duplicating it here is how a
   repository comes to hold two answers to *"what is v0.8.0"* four lines apart, which is what
-  `tests/test_documentation.py` exists to prevent.
+  `tests/repo/test_documentation.py` exists to prevent.
 * **v0.7.5.** Not in this chain: a runtime-behaviour fix to the feedback acquisition path, a
   prerequisite for v0.8.0 rather than a member of the sequence.
 * **Anything after v0.21.0.** [`../ROADMAP.md`](../ROADMAP.md) keeps the unsequenced items,

@@ -9,7 +9,7 @@ behaviour change whose failure mode is data corruption under concurrency.
 
 `store.lock` is a contract for **callers** — `Engine._commit_batch`, `Engine.maintenance` and
 `Perimeter.write_txn` take it; no method in this package does. See
-`tests/test_store_concurrency.py`, which is the control.
+`tests/store/test_store_concurrency.py`, which is the control.
 
 Hand-written SQL, plain-SQL migrations applied at startup via ``PRAGMA user_version``. The engine
 batches writes and calls :meth:`Store.commit` per batch; interleaved API writes simply join the

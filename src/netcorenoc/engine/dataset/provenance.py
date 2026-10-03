@@ -25,9 +25,9 @@ Two quantities, and each says something a score alone does not:
 kind of thing that looks right and has never been measured. Using it now would encode an unmeasured
 belief as a weight, which is the error §2.1(c) of the v0.10.0 plan rejects under a different name.
 
-**This module is the one a guard can name.** `tests/test_evidence_boundary.py` asserts that nothing
-under `engine/correlate/`, `engine/model/` or `engine/evaluation/` imports it, so "recorded and not
-consumed" is a property of the import graph rather than a promise in a docstring.
+**This module is the one a guard can name.** `tests/dataset/test_evidence_boundary.py` asserts that
+nothing under `engine/correlate/`, `engine/model/` or `engine/evaluation/` imports it, so "recorded
+and not consumed" is a property of the import graph rather than a promise in a docstring.
 """
 
 from __future__ import annotations

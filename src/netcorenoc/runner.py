@@ -9,7 +9,7 @@ genuine layer violation — `main.py` importing `netcorenoc.api` — because `ma
 (domain) *and* the thing that builds the HTTP server, in one module. The entry point may
 legitimately reach up into `http`; **the `Engine` may not**. Splitting them resolves the violation
 structurally rather than by exemption, and
-`tests/test_layers.py::test_the_engine_does_not_import_the_http_layer` holds the line.
+`tests/repo/test_layers.py::test_the_engine_does_not_import_the_http_layer` holds the line.
 
 Shutdown is graceful and bounded (§A.5): stop accepting datagrams, cancel the tasks, drain what is
 still queued within a deadline, run one final maintenance pass, close the store. The audit chain
@@ -313,7 +313,7 @@ async def _serve(settings: Settings, store: Store) -> None:
 
     # **D2's startup self-check** (v0.21.0). Computed once, here, in the *running* appliance —
     # against the `tzdata` this image actually has rather than the one the build machine had.
-    # `tests/test_timezones.py` asserts the curated list resolves on the build machine, and that
+    # `tests/api/test_timezones.py` asserts the curated list resolves on the build machine, and that
     # is exactly the trap F131 records one layer up: a list validated where it was written and not
     # where it runs. Silent on a healthy install; on an image with no time-zone database it is the
     # one sentence that explains why every window is being refused.

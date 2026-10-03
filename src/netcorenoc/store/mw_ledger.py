@@ -23,7 +23,7 @@ from netcorenoc.store.devices import DeviceMixin
 #:
 #: **Scalars, not the engine's `LedgerKey`/`LedgerEntry`** — `store` is the data layer and
 #: `engine` is above it, so importing those types here would be an upward import and
-#: `tests/test_layers.py` refuses one. The engine converts at its own boundary, which is also
+#: `tests/repo/test_layers.py` refuses one. The engine converts at its own boundary, which is also
 #: where the meaning of the six scalars is documented (`engine/mw/ledger.py`).
 LedgerRow = tuple[int, int, int, int, str, float | None, float | None, float | None]
 

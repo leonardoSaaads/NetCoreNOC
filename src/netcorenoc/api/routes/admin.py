@@ -41,7 +41,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
         `sole_admin` is computed here rather than left for the console to derive, and that is the
         same rule F28 set for capabilities: the client renders the answer the server gave, never a
-        second one it worked out from a role. `tests/test_security_ui.py` enforces it as an
+        second one it worked out from a role. `tests/ui/test_security_ui.py` enforces it as an
         absolute — no console module may compare a role to `"admin"` — and the first carve-out
         would turn that guard into a judgement call on every future diff.
 

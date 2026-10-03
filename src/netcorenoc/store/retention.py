@@ -72,9 +72,9 @@ class RetentionMixin(StoreBase):
             # both shells are collected by the ordinary later pass once the **audit sweep**
             # (`prune_dataset_audit`) has removed what was holding them.
             # The `situation_event` clause is emitted only where the table exists. `prune` runs on
-            # the maintenance loop, which `tests/test_upgrade.py` drives against a schema frozen
-            # before this release — and a sweep that raised there would take the whole loop with it,
-            # which is the one thing an operational sweep may never do.
+            # the maintenance loop, which `tests/store/test_upgrade.py` drives against a schema
+            # frozen before this release — and a sweep that raised there would take the whole loop
+            # with it, which is the one thing an operational sweep may never do.
             events = (
                 "AND id NOT IN (SELECT situation_id FROM situation_event) "
                 if self._has_lifecycle

@@ -24,7 +24,7 @@ can compress it without changing the registered shape.
 
 What this path does not exercise is the socket, the allowlist, the community tagging,
 authentication, RBAC, request validation, scope resolution and the audit row. **v0.15.2**: those
-are `tests/test_operation.py`'s, which boots a real appliance over a real socket on a bounded
+are `tests/ops/test_operation.py`'s, which boots a real appliance over a real socket on a bounded
 scenario and runs on every `make qa`. `drive_http.py`, which ran the same increments over the real
 surfaces and which nothing ever ran, is deleted (DECISIONS #232).
 
@@ -32,8 +32,8 @@ surfaces and which nothing ever ran, is deleted (DECISIONS #232).
 
 **The simulator's ground truth never enters the promotion path** (§1). `labelling.py` reads it —
 that is how a simulated operator decides what to mark — but what it produces is a *label*, and
-nothing downstream of a label can see a `situation_key`. `tests/test_simulation.py` asserts that
-separation by parsing every runtime module, not by promising it.
+nothing downstream of a label can see a `situation_key`. `tests/evaluation/test_simulation.py`
+asserts that separation by parsing every runtime module, not by promising it.
 
 **Labelling goes through `apply_feedback`, never a write to the store** (§5.2). A seeded row would
 bypass the `source = 'server'` reconciliation that is F46's repair and F48's demonstration — the
@@ -78,11 +78,11 @@ from netcorenoc.ingest.events import TrapEvent  # noqa: E402
 from netcorenoc.ingest.receiver import parse_trap  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
+
+import trap_replay  # noqa: E402
 from simulation import diagnose  # noqa: E402
 from simulation.generator import INCREMENT_INCIDENTS, SEED, generate  # noqa: E402
 from simulation.labelling import label_increment, truth_of  # noqa: E402
-
-import trap_replay  # noqa: E402
 
 BASE_TS = 1_700_000_000.0
 INCREMENT_GAP_S = 150.0

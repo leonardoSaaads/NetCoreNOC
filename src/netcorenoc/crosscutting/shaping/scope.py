@@ -22,7 +22,8 @@ then redacted, not prevented. See `docs/architecture/DESIGN.md` (v0.7.0) and `SC
 input to :func:`visible_nes` may be writable by a scopable role. The comment blocks on
 :func:`visible_nes` and :func:`_matches` that say why moved with the functions, unedited, because a
 justification separated from the code it justifies is a justification nobody re-reads.
-`tests/test_governance.py::test_f35_no_resolver_input_is_writable_by_a_scopable_role` asserts it.
+`tests/security/test_governance.py::test_f35_no_resolver_input_is_writable_by_a_scopable_role`
+asserts it.
 """
 
 from __future__ import annotations

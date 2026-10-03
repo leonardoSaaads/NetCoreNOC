@@ -19,7 +19,7 @@
  *   * `#work`    — the work area, which is what `#sidebar` used to be
  *
  * Nothing is called `sidebar` any more, so no guard can match the old id by accident and report
- * that it found navigation. `tests/domharness/selftest.mjs` and `tests/test_ui_invariants.py`
+ * that it found navigation. `tests/support/domharness/selftest.mjs` and `tests/ui/test_ui_invariants.py`
  * were rewritten to the new selectors, and the rule draft §1.1 sets — that the assertion count
  * may not go down during a selector rename — is checked by `test_ui_invariants` itself.
  *

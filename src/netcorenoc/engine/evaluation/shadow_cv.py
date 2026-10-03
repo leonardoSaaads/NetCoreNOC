@@ -37,9 +37,9 @@ a **verdict trigger**, it is **not a floor**, a deployment may not harden it and
 disable it.
 
 **The report may never print a floor evaluation without the detection threshold beside it**, and
-`tests/test_judge.py` fails if one is emitted without the other. That is the structural mitigation
-for §2.5's residual risk: a reader who sees *"floors met"* must not be able to read *"the evaluation
-is trustworthy"*.
+`tests/model/test_judge.py` fails if one is emitted without the other. That is the structural
+mitigation for §2.5's residual risk: a reader who sees *"floors met"* must not be able to read *"the
+evaluation is trustworthy"*.
 
 ## Determinism
 
@@ -220,7 +220,7 @@ def minimum_detectable_difference(n: int, p: float = 0.70) -> float:
     small-`n` regime — its variance is far smaller: at `n = 37` and `p = 0.70` the arms are 0.210
     and **0.058**. Assuming the larger one for both **demands a bigger delta than reality**, and the
     error grows as `n` shrinks. Measured, against an independent Monte-Carlo sharing no arithmetic
-    with this expression (`tests/test_shadow_cv_power.py`):
+    with this expression (`tests/model/test_shadow_cv_power.py`):
 
         n     naive    this    MC     plan
         37    0.298   0.238   0.237   0.25

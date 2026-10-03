@@ -23,7 +23,8 @@ from netcorenoc.ingest import known_oids
 #
 # This one was still correct. It is changed anyway, because "correct until somebody moves the
 # file" is the property the guard
-# `tests/test_architecture.py::test_no_runtime_path_is_derived_by_counting_parents` now refuses.
+# `tests/repo/test_architecture.py::test_no_runtime_path_is_derived_by_counting_parents` now
+# refuses.
 MIGRATIONS_DIR = Path(netcorenoc.__file__).resolve().parent / "migrations"
 
 TOUCH_INTERVAL_S = 5.0  # cadence for cosmetic last_seen updates on cached rows

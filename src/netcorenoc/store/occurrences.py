@@ -7,7 +7,7 @@
     member_fingerprints(sids)        the (device, OID, instance) of each member, for the flap memory
 
 **No method here takes ``store.lock``.** The engine calls them inside its batch or its maintenance
-sweep, both of which already hold it (`tests/test_store_concurrency.py` walks the MRO).
+sweep, both of which already hold it (`tests/store/test_store_concurrency.py` walks the MRO).
 """
 
 from __future__ import annotations

@@ -20,14 +20,20 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   (v0.15.3, #238). Today a password is the only factor this appliance has. Whatever ships must not
   reintroduce F79's shape: a second factor an admin can lose is a second way to lock the appliance
   out of itself, so enrolment and recovery are the same design question, not two.
-- **Basic SNMP polling, read-only — v0.21.1** (#373, `HANDOFF.md` §1). Planned for v0.21.0 and
-  **deliberately slipped**, not dropped: II.6 describes a credential-handling subsystem, not a
-  feature flag — credentials never in the database in the clear, SNMPv3 where the element offers
-  it, a bounded target set, a rate ceiling no request can raise, every read audited. The gap it was
-  wanted for is already closed by the maintenance ledger (#371), which costs no credential; a poll
-  is corroboration. The written plan, down to the table and the key derivation, is in `HANDOFF.md`
-  §1. **Nothing in v0.21.0 promises it** — the placeholder capabilities were removed rather than
-  left, because a capability with no route is a promise of a feature nobody built.
+- **Basic SNMP polling, read-only** (#373). Planned for v0.21.0 and **deliberately slipped**, not
+  dropped: II.6 describes a credential-handling subsystem, not a feature flag — credentials never
+  in the database in the clear, SNMPv3 where the element offers it, a bounded target set, a rate
+  ceiling no request can raise, every read audited. The gap it was wanted for is already closed by
+  the maintenance ledger (#371), which costs no credential; a poll is corroboration. The written
+  plan, down to the table and the key derivation, is §1 of the v0.21.0 handoff
+  (`git show f8efb09:HANDOFF.md`). **Nothing in the product promises it** — the placeholder
+  capabilities were removed rather than left, because a capability with no route is a promise of
+  a feature nobody built.
+- **The appliance on native Windows.** `main.py` installs its shutdown with
+  `loop.add_signal_handler` and the resource sampler reads `os.statvfs`; Windows' Python has
+  neither, so `python -m netcorenoc.main` does not start there. WSL 2 runs it unchanged
+  ([`simulate.md`](simulate.md#windows)). Supporting it natively needs both replaced and a Windows
+  CI job, or the claim would be untested.
 - **SNMPv3** — needs credentials, hence configuration, hence deliberately post-MVP. The poller
   above is where it lands first.
 - **Real per-organization isolation.** v0.21.0 gives every network element an **organization**, and
@@ -181,7 +187,7 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   analytical decision about whether a redaction may leave a per-member trace — a plan, not a patch.
 - **`MIGRATION.md`'s table is not derived from the release chain** (F94). v0.16.0 shipped without a
   row and the prose above the table was arithmetically correct about the rows that were there, so
-  nothing looked wrong. `tests/test_documentation.py` already checks release claims against
+  nothing looked wrong. `tests/repo/test_documentation.py` already checks release claims against
   `plans/releases.md`; the table is the next thing that could be.
 
 ## Deliberately out — rejections, so nobody re-litigates them by accident
@@ -225,7 +231,7 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   set and then appends a warning list that does not; the idle-active count reaches a scoped reader
   whole-estate, which is F32's volume oracle through an unshaped key. The repair is a per-scope
   count where the sweep already runs, which is engine work rather than shell work. **F107**, open.
-- **`eval/corpus_gen.py` and `eval/harness.py` are over the 400-line guard** (457 and 435), outside
+- **`eval/generators/corpus_gen.py` and `eval/harness.py` are over the 400-line guard** (457 and 435), outside
   its reach rather than exempted from it. Splitting the harness needs care: its stdout is the frozen
   `c2e8a0ce…` hash.
 - **The two `ASSERTING_*_FLOOR` constants are declared twice**, once used and once dead — weight

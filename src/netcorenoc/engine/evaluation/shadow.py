@@ -2,7 +2,8 @@
 
 **A challenger runs beside the champion and writes its opinion where nobody acts on it.** Nothing in
 this module reaches a situation, a link, the UI, an operator, `learn.penalize()` or the active
-scorer, and `tests/test_challenger.py` asserts that by parsing the tree rather than by reading it.
+scorer, and `tests/model/test_challenger.py` asserts that by parsing the tree rather than by reading
+it.
 
 ## The two mechanisms, and why both ship (DECISIONS #119)
 
@@ -47,7 +48,7 @@ from netcorenoc.engine.model.challenger import (
 )
 from netcorenoc.engine.model.training import LabelledPair, assess, derive, fit, resolve_floors
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.correlate.correlate import CorrelationResult, WindowAlarm
     from netcorenoc.store import Store
 

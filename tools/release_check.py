@@ -9,8 +9,9 @@ non-zero (naming the mismatch) if they disagree.
 releases while this check printed *"all sources agree on version 0.15.1"*, so a Nix user installed
 a package labelled with a version that had never existed. Adding the file without a guard would
 leave the *fifth* declaration equally invisible, so
-``tests/test_structure.py::test_every_declared_version_is_one_the_release_check_reads`` searches
-the tree for version declarations and fails on one this file does not read (DECISIONS #230).
+``tests/repo/test_structure.py::test_every_declared_version_is_one_the_release_check_reads``
+searches the tree for version declarations and fails on one this file does not read (DECISIONS
+#230).
 
     python tools/release_check.py
 """
@@ -57,6 +58,9 @@ def changelog_version() -> str:
 
 
 def main() -> int:
+    if {"-h", "--help"} & set(sys.argv[1:]):
+        print(__doc__)
+        return 0
     versions = {
         "pyproject.toml": pyproject_version(),
         "src/netcorenoc/__init__.py": package_version(),

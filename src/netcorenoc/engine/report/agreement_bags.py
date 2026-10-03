@@ -13,8 +13,9 @@ different job from computing a rate, and the third time this project has split o
 (`bias.py`/`bias_labels.py`, `shadow.py`/`census.py`).
 
 `agreement.py` re-exports `Bag`, `size_bucket` and `SIZE_ORDER`, because `agreement_report.py` and
-`tests/test_agreement.py` have imported them from there since v0.9.0 and **a split is not a reason
-to move a caller's import** — the courtesy `bias_labels.py` was given for `pct` (DECISIONS #139).
+`tests/model/test_agreement.py` have imported them from there since v0.9.0 and **a split is not a
+reason to move a caller's import** — the courtesy `bias_labels.py` was given for `pct` (DECISIONS
+#139).
 
 Aggregates only, and no row leaves this module in a shape that names anything: the query selects
 counts, verdicts, a bucketed size and an anonymisable reference, and never an NE, an address, an OID
@@ -28,7 +29,7 @@ from typing import TYPE_CHECKING
 
 from netcorenoc.engine.dataset.incidents import resolve_all, stamp
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.store import Store
 
 __all__ = ["SIZE_ORDER", "Bag", "load_bags", "size_bucket"]

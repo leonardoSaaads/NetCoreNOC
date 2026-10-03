@@ -56,7 +56,7 @@ CREATE TABLE organization (
 -- clock** — the only place in this codebase where a timestamp comes from anywhere but Python's
 -- `time.time()`. Two consequences, and the second is why it had to go:
 --
---   1. `tests/behaviour_identity.py` freezes `time.time` and cannot reach SQLite's clock, so this
+--   1. `tests/support/behaviour_identity.py` freezes `time.time` and cannot reach SQLite's clock, so this
 --      one row made the whole HTTP record irreproducible across processes. The harness said so in
 --      the words it was written to say: *"something in a response varies for a reason this harness
 --      has not named."* It was right, and the unnamed thing was here.

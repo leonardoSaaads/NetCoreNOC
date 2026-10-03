@@ -28,8 +28,8 @@ from netcorenoc.store.types import MAX_SCOPE_PARAMS
 #: written as 4. `known_oids.SEVERITY_VOCAB` ranks `critical 0 … indeterminate/cleared 4`, and a
 #: rank above this can only have come from `severity.py::_candidate_ranks`' `int` kind, where the
 #: number is a vendor's own and means nothing until it is ordered against the others (F99).
-#: `app/format.js` holds the same line as `VOCAB_MAX_RANK` and `tests/test_severity.py` pins both
-#: against the vocabulary itself, so the two languages cannot drift apart silently.
+#: `app/format.js` holds the same line as `VOCAB_MAX_RANK` and `tests/correlation/test_severity.py`
+#: pins both against the vocabulary itself, so the two languages cannot drift apart silently.
 VOCAB_MAX_RANK = max(known_oids.SEVERITY_VOCAB.values())
 
 

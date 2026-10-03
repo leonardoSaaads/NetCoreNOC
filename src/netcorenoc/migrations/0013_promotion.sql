@@ -7,7 +7,7 @@
 --
 -- Forward-only and additive, applying cleanly onto a populated v0.10.1 database (schema v12).
 -- **NO ROWS ARE SEEDED.** A fresh install and an upgraded one both start with no model version, no
--- promotion and no fold assignment, and `tests/test_upgrade.py` asserts it.
+-- promotion and no fold assignment, and `tests/store/test_upgrade.py` asserts it.
 --
 -- ---------------------------------------------------------------------------------------------
 -- WHY THIS IS THREE TABLES AND NOT A ROW IN `scorer_config`.

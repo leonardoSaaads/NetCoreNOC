@@ -90,7 +90,7 @@ class Judgement:
     notes: tuple[str, ...] = ()
     # §2.5's structural mitigation: a floor evaluation may NEVER be emitted without the detection
     # threshold for the same `n` beside it. Both are carried on one object so a renderer cannot
-    # print one and forget the other, and `tests/test_judge.py` asserts the pairing.
+    # print one and forget the other, and `tests/model/test_judge.py` asserts the pairing.
     floors_met: bool = False
     detectable_difference: float = 1.0
     incidents: int = 0

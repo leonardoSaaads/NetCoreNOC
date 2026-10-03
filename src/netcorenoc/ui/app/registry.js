@@ -3,14 +3,14 @@
  * ## Why one table and not two
  *
  * v0.12.0 had `TABS` for navigation and `prunePanels` for the DOM, and their agreeing was a
- * convention nothing enforced. `tests/test_security_ui.py` guarded it by parsing the source text
+ * convention nothing enforced. `tests/ui/test_security_ui.py` guarded it by parsing the source text
  * of `TABS`, which v0.12.0's Phase 0 measured as unable to fail for the thing it guarded. Here
  * the sidebar renders `reachableViews(capabilities)` and the router calls `resolve()`, and both
  * read the `capability` field on the same object. There is nothing for them to disagree about.
  *
  * ## Every `capability` here names a capability the SERVER enforces
  *
- * Not a role, not a rank, not a UI-local notion of "admin screen". `tests/test_ui_invariants.py`
+ * Not a role, not a rank, not a UI-local notion of "admin screen". `tests/ui/test_ui_invariants.py`
  * checks each entry against `rbac.PERMISSIONS`, and checks by EXECUTION that a view which reads a
  * route does not declare a weaker capability than the route requires. A view gated on something
  * `rbac` has never heard of is a bug this table cannot hide.

@@ -26,6 +26,42 @@ NETCORENOC_TRAP_PORT=1162 .venv/bin/python -m netcorenoc.main
 # the one-time bootstrap admin password prints to the console on first start
 ```
 
+No network equipment is needed: [`docs/simulate.md`](docs/simulate.md) sends real SNMP traps to
+the appliance from this repository's tools, on Linux and on Windows (WSL 2).
+
+## Repository map
+
+```text
+NetCoreNOC/
+├── src/netcorenoc/       the product: the only code that ships
+│   ├── ingest/           UDP trap receiver, SNMP decoding, the built-in trap pack
+│   ├── engine/           correlation, lifecycle, models, feedback dataset, reports
+│   ├── store/            SQLite access (one connection, one lock)
+│   ├── migrations/       forward-only schema steps, applied at startup
+│   ├── api/              HTTP routes and payload shapes (FastAPI)
+│   ├── crosscutting/     authentication, roles, audit, settings, logging
+│   └── ui/               the console: static ES modules, no build step
+├── tests/                the test suite, one folder per area: tests/README.md
+│   ├── support/          shared helpers and the Node DOM harness
+│   └── lab/              two simulated OLTs for end-to-end checks
+├── eval/                 offline evaluation gate, corpus, simulation, model training: eval/README.md
+├── tools/                developer command-line tools: tools/README.md
+├── docs/                 user and contributor documentation: docs/README.md
+├── deploy/               the systemd unit
+├── .github/              CI and release workflows, issue and PR templates
+└── Makefile              every command a contributor runs
+```
+
+Root files: `Dockerfile`, `docker-compose.yml`, `.env.example`, `flake.nix` and `MANIFEST.in`
+package the appliance; `pyproject.toml` holds dependencies and tool settings;
+`vulture_allowlist.py` is the dead-code gate's allowlist; `CHANGELOG.md`, `MIGRATION.md` and
+`HANDOFF.md` describe releases.
+
+**Where a change goes.** Product code under `src/netcorenoc/`, in the layer the rules below allow.
+Its tests in the matching `tests/<area>/` folder ([`tests/README.md`](tests/README.md) says which).
+A developer script in `tools/`, an evaluation or training change in `eval/`. User-facing behaviour
+also updates the page in `docs/` that describes it.
+
 ## The quality bar
 
 `make qa` is `lint typecheck deadcode scan test eval`. Concretely, a change must keep all of these
@@ -67,10 +103,10 @@ is correct rather than metric-gaming.
   permanently — do not "tidy" it into modules. The invariant is only auditable if that path reads
   without following imports.
 - **Imports go downward or sideways, never up.** `http` → `engine` → `data` → `ingest`, plus
-  cross-cutting from anywhere. `tests/test_layers.py` enforces it and its exemption list is
+  cross-cutting from anywhere. `tests/repo/test_layers.py` enforces it and its exemption list is
   **empty**.
 - **One `Store`, one connection, one `store.lock`**, taken by *callers* and never inside a `Store`
-  method. `tests/test_store_concurrency.py` is the control.
+  method. `tests/store/test_store_concurrency.py` is the control.
 - **Bounded memory everywhere.** Every accumulator keeps its cap and eviction, with a test.
 - **UI security discipline.** Strict CSP; new DOM values go through `textContent`/`esc()`, never
   `innerHTML`; no inline script or style, no CDN.
@@ -108,7 +144,7 @@ docstrings in `src/` and `tests/` name these numbers.
 
 ## Saying what a release is — the claim form
 
-`tests/test_documentation.py` enforces that the repository gives exactly one answer to "what is
+`tests/repo/test_documentation.py` enforces that the repository gives exactly one answer to "what is
 release X". [`docs/plans/releases.md`](docs/plans/releases.md) is the **single source of truth**;
 change its table (with a decision) and let the documents follow, never the other way round. A
 claim is detectable in two marked forms, and a fenced block like the two below is never read as
@@ -164,17 +200,19 @@ git ls-remote --tags origin                                  # verify
 
 ## Trap simulator and replay
 
-With the app running on port 1162:
+With the app running on port 1162 (step by step, for Linux and Windows:
+[`docs/simulate.md`](docs/simulate.md)):
 
 ```sh
 make replay                      # the bundled fibre-cut scenario as real SNMP PDUs over UDP
 make sim SCENARIO=login_burst    # a declarative scenario; python tools/trap_sim.py --list
 make loadtest                    # 1000 traps/s for 60 s
 make burst                       # 100 000 traps in one second
+make lab                         # two simulated OLTs; make lab-cut / make lab-repair
 ```
 
-The simulator and corpus tooling live under `eval/` and `tools/` and are **never imported by the
-runtime package**.
+The simulator and corpus tooling live under `eval/`, `tools/` and `tests/lab/` and are **never
+imported by the runtime package**.
 
 ## Reporting a security vulnerability
 

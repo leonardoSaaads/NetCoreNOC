@@ -14,7 +14,7 @@ this release and no column distinguished them.
 **Every method here that names a v0.16.0 column consults `self._has_lifecycle` first**, so the
 identical store code runs against a schema that predates its own columns — the same discipline
 `create_situation` has followed for `scorer_config_id` since `0005` and `merge_situations` for
-`merged_into` since `0008`, and the property `tests/test_upgrade.py` relies on to prove that a
+`merged_into` since `0008`, and the property `tests/store/test_upgrade.py` relies on to prove that a
 migration changes behaviour and the code does not.
 """
 
@@ -32,7 +32,7 @@ from netcorenoc.store.situation_events import SituationEventMixin
 #: shipped, because the correlator creates `new` (DECISIONS #254).
 #:
 #: Written as a SQL fragment rather than assembled per call site: one literal, no placeholders to
-#: get wrong, and `tests/test_store.py::test_every_live_situation_query_uses_the_one_fragment`
+#: get wrong, and `tests/store/test_store.py::test_every_live_situation_query_uses_the_one_fragment`
 #: reads the runtime package to assert nothing spells it out a second time. **That guard was cited
 #: from v0.16.0 and did not exist until v0.16.2 wrote it** (F101).
 #:
@@ -44,9 +44,10 @@ LIVE = "status IN ('new','pending','open')"
 #:
 #: `situation.id` is named rather than aliased, so this fragment composes into any statement whose
 #: outer table is `situation`. Written once here for `LIVE`'s reason: one literal, no placeholders
-#: to get wrong, and `tests/test_store.py::test_the_active_member_predicate_agrees_with_all_cleared`
-#: drives both forms over the same fixtures and asserts they never disagree — because two
-#: expressions of one question are two chances to answer it differently.
+#: to get wrong, and
+#: `tests/store/test_store.py::test_the_active_member_predicate_agrees_with_all_cleared` drives both
+#: forms over the same fixtures and asserts they never disagree — because two expressions of one
+#: question are two chances to answer it differently.
 HAS_ACTIVE = (
     "EXISTS (SELECT 1 FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
     "WHERE sa.situation_id=situation.id AND a.status='active')"
@@ -60,8 +61,8 @@ HAS_ACTIVE = (
 #: operator has looked and accepts the grouping as something to work; `resolved` means it left.
 #:
 #: `act -> {state before: state after}`; `None` before means the act CREATES the situation, and an
-#: act missing a state leaves that state unchanged. `tests/test_lifecycle.py` drives every edge
-#: through the real route or store method.
+#: act missing a state leaves that state unchanged. `tests/lifecycle/test_lifecycle.py` drives every
+#: edge through the real route or store method.
 #:
 #: Two edges changed in v0.22.0, both reported by the maintainer (item 9):
 #:
@@ -253,7 +254,7 @@ class SituationMixin(SituationEventMixin):
         # The fallback is the same discipline `create_situation` follows for `scorer_config_id`
         # (0005): **this call must still succeed against a schema that predates its own column.**
         # That is not defensive tidiness — it is what lets the identical engine code run before and
-        # after the migration, which is how `tests/test_upgrade.py` proves that `0008` changes
+        # after the migration, which is how `tests/store/test_upgrade.py` proves that `0008` changes
         # behaviour and the code does not. Merges are rare (four across the whole eval corpus), so
         # the cost of learning this once is a single caught error per process on an old schema.
         #

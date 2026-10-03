@@ -117,7 +117,7 @@ row, on any path, in any format.
 * **The audit action catalog.** Frozen, with a completeness test. A new action is a decision, not a
   setting.
 * **Anything that would need a build step.** No `package.json`, no bundler, no npm — and that is a
-  test (`tests/test_build_step.py`), not an intention.
+  test (`tests/ui/test_build_step.py`), not an intention.
 
 ## Retuning correlation
 

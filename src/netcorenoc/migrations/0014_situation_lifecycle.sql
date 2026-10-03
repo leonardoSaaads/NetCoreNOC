@@ -77,7 +77,7 @@ ALTER TABLE situation ADD COLUMN derived_name TEXT;
 -- **Never written by the server, and never by a model.** A model proposing "fibre cut" above a
 -- grouping an operator is about to judge contaminates that judgement — the `incumbent_linked`
 -- mistake in a new register — so v0.16.0 has no path that writes here except an operator's own
--- rename. `tests/test_store.py::test_no_server_derivation_ever_reaches_operator_name` is the guard.
+-- rename. `tests/store/test_store.py::test_no_server_derivation_ever_reaches_operator_name` is the guard.
 ALTER TABLE situation ADD COLUMN operator_name TEXT;
 
 -- -- the append-only history --------------------------------------------------------------------

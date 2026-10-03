@@ -10,7 +10,8 @@ Two things in this file are load-bearing rather than cosmetic:
 * **The `register()` calls run in the order the routes were declared at v0.7.1.** FastAPI resolves
   the first matching route, so `/api/situations` before `/api/situations/{sid}` and
   `/api/scorer/preview` before the bare `POST /api/scorer` decide which handler answers.
-  `tests/test_architecture.py::test_route_table_order_is_unchanged` pins the whole 48-entry table.
+  `tests/repo/test_architecture.py::test_route_table_order_is_unchanged` pins the whole 48-entry
+  table.
 * **The perimeter's methods are aliased to the names the handlers already call them by**, and each
   route module rebinds them again at the top of its `register()`. That is what let 1 752 lines
   become sixteen modules with every handler body textually unchanged (DECISIONS #78).
@@ -102,9 +103,9 @@ def create_app(
     # prohibition, expressed in the module tree rather than only in a docstring.
     #
     # **Registered before `routes/operate.py`**, and the reason is the behaviour record rather than
-    # the router: `tests/behaviour_identity.py` drives every route in registration order against
-    # one database, so a `close` driven first leaves every gesture after it answering 409 on a
-    # resolved situation. That is a true response and a weak pin — it would not catch a regression
+    # the router: `tests/support/behaviour_identity.py` drives every route in registration order
+    # against one database, so a `close` driven first leaves every gesture after it answering 409 on
+    # a resolved situation. That is a true response and a weak pin — it would not catch a regression
     # in any of the three handlers. Ordering is free here (every path is a distinct literal and
     # none can shadow another), so it is chosen to make the record say more.
     routes.lifecycle.register(app, ctx)
@@ -120,7 +121,7 @@ def create_app(
     routes.governance.register(app, ctx)
     routes.audit.register(app, ctx)
     # v0.21.0. **`maintenance` before `inventory`**, and it is behaviour rather than taste:
-    # `tests/behaviour_identity.py` drives every route in registration order against one
+    # `tests/support/behaviour_identity.py` drives every route in registration order against one
     # database, and a window created before the organizations are listed makes the listing's
     # `ne_count` say something. Registered after `audit` so the audit rows a window write
     # produces are already in the record the audit routes read.

@@ -108,10 +108,10 @@ class UndeclaredRouteError(RuntimeError):
 # unknown this finding is about, one inheritance level down (DECISIONS #98).
 #
 # This tuple is **enumeration**, and saying so is the point of
-# `tests/test_declaration.py::test_f42_the_live_app_produces_exactly_the_known_shapes`: it asserts
-# that the shapes a real `create_app` produces are *exactly* this set, so a dependency upgrade that
-# changes the representation fails the suite loudly, naming the new class, on the day of the
-# upgrade. That test is the half that generalises; this tuple is the half that does not.
+# `tests/api/test_declaration.py::test_f42_the_live_app_produces_exactly_the_known_shapes`: it
+# asserts that the shapes a real `create_app` produces are *exactly* this set, so a dependency
+# upgrade that changes the representation fails the suite loudly, naming the new class, on the day
+# of the upgrade. That test is the half that generalises; this tuple is the half that does not.
 KNOWN_ROUTE_SHAPES: tuple[type, ...] = (APIRoute, Route)
 
 
@@ -252,7 +252,7 @@ class DeclaredRoutes:
 
     Route modules hold one of these as ``route`` and register through it, so a reader sees the
     declaration requirement at the point of registration rather than three files away. A test
-    (`tests/test_declaration.py`) asserts that no ``@app.<verb>`` decorator survives anywhere
+    (`tests/api/test_declaration.py`) asserts that no ``@app.<verb>`` decorator survives anywhere
     under `netcorenoc/api/`, so the discipline cannot be bypassed by a contributor in a hurry.
     """
 

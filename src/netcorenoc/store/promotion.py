@@ -5,7 +5,7 @@ v0.11.0, migration `0013`. **Nothing here decides anything.** Whether a promotio
 module is SQL, plus the refusals SQLite itself enforces.
 
 **No method here takes ``store.lock``**, which is this package's contract for callers
-(`tests/test_store_concurrency.py` is the control).
+(`tests/store/test_store_concurrency.py` is the control).
 
 ## The two things this module is careful about
 

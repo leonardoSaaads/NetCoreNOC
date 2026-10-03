@@ -67,11 +67,11 @@ export class Maintenance extends Loader {
   /* **Each operation names its own route, literally.**
    *
    * An earlier draft built the path from a verb — `` `/api/maintenance-windows/${wid}/${what}` ``
-   * — and `tests/test_security_ui.py` was right to refuse it: a path the guard cannot resolve to
+   * — and `tests/ui/test_security_ui.py` was right to refuse it: a path the guard cannot resolve to
    * a declared route is exactly the write that would slip past it unchecked. Three call sites is
    * the price of a console whose every write is visible to the guard that checks them.
    */
-  /* Named `confirmWindow` rather than `confirm`: `tests/test_security_ui.py` forbids a bare
+  /* Named `confirmWindow` rather than `confirm`: `tests/ui/test_security_ui.py` forbids a bare
    * `confirm(` anywhere in the console, because a browser `confirm()` is the twentieth copy of a
    * dialogue that `destructive.js` exists to be the only one of. A method with that name reads
    * like one at a glance, which is the whole point of the guard. */

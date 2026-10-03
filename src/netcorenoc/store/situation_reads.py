@@ -107,9 +107,10 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
 
         A **literal chosen by the schema probe**, never by a caller: the string is one of three
         constants and no value from outside this class reaches it. It exists because
-        `tests/test_upgrade.py` drives the current store against a migration directory frozen at an
-        older version — the property that makes "the migration changes behaviour and the code does
-        not" checkable — and a listing that named `resolution` unconditionally would raise there.
+        `tests/store/test_upgrade.py` drives the current store against a migration directory frozen
+        at an older version — the property that makes "the migration changes behaviour and the code
+        does not" checkable — and a listing that named `resolution` unconditionally would raise
+        there.
 
         `situation_detail` needs no such guard: it is `SELECT *`, which is exactly the shape that
         adapts to whichever columns the schema has.

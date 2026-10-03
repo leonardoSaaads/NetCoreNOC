@@ -5,9 +5,9 @@ between untrusted bytes and a handler is easier to audit as one list than as fra
 reasoning is unchanged and this module is not an exception to it: `models.py` re-exports every
 name here **by identity**, so a reviewer asking *"what can a caller send this appliance"* still
 reads one import list and one file's worth of names. The split is mechanical — the 400-line module
-guard, which `models.py` was already within eleven lines of — and `tests/test_maintenance_api.py`
-asserts the re-export is by identity rather than by copy, the same guard `crosscutting/rbac/`
-carries for the same reason (ADR #374).
+guard, which `models.py` was already within eleven lines of — and
+`tests/api/test_maintenance_api.py` asserts the re-export is by identity rather than by copy, the
+same guard `crosscutting/rbac/` carries for the same reason (ADR #374).
 
 ## Why the validation here is stricter than usual
 

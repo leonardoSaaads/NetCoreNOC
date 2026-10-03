@@ -45,7 +45,9 @@ make replay                    # `make replay-list` shows the other scenarios
 ```
 
 Open `http://localhost:8081/`. Run this without Docker: Docker's port proxy rewrites the source
-address of traps sent from the same machine, so every simulated device would appear as one.
+address of traps sent from the same machine, so every simulated device would appear as one. More
+scenarios, your own traps, `snmptrap`, and the steps for Windows (WSL 2):
+[`docs/simulate.md`](docs/simulate.md).
 
 ## Before a team relies on it
 

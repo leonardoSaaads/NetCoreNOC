@@ -69,7 +69,7 @@ class AssertingBag:
         """The `marked x rest` pairs **both of whose ends the labeller could see** (§2.4).
 
         `EVIDENCE-BOUNDARY-0.9.2.md` §10, corrected in v0.10.0 Gate 0 and machine-checked by
-        `tests/test_evidence_boundary_observable.py`: the count is exactly
+        `tests/dataset/test_evidence_boundary_observable.py`: the count is exactly
         `(m - b) * ((n - m) - (h - b))`, and this enumerates precisely those pairs. A pair is
         unobservable if **either** end is hidden.
         """

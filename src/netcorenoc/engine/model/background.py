@@ -19,7 +19,8 @@ Three reasons, and the first two are structural.
   (`pyproject.toml`'s `package-data` lists `migrations`, `ui` and `py.typed`). An appliance in a
   container has no corpus to read, and a background set that existed only on a developer's machine
   would make `params_hash` mean different things in different places.
-* **A registered constant is checkable.** `tests/test_attribution.py` regenerates these rows from
+* **A registered constant is checkable.** `tests/model/test_attribution.py` regenerates these rows
+from
   the corpus and compares them, so the claim *"this is the corpus's evaluation set"* is a test
   rather than a sentence.
 

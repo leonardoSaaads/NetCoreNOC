@@ -63,7 +63,7 @@ CREATE TABLE scorer_active (
 --    "w_a":0.35,"w_e":0.35,"w_t":0.3}
 -- A test asserts this literal equals the coded default's fingerprint, so a future change to
 -- either the defaults or the canonicalisation cannot silently desynchronise the seed
--- (tests/test_scoring.py::test_seed_params_hash_matches_the_coded_default).
+-- (tests/correlation/test_scoring.py::test_seed_params_hash_matches_the_coded_default).
 INSERT INTO scorer_config (
     id, scorer_id, contract_version, w_t, w_a, w_e, tau_s, threshold, params_hash,
     created_by, created_at, note

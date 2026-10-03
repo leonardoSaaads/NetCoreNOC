@@ -1,84 +1,63 @@
-# NetCoreNOC v0.28.0 — handoff
+# NetCoreNOC v0.28.1 — handoff
 
-**A field review**: the product used the way a novice, an experienced operator and a team would —
-from the README to a deployment — plus seven new incident scenarios driven through the real parser
-and engine. Verified by execution before any change: `__version__` 0.27.0 at `168ac7c`, schema 27.
-This hands over **v0.28.0** on `claude-code/trusting-goldberg-j8xpoo`. **No migration**, and
-`make eval` is byte-identical (`43328080…`).
+**The repository, organised** for the next phase (AI agents for problem-solving) and for new
+contributors. No product behaviour changed: no migration, `make eval` unchanged (`43328080…`), and
+the HTTP surface differs only in the version string and in comments and docstrings that cite tests
+by path. The v0.28.0 handoff (the field review) is at `ebd9954`: `git show ebd9954:HANDOFF.md`.
 
-## The scenarios, before and after
+## What moved
 
-Each was sent as real SNMP PDUs through the parser and the engine, with the maintenance sweep on the
-scenario's clock, under the fail-safe formula and under the shipped champion (random forest).
-
-| Scenario | v0.27.0 | v0.28.0 |
+| Before | Now | Why |
 |---|---|---|
-| **OTM2 service mismatch, clear lost, raised again 3 h later** | stayed in the old situation, untouched; no new one | old situation resolves *idle* with an event naming the alarm; **a new situation opens** |
-| **…then an operator closes it, and the device repeats the raise** | every repeat absorbed into the resolved situation; alarm active and in no live view | **a new situation opens** |
-| Optical RX power too high, re-sent every 15 min, ends with severity `cleared` | alarm stayed active with severity `cleared`; situation `new` for good | cleared on the first `cleared`; resolves |
-| Site power failure (UPS on battery → neighbours' uplinks down → power back, cold starts) | the cold starts and the UPS alarm kept two situations `new` for good | they end after 5 min of silence; situations resolve |
-| OLT power loss (both upstream uplinks down, back 20 min later, OLT cold start) | cold start situation `new` for good | resolves |
-| Intermittent port, down/up every 10 min, six times | **5 situations**, then demoted as flapping | **3**: from the second bounce the situation is held while it bounces |
-| Access switch, four ports bouncing irregularly | 1 (formula) / 2 (champion) situations, all resolve | unchanged |
-| Standing alarm re-sent every 5 min for 2 h | 1 situation | unchanged (the control) |
+| 116 test modules flat in `tests/` | 13 area folders that follow the package; `tests/README.md` maps them | a test's purpose was not visible from its location |
+| helpers mixed with tests | `tests/support/` (incl. the DOM harness), one `paths.py` for repository paths | tests imported other tests; paths were counted with `parents[n]` |
+| `testbed/` | `tests/lab/`; `NETCORENOC_LAB_STATE`, `netcorenoc-lab-*`, `lab.db` | it is test tooling; one name everywhere |
+| `eval/` flat | `generators/`, `simulation/` (with the DSL), `synth/`, the gate at the root | five roles in one folder |
+| `tools/evidence/`, `r2/after/` | removed | run by nothing; one-off v0.13–v0.16 measurements and an old screenshot |
 
-**Not fixed, and why** — grouping quality on the power scenarios is the model's, not the lifecycle's:
-under the champion the UPS alarm, the neighbours' uplink failures and the dying gasp of one site
-power failure are **four situations**; under the formula, the two upstream uplinks of one OLT are
-two. That is training data (the generator's cross-element storms), not a rule to patch here. And a
-vendor whose trap carries its *description* before the port gets the description as the alarm's
-instance, so two ports with the same alarm text share one alarm until entity promotion learns the
-port (#432 says why skipping prose is riskier).
-
-## Found and fixed
-
-| Area | Defect (measured) | Fix | ADR |
-|---|---|---|---|
-| lifecycle | the three OTM2 / close / X.733 rows above; a `cleared` with nothing to clear created an active alarm; a severity word first became the instance, so raise and clear never met | `engine/operate/occurrence.py`, `Placement.clears`, `receiver._instance_of`, the maintenance ledger | #431, #432 |
-| lifecycle | standard notifications with no clear held situations for good; intermittent ports opened a situation per bounce | `known_oids.OCCURRENCE_NOTIFICATIONS` (cited), `occurrence.settled` | #433 |
-| security | the login throttle and the rate limiter cleared their whole table past 4 096 keys: a flood of throwaway usernames reset the lockout on the attacked account | evict harmless or soonest-ending entries first | #434 |
-| security | every JSON route read its whole body first, including the unauthenticated login: a few large posts reach the 512 MiB container limit | `api/body_limit.py`: 413 over 1 MiB, inside the perimeter | #434 |
-| deployment | `NETCORENOC_TRAP_PORT` in `.env` was neither passed nor mapped by Compose | passed and mapped | #435 |
-| deployment | `python -m netcorenoc.main --help` started the server | `--help`, `--version`; other arguments refused | #435 |
-| deployment | `audit verify` on a mistyped path created an empty database and said OK | every CLI command refuses a missing database | #435 |
-| operations | no way back for an only admin who forgot a password; no backup procedure | `admin reset-password` (audited, sessions revoked), `backup` (online, integrity-checked) | #435 |
-| operations | nothing said which model was deciding without signing in | start-up log line | #435 |
-| CI | the lab check `largest situation >= 10` passed only because the repair's `cleared` traps were grouped as alarms (11 rows on `168ac7c`); with #432 it read 9 | asserts no grouped clear and each host's cut in one situation; the grouping itself is unchanged | #432 |
-| CI | actions on the deprecated Node 20 runtime | checkout v5.0.1, setup-python v6.0.0, action-gh-release v3.0.3, pinned by commit | — |
+`tests/repo/test_structure.py` now refuses a test at the root of `tests/` and an undocumented
+folder, so the layout cannot drift back. `docs/record.md` maps every old path to its new one.
 
 ## Documentation
 
-README, `docs/README.md`, `docs/operate.md` and `docs/troubleshoot.md` rewritten as direct
-guidance: a ten-minute quickstart, a test-traffic path that avoids Docker's source rewriting, a team
-checklist (allowlist, TLS, roles, second admin, tokens, backup, upgrade), and every alarm rule in one
-table. Removed or corrected: the v0.26.0 "ships no model" statements (four places), view and test
-counts, the wrong bootstrap log example, "move the database aside" as password recovery, and the
-`MIGRATION.md` row-counting preamble. Seven stale release briefs left `docs/plans/`
-(`docs/record.md` says where they are); the claim-form convention moved to `CONTRIBUTING.md`.
+- **`docs/simulate.md`**: using the appliance with no network equipment, on Linux and on Windows
+  (WSL 2). Bundled and DSL scenarios, a hand-written scenario (`linkDown`/`linkUp`), synthetic load,
+  `snmptrap` (v1, v2c, chosen source address), the lab. Every command was run on this release; the
+  hand-written scenario's alarm was confirmed `cleared` in the database.
+- `tests/README.md`, `tools/README.md`, `eval/README.md` (rewritten), `tests/lab/README.md`
+  (rewritten without the v0.17.0 measurement tables), a repository map in `CONTRIBUTING.md`.
+- Corrected: a dead anchor in `install.md`; `tests/test_perf.py::burst`, a test that never existed;
+  "the eval hash has held at `c2e8a0ce…` since v0.7.0" in three places (it has moved four times);
+  a `HANDOFF.md §1` pointer that a later handoff replaced.
 
-## Live passes
+## Known limits, recorded rather than fixed
 
-- **Team, over real sockets** (TLS with a self-signed certificate, allowlist, re-arm window 20 s):
-  bootstrap → admin with `Secure` cookie → an editor, a viewer and a second admin; the viewer's
-  close refused (403); OTM2 raised, silent 25 s, raised again → situation 1 *resolved idle* with an
-  `idle_close` event, situation 2 *new*; the editor closes 2, the device repeats → situation 3;
-  the X.733 `cleared` clears the alarm; a 2 MiB login body → 413 with the security headers;
-  `backup` while running → integrity ok; `admin reset-password ana` → her session 401, the one-time
-  password signs in; `audit verify` → OK.
-- **Novice, following the README** without Docker: `make replay` → 2 devices, 8 alarms, 1 situation.
-- **Browser** (Chromium, 1440 and 390 px): the history of a situation concluded by recurrence
-  explains it; 0 px overflow; the only console error is the pre-sign-in `401` from `/api/me`.
-- **Not run**: the Docker image build — this environment's network policy blocks
-  `registry-1.docker.io`. Compose changes are covered by `tests/test_deploy.py`, and the same
-  process was run directly.
+- **The appliance does not start on native Windows**: `main.py` uses `loop.add_signal_handler` and
+  the resource sampler `os.statvfs`. The documentation gives WSL 2; `docs/ROADMAP.md` says what
+  native support needs (both replaced, and a Windows CI job so the claim is tested).
+- The Docker image was not built here: this environment's network policy blocks
+  `registry-1.docker.io`. CI builds it; the lab was run end to end without Docker (two sources,
+  14 clears, the unplaced rectifier alarm active, as CI asserts).
+
+## For the next phase
+
+- Start at `CONTRIBUTING.md` (setup, repository map, hard constraints) and
+  `docs/architecture.md` (layers). An agent integration is an API client: the routes are in
+  `src/netcorenoc/api/routes/`, the role model in `src/netcorenoc/crosscutting/rbac/`, and the
+  maintenance-window resource was designed for an agent caller (its module docstring says how).
+- New tests go in the area of the code they protect; a new area is a folder plus a row in
+  `tests/README.md` and in `TEST_AREAS` (`tests/repo/test_structure.py`).
+- Simulated traffic is never a label (`tests/dataset/test_evidence_boundary*.py`); an agent's
+  proposals must reach the dataset only through an operator's gesture.
 
 ## Verification
 
 | gate | result |
 |---|---|
-| full suite | see the PR description (re-run after the last change) |
-| `mypy --strict`, `ruff check`, `ruff format --check` | clean |
-| `vulture`, `bandit`, `pip-audit --skip-editable` | clean; no known vulnerabilities |
+| `ruff check`, `ruff format --check`, `mypy --strict` (381 files) | clean |
+| `vulture`, `bandit` | clean |
+| full suite | see the PR description |
 | `make eval` | no gated regressions; hash `43328080…` unchanged |
-| behaviour-identity record | 12 lines changed, all attributed: the version string in `/healthz` and `/openapi.json`, and `lifecycle.js` (four roles each) |
-| injections | `tests/test_occurrences.py`: 9 of 14 tests red on the v0.27.0 source, the 5 controls green on both; `tests/test_body_limit.py` red without the middleware |
+| `src/` pin | 357 files, no file added, removed or moved; digest re-recorded for comment and docstring path updates |
+| behaviour-identity record | 85 lines, all attributed: the version in `/healthz` and `/openapi.json` (whose route descriptions also cite tests by new path), 19 console modules whose comments cite tests (4 roles each), and the script's own path in the header |
+| lab, end to end | `run_local.py --demo`: CI's database assertions pass on `tests/lab/state/lab.db` |

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.28.0"
+version = "0.28.1"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -33,7 +33,7 @@ dev = [
     "vulture>=2.11",
     "build>=1.2",
     # The build BACKEND, in the dev environment rather than only in `[build-system].requires`.
-    # `tests/test_supply_chain.py` builds a wheel the way the Dockerfile builds one (F85), and it
+    # `tests/security/test_supply_chain.py` builds a wheel the way the Dockerfile builds one (F85), and it
     # does so with `--no-isolation` so the guard does not need the network — which means the
     # backend has to already be importable here. A Python 3.12 venv ships no setuptools.
     # Dev/CI tooling only: the runtime dependency list above is unchanged at five.
@@ -83,7 +83,7 @@ netcorenoc = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tools", "tests", "eval", "testbed"]
+src = ["src", "tools", "tests/support", "tests/lab", "eval"]
 # The vulture dead-code allowlist is intentionally a list of bare names (not real code).
 extend-exclude = ["vulture_allowlist.py"]
 
@@ -93,35 +93,30 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "T20", "SIM", "RUF"]
 # FastAPI's dependency-injection idiom puts Depends()/Query() in argument defaults.
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 [tool.ruff.lint.isort]
-# src/ layout makes `netcorenoc` the (only) first-party package. The eval/tools dev helpers
-# (imported by tests and the harness) are local dev/test modules, not the distributed package —
-# classifying them as local-folder keeps them in their own trailing import group, exactly as
-# before the move, so the reorg touches no test/eval import block.
+# src/ layout makes `netcorenoc` the (only) first-party package. The development modules on
+# pytest's `pythonpath` are never part of the distributed package, so they sort in their own
+# trailing import group. One line per folder; a new helper is added to its folder's line.
 known-local-folder = [
-    "metrics", "trap_replay", "harness", "corpus_gen", "scenario_dsl", "trap_sim",
-    "util", "authutil", "apisource", "behaviour_identity",
-    # v0.17.0: the lab (DECISIONS #329). `ne` is `testbed/ne/`, imported by the agents and by
-    # `tests/test_testbed.py` the same way `harness` is imported from `eval/` — a local dev module,
-    # never part of the distributed package, which `MANIFEST.in` prunes and a guard asserts.
+    # tests/support/
+    "apisource", "authutil", "behaviour_identity", "biasfixture", "dockerignore", "domdriver",
+    "leaguefixtures", "modelfixtures", "modelutil", "paths", "uifixtures", "util",
+    # tests/lab/ (the simulated network element package)
     "ne",
-    # v0.26.0: the training pipeline's package (`eval/synth/`) and the tests' model helper.
-    "synth", "modelutil",
+    # tools/
+    "corpus_census", "trap_replay", "trappack_build",
+    # eval/
+    "harness", "metrics", "simulation", "synth",
 ]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
-# The evidence tools (v0.13.0) carry **verbatim source fragments** as injection anchors and mutant
-# bodies: each string must match `src/` character for character or the injection does not apply and
-# the demonstration silently measures nothing. Re-wrapping them to satisfy a line limit would break
-# exactly the property that makes them evidence, so E501 is lifted here and nowhere else.
-"tools/evidence/*" = ["T20", "E501"]
 "src/netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
 "eval/synth/*" = ["T20"]  # `make train` reports each stage to the person running it (v0.26.0)
 
 [tool.mypy]
 strict = true
 python_version = "3.12"
-files = ["src", "tools", "tests", "eval", "testbed"]
-mypy_path = ["src", "eval", "tools", "testbed"]
+files = ["src", "tools", "tests", "eval"]
+mypy_path = ["src", "eval", "tools", "tests/support", "tests/lab"]
 
 [[tool.mypy.overrides]]
 module = ["pysnmp.*", "pyasn1.*"]
@@ -141,6 +136,9 @@ skips = ["B101"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+# The helpers in `tests/support/`, the lab's `ne` package, and the dev trees the tests drive. Stated
+# once here rather than as a `sys.path.insert` at the top of each test that needed one.
+pythonpath = ["tests/support", "tests/lab", "tools", "eval"]
 markers = [
     # v0.12.0. Tests that actually execute `ui/app.js` in the harness DOM, so `make dom` can
     # report how many were EXECUTED. They skip — loudly, with a reason naming the requirement —

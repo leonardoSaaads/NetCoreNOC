@@ -8,8 +8,8 @@ feature: everything here is *off* the hot path and produces something that must 
 **It returns rows, and nothing else.** Turning them into the frozen predicate objects the check
 reads is `engine/mw/compile.py`'s job, and the split is the layer rule rather than a preference:
 `store` is the data layer and `engine` is above it, so a store module importing
-`engine.mw.rules` would be an upward import — which `tests/test_layers.py` refuses, and rightly.
-The store's job is rows; giving them meaning is the engine's.
+`engine.mw.rules` would be an upward import — which `tests/repo/test_layers.py` refuses, and
+rightly. The store's job is rows; giving them meaning is the engine's.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ from netcorenoc.store.base import StoreBase
 #:
 #: The values are literals here rather than imports from `engine/mw/index.py`, for the layer
 #: reason above. `test_the_store_and_the_engine_agree_on_the_index_horizons`, in
-#: `tests/test_maintenance_window.py`, asserts them against the engine's own constants, so the two
-#: cannot drift.
+#: `tests/lifecycle/test_maintenance_window.py`, asserts them against the engine's own constants, so
+#: the two cannot drift.
 INDEX_LOOKAHEAD_S = 3600.0
 INDEX_LOOKBEHIND_S = 60.0
 

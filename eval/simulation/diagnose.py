@@ -26,8 +26,8 @@ what the appliance did. The conclusion in §8 is still §8.3's, reached from the
   entity affinity, so the mass against that number is the whole question.
 
 **This reads ground truth** and that is legitimate here: §1 permits ground truth to measure the
-*simulator*, and `tests/test_simulation.py` asserts by parsing that no runtime module can reach this
-package at all.
+*simulator*, and `tests/evaluation/test_simulation.py` asserts by parsing that no runtime module can
+reach this package at all.
 """
 
 from __future__ import annotations

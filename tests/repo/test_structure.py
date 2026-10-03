@@ -1,0 +1,602 @@
+"""Structure-guard and documentation link-check for the v0.5.0 reorg.
+
+These tests assert the *shape* of the repository, not its behaviour: the ``src/`` layout and
+import resolution (so the F12 class of bug — tests passing against a source tree that a wheel
+would not reproduce — stays impossible), and that every relative Markdown link resolves (so a
+``git mv`` that relocates a doc can never silently leave a dangling cross-reference).
+
+Both are pure-stdlib and dev-only: no runtime dependency, no network. They run under ``make
+test`` (hence ``make qa``).
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+import netcorenoc
+
+import paths
+
+REPO_ROOT = paths.REPO_ROOT
+
+# --- structure guard --------------------------------------------------------------------
+
+TOP_LEVEL_REQUIRED = [
+    "src/netcorenoc/__init__.py",
+    "pyproject.toml",
+    "Makefile",
+    "Dockerfile",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "MIGRATION.md",
+    "tests",
+    "eval",
+    "tools",
+    "docs",
+    # The lab (v0.17.0; `testbed/` until v0.28.1). Required rather than optional, because a lab
+    # that quietly went missing would take the only end-to-end check of the zero-configuration
+    # claim with it.
+    "tests/lab",
+]
+
+#: The suite's layout (v0.28.1). Every test module belongs to exactly one area; `support/` holds
+#: the helpers and `fixtures/` the frozen expectations. `tests/README.md` says what each area is.
+TEST_AREAS = frozenset(
+    {
+        "api",
+        "correlation",
+        "dataset",
+        "evaluation",
+        "ingest",
+        "lab",
+        "lifecycle",
+        "model",
+        "ops",
+        "repo",
+        "security",
+        "store",
+        "ui",
+    }
+)
+
+# **v0.15.0 replaced this taxonomy** (DECISIONS #198). It named six directories, four of which held
+# the per-release record; those are deleted and their contents are at `3ecf237`. What remains is
+# organised by what a reader is trying to do, so the guard now asserts the *reader-facing* files
+# exist rather than that a set of producer-named directories does.
+DOCS_TAXONOMY = ["adr", "analysis", "plans"]
+
+
+# Every runtime submodule must resolve from the installed package under its unchanged name.
+# v0.7.2: `api` became a package (DECISIONS #79). It keeps its name and its whole re-export
+# surface, and every module inside it must resolve from the **installed** package too — the same
+# F12 guarantee the src/ layout bought, extended one level down.
+#: **Every importable `netcorenoc.*` submodule, DERIVED from the source tree** (v0.17.0,
+#: DECISIONS #326). The rule has been the same since v0.5.0 — *every runtime submodule must resolve
+#: from the installed package under its unchanged name*, so the F12 class of defect (a tree the
+#: tests pass against and a wheel would not reproduce) stays impossible.
+#:
+#: **It was a hand-written list of 84 names, and the package holds 128.** Measured at v0.16.7: 44
+#: modules were never checked to import at all — every module of `engine/dataset/`, `engine/model/`,
+#: `engine/evaluation/` and `engine/report/`, plus `crosscutting/administration`,
+#: `engine/operate/resources`, `api/routes` and `__main__`. Four of `engine/`'s six domains were
+#: entirely outside the guard, `engine.dataset.capture` — a trap-path module — among them. The rule
+#: was right and the list was 66 % of the tree, which is F112 and F113's shape exactly.
+#:
+#: A list cannot be both exhaustive and maintained by hand; this repository has proved that six
+#: times (F92, F98, F112, F113, F114). So the set is read off disk, and `test_the_derivation_*`
+#: below is what stops the derivation itself from quietly matching nothing.
+#:
+#: `api.` and `store.` had completeness tests of their own and keep them — the difference is that
+#: those two compared a hand-written slice against disk, and now every layer is covered by
+#: construction rather than three of five being covered by someone remembering.
+def _source_modules() -> dict[str, Path]:
+    """`{dotted submodule name: its file}` for every `.py` under `src/netcorenoc`.
+
+    A package's `__init__.py` maps to the package's own dotted name (`api.routes`), because that
+    name is importable and an unimportable package is exactly the F12 failure. Keyed by file so the
+    two package-shape tests below can tell a module from a package without re-walking the tree.
+    """
+    pkg = REPO_ROOT / "src" / "netcorenoc"
+    out: dict[str, Path] = {}
+    for path in sorted(pkg.rglob("*.py")):
+        rel = path.relative_to(pkg)
+        dotted = ".".join(rel.parts[:-1]) if rel.name == "__init__.py" else ".".join(rel.parts)[:-3]
+        if dotted:  # the package root's own `__init__.py` maps to "", which is `netcorenoc` itself
+            out[dotted] = path
+    return out
+
+
+SUBMODULES = sorted(_source_modules())
+
+
+def _package_modules(prefix: str) -> list[str]:
+    """The non-`__init__` module names inside one package, relative to it, from the derived set."""
+    return sorted(
+        name.split(".", 1)[1]
+        for name, path in _source_modules().items()
+        if name.startswith(f"{prefix}.") and path.name != "__init__.py"
+    )
+
+
+def test_adopts_src_layout() -> None:
+    """The import package lives at ``src/netcorenoc`` and resolves to exactly there."""
+    pkg_dir = Path(netcorenoc.__file__).resolve().parent
+    assert pkg_dir.name == "netcorenoc"
+    assert pkg_dir.parent.name == "src", f"expected src/ layout, package is at {pkg_dir}"
+
+
+def test_expected_top_level_tree() -> None:
+    missing = [p for p in TOP_LEVEL_REQUIRED if not (REPO_ROOT / p).exists()]
+    assert not missing, f"missing expected top-level paths: {missing}"
+
+
+def test_every_test_module_lives_in_an_area_and_every_area_is_documented() -> None:
+    """**The suite stays organised** (v0.28.1). Until then 116 test modules and nine helpers sat
+    flat in `tests/`, with nothing saying which tested the console, which the store and which the
+    repository itself. A test added at the root, or a new folder nobody documented, is how that
+    returns — so both are refused here rather than noticed in review."""
+    tests = paths.TESTS
+    stray = sorted(p.name for p in tests.glob("*.py") if p.name != "conftest.py")
+    assert not stray, f"test files at the root of tests/: {stray}; put each in its area"
+    folders = {p.name for p in tests.iterdir() if p.is_dir() and not p.name.startswith((".", "__"))}
+    assert folders == TEST_AREAS | {"support", "fixtures"}, (
+        f"tests/ folders {sorted(folders)} differ from the documented areas {sorted(TEST_AREAS)}"
+    )
+    misplaced = sorted(
+        str(p.relative_to(tests))
+        for p in tests.rglob("test_*.py")
+        if p.relative_to(tests).parts[0] not in TEST_AREAS
+    )
+    assert not misplaced, f"test modules outside an area folder: {misplaced}"
+    readme = (tests / "README.md").read_text(encoding="utf-8")
+    undocumented = sorted(area for area in TEST_AREAS if f"`{area}/`" not in readme)
+    assert not undocumented, f"tests/README.md does not describe: {undocumented}"
+
+
+def test_docs_taxonomy_present() -> None:
+    missing = [d for d in DOCS_TAXONOMY if not (REPO_ROOT / "docs" / d).is_dir()]
+    assert not missing, f"missing docs taxonomy dirs: {missing}"
+    assert (REPO_ROOT / "docs" / "adr" / "README.md").is_file()
+
+
+def test_the_deleted_record_directories_have_not_returned() -> None:
+    """v0.15.0 deleted the per-release record (DECISIONS #197). The convention it instituted is
+    that a release writes none of it, so the directories coming back is the visible symptom of the
+    convention lapsing — and `docs/record.md` is what a reader is sent to instead."""
+    for gone in ("gates", "scope", "releases", "architecture"):
+        assert not (REPO_ROOT / "docs" / gone).exists(), (
+            f"docs/{gone}/ is back. A release writes no gate document, no scope document, no build "
+            "report and no security review — DECISIONS #197. Forward specifications go in "
+            "docs/plans/; findings go in docs/findings.md."
+        )
+    assert (REPO_ROOT / "docs" / "record.md").is_file()
+
+
+def test_import_path_unchanged() -> None:
+    """The public import path stays ``netcorenoc`` — the src/ move is not a public change."""
+    assert netcorenoc.__name__ == "netcorenoc"
+    assert isinstance(netcorenoc.__version__, str)
+
+
+@pytest.mark.parametrize("mod", SUBMODULES)
+def test_every_submodule_resolves(mod: str) -> None:
+    __import__(f"netcorenoc.{mod}")
+
+
+def test_no_stale_flat_package() -> None:
+    """The pre-move flat ``netcorenoc/`` and the retired ``opticorr/`` must not reappear."""
+    assert not (REPO_ROOT / "netcorenoc").exists(), "flat netcorenoc/ should be under src/ now"
+    assert not (REPO_ROOT / "opticorr").exists(), "the retired opticorr/ package must stay gone"
+
+
+# --- documentation link check -----------------------------------------------------------
+
+_LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+_FENCED = re.compile(r"```.*?```", re.DOTALL)
+_INLINE_CODE = re.compile(r"`[^`]*`")
+# Directories that never hold this repository's own documentation. **Names, and names are the
+# problem**: v0.9.2 found that `.venv` here is a literal, so a virtualenv created under any other
+# name — `env`, `venv`, a CI cache — put every third-party `README.md` through the broken-link
+# checker below. The list is kept for the non-virtualenv cases and is no longer the only defence.
+_SKIP_DIRS = {".git", ".venv", "node_modules", "build", "dist", "__pycache__", ".hypothesis"}
+
+# The other half, and the one that removes the whole class: a virtualenv is identified by the
+# `pyvenv.cfg` every one of them has and no hand-written directory does. Name-independent, so the
+# guard cannot silently stop guarding because somebody called their environment something else.
+_VENV_MARKER = "pyvenv.cfg"
+
+
+def _venv_roots(roots: list[Path]) -> list[Path]:
+    """Every virtualenv under `roots`, found by its marker file rather than by its name."""
+    return [cfg.parent for root in roots for cfg in root.rglob(_VENV_MARKER)]
+
+
+def _is_inside_venv(path: Path, roots: list[Path]) -> bool:
+    return any(path.is_relative_to(venv) for venv in _venv_roots(roots))
+
+
+def _strip_code(text: str) -> str:
+    """Remove fenced blocks and inline code spans — Markdown does not render links inside them,
+    so a ``[text](target)`` written as documentation-about-links must not be treated as a link.
+    A real link whose *text* is code (``[`SECURITY.md`](SECURITY.md)``) survives: stripping the
+    inner code span leaves ``[](SECURITY.md)``, still a valid link with the real target."""
+    return _INLINE_CODE.sub("", _FENCED.sub("", text))
+
+
+def _markdown_files_under(root: Path) -> list[Path]:
+    """Every Markdown file under `root` that this repository is responsible for.
+
+    Parameterised on the root so the guard can be **driven over a fixture** rather than only over
+    the repository it happens to live in. `tests/repo/test_guard_scope.py` does exactly that: a
+    first version of that test called `_is_inside_venv` directly and stayed green when this walk was
+    reverted to the name list, because the helper still existed and nothing called it.
+    """
+    venvs = _venv_roots([root])
+    return [
+        p
+        for p in root.rglob("*.md")
+        if not any(part in _SKIP_DIRS or part.endswith(".egg-info") for part in p.parts)
+        and not any(p.is_relative_to(venv) for venv in venvs)
+    ]
+
+
+def _markdown_files() -> list[Path]:
+    return _markdown_files_under(REPO_ROOT)
+
+
+# --- the one exemption, and why it cannot be widened by hand ------------------------------
+#
+# v0.15.0 deleted the per-release record and the drafts for shipped releases (DECISIONS #197,
+# #198). Three of the four pre-registered analysis plans link into what went: `PREREGISTRATION-
+# 0.9.0.md` names the gate that recorded its SHA-256, and the v0.10.0 and v0.11.0 plans name the
+# specification drafts they were written against.
+#
+# **Those links cannot be repaired**, and the reason is the whole point of the files: editing one by
+# a single byte changes its hash and turns `tests/repo/test_preregistration.py` red. A plan is
+# immutable by construction — that is what makes "the standard of evidence was fixed before the
+# results" a checkable claim rather than a promise — so a link inside one is a reference to the tree
+# as it was, not a broken link. `docs/record.md` is where a reader is sent to resolve it.
+#
+# The exemption is **derived from the guard that makes those files immutable**, never listed here.
+# A name cannot be added to it by editing this module; a name can only join it by having its hash
+# pinned in `test_preregistration.PLANS`, which is a deliberate and visible act. That is what stops
+# this becoming the "skip list that quietly grew" every link checker eventually acquires. The
+# targets are bounded too: only the directories this release removed, so an immutable document
+# cannot dangle at an arbitrary path.
+_HISTORICAL_PREFIXES = (
+    "docs/gates/",
+    "docs/scope/",
+    "docs/releases/",
+    "docs/architecture/",
+    "docs/security/SECURITY-",
+)
+
+
+def _immutable_documents() -> frozenset[Path]:
+    """The documents this repository may not edit, taken from the guard that pins them."""
+    import test_preregistration
+
+    return frozenset(plan.path.resolve() for plan in test_preregistration.PLANS)
+
+
+def _is_historical_reference(source: Path, resolved: Path) -> bool:
+    """A link from an immutable document into a directory v0.15.0 deleted."""
+    if source.resolve() not in _immutable_documents():
+        return False
+    try:
+        relative = resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return False
+    return relative.startswith(_HISTORICAL_PREFIXES)
+
+
+def test_markdown_files_discovered() -> None:
+    assert _markdown_files(), "no Markdown files found — link check would be vacuous"
+
+
+def test_the_immutable_exemption_is_derived_from_the_hash_guard() -> None:
+    """The exemption's membership is not a list in this file, and must never become one.
+
+    `test_preregistration.PLANS` is what makes these seven documents uneditable. Keying the
+    exemption on it means a document can only become exempt by having its SHA-256 pinned — so
+    "this link may dangle" and "this file may not change" are the same fact, stated once.
+
+    The count moves when a plan is ratified, and moving it is the whole cost of adding one: v0.16.2
+    is the seventh. It is asserted **exactly** rather than as a minimum, because a `>=` here would
+    let a release retire an earlier plan's exemption while adding its own and stay green — the same
+    retirement `test_preregistration.test_every_plan_is_guarded` exists to make visible.
+    """
+    import test_preregistration
+
+    exempt = _immutable_documents()
+    assert len(exempt) == 7, f"expected the seven pinned plans, got {sorted(exempt)}"
+    assert exempt == {plan.path.resolve() for plan in test_preregistration.PLANS}
+    for path in exempt:
+        assert path.is_relative_to(REPO_ROOT / "docs" / "analysis")
+
+
+def test_the_immutable_exemption_covers_exactly_the_links_it_should() -> None:
+    """An exemption nothing uses is dead code that widens silently; one that covers too much is a
+    hole. Both are checked by counting what it actually forgives on this tree."""
+    forgiven = [
+        (md, target)
+        for md in _markdown_files()
+        for target in _LINK.findall(_strip_code(md.read_text(encoding="utf-8")))
+        if not target.strip().startswith(("http://", "https://", "mailto:", "#"))
+        and (path_part := target.strip().split("#", 1)[0].split("?", 1)[0])
+        and not (md.parent / path_part).resolve().exists()
+        and _is_historical_reference(md, (md.parent / path_part).resolve())
+    ]
+    assert len(forgiven) == 4, f"the exemption forgives {len(forgiven)} links, not 4: {forgiven}"
+    assert {(md.name, target) for md, target in forgiven} == {
+        ("PREREGISTRATION-0.9.0.md", "../gates/v0.9.0-phase-1.md"),
+        ("PREREGISTRATION-0.10.0.md", "../architecture/HONEST-JUDGE-0.10-DRAFT.md"),
+        ("PREREGISTRATION-0.10.0.md", "../architecture/EVIDENCE-BOUNDARY-0.9.2.md"),
+        ("PREREGISTRATION-0.11.0.md", "../architecture/CHAMPION-CHALLENGER-0.11-DRAFT.md"),
+    }
+    # The v0.14.0 plan forgives nothing: it links to no removed document, so the exemption is not
+    # something every plan simply receives.
+    assert not any(md.name == "PREREGISTRATION-0.14.0.md" for md, _ in forgiven)
+
+
+def test_a_dangling_link_in_a_mutable_document_is_still_broken() -> None:
+    """**The control.** The exemption must not forgive the same link in a file that could be fixed.
+
+    Same target, same shape, a document that is not hash-pinned — which must NOT be forgiven, or
+    the exemption is keyed on the target rather than on the immutability that justifies it.
+    """
+    mutable = REPO_ROOT / "docs" / "record.md"
+    immutable = next(iter(_immutable_documents()))
+    target = (REPO_ROOT / "docs" / "gates" / "v0.9.0-phase-1.md").resolve()
+    assert not target.exists(), "the fixture target must be a path that really is gone"
+    assert _is_historical_reference(immutable, target)
+    assert not _is_historical_reference(mutable, target)
+    # …and an immutable document may not dangle at just anything, only at the deleted record.
+    assert not _is_historical_reference(immutable, (REPO_ROOT / "docs" / "invented.md").resolve())
+
+
+def test_no_broken_relative_markdown_links() -> None:
+    """Every relative ``[text](target)`` link resolves to a real file (anchors stripped).
+
+    External links (``http(s):``/``mailto:``) and pure ``#anchor`` links are out of scope — this
+    guards internal cross-references, which a doc move is what breaks.
+    """
+    broken: list[str] = []
+    for md in _markdown_files():
+        for target in _LINK.findall(_strip_code(md.read_text(encoding="utf-8"))):
+            target = target.strip()
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            path_part = target.split("#", 1)[0].split("?", 1)[0]
+            if not path_part:
+                continue  # a pure in-page anchor
+            resolved = (md.parent / path_part).resolve()
+            if resolved.exists() or _is_historical_reference(md, resolved):
+                continue
+            broken.append(f"{md.relative_to(REPO_ROOT)} -> {target}")
+    assert not broken, "broken relative Markdown links:\n  " + "\n  ".join(broken)
+
+
+def test_the_api_package_holds_exactly_the_expected_modules() -> None:
+    """The v0.7.2 package is a decided shape, not an accident (MODULE-ARCHITECTURE.md §3).
+
+    A new module here must be added to `SUBMODULES` (so it is proved to resolve from the installed
+    package) and to `apisource.MODULE_ORDER` (so the source-scanning guards keep covering it).
+    Failing here is the reminder.
+    """
+    import netcorenoc.api
+
+    pkg = Path(netcorenoc.api.__file__).resolve().parent
+    # **`rglob`, not `glob`** (v0.16.2, DECISIONS #278). The twelve route modules moved into
+    # `api/routes/`, and a non-recursive walk would have declared the package *smaller* rather
+    # than *rearranged* — which is F98's failure one file over, and is why this walk moved in the
+    # same commit as `tests/support/apisource.py`'s.
+    found = sorted(
+        str(p.relative_to(pkg).with_suffix("")).replace("/", ".")
+        for p in pkg.rglob("*.py")
+        if p.stem != "__init__"
+    )
+    expected = _package_modules("api")
+    assert found == expected, f"api package contents changed: {found}"
+
+
+def test_the_store_package_holds_exactly_the_expected_modules() -> None:
+    """The v0.7.3 package is a decided shape too (MODULE-ARCHITECTURE.md §6).
+
+    The sibling of the `api` check above, and it exists for the same reason: a module added here
+    must also be added to `SUBMODULES`, so it is proved to resolve from the **installed** package
+    rather than only from the source tree. `_all.py`, the transitional holder the split moved
+    through, must not survive — its presence would mean a section never left it.
+    """
+    import netcorenoc.store
+
+    pkg = Path(netcorenoc.store.__file__).resolve().parent
+    found = sorted(p.stem for p in pkg.glob("*.py") if p.stem != "__init__")
+    expected = _package_modules("store")
+    assert found == expected, f"store package contents changed: {found}"
+    assert "_all" not in found, "the transitional store/_all.py must be deleted, not shipped"
+
+
+# --- v0.15.2: every place that declares a version is one the release check reads (F73, #230) -----
+
+
+def test_every_declared_version_is_one_the_release_check_reads() -> None:
+    """**The instrument, not the instance.**
+
+    `flake.nix` said `0.1.0` for fifteen releases while `tools/release_check.py` printed *"all
+    sources agree on version 0.15.1"* — the check read three files and the tree declared four. The
+    repair is not "add the fourth file": it is a guard that fails on the *fifth*, so the next
+    declaration cannot be invisible in the same way.
+
+    The search is over the tracked tree rather than a list, for the reason F51 records: a guard
+    scoped by a literal stops covering what the literal stops naming.
+    """
+    import re
+    import subprocess  # nosec B404 - `git ls-files` in this repository, no shell, no input
+
+    import release_check
+
+    tracked = subprocess.run(  # nosec B603 B607 - a fixed argv in this repository
+        ["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    read = {"pyproject.toml", "src/netcorenoc/__init__.py", "CHANGELOG.md", "flake.nix"}
+    # A declaration is a literal that looks like this project's own version, assigned to something
+    # called `version`. Documentation *about* a version is prose and is not an assignment.
+    pattern = re.compile(
+        r'(?:^|[^A-Za-z_])(?:__version__|version)\s*[=:]\s*["\']?(\d+\.\d+\.\d+)["\']?'
+    )
+    # Directories that hold a history rather than a declaration: the CHANGELOG's own past entries
+    # are in the file the check already reads, and `docs/` describes releases without building one.
+    # `ui/vendor/` is third-party bytes — d3 declares **its** version, which this project neither
+    # sets nor may change, and which `CHECKSUMS.txt` pins instead.
+    skip_prefixes = (
+        "docs/",
+        "tests/",
+        "eval/",
+        "tools/",
+        ".github/",
+        "src/netcorenoc/ui/vendor/",
+    )
+    declaring = set()
+    for relative in tracked:
+        if relative.startswith(skip_prefixes) or relative in read:
+            continue
+        path = REPO_ROOT / relative
+        if not path.is_file() or path.suffix in (".json", ".sql", ".png"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:  # pragma: no cover - no tracked binary declares a version
+            continue
+        if pattern.search(text):
+            declaring.add(relative)
+    assert not declaring, (
+        f"{sorted(declaring)} declare(s) a version that tools/release_check.py does not read. Add "
+        f"the file to the check and to `read` above, or the next release can be tagged with a "
+        f"version one of its artefacts disagrees with — which is exactly what F73 was."
+    )
+    # CONTROL: the check really does read four files, so the set above is not trivially satisfiable
+    # by a check that reads none.
+    assert set(release_check.main.__globals__) >= {"flake_version", "changelog_version"}
+    assert release_check.flake_version() == release_check.pyproject_version()
+
+
+# --- the derivation that replaced a hand-written list of 84 (v0.17.0, DECISIONS #326) ------------
+
+
+def test_the_derivation_finds_the_whole_package_and_not_a_slice_of_it() -> None:
+    """**Guard the guard.** A walk that matched nothing would make `test_every_submodule_resolves`
+    parametrize over an empty list — 128 green tests replaced by zero green tests, which pytest
+    reports as success.
+
+    The floor is stated as a number rather than as `> 0` because "found something" is the assertion
+    that let a hand-written list sit at 66 % of the tree for four releases without anyone noticing.
+    """
+    found = _source_modules()
+    assert len(found) >= 120, (
+        f"the derivation found {len(found)} submodules; the package holds about 128"
+    )
+    # One member from each of the five layers, so a walk that lost a whole directory is caught.
+    for name in (
+        "api.app",
+        "store.situations",
+        "engine.correlate.correlate",
+        "engine.report.bias_report",
+        "ingest.receiver",
+        "crosscutting.rbac.tables",
+        "main",
+    ):
+        assert name in found, f"the derivation missed {name}, so it is not walking the whole tree"
+
+
+def test_the_derivation_covers_every_layer_directory() -> None:
+    """The 44 modules the hand-written list never checked were four whole `engine/` domains.
+
+    Asserted by construction rather than by listing them: every top-level directory that holds
+    Python must contribute at least one name, and every `engine/` domain must too. A derivation that
+    skipped a directory would otherwise look exactly like a directory that holds nothing.
+    """
+    found = _source_modules()
+    pkg = REPO_ROOT / "src" / "netcorenoc"
+    directories = {
+        path.relative_to(pkg).parts[0] for path in pkg.rglob("*.py") if path.parent != pkg
+    }
+    for directory in sorted(directories):
+        assert any(name.split(".")[0] == directory for name in found), (
+            f"no derived submodule lives in {directory}/, so the walk lost it"
+        )
+    domains = {
+        path.relative_to(pkg / "engine").parts[0]
+        for path in (pkg / "engine").rglob("*.py")
+        if path.parent != pkg / "engine"
+    }
+    assert domains >= {"correlate", "dataset", "evaluation", "model", "operate", "report"}, domains
+    for domain in sorted(domains):
+        assert any(name.startswith(f"engine.{domain}.") for name in found), (
+            f"engine/{domain}/ contributes no derived submodule — this is the 44-module hole"
+        )
+
+
+def test_a_package_init_is_named_by_its_package_rather_than_dropped() -> None:
+    """`api/routes/__init__.py` imports as `netcorenoc.api.routes`, so it is checked.
+
+    The hand-written list omitted it. A package whose `__init__` raises is the F12 failure in its
+    purest form — every module inside it becomes unreachable — so the package names belong in the
+    set that gets imported, not only the leaf modules.
+    """
+    found = _source_modules()
+    assert "api.routes" in found, "the routes package must be imported by name"
+    assert found["api.routes"].name == "__init__.py"
+    assert "api.routes" not in _package_modules("api"), (
+        "a package name must not be counted as one of its own modules; the shape tests compare "
+        "against files, and `rglob(*.py) if p.stem != '__init__'` excludes it on the other side"
+    )
+
+
+def test_the_module_and_package_views_agree_with_the_filesystem() -> None:
+    """Two views of one walk; a disagreement between them means one of the two is wrong."""
+    for prefix in ("api", "store", "crosscutting"):
+        pkg = REPO_ROOT / "src" / "netcorenoc" / prefix
+        on_disk = sorted(
+            str(path.relative_to(pkg).with_suffix("")).replace("/", ".")
+            for path in pkg.rglob("*.py")
+            if path.stem != "__init__"
+        )
+        assert _package_modules(prefix) == on_disk, f"{prefix}: {_package_modules(prefix)}"
+
+
+def test_submodules_is_the_derivation_and_not_a_list_someone_wrote() -> None:
+    """**The hole this release found in its own guard, by injecting into it** (F121, Appendix B).
+
+    `SUBMODULES` feeds a parametrized test, so its length *is* that test's coverage. The four
+    guard-the-guard tests above all call `_source_modules()` directly — which means replacing
+
+        SUBMODULES = sorted(_source_modules())
+
+    with a hand-written list left every one of them **green** while
+    `test_every_submodule_resolves` quietly fell from 128 cases to 3. Measured: the injection
+    reported *"21 passed"* and nothing said the pin had shrunk by 125 modules.
+
+    That is precisely *"a pin whose coverage shrinks silently"* — the failure `UI_SIZES` had when
+    the re-pin helper intersected with existing keys, and every test over `UI_SIZES` iterated
+    `UI_SIZES`. Deriving a set is not enough; the thing the tests actually iterate has to BE the
+    derivation, and this is what says so.
+    """
+    assert sorted(_source_modules()) == SUBMODULES, (
+        "SUBMODULES is no longer the derivation.\n"
+        f"  it holds {len(SUBMODULES)} names; the tree holds {len(_source_modules())}\n"
+        f"  missing: {sorted(set(_source_modules()) - set(SUBMODULES))[:10]}\n\n"
+        "`test_every_submodule_resolves` parametrizes over this list, so its length is that "
+        "test's coverage. A hand-written list here silently un-checks whatever it omits — which "
+        "is how the old list came to cover 84 of 128 modules (#326)."
+    )
+    # …and the floor, stated separately: an empty derivation would satisfy the equality above.
+    assert len(SUBMODULES) >= 120, (
+        f"SUBMODULES holds {len(SUBMODULES)} names. The equality above is satisfied by two empty "
+        "collections, so the count is asserted on its own."
+    )

@@ -3,9 +3,9 @@
 **This module is the single source of truth for authorization.** `policy.py` computes answers from
 these tables; `__init__.py` re-exports them **by identity**, not by copy. Nothing else in the
 package may bind any of these names at module level, and
-`tests/test_rbac.py::test_the_tables_are_re_exported_by_identity_not_by_copy` and its sibling assert
-both facts — because a second source of truth for authorization would be worse than the debt the
-v0.7.4 split removed (DECISIONS #96).
+`tests/security/test_rbac.py::test_the_tables_are_re_exported_by_identity_not_by_copy` and its
+sibling assert both facts — because a second source of truth for authorization would be worse than
+the debt the v0.7.4 split removed (DECISIONS #96).
 
 **v0.21.0 splits this file in two, at the 400-line guard and on the seam it already had.**
 `tables.py` is *what a role may ever hold*; `route_map.py` is *which capability each route
@@ -32,7 +32,7 @@ operand. See `policy.py` for the full statement of that guarantee.
 400-line guard and that neither the table nor its justifications could be traded away to get under
 it — splitting is the fix that keeps both. Every ``"unscoped"`` justification comment travels with
 its entry, and this file is read to assert it by
-`tests/test_declaration.py::test_every_unscoped_declaration_carries_a_written_justification`.
+`tests/api/test_declaration.py::test_every_unscoped_declaration_carries_a_written_justification`.
 
 The module-level ``assert`` statements below are assertions *about these tables*, evaluated at
 import. They live here, with what they constrain: an assertion separated from its table stops
@@ -192,7 +192,8 @@ PERMISSIONS: dict[str, str] = {
 # Sensitive capabilities whose *denied* (403) attempts are still audited. THIS is the single
 # source of truth for the audited-denied set: ``api.py`` derives its "should this denial be
 # audited?" decision from here (mapping each to a representative catalog action), and
-# ``tests/test_rbac.py::test_f8_audited_denied_single_source`` fails CI if the two ever diverge.
+# ``tests/security/test_rbac.py::test_f8_audited_denied_single_source`` fails CI if the two ever
+# diverge.
 AUDITED_DENIED_PERMISSIONS: frozenset[str] = frozenset(
     {
         "quarantine.read",

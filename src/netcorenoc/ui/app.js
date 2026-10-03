@@ -9,7 +9,7 @@
  *
  * v0.12.0's `ui/app.js` was 52 738 bytes with 55 top-level functions and no test executed it.
  * The replacement is a module graph: this entry point, fourteen infrastructure modules and
- * seventeen views, each under the 400-line guard `tests/test_architecture.py` now applies to
+ * seventeen views, each under the 400-line guard `tests/repo/test_architecture.py` now applies to
  * JavaScript as well as Python. **Replacing one 52 KB file with one 52 KB file in a new syntax
  * would have been failing while appearing to succeed** (Part XI), so the shape is the deliverable
  * and the framework is only what makes the shape affordable.

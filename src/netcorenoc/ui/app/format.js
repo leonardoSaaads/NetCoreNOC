@@ -115,7 +115,7 @@ export function timeTitle(epochSeconds) {
  * The gesture kinds that assert something about a **grouping** (v0.16.4, DECISIONS #291).
  *
  * A **mirror** of `store/situation_events.py::ASSERTING_KINDS`, not a second opinion:
- * `tests/test_ui_invariants.py::test_the_console_and_the_store_agree_on_which_gestures_assert`
+ * `tests/ui/test_ui_invariants.py::test_the_console_and_the_store_agree_on_which_gestures_assert`
  * reads both files and fails if they diverge. The literal lives there because that is where the
  * prohibition is enforced — `PREREGISTRATION-0.16.0.md` §1 extends `incumbent_linked`'s rule to
  * any signal that is not an assertion about a grouping — and it is needed here because the card's
@@ -188,7 +188,7 @@ const MAX_RANK = Math.max(...SEVERITIES.map((entry) => entry.rank));
 /**
  * The top of `known_oids.SEVERITY_VOCAB`: the line between the two scales. At or below it a rank
  * came from a bundled token; above it, only from a vendor's own integers, which mean nothing until
- * ordered against each other (F99). `tests/test_severity.py` pins it against `SEVERITY_VOCAB`.
+ * ordered against each other (F99). `tests/correlation/test_severity.py` pins it against `SEVERITY_VOCAB`.
  */
 const VOCAB_MAX_RANK = 4;
 

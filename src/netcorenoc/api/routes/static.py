@@ -3,7 +3,7 @@
 No identity, no capability, no scope — which is why the declaration gate exempts non-``/api``
 paths by consultation rather than by omission (`declare.require_declaration`). `STATIC_ASSETS` is
 a compile-time allowlist, and `_asset_route` is the one registration in the package that is not a
-decorator; `tests/test_declaration.py` pins both facts.
+decorator; `tests/api/test_declaration.py` pins both facts.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from netcorenoc.api.declare import DeclaredRoutes
 #
 # A relative-parent count is a path written as a number, and it is wrong the moment the module
 # moves. `netcorenoc.__file__` is the package's own location, so this is right from anywhere in
-# the tree — the same reasoning `tools/evidence/render_drive.py` records for `ROOT`.
+# the tree — the same reasoning `tests/support/paths.py` applies to the test suite.
 UI_DIR = Path(netcorenoc.__file__).resolve().parent / "ui"
 UI_FILE = UI_DIR / "index.html"
 QUEUE_SATURATION = 0.9  # /readyz reports not-ready once the ingest queue passes this fraction
@@ -40,12 +40,12 @@ QUEUE_SATURATION = 0.9  # /readyz reports not-ready once the ingest queue passes
 #
 # A directory route would be a path-traversal surface and — worse — it would make "what does this
 # appliance serve?" unanswerable from the code. `STATIC_ASSETS` is a compile-time allowlist and
-# `tests/test_declaration.py` pins that fact; turning it into a directory would delete a
+# `tests/api/test_declaration.py` pins that fact; turning it into a directory would delete a
 # deny-by-default property to save typing.
 #
-# `tests/test_supply_chain.py::test_the_served_module_set_equals_the_module_set_on_disk` asserts
-# the two sets are equal **in both directions**, so a module that exists and is not served, and a
-# module that is served and does not exist, both fail.
+# `tests/security/test_supply_chain.py::test_the_served_module_set_equals_the_module_set_on_disk`
+# asserts the two sets are equal **in both directions**, so a module that exists and is not served,
+# and a module that is served and does not exist, both fail.
 _UI_MODULES = (
     "app.js",
     "app/api.js",

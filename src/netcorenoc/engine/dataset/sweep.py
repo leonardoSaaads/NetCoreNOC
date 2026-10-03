@@ -15,8 +15,8 @@ it structurally with nothing added. The methods stay on `Capture` as two-line de
 for.
 
 **Named `sweep` and not `maintenance`** because `engine/operate/maintenance.py` already exists
-and is the engine's maintenance *tick*. `tests/util.py` resolves a guard's subject by basename
-and refuses an ambiguous one, which is the right refusal: two `maintenance.py` files make
+and is the engine's maintenance *tick*. `tests/support/util.py` resolves a guard's subject by
+basename and refuses an ambiguous one, which is the right refusal: two `maintenance.py` files make
 *"which module does this guard read?"* unanswerable.
 
 Both degrade the way everything in capture degrades: the error is counted and surfaced through

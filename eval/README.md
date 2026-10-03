@@ -1,84 +1,106 @@
-# `eval/` — four roles under one name
+# `eval/` — offline evaluation, simulation and model training
 
-This directory holds four different kinds of thing, and knowing which is which is the whole of what
-a newcomer needs from it. v0.17.0 considered splitting them into directories and **refused**, because
-the split would have moved files without removing the one real problem (DECISIONS #322, superseded by
-#328); the problem was fixed with a digest instead (#327). So the roles are stated here.
+Development-only: nothing here ships in the wheel or the image (`MANIFEST.in` and `.dockerignore`
+prune it), and the product never imports it (`tests/lab/test_lab.py` enforces that).
 
-## 1. The gate — `harness.py`, `metrics.py`, `baselines/`
+```text
+eval/
+├── harness.py        the gate: replays the corpus, compares with the baseline (`make eval`)
+├── metrics.py        pairwise F1, ARI, entity accuracy — what the gate measures
+├── baselines/        frozen expected metrics and the log of every re-cut
+├── corpus/           eleven labelled scenarios, 3 175 events (the gate's input)
+├── generators/       scripts that rebuild `corpus/` and the attribution background set
+├── simulation/       scenario DSL and the driver that runs scenarios against a live appliance
+└── synth/            synthetic estates and incidents; trains the shipped model league
+```
 
-`make eval` replays the labelled corpus offline through the **real** ingestion path — each event is
-BER-encoded to a genuine trap datagram, parsed by `netcorenoc.ingest.receiver.parse_trap`, and driven
-through the engine — then aligns every predicted alarm to ground truth and prints a delta against
-the frozen baseline. It **exits non-zero** on a regression in `pairwise_f1`, `ari` or
-`entity_accuracy`.
+## The gate — `harness.py`, `metrics.py`, `baselines/`
 
-Releases quote `python eval/harness.py | sha256sum`. It is **`43328080…`** today (v0.27.0: the
-league's champion decides the replay, and the gate reads every scenario); it was `31ea7583…` in
-v0.26.0, which added `dual_incident_same_vendor` (`842da337…` before that re-cut), `c75b42aa…` from
-v0.18.0, and `c2e8a0ce…` from v0.7.0 until the corpus was re-cut; `CHANGELOG.md` records each move
-with its reason — this line said *"held at `c2e8a0ce…` since v0.7.0"* for several releases after it
-stopped being true, which is the one thing a quoted hash must not do. What makes the number
-useful is that it moves **only** when somebody meant it to, so the value here is the current
-one and the history is in the log.
+`make eval` replays every scenario in `corpus/` through the **real** ingestion path (each event is
+encoded as a genuine SNMP trap datagram, parsed by `netcorenoc.ingest.receiver.parse_trap` and
+driven through the engine), aligns each predicted grouping with ground truth, and prints the delta
+against `baselines/current.json`. It **exits non-zero** on a regression in `pairwise_f1`, `ari` or
+`entity_accuracy`, for the aggregate and for each scenario.
 
-**What it can and cannot see.** Since v0.27.0 (DECISIONS #429) it gates the aggregate **and every
-scenario**: the pooled aggregate counts pairs, three storms hold almost all of them, and a split
-ten-alarm scenario beside them barely moved it. It still sees only a change that moves a metric. Measured in v0.17.0: forcing every pair unlinked collapses it to two
-gated regressions, and **halving the class-affinity term moves nothing at all**, because no link on
-this corpus crossed the threshold differently. Do not read an unchanged hash as "the scorer is
-untouched"; read it as "no grouping decision on these ten scenarios changed".
+Releases quote `python eval/harness.py | sha256sum`; today it is **`43328080…`**. The hash moves only
+when grouping behaviour changes on purpose, and each move is recorded in `CHANGELOG.md`. An
+unchanged hash means "no grouping decision on these scenarios changed", not "the scorer is
+untouched".
 
-### Re-cutting the baseline
-
-    make eval-baseline REASON="why the baseline is being re-cut"
-
-It **refuses without a reason** and appends the digest it replaced beside the digest it wrote, plus
-every aggregate metric that moved, to `baselines/REBASELINE-LOG.md` (#324). A baseline exists to
-answer *did this change behaviour when I did not mean to?*; it is not a reason the corpus may never
-grow, and a re-cut nobody can audit is what the mandatory reason prevents.
-
-## 2. The corpus — `corpus/`
-
-Ten labelled scenarios, 3 159 events. **What it is a baseline of: grouping decisions on these ten
-scenarios.** It is not a baseline of scoring arithmetic, not a sample of any customer's network, and
-not evidence for a promotion (`docs/analysis/PREREGISTRATION-0.10.0.md` §6).
-
-Pinned by digest in `tests/test_eval.py` — path and contents, with the scenario and event counts
-beside it. The filenames are in the digest because `harness.run_all` globs this directory, so they
-are the **replay order**. Growing the corpus means updating that pin and re-cutting the baseline, in
-one reviewable commit.
-
-## 3. The generators — `corpus_gen.py`, `background_gen.py`
-
-Scripts, not modules: nothing imports them.
-
-    make corpus                          # rewrite corpus/*.json from the generator
-    python eval/background_gen.py --check  # compare the shipped constant against its derivation
-
-`make corpus` **writes into the gate's subject**. That is why the corpus is pinned: a regeneration
-that changes a scenario used to be invisible, and is now a red test.
-
-## 4. The simulation — `scenario_dsl.py`, `simulation/`
-
-A declarative scenario DSL and the package that drives a **live appliance** over UDP with it —
-`appliance.py`, `drive.py`, `generator.py`, `labelling.py`, `shapes.py`, `diagnose.py`. Used by
-`tests/test_simulation.py` and `tests/test_operation.py`, and by `make sim`.
-
-    make sim SCENARIO=login_burst        # against a running appliance on port 1162
-    make replay-list                     # every scenario of both kinds, derived
-
-**The evidence boundary.** A generated scenario carries its own `truth`, and that truth may never
-reach a training row, a label or the promotion path. It is traffic an operator may judge, never a
-label. `tests/test_evidence_boundary.py` and `tests/test_evidence_boundary_observable.py` are the
-guards; `testbed/` is bound by the same rule and by the same tests.
-
-## Which instrument answers which question
-
-| Question | Instrument |
+| File | Role |
 |---|---|
-| Did a grouping decision change on the ten scenarios? | `make eval` |
-| Did the corpus itself change? | `tests/test_eval.py`'s digest (#327) |
-| Did the HTTP surface change? | `tests/behaviour_identity.py` |
+| `baselines/current.json` | The baseline `make eval` compares against. |
+| `baselines/v0.2.0.json` | Historical record, asserted by `tests/evaluation/test_eval.py`. Never edited. |
+| `baselines/REBASELINE-LOG.md` | Every re-cut: the reason, the digest replaced, the metrics that moved. |
+
+Re-cutting the baseline is a reviewed, single-purpose commit:
+
+```sh
+make eval-baseline REASON="why the baseline is being re-cut"
+```
+
+The target refuses to run without a reason.
+
+## The corpus — `corpus/`
+
+Eleven hand-shaped scenarios (fibre cut, OLT storm, PON dying gasp, chassis card failure, camera
+NVR, dual incidents, flapping and background noise, decoy varbinds). It is a baseline of
+**grouping decisions on these scenarios** — not a sample of a real network and not evidence for a
+model promotion.
+
+The directory is pinned by digest in `tests/evaluation/test_eval.py` (file names and contents),
+because file order is replay order. Adding a scenario means updating that pin and re-cutting the
+baseline in the same commit.
+
+Every scenario is also a ready-made traffic source for a running appliance — see
+[`docs/simulate.md`](../docs/simulate.md).
+
+## The generators — `generators/`
+
+Scripts, not modules; nothing imports them.
+
+```sh
+make corpus                                         # rewrite corpus/*.json from corpus_gen.py
+python eval/generators/background_gen.py --check    # verify the shipped attribution background
+```
+
+`make corpus` writes into the gate's input, which is why the corpus is pinned: a regeneration that
+changes a scenario fails a test instead of passing silently.
+
+## The simulation — `simulation/`
+
+`scenario_dsl.py` describes trap scenarios declaratively and deterministically; `tools/trap_sim.py`
+sends them. The other modules boot a real appliance as a process and drive it over UDP and HTTP
+(`appliance.py`, `drive.py`), with a simulated network (`generator.py`, `shapes.py`), a simulated
+operator (`labelling.py`) and a diagnosis of the results (`diagnose.py`). They are used by
+`tests/evaluation/test_simulation.py` and `tests/ops/test_operation.py`.
+
+## Model training — `synth/`
+
+Generates synthetic estates and incident families, records them **through the real engine**, and
+trains every member of the model league shipped in `src/netcorenoc/engine/model/league/`.
+
+```sh
+make train            # full pipeline; writes the league files (deterministic, checkpointed)
+make train-validate   # validation streams only; writes nothing
+make train-verify     # reproduce every member's published numbers from the installed package
+```
+
+Checkpoints go to `eval/synth/.cache/` (git-ignored).
+
+## The evidence boundary
+
+A generated scenario carries its own `truth`. That truth may **never** reach a training row, a
+label or the promotion path: it is traffic an operator may judge, never a label.
+`tests/dataset/test_evidence_boundary.py` and `tests/dataset/test_evidence_boundary_observable.py`
+enforce this for `eval/` and for `tests/lab/`.
+
+## Which check answers which question
+
+| Question | Check |
+|---|---|
+| Did a grouping decision change on the corpus? | `make eval` |
+| Did the corpus itself change? | `tests/evaluation/test_eval.py` (digest pin) |
+| Did the HTTP surface change? | `tests/repo/test_behaviour_identity.py` |
 | Does the console still behave? | `make dom` |
-| Does a real appliance still correlate a fibre cut? | `testbed/` |
+| Does a real appliance correlate a fibre cut between two hosts? | `make lab-demo` |

@@ -162,7 +162,7 @@ ALTER TABLE feedback ADD COLUMN excluded_reconciled_out_of_scope INTEGER
 -- EFFECT AT LABEL TIME would be a reconstruction of what the policy SAID rather than of what the
 -- operator SAW, and the gap between those two is exactly what the column exists to record.
 -- `excluded_reconciled_out_of_scope` is left NULL on every row this migration touches, and
--- `tests/test_upgrade.py` asserts it on a database written by real v0.9.1 code.
+-- `tests/store/test_upgrade.py` asserts it on a database written by real v0.9.1 code.
 --
 -- WHAT AN OPERATOR WILL SEE CHANGE. On any corpus written by the shipped UI: nothing numeric.
 -- Gate 0 §6 counted the disagreement on the fullest corpus this repository can construct and found

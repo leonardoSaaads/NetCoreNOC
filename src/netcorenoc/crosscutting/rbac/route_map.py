@@ -12,7 +12,7 @@ in :data:`PUBLIC_ROUTES` below) fails closed at runtime and fails CI.
 
 **The prose is not decoration.** Every ``"unscoped"`` justification comment travels with its entry,
 and this file is read to assert it by
-`tests/test_declaration.py::test_every_unscoped_declaration_carries_a_written_justification`.
+`tests/api/test_declaration.py::test_every_unscoped_declaration_carries_a_written_justification`.
 
 The two module-level ``assert`` statements moved here with the tables they constrain, which is the
 rule `tables.py` states about its own: an assertion separated from its table stops running at the
@@ -187,7 +187,7 @@ PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset({("POST", "/api/login")})
 # F34 existed because a route's scope posture was expressed *nowhere at all*: three editor write
 # routes simply did not have one, and no table, test or reviewer could notice the omission. This
 # is that missing declaration. It is **descriptive** in v0.7.2 — it records what each route already
-# does after v0.7.1 — and `tests/test_declaration.py` asserts every entry against the route's
+# does after v0.7.1 — and `tests/api/test_declaration.py` asserts every entry against the route's
 # observed behaviour. Making the perimeter *inject* the check from this table is a ROADMAP line,
 # because injection changes control flow and control flow is behaviour (DECISIONS #80).
 #

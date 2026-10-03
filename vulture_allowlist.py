@@ -59,7 +59,7 @@ _.best_promotable  # unused method (netcorenoc/varbind_profile.py:345)
 # v0.6.0 — the scoring seam. FastAPI route handlers (registered by decorator, never called by
 # name) and the reserved/read-by-scorer LinkFeatures fields. The reserved slots are deliberately
 # unread in v0.6.0: they exist so v0.7/v0.8 features are a minor contract bump rather than a
-# breaking change (DECISIONS #49), and `tests/test_scoring.py` asserts they stay None and are
+# breaking change (DECISIONS #49), and `tests/correlation/test_scoring.py` asserts they stay None and are
 # ignored. `class_i`/`class_j`/`ne_i`/`ne_j` are carried for future scorers and for provenance;
 # the built-in AdditiveScorer scores on the affinities already resolved from them.
 get_scorer  # unused function (netcorenoc/api/routes_scorer.py)
@@ -93,8 +93,8 @@ event_type_j  # unused variable (netcorenoc/scoring.py:92)
 # now?" and calls `resolve_capabilities` instead, so nothing in the runtime package calls
 # `role_allows` any more. It is kept, exported, and documented because it is the oracle the
 # generated authorization matrix and the governance-parity test compare the resolver against
-# (`tests/test_rbac.py::test_authorization_matrix`,
-# `tests/test_governance.py::test_empty_policy_resolves_exactly_to_the_v060_behaviour`): deleting
+# (`tests/security/test_rbac.py::test_authorization_matrix`,
+# `tests/security/test_governance.py::test_empty_policy_resolves_exactly_to_the_v060_behaviour`): deleting
 # it would leave the parity gate with nothing independent to check `ceiling ∩ ∅` against.
 get_rbac_policy  # unused function (netcorenoc/api/routes_governance.py)
 set_rbac_policy  # unused function (netcorenoc/api/routes_governance.py)
@@ -107,7 +107,7 @@ role_allows  # unused function (netcorenoc/rbac.py) - the ceiling oracle for the
 # consume: the bias report needs only aggregates, and the consumer is v0.9.0's training loop.
 #
 # It is kept, exported and tested because it is the accessor that makes the release's headline
-# property demonstrable at all — `tests/test_dataset.py::test_the_bag_survives_a_merge_that_
+# property demonstrable at all — `tests/dataset/test_dataset.py::test_the_bag_survives_a_merge_that_
 # destroys_every_other_trace` uses it to recover a bag after a merge has destroyed every other
 # trace, which is the thing `docs/gates/v0.8.0-phase-0.md` §1 proved impossible before. Deleting it
 # would leave that proof with nothing to assert against, and would make a future release re-derive
@@ -127,7 +127,7 @@ feedback_members  # unused method (netcorenoc/store/feedback.py) - the recovered
 # (`excluded_count`, and `m * (n - m)` computed from the label row), and the consumer of the member
 # ids themselves is v0.10.0, where an asserted negative pair becomes a training row.
 #
-# It is kept for the reason its sibling is kept, and one more. `tests/test_partial_split.py` uses it
+# It is kept for the reason its sibling is kept, and one more. `tests/lifecycle/test_partial_split.py` uses it
 # to assert the release's central claim — that a partial split records `marked` and nothing else —
 # in six places, including the withdrawn-marks test that proves a corrected verdict REPLACES the
 # marking rather than merging it. Without the accessor those assertions would each hand-roll the
@@ -189,12 +189,12 @@ event_members
 # the only place `src/` needs it is the DEFAULT clause of a SQL statement, which vulture cannot
 # read. It is a named constant rather than a bare `""` for the reason `0011`'s three-state columns
 # are: a sentinel with a meaning belongs beside the code that would otherwise repeat the literal,
-# and `tests/test_bag_identity.py` asserts against the name so the two cannot drift.
+# and `tests/dataset/test_bag_identity.py` asserts against the name so the two cannot drift.
 UNKEYED_BAG  # the pre-0015 sentinel (netcorenoc/store/feedback.py)
 # --- v0.17.1, the bundled tables' citations ------------------------------------------------------
 # `BUNDLED_SOURCES` names the standard or registry behind every public-data table in
 # `ingest/known_oids.py` (DECISIONS #344). Nothing in `src/` reads it yet — the console's source
-# line is the reader it is for — and `tests/test_known_oids.py` reaches it through `vars()` while
+# line is the reader it is for — and `tests/ingest/test_known_oids.py` reaches it through `vars()` while
 # deriving the table set from the module, which is an access no static scan can see.
 #
 # **One entry, deliberately.** The first shape of this was five `<NAME>_SOURCE` constants, which
@@ -208,7 +208,7 @@ BUNDLED_SOURCES  # every bundled table's citation (netcorenoc/ingest/known_oids.
 # is here for the identical reason and has been since v0.16.0: FastAPI holds the reference, `src/`
 # holds none, and a static scan sees a function nobody calls. They are listed one per line rather
 # than suppressed by a pattern, because a pattern would also hide a handler that had genuinely
-# stopped being registered — which is the failure `tests/test_declaration.py` exists to catch and
+# stopped being registered — which is the failure `tests/api/test_declaration.py` exists to catch and
 # this file must not undo.
 list_windows  # GET /api/maintenance-windows (netcorenoc/api/routes/maintenance.py)
 create_window  # POST /api/maintenance-windows
@@ -225,7 +225,7 @@ _check_oid  # CollectionRuleIn: an OID rule's arc shape
 _check_kind  # CollectionRuleIn: the fields a rule kind may carry
 _check_tz  # _WindowBody: the zone must be one THIS host can resolve
 _check_window  # _WindowBody: starts before ends, and the duration is sane
-# **The index horizons**, read by `tests/test_maintenance_window.py` and by nothing in `src/` —
+# **The index horizons**, read by `tests/lifecycle/test_maintenance_window.py` and by nothing in `src/` —
 # they are the engine's declaration of how far either side of now the snapshot reaches, and
 # `store/mw_compile.py` restates them as literals because the layer model forbids the store
 # importing the engine. The test asserts the two against each other, so a scan that could see it

@@ -40,8 +40,8 @@ __all__ = ["FLOOR", "INTERCEPT", "SLOPE", "admits", "multiplier"]
 FLOOR = 0.50
 
 #: `m(c) = INTERCEPT + SLOPE * c`. Two named constants rather than two literals in an expression,
-#: because the plan registers the pair and a guard reads them
-#: (`tests/test_lifecycle.py::test_the_confidence_multiplier_is_the_one_the_plan_registered`).
+#: because the plan registers the pair and a guard reads them:
+#:`tests/lifecycle/test_lifecycle.py::test_the_confidence_multiplier_is_the_one_the_plan_registered`
 INTERCEPT = 0.6
 SLOPE = 0.4
 

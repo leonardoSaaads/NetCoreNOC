@@ -1,7 +1,7 @@
 """Flap detection: a fingerprint that re-activates on a short, regular period is noise.
 
 Split out of `engine.py` in v0.26.0 to keep the ingest path inside its audited size (the cohesion
-exemption in `tests/test_architecture.py`): this is a pure, in-memory detector with no lock, no
+exemption in `tests/repo/test_architecture.py`): this is a pure, in-memory detector with no lock, no
 I/O and no await, so reading it does not require reading the batch lock and vice versa. The engine
 calls :meth:`FlapDetector.observe` once per activation and :meth:`FlapDetector.recent` for the
 ``chatter`` pair feature (ADR #418).

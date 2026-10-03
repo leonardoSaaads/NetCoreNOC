@@ -17,10 +17,10 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # trap_replay
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "eval"))  # scenario_dsl
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "eval"))  # simulation.scenario_dsl
 
-import scenario_dsl
 import trap_replay
+from simulation import scenario_dsl
 
 
 def main() -> None:

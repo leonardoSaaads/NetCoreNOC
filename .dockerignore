@@ -47,17 +47,16 @@ docker-compose.yml
 flake.nix
 .editorconfig
 
-# The testbed (v0.17.0). The lab drives the product over UDP and HTTP and is never imported by it;
-# keeping it out of the build context is the other half of that boundary.
-testbed/
+# The lab (`tests/lab/`) is excluded with `tests/`: it drives the product over UDP and HTTP and is
+# never imported by it, and keeping it out of the build context is the other half of that boundary.
 
-# --- what `testbed/Dockerfile.ne` copies, re-included (v0.18.0, F130) -------------------------
+# --- what `tests/lab/Dockerfile.ne` copies, re-included (v0.18.0, F130) -------------------------
 #
 # The three exclusions above hid exactly the three paths the NE image COPYs, so
-# `docker compose up --build` in `testbed/` failed with `"/testbed/scenarios": not found` and
+# `docker compose up --build` in `tests/lab/` failed with `"/tests/lab/scenarios": not found` and
 # v0.17.0 shipped an image that could not be built. `docker compose config` validates YAML and
 # never reads this file, which is why nothing caught it;
-# `tests/test_deploy.py::test_every_dockerfile_copy_source_survives_the_ignore_file` now does,
+# `tests/ops/test_deploy.py::test_every_dockerfile_copy_source_survives_the_ignore_file` now does,
 # by deriving the COPY sources from every Dockerfile rather than listing them here.
 #
 # Docker resolves the LAST matching pattern, so these three lines must stay below the two
@@ -69,5 +68,5 @@ testbed/
 # secret, no credential, ~40 KB. The secret-free intent of this file is untouched; every `.env`,
 # key and certificate rule above still applies, and nothing here re-includes one.
 !tools/trap_replay.py
-!testbed/ne
-!testbed/scenarios
+!tests/lab/ne
+!tests/lab/scenarios

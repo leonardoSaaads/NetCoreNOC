@@ -50,9 +50,9 @@ ways**, which is the reason to state them rather than only set them.
 So if you are unsure, **raise the memory limit before the CPU limit**: one costs latency you can
 see, the other costs traps you cannot.
 
-`tests/test_perf.py::burst` drives 100 000 traps in one second through the real ingest path, which
-is what 512 MiB is sized about four times over. One CPU is what a single event loop is bounded by
-anyway; giving the container more does not make correlation faster.
+`make burst` sends 100 000 traps in one second to a running appliance through the real ingest path,
+which is what 512 MiB is sized about four times over. One CPU is what a single event loop is bounded
+by anyway; giving the container more does not make correlation faster.
 
 To change them, edit `deploy.resources` in `docker-compose.yml`. With plain `docker run`, the
 equivalents are `--cpus 1.0 --memory 512m`.
@@ -135,9 +135,9 @@ test tooling.
 
 ## Trying it without any hardware
 
-See [`operate.md`](operate.md#3-sending-traps) — the bundled scenarios are sent as **real SNMP PDUs
-over UDP**, not loaded into the database, so the correlation you see afterwards is the appliance's
-own work.
+See [`simulate.md`](simulate.md) (Linux and Windows): the bundled scenarios are sent as **real SNMP
+PDUs over UDP**, not loaded into the database, so the correlation you see afterwards is the
+appliance's own work.
 
 ## Upgrading
 

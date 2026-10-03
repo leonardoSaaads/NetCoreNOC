@@ -71,17 +71,19 @@ curl -b cookies http://localhost:8080/api/stats
 
 Times shown are when the **appliance received** each trap, in your browser's time zone.
 
-### 3. Sending traps without equipment
+## 3. Sending traps without equipment
 
-The bundled scenarios are sent as real SNMP traps over UDP. Run the appliance **without Docker** for
-this (Docker's port proxy rewrites the source address of local traffic, so every simulated device
-would look like one):
+The repository's tools send real SNMP traps to the appliance, so it can be tried with no network
+devices. [`simulate.md`](simulate.md) has the steps for Linux and Windows. In short, from a clone:
 
 ```sh
 NETCORENOC_TRAP_PORT=1162 .venv/bin/python -m netcorenoc.main &
 make replay-list                     # every scenario
 make replay SCENARIO=olt_storm       # send one
 ```
+
+Run the appliance **without Docker** for this: Docker's port proxy rewrites the source address of
+local traffic, so every simulated device would look like one.
 
 ## 4. How alarms repeat, clear and come back
 

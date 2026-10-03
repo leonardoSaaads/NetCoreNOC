@@ -21,7 +21,7 @@ each situation's state, and it is the only place that decision is made:
 
 Read-only against the store (one bounded read of the states involved, under the batch lock the
 caller holds) and pure otherwise. On a schema without `0027` it proposes nothing and the engine
-behaves exactly as it did in v0.26.0 — which is what `tests/test_upgrade.py` relies on.
+behaves exactly as it did in v0.26.0 — which is what `tests/store/test_upgrade.py` relies on.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 from netcorenoc.engine.correlate.grouping import Placement
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.operate.engine import Engine
 
 __all__ = ["Route", "lapse", "route"]

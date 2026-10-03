@@ -11,7 +11,7 @@
  * keep. Here it is a property of the renderer: an interpolated value becomes a text node, never
  * markup, because that is what the diff does with it. The only way back to the old failure is
  * `dangerouslySetInnerHTML`, which is a single searchable token that no module uses and
- * `tests/test_security_ui.py` refuses.
+ * `tests/ui/test_security_ui.py` refuses.
  *
  * `esc()` survives anyway, for two reasons that are not decoration: it is the harness's proof of
  * execution (`domdriver.ESC_PROOF`), and it is still the right tool on the rare path that
@@ -27,7 +27,7 @@ export { h, render, Component, Fragment };
 /**
  * Escape the five characters that can change the meaning of markup.
  *
- * Byte-identical in behaviour to v0.12.0's `esc()`, deliberately: `tests/domdriver.py` asserts
+ * Byte-identical in behaviour to v0.12.0's `esc()`, deliberately: `tests/support/domdriver.py` asserts
  * its output for `'<a href="x">'` as the harness's proof that the real UI evaluated, and that
  * constant has not moved.
  */

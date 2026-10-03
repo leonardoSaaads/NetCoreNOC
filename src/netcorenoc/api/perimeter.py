@@ -55,8 +55,8 @@ BOOTSTRAP_ALLOWED = frozenset(
 # Presentation layer for the audited-denied set: each capability in
 # ``rbac.AUDITED_DENIED_PERMISSIONS`` (the single source) maps to the representative catalog
 # action logged on a denied (403) attempt. The keys must exactly equal that set — asserted at
-# import (below) and by ``tests/test_rbac.py::test_f8_audited_denied_single_source`` so the two
-# tables can never drift (F8).
+# import (below) and by ``tests/security/test_rbac.py::test_f8_audited_denied_single_source`` so the
+# two tables can never drift (F8).
 DENIED_ACTION = {
     "quarantine.read": "quarantine.read",
     "audit.read": "audit.read",

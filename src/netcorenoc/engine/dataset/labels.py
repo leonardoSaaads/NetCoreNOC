@@ -204,8 +204,8 @@ def coverage(bag: list[int], promoted: int) -> dict[str, Any]:
     prevent, one level up.
 
     A **fourth** state the specification's three do not cover, found by
-    `tests/test_bias.py::test_the_report_counts_the_zero_member_bag`: an **empty** bag. The three
-    cases all presuppose a bag with members, and an empty one is the degenerate case Phase 0
+    `tests/model/test_bias.py::test_the_report_counts_the_zero_member_bag`: an **empty** bag. The
+    three cases all presuppose a bag with members, and an empty one is the degenerate case Phase 0
     discovered — a verdict posted to an already-merged situation. Reported as `full` (which
     `promoted >= expected` makes vacuously true when `expected` is zero) it would tell a reader a
     complete situation was captured; reported as `none` it would suggest pairs existed and were not

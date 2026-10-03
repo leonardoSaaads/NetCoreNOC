@@ -307,9 +307,9 @@ def varbind_name(oid: str) -> str | None:
 #:
 #: One mapping rather than five `<NAME>_SOURCE` constants, because five constants is a list that
 #: grows — add a sixth table in v0.18.0 and somebody has to remember a sixth line in three places.
-#: `tests/test_known_oids.py` derives the set of bundled tables from this module and asserts each
-#: has an entry here, so a table added without a citation fails the guard by name and no list has
-#: to be maintained to make that happen.
+#: `tests/ingest/test_known_oids.py` derives the set of bundled tables from this module and asserts
+#: each has an entry here, so a table added without a citation fails the guard by name and no list
+#: has to be maintained to make that happen.
 #:
 #: **A citation is a constant and not a comment** because the appliance has to be able to *quote*
 #: it. An operator looking at a severity the console says came from `standard` is entitled to ask

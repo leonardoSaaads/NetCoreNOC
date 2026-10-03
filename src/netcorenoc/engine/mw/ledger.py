@@ -23,8 +23,8 @@ the appliance genuinely does not know. Inventing one would be prime directive 2'
 
 Not an alarm, not shown, not correlated, not trained on, not in the dataset. The ledger table is
 read by exactly two things — the end-of-window sweep and the admin-only window detail — and
-`tests/test_maintenance_window.py` runs the injection: a ledger row reaching the correlator, the
-learner, the dataset or any route below `admin` fails the suite.
+`tests/lifecycle/test_maintenance_window.py` runs the injection: a ledger row reaching the
+correlator, the learner, the dataset or any route below `admin` fails the suite.
 
 ## The two answers, and which one ships
 
@@ -235,7 +235,7 @@ def to_rows(
 
     **The conversion happens here, at the engine's boundary**, because `store` is the data layer
     and may not import these types — an upward import turns a stack into a knot, and
-    `tests/test_layers.py` refuses one. The store writes rows; what the six fields *mean* is
+    `tests/repo/test_layers.py` refuses one. The store writes rows; what the six fields *mean* is
     documented in this module, which is where a reader asking *"why is there no severity column"*
     will look.
     """

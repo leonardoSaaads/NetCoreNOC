@@ -16,7 +16,8 @@ The constants below travel with the classes whose semantics they define. Four of
 them in `varbind_profile.py` would make this module import from the module that imports it
 (DECISIONS #97). `varbind_profile` re-exports every name here, so
 `varbind_profile.MAX_DISPLAY_CHARS` (used by `severity.py`) and
-`varbind_profile.ENTITY_PROMOTE_SCORE` (used by `tests/test_promotion.py`) keep resolving.
+`varbind_profile.ENTITY_PROMOTE_SCORE` (used by `tests/correlation/test_promotion.py`) keep
+resolving.
 """
 
 from __future__ import annotations

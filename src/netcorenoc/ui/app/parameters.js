@@ -21,7 +21,7 @@
  * The client's refusal is an affordance; the server's is the control. For the scorer's degeneracy
  * bounds **both exist**: `scoring.validate_params` refuses out-of-bounds parameters at the API and
  * `hardeningRefusal` below refuses them before the request is sent. That pair is real, live, and
- * is what `tests/test_ui_invariants.py` demonstrates red.
+ * is what `tests/ui/test_ui_invariants.py` demonstrates red.
  *
  * The pre-registered sufficiency floors (`asserting_bags >= 50`, `asserting_incidents >= 30`) are
  * module constants in `routes_promotion.py` with **no write path at all**. This release does not
@@ -50,7 +50,7 @@ export const MAX = "max";
  * to show. A bare "rejected" teaches nothing and invites a workaround; `SECURITY-REVIEW-0.6` §4
  * already treats wording as a control for the scorer preview and the same standard applies here.
  *
- * Pure, and deliberately: `tests/test_ui_invariants.py` drives it directly with every bound the
+ * Pure, and deliberately: `tests/ui/test_ui_invariants.py` drives it directly with every bound the
  * server publishes, without a DOM and without a server that would refuse.
  */
 export function hardeningRefusal({ label, submitted, floor, direction, why, unit }) {

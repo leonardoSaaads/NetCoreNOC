@@ -12,10 +12,9 @@ qa: lint typecheck deadcode scan test eval
 # `security` is `scan` plus a PyPI query, and CI runs it as its own step. `scan` exists so that the
 # offline half is also in `qa` (v0.13.0).
 #
-# **Why the split.** v0.13.0 added three tools under `tools/evidence/` that shell out to pytest and
-# git. `make qa` was green, every gate document was written, the release was tagged — and CI failed
-# on `make security`, because bandit is the one static analyser this project runs that `qa` never
-# invoked. A local gate that does not run what CI runs is a gate with a hole in it, and the hole is
+# **Why the split.** In v0.13.0 `make qa` was green, every gate document was written, the release
+# was tagged — and CI failed on `make security`, because bandit is the one static analyser this
+# project runs that `qa` never invoked. A local gate that does not run what CI runs is a gate with a hole in it, and the hole is
 # exactly the size of the check nobody local performs.
 #
 # `pip_audit` stays out of `qa` deliberately: it queries PyPI, so putting it there would make the
@@ -36,12 +35,12 @@ deadcode:
 
 # Vendored third-party asset integrity (§A.6): fail if d3's bytes drift from the pinned SHA-256.
 checksums:
-	$(PYTHON) -m pytest -q tests/test_supply_chain.py
+	$(PYTHON) -m pytest -q tests/security/test_supply_chain.py
 
 # Structure guard + documentation link check (v0.5.0): src/ layout, import resolution, and no
 # broken relative Markdown links. Also runs as part of `make test`.
 linkcheck:
-	$(PYTHON) -m pytest -q tests/test_structure.py
+	$(PYTHON) -m pytest -q tests/repo/test_structure.py
 
 lint:
 	$(PYTHON) -m ruff check .
@@ -89,9 +88,8 @@ run:
 # **v0.16.4 (DECISIONS #295): `SCENARIO`, and a target that lists them.** This was pinned to
 # `fiber_cut`, so an operator who wanted any of the other twelve had to know that `eval/corpus/`
 # exists, that its files are JSON, and that `tools/trap_replay.py` takes a path. Knowing the tree
-# is exactly the gap the maintainer named, and a variable plus a listing closes it. No harness, no
-# scenario wrapper, no container: `eval/scenario_dsl.py` and `tests/test_operation.py` already
-# exist and the ask is ergonomics.
+# is exactly the gap the maintainer named, and a variable plus a listing closes it. The full guide,
+# Linux and Windows: docs/simulate.md.
 replay:
 	$(PYTHON) tools/trap_replay.py eval/corpus/$${SCENARIO:-fiber_cut}.json \
 		--port $${NETCORENOC_TRAP_PORT:-1162}
@@ -115,7 +113,8 @@ loadtest:
 		--port $${NETCORENOC_TRAP_PORT:-1162}
 
 # A 100 000-trap burst against a locally running NetCoreNOC (the v0.3.0 window/backpressure
-# guard; the pass/fail assertion lives in tests/test_perf.py::burst).
+# check; watch `queue_depth` and `ingest_gaps`). The suite's own lossless-ingest assertion is
+# tests/ingest/test_perf.py.
 burst:
 	$(PYTHON) tools/trap_replay.py --synthetic 50 --classes 20 --rate 100000 --duration 1 \
 		--port $${NETCORENOC_TRAP_PORT:-1162}
@@ -130,8 +129,8 @@ eval:
 #     make eval-baseline REASON="v0.17.2 adds two PON scenarios; the gate is a baseline of the
 #                                corpus, so it is re-cut with it"
 #
-# **Why a target rather than an edit.** `make eval` hashes its own stdout, and that hash has held at
-# `c2e8a0ce…` since v0.7.0 — which is what makes it useful to a refactor: *"did this change
+# **Why a target rather than an edit.** `make eval` hashes its own stdout, and that hash moves only
+# when somebody meant it to — which is what makes it useful to a refactor: *"did this change
 # correlation behaviour when I did not mean to?"*. It is NOT there to stop the corpus growing, and
 # before this target the only way to grow it was to overwrite the baseline by hand, which is an edit
 # nobody can audit. So the re-cut is mechanical, it demands a reason, and it appends the digest it
@@ -166,7 +165,7 @@ train-verify:
 
 # Regenerate the labelled corpus from its deterministic generator.
 corpus:
-	$(PYTHON) eval/corpus_gen.py
+	$(PYTHON) eval/generators/corpus_gen.py
 
 # Run a declarative DSL scenario (trap simulator) against a locally running NetCoreNOC over UDP.
 # SCENARIO defaults to login_burst; list options with `python tools/trap_sim.py --list`.
@@ -174,28 +173,28 @@ sim:
 	$(PYTHON) tools/trap_sim.py $${SCENARIO:-login_burst} --send \
 		--port $${NETCORENOC_TRAP_PORT:-1162}
 
-# --- the testbed (v0.17.0, DECISIONS #329-#334) ------------------------------------------------
+# --- the lab (v0.17.0, DECISIONS #329-#334; `tests/lab/` since v0.28.1) --------------------------
 #
-# A two-host fibre cut you can trigger while watching it. `testbed/README.md` is the whole story;
+# A two-host fibre cut you can trigger while watching it. `tests/lab/README.md` is the whole story;
 # these four targets are the commands it prints, so an operator never has to know the tree.
 #
 # `lab` leaves the appliance and both NE agents running and tells you what to type next. `lab-demo`
 # is the unattended version CI runs: three cut/repair cycles, then it reports from the DATABASE —
 # two distinct sources, the situation, the clears — rather than from a log line.
 lab:
-	$(PYTHON) testbed/run_local.py
+	$(PYTHON) tests/lab/run_local.py
 
 lab-demo:
-	$(PYTHON) testbed/run_local.py --demo --cycles $${CYCLES:-3} --hold-s $${HOLD:-18}
+	$(PYTHON) tests/lab/run_local.py --demo --cycles $${CYCLES:-3} --hold-s $${HOLD:-18}
 
 lab-cut:
-	$(PYTHON) testbed/control.py cut
+	$(PYTHON) tests/lab/control.py cut
 
 lab-repair:
-	$(PYTHON) testbed/control.py repair
+	$(PYTHON) tests/lab/control.py repair
 
 lab-status:
-	$(PYTHON) testbed/control.py status
+	$(PYTHON) tests/lab/control.py status
 
 # Apply pending schema migrations to NETCORENOC_DB (idempotent; runs at startup too).
 migrate:
@@ -205,15 +204,15 @@ migrate:
 
 # The feedback-dataset bias report (v0.8.0). Beside `make eval` deliberately: both are
 # deterministic offline reports over frozen inputs, and both are GATES rather than dashboards —
-# `tests/test_bias.py` compares this output byte-for-byte against a frozen expectation, so it goes
-# red the day capture changes shape. Emits aggregates only; reads NETCORENOC_DB.
+# `tests/model/test_bias.py` compares this output byte-for-byte against a frozen expectation, so it
+# goes red the day capture changes shape. Emits aggregates only; reads NETCORENOC_DB.
 bias-report:
 	$(PYTHON) -m netcorenoc dataset bias
 
 # v0.9.0's primary deliverable, and it needs no model: how well the built-in scorer ALREADY agrees
 # with the operators, conditioned by bag size, storm, mixed-vs-uniform, scope, operator and capture
 # provenance. Beside `make bias-report` for the same two reasons — deterministic offline report over
-# frozen inputs, and a GATE rather than a dashboard (`tests/test_agreement.py` compares it
+# frozen inputs, and a GATE rather than a dashboard (`tests/model/test_agreement.py` compares it
 # byte-for-byte). Emits aggregates only; reads NETCORENOC_DB.
 agreement-report:
 	$(PYTHON) -m netcorenoc dataset agreement

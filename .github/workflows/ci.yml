@@ -24,7 +24,7 @@ permissions:
 #   * **the image was never built.** F85 shipped a wheel whose console was missing five modules, and
 #     the only thing that catches that class is building the artifact. In.
 #   * **the appliance was never started.** Every gate ran against source; nothing proved the thing
-#     boots, applies sixteen migrations and answers `/healthz`. In, together with the testbed, which
+#     boots, applies sixteen migrations and answers `/healthz`. In, together with the lab, which
 #     is the first end-to-end check of the zero-configuration claim this repository has ever had.
 #
 # **Four parallel jobs, not one serial one.** The old job took its steps in sequence and a lint error
@@ -96,10 +96,10 @@ jobs:
           echo "### make eval" >> "$GITHUB_STEP_SUMMARY"
           cat eval-hash.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Behaviour-identity record
-        run: python -m pytest -q tests/test_behaviour_identity.py
+        run: python -m pytest -q tests/repo/test_behaviour_identity.py
       - name: Secret-leak scan
         # Drives login/token/user flows under caplog and asserts no secret value appears in a line.
-        run: python -m pytest -q tests/test_findings.py -k "secret_leak or redaction"
+        run: python -m pytest -q tests/security/test_findings.py -k "secret_leak or redaction"
 
   # 3. The console, in a DOM, with Node actually present. **The job that did not exist.**
   console:
@@ -115,7 +115,7 @@ jobs:
         run: pip install -e .[dev]
       - name: Check the runner's Node, and say so rather than skipping
         # **No `actions/setup-node` here, deliberately, and the reason is honesty about pinning.**
-        # `tests/test_workflows.py` requires every action to be pinned by a 40-character commit SHA,
+        # `tests/ops/test_workflows.py` requires every action to be pinned by a 40-character commit SHA,
         # and the environment v0.17.0 was built in cannot reach github.com/actions/* to look one up —
         # so pinning `setup-node` would mean committing a SHA nobody in this release verified, and a
         # wrong pin fails the job with an error that points at nothing.
@@ -157,7 +157,7 @@ jobs:
 
   # 4. The artifacts, and the appliance actually running. **Neither existed before.**
   appliance:
-    name: appliance (wheel, image, boot, /healthz, testbed)
+    name: appliance (wheel, image, boot, /healthz, lab)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -195,8 +195,8 @@ jobs:
           # search); v0.27.0: 26 -> 27 (`0027` Pending and the league's decisions). A literal,
           # deliberately: a release that adds a migration
           # changes this line in the same commit, which is what makes the schema a reviewable
-          # diff rather than a thing that grew. `tests/test_upgrade.py` and
-          # `tests/test_bag_identity.py` carry the same pin for the same reason.
+          # diff rather than a thing that grew. `tests/store/test_upgrade.py` and
+          # `tests/dataset/test_bag_identity.py` carry the same pin for the same reason.
           python - <<'PY'
           import sqlite3
           v = sqlite3.connect("/tmp/ci.db").execute("PRAGMA user_version").fetchone()[0]
@@ -223,7 +223,7 @@ jobs:
       - name: Build the container image
         run: make dist-image
 
-      - name: The testbed, driven end to end
+      - name: The lab, driven end to end
         # The first end-to-end check of the zero-configuration claim: two hosts with distinct
         # addresses, a fibre cut, the storm, the clears. Reported from the DATABASE, not a log line.
         #
@@ -231,10 +231,10 @@ jobs:
         # this job has already built the image it would use, so driving the lab directly tests the
         # lab instead of testing Docker networking.
         run: |
-          python testbed/run_local.py --demo --cycles 3 --hold-s 18 --settle-s 16
+          python tests/lab/run_local.py --demo --cycles 3 --hold-s 18 --settle-s 16
           python - <<'PY'
           import sqlite3
-          db = sqlite3.connect("testbed/state/testbed.db")
+          db = sqlite3.connect("tests/lab/state/lab.db")
           db.row_factory = sqlite3.Row
           sources = [r["ip"] for r in db.execute("SELECT DISTINCT ip FROM device ORDER BY ip")]
           assert len(sources) == 2, f"the receiver recorded {sources}; the lab has two hosts"

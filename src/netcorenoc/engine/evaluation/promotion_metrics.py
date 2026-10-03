@@ -47,7 +47,7 @@ from netcorenoc.engine.evaluation import shadow_assertions, shadow_eval
 from netcorenoc.engine.evaluation.promotion import QUANTITY_NAMES, Metrics, Quantity
 from netcorenoc.engine.evaluation.shadow_cv import Interval, cluster_bootstrap
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.correlate.scorer_contract import LinkScorer
     from netcorenoc.store import Store
 
@@ -141,7 +141,7 @@ def _hidden(members: list[int], marked: frozenset[int], hidden: int, blind: int)
     What the counts DO determine is the shape: `blind` of the hidden members are marked and
     `hidden - blind` of them are not, so `observable_pairs()` returns exactly the
     `(m - b) · ((n - m) - (h - b))` that `PREREGISTRATION-0.10.0.md` §2.4 registers and
-    `tests/test_evidence_boundary_observable.py` re-derives by brute force. The previous
+    `tests/dataset/test_evidence_boundary_observable.py` re-derives by brute force. The previous
     reconstruction took the **last `h` members** of live membership, which put zero hidden members
     inside the marked set whatever `excluded_reconciled_out_of_scope` said — correct only where
     that column was 0, and silently understating the count everywhere else.

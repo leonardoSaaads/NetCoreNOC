@@ -3,7 +3,7 @@
 **v0.28.0 (ADRs #431, #433).** One alarm row is one fingerprint — ``(device, class, instance)`` —
 and it is shared by every occurrence of that fault. Until this release an *active* alarm that was
 raised again was always a **repeat**: its count went up and nothing else happened. Measured on
-real-engine scenarios (`tests/test_occurrences.py`):
+real-engine scenarios (`tests/lifecycle/test_occurrences.py`):
 
 * **an operator closed the situation, the fault kept reporting** — every later trap was absorbed
   into the resolved situation. The alarm was active and in no live view: invisible;
@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 from netcorenoc.engine.dataset import gestures
 from netcorenoc.ingest.known_oids import OCCURRENCE_NOTIFICATIONS
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.operate.engine import Engine
     from netcorenoc.ingest.events import TrapEvent
     from netcorenoc.store import IngestResult
