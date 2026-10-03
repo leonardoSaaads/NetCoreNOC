@@ -12,7 +12,7 @@ pre-registration's questions and are answered in `engine/dataset/gestures.py` an
 `engine/model/training.py`. This module is SQL.
 
 **No method here takes ``store.lock``.** That is this package's contract for callers
-(`tests/test_store_concurrency.py` walks the MRO, so this module is covered by construction).
+(`tests/store/test_store_concurrency.py` walks the MRO, so this module is covered by construction).
 """
 
 from __future__ import annotations
@@ -106,7 +106,7 @@ class SituationEventMixin(StoreBase):
         **Called by the statement group that changed the membership, and by nothing else**
         (DECISIONS #257). That is what makes "never stale" structural rather than promised: there
         is no path that changes `situation_alarm` without passing through a caller of this, and
-        `tests/test_lifecycle.py::test_the_derived_name_tracks_membership_and_cannot_go_stale`
+        `tests/lifecycle/test_lifecycle.py::test_the_derived_name_tracks_membership_and_cannot_go_stale`
         drives one of them through its route and recomputes every name in the tree afterwards.
 
         One aggregate query, and it reads **device addresses** rather than labels — an operator's
@@ -116,7 +116,7 @@ class SituationEventMixin(StoreBase):
 
         Returns `None` — and writes nothing — on a schema without the column, which is what lets
         this run inside `add_alarm_to_situation` against the schema-13 database
-        `tests/test_upgrade.py` builds.
+        `tests/store/test_upgrade.py` builds.
         """
         if not self._has_lifecycle:
             return None
@@ -154,9 +154,9 @@ class SituationEventMixin(StoreBase):
         caller turns into the same 404 an out-of-scope one takes.
 
         No model reaches this method, in this release or through any path it adds
-        (`tests/test_gesture_boundary.py::test_no_server_derivation_reaches_operator_name`). A model
-        writing *"fibre cut"* above a grouping the operator is about to judge contaminates that
-        judgement, which is the `incumbent_linked` mistake in a new register.
+        (`tests/dataset/test_gesture_boundary.py::test_no_server_derivation_reaches_operator_name`).
+        A model writing *"fibre cut"* above a grouping the operator is about to judge contaminates
+        that judgement, which is the `incumbent_linked` mistake in a new register.
         """
         cur = await self.conn.execute(
             "UPDATE situation SET operator_name = ?, updated_at = ? WHERE id = ? RETURNING id",

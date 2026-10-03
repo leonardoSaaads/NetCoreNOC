@@ -5,7 +5,7 @@
  * Leading band, window, trailing band, *now* marked. **Hand-written SVG**, because the DOM harness
  * cannot see d3 and cannot see whitespace (Appendix B), and a band an operator relies on must be
  * something a test can assert the existence and the width of. Every rect below carries a
- * `data-band`, so `tests/test_maintenance_dom.py` reads the geometry rather than a screenshot.
+ * `data-band`, so `tests/ui/test_maintenance_dom.py` reads the geometry rather than a screenshot.
  *
  * It is not a chart. There is no axis, no gridline and no tick: it answers one question — *"how
  * much of this is patch band, and where is now?"* — and a chart would answer several.

@@ -16,8 +16,8 @@ from dataclasses import replace
 
 # Imported back from the extraction, and **re-exported** in the PEP 484 `as` form so every name
 # `varbind_profile` exported at v0.7.3 still resolves from here: `severity.py` reads
-# `MAX_DISPLAY_CHARS`, `tests/test_promotion.py` reads `ENTITY_PROMOTE_SCORE`, and
-# `tests/test_varbind_profile.py` imports `Accumulator`, `ENTITY_PROMOTE_OBS` and
+# `MAX_DISPLAY_CHARS`, `tests/correlation/test_promotion.py` reads `ENTITY_PROMOTE_SCORE`, and
+# `tests/ingest/test_varbind_profile.py` imports `Accumulator`, `ENTITY_PROMOTE_OBS` and
 # `MAX_TRACKED_VALUES` (Phase 0's inventory). The split is invisible to all of them.
 from netcorenoc.engine.correlate.varbind_accum import ENTITY_MAX_CARD_RATIO as ENTITY_MAX_CARD_RATIO
 from netcorenoc.engine.correlate.varbind_accum import ENTITY_MIN_DISTINCT as ENTITY_MIN_DISTINCT

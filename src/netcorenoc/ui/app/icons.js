@@ -2,8 +2,8 @@
  *
  * ## Why these are drawn (DECISIONS #236)
  *
- * `tests/test_build_step.py` refuses a `package.json`, so an icon package is not available;
- * `tests/test_supply_chain.py` would want a checksum and a licence for a vendored set, in the same
+ * `tests/ui/test_build_step.py` refuses a `package.json`, so an icon package is not available;
+ * `tests/security/test_supply_chain.py` would want a checksum and a licence for a vendored set, in the same
  * commit. Both point the same way: a table of path data in a module this project owns costs no
  * dependency, no build step, no font-stack risk and no third-party licence.
  *
@@ -20,7 +20,7 @@
  *
  * ## Every icon here is rendered somewhere
  *
- * `tests/test_icons.py` walks this table and the call sites and fails on an entry nobody uses. A
+ * `tests/ui/test_icons.py` walks this table and the call sites and fails on an entry nobody uses. A
  * set of forty when twenty-five render is forty to maintain (VII.3), and an icon library that grew
  * past its console is how the glyph set stopped being a family in the first place.
  *
@@ -103,7 +103,7 @@ const ICONS = {
   panel: { d: ["M4 5.5h16v13H4v-13Z", "M10 5.5v13"] },
 };
 
-/** Every name this module can draw. Read by `tests/test_icons.py`, never for dispatch. */
+/** Every name this module can draw. Read by `tests/ui/test_icons.py`, never for dispatch. */
 export const ICON_NAMES = Object.keys(ICONS);
 
 /**

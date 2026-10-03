@@ -65,9 +65,9 @@ That is the whole preservation rule, and it is in [`CONTRIBUTING.md`](../CONTRIB
 **Four links inside `analysis/` point into the deleted directories and will never be repaired.**
 `PREREGISTRATION-0.9.0.md` names `../gates/v0.9.0-phase-1.md`, and the v0.10.0 and v0.11.0 plans name
 three specification drafts — and every one of those files is hash-pinned below, so editing a link
-would change the plan's SHA-256 and turn `tests/test_preregistration.py` red. A link inside an
+would change the plan's SHA-256 and turn `tests/repo/test_preregistration.py` red. A link inside an
 immutable document is a reference to the tree as it was; the reading rule above resolves it, and
-`tests/test_structure.py` forgives exactly those four and no others.
+`tests/repo/test_structure.py` forgives exactly those four and no others.
 
 ## v0.28.0: the release briefs in `docs/plans/`
 
@@ -82,10 +82,42 @@ git show 168ac7c:docs/plans/v0.16.0-situation-lifecycle.md
 A `docs/plans/<one of those>` path in a docstring or the `CHANGELOG` is a path at that commit.
 `plans/releases.md` stays: it is the release table the documentation guard reads.
 
+## v0.28.1: the repository reorganised
+
+| Before | Now |
+|---|---|
+| `tests/test_<name>.py` (116 modules, flat) | `tests/<area>/test_<name>.py`, same basename; the areas are in [`tests/README.md`](../tests/README.md) |
+| `tests/util.py`, `authutil.py`, `domdriver.py`, `behaviour_identity.py`, … and `tests/domharness/` | `tests/support/` |
+| `testbed/` | `tests/lab/` (`test_testbed.py` is `test_lab.py`; `NETCORENOC_TESTBED_STATE` is `NETCORENOC_LAB_STATE`; the compose volume is `netcorenoc-lab-data`) |
+| `eval/scenario_dsl.py` | `eval/simulation/scenario_dsl.py` |
+| `eval/corpus_gen.py`, `eval/background_gen.py` | `eval/generators/` |
+| `tools/evidence/` | removed: one-off measurement scripts from v0.13.0 to v0.16.1, whose results are recorded in `CHANGELOG.md` and `findings.md` |
+| `r2/after/` | removed: a screenshot of the v0.23.0 console |
+
+**A `tests/test_<name>.py` path in the `CHANGELOG`, `DECISIONS.md`, `findings.md`, `MIGRATION.md`
+or a pre-registration is the same file under its area folder**; find it with
+`git ls-files 'tests/*/test_<name>.py'`. Those records were not rewritten, because they describe the
+tree as it was. Removed files are at `ebd9954`:
+
+```sh
+git show ebd9954:testbed/README.md
+git ls-tree -r --name-only ebd9954 tools/evidence r2
+```
+
+## Reading a `HANDOFF.md §N` citation
+
+`HANDOFF.md` is rewritten by every release, so a `HANDOFF.md §N` citation means the handoff of the
+release that wrote it. The v0.21.x citations (SNMP polling, the severity measurement, the per-trap
+cost) are in the v0.21.0 handoff:
+
+```sh
+git show f8efb09:HANDOFF.md
+```
+
 ## The pre-registration hashes
 
 Seven analysis plans in [`analysis/`](analysis/) are pinned by SHA-256 in
-`tests/test_preregistration.py`. Each hash lives in **two** files on purpose: one alone could be
+`tests/repo/test_preregistration.py`. Each hash lives in **two** files on purpose: one alone could be
 edited quietly in the same commit as the plan it guards; two make that an obviously deliberate diff.
 The second home used to be the release's phase-gate document. Those are deleted, so it is this
 section — [decision #204](adr/DECISIONS.md).
@@ -114,11 +146,10 @@ independently of any file.
 `PREREGISTRATION-0.14.0.md` §5.1 registers *"a fixed seed recorded in the gate"* without writing the
 number, so the gate document was the only place it existed outside the code. Same discipline, same
 move: the seed is **`20140000`**, copied from `docs/gates/v0.14.0-phase-6.md` §1 at `3ecf237`, and
-`tests/test_simulation.py::test_the_seed_is_the_registered_one` reads it here.
+`tests/evaluation/test_simulation.py::test_the_seed_is_the_registered_one` reads it here.
 
 ## The frozen `eval` output
 
-`python eval/harness.py | sha256sum` is
-`c2e8a0ced29d9edf986279d41089ddb68e18da65a46bdc7e9f04811e8b9b6f26` and has been since v0.7.0. It
-depends on the exact contents of `eval/corpus/`, which is why that directory is never edited to tidy
-it.
+`python eval/harness.py | sha256sum` depends on the exact contents of `eval/corpus/`, which is why
+that directory is never edited to tidy it. The current value and its history are in
+[`eval/README.md`](../eval/README.md) and `eval/baselines/REBASELINE-LOG.md`.

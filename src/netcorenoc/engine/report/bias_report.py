@@ -10,7 +10,7 @@ quality, that `partial` coverage is ordinary. A report of bare figures would be 
 misleading, which is the failure this release exists to prevent one level up.
 
 Output is **byte-stable** for a given set of measurements — fixed field widths, fixed float
-precision, no clock — because `tests/test_bias.py` compares it against a frozen expectation.
+precision, no clock — because `tests/model/test_bias.py` compares it against a frozen expectation.
 """
 
 from __future__ import annotations

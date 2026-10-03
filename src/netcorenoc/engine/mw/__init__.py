@@ -9,5 +9,5 @@ Three modules, on the seam that matters for Part V's *"the check costs nothing"*
 
 **Nothing here touches the store.** The store modules compile rows into these types and the
 maintenance loop swaps the result in; that direction is what keeps `decide()` free of I/O, and
-`tests/test_maintenance_window.py` asserts it from the AST rather than from a convention.
+`tests/lifecycle/test_maintenance_window.py` asserts it from the AST rather than from a convention.
 """

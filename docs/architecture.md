@@ -48,7 +48,7 @@ Downward means toward the wire: `http` → `engine` → `data` → `ingest`. Cro
 from anywhere and imports only cross-cutting.
 
 An upward import is what turns a stack into a knot: it makes the lower layer untestable without the
-higher one, and it makes *"where is this decided?"* unanswerable. `tests/test_layers.py` parses
+higher one, and it makes *"where is this decided?"* unanswerable. `tests/repo/test_layers.py` parses
 every module's imports and enforces it, and **its exemption list is empty**. Type-only imports (`if
 TYPE_CHECKING:`) are excluded — no runtime edge, no cycle.
 
@@ -85,7 +85,7 @@ order with no cycles between them** (decision #208):
 * The line numbers force the *question* — "is this still one noun?" — rather than answering it.
   Splitting a coherent 260-line module into two 130-line ones to satisfy a number makes the code
   worse.
-* **400 is enforced** by `tests/test_architecture.py`, with a shrink-only `DEBT_ALLOWLIST` naming
+* **400 is enforced** by `tests/repo/test_architecture.py`, with a shrink-only `DEBT_ALLOWLIST` naming
   the release that owns each current offender, and a separate `COHESION_EXEMPT` for a module that is
   large because an **invariant** forbids splitting it. The two are not interchangeable: debt carries
   an owner and a date, a cohesion exemption carries neither, because there is no fix.
@@ -103,7 +103,7 @@ order with no cycles between them** (decision #208):
   invariant is only auditable if that path can be read without following imports.
 * **One `Store`, one connection, one `store.lock`.** The lock is taken by *callers*, never inside a
   `Store` method, and a new store method must assume its caller holds it.
-  `tests/test_store_concurrency.py` is the control.
+  `tests/store/test_store_concurrency.py` is the control.
 * **Zero new runtime dependencies in the core.** Five since v0.2.0. New development tooling goes in
   the `dev` extra with a decision beside it.
 * **A new route declares itself or the process does not start.** See
@@ -143,9 +143,9 @@ reads.
 
 ## Determinism where it is load-bearing
 
-`python eval/harness.py | sha256sum` has been
-`c2e8a0ced29d9edf986279d41089ddb68e18da65a46bdc7e9f04811e8b9b6f26` since v0.7.0. It replays a
-labelled corpus offline and fails on any regression in the gated metrics. The four CLI reports are
+`make eval` replays a labelled corpus offline and fails on any regression in the gated metrics; the
+hash of its output moves only when grouping behaviour changes on purpose, and each move is logged
+([`eval/README.md`](../eval/README.md)). The four CLI reports are
 compared byte-for-byte against frozen expectations by the test suite, so a change in what capture
 means turns the suite red rather than moving a number quietly.
 

@@ -8,7 +8,8 @@ appliance knows and the model could not see.
 **One function builds it** (:func:`vector`). The engine calls it on the ingest path, the offline
 replay calls it on generated streams, and training reads the rows the replay wrote — so the
 feature a model was trained on and the feature it is served are the same arithmetic by
-construction, and `tests/test_features.py` replays a stream through both paths to prove it.
+construction, and `tests/correlation/test_features.py` replays a stream through both paths to prove
+it.
 
 ## The features, and what each is for
 

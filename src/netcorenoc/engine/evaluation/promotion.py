@@ -10,8 +10,8 @@ the seal policy and its **evaluation order**, and §4 fixes the two refusals. No
 
 A single `if not decisive or verdict is not BETTER: refuse()` would satisfy a naive test and destroy
 the distinction. So there are **two functions, each of which raises if handed the other's verdict**
-— structural rather than conventional, and `tests/test_promotion_gate.py` proves the two cannot be
-reached from one branch.
+— structural rather than conventional, and `tests/model/test_promotion_gate.py` proves the two
+cannot be reached from one branch.
 
 ## The evaluation order is registered, and this module obeys it literally
 
@@ -44,7 +44,7 @@ from netcorenoc.engine.evaluation.evaluation_folds import materialise_folds
 from netcorenoc.engine.evaluation.judge import Judgement, Verdict, judge
 from netcorenoc.engine.evaluation.shadow_cv import Interval, Power
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.store import Store
 
 __all__ = [
@@ -66,7 +66,7 @@ __all__ = [
 # presented to `seal.spend`, which refuses a read unless the same hash is already on record. Pinned
 # here as a constant rather than read from the file: a hash computed at runtime from a document on
 # disk would move with the document, which is exactly what a pre-registration hash exists to
-# prevent. `tests/test_preregistration.py` is what keeps this value and the file in agreement.
+# prevent. `tests/repo/test_preregistration.py` is what keeps this value and the file in agreement.
 RATIFIED_PLAN_SHA256 = "e011ee6ad2367d44f2ede14cad7b072df598298f91ecc1a405744358b589d449"
 
 # The four named quantities, **never composed** (the plan's §1). Order is fixed so a report and a

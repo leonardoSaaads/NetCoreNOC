@@ -63,9 +63,9 @@ CORPUS_DIR = HERE / "corpus"
 #: **The baseline `make eval` compares against, and the one `make eval-baseline` re-cuts.**
 #:
 #: v0.18.0 (F136) split this from `baselines/v0.2.0.json`, which it used to be. That one file was
-#: doing two incompatible jobs: `tests/test_eval.py` asserts of it that *"cold mode reproduces the
-#: v0.2.0 baseline"* and that it *"shows the v0.2.0 weaknesses v0.3.0 exists to fix"* — claims
-#: about a historical measurement — while `make eval-baseline` (v0.17.0, DECISIONS #324)
+#: doing two incompatible jobs: `tests/evaluation/test_eval.py` asserts of it that *"cold mode
+#: reproduces the v0.2.0 baseline"* and that it *"shows the v0.2.0 weaknesses v0.3.0 exists to fix"*
+#: — claims about a historical measurement — while `make eval-baseline` (v0.17.0, DECISIONS #324)
 #: **overwrites** it.
 #:
 #: The two could not both be true, and nothing noticed because no release had re-cut a baseline

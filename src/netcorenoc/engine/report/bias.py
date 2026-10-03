@@ -141,8 +141,8 @@ async def collect(store: Store) -> dict[str, Any]:
     #
     # This report **could** now ask the sharper question these three lines have always meant —
     # *"situations an operator closed"*, `resolution = 'operator'` — and deliberately does not.
-    # `tests/test_bias.py` compares this output byte for byte, the count is the one v0.10.0 was
-    # given, and narrowing a measured population inside a feature release is the fix-inside-a-
+    # `tests/model/test_bias.py` compares this output byte for byte, the count is the one v0.10.0
+    # was given, and narrowing a measured population inside a feature release is the fix-inside-a-
     # feature this project refuses. It is a `docs/plans/v0.16.1-visualisation.md` line.
     out["situations_closed"] = await _scalar(
         store, "SELECT COUNT(*) FROM situation WHERE status='resolved' AND resolution!='merged'"

@@ -10,7 +10,8 @@ is *agreement*, not *correctness*, and on a uniform bag it is agreement about a 
 never made. Every heading below carries the sentence that stops the misreading.
 
 Output is **byte-stable** for a given set of measurements — fixed field widths, fixed float
-precision, no clock — because `tests/test_agreement.py` compares it against a frozen expectation.
+precision, no clock — because `tests/model/test_agreement.py` compares it against a frozen
+expectation.
 """
 
 from __future__ import annotations

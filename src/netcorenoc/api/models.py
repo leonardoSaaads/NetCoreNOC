@@ -14,9 +14,9 @@ by identity** (ADR #374). The one-file claim above is unchanged in what it is fo
 still reads one import list and one set of names to see everything a caller may send — and the
 split is mechanical: the window surface is a third of a file on its own, and this module was
 already eleven lines from the 400-line guard. The re-export is **by identity, never by copy**, and
-`tests/test_maintenance_api.py` asserts that, for the same reason `crosscutting/rbac/__init__.py`
-carries the same guard: a second definition of a request bound would be a second place to change
-it, and the one that is forgotten is invisible until it is exploited.
+`tests/api/test_maintenance_api.py` asserts that, for the same reason
+`crosscutting/rbac/__init__.py` carries the same guard: a second definition of a request bound would
+be a second place to change it, and the one that is forgotten is invisible until it is exploited.
 
 `QuietServer` lives here rather than in `app.py` because it is a shipped type `main.py` imports,
 not part of building the application.
@@ -390,7 +390,7 @@ class PromotionIn(BaseModel):
     derived by the server* — and the enforcement is that **the field does not exist**, not that a
     handler ignores it. Pydantic drops unknown keys, so a client that sends `verdict: BETTER` is
     answered normally and its assertion reaches nothing;
-    `tests/test_promotion_api.py::test_a_client_asserted_verdict_is_ignored_and_the_servers_stands`
+    `tests/api/test_promotion_api.py::test_a_client_asserted_verdict_is_ignored_and_the_servers_stands`
     is what proves that rather than assuming it.
     """
 

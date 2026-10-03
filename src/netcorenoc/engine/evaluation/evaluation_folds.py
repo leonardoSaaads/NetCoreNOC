@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING
 
 from netcorenoc.engine.evaluation.shadow_cv import FOLDS, REPEATS, assign_folds
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.store import Store
 
 __all__ = ["materialise_folds", "run_id_for"]

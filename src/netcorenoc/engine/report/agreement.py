@@ -31,7 +31,7 @@ is for is the *spread* — whether `confirm` means the same thing to two people 
 would turn a bias measurement into a per-employee performance report nobody consented to
 (DECISIONS #120). `bias.py` already holds this line by reporting shares and never names.
 
-**Determinism is a hard requirement**, because `tests/test_agreement.py` compares the rendered
+**Determinism is a hard requirement**, because `tests/model/test_agreement.py` compares the rendered
 output byte-for-byte against a frozen fixture. One `ORDER BY`-stable query, no wall clock, fixed
 float precision, and a bootstrap driven by an LCG written out below rather than by `random`, whose
 generator is a stdlib implementation detail this report must not depend on.
@@ -45,13 +45,13 @@ from typing import TYPE_CHECKING, Any
 
 # v0.10.1 (B1). `Bag`, `size_bucket` and `SIZE_ORDER` moved to `agreement_bags.py` when routing this
 # report's incident identity through `netcorenoc.incidents` took the module past its 400-line
-# ceiling. They are re-exported because `agreement_report.py` and `tests/test_agreement.py` have
-# imported them from here since v0.9.0, and a split is not a reason to move a caller's import
+# ceiling. They are re-exported because `agreement_report.py` and `tests/model/test_agreement.py`
+# have imported them from here since v0.9.0, and a split is not a reason to move a caller's import
 # (DECISIONS #155). **Split, never exempted**: the ceiling has not been raised, and
 # `DEBT_ALLOWLIST` is still empty.
 from netcorenoc.engine.report.agreement_bags import SIZE_ORDER, Bag, load_bags, size_bucket
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.store import Store
 
 __all__ = [

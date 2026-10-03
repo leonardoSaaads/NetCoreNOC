@@ -6,7 +6,7 @@
  * v0.7.5's defect was that a server-sent update destroyed the card an operator was mid-gesture
  * on, so a click landed on a render they had never read. Preact's diff means the DOM node now
  * survives an update by construction — the button is the same object across re-renders, which
- * `tests/test_ui_invariants.py` asserts.
+ * `tests/ui/test_ui_invariants.py` asserts.
  *
  * **That is not sufficient and mistaking it for sufficient would reintroduce the defect.** The
  * node surviving is not the same as the *grouping* surviving. An operator who has ticked members

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -10,9 +9,9 @@ from hypothesis import settings
 from netcorenoc.crosscutting import auth
 from netcorenoc.store import Store
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+import paths
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = paths.FIXTURES
 
 # --- the Hypothesis profile (v0.16.2, DECISIONS #279) --------------------------------------
 #

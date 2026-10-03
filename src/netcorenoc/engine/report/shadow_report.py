@@ -7,7 +7,7 @@ output. The seam is the one `bias.py` / `bias_report.py` has always used: a read
 mapping, and a renderer that turns a mapping into text. Neither half imports the other.
 
 Output is **byte-stable** for a given database — no clock, no unordered aggregate — because
-`tests/test_shadow.py` compares the rendered result against a frozen expectation.
+`tests/model/test_shadow.py` compares the rendered result against a frozen expectation.
 
 **It leads with the sufficiency verdict**, before any coefficient, because *"not yet, and here is
 when"* is the release's most likely and most useful result.

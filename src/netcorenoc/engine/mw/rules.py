@@ -22,7 +22,7 @@ same target are plainly a union, because the operator wrote a second one in orde
 must admit `…1.1.1.1.4.2` and must **not** admit `…1.1.1.10`, which a naive `startswith` does —
 `"…1.1.1.10".startswith("…1.1.1.1")` is `True`, and the tenth column of a table is not a member of
 the first column's subtree. :func:`under_subtree` is the whole of the fix and
-`tests/test_maintenance_window.py` runs the injection that proves a prefix match fails it.
+`tests/lifecycle/test_maintenance_window.py` runs the injection that proves a prefix match fails it.
 
 ## Why nothing here touches the database
 

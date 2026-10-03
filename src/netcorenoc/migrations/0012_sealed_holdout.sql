@@ -157,4 +157,4 @@ END;
 -- FROM EVIDENCE ALREADY STORED IS DERIVATION. A seal is not a derivation: it is a CHOICE about
 -- which evidence will be allowed to decide something later, and manufacturing one during an upgrade
 -- would make that choice on behalf of an operator who was never asked. A fresh install and an
--- upgraded one both start with no seal, and `tests/test_upgrade.py` asserts it.
+-- upgraded one both start with no seal, and `tests/store/test_upgrade.py` asserts it.

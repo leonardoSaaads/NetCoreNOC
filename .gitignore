@@ -20,9 +20,9 @@ result
 # Local TLS material referenced by the commented compose profile.
 /tls/
 
-# The testbed's runtime state: the phase file, the lab database, per-process logs (v0.17.0).
-testbed/state/
-testbed/logs/
+# The lab's runtime state: the phase file, the lab database, per-process logs (v0.17.0).
+tests/lab/state/
+tests/lab/logs/
 
 # v0.26.0: recorded training streams (reproducible from the pinned seed; see eval/synth/dataset.py)
 eval/synth/.cache/

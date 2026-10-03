@@ -147,7 +147,7 @@ ALTER TABLE situation ADD COLUMN severity_by TEXT;
 
 -- The name autonomy's `naming` grade gave a situation — a column of its own, because
 -- `operator_name` has exactly one writer, the rename route, and a model does not write there
--- (`tests/test_gesture_boundary.py`). The console shows operator_name, then model_name, then
+-- (`tests/dataset/test_gesture_boundary.py`). The console shows operator_name, then model_name, then
 -- derived_name; an operator's rename supersedes the model's without touching it.
 ALTER TABLE situation ADD COLUMN model_name TEXT;
 

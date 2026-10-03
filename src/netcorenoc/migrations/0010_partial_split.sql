@@ -34,13 +34,13 @@
 --     -------------------------------------------------
 --     total               n(n-1)/2  = every pair of the bag, and nothing is unaccounted for
 --
--- At n = 9, m = 2: 14 asserted, 22 unasserted, 36 total. `tests/test_partial_split.py` asserts the
+-- At n = 9, m = 2: 14 asserted, 22 unasserted, 36 total. `tests/lifecycle/test_partial_split.py` asserts the
 -- identity rather than trusting it.
 --
 -- CORRECTED IN v0.9.2, AND THE CLAIM ABOVE IS WEAKER THAN IT READS. Two things, and only the
 -- comment changed -- no statement in this file was edited, so no database sees a different schema.
 --
---   (1) This comment named `tests/test_learn.py`. The assertion is in `tests/test_partial_split.py`.
+--   (1) This comment named `tests/correlation/test_learn.py`. The assertion is in `tests/lifecycle/test_partial_split.py`.
 --       The documentation guard checks relative Markdown links, not cross-file claims inside SQL
 --       comments, so nothing caught it for a release.
 --   (2) MORE IMPORTANTLY: the identity above is a POLYNOMIAL IDENTITY in `m` and `n`. Substituting

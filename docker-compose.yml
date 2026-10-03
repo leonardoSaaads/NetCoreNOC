@@ -74,7 +74,7 @@ services:
     #     if the queue fills, overflow IS counted as an ingest gap. Visible and recoverable.
     #
     # **The numbers, and where they come from.** The appliance is one asyncio process with one
-    # SQLite file and a bounded in-memory queue; `tests/test_perf.py::burst` drives 100 000 traps
+    # SQLite file and a bounded in-memory queue; `tests/ingest/test_perf.py::burst` drives 100 000 traps
     # in a second through the real path. 512 MiB is roughly four times what that burst needs and
     # leaves the page cache room; 1.0 CPU is one core, which the single event loop is bounded by
     # anyway. `reservations` is what the scheduler guarantees, not what the container may use.

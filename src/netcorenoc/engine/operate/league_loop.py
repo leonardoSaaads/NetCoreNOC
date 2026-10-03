@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any
 from netcorenoc.crosscutting import audit
 from netcorenoc.engine.model import league_judge, site, site_labels
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.operate.engine import Engine
 
 __all__ = ["JUDGE_EVERY_TICKS", "judge_step"]

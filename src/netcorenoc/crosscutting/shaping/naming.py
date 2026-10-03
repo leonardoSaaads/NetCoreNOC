@@ -57,8 +57,8 @@ MAX_NAME_CHARS = 120
 #: **Declared here rather than imported, because `crosscutting` may not import `engine`** — that
 #: is the layering the whole package rests on and a name is not worth inverting it for. The value
 #: is `engine.correlate.learn.STORM_ALARMS`, and
-#: `tests/test_shaping.py::test_the_storm_threshold_in_a_name_is_the_engines_own` asserts the two
-#: are equal rather than trusting this comment, so the day one moves the other goes red.
+#: `tests/security/test_shaping.py::test_the_storm_threshold_in_a_name_is_the_engines_own` asserts
+#: the two are equal rather than trusting this comment, so the day one moves the other goes red.
 STORM_ALARMS = 50
 
 
@@ -130,8 +130,9 @@ def coarsen_situation_name(name: Any, coarsen: Callable[[Any], Any]) -> Any:
     address a viewer receives is coarsened to its network — `ip`, `device_ip`, `device` — and a name
     the server built *out of* those addresses had been carrying them past that rule intact:
     `Storm -> 127.0.0.2` served to a principal who is shown `127.0.0.0/24` everywhere else. Caught
-    by `tests/test_shaping.py::test_sse_stream_graph_is_shaped_for_viewer`, which asserts on the
-    stream's raw text rather than on a field, and is therefore the only guard that could see it.
+    by `tests/security/test_shaping.py::test_sse_stream_graph_is_shaped_for_viewer`, which asserts
+    on the stream's raw text rather than on a field, and is therefore the only guard that could see
+    it.
 
     Written against the **token**, not against the grammar: every whitespace-separated word that
     parses as an address is coarsened and everything else passes through unchanged. A later release

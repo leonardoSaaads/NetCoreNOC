@@ -2,7 +2,7 @@
 
 The store returns rows; this gives them meaning. That split is the layer rule rather than a
 preference — `store` is the data layer and `engine` is above it, so a store module importing
-`engine.mw.rules` would be an upward import, and `tests/test_layers.py` refuses one. The honest
+`engine.mw.rules` would be an upward import, and `tests/repo/test_layers.py` refuses one. The honest
 consequence is that the *compile* lives here, with the types it produces, and the store keeps only
 the three statements that fetch the rows.
 

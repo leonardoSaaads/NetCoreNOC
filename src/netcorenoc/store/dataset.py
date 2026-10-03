@@ -16,7 +16,7 @@ the sink, promotion, and the retention tiers. The two were never two halves of o
 release's additions land entirely on the other side of that line.
 
 **No method here takes ``store.lock``.** That is this package's contract for callers and it is not
-relaxed for a dataset feature (v0.7.3's invariant; `tests/test_store_concurrency.py` is the
+relaxed for a dataset feature (v0.7.3's invariant; `tests/store/test_store_concurrency.py` is the
 control).
 """
 
@@ -178,7 +178,7 @@ class DatasetMixin(StoreBase):
         Every statement carries ``lifecycle='sink'``. That clause is the whole separation between
         the sink and the labelled corpus under this layout, and DECISIONS #107 accepted it as a
         *checked* guarantee where two tables would have given a *structural* one.
-        `tests/test_dataset.py` is the control that neither bound can reach a promoted row.
+        `tests/dataset/test_dataset.py` is the control that neither bound can reach a promoted row.
 
         The row cap is applied **after** the age bound so it only ever trims what age did not, and
         it deletes oldest-first — the same discipline as the correlator's window overflow.
@@ -264,7 +264,8 @@ class DatasetMixin(StoreBase):
         # gesture, which the report already counts, rather than a gesture whose evidence is gone.
         # `situation_event_member` follows by `ON DELETE CASCADE`.
         # Guarded by the schema probe for `prune`'s reason: this runs on the maintenance loop, and
-        # `tests/test_upgrade.py` drives that loop against a schema frozen before this release.
+        # `tests/store/test_upgrade.py` drives that loop against a schema frozen before this
+        # release.
         if self._has_lifecycle:
             cur = await self.conn.execute(
                 "DELETE FROM situation_event WHERE at < ? RETURNING id", (cutoff,)

@@ -156,7 +156,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         than the one in force while the operator is typing. It defaults to now.
 
         **The response carries no clock.** An earlier draft returned each zone's current local
-        time, which made the body change every second — and `tests/test_declaration.py` is right
+        time, which made the body change every second — and `tests/api/test_declaration.py` is right
         to compare an unscoped route's two answers byte for byte, so a field that moves on its own
         would have had to weaken that guard to keep a nicety. The offset is what a client needs
         and it moves twice a year.

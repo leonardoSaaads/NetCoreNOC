@@ -28,7 +28,7 @@ lock disciplines are sequenced), the gap tracker (`gaps.py`), the scorer lifecyc
 (`scorer_lifecycle.py`), configuration (`settings.py`) and the process runner (`runner.py`).
 
 **`engine.py` must never import `netcorenoc.api`.** That was v0.7.2's one recorded layer violation
-and v0.7.3 resolved it; `tests/test_layers.py` holds the line.
+and v0.7.3 resolved it; `tests/repo/test_layers.py` holds the line.
 """
 
 from __future__ import annotations

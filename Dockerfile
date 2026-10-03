@@ -22,7 +22,7 @@ FROM python:3.12.8-slim
 # startup against the database *this image actually has* and raises an operator warning naming what
 # it could not resolve — because a zone list validated on the build machine is the trap
 # `docs/findings.md` F131 records one layer up, where `docker compose config` never read
-# `.dockerignore` and the testbed shipped unbuildable.
+# `.dockerignore` and the lab shipped unbuildable.
 #
 # `tzdata-legacy` is deliberately NOT installed. It carries the backward links — `PRC`, `ROC`,
 # `ROK`, `UCT` — which are deprecated aliases; every entry in the curated list is a canonical zone,

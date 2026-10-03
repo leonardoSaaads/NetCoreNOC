@@ -1,12 +1,13 @@
 # SHA-256 checksums of vendored, self-hosted third-party assets (§A.6 supply-chain integrity).
 # The strict CSP forbids any CDN, so every third-party asset is vendored; this file pins their
-# exact bytes. A test (tests/test_supply_chain.py) and a CI job fail if any of them ever changes
-# without this pin being updated deliberately.
+# exact bytes. A test (tests/security/test_supply_chain.py) and a CI job fail if any of them ever
+# changes without this pin being updated deliberately.
 #
 # **Every file in this directory that is not a licence or this file itself must be listed here.**
-# That is asserted by tests/test_supply_chain.py::test_every_vendored_asset_is_pinned_by_name —
-# without it, dropping a new asset in with no pin would be invisible to the checksum loop, which
-# only ever verifies what this file already names (v0.13.0).
+# That is asserted by
+# tests/security/test_supply_chain.py::test_every_vendored_asset_is_pinned_by_name — without it,
+# dropping a new asset in with no pin would be invisible to the checksum loop, which only ever
+# verifies what this file already names (v0.13.0).
 #
 # Regenerate intentionally with:
 #   cd src/netcorenoc/ui/vendor && sha256sum preact-10.29.8.module.js htm-3.1.1.module.js

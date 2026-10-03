@@ -18,7 +18,7 @@ self-clear            **nothing about the grouping**                            
 *correlation*. Feeding them to the link scorer would be a signal about a different question doing
 the work of a measurement about this one — the `incumbent_linked` prohibition in a new register, and
 §1 of the plan extends it to them by name. They are recorded in full and produce **no link-training
-row**, and `tests/test_evidence_boundary.py` fails if one ever appears.
+row**, and `tests/dataset/test_evidence_boundary.py` fails if one ever appears.
 
 ## What each gesture writes, and why the two are not the same table
 
@@ -61,7 +61,7 @@ from netcorenoc.engine.dataset.provenance import BagProvenance, provenance
 from netcorenoc.engine.model import confidence as confidence_rules
 from netcorenoc.store.situation_events import ASSERTING_KINDS
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.store import Store
 
 __all__ = ["CHANNEL_OF", "Gesture", "Snapshot", "record", "snapshot"]
@@ -155,8 +155,8 @@ async def record(
     **`produces_training_rows` is written, not derived on read**, so the plan's prohibition is a
     value a query can count and a guard can assert rather than a rule restated in a `CASE`
     expression wherever the corpus is read. `manual_clear` and `self_clear` write 0 here whatever
-    else is true of them, and `tests/test_evidence_boundary.py` injects the opposite to prove the
-    guard sees it.
+    else is true of them, and `tests/dataset/test_evidence_boundary.py` injects the opposite to
+    prove the guard sees it.
 
     The provenance recorded is the **subject's**: for a `move` that is the situation the alarm is
     leaving, whose grouping the operator is contradicting; for a `merge` it is the surviving

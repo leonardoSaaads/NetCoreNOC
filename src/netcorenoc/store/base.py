@@ -46,8 +46,9 @@ class StoreBase:
     lock: asyncio.Lock
     # v0.8.0: does `situation` carry `merged_into` (migration 0008)? `None` until the first merge
     # answers it. Present so the identical engine code can run against a pre-0008 schema, which is
-    # what `tests/test_upgrade.py` relies on to prove the migration changes behaviour and the code
-    # does not — the same reason `create_situation` tolerates a schema without `scorer_config_id`.
+    # what `tests/store/test_upgrade.py` relies on to prove the migration changes behaviour and the
+    # code does not — the same reason `create_situation` tolerates a schema without
+    # `scorer_config_id`.
     _has_merged_into: bool | None
     # v0.16.0: does `situation` carry `resolution` (migration 0014)? Resolved **once, at
     # `open()`**, from `PRAGMA table_info` — not lazily from a caught `OperationalError` like
@@ -56,7 +57,7 @@ class StoreBase:
     # every situation this release creates would have to learn it, and a probe that costs one query
     # at startup is cheaper and states the question instead of inferring it from an exception.
     # `False` is what lets the identical store code run against the schema-13 database
-    # `tests/test_upgrade.py` builds.
+    # `tests/store/test_upgrade.py` builds.
     _has_lifecycle: bool
     # v0.16.1: does `feedback` carry `bag_key` (migration 0015)? Resolved by the same probe, for
     # the same reason — `add_feedback` runs on every verdict and every gesture, so inferring the
@@ -91,7 +92,7 @@ class StoreBase:
     # maintenance sweep runs every five seconds whether or not anybody has declared planned
     # work, and `/api/entities` and `/api/situations` ask for markers on every request — so
     # unlike the four above, these run *unbidden*. On a database frozen below schema 20 the
-    # queries behind them name tables that do not exist, and `tests/test_upgrade.py` drives
+    # queries behind them name tables that do not exist, and `tests/store/test_upgrade.py` drives
     # this store against migration directories frozen as far back as schema 4.
     #
     # One probe for both tables, because `0020` and `0021` are the same feature and no schema
@@ -113,8 +114,8 @@ class StoreBase:
         **A literal chosen by the schema probe**, never by a caller: both branches are fixed
         strings and only `alias`/`target`, which every call site passes as its own SQL identifier,
         vary. The same discipline `_lifecycle_columns` uses, and for the same reason —
-        `tests/test_upgrade.py` drives the current store against a migration directory frozen at
-        an older version, and a join naming `qualifier` unconditionally would raise there.
+        `tests/store/test_upgrade.py` drives the current store against a migration directory frozen
+        at an older version, and a join naming `qualifier` unconditionally would raise there.
 
         `legacy_target` is the pre-`0016` target expression for the equipment kind, where the row
         was keyed on `device.id` rather than on `ne.id`. It is given rather than derived, because

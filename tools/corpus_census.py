@@ -351,6 +351,9 @@ async def main() -> int:
     # `--gestures` adds a THIRD run and changes nothing about the first two, so `make census` is
     # byte-identical to what it printed at v0.15.5 and the release's before/after comparison is a
     # comparison of two runs of one program rather than of two programs.
+    if {"-h", "--help"} & set(sys.argv[1:]):
+        print(__doc__)
+        return 0
     with_gestures = "--gestures" in sys.argv[1:]
 
     real = await run(control=False, tag="THE REAL CORPUS (the declared mechanical policy)")

@@ -8,7 +8,7 @@ form of that.
 cut are `netcorenoc.seal`. This module is SQL, plus the two refusals SQLite itself enforces.
 
 **No method here takes ``store.lock``**, which is this package's contract for callers
-(`tests/test_store_concurrency.py` is the control).
+(`tests/store/test_store_concurrency.py` is the control).
 
 ## The one thing this module does that the others do not
 

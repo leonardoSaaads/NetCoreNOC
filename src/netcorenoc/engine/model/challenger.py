@@ -6,7 +6,7 @@ nothing — which buys three things by contract rather than by promise:
 
 1. **Explainability is inherited, not added.** A logistic model *is* a weighted sum before the link
    function, so a per-term contribution is what it already computes.
-   `tests/test_challenger.py::test_term_contributions_sum_to_the_pre_link_score` asserts it.
+   `tests/model/test_challenger.py::test_term_contributions_sum_to_the_pre_link_score` asserts it.
 2. **`SafeScorer` already wraps it**, so the fail-safe discipline — degrade to the coded defaults on
    an exception, a contract violation or an over-budget call — is inherited too.
 3. **v0.11.0's promotion becomes a pointer move** in `scorer_config`, the mechanism that exists,
@@ -16,8 +16,8 @@ nothing — which buys three things by contract rather than by promise:
 link, the UI, an operator, `learn.penalize()`, or `engine.scorer`. There is **no promotion mechanism
 in this release at all** — a release that could promote would be judged by the only metric it had,
 which would be agreement with the champion.
-`tests/test_challenger.py::test_no_code_path_makes_the_challenger_the_active_scorer` asserts it by
-parsing the tree, not by reading it.
+`tests/model/test_challenger.py::test_no_code_path_makes_the_challenger_the_active_scorer` asserts
+it by parsing the tree, not by reading it.
 
 ## `score()` returns the PRE-LINK score, and `threshold` is the pre-link threshold
 

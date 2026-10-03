@@ -25,7 +25,7 @@
 -- (prime directive 4: a host that goes quiet with no marker reads as healthy, which is how
 -- maintenance windows hide outages); its **details** follow `visibility`. That split is enforced
 -- in the QUERY, never in the render — see `store/mw_reads.py`, and the injection in
--- `tests/test_maintenance_api.py` that runs it red.
+-- `tests/api/test_maintenance_api.py` that runs it red.
 
 -- -- the window -----------------------------------------------------------------------------
 --
@@ -44,7 +44,7 @@
 --
 -- No CHECK constraint, for the reason `0014` gives about `situation.status`: adding one to a
 -- column needs a table rebuild, and the application has one write site. The values are documented
--- here and in `store/maintenance_windows.py`, and `tests/test_maintenance_window.py` asserts the
+-- here and in `store/maintenance_windows.py`, and `tests/lifecycle/test_maintenance_window.py` asserts the
 -- set from the store's own constant so the two cannot drift.
 CREATE TABLE maintenance_window (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,7 +203,7 @@ CREATE INDEX idx_mw_rule_window ON maintenance_window_rule (window_id, ne_id);
 -- directive 2 forbids.
 --
 -- It is not an alarm, not shown below `admin`, not correlated, not trained on and not in the
--- dataset. `tests/test_maintenance_window.py` runs each of those as an injection.
+-- dataset. `tests/lifecycle/test_maintenance_window.py` runs each of those as an injection.
 -- ---------------------------------------------------------------------------------------------
 CREATE TABLE maintenance_ledger (
     window_id  INTEGER NOT NULL REFERENCES maintenance_window (id) ON DELETE CASCADE,

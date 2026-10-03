@@ -35,8 +35,7 @@ from simulation.generator import (
     draw,
     emit,
 )
-
-from scenario_dsl import Emission
+from simulation.scenario_dsl import Emission
 
 __all__ = [
     "flap_during_incident",

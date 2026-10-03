@@ -28,7 +28,7 @@ what that host can resolve rather than what this file believes.
 
 ## The self-check, and why it is not a test
 
-`tests/test_timezones.py` asserts this list resolves **on the build machine**. That is the trap
+`tests/api/test_timezones.py` asserts this list resolves **on the build machine**. That is the trap
 `docs/findings.md` F131 names one layer up: the testbed's NE image shipped unbuildable because
 `docker compose config` never reads `.dockerignore`, and a zone list validated on the build machine
 is the same shape of mistake. :func:`timezone_selfcheck` runs in the **running appliance**,

@@ -23,7 +23,7 @@ a style note. Writing::
 
 would leave every existing test green — equality holds at import — while creating exactly the
 second source of authority this package exists to prevent. The two objects then drift the first
-time anything mutates or shadows one, and `tests/test_declaration.py` already mutates
+time anything mutates or shadows one, and `tests/api/test_declaration.py` already mutates
 `rbac.ROUTE_PERMISSIONS` in a fixture, so that is not hypothetical.
 
 Two tests hold the line, and both were shown to fail against a deliberately-copying `__init__.py`

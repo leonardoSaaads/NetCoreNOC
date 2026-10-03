@@ -9,6 +9,7 @@ minutes. Then pick the page for what you are doing.
 |---|---|
 | Install it, or install it another way | [`install.md`](install.md) |
 | Sign in, send traps, work situations, understand repeats and clears | [`operate.md`](operate.md) |
+| Try it, or develop, with no network equipment (Linux and Windows) | [`simulate.md`](simulate.md) |
 | Change a port, the allowlist, TLS, retention | [`configure.md`](configure.md) |
 | Know what a screen is for | [`console.md`](console.md) |
 | Fix something that is not working | [`troubleshoot.md`](troubleshoot.md) |
@@ -24,7 +25,9 @@ minutes. Then pick the page for what you are doing.
 
 ## Contributing
 
-Read [`CONTRIBUTING.md`](../CONTRIBUTING.md) first. The project's own record:
+Read [`CONTRIBUTING.md`](../CONTRIBUTING.md) first: setup, the repository map and the rules. Each
+development folder explains itself: [`tests/`](../tests/README.md), [`eval/`](../eval/README.md),
+[`tools/`](../tools/README.md), [`tests/lab/`](../tests/lab/README.md). The project's own record:
 
 | | |
 |---|---|
@@ -36,4 +39,4 @@ Read [`CONTRIBUTING.md`](../CONTRIBUTING.md) first. The project's own record:
 | [`record.md`](record.md) | Where removed documents went, and how to read an old citation |
 
 No documentation build step: plain Markdown, and every relative link is checked by
-`tests/test_structure.py`.
+`tests/repo/test_structure.py`.

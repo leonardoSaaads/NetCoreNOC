@@ -39,7 +39,7 @@ const TONE = { active: "alarm", pending_confirmation: "warn", scheduled: "info" 
 const LABEL = { active: "running", pending_confirmation: "needs confirming", scheduled: "scheduled" };
 
 /* Windows that are in force now, and the ones still to come — in the order an operator cares
- * about them. Pure, so `tests/test_maintenance_dom.py` can drive it without a network. */
+ * about them. Pure, so `tests/ui/test_maintenance_dom.py` can drive it without a network. */
 export function split(windows) {
   const rows = Array.isArray(windows) ? windows : [];
   const running = rows.filter((w) => w.status === "active");

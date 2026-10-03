@@ -10,7 +10,7 @@ what a bag-level verdict means for a pair — is `netcorenoc.training` and `netc
 module is SQL.
 
 **No method here takes ``store.lock``.** That is this package's contract for callers and a shadow
-feature does not relax it (`tests/test_store_concurrency.py` is the control).
+feature does not relax it (`tests/store/test_store_concurrency.py` is the control).
 
 A separate module from `store/dataset.py` because that file is at **395 of its 400-line budget**.
 Growing it was not an option and neither was raising a guard (DECISIONS #113's precedent), and the
@@ -60,8 +60,8 @@ class ShadowMixin(StoreBase):
         **v0.16.0: the same population, addressed through the column that now carries the fact.**
         `merged` was a `status` value and is now a `resolution`; migration `0014` rewrote every row
         in place, so this counts exactly the rows it counted before — asserted by
-        `tests/test_upgrade.py`, which compares the count across the migration rather than trusting
-        that the rewrite was faithful.
+        `tests/store/test_upgrade.py`, which compares the count across the migration rather than
+        trusting that the rewrite was faithful.
 
         Unrecoverable by construction — the destination was never written and no migration can
         reconstruct one — so such a situation *looks* independent and is not, and **no column

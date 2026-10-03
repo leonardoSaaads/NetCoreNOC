@@ -4,8 +4,8 @@ The `link` table's `terms` column (`0026`) holds a trained model's whole explana
 JSON — its basis, base value and threshold, and ``[name, value, contribution]`` per term — because a
 model has one term per feature and the three v0.2.0 columns hold only the formula's three
 (DECISIONS #50). Until v0.27.0 no route read that column: a link a model decided reached the console
-as three formula columns that did not sum to its score. `tests/test_operation.py` found it on the
-first build that packaged a model, end to end over a real socket.
+as three formula columns that did not sum to its score. `tests/ops/test_operation.py` found it on
+the first build that packaged a model, end to end over a real socket.
 
 This serves it, compactly. F145 measured what restating a term list on every link costs on a storm
 (993 KiB of a 1 844 KiB response), so the names travel **once per situation** — a small table — and

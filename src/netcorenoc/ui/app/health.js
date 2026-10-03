@@ -26,7 +26,7 @@ import { Disclosure, healthState } from "./notices.js";
  * `chartdata.runs`** and this calls it: the splitting was written here first and the Overview's
  * charts need the same behaviour, and two implementations of *"where does the line break"* is how
  * two charts on one screen come to disagree about it. The arithmetic is byte-for-byte the same —
- * `tests/test_ui_invariants.py` drives both surfaces over the same series.
+ * `tests/ui/test_ui_invariants.py` drives both surfaces over the same series.
  */
 export function Spark({ series, tone }) {
   const parts = splitRuns(series, { max: 100, height: 24 });

@@ -31,8 +31,8 @@ from typing import Any
 
 from netcorenoc.store.base import StoreBase
 
-#: Every status a window may hold. `tests/test_maintenance_window.py` asserts the migration's
-#: documented set against this tuple, so the schema comment and the code cannot drift.
+#: Every status a window may hold. `tests/lifecycle/test_maintenance_window.py` asserts the
+#: migration's documented set against this tuple, so the schema comment and the code cannot drift.
 STATUSES = (
     "pending_confirmation",
     "scheduled",

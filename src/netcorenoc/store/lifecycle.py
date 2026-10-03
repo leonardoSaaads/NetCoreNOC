@@ -17,9 +17,9 @@ from netcorenoc.store.types import MIGRATIONS_DIR
 
 # `MIGRATIONS_DIR` is re-exported deliberately. It is *defined* in `types.py`, but the code that
 # reads it — `_migrate` and `latest_schema_version` — lives here, so this module's namespace is the
-# binding that matters: a caller substituting the directory (as `tests/test_upgrade.py` does, to
-# replay a schema frozen at an older version) must patch it here. Naming it in `__all__` makes that
-# a supported seam rather than an accident of import order.
+# binding that matters: a caller substituting the directory (as `tests/store/test_upgrade.py` does,
+# to replay a schema frozen at an older version) must patch it here. Naming it in `__all__` makes
+# that a supported seam rather than an accident of import order.
 log = logging.getLogger("netcorenoc")
 
 __all__ = ["MIGRATIONS_DIR", "LifecycleMixin"]
@@ -41,7 +41,8 @@ class LifecycleMixin(StoreBase):
         """Which optional columns this database actually has (v0.16.0).
 
         One `PRAGMA` after the migrations, so the answer is about the schema this process will
-        run against rather than about the one it shipped with. `tests/test_upgrade.py` runs the
+        run against rather than about the one it shipped with. `tests/store/test_upgrade.py` runs
+        the
         **current** store against a migration directory frozen at an older version — which is what
         makes "the migration changes behaviour and the code does not" checkable — so every write
         path that names a v0.16.0 column has to know whether the column is there.

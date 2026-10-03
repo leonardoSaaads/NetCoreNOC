@@ -19,7 +19,7 @@ batch lock, while everything here runs once per *operator verdict* — thousands
 the HTTP write path. That is the same seam `labels.py` was split from `capture.py` on, one layer up.
 
 **No method here takes ``store.lock``.** That is this package's contract for callers
-(`tests/test_store_concurrency.py` walks the MRO, so this module is covered by construction).
+(`tests/store/test_store_concurrency.py` walks the MRO, so this module is covered by construction).
 """
 
 from __future__ import annotations
@@ -51,8 +51,8 @@ def bag_key(alarm_ids: list[int]) -> str:
     Deliberately **not** `labels.member_digest`. Two digests over one bag that disagreed by
     accident would be a silent inconsistency; two that disagree *by construction*, over different
     quantities, with different names, are two facts. The store may not import from the engine
-    (`tests/test_layers.py`), and that constraint agrees with the design here rather than fighting
-    it: the identity is the store's, the observation is the engine's.
+    (`tests/repo/test_layers.py`), and that constraint agrees with the design here rather than
+    fighting it: the identity is the store's, the observation is the engine's.
     """
     return hashlib.sha256(",".join(str(a) for a in sorted(set(alarm_ids))).encode()).hexdigest()
 
@@ -118,9 +118,9 @@ class FeedbackMixin(StoreBase):
         The key is derived from `situation_alarm` — **the persisted membership, which is this
         layer's own** — rather than from the caller's bag, so `engine.apply_feedback` is
         byte-identical and its call site did not have to learn about identity. That the two can
-        never disagree is not assumed: `tests/test_bag_identity.py` asserts, over the real write
-        path, that every row's `bag_key` is the set digest of the `feedback_member(source='server')`
-        snapshot the same verdict recorded.
+        never disagree is not assumed: `tests/dataset/test_bag_identity.py` asserts, over the real
+        write path, that every row's `bag_key` is the set digest of the
+        `feedback_member(source='server')` snapshot the same verdict recorded.
 
         `principal_ref` / `role` attribute the row. They are nullable because rows written before
         `0007` have no author and inventing one would be worse than admitting none.

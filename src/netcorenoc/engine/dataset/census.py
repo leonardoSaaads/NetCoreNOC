@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from netcorenoc.engine.dataset.incidents import IncidentMap, resolve_all, stamp
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.store import Store
 
 __all__ = ["CorpusStats", "corpus_stats", "first_label_per_incident", "resolve_identity"]

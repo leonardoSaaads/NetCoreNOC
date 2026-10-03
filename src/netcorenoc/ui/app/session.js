@@ -10,7 +10,7 @@
  *
  * Draft §11.3, and it is worth being blunt about: every `can()` in this UI hides something. None
  * of them protects anything. The server refuses what a principal may not do, and
- * `tests/test_rbac.py` is where that is proven. If this module returned `true` for everything,
+ * `tests/security/test_rbac.py` is where that is proven. If this module returned `true` for everything,
  * the appliance would still be secure and the console would merely be dishonest — offering
  * controls the server rejects. That is the correct division and it is why nothing here is
  * described as a check.

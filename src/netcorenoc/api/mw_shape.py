@@ -10,7 +10,7 @@ details, and that is the *presentation* of a decision already made. The claim pr
 makes — *"scope filters in the query, never the render"* — is satisfied one layer down: every role
 reads a window's existence from `store/mw_reads.py::window_markers`, which is a different
 statement selecting different columns, and no caller is handed a full row to have fields removed
-from it. `tests/test_maintenance_api.py` asserts that against the SQL rather than against this
+from it. `tests/api/test_maintenance_api.py` asserts that against the SQL rather than against this
 module, in `test_the_visibility_filter_is_in_the_query_and_not_in_the_render`.
 """
 

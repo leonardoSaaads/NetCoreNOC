@@ -27,7 +27,7 @@ import { humanise } from "./mwdraft.js";
 
 /* Why the submit is disabled, in the operator's own terms — or `""` when it is not.
  *
- * Pure and exported so `tests/test_maintenance_dom.py` can assert the sentence without a browser.
+ * Pure and exported so `tests/ui/test_maintenance_dom.py` can assert the sentence without a browser.
  * It names **one** step, the earliest unfinished one: telling somebody two things are wrong when
  * they can only fix the first is how a form teaches people to ignore it.
  */

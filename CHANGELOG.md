@@ -11,6 +11,60 @@ minor bump may break.
 
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md).
 
+## [0.28.1] - 2026-10-03 — "the repository, organised"
+
+The repository reorganised for the next phase and for new contributors. **No product behaviour
+changes**: no migration, the HTTP surface and the console are byte-identical apart from comments
+that cite tests by path, and `make eval` is unchanged.
+
+### Changed — layout
+
+- **`tests/` is grouped by area.** 116 test modules sat flat in one folder; they now live in
+  thirteen folders that follow the package (`ingest`, `correlation`, `lifecycle`, `model`,
+  `dataset`, `store`, `api`, `security`, `ui`, `ops`, `repo`, `evaluation`, `lab`), with shared
+  helpers in `tests/support/` and frozen outputs in `tests/fixtures/`. Basenames are unchanged.
+  `tests/repo/test_structure.py` refuses a test at the root of `tests/` and a folder that
+  `tests/README.md` does not describe.
+- Repository paths in tests come from one module, `tests/support/paths.py`, instead of counting
+  `Path(__file__).parents`; helpers are on `pythonpath` (`pyproject.toml`) instead of a
+  `sys.path.insert` per test, and no test imports another test module.
+- **`testbed/` is `tests/lab/`**, and its names follow: `NETCORENOC_TESTBED_STATE` is
+  `NETCORENOC_LAB_STATE`, the compose project, containers and volume are `netcorenoc-lab*`, the lab
+  database is `tests/lab/state/lab.db`. The `make lab*` targets are unchanged.
+- `eval/scenario_dsl.py` moved into `eval/simulation/`; `eval/corpus_gen.py` and
+  `eval/background_gen.py` into `eval/generators/`.
+
+### Added — documentation
+
+- [`docs/simulate.md`](docs/simulate.md): trying and developing NetCoreNOC with **no network
+  equipment**, on Linux and on Windows (WSL 2) — bundled scenarios, DSL scenarios, writing your own
+  scenario file (with a `linkDown`/`linkUp` example), synthetic load, `snmptrap` one trap at a time,
+  and the lab. Every command in it was run against this release.
+- `tests/README.md` (the areas, how to run a slice, where a new test goes, the pins),
+  `tools/README.md` (what each tool is for), and `eval/README.md` rewritten around its folders.
+- `CONTRIBUTING.md` has a repository map and says where each kind of change goes.
+- `tools/corpus_census.py` and `tools/release_check.py` answer `--help`.
+
+### Removed
+
+- `tools/evidence/`: six one-off measurement scripts from v0.13.0–v0.16.1, run by nothing; their
+  results are in this file and in `docs/findings.md`.
+- `r2/after/`: a screenshot of the v0.23.0 console.
+- `tests/lab/README.md`'s v0.17.0 measurement tables, which described a lab that has changed since.
+
+### Fixed — documentation that was wrong
+
+- `docs/install.md` linked to an anchor that did not exist, and both it and the `Makefile` cited
+  `tests/test_perf.py::burst`, a test that does not exist (`make burst` is the 100 000-trap check).
+- `docs/architecture.md`, `docs/record.md` and the `Makefile` said the `make eval` hash had held at
+  `c2e8a0ce…` since v0.7.0; it has moved four times since, as `eval/README.md` records.
+- `docs/ROADMAP.md` pointed at `HANDOFF.md` §1 for the SNMP polling plan, which a later handoff
+  replaced; it now names the commit that holds it, and `docs/record.md` says how to read any
+  `HANDOFF.md §N` citation.
+- The appliance does not start on native Windows (POSIX signal handling, `os.statvfs`); the
+  documentation now says so and gives WSL 2, and `docs/ROADMAP.md` records what native support
+  would take.
+
 ## [0.28.0] - 2026-10-02 — "the field review"
 
 A review that used the product the way a novice, an experienced operator and a team would — from

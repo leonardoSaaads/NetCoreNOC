@@ -23,8 +23,8 @@ permanently. The asymmetry is the whole argument. **v0.10.0's query count is 0.*
    construction fails at SQLite. *A seal that can be rebuilt is a seal that can be rebuilt after
    seeing a result*, and the person rebuilding it would have a reason that felt good at the time.
 2. **Unreadable from the estimator.** `netcorenoc.shadow_cv` — the estimator — does not import this
-   module, and `tests/test_seal.py` asserts that by parsing the tree. The seal is built in its own
-   phase, **before** the estimator, so the estimator is written against an interface that never
+   module, and `tests/model/test_seal.py` asserts that by parsing the tree. The seal is built in its
+   own phase, **before** the estimator, so the estimator is written against an interface that never
    offered the sealed ids: reading them is not a rule it must obey but a thing it cannot express
    (DECISIONS #145).
 3. **Every access is a row.** Granted or refused, with the release, the plan hash, the purpose and
@@ -46,7 +46,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/test_layers.py)
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.store import Store
 
 __all__ = [

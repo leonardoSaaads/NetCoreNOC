@@ -2,7 +2,7 @@
 
 One static web UI, loaded directly by the browser: **no build step, no npm, no lockfile, no
 bundle.** The files a browser fetches are the files on disk. That is a test
-(`tests/test_build_step.py`), not an intention.
+(`tests/ui/test_build_step.py`), not an intention.
 
 The views come in three groups, plus the Overview and your account. **A view you
 cannot use is not rendered** — a viewer sees no `Administer` group at all, rather than a group of
@@ -312,11 +312,11 @@ Stated here rather than discovered:
 
 ## How the console is tested
 
-By executing it. `tests/domharness/` links and evaluates the whole ES module graph — including the
-vendored bytes `CHECKSUMS.txt` pins — in a DOM under `node:vm`, and drives it against responses
-captured from the real server. Five invariants are asserted behaviourally rather than by reading the
-source as text: the per-role screen boundary, the partial-split payload, a gesture surviving a
-server-sent update, escaping, and least privilege at the client.
+By executing it. `tests/support/domharness/` links and evaluates the whole ES module graph —
+including the vendored bytes `CHECKSUMS.txt` pins — in a DOM under `node:vm`, and drives it against
+responses captured from the real server. Five invariants are asserted behaviourally rather than by
+reading the source as text: the per-role screen boundary, the partial-split payload, a gesture
+surviving a server-sent update, escaping, and least privilege at the client.
 
 It needs **Node ≥ 22 on `PATH` and nothing else**, and `make dom` prints how many tests actually
 EXECUTED. Without Node they **skip, loudly** — `27 skipped` rather than `27 passed`, and that

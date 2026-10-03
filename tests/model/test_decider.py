@@ -1,0 +1,181 @@
+"""The decider (ADR #405): what decides links, through the real engine and the real routes.
+
+A small hand-written model stands in for the shipped one, so these tests check the *mechanics* —
+which family runs, what candidates it sees, how it groups, what the routes permit — and never the
+shipped models' quality, which `make train` measures and `tests/model/test_league.py` pins.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from netcorenoc.engine.model import shipped
+from netcorenoc.engine.operate.engine import CLEAR_HOLD_S, Engine
+from netcorenoc.ingest.events import TrapEvent, Varbind
+from netcorenoc.store import Store
+
+import authutil
+from modelutil import TEST_MODEL, T
+from modelutil import ingest as _ingest
+from modelutil import manifest as _manifest
+from modelutil import open_groups as _situations
+from modelutil import trap as _trap
+
+
+async def test_a_fresh_appliance_runs_the_shipped_model(
+    store: Store, test_model: shipped.Shipped
+) -> None:
+    assert await store.decider_mode() == "shipped"
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    assert engine.decider_ref == test_model.ref
+    assert engine.correlator.two_stage, "a trained model gets two-stage recall"
+    assert engine.correlator.grouper.mode == "cluster"
+
+
+async def test_a_league_with_every_member_refused_falls_back_to_the_formula_and_says_why(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR #425: the formula is the fail-safe — reached only when no model can load, and loudly."""
+    from netcorenoc.engine.model import league
+
+    refused = league.League((), (("gam", "the model document was refused: test"),))
+    monkeypatch.setattr(league, "load", lambda: refused)
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    assert engine.decider_ref.startswith("additive:"), "the formula as configured decides"
+    assert not engine.correlator.two_stage
+    warnings = engine.scorer_warning_list()
+    assert any("No model can decide" in w and "refused" in w for w in warnings), warnings
+
+
+def test_a_manifest_that_does_not_match_its_model_is_refused() -> None:
+    with pytest.raises(shipped.ShippedModelError, match="SHA-256"):
+        shipped.load_from(TEST_MODEL, _manifest(TEST_MODEL + " "))
+    with pytest.raises(shipped.ShippedModelError, match="refused"):
+        bad = TEST_MODEL.replace('"intercept":-1.0', '"intercept":-1.0,"__class__":"os"')
+        shipped.load_from(bad, _manifest(bad))
+
+
+async def test_the_additive_formula_is_opt_in_and_still_reachable(
+    store: Store, test_model: shipped.Shipped
+) -> None:
+    """Part VIII: *the additive formula unreachable after the default changed* must be red."""
+    async with store.lock:
+        await store.set_decider_mode("additive", "admin", T, "the operator prefers the formula")
+        await store.commit()
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    assert engine.decider_ref.startswith("additive:")
+    assert engine.correlator.grouper.mode == "components"
+    assert not engine.correlator.two_stage
+
+
+async def test_recall_joins_a_slow_fault_beyond_the_window(
+    store: Store, test_model: shipped.Shipped
+) -> None:
+    """Ten minutes apart on one element: outside the 120 s window, inside recall's hour."""
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    oid = "1.3.6.1.4.1.1271.2.1.1"
+    await _ingest(
+        engine, store, [_trap("10.0.0.1", oid, "a", T), _trap("10.0.0.1", oid, "b", T + 590.0)]
+    )
+    assert await _situations(store) == [{1, 2}]
+
+
+async def test_two_concurrent_incidents_on_one_vendor_stay_apart(
+    store: Store, test_model: shipped.Shipped
+) -> None:
+    """`dual_incident` with incident B moved onto incident A's vendor: v0.25.0 merged all
+    sixteen alarms (`over_merge_rate 1.000`). Correlation clustering keeps two situations."""
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    traps = []
+    for k in range(1, 5):
+        base = T + (k - 1) * 1.2
+        traps += [
+            _trap("203.0.113.1", f"1.3.6.1.4.1.1271.2.1.{k}", "x", base + 0.3),
+            _trap("203.0.113.2", f"1.3.6.1.4.1.1271.2.1.{k}", "x", base + 0.6),
+            _trap("203.0.113.51", f"1.3.6.1.4.1.1271.2.9.{k}", "y", base + 0.9),
+            _trap("203.0.113.52", f"1.3.6.1.4.1.1271.2.9.{k}", "y", base + 1.2),
+        ]
+    await _ingest(engine, store, traps)
+    groups = await _situations(store)
+    cur = await store.conn.execute(
+        "SELECT a.id, d.ip FROM alarm a JOIN device d ON d.id=a.device_id"
+    )
+    ip = {int(r[0]): str(r[1]) for r in await cur.fetchall()}
+    incidents = [{ip[a].rsplit(".", 1)[1] in ("1", "2") for a in g} for g in groups]
+    assert all(len(kinds) == 1 for kinds in incidents), f"a situation mixes incidents: {groups}"
+    assert len(groups) == 2
+
+
+async def test_a_bounce_inside_the_clear_hold_rejoins_its_situation(
+    store: Store, test_model: shipped.Shipped
+) -> None:
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    down, up = "1.3.6.1.6.3.1.1.5.3", "1.3.6.1.6.3.1.1.5.4"
+    port = [Varbind(oid="1.3.6.1.2.1.2.2.1.1.7", kind="int", value="7")]
+
+    def ev(oid: str, ts: float) -> TrapEvent:
+        return TrapEvent(device="10.0.0.9", trap_oid=oid, instance="7", ts=ts, varbinds=port)
+
+    await _ingest(engine, store, [ev(down, T), ev(up, T + 5.0), ev(down, T + 60.0)])
+    groups = await _situations(store)
+    assert len(groups) == 1, "the re-raise inside the hold joined the same situation"
+    await _ingest(engine, store, [ev(up, T + 65.0)])
+    await engine.maintenance(now=T + 65.0 + CLEAR_HOLD_S / 2, retention_days=365.0)
+    assert len(await _situations(store)) == 1, "still held"
+    await engine.maintenance(now=T + 66.0 + CLEAR_HOLD_S, retention_days=365.0)
+    assert await _situations(store) == [], "resolved once the hold passed"
+    cur = await store.conn.execute("SELECT resolution FROM situation")
+    assert [r[0] for r in await cur.fetchall()] == ["self_cleared"]
+
+
+async def test_the_decider_routes_are_admin_and_only_a_pin_or_the_judge_can_decide(
+    store: Store, test_model: shipped.Shipped
+) -> None:
+    """v0.27.0 (ADR #425): the judge chooses; an admin may pin a member, with a reason. The formula
+    and the site mode are retired as choices and refused with the reason."""
+    _engine, _queue, app = await authutil.make_env(store)
+    viewer = await authutil.client_as(app, "viewer")
+    editor = await authutil.client_as(app, "editor")
+    admin = await authutil.client_as(app, "admin")
+    got = (await viewer.get("/api/decider")).json()
+    assert got["mode"] == "league" and got["champion"]["ref"] == test_model.ref
+    assert got["pinned"] is None and not got["fallback"]
+    pin = {"mode": "shipped", "pin": test_model.ref, "reason": "testing the pin"}
+    assert (await editor.post("/api/decider", json=pin)).status_code == 403
+    assert (await admin.post("/api/decider", json=pin)).status_code == 200
+    assert (await viewer.get("/api/decider")).json()["pinned"] == test_model.ref
+    for retired in ("additive", "site"):
+        r = await admin.post("/api/decider", json={"mode": retired, "reason": "the old way"})
+        assert r.status_code == 409 and "retired" in r.text
+    unknown = {"mode": "shipped", "pin": "gam:000000000000", "reason": "not a member"}
+    assert (await admin.post("/api/decider", json=unknown)).status_code == 409
+    assert (await admin.post("/api/decider", json={"reason": ""})).status_code == 422
+    assert (await admin.post("/api/decider", json={"reason": "the judge again"})).status_code == 200
+    assert (await viewer.get("/api/decider")).json()["pinned"] is None
+
+
+async def test_the_kill_switch_is_an_editor_gesture_and_enabling_is_admin(
+    store: Store, test_model: shipped.Shipped
+) -> None:
+    _engine, _queue, app = await authutil.make_env(store)
+    editor = await authutil.client_as(app, "editor")
+    admin = await authutil.client_as(app, "admin")
+    on = {"grouping": True, "naming": True, "reason": "trying it on the lab"}
+    assert (await editor.post("/api/autonomy", json=on)).status_code == 403
+    assert (await admin.post("/api/autonomy", json=on)).status_code == 200
+    status = (await editor.get("/api/autonomy")).json()
+    assert status["active"] and status["grades"] == ["grouping", "naming"]
+    assert (await editor.post("/api/autonomy/stop")).status_code == 200
+    again = await editor.post("/api/autonomy/stop")
+    assert again.json() == {"id": None, "active": False}, "a second press writes nothing"
+    status = (await editor.get("/api/autonomy")).json()
+    assert not status["active"] and not status["suspended"], "stopped by a person, not suspended"
+    assert status["history"][0]["reason"] == "stopped from the console"

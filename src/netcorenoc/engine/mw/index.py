@@ -25,10 +25,10 @@ yet and windows that have just ended, and decides per trap rather than per refre
 ## What this module deliberately cannot do
 
 It holds no connection, takes no lock and awaits nothing — `decide` is a plain synchronous method
-over three dict lookups and a tuple walk. `tests/test_maintenance_window.py` reads this module's
-AST and fails on an `await`, an `async def` or any name from the store, which is the same shape of
-guard that replaced `TRAP_PATH_HASHES` for `datagram_received` in v0.18.0: a property nobody can
-edit away by accident rather than a hash somebody recomputes.
+over three dict lookups and a tuple walk. `tests/lifecycle/test_maintenance_window.py` reads this
+module's AST and fails on an `await`, an `async def` or any name from the store, which is the same
+shape of guard that replaced `TRAP_PATH_HASHES` for `datagram_received` in v0.18.0: a property
+nobody can edit away by accident rather than a hash somebody recomputes.
 """
 
 from __future__ import annotations

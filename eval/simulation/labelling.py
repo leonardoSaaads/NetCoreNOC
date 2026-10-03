@@ -12,8 +12,8 @@ fifty lines from anything this package wrote, which is a good reason to never ta
 
 Split from `drive.py` at the 400-line rule, on the seam the package already had: this module answers
 *what a label says and who says it*, and `drive.py` answers *what the loop does with the answer*.
-`tests/test_operation.py` reaches the same route over TCP against a real appliance, so the rule is
-exercised on both sides of the socket rather than only on this one.
+`tests/ops/test_operation.py` reaches the same route over TCP against a real appliance, so the rule
+is exercised on both sides of the socket rather than only on this one.
 
 ## The rule, fixed before any verdict was seen and unchangeable after
 
@@ -42,6 +42,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 
 from netcorenoc.engine.dataset.labels import Exclusion, LabelContext, LabelScope  # noqa: E402
+
 from simulation.generator import generate  # noqa: E402
 
 if TYPE_CHECKING:  # pragma: no cover - type-only
@@ -110,7 +111,7 @@ async def label_increment(
     `excluded_reconciled` is the server's own number rather than the client's word for it. F46 is
     the finding that made that distinction load-bearing and F48 is its demonstration.
 
-    `tests/test_operation.py` reaches the same route over TCP, with a bearer token and an audit
+    `tests/ops/test_operation.py` reaches the same route over TCP, with a bearer token and an audit
     row. This path exists so ten increments can run without half an hour of wall clock, and the two
     are compared in `docs/gates/v0.14.0-phase-7.md` §2 rather than assumed to agree.
     """

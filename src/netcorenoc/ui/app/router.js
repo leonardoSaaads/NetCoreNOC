@@ -54,7 +54,7 @@ export function parseFragment(fragment) {
  *   `{ kind: "refused", view, missing }`        — the view exists; this principal may not have it
  *
  * **Pure.** It touches no DOM, issues no request, and constructs no component. That is what lets
- * `tests/test_ui_invariants.py` drive every view at every capability set and assert the refusal
+ * `tests/ui/test_ui_invariants.py` drive every view at every capability set and assert the refusal
  * without needing a server that would refuse.
  */
 export function resolve(fragment, capabilitySet) {
