@@ -29,7 +29,7 @@ from collections.abc import Iterator
 from typing import Annotated, Any, Literal
 
 import uvicorn
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from netcorenoc.api.models_decider import AutonomyIn as AutonomyIn
 from netcorenoc.api.models_decider import DeciderIn as DeciderIn
@@ -168,16 +168,35 @@ class LabelIn(BaseModel):
 
 
 class MoveIn(BaseModel):
-    """Move one alarm out of this situation and into another. **The release's product.**
+    """Move alarms out of this situation and into another. **The release's product.**
 
     The only gesture that yields a negative and a positive from one action at pair granularity:
-    `alarm_id` against the members it leaves is asserted negative, and against the members it joins
-    positive. Both situations are named, so both are scope-checked.
+    the moved alarms against the members they leave are asserted negative, and against the members
+    they join positive. Both situations are named, so both are scope-checked.
+
+    v0.29.0: `alarm_ids` moves several alarms as **one** gesture; `alarm_id` (one alarm) is kept
+    for existing clients. Exactly one of the two is given. Moving them one request at a time
+    asserted each against the others it travelled with — a negative the operator never said.
     """
 
-    alarm_id: int = Field(ge=1)
+    alarm_id: int | None = Field(default=None, ge=1)
+    alarm_ids: list[Annotated[int, Field(ge=1)]] | None = Field(
+        default=None, min_length=1, max_length=4096
+    )
     to_situation_id: int = Field(ge=1)
     confidence: float = Field(ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _one_form(self) -> MoveIn:
+        if (self.alarm_id is None) == (self.alarm_ids is None):
+            raise ValueError("name the alarms to move as `alarm_id` or as `alarm_ids`, not both")
+        return self
+
+    def moving(self) -> list[int]:
+        """The alarms to move, de-duplicated, in the order given."""
+        if self.alarm_id is not None:
+            return [self.alarm_id]
+        return list(dict.fromkeys(self.alarm_ids or ()))
 
 
 class MergeIn(BaseModel):

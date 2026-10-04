@@ -62,7 +62,11 @@ def _gesture_branch(first: str, second: str) -> str:
         "WHERE p.lifecycle = 'dataset' "
         "  AND e.produces_training_rows = 1 "
         "  AND e.kind IN ('move', 'merge') "
-        "  AND (e.kind = 'merge' OR sm.alarm_id = e.alarm_id)"
+        "  AND (e.kind = 'merge' OR sm.alarm_id = e.alarm_id"
+        # v0.29.0 (`0028`): a move of several alarms is one event with `alarm_id` NULL, and its
+        # moved set is listed in `situation_event_moved`. A primary-key lookup, not a scan.
+        "       OR EXISTS (SELECT 1 FROM situation_event_moved mv"
+        "                  WHERE mv.event_id = e.id AND mv.alarm_id = sm.alarm_id))"
     )
 
 
@@ -272,6 +276,28 @@ class SituationEventMixin(StoreBase):
             [(event_id, source, index, alarm) for index, alarm in enumerate(alarm_ids)],
         )
 
+    async def add_event_moved(self, event_id: int, alarm_ids: list[int]) -> None:
+        """The alarms one multi-alarm `move` carried (v0.29.0, `0028`). Order is not evidence."""
+        await self.conn.executemany(
+            "INSERT OR IGNORE INTO situation_event_moved (event_id, alarm_id) VALUES (?, ?)",
+            [(event_id, alarm) for alarm in alarm_ids],
+        )
+
+    async def event_moved(self, event_id: int) -> list[int]:
+        """The moved set of one event: `[alarm_id]` for a single move, the listed set otherwise."""
+        cur = await self.conn.execute(
+            "SELECT alarm_id FROM situation_event_moved WHERE event_id=? ORDER BY alarm_id",
+            (event_id,),
+        )
+        listed = [int(row[0]) for row in await cur.fetchall()]
+        if listed:
+            return listed
+        cur = await self.conn.execute(
+            "SELECT alarm_id FROM situation_event WHERE id=? AND alarm_id IS NOT NULL", (event_id,)
+        )
+        row = await cur.fetchone()
+        return [] if row is None else [int(row[0])]
+
     async def event_members(self, event_id: int, source: str) -> list[int]:
         """One snapshot, in its recorded order. The evidence half of an event."""
         cur = await self.conn.execute(
@@ -314,7 +340,11 @@ class SituationEventMixin(StoreBase):
         cur = await self.conn.execute(
             "SELECT e.kind, e.at, e.actor, e.confidence, u.username AS actor_name, "
             # v0.25.0 (ADR #401): the person's display name and photo digest, shaped like the name.
-            "       u.display_name AS actor_display, a.sha256 AS actor_avatar "
+            "       u.display_name AS actor_display, a.sha256 AS actor_avatar, "
+            # v0.29.0: how many alarms one `move` carried — a count, never an id (`0028`).
+            "       CASE WHEN e.kind = 'move' AND e.alarm_id IS NULL THEN "
+            "            (SELECT COUNT(*) FROM situation_event_moved mv WHERE mv.event_id = e.id) "
+            "            WHEN e.kind = 'move' THEN 1 END AS moved "
             "FROM situation_event e "
             "LEFT JOIN user u ON 'user:' || u.id = e.actor "
             "LEFT JOIN user_avatar a ON a.user_id = u.id "

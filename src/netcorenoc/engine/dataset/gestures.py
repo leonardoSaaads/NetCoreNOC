@@ -114,6 +114,9 @@ class Gesture:
     #: The label row this gesture produced, when its assertion had a shape the label surface can
     #: hold. `None` is the common case and is not a failure: a `merge` deliberately writes none.
     feedback_id: int | None = None
+    #: v0.29.0 (`0028`): a `move` of several alarms is one gesture. `alarm_id` is then `None` and
+    #: the set is here; a single-alarm move keeps `alarm_id` and leaves this empty.
+    moved: tuple[int, ...] = ()
 
     @property
     def asserts_about_grouping(self) -> bool:
@@ -184,6 +187,8 @@ async def record(
     await store.add_event_members(event_id, "server", list(subject.alarm_ids))
     if peer is not None:
         await store.add_event_members(event_id, "peer", list(peer.alarm_ids))
+    if gesture.moved:
+        await store.add_event_moved(event_id, list(gesture.moved))
     # **Promotion, for the same reason a label promotes.** A pair still in the sink has `lifecycle
     # = 'sink'` and the training join does not read it, so an assertion about pairs nobody promoted
     # would be an assertion about rows the corpus does not hold. `record_label` already promotes the

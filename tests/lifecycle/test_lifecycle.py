@@ -339,6 +339,97 @@ async def test_a_move_records_both_signs_at_pair_granularity(store: Store) -> No
     assert alarm not in peer, "the snapshot was taken after the move, not before it"
 
 
+async def test_a_move_of_several_alarms_is_one_gesture_with_one_label(store: Store) -> None:
+    """v0.29.0 (ADR #436): alarms moved together are one assertion, not one per alarm.
+
+    The console used to send one `move` per ticked alarm, and each asserted its alarm against a
+    "rest" that still held the others travelling with it — a negative the operator never said, and
+    one history row per alarm. Now one request carries the set: **one** event (its `alarm_id` NULL,
+    the set in `situation_event_moved`), **one** `split` label whose marked members are the whole
+    set, so the pairs inside it are asserted neither way, and one history row that counts them.
+    """
+    _engine, _queue, app = await seeded(store)
+    sid = int((await live_situations(store))[0]["id"])
+    members = await store.situation_member_ids(sid)
+    assert len(members) >= 5, "the seed must offer a destination, two to move and a remainder"
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        split = await client.post(
+            f"/api/situations/{sid}/split", json={"alarm_ids": members[:1], "confidence": SURE}
+        )
+        assert split.status_code == 200, split.text
+        destination = int((await _one_event(store, "operator_split"))["peer_situation_id"])
+        moving = members[1:3]
+        response = await client.post(
+            f"/api/situations/{sid}/move",
+            json={"alarm_ids": moving, "to_situation_id": destination, "confidence": SURE},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json() == {"status": "moved", "moved": 2}
+    finally:
+        await client.aclose()
+
+    cur = await store.conn.execute("SELECT * FROM situation_event WHERE kind='move'")
+    events = [dict(row) for row in await cur.fetchall()]
+    assert len(events) == 1, f"two alarms moved together wrote {len(events)} events"
+    event = events[0]
+    assert event["alarm_id"] is None and event["peer_situation_id"] == destination
+    assert await store.event_moved(int(event["id"])) == sorted(moving)
+    assert set(moving) <= set(await store.situation_member_ids(destination))
+
+    # The NEGATIVE half is one label, and both moved alarms are its marked members: the pair
+    # between them is inside the marked set, so it is asserted neither way (DECISIONS #124).
+    cur = await store.conn.execute(
+        "SELECT verdict, excluded_reconciled FROM feedback WHERE id=?", (event["feedback_id"],)
+    )
+    label = dict((await cur.fetchone()) or {})
+    assert label == {"verdict": "split", "excluded_reconciled": 2}, label
+
+    # The POSITIVE half's query reads the moved set and runs; the history counts it once.
+    await store.gesture_positive_pairs()
+    history = [row for row in await store.situation_events(sid) if row["kind"] == "move"]
+    assert [row["moved"] for row in history] == [2]
+
+
+async def test_a_move_may_not_empty_its_source_and_a_merge_does_it_instead(store: Store) -> None:
+    """v0.29.0 (ADR #436): moving every member is a merge, and as a move it left a ghost.
+
+    Moving every alarm of a situation into another one left the source **open with no members**
+    on the board — "(no members)" — and asserted each alarm apart from a rest that was leaving with
+    it. The route now refuses it (409, saying to merge) and changes nothing; the control is the
+    merge of the same two situations, which resolves the source as `merged`.
+    """
+    _engine, _queue, app = await seeded(store)
+    source, destination, _alarm = await _two_situations(store, app)
+    everything = await store.situation_member_ids(source)
+
+    client = await authutil.client_as(app, "editor")
+    try:
+        refused = await client.post(
+            f"/api/situations/{source}/move",
+            json={"alarm_ids": everything, "to_situation_id": destination, "confidence": SURE},
+        )
+        assert refused.status_code == 409, refused.text
+        assert "merge" in refused.json()["detail"]
+        assert await store.situation_member_ids(source) == everything, "a refused move moved"
+        cur = await store.conn.execute("SELECT COUNT(*) FROM situation_event WHERE kind='move'")
+        count = await cur.fetchone()
+        assert count is not None and count[0] == 0, "a refused move recorded an event"
+
+        merged = await client.post(
+            f"/api/situations/{destination}/merge",
+            json={"from_situation_id": source, "confidence": SURE},
+        )
+        assert merged.status_code == 200, merged.text
+    finally:
+        await client.aclose()
+
+    rows = {int(r["id"]): r for r in await store.list_situations(None, 100)}
+    assert rows[source]["status"] == "resolved" and rows[source]["resolution"] == "merged"
+    assert set(everything) <= set(await store.situation_member_ids(destination))
+
+
 async def test_a_merge_records_the_cross_pairs_and_writes_no_over_asserting_label(
     store: Store,
 ) -> None:

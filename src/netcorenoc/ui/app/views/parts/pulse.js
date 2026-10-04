@@ -62,8 +62,8 @@ export function RangePicker({ value, onPick }) {
  * v0.22.0 plotted alarms RAISED per bucket, and the maintainer read the moment ten critical alarms
  * appeared as a drop to zero: a fault that keeps firing re-reports an existing alarm and raises
  * nothing, so the flow was empty while the stock was at its highest. The chart is the stock now —
- * how many are active at each point, stacked by band with the most severe at the bottom — so its
- * top edge is the total and its last point is the number on the severity card beside it.
+ * the most alarms active at once in each interval, stacked by band with the most severe at the
+ * bottom (v0.29.0, ADR #437: a peak rather than one instant, on fixed interval boundaries).
  * `unplaced` is a band of its own, labelled, never folded into another.
  */
 export function Happening({ data, rangeS, error, retry }) {
@@ -72,9 +72,11 @@ export function Happening({ data, rangeS, error, retry }) {
   }
   const series = (data && data.series) || {};
   const n = data ? data.buckets : 0;
-  // A point is the count at its bucket's END, so it is labelled there; the last one is "now".
+  // v0.29.0 (ADR #437): a point is the most alarms active at once in its bucket, and the buckets
+  // sit on fixed boundaries, so a refresh redraws the same history. Each point is labelled where its
+  // bucket starts; the last one is the bucket in progress.
   const labels = n
-    ? Array.from({ length: n }, (_, i) => clock(data.from + (i + 1) * data.bucket_s, rangeS))
+    ? Array.from({ length: n }, (_, i) => clock(data.from + i * data.bucket_s, rangeS))
     : [];
   const bands = [...SCALE, UNPLACED]
     .filter((b) => series[b.key])
@@ -83,8 +85,8 @@ export function Happening({ data, rangeS, error, retry }) {
     bands.push({ key: "vendor", label: "vendor scale", level: 1, values: series.vendor });
   }
   return html`<${StackedArea} title="Active alarms, by severity" bands=${bands} labels=${labels}
-    source=${data ? "active at each point" : "reading…"}
-    span=${data ? `every ${spanText(data.bucket_s)}` : null}
+    source=${data ? "most active at once" : "reading…"}
+    span=${data ? `per ${spanText(data.bucket_s)}` : null}
     note=${TIMEZONE} />`;
 }
 

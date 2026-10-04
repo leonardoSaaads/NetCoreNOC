@@ -79,8 +79,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.post("/api/situations/{sid}/move")
     async def move_alarm(
         sid: int, body: MoveIn, request: Request, principal: auth.Principal = Depends(security)
-    ) -> dict[str, str]:
-        """Move one alarm from this situation to another.
+    ) -> dict[str, str | int]:
+        """Move alarms from this situation to another.
 
         **The gesture this release exists for.** It is not a labelling task — it is the operator
         fixing their console — and it happens to be a pair-level assertion with a negative and a
@@ -88,12 +88,19 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         waiting for.
 
         The negative half is written as a `split` on the **source** situation carrying the moved
-        alarm as its one marked member, which asserts *"this member does not belong with the rest,
+        alarms as its marked members, which asserts *"these members do not belong with the rest,
         and nothing else"* — precisely what the operator did, and precisely the shape
         `Store.asserting_bag_rows` counts. The positive half is the destination's snapshot on the
         event, from which the derivation reads it; a `confirm` on the destination would have
         asserted every pair inside it positive, which the operator did not say.
+
+        **v0.29.0: several alarms are one gesture** (`0028`). One label carries the whole moved set,
+        so the alarms that travelled together are never asserted apart from each other, and one
+        event records it. **A move may not empty the source** (409): moving every member is a merge,
+        and as a move it left an empty situation on the board with negative evidence against
+        nobody. The console sends a merge instead.
         """
+        moving = body.moving()
         scope = await scope_for(principal)
         for named in (sid, body.to_situation_id):
             if not await situation_in_scope(named, scope):
@@ -112,26 +119,32 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     )
             subject = await gestures.snapshot(store, sid)
             peer = await gestures.snapshot(store, body.to_situation_id)
-            if body.alarm_id not in subject.alarm_ids:
+            if any(alarm not in subject.alarm_ids for alarm in moving):
                 raise HTTPException(
                     status_code=409, detail="that alarm is no longer in this situation"
+                )
+            if len(moving) >= len(subject.alarm_ids):
+                raise HTTPException(
+                    status_code=409,
+                    detail="that would move every member out of this situation; merge it into "
+                    "the other situation instead",
                 )
             feedback_id = await _label_the_negative(
-                ctx, sid, scope, principal, [body.alarm_id], body.confidence, "move", now
+                ctx, sid, scope, principal, moving, body.confidence, "move", now
             )
-            if not await store.move_alarm(body.alarm_id, sid, body.to_situation_id):
-                raise HTTPException(
-                    status_code=409, detail="that alarm is no longer in this situation"
-                )
-            membership.moved(engine, body.alarm_id, sid, body.to_situation_id)
+            for alarm in moving:
+                if not await store.move_alarm(alarm, sid, body.to_situation_id):
+                    raise HTTPException(
+                        status_code=409, detail="that alarm is no longer in this situation"
+                    )
+                membership.moved(engine, alarm, sid, body.to_situation_id)
             # **The subject only** (v0.16.2, DECISIONS #273). The operator read *this* situation
-            # and took an alarm out of it, so `open` — *"an operator is working it"* (#254) — is
-            # true of it. The destination is an **id they typed**: this module offers no picker,
-            # deliberately, because the id is what an operator pastes from a chat during an
-            # incident. Promoting it claimed somebody had looked at a situation nobody had opened,
-            # and moved its card out of the **New** tab, which is where the operator who has not
-            # looked at it would find it.
+            # and took alarms out of it, so `open` — *"an operator is working it"* (#254) — is
+            # true of it. Promoting the destination would claim somebody had looked at a situation
+            # nobody had opened, and move its card out of the **New** tab, which is where the
+            # operator who has not looked at it would find it.
             await store.promote_situation(sid, now, "move")
+            single = len(moving) == 1
             await gestures.record(
                 store,
                 gestures.Gesture(
@@ -142,11 +155,19 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     role=principal.role,
                     confidence=body.confidence,
                     peer_situation_id=body.to_situation_id,
-                    alarm_id=body.alarm_id,
+                    alarm_id=moving[0] if single else None,
                     feedback_id=feedback_id,
+                    moved=() if single else tuple(moving),
                 ),
                 subject,
                 peer,
+            )
+            # The audit row names the first hundred alarms and the count; the event carries the
+            # whole set (`situation_event_moved`), so the bound costs the record nothing.
+            details: dict[str, object] = (
+                {"alarm_id": moving[0]}
+                if single
+                else {"alarm_ids": moving[:100], "count": len(moving)}
             )
             await audit_row(
                 request,
@@ -155,9 +176,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type="situation",
                 object_id=str(sid),
-                details={"alarm_id": body.alarm_id, "to": body.to_situation_id},
+                details={**details, "to": body.to_situation_id},
             )
-        return {"status": "moved"}
+        return {"status": "moved", "moved": len(moving)}
 
     @route.post("/api/situations/{sid}/merge")
     async def merge_situations(

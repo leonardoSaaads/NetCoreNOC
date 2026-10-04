@@ -750,6 +750,50 @@ const scenarios = {
   },
 
   /**
+   * Tick members, open the move list, pick the first existing destination, and report what was
+   * sent (v0.29.0, ADR #436). `params.count` members are ticked from the top; `"all"` ticks the
+   * header. The caller routes the POST it expects, so the card sees the server's answer.
+   */
+  async restructure(params) {
+    const env = await boot({ ...params, hash: `#/situations/${params.sid}` });
+    await settle(env);
+    const detail = () => cardFor(env, params.sid).detail;
+    if (params.count === "all") {
+      const header = detail().querySelector('thead input[type="checkbox"]');
+      header.checked = true;
+      header.dispatchEvent(new env.DomEvent("change"));
+    } else {
+      // One tick at a time, settled between, as a person ticks them: the card's mark set is
+      // component state, and two changes in one tick would both start from the same set.
+      for (let i = 0; i < params.count; i += 1) {
+        const box = detail().querySelectorAll('tbody input[type="checkbox"]')[i];
+        box.checked = true;
+        box.dispatchEvent(new env.DomEvent("change"));
+        await settle(env);
+      }
+    }
+    await settle(env);
+    const opener = detail().querySelectorAll(".lifecycle-actions button")[0];
+    const label = opener?.textContent.replace(/\s+/g, " ").trim() ?? null;
+    opener.dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const offered = detail().querySelectorAll(".destination-list li")
+      .map((li) => li.textContent.replace(/\s+/g, " ").trim());
+    detail().querySelectorAll("button.destination")
+      .find((b) => !b.getAttribute("class").includes("destination-new"))
+      .dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    return {
+      label,
+      offered,
+      sent: env.network.requests.filter((r) => r.method === "POST")
+        .map((r) => ({ path: r.path, body: r.body })),
+      hash: env.location.hash,
+      proof: proofOf(env),
+    };
+  },
+
+  /**
    * Tick the mark column's header and report what the split then sends (v0.16.4).
    *
    * One corpus situation holds 1 051 members; a partial split over it is not a gesture anybody

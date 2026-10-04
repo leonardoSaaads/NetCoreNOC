@@ -7,10 +7,17 @@ highest. An operator reading a chart under "what is happening" reads the stock: 
 are active, and whether that number is rising. This module counts that, in SQL:
 
 * an alarm is active on ``[first_seen, cleared_at)`` — open-ended while it has not cleared;
-* the value at each bucket's END is the baseline active at ``since`` plus every raise, minus every
-  clear, up to that instant — one grouped read of each, never a row per alarm;
-* the last point is the instant the read was made, so the chart's latest value is the number on
-  the severity card beside it, band for band.
+* the running count is the baseline active at ``since`` plus every raise, minus every clear, up to
+  an instant — one grouped read of each, never a row per alarm;
+* **a bucket's value is the most alarms active at once inside it** (v0.29.0, ADR #437), read at
+  `SUB_STEPS` evenly spaced instants. v0.23.0 read ONE instant, the bucket's end: an alarm that
+  rose and cleared between two ends was invisible, and because the API anchored the buckets on
+  the instant of the request, every 30-second refresh slid every end and the same history redrew
+  with different numbers — Grafana's sampling artefact. The routes now align the window to the
+  bucket width, so a past bucket reads the same on every refresh, and the peak keeps a short
+  burst in the bucket it happened in;
+* ``now`` is the count at the end of the window, so the severity card beside the chart and this
+  number agree band for band.
 
 Bands resolve with the census's precedence (declaration, rule, what the trap carried or the
 appliance learned), per (class, rank) group, so a band here means what it means on that card.
@@ -27,6 +34,16 @@ from netcorenoc.store.narrow import Narrow, narrowed
 
 #: Every band a count can land in, most severe first. `vendor` is a vendor's own numbering (F99).
 ALL_BANDS: tuple[str, ...] = (*BANDS, "unplaced", "vendor")
+
+#: Instants read inside each bucket for its peak (v0.29.0, ADR #437). Eight bounds the blind spot
+#: to an eighth of a bucket — 37 s on the default two hours — at eight times a grouped read's
+#: buckets, which stays a few hundred groups.
+SUB_STEPS = 8
+
+
+def peaks(values: list[int], buckets: int) -> list[int]:
+    """`SUB_STEPS` readings per bucket -> the most read in each bucket."""
+    return [max(values[i * SUB_STEPS : (i + 1) * SUB_STEPS]) for i in range(buckets)]
 
 
 class ActiveMixin(ActivityMixin):
@@ -69,7 +86,12 @@ class ActiveMixin(ActivityMixin):
         args: tuple[Any, ...],
         per_ne: bool,
     ) -> dict[int | None, dict[str, list[int]]]:
-        """`{ne_id or None: {band: [active at each bucket end]}}` over ``[since, until)``."""
+        """`{ne_id or None: {band: [active at each sub-step end]}}` over ``[since, until)``.
+
+        `buckets * SUB_STEPS` readings, oldest first; `peaks` folds them into buckets and the last
+        one is the count at ``until``.
+        """
+        buckets = buckets * SUB_STEPS
         width = max(1e-6, (until - since) / buckets)
         ne = "a.ne_id" if per_ne else "NULL"
         band_of = await self._band_of()
@@ -132,17 +154,20 @@ class ActiveMixin(ActivityMixin):
             since=since, until=until, buckets=buckets, where=where, args=args, per_ne=False
         )
         by_band = swept.get(None, {})
-        series = {band: by_band.get(band, [0] * buckets) for band in ALL_BANDS}
+        fine = {band: by_band.get(band, [0] * buckets * SUB_STEPS) for band in ALL_BANDS}
+        series = {band: peaks(values, buckets) for band, values in fine.items()}
+        now = {band: values[-1] for band, values in fine.items()}
         if not any(series["vendor"]):
             del series["vendor"]  # absent rather than a zero band nobody can read (F99)
+            del now["vendor"]
         return {
             "from": since,
             "to": until,
             "bucket_s": (until - since) / buckets,
             "buckets": buckets,
-            "measure": "active at the end of each bucket",
+            "measure": "most active at once in each bucket",
             "series": series,
-            "now": {band: values[-1] for band, values in series.items()},
+            "now": now,
         }
 
     async def activity_top(
@@ -168,17 +193,18 @@ class ActiveMixin(ActivityMixin):
             since=since, until=until, buckets=buckets, where=where, args=args, per_ne=True
         )
         rows = []
+        empty = [0] * buckets * SUB_STEPS
         for ne_id, per in swept.items():
             if ne_id is None:
                 continue
-            trend = [
-                sum(values)
-                for values in zip(*(per.get(b, [0] * buckets) for b in chosen), strict=True)
+            fine = [
+                sum(values) for values in zip(*(per.get(b, empty) for b in chosen), strict=True)
             ]
-            now = {band: per.get(band, [0] * buckets)[-1] for band in ALL_BANDS}
-            if trend[-1] == 0 and not any(trend):
+            trend = peaks(fine, buckets)
+            now = {band: per.get(band, empty)[-1] for band in ALL_BANDS}
+            if fine[-1] == 0 and not any(trend):
                 continue
-            rows.append({"ne_id": ne_id, "trend": trend, "now": now, "count": trend[-1]})
+            rows.append({"ne_id": ne_id, "trend": trend, "now": now, "count": fine[-1]})
         rows.sort(key=lambda r: (-r["count"], *(-r["now"][band] for band in chosen), r["ne_id"]))
         top = rows[: max(1, limit)]
         names = await self._ne_names([r["ne_id"] for r in top])
