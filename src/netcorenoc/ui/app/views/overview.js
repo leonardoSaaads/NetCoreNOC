@@ -184,7 +184,7 @@ export class Overview extends Component {
             skewing the counts; how bad; what needs someone; where; is the appliance coping. */ null}
       <div class="ov-grid">
         ${can("mw.read") ? html`<div class="ov-12 ov-slot"><${PlannedWork} /></div>` : null}
-        <section class="panel-block ov-5"><${Severity} census=${stats.severity} /><//>
+        <section class="panel-block ov-5 ov-fill"><${Severity} census=${stats.severity} /><//>
         <section class="panel-block ov-7">
           <${SectionHeading} title="What is happening" />
           <${Happening} data=${activity} rangeS=${rangeS} error=${activityError}

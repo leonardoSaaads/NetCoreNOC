@@ -32,6 +32,8 @@ import { WindowDetail } from "./parts/mwdetail.js";
 /* D7's three sizes. */
 const SIZES = [5, 10, 20];
 
+const REFRESH_MS = 30000;
+
 /* Status to the chip's tone. The five an operator acts on differently get their own; `ended` and
  * `cancelled` share `muted` because neither asks anything of anybody. */
 const TONE = {
@@ -57,7 +59,8 @@ export class Maintenance extends Loader {
     super(props);
     this.what = "planned maintenance";
     this.loadingLabel = "Reading planned maintenance";
-    this.state = { ...this.state, limit: 5, creating: false, busy: null, open: null, editing: null };
+    this.state = { ...this.state, limit: 5, creating: false, busy: null, open: null, editing: null,
+                   failed: null };
   }
 
   async load() {
@@ -83,15 +86,38 @@ export class Maintenance extends Loader {
     await this.act(wid, () => post(`/api/maintenance-windows/${wid}/end`));
   }
 
+  /* v0.29.0: a refusal is said on the row it came from, and the list is read again either way —
+   * a Confirm on a window the sweep had already expired used to do nothing at all: the 409 was
+   * thrown past this method, the list was never re-read, and the stale row kept its button. */
   async act(wid, send) {
-    this.setState({ busy: wid });
+    this.setState({ busy: wid, failed: null });
     try {
       await send();
-      await this.reload();
+    } catch (error) {
+      this.setState({ failed: { wid, message: error.message || String(error) } });
     } finally {
       this.setState({ busy: null });
+      await this.refresh();
     }
   }
+
+  /* Read the list again without the loading state, so the rows do not blink out and back. */
+  async refresh() {
+    try {
+      this.setState({ data: await this.load() });
+    } catch { /* the rows stay as they were; the next tick reads again */ }
+  }
+
+  componentDidMount() {
+    super.componentDidMount();
+    // Countdowns and statuses move with the clock (a long window expires unconfirmed at its
+    // start), so a list left open is read again every 30 s.
+    this.timer = setInterval(() => {
+      if (!this.state.creating && !this.state.editing) this.refresh();
+    }, REFRESH_MS);
+  }
+
+  componentWillUnmount() { clearInterval(this.timer); }
 
   view(body) {
     const rows = body.windows || [];
@@ -99,23 +125,25 @@ export class Maintenance extends Loader {
     if (this.state.editing) {
       // v0.22.0 (item 19): the same four cards, opened on what was scheduled.
       return html`<div>
-        <${SectionHeading} title=${`Edit — ${this.state.editing.name}`} />
+        <div class="mw-formhead">
+          <${SectionHeading} title=${`Edit — ${this.state.editing.name}`} />
+          <button type="button" data-role="mw-cancel-form"
+            onClick=${() => this.setState({ editing: null })}>Cancel</button>
+        </div>
         <${WindowForm} initial=${this.state.editing}
           onSaved=${() => this.setState({ editing: null }, () => this.reload())} />
-        <button type="button" class="link" onClick=${() => this.setState({ editing: null })}>
-          Cancel
-        </button>
       </div>`;
     }
     if (this.state.creating) {
       return html`<div>
-        <${SectionHeading} title="New maintenance window" />
+        <div class="mw-formhead">
+          <${SectionHeading} title="New maintenance window" />
+          <button type="button" data-role="mw-cancel-form"
+            onClick=${() => this.setState({ creating: false })}>Cancel</button>
+        </div>
         <${WindowForm}
           onSaved=${() => this.setState({ creating: false }, () => this.reload())}
         />
-        <button type="button" class="link" onClick=${() => this.setState({ creating: false })}>
-          Cancel
-        </button>
       </div>`;
     }
     return html`<div>
@@ -151,7 +179,7 @@ export class Maintenance extends Loader {
             meanwhile=${"While a window is running, every device and every situation it covers " +
             "carries a marker, so a host that goes quiet is never mistaken for a healthy one."} />`
         : html`<ul class="mw-list" data-role="upcoming">
-            ${rows.map((w) => this.row(w, body.now))}
+            ${rows.map((w) => this.row(w))}
           </ul>`}
       ${rows.length < body.total
         ? html`<p class="hint">Showing ${count(rows.length)} of ${count(body.total)}.</p>`
@@ -159,14 +187,18 @@ export class Maintenance extends Loader {
     </div>`;
   }
 
-  row(w, now) {
-    const starting = w.starts_in_s > 0;
+  row(w) {
+    const open = this.state.open === w.id;
+    const busy = this.state.busy === w.id;
+    const failed = this.state.failed && this.state.failed.wid === w.id ? this.state.failed : null;
     const confirmable = w.status === "pending_confirmation" && can("mw.confirm");
     return html`<li class="mw-row" key=${w.id} data-window=${w.id} data-status=${w.status}>
-      <${Badge} tone=${TONE[w.status] || "muted"}>${LABEL[w.status] || w.status}<//>
+      <span class="mw-row-status"><${Badge} tone=${TONE[w.status] || "muted"}>${
+        LABEL[w.status] || w.status}<//></span>
       <button type="button" class="mw-row-name" data-role="mw-open"
-              aria-expanded=${this.state.open === w.id ? "true" : "false"}
-              onClick=${() => this.setState({ open: this.state.open === w.id ? null : w.id })}>
+              aria-expanded=${open ? "true" : "false"}
+              onClick=${() => this.setState({ open: open ? null : w.id, failed: null })}>
+        <span class="mw-row-caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
         ${w.redacted
           ? html`<span class="muted" data-role="redacted"
               >Maintenance on ${plural(w.target_count, "host", "hosts")}</span
@@ -176,39 +208,39 @@ export class Maintenance extends Loader {
           ? html`<${Badge} tone="info" title="Created through the API by a service token">agent<//>`
           : null}
       </button>
-      ${w.redacted ? null : html`<span class="muted">${w.organization_name}</span>`}
-      <span class="muted">${plural(w.target_count, "host", "hosts")}</span>
-      <span class="mw-row-when" data-role="countdown">
-        ${starting
-          ? `in ${humanise(w.starts_in_s)}`
-          : w.ends_in_s > 0
-            ? `${humanise(w.ends_in_s)} left`
-            : "over"}
+      <span class="mw-row-meta muted">${w.redacted ? "" : `${w.organization_name} · `}${
+        plural(w.target_count, "host", "hosts")}</span>
+      <span class="mw-row-when" data-role="countdown">${when(w)}</span>
+      <span class="mw-row-actions">
+        ${confirmable
+          ? html`<button type="button" class="primary" data-role="confirm" disabled=${busy}
+              onClick=${() => this.confirmWindow(w.id)}>${busy ? "Confirming…" : "Confirm"}</button>`
+          : null}
+        ${w.status === "active" && can("mw.write") && !open
+          ? html`<button type="button" data-role="end-now" disabled=${busy}
+              onClick=${() => this.endNow(w.id)}>End now</button>`
+          : null}
       </span>
-      ${confirmable
-        ? html`<button
-            type="button"
-            data-role="confirm"
-            disabled=${this.state.busy === w.id}
-            onClick=${() => this.confirmWindow(w.id)}
-          >
-            Confirm
-          </button>`
+      ${failed
+        ? html`<p class="mw-row-error error" role="alert" data-role="row-error">${failed.message}</p>`
         : null}
-      ${w.status === "active" && can("mw.write")
-        ? html`<button
-            type="button"
-            data-role="end-now"
-            disabled=${this.state.busy === w.id}
-            onClick=${() => this.endNow(w.id)}
-          >
-            End now
-          </button>`
-        : null}
-      ${this.state.open === w.id
-        ? html`<${WindowDetail} wid=${w.id} onChanged=${() => this.reload()}
+      ${open
+        ? html`<${WindowDetail} wid=${w.id} onChanged=${() => this.refresh()}
             onEdit=${(detail) => this.setState({ editing: detail })} />`
         : null}
     </li>`;
   }
+}
+
+/* The one number a row is read for: until it starts, until it ends. A window awaiting
+ * confirmation says what the confirmation is racing — its start, patch band included, which is
+ * when the sweep expires it (D6). A window that stopped says nothing: its badge already does. */
+function when(w) {
+  if (w.status === "pending_confirmation") {
+    const left = w.starts_in_s - (w.patch_s || 0);
+    return left > 0 ? `confirm within ${humanise(left)}` : "expiring — start passed";
+  }
+  if (w.status === "scheduled") return w.starts_in_s > 0 ? `in ${humanise(w.starts_in_s)}` : "starting";
+  if (w.status === "active") return w.ends_in_s > 0 ? `${humanise(w.ends_in_s)} left` : "ending";
+  return "";
 }

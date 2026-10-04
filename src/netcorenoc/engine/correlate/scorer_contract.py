@@ -37,6 +37,7 @@ from typing import NamedTuple, Protocol, runtime_checkable
 
 __all__ = [
     "BASIS_SHAPLEY",
+    "BASIS_SHAPLEY_SAMPLED",
     "BASIS_WEIGHTED_SUM",
     "CONTRACT_VERSION",
     "DEFAULT_SCORER_ID",
@@ -194,6 +195,9 @@ class LinkFeatures(NamedTuple):
 # weight times a value. Putting it in a field named `weight` would be a lie in the field's own name.
 BASIS_WEIGHTED_SUM = "weighted-sum"
 BASIS_SHAPLEY = "shapley"
+# v0.29.0 (ADR #438): a permutation **estimate** of the Shapley values, for a model with no exact
+# attribution (k-NN). The terms still sum exactly to ``score - base_value``; each share is sampled.
+BASIS_SHAPLEY_SAMPLED = "shapley-sampled"
 
 
 class TermContribution(NamedTuple):

@@ -118,6 +118,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/mwmarker.js",
         "/app/views/parts/mwsummary.js",
         "/app/views/parts/mwreview.js",
+        "/app/views/parts/mwwhen.js",
         # v0.16.6: the Graph screen's second projection and its tables (DECISIONS #307, #310).
         # v0.16.6: the timeline's controls, column chart and summary (DECISIONS #311).
         "/app/views/parts/marks.js",

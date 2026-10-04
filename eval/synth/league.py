@@ -1,4 +1,4 @@
-"""Training the model league: one pinned command, five families, one dataset, one scorecard each.
+"""Training the model league: one pinned command, seven families, one dataset, one scorecard each.
 
     make train            # == python -m synth.league  (from eval/)
 
@@ -43,7 +43,15 @@ sys.path.insert(0, str(HERE.parent))
 
 from netcorenoc import __version__  # noqa: E402
 from netcorenoc.engine.correlate.features import FEATURE_NAMES  # noqa: E402
-from netcorenoc.engine.model import gam_fit, league, linear_fit, search, trees_fit  # noqa: E402
+from netcorenoc.engine.model import (  # noqa: E402
+    gam_fit,
+    knn_fit,
+    league,
+    linear_fit,
+    search,
+    trees_fit,
+    xgb_fit,
+)
 
 from synth import dataset, report, train, tuning  # noqa: E402
 
@@ -51,56 +59,101 @@ LEAGUE_DIR = train.SHIPPED / league.DIRECTORY
 BENCHMARK = "benchmark.json"
 BENCHMARK_FORMAT = "netcorenoc.benchmark/1"
 
-#: The search space of each member. Bounded so a member fits the fast loop: a forest of at most
-#: sixty trees of depth eight, a boosted model of at most 400 rounds of depth five (ADR #424).
+#: The search space of each member, reviewed against overfitting in v0.29.0 (ADR #438). Every
+#: weight here is in training-weight units — one activation is one unit, so a leaf's Hessian floor
+#: is a number of activations' worth of evidence, not a count of rows. The changes, and why:
+#:
+#: * floors raised where a leaf could rest on a sliver of one activation (boosted ``min_leaf``
+#:   0.02 -> 0.2, forest 0.5 -> 1, tree 0.5 -> 2), and the L2 floors with them;
+#: * row subsampling no lower than half the rows for the boosters, and column sampling added to
+#:   ``boosted_trees`` — decorrelated rounds overfit later;
+#: * the single tree capped at depth 8 (validation still cuts it shorter);
+#: * the GAM's learning rate and subsample narrowed to where its earlier searches settled.
+#:
+#: Bounded so a member fits the fast loop: forests of at most sixty trees of depth eight, boosted
+#: models of at most 600 rounds of depth six, a k-NN of at most 512 prototypes (ADR #424, #438).
 SPACES: dict[str, tuning.Space] = {
-    "gam": dict(search.SPACE),
+    "gam": {
+        **dict(search.SPACE),
+        "learning_rate": ("log", 0.02, 0.2),
+        "min_hessian": ("log", 0.3, 20.0),
+        "subsample": ("float", 0.5, 1.0),
+    },
     "boosted_trees": {
-        "learning_rate": ("log", 0.03, 0.3),
+        "learning_rate": ("log", 0.02, 0.2),
         "max_depth": ("int", 2, 5),
-        "min_leaf": ("log", 0.02, 3.0),
-        "l2": ("log", 0.1, 20.0),
-        "subsample": ("float", 0.3, 1.0),
+        "min_leaf": ("log", 0.2, 10.0),
+        "l2": ("log", 0.5, 50.0),
+        "subsample": ("float", 0.5, 1.0),
+        "colsample": ("float", 0.5, 1.0),
         "max_bins": ("int", 16, 48),
     },
     "random_forest": {
         "max_depth": ("int", 4, 8),
-        "min_leaf": ("log", 0.5, 30.0),
+        "min_leaf": ("log", 1.0, 50.0),
         "subsample": ("float", 0.2, 0.7),
         "colsample": ("float", 0.2, 0.8),
         "prior": ("log", 0.5, 8.0),
         "max_bins": ("int", 16, 48),
     },
     "decision_tree": {
-        "max_depth": ("int", 3, 10),
-        "min_leaf": ("log", 0.5, 60.0),
+        "max_depth": ("int", 3, 8),
+        "min_leaf": ("log", 2.0, 100.0),
         "prior": ("log", 0.5, 8.0),
         "max_bins": ("int", 16, 64),
     },
     "logistic_regression": {"l2": ("log", 1e-6, 1e-1), "log_counts": ("int", 0, 1)},
+    "xgboost": {
+        "eta": ("log", 0.02, 0.3),
+        "max_depth": ("int", 2, 6),
+        "min_child_weight": ("log", 0.1, 10.0),
+        "gamma": ("log", 1e-3, 2.0),
+        "reg_lambda": ("log", 0.5, 50.0),
+        "reg_alpha": ("log", 1e-3, 1.0),
+        "max_delta_step": ("float", 0.5, 5.0),
+        "subsample": ("float", 0.5, 1.0),
+        "colsample_bytree": ("float", 0.5, 1.0),
+        "colsample_bynode": ("float", 0.5, 1.0),
+        "max_bin": ("int", 16, 48),
+    },
+    "knn": {
+        # Capped at 384: the scorer costs ~0.18 µs per prototype per pair on the reference host,
+        # and a member over the 150 µs budget is ineligible to decide (`league_judge`).
+        "prototypes": ("log", 64.0, 384.0),
+        "weighting": ("int", 0, 1),
+        "metric_power": ("float", 0.0, 2.0),
+        "prior": ("log", 0.5, 32.0),
+    },
 }
 #: Successive-halving rungs: boosting rounds, forest trees, or one rung for the kinds whose fit
 #: has no budget to halve.
 RUNGS: dict[str, tuple[int, ...]] = {
     "gam": (40, 120, 320),
-    "boosted_trees": (40, 120, 360),
+    "boosted_trees": (40, 120, 400),
     "random_forest": (10, 30, 60),
     "decision_tree": (1,),
     "logistic_regression": (1,),
+    "xgboost": (40, 120, 400),
+    "knn": (1,),
 }
+#: v0.29.0: about twice v0.27.0's trials — a wider search, on more validation data (ADR #438).
 TRIALS = {
-    "gam": 12,
-    "boosted_trees": 12,
-    "random_forest": 9,
-    "decision_tree": 16,
-    "logistic_regression": 8,
+    "gam": 20,
+    "boosted_trees": 24,
+    "random_forest": 15,
+    "decision_tree": 24,
+    "logistic_regression": 10,
+    "xgboost": 27,
+    "knn": 20,
 }
 FINAL = {
     "gam": 600,
-    "boosted_trees": 400,
+    "boosted_trees": 600,
     "random_forest": 60,
     "decision_tree": 1,
     "logistic_regression": 1,
+    "xgboost": 600,
+    "knn": 1,
 }
 
 # Filled in the parent before the pool forks, so each child reads the same rows without a copy.
@@ -129,6 +182,34 @@ def fit_member(kind: str, p: dict[str, float], capacity: int, seed: int) -> Fit:
             tr, va, linear_fit.LinearParams(l2=p["l2"], log_counts=bool(round(p["log_counts"])))
         )
         return Fit(lr.document, lr.capacity, lr.best, lr.points, lr.train_trace, lr.valid_trace)
+    if kind == "xgboost":
+        xp = xgb_fit.XGBParams(
+            eta=p["eta"],
+            max_depth=int(p["max_depth"]),
+            min_child_weight=p["min_child_weight"],
+            gamma=p["gamma"],
+            reg_lambda=p["reg_lambda"],
+            reg_alpha=p["reg_alpha"],
+            max_delta_step=p["max_delta_step"],
+            subsample=p["subsample"],
+            colsample_bytree=p["colsample_bytree"],
+            colsample_bynode=p["colsample_bynode"],
+            max_bin=int(p["max_bin"]),
+            rounds=capacity,
+            seed=seed,
+        )
+        x = xgb_fit.fit(tr, va, xp, threshold=0.0)
+        return Fit(x.document, x.capacity, x.best, x.points, x.train_trace, x.valid_trace)
+    if kind == "knn":
+        kp = knn_fit.KnnParams(
+            prototypes=round(p["prototypes"]),
+            weighting="distance" if round(p["weighting"]) else "uniform",
+            metric_power=p["metric_power"],
+            prior=p["prior"],
+            seed=seed,
+        )
+        k = knn_fit.fit(tr, va, kp, threshold=0.0)
+        return Fit(k.document, k.capacity, k.best, k.points, k.train_trace, k.valid_trace)
     params = trees_fit.TreeParams(
         method=kind,
         max_depth=int(p["max_depth"]),
@@ -186,6 +267,9 @@ def _tag(kind: str) -> str:
         "src/netcorenoc/engine/model/trees_fit.py",
         "src/netcorenoc/engine/model/trees_grow.py",
         "src/netcorenoc/engine/model/linear_fit.py",
+        "src/netcorenoc/engine/model/xgb_fit.py",
+        "src/netcorenoc/engine/model/knn_fit.py",
+        "src/netcorenoc/engine/model/knn.py",
         "src/netcorenoc/engine/correlate/grouping.py",
         "src/netcorenoc/engine/correlate/features.py",
         "eval/synth/tuning.py",
@@ -444,6 +528,7 @@ def main() -> int:
     tuning_logs = {
         "valid": list(dataset.load_split(root, "valid")),
         "valid_concurrency": list(dataset.load_split(root, "valid_concurrency")),
+        "valid_adverse": list(dataset.load_split(root, "valid_adverse")),
     }
     grouped = [grouping_phase(f, tuning_logs) for f in fitted]
     del tuning_logs

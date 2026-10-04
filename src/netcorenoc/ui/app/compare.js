@@ -30,13 +30,17 @@ import { Absent, Caption } from "./charts.js";
  * The value is **printed**, not only drawn. A bar answers *how much bigger* at a glance and cannot
  * answer *how much*, and during an incident the second one goes in the ticket.
  */
-export function Bars({ title, hint, rows, unit = "", source, span, note, max }) {
+export function Bars({ title, hint, rows, unit = "", source, span, note, max, from = 0, log = false }) {
   const readable = (rows || []).filter((r) => r.value != null);
   if (!readable.length) {
     return html`<${Absent} title=${title} source=${source} span=${span}
       why=${note || "nothing to rank yet"} />`;
   }
   const top = max != null ? max : Math.max(...readable.map((r) => Number(r.value))) || 1;
+  // v0.29.0: `from` starts the axis above zero (the caption says so); `log` for values that span
+  // decades — 0.6 µs beside 38 µs is a sliver beside a bar on a straight axis.
+  const lo = log ? Math.min(...readable.map((r) => Number(r.value)).filter((v) => v > 0)) / 3 : from;
+  const at = (v) => (log ? Math.log(Math.max(v, lo) / lo) / Math.log(top / lo || 2) : (v - lo) / (top - lo || 1));
   return html`<section class="chart-block">
     <h4 class="chart-title">${title}</h4>
     ${hint ? html`<p class="hint">${hint}</p>` : null}
@@ -47,7 +51,7 @@ export function Bars({ title, hint, rows, unit = "", source, span, note, max }) 
         <span class="chart-bar-label" title=${row.title}>${row.face ?? row.label}</span>${" "}
         <span class="chart-bar-track">
           <span class=${cx("chart-bar-fill", row.tone && `chart-${row.tone}`)}
-                style=${`width:${row.value == null ? 0 : ((row.value / top) * 100).toFixed(2)}%`}
+                style=${`width:${row.value == null ? 0 : Math.max(0, Math.min(100, at(row.value) * 100)).toFixed(2)}%`}
           ></span>
         </span>${" "}
         <span class="chart-bar-value">${unitText(row.value, unit)}</span>

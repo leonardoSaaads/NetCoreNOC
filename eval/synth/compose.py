@@ -17,6 +17,10 @@ What this module adds on top of the families, each drawn per stream:
 * **Background noise** at its own rate: every noise event is its own incident.
 * **The path**: per-element management latency (most fast, a few slow), per-trap jitter, loss,
   duplication, and NMS-side ingest gaps whose backlog arrives late and out of order.
+* **A bad day** (v0.29.0, ADR #439), at the stream's ``adverse`` intensity: twin incidents of the
+  same family a moment apart, storm windows of several times the usual fault rate, noise that
+  follows the working day, and the path's congestion bursts, slow relays and duplicated traps
+  (`adverse.Regime`). Intensity 0 draws nothing from any of it.
 
 Deterministic: every draw comes from a `random.Random` seeded by a SHA-256 of the stream seed and
 a salt, so a stream is a pure function of its spec, independent of what else was generated.
@@ -29,9 +33,14 @@ import random
 from dataclasses import dataclass, field
 from typing import Any
 
+from synth.adverse import ADVERSE_FAMILIES, Regime, draw_regime
 from synth.emit import Event
 from synth.estate import Estate, build_estate
-from synth.families import FAMILIES, NOISE, Builder, Spec, hosts
+from synth.families import FAMILIES as _BASE_FAMILIES
+from synth.families import NOISE, Builder, Spec, hosts
+
+#: Every family a stream may draw: the v0.26.0 families and the adverse ones (ADR #439).
+FAMILIES: dict[str, Spec] = {**_BASE_FAMILIES, **ADVERSE_FAMILIES}
 
 __all__ = ["Stream", "StreamSpec", "compose", "derived_rng"]
 
@@ -61,6 +70,8 @@ class StreamSpec:
     #: Weights by family; absent means 1.0. Lets a held-out stream favour its own families while
     #: still carrying ordinary traffic around them.
     weights: tuple[tuple[str, float], ...] = ()
+    #: v0.29.0 (ADR #439): how bad a day this stream is, 0 (none of it) to 1 (all of it, hard).
+    adverse: float = 0.0
 
 
 @dataclass
@@ -105,6 +116,11 @@ def compose(spec: StreamSpec) -> Stream:
     horizon = spec.hours * 3600.0
     stream = Stream(spec, [])
     placed: list[tuple[float, str]] = []
+    placed_family: dict[str, str] = {}
+    placed_sources: dict[str, set[str]] = {}
+    # Drawn from its own generator, so an `adverse` of 0 leaves every other draw where it was.
+    bad = derived_rng("adverse", spec.name, spec.seed)
+    regime = draw_regime(bad, spec.adverse, horizon, estate)
 
     def place(
         key: str, family: str, fam_spec: Spec, seed_key: tuple[object, ...], t0: float
@@ -118,13 +134,19 @@ def compose(spec: StreamSpec) -> Stream:
         stream.events.extend(events)
         stream.incidents[key] = family
         placed.append((t0, key))
+        placed_family[key] = family
+        placed_sources[key] = {e.source for e in events}
 
+    onsets: list[float] = []
     t = 0.0
-    n = 0
     while True:
         t += rng.expovariate(spec.incidents_per_hour / 3600.0)
         if t >= horizon:
             break
+        onsets.append(t)
+    # Storm windows add onsets of their own, from the bad-day generator (nothing at intensity 0).
+    extra = sorted(regime.storm_onsets(bad, spec.incidents_per_hour))
+    for n, t in enumerate(sorted(onsets + extra)):
         family = _draw_family(rng, spec, estate)
         if family is None:
             break
@@ -139,6 +161,22 @@ def compose(spec: StreamSpec) -> Stream:
             onset = anchor_t + rng.uniform(0.0, {"2s": 2.0, "30s": 30.0, "300s": 300.0}[closeness])
             stream.concurrent[key] = (anchor, closeness)
         seed_key: tuple[object, ...] = ("incident", spec.name, spec.seed, n)
+        if placed and spec.adverse > 0 and bad.random() < 0.12 * spec.adverse:
+            # A twin: the SAME family on OTHER elements, a moment after one already placed — two
+            # fibre cuts, two card failures. The hardest negatives a correlator meets. A draw that
+            # lands on an element the anchor touched is redrawn: two faults on one element at
+            # once are not two incidents anyone could tell apart, and the truth must not ask it.
+            # With no disjoint draw in four tries, the ordinary incident stands.
+            anchor_t, anchor = bad.choice(placed[-4:])
+            twin_family = placed_family[anchor]
+            for attempt in range(4):
+                trial: tuple[object, ...] = ("twin", spec.name, spec.seed, n, attempt)
+                drawn = _run(FAMILIES[twin_family], trial, estate, key, twin_family)
+                if drawn and not {e.source for e in drawn} & placed_sources[anchor]:
+                    family, seed_key = twin_family, trial
+                    onset = anchor_t + bad.uniform(0.0, 120.0)
+                    stream.concurrent[key] = (anchor, "twin")
+                    break
         place(key, family, FAMILIES[family], seed_key, onset)
         if rng.random() < spec.recurrence:
             later = onset
@@ -149,23 +187,34 @@ def compose(spec: StreamSpec) -> Stream:
                 rkey = f"{key}r{r + 1}"
                 place(rkey, family, FAMILIES[family], seed_key, later)  # the SAME draws
                 stream.recurs[rkey] = key
-        n += 1
 
     t = 0.0
     m = 0
-    while spec.noise_per_hour > 0:
-        t += rng.expovariate(spec.noise_per_hour / 3600.0)
+    # Under a working-day modulation, candidates are drawn at the peak rate and thinned, so the
+    # stream's mean noise rate is unchanged and only its shape over the day moves.
+    noise_rate = spec.noise_per_hour * (1.7 if regime.diurnal else 1.0)
+    while noise_rate > 0:
+        t += rng.expovariate(noise_rate / 3600.0)
         if t >= horizon:
             break
+        # Thinning (Lewis & Shedler): the working-day factor keeps a draw with its own odds, from
+        # the bad-day generator, so a stream with no bad day keeps every draw it had.
+        if regime.diurnal and bad.random() > regime.noise_factor(t) / 1.7:
+            continue
         place(f"{spec.name}/n{m}", "noise", NOISE, ("noise", spec.name, spec.seed, m), t)
         m += 1
 
-    stream.events = _deliver(rng, estate, stream.events, horizon)
+    stream.events = _deliver(rng, estate, stream.events, horizon, regime, bad)
     return stream
 
 
 def _deliver(
-    rng: random.Random, estate: Estate, events: list[Event], horizon: float
+    rng: random.Random,
+    estate: Estate,
+    events: list[Event],
+    horizon: float,
+    regime: Regime | None = None,
+    bad: random.Random | None = None,
 ) -> list[Event]:
     """The management network between the elements and the appliance, applied to every trap."""
     latency: dict[str, float] = {}
@@ -201,10 +250,17 @@ def _deliver(
                     arrival = g1 + rng.uniform(0.0, 60.0)  # the backlog arrives late, reordered
         if dropped:
             continue
-        e.arrival = arrival
+        arrivals = [arrival]
+        if regime is not None and bad is not None and regime.intensity > 0:
+            arrivals = regime.deliver(bad, e, arrival)
+            if not arrivals:
+                continue
+        e.arrival = arrivals[0]
         out.append(e)
+        for later in arrivals[1:]:
+            out.append(Event(**{**e.__dict__, "arrival": later}))
         if rng.random() < dup:
-            twin = Event(**{**e.__dict__, "arrival": arrival + rng.uniform(0.01, 2.0)})
+            twin = Event(**{**e.__dict__, "arrival": e.arrival + rng.uniform(0.01, 2.0)})
             out.append(twin)
     out.sort(key=lambda ev: (ev.arrival, ev.source, ev.trap_oid, ev.entity))
     return out

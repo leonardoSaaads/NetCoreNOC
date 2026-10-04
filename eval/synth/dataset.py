@@ -5,10 +5,10 @@
 Every split is a list of **streams**, and a stream is never cut in two — so no incident, and no
 pair, can appear on both sides of any split (Part V: *group by incident, never by pair*).
 
-* ``train`` — 96 streams of the training families: what the model is fitted on.
+* ``train`` — 128 streams of the training families: what the model is fitted on.
 * ``train_long`` — 12 streams of training families, 7-14 days, high recurrence: memory: first 70 %
   trains, last 30 % is ``test_time``.
-* ``valid`` — 24 streams of training families: early stopping, grouping parameters, the search.
+* ``valid`` — 32 streams of training families: early stopping, grouping parameters, the search.
 * ``test_iid`` — 32 streams of training families: new estates, familiar faults.
 * ``test_optical`` — 24 streams of **held-out** optical families + context: DWDM degradation, line
   cuts, protection — never trained on.
@@ -16,6 +16,11 @@ pair, can appear on both sides of any split (Part V: *group by incident, never b
   flaps — never trained on.
 * ``test_concurrency`` — 24 streams of training families, 80 % concurrency: the `dual_incident`
   failure at scale.
+* ``test_adverse`` (v0.29.0, ADR #439) — 32 streams of training families on a **bad day**: storm
+  windows, twin incidents, congestion bursts that drop and delay traps, slow relays, duplicated
+  traps, the adverse families weighted up. Harsher than anything trained on: training streams draw
+  a bad day half the time at a lower intensity. ``valid_adverse`` is its validation counterpart, so
+  the grouping is chosen with that regime in view (#421's rule).
 
 **Held-out families are held out of everything the model is fitted or tuned on**, including
 validation: a family that informed early stopping has informed the model. The shipped artifact is
@@ -63,6 +68,16 @@ __all__ = [
 ]
 
 SEED = 2026
+#: v0.29.0 (ADR #439): the seven adverse families join the training families.
+ADVERSE = (
+    "cascade_site_outage",
+    "rolling_upgrade",
+    "power_flicker",
+    "chatter_storm",
+    "intermittent_optics",
+    "control_plane_overload",
+    "hvac_failure",
+)
 TRAIN_FAMILIES = (
     "gpon_fibre_cut",
     "onu_power_outage",
@@ -77,6 +92,7 @@ TRAIN_FAMILIES = (
     "planned_maintenance",
     "site_power_loss",
     "environment",
+    *ADVERSE,
 )
 HOLDOUT_OPTICAL = ("dwdm_degradation", "dwdm_line_cut", "optical_protection")
 HOLDOUT_PROTOCOL = ("bgp_flap", "ospf_flap")
@@ -89,7 +105,9 @@ CACHE = HERE / ".cache"
 #: drawn afresh, so the shipped numbers come from streams no decision had seen. Train and validation
 #: streams never move. A later release that reads the test splits again after changing anything
 #: must increment this.
-TEST_DRAW = 3
+#: v0.29.0: draw 4. The generator changed (ADR #439), so every split is new data, and the test
+#: streams are drawn afresh for a release that has not read them.
+TEST_DRAW = 4
 
 
 def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
@@ -117,6 +135,12 @@ def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
         families: tuple[str, ...] = TRAIN_FAMILIES
         weights: tuple[tuple[str, float], ...] = ()
         concurrency = rng.uniform(0.1, 0.4)
+        # Half the ordinary streams have a mild bad day (ADR #439); the adverse splits a hard one.
+        adverse = rng.uniform(0.1, 0.6) if rng.random() < 0.5 else 0.0
+        if split in ("test_adverse", "valid_adverse"):
+            adverse = rng.uniform(0.75, 1.0)
+            concurrency = rng.uniform(0.3, 0.6)
+            weights = tuple((f, 2.0) for f in ADVERSE)
         if split == "test_optical":
             families = TRAIN_FAMILIES + HOLDOUT_OPTICAL
             weights = tuple((f, 8.0) for f in HOLDOUT_OPTICAL)
@@ -136,22 +160,26 @@ def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
                 concurrency=concurrency,
                 recurrence=0.08,
                 weights=weights,
+                adverse=adverse,
             )
         )
     return out
 
 
 SPLITS: dict[str, int] = {
-    "train": 96,
+    # v0.29.0 (ADR #439): a third more training and validation streams than v0.27.0's 96 and 24.
+    "train": 128,
     "train_long": 12,
-    "valid": 24,
+    "valid": 32,
     # Validation for every regime the bar checks (#421): the grouping is chosen under the bar, and a
     # regime with no validation counterpart is one the choice cannot see.
     "valid_concurrency": 12,
+    "valid_adverse": 12,
     "test_iid": 32,
     "test_optical": 24,
     "test_protocol": 24,
     "test_concurrency": 24,
+    "test_adverse": 32,
 }
 
 

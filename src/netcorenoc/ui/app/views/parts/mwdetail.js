@@ -86,46 +86,55 @@ export class WindowDetail extends Component {
       ["cancelled", w.cancelled_at, null],
       ["ended", w.ended_at, null],
     ].filter(([, at]) => at);
-    const extend = (seconds) => this.act(
-      () => post(`/api/maintenance-windows/${wid}/extend`,
-        { ends_at: new Date((w.ends_at + seconds) * 1000).toISOString() }),
-      `Extended by ${humanise(seconds)}.`);
+    // v0.29.0: the actions open the card — they are what an engineer opened it for — and the
+    // facts follow as one compact grid; the two clocks are a line each, not two grey boxes.
     return html`<div class="mw-detail" data-window=${wid}>
+      ${editable && live ? this.actions(w, wid, onEdit, busy, shortenTo) : null}
+      ${note ? html`<p class="ok-note" role="status">${note}</p>` : null}
+      ${error ? html`<p class="err" role="alert">${error.message}</p>` : null}
       <${TimelineBar} startsAt=${w.starts_at} endsAt=${w.ends_at} patchS=${w.patch_s}
         now=${Date.now() / 1000} />
       <dl class="mw-facts">
-        <div><dt>Starts</dt><dd><${SiteAndYourTime} instant=${w.starts_at} siteZone=${w.tz}
-          siteTime=${siteLocal(w.starts_at, w.tz)} siteOffset=${w.site_offset} /></dd></div>
-        <div><dt>Ends</dt><dd><${SiteAndYourTime} instant=${w.ends_at} siteZone=${w.tz}
-          siteTime=${siteLocal(w.ends_at, w.tz)} siteOffset=${w.site_offset} /></dd></div>
+        <div><dt>Starts</dt><dd><${SiteAndYourTime} compact=${true} instant=${w.starts_at}
+          siteZone=${w.tz} siteTime=${siteLocal(w.starts_at, w.tz)} siteOffset=${w.site_offset} /></dd></div>
+        <div><dt>Ends</dt><dd><${SiteAndYourTime} compact=${true} instant=${w.ends_at}
+          siteZone=${w.tz} siteTime=${siteLocal(w.ends_at, w.tz)} siteOffset=${w.site_offset} /></dd></div>
         <div><dt>Patch band</dt><dd>${humanise(w.patch_s)} either side</dd></div>
         <div><dt>Organization</dt><dd>${w.organization_name}</dd></div>
         <div><dt>Owner</dt><dd>${w.owner_ref || "—"}${w.created_by_agent
           ? html`${" "}<${Badge} tone="info">agent<//>` : null}</dd></div>
-        <div><dt>Visible to</dt><dd>${w.visibility}</dd></div>
-        ${w.description ? html`<div><dt>Notes</dt><dd>${w.description}</dd></div>` : null}
+        <div><dt>Details visible to</dt><dd>${w.visibility === "everyone" ? "everyone" : "editors and admins"}</dd></div>
+        ${w.description ? html`<div class="mw-facts-wide"><dt>Notes</dt><dd>${w.description}</dd></div>` : null}
       </dl>
       <h4 class="mw-sub">${plural((w.targets || []).length, "host")} — what still gets through</h4>
       <ul class="mw-dtargets">${(w.targets || []).map((t) => html`<li key=${t.ne_id}>
         <b>${t.label || t.address}</b>${t.label ? html`${" "}<code class="mono">${t.address}</code>` : null}
         <span class="muted">${" — "}${(byTarget.get(t.ne_id) || ["nothing"]).join("; ")}</span>
       </li>`)}</ul>
-      ${w.ledger ? html`<p class="muted">Ledger: ${plural(w.ledger.seen || 0, "fault")} raised,
-        ${w.ledger.cleared || 0} cleared inside.</p>` : null}
+      ${w.ledger ? html`<p class="muted">${`Ledger: ${plural(w.ledger.seen || 0, "fault")} raised, ${
+        w.ledger.cleared || 0} cleared inside.`}</p>` : null}
       <h4 class="mw-sub">History</h4>
       <ul class="mw-history">${history.map(([what, at, who]) => html`<li key=${what}>
         ${what} ${absolute(at)}${who ? html`${" "}<span class="muted">by ${who}</span>` : null}</li>`)}
       </ul>
-      ${note ? html`<p class="ok-note" role="status">${note}</p>` : null}
-      ${error ? html`<p class="err" role="alert">${error.message}</p>` : null}
-      ${editable && live ? html`<div class="mw-actions" data-role="mw-actions">
+    </div>`;
+  }
+
+  actions(w, wid, onEdit, busy, shortenTo) {
+    const extend = (seconds) => this.act(
+      () => post(`/api/maintenance-windows/${wid}/extend`,
+        { ends_at: new Date((w.ends_at + seconds) * 1000).toISOString() }),
+      `Extended by ${humanise(seconds)}.`);
+    return html`<div class="mw-actions" data-role="mw-actions">
         ${w.status === "active"
           ? html`
             ${this.armed("end", "End now",
               () => this.act(() => post(`/api/maintenance-windows/${wid}/end`), "Ended."), true)}
-            <button type="button" disabled=${busy} onClick=${() => extend(HOUR / 2)}>+30 min</button>
-            <button type="button" disabled=${busy} onClick=${() => extend(HOUR)}>+1 h</button>
-            <button type="button" disabled=${busy} onClick=${() => extend(2 * HOUR)}>+2 h</button>
+            <span class="mw-extend" role="group" aria-label="Extend">
+              <button type="button" disabled=${busy} onClick=${() => extend(HOUR / 2)}>+30 min</button>
+              <button type="button" disabled=${busy} onClick=${() => extend(HOUR)}>+1 h</button>
+              <button type="button" disabled=${busy} onClick=${() => extend(2 * HOUR)}>+2 h</button>
+            </span>
             <form class="mw-shorten" onSubmit=${(e) => {
               e.preventDefault();
               const at = Date.parse(`${shortenTo}:00${(w.site_offset || "UTC+00:00").replace("UTC", "")}`);
@@ -140,15 +149,14 @@ export class WindowDetail extends Component {
               <button type="submit" disabled=${busy || !shortenTo}>Shorten</button>
             </form>`
           : html`
-            <button type="button" data-role="mw-edit" onClick=${() => onEdit(w)}>Edit</button>
             ${w.status === "pending_confirmation" && can("mw.confirm")
-              ? html`<button type="button" disabled=${busy} onClick=${() => this.act(
+              ? html`<button type="button" class="primary" disabled=${busy} onClick=${() => this.act(
                   () => post(`/api/maintenance-windows/${wid}/confirm`), "Confirmed.")}>Confirm</button>`
               : null}
+            <button type="button" data-role="mw-edit" onClick=${() => onEdit(w)}>Edit</button>
             ${this.armed("cancel", "Cancel the window",
               () => this.act(() => post(`/api/maintenance-windows/${wid}/cancel`), "Cancelled."),
               true)}`}
-      </div>` : null}
-    </div>`;
+      </div>`;
   }
 }

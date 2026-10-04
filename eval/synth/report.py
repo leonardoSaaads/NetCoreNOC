@@ -49,7 +49,7 @@ HEADLINE = (
     "asserted_negative_respected_rate",
     "repair_gestures",
 )
-TEST_SPLITS = ("test_iid", "test_optical", "test_protocol", "test_concurrency")
+TEST_SPLITS = ("test_iid", "test_optical", "test_protocol", "test_concurrency", "test_adverse")
 HELD_OUT = {"test_optical": dataset.HOLDOUT_OPTICAL, "test_protocol": dataset.HOLDOUT_PROTOCOL}
 
 

@@ -43,10 +43,10 @@ export class Labelling extends Component {
       <div class="settings-intro">
         <p><b>Your judgements teach every model.</b> A confirm says the grouping is right; a split
           says it is wrong (and the members you mark do not belong); a move, a merge, and an answer
-          to a proposal each say which alarms belong together. The judge re-scores all five models
+          to a proposal each say which alarms belong together. The judge re-scores every model
           on these labels every five minutes.</p>
       </div>
-      <${ModelHealth} />
+      <${ModelHealth} line=${true} />
 
       <${SectionHeading} title="Proposals waiting for an answer"
         hint=${"The model would have added these alarms to a situation an operator already " +

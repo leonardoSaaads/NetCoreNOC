@@ -10,8 +10,9 @@
  *
  * **A running window first, always.** It is the only state that changes how the rest of the
  * screen should be read: while it is in force, the alarm counts above are incomplete by
- * construction. Scheduled work is context; running work is a caveat on everything else, so it
- * gets the sentence rather than a row in a list.
+ * construction. Scheduled work is context; running work is a caveat on everything else, so its
+ * tile is the one that turns red and the hosts it covers get the card's one sentence (v0.29.0:
+ * three counts and the next three windows — the rest is on the Maintenance screen).
  *
  * Then at most three upcoming, because this is a summary and the screen it summarises is one
  * click away. A fourth row would buy nothing an operator cannot get by following the link.
@@ -27,8 +28,8 @@
 
 import { Component, html } from "../../dom.js";
 import { get } from "../../api.js";
-import { Badge, SectionHeading } from "../../widgets.js";
-import { plural } from "../../format.js";
+import { SectionHeading } from "../../widgets.js";
+import { count, plural } from "../../format.js";
 import { humanise } from "./mwdraft.js";
 
 /* How many upcoming rows a summary shows. Three, because the fourth is a scroll and the whole
@@ -36,7 +37,7 @@ import { humanise } from "./mwdraft.js";
 const SHOWN = 3;
 
 const TONE = { active: "alarm", pending_confirmation: "warn", scheduled: "info" };
-const LABEL = { active: "running", pending_confirmation: "needs confirming", scheduled: "scheduled" };
+const LABEL = { active: "running", pending_confirmation: "to confirm", scheduled: "scheduled" };
 
 /* Windows that are in force now, and the ones still to come — in the order an operator cares
  * about them. Pure, so `tests/ui/test_maintenance_dom.py` can drive it without a network. */
@@ -85,56 +86,47 @@ export class PlannedWork extends Component {
     }
     if (windows === null) return null;  // first read in flight; no skeleton for one line
 
+    // v0.29.0: three counts and the next three windows. The running count is the caveat on the
+    // rest of the screen, so it is the one tile that turns red, and the hosts it covers are said
+    // once under it; every other word the card used to carry is on the Maintenance screen.
     const { running, ahead } = split(windows);
-    return html`<section class="panel-block" data-role="planned-work">
-      <${SectionHeading} title="Planned work" />
-      ${running.length
-        ? html`<p class="mw-running" data-role="running">
-            <${Badge} tone="alarm">running<//>
-            ${/* One expression, not three with newlines between them: htm collapses the
-                  newline and the line read `1 window in force over1 host`. */ null}
-            <span
-              >${`${plural(running.length, "window", "windows")} in force over ` +
-              `${plural(
-                running.reduce((n, w) => n + (w.target_count || 0), 0),
-                "host",
-                "hosts",
-              )}. Alarms from them may be suppressed.`}</span
-            >
-          </p>`
-        : null}
-      ${ahead.length
-        ? html`<ul class="mini-list" data-role="upcoming">
-            ${ahead.slice(0, SHOWN).map(
-              (w) => html`<li key=${w.id} data-window=${w.id} data-status=${w.status}>
-                <${Badge} tone=${TONE[w.status] || "muted"}>${LABEL[w.status] || w.status}<//>
-                ${/* A redacted row still says a window EXISTS and how long until it starts —
-                      prime directive 4. What it withholds is the name. */ null}
-                <span class="mw-sum-name"
-                  >${w.redacted
-                    ? html`<span class="muted"
-                        >Maintenance on ${plural(w.target_count, "host", "hosts")}</span
-                      >`
-                    : w.name}</span
-                >
-                <span class="muted mw-row-when"
-                  >${w.starts_in_s > 0 ? `in ${humanise(w.starts_in_s)}` : "starting"}</span
-                >
-              </li>`,
-            )}
-          </ul>`
-        : null}
-      ${!running.length && !ahead.length
-        ? html`<p class="hint" data-role="planned-none">
-            Nothing scheduled. A window declared here or through the API appears on this card.
-          </p>`
-        : null}
-      ${ahead.length > SHOWN
-        ? html`<p class="learned-line">
-            <a href="#/maintenance">${plural(ahead.length - SHOWN, "more window", "more windows")}
-            on the Maintenance screen</a>
-          </p>`
-        : html`<p class="learned-line"><a href="#/maintenance">Maintenance</a></p>`}
+    const pending = ahead.filter((w) => w.status === "pending_confirmation").length;
+    const hosts = running.reduce((n, w) => n + (w.target_count || 0), 0);
+    const next = [...running, ...ahead].slice(0, SHOWN);
+    const tiles = [
+      ["running", running.length, running.length ? "mwsum-hot" : ""],
+      ["scheduled", ahead.length - pending, ""],
+      ["to confirm", pending, pending ? "mwsum-warn" : ""],
+    ];
+    return html`<section class="panel-block mwsum" data-role="planned-work">
+      <div class="section-heading"><h3>Planned work</h3>
+        <a class="sitsum-all" href="#/maintenance">View all</a></div>
+      <div class="mwsum-body">
+        <div class="mwsum-kpis">
+          ${tiles.map(([word, n, tone]) => html`<a key=${word} href="#/maintenance"
+              class=${`mwsum-kpi ${tone}`} data-role=${word === "running" ? "running" : null}>
+            <b>${count(n)}</b><span>${word}</span></a>`)}
+          ${hosts
+            ? html`<p class="mwsum-caveat">Alarms from ${plural(hosts, "host", "hosts")} may be
+                suppressed.</p>`
+            : null}
+        </div>
+        ${next.length
+          ? html`<ul class="mwsum-list" data-role="upcoming">${next.map((w) => html`<li key=${w.id}
+              data-window=${w.id} data-status=${w.status}>
+              <a class="mwsum-row" href="#/maintenance">
+                <i class=${`mwsum-dot mwsum-${TONE[w.status] || "muted"}`} title=${LABEL[w.status] || w.status}
+                  aria-label=${LABEL[w.status] || w.status}></i>
+                ${/* A redacted row still says a window EXISTS and when — prime directive 4. */ null}
+                <span class="mw-sum-name">${w.redacted
+                  ? html`<span class="muted">Maintenance on ${plural(w.target_count, "host", "hosts")}</span>`
+                  : w.name}</span>
+                <span class="muted mw-row-when">${w.status === "active"
+                  ? `${humanise(w.ends_in_s)} left`
+                  : w.starts_in_s > 0 ? `in ${humanise(w.starts_in_s)}` : "starting"}</span>
+              </a></li>`)}</ul>`
+          : html`<p class="muted" data-role="planned-none">Nothing planned.</p>`}
+      </div>
     <//>`;
   }
 }

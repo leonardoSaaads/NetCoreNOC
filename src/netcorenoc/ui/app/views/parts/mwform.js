@@ -10,27 +10,32 @@
  * standing between this and a wall of fields, and tapping it reopens the card.
  *
  * **The defaults do the explaining**: start = next quarter hour, end = start + 2 h, site = the
- * operator's own zone until changed, visibility = editors, patch band = 10 min. Change nothing
- * and you get a sane two-hour window, which is the commonest thing anyone wants.
+ * operator's own zone until changed, visibility = editors, patch band = 1 min (v0.29.0; it was
+ * 10, which hid real faults either side of a short window). Change nothing and you get a sane
+ * two-hour window, which is the commonest thing anyone wants.
+ *
+ * **The way forward is on the right and the way back on the left** (v0.29.0): every open card ends
+ * in one row — Back, then Next (or the submit) pushed right, where a stepper's eye goes.
  *
  * **The one sentence of explanatory text on the whole form** is card 3's *"Nothing from these
  * hosts is collected unless a rule below says otherwise"*, and it is there because D4's default
  * is the one thing a control cannot say by existing.
  *
  * The arithmetic — instants, offsets, the request body — is `mwdraft.js`; the per-target rule
- * chips are `mwrules.js`; the timeline bar and the zone picker are `mwtime.js`.
+ * chips are `mwrules.js`; the timeline bar and the zone picker are `mwtime.js`; card 2 is
+ * `mwwhen.js`.
  */
 
 import { html, Component } from "../../dom.js";
 import { get, post } from "../../api.js";
 import { ApiError } from "../../api.js";
 import { TIMEZONE, plural } from "../../format.js";
+import { can } from "../../session.js";
 import { ReviewCard } from "./mwreview.js";
 import { RulesCard } from "./mwrules.js";
-import { SiteAndYourTime, TimelineBar, ZonePicker, cityOf } from "./mwtime.js";
-import {
-  draftFrom, nextQuarter, normaliseHosts, plusHours, windowBody, withOffset,
-} from "./mwdraft.js";
+import { cityOf } from "./mwtime.js";
+import { WhenCard } from "./mwwhen.js";
+import { draftFrom, nextQuarter, normaliseHosts, plusHours, windowBody } from "./mwdraft.js";
 
 const CARDS = ["What and where", "When", "What still gets through", "Review"];
 
@@ -53,7 +58,8 @@ export class WindowForm extends Component {
       localStart: start,
       localEnd: plusHours(start, 2),
       allDay: false,
-      patchMinutes: 10,
+      patchMinutes: 1,
+      confirmNow: true, // v0.29.0: a person who may confirm does it as they schedule
       ledgerEnabled: false, // v0.24.0 (#397): a window discards what it suppresses
       visibility: "editors",
       rules: [],
@@ -131,7 +137,9 @@ export class WindowForm extends Component {
       const wid = this.props.initial && this.props.initial.id;
       const created = wid
         ? await post(`/api/maintenance-windows/${wid}`, this.body())
-        : await post("/api/maintenance-windows", this.body());
+        : await post("/api/maintenance-windows", {
+          ...this.body(), confirm: Boolean(this.state.confirmNow && can("mw.confirm")),
+        });
       this.props.onSaved(created);
     } catch (e) {
       this.setState({ busy: false, error: e instanceof ApiError ? e.message : String(e) });
@@ -198,15 +206,14 @@ export class WindowForm extends Component {
       <h3><span class="mw-card-n">${index + 1}</span> ${title}</h3>
       ${[this.whatAndWhere, this.when, this.through, this.review][index].call(this)}
       ${index < 3
-        ? html`<button
-            type="button"
-            class="primary"
-            disabled=${!done}
-            data-role="next"
-            onClick=${() => this.setState({ card: index + 1 }, () => this.preview())}
-          >
-            Next
-          </button>`
+        ? html`<div class="mw-nav">
+            ${index > 0
+              ? html`<button type="button" data-role="back"
+                  onClick=${() => this.setState({ card: index - 1 })}>Back</button>`
+              : null}
+            <button type="button" class="primary" disabled=${!done} data-role="next"
+              onClick=${() => this.setState({ card: index + 1 }, () => this.preview())}>Next</button>
+          </div>`
         : null}
     </section>`;
   }
@@ -280,77 +287,9 @@ export class WindowForm extends Component {
   }
 
   when() {
-    const s = this.state;
-    const startInstant = Date.parse(withOffset(s.localStart, s.siteOffset)) / 1000;
-    const endInstant = Date.parse(withOffset(s.localEnd, s.siteOffset)) / 1000;
-    const bad = endInstant <= startInstant;
-    return html`<div>
-      <${ZonePicker} value=${s.tz} onPick=${(zone) => this.set({ tz: zone }, () => this.refreshOffset(zone))} />
-      <label class="mw-allday"
-        ><input
-          type="checkbox"
-          checked=${s.allDay}
-          onChange=${(e) => this.set({ allDay: e.target.checked })}
-        />
-        All day</label
-      >
-      ${s.allDay
-        ? html`<label
-              >Day
-              <input
-                type="date"
-                value=${s.localStart.slice(0, 10)}
-                onInput=${(e) =>
-                  this.set({
-                    localStart: `${e.target.value}T00:00`,
-                    localEnd: `${e.target.value}T23:59`,
-                  })}
-            /></label>`
-        : html`<div class="mw-when">
-            <label
-              >Start
-              <input
-                type="datetime-local"
-                value=${s.localStart}
-                onInput=${(e) =>
-                  this.set({ localStart: e.target.value, localEnd: plusHours(e.target.value, 2) })}
-            /></label>
-            <label
-              >End
-              <input
-                type="datetime-local"
-                value=${s.localEnd}
-                aria-invalid=${bad ? "true" : "false"}
-                onInput=${(e) => this.set({ localEnd: e.target.value })}
-            /></label>
-            ${bad
-              ? html`<p class="error" data-role="when-error">The end has to be after the start.</p>`
-              : null}
-          </div>`}
-      <${SiteAndYourTime}
-        instant=${startInstant}
-        siteZone=${s.tz}
-        siteTime=${withOffset(s.localStart, s.siteOffset)}
-        siteOffset=${s.siteOffset}
-      />
-      <label class="mw-patch"
-        >Patch window
-        <input
-          type="number"
-          min="0"
-          max="120"
-          value=${s.patchMinutes}
-          onInput=${(e) => this.set({ patchMinutes: Number(e.target.value) || 0 })}
-        />
-        minutes either side</label
-      >
-      <${TimelineBar}
-        startsAt=${startInstant}
-        endsAt=${endInstant}
-        patchS=${s.patchMinutes * 60}
-        now=${Date.now() / 1000}
-      />
-    </div>`;
+    return html`<${WhenCard} s=${this.state} canConfirm=${can("mw.confirm")}
+      onChange=${(patch) => this.set(patch)}
+      onZone=${(zone) => this.set({ tz: zone }, () => this.refreshOffset(zone))} />`;
   }
 
   through() {
@@ -392,6 +331,9 @@ export class WindowForm extends Component {
       whatIsMissing=${this.complete(0) ? "" : "step 1"}
       whenIsMissing=${this.complete(1) ? "" : "step 2"}
       onVisibility=${(value) => this.set({ visibility: value })}
+      confirmNow=${this.props.initial ? null : can("mw.confirm") ? this.state.confirmNow : null}
+      onConfirmNow=${(on) => this.setState({ confirmNow: on })}
+      onBack=${() => this.setState({ card: 2 })}
     />`;
   }
 }

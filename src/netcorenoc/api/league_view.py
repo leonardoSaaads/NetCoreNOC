@@ -19,7 +19,10 @@ from typing import Any
 from netcorenoc.engine.model import league as league_model
 from netcorenoc.engine.model import league_judge
 
-__all__ = ["decider_payload", "finite", "member_block", "members_table"]
+__all__ = ["brief_block", "decider_payload", "finite", "member_block", "members_table"]
+
+#: The Overview draws each member's ROC with at most this many points (v0.29.0).
+BRIEF_ROC_POINTS = 40
 
 #: The pair-level quantities one test split carries in a manifest, served for the charts.
 _PAIR_KEYS = (
@@ -106,6 +109,32 @@ def member_block(member: league_model.Member, appliance_us: float | None) -> dic
         }
     )
     return block
+
+
+def brief_block(member: league_model.Member) -> dict[str, Any]:
+    """What the Overview's three model charts need about one member, and nothing else (v0.29.0).
+
+    `member_block` is everything the Judge's ten charts draw — 30-odd KiB a member. The Overview
+    draws a score (from the offline table), a ROC and the live agreement, so it is served the ROC
+    thinned to `BRIEF_ROC_POINTS`, always keeping the last point, and its area.
+    """
+    evaluation = member.manifest.get("evaluation") or {}
+    pairs = (evaluation.get("pairs") or {}).get("test_iid") or {}
+    roc = list(pairs.get("roc_curve") or [])
+    step = max(1, math.ceil(len(roc) / BRIEF_ROC_POINTS))
+    thinned = roc[::step]
+    if roc and thinned[-1] != roc[-1]:
+        thinned.append(roc[-1])
+    return finite(  # type: ignore[no-any-return]
+        {
+            "ref": member.ref,
+            "kind": member.kind,
+            "name": member.name,
+            "origin": member.origin,
+            "roc_auc": pairs.get("roc_auc"),
+            "roc_curve": thinned,
+        }
+    )
 
 
 def members_table(

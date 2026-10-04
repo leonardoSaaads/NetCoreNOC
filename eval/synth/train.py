@@ -56,8 +56,11 @@ SHIPPED = REPO / "src" / "netcorenoc" / "engine" / "model"
 ARTIFACT = "linkmodel.json"
 MANIFEST = "linkmodel.manifest.json"
 
-MAX_TRAIN_ROWS = 160_000
-MAX_VALID_ROWS = 50_000
+# v0.29.0 (ADR #439): twice v0.27.0's 160 000 training rows and 50 000 validation rows — the new
+# families and the bad-day regimes need the room, and a larger validation set makes the search's
+# choices less noisy, which is itself a guard against fitting the validation streams.
+MAX_TRAIN_ROWS = 320_000
+MAX_VALID_ROWS = 100_000
 ABLATION_ROWS = 60_000
 BENCHMARK_ROWS = 2_000
 KEEP_IF_WORSE_BY = 0.0005  # nats of validation log loss

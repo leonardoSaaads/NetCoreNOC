@@ -2,10 +2,11 @@
  *
  * The screen answers four questions, in the order an operator asks them:
  *
- *   1. **Who decides, and why?** The champion, the judge's reason, and — in two short paragraphs —
- *      the two loops (ADR #423): the fast loop groups every trap with the champion while the
- *      challengers score the same pairs in shadow; the slow loop re-ranks every model on this
- *      site's labels and replaces the champion only when the evidence says so.
+ *   1. **Who decides, and why?** The champion, its score and when it was chosen (the judge's full
+ *      reason on hover), and the two loops (ADR #423) as five icons with a line each: the fast
+ *      loop groups every trap with the champion while the challengers score the same pairs in
+ *      shadow; the slow loop re-ranks every model on this site's labels and replaces the champion
+ *      only when the evidence says so.
  *   2. **How do the models compare?** The league table in the judge's order, with each model's
  *      role, then either every model on shared axes or one model's ten charts.
  *   3. **What do this site's labels say?** The paired comparisons, as intervals around zero.
@@ -18,6 +19,7 @@ import { html, Component, cx } from "../../dom.js";
 import { Bars } from "../../compare.js";
 import { Forest } from "../../modelcharts.js";
 import { DataTable, TimeCell, cell } from "../../widgets.js";
+import { Icon } from "../../icons.js";
 import { absolute, relative } from "../../format.js";
 import { ModelCharts, SUITES } from "./leaguecharts.js";
 import { CompareCharts, meanF1, toneOf } from "./leaguecompare.js";
@@ -25,7 +27,7 @@ import { CompareCharts, meanF1, toneOf } from "./leaguecompare.js";
 const SITE = "site data (this appliance's labels)";
 /** Column heads short enough for the table to fit a desktop; the full suite name is the tooltip. */
 const SHORT = { test_iid: "unseen", test_concurrency: "concurrent", test_optical: "optical",
-  test_protocol: "protocol", corpus: "corpus" };
+  test_protocol: "protocol", test_adverse: "adverse", corpus: "corpus" };
 const ROLE = { champion: "deciding", challenger: "in shadow", ineligible: "too slow" };
 const f3 = (v) => (v == null ? "—" : Number(v).toFixed(3));
 
@@ -49,10 +51,8 @@ export class LeagueBoard extends Component {
           <span class="dataset-chip dataset-generated">generated data</span>
           <span class="dataset-chip dataset-site">site data</span>
         </header>
-        <p class="hint">Ranked by the judge's offline score: the mean pairwise F1 over the five
-          suites below, measured on streams no model trained or tuned on. <b>Site Δ</b> is how much
-          better (negative) or worse each challenger's log loss is than the champion's on this
-          site's labels, with its 95 % interval.</p>
+        <p class="hint"><b>Score</b>: mean pairwise F1 over the ${Object.keys(SUITES).length} held-out
+          suites. <b>Site Δ</b>: challenger − champion log loss on this site's labels (95 %).</p>
         <${LeagueTable} rows=${table} comparisons=${(judge.judgement || {}).comparisons || []} />
         ${(judge.refused || []).map((r) => html`<p class="err" key=${r.kind}>The ${r.kind} model was
           refused: ${r.reason}</p>`)}
@@ -86,36 +86,39 @@ function nameOf(models, ref) {
   return m ? m.name : ref;
 }
 
+/* v0.29.0: the two loops as five icons and five short lines — the paragraphs they replace said
+ * the same things in 110 words. The judge's full reason stays one hover away on the score. */
+const LOOPS = [
+  ["pulse", "Fast loop", "every trap", "The champion places each new alarm."],
+  ["eye", "Shadow", "every trap", "Every other model scores the same pairs."],
+  ["shield", "Open is protected", "always", "A model never changes it; additions wait in Pending."],
+  ["promotion", "Slow loop", "every 5 min", "The judge re-ranks on your labels; it switches only on a clear win (95 %)."],
+  ["settings", "Pin", "admins", () => html`Fix one model in <a href="#/settings?tab=correlation">Settings → Models</a>.`],
+];
+
 function WhoDecides({ judge }) {
   const champ = judge.champion;
   const latest = (judge.decisions || [])[0];
+  const row = (judge.members || []).find((m) => champ && m.ref === champ.ref);
   return html`<section class="judge-block league-now" aria-labelledby="league-now">
     <header class="judge-head"><h3 id="league-now">Who decides</h3></header>
     ${champ && !judge.fallback
-      ? html`<p class="league-champion"><b>${champ.name}</b> is deciding every link
-          ${judge.pinned ? html`<span class="badge">pinned by an admin</span>` : null}</p>
-        ${latest ? html`<p class="hint">${latest.reason}.${" "}
-          <span class="muted" title=${absolute(latest.at)}>Decided ${relative(latest.at)}.</span></p>` : null}`
+      ? html`<p class="league-champion"><${Icon} name="promotion" className="league-champion-icon" />
+          <b>${champ.name}</b> decides every link
+          ${judge.pinned ? html`<span class="badge">pinned</span>` : null}
+          <span class="muted league-champion-why" title=${latest ? latest.reason : ""}>
+            ${row ? `· score ${f3(row.score)}` : ""}${latest
+              ? html`${" · "}<span title=${absolute(latest.at)}>chosen ${relative(latest.at)}</span>`
+              : ""}</span></p>`
       : html`<p class="err" role="alert">No model could be loaded, so the built-in formula is
           grouping as a fail-safe. ${(judge.warnings || []).join(" ")}</p>`}
-    <div class="league-loops">
-      <div class="league-loop">
-        <h4>Fast loop — every trap</h4>
-        <p>The champion scores each new alarm against its candidates and places it. A situation an
-          operator has <b>confirmed (Open)</b> is never changed by a model: alarms the model would
-          add wait in <b>Pending</b> for an operator to accept or reject. Every other model scores a
-          sample of the same pairs in shadow.</p>
-      </div>
-      <div class="league-loop">
-        <h4>Slow loop — every five minutes</h4>
-        <p>The judge re-scores every model on the labels operators have produced here — confirms,
-          splits, moves, merges and answers to proposals — and replaces the champion only when a
-          challenger's advantage has a 95 % interval entirely below zero. There is no count to wait
-          for: models decide from the first trap, and labels only re-order them.</p>
-      </div>
-    </div>
-    <p class="hint">An admin can pin a model in <a href="#/settings?tab=correlation">Settings →
-      Models</a>.</p>
+    <ul class="league-loops">
+      ${LOOPS.map(([icon, name, when, text]) => html`<li class="league-loop" key=${name}>
+        <span class="league-loop-icon"><${Icon} name=${icon} /></span>
+        <span><b>${name}</b> <span class="muted">${when}</span><br />${
+          typeof text === "function" ? text() : text}</span>
+      </li>`)}
+    </ul>
   </section>`;
 }
 

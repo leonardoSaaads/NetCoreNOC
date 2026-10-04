@@ -95,7 +95,7 @@ export function humanise(seconds) {
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
   if (d) return `${d} d ${h} h`;
-  if (h) return `${h} h ${m} min`;
+  if (h) return m ? `${h} h ${m} min` : `${h} h`;
   return `${m} min`;
 }
 

@@ -1,5 +1,5 @@
--- 0028: one move of several alarms is one gesture (v0.29.0). Forward-only and additive, applying
--- cleanly onto a populated v0.28.x database (schema 27). No table is rebuilt.
+-- 0028: one move of several alarms is one gesture, and two more host series (v0.29.0). Forward-only
+-- and additive, applying cleanly onto a populated v0.28.x database (schema 27). No table is rebuilt.
 --
 -- Until this release the console moved N ticked alarms as N single-alarm moves, and each one
 -- asserted *"this alarm does not belong with the rest"* against a "rest" that still held the other
@@ -21,3 +21,14 @@ CREATE TABLE IF NOT EXISTS situation_event_moved (
     alarm_id INTEGER NOT NULL,
     PRIMARY KEY (event_id, alarm_id)
 ) WITHOUT ROWID;
+
+-- -- Two more host series: is the appliance keeping up (ADR #437) -----------------------------------
+--
+-- The Overview's "Is the appliance keeping up" drew CPU, memory, storage, database size and queue
+-- depth — what the HOST is doing — and nothing about the WORK: how many traps arrive and how long
+-- a batch takes to correlate. Those two answer the question in its own terms: a rising rate with a
+-- flat latency is a busy network handled; a rising latency is the appliance falling behind before
+-- the queue shows it. Sampled with the others, every 30 s; NULL before the first interval and on
+-- every row written before this migration, never a made-up zero.
+ALTER TABLE host_sample ADD COLUMN traps_per_s REAL;
+ALTER TABLE host_sample ADD COLUMN latency_ms REAL;

@@ -6,15 +6,16 @@ member was trained for this release**, so the rule cannot have been chosen to su
 ## Day 0: the offline order
 
 Every member's manifest carries its measurements on data it never trained or tuned on. The judge
-reads five **suites** from it — the four generated test splits (i.i.d., concurrency, optical and
-protocol families held out) and the hand-labelled `eval/corpus`, which a different program
-generated — and ranks by the **mean pairwise F1 over the five**, each suite weighing the same.
-Ties within :data:`TIE` are broken by fewer operator repair gestures per incident on the generated
-splits. A member missing a suite ranks after every member that has all five.
+reads six **suites** from it — the five generated test splits (i.i.d., concurrency, optical and
+protocol families held out, and since v0.29.0 the **adverse** one: a bad day's storms, twin
+incidents and degraded management path, ADR #439) and the hand-labelled `eval/corpus`, which a
+different program generated — and ranks by the **mean pairwise F1 over the six**, each suite
+weighing the same. Ties within :data:`TIE` are broken by fewer operator repair gestures per incident
+on the generated splits. A member missing a suite ranks after every member that has them all.
 
 Pairwise F1 because it is the one grouping measure every suite reports on the same scale; the mean
-because no suite is the network an appliance will meet, and a member that is excellent on four and
-poor on the fifth is the member the fifth is there to catch.
+because no suite is the network an appliance will meet, and a member that is excellent on five and
+poor on the sixth is the member the sixth is there to catch.
 
 **The corpus suite is the mean over its scenarios** (:func:`corpus_score`), each scenario weighing
 the same — not the corpus's pooled pairwise F1. The pooled number counts pairs, and three storms of
@@ -85,9 +86,10 @@ SUITES: tuple[str, ...] = (
     "test_concurrency",
     "test_optical",
     "test_protocol",
+    "test_adverse",
     "corpus",
 )
-GENERATED = SUITES[:4]
+GENERATED = SUITES[:5]
 TIE = 0.005
 LATENCY_BUDGET_US = 150.0
 
@@ -365,7 +367,7 @@ def _why_first(first: Member, candidates: Sequence[Member]) -> str:
     tied = [m for m in candidates if m is not first and _order_key(m)[:2] == key[:2]]
     score = offline_score(first)
     if not tied:
-        return f"the best offline score ({score:.3f}, mean pairwise F1 over five suites)"
+        return f"the best offline score ({score:.3f}, mean pairwise F1 over {len(SUITES)} suites)"
     names = ", ".join(f"{m.name} {offline_score(m):.3f}" for m in tied)
     return (
         f"offline score {score:.3f}, tied within {TIE} with {names}; first on the tie-break, "

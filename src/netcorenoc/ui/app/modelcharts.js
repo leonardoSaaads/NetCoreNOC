@@ -33,6 +33,11 @@ function scaler(lo, hi, size, { invert = false, log = false } = {}) {
   };
 }
 
+/** The smallest positive value — where a log axis starts. */
+const low = (values) => Math.min(1, ...values.filter((v) => v > 0)) || 1e-6;
+/** An axis end: two decimals, or `1e-4` when two decimals would print 0.00. */
+const tick = (v) => (v != null && v > 0 && v < 0.005 ? Number(v).toExponential(0) : fmt(v, 2));
+
 function extent(values, pad = 0) {
   const finite = values.filter((v) => v != null && Number.isFinite(v));
   if (!finite.length) return [0, 1];
@@ -71,7 +76,8 @@ function Frame({ title, latest, children, caption, legend, xLabel, yLabel, yTop,
  * `[{ name, tone, points: [[x, y], ...] }]`; `reference` draws the diagonal (`"diagonal"`) or a
  * horizontal baseline (`{ y }`) — the thing a curve is read against.
  */
-export function Curve({ title, series, reference, xRange, yRange, xLabel, yLabel, source, n, note, latest, tall }) {
+export function Curve({ title, series, reference, xRange, yRange, xLabel, yLabel, source, n, note, latest, tall,
+  xLog = false, yLog = false, keyed = true }) {
   const drawn = (series || []).filter((s) => (s.points || []).length);
   if (!drawn.length) {
     return html`<section class="chart-block mchart">
@@ -80,20 +86,28 @@ export function Curve({ title, series, reference, xRange, yRange, xLabel, yLabel
       <${Caption} source=${source} span=${n} />
     <//>`;
   }
-  const [x0, x1] = xRange || extent(drawn.flatMap((s) => s.points.map((p) => p[0])));
-  const [y0, y1] = yRange || extent(drawn.flatMap((s) => s.points.map((p) => p[1])), 0.05);
-  const sx = scaler(x0, x1, W);
-  const sy = scaler(y0, y1, H, { invert: true });
+  const xs = drawn.flatMap((s) => s.points.map((p) => p[0]));
+  const ys = drawn.flatMap((s) => s.points.map((p) => p[1]));
+  let [x0, x1] = xRange || extent(xs);
+  let [y0, y1] = yRange || extent(ys, 0.05);
+  // v0.29.0: a log axis starts at the smallest positive value drawn; a 0 is pinned to that edge.
+  if (xLog) x0 = Math.max(x0, low(xs));
+  if (yLog) y0 = Math.max(y0, low(ys));
+  const sx0 = scaler(x0, x1, W, { log: xLog });
+  const sy0 = scaler(y0, y1, H, { invert: true, log: yLog });
+  const sx = (x) => sx0(Math.max(x, x0));
+  const sy = (y) => sy0(Math.min(Math.max(y, y0), y1));
+  const ref = Array.from({ length: 25 }, (_, i) => (xLog ? x0 * (x1 / x0) ** (i / 24) : x0 + (x1 - x0) * i / 24));
   const label = `${title}. ${drawn.map((s) => `${s.name}: ${s.points.length} points`).join("; ")}.`;
   return html`<${Frame} title=${title} latest=${latest} tall=${tall}
-      yTop=${fmt(y1, 2)} yBottom=${fmt(y0, 2)} xLow=${fmt(x0, 2)} xHigh=${fmt(x1, 2)}
-      xLabel=${xLabel} yLabel=${yLabel}
-      legend=${drawn.length > 1 ? drawn : null}
+      yTop=${tick(y1)} yBottom=${tick(y0)} xLow=${tick(x0)} xHigh=${tick(x1)}
+      xLabel=${xLog ? `${xLabel} (log)` : xLabel} yLabel=${yLog ? `${yLabel} (log)` : yLabel}
+      legend=${keyed && drawn.length > 1 ? drawn : null}
       caption=${html`<${Caption} source=${source} span=${n} note=${note} />`}>
     <svg viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label=${label}
          class="mchart-svg" focusable="false">
       ${reference === "diagonal"
-        ? html`<line class="mchart-ref" x1="0" y1=${sy(y0)} x2=${W} y2=${sy(Math.min(y1, x1))} />`
+        ? html`<polyline class="mchart-ref" fill="none" points=${ref.map((v) => `${sx(v).toFixed(2)},${sy(v).toFixed(2)}`).join(" ")} />`
         : reference && reference.y != null
           ? html`<line class="mchart-ref" x1="0" y1=${sy(reference.y)} x2=${W} y2=${sy(reference.y)} />`
           : null}

@@ -234,18 +234,25 @@ class MaintenanceWindowMixin(StoreBase):
             (name, description, visibility, int(ledger_enabled), now, window_id),
         )
 
-    async def confirm_window(self, window_id: int, by_ref: str, now: float) -> bool:
+    async def confirm_window(
+        self, window_id: int, by_ref: str, now: float, *, status: str = "scheduled"
+    ) -> bool:
         """D6's human gesture. Returns False when the window was not waiting for one.
 
         The `status=` guard in the WHERE clause is what makes this safe against two editors
         pressing confirm on the same card: the second `UPDATE` matches no row and answers False,
         and the route turns that into the 409 that tells them to reload rather than a second audit
         row claiming a confirmation that did not happen.
+
+        ``status`` is `scheduled` for a press of Confirm — the clock makes it active — and the
+        create route passes `active` for a window confirmed as it is created after its start.
         """
+        if status not in ("scheduled", "active"):
+            raise ValueError(f"a confirmed window is scheduled or active, not {status!r}")
         cur = await self.conn.execute(
-            "UPDATE maintenance_window SET status='scheduled', confirmed_at=?, confirmed_by=?, "
+            "UPDATE maintenance_window SET status=?, confirmed_at=?, confirmed_by=?, "
             "updated_at=? WHERE id=? AND status='pending_confirmation'",
-            (now, by_ref, now, window_id),
+            (status, now, by_ref, now, window_id),
         )
         return bool(cur.rowcount)
 

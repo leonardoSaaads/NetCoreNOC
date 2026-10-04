@@ -97,10 +97,17 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         now = time.time()
         async with write_txn():
             if not await store.confirm_window(wid, principal.ref or "-", now):
+                # Read again: the sweep may have moved it since `window` was read (v0.29.0).
+                current = await store.maintenance_window(wid)
+                status = current["status"] if current else window["status"]
                 raise HTTPException(
                     status_code=409,
-                    detail=f"this window is {window['status']}, not waiting for confirmation; "
-                    "reload the card",
+                    detail=(
+                        "this window expired: its start arrived before anyone confirmed it, so it "
+                        "never took effect. Schedule it again and confirm it as you do"
+                        if status == "expired"
+                        else f"this window is {status}, not waiting for confirmation; reload"
+                    ),
                 )
             await audit_row(
                 request,

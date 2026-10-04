@@ -11,7 +11,7 @@
 
 import { html, Component, cx } from "../../dom.js";
 import { get } from "../../api.js";
-import { SectionHeading, SeverityMix } from "../../widgets.js";
+import { SeverityMix } from "../../widgets.js";
 import { Trend } from "../../stack.js";
 import { SCALE, UNPLACED, count, plural } from "../../format.js";
 
@@ -23,6 +23,10 @@ export const TIERS = [
 ];
 
 const MIX = [...SCALE, UNPLACED];
+
+/* Rows shown: the Situations card's six (v0.29.0), so the two cards that share a row end level —
+ * ten rows here left a third of the Situations card empty beside it on a busy estate. */
+const SHOWN = 6;
 
 export class TopAssets extends Component {
   constructor(props) {
@@ -40,7 +44,7 @@ export class TopAssets extends Component {
     const tier = TIERS.find((t) => t.key === this.state.tier) ?? TIERS[1];
     try {
       const data = await get(`/api/activity/top?range_s=${this.props.rangeS}&buckets=24` +
-        `&limit=10&bands=${tier.bands}`);
+        `&limit=${SHOWN}&bands=${tier.bands}`);
       this.setState({ data, error: null });
     } catch (error) {
       this.setState({ error });
@@ -53,7 +57,8 @@ export class TopAssets extends Component {
     const rows = (data && data.top) || [];
     const win = rangeS <= 86400 ? rangeS : 86400;
     return html`<section class="panel-block topassets">
-      <${SectionHeading} title="Assets with the most active alarms" />
+      <div class="section-heading"><h3>Assets with the most active alarms</h3>
+        <a class="sitsum-all" href="#/entities">View all</a></div>
       <div class="seg" role="group" aria-label="Which severities count">
         ${TIERS.map((t) => html`<button type="button" key=${t.key}
             class=${cx("seg-btn", tier === t.key && "on")} aria-pressed=${tier === t.key ? "true" : "false"}

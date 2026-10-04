@@ -21,19 +21,28 @@ from netcorenoc.store.base import StoreBase
 #: for, so keeping it would be a table that only grows.
 HOST_SAMPLE_RETENTION_S = 7 * 24 * 60 * 60
 
-#: The four columns a bucket is the MEAN of, and the one it is the MAX of. A queue is read for
-#: its worst moment — a mean would draw a burst that filled the queue as a quiet bucket.
-_MEANS = ("cpu_pct", "mem_pct", "disk_pct", "db_mb")
+#: The columns a bucket is the MEAN of, and the ones it is the MAX of. A queue and a latency are
+#: read for their worst moment — a mean would draw a burst that filled the queue as a quiet bucket.
+#: v0.29.0 (ADR #437): the trap rate is a mean (a rate per bucket), the batch latency a maximum.
+_MEANS = ("cpu_pct", "mem_pct", "disk_pct", "db_mb", "traps_per_s")
+_MAXES = ("queue_depth", "latency_ms")
 
 
 class HostSampleMixin(StoreBase):
     async def record_host_sample(
-        self, at: float, reading: dict[str, Any], queue_depth: int
+        self,
+        at: float,
+        reading: dict[str, Any],
+        queue_depth: int,
+        *,
+        traps_per_s: float | None = None,
+        latency_ms: float | None = None,
     ) -> None:
         """Write one reading and prune what the longest range can no longer ask for."""
         await self.conn.execute(
             "INSERT OR REPLACE INTO host_sample "
-            "(at, cpu_pct, mem_pct, disk_pct, db_mb, queue_depth) VALUES (?, ?, ?, ?, ?, ?)",
+            "(at, cpu_pct, mem_pct, disk_pct, db_mb, queue_depth, traps_per_s, latency_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 at,
                 reading.get("cpu_pct"),
@@ -41,6 +50,8 @@ class HostSampleMixin(StoreBase):
                 reading.get("disk_pct"),
                 reading.get("db_mb"),
                 queue_depth,
+                traps_per_s,
+                latency_ms,
             ),
         )
         await self.conn.execute(
@@ -50,13 +61,12 @@ class HostSampleMixin(StoreBase):
     async def host_series(self, *, since: float, until: float, buckets: int) -> dict[str, Any]:
         """Bucket means over ``[since, until)``, oldest first; an unsampled bucket is ``None``."""
         width = max(1e-6, (until - since) / buckets)
-        series: dict[str, list[float | None]] = {
-            key: [None] * buckets for key in (*_MEANS, "queue_depth")
-        }
+        keys = (*_MEANS, *_MAXES)
+        series: dict[str, list[float | None]] = {key: [None] * buckets for key in keys}
         cur = await self.conn.execute(
             "SELECT CAST((at - ?) / ? AS INTEGER) AS b, AVG(cpu_pct), AVG(mem_pct), "
-            "AVG(disk_pct), AVG(db_mb), MAX(queue_depth), COUNT(*) FROM host_sample "
-            "WHERE at >= ? AND at < ? GROUP BY b",
+            "AVG(disk_pct), AVG(db_mb), AVG(traps_per_s), MAX(queue_depth), MAX(latency_ms), "
+            "COUNT(*) FROM host_sample WHERE at >= ? AND at < ? GROUP BY b",
             (since, width, since, until),
         )
         sampled = 0
@@ -65,8 +75,8 @@ class HostSampleMixin(StoreBase):
             index = int(row[0])
             if not 0 <= index < buckets:
                 continue
-            sampled += int(row[6])
-            for offset, key in enumerate((*_MEANS, "queue_depth")):
+            sampled += int(row[1 + len(keys)])
+            for offset, key in enumerate(keys):
                 value = row[1 + offset]
                 series[key][index] = None if value is None else round(float(value), 2)
         cur = await self.conn.execute(

@@ -203,10 +203,22 @@ async def test_one_models_ten_charts_are_all_drawn(store: Store, leagued: league
     )
     charts = [c for b in result["blocks"] for c in b["charts"]]
     titles = [c["title"] or "" for c in charts]
-    for number in range(1, 11):
-        mine = [c for c in charts if (c["title"] or "").startswith(f"{number} · ")]
-        assert mine, f"chart {number} is missing: {titles}"
-        assert any(c["drawn"] for c in mine), f"chart {number} is drawn empty"
+    # v0.29.0: the maintainer's ten, by name — the numbers left the titles as on-screen noise.
+    for name in (
+        "Validation score ×",
+        "Train × validation curve",
+        "Pairwise F1 on every suite",  # 3, model performance: the suites drawn as bars
+        "Hyperparameter importance",
+        "Optimisation history",
+        "Confusion matrix",
+        "ROC",
+        "Prediction vs actual",
+        "Residual distribution",
+        "Training time × performance",
+    ):
+        mine = [c for c in charts if (c["title"] or "").startswith(name)]
+        assert mine, f"chart {name!r} is missing: {titles}"
+        assert any(c["drawn"] for c in mine), f"chart {name!r} is drawn empty"
     assert any("Prediction vs actual" in t for t in titles)
     assert any("Residual distribution" in t for t in titles)
     # The two regression charts say what they are for a classifier, in their captions.
