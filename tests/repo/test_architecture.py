@@ -1321,8 +1321,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `store/occurrences.py` (ADRs #431, #433) and `api/body_limit.py` (#434).
 #: **v0.28.1: 357 -> 357.** No file added, removed or moved, and no behaviour changed: the tests
 #: moved into area folders, so every docstring and comment that cites one names its new path.
-SRC_TREE_DIGEST = "509e1a23e8438c58c1ee53a3b5a35dc3757aaf19e61daec536983f0defef3f09"
-SRC_FILE_COUNT = 357
+SRC_TREE_DIGEST = "b890138a892d4d2e216249b4f6894dbdfdad4df259e07851e8c1bee02f3344ba"
+SRC_FILE_COUNT = 362
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1388,7 +1388,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.28.1", "the version this release carries"
+    assert __version__ == "0.29.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

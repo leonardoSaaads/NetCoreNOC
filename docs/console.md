@@ -25,7 +25,7 @@ disabled controls.
 |---|---|
 | **Labelling** | Confirm or split a grouping, and what your labels have produced |
 | **Corpus** | What capture costs in rows, and the three retention tiers |
-| **Judge & promotion** | How good the model deciding links is, **measured** — chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged. |
+| **Judge & promotion** | Since v0.29.0: **Who decides** (the champion, its score, and the two loops as five icons with a line each), **the league** table (six held-out suites plus the corpus), and **Learning and comparison** in three rows — *how good* (score, corpus, ROC on a log false-positive axis, precision–recall), *how honest* (calibration, residual) and *what it costs* (search history on a log loss axis, training time on a log axis, scoring cost per pair on a log axis). Before that, chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged. |
 
 ## Administer — the machine itself
 
@@ -86,11 +86,26 @@ layout:
    its last point equals the severity card. The range reaches the query: *7d* reads seven days.
 3. **What needs working** — *Open situations*: how many are New and how many Open, and the six
    newest of the one you pick.
-4. **Which element is worst** — the ten assets with the most alarms active now, counting Critical,
-   + Major, + Minor or All, each with its trend. The count opens its timeline. Beside it, a compact
-   graph of the estate in the Graph screen's layout.
-5. **Is the appliance itself keeping up** — CPU, memory, storage and queue depth as series.
-6. **What it has learned** — devices and alarm classes, learned and not configured.
+4. **Which element is worst** — the six assets with the most alarms active now (as many rows as
+   the Situations card beside it, so the two end level), counting Critical, + Major, + Minor or
+   All, each with its trend. The count opens its timeline. Beside it, a compact graph of the estate
+   in the Graph screen's layout.
+5. **Is the appliance itself keeping up** — the trap rate and the correlation latency (p95) first,
+   then CPU, memory, storage, the database and the queue, as series (v0.29.0). A rising rate with a
+   flat latency is a busy network handled; a rising latency is the appliance falling behind before
+   its queue shows it.
+6. **Which model decides** — who decides, then three charts: score by model, ROC (held-out generated
+   data) and the challengers' live agreement with the champion. The Judge screen has the rest.
+
+**A chart point is the most alarms active at once inside its bucket** (v0.29.0), and buckets sit on
+fixed boundaries — a multiple of the bucket width, never "now minus the range". Before, each refresh
+re-cut the buckets at the instant it was asked and read one instant per bucket, so a burst between
+two readings vanished and reappeared and the chart changed shape on every refresh. The number
+labelled *now* is the count at this instant.
+
+**Planned work** is three counts — running, scheduled, to confirm — and the next three windows. The
+running tile turns red: while a window is in force, the counts on the rest of the screen are
+incomplete by construction.
 
 ### Why the severity panel may read `—` on every band
 
@@ -123,9 +138,10 @@ than a statement about the data), and anything derived from the sampled shadow o
 are recorded in [`plans/releases.md`](plans/releases.md) with the table, the columns and the route
 parameter a later release would need.
 
-The **queue depth** series is derived in your browser between polls, on the same footing as the trap
-rate: the appliance serves the number and keeps no history, so the series starts when you open the
-console and is lost on reload. The chart says so.
+The host and work series — trap rate, correlation latency, CPU, memory, storage, database and queue
+depth — are sampled by the appliance every 30 s and kept for seven days (`host_sample`; the trap
+rate and latency since v0.29.0), so the range you pick reaches the query and a reload loses nothing.
+A series starts at the first reading; a bucket with no reading draws nothing rather than a zero.
 
 ## The screen this product exists for
 
@@ -171,6 +187,14 @@ the control is not offered and one line says what to tick. Tick members and pres
 the situations that exist are listed — id, name, size, age — filtered by id or name if there are
 many. *A new situation* is the first row, and it is what an operator-split is: move these
 somewhere that does not exist yet. There is no situation id to type and none to remember.
+
+**A move of several alarms is one gesture** (v0.29.0): one request, one history row, and one
+negative label — the moved set against the members it left; pairs inside the moved set are asserted
+neither way. **Ticking every member offers *Merge into another situation* instead**: moving them all
+would leave an empty situation behind, so the server refuses that move and the console sends the
+merge, which leaves one situation. The history folds repeated identical gestures into one row
+(`move · 20 alarms`), and **Confirm stays offered after a move or a merge** — a restructure changes
+a grouping, it does not say the result is right.
 
 **`Split (wrong grouping)` is now `Grouping is wrong`.** Same gesture, same route, same evidence:
 `split` is the name of the route and the question you are answering is whether the appliance got
@@ -338,13 +362,18 @@ Never two hundred fields at once. Each card collapses to a one-line summary, so 
 you are without scrolling:
 
 1. **What** — a name, an optional description, the organization, and who may see the details.
-2. **When** — start, end, the time zone, and the patch band either side. The bar under the fields
-   draws the window and both patch bands to scale; it is hand-written SVG, so the test suite can
-   read each band's width as a number rather than look at a picture.
+2. **When** — the site's time zone (shown as a value; type a city to change it, or *Use mine*),
+   start and end, with presets — *Now*, *In 1 h*, *Tonight 22:00* for the start and 30 min to 8 h
+   for the length. Moving the start keeps the length. The patch band either side defaults to
+   **1 minute** (v0.29.0; it was 10, which hid real faults either side of a short window). The bar
+   under the fields draws the window and both patch bands to scale; it is hand-written SVG, so the
+   test suite can read each band's width as a number rather than look at a picture.
 3. **Where** — the elements. The card shows a live count of devices and active alarms this would
    affect, computed by the **same code the API's `preview` runs**, so the number you read and the
    number an agent reads cannot disagree.
 4. **What still gets through** — the per-target rules.
+
+Every open card ends in one row: **Back** on the left, **Next** (or the submit) on the right.
 
 ### The time zone is mandatory, and it is a zone rather than a city
 
@@ -377,9 +406,14 @@ An OID rule matches on **arc boundaries**. A rule for `…1.1.1.1` admits `…1.
 Up to six hours the window takes effect as scheduled. Over six hours it waits in **Pending
 confirmation** and **suppresses nothing at all** until an editor or an admin confirms it — if
 nobody does, it expires having suppressed nothing, which is the safe direction. A window an **agent**
-created always waits for a human; a window you created yourself you may confirm yourself, with an
-explicit second gesture. A deployment that wants two different people can withhold the confirm
-capability from the role that holds the write capability; they are separate for that reason.
+created always waits for a human; a window you created yourself you may confirm yourself — and,
+from v0.29.0, **as you schedule it**: the review card offers *Confirm it now* (on by default) and the
+button reads *Schedule and confirm* (`confirm: true` on `POST /api/maintenance-windows`; refused for
+a service token). That matters for work that starts now: a long window left pending expires at its
+start, so a separate Confirm pressed a minute later met a window that no longer existed. A refused
+Confirm now says why on the window's row, and the list re-reads itself every 30 s. A deployment that
+wants two different people can withhold the confirm capability from the role that holds the write
+capability; they are separate for that reason.
 
 ### What happens to a fault that outlives the window
 

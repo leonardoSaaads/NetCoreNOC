@@ -2210,9 +2210,14 @@ button.mw-row-name[aria-expanded] { background: none; }
   .mw-card-s { max-width: 45%; }
   .mw-sizes { margin-left: 0; }
   .mw-card input, .mw-card select, .mw-card textarea { max-width: 100%; }
-  .mw-row { grid-template-columns: auto minmax(0, 1fr); }
-  .mw-row-meta, .mw-row-when { grid-column: 2; }
+  /* On a phone a row is a card: status and time on the first line, then the name, where, and
+     the action — nothing aligned against a column the other rows do not share. */
+  .mw-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .mw-row-status { grid-column: 1; grid-row: 1; }
+  .mw-row-when { grid-column: 2; grid-row: 1; justify-self: end; }
+  .mw-row-name, .mw-row-meta { grid-column: 1 / -1; }
   .mw-row-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .mw-row-actions:empty, .mw-row-when:empty { display: none; }
   .mw-zone-search { max-width: none; }
 }
 
@@ -2463,7 +2468,6 @@ button.mw-row-name {
   min-height: 36px; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none;
 }
 .mwsum-row:hover .mw-sum-name { text-decoration: underline; }
-.mw-sum-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mwsum-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fg-dim); }
 .mwsum-dot.mwsum-alarm { background: var(--alarm); }
 .mwsum-dot.mwsum-warn { background: var(--warn); }
@@ -2966,7 +2970,10 @@ button.danger:hover { background: var(--alarm); color: var(--bg); }
 
 /* The league board. */
 .league { display: flex; flex-direction: column; gap: var(--space-4); }
-.league-champion { font-size: var(--fs-lg); margin: 0 0 var(--space-1); }
+.league-champion {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  font-size: var(--fs-lg); margin: 0 0 var(--space-1);
+}
 .league-champion .badge { margin-left: var(--space-2); font-size: var(--fs-xs); }
 /* v0.29.0: the two loops as an icon strip — five tiles, a line each. */
 .league-loops {
@@ -2984,8 +2991,7 @@ button.danger:hover { background: var(--alarm); color: var(--bg); }
   width: 28px; height: 28px; border-radius: 50%; background: var(--bg-sunken); color: var(--accent);
   font-size: 16px;
 }
-.league-champion { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.league-champion-icon { color: var(--accent); }
+.league-champion-icon { display: inline-flex; color: var(--accent); }
 .league-champion-why { font-size: var(--fs-sm); cursor: help; }
 .league-switch { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
 .league-switch .chart-swatch { margin-right: var(--space-1); }

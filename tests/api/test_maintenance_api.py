@@ -679,3 +679,87 @@ def test_a_situation_is_marked_when_any_member_element_is_under_a_window() -> No
     )
     # The free path: no window anywhere is one dict test and no member lookup at all.
     assert situation_marker({"id": 3}, {}, {}) is None
+
+
+# -- v0.29.0: confirm as you create, and a refused confirm that says why ------------------------
+
+
+async def test_a_person_who_may_confirm_does_it_in_the_gesture_that_creates(store: Store) -> None:
+    """The field report: a long window created to start now could not be confirmed in time —
+    the sweep expired it at its start and the console's Confirm then did nothing. A human editor
+    now creates it confirmed, in one transaction; a window that has begun is active at once."""
+    _engine, _q, app = await authutil.make_env(store)
+    (ne,) = await _seed_hosts(store, "10.50.0.1")
+    editor = await authutil.client_as(app, "editor")
+    now = time.time()
+    ahead = await editor.post(
+        "/api/maintenance-windows",
+        json=_body([ne], starts_at=_at(now + 3600), ends_at=_at(now + 3600 * 20), confirm=True),
+    )
+    assert ahead.status_code == 200, ahead.text
+    assert ahead.json()["status"] == "scheduled", ahead.json()
+    begun = await editor.post(
+        "/api/maintenance-windows",
+        json=_body([ne], starts_at=_at(now - 60), ends_at=_at(now + 3600 * 20), confirm=True),
+    )
+    assert begun.json()["status"] == "active", begun.json()
+    window = await store.maintenance_window(begun.json()["id"])
+    assert window is not None and window["confirmed_by"], "the confirmation is not recorded"
+    actions = [r["action"] for r in await store.list_audit(10)]
+    assert actions.count("maintenance.window.confirm") == 2, actions
+
+    # The control: without `confirm` the long window still waits, exactly as before.
+    waiting = await editor.post(
+        "/api/maintenance-windows",
+        json=_body([ne], starts_at=_at(now + 3600), ends_at=_at(now + 3600 * 20)),
+    )
+    assert waiting.json()["status"] == "pending_confirmation"
+    # And a window of six hours or less ignores the flag: there is nothing to confirm.
+    short = await editor.post(
+        "/api/maintenance-windows",
+        json=_body([ne], starts_at=_at(now + 3600), ends_at=_at(now + 7200), confirm=True),
+    )
+    assert short.json()["status"] == "scheduled" and short.json()["needs_confirmation"] is False
+
+
+async def test_an_agent_may_not_confirm_by_creating_either(store: Store) -> None:
+    """ADR #370 holds through the new field: a service token asking to confirm is refused, and
+    no window is created by the refused call."""
+    _engine, _q, app = await authutil.make_env(store)
+    (ne,) = await _seed_hosts(store, "10.50.0.1")
+    token = await authutil.make_token(store, "agent", "editor")
+    agent = authutil.new_client(app)
+    agent.headers["Authorization"] = f"Bearer {token}"
+    now = time.time()
+    refused = await agent.post(
+        "/api/maintenance-windows",
+        json=_body([ne], starts_at=_at(now + 3600), ends_at=_at(now + 3600 * 20), confirm=True),
+    )
+    assert refused.status_code == 403, refused.text
+    assert "human" in refused.text
+    assert await store.count_maintenance_windows() == 0
+
+
+async def test_a_confirm_after_the_window_expired_says_so(store: Store) -> None:
+    """The 409 a late Confirm meets names what happened — expired at its start, never in force —
+    rather than "this window is expired, not waiting", which read as a stale card."""
+    engine, _q, app = await authutil.make_env(store)
+    (ne,) = await _seed_hosts(store, "10.50.0.1")
+    editor = await authutil.client_as(app, "editor")
+    created = await editor.post("/api/maintenance-windows", json=_body([ne], ends_at=_iso(22)))
+    wid = created.json()["id"]
+    async with store.lock:
+        await engine._maintenance_windows(DAY.timestamp() + 11 * 3600)
+    late = await editor.post(f"/api/maintenance-windows/{wid}/confirm")
+    assert late.status_code == 409, late.text
+    assert "expired" in late.json()["detail"] and "never took effect" in late.json()["detail"]
+
+
+async def test_the_patch_band_defaults_to_one_minute(store: Store) -> None:
+    _engine, _q, app = await authutil.make_env(store)
+    (ne,) = await _seed_hosts(store, "10.50.0.1")
+    editor = await authutil.client_as(app, "editor")
+    body = _body([ne])
+    body.pop("patch_s", None)
+    created = await editor.post("/api/maintenance-windows", json=body)
+    assert created.json()["patch_s"] == 60.0, created.json()

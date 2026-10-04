@@ -203,19 +203,30 @@ with no new dependency**:
 
 | Kind | What it is |
 |---|---|
-| `gam` | A boosted generalised additive model over the fifteen relations. One of the five shipped league members |
+| `gam` | A boosted generalised additive model over the fifteen relations. One of the seven shipped league members |
 | `additive` | The five-number formula above, tuned by hand. The fail-safe, or an admin's choice |
 | `logistic` | The same three features with coefficients fitted from labelled evidence |
 | `tree` | A CART over the three features |
 | `forest` | A bagged ensemble of them |
 | `gradient_boosting` | A boosted one |
 
+The league (v0.27.0) runs its own seven kinds over the full feature vector: `gam`, `boosted_trees`,
+`xgboost`, `random_forest`, `decision_tree`, `logistic_regression` and `knn`. **v0.29.0 added
+`xgboost` and `knn`** (ADR #438), written here without a library: `xgboost` is the XGBoost
+algorithm — second-order splits scored by the regularised gain, L1 and L2 on the leaves,
+`min_child_weight`, `gamma` pruning, `max_delta_step`, row and column sampling, early stopping —
+served as an ordinary tree document; `knn` votes over a few hundred class-separate prototypes in a
+metric learned from each feature's importance, with *k* chosen on validation.
+
 **Explainability survives the change of family.** A tree predicts a leaf value, not a weighted sum,
 so the contributions are computed as **exact marginal (interventional) Shapley values** — all 2³ = 8
 coalitions enumerated against a background set fixed at registration. No approximation, no library.
 `sum(contributions) + base_value == score`, exactly, and **a model too large to tabulate is refused
 rather than approximated.** A kind that cannot explain its own decision is not a scorer this project
-runs.
+runs. **The one estimate is `knn`'s** (v0.29.0): a vote over neighbours has no exact attribution in
+tractable form, so its terms are a permutation estimate of the Shapley values — deterministic,
+summing exactly to `score − base_value` — and the explanation says so in its basis,
+`shapley-sampled`, rather than passing as exact.
 
 There is no plugin surface, no registry and no dynamic import: each kind is one branch in
 `model_version.scorer_for`, so *"which models can this appliance run"* stays a question the source

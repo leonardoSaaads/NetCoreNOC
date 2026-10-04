@@ -88,7 +88,7 @@ export class ModelHealth extends Component {
             tone: tone.get(m.ref) }))}
           source=${HELD_OUT} note="mean pairwise F1 · ★ deciding" />
         <${Curve} title="ROC" xLabel="false positive rate" yLabel="true positive rate"
-          xRange=${[0, 1]} yRange=${[0, 1]} reference="diagonal"
+          xRange=${[0, 1]} xLog=${true} reference="diagonal"
           series=${models.map((m) => ({ name: m.name, tone: tone.get(m.ref), points: m.roc_curve || [] }))}
           source=${HELD_OUT} note="up and left is better" />
         <${Bars} title="Agreement with the champion" max=${1} unit="ratio"

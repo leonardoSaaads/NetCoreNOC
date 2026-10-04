@@ -5904,3 +5904,84 @@ From this release an entry is about six lines: decision, reason, release.*
   online backup, integrity-checked, never overwrites); every CLI command refuses a missing database;
   the server answers `--help`/`--version` and refuses other arguments; Compose passes and maps the
   trap port. The start-up log names the deciding model and the re-arm window.
+
+## 436. A move of several alarms is one gesture; moving every member is a merge (v0.29.0)
+
+- **Context**, from the field: an operator moved twenty alarms from a wrongly split situation into
+  the right one. The console sent twenty single-alarm moves, each asserting *"this alarm does not
+  belong with the rest"* against a rest that still held the alarms being moved with it — negative
+  labels about pairs the operator had just kept together — wrote twenty history rows, left the
+  source as an empty `(no members)` situation, and folded the decision bar so Confirm disappeared.
+- **Decision**: `POST /api/situations/{sid}/move` takes `alarm_ids` (1–4 096) and writes ONE
+  `situation_event` (`alarm_id` NULL, the set in `situation_event_moved`, migration 0028) and ONE
+  `split` label: the moved set against the members it left; pairs inside the set are asserted
+  neither way (#124's reading of a marked split). A move that would take every member is refused
+  with 409 and the console sends the merge instead, so no empty situation is left. Only a verdict
+  folds the decision bar; a restructure leaves Confirm offered. The history folds identical
+  consecutive gestures within five minutes into one row.
+
+## 437. The Overview reads steadily: fixed buckets, the peak per bucket, the work beside the host (v0.29.0)
+
+- **Context**: every refresh re-cut the activity buckets at the instant it was asked and read one
+  instant per bucket, so a burst between readings vanished and reappeared and the chart changed
+  shape on each refresh — the Grafana quantisation artefact. *Is the appliance keeping up* drew only
+  the host. Cards beside each other ended at different heights.
+- **Decision**: buckets end on a multiple of their width; a bucket's value is the peak over eight
+  sub-readings; *now* is the count at this instant. Two `host_sample` columns (migration 0028):
+  `traps_per_s`, a difference of the receiver's own counter over the 30 s interval (NULL for the
+  first interval, never a made-up zero), and `latency_ms`, the engine's batch p95 (a bucket's worst).
+  Planned work is three counts and the next three windows; Top assets shows the same six rows as
+  Situations; the severity card fills its row.
+
+## 438. XGBoost and k-nearest neighbours join the league, written here (v0.29.0)
+
+- **Context**: the maintainer asked for both, without external libraries, and for the search
+  spaces to be reviewed against overfitting before a longer training.
+- **Decision**: `xgboost` (`model/xgb_fit.py`) is the algorithm, not a rename of boosted trees:
+  second-order statistics, split gain `G²/(H+λ)` after an L1 soft threshold, `min_child_weight`,
+  bottom-up `gamma` pruning, `max_delta_step` before shrinkage, row and by-tree/level/node column
+  sampling, histogram bins and early stopping on validation; it is served as a `trees/1` document
+  with method `xgboost`, so its explanation is the trees' exact Shapley values. `knn`
+  (`model/knn.py`, format `netcorenoc.knn/1`) standardises each kept feature, scales it by its
+  importance (η², features under 2 % dropped), votes over class-separate weighted k-means++
+  prototypes with smoothed rates, and takes *k* from a validation curve; its explanation is a
+  deterministic permutation estimate labelled `shapley-sampled` — the one estimate in the project,
+  and it says so. The search caps prototypes at 384 so a member stays inside the 150 µs budget.
+  Spaces were narrowed where v0.27.0's trials showed overfitting (learning rates ≤ 0.2–0.3,
+  `min_leaf`/`min_hessian` floors, subsampling ≥ 0.5) and trials roughly doubled.
+
+## 439. The training data has bad days, and the judge a sixth suite (v0.29.0)
+
+- **Context**: the generator modelled ordinary days. An appliance meets cascading site outages,
+  rolling upgrades, power flicker, chatter storms, intermittent optics, control-plane overload and
+  HVAC failures, on a network that loses, delays and duplicates traps when it is busiest.
+- **Decision**: seven adverse families (`eval/synth/adverse.py`) and a per-stream *bad-day* regime —
+  twin incidents of the same family on disjoint elements, storm windows, noise that follows the
+  working day, congestion loss and delay, slow relays and duplicates — drawn from its own generator,
+  so intensity 0 leaves every other draw where it was. Adverse streams are in training and in two
+  new splits, `valid_adverse` (tuning and grouping) and `test_adverse` (held out); the judge's
+  offline score averages six suites. Training rows cap at 320 000, validation at 100 000.
+
+## 440. A window over six hours can be confirmed as it is created; a refused confirm says why (v0.29.0)
+
+- **Context**, from the field: *"Pending confirmation · 16 h 52 min left · Confirm — clicking
+  Confirm does nothing."* The window was long and started at once; the sweep expired it at its start
+  (#370's safe failure), the list was stale, and the console's `act()` had no `catch`, so the 409 was
+  thrown past it and nothing re-read the list.
+- **Decision**: `confirm: true` on `POST /api/maintenance-windows` confirms in the creating
+  transaction (status `scheduled`, or `active` if begun), audited as a separate confirm; refused
+  with 403 for a service token or a role without `mw.confirm`. A refused confirm is said on the row
+  and the list re-read; the 409 for an expired window names it. The list re-reads every 30 s and a
+  pending row counts down to its expiry. The patch band defaults to 60 s (was 600 s) in the form and
+  the API. The form: zone as a value, start and duration presets, Back/Next at the card foot.
+
+## 441. The Judge screen in three questions, and a brief judge for the Overview (v0.29.0)
+
+- **Context**: *Who decides* was two paragraphs; *Learning and comparison* numbered every title,
+  captioned every chart at length, and drew on linear axes curves that only differ on a log one
+  (every ROC hugs the corner; search losses and training seconds span decades).
+- **Decision**: *Who decides* is the champion, its score and five icons with a line each. The
+  comparison is grouped — how good, how honest, what it costs — with short titles, the legend once,
+  a log false-positive axis on ROC, log axes for search loss, training time and scoring cost, and a
+  score axis that starts above zero and says where. `GET /api/judge?brief=true` serves the Overview
+  who decides, each member's ROC thinned to 40 points and the live shadow: a few KiB against ~240.

@@ -1286,6 +1286,18 @@ const scenarios = {
       confirm: li.querySelector('[data-role="confirm"]') !== null,
       endNow: li.querySelector('[data-role="end-now"]') !== null,
     }));
+    // v0.29.0: press Confirm on the first row that offers it and read what the row then says —
+    // the field report was a Confirm the server refused and the screen said nothing about.
+    let rowError = null;
+    if (params.clickConfirm) {
+      const button = env.document.querySelector('[data-role="confirm"]');
+      if (button) {
+        button.dispatchEvent(new env.DomEvent("click"));
+        await settle(env);
+        await settle(env);
+        rowError = (env.document.querySelector('[data-role="row-error"]')?.textContent ?? "").trim();
+      }
+    }
     const open = env.document.querySelector('[data-role="new-window"]');
     let cards = [];
     let bands = [];
@@ -1315,7 +1327,9 @@ const scenarios = {
         width: Number(el.getAttribute("width") ?? 0),
       }));
     }
-    return { rows, cards, bands, canCreate: open !== null, proof: proofOf(env) };
+    const reads = env.network.requests.filter(
+      (r) => r.method === "GET" && r.path.startsWith("/api/maintenance-windows?")).length;
+    return { rows, cards, bands, rowError, reads, canCreate: open !== null, proof: proofOf(env) };
   },
 
   /** The instrument's own conformance suite. Nothing about the UI. */

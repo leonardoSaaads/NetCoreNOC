@@ -103,7 +103,7 @@ function WhoDecides({ judge }) {
   return html`<section class="judge-block league-now" aria-labelledby="league-now">
     <header class="judge-head"><h3 id="league-now">Who decides</h3></header>
     ${champ && !judge.fallback
-      ? html`<p class="league-champion"><${Icon} name="promotion" className="league-champion-icon" />
+      ? html`<p class="league-champion"><span class="league-champion-icon"><${Icon} name="promotion" /></span>
           <b>${champ.name}</b> decides every link
           ${judge.pinned ? html`<span class="badge">pinned</span>` : null}
           <span class="muted league-champion-why" title=${latest ? latest.reason : ""}>

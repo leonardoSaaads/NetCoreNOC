@@ -267,3 +267,23 @@ def test_the_screen_is_reachable_and_names_a_capability_the_server_enforces() ->
         "longer see that it exists — which is the failure prime directive 4 names"
     )
     assert time.time() > 0
+
+
+@dom_test
+async def test_a_refused_confirm_is_said_on_its_row_and_the_list_is_read_again(
+    store: Store,
+) -> None:
+    """The v0.29.0 field report: *"clicking Confirm does nothing."* The window had expired under
+    the stale row; the 409 was thrown past the console's handler and nothing was re-read. Now
+    the server's sentence is on the row and the list is read again either way."""
+    routes = _with_windows(
+        (await uifixtures.all_routes(store))["editor"],
+        [_window(1, "pending_confirmation", needs_confirmation=True)],
+    )
+    routes["POST /api/maintenance-windows/1/confirm"] = {
+        "status": 409,
+        "json": {"detail": "this window expired: its start arrived before anyone confirmed it"},
+    }
+    result = domdriver.run_scenario("maintenance", {"routes": routes, "clickConfirm": True})
+    assert result["rowError"] and "expired" in result["rowError"], result["rowError"]
+    assert result["reads"] >= 2, "the list was not read again after the refusal"

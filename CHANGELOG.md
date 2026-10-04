@@ -11,6 +11,60 @@ minor bump may break.
 
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md).
 
+## [0.29.0] - 2026-10-05 — "the field review, and two more models"
+
+A field review of the console (eight items) and a longer, harsher training with two new league
+members. **Migration 0028** (schema 28) is additive. See [`MIGRATION.md`](MIGRATION.md): an agent
+that omits `patch_s` now gets a 1-minute patch band.
+
+### Fixed — from the field
+
+- **Moving every alarm between situations** (#436). Moving twenty alarms sent twenty single moves:
+  twenty history rows, negative labels about pairs the operator had kept together, an empty
+  `(no members)` situation left behind, and Confirm gone from the decision bar. A move of several
+  alarms is now one request, one history row and one label (`POST …/move` takes `alarm_ids`;
+  migration 0028 lists the set); moving every member is refused and the console merges instead;
+  Confirm stays offered after a restructure; identical consecutive gestures show as one row.
+- **Maintenance: Confirm did nothing** (#440). A long window starting now was expired by the sweep
+  at its start, the list was stale, and the console swallowed the 409. A refused Confirm is now said
+  on its row and the list re-read (and re-read every 30 s); the 409 says the window expired. A person
+  who may confirm schedules and confirms in one gesture (`confirm: true`).
+- **Overview charts changed shape on every refresh** (#437): buckets now sit on fixed boundaries and
+  each is the most alarms active at once inside it (eight sub-readings), not one instant.
+
+### Changed — the console
+
+- **Overview** (#437): the severity card fills its row; Top assets shows six rows like Situations;
+  *Planned work* is three counts and the next three windows; *Is the appliance keeping up* adds the
+  **trap rate** and the **correlation latency (p95)**; *The models* shows who decides and three
+  charts — score by model, ROC, live agreement with the champion — from `GET /api/judge?brief=true`
+  (a few KiB against ~240).
+- **Maintenance form** (#440): the site's zone shown as a value, start presets (*Now*, *In 1 h*,
+  *Tonight 22:00*) and duration chips (30 min–8 h), the length kept when the start moves, the patch
+  band default **1 minute** (was 10, in the form and the API), Back/Next at each card's foot, Cancel
+  at the top; the list is a grid, a pending row counts down to its expiry, and an opened window shows
+  its actions first.
+- **Judge & promotion** (#441): *Who decides* is the champion, its score and five icons with a line
+  each; *Learning and comparison* is grouped (how good, how honest, what it costs), without numbered
+  titles, with log axes where values span decades (ROC false-positive rate, search loss, training
+  time, scoring cost) and a score axis that starts above zero and says so.
+
+### Added — models and training
+
+- **XGBoost** and **k-nearest neighbours** league members, written without a library (#438): the
+  league has seven. XGBoost is the algorithm (regularised second-order gain, L1/L2 leaves,
+  `min_child_weight`, `gamma` pruning, `max_delta_step`, row/column sampling, early stopping), served
+  as a tree document; k-NN votes over learned-metric prototypes with *k* chosen on validation, and
+  its explanation is a sampled Shapley estimate labelled `shapley-sampled`.
+- **Bad days in the training data** (#439): seven adverse families (cascading site outage, rolling
+  upgrade, power flicker, chatter storm, intermittent optics, control-plane overload, HVAC failure)
+  and a per-stream regime of twin incidents, storms, working-day noise and a congested management
+  network. New splits `valid_adverse` and `test_adverse`; the judge averages **six** suites.
+- Search spaces reviewed against overfitting and trials roughly doubled; training uses up to 320 000
+  rows and validation 100 000.
+
+<!-- LEAGUE-RESULTS -->
+
 ## [0.28.1] - 2026-10-03 — "the repository, organised"
 
 The repository reorganised for the next phase and for new contributors. **No product behaviour
