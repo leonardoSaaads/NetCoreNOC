@@ -9,6 +9,7 @@ query (`host_series(since, until)`), not a different drawing of the same rows.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -137,7 +138,8 @@ async def test_the_sampler_differences_the_receiver_counter_and_never_invents_a_
         async def commit(self) -> None: ...
 
     monkeypatch.setattr(runner, "SAMPLE_INTERVAL_S", 0.0)
-    monkeypatch.setattr("netcorenoc.runner.time.time", lambda: next(clock))
+    # The runner's own `time` reference only; the module the rest of the process reads is kept.
+    monkeypatch.setattr("netcorenoc.runner.time", SimpleNamespace(time=lambda: next(clock)))
     with pytest.raises(asyncio.CancelledError):
         await runner._sample_resources(
             Sampler(),  # type: ignore[arg-type]

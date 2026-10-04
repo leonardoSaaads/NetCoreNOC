@@ -5946,7 +5946,8 @@ From this release an entry is about six lines: decision, reason, release.*
   importance (η², features under 2 % dropped), votes over class-separate weighted k-means++
   prototypes with smoothed rates, and takes *k* from a validation curve; its explanation is a
   deterministic permutation estimate labelled `shapley-sampled` — the one estimate in the project,
-  and it says so. The search caps prototypes at 384 so a member stays inside the 150 µs budget.
+  and it says so. The search caps k-NN at 384 prototypes and XGBoost at 300 rounds (η ≥ 0.05) so
+  each stays inside the 150 µs scoring budget with room for a slower appliance.
   Spaces were narrowed where v0.27.0's trials showed overfitting (learning rates ≤ 0.2–0.3,
   `min_leaf`/`min_hessian` floors, subsampling ≥ 0.5) and trials roughly doubled.
 

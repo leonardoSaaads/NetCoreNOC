@@ -104,7 +104,9 @@ SPACES: dict[str, tuning.Space] = {
     },
     "logistic_regression": {"l2": ("log", 1e-6, 1e-1), "log_counts": ("int", 0, 1)},
     "xgboost": {
-        "eta": ("log", 0.02, 0.3),
+        # eta from 0.05 and at most 300 rounds: a tree costs ~0.3 µs per pair on the reference
+        # host, so 300 stay inside the 150 µs budget with room for a slower appliance.
+        "eta": ("log", 0.05, 0.3),
         "max_depth": ("int", 2, 6),
         "min_child_weight": ("log", 0.1, 10.0),
         "gamma": ("log", 1e-3, 2.0),
@@ -133,7 +135,7 @@ RUNGS: dict[str, tuple[int, ...]] = {
     "random_forest": (10, 30, 60),
     "decision_tree": (1,),
     "logistic_regression": (1,),
-    "xgboost": (40, 120, 400),
+    "xgboost": (40, 120, 300),
     "knn": (1,),
 }
 #: v0.29.0: about twice v0.27.0's trials — a wider search, on more validation data (ADR #438).
@@ -152,7 +154,7 @@ FINAL = {
     "random_forest": 60,
     "decision_tree": 1,
     "logistic_regression": 1,
-    "xgboost": 600,
+    "xgboost": 300,
     "knn": 1,
 }
 

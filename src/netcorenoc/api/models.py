@@ -29,7 +29,7 @@ from collections.abc import Iterator
 from typing import Annotated, Any, Literal
 
 import uvicorn
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from netcorenoc.api.models_decider import AutonomyIn as AutonomyIn
 from netcorenoc.api.models_decider import DeciderIn as DeciderIn
@@ -56,6 +56,10 @@ from netcorenoc.api.models_maintenance import (
 from netcorenoc.api.models_maintenance import (
     WindowExtendIn as WindowExtendIn,
 )
+from netcorenoc.api.models_restructure import MergeIn as MergeIn
+from netcorenoc.api.models_restructure import MoveIn as MoveIn
+from netcorenoc.api.models_restructure import ProposalIn as ProposalIn
+from netcorenoc.api.models_restructure import SplitIn as SplitIn
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.correlate import scoring
 from netcorenoc.ingest.receiver import parse_allowlist
@@ -165,69 +169,6 @@ class LabelIn(BaseModel):
 # here.** A gesture below it is a legal request that happens and is recorded in full — the operator
 # is running the network, not labelling it — and what it does not do is produce a training row.
 # Refusing it at the boundary would make the plan's *"the action still happens"* untrue.
-
-
-class MoveIn(BaseModel):
-    """Move alarms out of this situation and into another. **The release's product.**
-
-    The only gesture that yields a negative and a positive from one action at pair granularity:
-    the moved alarms against the members they leave are asserted negative, and against the members
-    they join positive. Both situations are named, so both are scope-checked.
-
-    v0.29.0: `alarm_ids` moves several alarms as **one** gesture; `alarm_id` (one alarm) is kept
-    for existing clients. Exactly one of the two is given. Moving them one request at a time
-    asserted each against the others it travelled with — a negative the operator never said.
-    """
-
-    alarm_id: int | None = Field(default=None, ge=1)
-    alarm_ids: list[Annotated[int, Field(ge=1)]] | None = Field(
-        default=None, min_length=1, max_length=4096
-    )
-    to_situation_id: int = Field(ge=1)
-    confidence: float = Field(ge=0.0, le=1.0)
-
-    @model_validator(mode="after")
-    def _one_form(self) -> MoveIn:
-        if (self.alarm_id is None) == (self.alarm_ids is None):
-            raise ValueError("name the alarms to move as `alarm_id` or as `alarm_ids`, not both")
-        return self
-
-    def moving(self) -> list[int]:
-        """The alarms to move, de-duplicated, in the order given."""
-        if self.alarm_id is not None:
-            return [self.alarm_id]
-        return list(dict.fromkeys(self.alarm_ids or ()))
-
-
-class MergeIn(BaseModel):
-    """Merge another situation into this one. Every cross pair is asserted positive."""
-
-    from_situation_id: int = Field(ge=1)
-    confidence: float = Field(ge=0.0, le=1.0)
-
-
-class ProposalIn(BaseModel):
-    """An operator's answer to a pending proposal (v0.27.0, ADR #428). ``accept`` merges it into
-    the situation it proposed to join; ``reject`` makes it a situation of its own."""
-
-    decision: Literal["accept", "reject"]
-    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-
-
-class SplitIn(BaseModel):
-    """Split the named members out of this situation into a new one.
-
-    Every cross pair between the departing members and the remainder is asserted negative, **and
-    nothing else** — the pairs within each half stay unknown, which is DECISIONS #124's reading of
-    a marked split and is what the label this writes records.
-
-    `max_length` is a parse bound rather than a validation of meaning, the same reasoning
-    `FeedbackIn.excluded_ids` carries: it exists to stop an unbounded parse, and the semantic bound
-    is `MAX_CLIENT_MEMBERS` inside `Exclusion.accept`, which truncates and records that it did.
-    """
-
-    alarm_ids: list[int] = Field(min_length=1, max_length=4096)
-    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class ClearIn(BaseModel):

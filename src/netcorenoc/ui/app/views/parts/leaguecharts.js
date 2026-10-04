@@ -29,6 +29,7 @@ const CAPACITY = {
   trees: "trees in the forest",
   depth: "tree depth",
   iterations: "Newton iteration",
+  neighbours: "k, neighbours voting",
 };
 export const SUITES = {
   test_iid: "unseen streams",

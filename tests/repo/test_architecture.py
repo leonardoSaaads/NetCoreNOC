@@ -459,6 +459,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/mwmarker.js"),
     ("GET", "/app/views/parts/mwsummary.js"),
     ("GET", "/app/views/parts/mwreview.js"),
+    ("GET", "/app/views/parts/mwwhen.js"),
     ("GET", "/app/views/parts/decide.js"),
     ("GET", "/app/views/parts/finder.js"),
     ("GET", "/app/views/parts/pulse.js"),
@@ -1321,8 +1322,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `store/occurrences.py` (ADRs #431, #433) and `api/body_limit.py` (#434).
 #: **v0.28.1: 357 -> 357.** No file added, removed or moved, and no behaviour changed: the tests
 #: moved into area folders, so every docstring and comment that cites one names its new path.
-SRC_TREE_DIGEST = "b890138a892d4d2e216249b4f6894dbdfdad4df259e07851e8c1bee02f3344ba"
-SRC_FILE_COUNT = 362
+SRC_TREE_DIGEST = "d1edd9b482d772fc22a084eb540791a32a5d67d91cd81d4a4b5059d2424e6873"
+SRC_FILE_COUNT = 364
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
