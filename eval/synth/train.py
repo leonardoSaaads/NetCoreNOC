@@ -12,7 +12,8 @@ not a gate. The steps of this module's own command, each deterministic from the 
    from
    ``valid``. One unit of weight per activation (`dataset.training_rows`).
 3. **Ablation**: fit with every candidate feature, then without each one in turn; a feature whose
-   removal does not worsen validation log loss by at least :data:`KEEP_IF_WORSE_BY` is dropped.
+   removal does not worsen validation log loss by at least :data:`KEEP_IF_WORSE_BY` is dropped —
+   except the formula's three relations, :data:`CORE_FEATURES`, which are always kept (v0.29.0).
    Part III.2: *add them deliberately, measure each one's contribution, drop what does not pay.*
 4. **Search** over the kept features (`netcorenoc.engine.model.search`): random search, then
    successive halving on validation log loss, every trial recorded.
@@ -64,6 +65,13 @@ MAX_VALID_ROWS = 100_000
 ABLATION_ROWS = 60_000
 BENCHMARK_ROWS = 2_000
 KEEP_IF_WORSE_BY = 0.0005  # nats of validation log loss
+#: v0.29.0 (ADR #439): the three relations the fail-safe formula reads are never dropped. A drop-one
+#: ablation measures each feature against all the others, so features that carry one signal between
+#: them each look dispensable and go together: on the v0.29.0 data `same_ne`, `entity_affinity` and
+#: `ne_episodes` all fell under the threshold, every model lost which element an alarm came from,
+#: and the corpus's fibre cut and both dual incidents were split. A model sees at least what the
+#: formula sees.
+CORE_FEATURES = ("dt", "same_ne", "same_class")
 
 #: The quality bar (ADR #409). **Fixed from the validation streams alone, before any test split was
 #: read**, from the paired stream-bootstrap of model - formula on validation (in brackets, 95 %):
@@ -179,7 +187,7 @@ def ablation(train: list[dataset.Row], valid: list[dataset.Row], seed: int) -> d
         print(
             f"  ablation: without {name:16s} Δ valid log loss {deltas[name]:+.5f}", file=sys.stderr
         )
-    kept = tuple(f for f in candidates if deltas[f] >= KEEP_IF_WORSE_BY)
+    kept = kept_features(candidates, deltas)
     return {
         "baseline_valid_log_loss": base,
         "delta_without": deltas,
@@ -187,6 +195,12 @@ def ablation(train: list[dataset.Row], valid: list[dataset.Row], seed: int) -> d
         "dropped": [f for f in candidates if f not in kept],
         "rows": [len(tr), len(va)],
     }
+
+
+def kept_features(candidates: tuple[str, ...], deltas: dict[str, float]) -> tuple[str, ...]:
+    """The ablation's rule: what pays its way, and the formula's three relations whatever they
+    measured. Pure, so the rule is tested apart from the fits that feed it."""
+    return tuple(f for f in candidates if f in CORE_FEATURES or deltas[f] >= KEEP_IF_WORSE_BY)
 
 
 def _evidence_cache(logs: list[StreamLog], scorer: gam.GamScorer) -> dict[int, list[Scored]]:

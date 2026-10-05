@@ -485,8 +485,12 @@ def main() -> int:
     rows_train = train._cap(rows_train, train.MAX_TRAIN_ROWS, args.seed)
     rows_valid = train._cap(rows_valid, train.MAX_VALID_ROWS, args.seed + 1)
     print(f"rows: train {len(rows_train)}, valid {len(rows_valid)}", file=sys.stderr, flush=True)
+    # The rule that keeps a feature is code too (v0.29.0, `train.kept_features`): a change to it
+    # is a new ablation, not a cached one.
     abl_code = train._digest(
-        "src/netcorenoc/engine/model/gam_fit.py", "src/netcorenoc/engine/correlate/features.py"
+        "src/netcorenoc/engine/model/gam_fit.py",
+        "src/netcorenoc/engine/correlate/features.py",
+        "eval/synth/train.py",
     )
     abl_path = root / f"ablation-{args.seed}-{abl_code}.json"
     if abl_path.exists():
