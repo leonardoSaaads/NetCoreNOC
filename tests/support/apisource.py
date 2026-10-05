@@ -37,6 +37,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "models.py",
     "models_maintenance.py",
     "models_decider.py",  # v0.26.0: the decider, autonomy and search request models
+    "models_restructure.py",  # v0.29.0: move, merge, split and the answer to a proposal
     "public_paths.py",  # v0.26.0: the unauthenticated-path allowlist, off `declare.py`
     "shipped_view.py",  # v0.26.0: the shipped model as the console sees it, off `routes/decider.py`
     "league_view.py",  # v0.27.0: the league as the console sees it (ADRs #423, #427)
