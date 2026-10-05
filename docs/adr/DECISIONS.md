@@ -5962,6 +5962,17 @@ From this release an entry is about six lines: decision, reason, release.*
   so intensity 0 leaves every other draw where it was. Adverse streams are in training and in two
   new splits, `valid_adverse` (tuning and grouping) and `test_adverse` (held out); the judge's
   offline score averages six suites. Training rows cap at 320 000, validation at 100 000.
+- **The ablation keeps the formula's three relations** (`train.CORE_FEATURES`: `dt`, `same_ne`,
+  `same_class`). The first full training on this data dropped `same_ne` with `entity_affinity` and
+  `ne_episodes` — a drop-one ablation measures each against the others, so a group carrying one
+  signal goes together — and every member split the corpus's `fiber_cut` and both `dual_incident`
+  scenarios. A GAM refitted on the same rows with `same_ne` restored put every corpus scenario back
+  at 1.0; the retrained league's validation log loss fell by about a third.
+- **Result and its trade**: every member needs fewer repair gestures than the formula on every test
+  split, adverse included. The judge's champion is the decision tree; on the hand-labelled corpus it
+  merges the two concurrent incidents of `dual_incident_same_vendor` (pairwise F1 0.64), which GAM,
+  random forest, logistic regression and k-NN keep apart. `make eval` is re-baselined with that
+  reason; the slow loop replaces the champion when this site's labels say a challenger is better.
 
 ## 440. A window over six hours can be confirmed as it is created; a refused confirm says why (v0.29.0)
 

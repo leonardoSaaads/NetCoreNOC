@@ -63,7 +63,42 @@ that omits `patch_s` now gets a 1-minute patch band.
 - Search spaces reviewed against overfitting and trials roughly doubled; training uses up to 320 000
   rows and validation 100 000.
 
-<!-- LEAGUE-RESULTS -->
+### The league, as shipped (`make train`, dataset `84c1059615d3ba44`, seed 2026)
+
+320 000 training rows and 100 000 validation rows from 332 recorded streams; the search ran
+~6 600 s across seven kinds; every final fit early-stopped on validation. Pairwise F1 on the
+held-out test streams, model / the fail-safe formula on the same streams:
+
+| member | unseen | concurrent | optical | protocol | **adverse** | time | corpus | µs/pair |
+|---|---|---|---|---|---|---|---|---|
+| **Decision tree** (champion) | 0.835 / 0.817 | 0.849 / 0.783 | 0.980 / 0.968 | 0.971 / 0.949 | 0.846 / 0.744 | 0.966 / 0.965 | 0.967 | 0.6 |
+| Logistic regression | 0.833 | 0.867 | 0.979 | 0.971 | 0.870 | 0.966 | 0.909 | 4.8 |
+| Random forest | 0.834 | 0.849 | 0.978 | 0.973 | 0.860 | 0.965 | 0.909 | 7.0 |
+| GAM | 0.833 | 0.864 | 0.976 | 0.972 | 0.870 | 0.960 | 0.909 | 1.6 |
+| k-nearest neighbours | 0.834 | 0.865 | 0.976 | 0.973 | 0.872 | 0.966 | 0.909 | 31.8 |
+| Gradient-boosted trees | 0.833 | 0.887 | 0.975 | 0.963 | 0.882 | 0.966 | 0.795 | 53.1 |
+| XGBoost | 0.834 | 0.859 | 0.978 | 0.966 | 0.874 | 0.924 | 0.795 | 21.5 |
+
+Every member needs fewer operator repair gestures than the formula on every test split (for the
+champion 0.62 against 0.79 on unseen streams, 0.88 against 1.04 on adverse ones). The absolute F1
+on unseen streams is lower than v0.28's 0.96 because the test streams now carry bad days; the
+formula falls further on them.
+
+- **No member overfits its training rows badly**: the train/validation log-loss gap at the kept
+  capacity is under 4 % for GAM, logistic regression, random forest and k-NN, 6.6 % for the tree,
+  and ~10 % for gradient-boosted trees and XGBoost — the two whose corpus suite is lowest (both split
+  the corpus's `fiber_cut` and both `dual_incident` scenarios when they decide alone). The judge
+  ranks them last; they stay in shadow.
+- **A training defect found and fixed on the way** (#439): the first full training dropped
+  `same_ne` in the feature ablation (with `entity_affinity` and `ne_episodes`, each looking
+  dispensable beside the others), and every member then split the corpus's fibre cut. The ablation
+  now always keeps the formula's three relations; validation log loss fell by about a third.
+- **`make eval`** is re-baselined (`31ea7583…`; it was `43328080…`): with the decision tree deciding,
+  `camera_nvr`, `pon_pon_port_down` and `background_noise` reach 1.0, `fiber_cut` and
+  `dual_incident` stay at 1.0, the pooled over-merge rate falls from 0.46 to 0.03 — and
+  **`dual_incident_same_vendor` falls from 1.0 to 0.64**: the tree merges the two concurrent
+  same-vendor incidents. GAM, random forest, logistic regression and k-NN keep it apart; the reason
+  is in `eval/baselines/REBASELINE-LOG.md`.
 
 ## [0.28.1] - 2026-10-03 — "the repository, organised"
 

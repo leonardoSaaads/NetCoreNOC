@@ -22,7 +22,8 @@ driven through the engine), aligns each predicted grouping with ground truth, an
 against `baselines/current.json`. It **exits non-zero** on a regression in `pairwise_f1`, `ari` or
 `entity_accuracy`, for the aggregate and for each scenario.
 
-Releases quote `python eval/harness.py | sha256sum`; today it is **`43328080…`**. The hash moves only
+Releases quote `python eval/harness.py | sha256sum`; today it is **`31ea7583…`** (v0.29.0; it was
+`43328080…` in v0.27.0-v0.28.1). The hash moves only
 when grouping behaviour changes on purpose, and each move is recorded in `CHANGELOG.md`. An
 unchanged hash means "no grouping decision on these scenarios changed", not "the scorer is
 untouched".

@@ -1,63 +1,59 @@
-# NetCoreNOC v0.28.1 — handoff
+# NetCoreNOC v0.29.0 — handoff
 
-**The repository, organised** for the next phase (AI agents for problem-solving) and for new
-contributors. No product behaviour changed: no migration, `make eval` unchanged (`43328080…`), and
-the HTTP surface differs only in the version string and in comments and docstrings that cite tests
-by path. The v0.28.0 handoff (the field review) is at `ebd9954`: `git show ebd9954:HANDOFF.md`.
+**The field review, and two more models.** Eight console items from an operator's review, XGBoost
+and k-nearest neighbours in the league (written here, no library), a generator that knows what a bad
+day looks like, and a longer training. Migration `0028` (schema 28) is additive. The v0.28.1
+handoff (the repository reorganisation) is at `2b86120`: `git show 2b86120:HANDOFF.md`.
 
-## What moved
+## What changed, by the review's numbering
 
-| Before | Now | Why |
-|---|---|---|
-| 116 test modules flat in `tests/` | 13 area folders that follow the package; `tests/README.md` maps them | a test's purpose was not visible from its location |
-| helpers mixed with tests | `tests/support/` (incl. the DOM harness), one `paths.py` for repository paths | tests imported other tests; paths were counted with `parents[n]` |
-| `testbed/` | `tests/lab/`; `NETCORENOC_LAB_STATE`, `netcorenoc-lab-*`, `lab.db` | it is test tooling; one name everywhere |
-| `eval/` flat | `generators/`, `simulation/` (with the DSL), `synth/`, the gate at the root | five roles in one folder |
-| `tools/evidence/`, `r2/after/` | removed | run by nothing; one-off v0.13–v0.16 measurements and an old screenshot |
+| # | Report | Now | ADR |
+|---|---|---|---|
+| 1 | Overview charts change shape on refresh | buckets on fixed boundaries; a bucket is the peak of 8 sub-readings | #437 |
+| 2 | cards of uneven height | the severity card fills its row; Top assets shows six rows like Situations | #437 |
+| 3 | Planned work and The models: too much text | three counts and the next three windows; who decides and three charts from `GET /api/judge?brief=true` | #437, #441 |
+| 4 | two more "keeping up" metrics | trap rate and correlation latency p95, sampled with the host series (`0028`) | #437 |
+| 5 | moving twenty alarms: twenty gestures, a ghost situation, no Confirm | one gesture, one label; moving every member is a merge; Confirm stays | #436 |
+| 6 | maintenance UX; Confirm did nothing | refusal shown on the row; confirm as you create; presets; Back/Next; patch band 1 min | #440 |
+| 7 | Who decides: too much text | five icons, a line each | #441 |
+| 8 | Learning and comparison: unclear, wrong scales | three groups; log axes where values span decades | #441 |
 
-`tests/repo/test_structure.py` now refuses a test at the root of `tests/` and an undocumented
-folder, so the layout cannot drift back. `docs/record.md` maps every old path to its new one.
+## The models
 
-## Documentation
+Seven members: GAM, gradient-boosted trees, **XGBoost**, random forest, decision tree, logistic
+regression, **k-NN** (ADR #438). The training data adds seven adverse families and a bad-day regime
+— twin incidents, storms, working-day noise, a congested management network — and the judge
+averages six suites, `test_adverse` included (ADR #439).
 
-- **`docs/simulate.md`**: using the appliance with no network equipment, on Linux and on Windows
-  (WSL 2). Bundled and DSL scenarios, a hand-written scenario (`linkDown`/`linkUp`), synthetic load,
-  `snmptrap` (v1, v2c, chosen source address), the lab. Every command was run on this release; the
-  hand-written scenario's alarm was confirmed `cleared` in the database.
-- `tests/README.md`, `tools/README.md`, `eval/README.md` (rewritten), `tests/lab/README.md`
-  (rewritten without the v0.17.0 measurement tables), a repository map in `CONTRIBUTING.md`.
-- Corrected: a dead anchor in `install.md`; `tests/test_perf.py::burst`, a test that never existed;
-  "the eval hash has held at `c2e8a0ce…` since v0.7.0" in three places (it has moved four times);
-  a `HANDOFF.md §1` pointer that a later handoff replaced.
+- `make train` took ~8 h on 4 cores (recording 14 min, search 1.4 h, grouping and evaluation the
+  rest). Every phase is cached per kind under `eval/synth/.cache/<digest>/`, so an interrupted
+  build resumes where it stopped.
+- **The first full training was not shipped**: the feature ablation had dropped `same_ne`, and
+  every member split the corpus's fibre cut. The fix (`train.CORE_FEATURES`) is in ADR #439 with
+  the experiment that confirmed it.
+- Every member needs fewer operator repair gestures than the formula on every test split. The
+  champion is the **decision tree**; it merges the corpus's `dual_incident_same_vendor`, which the
+  other simple members keep apart — the one gated scenario that moved down. The numbers are in
+  `CHANGELOG.md`; the reason in `eval/baselines/REBASELINE-LOG.md`.
+- Gradient-boosted trees and XGBoost show the largest train/validation gap (~10 %) and the weakest
+  corpus suite; the judge ranks them last. k-NN's explanation is a sampled Shapley estimate,
+  labelled `shapley-sampled`.
 
 ## Known limits, recorded rather than fixed
 
-- **The appliance does not start on native Windows**: `main.py` uses `loop.add_signal_handler` and
-  the resource sampler `os.statvfs`. The documentation gives WSL 2; `docs/ROADMAP.md` says what
-  native support needs (both replaced, and a Windows CI job so the claim is tested).
-- The Docker image was not built here: this environment's network policy blocks
-  `registry-1.docker.io`. CI builds it; the lab was run end to end without Docker (two sources,
-  14 clears, the unplaced rectifier alarm active, as CI asserts).
-
-## For the next phase
-
-- Start at `CONTRIBUTING.md` (setup, repository map, hard constraints) and
-  `docs/architecture.md` (layers). An agent integration is an API client: the routes are in
-  `src/netcorenoc/api/routes/`, the role model in `src/netcorenoc/crosscutting/rbac/`, and the
-  maintenance-window resource was designed for an agent caller (its module docstring says how).
-- New tests go in the area of the code they protect; a new area is a folder plus a row in
-  `tests/README.md` and in `TEST_AREAS` (`tests/repo/test_structure.py`).
-- Simulated traffic is never a label (`tests/dataset/test_evidence_boundary*.py`); an agent's
-  proposals must reach the dataset only through an operator's gesture.
+- `dual_incident_same_vendor` with the decision tree deciding (above). A site's labels re-rank the
+  league within minutes; an admin can pin another member in Settings → Models.
+- Held-out families remain the hardest case for every member (`dwdm_degradation`, `ospf_flap`,
+  `bgp_flap` around 0.4–0.5 pairwise F1): they are held out on purpose, to measure exactly this.
+- The appliance does not start on native Windows (WSL 2 works; `docs/ROADMAP.md`).
 
 ## Verification
 
 | gate | result |
 |---|---|
-| `ruff check`, `ruff format --check`, `mypy --strict` (381 files) | clean |
+| `ruff check`, `ruff format --check`, `mypy --strict` | clean |
 | `vulture`, `bandit` | clean |
 | full suite | see the PR description |
-| `make eval` | no gated regressions; hash `43328080…` unchanged |
-| `src/` pin | 357 files, no file added, removed or moved; digest re-recorded for comment and docstring path updates |
-| behaviour-identity record | 85 lines, all attributed: the version in `/healthz` and `/openapi.json` (whose route descriptions also cite tests by new path), 19 console modules whose comments cite tests (4 roles each), and the script's own path in the header |
-| lab, end to end | `run_local.py --demo`: CI's database assertions pass on `tests/lab/state/lab.db` |
+| `make eval` | no gated regressions against the re-cut baseline; hash `31ea7583…` (was `43328080…`) |
+| DOM tests | executed, including the new maintenance-refusal and brief-judge scenarios |
+| live console | screenshots at 1440 and 390 px of the Overview, Maintenance and Judge screens |

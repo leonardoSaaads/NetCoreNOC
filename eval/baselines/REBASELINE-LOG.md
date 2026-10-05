@@ -55,3 +55,22 @@ metrics moved.
   - dual_incident_same_vendor/ari: 0.0 -> 1.0
   - pon_pon_port_down/pairwise_f1: 1.0 -> 0.68
   - pon_pon_port_down/ari: 1.0 -> 0.0
+
+## 0.29.0 — current.json
+
+- **Reason**: v0.29.0: the league is retrained (seven members, adverse training data, the ablation keeps the formula's three relations) and the judge's champion is now the decision tree. Against the v0.28 baseline it recovers camera_nvr, pon_pon_port_down and background_noise (each to 1.0), keeps fiber_cut and dual_incident at 1.0, drops the pooled over-merge rate from 0.46 to 0.03 and the under-merge rate from 0.06 to 0; it merges the two concurrent incidents of dual_incident_same_vendor (pairwise F1 1.0 -> 0.64). GAM, random forest, logistic regression and k-NN keep that scenario at 1.0 and stand in shadow; the trade is recorded in ADR #439 and the CHANGELOG.
+- **Replaced digest**: `686a915aed330140747574d2204d0d7cd415ad294b42de176eff92cc11ca54a8`
+- **New digest**: `1199ae7b3ce20454cc705f1bc6c62cd19bc2b18b1683d7da017bc8f67e66aa3a`
+- **Aggregate metrics that moved** (12):
+  - ari: 0.981069 -> 0.99994
+  - over_merge_rate: 0.461538 -> 0.028571
+  - pairwise_f1: 0.986559 -> 0.999958
+  - under_merge_rate: 0.055556 -> 0.0
+  - background_noise/pairwise_f1: 0.0 -> 1.0
+  - background_noise/ari: 0.0 -> 1.0
+  - camera_nvr/pairwise_f1: 0.713056 -> 1.0
+  - camera_nvr/ari: 0.0 -> 1.0
+  - dual_incident_same_vendor/pairwise_f1: 1.0 -> 0.636364
+  - dual_incident_same_vendor/ari: 1.0 -> 0.0
+  - pon_pon_port_down/pairwise_f1: 0.68 -> 1.0
+  - pon_pon_port_down/ari: 0.0 -> 1.0
