@@ -67,7 +67,7 @@ def cascade_site_outage(b: Builder) -> None:
                 continue
             down = b.spread(1.5)
             back = None if fix is None else fix + b.rng.uniform(30.0, 240.0)
-            b.say(_el(b, far), ("link_down",), port, down, root=first, clear_after=back)
+            b.say(_el(b, far), ("link_down",), port, down, root=first, clear_after=back, far=el.ip)
             first = False
             if link.bgp and b.rng.random() < 0.9:
                 hold = down + b.rng.choice((b.rng.uniform(0.0, 3.0), b.rng.uniform(30.0, 180.0)))
@@ -94,7 +94,7 @@ def rolling_upgrade(b: Builder) -> None:
         for link in b.estate.links_of(el.ip)[:6]:
             far, port, peer = _far(link, el.ip)
             at = reload_at + b.spread(1.0)
-            b.say(_el(b, far), ("link_down",), port, at, clear_after=back)
+            b.say(_el(b, far), ("link_down",), port, at, clear_after=back, far=el.ip)
             if link.bgp:
                 b.say(
                     _el(b, far),

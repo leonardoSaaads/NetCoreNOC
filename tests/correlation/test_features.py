@@ -117,6 +117,33 @@ def test_recall_by_oid_parent_is_a_subtree_not_a_string_prefix() -> None:
     assert idx.recall(other, live={1, 2}, neighbours=[], exclude=set()) == []
 
 
+def test_recall_finds_the_element_a_trap_names_and_the_traps_that_name_it() -> None:
+    """ADR #442: a far end ten minutes later, on another element and another OID subtree, with no
+    shared history — reachable only because one trap names the other's management address."""
+    from dataclasses import replace
+
+    idx = CandidateIndex()
+    a_ip, b_ip = "198.51.100.1", "198.51.100.2"
+    near = replace(_alarm(1, 5, 1, T), source=a_ip, refs=frozenset({b_ip}))
+    far = replace(_alarm(2, 6, 2, T + 1.0, oid="1.3.6.1.6.3.1.1.5.3"), source=b_ip)
+    unrelated = replace(
+        _alarm(3, 7, 3, T + 2.0, oid="1.3.6.1.4.1.9.9.41.2.0.1"), source="192.0.2.9"
+    )
+    for alarm in (near, far, unrelated):
+        idx.add(alarm)
+    later_b = replace(_alarm(4, 8, 2, T + 600.0, oid="1.3.6.1.4.1.9.9.43.2.0.2"), source=b_ip)
+    got = {a.alarm_id for a in idx.recall(later_b, live={1, 2, 3}, neighbours=[], exclude=set())}
+    assert got == {1, 2}, "B's own element, and the alarm on A that names B"
+    later_a = replace(
+        _alarm(5, 9, 4, T + 600.0, oid="1.3.6.1.4.1.9.9.43.2.0.3"), source="203.0.113.7"
+    )
+    later_a = replace(later_a, refs=frozenset({b_ip}))
+    got = {a.alarm_id for a in idx.recall(later_a, live={1, 2, 3}, neighbours=[], exclude=set())}
+    assert got == {2}, "the element this trap names, and nothing else"
+    idx.prune(T + 600.0 + retrieval.RING_S * 3)
+    assert idx.by_named == {} and idx.ne_of == {}, "the named rings age out with the others"
+
+
 def test_recall_is_capped() -> None:
     idx = CandidateIndex()
     idx.by_ne[1] = deque(maxlen=10_000)

@@ -37,6 +37,7 @@ export const SUITES = {
   test_optical: "held-out optical families",
   test_protocol: "held-out protocol families",
   test_adverse: "adverse conditions",
+  test_spread: "incidents spread in time",
   corpus: "hand-labelled corpus",
 };
 const HEADLINE = [

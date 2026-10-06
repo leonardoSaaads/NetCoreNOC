@@ -18,6 +18,10 @@ structural with the newcomer:
 * the **same network element** — the last :data:`PER_NE` activations on it;
 * the **same OID parent** — the last :data:`PER_PARENT` activations whose trap OID has the same
   parent arc (siblings in one vendor module: every stage of an amplifier chain);
+* a **named neighbour** (v0.29.0, ADR #442) — the last :data:`PER_REF` activations that name this
+  element's management address in their varbinds, and the last :data:`PER_REF` activations *from*
+  each address this alarm names: the far end of a span, a BGP peer, the element a port faces. The
+  topology the traps themselves carry, so a far end's alarm ten minutes later is still scored;
 * a **learned neighbour** — the last :data:`PER_NEIGHBOUR` activations on each of the elements
   this one has co-failed with on at least two separate occasions (`episodes.EpisodeMemory`).
 
@@ -29,8 +33,16 @@ offline replay generate training pairs once and evaluate any number of models ag
 
 Every ring is a `deque` with a fixed ``maxlen``; the union is capped at :data:`MAX_RECALL`. Keys
 (elements, OID parents) are pruned by the maintenance sweep when their newest entry is older than
-the horizon. Per activation the work is at most ``PER_NE + PER_PARENT + NEIGHBOURS * PER_NEIGHBOUR``
-dictionary and deque reads — no clock, no I/O, no lock.
+the horizon. Per activation the work is at most ``PER_NE + PER_PARENT + (1 + features.MAX_REFS) *
+PER_REF + NEIGHBOURS * PER_NEIGHBOUR`` dictionary and deque reads — no clock, no I/O, no lock.
+
+## Why the named neighbour (measured, v0.29.0)
+
+On the v0.29.0 validation streams, an alarm whose incident's nearest earlier alarm was 5 to 30
+minutes before could reach none of its incident's open alarms through the rings above in 26 % of
+cases, and between one and five minutes before in 18 %: a far end is a different element, its trap
+usually a different OID subtree, and on a fresh appliance no element has co-failed with anything
+yet. The address in the trap is the one relation available from the first trap on.
 """
 
 from __future__ import annotations
@@ -43,11 +55,20 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover - type-only; no runtime edge
     from netcorenoc.engine.correlate.correlate import WindowAlarm
 
-__all__ = ["MAX_RECALL", "PER_NE", "PER_NEIGHBOUR", "PER_PARENT", "RING_S", "CandidateIndex"]
+__all__ = [
+    "MAX_RECALL",
+    "PER_NE",
+    "PER_NEIGHBOUR",
+    "PER_PARENT",
+    "PER_REF",
+    "RING_S",
+    "CandidateIndex",
+]
 
 RING_S = 3600.0
 PER_NE = 24
 PER_PARENT = 16
+PER_REF = 8
 PER_NEIGHBOUR = 6
 MAX_RECALL = 64
 
@@ -63,6 +84,10 @@ class CandidateIndex:
 
     by_ne: dict[int, deque[WindowAlarm]] = field(default_factory=dict)
     by_parent: dict[tuple[str, ...], deque[WindowAlarm]] = field(default_factory=dict)
+    #: v0.29.0 (ADR #442): activations by each address their varbinds name (`WindowAlarm.refs`).
+    by_named: dict[str, deque[WindowAlarm]] = field(default_factory=dict)
+    #: The element behind each management address seen, so a named address finds its NE ring.
+    ne_of: dict[str, int] = field(default_factory=dict)
 
     def add(self, alarm: WindowAlarm) -> None:
         ring = self.by_ne.get(alarm.device_id)
@@ -74,6 +99,17 @@ class CandidateIndex:
         if pring is None:
             pring = self.by_parent[key] = deque(maxlen=PER_PARENT)
         pring.append(alarm)
+        if alarm.source:
+            self.ne_of[alarm.source] = alarm.device_id
+        for ref in alarm.refs:
+            nring = self.by_named.get(ref)
+            if nring is None:
+                nring = self.by_named[ref] = deque(maxlen=PER_REF)
+            nring.append(alarm)
+
+    def rings(self) -> list[deque[WindowAlarm]]:
+        """Every ring, for the correlator's liveness bound."""
+        return [*self.by_ne.values(), *self.by_parent.values(), *self.by_named.values()]
 
     def recall(
         self,
@@ -97,6 +133,15 @@ class CandidateIndex:
         parent = self.by_parent.get(parent_of(new.arcs))
         if parent is not None:
             rings.append((parent, PER_PARENT))
+        # The named neighbours: who names me, and the elements I name (`features.MAX_REFS` at most).
+        naming = self.by_named.get(new.source) if new.source else None
+        if naming is not None:
+            rings.append((naming, PER_REF))
+        for ref in sorted(new.refs):
+            ne = self.ne_of.get(ref)
+            named = self.by_ne.get(ne) if ne is not None and ne != new.device_id else None
+            if named is not None:
+                rings.append((named, PER_REF))
         for ne in neighbours:
             ring = self.by_ne.get(ne)
             if ring is not None:
@@ -122,3 +167,8 @@ class CandidateIndex:
         stale = [k for k, ring in self.by_parent.items() if not ring or now - ring[-1].ts > RING_S]
         for key in stale:
             del self.by_parent[key]
+        named = [k for k, ring in self.by_named.items() if not ring or now - ring[-1].ts > RING_S]
+        for ref in named:
+            del self.by_named[ref]
+        for addr in [a for a, ne in self.ne_of.items() if ne not in self.by_ne]:
+            del self.ne_of[addr]

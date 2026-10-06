@@ -50,11 +50,24 @@ class Builder:
         root: bool = False,
         clear_after: float | None = None,
         peer: str = "",
+        far: str = "",
     ) -> None:
-        """One raise, and its clear ``clear_after`` seconds later when the fault has one."""
+        """One raise, and its clear ``clear_after`` seconds later when the fault has one.
+
+        ``far`` is the management address of the element at the other end of whatever failed; the
+        trap carries it only when ``el``'s vendor names its far end (`estate.Element.names_far`).
+        """
         rendering = render_first(chain, el.vendor)
         raised = trap(
-            rendering, el, entity, t=t, incident=self.key, family=self.family, root=root, peer=peer
+            rendering,
+            el,
+            entity,
+            t=t,
+            incident=self.key,
+            family=self.family,
+            root=root,
+            peer=peer,
+            far=far,
         )
         if raised is not None:
             self.events.append(raised)
@@ -68,6 +81,7 @@ class Builder:
                 family=self.family,
                 clear=True,
                 peer=peer,
+                far=far,
             )
             if cleared is not None:
                 self.events.append(cleared)
@@ -94,9 +108,12 @@ def _link_ends(b: Builder, link: Link, t: float, clear_after: float | None, root
     """Both ends of a physical link go down (each after its own detection delay); the protocols
     riding it follow on their own timers. Returns the latest symptom time."""
     latest = t
-    for end, port, peer in ((link.a, link.a_port, link.a_peer), (link.b, link.b_port, link.b_peer)):
+    for end, port, peer, far in (
+        (link.a, link.a_port, link.a_peer, link.b),
+        (link.b, link.b_port, link.b_peer, link.a),
+    ):
         at = t + b.spread(0.4)
-        b.say(_el(b, end), ("link_down",), port, at, root=root, clear_after=clear_after)
+        b.say(_el(b, end), ("link_down",), port, at, root=root, clear_after=clear_after, far=far)
         root = False
         if link.ospf and b.rng.random() < 0.8:
             dead = at + b.rng.uniform(0.0, 40.0)  # RFC 2328 dead interval, often shortened by BFD
@@ -382,7 +399,7 @@ def ne_reboot(b: Builder) -> None:
             else (link.a, link.a_port, link.a_peer)
         )
         at = b.spread(1.5)
-        b.say(_el(b, far), ("link_down",), port, at, clear_after=back - at)
+        b.say(_el(b, far), ("link_down",), port, at, clear_after=back - at, far=router.ip)
         if link.bgp:
             b.say(
                 _el(b, far),
@@ -417,7 +434,14 @@ def planned_maintenance(b: Builder) -> None:
         b.say(el, ("warm_start",), "chassis", t + b.spread(30.0))
         for link in b.estate.links_of(el.ip)[:4]:
             far, port = (link.b, link.b_port) if link.a == el.ip else (link.a, link.a_port)
-            b.say(_el(b, far), ("link_down",), port, t + b.spread(2.0), clear_after=b.spread(120.0))
+            b.say(
+                _el(b, far),
+                ("link_down",),
+                port,
+                t + b.spread(2.0),
+                clear_after=b.spread(120.0),
+                far=el.ip,
+            )
 
 
 def site_power_loss(b: Builder) -> None:
@@ -449,6 +473,7 @@ def site_power_loss(b: Builder) -> None:
                             port,
                             down,
                             clear_after=None if fix is None else fix - down + 120.0,
+                            far=el.ip,
                         )
         if fix is not None:
             for el in local:

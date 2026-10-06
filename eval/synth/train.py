@@ -31,6 +31,7 @@ not a gate. The steps of this module's own command, each deterministic from the 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import subprocess
@@ -71,7 +72,13 @@ KEEP_IF_WORSE_BY = 0.0005  # nats of validation log loss
 #: `ne_episodes` all fell under the threshold, every model lost which element an alarm came from,
 #: and the corpus's fibre cut and both dual incidents were split. A model sees at least what the
 #: formula sees.
-CORE_FEATURES = ("dt", "same_ne", "same_class")
+#: The focused round (ADR #442) adds ``cross_ref``: candidate recall now proposes pairs *because*
+#: one alarm names the other's element, and a candidate proposed for a reason the model cannot see
+#: is one it can judge only by how far apart in time the two alarms are.
+CORE_FEATURES = ("dt", "same_ne", "same_class", "cross_ref")
+
+#: The time-gap bands the training weight is balanced over (ADR #442; `balance_gaps`), in seconds.
+GAP_BANDS = (10.0, 60.0, 300.0, 1800.0)
 
 #: The quality bar (ADR #409). **Fixed from the validation streams alone, before any test split was
 #: read**, from the paired stream-bootstrap of model - formula on validation (in brackets, 95 %):
@@ -112,9 +119,12 @@ QUALITY_BAR: tuple[tuple[str, str, str, float], ...] = (
 #: in them. The first rule (pooled ``split_bag_intact_rate`` no higher than the formula's) chose a
 #: setting that already failed eleven of those checks on validation, and it missed the bar on test
 #: (#420): a selection rule weaker than the acceptance rule selects what acceptance refuses.
-JOIN_GRID = (-0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
-MERGE_GRID = (0.5, 1.0, 2.0, 4.0)
-PAIRS_GRID = (2, 3, 6)
+#:
+#: The focused round (ADR #442) searches the part of the grid every v0.27.0-v0.29.0 member chose
+#: from (join 0.5-1.5, merge 1-4, pairs 2-3) and a step either side: 42 settings instead of 132.
+JOIN_GRID = (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
+MERGE_GRID = (1.0, 2.0, 4.0)
+PAIRS_GRID = (2, 3)
 
 
 @dataclass
@@ -148,6 +158,55 @@ def _cap(rows: list[dataset.Row], limit: int, seed: int) -> list[dataset.Row]:
             chosen.add(k)
             budget -= counts[k]
     return [r for r in rows if (r.stream, r.ts, r.incident) in chosen]
+
+
+def training_rows(root: Path, seed: int) -> list[dataset.Row]:
+    """Every training row: ``train`` and ``train_spread`` (ADR #442), and the older 70 % of
+    ``train_long`` (the time-ordered split). The streams are read one at a time; only rows stay."""
+    return (
+        dataset.training_rows(dataset.load_split(root, "train"), seed=seed)
+        + dataset.training_rows(dataset.load_split(root, "train_spread"), seed=seed)
+        + dataset.training_rows(
+            dataset.load_split(root, "train_long"), seed=seed, time_window=(0.0, 0.7)
+        )
+    )
+
+
+def validation_rows(root: Path, seed: int) -> list[dataset.Row]:
+    """The rows a search and an early stop read: ``valid`` and ``valid_spread`` (ADR #442)."""
+    return dataset.training_rows(dataset.load_split(root, "valid"), seed=seed) + (
+        dataset.training_rows(dataset.load_split(root, "valid_spread"), seed=seed)
+    )
+
+
+def balance_gaps(rows: list[dataset.Row]) -> list[dataset.Row]:
+    """Re-weight ``rows`` so each (time-gap band, label) cell carries the **square root** of its
+    share of the weight rather than the share itself; the total weight is unchanged.
+
+    ADR #442. One unit of weight per activation makes a storm's activations most of the training
+    mass, and a storm's pairs are seconds apart: on the v0.29.0 data, 92 % of the positive mass was
+    under ten seconds, and every model learned that *far apart in time* means *unrelated*. Equal
+    weight per band would erase what is true — most related pairs *are* close — so the square root
+    keeps the order of the bands and lifts the rare ones. Measured on the v0.29.0 validation
+    streams with the champion's parameters: the share of same-incident pairs one to five minutes
+    apart that end up grouped rose from 36 % to 47 %, five to thirty minutes from 39 % to 45 %,
+    and repair gestures per incident fell (0.801 to 0.798); training two models, one either side
+    of a minute, or capping each incident's weight did worse on both counts.
+    """
+
+    def cell(r: dataset.Row) -> tuple[int, int]:
+        return (sum(r.x[0] >= edge for edge in GAP_BANDS), r.y)
+
+    mass: dict[tuple[int, int], float] = {}
+    for r in rows:
+        mass[cell(r)] = mass.get(cell(r), 0.0) + r.w
+    total = sum(mass.values())
+    if total <= 0:
+        return rows
+    roots = {k: (v / total) ** 0.5 for k, v in mass.items()}
+    norm = sum(roots.values())
+    factor = {k: (roots[k] / norm) / (v / total) for k, v in mass.items()}
+    return [dataclasses.replace(r, w=r.w * factor[cell(r)]) for r in rows]
 
 
 def to_dataset(rows: list[dataset.Row], features: tuple[str, ...]) -> gam_fit.Dataset:
@@ -340,21 +399,18 @@ def main() -> int:
     tuning = {
         "valid": list(dataset.load_split(root, "valid")),
         "valid_concurrency": list(dataset.load_split(root, "valid_concurrency")),
+        "valid_spread": list(dataset.load_split(root, "valid_spread")),
     }
     # The training streams are read one at a time (`load_split` is a generator); only rows stay.
-    rows_train = dataset.training_rows(
-        dataset.load_split(root, "train"), seed=args.seed
-    ) + dataset.training_rows(
-        dataset.load_split(root, "train_long"), seed=args.seed, time_window=(0.0, 0.7)
-    )
-    rows_valid = dataset.training_rows(tuning["valid"], seed=args.seed)
+    rows_train = training_rows(root, args.seed)
+    rows_valid = dataset.training_rows(tuning["valid"] + tuning["valid_spread"], seed=args.seed)
     # A recording that lost its feature vectors (a decider that reads none ran instead of the
     # probe) must stop here, loudly, rather than train on empty rows.
     short = [r for r in rows_train[:1000] + rows_valid[:1000] if len(r.x) != len(FEATURE_NAMES)]
     if short or not rows_train:
         raise SystemExit(f"the recorded vectors are not {len(FEATURE_NAMES)} long; re-record")
-    rows_train = _cap(rows_train, MAX_TRAIN_ROWS, args.seed)
-    rows_valid = _cap(rows_valid, MAX_VALID_ROWS, args.seed + 1)
+    rows_train = balance_gaps(_cap(rows_train, MAX_TRAIN_ROWS, args.seed))
+    rows_valid = balance_gaps(_cap(rows_valid, MAX_VALID_ROWS, args.seed + 1))
     print(f"rows: train {len(rows_train)}, valid {len(rows_valid)}", file=sys.stderr)
 
     # The fit cache is keyed on the code that can change the fit — never on this file, whose

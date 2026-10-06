@@ -139,14 +139,15 @@ RUNGS: dict[str, tuple[int, ...]] = {
     "knn": (1,),
 }
 #: v0.29.0: about twice v0.27.0's trials — a wider search, on more validation data (ADR #438).
+#: The focused round (ADR #442) is a shorter one, on the same reviewed spaces: about half of them.
 TRIALS = {
-    "gam": 20,
-    "boosted_trees": 24,
-    "random_forest": 15,
-    "decision_tree": 24,
-    "logistic_regression": 10,
-    "xgboost": 27,
-    "knn": 20,
+    "gam": 10,
+    "boosted_trees": 12,
+    "random_forest": 8,
+    "decision_tree": 12,
+    "logistic_regression": 6,
+    "xgboost": 14,
+    "knn": 10,
 }
 FINAL = {
     "gam": 600,
@@ -474,16 +475,14 @@ def main() -> int:
     print(f"dataset {root.name} ready in {time.time() - t0:.0f}s", file=sys.stderr, flush=True)
     # Streams are read one at a time (`load_split` is a generator): with the proxied storms a
     # split's logs together are several gigabytes, and only the sampled rows need to stay.
-    rows_train = dataset.training_rows(
-        dataset.load_split(root, "train"), seed=args.seed
-    ) + dataset.training_rows(
-        dataset.load_split(root, "train_long"), seed=args.seed, time_window=(0.0, 0.7)
-    )
-    rows_valid = dataset.training_rows(dataset.load_split(root, "valid"), seed=args.seed)
+    rows_train = train.training_rows(root, args.seed)
+    rows_valid = train.validation_rows(root, args.seed)
     if not rows_train or any(len(r.x) != len(FEATURE_NAMES) for r in rows_train[:1000]):
         raise SystemExit(f"the recorded vectors are not {len(FEATURE_NAMES)} long; re-record")
-    rows_train = train._cap(rows_train, train.MAX_TRAIN_ROWS, args.seed)
-    rows_valid = train._cap(rows_valid, train.MAX_VALID_ROWS, args.seed + 1)
+    # The focused round (ADR #442): the weight balanced over time-gap bands, in training and in the
+    # validation loss the search and the early stop read, so both optimise the same objective.
+    rows_train = train.balance_gaps(train._cap(rows_train, train.MAX_TRAIN_ROWS, args.seed))
+    rows_valid = train.balance_gaps(train._cap(rows_valid, train.MAX_VALID_ROWS, args.seed + 1))
     print(f"rows: train {len(rows_train)}, valid {len(rows_valid)}", file=sys.stderr, flush=True)
     # The rule that keeps a feature is code too (v0.29.0, `train.kept_features`): a change to it
     # is a new ablation, not a cached one.
@@ -535,6 +534,7 @@ def main() -> int:
         "valid": list(dataset.load_split(root, "valid")),
         "valid_concurrency": list(dataset.load_split(root, "valid_concurrency")),
         "valid_adverse": list(dataset.load_split(root, "valid_adverse")),
+        "valid_spread": list(dataset.load_split(root, "valid_spread")),
     }
     grouped = [grouping_phase(f, tuning_logs) for f in fitted]
     del tuning_logs

@@ -49,6 +49,10 @@ class Element:
     #: profiler must refuse them; `eval/corpus`'s `decoy_varbinds` is the shape.
     decoys: bool = False
     serial: int = 0
+    #: v0.29.0 (ADR #442): this element's traps about a link or a span name the element at the
+    #: other end by its management address, as the field review's own traps did. Some vendors'
+    #: firmware does, some does not — drawn per vendor per estate.
+    names_far: bool = False
 
     def port(self, name: str) -> int:
         """The ifIndex of ``name``, allocating the next one on first use."""
@@ -209,6 +213,8 @@ def build_estate(rng: random.Random) -> Estate:
             lines.append(LineSystem((ta.ip, tb.ip), amps, (link,)))
     # Drawn last, so every draw above is unchanged by it: which vendors' firmware stamps decoys.
     stamping = {v for v in sorted({e.vendor for e in elements.values()}) if rng.random() < 0.3}
+    naming = {v for v in sorted({e.vendor for e in elements.values()}) if rng.random() < 0.5}
     for el in elements.values():
         el.decoys = el.vendor in stamping
+        el.names_far = el.vendor in naming
     return Estate(elements, links, lines, sites)

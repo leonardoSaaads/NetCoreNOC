@@ -27,7 +27,7 @@ import { CompareCharts, meanF1, toneOf } from "./leaguecompare.js";
 const SITE = "site data (this appliance's labels)";
 /** Column heads short enough for the table to fit a desktop; the full suite name is the tooltip. */
 const SHORT = { test_iid: "unseen", test_concurrency: "concurrent", test_optical: "optical",
-  test_protocol: "protocol", test_adverse: "adverse", corpus: "corpus" };
+  test_protocol: "protocol", test_adverse: "adverse", test_spread: "spread", corpus: "corpus" };
 const ROLE = { champion: "deciding", challenger: "in shadow", ineligible: "too slow" };
 const f3 = (v) => (v == null ? "—" : Number(v).toFixed(3));
 

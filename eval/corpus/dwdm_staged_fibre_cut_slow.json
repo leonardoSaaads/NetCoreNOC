@@ -1,0 +1,1854 @@
+{
+  "name": "dwdm_staged_fibre_cut_slow",
+  "description": "The same DWDM fibre cut at ten times the pace: degradation over minutes, services and protection a quarter of an hour after the break, the repair at half an hour.",
+  "events": [
+    {
+      "delay": 0.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.1",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Ciena-6500-High-Received-Span-Loss"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MINOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "OTS-1-53"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Received span loss increased above baseline on the DWDM line interface"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Fiber attenuation increasing"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Monitor optical levels"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "13.2 dB / target 9.5 dB"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|OTS-1-53",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 30.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.1",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Pre-FEC Signal Degrade"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MAJOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "OTS-3-54"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Pre-FEC BER crossed degradation threshold on coherent optical channel"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Optical degradation"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Monitor FEC counters"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "BER 2.1e-4"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.2|OTS-3-54",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 80.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.1",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "3"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Pre-FEC Signal Fail"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MAJOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "OCH-10107"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Pre-FEC BER reached signal-fail threshold and became unstable"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Rapid optical degradation"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Prepare fiber investigation"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "BER 1.8e-3"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|OCH-10107",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 100.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.2",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "4"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Optical Line Fail"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CRITICAL"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "OTS-1-53"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Optical line failure detected; receive optical signal lost"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Suspected fiber cut"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Initiate protection and field investigation"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "OPR -38 dBm"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|OTS-1-53",
+        "is_root": true
+      }
+    },
+    {
+      "delay": 180.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.2",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "5"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Loss of Signal - Physical"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CRITICAL"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "OTS-3-54"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Physical optical signal lost on the remote line interface"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Suspected fiber cut"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Check optical path"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "LOS"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.2|OTS-3-54",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 190.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "6"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "linkDown"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CRITICAL"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "LIM-1-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Physical transport interface transitioned to down state"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Loss of optical transport"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Raise service-impacting incident"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "operStatus=down"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|LIM-1-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 240.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "7"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "OTU Loss of Frame"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CRITICAL"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "OTU-1-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "OTU framing lost after optical signal failure"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Optical line failure"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Correlate with OLF/LOS"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "LOF"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|OTU-1-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 250.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "8"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "ODU Alarm Indication Signal"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CRITICAL"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "ODU-3-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "ODU-AIS propagated downstream after transport failure"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Upstream transport failure"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Correlate affected services"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "AIS"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.2|ODU-3-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 450.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.5",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "9"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Remote Fault"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MAJOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "ETH10G-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "CIR-10G-4471"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Ethernet service reported remote fault following DWDM transport loss"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Underlying optical outage"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Suppress as secondary alarm"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "remoteFault=true"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|ETH10G-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 600.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.5",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "21"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "authenticationFailure"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MINOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "MGMT"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": ""
+        }
+      ],
+      "truth": {
+        "situation_key": "isolated_login",
+        "entity_key": "198.51.101.1|MGMT",
+        "is_root": true
+      }
+    },
+    {
+      "delay": 650.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "10"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "linkDown"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MAJOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "LIM-3-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "CIR-10G-4471"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Customer-facing transport interface transitioned down"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Underlying optical outage"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Associate with root incident"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "operStatus=down"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.2|LIM-3-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 900.0,
+      "source": "198.51.101.3",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.20",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.3"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "22"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "High CPU"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MINOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.3"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "CPU-0"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": ""
+        }
+      ],
+      "truth": {
+        "situation_key": "isolated_cpu",
+        "entity_key": "198.51.101.3|CPU-0",
+        "is_root": true
+      }
+    },
+    {
+      "delay": 1050.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.6",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "11"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Protection Switch"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MAJOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "PROT-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Automatic protection switching initiated after working path failure"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Optical line failure"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Verify protection path"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "PATH-1 -> PATH-2"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|PROT-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1070.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.7",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "12"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Protection Path Active"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "WARNING"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "PROT-2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Traffic successfully moved to protection path"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Working path unavailable"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Monitor protected service"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "PATH-2 ACTIVE"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|PROT-2",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1110.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.8",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "13"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Service Impact"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CRITICAL"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "NOC"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "CIR-10G-4471"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Customer circuit unavailable despite protection attempt"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Fiber break exceeds protection capability"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Escalate to fiber provider"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "1 circuit affected"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|NOC",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1140.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.9",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "14"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Correlated Incident"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CRITICAL"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "NOC"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Multiple optical and transport alarms correlated into a single incident"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Suspected fiber cut"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Create root-cause incident; suppress secondary alarms"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "10 alarms correlated"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|NOC",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1400.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "23"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "linkDown"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "MAJOR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "LIM-7-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.3"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "CIR-1G-0093"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": ""
+        }
+      ],
+      "truth": {
+        "situation_key": "isolated_port",
+        "entity_key": "198.51.101.2|LIM-7-1",
+        "is_root": true
+      }
+    },
+    {
+      "delay": 1500.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "24"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "linkUp"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CLEAR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "LIM-7-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.3"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "CIR-1G-0093"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": ""
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": ""
+        }
+      ],
+      "truth": {
+        "situation_key": "isolated_port",
+        "entity_key": "198.51.101.2|LIM-7-1",
+        "is_root": true
+      }
+    },
+    {
+      "delay": 1640.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.10",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "15"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Optical Signal Restored"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "WARNING"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "OTS-1-53"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Optical receive power returned after field fiber repair"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Fiber repaired"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Validate optical margin"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "OPR -12.4 dBm"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|OTS-1-53",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1660.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.11",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "16"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Pre-FEC Signal Fail Clear"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CLEAR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "OTS-3-54"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Pre-FEC BER returned below signal-fail threshold"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Fiber path restored"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Continue monitoring"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "BER 2.0e-7"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.2|OTS-3-54",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1680.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.12",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "17"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "ODU AIS Clear"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CLEAR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "ODU-3-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "ODU alarm indication signal cleared after transport recovery"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Transport restored"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Verify downstream services"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "AIS=false"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.2|ODU-3-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1690.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "18"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "linkUp"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CLEAR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "LIM-1-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Physical transport interface returned to operational state"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Optical transport restored"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Continue monitoring"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "operStatus=up"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|LIM-1-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1710.0,
+      "source": "198.51.101.2",
+      "trap_oid": "1.3.6.1.6.3.1.1.5.4",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "19"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "linkUp"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CLEAR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "LIM-3-1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "CIR-10G-4471"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "Customer-facing transport interface returned to operational state"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "DWDM path restored"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Verify service stability"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "operStatus=up"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.2|LIM-3-1",
+        "is_root": false
+      }
+    },
+    {
+      "delay": 1760.0,
+      "source": "198.51.101.1",
+      "trap_oid": "1.3.6.1.4.1.8072.9999.0.13",
+      "varbinds": [
+        {
+          "oid": "1.3.6.1.2.1.1.3.0",
+          "kind": "ticks",
+          "value": "0"
+        },
+        {
+          "oid": "1.3.6.1.6.3.18.1.3.0",
+          "kind": "ip",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.1",
+          "kind": "str",
+          "value": "20"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.2",
+          "kind": "str",
+          "value": "Incident Clear"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.3",
+          "kind": "str",
+          "value": "CLEAR"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.4",
+          "kind": "str",
+          "value": "198.51.101.1"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.5",
+          "kind": "str",
+          "value": "NOC"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.6",
+          "kind": "str",
+          "value": "198.51.101.2"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.7",
+          "kind": "str",
+          "value": "DWDM-CORE-01"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.8",
+          "kind": "str",
+          "value": "All correlated alarms cleared and service restored after fiber repair"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.9",
+          "kind": "str",
+          "value": "Fiber cut repaired"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.10",
+          "kind": "str",
+          "value": "Close incident after monitoring window"
+        },
+        {
+          "oid": "1.3.6.1.4.1.8072.9999.1.11",
+          "kind": "str",
+          "value": "20 events / service restored"
+        }
+      ],
+      "truth": {
+        "situation_key": "dwdm_fibre_cut",
+        "entity_key": "198.51.101.1|NOC",
+        "is_root": false
+      }
+    }
+  ]
+}

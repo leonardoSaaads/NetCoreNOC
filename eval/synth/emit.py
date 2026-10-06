@@ -112,6 +112,7 @@ def trap(
     root: bool = False,
     clear: bool = False,
     peer: str = "",
+    far: str = "",
 ) -> Event | None:
     """Render ``rendering`` on ``element`` about ``entity``, as a raise or its clear.
 
@@ -145,6 +146,10 @@ def trap(
         ]
     else:
         varbinds = [(f"{rendering.vendor.object_arc}.{hash_index(entity)}", "str", entity)]
+    if far and element.names_far:
+        # v0.29.0 (ADR #442): the far end's management address, as a vendor that describes its
+        # neighbour (an LLDP remote address, a span's far-end NE) carries it in the trap.
+        varbinds.append((f"{rendering.vendor.object_arc}.3", "ip", far))
     if state_style or (rendering.vendor.carries_severity and oid not in (LINK_DOWN, LINK_UP)):
         varbinds.append((ALARM_SEVERITY_OID, "str", word))
     if element.decoys:  # a sequence number and an event time, unique per trap (ADR #426)

@@ -210,9 +210,9 @@ def test_proxied_scenarios_attribute_to_the_ne_in_the_baseline(scenario: str) ->
 #: this directory with `sorted(CORPUS_DIR.glob("*.json"))`, so the filenames are the replay order.
 #: v0.26.0: 10 -> 11 scenarios, 3 159 -> 3 175 events — `dual_incident_same_vendor.json` added
 #: (`make eval-baseline` entry of the same commit); the ten existing files are byte-identical.
-CORPUS_DIGEST = "3ce5e8ee84fe92a0d73eadc43cda77e806d0f4509d842e5ffc527faf3ec674be"
-CORPUS_SCENARIOS = 11
-CORPUS_EVENTS = 3175
+CORPUS_DIGEST = "48fb147f9438e26bf13bf67942739bdccd811d3e8357e255aeb6b082590ba62d"
+CORPUS_SCENARIOS = 13
+CORPUS_EVENTS = 3223
 
 
 def _corpus_digest() -> tuple[str, int, int]:

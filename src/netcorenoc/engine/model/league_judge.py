@@ -87,9 +87,10 @@ SUITES: tuple[str, ...] = (
     "test_optical",
     "test_protocol",
     "test_adverse",
+    "test_spread",
     "corpus",
 )
-GENERATED = SUITES[:5]
+GENERATED = SUITES[:6]
 TIE = 0.005
 LATENCY_BUDGET_US = 150.0
 

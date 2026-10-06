@@ -21,6 +21,9 @@ What this module adds on top of the families, each drawn per stream:
   same family a moment apart, storm windows of several times the usual fault rate, noise that
   follows the working day, and the path's congestion bursts, slow relays and duplicated traps
   (`adverse.Regime`). Intensity 0 draws nothing from any of it.
+* **Time spread** (v0.29.0, ADR #442), at the stream's ``spread`` intensity: some incidents
+  stretched in time, and isolated alerts placed on the elements an incident touches, inside its
+  span (`spread.SpreadRegime`). Intensity 0 draws nothing from it either.
 
 Deterministic: every draw comes from a `random.Random` seeded by a SHA-256 of the stream seed and
 a salt, so a stream is a pure function of its spec, independent of what else was generated.
@@ -38,9 +41,11 @@ from synth.emit import Event
 from synth.estate import Estate, build_estate
 from synth.families import FAMILIES as _BASE_FAMILIES
 from synth.families import NOISE, Builder, Spec, hosts
+from synth.spread import SPREAD_FAMILIES, SpreadRegime, bystander, stretch
 
-#: Every family a stream may draw: the v0.26.0 families and the adverse ones (ADR #439).
-FAMILIES: dict[str, Spec] = {**_BASE_FAMILIES, **ADVERSE_FAMILIES}
+#: Every family a stream may draw: the v0.26.0 families, the adverse ones (ADR #439) and the
+#: time-spread ones (ADR #442).
+FAMILIES: dict[str, Spec] = {**_BASE_FAMILIES, **ADVERSE_FAMILIES, **SPREAD_FAMILIES}
 
 __all__ = ["Stream", "StreamSpec", "compose", "derived_rng"]
 
@@ -72,6 +77,8 @@ class StreamSpec:
     weights: tuple[tuple[str, float], ...] = ()
     #: v0.29.0 (ADR #439): how bad a day this stream is, 0 (none of it) to 1 (all of it, hard).
     adverse: float = 0.0
+    #: v0.29.0 (ADR #442): how spread in time its incidents are, 0 (as drawn) to 1.
+    spread: float = 0.0
 
 
 @dataclass
@@ -121,21 +128,46 @@ def compose(spec: StreamSpec) -> Stream:
     # Drawn from its own generator, so an `adverse` of 0 leaves every other draw where it was.
     bad = derived_rng("adverse", spec.name, spec.seed)
     regime = draw_regime(bad, spec.adverse, horizon, estate)
+    # The time-spread regime draws from its own generator too, and only when its intensity is > 0.
+    slow = derived_rng("spread", spec.name, spec.seed)
+    spread = SpreadRegime(spec.spread)
+    lone = 0
 
     def place(
         key: str, family: str, fam_spec: Spec, seed_key: tuple[object, ...], t0: float
     ) -> None:
+        nonlocal lone
         events = _run(fam_spec, seed_key, estate, key, family)
         if not events:
             return
         start = min(e.t for e in events)
         for e in events:
             e.t = t0 + (e.t - start)
+        if family != "noise" and spec.spread > 0:
+            stretch(events, spread.stretch_factor(slow))
         stream.events.extend(events)
         stream.incidents[key] = family
         placed.append((t0, key))
         placed_family[key] = family
         placed_sources[key] = {e.source for e in events}
+        if family == "noise" or spec.spread <= 0:
+            return
+        # Isolated alerts on this incident's own elements, inside its span: each its own incident.
+        span = max((e.t for e in events if not e.is_clear), default=t0) - t0
+        sources = sorted(placed_sources[key])
+        for _ in range(spread.bystanders(slow)):
+            el = estate.elements[slow.choice(sources)]
+            at = t0 + slow.uniform(0.0, span + 600.0)
+            bkey = f"{spec.name}/b{lone}"
+            builder = Builder(
+                derived_rng("bystander", spec.name, spec.seed, lone), estate, bkey, "noise"
+            )
+            bystander(builder, el)
+            for e in builder.events:
+                e.t += at
+            stream.events.extend(builder.events)
+            stream.incidents[bkey] = "noise"
+            lone += 1
 
     onsets: list[float] = []
     t = 0.0
