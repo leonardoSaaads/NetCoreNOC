@@ -213,8 +213,9 @@ class TermContribution(NamedTuple):
 
     ``contribution = weight · value`` **only when** :attr:`LinkScore.basis` is
     :data:`BASIS_WEIGHTED_SUM` or :data:`BASIS_LINEAR`. Under :data:`BASIS_SHAPLEY` ``contribution``
-    is a Shapley value, ``value`` is still the feature's own value, and ``weight`` is **undefined** —
-    written as ``0.0`` and meaning nothing. Read the basis before reading this field.
+    is a Shapley value, ``value`` is still the feature's own value, and ``weight`` is
+    **undefined** — written as ``0.0`` and meaning nothing. Read the basis before reading this
+    field.
     """
 
     name: str
