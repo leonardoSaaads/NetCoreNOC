@@ -435,9 +435,9 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/keeping.js": (
         "e477179084875a06a64b8da3e3026879a8efff5084c6c42a9ac4687871f4288c"
     ),
-    "app/views/parts/league.js": "ea6c9e424a8a85e85ab90ff204decba8c36b2da2984f4fa6a0e04adf68626ea5",
+    "app/views/parts/league.js": "8bcfb48103093c85d55846e489761eec55b20e8c3bf31e24ff50eb95c7299c2c",
     "app/views/parts/leaguecharts.js": (
-        "35be0f62736f6b39111a6b0a4ec3a9f71f4d189d273d582772f11f530b02e070"
+        "1682caa645aeed99bfe1c41bb2c80c0d2f77bb19f2fc68e85317a6343f21f741"
     ),
     "app/views/parts/leaguecompare.js": (
         "aa5c986d4a94bbd8a7c0b6b2985b143a6e9ae1ea941d598bc4eab41f10c832a2"
@@ -594,8 +594,8 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/importbox.js": 5_982,
     "app/views/parts/judge.js": 15_986,
     "app/views/parts/keeping.js": 7_850,
-    "app/views/parts/league.js": 11_762,
-    "app/views/parts/leaguecharts.js": 10_649,
+    "app/views/parts/league.js": 11_785,
+    "app/views/parts/leaguecharts.js": 10_692,
     "app/views/parts/leaguecompare.js": 5_897,
     "app/views/parts/lifecycle.js": 9_471,
     "app/views/parts/marks.js": 5_998,

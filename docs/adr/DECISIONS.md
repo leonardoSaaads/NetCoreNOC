@@ -5997,3 +5997,42 @@ From this release an entry is about six lines: decision, reason, release.*
   a log false-positive axis on ROC, log axes for search loss, training time and scoring cost, and a
   score axis that starts above zero and says where. `GET /api/judge?brief=true` serves the Overview
   who decides, each member's ROC thinned to 40 points and the live shadow: a few KiB against ~240.
+
+## 442. Alarms of one incident minutes apart: recall by name, time-spread data, balanced weight (v0.29.0)
+
+- **Context**: a field review — *"the models were trained on cascading alarms, many alerts at once;
+  the most common situation is one incident whose alarms arrive at different times"*, with a
+  twenty-trap DWDM fibre cut (degradation, break, services, protection, repair) as its example. The
+  analysis of the v0.29.0 training set (`docs/correlation.md`, *Alarms at different times*):
+  92 % of the positive training mass was pairs under ten seconds apart; per time-gap band, the
+  univariate information of every feature (SelectKBest's ANOVA F and mutual information, written
+  here) collapsed past a minute, leaving `same_ne`/`entity_affinity` (ρ 0.97, one signal) and
+  nothing that relates two elements; every member grouped 33-41 % of an incident's alarm pairs one
+  to thirty minutes apart and 20-27 % beyond; and of the alarms whose incident's last alarm was one
+  to thirty minutes earlier, 18-26 % could reach none of its open alarms through recall, 10-14 %
+  were scored no by the model, 21 % (beyond five minutes) found their situation already closed.
+- **Decision**:
+  - **Recall by name** (`retrieval.py`): two more bounded rings — the traps that name this
+    element's management address, and the element each address this trap names — so a far end ten
+    minutes later is scored from the first trap on. Per activation at most `(1 + 4) × 8` more reads.
+  - **Time-spread data** (`eval/synth/spread.py`): five training families whose alarms arrive
+    minutes to an hour apart (a staged link failure — the review's script on a routed link —, a slow
+    card failure, a degrading PON feeder, an upstream loss with protocol timers, a staged power
+    failure), a regime that stretches some incidents and places isolated alerts on the very elements
+    an incident touches, far-end addresses in the traps of half the vendors, and three splits
+    (`train_spread` 48, `valid_spread` 16, `test_spread` 32). The judge averages **seven** suites.
+  - **Balanced weight** (`train.balance_gaps`): each (time-gap band, label) cell carries the square
+    root of its share of the weight, in training and in the validation loss the search reads.
+  - `cross_ref` joins the features the ablation always keeps (recall now proposes by it), and the
+    corpus gains the review's fibre cut at its script's pace and ten times slower, among isolated
+    alerts.
+  - A focused round: half the trials, the grouping grid trimmed to the region every earlier member
+    chose from (42 settings), test draw 5.
+- **Measured and not done**: capping each incident's weight (worse on both counts), two models
+  either side of a minute (better row log loss, worse grouping), and taking the join evidence over a
+  situation's strongest pairs instead of all of them (fewer repair gestures, but concurrent
+  incidents merged more: pairwise F1 on `valid_concurrency` 0.82 → 0.70 at one pair). The
+  five-minute clear hold (#410) is unchanged: a situation whose every alarm cleared is resolved, and
+  reopening it for a later alarm is a product decision, not a model's.
+- **Result**: the league retrained on this data, and its numbers per time-gap band, are in
+  `CHANGELOG.md` (0.29.0, *the focused round*).
