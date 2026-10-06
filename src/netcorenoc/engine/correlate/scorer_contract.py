@@ -36,6 +36,7 @@ import math
 from typing import NamedTuple, Protocol, runtime_checkable
 
 __all__ = [
+    "BASIS_LINEAR",
     "BASIS_SHAPLEY",
     "BASIS_SHAPLEY_SAMPLED",
     "BASIS_WEIGHTED_SUM",
@@ -198,15 +199,22 @@ BASIS_SHAPLEY = "shapley"
 # v0.29.0 (ADR #438): a permutation **estimate** of the Shapley values, for a model with no exact
 # attribution (k-NN). The terms still sum exactly to ``score - base_value``; each share is sampled.
 BASIS_SHAPLEY_SAMPLED = "shapley-sampled"
+# v0.29.0 (ADR #442): a trained linear model on the log-odds scale. Each contribution is weight ·
+# value, as under the weighted sum, but measured from the intercept (``base_value``) and over the
+# model's own features. Kept apart from :data:`BASIS_WEIGHTED_SUM` because that name means *the
+# additive formula* to the readers that store its three columns and read its score as a
+# probability; a logistic regression read that way had its explanation dropped and its logit
+# taken for a probability, unseen until it became the champion.
+BASIS_LINEAR = "linear"
 
 
 class TermContribution(NamedTuple):
     """One explainable term of a link score.
 
     ``contribution = weight · value`` **only when** :attr:`LinkScore.basis` is
-    :data:`BASIS_WEIGHTED_SUM`. Under :data:`BASIS_SHAPLEY` ``contribution`` is a Shapley value,
-    ``value`` is still the feature's own value, and ``weight`` is **undefined** — written as ``0.0``
-    and meaning nothing. Read the basis before reading this field.
+    :data:`BASIS_WEIGHTED_SUM` or :data:`BASIS_LINEAR`. Under :data:`BASIS_SHAPLEY` ``contribution``
+    is a Shapley value, ``value`` is still the feature's own value, and ``weight`` is **undefined** —
+    written as ``0.0`` and meaning nothing. Read the basis before reading this field.
     """
 
     name: str

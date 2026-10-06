@@ -116,3 +116,33 @@ async def test_the_console_names_a_models_terms_and_reads_its_margin_as_probabil
         "a model's link is shown as the formula's three terms"
     )
     assert "in probability above the threshold" in opened["summaryText"], opened["summaryText"]
+
+
+def test_a_logistic_regression_link_keeps_its_explanation_and_reads_as_a_logit() -> None:
+    """v0.29.0 (ADR #442): the league's logistic regression explained itself on the formula's basis
+    name, `weighted-sum`, so the engine stored the formula's three columns for its links (which did
+    not sum to its score) and the monitor read its logit as a probability. It became the champion
+    and the end-to-end decomposition test caught it. Its basis is now its own."""
+    from importlib import resources
+    from types import SimpleNamespace
+
+    from netcorenoc.engine.correlate import monitor
+    from netcorenoc.engine.correlate.features import FEATURE_NAMES
+    from netcorenoc.engine.correlate.pairs import explained_terms
+    from netcorenoc.engine.correlate.scorer_contract import BASIS_LINEAR
+    from netcorenoc.engine.model import league
+
+    # The packaged files themselves: the suite's default fixture empties `league.load`.
+    packaged = resources.files("netcorenoc.engine.model").joinpath(league.DIRECTORY)
+    member = league.load_dir(packaged).by_kind("logistic_regression")
+    assert member is not None
+    vector = tuple(1.0 if name == "same_ne" else 5.0 for name in FEATURE_NAMES)
+    result = member.scorer.explain(vector)
+    assert result.basis == BASIS_LINEAR
+    stored = explained_terms(result)
+    assert stored is not None, "the explanation was dropped as if it were the formula's"
+    doc = json.loads(stored)
+    total = doc["base"] + sum(contribution for _name, _value, contribution in doc["terms"])
+    assert abs(total - result.score) < 1e-6
+    pair = SimpleNamespace(result=result, evidence=result.score - result.threshold)
+    assert 0.0 < monitor._probability(pair) < 1.0, "a logit read as a probability"

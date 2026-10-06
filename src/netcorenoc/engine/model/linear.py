@@ -14,6 +14,8 @@ L2 penalty treats them alike.
 
 **The explanation is the model**: each term's contribution is ``wᵢ · zᵢ`` exactly, the base value is
 the intercept (the logit at the training mean), and the contract's sum holds with no approximation.
+Its basis is ``linear`` (v0.29.0), not the formula's ``weighted-sum``: the readers that see that
+name store the formula's three columns and read the score as a probability.
 
 A document is JSON with exactly the keys :data:`_KEYS`; nothing in it names code. It is refused if a
 number is non-finite, a weight is beyond :data:`MAX_ABS_WEIGHT`, a scale is not positive, a feature
@@ -31,7 +33,7 @@ from typing import Any
 
 from netcorenoc.engine.correlate.features import FEATURE_NAMES
 from netcorenoc.engine.correlate.scorer_contract import (
-    BASIS_WEIGHTED_SUM,
+    BASIS_LINEAR,
     CONTRACT_VERSION,
     LinkFeatures,
     LinkScore,
@@ -245,7 +247,7 @@ class LinearScorer:
             score=total,
             threshold=self.threshold,
             terms=terms,
-            basis=BASIS_WEIGHTED_SUM,
+            basis=BASIS_LINEAR,
             base_value=self.model.intercept,
         )
 
