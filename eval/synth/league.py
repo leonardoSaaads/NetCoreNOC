@@ -281,7 +281,7 @@ def _tag(kind: str) -> str:
         # a new fit, not a cached one.
         "eval/synth/train.py",
     )
-    weights = _DATA.get("weights", "balanced")
+    weights = _DATA.get("weights", "activation")
     return f"{kind}-{_DATA['seed']}-{weights[0]}{code}-{'_'.join(_DATA['features'])[:40]}"
 
 
@@ -464,10 +464,10 @@ def main() -> int:
     parser.add_argument("--stage", choices=("validate", "ship"), default="ship")
     parser.add_argument(
         "--weights",
-        choices=("balanced", "activation"),
-        default="balanced",
-        help="training weight: one unit per activation, balanced over time-gap bands (ADR #442) "
-        "or not",
+        choices=("activation", "balanced"),
+        default="activation",
+        help="training weight: one unit per activation (shipped), or that balanced over time-gap "
+        "bands (`train.balance_gaps`; measured and not adopted, ADR #442)",
     )
     parser.add_argument(
         "--root",
@@ -490,8 +490,9 @@ def main() -> int:
     rows_valid = train.validation_rows(root, args.seed)
     if not rows_train or any(len(r.x) != len(FEATURE_NAMES) for r in rows_train[:1000]):
         raise SystemExit(f"the recorded vectors are not {len(FEATURE_NAMES)} long; re-record")
-    # The focused round (ADR #442): the weight balanced over time-gap bands, in training and in the
-    # validation loss the search and the early stop read, so both optimise the same objective.
+    # ADR #442: `--weights balanced` balances the weight over time-gap bands, in training and in the
+    # validation loss the search and the early stop read; measured against the default and not
+    # adopted.
     rows_train = train._cap(rows_train, train.MAX_TRAIN_ROWS, args.seed)
     rows_valid = train._cap(rows_valid, train.MAX_VALID_ROWS, args.seed + 1)
     if args.weights == "balanced":

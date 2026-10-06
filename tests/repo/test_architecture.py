@@ -1322,7 +1322,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `store/occurrences.py` (ADRs #431, #433) and `api/body_limit.py` (#434).
 #: **v0.28.1: 357 -> 357.** No file added, removed or moved, and no behaviour changed: the tests
 #: moved into area folders, so every docstring and comment that cites one names its new path.
-SRC_TREE_DIGEST = "a396ae1b504fbef13d4f028b47645d01b486897448069184a2547a0817fc19f7"
+SRC_TREE_DIGEST = "5bf57098218987ec42c2fc73dc2f7abfa9b9eab456e8faad78818c4baccb8bf3"
 SRC_FILE_COUNT = 368
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

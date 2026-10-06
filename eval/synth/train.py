@@ -185,13 +185,15 @@ def balance_gaps(rows: list[dataset.Row]) -> list[dataset.Row]:
 
     ADR #442. One unit of weight per activation makes a storm's activations most of the training
     mass, and a storm's pairs are seconds apart: on the v0.29.0 data, 92 % of the positive mass was
-    under ten seconds, and every model learned that *far apart in time* means *unrelated*. Equal
-    weight per band would erase what is true — most related pairs *are* close — so the square root
-    keeps the order of the bands and lifts the rare ones. Measured on the v0.29.0 validation
-    streams with the champion's parameters: the share of same-incident pairs one to five minutes
-    apart that end up grouped rose from 36 % to 47 %, five to thirty minutes from 39 % to 45 %,
-    and repair gestures per incident fell (0.801 to 0.798); training two models, one either side
-    of a minute, or capping each incident's weight did worse on both counts.
+    under ten seconds. Equal weight per band would erase what is true — most related pairs *are*
+    close — so the square root keeps the order of the bands and lifts the rare ones.
+
+    **Measured and not adopted** (`synth.league --weights balanced` reproduces it). On the first
+    round's data, refitting the champion this way grouped more of the far pairs (one to five
+    minutes 36 % → 47 %) at the same repair work. On the focused round's data the whole league was
+    trained both ways: balanced, it grouped a few more far pairs but fewer burst pairs (0-10 s
+    0.93-0.96 against 0.97-0.98) and cost repair gestures on every validation split for five of
+    seven members, so the shipped league keeps one unit of weight per activation.
     """
 
     def cell(r: dataset.Row) -> tuple[int, int]:
@@ -409,8 +411,8 @@ def main() -> int:
     short = [r for r in rows_train[:1000] + rows_valid[:1000] if len(r.x) != len(FEATURE_NAMES)]
     if short or not rows_train:
         raise SystemExit(f"the recorded vectors are not {len(FEATURE_NAMES)} long; re-record")
-    rows_train = balance_gaps(_cap(rows_train, MAX_TRAIN_ROWS, args.seed))
-    rows_valid = balance_gaps(_cap(rows_valid, MAX_VALID_ROWS, args.seed + 1))
+    rows_train = _cap(rows_train, MAX_TRAIN_ROWS, args.seed)
+    rows_valid = _cap(rows_valid, MAX_VALID_ROWS, args.seed + 1)
     print(f"rows: train {len(rows_train)}, valid {len(rows_valid)}", file=sys.stderr)
 
     # The fit cache is keyed on the code that can change the fit — never on this file, whose

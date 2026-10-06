@@ -74,3 +74,29 @@ metrics moved.
   - dual_incident_same_vendor/ari: 1.0 -> 0.0
   - pon_pon_port_down/pairwise_f1: 0.68 -> 1.0
   - pon_pon_port_down/ari: 0.0 -> 1.0
+
+## 0.29.0 — current.json
+
+- **Reason**: v0.29.0's focused round (ADR #442) retrains the league on incidents spread over time and adds two corpus scenarios, the field review's DWDM fibre cut at its script's pace (pairwise_f1 0.94) and ten times slower (0.39). The judge's champion is now logistic regression. dual_incident_same_vendor 0.64 -> 1.00 (the first round's trade is gone). background_noise 1.00 -> 0.00: its 24 traps are twelve devices sending two traps under one vendor subtree 56 s apart, labelled unrelated; the retrained league groups each device's two traps, which is the behaviour the round was asked for (alarms of one element minutes apart are one situation) and the one this scenario labels the other way. Every other scenario keeps its numbers.
+- **Replaced digest**: `1199ae7b3ce20454cc705f1bc6c62cd19bc2b18b1683d7da017bc8f67e66aa3a`
+- **New digest**: `f0fb86527f168682ad365bf0b9cea2671038b9e25fd41d97675feb3774af5489`
+- **Aggregate metrics that moved** (19):
+  - ari: 0.99994 -> 0.999877
+  - dedup_ratio: 0.717041 -> 0.719501
+  - distinct_alarms: 2268 -> 2306
+  - entity_accuracy: 0.45194 -> 0.450564
+  - over_merge_rate: 0.028571 -> 0.4375
+  - pairwise_f1: 0.999958 -> 0.999912
+  - root_top1: 1.0 -> 0.857143
+  - traps_ingested: 3163 -> 3205
+  - under_merge_rate: 0.0 -> 0.02381
+  - background_noise/pairwise_f1: 1.0 -> 0.0
+  - background_noise/ari: 1.0 -> 0.0
+  - dual_incident_same_vendor/pairwise_f1: 0.636364 -> 1.0
+  - dual_incident_same_vendor/ari: 0.0 -> 1.0
+  - dwdm_staged_fibre_cut/pairwise_f1: None -> 0.941176
+  - dwdm_staged_fibre_cut/ari: None -> 0.627451
+  - dwdm_staged_fibre_cut/entity_accuracy: None -> 0.368421
+  - dwdm_staged_fibre_cut_slow/pairwise_f1: None -> 0.388235
+  - dwdm_staged_fibre_cut_slow/ari: None -> 0.102815
+  - dwdm_staged_fibre_cut_slow/entity_accuracy: None -> 0.368421

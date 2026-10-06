@@ -1,27 +1,27 @@
 {
   "aggregate": {
-    "ari": 0.99994,
-    "dedup_ratio": 0.717041,
-    "distinct_alarms": 2268,
-    "entity_accuracy": 0.45194,
-    "over_merge_rate": 0.028571,
+    "ari": 0.999877,
+    "dedup_ratio": 0.719501,
+    "distinct_alarms": 2306,
+    "entity_accuracy": 0.450564,
+    "over_merge_rate": 0.4375,
     "p95_ingest_latency_s": 0.0003,
-    "pairwise_f1": 0.999958,
+    "pairwise_f1": 0.999912,
     "peak_tracked_objects": 2102,
     "quarantined": 0,
-    "root_top1": 1.0,
-    "traps_ingested": 3163,
-    "under_merge_rate": 0.0
+    "root_top1": 0.857143,
+    "traps_ingested": 3205,
+    "under_merge_rate": 0.02381
   },
   "harness_version": 1,
   "scenarios": {
     "background_noise": {
-      "ari": 1.0,
+      "ari": 0.0,
       "dedup_ratio": 1.0,
       "distinct_alarms": 24,
       "entity_accuracy": 1.0,
-      "over_merge_rate": 0.0,
-      "pairwise_f1": 1.0,
+      "over_merge_rate": 1.0,
+      "pairwise_f1": 0.0,
       "quarantined": 0,
       "root_top1": 0.0,
       "traps_ingested": 24,
@@ -76,16 +76,40 @@
       "under_merge_rate": 0.0
     },
     "dual_incident_same_vendor": {
-      "ari": 0.0,
+      "ari": 1.0,
       "dedup_ratio": 1.0,
       "distinct_alarms": 16,
       "entity_accuracy": 1.0,
-      "over_merge_rate": 1.0,
-      "pairwise_f1": 0.636364,
+      "over_merge_rate": 0.0,
+      "pairwise_f1": 1.0,
       "quarantined": 0,
       "root_top1": 1.0,
       "traps_ingested": 16,
       "under_merge_rate": 0.0
+    },
+    "dwdm_staged_fibre_cut": {
+      "ari": 0.627451,
+      "dedup_ratio": 0.904762,
+      "distinct_alarms": 19,
+      "entity_accuracy": 0.368421,
+      "over_merge_rate": 0.5,
+      "pairwise_f1": 0.941176,
+      "quarantined": 0,
+      "root_top1": 0.5,
+      "traps_ingested": 21,
+      "under_merge_rate": 0.0
+    },
+    "dwdm_staged_fibre_cut_slow": {
+      "ari": 0.102815,
+      "dedup_ratio": 0.904762,
+      "distinct_alarms": 19,
+      "entity_accuracy": 0.368421,
+      "over_merge_rate": 0.166667,
+      "pairwise_f1": 0.388235,
+      "quarantined": 0,
+      "root_top1": 0.666667,
+      "traps_ingested": 21,
+      "under_merge_rate": 0.333333
     },
     "fiber_cut": {
       "ari": 1.0,

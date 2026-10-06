@@ -63,42 +63,75 @@ that omits `patch_s` now gets a 1-minute patch band.
 - Search spaces reviewed against overfitting and trials roughly doubled; training uses up to 320 000
   rows and validation 100 000.
 
-### The league, as shipped (`make train`, dataset `84c1059615d3ba44`, seed 2026)
+### Added — alarms at different times (the focused round, #442)
 
-320 000 training rows and 100 000 validation rows from 332 recorded streams; the search ran
-~6 600 s across seven kinds; every final fit early-stopped on validation. Pairwise F1 on the
-held-out test streams, model / the fail-safe formula on the same streams:
+A second, shorter training round on what a field review called the most common situation: one
+incident whose alarms arrive minutes apart (degradation, break, services, protection, repair), among
+isolated alerts. The review's own twenty-trap DWDM script is in the corpus, at its pace and ten times
+slower.
 
-| member | unseen | concurrent | optical | protocol | **adverse** | time | corpus | µs/pair |
-|---|---|---|---|---|---|---|---|---|
-| **Decision tree** (champion) | 0.835 / 0.817 | 0.849 / 0.783 | 0.980 / 0.968 | 0.971 / 0.949 | 0.846 / 0.744 | 0.966 / 0.965 | 0.967 | 0.6 |
-| Logistic regression | 0.833 | 0.867 | 0.979 | 0.971 | 0.870 | 0.966 | 0.909 | 4.8 |
-| Random forest | 0.834 | 0.849 | 0.978 | 0.973 | 0.860 | 0.965 | 0.909 | 7.0 |
-| GAM | 0.833 | 0.864 | 0.976 | 0.972 | 0.870 | 0.960 | 0.909 | 1.6 |
-| k-nearest neighbours | 0.834 | 0.865 | 0.976 | 0.973 | 0.872 | 0.966 | 0.909 | 31.8 |
-| Gradient-boosted trees | 0.833 | 0.887 | 0.975 | 0.963 | 0.882 | 0.966 | 0.795 | 53.1 |
-| XGBoost | 0.834 | 0.859 | 0.978 | 0.966 | 0.874 | 0.924 | 0.795 | 21.5 |
+- **The analysis first** (`docs/correlation.md`, *Alarms at different times*): 92 % of the positive
+  training mass was pairs under ten seconds apart; past a minute only `same_ne` (and its twin
+  `entity_affinity`, ρ 0.97) carried information in a per-band SelectKBest ranking; every model
+  grouped about a third of an incident's alarm pairs one to thirty minutes apart; and a quarter of
+  the late alarms could not reach their incident through recall at all.
+- **Recall by name**: candidate recall also reaches the element a trap names (a far end, a peer) and
+  the traps that name this one — the topology a trap carries, available from the first trap.
+- **Time-spread training data**: five families whose alarms arrive minutes to an hour apart, a
+  regime that stretches some incidents and puts isolated alerts on the very elements an incident
+  touches, far-end addresses in the traps of half the vendors, and three splits (`train_spread`,
+  `valid_spread`, `test_spread`). The judge averages **seven** suites; every manifest carries
+  `by_gap`, the share of an incident's alarm pairs grouped per time-gap band.
+- `cross_ref` is always kept by the ablation — and on the new data it is the feature the ablation
+  values most. A focused search: half the trials, the grouping grid's proven region (42 settings).
+- **Measured and not adopted**: balancing the training weight over time-gap bands (trained in full
+  and compared on validation: more far pairs grouped, fewer burst pairs, more repair gestures for
+  five of seven members; `--weights balanced` reproduces it), capping each incident's weight, two
+  models either side of a minute, joining on a situation's strongest pairs.
 
-Every member needs fewer operator repair gestures than the formula on every test split (for the
-champion 0.62 against 0.79 on unseen streams, 0.88 against 1.04 on adverse ones). The absolute F1
-on unseen streams is lower than v0.28's 0.96 because the test streams now carry bad days; the
-formula falls further on them.
+### The league, as shipped (`make train`, dataset `e217e9d43cde21ad`, seed 2026)
 
-- **No member overfits its training rows badly**: the train/validation log-loss gap at the kept
-  capacity is under 4 % for GAM, logistic regression, random forest and k-NN, 6.6 % for the tree,
-  and ~10 % for gradient-boosted trees and XGBoost — the two whose corpus suite is lowest (both split
-  the corpus's `fiber_cut` and both `dual_incident` scenarios when they decide alone). The judge
-  ranks them last; they stay in shadow.
-- **A training defect found and fixed on the way** (#439): the first full training dropped
-  `same_ne` in the feature ablation (with `entity_affinity` and `ne_episodes`, each looking
-  dispensable beside the others), and every member then split the corpus's fibre cut. The ablation
-  now always keeps the formula's three relations; validation log loss fell by about a third.
-- **`make eval`** is re-baselined (`31ea7583…`; it was `43328080…`): with the decision tree deciding,
-  `camera_nvr`, `pon_pon_port_down` and `background_noise` reach 1.0, `fiber_cut` and
-  `dual_incident` stay at 1.0, the pooled over-merge rate falls from 0.46 to 0.03 — and
-  **`dual_incident_same_vendor` falls from 1.0 to 0.64**: the tree merges the two concurrent
-  same-vendor incidents. GAM, random forest, logistic regression and k-NN keep it apart; the reason
-  is in `eval/baselines/REBASELINE-LOG.md`.
+320 000 training rows and 100 000 validation rows from 380 recorded streams (one unit of weight per
+activation). Pairwise F1 on the held-out test streams (test draw 5), model / the fail-safe formula on
+the same streams for the champion; `by_gap` on `test_spread` is the share of an incident's alarm
+pairs 1-5 and 5-30 minutes apart that end up in one situation:
+
+| member | unseen | concurrent | optical | protocol | adverse | **spread** | time | corpus | by_gap 1-5 / 5-30 min | repair (spread) model / formula | µs/pair |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Logistic regression** (champion) | 0.849 / 0.767 | 0.889 / 0.846 | 0.936 / 0.924 | 0.901 / 0.904 | 0.892 / 0.782 | 0.962 / 0.956 | 0.812 / 0.813 | 0.871 | 0.53 / 0.21 | 1.19 / 1.43 | 4.6 |
+| XGBoost | 0.859 | 0.887 | 0.931 | 0.858 | 0.888 | 0.964 | 0.812 | 0.844 | 0.58 / 0.24 | 1.09 / 1.43 | 59 |
+| k-nearest neighbours | 0.848 | 0.897 | 0.937 | 0.926 | 0.900 | 0.957 | 0.812 | 0.775 | 0.53 / 0.21 | 1.20 / 1.43 | 59 |
+| Random forest | 0.851 | 0.866 | 0.934 | 0.872 | 0.877 | 0.963 | 0.814 | 0.828 | 0.60 / 0.36 | 1.08 / 1.43 | 30 |
+| GAM | 0.851 | 0.838 | 0.929 | 0.885 | 0.882 | 0.961 | 0.813 | 0.848 | 0.55 / 0.23 | 1.18 / 1.43 | 1.9 |
+| Gradient-boosted trees | 0.854 | 0.866 | 0.932 | 0.857 | 0.887 | 0.964 | 0.811 | 0.768 | 0.58 / 0.27 | 1.07 / 1.43 | 166 |
+| Decision tree | 0.850 | 0.840 | 0.933 | 0.805 | 0.872 | 0.963 | 0.813 | 0.574 | 0.55 / 0.22 | 1.15 / 1.43 | 0.5 |
+
+- **Against the first round's league on the same test streams** (same recorded candidates, so only
+  the models differ): across the league, pairs 1-5 minutes apart grouped 43-58 % → 53-60 %, 5-30
+  minutes 14-24 % → 21-36 %, repair gestures on `test_spread` 1.16-1.27 → 1.07-1.20 per incident.
+  **The gain is in the tree ensembles** — random forest 48 % → 60 % and 17 % → 36 % with 1.21 → 1.08
+  gestures, gradient-boosted trees 43 % → 58 % and 14 % → 27 %, XGBoost 43 % → 58 % and 15 % → 24 % —
+  while logistic regression and the GAM stay level with (a point or three below) their first-round
+  selves. Champion against champion (the first round's decision tree): 50 % → 53 %, 20 % → 21 %,
+  gestures level at 1.19. On this kind of traffic, pinning the random forest (Settings → Models) or
+  letting a site's labels re-rank the league is what gains most.
+  Every member needs fewer gestures than the formula on every test split.
+- **The corpus**: `dual_incident_same_vendor` is back at 1.0 (the first round's trade); the field
+  review's DWDM fibre cut reaches 0.94 at its script's pace and **0.39 ten times slower** — the
+  champion splits the slow one into the break, the services and the protection-and-repair phases.
+  `background_noise` falls from 1.0 to 0.0: its twelve devices each send two traps under one vendor
+  subtree a minute apart, labelled unrelated, and the league now groups them — the behaviour this
+  round was asked for, which this scenario labels the other way.
+- **Overfitting**: the train/validation log-loss gap at the kept capacity is under 9 % for every
+  member but XGBoost (17 %) and gradient-boosted trees (14 %). Gradient-boosted trees early-stopped
+  at 500 rounds of depth 5, ~165 µs per pair on the reference host — over the 150 µs budget, so it
+  scores in shadow and never decides.
+- **`make eval`** is re-baselined (`c80b818b…`; it was `31ea7583…`), with the reason in
+  `eval/baselines/REBASELINE-LOG.md`.
+- **The first round** (dataset `84c1059615d3ba44`, the decision tree deciding) is in commit
+  `78b3539`. Along the way it found and fixed a training defect (#439): the feature ablation had
+  dropped `same_ne` with `entity_affinity` and `ne_episodes`, and every member split the corpus's
+  fibre cut; the ablation now always keeps the formula's relations.
 
 ## [0.28.1] - 2026-10-03 — "the repository, organised"
 

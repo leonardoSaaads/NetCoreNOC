@@ -6041,5 +6041,14 @@ From this release an entry is about six lines: decision, reason, release.*
   incidents merged more: pairwise F1 on `valid_concurrency` 0.82 → 0.70 at one pair). The
   five-minute clear hold (#410) is unchanged: a situation whose every alarm cleared is resolved, and
   reopening it for a later alarm is a product decision, not a model's.
-- **Result**: the league retrained on this data, and its numbers per time-gap band, are in
-  `CHANGELOG.md` (0.29.0, *the focused round*).
+- **Result** (dataset `e217e9d43cde21ad`, numbers in `CHANGELOG.md`): on the same test streams the
+  league groups more of an incident's far pairs than the first round's — the tree ensembles most
+  (random forest 48 % → 60 % one to five minutes apart, 17 % → 36 % five to thirty, repair gestures
+  1.21 → 1.08 per incident) — while logistic regression and the GAM stay level. The judge's
+  champion is logistic regression, level with the first round's champion on that traffic (gestures
+  1.19 both) and better on the corpus: `dual_incident_same_vendor` back at 1.0, the review's DWDM
+  fibre cut at 0.94 at its pace and 0.39 ten times slower. **The trade**: `background_noise` falls
+  from 1.0 to 0.0 — twelve devices each sending two traps a minute apart under one vendor subtree,
+  labelled unrelated, now grouped per device, which is the behaviour this round was asked for.
+  `make eval` is re-baselined with that reason. Gradient-boosted trees early-stopped at 500 rounds,
+  over the latency budget: it scores in shadow and never decides.
