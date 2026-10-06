@@ -277,8 +277,12 @@ def _tag(kind: str) -> str:
         "src/netcorenoc/engine/correlate/features.py",
         "eval/synth/tuning.py",
         "eval/synth/dataset.py",
+        # The training weights and the grouping grid live here (ADR #442): a change to either is
+        # a new fit, not a cached one.
+        "eval/synth/train.py",
     )
-    return f"{kind}-{_DATA['seed']}-{code}-{'_'.join(_DATA['features'])[:40]}"
+    weights = _DATA.get("weights", "balanced")
+    return f"{kind}-{_DATA['seed']}-{weights[0]}{code}-{'_'.join(_DATA['features'])[:40]}"
 
 
 def fit_phase(kind: str) -> dict[str, Any]:
@@ -459,6 +463,13 @@ def main() -> int:
     parser.add_argument("--kinds", default=",".join(league.KINDS))
     parser.add_argument("--stage", choices=("validate", "ship"), default="ship")
     parser.add_argument(
+        "--weights",
+        choices=("balanced", "activation"),
+        default="balanced",
+        help="training weight: one unit per activation, balanced over time-gap bands (ADR #442) "
+        "or not",
+    )
+    parser.add_argument(
         "--root",
         type=Path,
         default=None,
@@ -481,8 +492,10 @@ def main() -> int:
         raise SystemExit(f"the recorded vectors are not {len(FEATURE_NAMES)} long; re-record")
     # The focused round (ADR #442): the weight balanced over time-gap bands, in training and in the
     # validation loss the search and the early stop read, so both optimise the same objective.
-    rows_train = train.balance_gaps(train._cap(rows_train, train.MAX_TRAIN_ROWS, args.seed))
-    rows_valid = train.balance_gaps(train._cap(rows_valid, train.MAX_VALID_ROWS, args.seed + 1))
+    rows_train = train._cap(rows_train, train.MAX_TRAIN_ROWS, args.seed)
+    rows_valid = train._cap(rows_valid, train.MAX_VALID_ROWS, args.seed + 1)
+    if args.weights == "balanced":
+        rows_train, rows_valid = train.balance_gaps(rows_train), train.balance_gaps(rows_valid)
     print(f"rows: train {len(rows_train)}, valid {len(rows_valid)}", file=sys.stderr, flush=True)
     # The rule that keeps a feature is code too (v0.29.0, `train.kept_features`): a change to it
     # is a new ablation, not a cached one.
@@ -491,7 +504,7 @@ def main() -> int:
         "src/netcorenoc/engine/correlate/features.py",
         "eval/synth/train.py",
     )
-    abl_path = root / f"ablation-{args.seed}-{abl_code}.json"
+    abl_path = root / f"ablation-{args.seed}-{args.weights[0]}{abl_code}.json"
     if abl_path.exists():
         abl = json.loads(abl_path.read_text())
     else:
@@ -513,6 +526,7 @@ def main() -> int:
     _DATA.update(
         root=root,
         seed=args.seed,
+        weights=args.weights,
         stage=args.stage,
         features=features,
         train_ds=train.to_dataset(rows_train, features),
@@ -564,6 +578,7 @@ def main() -> int:
             "dataset_digest": root.name,
             "command": "make train",
             "training_rows": n_train,
+            "training_weights": args.weights,
             "validation_rows": n_valid,
             "seconds": round(time.time() - t0, 1),
             "data": "generated (eval/synth), never site data",
