@@ -130,6 +130,8 @@ _UI_MODULES = (
     "app/views/parts/mwsummary.js",
     # v0.21.1: card 4 of the stepper, split from `mwform.js` at the 400-line guard.
     "app/views/parts/mwreview.js",
+    # v0.29.0: card 2 of the stepper — zone, start and duration presets, patch band.
+    "app/views/parts/mwwhen.js",
     # v0.20.0: the decision bar — what may be pressed on a situation right now, and in what
     # words — off `judge.js`, which keeps when a press sends and what the server answered.
     "app/views/parts/decide.js",

@@ -49,7 +49,18 @@ HEADLINE = (
     "asserted_negative_respected_rate",
     "repair_gestures",
 )
-TEST_SPLITS = ("test_iid", "test_optical", "test_protocol", "test_concurrency")
+TEST_SPLITS = (
+    "test_iid",
+    "test_optical",
+    "test_protocol",
+    "test_concurrency",
+    "test_adverse",
+    "test_spread",
+)
+#: Time-gap bands for `by_gap` (ADR #442), in seconds: the lower edge of each band.
+GAP_BANDS = (0.0, 10.0, 60.0, 300.0, 1800.0)
+#: Same-incident pairs sampled per incident for `by_gap`: a storm's pairs grow with its square.
+GAP_PAIRS_PER_INCIDENT = 400
 HELD_OUT = {"test_optical": dataset.HOLDOUT_OPTICAL, "test_protocol": dataset.HOLDOUT_PROTOCOL}
 
 
@@ -165,7 +176,13 @@ def residuals(
 def evaluate(root: Path, scorer: gam.GamScorer, seed: int) -> dict[str, Any]:
     model = ModelDecider.of(scorer)
     formula = FormulaDecider()
-    out: dict[str, Any] = {"splits": {}, "held_out_families": {}, "pairs": {}, "first_hour": {}}
+    out: dict[str, Any] = {
+        "splits": {},
+        "held_out_families": {},
+        "pairs": {},
+        "first_hour": {},
+        "by_gap": {},
+    }
     for split in TEST_SPLITS:
         logs = list(dataset.load_split(root, split))
         mo = [group(log, model) for log in logs]
@@ -174,6 +191,7 @@ def evaluate(root: Path, scorer: gam.GamScorer, seed: int) -> dict[str, Any]:
             "model": _metrics_ci(mo, seed=seed),
             "formula": _metrics_ci(fo, seed=seed),
         }
+        out["by_gap"][split] = {"model": by_gap(mo, seed), "formula": by_gap(fo, seed)}
         out["pairs"][split] = _pairs(logs, scorer, seed)
         for fam in HELD_OUT.get(split, ()):
             out["held_out_families"][fam] = {
@@ -202,6 +220,44 @@ def evaluate(root: Path, scorer: gam.GamScorer, seed: int) -> dict[str, Any]:
     }
     out["recurrence"] = _recurrence(long_logs, model, formula)
     return out
+
+
+def by_gap(outcomes: Sequence[Outcome], seed: int) -> dict[str, dict[str, float]]:
+    """Per time-gap band: the share of same-incident alarm pairs that ended up in one situation.
+
+    ADR #442: the question a field review asked — *are alarms of one incident grouped when they
+    arrive minutes apart?* — which pooled pairwise F1 cannot answer, because a storm's pairs are
+    seconds apart and outnumber everything else. Unrecognised clears are left out, as they are of
+    every other situation metric; at most :data:`GAP_PAIRS_PER_INCIDENT` pairs per incident.
+    """
+    rng = random.Random(seed)  # nosec B311 - sampling for a report, not security
+    hits = [0] * len(GAP_BANDS)
+    seen = [0] * len(GAP_BANDS)
+    for o in outcomes:
+        skip = o.clear or [False] * len(o.truth)
+        members: dict[str, list[int]] = {}
+        for i, t in enumerate(o.truth):
+            if not skip[i]:
+                members.setdefault(t, []).append(i)
+        for idx in members.values():
+            pairs = [(a, b) for n, a in enumerate(idx) for b in idx[n + 1 :]]
+            if len(pairs) > GAP_PAIRS_PER_INCIDENT:
+                pairs = rng.sample(pairs, GAP_PAIRS_PER_INCIDENT)
+            for a, b in pairs:
+                band = sum(abs(o.ts[b] - o.ts[a]) >= edge for edge in GAP_BANDS[1:])
+                seen[band] += 1
+                hits[band] += o.pred[a] == o.pred[b]
+    return {
+        _band(n): {"grouped": round(hits[n] / seen[n], 4), "pairs": float(seen[n])}
+        for n in range(len(GAP_BANDS))
+        if seen[n]
+    }
+
+
+def _band(n: int) -> str:
+    lo = GAP_BANDS[n]
+    hi = GAP_BANDS[n + 1] if n + 1 < len(GAP_BANDS) else None
+    return f"{lo:g}-{hi:g}s" if hi is not None else f"{lo:g}s+"
 
 
 def _first_hour(outcomes: Sequence[Outcome], seed: int) -> dict[str, Any]:

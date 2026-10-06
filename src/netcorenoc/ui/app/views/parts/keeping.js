@@ -9,6 +9,11 @@
  * persisted (`host_sample`, migration 0022) and this panel asks `/api/resources` for the window it
  * was given, so a different range is a different query.
  *
+ * ## The work, not only the host (v0.29.0)
+ *
+ * Seven charts: the trap rate and the correlation latency (p95) join CPU, memory, storage, the
+ * database and the queue. All seven are `host_sample` columns, sampled every 30 s on one path.
+ *
  * ## What left
  *
  * The verdict restated the tiles beside it (*"Keeping up — 24 traps accepted, none dropped, CPU
@@ -26,9 +31,14 @@ import { count, score } from "../../format.js";
 /** Points per chart. The same as the activity chart, so the two share a column grid. */
 export const HOST_BUCKETS = 24;
 
-/** The five host charts: title, series key, unit, and what the percentage is OF. */
+/** The charts: title, series key, unit, and what it is OF. v0.29.0 (ADR #437): the WORK comes
+ *  first — traps arriving and how long a batch takes to correlate — then the host under it. A
+ *  rising rate with a flat latency is a busy network handled; a rising latency is the appliance
+ *  falling behind before its queue shows it. */
 function charts(res) {
   return [
+    ["Trap rate", "traps_per_s", "/s", "received, mean per bucket"],
+    ["Latency", "latency_ms", "ms", "correlation p95, worst per bucket"],
     ["CPU", "cpu_pct", "%", res && res.cpu_count ? `${res.cpu_count} cores` : "this host"],
     ["Memory", "mem_pct", "%", res && res.mem_source === "cgroup" ? "container limit" : "host"],
     ["Storage", "disk_pct", "%", "database filesystem"],
@@ -84,7 +94,7 @@ export class Keeping extends Component {
       <div class="chart-grid">
         ${charts(res).map(([title, key, unit, what]) => html`<${Series} key=${key}
           title=${title} unit=${unit} labels=${labels}
-          series=${[{ name: title, tone: key === "queue_depth" ? "warn" : null,
+          series=${[{ name: title, tone: key === "queue_depth" || key === "latency_ms" ? "warn" : null,
                       values: series[key] || [] }]}
           source=${what} span=${partial} />`)}
       </div>

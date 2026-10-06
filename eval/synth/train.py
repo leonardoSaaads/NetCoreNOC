@@ -12,7 +12,8 @@ not a gate. The steps of this module's own command, each deterministic from the 
    from
    ``valid``. One unit of weight per activation (`dataset.training_rows`).
 3. **Ablation**: fit with every candidate feature, then without each one in turn; a feature whose
-   removal does not worsen validation log loss by at least :data:`KEEP_IF_WORSE_BY` is dropped.
+   removal does not worsen validation log loss by at least :data:`KEEP_IF_WORSE_BY` is dropped —
+   except the formula's three relations, :data:`CORE_FEATURES`, which are always kept (v0.29.0).
    Part III.2: *add them deliberately, measure each one's contribution, drop what does not pay.*
 4. **Search** over the kept features (`netcorenoc.engine.model.search`): random search, then
    successive halving on validation log loss, every trial recorded.
@@ -30,6 +31,7 @@ not a gate. The steps of this module's own command, each deterministic from the 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import subprocess
@@ -56,11 +58,27 @@ SHIPPED = REPO / "src" / "netcorenoc" / "engine" / "model"
 ARTIFACT = "linkmodel.json"
 MANIFEST = "linkmodel.manifest.json"
 
-MAX_TRAIN_ROWS = 160_000
-MAX_VALID_ROWS = 50_000
+# v0.29.0 (ADR #439): twice v0.27.0's 160 000 training rows and 50 000 validation rows — the new
+# families and the bad-day regimes need the room, and a larger validation set makes the search's
+# choices less noisy, which is itself a guard against fitting the validation streams.
+MAX_TRAIN_ROWS = 320_000
+MAX_VALID_ROWS = 100_000
 ABLATION_ROWS = 60_000
 BENCHMARK_ROWS = 2_000
 KEEP_IF_WORSE_BY = 0.0005  # nats of validation log loss
+#: v0.29.0 (ADR #439): the three relations the fail-safe formula reads are never dropped. A drop-one
+#: ablation measures each feature against all the others, so features that carry one signal between
+#: them each look dispensable and go together: on the v0.29.0 data `same_ne`, `entity_affinity` and
+#: `ne_episodes` all fell under the threshold, every model lost which element an alarm came from,
+#: and the corpus's fibre cut and both dual incidents were split. A model sees at least what the
+#: formula sees.
+#: The focused round (ADR #442) adds ``cross_ref``: candidate recall now proposes pairs *because*
+#: one alarm names the other's element, and a candidate proposed for a reason the model cannot see
+#: is one it can judge only by how far apart in time the two alarms are.
+CORE_FEATURES = ("dt", "same_ne", "same_class", "cross_ref")
+
+#: The time-gap bands the training weight is balanced over (ADR #442; `balance_gaps`), in seconds.
+GAP_BANDS = (10.0, 60.0, 300.0, 1800.0)
 
 #: The quality bar (ADR #409). **Fixed from the validation streams alone, before any test split was
 #: read**, from the paired stream-bootstrap of model - formula on validation (in brackets, 95 %):
@@ -101,9 +119,12 @@ QUALITY_BAR: tuple[tuple[str, str, str, float], ...] = (
 #: in them. The first rule (pooled ``split_bag_intact_rate`` no higher than the formula's) chose a
 #: setting that already failed eleven of those checks on validation, and it missed the bar on test
 #: (#420): a selection rule weaker than the acceptance rule selects what acceptance refuses.
-JOIN_GRID = (-0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
-MERGE_GRID = (0.5, 1.0, 2.0, 4.0)
-PAIRS_GRID = (2, 3, 6)
+#:
+#: The focused round (ADR #442) searches the part of the grid every v0.27.0-v0.29.0 member chose
+#: from (join 0.5-1.5, merge 1-4, pairs 2-3) and a step either side: 42 settings instead of 132.
+JOIN_GRID = (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
+MERGE_GRID = (1.0, 2.0, 4.0)
+PAIRS_GRID = (2, 3)
 
 
 @dataclass
@@ -137,6 +158,57 @@ def _cap(rows: list[dataset.Row], limit: int, seed: int) -> list[dataset.Row]:
             chosen.add(k)
             budget -= counts[k]
     return [r for r in rows if (r.stream, r.ts, r.incident) in chosen]
+
+
+def training_rows(root: Path, seed: int) -> list[dataset.Row]:
+    """Every training row: ``train`` and ``train_spread`` (ADR #442), and the older 70 % of
+    ``train_long`` (the time-ordered split). The streams are read one at a time; only rows stay."""
+    return (
+        dataset.training_rows(dataset.load_split(root, "train"), seed=seed)
+        + dataset.training_rows(dataset.load_split(root, "train_spread"), seed=seed)
+        + dataset.training_rows(
+            dataset.load_split(root, "train_long"), seed=seed, time_window=(0.0, 0.7)
+        )
+    )
+
+
+def validation_rows(root: Path, seed: int) -> list[dataset.Row]:
+    """The rows a search and an early stop read: ``valid`` and ``valid_spread`` (ADR #442)."""
+    return dataset.training_rows(dataset.load_split(root, "valid"), seed=seed) + (
+        dataset.training_rows(dataset.load_split(root, "valid_spread"), seed=seed)
+    )
+
+
+def balance_gaps(rows: list[dataset.Row]) -> list[dataset.Row]:
+    """Re-weight ``rows`` so each (time-gap band, label) cell carries the **square root** of its
+    share of the weight rather than the share itself; the total weight is unchanged.
+
+    ADR #442. One unit of weight per activation makes a storm's activations most of the training
+    mass, and a storm's pairs are seconds apart: on the v0.29.0 data, 92 % of the positive mass was
+    under ten seconds. Equal weight per band would erase what is true — most related pairs *are*
+    close — so the square root keeps the order of the bands and lifts the rare ones.
+
+    **Measured and not adopted** (`synth.league --weights balanced` reproduces it). On the first
+    round's data, refitting the champion this way grouped more of the far pairs (one to five
+    minutes 36 % → 47 %) at the same repair work. On the focused round's data the whole league was
+    trained both ways: balanced, it grouped a few more far pairs but fewer burst pairs (0-10 s
+    0.93-0.96 against 0.97-0.98) and cost repair gestures on every validation split for five of
+    seven members, so the shipped league keeps one unit of weight per activation.
+    """
+
+    def cell(r: dataset.Row) -> tuple[int, int]:
+        return (sum(r.x[0] >= edge for edge in GAP_BANDS), r.y)
+
+    mass: dict[tuple[int, int], float] = {}
+    for r in rows:
+        mass[cell(r)] = mass.get(cell(r), 0.0) + r.w
+    total = sum(mass.values())
+    if total <= 0:
+        return rows
+    roots = {k: (v / total) ** 0.5 for k, v in mass.items()}
+    norm = sum(roots.values())
+    factor = {k: (roots[k] / norm) / (v / total) for k, v in mass.items()}
+    return [dataclasses.replace(r, w=r.w * factor[cell(r)]) for r in rows]
 
 
 def to_dataset(rows: list[dataset.Row], features: tuple[str, ...]) -> gam_fit.Dataset:
@@ -176,7 +248,7 @@ def ablation(train: list[dataset.Row], valid: list[dataset.Row], seed: int) -> d
         print(
             f"  ablation: without {name:16s} Δ valid log loss {deltas[name]:+.5f}", file=sys.stderr
         )
-    kept = tuple(f for f in candidates if deltas[f] >= KEEP_IF_WORSE_BY)
+    kept = kept_features(candidates, deltas)
     return {
         "baseline_valid_log_loss": base,
         "delta_without": deltas,
@@ -184,6 +256,12 @@ def ablation(train: list[dataset.Row], valid: list[dataset.Row], seed: int) -> d
         "dropped": [f for f in candidates if f not in kept],
         "rows": [len(tr), len(va)],
     }
+
+
+def kept_features(candidates: tuple[str, ...], deltas: dict[str, float]) -> tuple[str, ...]:
+    """The ablation's rule: what pays its way, and the formula's three relations whatever they
+    measured. Pure, so the rule is tested apart from the fits that feed it."""
+    return tuple(f for f in candidates if f in CORE_FEATURES or deltas[f] >= KEEP_IF_WORSE_BY)
 
 
 def _evidence_cache(logs: list[StreamLog], scorer: gam.GamScorer) -> dict[int, list[Scored]]:
@@ -323,14 +401,11 @@ def main() -> int:
     tuning = {
         "valid": list(dataset.load_split(root, "valid")),
         "valid_concurrency": list(dataset.load_split(root, "valid_concurrency")),
+        "valid_spread": list(dataset.load_split(root, "valid_spread")),
     }
     # The training streams are read one at a time (`load_split` is a generator); only rows stay.
-    rows_train = dataset.training_rows(
-        dataset.load_split(root, "train"), seed=args.seed
-    ) + dataset.training_rows(
-        dataset.load_split(root, "train_long"), seed=args.seed, time_window=(0.0, 0.7)
-    )
-    rows_valid = dataset.training_rows(tuning["valid"], seed=args.seed)
+    rows_train = training_rows(root, args.seed)
+    rows_valid = dataset.training_rows(tuning["valid"] + tuning["valid_spread"], seed=args.seed)
     # A recording that lost its feature vectors (a decider that reads none ran instead of the
     # probe) must stop here, loudly, rather than train on empty rows.
     short = [r for r in rows_train[:1000] + rows_valid[:1000] if len(r.x) != len(FEATURE_NAMES)]

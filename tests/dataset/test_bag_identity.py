@@ -259,14 +259,16 @@ async def test_a_second_gesture_on_a_changed_bag_records_its_own_label(store: St
     rows = [r for r in await store.list_situations(None, 100) if r["status"] != "resolved"]
     source = int(rows[0]["id"])
     members = await store.situation_member_ids(source)
-    assert len(members) >= 4, "the seed must offer enough members to move two out"
+    assert len(members) >= 5, "the seed must offer enough members to move two out"
 
     client = await authutil.client_as(app, "editor")
     try:
-        # A destination the appliance could produce: split two members into their own situation.
+        # A destination the appliance could produce: split three members into their own
+        # situation. Three, so that two moves out of it leave a member behind: a move may not
+        # empty its source since v0.29.0 (ADR #436) — that is a merge.
         response = await client.post(
             f"/api/situations/{source}/split",
-            json={"alarm_ids": members[:2], "confidence": SURE},
+            json={"alarm_ids": members[:3], "confidence": SURE},
         )
         assert response.status_code == 200, response.text
         cur = await store.conn.execute(
@@ -487,5 +489,6 @@ async def test_the_probe_is_true_on_a_migrated_database(store: Store) -> None:
     """
     assert store._has_bag_key is True
     # v0.26.0: 25 -> 26, `0026_learned_decider` (ADRs #405, #412, #413); v0.27.0: 26 -> 27,
-    # `0027_league_and_pending` (ADRs #423, #428).
-    assert await store.schema_version() == Store.latest_schema_version() == 27
+    # `0027_league_and_pending` (ADRs #423, #428); v0.29.0: 27 -> 28, `0028_moved_members`
+    # (ADR #436).
+    assert await store.schema_version() == Store.latest_schema_version() == 28

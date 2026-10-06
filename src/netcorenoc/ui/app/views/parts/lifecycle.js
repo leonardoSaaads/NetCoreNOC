@@ -11,7 +11,7 @@
  */
 
 import { html, Component } from "../../dom.js";
-import { age, percent, timeTitle } from "../../format.js";
+import { age, percent, plural, timeTitle } from "../../format.js";
 import { Avatar } from "../../avatar.js";
 
 /**
@@ -116,12 +116,44 @@ const EVENT_NOTE = {
   idle_close: "(its alarm went quiet without a clear and was raised again: that opened a new situation)",
 };
 
+/** Two events this close in time, by one person, of one kind and one confidence, are one row. */
+export const RUN_GAP_S = 300;
+
+/* Consecutive identical gestures as one row (v0.29.0, ADR #436).
+ *
+ * An operator hand-clearing twenty alarms, or (before v0.29.0) moving twenty one at a time, wrote
+ * twenty identical lines that pushed everything else off the card. The record is unchanged — each
+ * event is still its own row on the server — and the console counts a run instead of repeating it:
+ * same kind, same actor, same confidence, each within `RUN_GAP_S` of the one before. A `move`
+ * counts ALARMS (`moved`, which one multi-alarm move already carries); other kinds count events. */
+export function runs(events) {
+  const out = [];
+  for (const e of events ?? []) {
+    const last = out[out.length - 1];
+    if (last && last.kind === e.kind && last.actor === e.actor
+        && last.confidence === e.confidence && (e.at ?? 0) - (last.at ?? 0) <= RUN_GAP_S) {
+      last.times += 1;
+      last.alarms += e.moved ?? 1;
+      last.at = e.at;
+    } else {
+      out.push({ ...e, times: 1, alarms: e.moved ?? 1 });
+    }
+  }
+  return out;
+}
+
+/** "×20", "20 alarms", or nothing for a single event about one alarm. */
+function runCount(run) {
+  if (run.kind === "move") return run.alarms > 1 ? ` · ${plural(run.alarms, "alarm")}` : "";
+  return run.times > 1 ? ` ×${run.times}` : "";
+}
+
 export function History({ events }) {
   return html`<section class="history">
     <h3>What has been done to this situation</h3>
     <ol class="history-list">
-      ${events.map((e, index) => html`<li key=${index}>
-        <span class="history-kind">${e.kind.replace("_", " ")}</span>
+      ${runs(events).map((e, index) => html`<li key=${index}>
+        <span class="history-kind">${e.kind.replaceAll("_", " ")}${runCount(e)}</span>
         ${EVENT_NOTE[e.kind] ? html`<span class="muted">${" "}${EVENT_NOTE[e.kind]}</span>` : null}
         ${e.actor_name ? html`<${Avatar} id=${userId(e.actor)} digest=${e.actor_avatar}
                                name=${e.actor_display} username=${e.actor_name} size=${20} />` : null}

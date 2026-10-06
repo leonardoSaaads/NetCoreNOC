@@ -24,7 +24,7 @@ import os
 import sqlite3
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ from netcorenoc.crosscutting.settings import (
     SettingsError,
     legacy_env_error,
 )
+from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
 from netcorenoc.engine.operate.engine import Engine
 from netcorenoc.engine.operate.resources import SAMPLE_INTERVAL_S, ResourceSampler
 from netcorenoc.ingest.receiver import (
@@ -54,52 +55,6 @@ log = logging.getLogger("netcorenoc")
 
 QUEUE_SIZE = 100_000
 SHUTDOWN_DRAIN_S = 5.0  # bounded deadline to drain queued traps on graceful shutdown (§A.5)
-
-
-SUPERVISOR_BACKOFF_BASE_S = 1.0
-SUPERVISOR_BACKOFF_MAX_S = 30.0
-
-
-@dataclass
-class Supervisor:
-    """Keeps long-lived background tasks alive (§A.5, F10).
-
-    A supervised task that raises is logged (through the redaction filter), counted, and — where
-    a restart is safe — restarted with capped exponential backoff; the crash is surfaced through
-    ``operator_warnings()`` so it is never silent. A *cancelled* task (graceful shutdown) is never
-    restarted. This supervises the engine and the maintenance loop only; the trap datagram path
-    lives in the receiver's UDP callback, which cannot raise into the event loop, and is untouched.
-    """
-
-    crashes: dict[str, int] = field(default_factory=dict)
-    last_error: dict[str, str] = field(default_factory=dict)
-    backoff_base: float = SUPERVISOR_BACKOFF_BASE_S
-    backoff_max: float = SUPERVISOR_BACKOFF_MAX_S
-
-    async def run(self, name: str, factory: Callable[[], Any], *, restart: bool = True) -> None:
-        delay = self.backoff_base
-        while True:
-            try:
-                await factory()
-                return  # a task that returns cleanly is done (infinite loops never do)
-            except asyncio.CancelledError:
-                raise  # shutdown — propagate, never restart
-            except Exception as exc:  # the supervisor's whole job is to catch and recover
-                self.crashes[name] = self.crashes.get(name, 0) + 1
-                self.last_error[name] = type(exc).__name__
-                log.exception("supervised task %r crashed (restart=%s)", name, restart)
-                if not restart:
-                    return
-                await asyncio.sleep(delay)
-                delay = min(delay * 2, self.backoff_max)
-
-    def warnings(self) -> list[str]:
-        return [
-            f"Background task '{name}' crashed {n} time(s) (last: {self.last_error.get(name, '?')})"
-            " and was restarted; ingestion/correlation may have paused. Check the logs."
-            for name, n in sorted(self.crashes.items())
-            if n > 0
-        ]
 
 
 class HttpServerStartError(RuntimeError):
@@ -119,18 +74,38 @@ class HttpServerStartError(RuntimeError):
 
 
 async def _sample_resources(
-    sampler: ResourceSampler, store: Store, queue: asyncio.Queue[QueueItem]
+    sampler: ResourceSampler,
+    store: Store,
+    queue: asyncio.Queue[QueueItem],
+    received: Callable[[], int] | None = None,
+    latency_p95_s: Callable[[], float] | None = None,
 ) -> None:
     """Read CPU, memory, storage and queue depth every ``SAMPLE_INTERVAL_S``, and keep each.
 
     Supervised: a crash costs a graph, never the process. Each reading is also a `host_sample` row
     (v0.22.0, #380, F154): one INSERT and one bounded DELETE per 30 s, off the datagram path.
+
+    v0.29.0 (ADR #437): the trap rate over the interval — a difference of the receiver's counter,
+    read, never incremented here — and the engine's batch latency p95, so the Overview can say
+    whether the WORK is keeping up and not only the host. The first interval has no previous count
+    and records no rate rather than a made-up one.
     """
+    previous: tuple[float, int] | None = None
     while True:
         await asyncio.sleep(SAMPLE_INTERVAL_S)
         sampler.sample()
+        now = time.time()
+        rate: float | None = None
+        if received is not None:
+            count = received()
+            if previous is not None and now > previous[0] and count >= previous[1]:
+                rate = round((count - previous[1]) / (now - previous[0]), 3)
+            previous = (now, count)
+        latency = round(latency_p95_s() * 1000.0, 2) if latency_p95_s is not None else None
         async with store.lock:
-            await store.record_host_sample(time.time(), sampler.reading(), queue.qsize())
+            await store.record_host_sample(
+                now, sampler.reading(), queue.qsize(), traps_per_s=rate, latency_ms=latency
+            )
             await store.commit()
 
 
@@ -397,7 +372,16 @@ async def _serve(settings: Settings, store: Store) -> None:
             )
         ),
         asyncio.create_task(
-            supervisor.run("resources", lambda: _sample_resources(resources, store, queue))
+            supervisor.run(
+                "resources",
+                lambda: _sample_resources(
+                    resources,
+                    store,
+                    queue,
+                    received=lambda: receiver.stats.received,
+                    latency_p95_s=engine.latency_p95,
+                ),
+            )
         ),
         asyncio.create_task(_serve_http(server, url)),
     ]

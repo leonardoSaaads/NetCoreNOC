@@ -29,12 +29,15 @@ const CAPACITY = {
   trees: "trees in the forest",
   depth: "tree depth",
   iterations: "Newton iteration",
+  neighbours: "k, neighbours voting",
 };
 export const SUITES = {
   test_iid: "unseen streams",
   test_concurrency: "concurrent incidents",
   test_optical: "held-out optical families",
   test_protocol: "held-out protocol families",
+  test_adverse: "adverse conditions",
+  test_spread: "incidents spread in time",
   corpus: "hand-labelled corpus",
 };
 const HEADLINE = [
@@ -47,8 +50,9 @@ const HEADLINE = [
 
 const pct = (v) => `${(100 * v).toFixed(1)}%`;
 
-/** The chart's number and name, so the maintainer's list maps onto the screen one to one. */
-const T = (k, name) => `${k} · ${name}`;
+/** The chart's name. v0.29.0: the maintainer's numbers (1-10) left the titles — they were noise
+ *  on screen — and stay here, as each call's first argument, to map the list onto the code. */
+const T = (_k, name) => name;
 
 export class ModelCharts extends Component {
   constructor(props) {
@@ -107,7 +111,7 @@ export class ModelCharts extends Component {
       </section>
       <${Bars} title=${T(3, "Pairwise F1 on every suite")} max=${1} unit="ratio"
         rows=${suiteRows(model)} source=${`${GEN}; the corpus is hand-labelled`}
-        span=${"the five suites the judge averages"} note="higher is better" />
+        span=${"the suites the judge averages"} note="higher is better" />
       <${Bars} title=${T(3, "Hand-labelled corpus, scenario by scenario")} max=${1} unit="ratio"
         rows=${corpusRows(model)} source="eval/corpus: hand-labelled, replayed through the engine"
         span=${`${corpusRows(model).length} scenarios; the judge averages them, each weighing the same`}
@@ -123,12 +127,12 @@ export class ModelCharts extends Component {
       <${Confusion} title=${T(6, "Confusion matrix")} matrix=${pairs.confusion} source=${GEN}
         n=${nPairs} />
       <${Curve} title=${T(7, "ROC")} xLabel="false positive rate" yLabel="true positive rate"
-        xRange=${[0, 1]} yRange=${[0, 1]} reference="diagonal"
+        xRange=${[0, 1]} reference="diagonal" xLog=${true}
         series=${[{ name: model.name, tone: null, points: (pairs.roc_curve || []).map(([f, t]) => [f, t]) }]}
         latest=${pairs.roc_auc ? `AUC ${pairs.roc_auc.point.toFixed(3)}` : null} source=${GEN} n=${nPairs}
         note="read beside precision–recall: under class imbalance ROC flatters" />
       <${Curve} title=${T(7, "Precision–recall")} xLabel="recall" yLabel="precision"
-        xRange=${[0, 1]} yRange=${[0, 1]} reference=${{ y: pairs.positive_rate_weighted }}
+        xRange=${[0, 1]} reference=${{ y: pairs.positive_rate_weighted }}
         series=${[{ name: model.name, tone: null, points: (pairs.pr_curve || []).map(([r, p]) => [r, p]) }]}
         latest=${pairs.average_precision ? `AP ${pairs.average_precision.point.toFixed(3)}` : null}
         source=${GEN} n=${nPairs}
@@ -145,9 +149,9 @@ export class ModelCharts extends Component {
         ]}
         latest=${res.mean_abs != null ? `mean |y − p| ${res.mean_abs.toFixed(3)}` : null}
         source=${GEN} n=${nPairs} note="near 0: confident and right; near ±1: confident and wrong" />
-      <${Scatter} title=${T(10, "Training time × performance")}
+      <${Scatter} title=${T(10, "Training time × performance")} logX=${true}
         points=${trials.map((t) => ({ x: t.seconds, y: t.valid_loss, tone: t.rung > 0 ? null : "muted" }))}
-        xLabel="seconds to fit" yLabel="validation log loss" source=${VALID} n=${`${trials.length} fits`}
+        xLabel="seconds to fit (log)" yLabel="validation log loss" source=${VALID} n=${`${trials.length} fits`}
         note=${`final fit ${fit.seconds ?? "—"} s; scoring ${latencyText(model)}`} />
     </div>`;
   }

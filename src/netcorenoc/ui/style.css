@@ -2011,21 +2011,24 @@ p.corr-line { cursor: default; }
   display: block; margin-bottom: var(--space-4);
   color: var(--fg-muted); font-size: var(--fs-sm);
 }
-.mw-card label > input[type="text"],
-.mw-card label > input[type="search"],
-.mw-card label > input[type="number"],
-.mw-card label > input[type="date"],
-.mw-card label > input[type="datetime-local"],
-.mw-card label > select,
-.mw-card label > textarea {
-  display: block; width: 100%; max-width: 380px; margin-top: var(--space-1);
+/* v0.29.0: a field is white with a strong edge — the sunken grey it had read as disabled — and
+   one rule covers a field inside its label and one beside it (`for=`). */
+.mw-card input[type="text"],
+.mw-card input[type="search"],
+.mw-card input[type="number"],
+.mw-card input[type="date"],
+.mw-card input[type="datetime-local"],
+.mw-card select,
+.mw-card textarea {
+  display: block; width: 100%; max-width: 380px;
   min-height: var(--tap); padding: 0 var(--space-2);
-  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-1);
+  background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: var(--radius-1);
   color: var(--fg); font: inherit;
 }
-.mw-card label > textarea { min-height: 72px; padding: var(--space-2); }
-.mw-card label > input:focus, .mw-card label > select:focus, .mw-card label > textarea:focus {
-  border-color: var(--accent); outline: none;
+.mw-card label > input, .mw-card label > select, .mw-card label > textarea { margin-top: var(--space-1); }
+.mw-card textarea { min-height: 72px; padding: var(--space-2); }
+.mw-card input:focus, .mw-card select:focus, .mw-card textarea:focus {
+  border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
 }
 .mw-card input[aria-invalid="true"] { border-color: var(--alarm); }
 /* A checkbox label is a ROW — the control beside its words, not above them. */
@@ -2034,14 +2037,32 @@ p.corr-line { cursor: default; }
   color: var(--fg) !important;
 }
 .mw-allday input, .mw-ledger input { width: auto; margin: 0; }
-.mw-when { display: flex; flex-wrap: wrap; gap: var(--space-4); }
-.mw-when label { margin-bottom: 0; }
-/* `Patch window [10] minutes either side` — the unit reads as part of the field, so the input is
-   inline and narrow rather than a full-width block with its unit orphaned on the next line. */
-.mw-patch > input[type="number"] {
-  display: inline-block !important; width: 5em !important; margin: 0 var(--space-2);
-  text-align: right;
+/* ---- card 2, when (v0.29.0) ---- one vertical rhythm, start and end side by side, the presets
+   under the field they set. */
+.mw-whencard > * + * { margin-top: var(--space-4); }
+.mw-whencard > .mw-allday { margin-bottom: 0; }
+.mw-when {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-4); max-width: 48rem;
 }
+.mw-field { display: flex; flex-direction: column; gap: var(--space-2); }
+.mw-card .mw-field > label, .mw-card .mw-zone > label, .mw-card .mw-patch > label { margin: 0; }
+.mw-presets { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.mw-presets button {
+  min-height: 32px; padding: 0 var(--space-3);
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: 999px;
+  color: var(--fg-muted); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.mw-presets button:hover { border-color: var(--line-strong); color: var(--fg); }
+.mw-presets button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-fg);
+}
+.mw-span { margin-bottom: 0; color: var(--fg-muted); }
+.mw-span strong { color: var(--fg); }
+/* `Patch band [1] min either side` — the unit reads as part of the field. */
+.mw-patch { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.mw-card .mw-patch > input[type="number"] { display: inline-block; width: 5em; text-align: right; }
+.mw-card .mw-patch > label { color: var(--fg); font-size: inherit; }
 
 /* ---- the host picker ---- */
 .mw-hosts {
@@ -2121,15 +2142,28 @@ p.corr-line { cursor: default; }
   fill: var(--accent); opacity: 0.35;
 }
 .mw-timeline line[data-band="now"] { stroke: var(--fg); stroke-width: 2; stroke-dasharray: 3 2; }
-.mw-zone { position: relative; }
-.mw-zone-list {
-  max-height: 200px; overflow-y: auto; margin: var(--space-1) 0 0; padding: 0; list-style: none;
-  border: 1px solid var(--line); border-radius: var(--radius-1);
+.mw-zone { display: flex; flex-direction: column; gap: var(--space-2); }
+.mw-zone-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.mw-zone-value {
+  display: inline-flex; align-items: baseline; gap: var(--space-1);
+  min-height: var(--tap); padding: var(--space-2) var(--space-3);
+  background: var(--bg-sunken); border-radius: var(--radius-1);
 }
+.mw-zone-search { position: relative; flex: 1 1 14rem; max-width: 20rem; }
+/* The list floats over the card: opening it no longer pushes Start and End down the page. */
+.mw-zone-list {
+  position: absolute; z-index: 30; top: calc(100% + 2px); left: 0; right: 0;
+  max-height: 260px; overflow-y: auto; margin: 0; padding: var(--space-1) 0; list-style: none;
+  background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: var(--radius-1);
+  box-shadow: var(--shadow-1);
+}
+.mw-zone-list > li.muted { padding: var(--space-2) var(--space-3); }
 .mw-zone-city {
-  display: block; width: 100%; min-height: var(--tap); padding: 0 var(--space-3);
+  display: flex; flex-direction: column; align-items: flex-start; width: 100%;
+  min-height: var(--tap); padding: var(--space-1) var(--space-3);
   background: none; border: 0; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
 }
+.mw-zone-city .muted { font-size: var(--fs-xs); }
 .mw-zone-city:hover { background: var(--bg-hover); }
 
 /* ---- review and submit ---- */
@@ -2141,27 +2175,50 @@ p.corr-line { cursor: default; }
 .mw-owner { margin: var(--space-3) 0; font-size: var(--fs-sm); }
 /* The button and the reason it is disabled, on one line: a dead control that does not say why is
    the defect this screen shipped with. */
-.mw-submit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .mw-submit .muted { font-size: var(--fs-sm); }
+/* v0.29.0: every open card ends in one row — Back on the left, the way forward on the right. */
+.mw-nav {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2);
+  margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line);
+}
+.mw-nav > [data-role="back"] { margin-right: auto; }
+.mw-formhead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 
 /* ---- the upcoming list ---- */
 .mw-list { display: flex; flex-direction: column; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+/* v0.29.0: a row is a grid, so status, name, where, when and the action line up down the list
+   instead of each row flowing its own way; the error and the opened window span the row. */
 .mw-row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  display: grid; align-items: center; column-gap: var(--space-3); row-gap: var(--space-2);
+  grid-template-columns: 10.5rem minmax(0, 1fr) minmax(0, 17rem) 13rem 8rem;
+  padding: var(--space-2) var(--space-4);
   background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-2);
 }
-.mw-row-name { font-weight: 600; }
-.mw-row-when { color: var(--fg-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.mw-row .row-actions, .mw-row .mw-actions { margin-left: auto; display: flex; gap: var(--space-2); }
+.mw-row-name { font-weight: 600; display: inline-flex; align-items: center; gap: var(--space-2); }
+.mw-row-caret { color: var(--fg-dim); font-size: var(--fs-xs); }
+.mw-row-meta { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-row-when {
+  color: var(--fg-muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+button.mw-row-name[aria-expanded] { background: none; }
+.mw-row-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.mw-row-error, .mw-row > .mw-detail { grid-column: 1 / -1; margin: 0; }
 .mw-mark { display: inline-flex; align-items: center; gap: var(--space-2); }
 
 @media (max-width: 720px) {
   .mw-card { padding: var(--space-3); }
   .mw-card-s { max-width: 45%; }
   .mw-sizes { margin-left: 0; }
-  .mw-when { flex-direction: column; gap: var(--space-3); }
-  .mw-card label > input, .mw-card label > select, .mw-card label > textarea { max-width: 100%; }
+  .mw-card input, .mw-card select, .mw-card textarea { max-width: 100%; }
+  /* On a phone a row is a card: status and time on the first line, then the name, where, and
+     the action — nothing aligned against a column the other rows do not share. */
+  .mw-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .mw-row-status { grid-column: 1; grid-row: 1; }
+  .mw-row-when { grid-column: 2; grid-row: 1; justify-self: end; }
+  .mw-row-name, .mw-row-meta { grid-column: 1 / -1; }
+  .mw-row-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .mw-row-actions:empty, .mw-row-when:empty { display: none; }
+  .mw-zone-search { max-width: none; }
 }
 
 /* The Overview's planned-work card (v0.21.1). A running window is a caveat on every number above
@@ -2344,9 +2401,15 @@ button.mw-row-name {
   text-align: left; min-height: var(--tap);
 }
 .mw-detail {
-  flex-basis: 100%; margin-top: var(--space-2); padding: var(--space-3);
-  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised);
+  margin-top: var(--space-1); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg);
 }
+.mw-detail > .mw-actions {
+  margin: 0 0 var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line);
+}
+.mw-extend { display: inline-flex; gap: var(--space-1); }
+.mw-facts-wide { grid-column: 1 / -1; }
+.mw-clock { font-variant-numeric: tabular-nums; }
 .mw-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: var(--space-2); margin: var(--space-2) 0; }
 .mw-facts dt { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--fg-muted); }
 .mw-facts dd { margin: 0; }
@@ -2375,8 +2438,45 @@ button.mw-row-name {
 /* The estate's graph grows to the height of its row instead of leaving the card half empty. */
 .estate { display: flex; flex-direction: column; }
 /* v0.24.0: bounded — a preview of the Graph screen, never the largest thing on the Overview. */
-.estate .netgraph { flex: 1 1 auto; min-height: 240px; max-height: 340px; aspect-ratio: auto !important; }
+.estate .netgraph { flex: 1 1 auto; min-height: 240px; max-height: 460px; aspect-ratio: auto !important; }
 .ov-models .learned-line { margin: var(--space-2) 0 0; }
+/* v0.29.0: the severity card fills its row — its bars spread over the height the chart beside it
+   sets instead of leaving a band of empty card under them — and the chart is a little shorter. */
+.ov-fill { display: flex; flex-direction: column; }
+.ov-fill > .severity-band, .ov-fill .severity-band > .chart-block { flex: 1 1 auto; display: flex; flex-direction: column; }
+.ov-fill .chart-bars { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-evenly; }
+.ov-grid .chart-stack { --chart-h: 148px; }
+.topassets .section-heading { justify-content: space-between; }
+/* Planned work (v0.29.0): three counts on the left, the next three windows on the right. */
+.mwsum .section-heading { justify-content: space-between; }
+.mwsum-body { display: grid; grid-template-columns: minmax(0, 27rem) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.mwsum-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.mwsum-kpi {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-sunken);
+  color: var(--fg); text-decoration: none;
+}
+.mwsum-kpi b { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.mwsum-kpi span { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.mwsum-kpi.mwsum-hot { border-color: var(--alarm); }
+.mwsum-kpi.mwsum-hot b { color: var(--alarm); }
+.mwsum-kpi.mwsum-warn b { color: var(--warn); }
+.mwsum-caveat { grid-column: 1 / -1; margin: 0; font-size: var(--fs-sm); color: var(--fg-muted); }
+.mwsum-list { list-style: none; margin: 0; padding: 0; }
+.mwsum-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-2); align-items: center;
+  min-height: 36px; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none;
+}
+.mwsum-row:hover .mw-sum-name { text-decoration: underline; }
+.mwsum-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fg-dim); }
+.mwsum-dot.mwsum-alarm { background: var(--alarm); }
+.mwsum-dot.mwsum-warn { background: var(--warn); }
+.mwsum-dot.mwsum-info { background: var(--accent); }
+@media (max-width: 760px) { .mwsum-body { grid-template-columns: 1fr; } }
+/* The models card (v0.29.0): who decides, then three charts side by side. */
+.ov-model-charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+.ov-model-charts > .chart-block { margin: 0; }
+@media (max-width: 1099px) { .ov-model-charts { grid-template-columns: 1fr; } }
 
 /* The stacked areas (v0.24.0, #398): drawn the way Grafana draws a stacked time series — each band
    a translucent fill under a solid edge, faint horizontal gridlines with their values, headroom
@@ -2724,6 +2824,11 @@ button.mw-row-name {
 .judge-grid > .chart-block { margin: 0; min-width: 0; }
 @media (min-width: 720px) { .judge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1200px) { .judge-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* v0.29.0: the comparison in three rows — how good, how honest, what it costs. */
+.league-group {
+  margin: var(--space-4) 0 var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--line);
+  font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted);
+}
 .judge-record > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; color: var(--accent); }
 
 /* The dataset every chart was drawn from, as a chip on each block's head: generated, site or live
@@ -2827,23 +2932,28 @@ button.danger:hover { background: var(--alarm); color: var(--bg); }
 /* One colour per league member, the same on every chart, legend, bar and table swatch. Chosen for
    separation on both themes (blue, orange, green, magenta, cyan); every chart also names the model,
    so colour is never the only encoding. */
-:root { --m0: #4a9eff; --m1: #ff9f43; --m2: #4cc38a; --m3: #d977e8; --m4: #33c6d6; }
-:root[data-theme="light"] { --m0: #0b62d0; --m1: #b85c00; --m2: #1a7a4c; --m3: #9b2fae; --m4: #007c89; }
+:root { --m0: #4a9eff; --m1: #ff9f43; --m2: #4cc38a; --m3: #d977e8; --m4: #33c6d6; --m5: #e3c04a; --m6: #9a9cff; }
+:root[data-theme="light"] { --m0: #0b62d0; --m1: #b85c00; --m2: #1a7a4c; --m3: #9b2fae; --m4: #007c89; --m5: #7a6200; --m6: #4b4fd1; }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) { --m0: #0b62d0; --m1: #b85c00; --m2: #1a7a4c; --m3: #9b2fae; --m4: #007c89; }
+  :root:not([data-theme="dark"]) { --m0: #0b62d0; --m1: #b85c00; --m2: #1a7a4c; --m3: #9b2fae; --m4: #007c89; --m5: #7a6200; --m6: #4b4fd1; }
 }
 .mchart-svg .chart-m0 { stroke: var(--m0); fill: var(--m0); }
 .mchart-svg .chart-m1 { stroke: var(--m1); fill: var(--m1); }
 .mchart-svg .chart-m2 { stroke: var(--m2); fill: var(--m2); }
 .mchart-svg .chart-m3 { stroke: var(--m3); fill: var(--m3); }
 .mchart-svg .chart-m4 { stroke: var(--m4); fill: var(--m4); }
+.mchart-svg .chart-m5 { stroke: var(--m5); fill: var(--m5); }
+.mchart-svg .chart-m6 { stroke: var(--m6); fill: var(--m6); }
 .mchart-svg polyline.chart-m0, .mchart-svg polyline.chart-m1, .mchart-svg polyline.chart-m2,
-.mchart-svg polyline.chart-m3, .mchart-svg polyline.chart-m4 { fill: none; }
+.mchart-svg polyline.chart-m3, .mchart-svg polyline.chart-m4, .mchart-svg polyline.chart-m5,
+.mchart-svg polyline.chart-m6 { fill: none; }
 .chart-swatch.chart-m0, .chart-legend .chart-m0 .chart-swatch, .chart-bars .chart-m0 { background: var(--m0); }
 .chart-swatch.chart-m1, .chart-legend .chart-m1 .chart-swatch, .chart-bars .chart-m1 { background: var(--m1); }
 .chart-swatch.chart-m2, .chart-legend .chart-m2 .chart-swatch, .chart-bars .chart-m2 { background: var(--m2); }
 .chart-swatch.chart-m3, .chart-legend .chart-m3 .chart-swatch, .chart-bars .chart-m3 { background: var(--m3); }
 .chart-swatch.chart-m4, .chart-legend .chart-m4 .chart-swatch, .chart-bars .chart-m4 { background: var(--m4); }
+.chart-swatch.chart-m5, .chart-legend .chart-m5 .chart-swatch, .chart-bars .chart-m5 { background: var(--m5); }
+.chart-swatch.chart-m6, .chart-legend .chart-m6 .chart-swatch, .chart-bars .chart-m6 { background: var(--m6); }
 .chart-bars .chart-warn { background: var(--warn); }
 .mchart-svg .mchart-bin { fill: var(--accent); stroke: none; }
 .mchart-svg .mchart-bin.chart-alarm { fill: var(--alarm); }
@@ -2860,13 +2970,29 @@ button.danger:hover { background: var(--alarm); color: var(--bg); }
 
 /* The league board. */
 .league { display: flex; flex-direction: column; gap: var(--space-4); }
-.league-champion { font-size: var(--fs-lg); margin: 0 0 var(--space-1); }
+.league-champion {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  font-size: var(--fs-lg); margin: 0 0 var(--space-1);
+}
 .league-champion .badge { margin-left: var(--space-2); font-size: var(--fs-xs); }
-.league-loops { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); margin: var(--space-3) 0; }
-@media (min-width: 900px) { .league-loops { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.league-loop { border: 1px solid var(--line); border-radius: var(--radius-2); padding: var(--space-3); background: var(--bg-raised); }
-.league-loop h4 { margin: 0 0 var(--space-1); font-size: var(--fs-md); }
-.league-loop p { margin: 0; font-size: var(--fs-sm); color: var(--fg-muted); line-height: 1.55; }
+/* v0.29.0: the two loops as an icon strip — five tiles, a line each. */
+.league-loops {
+  display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  margin: var(--space-3) 0 0; padding: 0; list-style: none;
+}
+.league-loop {
+  display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised);
+  font-size: var(--fs-sm); line-height: 1.45; color: var(--fg-muted);
+}
+.league-loop b { color: var(--fg); }
+.league-loop-icon {
+  display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%; background: var(--bg-sunken); color: var(--accent);
+  font-size: 16px;
+}
+.league-champion-icon { display: inline-flex; color: var(--accent); }
+.league-champion-why { font-size: var(--fs-sm); cursor: help; }
 .league-switch { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
 .league-switch .chart-swatch { margin-right: var(--space-1); }
 .league-model { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }

@@ -55,6 +55,7 @@
 import { html, Component, cx } from "../../dom.js";
 import { Icon } from "../../icons.js";
 import { age, percent, plural, timeTitle } from "../../format.js";
+import { navigate } from "../../router.js";
 import * as store from "../../store.js";
 
 /** The registered floor. Below it a gesture is recorded in full and produces no training row. */
@@ -108,53 +109,51 @@ export class Restructure extends Component {
     this.state = { asking: null, filter: "", confidence: 0.8, busy: false, outcome: null };
   }
 
-  async send(kind, path, body) {
+  /** One request; `open` names the situation to show afterwards when this one merged away. */
+  async send(kind, path, body, open = null) {
     if (this.state.busy) return;
     this.setState({ busy: true, outcome: null });
     try {
-      await this.props.post(path, body);
-      this.setState({ busy: false, asking: null, filter: "", outcome: { ok: true, kind } });
+      const out = await this.props.post(path, body);
+      const count = out?.moved ?? this.props.marked.size;
+      this.setState({ busy: false, asking: null, filter: "", outcome: { ok: true, kind, count } });
       this.props.onDone();
+      if (open !== null) navigate(`situations/${open}`);
     } catch (error) {
       this.setState({ busy: false, outcome: { ok: false, error } });
     }
   }
 
-  /** Move every marked member. One alarm is one `/move`; several are a `/split` then nothing. */
+  /* Move every marked member, as ONE gesture (v0.29.0, ADR #436).
+   *
+   * Until v0.29.0 this sent one `/move` per marked alarm, and each asserted its alarm apart from a
+   * "rest" still holding the others travelling with it: twenty history rows, negative evidence the
+   * operator never gave, and — when every member was marked — an empty situation left behind.
+   *
+   *   * **every member marked** is a merge of this situation into the destination, and is sent as
+   *     one: the server refuses a move that would empty its source. The card then opens the
+   *     destination, because this one has resolved into it;
+   *   * **some members** are one `/move` carrying `alarm_ids`;
+   *   * **no destination** (`null`) is a split into a new situation. */
   move(target) {
-    const { sid, marked } = this.props;
+    const { sid, marked, total } = this.props;
     const c = this.state.confidence;
     const ids = [...marked];
     if (target === null) {
       return this.send("split", `/api/situations/${sid}/split`,
                        { alarm_ids: ids, confidence: c });
     }
-    // The route moves **one** alarm, because what it asserts is about one alarm's membership.
-    // Several marked members are several assertions and the console does not invent a batch
-    // route for them: it sends them in order and reports the first refusal.
-    return this.sendMany(ids.map((id) => ({
-      kind: "move", path: `/api/situations/${sid}/move`,
-      body: { alarm_id: id, to_situation_id: target, confidence: c },
-    })));
-  }
-
-  async sendMany(steps) {
-    if (this.state.busy) return;
-    this.setState({ busy: true, outcome: null });
-    try {
-      for (const step of steps) await this.props.post(step.path, step.body);
-      this.setState({
-        busy: false, asking: null, filter: "",
-        outcome: { ok: true, kind: "move", count: steps.length },
-      });
-      this.props.onDone();
-    } catch (error) {
-      this.setState({ busy: false, outcome: { ok: false, error } });
+    if (ids.length >= total) {
+      return this.send("merge", `/api/situations/${target}/merge`,
+                       { from_situation_id: sid, confidence: c }, target);
     }
+    return this.send("move", `/api/situations/${sid}/move`,
+                     { alarm_ids: ids, to_situation_id: target, confidence: c });
   }
 
-  render({ sid, marked }, { asking, filter, confidence, busy, outcome }) {
+  render({ sid, marked, total }, { asking, filter, confidence, busy, outcome }) {
     const n = marked.size;
+    const everything = n > 0 && n >= total;
     // **Nothing ticked is not a state that needs three disabled controls.** It needs one line
     // saying what to tick, which is what the operator has to do next.
     return html`<section class="lifecycle">
@@ -168,7 +167,8 @@ export class Restructure extends Component {
         ${n > 0 ? html`<button type="button" class=${cx("tap", asking === "move" && "on")}
           disabled=${busy} aria-expanded=${asking === "move" ? "true" : "false"}
           onClick=${() => this.setState({ asking: asking === "move" ? null : "move", filter: "" })}>
-          <${Icon} name="chevron" />${" "}Move ${plural(n, "member")} elsewhere
+          <${Icon} name="chevron" />${" "}
+          ${everything ? "Merge into another situation" : `Move ${plural(n, "member")} elsewhere`}
         </button>` : null}
         <button type="button" class=${cx("tap", asking === "merge" && "on")}
           disabled=${busy} aria-expanded=${asking === "merge" ? "true" : "false"}
@@ -179,6 +179,7 @@ export class Restructure extends Component {
 
       ${asking ? html`<${Destinations}
         sid=${sid} kind=${asking} filter=${filter} busy=${busy} marked=${n}
+        everything=${asking === "move" && everything}
         onFilter=${(v) => this.setState({ filter: v })}
         onPick=${(target) => (asking === "move"
           ? this.move(target)
@@ -193,8 +194,7 @@ export class Restructure extends Component {
       ${outcome ? html`<p class=${outcome.ok ? "ok-note" : "err"} role="status">
         ${outcome.ok
           ? (outcome.kind === "move"
-              ? `${outcome.count > 1 ? `${plural(outcome.count, "member")} moved.` : "Moved."} ` +
-                RESTRUCTURE_TEXT.move
+              ? `${plural(outcome.count, "member")} moved. ${RESTRUCTURE_TEXT.move}`
               : RESTRUCTURE_TEXT[outcome.kind])
           : `Not applied — ${outcome.error.detail || outcome.error.message}`}
       </p>` : null}
@@ -212,7 +212,7 @@ export class Restructure extends Component {
  * `New situation` is the first row for a move and absent for a merge, because a merge with a
  * situation that does not exist is not a gesture.
  */
-function Destinations({ sid, kind, filter, busy, marked, onFilter, onPick }) {
+function Destinations({ sid, kind, filter, busy, marked, everything, onFilter, onPick }) {
   const needle = filter.trim().toLowerCase();
   const all = peers(sid);
   const shown = needle
@@ -225,7 +225,10 @@ function Destinations({ sid, kind, filter, busy, marked, onFilter, onPick }) {
            placeholder=${`Filter ${plural(all.length, "open situation")} by id or name`}
            onInput=${(e) => onFilter(e.target.value)} />
     <ul class="destination-list">
-      ${kind === "move" ? html`<li>
+      ${everything ? html`<li class="hint">
+        Every member is ticked: this situation will be merged into the one you pick.
+      </li>` : null}
+      ${kind === "move" && !everything ? html`<li>
         <button type="button" class="destination destination-new" disabled=${busy}
                 onClick=${() => onPick(null)}>
           <b>A new situation</b>${" "}
@@ -250,8 +253,8 @@ function Destinations({ sid, kind, filter, busy, marked, onFilter, onPick }) {
 }
 
 const RESTRUCTURE_TEXT = {
-  move: "That alarm is now asserted apart from the members it left and together with the " +
-        "members it joined.",
+  move: "They are now asserted apart from the members they left and together with the members " +
+        "they joined.",
   merge: "Merged. Every pair across the two situations is now an asserted positive.",
   split: "Split into a new situation. Every pair across the new boundary is now an asserted " +
          "negative.",

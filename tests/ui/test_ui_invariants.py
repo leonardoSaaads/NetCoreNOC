@@ -2031,6 +2031,114 @@ async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_
     )
 
 
+def _two_live(captured: dict[str, Any], sid: int) -> tuple[dict[str, Any], int]:
+    """The captured payloads with a second live situation to move into, and its id.
+
+    The listing is what the destination picker offers; a corpus replay leaves most situations
+    `resolved` by the correlator's own merges, so one other row is made live here.
+    """
+    listing = captured["/api/situations?limit=50"]["json"]
+    other = next(int(row["id"]) for row in listing if int(row["id"]) != sid)
+    live = [{**row, "status": "new"} if int(row["id"]) in (sid, other) else row for row in listing]
+    routed = {
+        **captured,
+        "/api/situations?limit=50": {"status": 200, "json": live},
+        f"POST /api/situations/{sid}/move": {
+            "status": 200,
+            "json": {"status": "moved", "moved": 2},
+        },
+        f"POST /api/situations/{other}/merge": {"status": 200, "json": {"status": "merged"}},
+    }
+    return routed, other
+
+
+@dom_test
+async def test_moving_several_members_is_one_request_and_moving_all_is_a_merge(
+    routes: dict[str, Any],
+) -> None:
+    """v0.29.0 (ADR #436): the gesture the operator made, as one request.
+
+    Two members ticked are **one** `/move` carrying both ids — not one request per alarm, each of
+    which asserted its alarm apart from the others travelling with it. Every member ticked is a
+    **merge** of this situation into the destination (the server refuses a move that would empty
+    its source, which is what left "(no members)" ghosts), and the card then opens the destination.
+    """
+    sid, count = uifixtures.largest_situation(routes["editor"])
+    assert count >= 3, "the largest captured situation is too small to tick two and keep one"
+    routed, other = _two_live(routes["editor"], sid)
+    members = uifixtures.member_ids(routes["editor"], sid)
+
+    some = domdriver.run_scenario("restructure", {"routes": routed, "sid": sid, "count": 2})
+    assert some["label"] == "Move 2 members elsewhere", some["label"]
+    assert [r["path"] for r in some["sent"]] == [f"/api/situations/{sid}/move"], some["sent"]
+    body = some["sent"][0]["body"]
+    assert body["alarm_ids"] == members[:2] and body["to_situation_id"] == other, body
+    assert "alarm_id" not in body, "a move of two alarms named one alarm"
+
+    every = domdriver.run_scenario("restructure", {"routes": routed, "sid": sid, "count": "all"})
+    assert every["label"] == "Merge into another situation", every["label"]
+    assert not any("A new situation" in row for row in every["offered"]), every["offered"]
+    assert every["sent"] == [
+        {
+            "path": f"/api/situations/{other}/merge",
+            "body": {"from_situation_id": sid, "confidence": 0.8},
+        }
+    ], every["sent"]
+    assert every["hash"] == f"#/situations/{other}", "the card did not open the destination"
+
+
+@dom_test
+async def test_a_restructured_situation_still_offers_confirm(routes: dict[str, Any]) -> None:
+    """v0.29.0 (ADR #436): a move or a merge changes a grouping; it does not say it is right.
+
+    The next thing an operator does after moving the wrong alarms out is confirm what is left,
+    and folding the verdicts behind *Adjust the grouping* on any asserting gesture hid Confirm at
+    exactly that moment. Only a **verdict** folds them; the control is `test_the_action_surface…`'s
+    judged arm, which still folds.
+    """
+    sid, _count = uifixtures.largest_situation(routes["editor"])
+    for kind in ("move", "merge", "operator_split"):
+        event = {**JUDGEMENT[0], "kind": kind, "confidence": 0.8}
+        state = domdriver.run_scenario(
+            "actionSurface",
+            {"routes": _in_state(routes["editor"], sid, status="open", events=[event]), "sid": sid},
+        )["before"]
+        assert "Confirm grouping" in state["grouping"], (kind, state["grouping"])
+        assert state["restructure"] is True, kind
+
+
+@dom_test
+async def test_repeated_gestures_are_one_counted_history_row(routes: dict[str, Any]) -> None:
+    """v0.29.0 (ADR #436): twenty hand-clears are one row reading `manual clear` and a count.
+
+    The maintainer's card listed twenty identical `move` rows and twenty `manual clear` rows. Each
+    event is still recorded; the console counts a run of the same kind, actor and confidence
+    instead of repeating it, and a multi-alarm move counts its alarms.
+    """
+    sid, _count = uifixtures.largest_situation(routes["editor"])
+    base = {"actor": "user:2", "actor_name": "admin"}
+    events = [
+        {**base, "kind": "move", "at": 1_700_000_000.0, "confidence": 0.8, "moved": 20},
+        *(
+            {**base, "kind": "manual_clear", "at": 1_700_000_100.0 + i, "confidence": None}
+            for i in range(20)
+        ),
+        {**base, "kind": "verdict", "at": 1_700_000_900.0, "confidence": 1.0},
+    ]
+    detail = routes["editor"][f"/api/situations/{sid}"]["json"]
+    routed = {
+        **routes["editor"],
+        f"/api/situations/{sid}": {"status": 200, "json": {**detail, "events": events}},
+    }
+    result = domdriver.run_scenario("history", {"routes": routed, "sid": sid})
+    lines = [" ".join(line.split()) for line in result["lines"]]
+    assert len(lines) == 3, lines
+    assert lines[0].startswith("move · 20 alarms"), lines[0]
+    times = "\u00d7"  # the multiplication sign the row prints before a count
+    assert lines[1].startswith(f"manual clear {times}20"), lines[1]
+    assert lines[2].startswith("verdict") and times not in lines[2], lines[2]
+
+
 @dom_test
 async def test_the_mark_column_header_marks_and_clears_every_row(routes: dict[str, Any]) -> None:
     """**"A way to clear every row at once"**, and it is invariant 2's contract through a new door.
@@ -3037,8 +3145,8 @@ async def test_the_overview_lost_its_prose_and_gained_charts(routes: dict[str, A
     # The active-alarm chart drew real geometry rather than an empty frame.
     stacks = [c for c in result["charts"] if c["kind"] == "stack"]
     assert any(c["polygons"] for c in stacks), stacks
-    # …and its caption says it is a level at each point, not a sum of raises.
-    assert any("active at each point" in caption for caption in result["captions"]), result[
+    # …and its caption says it is a level — the most active at once — not a sum of raises.
+    assert any("most active at once" in caption for caption in result["captions"]), result[
         "captions"
     ]
 

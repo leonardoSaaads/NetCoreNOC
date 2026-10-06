@@ -16,6 +16,15 @@ pair, can appear on both sides of any split (Part V: *group by incident, never b
   flaps — never trained on.
 * ``test_concurrency`` — 24 streams of training families, 80 % concurrency: the `dual_incident`
   failure at scale.
+* ``test_adverse`` (v0.29.0, ADR #439) — 24 streams of training families on a **bad day**: storm
+  windows, twin incidents, congestion bursts that drop and delay traps, slow relays, duplicated
+  traps, the adverse families weighted up. Harsher than anything trained on: training streams draw
+  a bad day half the time at a lower intensity. ``valid_adverse`` is its validation counterpart, so
+  the grouping is chosen with that regime in view (#421's rule).
+* ``test_spread`` (v0.29.0, ADR #442) — 32 streams where incidents unfold over minutes to an hour
+  (the time-spread families weighted up, incidents stretched in time) among isolated alerts, some on
+  the very elements an incident touches. ``train_spread`` (48 streams) trains on that regime and
+  ``valid_spread`` (16) validates it; ordinary streams draw a little of it a third of the time.
 
 **Held-out families are held out of everything the model is fitted or tuned on**, including
 validation: a family that informed early stopping has informed the model. The shipped artifact is
@@ -63,6 +72,24 @@ __all__ = [
 ]
 
 SEED = 2026
+#: v0.29.0 (ADR #439): the seven adverse families join the training families.
+ADVERSE = (
+    "cascade_site_outage",
+    "rolling_upgrade",
+    "power_flicker",
+    "chatter_storm",
+    "intermittent_optics",
+    "control_plane_overload",
+    "hvac_failure",
+)
+#: v0.29.0 (ADR #442): incidents that unfold over minutes to an hour.
+SPREAD = (
+    "staged_link_failure",
+    "slow_card_failure",
+    "gpon_degrading_feeder",
+    "upstream_loss_trickle",
+    "staged_power_failure",
+)
 TRAIN_FAMILIES = (
     "gpon_fibre_cut",
     "onu_power_outage",
@@ -77,6 +104,18 @@ TRAIN_FAMILIES = (
     "planned_maintenance",
     "site_power_loss",
     "environment",
+    *ADVERSE,
+    *SPREAD,
+)
+#: Training families already slow by shape: weighted up beside `SPREAD` in the spread splits.
+SLOW = (
+    "olt_uplink_failure",
+    "ne_reboot",
+    "planned_maintenance",
+    "site_power_loss",
+    "environment",
+    "rolling_upgrade",
+    "hvac_failure",
 )
 HOLDOUT_OPTICAL = ("dwdm_degradation", "dwdm_line_cut", "optical_protection")
 HOLDOUT_PROTOCOL = ("bgp_flap", "ospf_flap")
@@ -89,7 +128,10 @@ CACHE = HERE / ".cache"
 #: drawn afresh, so the shipped numbers come from streams no decision had seen. Train and validation
 #: streams never move. A later release that reads the test splits again after changing anything
 #: must increment this.
-TEST_DRAW = 3
+#: v0.29.0: draw 4. The generator changed (ADR #439), so every split is new data, and the test
+#: streams are drawn afresh for a release that has not read them.
+#: v0.29.0, the focused round (ADR #442): draw 5 — the generator changed again.
+TEST_DRAW = 5
 
 
 def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
@@ -117,6 +159,33 @@ def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
         families: tuple[str, ...] = TRAIN_FAMILIES
         weights: tuple[tuple[str, float], ...] = ()
         concurrency = rng.uniform(0.1, 0.4)
+        # Half the ordinary streams have a mild bad day (ADR #439); the adverse splits a hard one.
+        adverse = rng.uniform(0.1, 0.6) if rng.random() < 0.5 else 0.0
+        # A third have a little time spread (ADR #442); the spread splits a lot of it. Drawn from
+        # its own generator, so every draw above and below keeps its value.
+        slow = derived_rng("split-spread", split, seed, i)
+        spread = slow.uniform(0.1, 0.5) if slow.random() < 1 / 3 else 0.0
+        if split in ("train_spread", "valid_spread", "test_spread"):
+            spread = slow.uniform(0.6, 1.0)
+            out.append(
+                StreamSpec(
+                    name,
+                    s,
+                    families,
+                    slow.uniform(6, 24),
+                    slow.uniform(1.0, 3.0),
+                    slow.uniform(1.5, 6.0),
+                    concurrency=slow.uniform(0.1, 0.3),
+                    recurrence=0.08,
+                    weights=tuple((f, 4.0) for f in SPREAD) + tuple((f, 2.0) for f in SLOW),
+                    spread=spread,
+                )
+            )
+            continue
+        if split in ("test_adverse", "valid_adverse"):
+            adverse = rng.uniform(0.75, 1.0)
+            concurrency = rng.uniform(0.3, 0.6)
+            weights = tuple((f, 2.0) for f in ADVERSE)
         if split == "test_optical":
             families = TRAIN_FAMILIES + HOLDOUT_OPTICAL
             weights = tuple((f, 8.0) for f in HOLDOUT_OPTICAL)
@@ -136,22 +205,32 @@ def _specs(split: str, count: int, seed: int) -> list[StreamSpec]:
                 concurrency=concurrency,
                 recurrence=0.08,
                 weights=weights,
+                adverse=adverse,
+                spread=spread,
             )
         )
     return out
 
 
 SPLITS: dict[str, int] = {
+    # v0.29.0, the focused round (ADR #442): 96 ordinary training streams and 48 time-spread ones
+    # (the first round had 128 ordinary ones), and a smaller ordinary validation split beside the
+    # spread one.
     "train": 96,
+    "train_spread": 48,
     "train_long": 12,
     "valid": 24,
     # Validation for every regime the bar checks (#421): the grouping is chosen under the bar, and a
     # regime with no validation counterpart is one the choice cannot see.
     "valid_concurrency": 12,
+    "valid_adverse": 12,
+    "valid_spread": 16,
     "test_iid": 32,
     "test_optical": 24,
     "test_protocol": 24,
     "test_concurrency": 24,
+    "test_adverse": 24,
+    "test_spread": 32,
 }
 
 

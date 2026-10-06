@@ -19,6 +19,8 @@ kind                   what it is                        document
 ``random_forest``      bagged gini trees, mean log-odds  ``netcorenoc.trees/1``
 ``decision_tree``      one gini tree                     ``netcorenoc.trees/1``
 ``logistic_regression`` L2 logistic regression           ``netcorenoc.linear/1``
+``xgboost``            the XGBoost algorithm (v0.29.0)   ``netcorenoc.trees/1``
+``knn``                k-nearest neighbours (v0.29.0)    ``netcorenoc.knn/1``
 =====================  ================================  ==========================
 
 ## Loading is validation and nothing else (ADR #405, kept)
@@ -48,7 +50,7 @@ from typing import Any, Protocol
 
 from netcorenoc.engine.correlate.features import FEATURE_NAMES
 from netcorenoc.engine.correlate.scorer_contract import LinkFeatures, LinkScore
-from netcorenoc.engine.model import gam, linear, trees
+from netcorenoc.engine.model import gam, knn, linear, trees
 
 __all__ = [
     "DIRECTORY",
@@ -113,8 +115,16 @@ KINDS: dict[str, tuple[str, Callable[[str, str], Any]]] = {
     "random_forest": ("Random forest", _trees("random_forest")),
     "decision_tree": ("Decision tree", _trees("decision_tree")),
     "logistic_regression": ("Logistic regression", linear.load),
+    # v0.29.0 (ADR #438): the XGBoost algorithm, served as trees; and the league's memory.
+    "xgboost": ("XGBoost", _trees("xgboost")),
+    "knn": ("k-nearest neighbours", knn.load),
 }
-_REFUSALS = (gam.GamDocumentError, trees.TreesDocumentError, linear.LinearDocumentError)
+_REFUSALS = (
+    gam.GamDocumentError,
+    trees.TreesDocumentError,
+    linear.LinearDocumentError,
+    knn.KnnDocumentError,
+)
 
 
 class LeagueError(ValueError):

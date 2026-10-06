@@ -212,3 +212,18 @@ def test_grouping_is_chosen_under_the_bar_itself(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(train, "QUALITY_BAR", (("repair_gestures", "held_out", "ratio_max", -1.0),))
     with pytest.raises(SystemExit, match="passes the quality bar on validation"):
         train.tune_grouping({"valid": logs}, scorer)
+
+
+def test_the_ablation_never_drops_what_the_formula_reads() -> None:
+    """v0.29.0 (ADR #439): drop-one ablation measures each feature against all the others, so a
+    group of features that carry one signal can each look dispensable and go together. On the
+    v0.29.0 data that took `same_ne` with its two cousins, and every model split the corpus's fibre
+    cut. The formula's three relations are kept whatever they measured; anything else still pays its
+    way — the control below drops a feature that did not. The focused round (ADR #442) adds
+    `cross_ref`, the relation candidate recall now proposes pairs by."""
+    deltas = dict.fromkeys(train.CORE_FEATURES, 0.0) | {"entity_affinity": 0.0, "burst": 0.01}
+    kept = train.kept_features(tuple(deltas), deltas)
+    assert set(train.CORE_FEATURES) <= set(kept), kept
+    assert "burst" in kept
+    assert "entity_affinity" not in kept, "a feature below the threshold outside the core was kept"
+    assert set(train.CORE_FEATURES) == {"dt", "same_ne", "same_class", "cross_ref"}

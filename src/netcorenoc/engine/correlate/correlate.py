@@ -159,9 +159,8 @@ class Correlator:
         self.recall.prune(now)
         self.episodes.prune(now)
         reachable = set(self.index)
-        for table in (self.recall.by_ne, self.recall.by_parent):
-            for ring in table.values():
-                reachable.update(a.alarm_id for a in ring)
+        for ring in self.recall.rings():
+            reachable.update(a.alarm_id for a in ring)
         self.live.intersection_update(reachable)
 
     def take_overflow(self) -> int:

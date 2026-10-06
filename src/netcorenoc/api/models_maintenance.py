@@ -197,7 +197,9 @@ class _WindowBody(BaseModel):
     starts_at: AwareInstant
     ends_at: AwareInstant
     all_day: bool = False
-    patch_s: float = Field(default=600.0, ge=0.0, le=86400.0)
+    #: v0.29.0: one minute either side by default (was ten). The band suppresses the elements'
+    #: own reboot chatter at the edges; ten minutes hid real faults on short windows.
+    patch_s: float = Field(default=60.0, ge=0.0, le=86400.0)
     #: v0.24.0 (ADR #397): **off unless asked for.** A window discards what it suppresses; an
     #: operator who wants the faults it saw raised and never cleared reported when it closes turns
     #: this on, and they surface as one situation for the window.
@@ -260,6 +262,10 @@ class MaintenanceWindowIn(_WindowBody):
     """
 
     idempotency_key: str | None = Field(default=None, max_length=MAX_IDEMPOTENCY_KEY)
+    #: v0.29.0 (ADR #440): a person who may confirm a window over six hours does it in the gesture
+    #: that creates it. A window of six hours or less ignores it; a service token, or a role
+    #: without `mw.confirm`, asking for it is refused rather than quietly left pending.
+    confirm: bool = False
 
 
 class MaintenanceWindowUpdateIn(_WindowBody):

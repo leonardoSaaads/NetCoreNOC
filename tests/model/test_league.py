@@ -4,7 +4,7 @@
   exists, its manifest's SHA-256 and declared kind are checked, and a refusal names no path.
 * **Every explanation is exact.** A tree ensemble's Shapley values against its reference pair are
   checked against brute-force enumeration, and every kind's terms add up to its score.
-* **The judge is the registered rule.** Offline order by mean pairwise F1 over five suites, ties by
+* **The judge is the registered rule.** Offline order by mean pairwise F1 over six suites, ties by
   repair work, incomplete members last; the fast loop's latency budget; an admin's pin; and a
   switch on site labels **only** when the whole 95 % interval says so — with no count floor.
 * **The packaged league passes all of the above**, and its manifests carry what the Judge screen
@@ -28,6 +28,7 @@ import pytest
 from netcorenoc.engine.correlate.features import FEATURE_NAMES
 from netcorenoc.engine.model import (
     gam,
+    knn_fit,
     league,
     league_judge,
     linear,
@@ -35,6 +36,7 @@ from netcorenoc.engine.model import (
     site,
     trees,
     trees_fit,
+    xgb_fit,
 )
 from netcorenoc.engine.operate import league_loop
 from netcorenoc.engine.operate.engine import Engine
@@ -70,6 +72,11 @@ def fitted() -> dict[str, str]:
     for method, extra in kinds:
         out[method] = trees_fit.fit(train, valid, trees_fit.TreeParams(method, **extra)).document
     out["logistic_regression"] = linear_fit.fit(train, valid, linear_fit.LinearParams()).document
+    # v0.29.0 (ADR #438): the XGBoost algorithm and the k-NN member, small and deterministic.
+    out["xgboost"] = xgb_fit.fit(
+        train, valid, xgb_fit.XGBParams(max_depth=3, rounds=30, eta=0.3, gamma=0.01, seed=1)
+    ).document
+    out["knn"] = knn_fit.fit(train, valid, knn_fit.KnnParams(prototypes=64, seed=1)).document
     return out
 
 

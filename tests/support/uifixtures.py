@@ -105,7 +105,7 @@ CLIENT_GETS: list[tuple[str, str]] = [
     # v0.23.0: the Overview's active-alarm chart and its Top 10, the Entities inventory, and the
     # Timeline's filter options (the inventory again, and the catalogue's names).
     ("timeline.read", "/api/activity/active?buckets=24&range_s=7200"),
-    ("timeline.read", "/api/activity/top?range_s=7200&buckets=24&limit=10&bands=critical,major"),
+    ("timeline.read", "/api/activity/top?range_s=7200&buckets=24&limit=6&bands=critical,major"),
     ("entities.read", "/api/inventory"),
     ("classes.read", "/api/catalogue?limit=200"),
     # v0.26.0: Settings' Correlation, Autonomy and Search tabs, and the Judge dashboard.
@@ -114,6 +114,8 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("autonomy.audit", "/api/autonomy/decisions"),
     ("model.read", "/api/search"),
     ("model.read", "/api/judge"),
+    # v0.29.0: the Overview's models card — the brief form of the same route.
+    ("model.read", "/api/judge?brief=true"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.

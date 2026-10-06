@@ -1,6 +1,6 @@
-"""Tree ensembles over the v2 feature vector — decision tree, random forest, boosted trees.
+"""Tree ensembles over the v2 feature vector — decision tree, random forest, boosted trees, XGBoost.
 
-v0.27.0 (ADR #424). Three members of the model league share one document format, because all three
+v0.27.0 (ADR #424). The tree members of the model league share one document format, because all
 are the same arithmetic: a list of binary trees whose leaves hold **log-odds**, summed and scaled.
 
     logit(x) = base + scale · Σₜ leafₜ(x)
@@ -9,7 +9,9 @@ are the same arithmetic: a list of binary trees whose leaves hold **log-odds**, 
 * ``random_forest`` — many trees grown on row subsamples with a random feature subset per split;
   ``scale = 1/T``, so the forest's logit is the mean of its trees' leaf log-odds;
 * ``boosted_trees`` — Newton-boosted regression trees; ``base`` is the prior log-odds and each leaf
-  already carries its learning rate.
+  already carries its learning rate;
+* ``xgboost`` (v0.29.0, ADR #438) — the XGBoost algorithm (`xgb_fit`): the same served arithmetic as
+  ``boosted_trees``, trained with XGBoost's regularised objective, pruning and column sampling.
 
 A node sends a pair **left when** ``x[feature] <= threshold``. The fitter bins with the same rule
 (`trees_fit`), so a value that sat on an edge in training goes the same way when it is served.
@@ -84,7 +86,7 @@ __all__ = [
 ]
 
 FORMAT = "netcorenoc.trees/1"
-METHODS = ("decision_tree", "random_forest", "boosted_trees")
+METHODS = ("decision_tree", "random_forest", "boosted_trees", "xgboost")
 
 MAX_TREES = 600
 MAX_NODES = 2047  # per tree: a full binary tree of depth 10

@@ -86,8 +86,10 @@ jobs:
       - name: Evaluation gate (pairwise_f1, ari, entity_accuracy)
         run: make eval PYTHON=python
       - name: The eval hash, recorded
-        # `43328080…` today (v0.27.0: the league's champion decides; the gate reads every
-        # scenario); `31ea7583…` in v0.26.0; `c75b42aa…` from v0.18.0 and `c2e8a0ce…`
+        # `c80b818b…` today (v0.29.0's focused round: two DWDM scenarios, logistic regression
+        # decides); `31ea7583…` in its first round (the decision tree decided; v0.26.0
+        # printed the same digest); `43328080…` in v0.27.0-v0.28.1 (the league's champion
+        # decides; the gate reads every scenario); `31ea7583…` in v0.26.0; `c75b42aa…` from v0.18.0 and `c2e8a0ce…`
         # from v0.7.0 until the corpus was re-cut, which
         # `CHANGELOG.md` records. Printed so a release note never has to be taken on trust,
         # and so a baseline re-cut (`make eval-baseline REASON=…`) is visible in the log that ran it.
@@ -192,7 +194,8 @@ jobs:
           # maintenance-window tables); v0.22.0: 21 -> 24 (`0022` host samples, `0023` class
           # rules, `0024` notice snooze and the outlived-window ack); v0.25.0: 24 -> 25 (`0025` people: display
           # names, photos, token purpose); v0.26.0: 25 -> 26 (`0026` the learned decider, autonomy,
-          # search); v0.27.0: 26 -> 27 (`0027` Pending and the league's decisions). A literal,
+          # search); v0.27.0: 26 -> 27 (`0027` Pending and the league's decisions); v0.29.0: 27 -> 28
+          # (`0028` the moved set of a move, two host series). A literal,
           # deliberately: a release that adds a migration
           # changes this line in the same commit, which is what makes the schema a reviewable
           # diff rather than a thing that grew. `tests/store/test_upgrade.py` and
@@ -200,7 +203,7 @@ jobs:
           python - <<'PY'
           import sqlite3
           v = sqlite3.connect("/tmp/ci.db").execute("PRAGMA user_version").fetchone()[0]
-          assert v == 27, f"the appliance booted at schema {v}, not 27"
+          assert v == 28, f"the appliance booted at schema {v}, not 28"
           print(f"schema version {v}, all migrations applied")
           PY
           # v0.27.0: the league is package data (ADR #424). A wheel that dropped a member would boot

@@ -435,6 +435,369 @@ def gen_dual_incident_same_vendor() -> None:
     )
 
 
+# -- v0.29.0 (ADR #442): a field review's DWDM simulation, as the appliance receives it ----------
+
+#: The script's simulation enterprise, under NET-SNMP's: not any vendor's.
+SIM = "1.3.6.1.4.1.8072.9999"
+SNMP_TRAP_ADDRESS = "1.3.6.1.6.3.18.1.3.0"
+LINK_DOWN, LINK_UP, AUTH_FAILURE = (f"1.3.6.1.6.3.1.1.5.{n}" for n in (3, 4, 5))
+#: (delay, trap OID, node, interface, peer, circuit, alarm, severity, description, root cause,
+#: action, value) — the twenty `run_trap` calls of the script, with its `sleep`s summed into delays.
+#: Nodes are "A"/"B"; the scenario maps them to its own addresses.
+DWDM_SCRIPT: tuple[tuple[float, str, str, str, str, str, str, str, str, str, str, str], ...] = (
+    (
+        0,
+        f"{SIM}.0.1",
+        "A",
+        "OTS-1-53",
+        "B",
+        "DWDM-CORE-01",
+        "Ciena-6500-High-Received-Span-Loss",
+        "MINOR",
+        "Received span loss increased above baseline on the DWDM line interface",
+        "Fiber attenuation increasing",
+        "Monitor optical levels",
+        "13.2 dB / target 9.5 dB",
+    ),
+    (
+        3,
+        f"{SIM}.0.1",
+        "B",
+        "OTS-3-54",
+        "A",
+        "DWDM-CORE-01",
+        "Pre-FEC Signal Degrade",
+        "MAJOR",
+        "Pre-FEC BER crossed degradation threshold on coherent optical channel",
+        "Optical degradation",
+        "Monitor FEC counters",
+        "BER 2.1e-4",
+    ),
+    (
+        8,
+        f"{SIM}.0.1",
+        "A",
+        "OCH-10107",
+        "B",
+        "DWDM-CORE-01",
+        "Pre-FEC Signal Fail",
+        "MAJOR",
+        "Pre-FEC BER reached signal-fail threshold and became unstable",
+        "Rapid optical degradation",
+        "Prepare fiber investigation",
+        "BER 1.8e-3",
+    ),
+    (
+        10,
+        f"{SIM}.0.2",
+        "A",
+        "OTS-1-53",
+        "B",
+        "DWDM-CORE-01",
+        "Optical Line Fail",
+        "CRITICAL",
+        "Optical line failure detected; receive optical signal lost",
+        "Suspected fiber cut",
+        "Initiate protection and field investigation",
+        "OPR -38 dBm",
+    ),
+    (
+        18,
+        f"{SIM}.0.2",
+        "B",
+        "OTS-3-54",
+        "A",
+        "DWDM-CORE-01",
+        "Loss of Signal - Physical",
+        "CRITICAL",
+        "Physical optical signal lost on the remote line interface",
+        "Suspected fiber cut",
+        "Check optical path",
+        "LOS",
+    ),
+    (
+        19,
+        LINK_DOWN,
+        "A",
+        "LIM-1-1",
+        "B",
+        "DWDM-CORE-01",
+        "linkDown",
+        "CRITICAL",
+        "Physical transport interface transitioned to down state",
+        "Loss of optical transport",
+        "Raise service-impacting incident",
+        "operStatus=down",
+    ),
+    (
+        24,
+        f"{SIM}.0.3",
+        "A",
+        "OTU-1-1",
+        "B",
+        "DWDM-CORE-01",
+        "OTU Loss of Frame",
+        "CRITICAL",
+        "OTU framing lost after optical signal failure",
+        "Optical line failure",
+        "Correlate with OLF/LOS",
+        "LOF",
+    ),
+    (
+        25,
+        f"{SIM}.0.4",
+        "B",
+        "ODU-3-1",
+        "A",
+        "DWDM-CORE-01",
+        "ODU Alarm Indication Signal",
+        "CRITICAL",
+        "ODU-AIS propagated downstream after transport failure",
+        "Upstream transport failure",
+        "Correlate affected services",
+        "AIS",
+    ),
+    (
+        45,
+        f"{SIM}.0.5",
+        "A",
+        "ETH10G-1",
+        "B",
+        "CIR-10G-4471",
+        "Remote Fault",
+        "MAJOR",
+        "Ethernet service reported remote fault following DWDM transport loss",
+        "Underlying optical outage",
+        "Suppress as secondary alarm",
+        "remoteFault=true",
+    ),
+    (
+        65,
+        LINK_DOWN,
+        "B",
+        "LIM-3-1",
+        "A",
+        "CIR-10G-4471",
+        "linkDown",
+        "MAJOR",
+        "Customer-facing transport interface transitioned down",
+        "Underlying optical outage",
+        "Associate with root incident",
+        "operStatus=down",
+    ),
+    (
+        105,
+        f"{SIM}.0.6",
+        "A",
+        "PROT-1",
+        "B",
+        "DWDM-CORE-01",
+        "Protection Switch",
+        "MAJOR",
+        "Automatic protection switching initiated after working path failure",
+        "Optical line failure",
+        "Verify protection path",
+        "PATH-1 -> PATH-2",
+    ),
+    (
+        107,
+        f"{SIM}.0.7",
+        "A",
+        "PROT-2",
+        "B",
+        "DWDM-CORE-01",
+        "Protection Path Active",
+        "WARNING",
+        "Traffic successfully moved to protection path",
+        "Working path unavailable",
+        "Monitor protected service",
+        "PATH-2 ACTIVE",
+    ),
+    (
+        111,
+        f"{SIM}.0.8",
+        "A",
+        "NOC",
+        "B",
+        "CIR-10G-4471",
+        "Service Impact",
+        "CRITICAL",
+        "Customer circuit unavailable despite protection attempt",
+        "Fiber break exceeds protection capability",
+        "Escalate to fiber provider",
+        "1 circuit affected",
+    ),
+    (
+        114,
+        f"{SIM}.0.9",
+        "A",
+        "NOC",
+        "B",
+        "DWDM-CORE-01",
+        "Correlated Incident",
+        "CRITICAL",
+        "Multiple optical and transport alarms correlated into a single incident",
+        "Suspected fiber cut",
+        "Create root-cause incident; suppress secondary alarms",
+        "10 alarms correlated",
+    ),
+    (
+        164,
+        f"{SIM}.0.10",
+        "A",
+        "OTS-1-53",
+        "B",
+        "DWDM-CORE-01",
+        "Optical Signal Restored",
+        "WARNING",
+        "Optical receive power returned after field fiber repair",
+        "Fiber repaired",
+        "Validate optical margin",
+        "OPR -12.4 dBm",
+    ),
+    (
+        166,
+        f"{SIM}.0.11",
+        "B",
+        "OTS-3-54",
+        "A",
+        "DWDM-CORE-01",
+        "Pre-FEC Signal Fail Clear",
+        "CLEAR",
+        "Pre-FEC BER returned below signal-fail threshold",
+        "Fiber path restored",
+        "Continue monitoring",
+        "BER 2.0e-7",
+    ),
+    (
+        168,
+        f"{SIM}.0.12",
+        "B",
+        "ODU-3-1",
+        "A",
+        "DWDM-CORE-01",
+        "ODU AIS Clear",
+        "CLEAR",
+        "ODU alarm indication signal cleared after transport recovery",
+        "Transport restored",
+        "Verify downstream services",
+        "AIS=false",
+    ),
+    (
+        169,
+        LINK_UP,
+        "A",
+        "LIM-1-1",
+        "B",
+        "DWDM-CORE-01",
+        "linkUp",
+        "CLEAR",
+        "Physical transport interface returned to operational state",
+        "Optical transport restored",
+        "Continue monitoring",
+        "operStatus=up",
+    ),
+    (
+        171,
+        LINK_UP,
+        "B",
+        "LIM-3-1",
+        "A",
+        "CIR-10G-4471",
+        "linkUp",
+        "CLEAR",
+        "Customer-facing transport interface returned to operational state",
+        "DWDM path restored",
+        "Verify service stability",
+        "operStatus=up",
+    ),
+    (
+        176,
+        f"{SIM}.0.13",
+        "A",
+        "NOC",
+        "B",
+        "DWDM-CORE-01",
+        "Incident Clear",
+        "CLEAR",
+        "All correlated alarms cleared and service restored after fiber repair",
+        "Fiber cut repaired",
+        "Close incident after monitoring window",
+        "20 events / service restored",
+    ),
+)
+
+
+def _sim_trap(
+    delay: float, oid: str, node: str, values: tuple[str, ...], truth: dict[str, Any]
+) -> dict[str, Any]:
+    """One `run_trap`: snmpTrapAddress, then the script's eleven simulation varbinds (strings)."""
+    varbinds = [_vb(SYS_UPTIME, "0", "ticks"), _vb(SNMP_TRAP_ADDRESS, node, "ip")]
+    varbinds += [_vb(f"{SIM}.1.{n}", value) for n, value in enumerate(values, start=1)]
+    return {"delay": delay, "source": node, "trap_oid": oid, "varbinds": varbinds, "truth": truth}
+
+
+def _dwdm(name: str, base: str, stretch: float, description: str) -> None:
+    """The script's incident on nodes ``base``.1/.2, its timing multiplied by ``stretch``, among
+    three isolated alerts the script did not send: a login failure on node A, a customer port on
+    node B on another circuit (raised and cleared), and a CPU alarm on a third node. Each is its
+    own situation; the incident's twenty traps are one."""
+    node = {"A": f"{base}.1", "B": f"{base}.2", "C": f"{base}.3"}
+    events = []
+    for n, (t, oid, at, iface, peer, circuit, *text) in enumerate(DWDM_SCRIPT, start=1):
+        events.append(
+            _sim_trap(
+                round(t * stretch, 3),
+                oid,
+                node[at],
+                (str(n), text[0], text[1], node[at], iface, node[peer], circuit, *text[2:]),
+                {
+                    "situation_key": "dwdm_fibre_cut",
+                    "entity_key": f"{node[at]}|{iface}",
+                    "is_root": n == 4,
+                },
+            )
+        )
+    lone = (
+        (60, AUTH_FAILURE, "A", "MGMT", "", "", "authenticationFailure", "MINOR", "isolated_login"),
+        (90, f"{SIM}.0.20", "C", "CPU-0", "", "", "High CPU", "MINOR", "isolated_cpu"),
+        (140, LINK_DOWN, "B", "LIM-7-1", "C", "CIR-1G-0093", "linkDown", "MAJOR", "isolated_port"),
+        (150, LINK_UP, "B", "LIM-7-1", "C", "CIR-1G-0093", "linkUp", "CLEAR", "isolated_port"),
+    )
+    for t, oid, at, iface, peer, circuit, alarm, severity, key in lone:
+        values = (str(len(events) + 1), alarm, severity, node[at], iface, node.get(peer, ""))
+        events.append(
+            _sim_trap(
+                round(t * stretch, 3),
+                oid,
+                node[at],
+                (*values, circuit, "", "", "", ""),
+                {"situation_key": key, "entity_key": f"{node[at]}|{iface}", "is_root": True},
+            )
+        )
+    _write(name, events, description)
+
+
+def gen_dwdm_staged_fibre_cut() -> None:
+    _dwdm(
+        "dwdm_staged_fibre_cut.json",
+        "198.51.100",
+        1.0,
+        "A field review's DWDM fibre cut: degradation, break, services, protection and repair over "
+        "three minutes on two nodes, among three isolated alerts; one incident.",
+    )
+
+
+def gen_dwdm_staged_fibre_cut_slow() -> None:
+    _dwdm(
+        "dwdm_staged_fibre_cut_slow.json",
+        "198.51.101",
+        10.0,
+        "The same DWDM fibre cut at ten times the pace: degradation over minutes, services and "
+        "protection a quarter of an hour after the break, the repair at half an hour.",
+    )
+
+
 DECOY = "1.3.6.1.4.1.6486.1"  # Alcatel-Lucent Enterprise style root
 DEC_PORT_ID = f"{DECOY}.5.1"  # the true discriminator
 DEC_SERIAL = f"{DECOY}.9.1"  # alarm serial: unique per trap (decoy)
@@ -498,6 +861,8 @@ def main() -> None:
     gen_dual_incident()
     gen_dual_incident_same_vendor()
     gen_decoy_varbinds()
+    gen_dwdm_staged_fibre_cut()
+    gen_dwdm_staged_fibre_cut_slow()
     print(f"wrote {len(list(CORPUS.glob('*.json')))} corpus files to {CORPUS}")  # noqa: T201
 
 

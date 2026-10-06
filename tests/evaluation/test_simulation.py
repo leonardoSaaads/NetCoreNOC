@@ -121,6 +121,10 @@ def test_the_simulation_is_not_inside_the_frozen_corpus_directory() -> None:
         # v0.26.0: two concurrent incidents on one vendor's elements — the case v0.18.0's vendor
         # gate cannot separate, and the over-merge the learned decider is measured on (#418).
         "dual_incident_same_vendor.json",
+        # v0.29.0 (ADR #442): a field review's DWDM fibre cut, at its script's pace and ten times
+        # slower, among isolated alerts — the alarms of one incident minutes apart.
+        "dwdm_staged_fibre_cut.json",
+        "dwdm_staged_fibre_cut_slow.json",
         "fiber_cut.json",
         "flapping_noise.json",
         "olt_storm.json",

@@ -8,6 +8,12 @@ query (`host_series(since, until)`), not a different drawing of the same rows.
 
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
 from netcorenoc.store import Store
 from netcorenoc.store.host_samples import HOST_SAMPLE_RETENTION_S
 
@@ -79,3 +85,68 @@ async def test_the_route_answers_the_window_it_was_asked_for_on_a_bucket_boundar
         assert clamped["to"] - clamped["from"] <= HOST_SAMPLE_RETENTION_S + 1
     finally:
         await viewer.aclose()
+
+
+async def test_the_work_series_rate_is_a_mean_and_latency_its_worst_moment(store: Store) -> None:
+    """v0.29.0 (ADR #437): what the appliance is DOING, beside what the host is doing.
+
+    The trap rate is averaged over a bucket like CPU; the correlation latency is read for its worst
+    moment like the queue. A reading taken before the rate had two counts to difference stores
+    NULL, and the bucket it falls in draws no value rather than a made-up zero.
+    """
+    host = {"cpu_pct": 5.0, "mem_pct": 50.0, "disk_pct": 10.0, "db_mb": 5.0}
+    async with store.lock:
+        await store.record_host_sample(NOW - HOUR + 30, host, 0)  # the first: no rate yet
+        await store.record_host_sample(NOW - HOUR + 600, host, 0, traps_per_s=10.0, latency_ms=2.0)
+        await store.record_host_sample(NOW - HOUR + 900, host, 0, traps_per_s=30.0, latency_ms=9.5)
+        await store.commit()
+        series = await store.host_series(since=NOW - HOUR, until=NOW, buckets=2)
+    assert series["series"]["traps_per_s"] == [20.0, None], series["series"]["traps_per_s"]
+    assert series["series"]["latency_ms"] == [9.5, None], "a latency spike was averaged away"
+    async with store.lock:
+        quiet = await store.host_series(since=NOW - HOUR, until=NOW - HOUR + 60, buckets=1)
+    assert quiet["series"]["traps_per_s"] == [None], "a reading with no rate was drawn as zero"
+    assert quiet["series"]["cpu_pct"] == [5.0], "the control: the host half of that row is read"
+
+
+async def test_the_sampler_differences_the_receiver_counter_and_never_invents_a_first_rate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rate is a DIFFERENCE of the receiver's own counter over the interval, read and never
+    written by the sampler; the first interval has nothing to difference and records no rate. A
+    counter that went backwards (a restart of the receiver's stats) is not a negative rate."""
+    from netcorenoc import runner
+
+    clock = iter([100.0, 130.0, 160.0, 190.0])
+    counts = iter([0, 300, 900, 50])
+    written: list[dict[str, Any]] = []
+
+    class Sampler:
+        def sample(self) -> None: ...
+
+        def reading(self) -> dict[str, Any]:
+            return {"cpu_pct": 1.0}
+
+    class FakeStore:
+        lock = asyncio.Lock()
+
+        async def record_host_sample(self, at: float, reading: Any, depth: int, **kw: Any) -> None:
+            written.append({"at": at, **kw})
+            if len(written) == 4:
+                raise asyncio.CancelledError
+
+        async def commit(self) -> None: ...
+
+    monkeypatch.setattr(runner, "SAMPLE_INTERVAL_S", 0.0)
+    # The runner's own `time` reference only; the module the rest of the process reads is kept.
+    monkeypatch.setattr("netcorenoc.runner.time", SimpleNamespace(time=lambda: next(clock)))
+    with pytest.raises(asyncio.CancelledError):
+        await runner._sample_resources(
+            Sampler(),  # type: ignore[arg-type]
+            FakeStore(),  # type: ignore[arg-type]
+            asyncio.Queue(),
+            received=lambda: next(counts),
+            latency_p95_s=lambda: 0.0042,
+        )
+    assert [w["traps_per_s"] for w in written] == [None, 10.0, 20.0, None], written
+    assert {w["latency_ms"] for w in written} == {4.2}

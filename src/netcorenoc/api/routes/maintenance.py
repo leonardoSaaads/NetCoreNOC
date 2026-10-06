@@ -161,6 +161,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
         targets = await access.permitted_targets(body.targets, principal)
         needs = needs_confirmation(body.starts_at, body.ends_at)
+        confirm_now = needs and body.confirm
+        if confirm_now and (
+            principal.is_token or "mw.confirm" not in getattr(request.state, "capabilities", ())
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="only a human editor or admin may confirm a window over six hours; "
+                "create it without `confirm` and one of them confirms it",
+            )
         now = time.time()
         draft = WindowDraft(
             name=body.name,
@@ -206,6 +215,21 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "agent": principal.is_token,
                 },
             )
+            if confirm_now:
+                # The same row a separate press of Confirm writes, in the same transaction — so a
+                # window that starts now is in force at once, never expired by the next sweep.
+                await store.confirm_window(
+                    window_id, principal.ref or "-", now, status=initial_status(body.starts_at, now)
+                )
+                await audit_row(
+                    request,
+                    principal,
+                    "maintenance.window.confirm",
+                    "ok",
+                    object_type="maintenance_window",
+                    object_id=str(window_id),
+                    details={"created_by_agent": False, "with_create": True},
+                )
         window = await store.maintenance_window(window_id)
         assert window is not None
         # **`created`, not `status`** — and the distinction is a contract bug this release's own

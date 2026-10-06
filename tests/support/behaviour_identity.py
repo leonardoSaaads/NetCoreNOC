@@ -148,6 +148,9 @@ NOT_DRIVEN = frozenset({("GET", "/api/events")})
 #: Measured: renaming `store/idle.py` left the record byte-identical; rewriting one route docstring
 #: that mentioned the module moved it by four lines.
 UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
+    # v0.29.0 (ADR #441): `brief` is the Overview's form of the Judge's body. Recorded here at its
+    # default (the full body); the brief shape is driven by `tests/ui/test_ui_judge.py`.
+    ("GET", "/api/judge"): ("brief",),
     # v0.22.0 adds `ne_id` (the element panel's situations), driven by
     # `tests/api/test_elements.py` rather than here.
     ("GET", "/api/situations"): ("limit", "ne_id", "q", "status"),

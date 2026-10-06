@@ -50,7 +50,7 @@ async def test_a_burst_still_active_is_counted_in_every_later_bucket(store: Stor
         out = await store.activity_active(since=BASE, until=BASE + HOUR, buckets=6, ne_ids=None)
     # Raises-per-bucket would read [10, 0, 0, 0, 0, 0]: the defect.
     assert out["series"]["critical"] == [10] * 6, out["series"]
-    assert out["measure"].startswith("active")
+    assert out["measure"] == "most active at once in each bucket"
 
 
 async def test_a_clear_takes_an_alarm_away_from_the_bucket_it_falls_in(store: Store) -> None:
@@ -61,10 +61,43 @@ async def test_a_clear_takes_an_alarm_away_from_the_bucket_it_falls_in(store: St
     async with store.lock:
         out = await store.activity_active(since=BASE, until=BASE + HOUR, buckets=6, ne_ids=None)
         census = await store.severity_census()
-    assert out["series"]["critical"] == [10, 10, 6, 6, 6, 6], out["series"]
-    # The last point is the number active now, which is what the severity card says.
+    # The clear at 25 min falls inside the third bucket [20, 30): ten were active at once in it
+    # before the clear, so that bucket reads its peak (v0.29.0, ADR #437); the next ones read six.
+    assert out["series"]["critical"] == [10, 10, 10, 6, 6, 6], out["series"]
+    # `now` is the number active at the window's end, which is what the severity card says.
     # (The census keys its placed counts by rank; critical is rank 0.)
-    assert out["series"]["critical"][-1] == census["placed"].get("0", 0) == census["active"] == 6
+    assert out["now"]["critical"] == census["placed"].get("0", 0) == census["active"] == 6
+
+
+async def test_a_burst_that_clears_inside_one_bucket_is_its_peak(store: Store) -> None:
+    """v0.29.0 (ADR #437). Read at one instant per bucket, five alarms raised at 2 min and cleared
+    at 6 min sat between two bucket ends and drew nothing at all; read as the bucket's peak, the
+    first bucket says five were active at once, and the rest say none are."""
+    engine, queue, _app = await authutil.make_env(store)
+    await _drive(engine, queue, [_trap("127.0.0.2", TRAP, p, BASE + 120 + p) for p in range(5)])
+    await _rule(store, TRAP, "critical")
+    await _clear(store, "127.0.0.2", BASE + 6 * 60, 5)
+    async with store.lock:
+        out = await store.activity_active(since=BASE, until=BASE + HOUR, buckets=6, ne_ids=None)
+    assert out["series"]["critical"] == [5, 0, 0, 0, 0, 0], out["series"]
+    assert out["now"]["critical"] == 0
+
+
+async def test_the_window_ends_on_a_bucket_boundary(store: Store) -> None:
+    """v0.29.0 (ADR #437). Two reads a few seconds apart ask for the same buckets, so a refresh
+    redraws the same history instead of sliding every bucket edge by the seconds in between."""
+    _engine, _queue, app = await authutil.make_env(store)
+    client = await authutil.client_as(app, "viewer")
+    try:
+        first = (await client.get("/api/activity/active?range_s=7200&buckets=24")).json()
+        second = (await client.get("/api/activity/active?range_s=7200&buckets=24")).json()
+    finally:
+        await client.aclose()
+    assert first["bucket_s"] == 300
+    for read in (first, second):
+        assert read["to"] % 300 == 0 and read["to"] - read["from"] == 7200
+    # The same buckets, unless the two reads straddled a boundary — then exactly one bucket later.
+    assert second["to"] - first["to"] in (0, 300)
 
 
 async def test_alarms_raised_before_the_window_are_its_baseline(store: Store) -> None:

@@ -61,9 +61,14 @@ export function ReviewCard(props) {
         </p>`
       : null}
     ${p && p.needs_confirmation
-      ? html`<p class="warn" data-role="needs-confirmation">
-          Over six hours, so an editor or an admin has to confirm it before it takes effect.
-        </p>`
+      ? props.confirmNow === null || props.confirmNow === undefined
+        ? html`<p class="warn" data-role="needs-confirmation">
+            Over six hours: an editor or an admin confirms it before it starts.
+          </p>`
+        : html`<label class="mw-ledger" data-role="confirm-now"
+            ><input type="checkbox" checked=${props.confirmNow}
+              onChange=${(e) => props.onConfirmNow(e.target.checked)} />
+            Confirm it now — over six hours, it takes effect only once confirmed</label>`
       : null}
     <label
       >Who sees the details
@@ -72,18 +77,20 @@ export function ReviewCard(props) {
         <option value="everyone" selected=${visibility === "everyone"}>Everyone</option>
       </select>
     </label>
-    <p class="hint">Everyone sees that the window exists, whichever you pick.</p>
+    <p class="hint">Everyone sees that the window exists.</p>
     ${/* `me.user`, not `me.username` — the session carries the first and this line rendered
           `Owner:` followed by nothing for the whole of v0.21.0 (F149's field-name family). */ null}
     <p class="mw-owner muted">
       Owner <strong>${me ? me.user : "you"}</strong>${me ? ` · ${me.role}` : ""}
     </p>
     ${error ? html`<p class="error" role="alert" data-role="save-error">${error}</p>` : null}
-    <div class="mw-submit">
-      <button type="submit" class="primary" disabled=${busy || !ready} data-role="save">
-        ${busy ? "Saving…" : props.editing ? "Save changes" : "Schedule it"}
-      </button>
+    <div class="mw-nav mw-submit">
+      <button type="button" data-role="back" onClick=${props.onBack}>Back</button>
       ${blocker ? html`<span class="muted" data-role="save-blocked">${blocker}</span>` : null}
+      <button type="submit" class="primary" disabled=${busy || !ready} data-role="save">
+        ${busy ? "Saving…" : props.editing ? "Save changes"
+          : p && p.needs_confirmation && props.confirmNow ? "Schedule and confirm" : "Schedule it"}
+      </button>
     </div>
   </div>`;
 }

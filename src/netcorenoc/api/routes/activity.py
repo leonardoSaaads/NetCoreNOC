@@ -9,6 +9,7 @@ element that does not exist answers.
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Any, Literal
 
@@ -31,9 +32,20 @@ MAX_PAGE = 200
 MAX_LANES = 12
 
 
-def _window(range_s: float) -> tuple[float, float]:
+def _window(range_s: float, buckets: int | None = None) -> tuple[float, float]:
+    """The window; when it is bucketed, it ends on a bucket boundary (v0.29.0, ADR #437).
+
+    Anchored on the instant of the request, every refresh moved every bucket edge and the same
+    history redrew with different numbers. Aligned to the bucket width, two reads inside one bucket
+    see the same buckets and a past bucket never changes; the last bucket is the one in progress.
+    A list with no buckets (`groups`) keeps the plain last-`range_s` window.
+    """
+    span = min(max(60.0, float(range_s)), MAX_RANGE_S)
     now = time.time()
-    return now - min(max(60.0, float(range_s)), MAX_RANGE_S), now
+    if buckets is None:
+        return now - span, now
+    until = math.ceil(now / (span / buckets)) * (span / buckets)
+    return until - span, until
 
 
 #: The most elements the Top list answers for.
@@ -74,12 +86,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     ) -> dict[str, Any]:
         """Raises per bucket by severity band, `unplaced` included, over the last `range_s`."""
         scope = await scope_for(principal)
-        since, until = _window(range_s)
+        wanted = min(max(int(buckets), 2), MAX_BUCKETS)
+        since, until = _window(range_s, wanted)
         async with store.lock:
             return await store.activity_severity(
                 since=since,
                 until=until,
-                buckets=min(max(int(buckets), 2), MAX_BUCKETS),
+                buckets=wanted,
                 ne_ids=None if scope.unrestricted else scope.ne_ids,
             )
 
@@ -97,12 +110,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """Raises per element per bucket for the busiest `top`, the rest as one lane."""
         narrow = _narrow(organization_id, oid, sid)
         scope = await scope_for(principal)
-        since, until = _window(range_s)
+        wanted = min(max(int(buckets), 2), MAX_BUCKETS)
+        since, until = _window(range_s, wanted)
         async with store.lock:
             lanes = await store.activity_lanes(
                 since=since,
                 until=until,
-                buckets=min(max(int(buckets), 2), MAX_BUCKETS),
+                buckets=wanted,
                 top=min(max(int(top), 1), MAX_LANES),
                 ne_ids=None if scope.unrestricted else scope.ne_ids,
                 device_ne_id=ne_id,
@@ -153,12 +167,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """Active alarms at each bucket's end by severity band — the stock, not the flow (#393)."""
         narrow = _narrow(organization_id, oid, None)
         scope = await scope_for(principal)
-        since, until = _window(range_s)
+        wanted = min(max(int(buckets), 2), MAX_BUCKETS)
+        since, until = _window(range_s, wanted)
         async with store.lock:
             return await store.activity_active(
                 since=since,
                 until=until,
-                buckets=min(max(int(buckets), 2), MAX_BUCKETS),
+                buckets=wanted,
                 ne_ids=None if scope.unrestricted else scope.ne_ids,
                 narrow=narrow,
                 device_ne_id=ne_id,
@@ -178,12 +193,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         chosen = _bands(bands)
         narrow = _narrow(organization_id, None, None)
         scope = await scope_for(principal)
-        since, until = _window(range_s)
+        wanted = min(max(int(buckets), 2), MAX_BUCKETS)
+        since, until = _window(range_s, wanted)
         async with store.lock:
             top = await store.activity_top(
                 since=since,
                 until=until,
-                buckets=min(max(int(buckets), 2), MAX_BUCKETS),
+                buckets=wanted,
                 ne_ids=None if scope.unrestricted else scope.ne_ids,
                 bands=chosen,
                 limit=min(max(int(limit), 1), MAX_TOP),

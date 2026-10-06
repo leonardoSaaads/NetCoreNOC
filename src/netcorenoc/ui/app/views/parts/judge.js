@@ -69,9 +69,13 @@ export class Detail extends Component {
   }
 
   toggleMark(alarmId, on) {
-    const marked = new Set(this.state.marked);
-    if (on) marked.add(alarmId); else marked.delete(alarmId);
-    this.setState({ marked });
+    // From the PENDING state, not `this.state`: two ticks in one frame would otherwise both start
+    // from the same set and the second would drop the first.
+    this.setState((state) => {
+      const marked = new Set(state.marked);
+      if (on) marked.add(alarmId); else marked.delete(alarmId);
+      return { marked };
+    });
   }
 
   /* Mark or unmark every member at once.
@@ -214,7 +218,12 @@ export class Detail extends Component {
     const restructurable = detail.status !== "resolved";
     // A judged situation folds its grouping controls behind one disclosure. Nothing is removed —
     // directive 2 — and an unjudged one is unchanged, which is where an operator does this work.
-    const grouping = !judged || this.state.adjusting;
+    //
+    // v0.29.0 (ADR #436): **only a verdict folds them.** A move, a merge or a split CHANGES the
+    // grouping; it does not say the result is right, and the next thing an operator does after
+    // restructuring is confirm what they built. Folding on any asserting gesture hid Confirm at
+    // exactly that moment.
+    const grouping = judged?.kind !== "verdict" || this.state.adjusting;
 
     return html`<div class="detail-body">
       ${/* v0.16.4: the `Frozen while open — 60 updates withheld. Collapse to resume.` paragraph
@@ -271,6 +280,7 @@ export class Detail extends Component {
 
       ${editable && grouping && restructurable ? html`<${Restructure}
           sid=${sid} marked=${this.state.marked} post=${post}
+          total=${detail.alarms.length + (detail.redacted_members?.count ?? 0)}
           onDone=${() => this.props.onChanged()} />` : null}
 
       ${editable ? html`<${NameField} sid=${sid} post=${post}

@@ -265,3 +265,9 @@ answer_proposal  # netcorenoc/api/routes/proposals.py
 trace_every  # netcorenoc/engine/model/gam_fit.py — FitResult, charted as the train/validation trace
 train_loss  # netcorenoc/engine/model/search.py — Trial, charted beside the validation loss
 set_at  # netcorenoc/engine/operate/autonomy.py — Settings, shown in the autonomy history
+# v0.29.0 (ADR #436): `MoveIn`'s model validator — exactly one of `alarm_id` / `alarm_ids` — held
+# by the model's schema like the validators above; and the store's read of a move's set, which
+# `tests/lifecycle/test_lifecycle.py` asserts against what the route wrote (the history route
+# reads the count in SQL, so nothing in `src/` calls it by name).
+_one_form  # netcorenoc/api/models_restructure.py
+event_moved  # netcorenoc/store/situation_events.py

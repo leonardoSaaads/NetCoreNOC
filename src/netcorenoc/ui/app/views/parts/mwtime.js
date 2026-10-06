@@ -56,9 +56,12 @@ const HEIGHT = 34;
 export function TimelineBar({ startsAt, endsAt, patchS, now }) {
   const b = bands({ startsAt, endsAt, patchS, now });
   const px = (v) => Math.round(v * WIDTH * 10) / 10;
+  // `preserveAspectRatio="none"` (v0.29.0): the bar spans its card. Without it the 320-wide
+  // drawing was scaled to its 34 px height and sat as a small island in the middle of the card.
   return html`<svg
     class="mw-timeline"
     viewBox="0 0 ${WIDTH} ${HEIGHT}"
+    preserveAspectRatio="none"
     width="100%"
     height=${HEIGHT}
     role="img"
@@ -70,7 +73,8 @@ export function TimelineBar({ startsAt, endsAt, patchS, now }) {
     <rect data-band="window" x=${px(b.window.x)} y="6" width=${px(b.window.w)} height="22" rx="2" />
     <rect data-band="trail" x=${px(b.trail.x)} y="10" width=${px(b.trail.w)} height="14" rx="2" />
     ${b.nowInside
-      ? html`<line data-band="now" x1=${px(b.now)} y1="2" x2=${px(b.now)} y2=${HEIGHT - 2} />`
+      ? html`<line data-band="now" x1=${px(b.now)} y1="2" x2=${px(b.now)} y2=${HEIGHT - 2}
+          vector-effect="non-scaling-stroke" />`
       : null}
   </svg>`;
 }
@@ -108,10 +112,19 @@ function localClock(epochSeconds) {
  * the browser's own zone for the second half — never from an offset the client stored, because a
  * window across a DST transition has two.
  */
-export function SiteAndYourTime({ instant, siteZone, siteTime, siteOffset }) {
+export function SiteAndYourTime({ instant, siteZone, siteTime, siteOffset, compact = false }) {
   const site = (siteTime || "").slice(11, 16);
   const mine = localClock(instant);
   const sameZone = siteZone === TIMEZONE;
+  // v0.29.0: `compact` is the same two clocks as an inline run — for the detail's facts and the
+  // When card's summary line — and says nothing about your own zone when it IS the site's.
+  if (compact) {
+    return html`<span class="mw-clock" data-role="clocks">
+      <strong>${site || "—"}</strong> ${cityOf(siteZone)}${sameZone
+        ? html`<span class="muted mono">${" "}${siteOffset || ""}</span>`
+        : html`<span class="muted"> · <strong>${mine}</strong> your time</span>`}
+    </span>`;
+  }
   return html`<p class="mw-clocks" data-role="clocks">
     <strong>${site || "—"}</strong> ${cityOf(siteZone)}
     ${sameZone
@@ -161,38 +174,47 @@ export class ZonePicker extends Component {
     this.props.onPick(zone.zone);
   }
 
+  /* v0.29.0: the chosen zone is a VALUE on the control — city, zone and offset — rather than the
+   * greyed placeholder of an empty search box, which read as "nothing chosen". Typing searches;
+   * the list floats over the card instead of pushing the start and end down the page; Escape or
+   * leaving the field closes it; and "use mine" is one press when the site is elsewhere. */
   view() {
     const { zones, open, q } = this.state;
+    const { value, offset } = this.props;
     return html`<div class="mw-zone">
-      <label for="mw-zone-input">Site city</label>
-      <input
-        id="mw-zone-input"
-        type="text"
-        role="combobox"
-        aria-expanded=${open ? "true" : "false"}
-        aria-controls="mw-zone-list"
-        autocomplete="off"
-        placeholder=${cityOf(this.props.value) || "Search a city"}
-        value=${q}
-        onFocus=${() => this.setState({ open: true })}
-        onInput=${(e) => { this.setState({ open: true }); this.search(e.target.value); }}
-      />
-      ${open
-        ? html`<ul id="mw-zone-list" class="mw-zone-list" role="listbox">
-            ${zones.map(
-              (zone) => html`<li role="option" key=${zone.zone + zone.label}>
-                <button type="button" onClick=${() => this.choose(zone)}>
-                  <span class="mw-zone-city">${zone.label}</span>
-                  <span class="muted mono">${zone.zone}</span>
-                  <span class="muted">${zone.offset}</span>
-                </button>
-              </li>`,
-            )}
-            ${zones.length === 0
-              ? html`<li class="muted">No zone here matches that.</li>`
-              : null}
-          </ul>`
-        : null}
+      <label for="mw-zone-input">Site time zone</label>
+      <div class="mw-zone-row">
+        <span class="mw-zone-value" data-role="zone-value"><strong>${cityOf(value)}</strong>
+          <span class="muted mono">${" "}${[cityOf(value) === value ? "" : value, offset]
+            .filter(Boolean).join(" · ")}</span></span>
+        <div class="mw-zone-search">
+          <input id="mw-zone-input" type="search" role="combobox" autocomplete="off"
+            aria-expanded=${open ? "true" : "false"} aria-controls="mw-zone-list"
+            placeholder="Change: type a city" value=${q}
+            onFocus=${() => this.setState({ open: true })}
+            onBlur=${() => this.setState({ open: false })}
+            onKeyDown=${(e) => { if (e.key === "Escape") this.setState({ open: false, q: "" }); }}
+            onInput=${(e) => { this.setState({ open: true }); this.search(e.target.value); }} />
+          ${open
+            ? html`<ul id="mw-zone-list" class="mw-zone-list" role="listbox"
+                onMouseDown=${(e) => e.preventDefault()}>
+                ${zones.slice(0, 12).map(
+                  (zone) => html`<li role="option" key=${zone.zone + zone.label}>
+                    <button type="button" class="mw-zone-city" onClick=${() => this.choose(zone)}>
+                      <span>${zone.label}</span>
+                      <span class="muted mono">${zone.zone} · ${zone.offset}</span>
+                    </button>
+                  </li>`,
+                )}
+                ${zones.length === 0 ? html`<li class="muted">No zone here matches that.</li>` : null}
+              </ul>`
+            : null}
+        </div>
+        ${value !== TIMEZONE
+          ? html`<button type="button" class="link" data-role="zone-mine"
+              onClick=${() => this.props.onPick(TIMEZONE)}>Use mine (${cityOf(TIMEZONE)})</button>`
+          : null}
+      </div>
     </div>`;
   }
 

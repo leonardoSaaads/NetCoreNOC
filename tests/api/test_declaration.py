@@ -680,7 +680,9 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # search and the judge; ADRs #405, #412, #413) and six UI modules (ADR #414).
     # v0.27.0: 207 -> 210 and 107 -> 108 — one /api pair (an answer to a proposal, ADR #428) and
     # two UI modules net (the league's three added, `shippedjudge` gone; ADR #427).
-    assert len(served) == 210, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.29.0: 210 -> 211 — one UI module, `parts/mwwhen.js` (the maintenance form's card 2, ADR
+    # #440); no /api pair (the brief judge is a query parameter on `GET /api/judge`).
+    assert len(served) == 211, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -840,7 +842,9 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # search and the judge; ADRs #405, #412, #413) and six UI modules (ADR #414).
     # v0.27.0: 207 -> 210 and 107 -> 108 — one /api pair (an answer to a proposal, ADR #428) and
     # two UI modules net (the league's three added, `shippedjudge` gone; ADR #427).
-    assert len(served) == 210, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.29.0: 210 -> 211 — one UI module, `parts/mwwhen.js` (the maintenance form's card 2, ADR
+    # #440); no /api pair (the brief judge is a query parameter on `GET /api/judge`).
+    assert len(served) == 211, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.

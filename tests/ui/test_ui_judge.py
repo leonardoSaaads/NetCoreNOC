@@ -203,10 +203,22 @@ async def test_one_models_ten_charts_are_all_drawn(store: Store, leagued: league
     )
     charts = [c for b in result["blocks"] for c in b["charts"]]
     titles = [c["title"] or "" for c in charts]
-    for number in range(1, 11):
-        mine = [c for c in charts if (c["title"] or "").startswith(f"{number} · ")]
-        assert mine, f"chart {number} is missing: {titles}"
-        assert any(c["drawn"] for c in mine), f"chart {number} is drawn empty"
+    # v0.29.0: the maintainer's ten, by name — the numbers left the titles as on-screen noise.
+    for name in (
+        "Validation score \u00d7",
+        "Train \u00d7 validation curve",
+        "Pairwise F1 on every suite",  # 3, model performance: the suites drawn as bars
+        "Hyperparameter importance",
+        "Optimisation history",
+        "Confusion matrix",
+        "ROC",
+        "Prediction vs actual",
+        "Residual distribution",
+        "Training time \u00d7 performance",
+    ):
+        mine = [c for c in charts if (c["title"] or "").startswith(name)]
+        assert mine, f"chart {name!r} is missing: {titles}"
+        assert any(c["drawn"] for c in mine), f"chart {name!r} is drawn empty"
     assert any("Prediction vs actual" in t for t in titles)
     assert any("Residual distribution" in t for t in titles)
     # The two regression charts say what they are for a classifier, in their captions.
@@ -390,3 +402,23 @@ async def test_no_kill_switch_while_autonomy_is_off(store: Store, leagued: leagu
         },
     )
     assert "Stop autonomy" not in result["dump"] and "autonomy:" not in result["dump"]
+
+
+async def test_the_overview_reads_the_brief_judge_and_draws_three_model_charts(
+    store: Store, leagued: league.League
+) -> None:
+    """v0.29.0: the Overview's models card. It reads `?brief=true` — who decides, each member's
+    ROC thinned, the live shadow — not the Judge screen's whole body, and draws three charts."""
+    from netcorenoc.api.league_view import BRIEF_ROC_POINTS
+
+    routes = await _routes(store)
+    full, brief = routes["/api/judge"]["json"], routes["/api/judge?brief=true"]["json"]
+    assert len(json.dumps(brief)) * 5 < len(json.dumps(full)), "the brief body is not brief"
+    assert "site" not in brief and {"champion", "members", "models", "shadow"} <= set(brief)
+    for model in brief["models"]:
+        assert set(model) == {"ref", "kind", "name", "origin", "roc_auc", "roc_curve"}, model
+        assert len(model["roc_curve"]) <= BRIEF_ROC_POINTS + 1
+    page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/overview"})
+    for title in ("Score by model", "ROC", "Agreement with the champion", "models compete"):
+        assert title in page["dump"], title
+    assert "Could not read the models" not in page["dump"]

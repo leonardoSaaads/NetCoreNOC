@@ -5904,3 +5904,151 @@ From this release an entry is about six lines: decision, reason, release.*
   online backup, integrity-checked, never overwrites); every CLI command refuses a missing database;
   the server answers `--help`/`--version` and refuses other arguments; Compose passes and maps the
   trap port. The start-up log names the deciding model and the re-arm window.
+
+## 436. A move of several alarms is one gesture; moving every member is a merge (v0.29.0)
+
+- **Context**, from the field: an operator moved twenty alarms from a wrongly split situation into
+  the right one. The console sent twenty single-alarm moves, each asserting *"this alarm does not
+  belong with the rest"* against a rest that still held the alarms being moved with it — negative
+  labels about pairs the operator had just kept together — wrote twenty history rows, left the
+  source as an empty `(no members)` situation, and folded the decision bar so Confirm disappeared.
+- **Decision**: `POST /api/situations/{sid}/move` takes `alarm_ids` (1–4 096) and writes ONE
+  `situation_event` (`alarm_id` NULL, the set in `situation_event_moved`, migration 0028) and ONE
+  `split` label: the moved set against the members it left; pairs inside the set are asserted
+  neither way (#124's reading of a marked split). A move that would take every member is refused
+  with 409 and the console sends the merge instead, so no empty situation is left. Only a verdict
+  folds the decision bar; a restructure leaves Confirm offered. The history folds identical
+  consecutive gestures within five minutes into one row.
+
+## 437. The Overview reads steadily: fixed buckets, the peak per bucket, the work beside the host (v0.29.0)
+
+- **Context**: every refresh re-cut the activity buckets at the instant it was asked and read one
+  instant per bucket, so a burst between readings vanished and reappeared and the chart changed
+  shape on each refresh — the Grafana quantisation artefact. *Is the appliance keeping up* drew only
+  the host. Cards beside each other ended at different heights.
+- **Decision**: buckets end on a multiple of their width; a bucket's value is the peak over eight
+  sub-readings; *now* is the count at this instant. Two `host_sample` columns (migration 0028):
+  `traps_per_s`, a difference of the receiver's own counter over the 30 s interval (NULL for the
+  first interval, never a made-up zero), and `latency_ms`, the engine's batch p95 (a bucket's worst).
+  Planned work is three counts and the next three windows; Top assets shows the same six rows as
+  Situations; the severity card fills its row.
+
+## 438. XGBoost and k-nearest neighbours join the league, written here (v0.29.0)
+
+- **Context**: the maintainer asked for both, without external libraries, and for the search
+  spaces to be reviewed against overfitting before a longer training.
+- **Decision**: `xgboost` (`model/xgb_fit.py`) is the algorithm, not a rename of boosted trees:
+  second-order statistics, split gain `G²/(H+λ)` after an L1 soft threshold, `min_child_weight`,
+  bottom-up `gamma` pruning, `max_delta_step` before shrinkage, row and by-tree/level/node column
+  sampling, histogram bins and early stopping on validation; it is served as a `trees/1` document
+  with method `xgboost`, so its explanation is the trees' exact Shapley values. `knn`
+  (`model/knn.py`, format `netcorenoc.knn/1`) standardises each kept feature, scales it by its
+  importance (η², features under 2 % dropped), votes over class-separate weighted k-means++
+  prototypes with smoothed rates, and takes *k* from a validation curve; its explanation is a
+  deterministic permutation estimate labelled `shapley-sampled` — the one estimate in the project,
+  and it says so. The search caps k-NN at 384 prototypes and XGBoost at 300 rounds (η ≥ 0.05) so
+  each stays inside the 150 µs scoring budget with room for a slower appliance.
+  Spaces were narrowed where v0.27.0's trials showed overfitting (learning rates ≤ 0.2–0.3,
+  `min_leaf`/`min_hessian` floors, subsampling ≥ 0.5) and trials roughly doubled.
+
+## 439. The training data has bad days, and the judge a sixth suite (v0.29.0)
+
+- **Context**: the generator modelled ordinary days. An appliance meets cascading site outages,
+  rolling upgrades, power flicker, chatter storms, intermittent optics, control-plane overload and
+  HVAC failures, on a network that loses, delays and duplicates traps when it is busiest.
+- **Decision**: seven adverse families (`eval/synth/adverse.py`) and a per-stream *bad-day* regime —
+  twin incidents of the same family on disjoint elements, storm windows, noise that follows the
+  working day, congestion loss and delay, slow relays and duplicates — drawn from its own generator,
+  so intensity 0 leaves every other draw where it was. Adverse streams are in training and in two
+  new splits, `valid_adverse` (tuning and grouping) and `test_adverse` (held out); the judge's
+  offline score averages six suites. Training rows cap at 320 000, validation at 100 000.
+- **The ablation keeps the formula's three relations** (`train.CORE_FEATURES`: `dt`, `same_ne`,
+  `same_class`). The first full training on this data dropped `same_ne` with `entity_affinity` and
+  `ne_episodes` — a drop-one ablation measures each against the others, so a group carrying one
+  signal goes together — and every member split the corpus's `fiber_cut` and both `dual_incident`
+  scenarios. A GAM refitted on the same rows with `same_ne` restored put every corpus scenario back
+  at 1.0; the retrained league's validation log loss fell by about a third.
+- **Result and its trade**: every member needs fewer repair gestures than the formula on every test
+  split, adverse included. The judge's champion is the decision tree; on the hand-labelled corpus it
+  merges the two concurrent incidents of `dual_incident_same_vendor` (pairwise F1 0.64), which GAM,
+  random forest, logistic regression and k-NN keep apart. `make eval` is re-baselined with that
+  reason; the slow loop replaces the champion when this site's labels say a challenger is better.
+
+## 440. A window over six hours can be confirmed as it is created; a refused confirm says why (v0.29.0)
+
+- **Context**, from the field: *"Pending confirmation · 16 h 52 min left · Confirm — clicking
+  Confirm does nothing."* The window was long and started at once; the sweep expired it at its start
+  (#370's safe failure), the list was stale, and the console's `act()` had no `catch`, so the 409 was
+  thrown past it and nothing re-read the list.
+- **Decision**: `confirm: true` on `POST /api/maintenance-windows` confirms in the creating
+  transaction (status `scheduled`, or `active` if begun), audited as a separate confirm; refused
+  with 403 for a service token or a role without `mw.confirm`. A refused confirm is said on the row
+  and the list re-read; the 409 for an expired window names it. The list re-reads every 30 s and a
+  pending row counts down to its expiry. The patch band defaults to 60 s (was 600 s) in the form and
+  the API. The form: zone as a value, start and duration presets, Back/Next at the card foot.
+
+## 441. The Judge screen in three questions, and a brief judge for the Overview (v0.29.0)
+
+- **Context**: *Who decides* was two paragraphs; *Learning and comparison* numbered every title,
+  captioned every chart at length, and drew on linear axes curves that only differ on a log one
+  (every ROC hugs the corner; search losses and training seconds span decades).
+- **Decision**: *Who decides* is the champion, its score and five icons with a line each. The
+  comparison is grouped — how good, how honest, what it costs — with short titles, the legend once,
+  a log false-positive axis on ROC, log axes for search loss, training time and scoring cost, and a
+  score axis that starts above zero and says where. `GET /api/judge?brief=true` serves the Overview
+  who decides, each member's ROC thinned to 40 points and the live shadow: a few KiB against ~240.
+
+## 442. Alarms of one incident minutes apart: recall by name, time-spread data, `cross_ref` kept (v0.29.0)
+
+- **Context**: a field review — *"the models were trained on cascading alarms, many alerts at once;
+  the most common situation is one incident whose alarms arrive at different times"*, with a
+  twenty-trap DWDM fibre cut (degradation, break, services, protection, repair) as its example. The
+  analysis of the v0.29.0 training set (`docs/correlation.md`, *Alarms at different times*):
+  92 % of the positive training mass was pairs under ten seconds apart; per time-gap band, the
+  univariate information of every feature (SelectKBest's ANOVA F and mutual information, written
+  here) collapsed past a minute, leaving `same_ne`/`entity_affinity` (ρ 0.97, one signal) and
+  nothing that relates two elements; every member grouped 33-41 % of an incident's alarm pairs one
+  to thirty minutes apart and 20-27 % beyond; and of the alarms whose incident's last alarm was one
+  to thirty minutes earlier, 18-26 % could reach none of its open alarms through recall, 10-14 %
+  were scored no by the model, 21 % (beyond five minutes) found their situation already closed.
+- **Decision**:
+  - **Recall by name** (`retrieval.py`): two more bounded rings — the traps that name this
+    element's management address, and the element each address this trap names — so a far end ten
+    minutes later is scored from the first trap on. Per activation at most `(1 + 4) × 8` more reads.
+  - **Time-spread data** (`eval/synth/spread.py`): five training families whose alarms arrive
+    minutes to an hour apart (a staged link failure — the review's script on a routed link —, a slow
+    card failure, a degrading PON feeder, an upstream loss with protocol timers, a staged power
+    failure), a regime that stretches some incidents and places isolated alerts on the very elements
+    an incident touches, far-end addresses in the traps of half the vendors, and three splits
+    (`train_spread` 48, `valid_spread` 16, `test_spread` 32). The judge averages **seven** suites.
+  - **Weight per activation, kept**: the league was trained twice on the same rows — once with the
+    weight balanced over time-gap bands (`train.balance_gaps`: each band's share to its square
+    root, in training and in the validation loss), once without. On the validation streams the
+    balanced league grouped a few more of the far pairs, but cost bursts (0-10 s pairs grouped
+    0.93-0.96 against 0.97-0.98) and repair gestures on every validation split for five of seven
+    members; the unbalanced one had the fewest gestures of the two (and of the first round's
+    league) on every split for gradient-boosted trees, XGBoost and the random forest. It ships;
+    `--weights balanced` reproduces the other.
+  - `cross_ref` joins the features the ablation always keeps (recall now proposes by it), and the
+    corpus gains the review's fibre cut at its script's pace and ten times slower, among isolated
+    alerts.
+  - A focused round: half the trials, the grouping grid trimmed to the region every earlier member
+    chose from (42 settings), test draw 5.
+- **Measured and not done**: the balanced weight (above), capping each incident's weight (worse on
+  both counts), two models
+  either side of a minute (better row log loss, worse grouping), and taking the join evidence over a
+  situation's strongest pairs instead of all of them (fewer repair gestures, but concurrent
+  incidents merged more: pairwise F1 on `valid_concurrency` 0.82 → 0.70 at one pair). The
+  five-minute clear hold (#410) is unchanged: a situation whose every alarm cleared is resolved, and
+  reopening it for a later alarm is a product decision, not a model's.
+- **Result** (dataset `e217e9d43cde21ad`, numbers in `CHANGELOG.md`): on the same test streams the
+  league groups more of an incident's far pairs than the first round's — the tree ensembles most
+  (random forest 48 % → 60 % one to five minutes apart, 17 % → 36 % five to thirty, repair gestures
+  1.21 → 1.08 per incident) — while logistic regression and the GAM stay level. The judge's
+  champion is logistic regression, level with the first round's champion on that traffic (gestures
+  1.19 both) and better on the corpus: `dual_incident_same_vendor` back at 1.0, the review's DWDM
+  fibre cut at 0.94 at its pace and 0.39 ten times slower. **The trade**: `background_noise` falls
+  from 1.0 to 0.0 — twelve devices each sending two traps a minute apart under one vendor subtree,
+  labelled unrelated, now grouped per device, which is the behaviour this round was asked for.
+  `make eval` is re-baselined with that reason. Gradient-boosted trees early-stopped at 500 rounds,
+  over the latency budget: it scores in shadow and never decides.

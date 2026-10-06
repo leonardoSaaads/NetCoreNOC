@@ -56,6 +56,10 @@ from netcorenoc.api.models_maintenance import (
 from netcorenoc.api.models_maintenance import (
     WindowExtendIn as WindowExtendIn,
 )
+from netcorenoc.api.models_restructure import MergeIn as MergeIn
+from netcorenoc.api.models_restructure import MoveIn as MoveIn
+from netcorenoc.api.models_restructure import ProposalIn as ProposalIn
+from netcorenoc.api.models_restructure import SplitIn as SplitIn
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.correlate import scoring
 from netcorenoc.ingest.receiver import parse_allowlist
@@ -165,50 +169,6 @@ class LabelIn(BaseModel):
 # here.** A gesture below it is a legal request that happens and is recorded in full — the operator
 # is running the network, not labelling it — and what it does not do is produce a training row.
 # Refusing it at the boundary would make the plan's *"the action still happens"* untrue.
-
-
-class MoveIn(BaseModel):
-    """Move one alarm out of this situation and into another. **The release's product.**
-
-    The only gesture that yields a negative and a positive from one action at pair granularity:
-    `alarm_id` against the members it leaves is asserted negative, and against the members it joins
-    positive. Both situations are named, so both are scope-checked.
-    """
-
-    alarm_id: int = Field(ge=1)
-    to_situation_id: int = Field(ge=1)
-    confidence: float = Field(ge=0.0, le=1.0)
-
-
-class MergeIn(BaseModel):
-    """Merge another situation into this one. Every cross pair is asserted positive."""
-
-    from_situation_id: int = Field(ge=1)
-    confidence: float = Field(ge=0.0, le=1.0)
-
-
-class ProposalIn(BaseModel):
-    """An operator's answer to a pending proposal (v0.27.0, ADR #428). ``accept`` merges it into
-    the situation it proposed to join; ``reject`` makes it a situation of its own."""
-
-    decision: Literal["accept", "reject"]
-    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-
-
-class SplitIn(BaseModel):
-    """Split the named members out of this situation into a new one.
-
-    Every cross pair between the departing members and the remainder is asserted negative, **and
-    nothing else** — the pairs within each half stay unknown, which is DECISIONS #124's reading of
-    a marked split and is what the label this writes records.
-
-    `max_length` is a parse bound rather than a validation of meaning, the same reasoning
-    `FeedbackIn.excluded_ids` carries: it exists to stop an unbounded parse, and the semantic bound
-    is `MAX_CLIENT_MEMBERS` inside `Exclusion.accept`, which truncates and records that it did.
-    """
-
-    alarm_ids: list[int] = Field(min_length=1, max_length=4096)
-    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class ClearIn(BaseModel):

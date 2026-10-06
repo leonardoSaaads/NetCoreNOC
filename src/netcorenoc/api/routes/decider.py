@@ -26,7 +26,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.league_view import decider_payload, finite, member_block
+from netcorenoc.api.league_view import brief_block, decider_payload, finite, member_block
 from netcorenoc.api.models import AutonomyIn, DeciderIn, SearchIn, SituationSeverityIn
 from netcorenoc.api.shipped_view import search_blocked
 from netcorenoc.crosscutting import auth
@@ -265,9 +265,24 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     # -- the judge ---------------------------------------------------------------------------
 
     @route.get("/api/judge", dependencies=guarded)
-    async def get_judge() -> dict[str, Any]:
+    async def get_judge(brief: bool = False) -> dict[str, Any]:
         """The Judge screen: every member's measurements (**generated**), the slow loop's paired
-        comparisons on this site's labels (**site**), and the two loops' counters (**live**)."""
+        comparisons on this site's labels (**site**), and the two loops' counters (**live**).
+
+        ``brief`` (v0.29.0) is the Overview's form: who decides, each member's ROC and the live
+        shadow — a few KiB and no read of the site's labels, against ~240 KiB for the full body.
+        """
+        if brief:
+            async with store.lock:
+                pinned_ref = await store.decider_pin()
+            league_members = engine.league_members
+            return {
+                **decider_payload(engine, pinned_ref),
+                "models": []
+                if league_members is None
+                else [brief_block(m) for m in league_members.members],
+                "shadow": finite(engine.league_shadow.snapshot()),
+            }
         async with store.lock:
             runs = await store.search_runs(10)
             trials = await store.search_trials(int(runs[0]["id"])) if runs else []

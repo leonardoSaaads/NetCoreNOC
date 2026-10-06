@@ -51,7 +51,7 @@ export class ElementDetail extends Component {
     const bands = [...SCALE, UNPLACED].filter((b) => series[b.key])
       .map((b) => ({ key: b.key, label: b.label, level: b.level, values: series[b.key] }));
     const labels = trend ? Array.from({ length: trend.buckets },
-      (_, i) => clock(trend.from + (i + 1) * trend.bucket_s, DAY)) : [];
+      (_, i) => clock(trend.from + i * trend.bucket_s, DAY)) : [];
     const rows = parts ? (all ? parts.components : parts.components.slice(0, SHOWN)) : [];
     const kinds = parts ? Object.entries(parts.kinds) : [];
     return html`<div class="nedetail">
@@ -59,7 +59,7 @@ export class ElementDetail extends Component {
         <div class="nedetail-trend">
           ${errors.trend ? html`<p class="hint">Could not read its alarm history.</p>` : null}
           ${trend ? html`<${StackedArea} title="Active alarms, last 24 hours" bands=${bands}
-              labels=${labels} source="active at each point" span="every hour" />`
+              labels=${labels} source="most active at once" span="per hour" />`
             : errors.trend ? null : html`<${Loading} label="Reading its history" />`}
         </div>
         <div class="nedetail-parts">
