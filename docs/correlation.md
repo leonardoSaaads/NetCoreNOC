@@ -197,6 +197,43 @@ Four things make that safe to offer:
 At the default parameters the current version produces byte-identical grouping to v0.5.0. That
 parity is a release gate, not a claim.
 
+## Alarms at different times
+
+A field review put it plainly: *the models were trained on cascades — many alarms at once — while
+the most common situation is one incident whose alarms arrive at different times*, with a
+twenty-trap DWDM fibre cut (degradation, break, services, protection, repair) as the example. It is
+now in the corpus twice — at its script's pace and ten times slower — among isolated alerts that
+must stay apart (`eval/corpus/dwdm_staged_fibre_cut*.json`). What the analysis of the v0.29.0
+training set found (ADR #442):
+
+* **The weight was in the bursts.** 92 % of the positive training mass was pairs under ten seconds
+  apart; pairs more than a minute apart carried 3 %.
+* **Past a minute, the features say little.** A SelectKBest-style ranking per time-gap band
+  (ANOVA F, mutual information and AUC, computed here without a library) left `same_ne` and
+  `entity_affinity` — one signal, Spearman ρ 0.97 — and nothing that relates two *different*
+  elements: `cross_ref` was nearly never set, because the generated traps rarely named a far end.
+* **Every model grouped about a third** of an incident's alarm pairs one to thirty minutes apart,
+  and a fifth to a quarter beyond.
+* **Why a late alarm missed its incident** (the champion, validation, alarms 5-30 minutes after
+  their incident's last one): 26 % could reach none of its open alarms through recall, 21 % found
+  its situation already closed (every alarm cleared, the five-minute hold over), 14 % were scored
+  no, 4 % were outvoted by the situation's other pairs.
+
+What changed: recall reaches the element a trap **names** and the traps that name this one; the
+generator draws five families whose alarms arrive minutes to an hour apart, stretches some
+incidents, puts isolated alerts on the very elements an incident touches, and has half the vendors
+name the far end of a link; `cross_ref` is always kept; a seventh judge suite, `test_spread`, and a
+per-band measure, `by_gap`, in every manifest. On the new data `cross_ref` became the feature the
+ablation values most.
+
+**Measured and not adopted**: balancing the training weight over time-gap bands (each band's share
+to its square root) grouped more of the far pairs, but cost bursts and repair gestures on every
+validation split for most members, so the shipped league keeps one unit of weight per activation
+(`--weights balanced` reproduces it); capping each incident's weight; two models either side of a
+minute; joining on a situation's strongest pairs rather than all of them (fewer gestures, more
+merged concurrent incidents). The clear hold is unchanged: reopening a resolved situation for a
+later alarm is a product decision, not a model's.
+
 ## The model kinds
 
 Six scorer kinds exist. Five of them are trained; all six run **in this process, in pure Python,

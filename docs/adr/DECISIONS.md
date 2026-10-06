@@ -5998,7 +5998,7 @@ From this release an entry is about six lines: decision, reason, release.*
   score axis that starts above zero and says where. `GET /api/judge?brief=true` serves the Overview
   who decides, each member's ROC thinned to 40 points and the live shadow: a few KiB against ~240.
 
-## 442. Alarms of one incident minutes apart: recall by name, time-spread data, balanced weight (v0.29.0)
+## 442. Alarms of one incident minutes apart: recall by name, time-spread data, `cross_ref` kept (v0.29.0)
 
 - **Context**: a field review — *"the models were trained on cascading alarms, many alerts at once;
   the most common situation is one incident whose alarms arrive at different times"*, with a
@@ -6021,14 +6021,21 @@ From this release an entry is about six lines: decision, reason, release.*
     failure), a regime that stretches some incidents and places isolated alerts on the very elements
     an incident touches, far-end addresses in the traps of half the vendors, and three splits
     (`train_spread` 48, `valid_spread` 16, `test_spread` 32). The judge averages **seven** suites.
-  - **Balanced weight** (`train.balance_gaps`): each (time-gap band, label) cell carries the square
-    root of its share of the weight, in training and in the validation loss the search reads.
+  - **Weight per activation, kept**: the league was trained twice on the same rows — once with the
+    weight balanced over time-gap bands (`train.balance_gaps`: each band's share to its square
+    root, in training and in the validation loss), once without. On the validation streams the
+    balanced league grouped a few more of the far pairs, but cost bursts (0-10 s pairs grouped
+    0.93-0.96 against 0.97-0.98) and repair gestures on every validation split for five of seven
+    members; the unbalanced one had the fewest gestures of the two (and of the first round's
+    league) on every split for gradient-boosted trees, XGBoost and the random forest. It ships;
+    `--weights balanced` reproduces the other.
   - `cross_ref` joins the features the ablation always keeps (recall now proposes by it), and the
     corpus gains the review's fibre cut at its script's pace and ten times slower, among isolated
     alerts.
   - A focused round: half the trials, the grouping grid trimmed to the region every earlier member
     chose from (42 settings), test draw 5.
-- **Measured and not done**: capping each incident's weight (worse on both counts), two models
+- **Measured and not done**: the balanced weight (above), capping each incident's weight (worse on
+  both counts), two models
   either side of a minute (better row log loss, worse grouping), and taking the join evidence over a
   situation's strongest pairs instead of all of them (fewer repair gestures, but concurrent
   incidents merged more: pairwise F1 on `valid_concurrency` 0.82 → 0.70 at one pair). The
