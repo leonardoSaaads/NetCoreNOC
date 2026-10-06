@@ -7,7 +7,7 @@ you see afterwards is the appliance's own work.
 
 | Method | What it sends | Use it to |
 |---|---|---|
-| [Bundled scenarios](#3-send-traps-terminal-2) (`tools/trap_replay.py`) | Eleven labelled incidents: fibre cut, OLT storm, PON dying gasp, card failure, flapping, noise… | See correlation on realistic traffic |
+| [Bundled scenarios](#3-send-traps-terminal-2) (`tools/trap_replay.py`) | Thirteen labelled incidents: fibre cut, OLT storm, PON dying gasp, card failure, a staged DWDM fibre cut, flapping, noise… | See correlation on realistic traffic |
 | [DSL scenarios](#3-send-traps-terminal-2) (`tools/trap_sim.py`) | Short declarative patterns: BGP flap, chassis card, login burst | Reproduce one alarm pattern |
 | [Your own scenario](#write-your-own-scenario) | Any trap you describe in a JSON file | Test a specific device's traps, a clear, a repeat |
 | [Synthetic load](#3-send-traps-terminal-2) (`trap_replay.py --synthetic`) | Random traps at a fixed rate | Check throughput and queueing |
@@ -227,6 +227,13 @@ snmptrap -v 1 -c public 127.0.0.1:1162 1.3.6.1.4.1.8072.2.3 127.0.0.1 2 0 '' \
 `snmptrap` is also how to reach an appliance on **another machine**: replace `127.0.0.1:1162` with
 its address and port. Every trap then comes from your machine's own address, so it appears as one
 device. SNMPv3 traps are not supported; they are quarantined.
+
+**The device is the trap's UDP source, never an address inside it** — `snmpTrapAddress` and any
+"node" varbind included, since anyone can write those. A script that simulates two nodes must send
+each node's traps from its own address (`--clientaddr=127.0.0.101`, `--clientaddr=127.0.0.102` on
+the appliance's machine); otherwise every trap is one device. An address the trap *names* (a peer,
+a far end) is read too: it is how the appliance relates two elements it knows nothing else about.
+`make replay SCENARIO=dwdm_staged_fibre_cut` sends a two-node staged DWDM fibre cut that way.
 
 ## The lab: a fibre cut you control
 

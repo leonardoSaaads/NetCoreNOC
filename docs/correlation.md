@@ -6,8 +6,8 @@ it.
 
 ## What decides
 
-Five trained models — GAM, boosted trees, random forest, decision tree and logistic regression —
-are shipped as data and compete from the first trap (ADRs #424–#426). A judge ranks them every few
+Seven trained models — GAM, boosted trees, XGBoost, random forest, decision tree, logistic
+regression and k-NN — are shipped as data and compete from the first trap (ADRs #424–#426, #438). A judge ranks them every few
 minutes on the same evidence and the best decides; an admin can **pin** one in
 **Settings → Correlation** (a reason is required and audited). The **additive formula** below is
 the fail-safe: it decides only when no model can be loaded, or when an admin chooses it. A **site
@@ -22,7 +22,8 @@ the other's address. Each was measured by ablation; three that did not pay were 
 None is an identifier, and none is derived from what the running decider decided.
 
 It also sees **more candidates**: besides the 120-second window, bounded rings over the last hour
-recall live alarms on the same element, under the same OID parent and on elements this one has
+recall live alarms on the same element, under the same OID parent, on the element a trap **names**
+(a far end, a peer) and from the traps that name this one (#442), and on elements this one has
 co-failed with before (#418). That is what lets an optical degradation whose stages are ten minutes
 apart, or a BGP session that times out three minutes after its link, be one situation.
 

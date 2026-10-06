@@ -8,7 +8,7 @@ eval/
 ├── harness.py        the gate: replays the corpus, compares with the baseline (`make eval`)
 ├── metrics.py        pairwise F1, ARI, entity accuracy — what the gate measures
 ├── baselines/        frozen expected metrics and the log of every re-cut
-├── corpus/           eleven labelled scenarios, 3 175 events (the gate's input)
+├── corpus/           thirteen labelled scenarios, 3 223 events (the gate's input)
 ├── generators/       scripts that rebuild `corpus/` and the attribution background set
 ├── simulation/       scenario DSL and the driver that runs scenarios against a live appliance
 └── synth/            synthetic estates and incidents; trains the shipped model league
@@ -44,8 +44,10 @@ The target refuses to run without a reason.
 
 ## The corpus — `corpus/`
 
-Eleven hand-shaped scenarios (fibre cut, OLT storm, PON dying gasp, chassis card failure, camera
-NVR, dual incidents, flapping and background noise, decoy varbinds). It is a baseline of
+Thirteen hand-shaped scenarios (fibre cut, OLT storm, PON dying gasp, chassis card failure, camera
+NVR, dual incidents, flapping and background noise, decoy varbinds, and — v0.29.0, ADR #442 — a
+field review's DWDM fibre cut at its script's pace and ten times slower, among isolated alerts,
+whose twenty alarms are one incident minutes apart). It is a baseline of
 **grouping decisions on these scenarios** — not a sample of a real network and not evidence for a
 model promotion.
 
@@ -88,6 +90,14 @@ make train-verify     # reproduce every member's published numbers from the inst
 ```
 
 Checkpoints go to `eval/synth/.cache/` (git-ignored).
+
+What the generator draws, by module: `families.py` (the v0.26.0 incident families and background
+noise), `adverse.py` (bad days, ADR #439), `spread.py` (incidents whose alarms arrive minutes to an
+hour apart, and isolated alerts on the elements they touch, ADR #442), `estate.py` (the network),
+`compose.py` (a stream: onsets, concurrency, recurrence, the regimes, the management path). The
+splits — `train`, `train_spread`, `train_long`, four validation and seven test splits — are listed
+in `dataset.py`. Every test split's numbers, including the share of an incident's alarm pairs
+grouped per time-gap band (`by_gap`), are in each member's manifest.
 
 ## The evidence boundary
 
