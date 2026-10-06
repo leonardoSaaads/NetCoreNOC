@@ -154,9 +154,9 @@ def slow_card_failure(b: Builder) -> None:
         b.say(el, ("link_down",), f"ge-{slot}/0/{port}", at, clear_after=back)
     for link in b.estate.links_of(el.ip)[:3]:
         if b.rng.random() < 0.5:
-            far, port, _peer = _far(link, el.ip)
+            far, far_port, _peer = _far(link, el.ip)
             at = fail + b.spread(1.0)
-            b.say(_el(b, far), ("link_down",), port, at, clear_after=fix, far=el.ip)
+            b.say(_el(b, far), ("link_down",), far_port, at, clear_after=fix, far=el.ip)
     if fix is not None:
         b.say(el, ("board_removed",), f"slot-{slot}", fail + 0.6 * fix, clear_after=0.4 * fix)
         b.say(el, ("config_change",), "chassis", fail + fix + b.spread(120.0))

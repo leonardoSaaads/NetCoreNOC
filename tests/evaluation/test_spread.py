@@ -14,7 +14,7 @@ import pytest
 from synth import dataset, report, train
 from synth.catalogue import roles
 from synth.compose import FAMILIES, StreamSpec, compose, derived_rng
-from synth.emit import LINK_DOWN
+from synth.emit import LINK_DOWN, Event
 from synth.estate import build_estate
 from synth.evaluate import Outcome
 from synth.families import Builder, hosts
@@ -30,7 +30,7 @@ OPTICAL_ROLES = (
 )
 
 
-def _draw(family: str, seed: int) -> list:
+def _draw(family: str, seed: int) -> list[Event]:
     for attempt in range(40):
         estate = build_estate(derived_rng("spread-test", family, seed, attempt))
         if hosts(estate, FAMILIES[family]):
