@@ -182,16 +182,28 @@ async def test_f27_denied_governance_attempts_are_audited(store: Store) -> None:
     assert ("scope.policy.update", "denied") in rows
 
 
-def test_f27_recovery_capabilities_stay_within_the_admin_ceiling() -> None:
-    """DECISIONS #64: the one union in the resolver may not breach the bound it protects."""
-    assert rbac.ceiling("admin") >= rbac.RECOVERY_CAPABILITIES
-    stripped = rbac.parse_capability_policy(json.dumps({"version": 1, "roles": {"admin": []}}))
-    resolved = rbac.resolve_capabilities("admin", None, stripped)
-    assert resolved == rbac.RECOVERY_CAPABILITIES
-    assert resolved <= rbac.ceiling("admin")
-    # An admin stripped to nothing keeps exactly the repair surface — and nothing else.
-    assert "users.manage" not in resolved and "audit.read" not in resolved
-    assert "rbac.write" in resolved and "scope.write" in resolved
+def test_the_admin_role_is_never_narrowed_and_an_admin_token_is() -> None:
+    """DECISIONS #443 (superseding #64): a person with the admin role holds the whole ceiling.
+
+    A role entry for admin and a principal entry for an admin person are inert — the resolver does
+    not read them — while a service token of the admin role is narrowed like any other program,
+    with no recovery set unioned back (a narrowed program that kept `rbac.write` could widen
+    itself, which is what narrowing it is meant to prevent).
+    """
+    stripped = rbac.parse_capability_policy(
+        json.dumps(
+            {
+                "version": 1,
+                "roles": {"admin": []},
+                "principals": {"user:1": [], "token:9": ["stats.read"]},
+            }
+        )
+    )
+    assert rbac.resolve_capabilities("admin", None, stripped) == rbac.ceiling("admin")
+    assert rbac.resolve_capabilities("admin", "user:1", stripped) == rbac.ceiling("admin")
+    assert rbac.resolve_capabilities("admin", "token:9", stripped) == frozenset({"stats.read"})
+    # The write-time check names the entry rather than storing something that will do nothing.
+    assert rbac.FIXED_ROLE_REFUSAL in rbac.capability_policy_errors(stripped)
 
 
 # --- F28: one decision site --------------------------------------------------------------
@@ -278,21 +290,37 @@ async def test_f29_malformed_scope_policy_denies_viewer_and_editor(store: Store)
 
 
 async def test_f29_admin_cannot_be_locked_out_by_a_well_formed_policy(store: Store) -> None:
-    """The lockout the malformed-policy fallback would never catch (DECISIONS #64)."""
+    """The lockout the malformed-policy fallback would never catch (DECISIONS #443).
+
+    Under #64 an admin stripped by a stored policy kept only `rbac.*` and `scope.*` — reachable at
+    the API, unreachable in the console, whose People & access screen needs `users.manage`. Now a
+    stored admin entry (an older version's, or a hand-edited database's) is inert, and the write
+    routes refuse to store a new one.
+    """
     _engine, _queue, app = await authutil.make_env(store)
     await _store_policy_directly(store, "rbac", {"version": 1, "roles": {"admin": []}})
     admin = await authutil.client_as(app, "admin")
     try:
-        # Stripped of everything, an admin retains exactly the repair surface...
-        assert (await admin.get("/api/rbac")).status_code == 200
-        assert (await admin.get("/api/scope")).status_code == 200
-        # ...and nothing more, so this is a real restriction and not a special case that ignores
-        # the policy.
-        assert (await admin.get("/api/users")).status_code == 403
-        assert (await admin.get("/api/audit")).status_code == 403
-        # And the repair works.
-        assert (await admin.post("/api/rbac", json={"clear": True})).status_code == 200
-        assert (await admin.get("/api/users")).status_code == 200
+        for path in ("/api/users", "/api/audit", "/api/config", "/api/rbac", "/api/stats"):
+            assert (await admin.get(path)).status_code == 200, path
+        me = (await admin.get("/api/me")).json()
+        assert set(me["capabilities"]) == rbac.ceiling("admin")
+        refused = await admin.post(
+            "/api/rbac/subject", json={"subject": "role:admin", "capabilities": ["self.read"]}
+        )
+        assert refused.status_code == 400 and "admin role" in refused.json()["detail"]
+        admin_id = me["user_id"]
+        refused = await admin.post(
+            "/api/rbac/subject", json={"subject": f"user:{admin_id}", "capabilities": []}
+        )
+        assert refused.status_code == 400
+        refused = await _write_policy(
+            admin, "rbac", {"version": 1, "principals": {f"user:{admin_id}": ["self.read"]}}
+        )
+        assert refused.status_code == 400
+        # Clearing the stale entry is always allowed.
+        cleared = await admin.post("/api/rbac/subject", json={"subject": "role:admin"})
+        assert cleared.status_code == 200, cleared.text
     finally:
         await admin.aclose()
 

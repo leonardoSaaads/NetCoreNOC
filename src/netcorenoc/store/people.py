@@ -43,9 +43,10 @@ class PeopleMixin(StoreBase):
         return dict(row) if row else None
 
     async def person(self, user_id: int) -> dict[str, Any] | None:
-        """One account as a person: id, username, display name, role, photo digest."""
+        """One account as a person: id, username, display name, address, role, photo digest."""
         cur = await self.conn.execute(
-            "SELECT u.id, u.username, u.display_name, u.role, a.sha256 AS avatar FROM user u "
+            "SELECT u.id, u.username, u.display_name, u.email, u.role, a.sha256 AS avatar "
+            "FROM user u "
             "LEFT JOIN user_avatar a ON a.user_id=u.id WHERE u.id=?",
             (user_id,),
         )

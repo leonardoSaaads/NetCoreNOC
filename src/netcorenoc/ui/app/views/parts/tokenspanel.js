@@ -5,6 +5,9 @@
  * can (its own entry in the capability policy), and is shown **once**: the appliance keeps only its
  * hash. The screen is built around those three facts — create with a name, a purpose and a role;
  * copy the value from the one place it ever appears, with a working example beside it; revoke.
+ *
+ * v0.30.0: and what to do with it — a three-step start and the API reference (`apiref.js`), read
+ * from the appliance's own OpenAPI schema and narrowed to what a chosen role or token may call.
  */
 
 import { html, Component, cx } from "../../dom.js";
@@ -15,6 +18,7 @@ import { can } from "../../session.js";
 import { relative, timeTitle } from "../../format.js";
 import { CapGrid, sameSet } from "./capgrid.js";
 import { RoleSwitch, accessOf } from "./people.js";
+import { ApiReference, QuickStart } from "./apiref.js";
 
 class Issued extends Component {
   constructor(props) {
@@ -38,8 +42,9 @@ class Issued extends Component {
           onFocus=${(e) => e.currentTarget.select()} />
         <button type="button" class="primary" onClick=${() => this.copy()}>${copied ? "Copied" : "Copy"}</button>
       </div>
-      <p class="muted">Use it as a bearer token:</p>
-      <pre class="token-example">curl -H "Authorization: Bearer ${token.token.slice(0, 6)}…" ${host}/api/situations</pre>
+      <p class="muted">Use it as a bearer token — kept in a variable, not in a script:</p>
+      <pre class="token-example">export NETCORENOC_TOKEN='${token.token.slice(0, 6)}…'
+curl -H "Authorization: Bearer $NETCORENOC_TOKEN" ${host}/api/me</pre>
       <button type="button" onClick=${onDone}>Done</button>
     </div>`;
   }
@@ -78,6 +83,7 @@ export class TokensPanel extends Component {
     const active = tokens.filter((t) => !t.revoked);
     return html`<div class="tokens">
       ${issued ? html`<${Issued} token=${issued} onDone=${() => this.setState({ issued: null })} />` : null}
+      <${QuickStart} />
       <form class="token-form panel-block" onSubmit=${(e) => this.create(e)} autocomplete="off">
         <h3>New token <${InfoTip} label="What is a service token?">A credential for a program —
           Grafana, a script, a ticketing system — to use the API without a person signing in. It
@@ -121,7 +127,7 @@ export class TokensPanel extends Component {
             </div>
             ${editing ? html`<div class="token-access">
               <${CapGrid} all=${rbac.all_capabilities} ceiling=${access.ceiling} baseline=${access.baseline}
-                locked=${access.locked} minimum=${rbac.minimum_role} value=${caps} roleName=${t.role}
+                minimum=${rbac.minimum_role} value=${caps} roleName=${t.role}
                 onChange=${(next) => this.setState({ caps: next })} />
               <div class="roles-foot">
                 <button type="button" class="primary" onClick=${() => this.saveAccess(t, caps)}>Save access</button>
@@ -133,6 +139,7 @@ export class TokensPanel extends Component {
       </ul>
       ${tokens.length ? html`<p class="muted">${active.length} active of ${tokens.length}.</p>`
         : html`<p class="muted">No tokens yet.</p>`}
+      <${ApiReference} rbac=${rbac} tokens=${tokens} />
     </div>`;
   }
 }

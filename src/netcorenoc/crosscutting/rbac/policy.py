@@ -9,11 +9,11 @@ decided?" finds one file.
 
     resolve_capabilities(role, ref, policy) ⊆ ceiling(role)
 
-holds because an intersection cannot exceed its first operand, and the one union is with
-`RECOVERY_CAPABILITIES`, itself a compiled subset of the admin ceiling (asserted at import in
-`tables.py`). A stored policy naming a capability above a role's ceiling is therefore **inert** —
-not "rejected", *inert* — however it reached the table: through the API, through a future second
-write path, through a bad migration, or through ``sqlite3`` on a stolen or restored database file.
+holds because every step of the resolution is an intersection, and an intersection cannot exceed
+its first operand. A stored policy naming a capability above a role's ceiling is therefore
+**inert** — not "rejected", *inert* — however it reached the table: through the API, through a
+future second write path, through a bad migration, or through ``sqlite3`` on a stolen or restored
+database file.
 That is what makes escalation impossible by construction rather than forbidden by a check that only
 guards the paths it happens to sit on (DECISIONS #53).
 
@@ -30,8 +30,8 @@ from typing import Any
 from netcorenoc.crosscutting.rbac.route_map import ROUTE_PERMISSIONS
 from netcorenoc.crosscutting.rbac.tables import (
     _CEILINGS,
+    FIXED_ROLES,
     PERMISSIONS,
-    RECOVERY_CAPABILITIES,
     ROLE_RANK,
 )
 
@@ -146,25 +146,40 @@ def resolve_capabilities(
 
         resolve_capabilities(role, ref, policy) ⊆ ceiling(role)
 
-    holds because an intersection cannot exceed its first operand, and the one union is with
-    `RECOVERY_CAPABILITIES`, itself a compiled subset of the admin ceiling (asserted at import).
-    A policy row naming an above-ceiling capability changes nothing at all.
+    holds because there is no union: every step is an intersection, and an intersection cannot
+    exceed its first operand. A policy row naming an above-ceiling capability changes nothing.
 
     `policy is None` (no policy stored) and `policy.malformed` both resolve to the ceiling — the
     shipped safe baseline, i.e. exactly v0.6.0 (DECISIONS #54, #55).
+
+    **The admin role and every admin person hold the whole ceiling** (v0.30.0, DECISIONS #443,
+    superseding #64). Narrowing them protected nothing a person could not undo — an admin holds
+    ``rbac.write`` — and it could leave the console unusable: `users.manage` gates the screen the
+    repair lives on. A **token** with the admin role may still be narrowed, because a program's
+    least privilege is the point of narrowing one, and a program never has to repair the perimeter.
     """
     capabilities = ceiling(role)
-    if policy is not None and not policy.malformed:
-        granted_role = policy.roles.get(role)
-        if granted_role is not None:
-            capabilities &= granted_role
-        if principal_ref is not None:
-            granted_principal = policy.principals.get(principal_ref)
-            if granted_principal is not None:
-                capabilities &= granted_principal
-    if role == "admin":
-        capabilities |= RECOVERY_CAPABILITIES
+    if policy is None or policy.malformed or (role in FIXED_ROLES and not _is_token(principal_ref)):
+        return capabilities
+    granted_role = policy.roles.get(role) if role not in FIXED_ROLES else None
+    if granted_role is not None:
+        capabilities &= granted_role
+    if principal_ref is not None:
+        granted_principal = policy.principals.get(principal_ref)
+        if granted_principal is not None:
+            capabilities &= granted_principal
     return capabilities
+
+
+def _is_token(principal_ref: str | None) -> bool:
+    return principal_ref is not None and principal_ref.startswith("token:")
+
+
+#: What an admin is told when a write would narrow the admin role or an admin person (#443).
+FIXED_ROLE_REFUSAL = (
+    "the admin role always holds every capability, so the appliance can always be administered; "
+    "to give someone less, give them the editor role and narrow that"
+)
 
 
 def capability_policy_errors(policy: CapabilityPolicy) -> list[str]:
@@ -180,6 +195,9 @@ def capability_policy_errors(policy: CapabilityPolicy) -> list[str]:
     for role, capabilities in policy.roles.items():
         if role not in ROLE_RANK:
             problems.append(f"unknown role {role!r}")
+            continue
+        if role in FIXED_ROLES:
+            problems.append(FIXED_ROLE_REFUSAL)
             continue
         for capability in sorted(capabilities):
             if capability not in PERMISSIONS:

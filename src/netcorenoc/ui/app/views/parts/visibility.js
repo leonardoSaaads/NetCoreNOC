@@ -4,6 +4,9 @@
  * The scope policy is a list of selectors per role or person, so it stays a document: a small,
  * reviewable JSON with its history and a restore per version. The one sentence that must never be
  * hidden is kept on the screen, not behind a tip: scoping is presentation, not tenant isolation.
+ *
+ * v0.30.0: worked examples beside the editor (`scopeexamples.js`) — the common shapes as complete
+ * documents, the selector forms, and the ids a principal entry names.
  */
 
 import { html, Component } from "../../dom.js";
@@ -11,6 +14,7 @@ import { post } from "../../api.js";
 import { InfoTip } from "../../info.js";
 import { can } from "../../session.js";
 import { plural, relative, timeTitle } from "../../format.js";
+import { ScopeExamples } from "./scopeexamples.js";
 
 const BLANK = JSON.stringify({ version: 1, roles: {}, principals: {} }, null, 2);
 
@@ -39,7 +43,7 @@ export class VisibilityPanel extends Component {
     this.write({ document: document_, note: "" });
   }
 
-  render({ scope }, { text, error, busy }) {
+  render({ scope, users, tokens }, { text, error, busy }) {
     const writable = can("scope.write");
     return html`<div class="visibility">
       <p class="warnbox">Visibility is a presentation control, <b>not tenant isolation</b>.
@@ -56,8 +60,8 @@ export class VisibilityPanel extends Component {
         <div class="role-card static"><b>admin</b><span>everything, always</span></div>
       </div>
       <label class="pe-field"><span>Policy
-        <${InfoTip} label="Selectors">Per role or person (user:&lt;id&gt;): ne:&lt;id&gt;, an address,
-          a CIDR such as 10.1.0.0/16, or a glob such as 10.0.*. Labels never match.<//></span>
+        <${InfoTip} label="Selectors">Per role or person (${"user:<id>"}): ${"ne:<id>"}, an address,
+          a CIDR such as 10.1.0.0/16, or a glob such as 10.0.*. Labels never match. Examples below.<//></span>
         <textarea class="govjson" rows="8" value=${text} readonly=${!writable}
           onInput=${(e) => this.setState({ text: e.currentTarget.value })}></textarea></label>
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
@@ -66,6 +70,8 @@ export class VisibilityPanel extends Component {
         ${scope.configured ? html`<button type="button" disabled=${busy}
           onClick=${() => this.write({ clear: true })}>Show everything</button>` : null}
       </div>` : null}
+      <${ScopeExamples} users=${users} tokens=${tokens} writable=${writable}
+        onUse=${(next) => this.setState({ text: next, error: null })} />
       ${(scope.history || []).length ? html`<ol class="roles-history">
         ${scope.history.map((h) => html`<li key=${h.id}>
           <span class="mono">v${h.id}</span><span>${h.note || "scope"}</span>

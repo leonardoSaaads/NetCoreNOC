@@ -173,8 +173,8 @@ async def test_authorization_matrix_with_a_policy_active(store: Store) -> None:
 
     The expectation is regenerated from the **resolver** rather than from `role_allows`, so this
     checks what v0.7.0 actually enforces. The policy takes `situations.read` and `timeline.read`
-    away from viewer and editor and strips admin to a small set; every route must follow the
-    resolved answer, and no route may become reachable that the ceiling did not already allow.
+    away from viewer and editor and names admin, which no policy narrows (#443); every route must
+    follow the resolved answer, and no route may become reachable that the ceiling did not allow.
     """
     _engine, _queue, app = await authutil.make_env(store)
     policy_doc: dict[str, object] = {
@@ -253,7 +253,7 @@ AUTHORITY_TABLES: dict[str, str] = {
     "ROLE_RANK": "tables",
     "PERMISSIONS": "tables",
     "AUDITED_DENIED_PERMISSIONS": "tables",
-    "RECOVERY_CAPABILITIES": "tables",
+    "FIXED_ROLES": "tables",
     "_CEILINGS": "tables",
     "ROUTE_PERMISSIONS": "route_map",
     "PUBLIC_ROUTES": "route_map",

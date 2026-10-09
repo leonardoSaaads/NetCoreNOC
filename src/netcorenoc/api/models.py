@@ -60,6 +60,13 @@ from netcorenoc.api.models_restructure import MergeIn as MergeIn
 from netcorenoc.api.models_restructure import MoveIn as MoveIn
 from netcorenoc.api.models_restructure import ProposalIn as ProposalIn
 from netcorenoc.api.models_restructure import SplitIn as SplitIn
+from netcorenoc.api.models_settings import CommunitiesIn as CommunitiesIn
+from netcorenoc.api.models_settings import EmailIn as EmailIn
+from netcorenoc.api.models_settings import EmailTestIn as EmailTestIn
+from netcorenoc.api.models_settings import ResetConfirmIn as ResetConfirmIn
+from netcorenoc.api.models_settings import ResetRequestIn as ResetRequestIn
+from netcorenoc.api.models_settings import SnmpIn as SnmpIn
+from netcorenoc.api.models_settings import SnmpUserIn as SnmpUserIn
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.correlate import scoring
 from netcorenoc.ingest.receiver import parse_allowlist
@@ -272,6 +279,8 @@ class UserIn(BaseModel):
 
 class ProfileIn(BaseModel):
     display_name: str | None = Field(default=None, max_length=MAX_DISPLAY_NAME)
+    # v0.30.0 (ADR #445): where a reset link goes. Applied only when sent; "" or null clears it.
+    email: str | None = Field(default=None, max_length=254)
 
     _clean = field_validator("display_name")(_printable)
 

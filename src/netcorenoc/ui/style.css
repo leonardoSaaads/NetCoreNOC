@@ -61,6 +61,11 @@
    * what fits on a screen. 28 is the row height, so a control is a row. */
   --tap: 28px;
   --nav-w: 232px;
+  /* **The one height the wordmark and the top bar share** (v0.30.0). Each used to size itself from
+     its own padding and contents — 48 px beside 55 px — so the sidebar's rule under the wordmark
+     ran 7 px above the bar's, a step the eye reads as a defect on every screen. One token, and
+     both rules sit on the same line by construction rather than by two numbers agreeing. */
+  --bar-h: 56px;
   /* Collapsed: one 28 px control plus the item's own padding on each side. Derived from `--tap`
      rather than chosen, so the day the touch floor moves the collapsed rail moves with it. */
   --nav-w-collapsed: calc(var(--tap) + 2 * var(--space-3));
@@ -115,6 +120,17 @@
   --sev-warning-line: #6fa8d6;
   --sev-unplaced-fill: #2b323d;
   --sev-unplaced-ink: #a8b2be;
+
+  /* ---- the sign-in artwork (v0.30.0) ------------------------------------------------
+   * `login-bg.svg` is dark in both themes — a NOC wall at night — so the words written straight
+   * on it have their own ink, defined once here and deliberately NOT redefined by the light theme.
+   * The card on top of it follows the theme like every other surface. */
+  --art-ink: #e8f0fc;
+  --art-ink-muted: #a9bad3;
+  --art-base: #050b16;
+  --art-scrim: rgba(5, 11, 22, 0.62);
+  --art-accent: #6fb3ff;
+  --shadow-2: 0 18px 50px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* System preference decides only when no explicit choice is stamped. */
@@ -415,7 +431,7 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 /* A link since v0.15.3: it was a <div> and clicking the product's own name did nothing. */
 .brand {
   display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-3);
+  height: var(--bar-h); padding: 0 var(--space-3);
   border-bottom: 1px solid var(--line);
   margin-bottom: var(--space-3);
   color: var(--fg);
@@ -478,7 +494,7 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .sidebar-collapsed .nav-heading { display: none; }
 .sidebar-collapsed .nav-item { justify-content: center; padding: var(--space-1) var(--space-3); }
-.sidebar-collapsed .brand { justify-content: center; padding: var(--space-3) 0; }
+.sidebar-collapsed .brand { justify-content: center; padding: 0; }
 .sidebar-collapsed .nav-count {
   position: absolute; margin-left: 1.1em; margin-top: -1em;
   min-width: 8px; height: 8px; padding: 0; border-radius: 50%;
@@ -494,7 +510,7 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
+  min-height: var(--bar-h); padding: var(--space-1) var(--space-4);
   border-bottom: 1px solid var(--line);
   background: var(--bg-raised);
   flex-wrap: wrap;
@@ -1645,8 +1661,8 @@ pre.refusal-reason {
 .pw-meter-over .pw-fill { background: var(--alarm); width: 100% !important; }
 .pw-meter-over .pw-words { color: var(--alarm); }
 
-/* A declaration, not a control (V.3): an icon, a sentence, no affordance. */
-.signin-notes { margin-top: var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-3); }
+/* A declaration, not a control (V.3): an icon, a sentence, no affordance. Used by the fixed-role
+   note on People & access and the two-factor statement on Your account. */
 .note-line {
   display: flex; align-items: flex-start; gap: var(--space-2);
   font-size: var(--fs-sm); color: var(--fg-muted); margin: 0 0 var(--space-2); max-width: 70ch;
@@ -1654,28 +1670,63 @@ pre.refusal-reason {
 .note-line .icon-svg { flex: none; margin-top: 0.15em; color: var(--fg-dim); }
 .note-line b { color: var(--fg); font-weight: 600; }
 
-/* ---------- login + noscript ---------- */
+/* ---------- sign-in (v0.30.0, ADR #446) ----------
+ *
+ * Two columns over the artwork: what the product is, and the card. The scrim deepens toward the
+ * card so the card's edge always reads against the picture, whatever part of it lands there. */
 
-.login { display: flex; align-items: center; justify-content: center; height: 100vh; padding: var(--space-4); }
-.login-card {
-  width: min(380px, 100%); background: var(--bg-raised);
-  border: 1px solid var(--line); border-radius: var(--radius-2);
-  padding: var(--space-5); box-shadow: var(--shadow-1);
+.login {
+  position: relative; isolation: isolate;
+  min-height: 100vh; display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  align-items: center; gap: var(--space-6);
+  padding: var(--space-6) clamp(var(--space-4), 6vw, 112px);
+  background: var(--art-base) url("/login-bg.svg") center / cover no-repeat;
+  color: var(--art-ink);
 }
-.login-card h1 { font-size: var(--fs-xl); }
-.login-card h1 span { color: var(--accent); }
-/* DIRECT CHILDREN ONLY, and that is the whole of F86.
-   These two rules were written when the card held one input and one button, so naming the elements
-   and naming what they were meant the same thing. Then the card gained a composed
-   `PasswordInput` — an input and a reveal button nested inside `.pw-field > .pw-row` — and a
-   descendant selector reached them too. `width: 100%` on a `flex: none` item is a base size it
-   refuses to shrink below, so the reveal button claimed the entire row and the password field
-   rendered 18 px wide; `margin-top` on one side of the row and `margin-bottom` on the other put
-   them 8 px out of line. A selector that says "every button in this card" keeps acquiring meaning
-   every time the card grows, which is the same shape as F85's glob-per-level. `>` says what these
+.login::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, var(--art-scrim) 70%, var(--art-scrim) 100%);
+}
+.login-hero { max-width: 34rem; }
+.login-brand { font-size: 32px; font-weight: 300; letter-spacing: -0.02em; }
+.login-brand b { color: var(--art-accent); font-weight: 600; }
+.login-brand .brand-mark { color: var(--art-accent); font-size: 26px; }
+.login-tagline { font-size: var(--fs-xl); color: var(--art-ink); margin: var(--space-3) 0 var(--space-5); }
+.login-points { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.login-points li {
+  position: relative; padding-left: var(--space-5); color: var(--art-ink-muted); line-height: 1.5;
+}
+.login-points li::before {
+  content: ""; position: absolute; left: 0; top: 0.5em; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--art-accent); box-shadow: 0 0 10px var(--art-accent);
+}
+.login-panel { display: flex; justify-content: center; }
+.login-card {
+  width: 100%; max-width: 420px; background: var(--bg-raised); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: var(--space-6) var(--space-5); box-shadow: var(--shadow-2);
+}
+.login-head { margin-bottom: var(--space-4); }
+.login-head h1 { font-size: var(--fs-lg); font-weight: 400; margin: 0 0 var(--space-4); color: var(--fg-muted); }
+.login-head h1 span { color: var(--accent); font-weight: 600; }
+.login-head h2 { font-size: var(--fs-2xl); margin: 0 0 var(--space-1); }
+.login-head .hint { margin: 0; }
+/* DIRECT CHILDREN ONLY, and that is the whole of F86: a descendant selector reached the composed
+   `PasswordInput`'s reveal button too, which then claimed the entire row. `>` says what these
    rules have always meant: the card's OWN field and the card's OWN submit button. */
-.login-card > input { width: 100%; margin-bottom: var(--space-2); }
-.login-card > button { width: 100%; margin-top: var(--space-2); }
+.login-card > input { width: 100%; margin-bottom: var(--space-3); min-height: 36px; }
+.login-card > button { width: 100%; margin-top: var(--space-3); min-height: 36px; }
+.login-card .pw-field { margin-bottom: var(--space-3); }
+.login-card .pw-row input { min-height: 36px; }
+.login-foot { margin: var(--space-4) 0 0; text-align: center; font-size: var(--fs-sm); }
+.login-foot code { font-size: var(--fs-xs); }
+@media (max-width: 899px) {
+  .login { grid-template-columns: 1fr; justify-items: center; padding: var(--space-4); }
+  .login-hero { display: none; }
+  .login::before { background: var(--art-scrim); }
+}
+
 .noscript { max-width: 60ch; margin: 10vh auto; padding: var(--space-4); }
 
 /* ================= THREE WIDTHS (DECISIONS #237) =================================
@@ -1726,7 +1777,7 @@ pre.refusal-reason {
     display: flex; align-items: center; gap: var(--space-3);
     padding: 0 var(--space-3) 0 0; overflow-x: auto;
   }
-  .brand { border-bottom: 0; margin-bottom: 0; flex: none; }
+  .brand { border-bottom: 0; margin-bottom: 0; flex: none; height: auto; padding: var(--space-2) var(--space-3); }
   .nav { display: flex; gap: var(--space-3); min-width: 0; }
   .nav-group { margin-bottom: 0; display: flex; align-items: center; gap: var(--space-2); }
   /* The group headings become inline dividers rather than stacked labels: "Operations"
@@ -2754,7 +2805,7 @@ button.mw-row-name {
 .capitem { display: flex; align-items: center; gap: var(--space-2); min-height: 30px; font-size: var(--fs-sm); cursor: pointer; }
 .capitem input { margin: 0; }
 .cap-above, .cap-role-off { color: var(--fg-dim); cursor: not-allowed; }
-.cap-locked { color: var(--fg-muted); }
+.fixed-note { margin: 0 0 var(--space-3); }
 .caplock { margin-left: auto; font-size: 10px; border: 1px solid var(--line-strong); border-radius: 3px; padding: 0 3px; color: var(--fg-dim); }
 .roles-cards { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); }
 .role-card {
@@ -2771,6 +2822,11 @@ button.mw-row-name {
 .roles-history li { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr) auto auto; gap: var(--space-2); align-items: center; padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
 .token-form h3 { display: flex; align-items: center; gap: var(--space-1); margin: 0 0 var(--space-2); }
 .token-fields { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; }
+/* One baseline for the row: the role switch drops the gap `.seg` keeps under itself elsewhere, and
+   the text fields take the switch's height, so labels and controls line up across the form. */
+.token-fields .seg { margin-bottom: 0; }
+.token-fields input, .token-fields > button { min-height: 32px; }
+.check-row input[type="checkbox"] { margin-top: -4px; }
 .token-purpose { flex: 1 1 16rem; }
 .token-issued { border: 1px solid var(--accent); border-radius: var(--radius-2); padding: var(--space-3); margin-bottom: var(--space-3); background: color-mix(in srgb, var(--accent) 8%, var(--bg-raised)); }
 .token-value { display: flex; gap: var(--space-2); }
@@ -2790,9 +2846,8 @@ button.mw-row-name {
 .account-v2 { display: flex; flex-direction: column; gap: var(--space-4); max-width: 64rem; }
 .acct-profile { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; }
 .acct-id { flex: 1 1 18rem; display: flex; flex-direction: column; gap: var(--space-2); }
-.acct-name-row { display: flex; gap: var(--space-2); }
-.acct-name-row input { flex: 1 1 auto; min-width: 0; font-size: var(--fs-lg, 1.1rem); }
 .acct-handle { display: flex; gap: var(--space-2); align-items: center; margin: 0; }
+.acct-handle button { margin-left: auto; }
 .acct-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: var(--space-4); align-items: start; }
 .acct-security h3, .acct-access h3 { display: flex; align-items: center; gap: var(--space-1); margin: 0 0 var(--space-3); }
 .acct-summary { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); }
@@ -3023,3 +3078,75 @@ table.data.league-table td, table.data.league-table th { white-space: nowrap; }
 .sit > .proposal { margin: 0 var(--space-3) var(--space-2); }
 .mchart-wrap { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .mchart-wrap > .chart-block { margin: 0; }
+
+/* ---------- v0.30.0: Settings → SNMP and Email, the API reference, visibility examples ---------- */
+
+.badge-ok { color: var(--quiet); border-color: var(--quiet); }
+.check-row { display: flex; align-items: flex-start; gap: var(--space-2); margin: var(--space-2) 0; color: var(--fg); }
+.check-row input { flex: none; }
+/* A password field inside a settings grid labels itself like the fields beside it. */
+.email-grid .pw-field > label, .snmp-user-grid .pw-field > label {
+  font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.email-grid .pw-field, .snmp-user-grid .pw-field { margin-bottom: 0; }
+.save-bar { position: sticky; bottom: calc(-1 * var(--space-4)); z-index: 2; padding: var(--space-3) 0; background: var(--bg); border-top: 1px solid var(--line); box-shadow: 0 -8px 16px -12px rgba(0, 0, 0, 0.5); }
+.inline-add { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; }
+.inline-add input { min-width: 14rem; }
+.chip-list { list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; }
+.chip-list .chip-static { display: inline-flex; align-items: center; gap: var(--space-1); font-family: var(--mono); padding: 2px var(--space-2); }
+.chip-new { border-style: dashed; color: var(--accent); }
+.chip-x { border: 0; background: none; padding: 0 2px; min-height: 0; color: var(--fg-muted); cursor: pointer; font-size: var(--fs-md); line-height: 1; }
+.chip-x:hover { color: var(--alarm); }
+
+.snmp-versions { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-2); }
+.snmp-version { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2); cursor: pointer; }
+.snmp-version.on { border-color: var(--accent); background: var(--bg-hover); }
+.snmp-version > span { display: flex; flex-direction: column; gap: 2px; }
+.snmp-users { list-style: none; margin: 0 0 var(--space-3); padding: 0; }
+.snmp-user-row { display: grid; grid-template-columns: minmax(6rem, 1fr) auto minmax(8rem, 1fr) minmax(8rem, 1.2fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+.snmp-user-form { margin-top: var(--space-3); background: var(--bg-sunken); }
+/* Two columns, read in pairs: name and level, then each protocol beside its passphrase. */
+.snmp-user-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); align-items: start; max-width: 56rem; }
+.snmp-user-grid .seg { flex-wrap: nowrap; margin-bottom: 0; }
+.snmp-user-grid select, .snmp-user-grid input { width: 100%; }
+.snmp-snippet { margin: var(--space-3) 0; }
+.snmp-snippet summary { cursor: pointer; font-weight: 600; }
+
+.provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: var(--space-2); }
+.provider { min-height: 44px; text-align: left; padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); }
+.provider.on { border-color: var(--accent); background: var(--bg-hover); box-shadow: inset 3px 0 0 var(--accent); font-weight: 600; }
+.provider-note { margin-top: var(--space-3); }
+.email-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-3); align-items: start; margin-bottom: var(--space-3); }
+.email-grid input, .email-grid select { width: 100%; }
+.email-wide { grid-column: 1 / -1; }
+.email-server summary { cursor: pointer; font-weight: 600; margin-bottom: var(--space-3); }
+.email-test { margin-top: var(--space-3); }
+
+.apiref-start ol { margin: 0; padding-left: 1.2rem; display: grid; gap: var(--space-2); }
+.apiref-bar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; margin-bottom: var(--space-3); }
+.apiref-bar input[type="search"] { min-width: 16rem; flex: 1; }
+.apiref-who { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--fg-muted); }
+.apiref-group h4 { margin: var(--space-4) 0 var(--space-1); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); }
+.apiref-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-2); }
+.apiref-list > li + li { border-top: 1px solid var(--line); }
+.apiref-row { display: grid; grid-template-columns: 4.5rem minmax(12rem, 22rem) minmax(0, 1fr); gap: var(--space-3); align-items: center; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: var(--space-2) var(--space-3); }
+.apiref-row:hover, .apiref-row.on { background: var(--bg-hover); }
+.apiref-path { overflow-wrap: anywhere; }
+.apiref-sum { color: var(--fg-muted); }
+.apiref-detail { padding: var(--space-2) var(--space-3) var(--space-3); background: var(--bg-sunken); }
+.apiref-params { margin: var(--space-2) 0; }
+.verb { display: inline-block; min-width: 3.8rem; text-align: center; font-family: var(--mono); font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-1); padding: 1px 4px; border: 1px solid currentColor; }
+.verb-get { color: var(--accent); }
+.verb-post { color: var(--quiet); }
+.verb-delete { color: var(--alarm); }
+
+.scope-help h4 { margin: var(--space-4) 0 var(--space-2); }
+.scope-examples { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: var(--space-3); }
+.scope-example { border: 1px solid var(--line); border-radius: var(--radius-2); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
+.scope-example p { margin: 0; font-size: var(--fs-sm); }
+.scope-example pre { flex: 1; margin: var(--space-1) 0; }
+.scope-ids { margin-top: var(--space-3); }
+.scope-ids summary { cursor: pointer; }
+@media (max-width: 719px) {
+  .snmp-user-row, .apiref-row, .snmp-user-grid { grid-template-columns: 1fr; gap: var(--space-1); }
+}

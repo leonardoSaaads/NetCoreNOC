@@ -199,6 +199,14 @@ _UI_MODULES = (
     "app/views/parts/league.js",
     "app/views/parts/leaguecharts.js",
     "app/views/parts/leaguecompare.js",
+    # v0.30.0: recovery on the sign-in card, Settings → SNMP and Email, the API reference and the
+    # visibility examples (ADRs #444-#446).
+    "app/recover.js",
+    "app/views/parts/snmp.js",
+    "app/views/parts/snmpuser.js",
+    "app/views/parts/email.js",
+    "app/views/parts/apiref.js",
+    "app/views/parts/scopeexamples.js",
 )
 
 _VENDOR_ASSETS = (
@@ -216,6 +224,8 @@ STATIC_ASSETS = {
     # `img-src 'self'`. A browser fetches a favicon as an image, so that repair would have traded
     # a 404 for a silent CSP violation. An asset from this origin is what the policy permits.
     "favicon.svg": "image/svg+xml",
+    # v0.30.0 (ADR #446): the sign-in artwork, self-hosted because `img-src 'self'`.
+    "login-bg.svg": "image/svg+xml",
     # RFC 9116 machine-readable security contact. Static, public, unauthenticated, additive to
     # this allowlist (not a new dynamic surface); it is served under the same CSP/security-headers
     # middleware and shipped in the package (ui/.well-known/security.txt).

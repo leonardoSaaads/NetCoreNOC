@@ -220,21 +220,16 @@ AUDITED_DENIED_PERMISSIONS: frozenset[str] = frozenset(
     }
 )
 
-# v0.7.0 (DECISIONS #64): capabilities an admin can never lose to a stored policy.
+# v0.30.0 (DECISIONS #443, superseding #64): the roles a stored policy can never narrow.
 #
-# `ceiling ∩ policy` otherwise lets a *well-formed* policy remove `rbac.write` from the `admin`
-# role, leaving no authenticated path to repair the perimeter — a hard lockout that the
-# malformed-policy fallback would never catch, because the policy is not malformed. These are
-# unioned back for admin inside `resolve_capabilities`, and because the set is a **subset of
-# ceiling("admin")** the union cannot leave the ceiling: `resolved ⊆ ceiling(role)` still holds for
-# every input, which is the invariant the property test asserts.
-#
-# Deliberately tiny, and the *recovery* surface only: governance may still take `users.manage`,
-# `audit.read`, `config.write` or `scorer.write` away from an admin. It simply may not brick the
-# appliance.
-RECOVERY_CAPABILITIES: frozenset[str] = frozenset(
-    {"self.read", "rbac.read", "rbac.write", "scope.read", "scope.write"}
-)
+# #64 kept a five-capability "recovery set" for an admin stripped by a well-formed policy. It held
+# at the API and failed in the console: the repair lives on People & access, which `users.manage`
+# gates, so an admin who narrowed the admin role watched the screens it needed disappear. A person
+# with the admin role now holds the whole admin ceiling whatever the policy says — the policy is
+# inert for them, and the write routes refuse to store such an entry — so the appliance can always
+# be administered. Narrowing stays available where it means something: viewers, editors, and
+# service tokens of any role (a program's least privilege).
+FIXED_ROLES: frozenset[str] = frozenset({"admin"})
 
 # Per-role ceilings, computed once from the compiled map. This is exactly v0.6.0's `role_allows`
 # expressed as a set, which is what lets the resolver be an intersection.
@@ -247,7 +242,4 @@ _CEILINGS: dict[str, frozenset[str]] = {
     for role in ROLE_RANK
 }
 
-assert _CEILINGS["admin"] >= RECOVERY_CAPABILITIES, (
-    "RECOVERY_CAPABILITIES must be a subset of the admin ceiling, or unioning it back in "
-    "resolve_capabilities() would breach the ceiling invariant (DECISIONS #64)"
-)
+assert set(ROLE_RANK) >= FIXED_ROLES, "every fixed role must be a role"

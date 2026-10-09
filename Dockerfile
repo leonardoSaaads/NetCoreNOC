@@ -9,7 +9,10 @@ FROM python:3.12.8-slim AS build
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-RUN pip install --no-cache-dir --prefix=/install .
+# `.[snmpv3]` (v0.30.0, DECISIONS #444): the image decrypts SNMPv3 traps out of the box, so a
+# plug-and-play install never meets `v3-privacy-unavailable`. A pip install without the extra keeps
+# the five-dependency core.
+RUN pip install --no-cache-dir --prefix=/install ".[snmpv3]"
 
 FROM python:3.12.8-slim
 # The IANA time-zone database (v0.21.0, D2). **An operating-system package, not a Python runtime

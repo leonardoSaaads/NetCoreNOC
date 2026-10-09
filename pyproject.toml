@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netcorenoc"
-version = "0.29.0"
+version = "0.30.0"
 description = "Zero-configuration SNMP trap correlator: devices, topology, and root cause learned from the raw trap stream"
 readme = "README.md"
 license = "Apache-2.0"
@@ -20,6 +20,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# v0.30.0 (DECISIONS #444): SNMPv3 *privacy* — decrypting DES/3DES/AES traps — needs a vetted cipher
+# implementation, and the standard library has none. Optional, so the core stays five runtime
+# dependencies and a v1/v2c or authNoPriv deployment installs nothing more; the Docker image
+# installs it. Without it an encrypted trap is quarantined as `v3-privacy-unavailable`.
+snmpv3 = ["cryptography>=43"]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.24",
@@ -38,6 +43,8 @@ dev = [
     # backend has to already be importable here. A Python 3.12 venv ships no setuptools.
     # Dev/CI tooling only: the runtime dependency list above is unchanged at five.
     "setuptools>=69",
+    # The `snmpv3` extra, so the suite exercises every privacy protocol (DECISIONS #444).
+    "cryptography>=43",
 ]
 
 [project.urls]
@@ -99,11 +106,11 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 known-local-folder = [
     # tests/support/
     "apisource", "authutil", "behaviour_identity", "biasfixture", "dockerignore", "domdriver",
-    "leaguefixtures", "modelfixtures", "modelutil", "paths", "uifixtures", "util",
+    "fakesmtp", "leaguefixtures", "modelfixtures", "modelutil", "paths", "uifixtures", "util",
     # tests/lab/ (the simulated network element package)
     "ne",
     # tools/
-    "corpus_census", "trap_replay", "trappack_build",
+    "corpus_census", "login_art", "trap_replay", "trappack_build",
     # eval/
     "harness", "metrics", "simulation", "synth",
 ]

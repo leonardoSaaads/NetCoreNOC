@@ -682,11 +682,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # two UI modules net (the league's three added, `shippedjudge` gone; ADR #427).
     # v0.29.0: 210 -> 211 — one UI module, `parts/mwwhen.js` (the maintenance form's card 2, ADR
     # #440); no /api pair (the brief judge is a query parameter on `GET /api/judge`).
-    assert len(served) == 211, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.30.0: 211 -> 227 and 108 -> 117 — nine /api pairs (SNMP, email, recovery, the reference;
+    # ADRs #444-#446), six UI modules and the sign-in artwork.
+    assert len(served) == 227, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 108, (
+    assert len(api_pairs) == 117, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -844,11 +846,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # two UI modules net (the league's three added, `shippedjudge` gone; ADR #427).
     # v0.29.0: 210 -> 211 — one UI module, `parts/mwwhen.js` (the maintenance form's card 2, ADR
     # #440); no /api pair (the brief judge is a query parameter on `GET /api/judge`).
-    assert len(served) == 211, f"the served surface moved: {len(served)} method/path pairs"
+    # v0.30.0: 211 -> 227 and 108 -> 117 — nine /api pairs (SNMP, email, recovery, the reference;
+    # ADRs #444-#446), six UI modules and the sign-in artwork.
+    assert len(served) == 227, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 108, (
+    assert len(api_pairs) == 117, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1054,7 +1058,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # `POST /api/rbac/subject` by `rbac.write` — both capabilities' minimum role is `admin`.
     # v0.26.0: 32 -> 37. Switching the decider, autonomy's settings and its per-act log, and
     # starting and stopping a search — each capability's minimum role is `admin`.
-    assert len(ADMIN_ONLY) == 37, len(ADMIN_ONLY)
+    # v0.30.0: 37 -> 43. The SNMP policy (read, write), the SMTP server (read, write, test) and the
+    # API reference — `config.*` and `tokens.manage`, whose minimum role is `admin`.
+    assert len(ADMIN_ONLY) == 43, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).

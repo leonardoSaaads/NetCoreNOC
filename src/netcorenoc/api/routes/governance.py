@@ -5,8 +5,9 @@ history; each POST does exactly one of apply / rollback / clear through `_write_
 write path for both kinds, and every one of the three is audited with before and after.
 
 Nothing written here can escalate. The resolver intersects with the compiled ceiling, so the worst
-a hostile document achieves is taking capabilities away — and never the admin's recovery set
-(DECISIONS #53, #64). The 400 on an above-ceiling entry is a usability affordance, not the control.
+a hostile document achieves is taking capabilities away — and never from a person with the admin
+role, whom the resolver does not narrow (DECISIONS #53, #443). The 400 on an above-ceiling entry, or
+on an entry narrowing an admin, is a usability affordance, not the control.
 """
 
 from __future__ import annotations
@@ -127,6 +128,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
         return {"status": outcome, "policy_id": policy_id}
 
+    async def _refuse_narrowing_an_admin(principals: Any) -> None:
+        """400 when a whole document narrows a person whose role is fixed (#443). Usability only:
+        the resolver ignores such an entry anyway, so an admin is told now rather than surprised."""
+        if not isinstance(principals, dict):
+            return
+        async with store.lock:
+            users = {f"user:{u['id']}": u["role"] for u in await store.list_users()}
+        if any(users.get(ref) in rbac.FIXED_ROLES for ref in principals):
+            raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
+
     def _capability_problems(text: str) -> list[str]:
         return rbac.capability_policy_errors(rbac.parse_capability_policy(text))
 
@@ -158,7 +169,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 role: sorted(rbac.resolve_capabilities(role, None, policy))
                 for role in rbac.ROLE_RANK
             },
-            "recovery_capabilities": sorted(rbac.RECOVERY_CAPABILITIES),
+            # v0.30.0 (#443): the roles no policy narrows, so the console draws their grids as
+            # facts rather than controls — without comparing a role name itself (F28).
+            "fixed_roles": sorted(rbac.FIXED_ROLES),
             "all_capabilities": sorted(rbac.PERMISSIONS),
             # v0.25.0 (ADR #403): the minimum role of each capability, and every subject the policy
             # names — so a console can draw each role's and each person's grid without parsing
@@ -180,9 +193,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """Apply, roll back, or clear the capability policy. Audited; reversible in one call.
 
         Nothing written here can escalate: the resolver intersects with the compiled ceiling, so
-        the worst a hostile document achieves is taking capabilities away — and never the admin's
-        recovery set (DECISIONS #64), so this endpoint stays reachable to undo it.
+        the worst a hostile document achieves is taking capabilities away — and never from an
+        admin person (DECISIONS #443), so this endpoint stays reachable to undo it.
         """
+        if body.document is not None:
+            await _refuse_narrowing_an_admin(body.document.get("principals"))
         return await _write_policy(
             "rbac", body, request, principal, "rbac.policy.update", _capability_problems
         )
@@ -199,9 +214,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         the resolver intersects every entry with the compiled ceiling (DECISIONS #53).
         """
         kind, key = body.subject.split(":", 1)
+        if kind == "role" and key in rbac.FIXED_ROLES and body.capabilities is not None:
+            raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
         async with store.lock:
-            if kind == "user" and await store.get_user(int(key)) is None:
+            user = await store.get_user(int(key)) if kind == "user" else None
+            if kind == "user" and user is None:
                 raise HTTPException(status_code=404, detail="no such user")
+            fixed = user is not None and user["role"] in rbac.FIXED_ROLES
+            if fixed and body.capabilities is not None:
+                raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
             if kind == "token" and not any(
                 int(t["id"]) == int(key) for t in await store.list_tokens()
             ):

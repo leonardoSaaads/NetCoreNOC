@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sqlite3
 import time
 from collections.abc import Callable
@@ -43,6 +42,7 @@ from netcorenoc.crosscutting.settings import (
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
 from netcorenoc.engine.operate.engine import Engine
 from netcorenoc.engine.operate.resources import SAMPLE_INTERVAL_S, ResourceSampler
+from netcorenoc.ingest import snmpconf
 from netcorenoc.ingest.receiver import (
     QueueItem,
     ReceiverStats,
@@ -196,16 +196,6 @@ def operator_warnings(allowlist: str, tls_enabled: bool, http_host: str) -> list
     return warns
 
 
-async def _community_key(store: Store) -> bytes:
-    """A per-install 32-byte HMAC key for community tagging, created once in `meta` (F4)."""
-    key_hex = await store.get_meta("community_hmac_key")
-    if key_hex is None:
-        key_hex = os.urandom(32).hex()
-        await store.set_meta("community_hmac_key", key_hex)
-        await store.commit()
-    return bytes.fromhex(key_hex)
-
-
 async def run(settings: Settings) -> None:
     if settings.legacy_env:
         raise legacy_env_error(settings.legacy_env)
@@ -243,7 +233,8 @@ async def run(settings: Settings) -> None:
 
 async def _serve(settings: Settings, store: Store) -> None:
     """Everything between an open store and a closed one. `run()` owns the store's lifetime."""
-    community_key = await _community_key(store)
+    community_key = await store.community_hmac_key()
+    await store.commit()
 
     # Config precedence: admin-saved meta values override env defaults (DESIGN v0.2).
     saved_allow = await store.get_meta("config.allowlist")
@@ -251,15 +242,24 @@ async def _serve(settings: Settings, store: Store) -> None:
     effective_allowlist = saved_allow if saved_allow is not None else settings.allowlist
     effective_retention = float(saved_ret) if saved_ret is not None else settings.retention_days
     _check_allowlist(effective_allowlist, stored=saved_allow is not None)
+    snmp_policy = snmpconf.stored_policy(await store.get_meta(snmpconf.META_KEY))
 
     queue: asyncio.Queue[QueueItem] = asyncio.Queue(maxsize=QUEUE_SIZE)
     transport, receiver = await start_receiver(
-        queue, settings.trap_host, settings.trap_port, effective_allowlist, community_key
+        queue,
+        settings.trap_host,
+        settings.trap_port,
+        effective_allowlist,
+        community_key,
+        snmp_policy,
     )
     runtime = RuntimeConfig(
         allowlist=effective_allowlist,
         retention_days=effective_retention,
         on_allowlist_change=lambda nets: setattr(receiver, "networks", nets),
+        snmp=snmp_policy,
+        on_snmp_change=lambda policy: setattr(receiver, "policy", policy),
+        refusals=lambda: dict(receiver.reasons),
     )
     engine = Engine(store, queue)
     engine.audit_retention_days = settings.audit_retention_days
@@ -361,7 +361,12 @@ async def _serve(settings: Settings, store: Store) -> None:
         engine.decider_ref,
         settings.rearm_s,
     )
-    log.info("listening for traps on %s:%d/udp", settings.trap_host, settings.trap_port)
+    log.info(
+        "listening for traps on %s:%d/udp (%s)",
+        settings.trap_host,
+        settings.trap_port,
+        snmpconf.describe(snmp_policy),
+    )
     log.info("web UI and API on %s", url)
     tasks = [
         asyncio.create_task(supervisor.run("engine", engine.run)),

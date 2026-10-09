@@ -99,6 +99,8 @@ services:
       NETCORENOC_AUDIT_RETENTION_DAYS: ${NETCORENOC_AUDIT_RETENTION_DAYS:-365}
       NETCORENOC_LOG_JSON: ${NETCORENOC_LOG_JSON:-}
       NETCORENOC_REARM_S: ${NETCORENOC_REARM_S:-3600}
+      # v0.30.0: keeps the SMTP password out of the database; empty = use Settings -> Email's.
+      NETCORENOC_SMTP_PASSWORD: ${NETCORENOC_SMTP_PASSWORD:-}
       # TLS is opt-in — see the commented profile below.
       NETCORENOC_TLS_CERT: ${NETCORENOC_TLS_CERT:-}
       NETCORENOC_TLS_KEY: ${NETCORENOC_TLS_KEY:-}

@@ -16,20 +16,30 @@ import { Avatar, PhotoPicker, uploadPhoto } from "../../avatar.js";
 import { InfoTip } from "../../info.js";
 import { Destructive } from "../../destructive.js";
 import { session, can, passwordPolicy } from "../../session.js";
-import { CapGrid, sameSet, keptBy } from "./capgrid.js";
+import { CapGrid, sameSet, isFixed } from "./capgrid.js";
 import { relative, timeTitle } from "../../format.js";
 
 export const ROLES = [["viewer", "Viewer"], ["editor", "Editor"], ["admin", "Admin"]];
 
-/** A person's effective access, from the policy the server reported. */
+/**
+ * A person's or token's effective access, from the policy the server reported. `fixed` is true for a
+ * person whose role no policy narrows (#443) — a token of that role may still be narrowed.
+ */
 export function accessOf(rbac, role, ref) {
   if (!rbac) return null;
   const ceiling = new Set(rbac.ceiling[role] || []);
   const baseline = new Set(rbac.resolved[role] || []);
-  const own = (rbac.subjects.principals || {})[ref];
-  const locked = keptBy(rbac, ceiling);
-  const value = own ? new Set([...baseline].filter((c) => own.includes(c) || locked.has(c))) : baseline;
-  return { ceiling, baseline, locked, value, custom: !!own };
+  const fixed = isFixed(rbac, role) && !String(ref || "").startsWith("token:");
+  const own = fixed ? null : (rbac.subjects.principals || {})[ref];
+  const value = own ? new Set([...baseline].filter((c) => own.includes(c))) : baseline;
+  return { ceiling, baseline, value, custom: !!own, fixed };
+}
+
+/** The sentence a fixed role's grid stands under, so it reads as a fact and not a broken control. */
+export function FixedNote({ role }) {
+  return html`<p class="note-line fixed-note"><span>
+    <b>The ${role} role always holds every capability</b>, so this appliance can always be
+    administered. To give someone less, give them the Editor role and narrow that.</span></p>`;
 }
 
 export function RoleSwitch({ value, onChange, disabled, name }) {
@@ -90,7 +100,8 @@ export class PersonEditor extends Component {
     const role = u ? u.role : "viewer";
     const access = accessOf(props.rbac, role, u ? `user:${u.id}` : null);
     this.state = {
-      name: u ? u.display_name || "" : "", username: "", password: "", role,
+      name: u ? u.display_name || "" : "", email: u ? u.email || "" : "", username: "", password: "",
+      role,
       caps: access ? access.value : null, photo: undefined, busy: false, error: null,
     };
   }
@@ -103,23 +114,28 @@ export class PersonEditor extends Component {
   async save(event) {
     event.preventDefault();
     const { user, rbac } = this.props;
-    const { name, username, password, role, caps, photo } = this.state;
+    const { name, email, username, password, role, caps, photo } = this.state;
     this.setState({ busy: true, error: null });
     try {
       let id = user && user.id;
       if (!user) {
         id = (await post("/api/users", { username: username.trim(), password, role,
           display_name: name.trim() || null })).id;
-      } else {
-        if (name.trim() !== (user.display_name || "")) {
-          await post(`/api/users/${id}/profile`, { display_name: name.trim() || null });
-        }
-        if (role !== user.role) await post(`/api/users/${id}/role`, { role });
+      } else if (role !== user.role) {
+        await post(`/api/users/${id}/role`, { role });
+      }
+      // A new account's name went with its creation; its address, and any edit, go here.
+      const changed = user
+        ? name.trim() !== (user.display_name || "") || email.trim() !== (user.email || "")
+        : !!email.trim();
+      if (changed) {
+        await post(`/api/users/${id}/profile`, { display_name: name.trim() || null,
+          email: email.trim() || null });
       }
       if (photo) await uploadPhoto(`/api/users/${id}/avatar`, photo);
       else if (photo === null && user && user.avatar) await del(`/api/users/${id}/avatar`);
-      if (rbac && caps && can("rbac.write")) {
-        const base = accessOf(rbac, role, null);
+      const base = accessOf(rbac, role, null);
+      if (rbac && caps && can("rbac.write") && !base.fixed) {
         const custom = !sameSet(caps, base.value);
         const had = !!(rbac.subjects.principals || {})[`user:${id}`];
         if (custom || had) {
@@ -133,7 +149,7 @@ export class PersonEditor extends Component {
     }
   }
 
-  render({ user, rbac, onClose, onSaved }, { name, username, password, role, caps, busy, error }) {
+  render({ user, rbac, onClose, onSaved }, { name, email, username, password, role, caps, busy, error }) {
     const sole = user && user.sole_admin;
     const base = accessOf(rbac, role, null);
     const policy = passwordPolicy();
@@ -151,6 +167,11 @@ export class PersonEditor extends Component {
           <label class="pe-field"><span>Name</span>
             <input value=${name} maxlength="80" placeholder="Full name"
               onInput=${(e) => this.setState({ name: e.currentTarget.value })} /></label>
+          <label class="pe-field"><span>Recovery email
+            <${InfoTip} label="Recovery email">Where a password-reset link goes. Optional; needs
+              Settings → Email.<//></span>
+            <input type="email" value=${email} maxlength="254" placeholder="name@example.com"
+              onInput=${(e) => this.setState({ email: e.currentTarget.value })} /></label>
           ${user ? html`<p class="pe-user muted">@${user.username}</p>` : html`
             <label class="pe-field"><span>Username</span>
               <input value=${username} required maxlength="64" autocapitalize="off" spellcheck=${false}
@@ -171,14 +192,15 @@ export class PersonEditor extends Component {
       ${rbac && caps ? html`<div class="pe-access">
         <div class="pe-access-head">
           <h4>Access</h4>
-          ${sameSet(caps, base.value) ? html`<span class="muted">${role} default</span>` : html`
+          ${base.fixed || sameSet(caps, base.value) ? html`<span class="muted">${role} default</span>` : html`
             <span class="badge badge-warn">custom</span>
             <button type="button" class="linkish" onClick=${() => this.setState({ caps: base.value })}>
               Use role default</button>`}
         </div>
+        ${base.fixed ? html`<${FixedNote} role=${role} />` : null}
         <${CapGrid} all=${rbac.all_capabilities} ceiling=${base.ceiling} baseline=${base.baseline}
-          locked=${base.locked} minimum=${rbac.minimum_role} value=${caps} roleName=${role}
-          readOnly=${!can("rbac.write")} onChange=${(next) => this.setState({ caps: next })} />
+          minimum=${rbac.minimum_role} value=${base.fixed ? base.value : caps} roleName=${role}
+          readOnly=${base.fixed || !can("rbac.write")} onChange=${(next) => this.setState({ caps: next })} />
       </div>` : null}
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
       <footer class="pe-foot">

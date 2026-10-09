@@ -818,11 +818,14 @@ def test_the_ui_tree_is_exactly_what_is_declared() -> None:
     # — subtracting a member that is absent is a no-op — and the conditional below then skipped its
     # contents too. So the one guard whose stated job is *"the tree is enumerated"* was blind to the
     # disappearance of a directory the appliance serves a route from.
+    # v0.30.0 adds `login-bg.svg`, the sign-in artwork, served from this origin for the same reason
+    # (ADR #446).
     assert top_level == {
         "index.html",
         "app.js",
         "style.css",
         "favicon.svg",
+        "login-bg.svg",
         "app",
         "vendor",
         ".well-known",

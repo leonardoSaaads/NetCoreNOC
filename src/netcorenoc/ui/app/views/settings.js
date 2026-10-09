@@ -18,13 +18,15 @@
  * fact with no control, never a greyed-out input. A greyed input says "you may not"; a fact says
  * "this is what is true", and they are different sentences (§6.1).
  *
- * ## Four tabs (v0.26.0, ADR #414; renamed in v0.27.0)
+ * ## Six tabs (v0.26.0, ADR #414; renamed in v0.27.0; two added in v0.30.0)
  *
  * **Models** (who decides links: the league's champion, chosen by the judge or pinned by an admin;
  * the fail-safe formula, folded), **Autonomy** (four grades and the self-suspension trigger),
- * **Site training** (the in-product search that adapts the GAM to this site's labels) and
- * **System** (the three classes above). Each tab opens with what it is for, reads only what it
- * shows, and keeps its place in the address (`?tab=`).
+ * **Site training** (the in-product search that adapts the GAM to this site's labels), **SNMP**
+ * (what the trap receiver accepts — versions, communities, SNMPv3 users; ADR #444), **Email** (the
+ * SMTP server recovery links go through; ADR #445) and **System** (the three classes above). Each
+ * tab opens with what it is for, reads only what it shows, and keeps its place in the address
+ * (`?tab=`).
  */
 
 import { html, Component, cx } from "../dom.js";
@@ -38,6 +40,8 @@ import { Hardening, Structural, RestartRequired } from "./parts/facts.js";
 import { Correlation } from "./parts/decider.js";
 import { Autonomy } from "./parts/autonomy.js";
 import { SearchPanel } from "./parts/searchpanel.js";
+import { SnmpPanel } from "./parts/snmp.js";
+import { EmailPanel } from "./parts/email.js";
 
 // The key stays `correlation` so every address written since v0.26.0 (and `#/scorer`) still lands
 // here; the label says what the tab is about now (v0.27.0): the models and how one is chosen.
@@ -45,6 +49,8 @@ const TABS = [
   ["correlation", "Models", "scorer.read", Correlation],
   ["autonomy", "Autonomy", "scorer.read", Autonomy],
   ["search", "Site training", "model.read", SearchPanel],
+  ["snmp", "SNMP", "config.read", SnmpPanel],
+  ["email", "Email", "config.read", EmailPanel],
   ["system", "System", "config.read", null],
 ];
 

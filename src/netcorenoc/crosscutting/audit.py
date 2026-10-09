@@ -48,6 +48,9 @@ ACTIONS: frozenset[str] = frozenset(
         "login.lockout",
         "logout",
         "password.change",
+        # v0.30.0 (ADR #445): a recovery link asked for (matched or not), and a password set by one.
+        "password.reset.request",
+        "password.reset",
         # v0.25.0: a person's own display name or photo (ADR #401, #402). One action for both, the
         # field in `details`; an admin changing someone else's is `user.update`.
         "profile.update",
@@ -59,6 +62,10 @@ ACTIONS: frozenset[str] = frozenset(
         "token.create",
         "token.revoke",
         "config.change",
+        # v0.30.0: the SNMP receiver's policy (#444), the SMTP server and a test send (#445).
+        "snmp.config.change",
+        "email.config.change",
+        "email.test",
         # operation
         "feedback",
         "label.set",

@@ -116,6 +116,10 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("model.read", "/api/judge"),
     # v0.29.0: the Overview's models card — the brief form of the same route.
     ("model.read", "/api/judge?brief=true"),
+    # v0.30.0: Settings → SNMP and Email, and the API reference on Service tokens.
+    ("config.read", "/api/snmp"),
+    ("config.read", "/api/email"),
+    ("tokens.manage", "/api/reference"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.

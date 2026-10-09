@@ -138,6 +138,12 @@ def create_app(
     routes.attention.register(app, ctx)
     routes.catalogue.register(app, ctx)
     routes.events.register(app, ctx)
+    # v0.30.0: the receiver's SNMP policy (#444), outgoing email and recovery by email (#445).
+    # Appended, so every earlier route keeps its place in the table.
+    routes.snmp.register(app, ctx)
+    routes.email.register(app, ctx)
+    routes.recovery.register(app, ctx)
+    routes.apidoc.register(app, ctx)
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the
     # better error; this re-checks the *result*, so a route registered by any other path — an

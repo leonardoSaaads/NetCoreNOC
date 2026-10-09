@@ -501,10 +501,17 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/league.js"),
     ("GET", "/app/views/parts/leaguecharts.js"),
     ("GET", "/app/views/parts/leaguecompare.js"),
+    ("GET", "/app/recover.js"),
+    ("GET", "/app/views/parts/snmp.js"),
+    ("GET", "/app/views/parts/snmpuser.js"),
+    ("GET", "/app/views/parts/email.js"),
+    ("GET", "/app/views/parts/apiref.js"),
+    ("GET", "/app/views/parts/scopeexamples.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
     ("GET", "/favicon.svg"),
+    ("GET", "/login-bg.svg"),
     ("GET", "/.well-known/security.txt"),
     ("POST", "/api/login"),
     ("POST", "/api/logout"),
@@ -617,6 +624,15 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/catalogue/import"),
     ("DELETE", "/api/catalogue/imported"),
     ("GET", "/api/events"),
+    ("GET", "/api/snmp"),
+    ("POST", "/api/snmp"),
+    ("GET", "/api/email"),
+    ("POST", "/api/email"),
+    ("POST", "/api/email/test"),
+    ("GET", "/api/login/options"),
+    ("POST", "/api/password-reset"),
+    ("POST", "/api/password-reset/confirm"),
+    ("GET", "/api/reference"),
 ]
 
 
@@ -713,7 +729,11 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # the existing concrete siblings (ADRs #405, #412, #413).
     # **v0.27.0: 107 -> 108.** One, `POST /api/situations/{sid}/proposal`: a concrete segment below
     # `{sid}`, beside `…/merge` and `…/split`, which it cannot shadow (ADR #428).
-    assert len(live) == 108, (
+    # **v0.30.0: 108 -> 117.** Nine, none able to shadow another: `/api/snmp`, `/api/email` (and its
+    # concrete `…/test`), `/api/reference` and `/api/password-reset` (and `…/confirm`) are new
+    # prefixes, and `GET /api/login/options` is a new verb and segment below `POST /api/login`
+    # (ADRs #444-#446).
+    assert len(live) == 117, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1322,8 +1342,13 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `store/occurrences.py` (ADRs #431, #433) and `api/body_limit.py` (#434).
 #: **v0.28.1: 357 -> 357.** No file added, removed or moved, and no behaviour changed: the tests
 #: moved into area folders, so every docstring and comment that cites one names its new path.
-SRC_TREE_DIGEST = "26c98376a4bcece1550f7028eec1b7f8f2a9825db50ab06edcbeb66d8fdca455"
-SRC_FILE_COUNT = 368
+#: **v0.30.0: 368 -> 387.** Nineteen added, none removed: migration `0029`; `ingest/snmpconf.py`,
+#: `usm.py` and `ber.py`; `crosscutting/mail.py`; `store/recovery.py`; six API modules
+#: (`models_settings`, `reference`, and the `snmp`, `email`, `recovery` and `apidoc` routes); six
+#: console modules (`recover`, `parts/snmp`, `snmpuser`, `email`, `apiref`, `scopeexamples`) and
+#: `ui/login-bg.svg` (ADRs #443-#446).
+SRC_TREE_DIGEST = "f27671a13026a849e85c991defa3d28e7582bbcad8f03d58469b69c0e97d0aac"
+SRC_FILE_COUNT = 387
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
@@ -1389,7 +1414,7 @@ def test_the_version_file_is_the_only_thing_the_digest_forgives() -> None:
     assert not _is_source(root / SRC_VERSION_FILE), "the version file must be excluded"
     assert _is_source(util.module_path("learn.py")), "an ordinary module must be included"
     assert not _is_source(PKG / "__pycache__" / "learn.cpython-312.pyc"), "build output is not src"
-    assert __version__ == "0.29.0", "the version this release carries"
+    assert __version__ == "0.30.0", "the version this release carries"
 
 
 def test_no_runtime_path_is_derived_by_counting_parents() -> None:

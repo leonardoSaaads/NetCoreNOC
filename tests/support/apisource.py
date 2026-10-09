@@ -38,7 +38,9 @@ MODULE_ORDER: tuple[str, ...] = (
     "models_maintenance.py",
     "models_decider.py",  # v0.26.0: the decider, autonomy and search request models
     "models_restructure.py",  # v0.29.0: move, merge, split and the answer to a proposal
+    "models_settings.py",  # v0.30.0: the SNMP receiver, outgoing email, recovery by email
     "public_paths.py",  # v0.26.0: the unauthenticated-path allowlist, off `declare.py`
+    "reference.py",  # v0.30.0: one sentence per route, for the API reference
     "shipped_view.py",  # v0.26.0: the shipped model as the console sees it, off `routes/decider.py`
     "league_view.py",  # v0.27.0: the league as the console sees it (ADRs #423, #427)
     "mw_shape.py",
@@ -85,6 +87,11 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/attention.py",
     "routes/catalogue.py",
     "routes/events.py",
+    # v0.30.0, in the order `create_app` registers them.
+    "routes/snmp.py",
+    "routes/email.py",
+    "routes/recovery.py",
+    "routes/apidoc.py",
 )
 
 #: **The floor a subset must not be able to clear** (F98).
