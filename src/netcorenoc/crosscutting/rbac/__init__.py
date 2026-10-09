@@ -3,7 +3,7 @@
 **Three modules and a re-export, and the re-export is load-bearing.**
 
 * :mod:`~netcorenoc.rbac.tables` — what a role may ever hold: `ROLE_RANK`, `PERMISSIONS`,
-  `AUDITED_DENIED_PERMISSIONS`, `RECOVERY_CAPABILITIES`, `_CEILINGS`, **all
+  `AUDITED_DENIED_PERMISSIONS`, `FIXED_ROLES`, `_CEILINGS`, **all
   of their prose**, and the import-time assert that constrains them.
 * :mod:`~netcorenoc.rbac.route_map` — which capability each route requires and its scope
   posture: `ROUTE_PERMISSIONS`, `ROUTE_SCOPE`, `PUBLIC_ROUTES`, and the two import-time
@@ -43,6 +43,7 @@ files.
 from __future__ import annotations
 
 from netcorenoc.crosscutting.rbac.policy import (
+    FIXED_ROLE_REFUSAL,
     CapabilityPolicy,
     capability_policy_errors,
     ceiling,
@@ -60,16 +61,17 @@ from netcorenoc.crosscutting.rbac.route_map import (
 from netcorenoc.crosscutting.rbac.tables import _CEILINGS as _CEILINGS
 from netcorenoc.crosscutting.rbac.tables import (
     AUDITED_DENIED_PERMISSIONS,
+    FIXED_ROLES,
     PERMISSIONS,
-    RECOVERY_CAPABILITIES,
     ROLE_RANK,
 )
 
 __all__ = [
     "AUDITED_DENIED_PERMISSIONS",
+    "FIXED_ROLES",
+    "FIXED_ROLE_REFUSAL",
     "PERMISSIONS",
     "PUBLIC_ROUTES",
-    "RECOVERY_CAPABILITIES",
     "ROLE_RANK",
     "ROUTE_PERMISSIONS",
     "ROUTE_SCOPE",

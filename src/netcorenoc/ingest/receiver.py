@@ -1,9 +1,14 @@
-"""Asyncio SNMPv2c trap listener with source allowlist and quarantine.
+"""Asyncio SNMP trap listener — v1, v2c and v3 — with source allowlist and quarantine.
 
 Defensive by construction: a malformed packet can never crash or block the process —
 it is truncated, wrapped in a :class:`QuarantinedPacket`, and queued for storage so an
 operator can inspect it later. Backpressure is a bounded queue; overflow is counted,
 never awaited inside the datagram callback.
+
+**What is accepted is an :class:`~netcorenoc.ingest.snmpconf.SnmpPolicy`** (v0.30.0): which
+versions, which v1/v2c communities (any, by default) and which SNMPv3 users. A refusal is a
+quarantine entry naming why — `community-not-accepted`, `v3-unknown-user`,
+`v3-authentication-failed` — so an operator whose traps do not arrive can see the reason.
 """
 
 from __future__ import annotations
@@ -19,8 +24,9 @@ from typing import Any
 from pyasn1.codec.ber import decoder
 from pysnmp.proto import api
 
-from netcorenoc.ingest import known_oids
+from netcorenoc.ingest import ber, known_oids, usm
 from netcorenoc.ingest.events import QuarantinedPacket, TrapEvent, Varbind
+from netcorenoc.ingest.snmpconf import DEFAULT_POLICY, SnmpPolicy
 
 _PMOD = api.PROTOCOL_MODULES[api.SNMP_VERSION_2C]
 _V1MOD = api.PROTOCOL_MODULES[api.SNMP_VERSION_1]
@@ -28,6 +34,9 @@ _SKIP_FOR_INSTANCE = (known_oids.SYS_UPTIME_OID, known_oids.SNMP_TRAP_OID)
 MAX_QUARANTINE_BYTES = 4096
 MAX_INSTANCE_CHARS = 120
 COMMUNITY_TAG_HEX = 12  # first 12 hex chars of the HMAC (F4)
+#: Distinct refusal reasons counted per process. The reasons are a closed vocabulary; the cap only
+#: guarantees the counter cannot grow with hostile input (`not-a-trap-pdu:<type>`).
+MAX_REASONS = 64
 
 # RFC 3584 §3.1: an SNMPv1 generic trap 0-5 maps to a standard snmpTraps.(generic+1) OID; a
 # generic 6 (enterpriseSpecific) maps to <enterprise>.0.<specific-trap>.
@@ -88,34 +97,81 @@ def _peek_version(data: bytes) -> int | None:
 
 
 def _decode_failure_reason(data: bytes) -> str:
-    """Best-effort diagnosis for packets the v2c spec rejects (e.g. SNMPv1)."""
+    """Best-effort diagnosis for packets the v2c spec rejects (a version this receiver lacks)."""
     version = _peek_version(data)
     if version is None:
         return "ber-decode-failed"
     return f"unsupported-snmp-version-{version}" if version != 1 else "malformed-v2c-message"
 
 
-def community_tag(community: bytes, key: bytes | None) -> str:
-    """F4: opaque grouping tag for a community string; the community itself is discarded."""
+def community_digest(community: bytes, key: bytes | None) -> str:
+    """F4: the keyed hash of a community — the tag's source, and what an accepted list holds."""
     if key is None:
         return ""
-    return hmac.new(key, community, hashlib.sha256).hexdigest()[:COMMUNITY_TAG_HEX]
+    return hmac.new(key, community, hashlib.sha256).hexdigest()
+
+
+def community_tag(community: bytes, key: bytes | None) -> str:
+    """F4: opaque grouping tag for a community string; the community itself is discarded."""
+    return community_digest(community, key)[:COMMUNITY_TAG_HEX]
+
+
+def _accepted_tag(community: bytes, key: bytes | None, policy: SnmpPolicy) -> str:
+    """The tag for a v1/v2c community, or a refusal when the policy names the ones it accepts."""
+    digest = community_digest(community, key)
+    if policy.communities and digest not in policy.digests:
+        raise TrapParseError("community-not-accepted")
+    return digest[:COMMUNITY_TAG_HEX]
 
 
 def parse_trap(
-    source: str, data: bytes, ts: float, community_key: bytes | None = None
+    source: str,
+    data: bytes,
+    ts: float,
+    community_key: bytes | None = None,
+    policy: SnmpPolicy = DEFAULT_POLICY,
+    state: usm.UsmState | None = None,
 ) -> TrapEvent:
-    """Decode one SNMP trap datagram (v2c or, via RFC 3584, v1); raise on anything else.
+    """Decode one SNMP trap datagram — v1 (via RFC 3584), v2c or v3 — or raise saying why not.
 
     The community string is hashed into ``community_tag`` (F4) and then dropped — it is never
-    returned, stored, or logged, for either version.
+    returned, stored, or logged, for either version. A v3 trap's tag is the hash of its user name.
     """
-    if _peek_version(data) == 0:
-        return _parse_v1(source, data, ts, community_key)
-    return _parse_v2c(source, data, ts, community_key)
+    version = _peek_version(data)
+    if version == 0:
+        if not policy.v1:
+            raise TrapParseError("snmp-v1-not-accepted")
+        return _parse_v1(source, data, ts, community_key, policy)
+    if version == 3:
+        if not policy.v3:
+            raise TrapParseError("snmp-v3-not-accepted")
+        return _parse_v3(source, data, ts, community_key, policy, state or usm.UsmState())
+    if version == 1 and not policy.v2c:
+        raise TrapParseError("snmp-v2c-not-accepted")
+    return _parse_v2c(source, data, ts, community_key, policy)
 
 
-def _parse_v2c(source: str, data: bytes, ts: float, community_key: bytes | None) -> TrapEvent:
+def _parse_v3(
+    source: str,
+    data: bytes,
+    ts: float,
+    community_key: bytes | None,
+    policy: SnmpPolicy,
+    state: usm.UsmState,
+) -> TrapEvent:
+    try:
+        pdu, user = usm.process(data, policy, state, ts)
+    except usm.UsmError as exc:
+        raise TrapParseError(exc.reason) from exc
+    if not isinstance(pdu, _PMOD.TrapPDU):
+        raise TrapParseError(f"not-a-trap-pdu:{type(pdu).__name__}")
+    tag = community_tag(b"usm:" + user.name.encode("utf-8"), community_key)
+    return _event_from_pdu(source, pdu, ts, tag)
+
+
+def _parse_v2c(
+    source: str, data: bytes, ts: float, community_key: bytes | None, policy: SnmpPolicy
+) -> TrapEvent:
     try:
         message, _ = decoder.decode(data, asn1Spec=_PMOD.Message())
     except Exception as exc:
@@ -124,8 +180,13 @@ def _parse_v2c(source: str, data: bytes, ts: float, community_key: bytes | None)
     if not isinstance(pdu, _PMOD.TrapPDU):
         raise TrapParseError(f"not-a-trap-pdu:{type(pdu).__name__}")
     community = bytes(_PMOD.apiMessage.get_community(message).asOctets())
-    tag = community_tag(community, community_key)
+    tag = _accepted_tag(community, community_key, policy)
     del community  # never keep the plaintext community
+    return _event_from_pdu(source, pdu, ts, tag)
+
+
+def _event_from_pdu(source: str, pdu: Any, ts: float, tag: str) -> TrapEvent:
+    """An SNMPv2-Trap-PDU's varbinds as a :class:`TrapEvent` — the v2c and v3 paths share it."""
     varbinds: list[Varbind] = []
     trap_oid = ""
     for oid_obj, value_obj in _PMOD.apiPDU.get_varbinds(pdu):
@@ -157,7 +218,9 @@ def _v1_trap_oid(enterprise: str, generic: int, specific: int) -> str:
     return f"{enterprise}.0.{specific}"
 
 
-def _parse_v1(source: str, data: bytes, ts: float, community_key: bytes | None) -> TrapEvent:
+def _parse_v1(
+    source: str, data: bytes, ts: float, community_key: bytes | None, policy: SnmpPolicy
+) -> TrapEvent:
     """Map an SNMPv1 trap into the v2c pipeline per RFC 3584 §3.1.
 
     ``sysUpTime.0`` and ``snmpTrapOID.0`` are prepended; the original varbinds follow so the
@@ -174,7 +237,7 @@ def _parse_v1(source: str, data: bytes, ts: float, community_key: bytes | None) 
     if not isinstance(pdu, _V1MOD.TrapPDU):
         raise TrapParseError(f"not-a-trap-pdu:{type(pdu).__name__}")
     community = bytes(_V1MOD.apiMessage.get_community(message).asOctets())
-    tag = community_tag(community, community_key)
+    tag = _accepted_tag(community, community_key, policy)
     del community  # never keep the plaintext community
     enterprise = _V1MOD.apiTrapPDU.get_enterprise(pdu).prettyPrint()
     generic = int(_V1MOD.apiTrapPDU.get_generic_trap(pdu))
@@ -210,20 +273,6 @@ def _parse_v1(source: str, data: bytes, ts: float, community_key: bytes | None) 
     )
 
 
-def _read_ber_len(data: bytes, i: int) -> tuple[int, int] | None:
-    """Read a BER length at offset i; return (length, content_offset) or None."""
-    if i >= len(data):
-        return None
-    first = data[i]
-    i += 1
-    if first < 0x80:
-        return first, i
-    count = first & 0x7F
-    if count == 0 or i + count > len(data):
-        return None
-    return int.from_bytes(data[i : i + count], "big"), i + count
-
-
 def blank_community(data: bytes) -> bytes | None:
     """Zero the community octets in an SNMP message: SEQ{ INTEGER version, OCTETSTRING }.
 
@@ -233,19 +282,19 @@ def blank_community(data: bytes) -> bytes | None:
     try:
         if not data or data[0] != 0x30:
             return None
-        seq = _read_ber_len(data, 1)
+        seq = ber.read_length(data, 1)
         if seq is None:
             return None
         i = seq[1]
         if i >= len(data) or data[i] != 0x02:  # INTEGER version
             return None
-        ver = _read_ber_len(data, i + 1)
+        ver = ber.read_length(data, i + 1)
         if ver is None:
             return None
         i = ver[1] + ver[0]
         if i >= len(data) or data[i] != 0x04:  # OCTET STRING community
             return None
-        com = _read_ber_len(data, i + 1)
+        com = ber.read_length(data, i + 1)
         if com is None:
             return None
         start, length = com[1], com[0]
@@ -306,11 +355,24 @@ class TrapReceiver(asyncio.DatagramProtocol):
         queue: asyncio.Queue[QueueItem],
         allowlist: str = "",
         community_key: bytes | None = None,
+        policy: SnmpPolicy = DEFAULT_POLICY,
     ) -> None:
         self.queue = queue
         self.networks = parse_allowlist(allowlist)
         self.community_key = community_key
+        # What this receiver accepts, replaced whole by Settings → SNMP (an attribute assignment the
+        # event loop sees on the next datagram); never mutated in place, so no datagram reads half
+        # of one. Named `accepts`, not `policy`: that word belongs to access control, which the
+        # datagram path must never touch (F33, `test_f33_datagram_received_gained_nothing`).
+        self.accepts = policy
+        self.usm = usm.UsmState()
         self.stats = ReceiverStats()
+        self.reasons: dict[str, int] = {}
+
+    def _refused(self, reason: str) -> None:
+        """Count a quarantine by its reason, for the SNMP settings screen. Bounded."""
+        if reason in self.reasons or len(self.reasons) < MAX_REASONS:
+            self.reasons[reason] = self.reasons.get(reason, 0) + 1
 
     def _allowed(self, source: str) -> bool:
         if self.networks is None:
@@ -329,11 +391,12 @@ class TrapReceiver(asyncio.DatagramProtocol):
             return
         item: QueueItem
         try:
-            item = parse_trap(source, data, now, self.community_key)
+            item = parse_trap(source, data, now, self.community_key, self.accepts, self.usm)
             self.stats.accepted += 1
         except TrapParseError as exc:
             item = quarantine_packet(source, data, exc.reason, now)
             self.stats.quarantined += 1
+            self._refused(exc.reason)
         try:
             self.queue.put_nowait(item)
         except asyncio.QueueFull:
@@ -346,9 +409,10 @@ async def start_receiver(
     port: int,
     allowlist: str = "",
     community_key: bytes | None = None,
+    policy: SnmpPolicy = DEFAULT_POLICY,
 ) -> tuple[asyncio.DatagramTransport, TrapReceiver]:
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(
-        lambda: TrapReceiver(queue, allowlist, community_key), local_addr=(host, port)
+        lambda: TrapReceiver(queue, allowlist, community_key, policy), local_addr=(host, port)
     )
     return transport, protocol

@@ -13,7 +13,7 @@
         python = pkgs.python312;
         netcorenoc = python.pkgs.buildPythonApplication {
           pname = "netcorenoc";
-          version = "0.29.0";  # checked by tools/release_check.py (F73)
+          version = "0.30.0";  # checked by tools/release_check.py (F73)
           pyproject = true;
           src = ./.;
           build-system = [ python.pkgs.setuptools ];
@@ -23,6 +23,8 @@
             fastapi
             uvicorn
             pydantic
+            # The `snmpv3` extra (DECISIONS #444): decrypting SNMPv3 traps, as the Docker image does.
+            cryptography
           ];
           # The full test suite needs the dev extras; run `make qa` in the dev shell.
           doCheck = false;

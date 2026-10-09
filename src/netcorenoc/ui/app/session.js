@@ -37,6 +37,7 @@ export function setSession(me) {
     userId: me.user_id ?? null,
     displayName: me.display_name || null,
     avatar: me.avatar || null,
+    email: me.email || null,
     role: me.role,
     capabilities: new Set(me.capabilities || []),
     scope: me.scope || { scoped: false, ne_count: null },

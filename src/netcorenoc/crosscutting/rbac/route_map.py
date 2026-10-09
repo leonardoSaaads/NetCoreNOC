@@ -1,23 +1,15 @@
 """The route map: which capability each ``/api`` route requires, and its scope posture.
 
-Split from :mod:`netcorenoc.crosscutting.rbac.tables` in v0.21.0, at the 400-line guard and on the
-seam that file already had. `tables.py` answers *"what may this role ever hold?"*; this answers
-*"what does this route need, and does its answer depend on who is asking?"*. DECISIONS #87
-recorded that neither the table nor its justifications could be traded away to get under the guard
-and that splitting is the fix; this is that fix applied a second time.
+Split from :mod:`netcorenoc.crosscutting.rbac.tables` at the 400-line guard (v0.21.0, DECISIONS
+#87): `tables.py` answers *"what may this role ever hold?"*, this answers *"what does this route
+need, and does its answer depend on who is asking?"*. **Nothing here decides anything**: `policy.py`
+computes, the perimeter enforces, and a route absent from :data:`ROUTE_PERMISSIONS` (and not in
+:data:`PUBLIC_ROUTES`) fails closed at runtime and fails CI.
 
-**Nothing here decides anything.** `policy.py` computes capability answers, the perimeter enforces
-them, and this is the authority they read. A route absent from :data:`ROUTE_PERMISSIONS` (and not
-in :data:`PUBLIC_ROUTES` below) fails closed at runtime and fails CI.
-
-**The prose is not decoration.** Every ``"unscoped"`` justification comment travels with its entry,
-and this file is read to assert it by
-`tests/api/test_declaration.py::test_every_unscoped_declaration_carries_a_written_justification`.
-
-The two module-level ``assert`` statements moved here with the tables they constrain, which is the
-rule `tables.py` states about its own: an assertion separated from its table stops running at the
-moment the table is defined, which would delete a structural guarantee while every test stayed
-green.
+Every ``"unscoped"`` entry carries its justification as a comment, and
+`tests/api/test_declaration.py::test_every_unscoped_declaration_carries_a_written_justification`
+reads this file to assert it. The two module-level ``assert`` statements constrain these tables and
+live with them, so they run the moment the tables are defined.
 """
 
 from __future__ import annotations
@@ -68,12 +60,9 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     # It gets its own ROUTE because the storage and the scope decision are the situation's.
     ("POST", "/api/situations/{sid}/name"): "label.write",
     ("POST", "/api/alarms/{aid}/clear"): "alarm.clear",
-    # v0.16.5: the same gesture over a whole situation, and therefore **the same capability**. A
-    # bulk clear is N single clears and nothing else — same event kind, same audit action, same
-    # absence from `ASSERTING_KINDS` — so a second capability would let an operator hold one and
-    # not the other over an act that has one meaning. It is not under `/api/situations` for the
-    # reason `annotate.clear_alarm` states: a clear is a fact about an alarm's lifecycle, and the
-    # correlation namespace would say otherwise in the URL.
+    # v0.16.5: a bulk clear is N single clears and nothing else — same event kind, same audit
+    # action — so it needs the single clear's capability; a clear is a fact about an alarm's
+    # lifecycle, hence `/api/alarms` and not the correlation namespace.
     ("POST", "/api/alarms/clear"): "alarm.clear",
     # v0.16.2: promotion WITHOUT judging. `PREREGISTRATION-0.16.2.md` §2.2 registers it as one of
     # two distinct actions, and the other one is `POST …/feedback` with `verdict: confirm`, which
@@ -177,32 +166,40 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/search"): "search.write",
     ("POST", "/api/search/stop"): "search.write",
     ("GET", "/api/judge"): "model.read",
+    # v0.30.0: the receiver's SNMP policy (#444) and the SMTP server (#445), settings like the rest;
+    # the API reference beside the tokens it is for.
+    ("GET", "/api/reference"): "tokens.manage",
+    ("GET", "/api/snmp"): "config.read",
+    ("POST", "/api/snmp"): "config.write",
+    ("GET", "/api/email"): "config.read",
+    ("POST", "/api/email"): "config.write",
+    ("POST", "/api/email/test"): "config.write",
 }
 
-# The only /api routes reachable without a resolved identity.
-PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset({("POST", "/api/login")})
+# The only /api routes reachable without a resolved identity: signing in, and — v0.30.0, ADR #445 —
+# what the sign-in screen may offer and recovery by email, for a person who cannot sign in.
+PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("POST", "/api/login"),
+        ("GET", "/api/login/options"),
+        ("POST", "/api/password-reset"),
+        ("POST", "/api/password-reset/confirm"),
+    }
+)
 
-# Route (METHOD, templated path) -> its **visibility-scope posture**. v0.7.2.
-#
-# F34 existed because a route's scope posture was expressed *nowhere at all*: three editor write
-# routes simply did not have one, and no table, test or reviewer could notice the omission. This
-# is that missing declaration. It is **descriptive** in v0.7.2 — it records what each route already
-# does after v0.7.1 — and `tests/api/test_declaration.py` asserts every entry against the route's
-# observed behaviour. Making the perimeter *inject* the check from this table is a ROADMAP line,
-# because injection changes control flow and control flow is behaviour (DECISIONS #80).
+# Route (METHOD, templated path) -> its **visibility-scope posture** (v0.7.2, F34: until then a
+# route's posture was expressed nowhere). `tests/api/test_declaration.py` asserts every entry
+# against the route's observed behaviour.
 #
 #   "scoped"      the response depends on the caller's resolved visibility scope: the route
-#                 resolves scope and either filters what it returns or denies an out-of-scope
-#                 target through the same 404 a nonexistent one would take (DECISIONS #60).
-#   "unscoped"    the response does NOT depend on the caller's scope: a scoped and an unscoped
-#                 caller of the same role receive the same body. Every entry carries its reason.
-#   "admin_only"  the capability's minimum role is `admin`, and **admin is never scoped**
-#                 (DECISIONS #58), so the question does not arise. This is a *derived* claim, not
-#                 a second authority: the assertion below re-derives it from `PERMISSIONS` in both
-#                 directions at import, so the two tables cannot disagree.
+#                 filters what it returns, or denies an out-of-scope target through the same 404 a
+#                 nonexistent one takes (DECISIONS #60).
+#   "unscoped"    a scoped and an unscoped caller of the same role receive the same body. Every
+#                 entry carries its reason.
+#   "admin_only"  the capability's minimum role is `admin`, and admin is never scoped (#58). A
+#                 *derived* claim: the assertion below re-derives it from `PERMISSIONS`.
 #
-# `PUBLIC_ROUTES` is exempt from this table exactly as it is from `ROUTE_PERMISSIONS`, and the
-# registration gate says so by consulting it rather than by finding nothing here.
+# `PUBLIC_ROUTES` is exempt from this table exactly as it is from `ROUTE_PERMISSIONS`.
 ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] = {
     # Acts on the caller's own session; references no network element.
     ("POST", "/api/logout"): "unscoped",
@@ -387,6 +384,12 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     # The judge: the shipped model's generated-data numbers, this site's label counts and verdicts,
     # and the live monitor — the reasoning `/api/models` and `/api/correlation` already carry.
     ("GET", "/api/judge"): "unscoped",
+    ("GET", "/api/reference"): "admin_only",
+    ("GET", "/api/snmp"): "admin_only",
+    ("POST", "/api/snmp"): "admin_only",
+    ("GET", "/api/email"): "admin_only",
+    ("POST", "/api/email"): "admin_only",
+    ("POST", "/api/email/test"): "admin_only",
 }
 
 assert set(ROUTE_SCOPE) == set(ROUTE_PERMISSIONS), (

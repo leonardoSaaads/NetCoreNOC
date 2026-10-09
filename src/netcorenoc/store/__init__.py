@@ -56,6 +56,7 @@ from netcorenoc.store.people import PeopleMixin
 from netcorenoc.store.promotion import PromotionMixin
 from netcorenoc.store.proposals import ProposalMixin
 from netcorenoc.store.read_models import ReadModelsMixin
+from netcorenoc.store.recovery import RecoveryMixin
 from netcorenoc.store.restructure import RestructureMixin
 from netcorenoc.store.retention import RetentionMixin
 from netcorenoc.store.scoring_config import ScoringConfigMixin
@@ -101,6 +102,8 @@ class Store(
     AuditLogMixin,
     # v0.25.0: a display name and a photo per account (ADR #401, #402). Plain `StoreBase`.
     PeopleMixin,
+    # v0.30.0: a person's recovery address and the single-use reset links (ADR #445).
+    RecoveryMixin,
     AuthMixin,
     ScoringConfigMixin,
     IngestGapMixin,

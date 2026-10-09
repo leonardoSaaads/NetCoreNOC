@@ -2,10 +2,12 @@
  *
  * Three cards, in the order a person comes here for them:
  *
- *   * **Profile** — your photo and the name the console shows beside it. Both save on their own,
- *     at once; the username is the sign-in and does not change here.
+ *   * **Profile** — your photo, the name the console shows beside it and — v0.30.0 — the address a
+ *     password-reset link goes to. Each saves on its own; the username is the sign-in.
  *   * **Security** — change your password (`POST /api/password`, `self.read`). It signs out every
- *     session this account holds, including this one, and the card says so before the click.
+ *     session this account holds, including this one, and the card says so before the click. The
+ *     two-factor statement lives here since v0.30.0: it is about this account's sign-in, and on
+ *     the sign-in card it made the first-run card taller than a laptop screen (ADR #446).
  *   * **Access** — your role and what it lets you do, by category, as counts; the full list is one
  *     click away instead of a wall of identifiers. It is the set the SERVER resolved for this
  *     session (`/api/me`), a display of it and never a second copy.
@@ -17,6 +19,7 @@ import { session, setSession, scopeSummary } from "../session.js";
 import { PasswordInput, PasswordMeter, pairProblem } from "../password.js";
 import { PhotoPicker, uploadPhoto } from "../avatar.js";
 import { InfoTip } from "../info.js";
+import { Icon } from "../icons.js";
 import { CATEGORIES } from "./parts/capgrid.js";
 
 async function refreshSession() {
@@ -26,7 +29,8 @@ async function refreshSession() {
 class Profile extends Component {
   constructor(props) {
     super(props);
-    this.state = { name: session().displayName || "", status: null, busy: false };
+    this.state = { name: session().displayName || "", email: session().email || "", status: null,
+      busy: false };
   }
 
   async photo(blob) {
@@ -45,29 +49,35 @@ class Profile extends Component {
     event.preventDefault();
     this.setState({ busy: true, status: null });
     try {
-      await post("/api/me/profile", { display_name: this.state.name.trim() || null });
+      await post("/api/me/profile", { display_name: this.state.name.trim() || null,
+        email: this.state.email.trim() || null });
       await refreshSession();
-      this.setState({ busy: false, status: { ok: true, text: "Name saved." } });
+      this.setState({ busy: false, status: { ok: true, text: "Saved." } });
     } catch (error) {
       this.setState({ busy: false, status: { ok: false, text: error.detail || error.message } });
     }
   }
 
-  render(_props, { name, status, busy }) {
+  render(_props, { name, email, status, busy }) {
     const me = session();
-    const dirty = name.trim() !== (me.displayName || "");
+    const dirty = name.trim() !== (me.displayName || "") || email.trim() !== (me.email || "");
     return html`<section class="panel-block acct-profile">
       <${PhotoPicker} person=${{ id: me.userId, digest: me.avatar, name: me.displayName, username: me.user }}
         size=${104} label="Your photo" onChange=${(blob) => this.photo(blob)} />
       <form class="acct-id" onSubmit=${(e) => this.saveName(e)}>
         <label class="pe-field"><span>Name</span>
-          <span class="acct-name-row">
-            <input value=${name} maxlength="80" placeholder=${me.user}
-              onInput=${(e) => this.setState({ name: e.currentTarget.value })} />
-            <button type="submit" class="primary" disabled=${busy || !dirty}>Save</button>
-          </span></label>
+          <input value=${name} maxlength="80" placeholder=${me.user}
+            onInput=${(e) => this.setState({ name: e.currentTarget.value })} /></label>
+        <label class="pe-field"><span>Recovery email
+          <${InfoTip} label="About the recovery email">Where a password-reset link is sent when you
+            use “Forgot your password?” on the sign-in screen. Only works once an admin has set up
+            email (Settings → Email).<//></span>
+          <input type="email" value=${email} maxlength="254" placeholder="you@example.com"
+            autocomplete="email" onInput=${(e) => this.setState({ email: e.currentTarget.value })} />
+        </label>
         <p class="acct-handle"><span class="muted">@${me.user}</span>
-          <span class=${`role-pill role-${me.role}`}>${me.role}</span></p>
+          <span class=${`role-pill role-${me.role}`}>${me.role}</span>
+          <button type="submit" class="primary" disabled=${busy || !dirty}>Save</button></p>
         ${status ? html`<p class=${status.ok ? "ok-note" : "err"} role="status">${status.text}</p>` : null}
       </form>
     </section>`;
@@ -98,8 +108,10 @@ class Security extends Component {
   render(_props, { current, next, confirm, busy, outcome }) {
     return html`<section class="panel-block acct-security">
       <h3>Password <${InfoTip} label="About passwords">Stored as a hash, never as the password.
-        Changing it signs out every session of this account, this one included. Two-factor
-        sign-in is on the roadmap.<//></h3>
+        Changing it signs out every session of this account, this one included.<//></h3>
+      <p class="note-line"><${Icon} name="shield" /><span><b>Two-factor sign-in is not available
+        yet.</b>${" "}It is on the roadmap and will be required for admin accounts when it arrives;
+        until then the password is this account's only factor.</span></p>
       <form class="stack" onSubmit=${(e) => this.submit(e)} autocomplete="off">
         <${PasswordInput} id="pwCurrent" label="Current password" autocomplete="current-password"
           value=${current} onInput=${(v) => this.setState({ current: v })} />

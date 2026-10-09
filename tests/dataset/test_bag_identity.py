@@ -490,5 +490,5 @@ async def test_the_probe_is_true_on_a_migrated_database(store: Store) -> None:
     assert store._has_bag_key is True
     # v0.26.0: 25 -> 26, `0026_learned_decider` (ADRs #405, #412, #413); v0.27.0: 26 -> 27,
     # `0027_league_and_pending` (ADRs #423, #428); v0.29.0: 27 -> 28, `0028_moved_members`
-    # (ADR #436).
-    assert await store.schema_version() == Store.latest_schema_version() == 28
+    # (ADR #436); v0.30.0: 28 -> 29, `0029_recovery_email` (ADR #445).
+    assert await store.schema_version() == Store.latest_schema_version() == 29

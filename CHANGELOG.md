@@ -11,6 +11,60 @@ minor bump may break.
 
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md).
 
+## [0.30.0] - 2026-10-09 — "SNMPv3, recovery by email, and the console reviewed"
+
+An operator's review of the console (sign-in, alignment, tokens, roles) and two capabilities the
+appliance lacked: SNMPv3 traps and password recovery by email. **Migration 0029** (schema 29) is
+additive. See [`MIGRATION.md`](MIGRATION.md): an admin can no longer be narrowed, and the Docker
+image must be rebuilt for SNMPv3 privacy.
+
+### Fixed
+
+- **Narrowing the admin role broke the console** (#443). Unchecking capabilities on the admin role
+  (or on an admin person) took away `users.manage`, so People & access — where the repair lives —
+  disappeared with Settings and the Overview; #64's recovery set held only at the API. The admin
+  role and every admin person now always hold every capability: a stored entry is inert, the write
+  routes refuse a new one, and the Roles tab draws the admin grid as a fact. A narrowed admin
+  *token* no longer silently keeps `rbac.*`/`scope.*`.
+- **The sidebar's wordmark and the top bar were 7 px out of line** (#446): both now take one
+  height, `--bar-h`, so their rules meet on every screen.
+- The Visibility tab's selector tip and the retention note printed `&lt;` literally; six
+  capabilities (autonomy, the decider, the search, a situation's severity) sat unnamed under
+  "Other" in the access grid and now have names and a group.
+
+### Added
+
+- **SNMPv3 traps** (#444): USM with HMAC-MD5/SHA/SHA-224/256/384/512, DES, 3DES, AES-128/192/256
+  (Net-SNMP's and Cisco's key extensions), keys localized per sender engine and cached, RFC 3414
+  replay protection, a user pinnable to one engine. Checked against RFC 3414's test vectors and
+  against messages encoded by pysnmp's own originator. Privacy uses the optional `snmpv3` extra
+  (`cryptography`); the Docker image and the Nix package include it.
+- **Settings → SNMP** (#444): which versions are accepted, *any community* (the default) or a list
+  (stored as keyed hashes), SNMPv3 users with the device configuration to match (Cisco IOS, a
+  Net-SNMP test command), replay protection, and what the receiver refused since it started, by
+  reason. A save reaches the running receiver at once. `GET/POST /api/snmp`.
+- **Recovery by email** (#445): Settings → Email configures SMTP with presets for Gmail, Microsoft
+  365, Yahoo, iCloud, Zoho, SendGrid, Amazon SES and Mailgun, or a custom server with every field
+  (security none/STARTTLS/TLS, authentication, certificate verification, timeout); a test message
+  reports exactly what the server said. People set a recovery address under Your account (admins
+  in People & access); "Forgot your password?" sends a single-use, 30-minute link. No account
+  oracle, no Host-header link, bounded requests, every session ended by a reset.
+  `GET/POST /api/email`, `POST /api/email/test`, and the public `GET /api/login/options`,
+  `POST /api/password-reset`, `POST /api/password-reset/confirm`. `NETCORENOC_SMTP_PASSWORD`
+  keeps the SMTP password out of the database.
+- **An API reference on Service tokens** (#446): every route's summary, group, required capability
+  and scope posture, in the OpenAPI schema itself (`GET /api/reference`, and `/openapi.json`),
+  searchable, narrowed to what a chosen role or token may call, each with a ready `curl`; and a
+  three-step start. **Visibility** shows the common policies as complete documents to start from.
+
+### Changed
+
+- **Sign-in** (#446): two columns over a network artwork drawn by `tools/login_art.py` and served
+  from the appliance; the card holds only what signing in needs. The two-factor statement moved to
+  Your account → Password; "cannot get in" is one line, or the recovery link once email is set up.
+- Your account's Save covers the name and the recovery address; the token form's fields share one
+  baseline.
+
 ## [0.29.0] - 2026-10-05 — "the field review, and two more models"
 
 A field review of the console (eight items) and a longer, harsher training with two new league

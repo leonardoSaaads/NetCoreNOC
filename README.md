@@ -28,7 +28,8 @@ docker compose logs netcorenoc | grep -A4 "bootstrap admin"
 The last command prints a one-time password for the user `admin`. Then:
 
 1. Open `http://<host>:8080/`, sign in as `admin`, and choose a new password (12+ characters).
-2. Point your equipment's **SNMPv2c or v1 trap destination** at `<host>`, UDP port **162**.
+2. Point your equipment's **SNMPv2c or v1 trap destination** at `<host>`, UDP port **162**. For
+   **SNMPv3**, add the user under **Settings → SNMP** first; the form prints the device commands.
 3. Watch **Situations**. Devices and alarm types appear as traps arrive.
 
 Cannot use port 162? Set `NETCORENOC_TRAP_PORT=1162` in `.env`, run `docker compose up -d` again,
@@ -57,12 +58,15 @@ scenarios, your own traps, `snmptrap`, and the steps for Windows (WSL 2):
 | Serve HTTPS | `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY`, or a TLS reverse proxy — [`docs/security.md`](docs/security.md) |
 | One account per person | **People & access**: `viewer` (read), `editor` (work situations), `admin` (everything). A visibility scope narrows what someone sees, but it is **not tenant isolation**: correlation still learns across the whole estate — [`docs/security.md`](docs/security.md) |
 | A second admin | so a forgotten password never locks the team out |
-| Programs use service tokens | **People & access → Service tokens**; the value is shown once |
+| Password recovery by email | **Settings → Email** (Gmail, Microsoft 365 and others preset, or any SMTP server), and a recovery address per person |
+| Accept only what you expect | **Settings → SNMP**: switch off unused versions, list communities, or require SNMPv3 users |
+| Programs use service tokens | **People & access → Service tokens**; the value is shown once, and the API reference below the list shows every call a token can make |
 | Back up the database | `docker compose exec netcorenoc python -m netcorenoc backup /home/netcorenoc/backup.db` |
 | Upgrade | back up, `git pull`, `docker compose up -d --build`; read [`MIGRATION.md`](MIGRATION.md) |
 
-Forgot a password? `docker compose exec netcorenoc python -m netcorenoc admin reset-password <user>`.
-More in [`docs/troubleshoot.md`](docs/troubleshoot.md).
+Forgot a password? **Forgot your password?** on the sign-in screen once email is set up; otherwise
+`docker compose exec netcorenoc python -m netcorenoc admin reset-password <user>`. More in
+[`docs/troubleshoot.md`](docs/troubleshoot.md).
 
 ## How it decides
 

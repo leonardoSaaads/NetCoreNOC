@@ -2,14 +2,15 @@
  * ADR #403).
  *
  * A capability is shown by what it lets a person do ("Clear alarms"), with its identifier in the
- * tooltip. Three states a box can be in, and each says why:
+ * tooltip. Two states a box can be in besides a plain toggle, and each says why:
  *
  *   * **locked off** — above the role's ceiling. The appliance cannot grant it to this role at all
  *     (a policy only narrows), so the box is disabled and names the role that holds it;
  *   * **off for the whole role** — the role's baseline (the Roles tab) removed it, so no one person
- *     of that role can have it back without changing the baseline;
- *   * **kept** — an admin's recovery set (`rbac.*`, `scope.*`, `self.read`), always held, so a
- *     policy can never lock the last admin out of repairing it.
+ *     of that role can have it back without changing the baseline.
+ *
+ * A **fixed** role (the admin role, v0.30.0, #443) is never narrowed: its grid is drawn read-only
+ * by the caller, because every box in it is a fact.
  *
  * Everything else is a plain toggle, and a group's header toggles the whole group. The component
  * holds no state: `value` in, `onChange(Set)` out.
@@ -21,6 +22,7 @@ import { html, cx } from "../../dom.js";
 export const CATEGORIES = [
   ["Situations & alarms", [
     ["situations.read", "View situations"], ["situation.close", "Close"],
+    ["situation.severity", "Set severity"],
     ["situation.move", "Move alarms"], ["situation.merge", "Merge"],
     ["situation.split", "Split"], ["situation.promote", "Promote"],
     ["alarm.acknowledge", "Acknowledge alarms"], ["alarm.clear", "Clear alarms"],
@@ -38,7 +40,12 @@ export const CATEGORIES = [
     ["model.read", "View models"], ["model.register", "Register models"],
     ["promotion.read", "View promotion"], ["promotion.write", "Promote models"],
     ["scorer.read", "View link scorer"], ["scorer.preview", "Preview scorer"],
-    ["scorer.write", "Change scorer"],
+    ["scorer.write", "Change scorer"], ["decider.write", "Choose the deciding model"],
+    ["search.write", "Run site training"],
+  ]],
+  ["Autonomy", [
+    ["autonomy.stop", "Stop autonomy"], ["autonomy.write", "Switch autonomy on"],
+    ["autonomy.audit", "Autonomy decisions"],
   ]],
   ["Maintenance", [
     ["mw.read", "View windows"], ["mw.write", "Plan windows"], ["mw.confirm", "Confirm windows"],
@@ -66,12 +73,11 @@ export function categories(all) {
 }
 
 /**
- * The recovery set a role always keeps: held only by the role whose ceiling contains all of it.
- * Derived from what the server reports, never from comparing role names (F-rank).
+ * Whether `role` is one no policy narrows (#443). Read from what the server reports, never from
+ * comparing a role name here (F28).
  */
-export function keptBy(rbac, ceiling) {
-  const recovery = rbac.recovery_capabilities || [];
-  return recovery.every((c) => ceiling.has(c)) ? new Set(recovery) : new Set();
+export function isFixed(rbac, role) {
+  return !!rbac && (rbac.fixed_roles || []).includes(role);
 }
 
 /** Whether two sets hold the same members. */
@@ -83,13 +89,11 @@ export function sameSet(a, b) {
 
 /**
  * `all`: every capability id. `ceiling`: what the role may ever hold. `baseline`: what the role holds
- * after its baseline (for a person) — for a role's own grid, the ceiling. `locked`: always held.
- * `minimum`: `{capability: role}`. `value`: the Set shown. `readOnly` draws no toggles.
+ * after its baseline (for a person) — for a role's own grid, the ceiling. `minimum`:
+ * `{capability: role}`. `value`: the Set shown. `readOnly` draws no toggles.
  */
-export function CapGrid({ all, ceiling, baseline, locked, minimum, value, onChange, readOnly,
-  roleName }) {
+export function CapGrid({ all, ceiling, baseline, minimum, value, onChange, readOnly, roleName }) {
   const state = (id) => {
-    if (locked && locked.has(id)) return "locked";
     if (!ceiling.has(id)) return "above";
     if (baseline && !baseline.has(id)) return "role-off";
     return "open";
@@ -120,7 +124,7 @@ export function CapGrid({ all, ceiling, baseline, locked, minimum, value, onChan
           const title = why === "above"
             ? `${id} — needs the ${ROLE_WORD[minimum[id]] || minimum[id]} role`
             : why === "role-off" ? `${id} — off for every ${roleName || "member of this role"} (Roles tab)`
-              : why === "locked" ? `${id} — always kept, so access can always be repaired` : id;
+              : id;
           return html`<label key=${id} class=${cx("capitem", `cap-${why}`)} title=${title}>
             <input type="checkbox" checked=${value.has(id)} disabled=${readOnly || why !== "open"}
               onChange=${(e) => set([id], e.currentTarget.checked)} />

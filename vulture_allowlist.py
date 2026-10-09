@@ -271,3 +271,13 @@ set_at  # netcorenoc/engine/operate/autonomy.py — Settings, shown in the auton
 # reads the count in SQL, so nothing in `src/` calls it by name).
 _one_form  # netcorenoc/api/models_restructure.py
 event_moved  # netcorenoc/store/situation_events.py
+# v0.30.0: route handlers registered by decorator (ADRs #444-#446)
+get_snmp  # netcorenoc/api/routes/snmp.py
+set_snmp  # netcorenoc/api/routes/snmp.py
+get_email  # netcorenoc/api/routes/email.py
+set_email  # netcorenoc/api/routes/email.py
+test_email  # netcorenoc/api/routes/email.py
+login_options  # netcorenoc/api/routes/recovery.py
+request_reset  # netcorenoc/api/routes/recovery.py
+confirm_reset  # netcorenoc/api/routes/recovery.py
+api_reference  # netcorenoc/api/routes/apidoc.py

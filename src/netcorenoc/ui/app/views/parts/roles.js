@@ -11,8 +11,8 @@ import { post } from "../../api.js";
 import { InfoTip } from "../../info.js";
 import { can } from "../../session.js";
 import { relative, timeTitle } from "../../format.js";
-import { CapGrid, sameSet, keptBy } from "./capgrid.js";
-import { ROLES } from "./people.js";
+import { CapGrid, sameSet, isFixed } from "./capgrid.js";
+import { ROLES, FixedNote } from "./people.js";
 
 export class RolesPanel extends Component {
   constructor(props) {
@@ -44,9 +44,10 @@ export class RolesPanel extends Component {
   }
 
   render({ rbac }, { role, caps, busy, error, history }) {
-    const writable = can("rbac.write");
+    const fixed = isFixed(rbac, role);
+    const canWrite = can("rbac.write");
+    const writable = canWrite && !fixed;
     const ceiling = new Set(rbac.ceiling[role] || []);
-    const locked = keptBy(rbac, ceiling);
     const saved = this.current(role);
     const value = caps || saved;
     const dirty = caps && !sameSet(caps, saved);
@@ -59,7 +60,8 @@ export class RolesPanel extends Component {
           return html`<button type="button" key=${key} role="tab" aria-selected=${role === key}
             class=${cx("role-card", role === key && "on")} onClick=${() => this.pick(key)}>
             <b>${word}</b><span>${held} of ${top}</span>
-            ${(rbac.subjects.roles || {})[key] ? html`<span class="badge badge-warn">narrowed</span>` : null}
+            ${(rbac.subjects.roles || {})[key] && !isFixed(rbac, key)
+              ? html`<span class="badge badge-warn">narrowed</span>` : null}
           </button>`;
         })}
         <${InfoTip} label="About roles">Each role holds at most its ceiling; here you can give every
@@ -67,13 +69,14 @@ export class RolesPanel extends Component {
       </div>
       ${rbac.malformed ? html`<p class="err" role="alert">The stored policy could not be read
         (${rbac.malformed_reason}); everyone holds their role's full ceiling until it is fixed.</p>` : null}
-      <${CapGrid} all=${rbac.all_capabilities} ceiling=${ceiling} baseline=${null} locked=${locked}
+      ${fixed ? html`<${FixedNote} role=${role} />` : null}
+      <${CapGrid} all=${rbac.all_capabilities} ceiling=${ceiling} baseline=${null}
         minimum=${rbac.minimum_role} value=${value} roleName=${role} readOnly=${!writable}
         onChange=${(next) => this.setState({ caps: next })} />
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-      ${writable ? html`<div class="roles-foot">
-        <button type="button" class="primary" disabled=${busy || !dirty}
-          onClick=${() => this.save(sameSet(value, ceiling) ? null : [...value].sort())}>Save ${role}</button>
+      ${canWrite ? html`<div class="roles-foot">
+        ${writable ? html`<button type="button" class="primary" disabled=${busy || !dirty}
+          onClick=${() => this.save(sameSet(value, ceiling) ? null : [...value].sort())}>Save ${role}</button>` : null}
         ${dirty ? html`<button type="button" onClick=${() => this.setState({ caps: null })}>Discard</button>` : null}
         ${narrowed ? html`<button type="button" class="linkish" disabled=${busy}
           onClick=${() => this.save(null)}>Shipped default</button>` : null}
@@ -85,7 +88,7 @@ export class RolesPanel extends Component {
           <span class="mono">v${h.id}</span>
           <span>${h.note || "policy"}</span>
           <span class="muted" title=${timeTitle(h.created_at)}>${h.created_by} · ${relative(h.created_at)}</span>
-          ${h.active ? html`<span class="badge">active</span>` : writable ? html`<button type="button"
+          ${h.active ? html`<span class="badge">active</span>` : canWrite ? html`<button type="button"
             class="linkish" onClick=${() => this.restore(h.id)}>Restore</button>` : null}
         </li>`)}
         ${(rbac.history || []).length ? null : html`<li class="muted">No changes yet: every role holds its ceiling.</li>`}

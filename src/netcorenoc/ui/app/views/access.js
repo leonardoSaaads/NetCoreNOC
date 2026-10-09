@@ -55,7 +55,7 @@ export class Access extends Component {
       people: [["users", "/api/users"], ["rbac", "/api/rbac"]],
       roles: [["rbac", "/api/rbac"]],
       tokens: [["tokens", "/api/tokens"], ["rbac", "/api/rbac"]],
-      visibility: [["scope", "/api/scope"]],
+      visibility: [["scope", "/api/scope"], ["users", "/api/users"], ["tokens", "/api/tokens"]],
     }[tab] || [];
     const need = { users: "users.manage", rbac: "rbac.read", tokens: "tokens.manage", scope: "scope.read" };
     try {
@@ -98,7 +98,8 @@ export class Access extends Component {
         : html`<${Loading} label="Reading tokens" />`;
     }
     return scope ? html`<${VisibilityPanel} key=${scope.active ? scope.active.id : 0} scope=${scope}
-      onChanged=${() => this.read()} />` : html`<${Loading} label="Reading visibility" />`;
+      users=${users} tokens=${tokens} onChanged=${() => this.read()} />`
+      : html`<${Loading} label="Reading visibility" />`;
   }
 
   render(_props, { data, error }) {

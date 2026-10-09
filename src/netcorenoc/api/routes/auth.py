@@ -139,6 +139,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "user_id": principal.user_id,
             "display_name": person["display_name"] if person else None,
             "avatar": person["avatar"] if person else None,
+            # v0.30.0 (ADR #445): where this person's recovery links go; null when nowhere.
+            "email": person["email"] if person else None,
             "role": principal.role,
             "must_change_password": principal.must_change_password,
             "capabilities": sorted(capabilities),

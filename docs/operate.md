@@ -56,6 +56,11 @@ Point each device's **SNMPv2c or v1 trap destination** at the appliance (UDP 162
 `NETCORENOC_TRAP_PORT`). Nothing is configured on this side: devices and trap types appear as their
 traps arrive. Set `NETCORENOC_ALLOWLIST` to your equipment's networks so nothing else is accepted.
 
+**SNMPv3** needs one thing on this side: the user, under **Settings → SNMP** (name, security level,
+protocols, passphrases). The form prints the Cisco IOS lines and a Net-SNMP test command for it.
+One user serves every device configured with it; the appliance localizes the keys to each device's
+engine ID itself.
+
 **Check it is receiving** — the health control in the top bar, or:
 
 ```sh

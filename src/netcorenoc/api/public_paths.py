@@ -162,6 +162,16 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/league.js",
         "/app/views/parts/leaguecharts.js",
         "/app/views/parts/leaguecompare.js",
+        # v0.30.0 (ADRs #444-#446): recovery on the sign-in card — fetched before any identity
+        # exists — Settings → SNMP and Email, the API reference, the visibility examples, and the
+        # sign-in artwork.
+        "/app/recover.js",
+        "/app/views/parts/snmp.js",
+        "/app/views/parts/snmpuser.js",
+        "/app/views/parts/email.js",
+        "/app/views/parts/apiref.js",
+        "/app/views/parts/scopeexamples.js",
+        "/login-bg.svg",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/htm-3.1.1.module.js",
         "/vendor/preact-10.29.8.module.js",

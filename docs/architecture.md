@@ -8,7 +8,9 @@ specifications of things that do **not** exist yet, see [`plans/`](plans/).
 One Python 3.12 asyncio process. One SQLite (WAL) file. One static console the browser loads
 directly. Five runtime dependencies — `pysnmp`, `aiosqlite`, `fastapi`, `uvicorn`, `pydantic` —
 unchanged since v0.2.0, and every model kind the appliance trains and runs was added without a
-sixth.
+sixth. One **optional** package exists, the `snmpv3` extra (`cryptography`, decision #444): SNMPv3
+privacy needs a vetted cipher and the standard library has none. It is imported lazily, only to
+decrypt, and its absence is a quarantine reason rather than a failure.
 
 ```
 UDP 162 ─▶ ingest/receiver ─▶ bounded queue ─▶ engine/operate/engine ─▶ store/ ─▶ SQLite
@@ -31,8 +33,8 @@ remember (decision #207).
 | **http** | `api/` — app, perimeter, context, models, and `api/routes/` | HTTP semantics, the security boundary, request and response shape. **No domain rule** |
 | **engine** | `engine/` — six subpackages, below | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is |
 | **data** | `store/`, with `migrations/` beside it | One SQLite connection under one asyncio lock. **SQL lives here and nowhere else** |
-| **ingest** | `ingest/` — `receiver`, `events`, `known_oids` | The wire: parse, allowlist, quarantine, the trap vocabulary |
-| **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `runtime`, `logsetup`, `settings` | Identity, authorization, visibility, attribution, config, logging |
+| **ingest** | `ingest/` — `receiver`, `snmpconf`, `usm`, `ber`, `events`, `known_oids` | The wire: parse, allowlist, the SNMP policy and SNMPv3 security, quarantine, the trap vocabulary |
+| **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `mail`, `runtime`, `logsetup`, `settings` | Identity, authorization, visibility, attribution, outgoing email, config, logging |
 
 The package **root** holds four modules and no others: `__init__.py`, and the process entry surface
 `__main__.py`, `main.py` and `runner.py`. `python -m netcorenoc.main` is a public interface — the
@@ -104,8 +106,9 @@ order with no cycles between them** (decision #208):
 * **One `Store`, one connection, one `store.lock`.** The lock is taken by *callers*, never inside a
   `Store` method, and a new store method must assume its caller holds it.
   `tests/store/test_store_concurrency.py` is the control.
-* **Zero new runtime dependencies in the core.** Five since v0.2.0. New development tooling goes in
-  the `dev` extra with a decision beside it.
+* **Zero new runtime dependencies in the core.** Five since v0.2.0. An optional extra needs a
+  decision and a feature that degrades without it (the `snmpv3` extra, #444). New development
+  tooling goes in the `dev` extra with a decision beside it.
 * **A new route declares itself or the process does not start.** See
   [`security.md`](security.md#a-new-route-declares-itself-or-the-process-does-not-start).
 

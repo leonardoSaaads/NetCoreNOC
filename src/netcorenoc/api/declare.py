@@ -83,6 +83,7 @@ from fastapi.types import DecoratedCallable
 from starlette.routing import Route
 
 from netcorenoc.api.public_paths import UNAUTHENTICATED_PATHS as UNAUTHENTICATED_PATHS
+from netcorenoc.api.reference import REFERENCE
 from netcorenoc.crosscutting import rbac
 
 
@@ -261,12 +262,31 @@ class DeclaredRoutes:
 
     def get(self, path: str, **kwargs: Any) -> Callable[[DecoratedCallable], DecoratedCallable]:
         require_declaration("GET", path)
-        return self._app.get(path, **kwargs)
+        return self._app.get(path, **documented("GET", path, kwargs))
 
     def post(self, path: str, **kwargs: Any) -> Callable[[DecoratedCallable], DecoratedCallable]:
         require_declaration("POST", path)
-        return self._app.post(path, **kwargs)
+        return self._app.post(path, **documented("POST", path, kwargs))
 
     def delete(self, path: str, **kwargs: Any) -> Callable[[DecoratedCallable], DecoratedCallable]:
         require_declaration("DELETE", path)
-        return self._app.delete(path, **kwargs)
+        return self._app.delete(path, **documented("DELETE", path, kwargs))
+
+
+def documented(method: str, path: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """The route's reference entry and authorization, written into its OpenAPI operation (v0.30.0).
+
+    `x-capability` and `x-scope` are **read from the tables**, never restated, so the schema a
+    program reads cannot disagree with what the perimeter enforces. A public route carries no
+    capability and the scope `public`.
+    """
+    entry = REFERENCE.get((method, path))
+    if entry is None:
+        return kwargs
+    key = (method, path)
+    extra = {
+        "x-capability": rbac.ROUTE_PERMISSIONS.get(key),
+        "x-scope": rbac.ROUTE_SCOPE.get(key, "public"),
+        **(kwargs.get("openapi_extra") or {}),
+    }
+    return {"summary": entry.summary, "tags": [entry.group], **kwargs, "openapi_extra": extra}

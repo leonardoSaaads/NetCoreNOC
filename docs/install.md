@@ -32,8 +32,8 @@ Optional configuration lives in `.env`:
 cp .env.example .env    # then edit; .env is git-ignored and is the only place secrets belong
 ```
 
-Point your equipment's SNMP trap destination (v2c or v1) at the host, open `http://<host>:8080/`,
-and go to [`operate.md`](operate.md).
+Point your equipment's SNMP trap destination (v2c or v1; v3 once its user is added under Settings →
+SNMP) at the host, open `http://<host>:8080/`, and go to [`operate.md`](operate.md).
 
 ### Resource limits, and what happens when one is hit
 
@@ -87,7 +87,7 @@ Your equipment then has to be configured to send to 1162, which most vendors sup
 
 ```sh
 python3.12 -m venv .venv
-.venv/bin/pip install .
+.venv/bin/pip install ".[snmpv3]"     # `.` alone: no SNMPv3 privacy (DES/AES), nothing else differs
 .venv/bin/python -m netcorenoc.main
 ```
 
@@ -112,7 +112,7 @@ fails to start, and `systemd-analyze verify` is what says so:
 
 ```sh
 sudo python3.12 -m venv /opt/netcorenoc/.venv
-sudo /opt/netcorenoc/.venv/bin/pip install .
+sudo /opt/netcorenoc/.venv/bin/pip install ".[snmpv3]"
 sudo cp deploy/netcorenoc.service /etc/systemd/system/
 systemd-analyze verify /etc/systemd/system/netcorenoc.service   # silence means it will start
 sudo systemctl daemon-reload && sudo systemctl enable --now netcorenoc

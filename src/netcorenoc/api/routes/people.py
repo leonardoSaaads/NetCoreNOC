@@ -22,7 +22,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ProfileIn
-from netcorenoc.crosscutting import auth, avatar, shaping
+from netcorenoc.crosscutting import auth, avatar, mail, shaping
 
 #: The headers every photo is served with. `sandbox` and `default-src 'none'` mean that even a file
 #: crafted to parse as something else too cannot run or load anything if opened directly.
@@ -109,20 +109,22 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def _set_name(
         uid: int, body: ProfileIn, request: Request, principal: auth.Principal, action: str
     ) -> dict[str, Any]:
+        """The display name, and — v0.30.0, only when the body carries it — the recovery address."""
         name = (body.display_name or "").strip() or None
         if await store.get_user(uid) is None:
             raise HTTPException(status_code=404, detail="no such user")
+        details: dict[str, Any] = {"field": "display_name", "display_name": name}
+        out: dict[str, Any] = {"display_name": name}
+        if "email" in body.model_fields_set:
+            email = (body.email or "").strip() or None
+            if email is not None and not mail.valid_address(email):
+                raise HTTPException(status_code=400, detail="that is not an email address")
+            await store.set_user_email(uid, email, time.time())
+            details["email_set"], out["email"] = email is not None, email
         await store.set_display_name(uid, name, time.time())
-        await audit_row(
-            request,
-            principal,
-            action,
-            "ok",
-            object_type="user",
-            object_id=str(uid),
-            details={"field": "display_name", "display_name": name},
-        )
-        return {"display_name": name}
+        target = {"object_type": "user", "object_id": str(uid)}
+        await audit_row(request, principal, action, "ok", **target, details=details)
+        return out
 
     @route.get("/api/avatars/{uid}")
     async def get_avatar(

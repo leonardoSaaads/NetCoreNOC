@@ -124,7 +124,7 @@ export const VIEWS = [
     id: "settings", label: "Settings", icon: "settings", group: "administer",
     // v0.26.0 (ADR #414): Link scorer folded in as the Correlation tab, beside Autonomy and Search.
     capability: "config.read", component: Settings,
-    summary: "What decides links, how autonomous it is, the search budget, and every parameter.",
+    summary: "What decides links, autonomy, what the receiver accepts, email, and every parameter.",
   },
   {
     id: "quarantine", label: "Quarantine", icon: "quarantine", group: "administer",

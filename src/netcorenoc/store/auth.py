@@ -61,8 +61,8 @@ class AuthMixin(StoreBase):
     async def list_users(self) -> list[dict[str, Any]]:
         # v0.25.0: the display name and the photo's DIGEST, never the image (ADR #401, #402).
         cur = await self.conn.execute(
-            "SELECT u.id, u.username, u.display_name, u.role, u.must_change_password, u.disabled, "
-            "u.created_at, a.sha256 AS avatar FROM user u "
+            "SELECT u.id, u.username, u.display_name, u.email, u.role, u.must_change_password, "
+            "u.disabled, u.created_at, a.sha256 AS avatar FROM user u "
             "LEFT JOIN user_avatar a ON a.user_id=u.id ORDER BY u.username"
         )
         return [dict(r) for r in await cur.fetchall()]

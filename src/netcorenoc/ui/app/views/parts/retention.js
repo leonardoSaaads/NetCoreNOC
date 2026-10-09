@@ -69,7 +69,7 @@ export class DatasetRetention extends Component {
                    onInput=${(e) => this.setState({ [key]: e.target.value })} />
           </div>`)}
       </form>
-      <p class="impact">The ordering <code>sink &lt; training ≤ audit</code> is enforced by the
+      <p class="impact">The ordering <code>${"sink < training ≤ audit"}</code> is enforced by the
         appliance with a precise reason, not a bare rejection. <b>The audit tier is the
         destructive one</b>: it is the outer edge of the data's life. Lowering the training tier
         destroys nothing — it narrows what a model may read.</p>

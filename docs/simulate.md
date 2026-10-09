@@ -226,7 +226,15 @@ snmptrap -v 1 -c public 127.0.0.1:1162 1.3.6.1.4.1.8072.2.3 127.0.0.1 2 0 '' \
 
 `snmptrap` is also how to reach an appliance on **another machine**: replace `127.0.0.1:1162` with
 its address and port. Every trap then comes from your machine's own address, so it appears as one
-device. SNMPv3 traps are not supported; they are quarantined.
+device.
+
+An **SNMPv3** trap needs the user configured on **Settings → SNMP** first (its form prints this
+command with your choices), then:
+
+```sh
+snmptrap -v3 -l authPriv -u noc -a SHA -A 'auth-passphrase' -x AES -X 'priv-passphrase' \
+  127.0.0.1:1162 '' 1.3.6.1.6.3.1.1.5.3 1.3.6.1.2.1.2.2.1.1.3 i 3
+```
 
 **The device is the trap's UDP source, never an address inside it** — `snmpTrapAddress` and any
 "node" varbind included, since anyone can write those. A script that simulates two nodes must send
