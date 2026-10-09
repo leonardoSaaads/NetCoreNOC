@@ -94,8 +94,10 @@ is correct rather than metric-gaming.
 ## Hard constraints (a PR that violates one will not merge)
 
 - **Zero new runtime dependencies.** The shipped app imports `pysnmp`, `aiosqlite`, `fastapi`,
-  `uvicorn`, `pydantic`, and nothing else. New dev tooling goes in the `dev` extra with a decision
-  entry justifying it. This covers documentation tooling too: no `mkdocs`, no `sphinx`.
+  `uvicorn`, `pydantic`, and nothing else; the one optional extra, `snmpv3` (`cryptography`), is
+  imported lazily and its absence degrades one feature visibly (decision #444). New dev tooling goes
+  in the `dev` extra with a decision entry justifying it. This covers documentation tooling too: no
+  `mkdocs`, no `sphinx`.
 - **Same runtime identity.** One process, one SQLite file, one static console, environment variables
   only, no UI build step, no npm.
 - **Ingestion is sacred.** `receiver.datagram_received` gains no lock, no I/O, no `await`.

@@ -25,6 +25,7 @@ Two mechanisms, and the difference matters:
 | `NETCORENOC_RETENTION_DAYS` | `7` | Pruning horizon for cleared/closed **operational** history. It does **not** govern the feedback dataset — those have their own tiers below |
 | `NETCORENOC_AUDIT_RETENTION_DAYS` | `365` | Retention for the audit log. Pruning is admin-triggered only, never automatic |
 | `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging. Anything other than empty, `0`, `false` or `False` enables it |
+| `NETCORENOC_SMTP_PASSWORD` | *(unset)* | The SMTP password for recovery email (v0.30.0). When set it is used and Settings → Email's password field is ignored, so the password never enters the database or its backups. The rest of the mail server is configured in the console |
 | `NETCORENOC_REARM_S` | `3600` | Seconds an active alarm may be silent before its next trap counts as a **new occurrence** (its clear was probably lost) and opens a new situation. `0` = a repeat always stays in its situation. [`operate.md`](operate.md#4-how-alarms-repeat-clear-and-come-back) |
 
 **Every one of them is validated at startup and refuses by name.** A port outside 1–65535, a
@@ -61,6 +62,40 @@ answer different questions:
 
 That third class is the one people ask about. A settings screen that let you edit a guarantee would
 make it a preference, and the guarantee is the product.
+
+## What the trap receiver accepts (v0.30.0)
+
+**Settings → SNMP**, live — no restart. The default needs nothing: SNMPv1 and v2c traps are
+accepted whatever their community, and SNMPv3 traps from the users configured there.
+
+| Setting | Default | What it does, and what it costs |
+|---|---|---|
+| Versions | v1, v2c, v3 | A version switched off is refused into Quarantine with its reason |
+| Communities | any | *Only these communities* refuses every other v1/v2c trap. A community is sent in clear text by the protocol, so this filters mistakes, not attackers; for that, use the allowlist or SNMPv3 |
+| SNMPv3 users | none | Name, security level (noAuthNoPriv, authNoPriv, authPriv), authentication (MD5, SHA, SHA-224/256/384/512), privacy (DES, 3DES, AES-128/192/256 and Cisco's AES-192/256-C) and passphrases of 8+ characters. Accepted from every device configured with the user, or from one engine ID if pinned |
+| Replay protection | on | Refuses a v3 trap more than 150 s behind its sender's clock. Switch off for equipment whose engine boots counter resets on reboot |
+
+Privacy needs the optional `cryptography` package: `pip install "netcorenoc[snmpv3]"`. The Docker
+image and the Nix package include it; without it an encrypted trap is quarantined as
+`v3-privacy-unavailable`.
+
+## Outgoing email (v0.30.0)
+
+**Settings → Email** configures the SMTP server password-recovery links are sent through. Pick a
+provider and its server, port and security are filled in; **Custom SMTP server** exposes host,
+port, security (none, STARTTLS, TLS), sign-in, sender, certificate verification and a timeout.
+**Send test** delivers one message with the saved settings and shows what the server answered.
+
+| Provider | Server | What people get wrong |
+|---|---|---|
+| Gmail / Google Workspace | `smtp.gmail.com:587` STARTTLS | needs an **app password**, not the account's |
+| Microsoft 365 / Outlook.com | `smtp.office365.com:587` STARTTLS | SMTP AUTH must be allowed for the mailbox |
+| Yahoo / iCloud / Zoho | 465 TLS / 587 STARTTLS / 465 TLS | an app-specific password |
+| SendGrid / Amazon SES / Mailgun | 587 STARTTLS | the service's SMTP credentials, and a verified sender |
+
+Recovery is offered on the sign-in screen only when email is on, *Offer "Forgot your password?"*
+is ticked and a console address for links is set — the address people use to reach the console,
+which the link points at.
 
 ## Retention: three tiers, and lowering one deletes rows
 

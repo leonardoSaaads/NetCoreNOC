@@ -16,8 +16,9 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 ## Product
 
 - **Two-factor authentication, required for admin accounts.** Not scheduled into a release, and
-  **the console says so on the sign-in card and the account screen** rather than implying it exists
-  (v0.15.3, #238). Today a password is the only factor this appliance has. Whatever ships must not
+  **the console says so on the account screen** rather than implying it exists (v0.15.3, #238; off
+  the sign-in card since v0.30.0, #446). Today a password is the only factor this appliance has, and
+  since v0.30.0 a recovery mailbox is one more way in (#445). Whatever ships must not
   reintroduce F79's shape: a second factor an admin can lose is a second way to lock the appliance
   out of itself, so enrolment and recovery are the same design question, not two.
 - **Basic SNMP polling, read-only** (#373). Planned for v0.21.0 and **deliberately slipped**, not
@@ -34,8 +35,10 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   neither, so `python -m netcorenoc.main` does not start there. WSL 2 runs it unchanged
   ([`simulate.md`](simulate.md#windows)). Supporting it natively needs both replaced and a Windows
   CI job, or the claim would be untested.
-- **SNMPv3** — needs credentials, hence configuration, hence deliberately post-MVP. The poller
-  above is where it lands first.
+- **SNMPv3 for the poller.** Traps are received over SNMPv3 since v0.30.0 (#444); polling, when
+  it arrives, reuses the same USM code and the users of Settings → SNMP.
+- **Answering INFORMs** (v2c and v3). An inform is quarantined as `not-a-trap-pdu` because a
+  response is I/O on the datagram path; answering one needs a design that keeps that path free.
 - **Real per-organization isolation.** v0.21.0 gives every network element an **organization**, and
   the migration that adds it carries a banner saying in capitals that it is **not tenant
   isolation** (#366): correlation still learns across every element, a situation may still form

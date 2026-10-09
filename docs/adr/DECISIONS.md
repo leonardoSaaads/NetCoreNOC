@@ -6052,3 +6052,55 @@ From this release an entry is about six lines: decision, reason, release.*
   labelled unrelated, now grouped per device, which is the behaviour this round was asked for.
   `make eval` is re-baselined with that reason. Gradient-boosted trees early-stopped at 500 rounds,
   over the latency budget: it scores in shadow and never decides.
+
+## 443. The admin role is never narrowed; an admin token still is (v0.30.0, supersedes #64)
+
+- **Context**, from the field: an admin unchecked capabilities on the admin role and the console
+  broke. #64's recovery set (`rbac.*`, `scope.*`, `self.read`) held at the API and failed where it
+  mattered: People & access needs `users.manage`, so the screen the repair lives on disappeared, and
+  Settings, the Overview and live updates went with the rest. And a narrowed admin *token* kept
+  `rbac.write`, so it could widen itself — narrowing it protected nothing.
+- **Decision**: `rbac.FIXED_ROLES = {"admin"}`. A person with the admin role resolves to the whole
+  admin ceiling whatever the stored policy says (an entry for the role or for an admin person is
+  inert), and both write routes refuse to store one with the reason. A service token of the admin
+  role is narrowed like any program, with no set unioned back. The console draws a fixed role's
+  grid as a fact, from `fixed_roles` on `GET /api/rbac`. To give a person less, give them editor.
+
+## 444. Settings → SNMP: versions, communities and SNMPv3 users, live (v0.30.0)
+
+- **Decision**: the receiver takes an immutable `SnmpPolicy` (`ingest/snmpconf.py`) it swaps by
+  attribute assignment — no lock on the datagram path. Default: v1 and v2c, any community (the
+  zero-configuration promise, unchanged). An admin may switch versions off, accept only listed
+  communities (stored as the HMAC the receiver already computes, F4) and add SNMPv3 users: USM
+  (`ingest/usm.py`) with HMAC-MD5/SHA/SHA-2, DES, 3DES and AES-128/192/256 (Blumenthal and Cisco's
+  Reeder), keys localized to each sender's engine ID and cached (bounded), so one user works for
+  every device unless pinned to an engine. RFC 3414 replay protection is on, with a switch.
+  Passphrases are stored as RFC 3414 master keys. Every refusal is a quarantine reason.
+- **Privacy needs `cryptography`**: the standard library has no cipher, and writing AES here would
+  be writing crypto. It is the optional `snmpv3` extra — the core stays five dependencies, the
+  Docker image and the Nix package include it, and without it an encrypted trap is quarantined as
+  `v3-privacy-unavailable`, never dropped. A stored policy with problems refuses to start (F69).
+
+## 445. Recovery by email, through an SMTP server an admin configures (v0.30.0)
+
+- **Decision**: Settings → Email configures SMTP with provider presets (Gmail, Microsoft 365,
+  Yahoo, iCloud, Zoho, SendGrid, Amazon SES, Mailgun) and every Zabbix-like field for a custom
+  server; `smtplib` only, run in a thread. A person's recovery address is `user.email` (migration
+  0029), set by themselves or an admin. `POST /api/password-reset` answers one sentence whatever it
+  is given and sends from a background task (no oracle, no timing); the link carries 256 random
+  bits stored as SHA-256, lives 30 minutes, works once, is superseded by the next, and points at the
+  configured console address — never the request's Host header (reset poisoning). Requests are
+  bounded per address and per account; a reset revokes every session.
+- **The SMTP password is stored in the database** because the appliance must present it; it is
+  never returned, logged or audited, and `NETCORENOC_SMTP_PASSWORD` keeps it out of the file.
+
+## 446. A sign-in screen over the network, one bar height, and an API reference (v0.30.0)
+
+- **Decision**: the sign-in card holds only what signing in needs, over a self-hosted artwork
+  (`login-bg.svg`, drawn by `tools/login_art.py`; `img-src 'self'`). The two declarations it carried
+  made the first-run card taller than a laptop: two-factor moved to Your account → Password, "cannot
+  get in" became one line or the recovery link. The wordmark and the top bar share `--bar-h`, so
+  their rules meet. Every route has a one-line reference entry (`api/reference.py`) written into the
+  OpenAPI schema with its capability and scope read from the tables; Service tokens draws a
+  searchable reference from it (`GET /api/reference`), narrowed to what a chosen role or token may
+  call, and Visibility shows the common policies as complete documents.

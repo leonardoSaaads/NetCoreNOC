@@ -17,7 +17,7 @@ is **never persisted or logged** — it is kept only as an HMAC grouping tag.
 ## Trust boundaries
 
 ```
-                        │ UDP 162 — unauthenticated by protocol, by design
+                        │ UDP 162 — v1/v2c unauthenticated by protocol; v3 USM if configured
    network-adjacent ────┼─▶ receiver ─▶ queue ─▶ engine ─▶ store
                         │
    browser / API client ┼─▶ TLS? ─▶ headers ─▶ origin/CSRF ─▶ session|token ─▶ RBAC ─▶ handler
@@ -25,11 +25,13 @@ is **never persisted or logged** — it is kept only as an HMAC grouping tag.
    holder of the DB file┼──────────────────────────────────────────────────────▶ store
 ```
 
-**The datagram side is unauthenticated and that is deliberate**: SNMPv2c has no authentication and
-zero-config means accepting traps from equipment that was never told about us. The defences there
-are shape-based — defensive parsing into quarantine, a bounded queue that counts overflow rather
-than awaiting, and a source-IP allowlist you should set. **The HTTP side is the security perimeter**
-and is where the controls live.
+**The datagram side is unauthenticated by default and that is deliberate**: SNMPv2c has no
+authentication and zero-config means accepting traps from equipment that was never told about us.
+The defences there are shape-based — defensive parsing into quarantine, a bounded queue that counts
+overflow rather than awaiting, and a source-IP allowlist you should set. Since v0.30.0 you can also
+switch v1/v2c off and accept only **SNMPv3** traps from configured users, authenticated (HMAC) and
+optionally encrypted, with RFC 3414 replay protection (Settings → SNMP, decision #444). **The HTTP
+side is the security perimeter** and is where the controls live.
 
 If you are auditing that perimeter, the file to read is `src/netcorenoc/api/perimeter.py` — all of
 it, and nothing else.
@@ -63,8 +65,11 @@ full visibility are what you get.
 
 * **Capabilities** can be taken away from a role or from one principal. The built-in map is a
   **ceiling**, not a starting point: the resolved set is `ceiling ∩ policy`, so a policy can only
-  ever *narrow*. There is no configuration that gives a viewer an admin capability, and an admin can
-  never be locked out of repairing the policy.
+  ever *narrow*. There is no configuration that gives a viewer an admin capability. **The admin role
+  is never narrowed** (v0.30.0, decision #443): a person with it always holds every capability, so
+  the appliance can always be administered; to give someone less, give them the editor role. A
+  service token of any role — admin included — can be narrowed, which is how a program gets least
+  privilege.
 * **Visibility scoping** limits which network elements a viewer or editor sees, by element id,
   address, CIDR or address glob. Out-of-scope elements are absent from every list; a
   directly-requested one returns **404, not 403** — existence is not disclosed — and a *write* to
@@ -150,6 +155,14 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
 * A forgotten password is reset from the host (`python -m netcorenoc admin reset-password`), which
   needs the database file — the same trust boundary as the first-run password. It is audited and
   ends every session of that account.
+* **Recovery by email** (v0.30.0, decision #445) is off until an admin configures **Settings →
+  Email** and a person has a recovery address. The request answers the same sentence whatever it
+  is given and sends from a background task, so it reveals neither an account nor an address by its
+  answer or its timing. The link carries 256 random bits, stored only as SHA-256; it lives 30
+  minutes, works once and is superseded by the next request. Its host is the configured console
+  address, **never the request's `Host` header** (reset poisoning). Requests are bounded per client
+  address and per account, every one is audited, and a reset ends every session of the account.
+  A mailbox is now a way into the account: protect it as you protect the account.
 * Sessions are stored server-side by SHA-256 of the id, with a sliding idle timeout **and** an
   absolute one. A stolen cookie expires on the absolute clock whatever the holder does.
 * Service tokens are per-identity and revocable. The value is shown once and stored hashed.
@@ -172,8 +185,17 @@ Pruning is admin-triggered only and is itself audited.
 
 The SQLite file is the whole state, and it is **not encrypted**. Anyone with the file has your
 learned model, your situations and your audit history. Passwords and token values are hashed and
-session ids are stored by digest, so the file does not yield live credentials — but treat it as
-sensitive and use filesystem or volume encryption if your threat model needs it.
+session ids and reset links are stored by digest, so the file does not yield those credentials —
+but treat it as sensitive and use filesystem or volume encryption if your threat model needs it.
+
+Two secrets it does hold, because the appliance has to use them (v0.30.0):
+
+* **The SMTP password** of Settings → Email, so the appliance can sign in to the mail server. It is
+  never returned by the API, written to a log or put in an audit row. Set
+  `NETCORENOC_SMTP_PASSWORD` to keep it out of the file and its backups.
+* **SNMPv3 master keys** — the RFC 3414 hash of each passphrase, not the passphrase. They let
+  someone with the file authenticate as that SNMP user, as Net-SNMP's stored keys do. Accepted
+  v1/v2c communities are kept as keyed hashes (F4).
 
 ## A new route declares itself, or the process does not start
 

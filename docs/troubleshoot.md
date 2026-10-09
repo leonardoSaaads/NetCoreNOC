@@ -17,13 +17,25 @@ the reset below.
 
 ### I forgot my password
 
-Another admin resets it on **People & access**. If you are the only admin:
+If an admin has set up email (**Settings → Email**) and your account has a recovery address, use
+**Forgot your password?** on the sign-in screen: the link works once, for 30 minutes, and signs the
+account out everywhere when used. Otherwise another admin resets it on **People & access**. If you
+are the only admin:
 
 ```sh
 docker compose exec netcorenoc python -m netcorenoc admin reset-password <username>
 ```
 
 It prints a one-time password, signs that account out everywhere, and writes an audit row.
+
+### The recovery email does not arrive
+
+The sign-in screen answers the same sentence whether or not an account matched, so check here
+instead: the account needs a recovery address (People & access, or Your account), the request is
+an audit row (`password.reset.request`, `denied` when nothing matched), and one link per account is
+sent every two minutes. **Settings → Email → Send test** shows exactly what the mail server said;
+Gmail, Microsoft 365, Yahoo and iCloud refuse the account password and need an app password. A
+failed send is a warning line in the log naming the account, never the link.
 
 ### No admin account is left
 
@@ -78,8 +90,20 @@ real source address, which behind NAT is not the device's.
 
 ### `quarantined` keeps climbing
 
-Open **Quarantine**: each entry says why it was refused. Common causes are SNMPv3 traps (not
-supported), truncated packets and oversized values. Reading this list is audited.
+Open **Quarantine**: each entry says why it was refused, and **Settings → SNMP** counts the
+refusals by reason since the start. Common causes:
+
+| Reason | What to check |
+|---|---|
+| `v3-unknown-user` | the SNMPv3 user is not configured on Settings → SNMP, or its name differs |
+| `v3-authentication-failed` | the authentication passphrase or protocol differs from the device's |
+| `v3-decryption-failed` | the privacy passphrase or protocol differs (AES-256 vs Cisco's AES-256-C) |
+| `v3-not-in-time-window` | a replay, or a device whose engine boots counter resets on reboot — fix it, or switch replay protection off |
+| `v3-privacy-unavailable` | an encrypted trap on an install without `netcorenoc[snmpv3]` (the Docker image has it) |
+| `community-not-accepted` | Settings → SNMP accepts only listed communities, and this is not one |
+| `snmp-v1-not-accepted` / `v2c` / `v3` | that version is switched off on Settings → SNMP |
+
+Truncated packets and oversized values are the other usual causes. Reading this list is audited.
 
 ### The process will not start and names a variable
 

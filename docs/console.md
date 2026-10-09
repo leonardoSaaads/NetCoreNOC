@@ -31,22 +31,56 @@ disabled controls.
 
 | View | The question it answers |
 |---|---|
-| **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts, each with a photo, a name, a role and its own capability grid), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once) and **Visibility** (which network elements viewers and editors see) |
-| **Settings** | Four tabs since v0.26.0: **Correlation** (what decides links — the shipped model with its provenance, a site model, or the additive formula with its preview and history, which was the *Link scorer* screen), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Search** (the budget, start and stop) and **System** (every parameter, in three classes, with its precedence and its impact) |
+| **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts, each with a photo, a name, a recovery email, a role and its own capability grid), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once — with a three-step start and the **API reference**) and **Visibility** (which network elements viewers and editors see, with worked examples) |
+| **Settings** | Six tabs: **Models** (what decides links — the league's champion, chosen by the judge or pinned), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Site training** (the budget, start and stop), **SNMP** (which versions and communities the receiver accepts, and the SNMPv3 users), **Email** (the SMTP server recovery links go through) and **System** (every parameter, in three classes, with its precedence and its impact) |
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | The hash-chained record of every change, and its verification state |
 
-**Your account** opens from your photo and name in the top bar: your photo and display name (both
-save at once), your password, and what you can do, by category, with each capability one click
-away.
+**Your account** opens from your photo and name in the top bar: your photo, display name and
+recovery email, your password (and where two-factor sign-in stands), and what you can do, by
+category, with each capability one click away.
+
+### Signing in (v0.30.0)
+
+The sign-in screen is the card and nothing else it does not need: username, password, and — once an
+admin has set up **Settings → Email** — **Forgot your password?**, which emails a single-use link to
+the account's recovery address. The link opens a new-password form with the same confirmation and
+length indicator as every other password form. Without email, the card says in one line that an
+admin can reset the password.
 
 ### Access: roles and people (v0.25.0)
 
 A role is the most a person can ever hold. On **Roles** you can give every person of a role less;
 on a person you can give that one person less again. Neither can give more: a capability above the
-role is drawn locked with the role that holds it. Every change is a new version of the policy,
-audited, and **Roles → History** restores any earlier one. An account you create has to set its
-own password at first sign-in.
+role is drawn locked with the role that holds it. **The admin role is the exception: it always
+holds every capability** (v0.30.0), so its grid is drawn as a fact and an admin person's access
+cannot be narrowed — give someone the editor role to give them less. A service token of any role
+can still be narrowed. Every change is a new version of the policy, audited, and **Roles →
+History** restores any earlier one. An account you create has to set its own password at first
+sign-in.
+
+### Service tokens and the API reference (v0.30.0)
+
+Below the tokens, the **API reference** lists every call the appliance serves, grouped, each with
+the capability it needs, whether its answer depends on visibility, its parameters and a ready
+`curl` using `$NETCORENOC_TOKEN`. **Calls available to** narrows it to what a viewer, editor or
+admin token — or one of your tokens, with its own narrowing — may call. It is read from the
+appliance's own OpenAPI schema, so it is never out of date; the schema itself is at
+`/openapi.json` for code generators.
+
+### SNMP and Email (v0.30.0)
+
+**Settings → SNMP**: every v1 and v2c trap is accepted out of the box. Switch off a version you do
+not use; accept only listed communities (each shown afterwards by its first letter and length);
+add SNMPv3 users — name, security level, authentication and privacy protocols and passphrases, and
+optionally an engine ID — with the Cisco IOS and Net-SNMP lines that make a device send as that
+user. What the receiver refused since it started is counted by reason. A save applies at once.
+
+**Settings → Email**: pick the provider (Gmail, Microsoft 365, Yahoo, iCloud, Zoho, SendGrid,
+Amazon SES, Mailgun) and enter the address and an app password, or choose **Custom SMTP server**
+for every field — host, port, security, sign-in, certificate verification, timeout. **Send test**
+reports what the server answered. The console address for links is filled from the address you
+are using; set it to the one people reach.
 
 ### Photos
 
