@@ -1347,7 +1347,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: (`models_settings`, `reference`, and the `snmp`, `email`, `recovery` and `apidoc` routes); six
 #: console modules (`recover`, `parts/snmp`, `snmpuser`, `email`, `apiref`, `scopeexamples`) and
 #: `ui/login-bg.svg` (ADRs #443-#446).
-SRC_TREE_DIGEST = "f27671a13026a849e85c991defa3d28e7582bbcad8f03d58469b69c0e97d0aac"
+SRC_TREE_DIGEST = "d4f9347c2d5f043d1e9b5299cb15d273bc416f9f27f45429b878b9f38790dbda"
 SRC_FILE_COUNT = 387
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

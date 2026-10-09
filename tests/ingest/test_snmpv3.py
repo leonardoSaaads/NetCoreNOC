@@ -232,7 +232,7 @@ def test_the_receiver_counts_refusals_by_reason_and_swaps_its_policy() -> None:
     proto = receiver.TrapReceiver(queue, community_key=KEY, policy=snmpconf.SnmpPolicy(v2c=False))
     proto.datagram_received(_v2c(b"public"), ("192.0.2.7", 162))
     assert proto.reasons == {"snmp-v2c-not-accepted": 1}
-    proto.policy = snmpconf.DEFAULT_POLICY  # what Settings → SNMP does on save
+    proto.accepts = snmpconf.DEFAULT_POLICY  # what Settings → SNMP does on save
     proto.datagram_received(_v2c(b"public"), ("192.0.2.7", 162))
     assert proto.stats.accepted == 1 and proto.stats.quarantined == 1
 

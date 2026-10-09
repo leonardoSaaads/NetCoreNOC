@@ -360,9 +360,11 @@ class TrapReceiver(asyncio.DatagramProtocol):
         self.queue = queue
         self.networks = parse_allowlist(allowlist)
         self.community_key = community_key
-        # Replaced whole by the Settings screen (an attribute assignment the event loop sees on
-        # the next datagram); never mutated in place, so no datagram reads half a policy.
-        self.policy = policy
+        # What this receiver accepts, replaced whole by Settings → SNMP (an attribute assignment the
+        # event loop sees on the next datagram); never mutated in place, so no datagram reads half
+        # of one. Named `accepts`, not `policy`: that word belongs to access control, which the
+        # datagram path must never touch (F33, `test_f33_datagram_received_gained_nothing`).
+        self.accepts = policy
         self.usm = usm.UsmState()
         self.stats = ReceiverStats()
         self.reasons: dict[str, int] = {}
@@ -389,7 +391,7 @@ class TrapReceiver(asyncio.DatagramProtocol):
             return
         item: QueueItem
         try:
-            item = parse_trap(source, data, now, self.community_key, self.policy, self.usm)
+            item = parse_trap(source, data, now, self.community_key, self.accepts, self.usm)
             self.stats.accepted += 1
         except TrapParseError as exc:
             item = quarantine_packet(source, data, exc.reason, now)

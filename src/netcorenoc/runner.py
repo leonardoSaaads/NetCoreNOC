@@ -258,7 +258,7 @@ async def _serve(settings: Settings, store: Store) -> None:
         retention_days=effective_retention,
         on_allowlist_change=lambda nets: setattr(receiver, "networks", nets),
         snmp=snmp_policy,
-        on_snmp_change=lambda policy: setattr(receiver, "policy", policy),
+        on_snmp_change=lambda accepted: setattr(receiver, "accepts", accepted),
         refusals=lambda: dict(receiver.reasons),
     )
     engine = Engine(store, queue)
