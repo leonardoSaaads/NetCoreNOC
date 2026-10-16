@@ -439,28 +439,33 @@ silence.**
 
 ## 4. Target architecture
 
-### 4.1 What the 3 × 20 s budget actually constrains
+### 4.1 What the per-trap minute actually constrains
 
-Correlation (stage 2) and selection (stage 3) run in one synchronous call. So the time a trap waits
-in the queue (stage 1) is set by the backlog ahead of it and the service time per activation:
+**The deadline is per trap.** Each trap has its own 60 s, counted from its own arrival: a trap that
+arrives 20 s after another still has its full minute, not the 40 s left on the first one's clock.
+The 20 s + 20 s + 20 s split is a budget inside that minute, not three clocks.
+
+What a storm costs a trap is the time it waits **behind** the traps that arrived before it. The
+grouping decision has to be made in arrival order (placing A changes where B goes), so with `k`
+parallel deciders and service time `s` per activation:
 
 ```
-queue wait of the last alarm in a burst of B activations ≈ B × s
-KPI 1 (≤ 20 s)  ⇒  s ≤ 20 s / B_design
+wait of the last trap in a burst of B new alarms  ≈  B × s / k      must be ≤ 60 s − s
 ```
 
-| Design burst B (activations) | Service time per activation s | Per-pair budget, features + model (≈ 50 % of s, 120 pairs) |
+| Design burst B (new alarms) | Service time per activation s (k = 1) | Throughput needed |
 |---:|---:|---:|
-| 2 000 | ≤ 10 ms | ≤ 42 µs |
-| 5 000 | ≤ 4 ms | ≤ 17 µs |
-| 10 000 | ≤ 2 ms | ≤ 8 µs |
-| 20 000 | ≤ 1 ms | ≤ 4 µs |
+| 5 000 | ≤ 12 ms | ≥ 84 traps/s |
+| **20 000 (the operator's design storm, G1)** | **≤ 3 ms** | **≥ 334 traps/s** |
+| 50 000 | ≤ 1.2 ms | ≥ 834 traps/s |
 
-Measured today: s is about 9.5–12.3 ms (M2), all-in.
+**Why the per-pair gate is in microseconds.** One trap is compared with about 120 candidates, so a
+per-*pair* cost of 150 µs is 18 ms per *trap* for the model alone. A trap's own processing is a few
+milliseconds; giving each trap a minute of computing would need a processor per trap in flight. The
+minute is the budget for **waiting plus processing**, and in a storm almost all of it is waiting.
 
-**Conclusion.** For any storm larger than about 2 000 new alarms, 20 s makes the per-pair budget
-*tighter* than today's 150 µs model-only gate, not looser. The extra time must therefore go where
-it adds information (§4.3), not into a slower per-pair model.
+**Conclusion.** For a 20 000-alarm storm the whole decision must cost about 3 ms a trap, so the
+extra time goes where it adds information (§4.3), not into a slower per-pair model.
 
 ### 4.2 Two-stage classification: alarm → pairs → situation
 
@@ -586,6 +591,45 @@ acceptance.
 | G6 | Source of the "175 µs" figure | The code says 150 µs; this host measures `boosted_trees` at 166.55 µs |
 
 ---
+
+## 9. Status on this branch (implemented and measured)
+
+The operator chose the **multi-process pipeline** and a design storm of **20 000 distinct alarms**,
+each classified within 60 s of its own arrival. Implemented here, every number from
+`tools/storm_check.py` or the A/B harness on the 4 vCPU, 2.1 GHz sandbox:
+
+| Finding | What changed | Evidence |
+|---|---|---|
+| OPS-1, AR-3 | Per-trap classification clock, misses counted, `classification` in `/api/stats`, `/readyz` on head-of-line age (#447) | `tests/ingest/test_deadline.py` |
+| AR-2 | The batch lock is released every 250 ms (was up to 8.6 s) (#447) | same |
+| AR-1 (part), AR-5, ML-5, ML-7 (cost) | Exact batch-path rewrites (#448): `make eval` byte-identical; five tables row-identical; 107-110 → 180-183 traps/s | `tests/correlation/test_hot_path_exactness.py` |
+| AR-1 (part), new | Ingest process (#449): decode off the correlating core; kernel receive stamps; 32 MiB socket buffer | `tests/ingest/test_ingest_process.py` |
+| OPS-2 | `tools/storm_check.py`: distinct alarms over real UDP, every trap timed, kernel drops counted | `tests/ingest/test_storm_check.py` |
+
+**The 20 000-alarm storm at 5 000/s, before and after the socket buffer was granted:**
+
+| Run | Received | Classified | Late (> 60 s) | Kernel-dropped | Throughput | Worst |
+|---|---:|---:|---:|---:|---:|---:|
+| 4 MiB buffer | 15 968 | 15 968 | 5 540 | **4 032** | 155/s | 98.7 s |
+| 32 MiB buffer | **20 000** | **20 000** | 10 362 | **0** | 145/s | 137.9 s |
+
+**Nothing is lost any more, and every miss is counted.** The KPI is still not met on this host:
+the decision runs at ~145-180 traps/s against the 334/s a 20 000-alarm storm needs. What remains
+per trap (~5.8 ms on this storm): correlation core 2.1 ms (sequential by construction), challenger
+shadow 0.6 ms and monitor 0.2 ms (observe-only, can run in a worker process), SQL ~1.7 ms, root
+scoring 0.4 ms.
+
+**Closing the gap needs one of these, and each is the operator's decision:**
+
+1. **Hardware**: this sandbox's cores are about 1.5× slower than a current server's. Measure with
+   `tools/storm_check.py` on the reference host (G2) before anything else.
+2. **Offload the observe-only work** to a worker process (challenger shadow, monitor): ~0.8 ms a
+   trap, exact, no grouping change.
+3. **A storm mode** that bounds candidates per activation while a storm lasts: about halves the
+   core's cost, but **changes grouping** — it needs a pre-registered evaluation and an eval
+   re-baseline (principle 9).
+4. **Partitioned correlation** (several decision cores, each for a disjoint part of the estate):
+   the only path past one core, and it needs topology the appliance does not have (G3/G5).
 
 ## Appendix A: reproduction
 
