@@ -159,6 +159,15 @@ class MaintenanceMixin(WindowSweepMixin):
                 await self.store.idle_active_situations(now - IDLE_CLOSE_S)
             )
 
+    def entity_cap_warnings(self) -> list[str]:
+        """Persistent operator warnings for NEs that hit MAX_ENTITIES_PER_NE (§6). Beside the other
+        warning the sweep composes; moved out of `engine.py` at its cohesion ceiling (ADR #447)."""
+        return [
+            f"NE {ne_id} reached the {MAX_ENTITIES_PER_NE}-entity cap; further entities are "
+            "attributed to the NE. A forged per-trap identifier can cause this."
+            for ne_id in sorted(self._entity_cap_hit)
+        ]
+
     def stale_situation_warnings(self) -> list[str]:
         """The operator warning, through the channel that already carries seven others.
 
@@ -393,6 +402,7 @@ class MaintenanceMixin(WindowSweepMixin):
         correlator = self.correlator
         await self.store.upsert_episodes(correlator.episodes.flush())
         correlator.grouper.prune(set(self.members))
+        self.upkeep.retain(self.members)  # the root samples of situations no longer open (#448)
         if now - self._memory_pruned_at >= 60.0:
             self._memory_pruned_at = now
             correlator.prune(now)

@@ -204,6 +204,11 @@ class LinearScorer:
         )
         self.threshold = model.threshold
         self.base_value = model.intercept
+        # The same rows with the transform resolved to a flag, for `logit`'s fused loop (ADR #448).
+        self._fused = tuple(
+            (pos, transform == "log1p", center, scale, low, high, w)
+            for pos, transform, center, scale, low, high, w in self._rows
+        )
 
     @property
     def scorer_id(self) -> str:
@@ -228,9 +233,18 @@ class LinearScorer:
         return out
 
     def logit(self, vector: tuple[float, ...] | list[float]) -> float:
+        """``intercept + Σ wᵢ·zᵢ`` — :meth:`standardised` and the sum in one pass, per pair on the
+        fast path. The same operations in the same order (``max``/``min`` written as the
+        comparisons they make), so the result is bit-identical; `test_linear_fused_logit_is_exact`
+        holds it to that."""
         total = self.model.intercept
-        for z, w in zip(self.standardised(vector), self.model.weights, strict=True):
-            total += w * z
+        for pos, log1p, center, scale, low, high, w in self._fused:
+            v = float(vector[pos])
+            if log1p:
+                v = math.log1p(0.0 if v < 0.0 else v)
+            v = low if low > v else v
+            v = high if high < v else v
+            total += w * ((v - center) / scale)
         return total
 
     def explain(self, vector: tuple[float, ...]) -> LinkScore:

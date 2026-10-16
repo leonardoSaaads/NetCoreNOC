@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from netcorenoc.ingest.events import QuarantinedPacket
-from netcorenoc.store import EdgeRow, Store
+from netcorenoc.store import EdgeRow, LinkRow, Store
 
 import util
 
@@ -101,7 +101,7 @@ async def test_situation_lifecycle_and_merge(store: Store) -> None:
     s2 = await store.create_situation(ts=2.0)
     await store.add_alarm_to_situation(s1, a.alarm_id)
     await store.add_alarm_to_situation(s2, b.alarm_id)
-    await store.add_link(s2, a.alarm_id, b.alarm_id, 0.7, 0.2, 0.3, 0.2, ts=2.0)
+    await store.add_links([LinkRow(s2, a.alarm_id, b.alarm_id, 0.7, 0.2, 0.3, 0.2, 2.0, None)])
     await store.merge_situations(s1, s2, ts=3.0)
     members = {m["id"] for m in await store.situation_members(s1)}
     assert members == {a.alarm_id, b.alarm_id}

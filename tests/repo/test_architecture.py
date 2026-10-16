@@ -1347,8 +1347,11 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: (`models_settings`, `reference`, and the `snmp`, `email`, `recovery` and `apidoc` routes); six
 #: console modules (`recover`, `parts/snmp`, `snmpuser`, `email`, `apiref`, `scopeexamples`) and
 #: `ui/login-bg.svg` (ADRs #443-#446).
-SRC_TREE_DIGEST = "d4f9347c2d5f043d1e9b5299cb15d273bc416f9f27f45429b878b9f38790dbda"
-SRC_FILE_COUNT = 387
+#: **Unreleased: 387 -> 392.** Five added, none removed: `engine/operate/deadline.py` (#447),
+#: `engine/operate/upkeep.py` and `store/batch_writes.py` (#448), `ingest/worker.py` and
+#: `ingest/process.py` (#449). `store/situations.py` lost `add_link`, now `add_links`.
+SRC_TREE_DIGEST = "12f6debb445b8f6bb8ef303f49433efa0891c516c42a065263ccb0f1f1057f41"
+SRC_FILE_COUNT = 392
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

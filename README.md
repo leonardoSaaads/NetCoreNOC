@@ -5,7 +5,8 @@ trap destination at NetCoreNOC. It discovers the devices, groups related alarms 
 **situations**, names the probable root cause, and shows *why* each alarm was grouped. No MIBs, no
 inventory and no topology files are needed.
 
-One Python process, one SQLite file, one web console.
+One Python appliance — a process that correlates and one that receives traps — one SQLite file,
+one web console.
 
 [![CI](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)

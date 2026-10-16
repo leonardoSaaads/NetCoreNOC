@@ -9,6 +9,7 @@ decorator; `tests/api/test_declaration.py` pins both facts.
 from __future__ import annotations
 
 import hashlib
+import time
 from functools import cache
 from pathlib import Path
 
@@ -259,6 +260,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         queue = engine.queue
         if queue.maxsize and queue.qsize() >= queue.maxsize * QUEUE_SATURATION:
             ready = False  # saturated: cannot accept the load it is being sent
+        if engine.deadlines.head_age(queue, time.time()) > engine.deadlines.deadline_s:
+            ready = False  # ADR #447: the oldest queued trap has already missed its deadline
         if not ready:
             response.status_code = 503
             return {"status": "not ready"}

@@ -88,6 +88,28 @@ def _non_negative(suffix: str, default: float) -> float:
     return value
 
 
+def _positive(suffix: str, default: float) -> float:
+    """A duration in seconds that must be more than zero (a deadline of 0 s is every trap late)."""
+    value = _number(suffix, str(default), float, "a number of seconds")
+    if not value > 0 or value == float("inf"):  # NaN, 0, negatives and infinity are refused
+        raise SettingsError(
+            f"{ENV_PREFIX}{suffix}={value} is not a duration above 0 seconds. Unset it to use the "
+            f"default ({default}). See docs/configure.md."
+        )
+    return value
+
+
+def _choice(suffix: str, default: int, allowed: tuple[int, ...]) -> int:
+    """A whole number from a short list, refused by name otherwise."""
+    value = _number(suffix, str(default), int, "a whole number")
+    if value not in allowed:
+        raise SettingsError(
+            f"{ENV_PREFIX}{suffix}={value} is not one of {', '.join(map(str, allowed))}. Unset it "
+            f"to use the default ({default}). See docs/configure.md."
+        )
+    return value
+
+
 def _tls(cert: str, key: str) -> None:
     """Both or neither, and both readable — refused by name (F69).
 
@@ -128,6 +150,12 @@ class Settings:
     # v0.28.0 (ADR #431): how long an active alarm may be silent before its next trap is a new
     # occurrence rather than a repeat. 0 turns the rule off.
     rearm_s: float = 3600.0
+    # ADR #447: every trap is classified within this many seconds of its own arrival, or counted
+    # late (`engine/operate/deadline.py`).
+    classify_deadline_s: float = 60.0
+    # ADR #449: 1 receives and decodes traps in a separate process; 0 keeps the receiver in the
+    # main process, as before.
+    ingest_processes: int = 1
     tls_cert: str = ""
     tls_key: str = ""
     log_json: bool = False
@@ -160,6 +188,8 @@ class Settings:
                 "AUDIT_RETENTION_DAYS", str(cls.audit_retention_days), float, "a number of days"
             ),
             rearm_s=_non_negative("REARM_S", cls.rearm_s),
+            classify_deadline_s=_positive("CLASSIFY_DEADLINE_S", cls.classify_deadline_s),
+            ingest_processes=_choice("INGEST_PROCESSES", cls.ingest_processes, (0, 1)),
             tls_cert=tls_cert,
             tls_key=tls_key,
             log_json=s("LOG_JSON", "") not in ("", "0", "false", "False"),

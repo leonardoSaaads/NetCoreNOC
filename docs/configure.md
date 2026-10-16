@@ -27,12 +27,30 @@ Two mechanisms, and the difference matters:
 | `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging. Anything other than empty, `0`, `false` or `False` enables it |
 | `NETCORENOC_SMTP_PASSWORD` | *(unset)* | The SMTP password for recovery email (v0.30.0). When set it is used and Settings → Email's password field is ignored, so the password never enters the database or its backups. The rest of the mail server is configured in the console |
 | `NETCORENOC_REARM_S` | `3600` | Seconds an active alarm may be silent before its next trap counts as a **new occurrence** (its clear was probably lost) and opens a new situation. `0` = a repeat always stays in its situation. [`operate.md`](operate.md#4-how-alarms-repeat-clear-and-come-back) |
+| `NETCORENOC_CLASSIFY_DEADLINE_S` | `60` | Seconds within which **each trap**, counted from its own arrival, must be classified into a situation. A trap that misses — classified late, lost to a storage error, or dropped at a full queue — is counted, published in `GET /api/stats` as `classification`, and raised as a warning; `/readyz` reports not-ready while the oldest queued trap is past it. It measures; it never drops a trap (#447) |
+| `NETCORENOC_INGEST_PROCESSES` | `1` | `1` receives and decodes traps in a **process of their own**, so decoding (about 0.5 ms a trap) does not take the core that correlates; `0` keeps the receiver in the main process, as before #449. Give the container at least two CPUs with `1` |
 
 **Every one of them is validated at startup and refuses by name.** A port outside 1–65535, a
 retention that is not a number, an allowlist entry that is not a CIDR, a TLS path that cannot be
 read, or exactly one of the two TLS variables set: the process prints one sentence naming the
 variable and exits 2. An empty value is not the same as an unset one — `NETCORENOC_RETENTION_DAYS=`
 is a value, and it is refused.
+
+### The host's socket buffer, for storms
+
+A storm arrives faster than any receiver decodes, and the excess waits in the **kernel's** socket
+buffer. When that buffer is full the kernel drops the datagram before any process sees it — the
+one loss nothing in the appliance can count. The trap socket asks for 32 MiB; Linux grants at most
+`net.core.rmem_max`, and the appliance logs a warning at start-up when it got less. On the host
+(not in the container — the setting is not per container):
+
+```sh
+sudo sysctl -w net.core.rmem_max=33554432
+echo 'net.core.rmem_max=33554432' | sudo tee /etc/sysctl.d/90-netcorenoc.conf
+```
+
+32 MiB holds roughly 20 000 small traps. `python tools/storm_check.py` measures what this host
+actually does with a storm, trap by trap (#447-#449).
 
 ### Two variables that are hard startup errors
 

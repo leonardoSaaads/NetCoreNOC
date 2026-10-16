@@ -74,6 +74,20 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — after v0.30.0
+
+Nothing to run and **no migration**; no grouping decision changes (`make eval` is byte-identical).
+What you will notice:
+
+* **Two processes.** Traps are received and decoded in a child process (`python -m
+  netcorenoc.ingest.worker`, started by the appliance). **Docker: give the container two CPUs** —
+  the shipped `docker-compose.yml` does. With systemd or `pip`, nothing changes; to keep one
+  process, set `NETCORENOC_INGEST_PROCESSES=0`.
+* **Raise the host's `net.core.rmem_max`** to 32 MiB if a storm must not lose traps in the kernel;
+  the appliance warns at start-up when it is lower ([`docs/configure.md`](docs/configure.md)).
+* `GET /api/stats` gains `classification`; a trap that misses its 60 s deadline is a warning, and
+  `/readyz` is not ready while the oldest queued trap is past it (`NETCORENOC_CLASSIFY_DEADLINE_S`).
+
 ## The two that need an action, and the six that need reading
 
 ### v0.3.0 — the shared API token is gone

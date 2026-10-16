@@ -5,15 +5,17 @@ specifications of things that do **not** exist yet, see [`plans/`](plans/).
 
 ## One runtime identity
 
-One Python 3.12 asyncio process. One SQLite (WAL) file. One static console the browser loads
-directly. Five runtime dependencies — `pysnmp`, `aiosqlite`, `fastapi`, `uvicorn`, `pydantic` —
+One Python 3.12 asyncio process, plus one for the wire: traps are received and decoded in a
+process of their own (`ingest/worker.py`, decision #449), which hands events to the main process
+over a pipe as validated data. One SQLite (WAL) file, with one writer. One static console the
+browser loads directly. Five runtime dependencies — `pysnmp`, `aiosqlite`, `fastapi`, `uvicorn`, `pydantic` —
 unchanged since v0.2.0, and every model kind the appliance trains and runs was added without a
 sixth. One **optional** package exists, the `snmpv3` extra (`cryptography`, decision #444): SNMPv3
 privacy needs a vetted cipher and the standard library has none. It is imported lazily, only to
 decrypt, and its absence is a quarantine reason rather than a failure.
 
 ```
-UDP 162 ─▶ ingest/receiver ─▶ bounded queue ─▶ engine/operate/engine ─▶ store/ ─▶ SQLite
+UDP 162 ─▶ ingest/worker (own process) ═pipe═▶ bounded queue ─▶ engine/operate/engine ─▶ store/ ─▶ SQLite
                                                      │
                                                      ├─ engine/correlate/  correlate, learn, scoring
                                                      ├─ engine/correlate/  rootcause, severity, profiler
@@ -33,7 +35,7 @@ remember (decision #207).
 | **http** | `api/` — app, perimeter, context, models, and `api/routes/` | HTTP semantics, the security boundary, request and response shape. **No domain rule** |
 | **engine** | `engine/` — six subpackages, below | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is |
 | **data** | `store/`, with `migrations/` beside it | One SQLite connection under one asyncio lock. **SQL lives here and nowhere else** |
-| **ingest** | `ingest/` — `receiver`, `snmpconf`, `usm`, `ber`, `events`, `known_oids` | The wire: parse, allowlist, the SNMP policy and SNMPv3 security, quarantine, the trap vocabulary |
+| **ingest** | `ingest/` — `receiver`, `worker`, `process`, `snmpconf`, `usm`, `ber`, `events`, `known_oids` | The wire: parse, allowlist, the SNMP policy and SNMPv3 security, quarantine, the trap vocabulary, and the process they run in (#449) |
 | **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `mail`, `runtime`, `logsetup`, `settings` | Identity, authorization, visibility, attribution, outgoing email, config, logging |
 
 The package **root** holds four modules and no others: `__init__.py`, and the process entry surface
@@ -207,7 +209,8 @@ disabled menu items. The shape absorbs them; it does not announce them.
 3. **Determinism and reproducibility.** The `eval/` gate is byte-identical.
 4. **Ingestion is sacred.** The trap path never gains a lock, an I/O, or per-packet latency.
 5. **Zero new runtime dependencies in the core.** Five since v0.2.0.
-6. **One runtime identity.** One process, one SQLite, a static console with no build step and no npm.
+6. **One runtime identity.** One appliance — the main process and its ingest process (#449) — one
+   SQLite with one writer, a static console with no build step and no npm.
 7. **Security by construction** — fail-safe, least privilege, hash-chained audit, deny-by-default.
 8. **The instrument precedes the change it measures.** Build the guard before the thing it guards;
    record the next release's open questions as questions.

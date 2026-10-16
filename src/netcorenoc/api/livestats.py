@@ -15,6 +15,7 @@ site: `/api/stats` adds the ingest-gap members, and the stream does not carry th
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -50,6 +51,11 @@ async def live_stats(
     out["severity"] = await store.severity_census(None if scope.unrestricted else scope.ne_ids)
     out["latency_p95_s"] = round(engine.latency_p95(), 4)
     out["queue_depth"] = engine.queue.qsize()
+    # ADR #447: each trap's own classification clock — the percentiles, the misses, and how long
+    # the oldest queued trap has been waiting. Counts and seconds; nothing names an element.
+    out["classification"] = engine.deadlines.report(
+        engine.queue, time.time(), engine.dropped_provider()
+    )
     out["warnings"] = all_warnings()
     # v0.26.0 (ADR #412): the top bar of every screen shows whether autonomy is acting and offers
     # the kill switch, so its state travels with the counters rather than as a second poll. One

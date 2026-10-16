@@ -58,19 +58,35 @@ class Precedence:
     def device_lead_prob(self, a: int, b: int) -> float:
         return self._prob(self.device_wins, a, b)
 
-    def pick_root(self, members: list[Member]) -> int | None:
-        """The member whose class/device most consistently lead the others."""
+    def pick_root(self, members: list[Member], sample: list[Member] | None = None) -> int | None:
+        """The member whose class/device most consistently lead the others.
+
+        ``sample`` is ``members``' earliest `ROOT_SAMPLE`, when the caller keeps it (the engine
+        does, incrementally — `operate/upkeep.py`, ADR #448); otherwise it is sorted here.
+        """
         if not members:
             return None
-        sample = sorted(members, key=lambda m: m.first_seen)[:ROOT_SAMPLE]
+        if sample is None:
+            sample = sorted(members, key=lambda m: m.first_seen)[:ROOT_SAMPLE]
+        # `class_lead_prob` and `device_lead_prob` inlined, the sum in the same order (#448).
+        class_wins, device_wins = self.class_wins, self.device_wins
         best_id, best_score = sample[0].alarm_id, float("-inf")
         for index, candidate in enumerate(sample):
             score = -EARLIEST_BONUS * index
+            aid, cls, dev = candidate.alarm_id, candidate.class_id, candidate.device_id
             for other in sample:
-                if other.alarm_id == candidate.alarm_id:
+                if other.alarm_id == aid:
                     continue
-                score += self.class_lead_prob(candidate.class_id, other.class_id)
-                score += self.device_lead_prob(candidate.device_id, other.device_id)
+                b = other.class_id
+                forward, backward = class_wins.get((cls, b), 0.0), class_wins.get((b, cls), 0.0)
+                score += (
+                    0.5 if cls == b or forward + backward <= 0.0 else forward / (forward + backward)
+                )
+                b = other.device_id
+                forward, backward = device_wins.get((dev, b), 0.0), device_wins.get((b, dev), 0.0)
+                score += (
+                    0.5 if dev == b or forward + backward <= 0.0 else forward / (forward + backward)
+                )
             if score > best_score:
                 best_id, best_score = candidate.alarm_id, score
         return best_id

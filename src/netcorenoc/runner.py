@@ -42,10 +42,13 @@ from netcorenoc.crosscutting.settings import (
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
 from netcorenoc.engine.operate.engine import Engine
 from netcorenoc.engine.operate.resources import SAMPLE_INTERVAL_S, ResourceSampler
+from netcorenoc.ingest import process as ingest_process
 from netcorenoc.ingest import snmpconf
+from netcorenoc.ingest.process import IngestProcess
 from netcorenoc.ingest.receiver import (
     QueueItem,
     ReceiverStats,
+    TrapReceiver,
     parse_allowlist,
     start_receiver,
 )
@@ -245,14 +248,29 @@ async def _serve(settings: Settings, store: Store) -> None:
     snmp_policy = snmpconf.stored_policy(await store.get_meta(snmpconf.META_KEY))
 
     queue: asyncio.Queue[QueueItem] = asyncio.Queue(maxsize=QUEUE_SIZE)
-    transport, receiver = await start_receiver(
-        queue,
-        settings.trap_host,
-        settings.trap_port,
-        effective_allowlist,
-        community_key,
-        snmp_policy,
-    )
+    transport: asyncio.DatagramTransport | IngestProcess
+    receiver: TrapReceiver | IngestProcess
+    if settings.ingest_processes and ingest_process.supported():
+        # ADR #449: traps are received and decoded in a process of their own, on the socket bound
+        # here; the main process's core is left to correlation.
+        sock = await ingest_process.bind(settings.trap_host, settings.trap_port)
+        transport = receiver = IngestProcess(
+            queue, sock, effective_allowlist, community_key, snmp_policy
+        )
+        try:
+            await receiver.start()
+        except BaseException:
+            sock.close()
+            raise
+    else:
+        transport, receiver = await start_receiver(
+            queue,
+            settings.trap_host,
+            settings.trap_port,
+            effective_allowlist,
+            community_key,
+            snmp_policy,
+        )
     runtime = RuntimeConfig(
         allowlist=effective_allowlist,
         retention_days=effective_retention,
@@ -264,6 +282,7 @@ async def _serve(settings: Settings, store: Store) -> None:
     engine = Engine(store, queue)
     engine.audit_retention_days = settings.audit_retention_days
     engine.rearm_s = settings.rearm_s  # ADR #431
+    engine.deadlines.deadline_s = settings.classify_deadline_s  # ADR #447
     engine.dropped_provider = lambda: receiver.stats.dropped  # §5.6 queue-full gap source
     await engine.start()
 
@@ -310,6 +329,10 @@ async def _serve(settings: Settings, store: Store) -> None:
             operator_warnings(runtime.allowlist, settings.tls_enabled, settings.http_host)
             + receiver_warnings(receiver.stats, runtime.allowlist)
             + engine.entity_cap_warnings()
+            # ADR #447: a trap that missed its own classification deadline — late, lost to a
+            # storage error, or dropped at a full queue — reaches the operator.
+            + engine.deadlines.warnings(receiver.stats.dropped)
+            + (receiver.warnings() if isinstance(receiver, IngestProcess) else [])
             + engine.db_error_warnings()
             + engine.scorer_warning_list()
             # v0.16.2 (DECISIONS #275). A situation nobody has touched for an hour while one of
@@ -394,6 +417,8 @@ async def _serve(settings: Settings, store: Store) -> None:
         await asyncio.gather(*tasks)
     finally:
         transport.close()  # stop accepting new datagrams
+        if isinstance(transport, IngestProcess):
+            await transport.wait_closed()  # what it already received reaches the queue first
         server.should_exit = True
         for task in tasks:
             task.cancel()

@@ -5,11 +5,11 @@ boosted — was fed the same three numbers: time decay, class affinity, entity a
 estimators over three numbers carry the information of three numbers. This vector is what the
 appliance knows and the model could not see.
 
-**One function builds it** (:func:`vector`). The engine calls it on the ingest path, the offline
-replay calls it on generated streams, and training reads the rows the replay wrote — so the
-feature a model was trained on and the feature it is served are the same arithmetic by
-construction, and `tests/correlation/test_features.py` replays a stream through both paths to prove
-it.
+**One function builds it** (:func:`vectors`; :func:`vector` is its one-pair case). The engine
+calls it on the ingest path, the offline replay calls it on generated streams, and training reads
+the rows the replay wrote — so the feature a model was trained on and the feature it is served are
+the same arithmetic by construction, and `tests/correlation/test_features.py` replays a stream
+through both paths to prove it.
 
 ## The features, and what each is for
 
@@ -53,6 +53,7 @@ arithmetic. No clock, no I/O, no allocation beyond the returned tuple.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - type-only imports; no runtime edge
@@ -69,6 +70,7 @@ __all__ = [
     "common_arcs",
     "references",
     "vector",
+    "vectors",
 ]
 
 FEATURE_NAMES: tuple[str, ...] = (
@@ -139,27 +141,81 @@ def vector(
     burst: int,
 ) -> tuple[float, ...]:
     """The v2 feature vector for one candidate pair, in :data:`FEATURE_NAMES` order."""
-    dt = abs(new.ts - old.ts)
-    same_ne = new.device_id == old.device_id
+    return vectors(new, (old,), learner, episodes, burst)[0]
+
+
+def vectors(
+    new: WindowAlarm,
+    olds: Sequence[WindowAlarm],
+    learner: Learner,
+    episodes: EpisodeMemory,
+    burst: int,
+) -> list[tuple[float, ...]]:
+    """:func:`vector` for each of ``olds``, in order — **the one implementation of the arithmetic**.
+
+    ADR #448: the correlator scores up to `MAX_CANDIDATES` + `retrieval.MAX_RECALL` candidates per
+    activation, and a storm puts many of them on the same few classes and elements. Every lookup
+    that depends only on the candidate's class or element is therefore made once per distinct value
+    and reused. That is exact rather than approximate: nothing the lookups read moves while one
+    activation's candidates are scored (the correlator observes after it scores), so a repeated
+    lookup could only have returned the same number.
+    """
     now = new.ts
-    ranks = (new.severity_rank, old.severity_rank)
-    severity = UNKNOWN_SEVERITY if min(ranks) < 0 else max(ranks)
-    return (
-        dt if dt < MAX_DT_S else MAX_DT_S,
-        1.0 if same_ne else 0.0,
-        1.0 if new.class_id == old.class_id else 0.0,
-        float(common_arcs(new.arcs, old.arcs)),
-        learner.class_affinity(new.class_id, old.class_id),
-        learner.entity_affinity(new.entity_id, new.device_id, old.entity_id, old.device_id),
-        float(episodes.ne_prior(new.device_id, old.device_id, now)),
-        float(episodes.cls_prior(new.class_id, old.class_id, now)),
-        float(
-            episodes.item_prior((new.device_id, new.class_id), (old.device_id, old.class_id), now)
-        ),
-        float(severity),
-        float(burst),
-        float(max(new.chatter, old.chatter)),
-        float(max(episodes.degree(new.device_id), episodes.degree(old.device_id))),
-        1.0 if (new.source in old.refs or old.source in new.refs) and new.source else 0.0,
-        float(int(now // 3600) % 24),
-    )
+    hour = float(int(now // 3600) % 24)
+    density = float(burst)
+    new_degree = episodes.degree(new.device_id)
+    new_item = (new.device_id, new.class_id)
+    class_affinity: dict[int, float] = {}
+    entity_affinity: dict[tuple[int, int], float] = {}
+    ne_episodes: dict[int, float] = {}
+    class_episodes: dict[int, float] = {}
+    item_episodes: dict[tuple[int, int], float] = {}
+    degree: dict[int, float] = {}
+    out: list[tuple[float, ...]] = []
+    for old in olds:
+        dt = abs(new.ts - old.ts)
+        ranks = (new.severity_rank, old.severity_rank)
+        severity = UNKNOWN_SEVERITY if min(ranks) < 0 else max(ranks)
+        cls, ne = old.class_id, old.device_id
+        a = class_affinity.get(cls)
+        if a is None:
+            a = class_affinity[cls] = learner.class_affinity(new.class_id, cls)
+        entity = (old.entity_id, ne)
+        e = entity_affinity.get(entity)
+        if e is None:
+            e = entity_affinity[entity] = learner.entity_affinity(
+                new.entity_id, new.device_id, old.entity_id, ne
+            )
+        ne_count = ne_episodes.get(ne)
+        if ne_count is None:
+            ne_count = ne_episodes[ne] = float(episodes.ne_prior(new.device_id, ne, now))
+        cls_count = class_episodes.get(cls)
+        if cls_count is None:
+            cls_count = class_episodes[cls] = float(episodes.cls_prior(new.class_id, cls, now))
+        item = (ne, cls)
+        item_count = item_episodes.get(item)
+        if item_count is None:
+            item_count = item_episodes[item] = float(episodes.item_prior(new_item, item, now))
+        hub = degree.get(ne)
+        if hub is None:
+            hub = degree[ne] = float(max(new_degree, episodes.degree(ne)))
+        out.append(
+            (
+                dt if dt < MAX_DT_S else MAX_DT_S,
+                1.0 if new.device_id == ne else 0.0,
+                1.0 if new.class_id == cls else 0.0,
+                float(common_arcs(new.arcs, old.arcs)),
+                a,
+                e,
+                ne_count,
+                cls_count,
+                item_count,
+                float(severity),
+                density,
+                float(max(new.chatter, old.chatter)),
+                hub,
+                1.0 if (new.source in old.refs or old.source in new.refs) and new.source else 0.0,
+                hour,
+            )
+        )
+    return out

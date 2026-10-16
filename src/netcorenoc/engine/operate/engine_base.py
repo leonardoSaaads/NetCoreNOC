@@ -29,6 +29,7 @@ declaration that does not exist at runtime cannot.
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
 from netcorenoc.engine.correlate.correlate import Correlator
@@ -41,7 +42,9 @@ from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.engine.model import league as league_model
 from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
+from netcorenoc.engine.operate.deadline import DeadlineTracker
 from netcorenoc.engine.operate.occurrence import REARM_S
+from netcorenoc.engine.operate.upkeep import SituationUpkeep
 from netcorenoc.store import Store
 
 if TYPE_CHECKING:
@@ -134,6 +137,18 @@ class EngineBase:
     # v0.28.0 (ADR #431): the re-arm window `engine/operate/occurrence.py` reads. A class-level
     # default for the reason `_idle_active_count` gives; `runner.py` sets it from the settings.
     rearm_s: float = REARM_S
+
+    # ADRs #447 and #448: each trap's own classification clock, and what a batch owes the
+    # situations it touched. Per-instance objects created on first use, for the reason
+    # `_idle_active_count` gives: `engine.py` is at its cohesion ceiling, so an `__init__` line
+    # there costs the one module that has no room. `runner.py` sets the deadline from the settings.
+    @cached_property
+    def deadlines(self) -> DeadlineTracker:
+        return DeadlineTracker()
+
+    @cached_property
+    def upkeep(self) -> SituationUpkeep:
+        return SituationUpkeep()
 
     if TYPE_CHECKING:  # pragma: no cover - declaration only; no runtime attribute exists
 
