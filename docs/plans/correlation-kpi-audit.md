@@ -611,25 +611,41 @@ from netcorenoc.engine.operate.engine import Engine
 from netcorenoc.ingest.events import TrapEvent, Varbind
 from netcorenoc.store import Store
 
+
 def ev(oid: str, ts: float) -> TrapEvent:
-    return TrapEvent(device="10.9.9.1", trap_oid=oid, instance="1", ts=ts, varbinds=[
-        Varbind(oid="1.3.6.1.6.3.1.1.4.1.0", kind="ObjectIdentifier", value=oid),
-        Varbind(oid="1.3.6.1.2.1.2.2.1.1.1", kind="Integer", value="1")])
+    return TrapEvent(
+        device="10.9.9.1",
+        trap_oid=oid,
+        instance="1",
+        ts=ts,
+        varbinds=[
+            Varbind(oid="1.3.6.1.6.3.1.1.4.1.0", kind="ObjectIdentifier", value=oid),
+            Varbind(oid="1.3.6.1.2.1.2.2.1.1.1", kind="Integer", value="1"),
+        ],
+    )
+
 
 async def probe(gap: float) -> list[int]:
     with tempfile.TemporaryDirectory() as tmp:
-        s = Store(str(Path(tmp) / "p.db")); await s.open()
-        e = Engine(s, asyncio.Queue()); await e.start(); t0 = 1_800_000_000.0
+        s = Store(str(Path(tmp) / "p.db"))
+        await s.open()
+        e = Engine(s, asyncio.Queue())
+        await e.start()
+        t0 = 1_800_000_000.0
         await e._commit_batch([ev("1.3.6.1.4.1.2011.5.25.1", t0)])
         t = t0 + 600
-        while t < t0 + gap:                       # A keeps repeating every 10 min
-            await e._commit_batch([ev("1.3.6.1.4.1.2011.5.25.1", t)]); t += 600
+        while t < t0 + gap:  # A keeps repeating every 10 min
+            await e._commit_batch([ev("1.3.6.1.4.1.2011.5.25.1", t)])
+            t += 600
         await e._commit_batch([ev("1.3.6.1.4.1.2011.5.25.2", t0 + gap)])
         cur = await s.conn.execute("SELECT situation_id FROM situation_alarm ORDER BY alarm_id")
-        rows = [r[0] for r in await cur.fetchall()]; await s.close(); return rows
+        rows = [r[0] for r in await cur.fetchall()]
+        await s.close()
+        return rows
+
 
 for gap in (5, 60, 300, 3700, 4 * 86400):
-    print(gap, asyncio.run(probe(gap)))   # one id = joined, two ids = new situation
+    print(gap, asyncio.run(probe(gap)))  # one id = joined, two ids = new situation
 ```
 
 **Storm (M2).** Build N `TrapEvent`s with distinct `(device, trap OID, ifIndex)` fingerprints:
