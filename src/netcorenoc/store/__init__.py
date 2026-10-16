@@ -28,6 +28,7 @@ from netcorenoc.store.audit_log import AuditLogMixin
 from netcorenoc.store.auth import AuthMixin
 from netcorenoc.store.autonomy import AutonomyMixin
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.batch_writes import BatchWriteMixin, LinkRow
 from netcorenoc.store.catalogue_reads import CatalogueReadMixin
 from netcorenoc.store.class_rules import ClassRuleMixin
 from netcorenoc.store.dataset import (
@@ -82,6 +83,7 @@ __all__ = [
     "EdgeRow",
     "FeedbackResult",
     "IngestResult",
+    "LinkRow",
     "Store",
     "StoreBase",
 ]
@@ -132,6 +134,9 @@ class Store(
     # fragments over `StoreBase`, and it is a sibling rather than a base of `SituationMixin` so the
     # lifecycle writes and the population reads stay separable.
     IdleMixin,
+    # The engine batch's two per-activation writes without their per-call cost (ADR #448). Plain
+    # `StoreBase`; it overrides nothing.
+    BatchWriteMixin,
     # v0.28.0: an alarm's occurrences — when a repeat starts a new one, when one with no clear
     # ends (ADRs #431, #433). Plain `StoreBase`; it overrides nothing.
     OccurrenceMixin,

@@ -11,6 +11,44 @@ minor bump may break.
 
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md).
 
+## [Unreleased] — "each trap's own minute"
+
+Every trap must be classified into a situation within 60 s of **its own** arrival, through a storm.
+This makes that measurable, removes the losses a storm caused, and takes the per-trap cost down
+without changing one grouping decision. No migration. See [`MIGRATION.md`](MIGRATION.md): the
+appliance is now two processes, and a container needs two CPUs.
+
+### Added
+
+- **A per-trap classification clock** (#447): each trap is timed from its own arrival to the commit
+  that placed it; misses — late, lost to a storage error, dropped at a full queue — are counted,
+  published in `GET /api/stats` as `classification` (p50/p95/p99, worst, head-of-line age) and
+  raised as a warning. `/readyz` reports not-ready while the oldest queued trap is past the deadline.
+  `NETCORENOC_CLASSIFY_DEADLINE_S` (default 60).
+- **Traps are received and decoded in a process of their own** (#449): the same receiver, on a
+  socket the main process binds, with JSON batches back over a pipe that the main process validates
+  field by field. Restarted on the same socket if it dies. The kernel's receive time is each trap's
+  arrival (Linux), and the socket asks for a 32 MiB buffer, warning when the host grants less.
+  `NETCORENOC_INGEST_PROCESSES=0` keeps the old single-process receiver.
+- `tools/storm_check.py`: a storm of distinct alarms over real UDP through the real path, reporting
+  every trap's classification time and exiting non-zero on any miss, kernel drops included.
+
+### Changed
+
+- **The batch lock is released every 250 ms** during a storm (#447), instead of being held for a
+  whole 500-trap batch (measured: up to 8.6 s, during which the console waited).
+- **The batch path is faster, and exact** (#448): a situation's name is refreshed once per batch,
+  the root's sample is kept rather than sorted, links are one statement, pair vectors are built per
+  activation, the logistic regression's logit is one loop. `make eval` is byte-identical, and so is
+  every row of five tables on a 6 000-trap stream through the old and new engines. Measured on a
+  4 vCPU sandbox: 107-110 -> 180-183 traps/s on an activation storm.
+- `docker-compose.yml` gives the container two CPUs (was one).
+
+### Fixed
+
+- **A storm's datagrams were dropped by the kernel with nothing counting them** (#449): measured,
+  4 032 of 20 000 at 5 000/s into a 4 MiB socket buffer. With the buffer granted, none.
+
 ## [0.30.0] - 2026-10-09 — "SNMPv3, recovery by email, and the console reviewed"
 
 An operator's review of the console (sign-in, alignment, tokens, roles) and two capabilities the

@@ -70,21 +70,23 @@ services:
     #     is the one failure this appliance cannot account for afterwards, which is why the limit
     #     is set well above what it needs rather than tightly.
     #   * **cpus** — the process is throttled, not killed. Correlation falls behind the wire, the
-    #     queue grows, and the appliance says so: `queue_depth` climbs in the health control and,
-    #     if the queue fills, overflow IS counted as an ingest gap. Visible and recoverable.
+    #     queue grows, and the appliance says so: `queue_depth` climbs in the health control, each
+    #     trap that misses its classification deadline is counted (#447) and, if the queue fills,
+    #     overflow IS counted as an ingest gap. Visible and recoverable. **Two CPUs** since #449:
+    #     traps are decoded in a process of their own, which only helps if it has a core to run on.
     #
     # **The numbers, and where they come from.** The appliance is one asyncio process with one
     # SQLite file and a bounded in-memory queue; `tests/ingest/test_perf.py::burst` drives 100 000 traps
     # in a second through the real path. 512 MiB is roughly four times what that burst needs and
-    # leaves the page cache room; 1.0 CPU is one core, which the single event loop is bounded by
-    # anyway. `reservations` is what the scheduler guarantees, not what the container may use.
+    # leaves the page cache room; 2.0 CPUs are one core for correlation and one for receiving and
+    # decoding. `reservations` is what the scheduler guarantees, not what the container may use.
     #
     # Raise `memory` before `cpus` if you are unsure: one costs latency you can see, the other
     # costs traps you cannot.
     deploy:
       resources:
         limits:
-          cpus: "1.0"
+          cpus: "2.0"
           memory: 512M
         reservations:
           cpus: "0.25"

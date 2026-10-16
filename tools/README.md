@@ -10,6 +10,7 @@ Each tool runs with the project's virtual environment and needs no extra depende
 | `trappack_build.py` | Builds the built-in trap pack (`src/netcorenoc/ingest/trappack.tsv.gz`, `trapobjects.tsv.gz`) from vendors' MIB files. | Refresh trap names and default severities. |
 | `corpus_census.py` | Replays the whole corpus through one engine and reports what the promotion gate would decide. | `make census`. |
 | `login_art.py` | Draws the sign-in artwork, `src/netcorenoc/ui/login-bg.svg`, deterministically; a test checks the shipped file is its output. | After changing the picture: `python tools/login_art.py`. |
+| `storm_check.py` | Sends a storm of distinct alarms over UDP through the real receive path and engine, and reports each trap's classification time from its own arrival; exits 1 on any miss, kernel drops included. | Sizing a host for the 60 s per-trap deadline (#447-#449). |
 | `release_check.py` | Checks that the version agrees in `pyproject.toml`, the package, `CHANGELOG.md` and `flake.nix`. | `make release-check`; the release workflow. |
 
 ## Sending traps without equipment

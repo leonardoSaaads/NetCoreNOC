@@ -35,6 +35,7 @@ development folder explains itself: [`tests/`](../tests/README.md), [`eval/`](..
 | [`findings.md`](findings.md) | Defects found, each with its reproduction |
 | [`ROADMAP.md`](ROADMAP.md) | Open items |
 | [`plans/releases.md`](plans/releases.md) | What each release is — the source of truth for release claims |
+| [`plans/correlation-kpi-audit.md`](plans/correlation-kpi-audit.md) | Audit of trap → situation classification against the 3 × 20 s KPIs, with a remediation plan |
 | [`analysis/`](analysis/) | Pre-registered analysis plans: written before the data, hash-guarded, never edited |
 | [`record.md`](record.md) | Where removed documents went, and how to read an old citation |
 

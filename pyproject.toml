@@ -110,7 +110,7 @@ known-local-folder = [
     # tests/lab/ (the simulated network element package)
     "ne",
     # tools/
-    "corpus_census", "login_art", "trap_replay", "trappack_build",
+    "corpus_census", "login_art", "storm_check", "trap_replay", "trappack_build",
     # eval/
     "harness", "metrics", "simulation", "synth",
 ]

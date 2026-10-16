@@ -281,3 +281,12 @@ login_options  # netcorenoc/api/routes/recovery.py
 request_reset  # netcorenoc/api/routes/recovery.py
 confirm_reset  # netcorenoc/api/routes/recovery.py
 api_reference  # netcorenoc/api/routes/apidoc.py
+
+# ADR #448 — `LinkRow` is the `link` table's column order, handed whole to `executemany`; these two
+# fields are positional and nothing reads them by name.
+_.alarm_a  # unused variable (netcorenoc/store/batch_writes.py)
+_.alarm_b  # unused variable (netcorenoc/store/batch_writes.py)
+# ADR #448 — `pick_root` inlines these two in its hot loop; they remain the definition the loop is
+# held to (`tests/correlation/test_rootcause.py`) and the readable statement of what it computes.
+_.class_lead_prob  # unused method (netcorenoc/engine/correlate/rootcause.py)
+_.device_lead_prob  # unused method (netcorenoc/engine/correlate/rootcause.py)

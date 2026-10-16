@@ -358,34 +358,6 @@ class SituationMixin(SituationEventMixin):
             "UPDATE situation SET root_alarm_id=? WHERE id=?", (alarm_id, situation_id)
         )
 
-    async def add_link(
-        self,
-        situation_id: int,
-        alarm_a: int,
-        alarm_b: int,
-        score: float,
-        term_t: float,
-        term_a: float,
-        term_e: float,
-        ts: float,
-        *,
-        terms: str | None = None,
-    ) -> None:
-        """One accepted link and its explanation. ``terms`` is a trained model's whole
-        decomposition (`correlate.explained_terms`); the formula's lives in the three columns."""
-        if self._has_link_terms:
-            await self.conn.execute(
-                "INSERT INTO link (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, "
-                "created_at, terms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, ts, terms),
-            )
-            return
-        await self.conn.execute(
-            "INSERT INTO link (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, "
-            "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, ts),
-        )
-
     async def open_situation_members(self) -> list[dict[str, Any]]:
         """Members of all **live** situations, for rebuilding engine state at startup.
 

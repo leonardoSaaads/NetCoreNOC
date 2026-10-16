@@ -67,10 +67,8 @@ class ReceiverStats:
 def parse_allowlist(spec: str) -> list[Network] | None:
     """Comma-separated CIDRs/IPs; empty means allow all (zero-config default).
 
-    A bad entry raises with **the entry named and an example of a good one** (F69). `ip_network`'s
-    own message — *"'not-a-cidr' does not appear to be an IPv4 or IPv6 network"* — is correct and
-    tells an operator who has never seen this code nothing about which setting produced it. The
-    callers add the setting's name; this adds the shape it wanted.
+    A bad entry raises with **the entry named and an example of a good one** (F69): `ip_network`'s
+    own message names neither. The callers add the setting's name; this adds the shape it wanted.
     """
     entries = [e.strip() for e in spec.split(",") if e.strip()]
     out: list[Network] = []
@@ -276,8 +274,7 @@ def _parse_v1(
 def blank_community(data: bytes) -> bytes | None:
     """Zero the community octets in an SNMP message: SEQ{ INTEGER version, OCTETSTRING }.
 
-    Best-effort BER walk; returns the packet with the community content zeroed, or None
-    if the structure cannot be located (then the caller keeps metadata only).
+    Best-effort BER walk: the packet with the community zeroed, or None (metadata only, then).
     """
     try:
         if not data or data[0] != 0x30:
@@ -383,8 +380,11 @@ class TrapReceiver(asyncio.DatagramProtocol):
             return False
         return any(address in net for net in self.networks)
 
-    def datagram_received(self, data: bytes, addr: tuple[str | Any, ...]) -> None:
-        source, now = str(addr[0]), time.time()
+    def datagram_received(
+        self, data: bytes, addr: tuple[str | Any, ...], received_at: float | None = None
+    ) -> None:
+        """``received_at`` is the kernel's arrival stamp when the caller has one (ADR #449)."""
+        source, now = str(addr[0]), time.time() if received_at is None else received_at
         self.stats.received += 1
         if not self._allowed(source):
             self.stats.denied += 1

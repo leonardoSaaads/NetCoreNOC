@@ -16,6 +16,7 @@ from typing import Protocol
 
 from netcorenoc.engine.correlate.grouping import Placement
 from netcorenoc.engine.correlate.scoring import LinkScore, TermContribution
+from netcorenoc.store import LinkRow
 
 __all__ = [
     "MAX_CANDIDATES",
@@ -171,6 +172,20 @@ class ScoredLink:
     @property
     def term_e(self) -> float:
         return contribution_of(self.result, "entity_affinity")
+
+    def row(self, situation_id: int, alarm_id: int, ts: float) -> LinkRow:
+        """This link as the `link` row written when ``alarm_id`` joins ``situation_id``."""
+        return LinkRow(
+            situation_id,
+            self.other.alarm_id,
+            alarm_id,
+            self.score,
+            self.term_t,
+            self.term_a,
+            self.term_e,
+            ts,
+            explained_terms(self.result),
+        )
 
 
 def explained_terms(result: LinkScore) -> str | None:
