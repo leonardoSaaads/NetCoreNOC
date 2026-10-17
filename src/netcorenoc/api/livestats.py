@@ -20,7 +20,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from netcorenoc.crosscutting.shaping import Scope
-from netcorenoc.engine.operate import autonomy
+from netcorenoc.engine.operate import autonomy, pipeline
 
 if TYPE_CHECKING:
     from netcorenoc.main import Engine
@@ -50,12 +50,11 @@ async def live_stats(
     )
     out["severity"] = await store.severity_census(None if scope.unrestricted else scope.ne_ids)
     out["latency_p95_s"] = round(engine.latency_p95(), 4)
-    out["queue_depth"] = engine.queue.qsize()
-    # ADR #447: each trap's own classification clock — the percentiles, the misses, and how long
-    # the oldest queued trap has been waiting. Counts and seconds; nothing names an element.
-    out["classification"] = engine.deadlines.report(
-        engine.queue, time.time(), engine.dropped_provider()
-    )
+    # ADRs #447, #450, #451: the trap pipeline — the backlog wherever it waits, each trap's decision
+    # latency against the KPI, the delay buckets, the spool. Counts and seconds; no element named.
+    out["classification"] = pipeline.live_report(engine, time.time())
+    # What is waiting to be classified: with the spool, on disk as well as on the queue (#450).
+    out["queue_depth"] = out["classification"]["backlog"]
     out["warnings"] = all_warnings()
     # v0.26.0 (ADR #412): the top bar of every screen shows whether autonomy is acting and offers
     # the kill switch, so its state travels with the counters rather than as a second poll. One

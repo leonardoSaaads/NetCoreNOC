@@ -25,10 +25,45 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from netcorenoc.engine.correlate.rootcause import Member
+
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.operate.engine import Engine
 
-__all__ = ["cleared", "merged", "moved", "split"]
+__all__ = ["cleared", "merged", "moved", "reload", "split"]
+
+
+async def reload(engine: Engine) -> None:
+    """The two maps as the database has them: at start, and after **any** rolled-back batch.
+
+    ADR #450. A batch the store rolled back had already been applied to memory as it went — an
+    alarm mapped to the situation it joined, a situation created, a merge folded — and none of it
+    is in the database any more. Kept, the next attempt at the same traps found each alarm "already
+    a member" and wrote no membership row: measured, one alarm of a 509-alarm storm left out of
+    its situation after a single storage error. So the maps are read back, and the correlator
+    forgets every alarm the rollback removed (ids above the highest one that exists — SQLite hands
+    the next id to the next row, so those are exactly the rolled-back ones) and every situation
+    that is not live. The caller holds the store lock.
+    """
+    engine.sit_of.clear()
+    engine.members.clear()
+    for row in await engine.store.open_situation_members():
+        sid = int(row["situation_id"])
+        member = Member(
+            int(row["alarm_id"]),
+            int(row["class_id"]),
+            int(row["device_id"]),
+            float(row["first_seen"]),
+        )
+        engine.members.setdefault(sid, []).append(member)
+        engine.sit_of[member.alarm_id] = sid
+    newest = await engine.store.newest_alarm_id()
+    correlator = engine.correlator
+    for alarm_id in [a for a in {*correlator.index, *correlator.live} if a > newest]:
+        correlator.remove(alarm_id)
+    correlator.grouper.prune(set(engine.members))
+    engine.upkeep.discard()
+    engine.upkeep.retain(())  # every root sample is rebuilt from the members just read
 
 
 def moved(engine: Engine, alarm_id: int, from_situation: int, to_situation: int) -> None:

@@ -37,22 +37,24 @@ SNMP) at the host, open `http://<host>:8080/`, and go to [`operate.md`](operate.
 
 ### Resource limits, and what happens when one is hit
 
-`docker-compose.yml` sets `deploy.resources`: **1.0 CPU** and **512 MiB**, with 0.25 CPU and
-128 MiB reserved. Both are deliberately generous — the appliance is one asyncio process with one
-SQLite file and a bounded in-memory queue — and the two limits fail in **completely different
-ways**, which is the reason to state them rather than only set them.
+`docker-compose.yml` sets `deploy.resources`: **2.0 CPUs** and **512 MiB**, with 0.25 CPU and
+128 MiB reserved. The appliance is three processes — the receiver (reads the trap socket and appends
+each datagram to the spool), the decoder, and the main one (classification and the console) — with
+one SQLite file and the spool beside it. The two limits fail in **different ways**:
 
 | limit | what happens when it is reached | what it costs you |
 |---|---|---|
-| **memory** | the kernel OOM-kills the process; `restart: unless-stopped` brings it back and the WAL means the database survives | **every trap in flight is lost and no ingest gap is recorded** — the gap counter lives in the process that died. This is the one failure the appliance cannot account for afterwards. |
-| **cpus** | the process is throttled, not killed | correlation falls behind the wire. `queue_depth` climbs in the health control, and if the queue fills, overflow **is** counted as an ingest gap. Visible, and recoverable. |
+| **memory** | the kernel OOM-kills a process; `restart: unless-stopped` brings it back and the WAL means the database survives | almost nothing since ADR #450: every accepted trap is in the spool on disk before it is classified, and the engine resumes after the last trap it classified. At most the few milliseconds the receiver held before its next write. |
+| **cpus** | the processes are throttled, not killed | classification falls behind the wire and the backlog grows **in the spool**. The Overview's trap pipeline shows the backlog, its oldest wait and every trap past the KPI. Nothing is dropped while the spool has room (`NETCORENOC_SPOOL_MAX_MB`). |
 
-So if you are unsure, **raise the memory limit before the CPU limit**: one costs latency you can
-see, the other costs traps you cannot.
+So if a storm puts classification further behind than the KPI allows, **raise `cpus`**; the spool,
+not memory, absorbs the backlog. Size the database volume for it: about 200 bytes per waiting trap.
 
-`make burst` sends 100 000 traps in one second to a running appliance through the real ingest path,
-which is what 512 MiB is sized about four times over. One CPU is what a single event loop is bounded
-by anyway; giving the container more does not make correlation faster.
+`make storm` sends a storm of distinct alarms through the real path — receive, spool, decode,
+classify — and reports every trap's decision latency against the KPI. Since ADR #450 a storm waits
+in the **spool on disk** (`NETCORENOC_SPOOL_DIR`, beside the database by default), not in memory,
+so memory no longer grows with a backlog; give the container two CPUs (receiving and decoding run in
+processes of their own) and room on the database volume for the spool (`NETCORENOC_SPOOL_MAX_MB`).
 
 To change them, edit `deploy.resources` in `docker-compose.yml`. With plain `docker run`, the
 equivalents are `--cpus 1.0 --memory 512m`.

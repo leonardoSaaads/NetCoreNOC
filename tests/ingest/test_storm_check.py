@@ -1,12 +1,14 @@
-"""`tools/storm_check.py` — the instrument for the per-trap deadline (#447-#449), driven small.
+"""`tools/storm_check.py` — the instrument for the per-trap KPI and the spool (#447-#451), small.
 
-The tool's claim is that it reports every trap, misses included, through the real path. This drives
-a storm small enough for the suite and holds it to that: every alarm sent is received and
-classified, the report has the numbers an operator sizes a host with, and nothing is a miss.
+The tool's claim is that it accounts for every trap through the real path. This drives a storm small
+enough for the suite and holds it to that: every alarm sent is kept and classified exactly once —
+across a restart of the engine halfway through, too — and the report has the numbers an operator
+sizes a host with.
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 
 import pytest
@@ -23,31 +25,45 @@ def test_the_storm_is_almost_all_distinct_alarms() -> None:
     assert len({source for source, _payload in traps}) > 100
 
 
-@pytest.mark.parametrize("ingest_processes", [0, 1])
-def test_every_trap_of_a_storm_is_accounted_for_and_every_miss_reported(
-    ingest_processes: int,
-) -> None:
-    """The tool's claim, whatever this host's socket buffer: each trap sent is classified or
-    counted as a miss — and the in-process receiver (0) may well miss some in the kernel, since a
-    traced test run decodes slowly on its default buffer; that is #449's reason, reported here."""
-    if ingest_processes and not process.supported():
+def _args(**overrides: object) -> argparse.Namespace:
+    values: dict[str, object] = {
+        "traps": 300,
+        "devices": 50,
+        "classes": 12,
+        "rate": 500.0,
+        "target": 60.0,
+        "limit": 120.0,
+        "require_kpi": False,
+        "restart_at": 0.0,
+        "spool_mb": 64,
+        "ingest_processes": 1,
+        "timeout": 120.0,
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
+
+
+def test_every_trap_of_a_storm_is_kept_and_classified_once() -> None:
+    """The spooled path (the default): nothing is lost, and a restart of the engine halfway
+    through classifies nothing twice — it stores exactly the alarms an uninterrupted run does."""
+    if not process.supported():
         pytest.skip("POSIX descriptor inheritance")
-    args = storm_check.main.__globals__["argparse"].Namespace(
-        traps=300,
-        devices=50,
-        classes=12,
-        rate=500.0,
-        deadline=60.0,
-        ingest_processes=ingest_processes,
-        timeout=120.0,
-    )
-    report = asyncio.run(storm_check.check(args))
+    reports = [asyncio.run(storm_check.check(_args(restart_at=at))) for at in (0.0, 0.5)]
+    for report, restarts in zip(reports, (0, 1), strict=True):
+        kernel = report["kernel_dropped"] or 0
+        assert report["sent"] == 300 and report["restarts"] == restarts
+        assert report["not_kept"] == kernel, "nothing lost past the kernel's own buffer"
+        assert report["classified"] + kernel == 300 and report["unaccounted"] == 0
+        assert report["dead_lettered"] == 0 and report["over_limit"] == 0 and report["decider"]
+    if not any(r["kernel_dropped"] for r in reports):
+        assert reports[0]["alarms_stored"] == reports[1]["alarms_stored"], "nothing twice"
+
+
+def test_the_in_process_receiver_is_still_accounted_for() -> None:
+    """`NETCORENOC_INGEST_PROCESSES=0`: no spool, so a full queue or the kernel may drop — counted,
+    never silent. A traced test run decodes slowly on the default buffer; that is #449's reason."""
+    report = asyncio.run(storm_check.check(_args(ingest_processes=0)))
     kernel = report["kernel_dropped"] or 0
-    assert report["sent"] == 300 and report["received"] <= 300
     assert report["received"] + kernel >= report["sent"], "a trap vanished uncounted"
     assert report["classified"] == report["received"] - report["dropped"]
-    assert report["late"] == 0 and report["lost"] == 0
-    assert report["missed"] == report["dropped"] + kernel + max(
-        0, report["sent"] - report["received"] - kernel
-    )
-    assert report["decider"]
+    assert report["unaccounted"] == 0 and report["not_kept"] == report["dropped"] + kernel

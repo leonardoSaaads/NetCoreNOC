@@ -29,7 +29,7 @@ from collections.abc import Iterator
 from typing import Annotated, Any, Literal
 
 import uvicorn
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from netcorenoc.api.models_decider import AutonomyIn as AutonomyIn
 from netcorenoc.api.models_decider import DeciderIn as DeciderIn
@@ -69,6 +69,7 @@ from netcorenoc.api.models_settings import SnmpIn as SnmpIn
 from netcorenoc.api.models_settings import SnmpUserIn as SnmpUserIn
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.correlate import scoring
+from netcorenoc.engine.operate.deadline import MAX_KPI_S, Kpi
 from netcorenoc.ingest.receiver import parse_allowlist
 
 MAX_LABEL_CHARS = 120
@@ -324,12 +325,31 @@ class SubjectAccessIn(BaseModel):
 class ConfigIn(BaseModel):
     allowlist: str = Field(max_length=1024)
     retention_days: float = Field(gt=0, le=3650)
+    # ADR #451: the classification KPI, both or neither; omitted, it is left as it is.
+    kpi_target_s: float | None = Field(default=None, gt=0, le=MAX_KPI_S)
+    kpi_limit_s: float | None = Field(default=None, gt=0, le=MAX_KPI_S)
 
     @field_validator("allowlist")
     @classmethod
     def _parses(cls, value: str) -> str:
         parse_allowlist(value)  # raises ValueError, which pydantic renders as a 422 with the reason
         return value
+
+    @model_validator(mode="after")
+    def _kpi(self) -> ConfigIn:
+        given = (self.kpi_target_s, self.kpi_limit_s)
+        if given.count(None) == 1:
+            raise ValueError("the KPI target and limit are set together")
+        if self.kpi_target_s is not None and self.kpi_limit_s is not None:
+            problems = Kpi.problems(self.kpi_target_s, self.kpi_limit_s)
+            if problems:
+                raise ValueError("; ".join(problems))
+        return self
+
+    def kpi(self) -> Kpi | None:
+        if self.kpi_target_s is None or self.kpi_limit_s is None:
+            return None
+        return Kpi(self.kpi_target_s, self.kpi_limit_s)
 
 
 class ScorerParamsIn(BaseModel):

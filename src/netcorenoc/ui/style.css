@@ -825,9 +825,12 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
 .chart-swatch {
   width: 10px; height: 3px; border-radius: 999px; background: var(--accent); flex: none;
 }
-.chart-legend .chart-alarm { background: var(--alarm); }
-.chart-legend .chart-warn { background: var(--warn); }
-.chart-legend .chart-quiet { background: var(--quiet); }
+/* The tone colours the SWATCH. Written as `.chart-legend .chart-warn` it also matched the `li` that
+   carries the same class, and a toned series' name sat on a solid block of its colour — found on
+   the trap pipeline's charts (ADR #451), the first with two toned series in one legend. */
+.chart-legend .chart-swatch.chart-alarm { background: var(--alarm); }
+.chart-legend .chart-swatch.chart-warn { background: var(--warn); }
+.chart-legend .chart-swatch.chart-quiet { background: var(--quiet); }
 
 /* Where the numbers came from, and over what. A required argument in `charts.js`, because a chart
    whose source nobody can name is a chart nobody can check. */
@@ -3150,3 +3153,48 @@ table.data.league-table td, table.data.league-table th { white-space: nowrap; }
 @media (max-width: 719px) {
   .snmp-user-row, .apiref-row, .snmp-user-grid { grid-template-columns: 1fr; gap: var(--space-1); }
 }
+
+/* The trap pipeline (ADRs #450, #451): the Overview's "now" for the work, as name/value tiles in
+   a grid that is two columns on a phone and as many as fit at 1440, then Zabbix's delay buckets.
+   A tile's tone is the KPI's: `warn` past the target, `bad` past the limit or a drop. */
+.pipe-tiles {
+  display: grid; gap: var(--space-2) var(--space-3); margin: var(--space-2) 0 var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.pipe-tile {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--line);
+  border-radius: var(--radius-2); background: var(--bg-sunken);
+}
+.pipe-name { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.pipe-value {
+  font-family: var(--mono); font-size: var(--fs-lg); font-weight: 600; color: var(--fg);
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.pipe-note { font-size: var(--fs-xs); color: var(--fg-dim); }
+.pipe-warn { border-color: var(--warn); }
+.pipe-warn .pipe-value { color: var(--warn); }
+.pipe-bad { border-color: var(--alarm); }
+.pipe-bad .pipe-value { color: var(--alarm); }
+.pipe-delays { margin: 0 0 var(--space-3); }
+/* Two charts a row where there is room: each series is a 30 s interval, and a plot a quarter of the
+   panel wide could not show a storm's rise and drain. One column on a phone. */
+.pipeline .chart-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); }
+/* Two series a chart print two readings, so the head may wrap rather than cut the title to one
+   letter on a phone (measured: "KPI MISSES" read "K."). */
+.pipeline .chart-grid .chart-head { flex-wrap: wrap; }
+.pipeline .chart-grid .chart-title { overflow: visible; }
+/* The delay labels are short ("≤ 10 min"), so on a phone they keep their column instead of
+   taking a row of their own as the shared bar rule asks. */
+@media (max-width: 460px) {
+  .pipe-delays .chart-bar-label { grid-column: auto; }
+}
+.pipe-delays .chart-title { margin-bottom: var(--space-2); }
+.pipe-delays .chart-bar-row { grid-template-columns: minmax(0, 6em) 1fr minmax(4em, auto); }
+/* The KPI's two numbers on Settings (ADR #451): one group inside the live-configuration form, so
+   the two are saved together and read as one rule. */
+.kpi-fields {
+  display: grid; gap: var(--space-2); margin: 0; padding: var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-2);
+}
+.kpi-fields legend { padding: 0 var(--space-1); font-size: var(--fs-sm); color: var(--fg-muted); }

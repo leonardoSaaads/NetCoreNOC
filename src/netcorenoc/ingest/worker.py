@@ -1,39 +1,43 @@
-"""The ingest process: receive and decode traps on a core of their own (ADR #449).
+"""The ingest process: receive traps and **spool them raw**, on a core of its own (ADRs #449, #450).
 
 ``python -m netcorenoc.ingest.worker`` is started by
-:class:`netcorenoc.ingest.process.IngestProcess` and by nothing else. Decoding a trap costs about
-half a millisecond of CPU (measured: 538 µs per v2c trap through `TrapReceiver.datagram_received`),
-and in the single-process appliance that half millisecond was taken from the same core that
-correlates — so a storm slowed classification twice, once to decode and once to correlate, and the
-kernel's socket buffer overflowed silently while the one event loop did both. Here the socket has a
-reader of its own.
+:class:`netcorenoc.ingest.process.IngestProcess` and by nothing else. It does four things per
+datagram and nothing more: read it, stamp its arrival (the kernel's time, :func:`arrival`), check
+the source against the allowlist, and append it to the spool (`spool.py`) as a raw record
+(`records.raw`). Decoding — about half a millisecond a trap — happens behind the spool, in the
+decoder process (`decoder.py`), when the engine is ready for the next traps.
 
-**The receiving code is the receiver's own.** A :class:`~netcorenoc.ingest.receiver.TrapReceiver`
-runs here with an :class:`_Outbox` for its queue, so the allowlist, the SNMP policy, SNMPv3, the
-parse and the quarantine are one implementation whichever process runs them, and
-`datagram_received` — the method prime directive 1 is asserted on — is unchanged.
+**That order is the point.** Measured on this branch: an ingest process that decoded each trap
+before spooling it drained the socket at about 1 850 traps/s, so a 5 000/s burst overflowed an
+8 MiB kernel buffer and the kernel dropped a fifth of a 20 000-trap storm — invisibly to every
+process. Receiving and appending costs microseconds, so the socket is read as fast as it fills
+and a storm waits on disk, where it is durable, instead of in a buffer that overflows.
 
-**What crosses to the parent is data, never code.** JSON arrays on an inherited pipe, which the
-parent validates field by field before it builds an event (`process.decode`):
+Two threads: this one reads the socket; the **spool thread** takes the admitted datagrams off the
+outbox in groups of up to :data:`BATCH_MAX`, appends each group with one ``fdatasync`` (group
+commit: one sync for many records) and only then tells the parent the group's last sequence number.
+Both spend their time in system calls, which release the interpreter lock to the other.
 
-* ``["r", pid]`` — ready;
-* ``["b", [item, ...]]`` — a batch, in arrival order: ``["t", device, trap_oid, instance, ts,
-  community_tag, [[oid, kind, value], ...]]`` for a trap, ``["q", source, raw_b64, reason, ts,
-  sha256, length, first8, sanitized]`` for a quarantined packet;
-* ``["s", {counter: n}, {reason: n}]`` — the receiver's counters, every second and on exit.
+**What crosses to the parent is data, never code.** JSON arrays on an inherited pipe:
 
-From the parent, on a second pipe: ``["allowlist", "cidr,cidr"]``, ``["policy", document]`` (the
-stored form, `snmpconf.to_document`), ``["stop"]``. The bootstrap — which descriptor is which, the
-community HMAC key, the starting allowlist and policy — is one JSON line on stdin, so no secret is
-ever in the argument list or the environment.
+* ``["r", pid, head]`` — ready, with the last record already in the spool;
+* ``["w", head]`` — every record up to ``head`` is durable;
+* ``["s", {counter: n}, {spool state}]`` — every second and on exit.
 
-One process, one socket, one sender thread: the order traps leave in is the order they arrived in.
+From the parent, on a second pipe: ``["allowlist", "cidr,cidr"]``, ``["stop"]``. The bootstrap —
+which descriptor is which, the allowlist, the spool's directory and size — is one JSON line on
+stdin. No key and no SNMP secret reaches this process: it never parses a datagram.
+
+**The one place a trap can still be refused for lack of room** is the outbox, and only when the
+spool cannot take it: the disk refuses, or the spool holds its configured maximum. Then the outbox
+fills, each further trap is counted as ``dropped``, and the parent raises it as a warning. A full
+disk is a fault the operator must fix; nothing here hides it by deleting what waits to be
+classified.
 """
 
 from __future__ import annotations
 
-import asyncio
-import base64
+import ipaddress
 import json
 import os
 import platform
@@ -46,35 +50,40 @@ import threading
 import time
 from collections import deque
 from multiprocessing.connection import Connection
+from pathlib import Path
 from typing import Any
 
-from netcorenoc.ingest import snmpconf
-from netcorenoc.ingest.events import TrapEvent
-from netcorenoc.ingest.receiver import QueueItem, TrapReceiver, parse_allowlist
+from netcorenoc.ingest import records
+from netcorenoc.ingest.receiver import Network, parse_allowlist
+from netcorenoc.ingest.spool import SpoolFullError, SpoolWriter
 
 __all__ = [
     "BATCH_MAX",
     "FLUSH_S",
     "OUTBOX_MAX",
     "SO_TIMESTAMPNS",
+    "Counters",
     "Worker",
+    "allowed",
     "arrival",
-    "encode",
     "kernel_stamps",
     "main",
 ]
 
-#: Items per message to the parent.
-BATCH_MAX = 256
-#: A partial batch waits at most this long before it is sent.
+#: Records per group commit.
+BATCH_MAX = 1024
+#: A partial group waits at most this long before it is written.
 FLUSH_S = 0.005
-#: Items held here while the parent is not reading. Small on purpose: the parent's queue is the
-#: buffer; this only absorbs a parent that is briefly starved of CPU.
-OUTBOX_MAX = 20_000
+#: Raw datagrams held in memory while the spool cannot take them (the disk refused, or the spool
+#: is at its maximum): about 25 MB of small traps. The spool, not this, is the buffer for a slow
+#: engine; this only rides out a disk that stalls.
+OUTBOX_MAX = 100_000
 #: The counters are reported this often.
 STATS_EVERY_S = 1.0
 #: Datagrams read per wake-up before the control pipe is looked at again.
 RECV_BURST = 1024
+#: The longest pause before a refused write is tried again.
+RETRY_MAX_S = 1.0
 #: Linux's ``SO_TIMESTAMPNS`` (the asm-generic value; the standard library does not name it). With
 #: it, each datagram carries the instant the **kernel** received it, so a trap's deadline runs from
 #: its real arrival even when it waited in the socket buffer during a burst. Asked for only where
@@ -104,58 +113,27 @@ def arrival(ancillary: list[tuple[int, int, bytes]], now: float) -> float | None
     return None
 
 
-def encode(item: QueueItem) -> list[Any]:
-    """One event as the JSON array the parent decodes."""
-    if isinstance(item, TrapEvent):
-        return [
-            "t",
-            item.device,
-            item.trap_oid,
-            item.instance,
-            item.ts,
-            item.community_tag,
-            [[vb.oid, vb.kind, vb.value] for vb in item.varbinds],
-        ]
-    return [
-        "q",
-        item.source,
-        base64.b64encode(item.raw).decode("ascii"),
-        item.reason,
-        item.ts,
-        item.sha256,
-        item.length,
-        item.first8,
-        item.sanitized,
-    ]
+def allowed(networks: list[Network] | None, source: str) -> bool:
+    """The allowlist, as the in-process receiver applies it: none set admits every source."""
+    if networks is None:
+        return True
+    try:
+        address = ipaddress.ip_address(source)
+    except ValueError:
+        return False
+    return any(address in net for net in networks)
 
 
-class _Outbox:
-    """The receiver's queue in this process: a bounded deque the sender thread empties.
+class Counters:
+    """What this process counts: datagrams read, refused by the allowlist, spooled, dropped."""
 
-    `put_nowait` raises `asyncio.QueueFull` when full, which is exactly what the receiver catches
-    and counts as `dropped` — the same counter, the same meaning, as the in-process queue.
-    """
+    __slots__ = ("denied", "dropped", "received", "spooled")
 
-    def __init__(self, limit: int) -> None:
-        self.limit = limit
-        self.items: deque[QueueItem | tuple[str, Any, Any]] = deque()
+    def __init__(self) -> None:
+        self.received = self.denied = self.spooled = self.dropped = 0
 
-    def put_nowait(self, item: QueueItem) -> None:
-        if len(self.items) >= self.limit:
-            raise asyncio.QueueFull
-        self.items.append(item)
-
-    def report(self, receiver: TrapReceiver) -> None:
-        """Queue the counters; outside the bound, so a full outbox still reports why it is full."""
-        stats = receiver.stats
-        counters = {
-            "received": stats.received,
-            "accepted": stats.accepted,
-            "denied": stats.denied,
-            "quarantined": stats.quarantined,
-            "dropped": stats.dropped,
-        }
-        self.items.append(("s", counters, dict(receiver.reasons)))
+    def as_dict(self) -> dict[str, int]:
+        return {name: getattr(self, name) for name in self.__slots__}
 
 
 class Worker:
@@ -164,22 +142,27 @@ class Worker:
         sock: socket.socket,
         events: Connection,
         control: Connection,
-        receiver: TrapReceiver,
-        outbox: _Outbox,
+        writer: SpoolWriter,
+        allowlist: str = "",
     ) -> None:
         self.sock = sock
         self.events = events
         self.control = control
-        self.receiver = receiver
-        self.outbox = outbox
+        self.writer = writer
+        self.networks = parse_allowlist(allowlist)
+        self.counters = Counters()
+        self.outbox: deque[bytes] = deque()
+        self.error = ""  # why the spool refused the last write, until one succeeds
+        self.refusals = 0  # writes the spool refused
         self.stopping = threading.Event()  # set by "stop", by the parent's exit, or a dead pipe
-        self.closed = threading.Event()  # set once the last item has been queued
-        self.sent_all = threading.Event()  # set by the sender when it has nothing left to send
+        self.closed = threading.Event()  # set once the last datagram has been read
+        self.spooled = threading.Event()  # set by the spool thread when it has written it all
+        self._send_lock = threading.Lock()  # both threads write to the events pipe
 
     def run(self) -> int:
-        self.events.send_bytes(json.dumps(["r", os.getpid()]).encode())
-        sender = threading.Thread(target=self._send_loop, name="ingest-sender", daemon=True)
-        sender.start()
+        self._send(["r", os.getpid(), self.writer.head])
+        spooler = threading.Thread(target=self._spool_loop, name="ingest-spool", daemon=True)
+        spooler.start()
         self.sock.setblocking(False)
         selector = selectors.DefaultSelector()
         selector.register(self.sock, selectors.EVENT_READ, "udp")
@@ -192,14 +175,30 @@ class Worker:
                 else:
                     self._control()
             if time.monotonic() - reported >= STATS_EVERY_S:
-                self.outbox.report(self.receiver)
+                self._report()
                 reported = time.monotonic()
-        self._drain()  # what the kernel already holds is the parent's, not lost
-        self.outbox.report(self.receiver)
+        self._drain()  # what the kernel already holds goes to the spool, not lost
         self.closed.set()
-        self.sent_all.wait(timeout=5.0)
+        self.spooled.wait(timeout=10.0)
+        # Only when the spool refused to the end: what it could not take is counted, never silent.
+        self.counters.dropped += len(self.outbox)
+        self._report()
         selector.close()
         return 0
+
+    def receive(self, data: bytes, addr: tuple[str, int], ts: float | None) -> None:
+        """One datagram: counted, checked against the allowlist, and queued for the spool raw."""
+        counters, source = self.counters, str(addr[0])
+        counters.received += 1
+        if not allowed(self.networks, source):
+            counters.denied += 1
+            return
+        if len(self.outbox) >= OUTBOX_MAX:
+            counters.dropped += 1
+            return
+        self.outbox.append(
+            records.raw(source, int(addr[1]), time.time() if ts is None else ts, data)
+        )
 
     def _drain(self) -> None:
         for _ in range(RECV_BURST):
@@ -207,7 +206,7 @@ class Worker:
                 data, ancillary, _flags, addr = self.sock.recvmsg(65535, _ANCILLARY)
             except OSError:  # nothing left (BlockingIOError) or the socket is gone
                 return
-            self.receiver.datagram_received(data, addr, arrival(ancillary, time.time()))
+            self.receive(data, addr, arrival(ancillary, time.time()))
 
     def _control(self) -> None:
         try:
@@ -224,16 +223,32 @@ class Worker:
             self.stopping.set()
         elif kind == "allowlist" and len(message) == 2 and isinstance(message[1], str):
             try:
-                self.receiver.networks = parse_allowlist(message[1])
+                self.networks = parse_allowlist(message[1])
             except ValueError:
                 return  # the parent validates before it sends; an invalid list changes nothing
-        elif kind == "policy" and len(message) == 2 and isinstance(message[1], str):
-            policy, problems = snmpconf.from_document(message[1])
-            if not problems:
-                self.receiver.accepts = policy
 
-    def _send_loop(self) -> None:
-        items = self.outbox.items
+    def _report(self) -> None:
+        state = {
+            "head": self.writer.head,
+            "bytes": self.writer.refresh_usage(),
+            "max_bytes": self.writer.max_bytes,
+            "waiting": len(self.outbox),
+            "error": self.error,
+            "refusals": self.refusals,
+            "torn_bytes": self.writer.torn,
+        }
+        self._send(["s", self.counters.as_dict(), state])
+
+    def _send(self, message: list[Any]) -> None:
+        try:
+            with self._send_lock:
+                self.events.send_bytes(json.dumps(message).encode())
+        except OSError:
+            self.stopping.set()  # the parent stopped reading; nothing left to deliver to
+
+    def _spool_loop(self) -> None:
+        items = self.outbox
+        pause = FLUSH_S
         try:
             while True:
                 if not items:
@@ -241,21 +256,28 @@ class Worker:
                         break
                     time.sleep(FLUSH_S)
                     continue
-                head = items[0]
-                if isinstance(head, tuple):
-                    items.popleft()
-                    self.events.send_bytes(json.dumps(list(head)).encode())
+                group = [items[i] for i in range(min(BATCH_MAX, len(items)))]
+                try:
+                    head = self.writer.append(group)
+                except (SpoolFullError, OSError) as exc:
+                    # Kept in the outbox and tried again; what does not fit is counted as dropped.
+                    self.refusals += 1
+                    self.error = (
+                        "the spool is full" if isinstance(exc, SpoolFullError) else str(exc)
+                    )
+                    if self.closed.is_set() and self.stopping.is_set() and pause >= RETRY_MAX_S:
+                        break  # stopping and the disk still refuses: what is held is reported
+                    time.sleep(pause)
+                    pause = min(RETRY_MAX_S, pause * 2)
+                    self.writer.refresh_usage()
                     continue
-                batch: list[list[Any]] = []
-                while items and len(batch) < BATCH_MAX and not isinstance(items[0], tuple):
-                    event = items.popleft()
-                    assert not isinstance(event, tuple)
-                    batch.append(encode(event))
-                self.events.send_bytes(json.dumps(["b", batch]).encode())
-        except (BrokenPipeError, OSError):
-            self.stopping.set()  # the parent stopped reading; nothing left to deliver to
+                for _ in group:
+                    items.popleft()
+                self.counters.spooled += len(group)
+                self.error, pause = "", FLUSH_S
+                self._send(["w", head])
         finally:
-            self.sent_all.set()
+            self.spooled.set()
 
 
 def main() -> int:
@@ -265,11 +287,11 @@ def main() -> int:
     sock = socket.socket(fileno=int(boot["socket"]))
     events = Connection(int(boot["events"]), readable=False)
     control = Connection(int(boot["control"]), writable=False)
-    key = bytes.fromhex(boot["key"]) if boot.get("key") else None
-    policy = snmpconf.stored_policy(boot.get("policy"))
-    outbox = _Outbox(OUTBOX_MAX)
-    receiver = TrapReceiver(outbox, str(boot.get("allowlist", "")), key, policy)  # type: ignore[arg-type]
-    return Worker(sock, events, control, receiver, outbox).run()
+    writer = SpoolWriter(Path(str(boot["spool"])), int(boot["spool_max"]))
+    try:
+        return Worker(sock, events, control, writer, str(boot.get("allowlist", ""))).run()
+    finally:
+        writer.close()
 
 
 if __name__ == "__main__":  # pragma: no cover - the process entry, driven by IngestProcess

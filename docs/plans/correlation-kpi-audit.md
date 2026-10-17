@@ -631,6 +631,17 @@ scoring 0.4 ms.
 4. **Partitioned correlation** (several decision cores, each for a disjoint part of the estate):
    the only path past one core, and it needs topology the appliance does not have (G3/G5).
 
+## 10. No trap lost, and the KPI an administrator sets (ADRs #450, #451)
+
+The owner's next requirement: no accepted trap may be discarded however slow classification is,
+the KPI is a configurable target and limit (60 s and 120 s), and the queue, its consumption and the
+pipeline must be observable and follow practice. Implemented: a raw spool on disk between the
+socket and everything else, a decoder process behind it, the spool's cursor committed with each
+batch, retry and replay instead of loss, a dead-letter file, an admin-set KPI, Zabbix-style delay
+buckets, per-interval series and the Overview's **Trap pipeline** panel. The assessment against
+industry practice, with the measurements and the database and proxy recommendations, is
+[`pipeline-and-storage-assessment.md`](pipeline-and-storage-assessment.md).
+
 ## Appendix A: reproduction
 
 From the repository root, with the dev environment (`pip install -e ".[dev]"`).

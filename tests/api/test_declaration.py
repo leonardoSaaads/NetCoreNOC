@@ -684,7 +684,10 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # #440); no /api pair (the brief judge is a query parameter on `GET /api/judge`).
     # v0.30.0: 211 -> 227 and 108 -> 117 — nine /api pairs (SNMP, email, recovery, the reference;
     # ADRs #444-#446), six UI modules and the sign-in artwork.
-    assert len(served) == 227, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 227 -> 228 — one UI module, `parts/pipeline.js` (the trap pipeline, ADRs #450,
+    # #451); no /api pair (the KPI is set through `POST /api/config`, the pipeline read through
+    # `/api/stats` and `/api/resources`).
+    assert len(served) == 228, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -848,7 +851,10 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # #440); no /api pair (the brief judge is a query parameter on `GET /api/judge`).
     # v0.30.0: 211 -> 227 and 108 -> 117 — nine /api pairs (SNMP, email, recovery, the reference;
     # ADRs #444-#446), six UI modules and the sign-in artwork.
-    assert len(served) == 227, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 227 -> 228 — one UI module, `parts/pipeline.js` (the trap pipeline, ADRs #450,
+    # #451); no /api pair (the KPI is set through `POST /api/config`, the pipeline read through
+    # `/api/stats` and `/api/resources`).
+    assert len(served) == 228, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.

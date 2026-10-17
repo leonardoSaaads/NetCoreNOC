@@ -371,6 +371,13 @@ class SituationMixin(SituationEventMixin):
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def newest_alarm_id(self) -> int:
+        """The highest alarm id that exists (0 for none): after a rollback, every id above it was
+        one the rollback removed (ADR #450)."""
+        cur = await self.conn.execute("SELECT COALESCE(MAX(id), 0) FROM alarm")
+        row = await cur.fetchone()
+        return int(row[0]) if row else 0
+
     async def situation_members(self, situation_id: int) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
             "SELECT a.id, a.device_id, a.class_id, a.first_seen FROM situation_alarm sa "

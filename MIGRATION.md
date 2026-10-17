@@ -76,17 +76,31 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## Unreleased — after v0.30.0
 
-Nothing to run and **no migration**; no grouping decision changes (`make eval` is byte-identical).
-What you will notice:
+Nothing to run; **migration 0030** (schema 30) is additive — six `host_sample` columns. No grouping
+decision changes (`make eval` is byte-identical). What you will notice:
 
-* **Two processes.** Traps are received and decoded in a child process (`python -m
-  netcorenoc.ingest.worker`, started by the appliance). **Docker: give the container two CPUs** —
-  the shipped `docker-compose.yml` does. With systemd or `pip`, nothing changes; to keep one
-  process, set `NETCORENOC_INGEST_PROCESSES=0`.
-* **Raise the host's `net.core.rmem_max`** to 32 MiB if a storm must not lose traps in the kernel;
-  the appliance warns at start-up when it is lower ([`docs/configure.md`](docs/configure.md)).
-* `GET /api/stats` gains `classification`; a trap that misses its 60 s deadline is a warning, and
-  `/readyz` is not ready while the oldest queued trap is past it (`NETCORENOC_CLASSIFY_DEADLINE_S`).
+* **Three processes and a spool.** Traps are received by a child process (`python -m
+  netcorenoc.ingest.worker`) that writes each datagram to a **spool on disk** before anything
+  else happens to it, and decoded by another (`python -m netcorenoc.ingest.decoder`); both are
+  started by the appliance. The spool is `<database directory>/spool` (`NETCORENOC_SPOOL_DIR`,
+  `NETCORENOC_SPOOL_MAX_MB`): it must be writable by the appliance and should be on the database's
+  volume. A restart resumes after the last classified trap; a full queue no longer drops a trap.
+  **Docker: give the container two CPUs** — the shipped `docker-compose.yml` does.
+  `NETCORENOC_INGEST_PROCESSES=0` keeps the single-process receiver, **without** the spool.
+* **The KPI** is a target and a limit per trap, 60 s and 120 s by default
+  (`NETCORENOC_KPI_TARGET_S`, `NETCORENOC_KPI_LIMIT_S`), and an admin sets both on **Settings**.
+  The unreleased `NETCORENOC_CLASSIFY_DEADLINE_S` is gone: set `NETCORENOC_KPI_TARGET_S` instead.
+  A trap past the limit raises a warning; one past the target only shows on the Overview.
+* **`/readyz` no longer reports not-ready for a backlog** — a full queue or a late trap — only
+  when the spool refuses writes: an orchestrator that pulled the appliance out of rotation for a
+  backlog would lose traps in front of it.
+* **The Overview's queue chart is the trap pipeline's backlog**, recorded at its peak in each 30 s
+  interval; `queue_depth` in `GET /api/stats` is the backlog wherever it waits (spool, queue,
+  batch). `GET /api/stats` → `classification` gains the KPI, compliance shares, delay buckets and
+  the spool. `make loadtest` and `make burst` are replaced by `make storm`.
+* **Raise the host's `net.core.rmem_max`** to 32 MiB if an instantaneous burst must not lose traps
+  in the kernel; the appliance warns at start-up when it is lower
+  ([`docs/configure.md`](docs/configure.md)).
 
 ## The two that need an action, and the six that need reading
 

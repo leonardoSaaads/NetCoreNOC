@@ -212,6 +212,29 @@ const scenarios = {
       }
       return out;
     };
+    // ADRs #450, #451: the trap pipeline's tiles by `data-metric`, its delay buckets by label, and
+    // its verdict line — the same name/value reading the secondary line gets.
+    const readPipeline = () => {
+      const panel = env.document.querySelector('[data-panel="pipeline"]');
+      if (!panel) return null;
+      const tiles = {};
+      for (const node of panel.querySelectorAll(".pipe-tile")) {
+        tiles[node.dataset.metric] = {
+          name: node.querySelector(".pipe-name")?.textContent.trim() ?? null,
+          value: node.querySelector(".pipe-value")?.textContent.trim() ?? null,
+          note: node.querySelector(".pipe-note")?.textContent.trim() ?? null,
+          tone: (node.getAttribute("class") || "").split(/\s+/).find((c) => c && c !== "pipe-tile") ?? null,
+        };
+      }
+      const delays = {};
+      for (const row of panel.querySelectorAll("[data-delay]")) {
+        delays[row.dataset.delay] = {
+          count: row.querySelector(".chart-bar-value")?.textContent.trim() ?? null,
+          tone: row.querySelector(".chart-bar-fill")?.getAttribute("class") ?? null,
+        };
+      }
+      return { tiles, delays, verdict: panel.querySelector(".verdict")?.textContent.trim() ?? null };
+    };
     env.navigate("#/overview");
     await settle(env);
     const samples = [];
@@ -223,6 +246,7 @@ const scenarios = {
         tiles: read(),
         line: readLine(),
         chartLatest: readCharts(),
+        pipeline: readPipeline(),
         rate: store.get().trapRate,
       });
     }

@@ -138,8 +138,21 @@ function ReadOnlyMechanism({ config }) {
       ["NETCORENOC_ALLOWLIST", precedence.allowlist, config.allowlist,
        "empty = accept every source"],
       ["NETCORENOC_RETENTION_DAYS", precedence.retention_days, config.retention_days, "days"],
+      ...kpiRows(config),
     ]} />
   </section>`;
+}
+
+/** ADR #451: the KPI's two numbers as precedence rows, from the one `kpi` override. */
+function kpiRows(config) {
+  const kpi = config.kpi || {};
+  const env = (config.precedence || {}).kpi || {};
+  const row = (key) => ({ env: env.env ? env.env[key] : null,
+                          override: env.override ? env.override[key] : null });
+  return [
+    ["NETCORENOC_KPI_TARGET_S", row("target_s"), kpi.target_s, "seconds"],
+    ["NETCORENOC_KPI_LIMIT_S", row("limit_s"), kpi.limit_s, "seconds"],
+  ];
 }
 
 function ClassLegend() {
@@ -160,14 +173,16 @@ function ClassLegend() {
   </section>`;
 }
 
-/** The two live-reloadable values, with the three-column precedence draft §7.1 requires. */
+/** The live-reloadable values, with the three-column precedence draft §7.1 requires. */
 class Mechanism extends Component {
   constructor(props) {
     super(props);
     const precedence = props.config.precedence || {};
+    const kpi = props.config.kpi || {};
     this.state = {
       allowlist: props.config.allowlist ?? "",
       retention_days: props.config.retention_days ?? 0,
+      kpi_target_s: kpi.target_s ?? 60, kpi_limit_s: kpi.limit_s ?? 120,
       busy: false, outcome: null, precedence,
     };
   }
@@ -177,6 +192,10 @@ class Mechanism extends Component {
     const body = {
       allowlist: this.state.allowlist,
       retention_days: Number(this.state.retention_days),
+      ...(this.props.config.kpi ? {
+        kpi_target_s: Number(this.state.kpi_target_s),
+        kpi_limit_s: Number(this.state.kpi_limit_s),
+      } : {}),
       ...overrides,
     };
     try {
@@ -192,7 +211,7 @@ class Mechanism extends Component {
     const lowering = Number(this.state.retention_days) < Number(config.retention_days);
     return html`<section class=${`panel-block param-${MECHANISM}`}>
       <${SectionHeading} title="Live configuration"
-        hint=${"These two take effect without a restart: an admin saving here writes a database " +
+        hint=${"These take effect without a restart: an admin saving here writes a database " +
                "row that takes precedence over the environment, and the running receiver and " +
                "maintenance loop are refreshed from it. Every change is audited."} />
 
@@ -200,6 +219,7 @@ class Mechanism extends Component {
         ["NETCORENOC_ALLOWLIST", precedence.allowlist, config.allowlist,
          "empty = accept every source"],
         ["NETCORENOC_RETENTION_DAYS", precedence.retention_days, config.retention_days, "days"],
+        ...kpiRows(config),
       ]} />
 
       <form class="stack" onSubmit=${(e) => { e.preventDefault(); if (!lowering) this.save(); }}>
@@ -214,6 +234,21 @@ class Mechanism extends Component {
                onInput=${(e) => this.setState({ retention_days: e.target.value })} />
         <p class="impact">How long cleared and closed history is kept. <b>Lowering this deletes
           rows and there is no rollback.</b> The maintenance loop applies it in the background.</p>
+
+        ${config.kpi ? html`<fieldset class="kpi-fields">
+          <legend>Classification KPI, per trap</legend>
+          <label for="cfgKpiTarget">Target (seconds from the trap's arrival)</label>
+          <input id="cfgKpiTarget" type="number" min="1" max="86400" step="1"
+                 value=${this.state.kpi_target_s}
+                 onInput=${(e) => this.setState({ kpi_target_s: e.target.value })} />
+          <label for="cfgKpiLimit">Limit (seconds; at or above the target)</label>
+          <input id="cfgKpiLimit" type="number" min="1" max="86400" step="1"
+                 value=${this.state.kpi_limit_s}
+                 onInput=${(e) => this.setState({ kpi_limit_s: e.target.value })} />
+          <p class="impact">Measures, never discards: a trap past either is still classified and
+            counted on the Overview — past the target as late, past the limit as a breach that
+            raises a warning. Applies from the next commit; the counts so far are kept.</p>
+        </fieldset>` : null}
 
         ${lowering ? null : html`<button type="submit" disabled=${busy}>
           ${busy ? "Saving…" : "Save"}

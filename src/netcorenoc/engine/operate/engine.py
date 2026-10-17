@@ -59,7 +59,7 @@ from netcorenoc.engine.evaluation.league_shadow import LeagueShadow
 from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
-from netcorenoc.engine.operate import occurrence, proposals
+from netcorenoc.engine.operate import membership, occurrence, proposals
 from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.engine.operate.flap import FlapDetector
 from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
@@ -185,26 +185,22 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             self.ne_severity[ne_id] = oid
             self.profiler.set_role(ne_id, oid, "severity")
         self.rejected_proposals = set(await self.store.rejected_proposals())
-        for row in await self.store.open_situation_members():
-            sid = int(row["situation_id"])
-            member = Member(
-                int(row["alarm_id"]),
-                int(row["class_id"]),
-                int(row["device_id"]),
-                float(row["first_seen"]),
-            )
-            self.members.setdefault(sid, []).append(member)
-            self.sit_of[member.alarm_id] = sid
+        await membership.reload(self)
 
     async def run(self) -> None:
+        failures = 0
         while True:
             first = await self.queue.get()
             batch = [first]
             while len(batch) < BATCH_SIZE and not self.queue.empty():
                 batch.append(self.queue.get_nowait())
             while batch:  # ADR #447: a transaction holds the lock for BATCH_BUDGET_S at most
-                taken, _ = await self._transaction(batch, BATCH_BUDGET_S)
-                batch = batch[taken:]
+                taken, committed = await self._transaction(batch, BATCH_BUDGET_S)
+                if committed:
+                    batch, failures = batch[taken:], 0
+                else:  # ADR #450: rolled back by a storage error, so retried, never dropped
+                    failures += 1
+                    await asyncio.sleep(min(30.0, 0.5 * 2**failures))  # 1 s, 2 s, ... 30 s
 
     async def _commit_batch(self, batch: list[QueueItem]) -> bool:
         """Process all of ``batch`` in one transaction; True when it committed."""
@@ -215,7 +211,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
     ) -> tuple[int, bool]:
         """(taken, committed) for a prefix of ``batch`` in one transaction: all of it, or what fits
         in ``budget_s`` (at least one item; ADR #447). A ``sqlite3`` operational error rolls it back
-        — the audit chain only advances on commit — and is counted and surfaced (F11)."""
+        — the audit chain only advances on commit — and is counted, surfaced (F11) and retried."""
         deadline = None if budget_s is None else time.monotonic() + budget_s
         taken = 0
         async with self.store.lock:
@@ -225,21 +221,21 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                     await self._process(item)
                     if deadline is not None and time.monotonic() >= deadline:
                         break
+                position = await self.feed.stage(batch[:taken])  # the spool cursor (ADR #450)
                 await self.upkeep.flush(self.store)  # each touched situation's name, once (#448)
                 await self.store.commit()
+                self.feed.committed(position)
                 self.deadlines.committed(batch[:taken], time.time())
                 return taken, True
-            except sqlite3.OperationalError as exc:
+            except Exception as exc:  # rolled back: half a batch is never committed with the next
                 await self.store.rollback()
-                self.upkeep.discard()
-                self.deadlines.rolled_back(batch if budget_s is None else batch[:taken])
+                await membership.reload(self)  # and memory forgets it too (ADR #450)
+                if not isinstance(exc, sqlite3.OperationalError):
+                    raise  # a defect: the supervisor restarts the task and the spool replays it
                 self.db_errors += 1
                 self.last_db_error = type(exc).__name__
                 # The message is safe (no secrets); the redaction filter is belt-and-braces.
-                log.error(
-                    "store operational error draining %d event(s); rolled back and continuing",
-                    taken,
-                )
+                log.error("store operational error on %d event(s); rolled back to retry", taken)
                 return taken, False
 
     async def drain(self, deadline_s: float = 5.0) -> int:
@@ -257,12 +253,12 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         return drained
 
     def db_error_warnings(self) -> list[str]:
-        """Persistent operator warning after a storage error dropped a batch (F11)."""
+        """Persistent operator warning after a storage error rolled a batch back (F11)."""
         if not self.db_errors:
             return []
         return [
-            f"{self.db_errors} batch(es) failed to persist due to a storage error "
-            f"(last: {self.last_db_error}); those traps were dropped. Check disk space and logs."
+            f"{self.db_errors} batch(es) failed to persist due to a storage error (last: "
+            f"{self.last_db_error}) and were retried, not dropped. Check disk space and logs."
         ]
 
     async def _process(self, item: QueueItem) -> None:

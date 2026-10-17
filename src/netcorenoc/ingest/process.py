@@ -1,25 +1,27 @@
-"""The main process's half of the ingest process: start it, carry its events, keep it running.
+"""The main process's half of the ingest process: start it, hear from it, keep it running.
 
-ADR #449. :class:`IngestProcess` binds the trap socket **here**, so a port in use or a missing
-privilege fails start-up exactly as it always did, then hands the socket to
-``python -m netcorenoc.ingest.worker`` (`worker.py` says what runs there and why). From then on:
+ADRs #449 and #450. :class:`IngestProcess` binds the trap socket **here**, so a port in use or a
+missing privilege fails start-up exactly as it always did, then hands the socket and the spool's
+directory to ``python -m netcorenoc.ingest.worker`` (`worker.py` says what runs there and why).
+From then on:
 
-* a reader thread takes each batch off the pipe, **validates every field** (:func:`decode`) — the
-  boundary carries data, never code, and a malformed message is counted and dropped — and hands the
-  events to the event loop, which puts them on the engine's queue in arrival order. A full queue
-  counts the trap as `dropped`, the counter it has always been;
+* the process writes every trap it accepts to the spool, and a reader thread here takes its notices
+  off the pipe — "written up to", the counters, the spool's state — **validating every field**: the
+  boundary carries data, never code, and a malformed message is counted and ignored. The traps
+  themselves are read from the spool by the engine's intake (`engine/operate/intake.py`);
 * an admin's allowlist or SNMP-policy change is forwarded as the document the store already holds;
-* if the process dies it is started again on the **same socket**: datagrams the kernel buffered in
-  between are read by the new one, the counters carry over, and the restart is a warning.
+* if the process dies it is started again on the **same socket** and the same spool: datagrams the
+  kernel buffered in between are read by the new one, what the old one wrote is still on disk, the
+  counters carry over, and the restart is a warning.
 
 To the runner it looks like the in-process receiver: ``stats``, ``reasons``, ``networks``,
-``accepts``, ``close()``. ``NETCORENOC_INGEST_PROCESSES=0`` keeps the receiver in this process.
+``accepts``, ``close()``. ``NETCORENOC_INGEST_PROCESSES=0`` keeps the receiver in this process,
+without a spool — for development and for hosts without POSIX descriptor inheritance only.
 """
 
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
 import ipaddress
 import json
@@ -29,15 +31,17 @@ import socket
 import subprocess  # nosec B404 - starts this package's own module with this interpreter
 import sys
 import threading
-from collections.abc import Sequence
-from dataclasses import fields
+from collections.abc import Callable
 from multiprocessing.connection import Connection
+from pathlib import Path
+from typing import Any
 
 from netcorenoc.ingest import snmpconf, worker
-from netcorenoc.ingest.events import QuarantinedPacket, TrapEvent, Varbind
-from netcorenoc.ingest.receiver import QueueItem, ReceiverStats, parse_allowlist
+from netcorenoc.ingest.decoder import Decoder
+from netcorenoc.ingest.receiver import ReceiverStats, parse_allowlist
+from netcorenoc.ingest.records import string, whole
 
-__all__ = ["RCVBUF_BYTES", "IngestProcess", "bind", "decode", "supported"]
+__all__ = ["RCVBUF_BYTES", "SPOOL_WARN_RATIO", "IngestProcess", "bind", "supported"]
 
 log = logging.getLogger("netcorenoc")
 
@@ -47,7 +51,10 @@ RCVBUF_BYTES = 32 * 1024 * 1024
 READY_TIMEOUT_S = 15.0
 #: The pause before a process that died is started again.
 RESTART_DELAY_S = 1.0
-_COUNTERS = tuple(f.name for f in fields(ReceiverStats))
+#: The spool's share of its maximum at which the operator is warned.
+SPOOL_WARN_RATIO = 0.8
+#: What the ingest process counts (`worker.Counters`); the decoder counts the rest.
+_COUNTERS = ("received", "denied", "spooled", "dropped")
 
 Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
@@ -83,87 +90,31 @@ async def bind(host: str, port: int) -> socket.socket:
     return sock
 
 
-def _string(value: object) -> str:
-    if not isinstance(value, str):
-        raise ValueError("expected a string")
-    return value
-
-
-def _number(value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError("expected a number")
-    return float(value)
-
-
-def _whole(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError("expected a whole number")
-    return value
-
-
-def decode(item: object) -> QueueItem:
-    """One event from the ingest process, or ValueError. Every field is type-checked here: the
-    models are then built without re-validation, from values already known to be what they say."""
-    if not isinstance(item, list) or not item:
-        raise ValueError("not an event")
-    if item[0] == "t" and len(item) == 7:
-        varbinds = item[6]
-        if not isinstance(varbinds, list):
-            raise ValueError("varbinds are not a list")
-        built = []
-        for vb in varbinds:
-            if not isinstance(vb, list) or len(vb) != 3:
-                raise ValueError("a varbind is not [oid, kind, value]")
-            built.append(
-                Varbind.model_construct(
-                    oid=_string(vb[0]), kind=_string(vb[1]), value=_string(vb[2])
-                )
-            )
-        return TrapEvent.model_construct(
-            device=_string(item[1]),
-            trap_oid=_string(item[2]),
-            instance=_string(item[3]),
-            ts=_number(item[4]),
-            community_tag=_string(item[5]),
-            varbinds=built,
-        )
-    if item[0] == "q" and len(item) == 9:
-        if not isinstance(item[8], bool):
-            raise ValueError("sanitized is not a boolean")
-        return QuarantinedPacket.model_construct(
-            source=_string(item[1]),
-            raw=base64.b64decode(_string(item[2]), validate=True),
-            reason=_string(item[3]),
-            ts=_number(item[4]),
-            sha256=_string(item[5]),
-            length=_whole(item[6]),
-            first8=_string(item[7]),
-            sanitized=item[8],
-        )
-    raise ValueError("unknown event kind")
-
-
 class IngestProcess:
     """The ingest process, seen from the main process. See the module docstring."""
 
     def __init__(
         self,
-        queue: asyncio.Queue[QueueItem],
         sock: socket.socket,
         allowlist: str,
         community_key: bytes | None,
         policy: snmpconf.SnmpPolicy,
+        spool_dir: Path,
+        spool_max: int,
+        on_written: Callable[[int], None] | None = None,
     ) -> None:
-        self.queue = queue
         self._sock = sock
-        self._key = community_key
+        self.spool_dir = spool_dir
+        self.spool_max = spool_max
+        self._on_written = on_written or (lambda _head: None)
+        self.head = 0  # the last record the process made durable
+        self.spool: dict[str, Any] = {}  # the process's latest report on the spool
+        # ADR #450: decoding is behind the spool, in a process of its own; this owns it too, so
+        # the runner still holds one receiver with one set of counters.
+        self.decoder = Decoder(community_key, policy)
         self._networks = parse_allowlist(allowlist)
-        self._accepts = policy
         self._base = dict.fromkeys(_COUNTERS, 0)  # what earlier incarnations counted
         self._child = dict.fromkeys(_COUNTERS, 0)  # what the running one has reported
-        self._base_reasons: dict[str, int] = {}
-        self._child_reasons: dict[str, int] = {}
-        self.bridge_dropped = 0  # the engine's queue was full when a batch arrived
         self.invalid = 0  # messages that failed validation (never expected; counted if seen)
         self.restarts = 0
         self._proc: subprocess.Popen[bytes] | None = None
@@ -177,16 +128,24 @@ class IngestProcess:
 
     @property
     def stats(self) -> ReceiverStats:
+        """The receiver's five counters: three from the ingest process, two from the decoder."""
         total = {name: self._base[name] + self._child[name] for name in _COUNTERS}
-        total["dropped"] += self.bridge_dropped
-        return ReceiverStats(**total)
+        accepted, quarantined, _reasons = self.decoder.counts()
+        return ReceiverStats(
+            received=total["received"],
+            accepted=accepted,
+            denied=total["denied"],
+            quarantined=quarantined,
+            dropped=total["dropped"],
+        )
+
+    @property
+    def spooled(self) -> int:
+        return self._base["spooled"] + self._child["spooled"]
 
     @property
     def reasons(self) -> dict[str, int]:
-        merged = dict(self._base_reasons)
-        for reason, count in self._child_reasons.items():
-            merged[reason] = merged.get(reason, 0) + count
-        return merged
+        return self.decoder.counts()[2]
 
     @property
     def networks(self) -> list[Network] | None:
@@ -199,28 +158,49 @@ class IngestProcess:
 
     @property
     def accepts(self) -> snmpconf.SnmpPolicy:
-        return self._accepts
+        return self.decoder.accepts
 
     @accepts.setter
     def accepts(self, value: snmpconf.SnmpPolicy) -> None:
-        self._accepts = value
-        self._send(["policy", snmpconf.to_document(value)])
+        self.decoder.accepts = value  # the policy is the decoder's: this process never parses
 
     def warnings(self) -> list[str]:
         out = []
         if self.restarts:
             out.append(
-                f"The ingest process stopped and was restarted {self.restarts} time(s); traps it "
-                "held at that moment were lost. Check the log for the reason."
+                f"The ingest process stopped and was restarted {self.restarts} time(s). Traps it "
+                "had written to the spool were kept; any it had read in the last few milliseconds "
+                "and not yet written were not. Check the log for the reason."
             )
         if self.invalid:
-            out.append(f"{self.invalid} malformed message(s) from the ingest process were dropped.")
+            out.append(f"{self.invalid} malformed message(s) from the ingest process were ignored.")
+        if self.decoder.restarts:
+            out.append(
+                f"The trap decoder stopped and was restarted {self.decoder.restarts} time(s); "
+                f"{self.decoder.unreadable} datagram(s) it could not get through were quarantined "
+                "by their metadata (Quarantine screen). Every other trap was decoded."
+            )
+        error, used = str(self.spool.get("error", "")), int(self.spool.get("bytes", 0))
+        if error:
+            out.append(
+                f"The trap spool refused to write ({error}). Traps are held in memory until it "
+                "accepts them, and counted as dropped once that is full: free disk space, or raise "
+                "NETCORENOC_SPOOL_MAX_MB (docs/configure.md)."
+            )
+        elif self.spool_max and used >= self.spool_max * SPOOL_WARN_RATIO:
+            out.append(
+                f"The trap spool holds {used / 2**20:.0f} MB of its "
+                f"{self.spool_max / 2**20:.0f} MB limit: classification is far behind the trap "
+                "rate. Nothing is lost while it has room; check CPU and the pipeline on the "
+                "Overview."
+            )
         return out
 
     # -- life cycle ---------------------------------------------------------------------------
 
     async def start(self) -> None:
         self._loop = asyncio.get_running_loop()
+        await asyncio.to_thread(self.decoder.start)
         self._spawn()
         assert self._ready is not None
         try:
@@ -228,10 +208,11 @@ class IngestProcess:
         except TimeoutError as exc:
             self.close()
             raise RuntimeError(
-                f"the ingest process did not start within {READY_TIMEOUT_S:g} s; set "
-                "NETCORENOC_INGEST_PROCESSES=0 to receive traps in the main process"
+                f"the ingest process did not start within {READY_TIMEOUT_S:g} s (is the spool "
+                f"directory {self.spool_dir} writable?); NETCORENOC_INGEST_PROCESSES=0 receives "
+                "traps in the main process, without a spool"
             ) from exc
-        log.info("traps are received and decoded in process %d", pid)
+        log.info("traps are received and spooled raw in process %d", pid)
 
     def close(self) -> None:
         """Stop the process; what it holds is still delivered (await :meth:`wait_closed`)."""
@@ -247,7 +228,8 @@ class IngestProcess:
                 proc.kill()
         if reader is not None:
             await asyncio.to_thread(reader.join, timeout_s)
-        await asyncio.sleep(0)  # deliveries the reader scheduled run before the caller drains
+        await asyncio.to_thread(self.decoder.close)
+        await asyncio.sleep(0)  # notices the reader scheduled run before the caller drains
         with contextlib.suppress(OSError):
             if self._control is not None:
                 self._control.close()
@@ -261,9 +243,9 @@ class IngestProcess:
             "socket": self._sock.fileno(),
             "events": events_w,
             "control": control_r,
-            "key": self._key.hex() if self._key else "",
             "allowlist": ",".join(str(n) for n in self._networks or ()),
-            "policy": snmpconf.to_document(self._accepts),
+            "spool": str(self.spool_dir),
+            "spool_max": self.spool_max,
         }
         proc = subprocess.Popen(  # nosec B603 - this interpreter, this package's module, no shell
             [sys.executable, "-m", "netcorenoc.ingest.worker"],
@@ -305,15 +287,16 @@ class IngestProcess:
                     message = json.loads(raw)
                     if not isinstance(message, list) or not message:
                         raise ValueError("not a message")
-                    if message[0] == "b" and len(message) == 2 and isinstance(message[1], list):
-                        items = [decode(item) for item in message[1]]
-                        loop.call_soon_threadsafe(self._deliver, items)
+                    if message[0] == "w" and len(message) == 2:
+                        loop.call_soon_threadsafe(self._written, whole(message[1]))
                     elif message[0] == "s" and len(message) == 3:
-                        counters = {name: _whole(message[1][name]) for name in _COUNTERS}
-                        reasons = {_string(k): _whole(v) for k, v in message[2].items()}
-                        loop.call_soon_threadsafe(self._counted, counters, reasons)
-                    elif message[0] == "r" and len(message) == 2:
-                        loop.call_soon_threadsafe(self._started, _whole(message[1]))
+                        counters = {name: whole(message[1][name]) for name in _COUNTERS}
+                        state = _spool_state(message[2])
+                        loop.call_soon_threadsafe(self._counted, counters, state)
+                    elif message[0] == "r" and len(message) == 3:
+                        pid, head = whole(message[1]), whole(message[2])
+                        loop.call_soon_threadsafe(self._written, head)
+                        loop.call_soon_threadsafe(self._started, pid)
                     else:
                         raise ValueError("unknown message")
                 except (ValueError, TypeError, KeyError, AttributeError):
@@ -324,15 +307,12 @@ class IngestProcess:
             with contextlib.suppress(RuntimeError):  # the loop is closed: nothing to tell
                 loop.call_soon_threadsafe(self._exited)
 
-    def _deliver(self, items: Sequence[QueueItem]) -> None:
-        for item in items:
-            try:
-                self.queue.put_nowait(item)
-            except asyncio.QueueFull:
-                self.bridge_dropped += 1
+    def _written(self, head: int) -> None:
+        self.head = max(self.head, head)
+        self._on_written(head)
 
-    def _counted(self, counters: dict[str, int], reasons: dict[str, int]) -> None:
-        self._child, self._child_reasons = counters, reasons
+    def _counted(self, counters: dict[str, int], state: dict[str, Any]) -> None:
+        self._child, self.spool = counters, state
 
     def _started(self, pid: int) -> None:
         if self._ready is not None and not self._ready.done():
@@ -350,9 +330,7 @@ class IngestProcess:
         log.error("the ingest process exited; starting it again on the same socket")
         for name in _COUNTERS:
             self._base[name] += self._child[name]
-        for reason, count in self._child_reasons.items():
-            self._base_reasons[reason] = self._base_reasons.get(reason, 0) + count
-        self._child, self._child_reasons = dict.fromkeys(_COUNTERS, 0), {}
+        self._child = dict.fromkeys(_COUNTERS, 0)
         self.restarts += 1
         with contextlib.suppress(OSError):
             if self._control is not None:
@@ -368,3 +346,15 @@ class IngestProcess:
             log.exception("the ingest process could not be started again")
             assert self._loop is not None
             self._loop.call_later(RESTART_DELAY_S * 10, self._respawn)
+
+
+_STATE_NUMBERS = ("head", "bytes", "max_bytes", "waiting", "refusals", "torn_bytes")
+
+
+def _spool_state(value: object) -> dict[str, Any]:
+    """The process's report on the spool, field by field: whole numbers and one string."""
+    if not isinstance(value, dict):
+        raise ValueError("the spool state is not an object")
+    state: dict[str, Any] = {name: whole(value[name]) for name in _STATE_NUMBERS}
+    state["error"] = string(value["error"])
+    return state

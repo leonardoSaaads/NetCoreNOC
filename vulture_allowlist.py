@@ -9,6 +9,7 @@ _.capture_signals  # unused method (netcorenoc/api/models.py)
 # A pydantic `@field_validator`: pydantic calls it by decorator registration, never by
 # name, so a static scan cannot see the call site. v0.15.2, F75.
 _._parses  # unused method (netcorenoc/api/models.py)
+_._kpi  # pydantic `model_validator`: called by pydantic, never by name (ADR #451)
 security_headers  # unused function (netcorenoc/api/perimeter.py)
 healthz  # unused function (netcorenoc/api/routes_static.py)
 readyz  # unused function (netcorenoc/api/routes_static.py)

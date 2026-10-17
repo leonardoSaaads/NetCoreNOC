@@ -12,7 +12,8 @@
  *   2. **What is happening** — situations and alarms over time.
  *   3. **Where** — the estate map.
  *   4. **Which element is worst** — elements by active alarms.
- *   5. **Is the appliance itself keeping up** — CPU, memory, storage, queue depth, as series.
+ *   5. **Is the appliance itself keeping up** — the trap pipeline (backlog, throughput, decision
+ *      latency against the KPI, ADRs #450, #451), then the host under it, as series.
  *   6. **What has it learned** — the two learned counters.
  *
  * A count of active alarms cannot say whether it is a burst or a trickle, which is why band 2
@@ -56,6 +57,7 @@ import {
   DEFAULT_RANGE_S, Estate, Happening, RANGE_BUCKETS, RANGES, RangePicker,
 } from "./parts/pulse.js";
 import { Keeping } from "./parts/keeping.js";
+import { Pipeline } from "./parts/pipeline.js";
 import { ModelHealth } from "./parts/models.js";
 import { Severity } from "./parts/severity.js";
 import { SituationSummary } from "./parts/sitsummary.js";
@@ -192,8 +194,9 @@ export class Overview extends Component {
         <//>
         <div class="ov-5 ov-slot"><${SituationSummary} stats=${stats} situations=${situations} /></div>
         <div class="ov-7 ov-slot"><${TopAssets} rangeS=${rangeS} tick=${tick} /></div>
+        <div class="ov-12 ov-slot"><${Pipeline} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} tick=${tick} /></div>
         <div class="ov-5 ov-slot"><${Estate} nodes=${nodes} edges=${(live.graph && live.graph.edges) || []} /></div>
-        <div class="ov-7 ov-slot"><${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} /></div>
+        <div class="ov-7 ov-slot"><${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} tick=${tick} /></div>
         <section class="panel-block ov-12 ov-models">
           <${SectionHeading} title="The models" />
           <${ModelHealth} admin=${can("model.register")} />

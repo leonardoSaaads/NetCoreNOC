@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 # Rebrand (v0.4.0): the canonical environment prefix is NETCORENOC_*. The legacy OPTICORR_*
 # aliases were accepted with a once-per-variable deprecation warning through v0.5.0 and are
@@ -89,7 +90,7 @@ def _non_negative(suffix: str, default: float) -> float:
 
 
 def _positive(suffix: str, default: float) -> float:
-    """A duration in seconds that must be more than zero (a deadline of 0 s is every trap late)."""
+    """A quantity that must be more than zero and finite (a KPI of 0 s is every trap late)."""
     value = _number(suffix, str(default), float, "a number of seconds")
     if not value > 0 or value == float("inf"):  # NaN, 0, negatives and infinity are refused
         raise SettingsError(
@@ -150,12 +151,18 @@ class Settings:
     # v0.28.0 (ADR #431): how long an active alarm may be silent before its next trap is a new
     # occurrence rather than a repeat. 0 turns the rule off.
     rearm_s: float = 3600.0
-    # ADR #447: every trap is classified within this many seconds of its own arrival, or counted
-    # late (`engine/operate/deadline.py`).
-    classify_deadline_s: float = 60.0
+    # ADR #451: the classification KPI's defaults — each trap classified within the target of its
+    # own arrival, and never later than the limit. Counted, never enforced by discarding a trap
+    # (`engine/operate/deadline.py`); an admin's saved values override both.
+    kpi_target_s: float = 60.0
+    kpi_limit_s: float = 120.0
     # ADR #449: 1 receives and decodes traps in a separate process; 0 keeps the receiver in the
-    # main process, as before.
+    # main process, without the spool (development, and hosts without POSIX descriptors).
     ingest_processes: int = 1
+    # ADR #450: where accepted traps are spooled before they are classified ("" is a `spool`
+    # directory beside the database), and how large the spool may grow.
+    spool_dir: str = ""
+    spool_max_mb: float = 2048.0
     tls_cert: str = ""
     tls_key: str = ""
     log_json: bool = False
@@ -171,6 +178,14 @@ class Settings:
 
         tls_cert, tls_key = s("TLS_CERT", cls.tls_cert), s("TLS_KEY", cls.tls_key)
         _tls(tls_cert, tls_key)
+        target = _positive("KPI_TARGET_S", cls.kpi_target_s)
+        limit = _positive("KPI_LIMIT_S", cls.kpi_limit_s)
+        if target > limit:
+            raise SettingsError(
+                f"{ENV_PREFIX}KPI_TARGET_S={target} is later than {ENV_PREFIX}KPI_LIMIT_S={limit}. "
+                "The target is where a trap should be classified by; the limit, the latest it may "
+                "be. See docs/configure.md."
+            )
         return cls(
             db_path=s("DB", cls.db_path),
             trap_host=s("TRAP_HOST", cls.trap_host),
@@ -188,13 +203,21 @@ class Settings:
                 "AUDIT_RETENTION_DAYS", str(cls.audit_retention_days), float, "a number of days"
             ),
             rearm_s=_non_negative("REARM_S", cls.rearm_s),
-            classify_deadline_s=_positive("CLASSIFY_DEADLINE_S", cls.classify_deadline_s),
+            kpi_target_s=target,
+            kpi_limit_s=limit,
             ingest_processes=_choice("INGEST_PROCESSES", cls.ingest_processes, (0, 1)),
+            spool_dir=s("SPOOL_DIR", cls.spool_dir),
+            spool_max_mb=_positive("SPOOL_MAX_MB", cls.spool_max_mb),
             tls_cert=tls_cert,
             tls_key=tls_key,
             log_json=s("LOG_JSON", "") not in ("", "0", "false", "False"),
             legacy_env=tuple(legacy_env_names()),
         )
+
+    @property
+    def spool_path(self) -> Path:
+        """`NETCORENOC_SPOOL_DIR`, or a ``spool`` directory beside the database (ADR #450)."""
+        return Path(self.spool_dir or Path(self.db_path).resolve().parent / "spool").resolve()
 
     @property
     def tls_enabled(self) -> bool:

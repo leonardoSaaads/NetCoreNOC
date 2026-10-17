@@ -2,7 +2,7 @@
 #   make qa PYTHON=python
 PYTHON ?= .venv/bin/python
 
-.PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list loadtest burst \
+.PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list storm \
 	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim train train-validate train-verify \
 	lab lab-demo lab-cut lab-repair lab-status \
 	bias-report dataset-stats agreement-report shadow-report census
@@ -107,17 +107,16 @@ replay-list:
 	@echo "Without make, against a running appliance:"
 	@echo "  $(PYTHON) tools/trap_replay.py eval/corpus/<name>.json --port 1162"
 
-# 1000 traps/s for 60 s against a locally running NetCoreNOC.
-loadtest:
-	$(PYTHON) tools/trap_replay.py --synthetic 20 --classes 10 --rate 1000 --duration 60 \
-		--port $${NETCORENOC_TRAP_PORT:-1162}
-
-# A 100 000-trap burst against a locally running NetCoreNOC (the v0.3.0 window/backpressure
-# check; watch `queue_depth` and `ingest_gaps`). The suite's own lossless-ingest assertion is
-# tests/ingest/test_perf.py.
-burst:
-	$(PYTHON) tools/trap_replay.py --synthetic 50 --classes 20 --rate 100000 --duration 1 \
-		--port $${NETCORENOC_TRAP_PORT:-1162}
+# The load test (ADRs #447-#451): a storm of distinct alarms over real UDP through the real
+# path — receive, raw spool, decoder, engine — reporting every trap's decision latency against the
+# KPI and exiting non-zero if any trap was not kept. Needs nothing running.
+#   make storm                                   20 000 alarms at 5 000/s
+#   make storm TRAPS=50000 RATE=0                50 000 at once
+#   make storm STORM_ARGS="--restart-at 0.5"     restart the engine halfway; nothing may be lost
+# It replaced `loadtest` and `burst`, which sent traffic at a running appliance and left the
+# operator to read the outcome off the console: this one measures it, per trap, and says so.
+storm:
+	$(PYTHON) tools/storm_check.py --traps $${TRAPS:-20000} --rate $${RATE:-5000} $(STORM_ARGS)
 
 # Replay the labelled corpus offline and print the delta against the frozen baseline.
 # Exits non-zero on a gated regression (pairwise_f1, ari, entity_accuracy).

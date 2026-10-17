@@ -72,7 +72,8 @@ curl -b cookies http://localhost:8080/api/stats
 | `devices`, `classes` rising | traps are arriving and being understood |
 | `receiver.denied` > 0 | traps arrived from addresses outside the allowlist |
 | `quarantined` > 0 | packets that were not valid traps; see **Quarantine** |
-| `queue_depth` growing | the appliance is not keeping up; see [`troubleshoot.md`](troubleshoot.md) |
+| `queue_depth` growing | the backlog — traps spooled and not yet classified — is growing: classification is behind the trap rate. Nothing is lost while the spool has room; the Overview's **Trap pipeline** shows how far behind, against the KPI. See [`troubleshoot.md`](troubleshoot.md) |
+| `classification.over_limit` > 0 | traps were classified later than the KPI's limit (still classified, never discarded) |
 
 Times shown are when the **appliance received** each trap, in your browser's time zone.
 

@@ -11,30 +11,52 @@ minor bump may break.
 
 What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md).
 
-## [Unreleased] — "each trap's own minute"
+## [Unreleased] — "no trap lost, every trap timed"
 
-Every trap must be classified into a situation within 60 s of **its own** arrival, through a storm.
-This makes that measurable, removes the losses a storm caused, and takes the per-trap cost down
-without changing one grouping decision. No migration. See [`MIGRATION.md`](MIGRATION.md): the
-appliance is now two processes, and a container needs two CPUs.
+Every trap is kept until it is classified, and each one is timed against a KPI an administrator
+sets — a target and a limit from its own arrival — through a storm. **Migration 0030** (schema 30)
+is additive. See [`MIGRATION.md`](MIGRATION.md): the appliance is three processes and a spool on
+disk, and a container needs two CPUs. No grouping decision changes (`make eval` is byte-identical).
 
 ### Added
 
-- **A per-trap classification clock** (#447): each trap is timed from its own arrival to the commit
-  that placed it; misses — late, lost to a storage error, dropped at a full queue — are counted,
-  published in `GET /api/stats` as `classification` (p50/p95/p99, worst, head-of-line age) and
-  raised as a warning. `/readyz` reports not-ready while the oldest queued trap is past the deadline.
-  `NETCORENOC_CLASSIFY_DEADLINE_S` (default 60).
-- **Traps are received and decoded in a process of their own** (#449): the same receiver, on a
-  socket the main process binds, with JSON batches back over a pipe that the main process validates
-  field by field. Restarted on the same socket if it dies. The kernel's receive time is each trap's
-  arrival (Linux), and the socket asks for a 32 MiB buffer, warning when the host grants less.
-  `NETCORENOC_INGEST_PROCESSES=0` keeps the old single-process receiver.
-- `tools/storm_check.py`: a storm of distinct alarms over real UDP through the real path, reporting
-  every trap's classification time and exiting non-zero on any miss, kernel drops included.
+- **The trap spool** (#450): the receiving process appends each admitted datagram to an
+  append-only, CRC-checked log on disk (group commit, one `fdatasync` per group) before anything
+  parses it; decoding happens behind it, in a decoder process, as the engine is ready. The engine
+  commits the spool's **cursor in the same transaction** as the batch it classified, so a crash or
+  restart resumes after the last classified trap — nothing skipped, nothing twice — and a segment is
+  deleted only once a WAL checkpoint has made that cursor durable. The same design as Zabbix's
+  SNMP trapper (a trap file and an offset in the database) and Kafka (segments and a committed
+  offset). `NETCORENOC_SPOOL_DIR`, `NETCORENOC_SPOOL_MAX_MB`.
+- **A trap that crashes the engine is set aside, not retried forever** (#450): after a crash the
+  traps in flight are replayed one at a time, and the one the engine still cannot classify goes to
+  `dead-letter.jsonl` with the error; a datagram that stops the decoder is quarantined by its
+  metadata. Everything else is classified.
+- **The classification KPI** (#451): a target (60 s) and a limit (120 s) per trap, from its own
+  arrival, set by an admin on Settings (`POST /api/config`) or by `NETCORENOC_KPI_TARGET_S` /
+  `NETCORENOC_KPI_LIMIT_S`. A trap past either is still classified and is counted; past the limit
+  it raises a warning. Zabbix's delay buckets (≤5 s … >10 min), p50/p95/p99, the worst, and the
+  share within each threshold.
+- **The Overview's trap pipeline** (#450, #451): the backlog and its oldest wait, throughput in and
+  out, decision latency, KPI compliance, the spool, the delay buckets, and four charts over the
+  range picked — throughput, backlog, latency (p95 and worst) and traps outside the KPI. Each is the
+  30 s **interval**'s, recorded on disk (migration 0030).
+- `tools/storm_check.py` / `make storm`: a storm of distinct alarms over real UDP through the real
+  path, every trap's latency against the KPI, `--restart-at` to restart the engine halfway; exits 1
+  if any trap was not kept.
+- **A per-trap classification clock** (#447): each trap is timed from its own arrival to the
+  commit that placed it, published in `GET /api/stats` as `classification`.
+- **Traps are received in a process of their own** (#449), on a socket the main process binds,
+  restarted on the same socket if it dies. The kernel's receive time is each trap's arrival
+  (Linux), and the socket asks for a 32 MiB buffer, warning when the host grants less.
 
 ### Changed
 
+- **`/readyz` is not ready only when the spool refuses writes** (#450). It used to be not ready
+  for a nearly full queue and, briefly, for a late trap — and an orchestrator acting on that stops
+  sending traffic, which for UDP is traps lost in front of the appliance.
+- **A storage error is retried, not a dropped batch** (#450): the batch is rolled back and tried
+  again with backoff; the warning says so.
 - **The batch lock is released every 250 ms** during a storm (#447), instead of being held for a
   whole 500-trap batch (measured: up to 8.6 s, during which the console waited).
 - **The batch path is faster, and exact** (#448): a situation's name is refreshed once per batch,
@@ -42,12 +64,25 @@ appliance is now two processes, and a container needs two CPUs.
   activation, the logistic regression's logit is one loop. `make eval` is byte-identical, and so is
   every row of five tables on a 6 000-trap stream through the old and new engines. Measured on a
   4 vCPU sandbox: 107-110 -> 180-183 traps/s on an activation storm.
-- `docker-compose.yml` gives the container two CPUs (was one).
+- `queue_depth` in `GET /api/stats` is the backlog wherever it waits; the health control says
+  `backlog`, and "behind" means the oldest waiting trap is past the KPI's target.
+- The Overview's "Is the appliance keeping up" is two panels: the trap pipeline, then the host.
+- `make loadtest` and `make burst` are replaced by `make storm`, which measures instead of sending.
+- `docker-compose.yml` gives the container two CPUs; the resource notes describe the spool.
 
 ### Fixed
 
-- **A storm's datagrams were dropped by the kernel with nothing counting them** (#449): measured,
-  4 032 of 20 000 at 5 000/s into a 4 MiB socket buffer. With the buffer granted, none.
+- **The queue chart drew a storm as zero** (#451): it sampled the in-memory queue at one instant
+  every 30 s. It is now the backlog's peak in each interval, including what waits on disk.
+- **A rolled-back batch left the store's id caches and the engine's membership pointing at rows
+  that no longer existed** (#450): the next trap from a new source failed its foreign key, or —
+  once SQLite reused the id — was filed under another device; a retried trap was left out of its
+  situation. Found by replaying a rolled-back batch; both are rebuilt from the database on rollback,
+  and a replay now groups exactly as an uninterrupted run (asserted).
+- **A storm's datagrams were dropped by the kernel with nothing counting them** (#449, #450):
+  4 032 of 20 000 at 5 000/s into a 4 MiB buffer with the in-process receiver, and 4 238 into an
+  8 MiB buffer with a receiver that decoded before spooling. Spooling raw: none.
+- `NETCORENOC_CLASSIFY_DEADLINE_S` (unreleased) is replaced by the two KPI settings.
 
 ## [0.30.0] - 2026-10-09 — "SNMPv3, recovery by email, and the console reviewed"
 

@@ -33,17 +33,20 @@ async def test_readyz_ready_and_leaks_no_detail(store: Store) -> None:
         assert resp.json() == {"status": "ready"}  # exactly ok/not-ok, no internal detail
 
 
-async def test_readyz_reports_not_ready_when_queue_saturated(store: Store) -> None:
+async def test_a_full_queue_is_not_unreadiness(store: Store) -> None:
+    """ADR #450 retired the queue-saturation rule: with the spool a full queue is backpressure,
+    not refused load, and an orchestrator that pulled the appliance out of rotation for it would
+    lose traps in front of it. Unreadiness is a spool that refuses writes (`test_intake.py`)."""
     queue: asyncio.Queue[object] = asyncio.Queue(maxsize=10)
     engine = Engine(store, queue)  # type: ignore[arg-type]
     await engine.start()
     app = create_app(engine)
-    for _ in range(9):  # 9 >= 0.9 * 10 → saturated
+    for _ in range(10):
         queue.put_nowait(util.event())
     async with authutil.new_client(app) as client:
         resp = await client.get("/readyz")
-        assert resp.status_code == 503
-        assert resp.json() == {"status": "not ready"}
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ready"}
 
 
 # -- store integrity (F11) -----------------------------------------------------------

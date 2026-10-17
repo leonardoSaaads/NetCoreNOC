@@ -464,6 +464,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/finder.js"),
     ("GET", "/app/views/parts/pulse.js"),
     ("GET", "/app/views/parts/keeping.js"),
+    ("GET", "/app/views/parts/pipeline.js"),
     ("GET", "/app/views/parts/severity.js"),
     ("GET", "/app/views/parts/models.js"),
     ("GET", "/app/views/parts/marks.js"),
@@ -1350,8 +1351,12 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: **Unreleased: 387 -> 392.** Five added, none removed: `engine/operate/deadline.py` (#447),
 #: `engine/operate/upkeep.py` and `store/batch_writes.py` (#448), `ingest/worker.py` and
 #: `ingest/process.py` (#449). `store/situations.py` lost `add_link`, now `add_links`.
-SRC_TREE_DIGEST = "12f6debb445b8f6bb8ef303f49433efa0891c516c42a065263ccb0f1f1057f41"
-SRC_FILE_COUNT = 392
+#: **Then 392 -> 399.** Seven added, none removed: `ingest/spool.py`, `ingest/records.py`,
+#: `ingest/decoder.py` and `engine/operate/intake.py` (the spool, its record, the decoder and the
+#: engine's reader, #450); `engine/operate/pipeline.py` and migration `0030` (the KPI's record,
+#: #451); `ui/app/views/parts/pipeline.js` (the Overview's trap pipeline).
+SRC_TREE_DIGEST = "d8b17df530307d08a69b58560203ae4cca6223c9bd865494a67089fae21e48bd"
+SRC_FILE_COUNT = 399
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

@@ -22,7 +22,6 @@ import asyncio
 import logging
 import sqlite3
 import time
-from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -40,8 +39,11 @@ from netcorenoc.crosscutting.settings import (
     legacy_env_error,
 )
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
+from netcorenoc.engine.operate import intake, pipeline
+from netcorenoc.engine.operate.deadline import KPI_KEY, Kpi
 from netcorenoc.engine.operate.engine import Engine
-from netcorenoc.engine.operate.resources import SAMPLE_INTERVAL_S, ResourceSampler
+from netcorenoc.engine.operate.intake import SpoolFeed
+from netcorenoc.engine.operate.resources import ResourceSampler
 from netcorenoc.ingest import process as ingest_process
 from netcorenoc.ingest import snmpconf
 from netcorenoc.ingest.process import IngestProcess
@@ -56,7 +58,7 @@ from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")
 
-QUEUE_SIZE = 100_000
+QUEUE_SIZE = 100_000  # the in-process receiver's queue: without a spool it is the only buffer
 SHUTDOWN_DRAIN_S = 5.0  # bounded deadline to drain queued traps on graceful shutdown (§A.5)
 
 
@@ -74,42 +76,6 @@ class HttpServerStartError(RuntimeError):
     propagates through ``asyncio.gather``, the cleanup runs, the store closes, the process exits
     non-zero, and a supervisor restarts it.
     """
-
-
-async def _sample_resources(
-    sampler: ResourceSampler,
-    store: Store,
-    queue: asyncio.Queue[QueueItem],
-    received: Callable[[], int] | None = None,
-    latency_p95_s: Callable[[], float] | None = None,
-) -> None:
-    """Read CPU, memory, storage and queue depth every ``SAMPLE_INTERVAL_S``, and keep each.
-
-    Supervised: a crash costs a graph, never the process. Each reading is also a `host_sample` row
-    (v0.22.0, #380, F154): one INSERT and one bounded DELETE per 30 s, off the datagram path.
-
-    v0.29.0 (ADR #437): the trap rate over the interval — a difference of the receiver's counter,
-    read, never incremented here — and the engine's batch latency p95, so the Overview can say
-    whether the WORK is keeping up and not only the host. The first interval has no previous count
-    and records no rate rather than a made-up one.
-    """
-    previous: tuple[float, int] | None = None
-    while True:
-        await asyncio.sleep(SAMPLE_INTERVAL_S)
-        sampler.sample()
-        now = time.time()
-        rate: float | None = None
-        if received is not None:
-            count = received()
-            if previous is not None and now > previous[0] and count >= previous[1]:
-                rate = round((count - previous[1]) / (now - previous[0]), 3)
-            previous = (now, count)
-        latency = round(latency_p95_s() * 1000.0, 2) if latency_p95_s is not None else None
-        async with store.lock:
-            await store.record_host_sample(
-                now, sampler.reading(), queue.qsize(), traps_per_s=rate, latency_ms=latency
-            )
-            await store.commit()
 
 
 async def _serve_http(server: QuietServer, url: str) -> None:
@@ -247,22 +213,24 @@ async def _serve(settings: Settings, store: Store) -> None:
     _check_allowlist(effective_allowlist, stored=saved_allow is not None)
     snmp_policy = snmpconf.stored_policy(await store.get_meta(snmpconf.META_KEY))
 
-    queue: asyncio.Queue[QueueItem] = asyncio.Queue(maxsize=QUEUE_SIZE)
     transport: asyncio.DatagramTransport | IngestProcess
     receiver: TrapReceiver | IngestProcess
+    feed: SpoolFeed | None = None
+    queue: asyncio.Queue[QueueItem]
     if settings.ingest_processes and ingest_process.supported():
-        # ADR #449: traps are received and decoded in a process of their own, on the socket bound
-        # here; the main process's core is left to correlation.
-        sock = await ingest_process.bind(settings.trap_host, settings.trap_port)
-        transport = receiver = IngestProcess(
-            queue, sock, effective_allowlist, community_key, snmp_policy
+        # ADRs #449, #450: traps are received, decoded and spooled to disk in a process of their
+        # own, on the socket bound here; the main process reads the spool and correlates.
+        queue, feed, process = await intake.start_spooled(
+            store, settings, effective_allowlist, community_key, snmp_policy
         )
-        try:
-            await receiver.start()
-        except BaseException:
-            sock.close()
-            raise
+        transport = receiver = process
     else:
+        log.warning(
+            "traps are received in the main process WITHOUT the spool (%sINGEST_PROCESSES=0): a "
+            "trap that arrives while the queue is full is dropped. For development only.",
+            ENV_PREFIX,
+        )
+        queue = asyncio.Queue(maxsize=QUEUE_SIZE)
         transport, receiver = await start_receiver(
             queue,
             settings.trap_host,
@@ -282,8 +250,13 @@ async def _serve(settings: Settings, store: Store) -> None:
     engine = Engine(store, queue)
     engine.audit_retention_days = settings.audit_retention_days
     engine.rearm_s = settings.rearm_s  # ADR #431
-    engine.deadlines.deadline_s = settings.classify_deadline_s  # ADR #447
-    engine.dropped_provider = lambda: receiver.stats.dropped  # §5.6 queue-full gap source
+    # ADR #451: the KPI an admin saved overrides the environment's defaults.
+    engine.deadlines.kpi = Kpi.from_document(
+        await store.get_meta(KPI_KEY), Kpi(settings.kpi_target_s, settings.kpi_limit_s)
+    )
+    engine.dropped_provider = lambda: receiver.stats.dropped  # §5.6: traps no buffer could take
+    if feed is not None:
+        engine.feed = feed  # ADR #450: each batch commits the spool's cursor
     await engine.start()
 
     # `existing_users` is read BEFORE the bootstrap, so the banner can tell a first run from a
@@ -329,10 +302,11 @@ async def _serve(settings: Settings, store: Store) -> None:
             operator_warnings(runtime.allowlist, settings.tls_enabled, settings.http_host)
             + receiver_warnings(receiver.stats, runtime.allowlist)
             + engine.entity_cap_warnings()
-            # ADR #447: a trap that missed its own classification deadline — late, lost to a
-            # storage error, or dropped at a full queue — reaches the operator.
+            # ADRs #447, #451: a trap classified past the KPI limit, or one no buffer could take,
+            # reaches the operator; so does a record the spool had to set aside (#450).
             + engine.deadlines.warnings(receiver.stats.dropped)
             + (receiver.warnings() if isinstance(receiver, IngestProcess) else [])
+            + (feed.warnings() if feed is not None else [])
             + engine.db_error_warnings()
             + engine.scorer_warning_list()
             # v0.16.2 (DECISIONS #275). A situation nobody has touched for an hour while one of
@@ -391,8 +365,16 @@ async def _serve(settings: Settings, store: Store) -> None:
         snmpconf.describe(snmp_policy),
     )
     log.info("web UI and API on %s", url)
+
+    async def run_engine() -> None:
+        # ADR #450: every (re)start reads from the committed cursor, so a crash replays what was in
+        # flight instead of losing it, and a record that crashes the engine is set aside.
+        if feed is not None:
+            await feed.rewind(supervisor.last_error.get("engine", ""))
+        await engine.run()
+
     tasks = [
-        asyncio.create_task(supervisor.run("engine", engine.run)),
+        asyncio.create_task(supervisor.run("engine", run_engine)),
         asyncio.create_task(
             supervisor.run(
                 "maintenance",
@@ -402,12 +384,8 @@ async def _serve(settings: Settings, store: Store) -> None:
         asyncio.create_task(
             supervisor.run(
                 "resources",
-                lambda: _sample_resources(
-                    resources,
-                    store,
-                    queue,
-                    received=lambda: receiver.stats.received,
-                    latency_p95_s=engine.latency_p95,
+                lambda: pipeline.sample_loop(
+                    resources, store, engine, received=lambda: receiver.stats.received
                 ),
             )
         ),
@@ -418,10 +396,12 @@ async def _serve(settings: Settings, store: Store) -> None:
     finally:
         transport.close()  # stop accepting new datagrams
         if isinstance(transport, IngestProcess):
-            await transport.wait_closed()  # what it already received reaches the queue first
+            await transport.wait_closed()  # what it already received is written to the spool
         server.should_exit = True
         for task in tasks:
             task.cancel()
+        if feed is not None:
+            await feed.stop()  # what is still on disk is classified at the next start
         # `return_exceptions=True` rather than suppressing `CancelledError` (F66). A task that ended
         # in an **exception** rather than a cancellation — uvicorn failing to bind, for instance —
         # has that exception stored, and `gather` re-raises it here. Suppressing only

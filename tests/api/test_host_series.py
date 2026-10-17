@@ -18,6 +18,7 @@ from netcorenoc.store import Store
 from netcorenoc.store.host_samples import HOST_SAMPLE_RETENTION_S
 
 import authutil
+import util
 
 NOW = 1_800_000_000.0
 HOUR = 3600.0
@@ -114,12 +115,17 @@ async def test_the_sampler_differences_the_receiver_counter_and_never_invents_a_
 ) -> None:
     """The rate is a DIFFERENCE of the receiver's own counter over the interval, read and never
     written by the sampler; the first interval has nothing to difference and records no rate. A
-    counter that went backwards (a restart of the receiver's stats) is not a negative rate."""
-    from netcorenoc import runner
+    counter that went backwards (a restart of the receiver's stats) is not a negative rate.
+
+    ADRs #450, #451: the pipeline half is the INTERVAL's — what was classified in it, how late,
+    and the p95 of those decisions — and an interval with nothing classified has no latency."""
+    from netcorenoc.engine.operate import pipeline
+    from netcorenoc.engine.operate.deadline import DeadlineTracker
 
     clock = iter([100.0, 130.0, 160.0, 190.0])
     counts = iter([0, 300, 900, 50])
     written: list[dict[str, Any]] = []
+    tracker = DeadlineTracker()
 
     class Sampler:
         def sample(self) -> None: ...
@@ -131,22 +137,65 @@ async def test_the_sampler_differences_the_receiver_counter_and_never_invents_a_
         lock = asyncio.Lock()
 
         async def record_host_sample(self, at: float, reading: Any, depth: int, **kw: Any) -> None:
-            written.append({"at": at, **kw})
+            written.append({"at": at, "depth": depth, **kw})
+            if len(written) == 2:  # the second interval classified two traps, one past the limit
+                tracker.committed([util.event(ts=at + 30.0 - 1.0), util.event(ts=at - 170.0)], at)
             if len(written) == 4:
                 raise asyncio.CancelledError
 
         async def commit(self) -> None: ...
 
-    monkeypatch.setattr(runner, "SAMPLE_INTERVAL_S", 0.0)
-    # The runner's own `time` reference only; the module the rest of the process reads is kept.
-    monkeypatch.setattr("netcorenoc.runner.time", SimpleNamespace(time=lambda: next(clock)))
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    queue.put_nowait(util.event())
+    engine = SimpleNamespace(deadlines=tracker, queue=queue, feed=None)
+    monkeypatch.setattr(pipeline, "SAMPLE_INTERVAL_S", 0.0)
+    # The module's own `time` reference only; the module the rest of the process reads is kept.
+    monkeypatch.setattr(pipeline, "time", SimpleNamespace(time=lambda: next(clock)))
     with pytest.raises(asyncio.CancelledError):
-        await runner._sample_resources(
+        await pipeline.sample_loop(
             Sampler(),  # type: ignore[arg-type]
             FakeStore(),  # type: ignore[arg-type]
-            asyncio.Queue(),
+            engine,  # type: ignore[arg-type]
             received=lambda: next(counts),
-            latency_p95_s=lambda: 0.0042,
         )
     assert [w["traps_per_s"] for w in written] == [None, 10.0, 20.0, None], written
-    assert {w["latency_ms"] for w in written} == {4.2}
+    assert [w["latency_ms"] for w in written] == [None, None, 170000.0, None]
+    third = written[2]["pipeline"]
+    assert third["classified"] == 2 and third["over_target"] == 1 and third["over_limit"] == 1
+    assert third["classified_per_s"] == pytest.approx(2 / 30.0, abs=1e-3)
+    assert written[0]["pipeline"]["classified_per_s"] is None, "no first rate"
+    assert {w["depth"] for w in written} == {1}, "without a spool, the queue is the backlog"
+
+
+async def test_the_pipeline_series_sum_counts_and_keep_the_worst_latency(store: Store) -> None:
+    """Migration 0030 (ADRs #450, #451): a bucket's KPI counts are SUMS of its intervals, so its
+    compliance is its own; throughput is a mean like the trap rate; the slowest decision and the
+    spool are read for their worst moment; an unsampled bucket is None, never zero."""
+    host = {"cpu_pct": 5.0, "mem_pct": 50.0, "disk_pct": 10.0, "db_mb": 5.0}
+
+    def interval(
+        classified: int, over_target: int, over_limit: int, worst: float
+    ) -> dict[str, Any]:
+        return {
+            "classified": classified,
+            "classified_per_s": classified / 30.0,
+            "latency_max_ms": worst,
+            "over_target": over_target,
+            "over_limit": over_limit,
+            "spool_mb": worst / 1000.0,
+        }
+
+    async with store.lock:
+        await store.record_host_sample(
+            NOW - HOUR + 30, host, 40, pipeline=interval(300, 10, 1, 9e4)
+        )
+        await store.record_host_sample(
+            NOW - HOUR + 60, host, 900, pipeline=interval(600, 0, 0, 2e3)
+        )
+        await store.commit()
+        series = (await store.host_series(since=NOW - HOUR, until=NOW, buckets=2))["series"]
+    assert series["classified"] == [900, None] and series["over_target"] == [10, None]
+    assert series["over_limit"] == [1, None], "a breach in one interval is not averaged away"
+    assert series["classified_per_s"] == [15.0, None]
+    assert series["latency_max_ms"] == [90000.0, None] and series["spool_mb"] == [90.0, None]
+    assert series["queue_depth"] == [900, None], "the backlog's peak, not its mean"
