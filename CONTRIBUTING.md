@@ -208,8 +208,8 @@ With the app running on port 1162 (step by step, for Linux and Windows:
 ```sh
 make replay                      # the bundled fibre-cut scenario as real SNMP PDUs over UDP
 make sim SCENARIO=login_burst    # a declarative scenario; python tools/trap_sim.py --list
-make loadtest                    # 1000 traps/s for 60 s
-make burst                       # 100 000 traps in one second
+make storm                       # 20 000 distinct alarms at 5 000/s through the real path
+make storm TRAPS=50000 RATE=0    # all at once; exits 1 if any trap was not kept
 make lab                         # two simulated OLTs; make lab-cut / make lab-repair
 ```
 

@@ -112,6 +112,9 @@ class LifecycleMixin(StoreBase):
         # them both answer "nothing declared" instead of naming a table that is not there.
         self._has_class_rules = "class_rule" in present
         self._has_notice_snooze = "notice_snooze" in present
+        # Migration `0030` (ADRs #450, #451): the trap pipeline's columns on `host_sample`.
+        cur = await self.conn.execute("PRAGMA table_info(host_sample)")
+        self._has_pipeline_sample = "over_limit" in {str(row[1]) for row in await cur.fetchall()}
 
     async def _migrate(self) -> None:
         """Apply the pending scripts, and **say which** (DECISIONS #227).
@@ -183,5 +186,34 @@ class LifecycleMixin(StoreBase):
 
     async def rollback(self) -> None:
         """Abandon the current transaction (F11). The audit chain only advances on commit, so a
-        rolled-back batch never breaks it — the dropped traps are recorded as an ingest loss."""
+        rolled-back batch never breaks it; the engine retries the batch (ADR #450).
+
+        **The id caches go with it.** A device, element, entity or class first seen inside the
+        transaction was cached with the id its INSERT returned, and the rollback removed that row.
+        Kept, the cache named a row that did not exist — the next trap from that source failed its
+        foreign key — or, once SQLite reused the id, a **different** row, so alarms were filed
+        under another device. Found by replaying a rolled-back batch (ADR #450); the caches are only
+        a shortcut for an `INSERT ... ON CONFLICT ... RETURNING` that rebuilds them.
+        """
         await self.conn.rollback()
+        for cache in (
+            self._device_ids,
+            self._ne_ids,
+            self._entity0_ids,
+            self._entity_ids,
+            self._class_ids,
+            self._touched,
+        ):
+            cache.clear()
+
+    async def checkpoint(self) -> bool:
+        """A passive WAL checkpoint: True when every committed frame is now in the database file.
+
+        With ``synchronous=NORMAL`` a commit is durable once a checkpoint has synced it, so this is
+        what the spool waits for before it deletes a segment its cursor has passed (ADR #450). A
+        database not in WAL mode answers ``(0, -1, -1)``: every commit is already durable.
+        """
+        cur = await self.conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        row = await cur.fetchone()
+        busy, frames, done = (int(value) for value in row) if row else (1, 0, 0)
+        return busy == 0 and frames == done

@@ -19,6 +19,7 @@ import netcorenoc
 from netcorenoc import __version__
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
+from netcorenoc.engine.operate.intake import SpoolFeed
 
 # **Resolved from the PACKAGE, not by counting `.parent`s** (v0.16.2, DECISIONS #278).
 #
@@ -33,7 +34,6 @@ from netcorenoc.api.declare import DeclaredRoutes
 # the tree — the same reasoning `tests/support/paths.py` applies to the test suite.
 UI_DIR = Path(netcorenoc.__file__).resolve().parent / "ui"
 UI_FILE = UI_DIR / "index.html"
-QUEUE_SATURATION = 0.9  # /readyz reports not-ready once the ingest queue passes this fraction
 
 # v0.13.0: the console is an ES module graph, so every module has to be reachable. It is
 # **enumerated**, not served from a directory (ADR #175).
@@ -147,6 +147,10 @@ _UI_MODULES = (
     # above it and the file had 484 bytes of headroom (DECISIONS #318). The seam is the subject:
     # `pulse.js` is about the network, this is about the appliance.
     "app/views/parts/keeping.js",
+    # ADRs #450, #451: the Overview's trap pipeline — the backlog, throughput in and out, decision
+    # latency against the KPI and Zabbix's delay buckets — split from `keeping.js`, which kept the
+    # host. The seam is the subject again: the work, and the machine it runs on.
+    "app/views/parts/pipeline.js",
     # v0.16.7: the band this release exists for — active alarms by severity, and the count
     # the appliance has NOT been able to place (DECISIONS #312).
     "app/views/parts/severity.js",
@@ -247,8 +251,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/readyz")
     async def readyz(response: Response) -> dict[str, str]:
         """Orchestrator readiness (§A.5): 200 only when the DB is reachable, migrations are
-        applied, and the queue has headroom; 503 otherwise. Unauthenticated by design and so
-        leaks no detail beyond ok/not-ok — the reasons live behind authenticated /api/stats."""
+        applied, and the trap spool accepts writes; 503 otherwise. Unauthenticated by design and so
+        leaks no detail beyond ok/not-ok — the reasons live behind authenticated /api/stats.
+
+        **A backlog is not unreadiness** (ADR #450). Before the spool, a nearly full queue made
+        this answer 503, and so, briefly, did a trap past its deadline. An orchestrator that acts on
+        readiness stops sending traffic, and for an appliance fed by UDP that means traps lost in
+        front of it — the opposite of what a backlog needs. Being behind is a KPI, on the
+        Overview and in the warnings; only a spool that refuses writes is a refusal of load.
+        """
         ready = True
         try:
             async with store.lock:
@@ -256,9 +267,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             ready = applied
         except Exception:  # DB unreachable => not ready, never a 500
             ready = False
-        queue = engine.queue
-        if queue.maxsize and queue.qsize() >= queue.maxsize * QUEUE_SATURATION:
-            ready = False  # saturated: cannot accept the load it is being sent
+        feed = engine.feed
+        if isinstance(feed, SpoolFeed) and feed.disk().get("error"):
+            ready = False  # the spool refuses writes: accepted traps can no longer be kept
         if not ready:
             response.status_code = 503
             return {"status": "not ready"}

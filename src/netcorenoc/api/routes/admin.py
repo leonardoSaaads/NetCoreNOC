@@ -8,6 +8,7 @@ visibility — and `rbac.ROUTE_SCOPE` records that as a derived fact, not an omi
 from __future__ import annotations
 
 import time
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -18,6 +19,7 @@ from netcorenoc.api.models import ConfigIn, RetentionIn, RoleIn, TokenIn, UserIn
 from netcorenoc.crosscutting import administration, auth
 from netcorenoc.crosscutting.settings import Settings
 from netcorenoc.engine.dataset import capture
+from netcorenoc.engine.operate.deadline import KPI_KEY, Kpi
 
 # The tier names, in `RetentionPolicy.as_key()` order, so the audit detail reads as a policy
 # rather than as an unlabelled tuple. Before and after are both captured. Imported from the module
@@ -224,15 +226,21 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with store.lock:
             saved_allow = await store.get_meta("config.allowlist")
             saved_ret = await store.get_meta("config.retention_days")
+            saved_kpi = await store.get_meta(KPI_KEY)
+        env_kpi = Kpi(env.kpi_target_s, env.kpi_limit_s)
+        stored_kpi = Kpi.from_document(saved_kpi, env_kpi)
+        live_kpi = engine.deadlines.kpi  # ADR #451: what the running tracker counts against
         return {
             "allowlist": saved_allow if saved_allow is not None else allowlist,
             "retention_days": float(saved_ret) if saved_ret is not None else retention,
+            "kpi": {"target_s": live_kpi.target_s, "limit_s": live_kpi.limit_s},
             "precedence": {
                 "allowlist": {"env": env.allowlist, "override": saved_allow},
                 "retention_days": {
                     "env": env.retention_days,
                     "override": float(saved_ret) if saved_ret is not None else None,
                 },
+                "kpi": {"env": asdict(env_kpi), "override": saved_kpi and asdict(stored_kpi)},
             },
             "startup": {
                 "db_path": env.db_path,
@@ -250,9 +258,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def set_config(
         body: ConfigIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
+        kpi = body.kpi()
         async with write_txn():
             await store.set_meta("config.allowlist", body.allowlist)
             await store.set_meta("config.retention_days", str(body.retention_days))
+            if kpi is not None:
+                await store.set_meta(KPI_KEY, kpi.to_document())
             await audit_row(
                 request,
                 principal,
@@ -262,8 +273,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 details={
                     "retention_days": body.retention_days,
                     "allowlist_entries": len([x for x in body.allowlist.split(",") if x.strip()]),
+                    **({"kpi": asdict(kpi)} if kpi is not None else {}),
                 },
             )
+        if kpi is not None:
+            engine.deadlines.kpi = kpi  # counted against from the next commit, without a restart
         if runtime is not None:
             runtime.apply_allowlist(body.allowlist)
             runtime.retention_days = body.retention_days

@@ -37,7 +37,6 @@ import asyncio
 import logging
 import sqlite3
 import time
-from collections import deque
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -47,7 +46,6 @@ from netcorenoc.engine.correlate.correlate import (
     CorrelationResult,
     Correlator,
     WindowAlarm,
-    explained_terms,
 )
 from netcorenoc.engine.correlate.grouping import Placement
 from netcorenoc.engine.correlate.learn import STORM_ALARMS, STORM_DAMPING, Learner
@@ -61,7 +59,7 @@ from netcorenoc.engine.evaluation.league_shadow import LeagueShadow
 from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
-from netcorenoc.engine.operate import occurrence, proposals
+from netcorenoc.engine.operate import membership, occurrence, proposals
 from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.engine.operate.flap import FlapDetector
 from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
@@ -75,7 +73,7 @@ from netcorenoc.store import FeedbackResult, Store
 log = logging.getLogger("netcorenoc")
 
 BATCH_SIZE = 500
-LATENCY_SAMPLES = 4096
+BATCH_BUDGET_S = 0.25  # the batch lock is held this long at most before a commit (ADR #447)
 LEARN_CAP = 20  # window members observed per activation (bounded work per event)
 IDLE_CLOSE_S = 3600.0  # open situations idle this long are closed by maintenance
 CLEAR_HOLD_S = 300.0  # an all-cleared situation stays live this long for a bounce to rejoin (#410)
@@ -98,7 +96,6 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         self.profiler = VarbindProfiler()
         self.sit_of: dict[int, int] = {}  # alarm id -> open situation id
         self.members: dict[int, list[Member]] = {}  # open situation id -> members
-        self.latencies: deque[float] = deque(maxlen=LATENCY_SAMPLES)
         self.processed = 0
         self.db_errors = 0  # batches lost to a sqlite operational error (F11)
         self.last_db_error = ""
@@ -188,50 +185,58 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             self.ne_severity[ne_id] = oid
             self.profiler.set_role(ne_id, oid, "severity")
         self.rejected_proposals = set(await self.store.rejected_proposals())
-        for row in await self.store.open_situation_members():
-            sid = int(row["situation_id"])
-            member = Member(
-                int(row["alarm_id"]),
-                int(row["class_id"]),
-                int(row["device_id"]),
-                float(row["first_seen"]),
-            )
-            self.members.setdefault(sid, []).append(member)
-            self.sit_of[member.alarm_id] = sid
+        await membership.reload(self)
 
     async def run(self) -> None:
+        failures = 0
         while True:
             first = await self.queue.get()
             batch = [first]
             while len(batch) < BATCH_SIZE and not self.queue.empty():
                 batch.append(self.queue.get_nowait())
-            if await self._commit_batch(batch):
-                now = time.time()
-                for item in batch:
-                    if isinstance(item, TrapEvent):
-                        self.latencies.append(now - item.ts)
+            while batch:  # ADR #447: a transaction holds the lock for BATCH_BUDGET_S at most
+                taken, committed = await self._transaction(batch, BATCH_BUDGET_S)
+                if committed:
+                    batch, failures = batch[taken:], 0
+                else:  # ADR #450: rolled back by a storage error, so retried, never dropped
+                    failures += 1
+                    await asyncio.sleep(min(30.0, 0.5 * 2**failures))  # 1 s, 2 s, ... 30 s
 
     async def _commit_batch(self, batch: list[QueueItem]) -> bool:
-        """Process one batch in a single transaction. On a ``sqlite3`` operational error
-        (locked/busy/disk-full) the batch is rolled back — the audit chain only advances on
-        commit, so it never breaks — and the loss is counted and surfaced through operator
-        warnings while the process keeps running (F11). Returns True on a committed batch."""
+        """Process all of ``batch`` in one transaction; True when it committed."""
+        return (await self._transaction(batch, None))[1]
+
+    async def _transaction(
+        self, batch: list[QueueItem], budget_s: float | None
+    ) -> tuple[int, bool]:
+        """(taken, committed) for a prefix of ``batch`` in one transaction: all of it, or what fits
+        in ``budget_s`` (at least one item; ADR #447). A ``sqlite3`` operational error rolls it back
+        — the audit chain only advances on commit — and is counted, surfaced (F11) and retried."""
+        deadline = None if budget_s is None else time.monotonic() + budget_s
+        taken = 0
         async with self.store.lock:
             try:
                 for item in batch:
+                    taken += 1
                     await self._process(item)
+                    if deadline is not None and time.monotonic() >= deadline:
+                        break
+                position = await self.feed.stage(batch[:taken])  # the spool cursor (ADR #450)
+                await self.upkeep.flush(self.store)  # each touched situation's name, once (#448)
                 await self.store.commit()
-                return True
-            except sqlite3.OperationalError as exc:
+                self.feed.committed(position)
+                self.deadlines.committed(batch[:taken], time.time())
+                return taken, True
+            except Exception as exc:  # rolled back: half a batch is never committed with the next
                 await self.store.rollback()
+                await membership.reload(self)  # and memory forgets it too (ADR #450)
+                if not isinstance(exc, sqlite3.OperationalError):
+                    raise  # a defect: the supervisor restarts the task and the spool replays it
                 self.db_errors += 1
                 self.last_db_error = type(exc).__name__
                 # The message is safe (no secrets); the redaction filter is belt-and-braces.
-                log.error(
-                    "store operational error draining %d event(s); rolled back and continuing",
-                    len(batch),
-                )
-                return False
+                log.error("store operational error on %d event(s); rolled back to retry", taken)
+                return taken, False
 
     async def drain(self, deadline_s: float = 5.0) -> int:
         """Process traps still queued after the engine task stops (graceful shutdown, §A.5),
@@ -248,12 +253,12 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         return drained
 
     def db_error_warnings(self) -> list[str]:
-        """Persistent operator warning after a storage error dropped a batch (F11)."""
+        """Persistent operator warning after a storage error rolled a batch back (F11)."""
         if not self.db_errors:
             return []
         return [
-            f"{self.db_errors} batch(es) failed to persist due to a storage error "
-            f"(last: {self.last_db_error}); those traps were dropped. Check disk space and logs."
+            f"{self.db_errors} batch(es) failed to persist due to a storage error (last: "
+            f"{self.last_db_error}) and were retried, not dropped. Check disk space and logs."
         ]
 
     async def _process(self, item: QueueItem) -> None:
@@ -458,14 +463,6 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         self.profiler.drop_ne(ne_id)
         await self.store.delete_varbind_profiles_for_ne(ne_id)
 
-    def entity_cap_warnings(self) -> list[str]:
-        """Persistent operator warnings for NEs that hit MAX_ENTITIES_PER_NE (§6)."""
-        return [
-            f"NE {ne_id} reached the {MAX_ENTITIES_PER_NE}-entity cap; further entities are "
-            "attributed to the NE. A forged per-trap identifier can cause this."
-            for ne_id in sorted(self._entity_cap_hit)
-        ]
-
     async def _is_flapping(self, event: TrapEvent, instance: str, alarm_id: int) -> bool:
         fingerprint = (event.device, event.trap_oid, instance)
         is_flapping = self.flap.observe(fingerprint, event.ts)
@@ -534,7 +531,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 self.sit_of[member.alarm_id] = sid
                 self.members[sid].append(member)
         if self.sit_of.get(entry.alarm_id) != sid:
-            await self.store.add_alarm_to_situation(sid, entry.alarm_id)
+            if await self.store.insert_member(sid, entry.alarm_id):
+                self.upkeep.renamed(sid)  # the name is refreshed once, before commit (ADR #448)
             self.sit_of[entry.alarm_id] = sid
             self.members[sid].append(
                 Member(entry.alarm_id, entry.class_id, entry.device_id, entry.ts)
@@ -543,24 +541,18 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # was scored against in a situation it did NOT merge with explains nothing about it. A
         # proposal's links to its target's members are kept: they are why it proposes (ADR #428).
         explains = (sid, routed.propose)
-        for link in outcome.links:
-            if self.sit_of.get(link.other.alarm_id) not in explains:
-                continue
-            await self.store.add_link(
-                sid,
-                link.other.alarm_id,
-                entry.alarm_id,
-                link.score,
-                link.term_t,
-                link.term_a,
-                link.term_e,
-                entry.ts,
-                terms=explained_terms(link.result),
-            )
+        await self.store.add_links(
+            [
+                link.row(sid, entry.alarm_id, entry.ts)
+                for link in outcome.links
+                if self.sit_of.get(link.other.alarm_id) in explains
+            ]
+        )
         executed_placement = Placement(sid, tuple(executed), placement.support)
         self.correlator.commit(sid, replace(outcome, placement=executed_placement), self.sit_of)
         await self.store.touch_situation(sid, entry.ts)
-        root = self.precedence.pick_root(self.members[sid])
+        members = self.members[sid]
+        root = self.precedence.pick_root(members, self.upkeep.earliest(sid, members))
         if root is not None:
             await self.store.set_root(sid, root)
         return len(executed)
@@ -641,7 +633,4 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             await self.store.commit()
 
     def latency_p95(self) -> float:
-        if not self.latencies:
-            return 0.0
-        ordered = sorted(self.latencies)
-        return ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]
+        return self.deadlines.percentile(0.95)

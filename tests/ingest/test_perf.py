@@ -1,6 +1,6 @@
 """Phase 4.7 — ingestion stays lossless and bounded with auth + audit active.
 
-A full 1000 traps/s x 60 s UDP load test is `make loadtest`; this in-process regression
+A full UDP storm through the real path is `make storm` (`tools/storm_check.py`); this regression
 proves the invariant that matters for v0.2.0: authenticated, audited API traffic hitting
 the store lock concurrently must not make the engine drop or stall trap ingestion, and
 mutating API calls must still write their audit rows during the storm.

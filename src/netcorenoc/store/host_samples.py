@@ -9,10 +9,15 @@ query rather than a different rendering of the same rows.
 
 A bucket nothing was sampled in is `None`, never `0`: the appliance was not running, or the loop
 had not started, and a line drawn through that period would invent a measurement (DECISIONS #289).
+
+Migration 0030 (ADRs #450, #451) adds the trap pipeline: what was classified, how fast, how late
+against the KPI, the backlog's peak and the spool's size. Each is about the 30 s **interval**, never
+an instant, so a burst between two samples is still in the record.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from netcorenoc.store.base import StoreBase
@@ -26,6 +31,12 @@ HOST_SAMPLE_RETENTION_S = 7 * 24 * 60 * 60
 #: v0.29.0 (ADR #437): the trap rate is a mean (a rate per bucket), the batch latency a maximum.
 _MEANS = ("cpu_pct", "mem_pct", "disk_pct", "db_mb", "traps_per_s")
 _MAXES = ("queue_depth", "latency_ms")
+#: Migration 0030. Rates are means; latency, backlog and the spool are read for their worst moment;
+#: counts are SUMS, so a bucket's compliance is its own and not a mean of other buckets' shares.
+PIPELINE_MEANS = ("classified_per_s",)
+PIPELINE_MAXES = ("latency_max_ms", "spool_mb")
+PIPELINE_SUMS = ("classified", "over_target", "over_limit")
+PIPELINE_COLUMNS = (*PIPELINE_MEANS, *PIPELINE_MAXES, *PIPELINE_SUMS)
 
 
 class HostSampleMixin(StoreBase):
@@ -37,22 +48,27 @@ class HostSampleMixin(StoreBase):
         *,
         traps_per_s: float | None = None,
         latency_ms: float | None = None,
+        pipeline: Mapping[str, float | int | None] | None = None,
     ) -> None:
         """Write one reading and prune what the longest range can no longer ask for."""
+        names = ["at", "cpu_pct", "mem_pct", "disk_pct", "db_mb", "queue_depth"]
+        values: list[Any] = [
+            at,
+            reading.get("cpu_pct"),
+            reading.get("mem_pct"),
+            reading.get("disk_pct"),
+            reading.get("db_mb"),
+            queue_depth,
+        ]
+        names += ["traps_per_s", "latency_ms"]
+        values += [traps_per_s, latency_ms]
+        if self._has_pipeline_sample:
+            names += PIPELINE_COLUMNS
+            values += [(pipeline or {}).get(name) for name in PIPELINE_COLUMNS]
         await self.conn.execute(
-            "INSERT OR REPLACE INTO host_sample "
-            "(at, cpu_pct, mem_pct, disk_pct, db_mb, queue_depth, traps_per_s, latency_ms) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                at,
-                reading.get("cpu_pct"),
-                reading.get("mem_pct"),
-                reading.get("disk_pct"),
-                reading.get("db_mb"),
-                queue_depth,
-                traps_per_s,
-                latency_ms,
-            ),
+            f"INSERT OR REPLACE INTO host_sample ({', '.join(names)}) "  # nosec B608 - fixed names
+            f"VALUES ({', '.join('?' * len(names))})",
+            values,
         )
         await self.conn.execute(
             "DELETE FROM host_sample WHERE at < ?", (at - HOST_SAMPLE_RETENTION_S,)
@@ -61,11 +77,16 @@ class HostSampleMixin(StoreBase):
     async def host_series(self, *, since: float, until: float, buckets: int) -> dict[str, Any]:
         """Bucket means over ``[since, until)``, oldest first; an unsampled bucket is ``None``."""
         width = max(1e-6, (until - since) / buckets)
-        keys = (*_MEANS, *_MAXES)
+        keys: tuple[str, ...] = (*_MEANS, *_MAXES)
+        aggregates = [f"AVG({key})" for key in _MEANS] + [f"MAX({key})" for key in _MAXES]
+        if self._has_pipeline_sample:
+            keys += PIPELINE_COLUMNS
+            aggregates += [f"AVG({key})" for key in PIPELINE_MEANS]
+            aggregates += [f"MAX({key})" for key in PIPELINE_MAXES]
+            aggregates += [f"SUM({key})" for key in PIPELINE_SUMS]
         series: dict[str, list[float | None]] = {key: [None] * buckets for key in keys}
         cur = await self.conn.execute(
-            "SELECT CAST((at - ?) / ? AS INTEGER) AS b, AVG(cpu_pct), AVG(mem_pct), "
-            "AVG(disk_pct), AVG(db_mb), AVG(traps_per_s), MAX(queue_depth), MAX(latency_ms), "
+            f"SELECT CAST((at - ?) / ? AS INTEGER) AS b, {', '.join(aggregates)}, "  # nosec B608
             "COUNT(*) FROM host_sample WHERE at >= ? AND at < ? GROUP BY b",
             (since, width, since, until),
         )

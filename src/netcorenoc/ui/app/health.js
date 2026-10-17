@@ -131,8 +131,8 @@ export function Health({ stats, rate }) {
       : html`<p class="hint">No <code>resources</code> block in <code>/api/stats</code>: this API is
           running without the process runner, so nothing is sampling the host.</p>`}
     <p class="health-sub">
-      queue <b>${count(stats?.queue_depth ?? 0)}</b> ·
-      p95 <b>${score(stats?.latency_p95_s ?? 0, 4)} s</b> ·
+      backlog <b>${count(stats?.queue_depth ?? 0)}</b> ·
+      p95 <b>${score(stats?.latency_p95_s ?? 0, 4)} s</b> ·${" "}
       ${rate
         ? html`<b>${rate.perSecond.toFixed(rate.perSecond < 10 ? 2 : 0)} /s</b>`
         : html`rate <b>—</b>`}

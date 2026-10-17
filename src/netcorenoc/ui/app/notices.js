@@ -16,16 +16,24 @@ import { warningTarget } from "./parameters.js";
 /**
  * One word for the whole appliance, **derived from the numbers beside it and never from a fourth**.
  *
- * Three states and each is a different action: `dropping` means traps are being lost now and the
- * queue is the reason; `behind` means correlation has not caught up but nothing is lost yet;
- * `keeping up` means neither. A fourth state for "the host is loaded" would need a measurement
- * this appliance does not take, which is exactly the number decision 2 refuses to invent.
+ * Three states and each is a different action: `dropping` means traps are being lost now;
+ * `behind` means classification has not caught up but nothing is lost; `keeping up` means neither.
+ * A fourth state for "the host is loaded" would need a measurement this appliance does not take,
+ * which is exactly the number decision 2 refuses to invent.
+ *
+ * **Behind is the KPI's word** (ADR #451): the oldest trap waiting is past the target. A backlog
+ * of a batch in flight is the pipeline working, and with the spool (#450) it is never zero for
+ * long under load; `queue_depth` decides only for a payload with no `classification` block.
  */
 export function healthState(stats) {
   const gaps = (stats?.open_ingest_gaps ?? []).length;
   const dropped = stats?.receiver?.dropped ?? 0;
   if (gaps > 0 || dropped > 0) return { key: "dropping", word: "dropping traps", tone: "alarm" };
-  if ((stats?.queue_depth ?? 0) > 0) return { key: "behind", word: "behind", tone: "warn" };
+  const clock = stats?.classification;
+  const behind = clock
+    ? (clock.oldest_wait_s ?? 0) > (clock.target_s ?? Infinity)
+    : (stats?.queue_depth ?? 0) > 0;
+  if (behind) return { key: "behind", word: "behind", tone: "warn" };
   return { key: "ok", word: "keeping up", tone: "quiet" };
 }
 

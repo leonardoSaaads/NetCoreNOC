@@ -1065,7 +1065,10 @@ async def test_the_health_tiles_render_what_api_stats_already_served(
     # appliance persisted — and no longer from a ring the browser kept, which a reload emptied and
     # which could not hold the ranges the picker offered. The chart is still there; what it plots
     # is the server's, which `tests/api/test_host_series.py` asserts reaches SQL.
-    assert "Queue depth" in sample["chartLatest"], sample["chartLatest"]
+    # ADRs #450, #451: it is the trap pipeline's "Backlog" — the peak per interval of what waits
+    # on disk and in memory — beside throughput, decision latency and the KPI's misses.
+    for title in ("Backlog", "Throughput", "Latency", "KPI misses"):
+        assert title in sample["chartLatest"], sample["chartLatest"]
 
 
 @dom_test
@@ -1123,6 +1126,124 @@ async def test_the_trap_rate_is_derived_from_two_samples_and_names_its_window(
     # A counter that went BACKWARDS is an appliance that restarted, not a negative rate.
     assert third["rate"] is None, third
     assert third["line"]["trap rate"]["value"] == "—", third["line"]
+
+
+# --- ADRs #450, #451: the trap pipeline on the Overview ----------------------------------------
+
+
+def _pipeline_stats(received: int, classified: int, oldest: float) -> dict[str, Any]:
+    delays = [3, 2, 1, 4, 5, 1, 0, 2]
+    edges = [5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, None]
+    return {
+        "devices": 2,
+        "classes": 3,
+        "active_alarms": 4,
+        "open_situations": 1,
+        "quarantined": 0,
+        "ingest_gaps": [],
+        "open_ingest_gaps": [],
+        "latency_p95_s": 0.5,
+        "queue_depth": 1_234,
+        "warnings": [],
+        "receiver": {
+            "received": received,
+            "accepted": received,
+            "denied": 0,
+            "quarantined": 0,
+            "dropped": 0,
+        },
+        "classification": {
+            "target_s": 60.0,
+            "limit_s": 120.0,
+            "classified": classified,
+            "over_target": 8,
+            "over_limit": 3,
+            "within_target_pct": 50.0,
+            "within_limit_pct": 81.25,
+            "dropped": 0,
+            "p50_s": 0.42,
+            "p95_s": 48.0,
+            "p99_s": 250.0,
+            "worst_s": 700.0,
+            "oldest_wait_s": oldest,
+            "delays": [{"upto_s": e, "count": c} for e, c in zip(edges, delays, strict=True)],
+            "backlog": 1_234,
+            "queue": {"depth": 34, "capacity": 10_000},
+            "spool": {
+                "on_disk": 1_200,
+                "bytes": 3 * 2**20,
+                "max_bytes": 2048 * 2**20,
+                "dead_lettered": 0,
+                "error": "",
+            },
+        },
+    }
+
+
+@dom_test
+async def test_the_pipeline_panel_shows_backlog_throughput_latency_and_the_kpi(
+    routes: dict[str, Any],
+) -> None:
+    """Every tile reads the served number by name, the delay buckets are Zabbix's with the KPI's
+    tones, throughput OUT is derived from two samples like throughput in, and the verdict speaks
+    only when the oldest waiting trap is past the target or the limit."""
+    result = domdriver.run_scenario(
+        "health",
+        {
+            "routes": routes["admin"],
+            "samples": [
+                _pipeline_stats(100, 16, 12.0),
+                _pipeline_stats(160, 46, 75.0),
+                _pipeline_stats(170, 50, 130.0),
+            ],
+        },
+    )
+    first, second, third = result["samples"]
+    tiles = first["pipeline"]["tiles"]
+    assert tiles["pipeline.backlog"]["value"] == "1,234"
+    assert tiles["pipeline.backlog"]["note"] == "1,200 on disk · 34 queued"
+    assert tiles["pipeline.latency"]["value"] == "48 s"
+    assert tiles["pipeline.latency"]["note"] == "p50 0.42 s · p99 4.2 min · worst 11.7 min"
+    assert (
+        tiles["pipeline.target"]["value"] == "50.00%"
+        and tiles["pipeline.target"]["tone"] == "pipe-warn"
+    )
+    assert (
+        tiles["pipeline.limit"]["value"] == "81.25%"
+        and tiles["pipeline.limit"]["tone"] == "pipe-bad"
+    )
+    assert tiles["pipeline.limit"]["note"] == "3 over · 0 dropped"
+    assert (
+        tiles["pipeline.spool"]["value"] == "3 MB"
+        and tiles["pipeline.spool"]["note"] == "of 2,048 MB"
+    )
+    assert tiles["pipeline.throughput"]["value"] == "—", "one sample is not a rate"
+    assert first["pipeline"]["verdict"] is None, "nothing to act on: no line"
+
+    delays = first["pipeline"]["delays"]
+    assert list(delays) == [
+        "≤ 5 s",
+        "≤ 10 s",
+        "≤ 30 s",
+        "≤ 1 min",
+        "≤ 2 min",
+        "≤ 5 min",
+        "≤ 10 min",
+        "> 10 min",
+    ]
+    assert [d["count"] for d in delays.values()] == ["3", "2", "1", "4", "5", "1", "0", "2"]
+    assert "chart-warn" in delays["≤ 2 min"]["tone"], "past the target, within the limit"
+    assert (
+        "chart-alarm" in delays["≤ 5 min"]["tone"] and "chart-alarm" in delays["> 10 min"]["tone"]
+    )
+    assert "chart-warn" not in delays["≤ 1 min"]["tone"]
+
+    rate = second["rate"]
+    assert rate["outPerSecond"] == pytest.approx(30 / rate["windowS"]), "out, from classified"
+    assert second["pipeline"]["tiles"]["pipeline.throughput"]["value"].count(" / ") == 1
+    assert second["pipeline"]["verdict"].startswith("Behind:"), second["pipeline"]
+    assert "past the 2.0 min limit" in third["pipeline"]["verdict"], third["pipeline"]
+    assert third["pipeline"]["tiles"]["pipeline.oldest"]["tone"] == "pipe-bad"
 
 
 # --- v0.15.3: "why these were grouped" answers the storm question (V.6, DECISIONS #245) ---------
@@ -2305,7 +2426,9 @@ async def test_the_top_bar_holds_the_warnings_and_the_health_it_used_to_spend_a_
     )
     # The four correlation counters did not leave — they moved into one secondary line, because
     # "is it keeping up" is answered by the word at the top and these are for when it is not.
-    for counter in ("queue", "p95", "refused", "dropped"):
+    # ADR #450: the first is the BACKLOG now, by name — with the spool most of a storm waits on
+    # disk, and "queue" named only the part of it in memory.
+    for counter in ("backlog", "p95", "refused", "dropped"):
         assert counter in health["text"], (
             f"the health panel no longer mentions {counter!r}. The meters were added beside the "
             f"correlation counters, not instead of them."

@@ -56,7 +56,7 @@ from netcorenoc.api.perimeter import (
 from netcorenoc.api.routes.events import SSE_HEARTBEAT_S, SSE_UPDATE_S
 from netcorenoc.api.routes.governance import MAX_POLICY_HISTORY
 from netcorenoc.api.routes.scorer import MAX_SCORER_HISTORY
-from netcorenoc.api.routes.static import QUEUE_SATURATION, STATIC_ASSETS, UI_DIR, UI_FILE
+from netcorenoc.api.routes.static import STATIC_ASSETS, UI_DIR, UI_FILE
 
 __all__ = [
     "BOOTSTRAP_ALLOWED",
@@ -69,7 +69,6 @@ __all__ = [
     "MUTATING",
     "PREVIEW_RATE_CAPACITY",
     "PREVIEW_RATE_REFILL",
-    "QUEUE_SATURATION",
     "RATE_CAPACITY",
     "RATE_REFILL",
     "SECURITY_HEADERS",

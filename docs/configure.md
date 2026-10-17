@@ -27,12 +27,36 @@ Two mechanisms, and the difference matters:
 | `NETCORENOC_LOG_JSON` | *(off)* | Structured JSON logging. Anything other than empty, `0`, `false` or `False` enables it |
 | `NETCORENOC_SMTP_PASSWORD` | *(unset)* | The SMTP password for recovery email (v0.30.0). When set it is used and Settings → Email's password field is ignored, so the password never enters the database or its backups. The rest of the mail server is configured in the console |
 | `NETCORENOC_REARM_S` | `3600` | Seconds an active alarm may be silent before its next trap counts as a **new occurrence** (its clear was probably lost) and opens a new situation. `0` = a repeat always stays in its situation. [`operate.md`](operate.md#4-how-alarms-repeat-clear-and-come-back) |
+| `NETCORENOC_KPI_TARGET_S` | `60` | The classification KPI's **target**: seconds from each trap's own arrival to the commit that places it in a situation. A trap past it is counted as late on the Overview's trap pipeline. An admin's value saved on **Settings → System → Live configuration** overrides this one, without a restart (#451) |
+| `NETCORENOC_KPI_LIMIT_S` | `120` | The KPI's **limit** (at or above the target): a trap past it is counted as a breach and raises a warning. Neither number ever discards a trap — a late trap is still classified (#451) |
+| `NETCORENOC_INGEST_PROCESSES` | `1` | `1` receives traps in a **process of their own** that spools each datagram raw, with decoding in another (#449, #450). `0` keeps the receiver in the main process **without the spool**: a trap that arrives while its queue is full is dropped. For development only. Give the container at least two CPUs with `1` |
+| `NETCORENOC_SPOOL_DIR` | *(beside the database)* | Where accepted traps wait, on disk, to be classified (`<database directory>/spool`). Mode 0700; put it on the same real volume as the database (#450) |
+| `NETCORENOC_SPOOL_MAX_MB` | `2048` | The spool's ceiling. About 200 bytes a trap, so the default holds about ten million waiting traps; past it new traps are counted as dropped and a warning says so. Classified traps are deleted from it as the database makes them durable (#450) |
 
 **Every one of them is validated at startup and refuses by name.** A port outside 1–65535, a
 retention that is not a number, an allowlist entry that is not a CIDR, a TLS path that cannot be
 read, or exactly one of the two TLS variables set: the process prints one sentence naming the
 variable and exits 2. An empty value is not the same as an unset one — `NETCORENOC_RETENTION_DAYS=`
 is a value, and it is refused.
+
+### The host's socket buffer, for storms
+
+Since #450 the receiver only reads the socket and appends each datagram to the spool — no decoding
+on that path — so it drains the socket as fast as the kernel fills it. Measured: 20 000 traps at
+5 000/s into an 8 MiB buffer, none lost (decoding first, the same storm lost 4 238 in the kernel).
+What remains is an **instantaneous** burst larger than the buffer itself, which no reader can
+outrun: the kernel drops the excess before any process sees it, the one loss nothing in the
+appliance can count. The trap socket asks for 32 MiB; Linux grants at most `net.core.rmem_max`, and
+the appliance logs a warning at start-up when it got less. On the host (not in the container — the
+setting is not per container):
+
+```sh
+sudo sysctl -w net.core.rmem_max=33554432
+echo 'net.core.rmem_max=33554432' | sudo tee /etc/sysctl.d/90-netcorenoc.conf
+```
+
+`make storm` (`tools/storm_check.py`) measures what this host actually does with a storm, trap by
+trap, and exits non-zero if any trap was not kept (#447-#451).
 
 ### Two variables that are hard startup errors
 

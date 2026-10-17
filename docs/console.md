@@ -323,8 +323,9 @@ What replaced them is two disclosures:
   the other seven render as text with no link, because a control that navigates somewhere unhelpful
   is worse than none.
 * **the health control** — one word summarising whether the appliance is keeping up, then CPU,
-  memory and storage as three meters with a two-hour sparkline each, then queue depth, p95 latency
-  and the derived trap rate on one secondary line. The three host readings are stdlib reads
+  memory and storage as three meters with a two-hour sparkline each, then the backlog, p95 latency
+  and the derived trap rate on one secondary line. "Behind" means the oldest trap waiting to be
+  classified is past the KPI's target (ADR #451). The three host readings are stdlib reads
   (`/proc/stat`, the cgroup's limit, `os.statvfs`) and the dependency count is still five. It opens
   on hover as well as on click, because health is a glance; the bell keeps click only, because a
   warning is something you act on.

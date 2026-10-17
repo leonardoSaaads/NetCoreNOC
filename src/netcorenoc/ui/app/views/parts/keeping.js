@@ -19,6 +19,13 @@
  * The verdict restated the tiles beside it (*"Keeping up — 24 traps accepted, none dropped, CPU
  * 3.5%"*) and every caption restated the axis (*"16 cores · 2.0 h of a 2.0 h window"*). The verdict
  * is now the answer alone, and a caption says only what the chart is **of**.
+ *
+ * ## The work moved to its own panel (ADRs #450, #451)
+ *
+ * The trap rate, the latency and the queue left for `pipeline.js`, which draws them from the 30 s
+ * **intervals** the appliance now records — the queue chart sampled an instant every 30 s and drew
+ * a storm that came and went between two samples as zero. This panel is the host. Both read one
+ * `/api/resources` answer per range and refresh: :func:`history` shares it.
  */
 
 import { html, Component } from "../../dom.js";
@@ -31,20 +38,28 @@ import { count, score } from "../../format.js";
 /** Points per chart. The same as the activity chart, so the two share a column grid. */
 export const HOST_BUCKETS = 24;
 
-/** The charts: title, series key, unit, and what it is OF. v0.29.0 (ADR #437): the WORK comes
- *  first — traps arriving and how long a batch takes to correlate — then the host under it. A
- *  rising rate with a flat latency is a busy network handled; a rising latency is the appliance
- *  falling behind before its queue shows it. */
+/** The host's charts: title, series key, unit, and what it is OF. */
 function charts(res) {
   return [
-    ["Trap rate", "traps_per_s", "/s", "received, mean per bucket"],
-    ["Latency", "latency_ms", "ms", "correlation p95, worst per bucket"],
     ["CPU", "cpu_pct", "%", res && res.cpu_count ? `${res.cpu_count} cores` : "this host"],
     ["Memory", "mem_pct", "%", res && res.mem_source === "cgroup" ? "container limit" : "host"],
     ["Storage", "disk_pct", "%", "database filesystem"],
     ["Database", "db_mb", "MB", "file and journal"],
-    ["Queue depth", "queue_depth", "traps", "waiting, worst per bucket"],
   ];
+}
+
+/** The last read, shared: the pipeline and the host panel ask for the same range at once. */
+let shared = { key: null, promise: null };
+
+/** `/api/resources` for the range, once per range and refresh tick for every panel that asks. */
+export function history(rangeS, tick = 0) {
+  const key = `${rangeS}:${tick}`;
+  if (shared.key !== key) {
+    const promise = get(`/api/resources?range_s=${rangeS}&buckets=${HOST_BUCKETS}`);
+    shared = { key, promise };
+    promise.catch(() => { if (shared.promise === promise) shared = { key: null, promise: null }; });
+  }
+  return shared.promise;
 }
 
 export class Keeping extends Component {
@@ -56,15 +71,15 @@ export class Keeping extends Component {
   componentDidMount() { this.read(); }
 
   componentDidUpdate(previous) {
-    if (previous.rangeS !== this.props.rangeS) this.read();
+    if (previous.rangeS !== this.props.rangeS || previous.tick !== this.props.tick) this.read();
   }
 
   /** The window the operator picked, answered in SQL. A failure is stated, never drawn as zero. */
   async read() {
     const asked = this.props.rangeS;
     try {
-      const history = await get(`/api/resources?range_s=${asked}&buckets=${HOST_BUCKETS}`);
-      if (asked === this.props.rangeS) this.setState({ history, error: null });
+      const answer = await history(asked, this.props.tick);
+      if (asked === this.props.rangeS) this.setState({ history: answer, error: null });
     } catch (error) {
       this.setState({ error });
     }
@@ -86,7 +101,7 @@ export class Keeping extends Component {
       ? `measured for the last ${spanText(history.to - history.measured_from)}`
       : null;
     return html`<section class="panel-block">
-      <${SectionHeading} title="Is the appliance keeping up" />
+      <${SectionHeading} title="The host" />
       ${/* v0.24.0: only a problem is worth a line; the all-clear is what the charts already show. */
         verdict.tone === "bad" || verdict.tone === "warn"
           ? html`<p class=${`verdict verdict-${verdict.tone}`}>${verdict.text}</p>` : null}
@@ -94,8 +109,7 @@ export class Keeping extends Component {
       <div class="chart-grid">
         ${charts(res).map(([title, key, unit, what]) => html`<${Series} key=${key}
           title=${title} unit=${unit} labels=${labels}
-          series=${[{ name: title, tone: key === "queue_depth" || key === "latency_ms" ? "warn" : null,
-                      values: series[key] || [] }]}
+          series=${[{ name: title, values: series[key] || [] }]}
           source=${what} span=${partial} />`)}
       </div>
       <p class="health-sub">

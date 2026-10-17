@@ -265,9 +265,15 @@ class Correlator:
             recalled = len(extra)
             candidates = window + extra
         evaluated: list[EvaluatedPair] = []
-        for old in candidates:
+        # One call per activation: the lookups shared between candidates are made once (#448).
+        vecs = (
+            pair_features.vectors(new, candidates, learner, self.episodes, burst)
+            if two_stage
+            else []
+        )
+        for index, old in enumerate(candidates):
             if two_stage:
-                vec = pair_features.vector(new, old, learner, self.episodes, burst)
+                vec = vecs[index]
                 fast = self.scorer.fast(vec)
                 if fast is not None:
                     margin, accepted = fast

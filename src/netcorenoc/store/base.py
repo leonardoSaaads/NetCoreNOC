@@ -102,6 +102,8 @@ class StoreBase:
     _has_class_rules: bool
     _has_surfaced_ack: bool
     _has_notice_snooze: bool
+    # Migration `0030`: the trap pipeline's columns on `host_sample` (ADRs #450, #451).
+    _has_pipeline_sample: bool
 
     @property
     def conn(self) -> aiosqlite.Connection:

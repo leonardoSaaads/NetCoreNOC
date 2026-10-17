@@ -6104,3 +6104,105 @@ From this release an entry is about six lines: decision, reason, release.*
   OpenAPI schema with its capability and scope read from the tables; Service tokens draws a
   searchable reference from it (`GET /api/reference`), narrowed to what a chosen role or token may
   call, and Visibility shows the common policies as complete documents.
+
+## 447. Every trap is classified within the deadline of its own arrival, or counted (unreleased)
+
+- **Decision**: the classification KPI is per trap. Each trap's clock runs from its own arrival —
+  the kernel's receive stamp when the ingest process has one (#449), otherwise the read — to the
+  commit of the batch that placed it, which is the instant every reader can see where it went.
+  `engine/operate/deadline.py` keeps the latencies (p50/p95/p99, worst), and counts a trap that
+  missed: classified late, lost to a rolled-back batch (F11), or dropped at a full queue.
+  `NETCORENOC_CLASSIFY_DEADLINE_S` (default 60). `GET /api/stats` publishes it as
+  `classification`, a miss is an operator warning, and `/readyz` reports not-ready while the
+  oldest queued trap is already past its deadline.
+- **The batch lock is held for `BATCH_BUDGET_S` (250 ms) at most**: a batch is committed in
+  time-bounded slices, so the console and the API do not freeze behind a storm. Measured before:
+  up to 8.6 s per 500-trap batch on an activation storm.
+- **Reason**: the brief's KPI — a trap arriving 20 s after another still has its own minute — had
+  no instrument. The one latency the appliance kept was a p95 of committed batches only, so a
+  storm's losses and its per-trap waits were both invisible. What a storm costs a trap is the
+  time it waits behind the traps that arrived before it; that is now what is measured.
+
+## 448. The batch path pays per situation once per batch, and per pair only what it must (unreleased)
+
+- **Decision**: the situation's derived name is refreshed once per touched situation per batch,
+  before the commit (`operate/upkeep.py`), not on every join; the root's earliest-25 sample is kept
+  incrementally rather than sorted per activation; an activation's links are one `executemany`
+  (`store/batch_writes.py`); `features.vectors` builds an activation's pair vectors in one call,
+  making each class- or element-level lookup once; the logistic regression's logit is one fused
+  loop; `pick_root` inlines its two probabilities.
+- **Exactness is the condition, and it is held**: `make eval` is byte-identical, and so is every
+  row of `situation`, `situation_alarm`, `link`, `alarm` and `dataset_pair` on a mixed 6 000-trap
+  stream through the old and the new engine. `tests/correlation/test_hot_path_exactness.py` pins
+  each rewrite to the definition it replaced. Nothing reads `derived_name` on the batch path, and
+  every reader takes `store.lock`, so a name refreshed before the commit is never seen stale.
+- **Measured** (4 vCPU sandbox, champion `logistic_regression`): 107-110 -> 180-183 traps/s on an
+  activation storm, 269 -> 338 on a mixed stream. `refresh_derived_name` alone had been 2.6 ms of
+  every trap's 14.7 ms on a storm, growing with the situation.
+
+## 449. Traps are received and decoded in a process of their own (unreleased; amends principle 6)
+
+- **Decision**: `python -m netcorenoc.ingest.worker` runs the receiver — allowlist, SNMP policy,
+  SNMPv3, parse, quarantine, the same `TrapReceiver` — on a socket the main process binds and
+  hands down, and sends JSON batches back on a pipe; the main process validates every field
+  (`ingest/process.py::decode`) before it builds an event, so the boundary carries data, never
+  code. Allowlist and policy changes are forwarded as the stored document; a process that dies is
+  restarted on the same socket with its counters carried over, and says so.
+  `NETCORENOC_INGEST_PROCESSES=0` keeps the receiver in the main process.
+- **Arrival is the kernel's**: on Linux the socket asks for `SO_TIMESTAMPNS`, so a trap that
+  waited in the socket buffer during a burst is timed from when it arrived (#447). The socket asks
+  for a 32 MiB buffer and warns at start-up when the host grants less (`net.core.rmem_max`).
+- **Principle 6 amended**: one runtime identity is now one appliance, two processes, one SQLite
+  file. The database still has one writer, one connection and one lock; only the wire moved.
+- **Reason, measured**: decoding a v2c trap costs 538 µs, and in one process it was taken from the
+  core that correlates. A 20 000-alarm storm sent at 5 000/s overflowed a 4 MiB socket buffer —
+  4 032 traps dropped by the kernel, counted by no process — and with 32 MiB granted, none: every
+  trap was received and classified (`tools/storm_check.py`).
+
+## 450. Every accepted trap is spooled raw to disk before it is decoded or classified (unreleased)
+
+- **Decision**: the ingest process does four things per datagram — read it, stamp its arrival,
+  check the allowlist, append it **raw** to an append-only spool (`ingest/spool.py`: segments named
+  by their first sequence number, CRC-32 per record, one `fdatasync` per group of up to 1 024) —
+  and a decoder process (`ingest/decoder.py`, the same `TrapReceiver`) turns records into events
+  when the engine's intake (`engine/operate/intake.py`) asks. The intake puts events on the
+  engine's queue with `await queue.put` — backpressure, never a drop — and each batch writes the
+  spool's **cursor** into `meta` in its own transaction, so the database and the cursor are one
+  fact. A segment wholly behind the cursor is deleted only after a passive WAL checkpoint has made
+  that cursor durable (`synchronous=NORMAL` can undo a commit on a power cut).
+- **Failure modes, each with an outcome**: a storage error rolls the batch back and retries it with
+  backoff (was: the batch was dropped, F11); an engine crash rewinds the intake to the cursor and
+  replays what was in flight one record at a time, setting aside in `dead-letter.jsonl` the one the
+  engine still cannot classify; a datagram that stops the decoder is quarantined by its metadata
+  after a restart; a spool at `NETCORENOC_SPOOL_MAX_MB` or a refusing disk keeps traps in the
+  receiver's memory, then counts them as dropped, warns, and makes `/readyz` not ready. A torn
+  tail is cut at the writer's start, a corrupt record skipped (CRC), a second writer refused (lock).
+- **Rollback rebuilds memory from the database**: the store's id caches are cleared and the
+  engine's membership re-read, because a rolled-back batch had applied both as it went. Replays
+  through a storage error and through an engine crash group exactly as an uninterrupted run
+  (`tests/ingest/test_intake.py`).
+- **Readiness is not the KPI**: `/readyz` no longer fails for a full queue or a late trap. Taking a
+  UDP receiver out of rotation for being behind loses traps in front of it.
+- **Industry precedent**: Zabbix's SNMP trapper reads a file `snmptrapd` appends to and keeps its
+  offset in the database; Kafka keeps segments and a committed consumer offset.
+- **Reason, measured** (`make storm`, 4 vCPU): with a receiver that decoded before spooling, 4 238 of
+  a 20 000-trap storm at 5 000/s were dropped by the kernel into an 8 MiB buffer; spooling raw,
+  none, and all 20 000 were classified. Before the spool a full queue, a restart or a crash lost
+  whatever was in memory.
+
+## 451. The classification KPI is a target and a limit an admin sets; it measures, never discards (unreleased)
+
+- **Decision**: each trap's decision latency — from its own arrival (#447) to the commit that
+  placed it — is counted against a **target** (default 60 s) and a **limit** (default 120 s), set
+  by `NETCORENOC_KPI_TARGET_S` / `NETCORENOC_KPI_LIMIT_S` and overridden without a restart by an
+  admin on Settings (`POST /api/config`, audited as `config.change`; `meta` row `config.kpi`). A
+  trap past either is still classified. Past the limit it raises a warning; past the target it is a
+  number on the Overview.
+- **What is kept**: cumulative counts, p50/p95/p99 over the last 4 096, the worst, Zabbix's delay
+  buckets (5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, more), and per 30 s interval the classified
+  count and rate, the p95 and worst latency, the counts past each threshold, the backlog's **peak**
+  and the spool's size — `host_sample` columns (migration 0030), drawn by the Overview's trap
+  pipeline for any range.
+- **Reason**: the brief set one minute and recommended two; a single threshold could not say "late"
+  apart from "failed". The queue chart it replaces sampled one instant every 30 s and drew a storm
+  that came and went between two samples as zero.

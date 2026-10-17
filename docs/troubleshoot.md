@@ -159,8 +159,18 @@ signal that teaches the appliance.
 
 ### `queue_depth` grows and does not come back down
 
-The appliance is not keeping up. Traps that do not fit are counted as an ingest gap, never silently
-lost. Check `latency_p95_s`; give the container memory before CPU (one event loop uses one core).
+Classification is behind the trap rate; the backlog waits **in the spool on disk** and nothing is
+lost while it has room (`NETCORENOC_SPOOL_MAX_MB`). The Overview's **Trap pipeline** shows the
+oldest wait and how many traps passed the KPI. Give the container more CPU; `make storm` measures
+what a host sustains. If the spool fills or the disk refuses writes, new traps are counted as
+dropped, a warning names the cause and `/readyz` turns not-ready.
+
+### "trap record(s) could not be classified and were set aside"
+
+A trap crashed the engine, or a spool record was not a valid event: it is kept in
+`<spool>/dead-letter.jsonl` (exact bytes, base64) with the reason, and every other trap was
+classified. The log names each one. Once the cause is fixed, the record can be appended to a spool
+again.
 
 ### `ingest_gaps` is not empty
 
@@ -169,7 +179,8 @@ The appliance knows it missed traffic, and when. Investigate the network path an
 ### "batch(es) failed to persist due to a storage error"
 
 The database could not be written — usually a full disk. Free space on the volume holding
-`NETCORENOC_DB`; the appliance keeps running and resumes writing by itself.
+`NETCORENOC_DB`; the appliance keeps running, retries the same batch with backoff, and resumes by
+itself. No trap is dropped: they wait in the spool (ADR #450).
 
 ## The console
 

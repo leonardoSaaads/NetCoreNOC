@@ -196,14 +196,15 @@ jobs:
           # names, photos, token purpose); v0.26.0: 25 -> 26 (`0026` the learned decider, autonomy,
           # search); v0.27.0: 26 -> 27 (`0027` Pending and the league's decisions); v0.29.0: 27 -> 28
           # (`0028` the moved set of a move, two host series); v0.30.0: 28 -> 29 (`0029` recovery
-          # email, password-reset links). A literal, deliberately: a release that adds a migration
+          # email, password-reset links); unreleased: 29 -> 30 (`0030` the trap pipeline's
+          # series, ADRs #450, #451). A literal, deliberately: a release that adds a migration
           # changes this line in the same commit, which is what makes the schema a reviewable
           # diff rather than a thing that grew. `tests/store/test_upgrade.py` and
           # `tests/dataset/test_bag_identity.py` carry the same pin for the same reason.
           python - <<'PY'
           import sqlite3
           v = sqlite3.connect("/tmp/ci.db").execute("PRAGMA user_version").fetchone()[0]
-          assert v == 29, f"the appliance booted at schema {v}, not 29"
+          assert v == 30, f"the appliance booted at schema {v}, not 30"
           print(f"schema version {v}, all migrations applied")
           PY
           # v0.27.0: the league is package data (ADR #424). A wheel that dropped a member would boot

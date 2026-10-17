@@ -39,7 +39,7 @@ const subscribers = new Set();
 
 /* ---------- the trap rate, derived rather than served (DECISIONS #222) ---------- */
 
-/** The previous `{ received, at }`. `/api/stats` serves a counter; a rate is two of them. */
+/** The previous `{ received, classified, at }`. `/api/stats` serves counters; a rate is two. */
 let lastSample = null;
 
 /**
@@ -53,17 +53,23 @@ let lastSample = null;
  * a response with no `receiver` block (the appliance was built without `extra_stats`), and a
  * counter that went **backwards**, which means the appliance restarted and the difference is not
  * a rate.
+ *
+ * `outPerSecond` is the same difference of the traps **classified** (ADR #451), so the Overview
+ * prints throughput in beside throughput out; null when the payload carries no classification.
  */
 function deriveRate(next) {
   const received = next && next.receiver ? next.receiver.received : null;
   if (received === null || !Number.isFinite(received)) { lastSample = null; return null; }
+  const classified = next.classification ? next.classification.classified : null;
   const at = Date.now() / 1000;
   const previous = lastSample;
-  lastSample = { received, at };
+  lastSample = { received, classified, at };
   if (!previous) return null;
   const windowS = at - previous.at;
   if (!(windowS > 0) || received < previous.received) return null;
-  return { perSecond: (received - previous.received) / windowS, windowS };
+  const out = Number.isFinite(classified) && Number.isFinite(previous.classified) &&
+    classified >= previous.classified ? (classified - previous.classified) / windowS : null;
+  return { perSecond: (received - previous.received) / windowS, outPerSecond: out, windowS };
 }
 
 export function get() { return state; }

@@ -104,6 +104,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/pulse.js",
         # v0.16.7: the Overview's appliance half (DECISIONS #318).
         "/app/views/parts/keeping.js",
+        "/app/views/parts/pipeline.js",
         # v0.16.7: active alarms by band, and what is on no band (DECISIONS #312).
         "/app/views/parts/severity.js",
         # v0.21.0: the maintenance window. Four modules, on the seams Part IV draws — the
