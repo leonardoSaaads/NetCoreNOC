@@ -36,7 +36,8 @@ NOW = 1_760_000_123.123456789
 
 def _chain(rows: list[dict[str, object]]) -> list[tuple[object, ...]]:
     """Audit rows hashed exactly as `audit.write_event` hashes them, in `audit_log`'s order."""
-    prev, out = audit.GENESIS_HASH, []
+    prev = audit.GENESIS_HASH
+    out: list[tuple[object, ...]] = []
     for entry in rows:
         entry_hash = audit.compute_hash(prev, audit.canonical(entry))
         details = json.dumps(entry["details"], sort_keys=True, separators=(",", ":"))

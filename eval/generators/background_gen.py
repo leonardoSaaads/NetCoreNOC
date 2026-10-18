@@ -34,7 +34,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 from netcorenoc.engine.correlate.scorer_contract import (  # noqa: E402
     LinkFeatures,
     LinkScore,
@@ -45,6 +44,7 @@ from netcorenoc.ingest.receiver import parse_trap  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 import trap_replay  # noqa: E402
 
 BASE_TS = 1_700_000_000.0

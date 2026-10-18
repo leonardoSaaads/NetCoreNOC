@@ -46,7 +46,6 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent / "tools"))
 sys.path.insert(0, str(HERE))
 
-import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 from netcorenoc.ingest.events import QuarantinedPacket, TrapEvent  # noqa: E402
 from netcorenoc.ingest.receiver import (  # noqa: E402
     QueueItem,
@@ -58,6 +57,7 @@ from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
 import metrics  # noqa: E402
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 import trap_replay  # noqa: E402  (v2c encoder, shared with the replay tool)
 
 CORPUS_DIR = HERE / "corpus"

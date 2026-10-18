@@ -62,6 +62,18 @@ class EntityMixin(StoreBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def entities_by_ne(self, ne_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+        """`entities_for_ne` for many NEs in one statement: the inventory reads every NE's."""
+        cur = await self.conn.execute(
+            "SELECT id, ne_id, parent_id, level, key, key_source, confidence, first_seen, "
+            "last_seen FROM entity WHERE ne_id = ANY(?) ORDER BY ne_id, level, id",
+            (ne_ids,),
+        )
+        grouped: dict[int, list[dict[str, Any]]] = {ne_id: [] for ne_id in ne_ids}
+        for row in await cur.fetchall():
+            grouped[int(row["ne_id"])].append(dict(row))
+        return grouped
+
     async def entity_count_for_ne(self, ne_id: int) -> int:
         cur = await self.conn.execute("SELECT COUNT(*) FROM entity WHERE ne_id=?", (ne_id,))
         row = await cur.fetchone()

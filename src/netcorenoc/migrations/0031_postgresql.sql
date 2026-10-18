@@ -182,7 +182,14 @@ CREATE TABLE maintenance_window (
     name               text COLLATE "C"             NOT NULL,
     description        text COLLATE "C"             NOT NULL DEFAULT '',
     organization_id    integer          NOT NULL REFERENCES organization (id),
-    status             text COLLATE "C"             NOT NULL,
+    -- pending_confirmation: over six hours, not confirmed yet, not in force (D6); scheduled:
+    -- confirmed and not started; active: in force, the only status that suppresses anything;
+    -- ended: over; cancelled: called off, kept as a state; expired: its start came while it was
+    -- still pending_confirmation, so it never took effect (II.7). `store/maintenance_windows.py`
+    -- STATUSES is the same set, asserted by tests/lifecycle/test_maintenance_window.py.
+    status             text COLLATE "C"             NOT NULL
+                       CHECK (status IN ('pending_confirmation', 'scheduled', 'active', 'ended',
+                                         'cancelled', 'expired')),
     tz                 text COLLATE "C"             NOT NULL,   -- the IANA zone the site's clock reads in
     starts_at          timestamptz      NOT NULL,
     ends_at            timestamptz      NOT NULL,

@@ -444,3 +444,17 @@ async def test_committing_a_failed_transaction_says_so(store: Store) -> None:
         await store.set_meta("next", "z")
         await store.commit()
     assert await store.get_meta("lost") is None and await store.get_meta("next") == "z"
+
+
+async def test_entities_by_ne_is_entities_for_ne_in_one_statement(store: Store) -> None:
+    """The inventory route reads every NE's entities; one `ANY` query, the same rows and order."""
+    async with store.lock:
+        nes = [await store.ne_id(f"10.9.0.{i}", 1.0) for i in range(1, 4)]
+        for i, ne in enumerate(nes[:2], start=1):
+            root = await store.entity_level0(ne, f"10.9.0.{i}", 1.0)
+            for slot in ("2", "1"):
+                await store.get_or_create_entity(ne, root, 1, f"slot:{slot}", "test", 0.9, 2.0)
+        await store.commit()
+    grouped = await store.entities_by_ne(nes)
+    assert grouped == {ne: await store.entities_for_ne(ne) for ne in nes}
+    assert await store.entities_by_ne([]) == {}

@@ -14,10 +14,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import sqlite3
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import asyncpg
 import httpx
 import pytest
 from hypothesis import HealthCheck, given, settings
@@ -384,10 +384,10 @@ async def test_f31_policy_history_is_append_only_and_survives_a_clear(store: Sto
             "UPDATE governance_policy SET document='{}' WHERE id=1",
             "DELETE FROM governance_policy WHERE id=1",
         ):
-            with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            with pytest.raises(asyncpg.exceptions.RestrictViolationError, match="append-only"):
                 await store.conn.execute(sql)
                 await store.conn.commit()
-        await store.conn.rollback()
+            await store.conn.rollback()  # PostgreSQL aborted the transaction the refusal was in
     assert (await audit.verify_chain(store)).ok
 
 

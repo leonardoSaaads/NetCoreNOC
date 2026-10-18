@@ -69,9 +69,8 @@ from typing import Any
 
 import pytest
 
-import pgtemp
-
 import paths
+import pgtemp
 
 REPO_ROOT = paths.REPO_ROOT
 

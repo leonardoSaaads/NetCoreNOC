@@ -67,7 +67,6 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "eval"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 from netcorenoc.api.routes.promotion import (  # noqa: E402
     ASSERTING_BAGS_FLOOR,
     ASSERTING_INCIDENTS_FLOOR,
@@ -80,6 +79,7 @@ from netcorenoc.ingest.receiver import parse_trap  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 import trap_replay  # noqa: E402
 from simulation import diagnose  # noqa: E402
 from simulation.generator import INCREMENT_INCIDENTS, SEED, generate  # noqa: E402

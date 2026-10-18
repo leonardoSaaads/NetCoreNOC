@@ -36,7 +36,6 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parent.parent / "tools"))
 
-import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 from netcorenoc.engine.correlate.correlate import CorrelationResult, WindowAlarm  # noqa: E402
 from netcorenoc.engine.correlate.learn import Learner  # noqa: E402
 from netcorenoc.engine.correlate.scorer_contract import CONTRACT_VERSION  # noqa: E402
@@ -46,6 +45,7 @@ from netcorenoc.ingest.events import TrapEvent  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
 import harness  # noqa: E402
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 from synth.compose import EPOCH, Stream  # noqa: E402
 
 __all__ = ["PROBE", "Activation", "StreamLog", "record"]

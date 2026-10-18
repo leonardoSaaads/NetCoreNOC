@@ -301,13 +301,30 @@ async def test_end_to_end_udp_replay_to_http(
 
 
 async def test_concurrent_api_reads_during_ingest(
-    client: httpx.AsyncClient, engine_env: tuple[Engine, asyncio.Queue[QueueItem]]
+    engine_env: tuple[Engine, asyncio.Queue[QueueItem]],
 ) -> None:
     """Regression: an API cursor interleaving with the engine's batch commit used to
     raise 'cannot commit transaction - SQL statements in progress' and kill the engine.
     The store lock serializes them; the engine must survive a busy stream while the
-    API is polled."""
+    API is polled.
+
+    Since v0.31.0 (ADR #452) a GET runs on a reader and no longer waits for the batch, so this
+    loop polls as fast as a reader answers instead of once per batch. The request budget is opened
+    for it, as `authutil.make_env` does, so a 429 cannot stand in for the failure under test."""
     engine, queue = engine_env
+    await _seed_admin_token(engine.store)
+    app = create_app(engine, rate_capacity=100000.0)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://netcorenoc.test",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as client:
+        await _poll_while_ingesting(engine, queue, client)
+
+
+async def _poll_while_ingesting(
+    engine: Engine, queue: asyncio.Queue[QueueItem], client: httpx.AsyncClient
+) -> None:
     events = [
         util.event(
             device=f"10.2.0.{i % 40}",

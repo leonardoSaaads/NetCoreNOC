@@ -27,12 +27,14 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import asyncpg
 
-from netcorenoc.store.base import StoreBase
 from netcorenoc.store.codecs import decode_instant, encode_instant
+
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
+    from netcorenoc.store import Store
 
 __all__ = ["SOURCE_SCHEMA", "ImportRefusedError", "ImportReport", "import_sqlite"]
 
@@ -201,7 +203,7 @@ def _rows(
             ) from exc
 
 
-async def import_sqlite(store: StoreBase, path: str) -> ImportReport:
+async def import_sqlite(store: Store, path: str) -> ImportReport:
     """Copy ``path`` into the store's empty schema in one transaction (the module docstring)."""
     from netcorenoc.crosscutting import audit
 

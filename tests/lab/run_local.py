@@ -35,7 +35,6 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import pgtemp  # noqa: E402
-
 from ne import control, scenario  # noqa: E402
 
 DEFAULT_TRAP_PORT = 1162

@@ -17,12 +17,13 @@ from pathlib import Path
 import asyncpg
 import pytest
 
-import pgtemp
 from netcorenoc import __main__ as cli
 from netcorenoc.crosscutting import audit
 from netcorenoc.crosscutting.logsetup import JsonFormatter
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.store import Store
+
+import pgtemp
 
 
 def _use(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
@@ -164,6 +165,23 @@ def test_the_cli_refuses_a_schema_that_is_not_there(
 ) -> None:
     """The same typo one level down: the right database, a mistyped `NETCORENOC_DB_SCHEMA`."""
     _refuses(db_url, "netcorenoc_typo", capsys, monkeypatch)
+
+
+def test_db_migrate_creates_the_schema_once_and_is_idempotent(
+    empty_database: Callable[[], str],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`db migrate` (`make migrate`) is the one command that may create a schema; every reader
+    refuses a missing one (above). A second run finds nothing to apply and says the same."""
+    url = empty_database()
+    _use(monkeypatch, url)
+    latest = Store.latest_schema_version()
+    for _ in range(2):
+        assert cli.main(["db", "migrate"]) == 0
+        assert f"schema netcorenoc at version {latest}" in capsys.readouterr().out
+    assert asyncio.run(_schema_exists(url, "netcorenoc"))
+    assert cli.main(["db", "status"]) == 0
 
 
 def test_admin_reset_password_is_one_time_audited_and_revokes_sessions(

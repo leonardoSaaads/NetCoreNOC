@@ -150,6 +150,18 @@ async def _db_status(settings: Settings) -> int:
     return 0
 
 
+async def _db_migrate(settings: Settings) -> int:
+    """Create the schema when it is missing and apply every pending migration. Idempotent, and safe
+    beside a running appliance: each migration runs under its own advisory lock."""
+    store = await _open(settings, create=True)
+    try:
+        version = await store.schema_version()
+    finally:
+        await store.close()
+    print(f"schema {settings.db_schema} at version {version}: migrations applied")
+    return 0
+
+
 async def _import_sqlite(settings: Settings, source: str) -> int:
     from netcorenoc.store import importer
 

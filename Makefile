@@ -3,7 +3,7 @@
 PYTHON ?= .venv/bin/python
 
 .PHONY: qa lint typecheck test coverage security scan deadcode checksums linkcheck run replay replay-list storm \
-	fmt migrate audit-verify dist dist-image release-check eval eval-baseline corpus sim train train-validate train-verify \
+	fmt migrate pg-test-up pg-test-down db-bench audit-verify dist dist-image release-check eval eval-baseline corpus sim train train-validate train-verify \
 	lab lab-demo lab-cut lab-repair lab-status \
 	bias-report dataset-stats agreement-report shadow-report census
 
@@ -195,16 +195,27 @@ lab-repair:
 lab-status:
 	$(PYTHON) tests/lab/control.py status
 
-# Apply pending schema migrations to NETCORENOC_DB (idempotent; runs at startup too).
+# Create the schema and apply pending migrations on NETCORENOC_DATABASE_URL (idempotent; the
+# appliance does the same at startup).
 migrate:
-	$(PYTHON) -c "import asyncio, os; from netcorenoc.store import Store; \
-		s=Store(os.environ.get('NETCORENOC_DB','netcorenoc.db')); \
-		asyncio.run(s.open()); asyncio.run(s.close()); print('migrations applied')"
+	$(PYTHON) -m netcorenoc db migrate
+
+# A throwaway PostgreSQL on 127.0.0.1:55432 for the suite, `make eval` and the benchmarks. Without
+# it, `tools/pgtemp.py` starts a private cluster from the local PostgreSQL binaries instead.
+pg-test-up:
+	docker compose -f docker-compose.test.yml up -d --wait
+
+pg-test-down:
+	docker compose -f docker-compose.test.yml down --volumes
+
+# The database benchmark (ADR #452): sample writes, trap ingest beside readers, reads at rest.
+db-bench:
+	$(PYTHON) tools/db_bench.py
 
 # The feedback-dataset bias report (v0.8.0). Beside `make eval` deliberately: both are
 # deterministic offline reports over frozen inputs, and both are GATES rather than dashboards —
 # `tests/model/test_bias.py` compares this output byte-for-byte against a frozen expectation, so it
-# goes red the day capture changes shape. Emits aggregates only; reads NETCORENOC_DB.
+# goes red the day capture changes shape. Emits aggregates only; reads NETCORENOC_DATABASE_URL.
 bias-report:
 	$(PYTHON) -m netcorenoc dataset bias
 
@@ -212,7 +223,7 @@ bias-report:
 # with the operators, conditioned by bag size, storm, mixed-vs-uniform, scope, operator and capture
 # provenance. Beside `make bias-report` for the same two reasons — deterministic offline report over
 # frozen inputs, and a GATE rather than a dashboard (`tests/model/test_agreement.py` compares it
-# byte-for-byte). Emits aggregates only; reads NETCORENOC_DB.
+# byte-for-byte). Emits aggregates only; reads NETCORENOC_DATABASE_URL.
 agreement-report:
 	$(PYTHON) -m netcorenoc dataset agreement
 

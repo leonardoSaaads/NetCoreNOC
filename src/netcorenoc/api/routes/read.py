@@ -340,9 +340,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with store.reading():
             nes = shaping.filter_rows(await store.list_ne(), scope, ne_key="id")
             markers = await store.window_markers(now, None if scope.unrestricted else scope.ne_ids)
+            by_ne = await store.entities_by_ne([int(ne["id"]) for ne in nes])  # one query, not N
             out: list[dict[str, Any]] = []
             for ne in nes:
-                ents = await store.entities_for_ne(int(ne["id"]))
+                ents = by_ne[int(ne["id"])]
                 out.append(
                     {
                         **ne,

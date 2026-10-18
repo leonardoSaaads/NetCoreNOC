@@ -61,7 +61,14 @@ from netcorenoc.engine.report import (
     shadow_render,
     shadow_report,
 )
-from netcorenoc.store.cli import _backup, _db_status, _import_sqlite, _open, _settings
+from netcorenoc.store.cli import (
+    _backup,
+    _db_migrate,
+    _db_status,
+    _import_sqlite,
+    _open,
+    _settings,
+)
 
 
 async def _verify(settings: Settings) -> int:
@@ -305,6 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     db_parser = sub.add_parser("db", help="the PostgreSQL database (v0.31.0)")
     db_sub = db_parser.add_subparsers(dest="db_command", required=True)
     db_sub.add_parser("status", help="the server, and the schema's version and size")
+    db_sub.add_parser("migrate", help="create the schema and apply pending migrations")
     imported = db_sub.add_parser(
         "import-sqlite", help="copy a v0.30.0 SQLite database into an empty schema, verified"
     )
@@ -344,6 +352,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "db":
         if args.db_command == "status":
             return asyncio.run(_db_status(settings))
+        if args.db_command == "migrate":
+            return asyncio.run(_db_migrate(settings))
         if args.db_command == "import-sqlite":
             return asyncio.run(_import_sqlite(settings, args.source))
     if args.command == "admin" and args.admin_command == "reset-password":

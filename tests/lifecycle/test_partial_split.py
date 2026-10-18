@@ -396,7 +396,7 @@ async def test_the_oracle_is_closed_in_timing_too(store: Store) -> None:
 
     A marked id that exists resolves to a position in the server's bag and a few set operations; one
     that does not resolves to nothing. The difference must not be measurable against the HTTP and
-    SQLite work that dominates the request. Compared as medians over repeated posts, and with a
+    database work that dominates the request. Compared as medians over repeated posts, and with a
     deliberately loose factor: this asserts *"no usable signal"*, not a benchmark, and a tight
     bound here would be a flaky test rather than a stronger claim.
     """

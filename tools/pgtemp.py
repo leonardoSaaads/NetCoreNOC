@@ -17,7 +17,8 @@ process id, and :func:`cleanup` drops whatever this process made::
     with pgtemp.database() as dsn:      # a fresh, migrated, empty database
         store = Store(dsn)
 
-    python tools/pgtemp.py              # print the server's URL (starting a cluster if needed)
+    python tools/pgtemp.py              # print the server's URL, password masked (starting a
+                                        # cluster if needed)
 """
 
 from __future__ import annotations
@@ -241,5 +242,5 @@ atexit.register(cleanup)
 
 
 if __name__ == "__main__":
-    print(server())
+    print(redact(server()))
     sys.exit(0)

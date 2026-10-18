@@ -51,7 +51,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pgtemp
 from netcorenoc.api import create_app
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.dataset import incidents
@@ -61,6 +60,7 @@ from netcorenoc.ingest.receiver import parse_trap
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
+import pgtemp
 import trap_replay
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

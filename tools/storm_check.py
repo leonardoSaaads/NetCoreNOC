@@ -43,7 +43,6 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import pgtemp
 from netcorenoc.crosscutting.supervisor import Supervisor
 from netcorenoc.engine.operate.deadline import Kpi
 from netcorenoc.engine.operate.engine import Engine
@@ -53,6 +52,7 @@ from netcorenoc.ingest import snmpconf
 from netcorenoc.ingest.receiver import QueueItem, start_receiver
 from netcorenoc.store import Store
 
+import pgtemp
 import trap_replay
 
 

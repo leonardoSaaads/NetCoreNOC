@@ -63,9 +63,8 @@ for _extra in (paths.TOOLS, paths.EVAL):
     if str(_extra) not in sys.path:
         sys.path.insert(0, str(_extra))
 
-import pgtemp  # noqa: E402
-
 import authutil  # noqa: E402
+import pgtemp  # noqa: E402
 import util  # noqa: E402
 
 RECORD = paths.FIXTURES / "behaviour-identity.txt"

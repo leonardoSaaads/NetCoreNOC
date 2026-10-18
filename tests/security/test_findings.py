@@ -7,6 +7,7 @@ import hashlib
 import hmac as _hmac
 import logging
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 
@@ -97,9 +98,13 @@ async def test_f4_community_never_persisted_only_tagged(store: Store) -> None:
     import util
 
     await util.run_engine_until(engine, engine.queue, count=1)
-    # Scan every column of every table (text and blob) for the plaintext community.
-    cur = await store.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    # Scan every column of every table (text, jsonb and bytea) for the plaintext community.
+    cur = await store.conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'"
+    )
     tables = [r[0] for r in await cur.fetchall()]
+    assert "alarm" in tables and "quarantine" in tables, tables  # not a vacuous scan
     needle = COMMUNITY.encode()
     for table in tables:
         cur = await store.conn.execute(f"SELECT * FROM {table}")  # nosec B608 - table from schema
@@ -174,13 +179,13 @@ async def test_f6_warnings_surface_in_stats(store: Store) -> None:
 # -- legacy token removed (F2 / §5.8) ------------------------------------------------
 
 
-async def test_legacy_api_token_is_removed_and_errors_at_startup(tmp_path: object) -> None:
+async def test_legacy_api_token_is_removed_and_errors_at_startup(db_url: str) -> None:
     """The shared API token (NETCORENOC_API_TOKEN / legacy OPTICORR_API_TOKEN) was removed in
     v0.3.0: setting it is a hard startup error that names the migration path to service tokens
     (DECISIONS v0.3 #29)."""
     from netcorenoc.main import LegacyTokenRemovedError, Settings, run
 
-    settings = Settings(db_path=str(tmp_path) + "/x.db", api_token="LEGACY-SHARED-TOKEN")
+    settings = Settings(database_url=db_url, api_token="LEGACY-SHARED-TOKEN")
     with pytest.raises(LegacyTokenRemovedError, match="was removed"):
         await run(settings)
 
@@ -367,18 +372,30 @@ def test_the_control_a_usable_tls_pair_and_an_in_range_port_are_accepted(
     assert settings.tls_enabled and settings.http_port == 65535 and settings.trap_port == 1
 
 
-async def test_an_unopenable_database_names_the_variable_and_the_path(tmp_path: Path) -> None:
+@pytest.mark.parametrize("unopenable", ["no-such-database", "nothing-listening"])
+async def test_an_unopenable_database_names_the_variable_and_the_path(
+    db_url: str, unopenable: str
+) -> None:
     """`sqlite3.OperationalError: unable to open database file` names neither the setting nor the
-    path — and the path defaults to the **working directory**, which is how it goes wrong."""
-    from netcorenoc.crosscutting.settings import Settings, SettingsError
+    path — and the path defaulted to the **working directory**, which is how it went wrong (F69).
+
+    Since v0.31.0 (ADR #452) the setting is a URL, and the driver's errors name neither it nor
+    where they looked either. The missing directory's counterpart is a database the URL names on a
+    server that is there; a server with nothing listening is the other way it goes wrong.
+    """
+    from netcorenoc.crosscutting.settings import Settings, SettingsError, redact_url
     from netcorenoc.runner import run
 
-    missing = tmp_path / "no-such-directory" / "netcorenoc.db"
+    if unopenable == "no-such-database":
+        url = urlunsplit(urlsplit(db_url)._replace(path="/netcorenoc_f69_no_such_database"))
+    else:
+        url = "postgresql://netcorenoc:f69-secret@127.0.0.1:1/netcorenoc"
     with pytest.raises(SettingsError) as caught:
-        await run(Settings(db_path=str(missing)))
+        await run(Settings(database_url=url))
     message = str(caught.value)
-    assert "NETCORENOC_DB" in message and str(missing) in message, message
-    assert "working directory" in message, message
+    assert "NETCORENOC_DATABASE_URL" in message and redact_url(url) in message, message
+    assert "f69-secret" not in message, "the password was echoed back"
+    assert "the database exists" in message, message
 
 
 def test_a_denied_trap_raises_a_warning_and_a_clean_receiver_does_not() -> None:

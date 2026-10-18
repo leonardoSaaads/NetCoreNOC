@@ -259,11 +259,6 @@ async def test_a_scoped_reader_gets_no_name_built_from_members_they_cannot_see(
         for index, block in enumerate(("10.0", "10.1", "10.1")):
             ip = f"{block}.0.{index + 1}"
             cur = await store.conn.execute(
-                "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
-                (ip, BASE, BASE),
-            )
-            device = int((await cur.fetchone())[0])  # type: ignore[index]
-            cur = await store.conn.execute(
                 "INSERT INTO ne (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
                 (ip, BASE, BASE),
             )
@@ -275,9 +270,9 @@ async def test_a_scoped_reader_gets_no_name_built_from_members_they_cannot_see(
             )
             klass = int((await cur.fetchone())[0])  # type: ignore[index]
             cur = await store.conn.execute(
-                "INSERT INTO alarm (ne_id, device_id, class_id, instance, status, count, "
-                "first_seen, last_seen) VALUES (?, ?, ?, '', 'active', 1, ?, ?) RETURNING id",
-                (ne, device, klass, BASE, BASE),
+                "INSERT INTO alarm (ne_id, class_id, instance, status, count, "
+                "first_seen, last_seen) VALUES (?, ?, '', 'active', 1, ?, ?) RETURNING id",
+                (ne, klass, BASE, BASE),
             )
             await store.add_alarm_to_situation(sid, int((await cur.fetchone())[0]))  # type: ignore[index]
         await store.commit()

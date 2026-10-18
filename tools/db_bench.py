@@ -39,13 +39,14 @@ from typing import Any
 
 import httpx
 
-import pgtemp
 from netcorenoc.api import create_app
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.operate.engine import Engine
 from netcorenoc.ingest.events import TrapEvent, Varbind
 from netcorenoc.ingest.receiver import QueueItem
 from netcorenoc.store import Store
+
+import pgtemp
 
 TOKEN = "bench-" + "x" * 40  # nosec B105 - a throwaway database's bearer token
 #: The console's reads, cheap and heavy: what an operator's screens poll.
@@ -97,12 +98,13 @@ def summary(values: list[float]) -> dict[str, float]:
     }
 
 
-async def samples(store: Store, now: float) -> dict[str, Any]:
-    """Seven days of host samples, 120 per commit; rows per second."""
+async def samples(store: Store, now: float, days: float = 7.0) -> dict[str, Any]:
+    """``days`` of host samples (seven: the Overview's longest range), 120 per commit; rows per
+    second."""
     reading = {"cpu_pct": 12.5, "mem_pct": 40.0, "disk_pct": 55.0, "db_mb": 120.0}
     pipeline = {"classified": 900, "over_target": 3, "over_limit": 0, "classified_per_s": 30.0}
-    start = now - 7 * 24 * 3600
-    rows = int(7 * 24 * 3600 / 30)
+    start = now - days * 24 * 3600
+    rows = int(days * 24 * 3600 / 30)
     began = time.perf_counter()
     for i in range(rows):
         if i % 120 == 0 and i:
@@ -156,12 +158,13 @@ async def bench(args: argparse.Namespace, db: str) -> dict[str, Any]:
         headers={"Authorization": f"Bearer {TOKEN}"},
     )
     now = time.time()
-    report: dict[str, Any] = {"db": db.split("@")[-1], "traps": args.traps}
-    report["samples"] = await samples(store, now)
+    report: dict[str, Any] = {"db": pgtemp.redact(db), "traps": args.traps}
+    report["samples"] = await samples(store, now, args.sample_days)
 
     traps = storm(args.traps, args.devices, args.classes, now - args.traps / 5000, 5000.0)
     task = asyncio.create_task(engine.run())
-    stop, under_load = asyncio.Event(), {}  # type: ignore[var-annotated]
+    stop = asyncio.Event()
+    under_load: dict[str, list[float]] = {}
     readers = [
         asyncio.create_task(reader(client, stop, args.think_ms / 1000, under_load))
         for _ in range(args.readers)
@@ -208,6 +211,7 @@ async def bench(args: argparse.Namespace, db: str) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--db", help="the database (default: a throwaway one)")
+    parser.add_argument("--sample-days", type=float, default=7.0, help="host samples to write")
     parser.add_argument("--traps", type=int, default=20_000, help="alarms in the storm")
     parser.add_argument("--devices", type=int, default=250, help="source addresses (<= 254)")
     parser.add_argument("--classes", type=int, default=60, help="distinct trap types")
