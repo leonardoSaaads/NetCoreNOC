@@ -52,7 +52,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/stats")
     async def stats(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         scope = await scope_for(principal)
-        async with store.lock:
+        async with store.reading():
             # Every enumerating counter is computed over the in-scope set, so out-of-scope activity
             # cannot move a scoped viewer's numbers and become a volume oracle (F32). The assembly
             # is shared with the `/api/events` stream (F115): this route and that one publish the
@@ -67,7 +67,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/graph")
     async def graph(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         scope = await scope_for(principal)
-        async with store.lock:
+        async with store.reading():
             snapshot = await store.graph_snapshot(min_edge_n=MIN_EDGE_N)
         projected = shaping.project_graph(snapshot, scope)  # in-scope nodes; edges need both ends
         return shaping.shape(projected, principal.role)  # coarsen device IPs below editor
@@ -87,7 +87,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         takes the principal it never needed, which is why `dependencies=guarded` is gone: the
         `security` dependency it now names resolves the same identity that guard did.
         """
-        async with store.lock:
+        async with store.reading():
             listed = await store.list_classes()
         return shaping.shape(listed, principal.role)  # coarsen an address inside a declaration
 
@@ -150,7 +150,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         scope = await scope_for(principal)
         needle = (q or "").strip()[:MAX_SEARCH_CHARS] or None
         stale_cutoff = time.time() - IDLE_CLOSE_S
-        async with store.lock:
+        async with store.reading():
             wanted = None if scope.unrestricted else scope.ne_ids
             if ne_id is not None:
                 wanted = frozenset({ne_id}) if scope.allows_ne(ne_id) else frozenset()
@@ -204,7 +204,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/situations/{sid}")
     async def situation(sid: int, principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         scope = await scope_for(principal)
-        async with store.lock:
+        async with store.reading():
             detail = await store.situation_detail(sid)
             member_ne = await store.situation_member_ne(sid) if detail is not None else {}
             markers = await store.window_markers(
@@ -301,7 +301,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             # principal's scope still decides *which alarms are counted*, in SQL.
             span = max(1.0, float(range_s or DEFAULT_TIMELINE_RANGE_S))
             wanted = min(max(buckets, 2), MAX_TIMELINE_BUCKETS)
-            async with store.lock:
+            async with store.reading():
                 return await store.timeline_buckets(
                     bucket_s=span / wanted,
                     buckets=wanted,
@@ -309,7 +309,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     ne_ids=None if scope.unrestricted else scope.ne_ids,
                     device_ne_id=ne_id,
                 )
-        async with store.lock:
+        async with store.reading():
             marks = await store.timeline_marks(
                 min(max(limit, 1), 1000),
                 None if scope.unrestricted else scope.ne_ids,
@@ -337,7 +337,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
         scope = await scope_for(principal)
         now = time.time()
-        async with store.lock:
+        async with store.reading():
             nes = shaping.filter_rows(await store.list_ne(), scope, ne_key="id")
             markers = await store.window_markers(now, None if scope.unrestricted else scope.ne_ids)
             out: list[dict[str, Any]] = []
@@ -358,7 +358,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         ne_id: int, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         scope = await scope_for(principal)
-        async with store.lock:
+        async with store.reading():
             ne = await store.get_ne(ne_id)
             entities_rows = await store.entities_for_ne(ne_id) if ne else []
             profiles = await store.varbind_profiles_for_ne(ne_id) if ne else []
@@ -400,5 +400,5 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def state_clears() -> list[dict[str, Any]]:
         """Learned state fields (S9): which class, which varbind OID, and the raise/clear
         values — the state analogue of the entity/severity inspectability surface."""
-        async with store.lock:
+        async with store.reading():
             return await store.list_state_clears()

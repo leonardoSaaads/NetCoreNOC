@@ -78,7 +78,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/login/options")
     async def login_options() -> dict[str, Any]:
         """What the sign-in screen may offer. A boolean, and nothing about any account."""
-        async with store.lock:
+        async with store.reading():
             config = mail.from_document(await store.get_meta(mail.META_KEY))
         return {"recovery": config.can_recover}
 

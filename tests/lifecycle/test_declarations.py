@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import asyncpg
 import pytest
 
 from netcorenoc.crosscutting import shaping
@@ -101,6 +102,9 @@ async def test_a_label_written_against_the_losing_home_is_read_by_nothing(
     a stale client or an old backup would leave — reaches no reader. Both halves are needed: the
     422 alone would pass against a reader that still joined `kind='device'`, and the read alone
     would pass against a route that quietly rewrote the kind.
+
+    Since v0.31.0 (ADR #452) the schema says it too: `label.kind` has a CHECK, so the row behind the
+    route's back is refused by the server rather than written and ignored.
     """
     engine, _queue, app = env
     client = await authutil.client_as(app, "editor")
@@ -114,12 +118,13 @@ async def test_a_label_written_against_the_losing_home_is_read_by_nothing(
         assert refused.status_code == 422, refused.text
 
         async with engine.store.lock:
-            await engine.store.conn.execute(
-                "INSERT INTO label (kind, target_id, qualifier, label, updated_at) "
-                "VALUES ('device', ?, '', 'ghost', ?)",
-                (ne_id, BASE),
-            )
-            await engine.store.commit()
+            with pytest.raises(asyncpg.exceptions.CheckViolationError):
+                await engine.store.conn.execute(
+                    "INSERT INTO label (kind, target_id, qualifier, label, updated_at) "
+                    "VALUES ('device', ?, '', 'ghost', ?)",
+                    (ne_id, BASE),
+                )
+            await engine.store.rollback()
 
         detail = (await client.get(f"/api/situations/{sid}")).json()
         assert all(a["device_label"] != "ghost" for a in detail["alarms"])
@@ -311,8 +316,9 @@ async def test_no_declaration_produces_a_training_row(
     async def census() -> dict[str, int]:
         async with engine.store.lock:
             cur = await engine.store.conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND ("
-                "name LIKE 'feedback%' OR name LIKE 'dataset%' OR name LIKE 'situation_event%')"
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = "
+                "current_schema() AND table_type = 'BASE TABLE' AND (table_name LIKE 'feedback%' "
+                "OR table_name LIKE 'dataset%' OR table_name LIKE 'situation_event%')"
             )
             tables = sorted(str(r[0]) for r in await cur.fetchall())
             out: dict[str, int] = {}

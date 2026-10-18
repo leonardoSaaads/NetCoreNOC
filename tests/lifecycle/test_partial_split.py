@@ -231,11 +231,11 @@ def test_a_mark_beyond_the_pair_cap_asserts_nothing_rather_than_everything() -> 
 # --- the engine path ---------------------------------------------------------------------------
 
 
-_NEXT = [0]  # a monotonic allocator, so two situations in one test never collide on device.ip
+_NEXT = [0]  # a monotonic allocator, so two situations in one test never collide on ne.ip
 
 
 async def _situation(store: Store, engine: Engine, n: int) -> tuple[int, list[int]]:
-    """One situation with `n` members, each a distinct device and class."""
+    """One situation with `n` members, each a distinct device (NE, since v0.31.0) and class."""
     alarms: list[int] = []
     async with store.lock:
         sid = await store.create_situation(TS, None)
@@ -243,10 +243,10 @@ async def _situation(store: Store, engine: Engine, n: int) -> tuple[int, list[in
             _NEXT[0] += 1
             unique = _NEXT[0]
             cur = await store.conn.execute(
-                "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
+                "INSERT INTO ne (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
                 (f"10.{unique // 250}.{unique % 250}.1", TS, TS),
             )
-            dev = int((await cur.fetchone())[0])  # type: ignore[index]
+            ne = int((await cur.fetchone())[0])  # type: ignore[index]
             cur = await store.conn.execute(
                 "INSERT INTO alarm_class (oid, first_seen, last_seen) VALUES (?, ?, ?) "
                 "RETURNING id",
@@ -254,9 +254,9 @@ async def _situation(store: Store, engine: Engine, n: int) -> tuple[int, list[in
             )
             cls = int((await cur.fetchone())[0])  # type: ignore[index]
             cur = await store.conn.execute(
-                "INSERT INTO alarm (device_id, class_id, instance, status, first_seen, last_seen, "
+                "INSERT INTO alarm (ne_id, class_id, instance, status, first_seen, last_seen, "
                 "count) VALUES (?, ?, '', 'active', ?, ?, 1) RETURNING id",
-                (dev, cls, TS, TS),
+                (ne, cls, TS, TS),
             )
             aid = int((await cur.fetchone())[0])  # type: ignore[index]
             await store.add_alarm_to_situation(sid, aid)

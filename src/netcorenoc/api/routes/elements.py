@@ -35,7 +35,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if not scope.allows_ne(ne_id):
             raise HTTPException(status_code=404, detail="no such NE")
         only = frozenset({ne_id})
-        async with store.lock:
+        async with store.reading():
             ne = await store.get_ne(ne_id)
             if ne is None:
                 raise HTTPException(status_code=404, detail="no such NE")
@@ -68,7 +68,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         of grouped queries rather than one per element. Scoped in the WHERE clause.
         """
         scope = await scope_for(principal)
-        async with store.lock:
+        async with store.reading():
             body = await store.inventory(None if scope.unrestricted else scope.ne_ids)
         return shaping.shape(body, principal.role)  # coarsen addresses and names below editor
 
@@ -80,7 +80,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         scope = await scope_for(principal)
         if not scope.allows_ne(ne_id):
             raise HTTPException(status_code=404, detail="no such NE")
-        async with store.lock:
+        async with store.reading():
             if await store.get_ne(ne_id) is None:
                 raise HTTPException(status_code=404, detail="no such NE")
             body = await store.components(ne_id)

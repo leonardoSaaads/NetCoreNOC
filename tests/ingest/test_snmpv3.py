@@ -8,6 +8,7 @@ socket, so the parser is checked against an independent encoder — the same mes
 from __future__ import annotations
 
 import asyncio
+import re
 import socket
 from typing import Any
 
@@ -251,7 +252,11 @@ def test_the_stored_document_round_trips_and_keeps_no_passphrase() -> None:
 def test_a_bad_stored_document_refuses_to_start_naming_the_way_out() -> None:
     from netcorenoc.crosscutting.settings import SettingsError
 
-    with pytest.raises(SettingsError, match=r"DELETE FROM meta WHERE key='config\.snmp'"):
+    # ADR #452: the way out is a statement for `psql` on the appliance's database, not `sqlite3`.
+    way_out = (
+        'psql "$NETCORENOC_DATABASE_URL" -c "DELETE FROM netcorenoc.meta WHERE key=\'config.snmp\'"'
+    )
+    with pytest.raises(SettingsError, match=re.escape(way_out)):
         snmpconf.stored_policy('{"version": 1, "users": [{"name": "x", "auth": "SHA"}]}')
     assert snmpconf.stored_policy(None) is snmpconf.DEFAULT_POLICY
 

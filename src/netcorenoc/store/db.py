@@ -180,6 +180,9 @@ class Connection:
         self.raw = raw
         self._implicit = implicit
         self._open = False
+        # A statement failed inside the implicit transaction, which PostgreSQL has therefore
+        # aborted: nothing more can run in it, and a COMMIT would silently roll it back.
+        self._failed = False
         # asyncpg refuses a second operation while one is in flight on the same connection, where
         # SQLite's driver queued it. Callers hold ``store.lock`` for anything that must be atomic;
         # this only keeps two tasks that read without it from colliding on the wire.
@@ -190,9 +193,28 @@ class Connection:
         return self._open
 
     async def _begin(self) -> None:
+        if self._failed:
+            # A block failed and did not roll back. Its work is already lost (PostgreSQL aborted the
+            # transaction); carrying on would fail every later holder of `store.lock` instead. Say
+            # so, undo it, and continue — the warning names a missing rollback to fix.
+            log.warning("a failed transaction was left open on the writer; rolled back")
+            self._failed = False
+            self._open = False
+            await self.raw.execute("ROLLBACK")
         if self._implicit and not self._open:
             await self.raw.execute("BEGIN")
             self._open = True
+
+    async def _run(self, text: str, args: Sequence[Any], returns_rows: bool) -> Cursor:
+        try:
+            if returns_rows:
+                rows = await self.raw.fetch(text, *args)
+                return Cursor(rows, len(rows))
+            status = await self.raw.execute(text, *args)
+        except asyncpg.PostgresError:
+            self._failed = self._open
+            raise
+        return Cursor([], _rowcount(status))
 
     async def begin(self) -> None:
         """Open the implicit transaction now, if one is not open (before a ``SET LOCAL``)."""
@@ -203,13 +225,9 @@ class Connection:
         text, names, returns_rows, writes = translate(sql)
         args = _arguments(names, params)
         async with self._busy:
-            if writes:
+            if writes or self._failed:
                 await self._begin()
-            if returns_rows:
-                rows = await self.raw.fetch(text, *args)
-                return Cursor(rows, len(rows))
-            status = await self.raw.execute(text, *args)
-        return Cursor([], _rowcount(status))
+            return await self._run(text, args, returns_rows)
 
     async def executemany(self, sql: str, rows: Iterable[Any]) -> None:
         text, names, _, _ = translate(sql)
@@ -218,13 +236,32 @@ class Connection:
             return
         async with self._busy:
             await self._begin()
-            await self.raw.executemany(text, batch)
+            try:
+                await self.raw.executemany(text, batch)
+            except asyncpg.PostgresError:
+                self._failed = True
+                raise
 
     async def copy(self, table: str, columns: Sequence[str], rows: Iterable[Sequence[Any]]) -> None:
         """Bulk-insert ``rows`` with ``COPY`` — one round trip for any number of rows."""
         async with self._busy:
             await self._begin()
             await self.raw.copy_records_to_table(table, columns=list(columns), records=rows)
+
+    @contextlib.asynccontextmanager
+    async def savepoint(self) -> AsyncIterator[None]:
+        """A nested transaction: a failure inside undoes the block only and leaves the enclosing
+        transaction usable — what SQLite did for any failed statement (`Store.savepoint`)."""
+        await self.begin()
+        await self.script("SAVEPOINT netcorenoc_block")
+        try:
+            yield
+        except BaseException:
+            async with self._busy:
+                await self.raw.execute("ROLLBACK TO SAVEPOINT netcorenoc_block")
+                self._failed = False
+            raise
+        await self.script("RELEASE SAVEPOINT netcorenoc_block")
 
     async def script(self, sql: str) -> None:
         """Run a fixed, parameterless, multi-statement script in one round trip."""
@@ -233,6 +270,12 @@ class Connection:
 
     async def commit(self) -> None:
         async with self._busy:
+            if self._failed:
+                self._failed = self._open = False
+                await self.raw.execute("ROLLBACK")
+                raise asyncpg.exceptions.InFailedSQLTransactionError(
+                    "the transaction failed earlier and was rolled back; nothing was committed"
+                )
             if self._open:
                 self._open = False
                 await self.raw.execute("COMMIT")
@@ -241,6 +284,7 @@ class Connection:
         async with self._busy:
             if self._open:
                 self._open = False
+                self._failed = False
                 if not self.raw.is_closed():
                     await self.raw.execute("ROLLBACK")
 
@@ -346,20 +390,47 @@ class Database:
         """Run the block's store reads on a pooled connection, in one read-only snapshot.
 
         **Never inside a write**: the snapshot cannot see the writer's uncommitted rows. Nested in
-        another ``reading()`` the block joins the snapshot it is already in.
+        another ``reading()`` (or ``side_write()``) the block joins the transaction it is in.
         """
+        async with self._pooled(readonly=True):
+            yield
+
+    @contextlib.asynccontextmanager
+    async def side_write(self) -> AsyncIterator[None]:
+        """Run the block on a pooled connection in its **own** read-write transaction, committed
+        when the block ends and rolled back if it raises — without ``store.lock``.
+
+        Only for rows nothing in the process keeps in memory and nothing else writes in the same
+        breath: a session's or a token's last use (`Perimeter.resolve_identity`). Everything the
+        engine or the audit chain depends on stays on the writer.
+        """
+        async with self._pooled(readonly=False):
+            yield
+
+    @contextlib.asynccontextmanager
+    async def _pooled(self, *, readonly: bool) -> AsyncIterator[None]:
         bound = _reader.get()
         if bound is not None and bound[0] is self:
             yield
             return
         assert self.pool is not None, "Store.open() not called"
         async with self.pool.acquire() as raw:
-            transaction = raw.transaction(isolation="repeatable_read", readonly=True)
+            if readonly:
+                transaction = raw.transaction(isolation="repeatable_read", readonly=True)
+            else:
+                transaction = raw.transaction()
             await transaction.start()
             token = _reader.set((self, Connection(raw, implicit=False)))
             try:
                 yield
-            finally:
+            except BaseException:
                 _reader.reset(token)
                 with contextlib.suppress(*STORAGE_ERRORS):
                     await transaction.rollback()
+                raise
+            _reader.reset(token)
+            if readonly:
+                with contextlib.suppress(*STORAGE_ERRORS):
+                    await transaction.rollback()
+            else:
+                await transaction.commit()

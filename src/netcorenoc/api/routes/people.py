@@ -135,7 +135,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         own = principal.user_id is not None and int(principal.user_id) == uid
         if not own and not shaping.sees_people(principal.role):
             raise HTTPException(status_code=404, detail="no photo")
-        async with store.lock:
+        async with store.reading():
             row = await store.get_avatar(uid)
         if row is None:
             raise HTTPException(status_code=404, detail="no photo")

@@ -208,8 +208,8 @@ class MaintenanceMixin(WindowSweepMixin):
 
         **A second call is not a special case that needs handling; it is the normal steady state.**
         This runs on every training tick for the life of the appliance, and every call after the
-        first is refused by `holdout_seal.singleton`'s UNIQUE constraint. That is not an error and
-        is not logged as one.
+        first returns at `seal_row()`; were it to get past that, `holdout_seal.singleton`'s UNIQUE
+        constraint would refuse it.
 
         Any other failure degrades **sealing** and nothing else: it is counted as a shadow-mode
         error, surfaced as an operator warning, and the maintenance pass and the ingestion behind it
@@ -218,19 +218,25 @@ class MaintenanceMixin(WindowSweepMixin):
         """
         try:
             async with self.store.lock:
-                if await self.store.seal_row() is not None:
-                    return
-                first_label_at = await census.first_label_per_incident(self.store)
-                if not first_label_at:
-                    return  # nothing labelled yet; there is no corpus to cut
-                await seal.construct(
-                    self.store,
-                    release=__version__,
-                    plan_sha256=PLAN_SHA256,
-                    now=now,
-                    first_label_at=first_label_at,
-                )
-                await self.store.commit()
+                try:
+                    if await self.store.seal_row() is not None:
+                        return
+                    first_label_at = await census.first_label_per_incident(self.store)
+                    if not first_label_at:
+                        return  # nothing labelled yet; there is no corpus to cut
+                    await seal.construct(
+                        self.store,
+                        release=__version__,
+                        plan_sha256=PLAN_SHA256,
+                        now=now,
+                        first_label_at=first_label_at,
+                    )
+                    await self.store.commit()
+                except Exception:
+                    # PostgreSQL aborts the transaction on a failed statement: undone here, under
+                    # the lock, so the next holder starts clean (ADR #452).
+                    await self.store.rollback()
+                    raise
         except Exception as exc:
             self.shadow._degrade(exc)
 

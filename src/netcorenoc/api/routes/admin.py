@@ -49,7 +49,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
         It is an affordance and not a control: the refusal is in `change_role` and `delete_user`.
         """
-        async with store.lock:
+        async with store.reading():
             rows = await store.list_users()
             enabled_admins = [r for r in rows if r["role"] == "admin" and not r["disabled"]]
         sole = enabled_admins[0]["id"] if len(enabled_admins) == 1 else None
@@ -133,7 +133,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/tokens", dependencies=guarded)
     async def list_tokens() -> list[dict[str, Any]]:
-        async with store.lock:
+        async with store.reading():
             return await store.list_tokens()
 
     @route.post("/api/tokens")
@@ -223,7 +223,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         # remove. Found by the test written to kill a surviving mutant.
         allowlist = runtime.allowlist if runtime else env.allowlist
         retention = runtime.retention_days if runtime else env.retention_days
-        async with store.lock:
+        async with store.reading():
             saved_allow = await store.get_meta("config.allowlist")
             saved_ret = await store.get_meta("config.retention_days")
             saved_kpi = await store.get_meta(KPI_KEY)
@@ -307,7 +307,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         timestamps, never a row.
         """
         policy = engine.retention
-        async with store.lock:
+        async with store.reading():
             stats = await store.dataset_stats()
         return {
             "sink_days": policy.sink_days,
@@ -357,7 +357,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         # release adopts, training *selects* — reducing it destroys nothing — and the audit bound is
         # the outer edge of the data's life, so it is the one an operator can ask to be enforced.
         cutoff = time.time() - candidate.audit_days * 86400.0
-        async with store.lock:
+        async with store.reading():
             impact = await store.preview_retention(cutoff)
         if body.preview:
             async with write_txn():

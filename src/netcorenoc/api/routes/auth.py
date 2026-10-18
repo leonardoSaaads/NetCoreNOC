@@ -130,7 +130,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         scope = await scope_for(principal)
         person = None
         if principal.user_id is not None:
-            async with store.lock:
+            async with store.reading():
                 person = await store.person(int(principal.user_id))
         return {
             "user": principal.actor,

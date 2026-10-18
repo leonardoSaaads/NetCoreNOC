@@ -42,24 +42,30 @@ async def _env(
 
 # Tables a *successful authenticated request* touches no matter what it does, so their movement
 # proves nothing about preview: `audit_log` (preview is required to record itself — asserted
-# separately, exactly one row), `session` (identity resolution slides last_seen_at/idle_expiry on
-# every authenticated call), and `sqlite_sequence` (a counter for those two). Every other table —
-# link, situation, situation_alarm, alarm, edge, meta, scorer_config, scorer_active,
-# varbind_profile, state_clear — is compared row-for-row, so a single write anywhere that matters
-# fails this test.
-_NOISY = ("audit_log", "session", "sqlite_sequence")
+# separately, exactly one row) and `session` (identity resolution slides last_seen_at/idle_expiry
+# on every authenticated call). Under SQLite `sqlite_sequence`, the counter for those two, was
+# skipped as well; PostgreSQL's identity sequences are not tables, so there is nothing to skip.
+# Every other table — link, situation, situation_alarm, alarm, edge, meta, scorer_config,
+# scorer_active, varbind_profile, state_clear — is compared row-for-row, so a single write
+# anywhere that matters fails this test.
+_NOISY = ("audit_log", "session")
 
 
 async def _snapshot(store: Store, *, skip: tuple[str, ...] = _NOISY) -> dict[str, object]:
-    """Every row of every table except the named ones — the "did anything change?" oracle."""
+    """Every row of every table except the named ones — the "did anything change?" oracle.
+
+    The rows are sorted: a table read without `ORDER BY` comes back in PostgreSQL's heap order,
+    not SQLite's rowid order, and every row carries its key, so the sorted list is the table.
+    """
     cur = await store.conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = current_schema() AND table_type = 'BASE TABLE' ORDER BY table_name"
     )
     tables = [str(r[0]) for r in await cur.fetchall() if str(r[0]) not in skip]
     out: dict[str, object] = {}
     for table in tables:
         cur = await store.conn.execute(f"SELECT * FROM {table}")  # nosec B608 - name from schema
-        out[table] = [tuple(row) for row in await cur.fetchall()]
+        out[table] = sorted((tuple(row) for row in await cur.fetchall()), key=repr)
     return out
 
 

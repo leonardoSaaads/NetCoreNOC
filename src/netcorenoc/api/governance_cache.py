@@ -53,7 +53,7 @@ class GovernancePolicies:
         self.pending_fallbacks: list[tuple[str, str]] = []
 
     async def load(self) -> None:
-        """Refresh both policies. Caller holds ``store.lock``."""
+        """Refresh both policies. Caller holds ``store.lock`` or is inside ``store.reading()``."""
         active = await self._store.active_governance_ids()
         await self._load_kind("rbac", active.get("rbac"))
         await self._load_kind("scope", active.get("scope"))

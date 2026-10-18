@@ -62,6 +62,14 @@ class StoreBase:
         """
         return self._db.reading()
 
+    def side_write(self) -> contextlib.AbstractAsyncContextManager[None]:
+        """A short write outside ``store.lock``, on its own connection, committed at the end.
+
+        Only for rows nothing in the process keeps in memory: a session's or a token's last use.
+        Everything the engine or the audit chain depends on stays on the writer, under the lock.
+        """
+        return self._db.side_write()
+
     def _label_join(self, alias: str, kind: str, target: str) -> str:
         """One `LEFT JOIN label` for the whole target (`qualifier = ''`) of one kind (v0.16.3).
 

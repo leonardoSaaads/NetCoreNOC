@@ -57,7 +57,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         branch = importer.normalise_oid(under) if under else None
         if branch and importer.valid_oid(branch):
             raise HTTPException(status_code=422, detail="under: " + str(importer.valid_oid(branch)))
-        async with store.lock:
+        async with store.reading():
             page = await store.catalogue_classes(
                 q=(q or "").strip()[:100] or None,
                 under=branch,
@@ -75,7 +75,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         broken = importer.valid_oid(at)
         if broken:
             raise HTTPException(status_code=422, detail=f"node: {broken}")
-        async with store.lock:
+        async with store.reading():
             answer = await store.catalogue_tree(at)
         return shaping.shape(answer, principal.role)
 
@@ -86,7 +86,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         offset: int = 0,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
-        async with store.lock:
+        async with store.reading():
             page = await store.catalogue_rules(
                 source=source, limit=min(max(limit, 1), MAX_PAGE), offset=max(offset, 0)
             )
@@ -201,7 +201,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     },
                 )
             return report
-        async with store.lock:
+        async with store.reading():
             existing = {(r.oid, r.subtree, r.source): r for r in (await store.catalogue()).rules}
         new = sum(1 for r in parsed.rows if (r.oid, False, "imported") not in existing)
         shadowed = [r.line for r in parsed.rows if (r.oid, False, "declared") in existing]

@@ -661,7 +661,8 @@ async def test_the_audit_sweep_deletes_outside_its_bound_and_nothing_newer(store
                 "INSERT INTO dataset_pair (capture_run_id, alarm_a, alarm_b, situation_id, "
                 "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
                 "incumbent_linked, storm, truncated, evaluated_at, lifecycle, promoted_at) "
-                "VALUES (?, ?, ?, ?, 1.0, 0.5, 0.5, 1, 1, 0.9, true, false, false, ?, 'dataset', ?)",
+                "VALUES (?, ?, ?, ?, 1.0, 0.5, 0.5, 1, 1, 0.9, true, false, false, ?, "
+                "'dataset', ?)",
                 (engine.capture.run_id, ids[0][0], ids[1][0], sid, ts, ts),
             )
         await store.commit()

@@ -49,7 +49,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def notices(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         """The warnings as this user sees them: which are snoozed, which are security posture."""
         now = time.time()
-        async with store.lock:
+        async with store.reading():
             mine = await store.snoozes_for(principal.user_id, now) if principal.user_id else {}
             await governance.load()
             admin = "config.read" in rbac.resolve_capabilities(
@@ -123,7 +123,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         aid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, str]:
         scope = await scope_for(principal)
-        async with store.lock:
+        async with store.reading():
             exists, ne_id = await store.alarm_ne(aid)
         # Nonexistent and out of scope take the same branch (DECISIONS #60).
         if not exists or not scope.allows_ne(ne_id):

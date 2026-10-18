@@ -137,10 +137,9 @@ class LifecycleMixin(StoreBase):
         return max((int(p.name.split("_", 1)[0]) for p in MIGRATIONS_DIR.glob("*.sql")), default=0)
 
     async def schema_version(self) -> int:
-        value = await self._db.writer_raw().fetchval(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
-        )
-        return int(value or 0)
+        cur = await self.conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_migrations")
+        row = await cur.fetchone()
+        return int(row[0]) if row else 0
 
     async def close(self) -> None:
         await self._db.close()
@@ -190,14 +189,8 @@ class LifecycleMixin(StoreBase):
         themselves — would go with the annotation. A savepoint keeps the old meaning. The caller
         still catches the exception; this only undoes what the block wrote.
         """
-        await self.conn.begin()
-        await self.conn.script("SAVEPOINT netcorenoc_degrade")
-        try:
+        async with self.conn.savepoint():
             yield
-        except BaseException:
-            await self.conn.script("ROLLBACK TO SAVEPOINT netcorenoc_degrade")
-            raise
-        await self.conn.script("RELEASE SAVEPOINT netcorenoc_degrade")
 
     async def relax_durability(self) -> None:
         """Commit the current transaction **without waiting for its WAL to reach disk**.

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import asyncpg
+import pytest
+
 from netcorenoc.ingest.events import QuarantinedPacket
 from netcorenoc.store import EdgeRow, LinkRow, Store
 
@@ -389,3 +392,55 @@ async def test_the_active_member_predicate_agrees_with_all_cleared(store: Store)
         )
     # Both answers are exercised, or the agreement above is agreement about one case.
     assert by_fragment == {active, mixed}
+
+
+# --- PostgreSQL's aborted transaction, contained (ADR #452) -----------------------------------
+
+_DUPLICATE_ORG = (
+    "INSERT INTO organization (name, slug, created_at) "
+    "VALUES ('Default organization', ?, to_timestamp(0))"
+)
+
+
+async def test_a_savepoint_undoes_only_the_block_that_failed(store: Store) -> None:
+    """What SQLite did for any failed statement, PostgreSQL does inside a savepoint: the failed
+    block's writes go, the rest of the transaction commits."""
+    async with store.lock:
+        await store.set_meta("before", "1")
+        with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+            async with store.savepoint():
+                await store.set_meta("inside", "2")
+                await store.conn.execute(_DUPLICATE_ORG, ("dup",))
+        await store.set_meta("after", "3")
+        await store.commit()
+    assert [await store.get_meta(k) for k in ("before", "inside", "after")] == ["1", None, "3"]
+
+
+async def test_a_failed_transaction_left_open_is_rolled_back_for_the_next_holder(
+    store: Store, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A block that fails and does not roll back must not take every later holder of the lock with
+    it: the next statement rolls the dead transaction back, says so, and runs."""
+    async with store.lock:
+        await store.set_meta("lost", "x")
+        with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+            await store.conn.execute(_DUPLICATE_ORG, ("dup",))
+    async with store.lock:
+        await store.set_meta("kept", "y")
+        await store.commit()
+    assert await store.get_meta("kept") == "y"
+    assert await store.get_meta("lost") is None  # PostgreSQL had already discarded it
+    assert "rolled back" in caplog.text
+
+
+async def test_committing_a_failed_transaction_says_so(store: Store) -> None:
+    """A COMMIT of an aborted transaction is a silent ROLLBACK in PostgreSQL; the store raises."""
+    async with store.lock:
+        await store.set_meta("lost", "x")
+        with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+            await store.conn.execute(_DUPLICATE_ORG, ("dup",))
+        with pytest.raises(asyncpg.exceptions.InFailedSQLTransactionError):
+            await store.commit()
+        await store.set_meta("next", "z")
+        await store.commit()
+    assert await store.get_meta("lost") is None and await store.get_meta("next") == "z"

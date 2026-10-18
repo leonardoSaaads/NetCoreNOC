@@ -133,7 +133,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         the resolver ignores such an entry anyway, so an admin is told now rather than surprised."""
         if not isinstance(principals, dict):
             return
-        async with store.lock:
+        async with store.reading():
             users = {f"user:{u['id']}": u["role"] for u in await store.list_users()}
         if any(users.get(ref) in rbac.FIXED_ROLES for ref in principals):
             raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
@@ -152,7 +152,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         they are standing: a capability in `ceiling` but not in `resolved` was taken away by
         policy, and one absent from `ceiling` can never be granted at all.
         """
-        async with store.lock:
+        async with store.reading():
             await governance.load()
             history = await store.list_governance_policies("rbac", MAX_POLICY_HISTORY)
             active = await _active_policy("rbac")
@@ -216,7 +216,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         kind, key = body.subject.split(":", 1)
         if kind == "role" and key in rbac.FIXED_ROLES and body.capabilities is not None:
             raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
-        async with store.lock:
+        async with store.reading():
             user = await store.get_user(int(key)) if kind == "user" else None
             if kind == "user" and user is None:
                 raise HTTPException(status_code=404, detail="no such user")
@@ -252,7 +252,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/scope", dependencies=guarded)
     async def get_scope_policy() -> dict[str, Any]:
-        async with store.lock:
+        async with store.reading():
             await governance.load()
             history = await store.list_governance_policies("scope", MAX_POLICY_HISTORY)
             active = await _active_policy("scope")

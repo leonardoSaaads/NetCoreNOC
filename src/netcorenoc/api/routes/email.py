@@ -29,7 +29,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/email", dependencies=guarded)
     async def get_email() -> dict[str, Any]:
         """The SMTP configuration without its password, and the providers the console offers."""
-        async with store.lock:
+        async with store.reading():
             config = mail.from_document(await store.get_meta(mail.META_KEY))
         return {
             **mail.public_view(config),
@@ -83,7 +83,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """Send one message now with the saved configuration, and say exactly what happened."""
         if not mail.valid_address(body.to):
             raise HTTPException(status_code=400, detail="that is not an email address")
-        async with store.lock:
+        async with store.reading():
             config = mail.from_document(await store.get_meta(mail.META_KEY))
         if not config.host:
             raise HTTPException(status_code=409, detail="save an SMTP server first")
