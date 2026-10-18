@@ -117,7 +117,7 @@ known-local-folder = [
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
 "src/netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
-"src/netcorenoc/dbtools.py" = ["T20"]  # and its database commands (ADR #452)
+"src/netcorenoc/store/cli.py" = ["T20"]  # and its database commands (ADR #452)
 "eval/synth/*" = ["T20"]  # `make train` reports each stage to the person running it (v0.26.0)
 
 [tool.mypy]

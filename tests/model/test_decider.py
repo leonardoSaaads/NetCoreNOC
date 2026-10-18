@@ -104,9 +104,7 @@ async def test_two_concurrent_incidents_on_one_vendor_stay_apart(
         ]
     await _ingest(engine, store, traps)
     groups = await _situations(store)
-    cur = await store.conn.execute(
-        "SELECT a.id, d.ip FROM alarm a JOIN device d ON d.id=a.device_id"
-    )
+    cur = await store.conn.execute("SELECT a.id, n.ip FROM alarm a JOIN ne n ON n.id=a.ne_id")
     ip = {int(r[0]): str(r[1]) for r in await cur.fetchall()}
     incidents = [{ip[a].rsplit(".", 1)[1] in ("1", "2") for a in g} for g in groups]
     assert all(len(kinds) == 1 for kinds in incidents), f"a situation mixes incidents: {groups}"

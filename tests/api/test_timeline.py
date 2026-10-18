@@ -44,13 +44,9 @@ async def _install_scope(store: Store) -> None:
         await store.commit()
 
 
-async def _element(store: Store, ip: str) -> tuple[int, int, int]:
-    """One device, its NE and one alarm class — the three ids an alarm needs."""
-    cur = await store.conn.execute(
-        "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
-        (ip, BASE, BASE),
-    )
-    device = int((await cur.fetchone())[0])  # type: ignore[index]
+async def _element(store: Store, ip: str) -> tuple[int, int]:
+    """One NE and one alarm class — the two ids an alarm needs (the `device` copy of the NE is
+    gone since v0.31.0, ADR #452)."""
     cur = await store.conn.execute(
         "INSERT INTO ne (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id", (ip, BASE, BASE)
     )
@@ -62,23 +58,23 @@ async def _element(store: Store, ip: str) -> tuple[int, int, int]:
         "INSERT INTO alarm_class (oid, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
         (f"1.3.6.1.4.1.99.{ne}", BASE, BASE),
     )
-    return device, ne, int((await cur.fetchone())[0])  # type: ignore[index]
+    return ne, int((await cur.fetchone())[0])  # type: ignore[index]
 
 
 async def _alarm(
     store: Store,
-    ids: tuple[int, int, int],
+    ids: tuple[int, int],
     raised: float,
     cleared: float | None,
     instance: str = "",
 ) -> None:
-    """`alarm` is `UNIQUE (device_id, class_id, instance)`, so a busy element needs distinct
+    """`alarm` is `UNIQUE (ne_id, class_id, instance)`, so a busy element needs distinct
     instances — which is what a real one has: twenty ports, not twenty copies of one."""
-    device, ne, cls = ids
+    ne, cls = ids
     await store.conn.execute(
-        "INSERT INTO alarm (device_id, class_id, ne_id, instance, severity, status, first_seen, "
-        "last_seen, cleared_at) VALUES (?, ?, ?, ?, 3, 'active', ?, ?, ?)",
-        (device, cls, ne, instance, raised, raised, cleared),
+        "INSERT INTO alarm (class_id, ne_id, instance, severity, status, first_seen, "
+        "last_seen, cleared_at) VALUES (?, ?, ?, 3, 'active', ?, ?, ?)",
+        (cls, ne, instance, raised, raised, cleared),
     )
 
 
@@ -106,7 +102,7 @@ async def _seed(store: Store) -> dict[str, int]:
         # ORDERING rather than about the scope filter.
         await _alarm(store, outside, BASE + 500, None)
         await store.commit()
-    return {"loud": loud[1], "quiet": quiet[1], "outside": outside[1]}
+    return {"loud": loud[0], "quiet": quiet[0], "outside": outside[0]}
 
 
 # --- the element filter -------------------------------------------------------------------------

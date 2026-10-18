@@ -11,8 +11,14 @@ from __future__ import annotations
 import os
 import sys
 
-from netcorenoc.crosscutting.settings import Settings, SettingsError, redact_url, split_password
-from netcorenoc.main import legacy_env_error, legacy_env_names
+from netcorenoc.crosscutting.settings import (
+    Settings,
+    SettingsError,
+    legacy_env_error,
+    legacy_env_names,
+    redact_url,
+    split_password,
+)
 from netcorenoc.store import STORAGE_ERRORS, MissingSchemaError, Store
 
 __all__ = ["_backup", "_db_status", "_import_sqlite", "_open", "_settings"]

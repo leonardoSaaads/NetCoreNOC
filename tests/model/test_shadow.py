@@ -63,10 +63,10 @@ async def _corpus(
     run = engine.capture.run_id
     async with store.lock:
         cur = await store.conn.execute(
-            "INSERT INTO device (ip, first_seen, last_seen) VALUES ('10.0.0.1', ?, ?) RETURNING id",
+            "INSERT INTO ne (ip, first_seen, last_seen) VALUES ('10.0.0.1', ?, ?) RETURNING id",
             (TS, TS),
         )
-        device = int((await cur.fetchone())[0])  # type: ignore[index]
+        ne = int((await cur.fetchone())[0])  # type: ignore[index]
         cur = await store.conn.execute(
             "INSERT INTO alarm_class (oid, first_seen, last_seen) "
             "VALUES ('1.3.6.1.4.1.9.1', ?, ?) RETURNING id",
@@ -79,9 +79,9 @@ async def _corpus(
             alarms = []
             for member in range(3):
                 cur = await store.conn.execute(
-                    "INSERT INTO alarm (device_id, class_id, instance, status, first_seen, "
+                    "INSERT INTO alarm (ne_id, class_id, instance, status, first_seen, "
                     "last_seen, count) VALUES (?, ?, ?, 'active', ?, ?, 1) RETURNING id",
-                    (device, klass, f"{index}:{member}", TS + index, TS + index),
+                    (ne, klass, f"{index}:{member}", TS + index, TS + index),
                 )
                 alarm_id = int((await cur.fetchone())[0])  # type: ignore[index]
                 alarms.append(alarm_id)
@@ -280,13 +280,13 @@ async def test_the_fit_is_byte_identical_across_two_runs(store: Store) -> None:
     assert LogisticScorer(a).params_fingerprint() == LogisticScorer(b).params_fingerprint()
 
 
-async def test_the_fit_is_byte_identical_across_two_processes(store: Store, tmp_path: Path) -> None:
+async def test_the_fit_is_byte_identical_across_two_processes(db_url: str, tmp_path: Path) -> None:
     """**Across processes**, because hash randomisation and dict ordering are per-process.
 
-    The subprocess fits the same corpus from the same file and prints each coefficient's `hex()`,
-    which is exact — comparing `repr` would compare a rounded decimal.
+    The subprocess fits the same corpus from the same database and prints each coefficient's
+    `hex()`, which is exact — comparing `repr` would compare a rounded decimal.
     """
-    db = str(tmp_path / "fit.db")
+    db = db_url
     disk = Store(db)
     await disk.open()
     await build_sufficient(disk)

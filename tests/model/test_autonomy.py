@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
 
+import asyncpg
 import pytest
 
 from netcorenoc.api.livestats import live_stats
@@ -110,13 +110,16 @@ async def test_the_schema_refuses_an_unexplained_act(store: Store) -> None:
     """The CHECK itself, on a real situation, so no other constraint can be what refuses it."""
     insert = (
         "INSERT INTO autonomy_decision (situation_id, grade, action, decider, confidence, "
-        "explanation, at) VALUES (?, 'naming', 'named', 'shipped:x', 0.9, ?, 1.0)"
+        "explanation, at) VALUES (?, 'naming', 'named', 'shipped:x', 0.9, ?, to_timestamp(1))"
     )
     async with store.lock:
         sid = await store.create_situation(T)
         await store.conn.execute(insert, (sid, '{"why":"control"}'))  # the control is accepted
-        with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+        with pytest.raises(
+            asyncpg.exceptions.CheckViolationError, match="autonomy_decision_explanation_check"
+        ):
             await store.conn.execute(insert, (sid, "{}"))
+        await store.rollback()
 
 
 async def test_the_formula_never_acts(store: Store, test_model: object) -> None:

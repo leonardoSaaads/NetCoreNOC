@@ -30,8 +30,9 @@ async def build_fixture(store: Store) -> None:
         # Three situations with real members, and the pairs among some of them.
         triples: list[tuple[int, int, int]] = []
         for i in range(9):
+            # The element (`ne`; the `device` copy of it is gone, ADR #452).
             cur = await store.conn.execute(
-                "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
+                "INSERT INTO ne (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
                 (f"10.0.0.{i + 1}", TS, TS),
             )
             dev = int((await cur.fetchone())[0])  # type: ignore[index]
@@ -42,7 +43,7 @@ async def build_fixture(store: Store) -> None:
             )
             cls = int((await cur.fetchone())[0])  # type: ignore[index]
             cur = await store.conn.execute(
-                "INSERT INTO alarm (device_id, class_id, instance, status, first_seen, "
+                "INSERT INTO alarm (ne_id, class_id, instance, status, first_seen, "
                 "last_seen, count) VALUES (?, ?, '', 'active', ?, ?, 1) RETURNING id",
                 (dev, cls, TS, TS),
             )
@@ -69,7 +70,6 @@ async def build_fixture(store: Store) -> None:
                 capture_run_id=run,
                 alarm_id=t[0],
                 ne_id=t[2],
-                device_id=t[2],
                 entity_id=t[2],
                 class_id=t[1],
                 observed_at=TS + idx,

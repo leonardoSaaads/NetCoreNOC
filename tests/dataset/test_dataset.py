@@ -9,9 +9,9 @@ becoming an existence oracle, the retention ordering, and the preview's accuracy
 from __future__ import annotations
 
 import asyncio
-import sqlite3
 import time
 
+import asyncpg
 import pytest
 
 from netcorenoc.engine.correlate.correlate import CorrelationResult, ScoredLink, WindowAlarm
@@ -35,7 +35,10 @@ TS = 1_000_000.0
 
 
 async def _alarms(store: Store, n: int, *, base: int = 0) -> list[tuple[int, int, int]]:
-    """`n` distinct (alarm_id, class_id, device_id) triples, written directly.
+    """`n` distinct (alarm_id, class_id, ne_id) triples, written directly.
+
+    The element is `ne` (its `device` copy is gone, ADR #452); `Member` and `WindowAlarm` still call
+    that id `device_id`.
 
     Direct inserts rather than driven traps: these tests are about capture and retention semantics,
     and a trap fixture would make them also about parsing, dedup and flap detection.
@@ -43,7 +46,7 @@ async def _alarms(store: Store, n: int, *, base: int = 0) -> list[tuple[int, int
     out = []
     for i in range(n):
         cur = await store.conn.execute(
-            "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
+            "INSERT INTO ne (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
             (f"10.{base}.0.{i + 1}", TS, TS),
         )
         dev = int((await cur.fetchone())[0])  # type: ignore[index]
@@ -53,7 +56,7 @@ async def _alarms(store: Store, n: int, *, base: int = 0) -> list[tuple[int, int
         )
         cls = int((await cur.fetchone())[0])  # type: ignore[index]
         cur = await store.conn.execute(
-            "INSERT INTO alarm (device_id, class_id, instance, status, first_seen, last_seen, "
+            "INSERT INTO alarm (ne_id, class_id, instance, status, first_seen, last_seen, "
             "count) VALUES (?, ?, '', 'active', ?, ?, 1) RETURNING id",
             (dev, cls, TS, TS),
         )
@@ -199,7 +202,9 @@ async def test_a_capture_write_error_degrades_capture_and_never_ingestion(store:
     await engine.start()
 
     async def boom(*_args: object, **_kwargs: object) -> None:
-        raise sqlite3.OperationalError("injected: disk I/O error")
+        # A storage failure as PostgreSQL reports one (`store.STORAGE_ERRORS`); SQLite's was
+        # `OperationalError("disk I/O error")`.
+        raise asyncpg.exceptions.DiskFullError("injected: could not extend file: no space left")
 
     store.add_pairs = boom  # type: ignore[method-assign]
 
@@ -213,7 +218,7 @@ async def test_a_capture_write_error_degrades_capture_and_never_ingestion(store:
     assert engine.processed == 40, "ingestion did not complete"
     assert engine.db_errors == 0, "a capture error must not be counted as a batch loss"
     assert engine.capture.errors > 0, "the capture failure was not recorded"
-    assert "OperationalError" in engine.capture.last_error
+    assert engine.capture.last_error == "DiskFullError"
     warnings = engine.capture.warnings()
     assert warnings and "Ingestion was unaffected" in warnings[0], warnings
 
@@ -322,8 +327,11 @@ async def test_a_verdict_on_an_already_merged_situation_records_an_empty_bag(sto
     await engine.start()
     async with store.lock:
         sid = await store.create_situation(TS, None)
+        # A merged-away situation as the merge writes it (`situations.py`): the `merged` status
+        # was retired by `0014` and the schema's CHECK now refuses it.
         await store.conn.execute(
-            "UPDATE situation SET status='merged', merged_into=1 WHERE id=?", (sid,)
+            "UPDATE situation SET status='resolved', resolution='merged', merged_into=1 WHERE id=?",
+            (sid,),
         )
         recorded = await engine.apply_feedback(sid, "split", TS + 1.0)
         await store.commit()
@@ -653,7 +661,7 @@ async def test_the_audit_sweep_deletes_outside_its_bound_and_nothing_newer(store
                 "INSERT INTO dataset_pair (capture_run_id, alarm_a, alarm_b, situation_id, "
                 "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
                 "incumbent_linked, storm, truncated, evaluated_at, lifecycle, promoted_at) "
-                "VALUES (?, ?, ?, ?, 1.0, 0.5, 0.5, 1, 1, 0.9, 1, 0, 0, ?, 'dataset', ?)",
+                "VALUES (?, ?, ?, ?, 1.0, 0.5, 0.5, 1, 1, 0.9, true, false, false, ?, 'dataset', ?)",
                 (engine.capture.run_id, ids[0][0], ids[1][0], sid, ts, ts),
             )
         await store.commit()
@@ -682,7 +690,8 @@ async def test_a_prune_failure_degrades_capture_and_not_maintenance(store: Store
     await engine.start()
 
     async def boom(*_args: object, **_kwargs: object) -> None:
-        raise sqlite3.OperationalError("injected: database is locked")
+        # SQLite's "database is locked"; PostgreSQL's lock-contention storage failure.
+        raise asyncpg.exceptions.DeadlockDetectedError("injected: deadlock detected")
 
     store.prune_sink = boom  # type: ignore[assignment]
     await engine.maintenance(now=time.time(), retention_days=1.0, tick=0)
@@ -1201,7 +1210,7 @@ async def test_lowering_the_training_window_destroys_nothing(store: Store) -> No
             "INSERT INTO dataset_pair (capture_run_id, alarm_a, alarm_b, situation_id, delta_t_s, "
             "class_affinity, entity_affinity, a_epoch, e_epoch, score, incumbent_linked, storm, "
             "truncated, evaluated_at, lifecycle, promoted_at) "
-            "VALUES (?, 1, 2, ?, 1.0, 0.5, 0.5, 1, 1, 0.9, 1, 0, 0, ?, 'dataset', ?)",
+            "VALUES (?, 1, 2, ?, 1.0, 0.5, 0.5, 1, 1, 0.9, true, false, false, ?, 'dataset', ?)",
             (engine.capture.run_id, sid, recent, recent),
         )
         await store.commit()

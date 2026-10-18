@@ -64,10 +64,10 @@ async def build_fixture(store: Store) -> None:
 
     async with store.lock:
         cur = await store.conn.execute(
-            "INSERT INTO device (ip, first_seen, last_seen) VALUES ('10.0.0.1', ?, ?) RETURNING id",
+            "INSERT INTO ne (ip, first_seen, last_seen) VALUES ('10.0.0.1', ?, ?) RETURNING id",
             (TS, TS),
         )
-        device = int((await cur.fetchone())[0])  # type: ignore[index]
+        ne = int((await cur.fetchone())[0])  # type: ignore[index]
         cur = await store.conn.execute(
             "INSERT INTO alarm_class (oid, first_seen, last_seen) VALUES "
             "('1.3.6.1.4.1.9.1', ?, ?) RETURNING id",
@@ -81,9 +81,9 @@ async def build_fixture(store: Store) -> None:
             alarms: list[int] = []
             for m in range(members):
                 cur = await store.conn.execute(
-                    "INSERT INTO alarm (device_id, class_id, instance, status, first_seen, "
+                    "INSERT INTO alarm (ne_id, class_id, instance, status, first_seen, "
                     "last_seen, count) VALUES (?, ?, ?, 'active', ?, ?, 1) RETURNING id",
-                    (device, klass, f"{index}:{m}", TS + index, TS + index),
+                    (ne, klass, f"{index}:{m}", TS + index, TS + index),
                 )
                 alarm_id = int((await cur.fetchone())[0])  # type: ignore[index]
                 alarms.append(alarm_id)
@@ -121,7 +121,7 @@ async def build_fixture(store: Store) -> None:
         await store.commit()
 
     for (sid, alarms), (_m, _v, _op, _s, _a, _r, _c) in zip(situations, PLAN, strict=True):
-        engine.members[sid] = [Member(a, klass, device, TS) for a in alarms]
+        engine.members[sid] = [Member(a, klass, ne, TS) for a in alarms]
 
     async with store.lock:
         for index, ((sid, _alarms), plan) in enumerate(zip(situations, PLAN, strict=True)):

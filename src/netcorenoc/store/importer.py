@@ -32,7 +32,7 @@ from typing import Any
 import asyncpg
 
 from netcorenoc.store.base import StoreBase
-from netcorenoc.store.db import _decode_instant, _encode_instant
+from netcorenoc.store.codecs import decode_instant, encode_instant
 
 __all__ = ["SOURCE_SCHEMA", "ImportRefusedError", "ImportReport", "import_sqlite"]
 
@@ -215,8 +215,8 @@ async def import_sqlite(store: StoreBase, path: str) -> ImportReport:
         await raw.set_type_codec(
             "timestamptz",
             schema="pg_catalog",
-            encoder=_encode_instant,
-            decoder=_decode_instant,
+            encoder=encode_instant,
+            decoder=decode_instant,
             format="tuple",
         )
         history = [

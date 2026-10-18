@@ -339,20 +339,20 @@ def free_port() -> int:
         return int(s.getsockname()[1])
 
 
-async def test_main_run_serves_real_sockets(tmp_path: Path) -> None:
+async def test_main_run_serves_real_sockets(tmp_path: Path, db_url: str) -> None:
     """Smoke test of the single-process wiring: UDP trap in, HTTP API out."""
     from netcorenoc.crosscutting import auth
 
-    db = str(tmp_path / "run.db")
     settings = Settings(
-        db_path=db,
+        database_url=db_url,
+        data_dir=str(tmp_path),  # the spool, which lived beside the SQLite file
         trap_host="127.0.0.1",
         trap_port=free_port(),
         http_host="127.0.0.1",
         http_port=free_port(),
     )
     # The legacy shared token was removed in v0.3.0; pre-seed a real service token instead.
-    seed = Store(db)
+    seed = Store(db_url)
     await seed.open()
     async with seed.lock:
         await administration.bootstrap_admin(seed, 0.0)
@@ -582,10 +582,11 @@ async def test_f39_a_failed_write_leaves_nothing_to_commit(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """One `aiosqlite` connection is shared by the engine and the API. `main.py` rolls back;
-    `api.py` does not. A handler that mutates and then raises leaves the statement pending on
-    that shared connection, and the **next commit from any other caller adopts it** — so the
-    mutation lands, with no audit row, committed by someone else entirely.
+    """One writer connection (`aiosqlite`'s until v0.31.0, asyncpg's since ADR #452) is shared by
+    the engine and the API. `main.py` rolls back; `api.py` does not. A handler that mutates and
+    then raises leaves the statement pending on that shared connection, and the **next commit
+    from any other caller adopts it** — so the mutation lands, with no audit row, committed by
+    someone else entirely.
     """
     from netcorenoc.crosscutting import audit as audit_module
 

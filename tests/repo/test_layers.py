@@ -50,7 +50,7 @@ CROSS_CUTTING = "cross-cutting"
 DIRECTORY_LAYER: dict[str, str] = {
     "api": "http",  # the delivery layer; it kept its name (#209)
     "engine": "engine",  # the domain, in six subpackages (#208)
-    "store": "data",  # one SQLite connection under one asyncio lock; it kept its name (#209)
+    "store": "data",  # one PostgreSQL writer under one asyncio lock, and readers (#209, #452)
     "ingest": "ingest",  # the wire
     "crosscutting": "cross-cutting",  # every layer's concern, no layer's private concern
 }

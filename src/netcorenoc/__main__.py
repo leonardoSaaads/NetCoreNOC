@@ -49,7 +49,6 @@ from netcorenoc.crosscutting import audit
 from netcorenoc.crosscutting.administration import BOOTSTRAP_PASSWORD_CHARS
 from netcorenoc.crosscutting.auth import hash_password
 from netcorenoc.crosscutting.settings import Settings
-from netcorenoc.dbtools import _backup, _db_status, _import_sqlite, _open, _settings
 from netcorenoc.engine.correlate import scoring
 from netcorenoc.engine.dataset import seal
 from netcorenoc.engine.evaluation import promotion
@@ -62,6 +61,7 @@ from netcorenoc.engine.report import (
     shadow_render,
     shadow_report,
 )
+from netcorenoc.store.cli import _backup, _db_status, _import_sqlite, _open, _settings
 
 
 async def _verify(settings: Settings) -> int:

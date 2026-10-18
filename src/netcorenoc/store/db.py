@@ -13,12 +13,8 @@ waits for ``store.lock``. Under SQLite every console request queued behind the e
 is the change that measured 715 ms -> a few ms at p50 under a storm (`docs/plans/postgresql.md`). A
 write attempted inside a reader fails loudly — PostgreSQL refuses it in a read-only transaction.
 
-**Types.** asyncpg decodes `timestamptz` to `datetime`, `inet` to `ipaddress`, `jsonb` to text it
-expects to parse, and `numeric` to `Decimal`; the store computes in epoch seconds, strings and
-plain numbers. The codecs below make the mapping exact: an instant is microseconds on disk and a
-float in Python (a value with at most six decimals round-trips bit for bit), an address and a JSON
-document are their text, a `numeric` is an `int` when it is whole and a `float` otherwise, and a
-`boolean` is a `bool` that also accepts the 0/1 the code computed for SQLite.
+**Types** are `codecs.py`'s: every connection here, the writer and each reader, registers them, so
+the store reads an instant as epoch seconds and an address as its text.
 
 **SQL.** The store's statements keep SQLite's ``?`` and ``:name`` placeholders; :func:`translate`
 rewrites them to ``$n`` once per distinct statement, skipping quoted text and comments, and decides
@@ -38,6 +34,8 @@ from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from typing import Any
 
 import asyncpg
+
+from netcorenoc.store.codecs import setup as _setup
 
 log = logging.getLogger("netcorenoc")
 
@@ -63,77 +61,6 @@ STORAGE_ERRORS: tuple[type[BaseException], ...] = (
     OSError,
     TimeoutError,
 )
-
-# --- the codecs ----------------------------------------------------------------------------------
-
-#: PostgreSQL counts microseconds from 2000-01-01 UTC; the code counts seconds from 1970.
-_PG_EPOCH_US = 946_684_800_000_000
-_INFINITY = 0x7FFF_FFFF_FFFF_FFFF
-
-
-def _encode_instant(value: Any) -> tuple[int]:
-    if hasattr(value, "timestamp"):  # a datetime, for a caller that has one
-        value = value.timestamp()
-    seconds = float(value)
-    if seconds == float("inf"):
-        return (_INFINITY,)
-    if seconds == float("-inf"):
-        return (-_INFINITY - 1,)
-    return (round(seconds * 1_000_000) - _PG_EPOCH_US,)
-
-
-def _decode_instant(value: tuple[int]) -> float:
-    (microseconds,) = value
-    if microseconds == _INFINITY:
-        return float("inf")
-    if microseconds == -_INFINITY - 1:
-        return float("-inf")
-    return (microseconds + _PG_EPOCH_US) / 1_000_000
-
-
-def _decode_numeric(text: str) -> int | float:
-    return int(text) if text.lstrip("-").isdigit() else float(text)
-
-
-def _encode_bool(value: Any) -> str:
-    return "t" if value else "f"
-
-
-def _decode_bool(text: str) -> bool:
-    return text == "t"
-
-
-def _encode_json(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    import json
-
-    return json.dumps(value)
-
-
-async def _setup(raw: asyncpg.Connection) -> None:
-    """Register the codecs on one connection (the writer, and each reader as the pool opens it)."""
-    await raw.set_type_codec(
-        "timestamptz",
-        schema="pg_catalog",
-        encoder=_encode_instant,
-        decoder=_decode_instant,
-        format="tuple",
-    )
-    for name in ("inet", "cidr"):
-        await raw.set_type_codec(name, schema="pg_catalog", encoder=str, decoder=str, format="text")
-    for name in ("json", "jsonb"):
-        await raw.set_type_codec(
-            name, schema="pg_catalog", encoder=_encode_json, decoder=str, format="text"
-        )
-    await raw.set_type_codec(
-        "numeric", schema="pg_catalog", encoder=str, decoder=_decode_numeric, format="text"
-    )
-    # A flag is `boolean` on disk and `bool` in Python; an `int` 0/1 a caller computed is accepted.
-    await raw.set_type_codec(
-        "bool", schema="pg_catalog", encoder=_encode_bool, decoder=_decode_bool, format="text"
-    )
-
 
 # --- the statements ------------------------------------------------------------------------------
 

@@ -20,11 +20,15 @@ marked set as `members[:n]`, so a bag marked LOW reconstructs correctly by accid
 that case: it must agree both before and after the repair. Without it a green treatment could not
 distinguish a repaired judge from a broken probe — the trap Appendix B names and F53 is the
 instance of.
+
+**What moved with PostgreSQL (ADR #452).** The schema is the baseline `0031`, which declares only
+the three-column index, so the index guard reads `pg_indexes` where it read `sqlite_master`. Two
+tests were deleted with the SQLite migrations they exercised: the store run against a migration
+directory frozen at schema 14 (before `0015` added `bag_key`) and its control, which asserted the
+`_has_bag_key` schema probe — there is no schema 14 to open and no probe left to consult.
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 from netcorenoc.engine.dataset.labels import member_digest
 from netcorenoc.engine.evaluation.promotion_metrics import _asserting_bags, _hidden
@@ -41,7 +45,7 @@ _NEXT = [0]
 
 
 async def _situation(store: Store, n: int) -> tuple[int, list[int]]:
-    """One situation of `n` members, each on its own device, NE and class.
+    """One situation of `n` members, each on its own NE and class.
 
     Hand-built rather than replayed, and only here: these tests are about the **reader** of a
     stored label, so the bag has to be an exact, chosen shape — eight members whose marked pair is
@@ -54,11 +58,6 @@ async def _situation(store: Store, n: int) -> tuple[int, list[int]]:
         u = _NEXT[0]
         ip = f"10.1.{u // 250}.{u % 250 + 1}"
         cur = await store.conn.execute(
-            "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
-            (ip, BASE, BASE),
-        )
-        device = int((await cur.fetchone())[0])  # type: ignore[index]
-        cur = await store.conn.execute(
             "INSERT INTO ne (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
             (ip, BASE, BASE),
         )
@@ -69,9 +68,9 @@ async def _situation(store: Store, n: int) -> tuple[int, list[int]]:
         )
         cls = int((await cur.fetchone())[0])  # type: ignore[index]
         cur = await store.conn.execute(
-            "INSERT INTO alarm (device_id, class_id, ne_id, instance, severity, status, "
-            "first_seen, last_seen) VALUES (?, ?, ?, '', 3, 'active', ?, ?) RETURNING id",
-            (device, cls, ne, BASE, BASE),
+            "INSERT INTO alarm (class_id, ne_id, instance, severity, status, "
+            "first_seen, last_seen) VALUES (?, ?, '', 3, 'active', ?, ?) RETURNING id",
+            (cls, ne, BASE, BASE),
         )
         alarm = int((await cur.fetchone())[0])  # type: ignore[index]
         await store.conn.execute(
@@ -422,74 +421,19 @@ async def _bag_keys_on(store: Store, sid: int) -> list[str]:
 async def test_the_unique_index_is_the_three_column_one_and_the_old_one_is_gone(
     store: Store,
 ) -> None:
-    """`0015` replaces rather than adds, and a leftover two-column index would silently win.
+    """`0015` replaced rather than added, and a leftover two-column index would silently win.
 
-    Asserted against `sqlite_master` rather than by behaviour, because a database carrying **both**
-    indexes would pass every behavioural test above for the wrong reason: the narrower one would
-    refuse the second gesture and the widened key would look like it had no effect.
+    Asserted against the catalogue (`pg_indexes`) rather than by behaviour, because a database
+    carrying **both** indexes would pass every behavioural test above for the wrong reason: the
+    narrower one would refuse the second gesture and the widened key would look like it had no
+    effect.
     """
     cur = await store.conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='feedback'"
+        "SELECT indexname FROM pg_indexes "
+        "WHERE schemaname = current_schema() AND tablename = 'feedback'"
     )
     names = {str(r[0]) for r in await cur.fetchall()}
     assert "idx_feedback_situation_verdict_bag" in names
     assert "idx_feedback_situation_verdict" not in names, (
         "0007's two-column index survived 0015, so the second gesture is still refused"
     )
-
-
-async def test_a_database_frozen_before_0015_keeps_the_two_column_key(tmp_path: Path) -> None:
-    """The probe, and the property it buys: identical store code on an un-migrated database.
-
-    `tests/store/test_upgrade.py` runs the **current** store against a frozen migration directory,
-    which is what makes *"the migration changes behaviour and the code does not"* checkable. So the
-    write path has to know whether `bag_key` is there — and on a database where it is not, the bound
-    in force is `0007`'s, unchanged and byte-identical to what v0.16.0 issued.
-    """
-    import netcorenoc.store.lifecycle as store_mod
-
-    real_dir = store_mod.MIGRATIONS_DIR
-
-    class _FrozenAtV14:
-        def glob(self, pattern: str) -> list[Path]:
-            return [p for p in real_dir.glob(pattern) if int(p.name.split("_", 1)[0]) <= 14]
-
-    store_mod.MIGRATIONS_DIR = _FrozenAtV14()  # type: ignore[assignment]
-    try:
-        old = Store(str(tmp_path / "v0160.db"))
-        await old.open()
-        try:
-            assert await old.schema_version() == 14
-            assert old._has_bag_key is False
-            async with old.lock:
-                sid, alarms = await _situation(old, 3)
-                first = await old.add_feedback(sid, "confirm", BASE, principal_ref="u:1")
-                await old.conn.execute(
-                    "DELETE FROM situation_alarm WHERE situation_id=? AND alarm_id=?",
-                    (sid, alarms[0]),
-                )
-                again = await old.add_feedback(sid, "confirm", BASE + 1, principal_ref="u:1")
-                await old.commit()
-            assert first.inserted is True
-            assert again.inserted is False, (
-                "an un-migrated database must keep 0007's two-column bound; the widened key is a "
-                "property of the schema, not of the code"
-            )
-        finally:
-            await old.close()
-    finally:
-        store_mod.MIGRATIONS_DIR = real_dir
-
-
-async def test_the_probe_is_true_on_a_migrated_database(store: Store) -> None:
-    """The control for the freeze above: on a current database the probe says so.
-
-    A probe that answered `False` everywhere would make the test above pass while the repair did
-    nothing at all, which is `test_the_preregistration_exists`'s vacuity trap in a different file.
-    """
-    assert store._has_bag_key is True
-    # v0.26.0: 25 -> 26, `0026_learned_decider` (ADRs #405, #412, #413); v0.27.0: 26 -> 27,
-    # `0027_league_and_pending` (ADRs #423, #428); v0.29.0: 27 -> 28, `0028_moved_members`
-    # (ADR #436); v0.30.0: 28 -> 29, `0029_recovery_email` (ADR #445); unreleased: 29 -> 30,
-    # `0030_pipeline_sample` (ADRs #450, #451).
-    assert await store.schema_version() == Store.latest_schema_version() == 30
