@@ -4,8 +4,10 @@
 appliance used until v0.30.0. It reads the file with the standard library's ``sqlite3``, read-only,
 so no SQLite driver is a runtime dependency any more, and it refuses rather than guesses:
 
-* the file must be at **schema 30** (v0.30.0) and pass ``PRAGMA integrity_check`` — an older
-  appliance is upgraded with v0.30.0 first, which applies its own migrations;
+* the file must be at **schema 29 or 30** — v0.30.x, released at 29, or a build of the unreleased
+  `0030` — and pass ``PRAGMA integrity_check``; an older appliance is upgraded with v0.30.x first,
+  which applies its own migrations. `0030` only added nullable `host_sample` columns, so a schema-29
+  file imports with them NULL: "not measured", which is what they meant before `0030`;
 * the target schema must hold **no history**: only the four rows a new schema starts with, which
   the source's own copies replace.
 
@@ -36,10 +38,11 @@ from netcorenoc.store.codecs import decode_instant, encode_instant
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.store import Store
 
-__all__ = ["SOURCE_SCHEMA", "ImportRefusedError", "ImportReport", "import_sqlite"]
+__all__ = ["SOURCE_SCHEMAS", "ImportRefusedError", "ImportReport", "import_sqlite"]
 
-#: The last SQLite schema (v0.30.0, migration `0030`). Anything else is refused.
-SOURCE_SCHEMA = 30
+#: The SQLite schemas this reads: v0.30.x as released (29) and with the unreleased `0030`. Anything
+#: else is refused.
+SOURCE_SCHEMAS = (29, 30)
 
 #: Every table, in an order that satisfies the foreign keys. ``(source, target)``.
 TABLES: tuple[tuple[str, str], ...] = (
@@ -159,11 +162,12 @@ def _source(path: str) -> sqlite3.Connection:
         raise ImportRefusedError(f"no SQLite database at {path!r}")
     source = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     version = int(source.execute("PRAGMA user_version").fetchone()[0])
-    if version != SOURCE_SCHEMA:
+    if version not in SOURCE_SCHEMAS:
         source.close()
         raise ImportRefusedError(
-            f"{path!r} is at SQLite schema {version}; this import reads schema {SOURCE_SCHEMA}. "
-            "Start NetCoreNOC v0.30.0 on it once, so it applies its own migrations, then import."
+            f"{path!r} is at SQLite schema {version}; this import reads schemas "
+            f"{' and '.join(map(str, SOURCE_SCHEMAS))}. Start NetCoreNOC v0.30.x on it once, so it "
+            "applies its own migrations, then import."
         )
     verdict = str(source.execute("PRAGMA integrity_check").fetchone()[0])
     if verdict.lower() != "ok":

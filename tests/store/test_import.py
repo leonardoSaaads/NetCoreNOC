@@ -263,17 +263,52 @@ async def test_the_engine_resumes_on_an_imported_history(tmp_path: Path, db_url:
         await store.close()
 
 
-async def test_a_source_not_at_schema_30_is_refused(tmp_path: Path, db_url: str) -> None:
+async def test_a_source_older_than_v030_is_refused(tmp_path: Path, db_url: str) -> None:
     path = tmp_path / "old.db"
     build_v030(path)
     db = sqlite3.connect(path)
+    db.execute("PRAGMA user_version = 28")
+    db.commit()
+    db.close()
+    store = await _open(db_url)
+    try:
+        with pytest.raises(importer.ImportRefusedError, match="schema 28"):
+            await importer.import_sqlite(store, str(path))
+    finally:
+        await store.close()
+
+
+async def test_a_v030_as_released_schema_29_imports_with_the_0030_columns_unmeasured(
+    tmp_path: Path, db_url: str
+) -> None:
+    """v0.30.x shipped at schema 29; `0030` only added nullable `host_sample` columns. A released
+    appliance's file imports, and the columns it never had read as "not measured" (NULL)."""
+    path = tmp_path / "released.db"
+    build_v030(path)
+    db = sqlite3.connect(path)
+    db.execute(
+        "INSERT INTO host_sample (at, cpu_pct, mem_pct, disk_pct, db_mb, queue_depth, "
+        "traps_per_s, latency_ms) VALUES (?, 1.5, 2.5, 3.5, 4.5, 6, 7.5, 8.5)",
+        (NOW,),
+    )
+    db.commit()
+    db.execute(
+        "CREATE TABLE hs AS SELECT at, cpu_pct, mem_pct, disk_pct, db_mb, queue_depth, "
+        "traps_per_s, latency_ms FROM host_sample"
+    )
+    db.execute("DROP TABLE host_sample")
+    db.execute("ALTER TABLE hs RENAME TO host_sample")
     db.execute("PRAGMA user_version = 29")
     db.commit()
     db.close()
     store = await _open(db_url)
     try:
-        with pytest.raises(importer.ImportRefusedError, match="schema 29"):
-            await importer.import_sqlite(store, str(path))
+        report = await importer.import_sqlite(store, str(path))
+        assert report.ok, report.render()
+        cur = await store.conn.execute(
+            "SELECT queue_depth, latency_ms, classified, spool_mb FROM host_sample"
+        )
+        assert [tuple(r) for r in await cur.fetchall()] == [(6, 8.5, None, None)]
     finally:
         await store.close()
 

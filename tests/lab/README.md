@@ -76,7 +76,7 @@ tests/lab/
 │   └── scenario.py       the scenario format, and the refusal of ground truth
 ├── scenarios/
 │   └── pon_fiber_cut.json
-├── state/                phase file and lab.db (git-ignored)
+├── state/                phase file and run descriptor (git-ignored)
 └── logs/                 one log per process (git-ignored)
 ```
 

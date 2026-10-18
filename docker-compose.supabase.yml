@@ -1,8 +1,8 @@
 # NetCoreNOC on a managed PostgreSQL — Supabase, or any other (RDS, Cloud SQL, Azure, Neon,
 # your own cluster) — instead of the bundled `postgres` service (ADR #452):
 #
-#     mkdir -p secrets && printf '%s' '<the database password>' > secrets/db_password.txt
-#     chmod 600 secrets/db_password.txt
+#     mkdir -p secrets && sh -c 'umask 077; cat > secrets/db_password.txt'   # type it, Ctrl-D
+#     sudo chown 10001 secrets/db_password.txt    # the appliance's user in the container reads it
 #     export NETCORENOC_DATABASE_URL='postgresql://postgres.<project-ref>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require'
 #     docker compose -f docker-compose.yml -f docker-compose.supabase.yml up --build netcorenoc
 #

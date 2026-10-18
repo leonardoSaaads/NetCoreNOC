@@ -28,13 +28,24 @@ from netcorenoc.store.types import MIGRATIONS_DIR
 # supported seam rather than an accident of import order.
 log = logging.getLogger("netcorenoc")
 
-__all__ = ["MIGRATIONS_DIR", "MINIMUM_SERVER", "LifecycleMixin", "MissingSchemaError"]
+__all__ = [
+    "MIGRATIONS_DIR",
+    "MINIMUM_SERVER",
+    "LifecycleMixin",
+    "MissingSchemaError",
+    "StoreRefusedError",
+]
 
 #: PostgreSQL 15: `UNIQUE NULLS NOT DISTINCT`, and the SQL-standard function bodies of `0031`.
 MINIMUM_SERVER = 150000
 
 
-class MissingSchemaError(RuntimeError):
+class StoreRefusedError(RuntimeError):
+    """The server answered and the store will not use it: too old, or a second appliance on one
+    schema. A setting to correct, said in one line — never a traceback."""
+
+
+class MissingSchemaError(StoreRefusedError):
     """The schema is not there, and the store was opened not to create it (the CLI's tools)."""
 
 
@@ -51,16 +62,16 @@ class LifecycleMixin(StoreBase):
         server = int(await raw.fetchval("SHOW server_version_num"))
         if server < MINIMUM_SERVER:
             await self._db.close()
-            raise RuntimeError(
+            raise StoreRefusedError(
                 f"PostgreSQL {server // 10000} is too old: NetCoreNOC needs 15 or newer"
             )
         if self._exclusive and not await raw.fetchval(
             "SELECT pg_try_advisory_lock($1)", _lock_key(self._db.schema, "instance")
         ):
             await self._db.close()
-            raise RuntimeError(
+            raise StoreRefusedError(
                 f"another NetCoreNOC is already using schema {self._db.schema!r} of this "
-                "database: one appliance per schema"
+                "database: one appliance per schema (stop it, or set NETCORENOC_DB_SCHEMA)"
             )
         if not self._create and not await raw.fetchval(
             "SELECT 1 FROM pg_namespace n JOIN pg_class c ON c.relnamespace = n.oid "
@@ -82,7 +93,12 @@ class LifecycleMixin(StoreBase):
         key = _lock_key(self._db.schema, "migrate")
         async with raw.transaction():
             await raw.execute("SELECT pg_advisory_xact_lock($1)", key)
-            await raw.execute(f'CREATE SCHEMA IF NOT EXISTS "{self._db.schema}"')
+            # Only when it is missing: `CREATE SCHEMA IF NOT EXISTS` needs CREATE on the database
+            # even when the schema exists, and a role a DBA made a schema for need not hold it.
+            if not await raw.fetchval(
+                "SELECT 1 FROM pg_namespace WHERE nspname = $1", self._db.schema
+            ):
+                await raw.execute(f'CREATE SCHEMA "{self._db.schema}"')
             await raw.execute(
                 "CREATE TABLE IF NOT EXISTS schema_migrations ("
                 "version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, "

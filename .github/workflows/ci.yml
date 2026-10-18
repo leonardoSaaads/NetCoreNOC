@@ -372,9 +372,18 @@ jobs:
           docker compose ps --format '{{.Service}} {{.Ports}}' | tee ports.txt
           ! grep -E '^postgres .*->5432' ports.txt  # exposed on the network, published nowhere
           docker compose logs netcorenoc | grep -q 'applying migration 0031_postgresql.sql'
+      - name: The appliance's role is not a superuser and owns only its database
+        run: |
+          docker compose exec -T postgres sh -c 'PGPASSWORD="$(cat /run/netcorenoc-secrets/db_password)" \
+            psql -h 127.0.0.1 -U netcorenoc -d netcorenoc -Atc \
+            "SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = current_user"' \
+            | tee role.txt
+          grep -qx 'f|f|f' role.txt
       - name: The password was generated, and is in no environment
         run: |
           docker compose exec -T postgres sh -c 'test -s /run/netcorenoc-secrets/db_password'
+          docker compose exec -T postgres sh -c 'test -s /run/netcorenoc-secrets/db_admin_password'
+          ! docker compose exec -T netcorenoc test -r /run/netcorenoc-secrets/db_admin_password
           ! docker compose exec -T netcorenoc env | grep -i -E 'password=.+'
           ! docker compose exec -T postgres env | grep -E '^POSTGRES_PASSWORD='
       - name: The managed-database override parses

@@ -2,7 +2,8 @@
 
 Symptom first, then what to check. Commands assume Docker Compose. Elsewhere, replace the
 `docker compose exec netcorenoc` prefix and point the command at the database — with the bundled
-systemd unit: `sudo NETCORENOC_DB=/var/lib/netcorenoc/netcorenoc.db /opt/netcorenoc/.venv/bin/python -m netcorenoc …`.
+systemd unit, whose database URL is the default:
+`sudo NETCORENOC_DATABASE_PASSWORD_FILE=/etc/netcorenoc/db_password /opt/netcorenoc/.venv/bin/python -m netcorenoc …`.
 
 ## Signing in
 
@@ -114,8 +115,9 @@ NETCORENOC_TRAP_PORT='' is not a whole number of a UDP port. Unset it to use the
 NETCORENOC_TLS_CERT is set and NETCORENOC_TLS_KEY is not. Built-in TLS needs both; …
 ```
 
-A blank line in `.env` is the usual cause. `NETCORENOC_API_TOKEN` and any `OPTICORR_*` variable
-are refused on purpose: they were removed, and the message names the replacement.
+A blank line in `.env` is the usual cause. `NETCORENOC_API_TOKEN`, any `OPTICORR_*` variable and
+`NETCORENOC_DB` are refused on purpose: they were removed, and the message names the replacement.
+The database's own refusals are under [The database](#the-database).
 
 ### Permission denied binding UDP 162
 
@@ -178,9 +180,74 @@ The appliance knows it missed traffic, and when. Investigate the network path an
 
 ### "batch(es) failed to persist due to a storage error"
 
-The database could not be written — usually a full disk. Free space on the volume holding
-`NETCORENOC_DB`; the appliance keeps running, retries the same batch with backoff, and resumes by
-itself. No trap is dropped: they wait in the spool (ADR #450).
+The database could not be written: the server is down, restarting or failing over, the connection
+dropped, or the server's disk or connection slots are full. The appliance keeps running,
+reconnects, retries the same batch with backoff, and resumes by itself. No trap is dropped: they
+wait in the spool (ADR #450). Check the server — `db status`, and its own log
+(`docker compose logs postgres`).
+
+## The database
+
+### The appliance will not start: "NETCORENOC_DATABASE_URL=… could not be opened"
+
+The message carries the driver's reason after the URL, with the password shown as `***`:
+
+| The reason says | What to check |
+|---|---|
+| `Connect call failed`, `Connection refused`, a name that does not resolve | The server is not running, or the host or port is wrong. With Compose the appliance waits for PostgreSQL's health check and reaches it as `postgres` on the internal network; from the host the database is deliberately unreachable |
+| `password authentication failed` | The password file and the role disagree. With Compose: the `netcorenoc-secrets` volume was recreated while `netcorenoc-pgdata` kept the old password — PostgreSQL applies its password file only when it creates the database. Restore that volume; without a copy, the role's password has to be reset inside the database container to the new file's content |
+| `database "…" does not exist`, `role "…" does not exist` | Create them ([`install.md`](install.md#the-database-on-the-same-host)), or fix the URL |
+| `permission denied for database` | The schema is missing and the role may not create one. Make the role the database's owner, grant it `CREATE` on the database, or create the schema for it (`CREATE SCHEMA netcorenoc AUTHORIZATION <role>`) |
+| `SSL`, `certificate` | `sslmode` in the URL: `require` to encrypt, `verify-full` with `sslrootcert` to verify the server ([`configure.md`](configure.md#database)) |
+
+`PostgreSQL 14 is too old: NetCoreNOC needs 15 or newer` means what it says: upgrade the server.
+
+### "another NetCoreNOC is already using schema … of this database"
+
+**One appliance per schema**: the first holds an instance lock (a session advisory lock) on it for
+as long as it runs, and a second one stops at start rather than write the same history twice. To
+run two appliances on one database, give each its own `NETCORENOC_DB_SCHEMA`.
+
+If no other appliance is running, the server is still holding the session of one that vanished
+without closing it — a host that lost power, a cut network — and lets the lock go when it notices.
+To end that session at once, as a role allowed to:
+
+```sql
+SELECT pid, client_addr, backend_start FROM pg_stat_activity WHERE application_name = 'netcorenoc';
+SELECT pg_terminate_backend(<pid>);
+```
+
+The maintenance CLI never takes the lock, so it runs beside the appliance.
+
+### The CLI says "no NetCoreNOC database at … has no NetCoreNOC tables"
+
+The CLI **refuses a schema that is not there** instead of creating it, so a command pointed at the
+wrong database fails instead of answering about an empty one. Usually the variables are not the
+appliance's: run it where they are set (`docker compose exec netcorenoc python -m netcorenoc …`),
+or set `NETCORENOC_DATABASE_URL`, `NETCORENOC_DATABASE_PASSWORD_FILE` and `NETCORENOC_DB_SCHEMA` as
+the appliance has them. On a new installation, start the appliance once or run
+`python -m netcorenoc db migrate`.
+
+### "NETCORENOC_DB=… names a SQLite database"
+
+The variable of v0.30.0 and earlier is still set. If the file has not been imported yet, follow
+[`MIGRATION.md`](../MIGRATION.md); then unset it — with systemd it may sit in a drop-in
+(`systemctl cat netcorenoc` shows them). Only `db import-sqlite` runs while it is set.
+
+### A warning: "Migration … changed after it was applied to this database"
+
+Each applied migration is recorded with its SHA-256 in `schema_migrations`. This warning — in the
+console, not a stop, so traps keep flowing — means the file installed now differs from the one
+applied: a modified installation or a pre-release build. Reinstall the release. Its sibling, *"The
+database is at schema N, newer than this release's M"*, means a newer release migrated this
+database: run that release, or restore the backup taken before it.
+
+### PostgreSQL logs "page verification failed, calculated checksum … but expected …"
+
+The bundled server keeps **data checksums**, so a page the disk corrupted is refused when it is read
+(`invalid page in block …`) rather than returned as data, and the statement that read it fails.
+Stop both containers, check the disk under the `netcorenoc-pgdata` volume, and restore the last
+dump ([`operate.md`](operate.md#8-backups-upgrades-and-checks)) onto healthy storage.
 
 ## The console
 
@@ -191,8 +258,10 @@ Node 22 or newer is not on `PATH`. The console tests skip rather than fail; inst
 ## When you are stuck
 
 ```sh
+docker compose exec netcorenoc python -m netcorenoc db status      # which database, which schema
 docker compose exec netcorenoc python -m netcorenoc audit verify   # is the audit log intact?
 docker compose logs --tail 200 netcorenoc                          # what the appliance said
+docker compose logs --tail 200 postgres                            # what the database said
 make checksums                                                     # are the console files intact?
 ```
 

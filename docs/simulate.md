@@ -20,24 +20,36 @@ Every command below was run against this release on Linux.
 
 ### 1. Prepare (once)
 
-Python 3.12 or newer and Git. On Debian or Ubuntu: `sudo apt install python3.12-venv git make`.
+Python 3.12 or newer, Git, and PostgreSQL 15 or newer for the appliance's database (Debian 12 and
+Ubuntu 24.04 ship one). On Debian or Ubuntu:
 
 ```sh
+sudo apt install python3.12-venv git make postgresql
+sudo -u postgres createuser --createdb "$USER"   # a role named after you; no password on this host
+createdb netcorenoc_sim                          # a database for test traffic only
 git clone https://github.com/leonardoSaaads/NetCoreNOC.git
 cd NetCoreNOC
 python3.12 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 ```
 
+With Docker and no local PostgreSQL, `make pg-test-up` starts a throwaway one instead; use
+`postgresql://netcorenoc:netcorenoc@127.0.0.1:55432/postgres` as the URL below, and
+`make pg-test-down` to remove it.
+
 ### 2. Start the appliance (terminal 1)
 
 ```sh
-NETCORENOC_DB=sim.db NETCORENOC_TRAP_PORT=1162 NETCORENOC_HTTP_PORT=8081 \
+NETCORENOC_DATABASE_URL=postgresql:///netcorenoc_sim \
+NETCORENOC_TRAP_PORT=1162 NETCORENOC_HTTP_PORT=8081 \
   .venv/bin/python -m netcorenoc.main
 ```
 
 * Port **1162** needs no root (162 does).
-* `sim.db` keeps test traffic apart from any real database. Delete `sim.db*` to start over.
+* `postgresql:///netcorenoc_sim` reaches the local server over its Unix socket as your own role.
+  The appliance creates its schema on the first start.
+* `netcorenoc_sim` keeps test traffic apart from any real database. To start over:
+  `dropdb netcorenoc_sim && createdb netcorenoc_sim`.
 * The first start prints a one-time `admin` password. Open <http://localhost:8081/>, sign in as
   `admin` and choose a new password.
 
@@ -109,8 +121,11 @@ and the tools then run exactly as on Linux, and the browser on Windows reaches t
    prerequisites:
 
    ```sh
-   sudo apt update && sudo apt install -y python3.12-venv git make
+   sudo apt update && sudo apt install -y python3.12-venv git make postgresql
+   sudo -u postgres createuser --createdb "$USER" && createdb netcorenoc_sim
    ```
+
+   If `createdb` cannot connect, the server is not running: `sudo service postgresql start`.
 
 3. Clone **inside the Linux file system** (your home directory, not `/mnt/c/...`: it is much faster
    and keeps Linux file permissions), then follow [Linux](#linux) steps 1 to 4 unchanged:

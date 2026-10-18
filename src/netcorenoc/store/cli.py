@@ -3,7 +3,7 @@
 `python -m netcorenoc` (`__main__.py`) runs the commands; this module is how each of them reaches
 the appliance's PostgreSQL database (ADR #452). Every command opens the store **without** the
 instance lock, so it runs beside a live appliance, and **without** creating the schema — except
-``db import-sqlite``, whose job is to create it.
+``db migrate`` and ``db import-sqlite``, whose job is to create it.
 """
 
 from __future__ import annotations
@@ -21,14 +21,14 @@ from netcorenoc.crosscutting.settings import (
     redact_url,
     split_password,
 )
-from netcorenoc.store import OPEN_ERRORS, MissingSchemaError, Store
+from netcorenoc.store import OPEN_ERRORS, Store, StoreRefusedError
 
 __all__ = ["_backup", "_db_status", "_import_sqlite", "_open", "_settings"]
 
 #: What opening the store can raise that an operator fixes by pointing at the right database: a
 #: refused or unreachable server, a role or password it does not accept, a database or schema that
 #: is not there.
-_OPEN_ERRORS: tuple[type[BaseException], ...] = (MissingSchemaError, *OPEN_ERRORS)
+_OPEN_ERRORS: tuple[type[BaseException], ...] = (StoreRefusedError, *OPEN_ERRORS)
 
 
 def _settings(*, importing: bool = False) -> Settings:
@@ -105,8 +105,8 @@ def _backup(settings: Settings, target: str) -> int:
     if dump is None or restore is None:
         print(
             "pg_dump and pg_restore are needed (the PostgreSQL client tools). With Docker "
-            "Compose: docker compose exec postgres pg_dump -Fc -n netcorenoc -U netcorenoc "
-            "netcorenoc > backup.dump",
+            "Compose they run in the postgres container, with the generated password: "
+            "docs/operate.md, Backup.",
             file=sys.stderr,
         )
         return 2

@@ -48,7 +48,7 @@ from netcorenoc.store.ingest_gaps import IngestGapMixin
 from netcorenoc.store.inventory import InventoryMixin
 from netcorenoc.store.league import LeagueMixin
 from netcorenoc.store.learned import LearnedMixin
-from netcorenoc.store.lifecycle import LifecycleMixin, MissingSchemaError
+from netcorenoc.store.lifecycle import LifecycleMixin, MissingSchemaError, StoreRefusedError
 from netcorenoc.store.maintenance_windows import MaintenanceWindowMixin
 from netcorenoc.store.mw_compile import MaintenanceCompileMixin
 from netcorenoc.store.mw_ledger import MaintenanceLedgerMixin
@@ -91,6 +91,7 @@ __all__ = [
     "MissingSchemaError",
     "Store",
     "StoreBase",
+    "StoreRefusedError",
 ]
 
 
@@ -175,8 +176,9 @@ class Store(
         """A store for the PostgreSQL database at ``dsn``, in ``schema`` (ADR #452).
 
         ``readers`` is the size of the pool API reads run on (`reading()`); ``statement_cache_size``
-        is asyncpg's per-connection prepared-statement cache, which must be ``0`` behind a pooler in
-        transaction mode (Supabase's port 6543, PgBouncer); ``exclusive`` refuses a second appliance
+        is asyncpg's per-connection prepared-statement cache (``0`` disables it; a pooler in
+        transaction mode is unsupported regardless — the instance lock is a session lock);
+        ``exclusive`` refuses a second appliance
         against the same schema; ``create=False`` refuses a schema that is not there instead of
         creating it (the CLI's tools, which must never read an empty history as the real one).
         """

@@ -398,6 +398,24 @@ async def test_an_unopenable_database_names_the_variable_and_the_path(
     assert "the database exists" in message, message
 
 
+async def test_a_second_appliance_on_one_schema_is_a_one_line_refusal(db_url: str) -> None:
+    """The instance lock's refusal is a setting to correct, said like every other one (F69): a
+    `SettingsError` naming the variable and the reason — never a traceback."""
+    from netcorenoc.crosscutting.settings import Settings, SettingsError
+    from netcorenoc.runner import run
+    from netcorenoc.store import Store
+
+    first = Store(db_url)
+    await first.open()
+    try:
+        with pytest.raises(SettingsError) as caught:
+            await run(Settings(database_url=db_url))
+    finally:
+        await first.close()
+    message = str(caught.value)
+    assert "NETCORENOC_DATABASE_URL" in message and "one appliance per schema" in message, message
+
+
 def test_a_denied_trap_raises_a_warning_and_a_clean_receiver_does_not() -> None:
     """F68's repair at the seam. The console renders `warnings` as a banner on every screen, so
     this is the channel that reaches an operator without a log line per packet."""

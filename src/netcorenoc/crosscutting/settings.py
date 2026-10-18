@@ -208,8 +208,9 @@ class Settings:
     # only `redact_url(database_url)` is ever logged or shown.
     database_url: str = "postgresql://netcorenoc@localhost:5432/netcorenoc"
     db_schema: str = "netcorenoc"
-    # Connections API reads run on, besides the one writer; and asyncpg's prepared-statement cache,
-    # which must be 0 behind a pooler in transaction mode (PgBouncer, Supabase's port 6543).
+    # Connections API reads run on, besides the one writer; and asyncpg's prepared-statement cache
+    # per connection (0 disables it, for a proxy that cannot keep prepared statements). A pooler in
+    # transaction mode is unsupported either way: the instance lock is a session lock (ADR #452).
     db_readers: int = 4
     db_statement_cache: int = 1024
     # Files the appliance keeps on its own disk: the trap spool (ADR #450).

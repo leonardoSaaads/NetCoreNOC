@@ -13,9 +13,12 @@ Two mechanisms, and the difference matters:
 
 ## Environment variables
 
+The database's own variables — where it is, its password, the schema — are under
+[Database](#database).
+
 | Variable | Default | What it does, and what it costs |
 |---|---|---|
-| `NETCORENOC_DB` | `netcorenoc.db` | Path to the SQLite file (WAL mode). Put it on a real volume: it is the entire state |
+| `NETCORENOC_DATA_DIR` | `.` | The directory the appliance keeps its own files in: the trap spool, `<data dir>/spool`. Put it on a real volume (the image sets `/home/netcorenoc`, the systemd unit `/var/lib/netcorenoc`) |
 | `NETCORENOC_TRAP_HOST` | `0.0.0.0` | Trap listener bind address. Bind to the management interface rather than everything |
 | `NETCORENOC_TRAP_PORT` | `162` | Trap listener UDP port. 162 needs `CAP_NET_BIND_SERVICE` or root; 1162 needs neither |
 | `NETCORENOC_HTTP_HOST` | `0.0.0.0` | Console and API bind address |
@@ -30,14 +33,15 @@ Two mechanisms, and the difference matters:
 | `NETCORENOC_KPI_TARGET_S` | `60` | The classification KPI's **target**: seconds from each trap's own arrival to the commit that places it in a situation. A trap past it is counted as late on the Overview's trap pipeline. An admin's value saved on **Settings → System → Live configuration** overrides this one, without a restart (#451) |
 | `NETCORENOC_KPI_LIMIT_S` | `120` | The KPI's **limit** (at or above the target): a trap past it is counted as a breach and raises a warning. Neither number ever discards a trap — a late trap is still classified (#451) |
 | `NETCORENOC_INGEST_PROCESSES` | `1` | `1` receives traps in a **process of their own** that spools each datagram raw, with decoding in another (#449, #450). `0` keeps the receiver in the main process **without the spool**: a trap that arrives while its queue is full is dropped. For development only. Give the container at least two CPUs with `1` |
-| `NETCORENOC_SPOOL_DIR` | *(beside the database)* | Where accepted traps wait, on disk, to be classified (`<database directory>/spool`). Mode 0700; put it on the same real volume as the database (#450) |
+| `NETCORENOC_SPOOL_DIR` | *(`<data dir>/spool`)* | Where accepted traps wait, on disk, to be classified. Mode 0700; put it on a real volume, on the appliance's own host (#450) |
 | `NETCORENOC_SPOOL_MAX_MB` | `2048` | The spool's ceiling. About 200 bytes a trap, so the default holds about ten million waiting traps; past it new traps are counted as dropped and a warning says so. Classified traps are deleted from it as the database makes them durable (#450) |
 
 **Every one of them is validated at startup and refuses by name.** A port outside 1–65535, a
 retention that is not a number, an allowlist entry that is not a CIDR, a TLS path that cannot be
-read, or exactly one of the two TLS variables set: the process prints one sentence naming the
-variable and exits 2. An empty value is not the same as an unset one — `NETCORENOC_RETENTION_DAYS=`
-is a value, and it is refused.
+read, exactly one of the two TLS variables set, a database URL that is not `postgresql://`, a
+password file that cannot be read, a schema name that is not one: the process prints one sentence
+naming the variable and exits 2. An empty value is not the same as an unset one —
+`NETCORENOC_RETENTION_DAYS=` is a value, and it is refused.
 
 ### The host's socket buffer, for storms
 
@@ -58,18 +62,89 @@ echo 'net.core.rmem_max=33554432' | sudo tee /etc/sysctl.d/90-netcorenoc.conf
 `make storm` (`tools/storm_check.py`) measures what this host actually does with a storm, trap by
 trap, and exits non-zero if any trap was not kept (#447-#451).
 
-### Two variables that are hard startup errors
+### Three variables that are hard startup errors
 
-Setting either of these does not warn — the process **refuses to start** and names the replacement:
+Setting any of these does not warn — the process **refuses to start** and names the replacement:
 
 * **`NETCORENOC_API_TOKEN`** — the shared API token was removed in v0.3.0. Use service tokens
   (per-identity, revocable, shown once) from the **Service tokens** screen.
 * **Any `OPTICORR_*` variable** — the legacy prefix from before the rename was removed in v0.6.0.
+* **`NETCORENOC_DB`** — the SQLite file of v0.30.0 and earlier (#452). The message names the
+  command that imports it into PostgreSQL, `python -m netcorenoc db import-sqlite <file>`; unset
+  the variable once that is done. The maintenance CLI refuses it too, except that one command.
 
-Both refuse rather than ignore, and the reason is worth stating: an ignored `OPTICORR_ALLOWLIST`
-would mean every trap source is accepted while the operator believed otherwise. A silently ignored
-security setting is a regression, not an inconvenience. [`MIGRATION.md`](../MIGRATION.md) has the
-rename table.
+All three refuse rather than ignore, and the reason is worth stating: an ignored
+`OPTICORR_ALLOWLIST` would mean every trap source is accepted while the operator believed otherwise,
+and an ignored `NETCORENOC_DB` would start on an empty database that looks exactly like the whole
+history lost. A silently ignored setting is a regression, not an inconvenience.
+[`MIGRATION.md`](../MIGRATION.md) has the rename table and the import.
+
+## Database
+
+NetCoreNOC keeps its whole state in **PostgreSQL 15 or newer**, in one schema of one database
+(#452). At every start the appliance creates the schema if it is missing — revoking its privileges
+from `PUBLIC` — and applies the pending migrations, each in its own transaction and recorded with a
+checksum in `schema_migrations`. Docker Compose runs a PostgreSQL for it and needs none of the
+variables below; [`install.md`](install.md#the-database-on-the-same-host) creates a role and a
+database on a host.
+
+| Variable | Default | What it does, and what it costs |
+|---|---|---|
+| `NETCORENOC_DATABASE_URL` | `postgresql://netcorenoc@localhost:5432/netcorenoc` | The server, the role and the database. Query parameters go to the driver: `sslmode=require` encrypts, `sslmode=verify-full&sslrootcert=<file>` also verifies the server, `host=/var/run/postgresql` uses a Unix socket. Keep the password out of it — it is an environment variable — and use the file below |
+| `NETCORENOC_DATABASE_PASSWORD_FILE` | *(unset)* | A file whose content is the role's password: a Docker or Kubernetes secret, a systemd credential (`LoadCredential=`). Read once at start, surrounding whitespace ignored, never copied into the environment. The log, the CLI's messages and the Settings screen show the URL with the password as `***` |
+| `NETCORENOC_DB_SCHEMA` | `netcorenoc` | The schema the tables live in: lower-case letters, digits and `_`. **One appliance per schema**: the appliance holds a session advisory lock on it, and a second one started against the same schema stops at start. Two appliances may share a database in two schemas |
+| `NETCORENOC_DB_READERS` | `4` | Connections, 1–64, that the console's reads run on besides the one writer. Each read is its own `REPEATABLE READ READ ONLY` snapshot and never waits for the engine's batch. The appliance holds at most 1 + this many connections |
+| `NETCORENOC_DB_STATEMENT_CACHE` | `1024` | Prepared statements the driver (`asyncpg`) keeps per connection; `0` turns the cache off. Lowering it saves server memory and costs a parse per statement |
+
+The maintenance CLI (`python -m netcorenoc …`) reads the same variables and **refuses a schema
+that is not there** rather than creating it — an `audit verify` run against an empty schema would
+report someone else's empty chain as intact. `db migrate` and `db import-sqlite` are the two
+commands that create it.
+
+What PostgreSQL does with the data — durability, vacuum, replication, point-in-time recovery — is
+the server's configuration, not the appliance's. The bundled server's settings are in
+`docker-compose.yml` (`command:`), sized for 1 GiB and commented.
+
+### A managed PostgreSQL (Supabase and others)
+
+`docker-compose.supabase.yml` runs the appliance alone against a database you already have: it
+drops the bundled `postgres` and `db-secret` from the appliance's dependencies and gives it the
+password as a Compose secret, `secrets/db_password.txt`. It needs Docker Compose 2.24 or newer.
+
+```sh
+mkdir -p secrets
+sh -c 'umask 077; cat > secrets/db_password.txt'   # the database password, Enter, Ctrl-D
+sudo chown 10001 secrets/db_password.txt            # the appliance's user in the container
+# in .env, WITHOUT the password (Supabase: Project Settings -> Database -> Connection string):
+# NETCORENOC_DATABASE_URL=postgresql://postgres.<project-ref>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+docker compose -f docker-compose.yml -f docker-compose.supabase.yml up -d --build netcorenoc
+```
+
+Name the `netcorenoc` service as above: without it Compose also starts the bundled database, which
+the appliance then does not use. `secrets/` is in `.gitignore` and `.dockerignore`, like `.env`.
+
+**Which Supabase connection string:**
+
+| String | Use it? |
+|---|---|
+| **Session pooler**, `…pooler.supabase.com:5432` | **Yes.** It works over IPv4 and keeps one server connection per client connection, which the appliance needs |
+| Direct connection, `db.<project-ref>.supabase.co:5432` | Yes. IPv6 unless the project has the IPv4 add-on |
+| Transaction pooler, port **6543** | **No.** It hands each transaction a different server connection; the appliance's instance lock is a session advisory lock and its statements are prepared once per connection, so both break |
+
+**Any other managed PostgreSQL 15 or newer** — Neon, Amazon RDS, Google Cloud SQL, Azure Database
+for PostgreSQL, your own cluster — works the same way: only `NETCORENOC_DATABASE_URL` changes. The
+rule is the same too: a direct or session-mode endpoint, never a transaction-mode pooler (PgBouncer
+with `pool_mode = transaction`). Without Docker, set `NETCORENOC_DATABASE_URL` and
+`NETCORENOC_DATABASE_PASSWORD_FILE` directly.
+
+* **TLS.** `sslmode=require` encrypts the connection. To also verify the server, mount the
+  provider's CA certificate and use `sslmode=verify-full&sslrootcert=<path in the container>`.
+* **Isolation.** The tables live in their own schema, which Supabase's Data API does not expose (it
+  serves `public` and `graphql_public`), and the schema's privileges are revoked from `PUBLIC` when
+  it is created: the project's `anon` and `authenticated` roles cannot read a row. Do not add
+  `netcorenoc` to the exposed schemas.
+* **Connections.** The appliance holds up to 1 + `NETCORENOC_DB_READERS` connections (5 by
+  default), and a CLI command two or three more while it runs; check they fit the plan's limit.
 
 ## Stored settings — three classes, and one of them has no control
 

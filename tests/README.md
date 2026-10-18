@@ -14,7 +14,7 @@ without a line in the table below.
 | `lifecycle/` | A situation's states (New, Pending, Open, Resolved), transitions, occurrences, maintenance. | `engine/operate/`, `engine/mw/` |
 | `model/` | The learned models: league, decider, autonomy, judge, shadow, promotion gate, bias, metrics. | `engine/model/`, `engine/evaluation/` |
 | `dataset/` | What operator feedback is captured, and the boundary that keeps ground truth out of it. | `engine/dataset/`, `engine/report/` |
-| `store/` | SQLite: queries, concurrency, migrations, upgrades from older schemas. | `store/`, `migrations/` |
+| `store/` | PostgreSQL: queries, concurrency, the schema migration, the SQLite import, the throwaway-database and benchmark tools. | `store/`, `migrations/`, `tools/pgtemp.py`, `tools/db_bench.py` |
 | `api/` | The HTTP API: every route, its payloads, limits and errors. | `api/` |
 | `security/` | Authentication, roles, audit, rate limiting, governance, supply chain. | `crosscutting/` |
 | `ui/` | The console: DOM tests in Node, the build pins, icons, stylesheet, UI invariants. | `ui/` |
@@ -30,13 +30,18 @@ Two folders hold no tests:
 | `support/` | Shared helpers, importable by name from any test (`import util`, `import paths`, `from domdriver import dom_test`). `domharness/` is the Node DOM used by the `ui/` tests. |
 | `fixtures/` | Frozen expected outputs (bias, agreement and shadow reports; the behaviour-identity record). A diff here is a behaviour change and must be reviewed as one. |
 
-`conftest.py` (at the root of `tests/`) holds the fixtures every area shares: the `store` fixture,
-the Hypothesis profile, the fast scrypt factor and the empty-league default.
+`conftest.py` (at the root of `tests/`) holds the fixtures every area shares: the `store` fixture
+(a fresh, migrated PostgreSQL database per test, dropped after it), the Hypothesis profile, the
+fast scrypt factor and the empty-league default.
 
 ## Running tests
 
 From the repository root, after the development setup in
-[`CONTRIBUTING.md`](../CONTRIBUTING.md#development-setup). Linux and macOS:
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#development-setup). The suite needs a PostgreSQL 15 or newer,
+which `tools/pgtemp.py` finds: the server in `NETCORENOC_TEST_DATABASE_URL` (a role there must be
+allowed to `CREATE DATABASE`; `make pg-test-up` starts one on `127.0.0.1:55432`), or else a private
+cluster it starts from the local PostgreSQL binaries and deletes at exit — not as root. Each test
+gets a copy of a template migrated once per run. Linux and macOS:
 
 ```sh
 make test                                   # the whole suite, with coverage
@@ -46,9 +51,10 @@ make test                                   # the whole suite, with coverage
 make dom                                    # only the DOM tests (needs Node >= 22)
 ```
 
-Windows (PowerShell):
+Windows (PowerShell), with a server named in `NETCORENOC_TEST_DATABASE_URL`:
 
 ```powershell
+$env:NETCORENOC_TEST_DATABASE_URL = "postgresql://netcorenoc:netcorenoc@127.0.0.1:55432/postgres"
 .venv\Scripts\python -m pytest                       # the whole suite
 .venv\Scripts\python -m pytest tests\api             # one area
 .venv\Scripts\python -m pytest -m dom                # only the DOM tests (needs Node >= 22)

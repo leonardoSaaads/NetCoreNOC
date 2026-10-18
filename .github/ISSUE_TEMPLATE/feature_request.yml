@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: >-
-        NetCoreNOC is deliberately small: one process, one SQLite file, one static UI, zero new
+        NetCoreNOC is deliberately small: one appliance, one PostgreSQL schema, one static UI, zero new
         runtime dependencies, and no configuration beyond environment variables. The best
         requests fit that shape. Larger ideas may become a one-line entry in `docs/ROADMAP.md`
         rather than immediate work.

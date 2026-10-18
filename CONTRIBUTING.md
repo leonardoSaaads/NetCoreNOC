@@ -1,7 +1,7 @@
 # Contributing to NetCoreNOC
 
 NetCoreNOC is a **zero-configuration SNMP trap correlator** with a deliberately small surface: one
-Python 3.12 asyncio process, one SQLite (WAL) file, one static web console, **no build step and no
+Python 3.12 asyncio appliance, one PostgreSQL schema, one static web console, **no build step and no
 runtime dependencies beyond five libraries**. Contributions that keep it that small and legible are
 the easiest to accept.
 
@@ -10,18 +10,31 @@ New here? Read [`docs/architecture.md`](docs/architecture.md) and
 
 ## Development setup
 
-Python **3.12+** is required.
+Python **3.12+** is required, and a **PostgreSQL 15+** the suite can make throwaway databases on
+(ADR #452). `tools/pgtemp.py` finds one; either of these is enough:
+
+* **Local PostgreSQL binaries** — `pg_ctl` on `PATH` or under `/usr/lib/postgresql/*/bin` (Debian
+  and Ubuntu: `sudo apt install postgresql`). Nothing to configure: each test run starts a private
+  cluster in a temporary directory, on a Unix socket only, and deletes it at exit. PostgreSQL does
+  not run as root, so as root use the next option.
+* **A server** where a role may `CREATE DATABASE`, named by `NETCORENOC_TEST_DATABASE_URL`.
+  `make pg-test-up` starts one in Docker on `127.0.0.1:55432` — data on tmpfs, durability off,
+  never for real data — and `make pg-test-down` removes it.
 
 ```sh
 python3.12 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
+make pg-test-up    # only without local PostgreSQL binaries; then:
+export NETCORENOC_TEST_DATABASE_URL=postgresql://netcorenoc:netcorenoc@127.0.0.1:55432/postgres
 make qa        # lint + typecheck + dead code + bandit + tests(+coverage) + eval non-regression
 make security  # adds pip-audit (queries PyPI, so it is not in `qa`)
 ```
 
-Run it locally on an unprivileged trap port:
+Run it locally on an unprivileged trap port. The appliance needs a database of its own; the test
+server above will do, and the appliance creates its schema on the first start:
 
 ```sh
+export NETCORENOC_DATABASE_URL=postgresql://netcorenoc:netcorenoc@127.0.0.1:55432/postgres
 NETCORENOC_TRAP_PORT=1162 .venv/bin/python -m netcorenoc.main
 # the one-time bootstrap admin password prints to the console on first start
 ```
@@ -36,7 +49,7 @@ NetCoreNOC/
 ├── src/netcorenoc/       the product: the only code that ships
 │   ├── ingest/           UDP trap receiver, SNMP decoding, the built-in trap pack
 │   ├── engine/           correlation, lifecycle, models, feedback dataset, reports
-│   ├── store/            SQLite access (one connection, one lock)
+│   ├── store/            PostgreSQL access (one writer under one lock, a reader pool)
 │   ├── migrations/       forward-only schema steps, applied at startup
 │   ├── api/              HTTP routes and payload shapes (FastAPI)
 │   ├── crosscutting/     authentication, roles, audit, settings, logging
@@ -52,8 +65,10 @@ NetCoreNOC/
 └── Makefile              every command a contributor runs
 ```
 
-Root files: `Dockerfile`, `docker-compose.yml`, `.env.example`, `flake.nix` and `MANIFEST.in`
-package the appliance; `pyproject.toml` holds dependencies and tool settings;
+Root files: `Dockerfile`, `docker-compose.yml` (the appliance and its PostgreSQL),
+`docker-compose.supabase.yml` (a managed PostgreSQL instead), `.env.example`, `flake.nix` and
+`MANIFEST.in` package the appliance; `docker-compose.test.yml` is the test database;
+`pyproject.toml` holds dependencies and tool settings;
 `vulture_allowlist.py` is the dead-code gate's allowlist; `CHANGELOG.md`, `MIGRATION.md` and
 `HANDOFF.md` describe releases.
 
@@ -93,13 +108,13 @@ is correct rather than metric-gaming.
 
 ## Hard constraints (a PR that violates one will not merge)
 
-- **Zero new runtime dependencies.** The shipped app imports `pysnmp`, `aiosqlite`, `fastapi`,
-  `uvicorn`, `pydantic`, and nothing else; the one optional extra, `snmpv3` (`cryptography`), is
-  imported lazily and its absence degrades one feature visibly (decision #444). New dev tooling goes
-  in the `dev` extra with a decision entry justifying it. This covers documentation tooling too: no
-  `mkdocs`, no `sphinx`.
-- **Same runtime identity.** One process, one SQLite file, one static console, environment variables
-  only, no UI build step, no npm.
+- **Zero new runtime dependencies.** The shipped app imports `pysnmp`, `asyncpg`, `fastapi`,
+  `uvicorn`, `pydantic`, and nothing else (`asyncpg` replaced `aiosqlite`, #452); the one optional
+  extra, `snmpv3` (`cryptography`), is imported lazily and its absence degrades one feature visibly
+  (decision #444). New dev tooling goes in the `dev` extra with a decision entry justifying it.
+  This covers documentation tooling too: no `mkdocs`, no `sphinx`.
+- **Same runtime identity.** One appliance and its processes, one PostgreSQL schema it holds an
+  instance lock on, one static console, environment variables only, no UI build step, no npm.
 - **Ingestion is sacred.** `receiver.datagram_received` gains no lock, no I/O, no `await`.
   `engine.py` holds the batch lock and every decision that reasons about it, deliberately and
   permanently — do not "tidy" it into modules. The invariant is only auditable if that path reads
@@ -107,8 +122,11 @@ is correct rather than metric-gaming.
 - **Imports go downward or sideways, never up.** `http` → `engine` → `data` → `ingest`, plus
   cross-cutting from anywhere. `tests/repo/test_layers.py` enforces it and its exemption list is
   **empty**.
-- **One `Store`, one connection, one `store.lock`**, taken by *callers* and never inside a `Store`
-  method. `tests/store/test_store_concurrency.py` is the control.
+- **One `Store`, one writer connection, one `store.lock`**, taken by *callers* and never inside a
+  `Store` method. A console read that writes nothing runs in `store.reading()`, on the reader pool,
+  without the lock. `tests/store/test_store_concurrency.py` is the control.
+- **Every store query that returns a list or uses `LIMIT` has a complete `ORDER BY`.** PostgreSQL
+  promises no order otherwise (#452).
 - **Bounded memory everywhere.** Every accumulator keeps its cap and eviction, with a test.
 - **UI security discipline.** Strict CSP; new DOM values go through `textContent`/`esc()`, never
   `innerHTML`; no inline script or style, no CDN.

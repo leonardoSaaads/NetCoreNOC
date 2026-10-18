@@ -343,7 +343,7 @@ operator has to open is the wrong home for *"traps are being lost now"*.
 Every absolute timestamp reads `2026-09-06 14:32:07 -03:00` — your browser's zone, with **the
 offset from UTC in the text**, not only in a tooltip. The top bar names the zone itself, because a
 name and an offset are different facts: the first says whose clock, the second makes the arithmetic
-against a UTC log trivial. The database stores epoch UTC.
+against a UTC log trivial. The database stores every instant in UTC (`timestamptz`).
 
 **A trap's timestamp is when the appliance received the datagram**, not when the equipment raised
 the alarm — [`operate.md`](operate.md) says why that matters after an incident.

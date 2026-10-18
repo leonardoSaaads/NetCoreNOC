@@ -53,7 +53,7 @@ from netcorenoc.ingest.receiver import (
     parse_allowlist,
     start_receiver,
 )
-from netcorenoc.store import OPEN_ERRORS, Store
+from netcorenoc.store import OPEN_ERRORS, Store, StoreRefusedError
 
 log = logging.getLogger("netcorenoc")
 
@@ -193,6 +193,12 @@ async def run(settings: Settings) -> None:
     )
     try:
         await store.open()
+    except StoreRefusedError as exc:  # reachable, and not this appliance's to use
+        await store.close()
+        raise SettingsError(
+            f"{ENV_PREFIX}DATABASE_URL={redact_url(settings.database_url)!r}: {exc}. "
+            "See docs/troubleshoot.md."
+        ) from exc
     except OPEN_ERRORS as exc:  # unreachable, refused, or absent
         # The driver's message names neither the setting nor where it looked (F69).
         await store.close()

@@ -22,7 +22,7 @@ is **never persisted or logged** — it is kept only as an HMAC grouping tag.
                         │
    browser / API client ┼─▶ TLS? ─▶ headers ─▶ origin/CSRF ─▶ session|token ─▶ RBAC ─▶ handler
                         │                                                          │
-   holder of the DB file┼──────────────────────────────────────────────────────▶ store
+   holder of DB password┼──────────────────────────────────────────────────────▶ store
 ```
 
 **The datagram side is unauthenticated by default and that is deliberate**: SNMPv2c has no
@@ -51,6 +51,9 @@ it, and nothing else.
 4. **Issue service tokens, not shared secrets.** Per-identity, revocable, minimum role, shown once.
 5. **Run the container hardened** — [`install.md`](install.md) has the flags; the shipped compose
    file already applies them.
+6. **Keep the database private** — no published port, its password in a file, a role that holds
+   only its own database. [The database](#the-database) below; the shipped compose file does all
+   three.
 
 ## Roles and what narrows them
 
@@ -107,8 +110,7 @@ lists filter by it. The column answers one question — *"whose equipment is thi
 
 `GET /api/organizations` says so in its own response body (`"isolation": false`, with a sentence
 naming what still crosses the boundary), because an agent reading a field called `organization_id`
-is otherwise entitled to read it as a boundary. Migration `0020` carries the same warning as a
-banner in the schema itself.
+is otherwise entitled to read it as a boundary.
 
 ### Maintenance windows suppress collection, and the suppression is visible (v0.21.0)
 
@@ -153,8 +155,8 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
 * No request body over **1 MiB** is read, on any route, authenticated or not (v0.28.0) — a few
   oversized posts could otherwise exhaust the container's memory and lose traps in flight.
 * A forgotten password is reset from the host (`python -m netcorenoc admin reset-password`), which
-  needs the database file — the same trust boundary as the first-run password. It is audited and
-  ends every session of that account.
+  needs the database's credentials — the same trust boundary as the first-run password. It is
+  audited and ends every session of that account.
 * **Recovery by email** (v0.30.0, decision #445) is off until an admin configures **Settings →
   Email** and a person has a recovery address. The request answers the same sentence whatever it
   is given and sends from a background task, so it reveals neither an account nor an address by its
@@ -181,20 +183,54 @@ because the quarantine holds raw refused datagrams. The action catalog is **froz
 completeness test**: adding an action is a deliberate decision, not a side effect of adding a route.
 Pruning is admin-triggered only and is itself audited.
 
+## The database
+
+The PostgreSQL role the appliance connects as reads and writes the whole state, so its password is
+the credential that matters most after an admin's (#452).
+
+* **The password is in a file, never in the environment.** `NETCORENOC_DATABASE_PASSWORD_FILE`
+  names it: the random password Compose's `db-secret` service generates on the first start, a
+  Compose secret for a managed database, or a systemd credential (`LoadCredential=`) with the
+  shipped unit. So `docker inspect`, `/proc/<pid>/environ` and `systemctl show` never show it.
+  Wherever the URL is printed — the log, the CLI, the Settings screen — the password reads `***`,
+  and `python -m netcorenoc backup` hands it to `pg_dump` in the child's environment, never on a
+  command line `ps` shows.
+* **The bundled server is off the network.** Compose puts PostgreSQL on an internal network with no
+  published port and no route out; only the appliance joins it. Every connection, local ones
+  included, authenticates with SCRAM-SHA-256. The container runs read-only, with every capability
+  dropped but the five its entrypoint needs to switch to its own user, and no privilege escalation.
+* **A server you run or rent is on the network**: require TLS (`sslmode=verify-full` with the
+  provider's CA certificate, or at least `sslmode=require`) and allow connections only from the
+  appliance (`pg_hba.conf`, the provider's network rules).
+* **Least privilege.** The role needs to log in and either own its database or own a schema a DBA
+  created for it (`CREATE SCHEMA netcorenoc AUTHORIZATION <role>`): the appliance creates the
+  schema only when it is missing, so `CREATE` on the database is needed only for that first start.
+  It needs no `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION` or `BYPASSRLS`. The schema's
+  privileges are revoked from `PUBLIC` when it is created, so other roles on a shared server —
+  Supabase's `anon` and `authenticated` among them — cannot read it; a reporting role is a
+  deliberate `GRANT`. **The bundled server does the same**: its superuser, `postgres`, has its own
+  generated password that only the database container can read, and is used for initialisation
+  and maintenance; the appliance's role, `netcorenoc`, owns its database and nothing else. On a
+  shared server, create the role as [`install.md`](install.md#the-database-on-the-same-host) does.
+* **One appliance per schema**, enforced: a second appliance against the same schema stops at start
+  (a session advisory lock), so a mistyped URL cannot interleave two histories.
+
 ## Data at rest
 
-The SQLite file is the whole state, and it is **not encrypted**. Anyone with the file has your
+The database is the whole state, and the appliance does **not encrypt** it. Anyone who can read
+the schema — through the role's credentials, the server's data directory or a dump — has your
 learned model, your situations and your audit history. Passwords and token values are hashed and
-session ids and reset links are stored by digest, so the file does not yield those credentials —
-but treat it as sensitive and use filesystem or volume encryption if your threat model needs it.
+session ids and reset links are stored by digest, so the data does not yield those credentials —
+but treat the database and every dump as sensitive, and use the server's storage encryption
+(managed providers encrypt at rest) or volume encryption if your threat model needs it.
 
 Two secrets it does hold, because the appliance has to use them (v0.30.0):
 
 * **The SMTP password** of Settings → Email, so the appliance can sign in to the mail server. It is
   never returned by the API, written to a log or put in an audit row. Set
-  `NETCORENOC_SMTP_PASSWORD` to keep it out of the file and its backups.
+  `NETCORENOC_SMTP_PASSWORD` to keep it out of the database and its dumps.
 * **SNMPv3 master keys** — the RFC 3414 hash of each passphrase, not the passphrase. They let
-  someone with the file authenticate as that SNMP user, as Net-SNMP's stored keys do. Accepted
+  someone with the database authenticate as that SNMP user, as Net-SNMP's stored keys do. Accepted
   v1/v2c communities are kept as keyed hashes (F4).
 
 ## A new route declares itself, or the process does not start

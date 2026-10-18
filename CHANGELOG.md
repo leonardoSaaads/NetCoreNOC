@@ -14,20 +14,64 @@ What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md).
 ## [Unreleased] — "no trap lost, every trap timed"
 
 Every trap is kept until it is classified, and each one is timed against a KPI an administrator
-sets — a target and a limit from its own arrival — through a storm. **Migration 0030** (schema 30)
-is additive. See [`MIGRATION.md`](MIGRATION.md): the appliance is three processes and a spool on
-disk, and a container needs two CPUs. No grouping decision changes (`make eval` is byte-identical).
+sets — a target and a limit from its own arrival — through a storm. The store moves from SQLite to
+**PostgreSQL** (#452), so the console's reads no longer queue behind the engine's batch. The
+schema is PostgreSQL's baseline, **migration 0031** (schema 31), which includes SQLite's 0030. See
+[`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
+appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
+decision changes (`make eval` is byte-identical).
+
+⚠ **Breaking:** `NETCORENOC_DB` is removed. Set, it stops the appliance and names the command that
+imports the file. Backups are `pg_dump` archives.
 
 ### Added
 
+- **PostgreSQL storage** (#452): PostgreSQL 15 or newer through `asyncpg`, which replaces
+  `aiosqlite` (still five runtime dependencies). One schema per appliance (`NETCORENOC_DB_SCHEMA`),
+  its privileges revoked from `PUBLIC`, held by a session advisory lock so a second appliance
+  against it stops at start. One writer connection under `store.lock`, as before, and a pool of
+  read-only connections (`NETCORENOC_DB_READERS`, default 4) on which console reads run in their
+  own `REPEATABLE READ READ ONLY` snapshots, without the lock. The schema, `0031_postgresql.sql`,
+  is designed rather than transcribed: `timestamptz`, `inet`, `jsonb` varbinds under a GIN index,
+  `boolean`, identity columns, `CHECK`ed vocabularies, `COLLATE "C"`; `device` folded into `ne`;
+  `user` is `app_user`; one append-only trigger function; fillfactor and autovacuum on the hot
+  rows. Measurements: `docs/plans/postgresql.md`.
+- **`python -m netcorenoc db import-sqlite <file>`** (#452): copies a schema-30 SQLite database
+  into an empty schema in one transaction, verifies every table's row count and the audit hash
+  chain before committing, refuses a source that fails `PRAGMA integrity_check` or a target that
+  holds history, reads the file read-only, and audits itself (`db.import`).
+- **`python -m netcorenoc db status`** — the server, database, role, schema, the schema's version
+  against this release's, and its size — and **`db migrate`** (`make migrate`), which creates the
+  schema and applies pending migrations beside a running appliance.
+- **Settings for the database** (#452): `NETCORENOC_DATABASE_URL`,
+  `NETCORENOC_DATABASE_PASSWORD_FILE` (the password from a file — a Docker or Kubernetes secret, a
+  systemd credential — never from the environment; shown as `***` wherever the URL is printed),
+  `NETCORENOC_DB_SCHEMA`, `NETCORENOC_DB_READERS`, `NETCORENOC_DB_STATEMENT_CACHE`, and
+  `NETCORENOC_DATA_DIR` for the appliance's own files (the spool).
+- **`docker compose up` brings its own PostgreSQL** (#452): `postgres:17.5-alpine` on an internal
+  network with no published port, read-only, capabilities dropped to the five its entrypoint
+  needs, SCRAM-SHA-256, data checksums, a health check and tuned settings. The appliance's role,
+  `netcorenoc`, is not a superuser: it owns its database and nothing else. Both passwords (that
+  role's, and the `postgres` superuser's, which only the database container reads) are generated on
+  the first start by a `db-secret` service into a volume only the two containers mount — nothing to
+  type, nothing in `.env`. Volumes `netcorenoc-pgdata` and `netcorenoc-secrets`.
+- **`docker-compose.supabase.yml`** (#452): the appliance alone on Supabase (session pooler, port
+  5432, `sslmode=require`) or any managed PostgreSQL, the password a Compose secret. The
+  transaction pooler (6543) is unsupported: the instance lock is a session advisory lock.
+- **`docker-compose.test.yml`, `make pg-test-up` / `make pg-test-down`** and `tools/pgtemp.py`:
+  throwaway databases for the suite, `make eval` and the benchmarks — a test server on
+  `127.0.0.1:55432`, or a private cluster from the local PostgreSQL binaries
+  (`NETCORENOC_TEST_DATABASE_URL` picks the server). `make db-bench` (`tools/db_bench.py`).
+- **The systemd unit takes the database password as a credential** (`LoadCredential=`), never in
+  the unit or the environment.
 - **The trap spool** (#450): the receiving process appends each admitted datagram to an
   append-only, CRC-checked log on disk (group commit, one `fdatasync` per group) before anything
   parses it; decoding happens behind it, in a decoder process, as the engine is ready. The engine
   commits the spool's **cursor in the same transaction** as the batch it classified, so a crash or
   restart resumes after the last classified trap — nothing skipped, nothing twice — and a segment is
-  deleted only once a WAL checkpoint has made that cursor durable. The same design as Zabbix's
-  SNMP trapper (a trap file and an offset in the database) and Kafka (segments and a committed
-  offset). `NETCORENOC_SPOOL_DIR`, `NETCORENOC_SPOOL_MAX_MB`.
+  deleted only once the database has made that cursor durable (`store.checkpoint()`). The same
+  design as Zabbix's SNMP trapper (a trap file and an offset in the database) and Kafka (segments
+  and a committed offset). `NETCORENOC_SPOOL_DIR`, `NETCORENOC_SPOOL_MAX_MB`.
 - **A trap that crashes the engine is set aside, not retried forever** (#450): after a crash the
   traps in flight are replayed one at a time, and the one the engine still cannot classify goes to
   `dead-letter.jsonl` with the error; a datagram that stops the decoder is quarantined by its
@@ -52,6 +96,17 @@ disk, and a container needs two CPUs. No grouping decision changes (`make eval` 
 
 ### Changed
 
+- **The maintenance CLI refuses a schema that is not there** instead of creating it — an
+  `audit verify` against an empty schema would report someone else's chain as intact. `db migrate`
+  and `db import-sqlite` are the two commands that create one. Every command reads
+  `NETCORENOC_DATABASE_URL` and refuses `NETCORENOC_DB`, except `db import-sqlite`.
+- **`python -m netcorenoc backup <file>` writes a `pg_dump` archive** (custom format, the schema
+  only), checked with `pg_restore --list`; it needs the PostgreSQL client tools, and passes the
+  password in the child's environment, never on its command line. Restore with `pg_restore`.
+- **A storage error that drops the connection** is retried on a new one (#452): the batch is rolled
+  back, the connection re-established and the instance lock taken again.
+- `GET /api/config`: `startup.db_path` is replaced by `startup.database` (the URL, its password as
+  `***`) and `startup.db_schema`.
 - **`/readyz` is not ready only when the spool refuses writes** (#450). It used to be not ready
   for a nearly full queue and, briefly, for a late trap — and an orchestrator acting on that stops
   sending traffic, which for UDP is traps lost in front of the appliance.
@@ -83,6 +138,14 @@ disk, and a container needs two CPUs. No grouping decision changes (`make eval` 
   4 032 of 20 000 at 5 000/s into a 4 MiB buffer with the in-process receiver, and 4 238 into an
   8 MiB buffer with a receiver that decoded before spooling. Spooling raw: none.
 - `NETCORENOC_CLASSIFY_DEADLINE_S` (unreleased) is replaced by the two KPI settings.
+
+### Removed
+
+- ⚠ **`NETCORENOC_DB`** (#452): SQLite is no longer the store. Set, the variable stops the start
+  with the import command in the message, never silently ignored — an empty PostgreSQL schema would
+  look exactly like the whole history lost.
+- `aiosqlite` as a dependency, the SQLite migrations `0001`–`0030` (the PostgreSQL baseline
+  replaces them) and the nineteen schema probes that read an older SQLite file's version.
 
 ## [0.30.0] - 2026-10-09 — "SNMPv3, recovery by email, and the console reviewed"
 

@@ -9,9 +9,11 @@
 #     escalation, tmpfs /tmp). Its own volume holds only the trap spool;
 #   * `postgres` — the database, on an internal network with no published port, its data on a
 #     named volume, tuned for this workload (see `command:`);
-#   * `db-secret` — runs once, before both: it writes a random 32-byte password into a volume only
-#     these containers mount, if none is there yet. PostgreSQL sets it for the role on first start
-#     (`POSTGRES_PASSWORD_FILE`) and the appliance reads it from the same file
+#   * `db-secret` — runs once, before both: it writes two random passwords into a volume only
+#     these containers mount, if none is there yet. `db_admin_password` is the cluster superuser's
+#     (`postgres`, for initialisation and maintenance; only the database container can read it);
+#     `db_password` is the appliance's role, `netcorenoc`, which is **not** a superuser: it owns its
+#     database and nothing else (`configs: netcorenoc-role`). The appliance reads it from the file
 #     (`NETCORENOC_DATABASE_PASSWORD_FILE`). No password is typed, stored in `.env`, in this file,
 #     in the image, or in any container's environment.
 #
@@ -49,7 +51,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - CHOWN                             # owner netcorenoc (10001), group postgres (70)
+      - CHOWN                             # netcorenoc (10001) and postgres (70)
       - DAC_OVERRIDE
       - FOWNER
     security_opt:
@@ -61,11 +63,15 @@ services:
     command:
       - |
         set -eu
-        file=/run/netcorenoc-secrets/db_password
-        umask 337
-        [ -s "$$file" ] || head -c 48 /dev/urandom | base64 | tr -d '\n=+/' > "$$file"
-        chown 10001:70 "$$file"
-        chmod 0440 "$$file"
+        dir=/run/netcorenoc-secrets
+        umask 377
+        for name in db_password db_admin_password; do
+          [ -s "$$dir/$$name" ] || head -c 48 /dev/urandom | base64 | tr -d '\n=+/' > "$$dir/$$name"
+        done
+        chown 10001:70 "$$dir/db_password"        # the appliance reads it; so does the init script
+        chmod 0440 "$$dir/db_password"
+        chown 70:70 "$$dir/db_admin_password"     # the database container alone
+        chmod 0400 "$$dir/db_admin_password"
     restart: "no"
 
   postgres:
@@ -78,14 +84,18 @@ services:
       db-secret:
         condition: service_completed_successfully
     environment:
-      POSTGRES_USER: netcorenoc
+      POSTGRES_USER: postgres             # the superuser: initialisation and maintenance only
       POSTGRES_DB: netcorenoc
-      POSTGRES_PASSWORD_FILE: /run/netcorenoc-secrets/db_password
+      POSTGRES_PASSWORD_FILE: /run/netcorenoc-secrets/db_admin_password
       # SCRAM-SHA-256 for every connection, including the first role's.
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256 --data-checksums"
     volumes:
       - netcorenoc-pgdata:/var/lib/postgresql/data
       - netcorenoc-secrets:/run/netcorenoc-secrets:ro
+    configs:
+      # Run once, when the data directory is first initialised.
+      - source: netcorenoc-role
+        target: /docker-entrypoint-initdb.d/10-netcorenoc-role.sql
     networks:
       - backend
     # The entrypoint starts as root to own its data directory, then drops to `postgres`: these are
@@ -262,6 +272,19 @@ services:
     # (Alternatively, front NetCoreNOC with a TLS reverse proxy and keep this listener plain
     #  HTTP on an internal network — see docs/security.md.)
 
+configs:
+  # The appliance's role, least privilege: it logs in and owns its database, so it may create its
+  # schema; it is not a superuser and may not create databases or roles. The password is read from
+  # the generated file by psql itself, so it is on no command line.
+  netcorenoc-role:
+    content: |
+      \set ON_ERROR_STOP on
+      \set app_password `cat /run/netcorenoc-secrets/db_password`
+      CREATE ROLE netcorenoc LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+          PASSWORD :'app_password';
+      ALTER DATABASE netcorenoc OWNER TO netcorenoc;
+      REVOKE ALL ON DATABASE netcorenoc FROM PUBLIC;
+
 networks:
   # The database's network: no published port and no route out. Only the appliance joins it.
   backend:
@@ -270,4 +293,4 @@ networks:
 volumes:
   netcorenoc-data:      # the trap spool
   netcorenoc-pgdata:    # the database
-  netcorenoc-secrets:   # the generated database password
+  netcorenoc-secrets:   # the generated database passwords

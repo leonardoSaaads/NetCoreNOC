@@ -25,13 +25,15 @@ Subcommands:
   boundary the bootstrap admin already rests on (DECISIONS #234). Audited, and every session is
   revoked.
 - ``db status`` — the server, the schema's version and size (v0.31.0).
-- ``db import-sqlite <file>`` — copy a v0.30.0 SQLite database into an empty PostgreSQL schema
+- ``db status`` and ``db migrate`` — the server and the schema's version and size; create the schema
+  and apply pending migrations (``make migrate``) (v0.31.0, ADR #452).
+- ``db import-sqlite <file>`` — copy a v0.30.x SQLite database into an empty PostgreSQL schema
   once, verified row for row and link for link of the audit chain (v0.31.0, ADR #452).
 
 Every command reads the appliance's ``NETCORENOC_DATABASE_URL`` (and ``_DB_SCHEMA``,
 ``_DATABASE_PASSWORD_FILE``) and refuses when the schema is not there (v0.28.0): connecting to an
 empty one would *create* it, and ``audit verify`` would then report a chain that was not the
-appliance's as OK. Only ``db import-sqlite`` creates the schema. None of them takes the instance
+appliance's as OK. Only ``db migrate`` and ``db import-sqlite`` create it. None takes the instance
 lock, so each runs beside the appliance.
 
 The trap correlator itself still runs via ``python -m netcorenoc.main`` (unchanged).

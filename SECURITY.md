@@ -49,18 +49,20 @@ Please include, as far as you can:
   **start at `api/perimeter.py`, which is the whole security boundary in one file** — plus
   `auth.py`, `rbac.py`, `shaping.py`);
 - the audit log and its integrity guarantees (`src/netcorenoc/audit.py`);
-- the SQLite storage layer and migrations (`src/netcorenoc/store/`, `migrations/`);
+- the PostgreSQL storage layer, its migrations and the SQLite import (`src/netcorenoc/store/`,
+  `migrations/`), including how the database password reaches the process;
 - the static UI and its CSP/security-header posture (`src/netcorenoc/ui/`);
 - the shipped container image and the committed deployment artifacts
-  (`Dockerfile`, `docker-compose.yml`, `deploy/`).
+  (`Dockerfile`, `docker-compose.yml`, `docker-compose.supabase.yml`, `deploy/`).
 
 **Out of scope**:
 
-- Vulnerabilities in third-party dependencies themselves — report those upstream (we do track
-  them via `pip-audit` and will update our pins).
+- Vulnerabilities in third-party dependencies themselves, PostgreSQL included — report those
+  upstream (we do track the Python ones via `pip-audit` and will update our pins).
 - Findings that require an already-compromised host, physical access, or a malicious operator
   account acting within its granted role (RBAC is enforced; abuse of a legitimately granted admin
-  role is not a vulnerability).
+  role is not a vulnerability). Likewise a holder of the database role's credentials, which grant
+  the whole state by design.
 - The unauthenticated nature of SNMPv2c/v1 trap intake itself — this is a protocol property
   handled by the source allowlist and documented as accepted residual risk in
   [`docs/security.md`](docs/security.md). A way to *bypass* the
