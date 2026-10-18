@@ -204,6 +204,19 @@ def drop(url: str) -> None:
 
 
 @contextlib.contextmanager
+def empty_database() -> Iterator[str]:
+    """A database with nothing in it — not even the schema — dropped afterwards: what an appliance
+    meets on its first boot, where it creates the schema and applies the migrations itself."""
+    name = f"netcorenoc_e_{os.getpid()}_{next(_counter)}"
+    _run(f'CREATE DATABASE "{name}"')
+    _made.append(name)
+    try:
+        yield url_for(name)
+    finally:
+        drop(url_for(name))
+
+
+@contextlib.contextmanager
 def database() -> Iterator[str]:
     """A fresh migrated database for the block, dropped afterwards."""
     url = create()

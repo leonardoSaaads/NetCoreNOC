@@ -61,14 +61,9 @@ because it is a different process reached only through a socket — but "cannot"
 
 from __future__ import annotations
 
-import contextlib
 import json
-import os
 import socket
-import subprocess  # nosec B404 - boots the appliance under test, as `Appliance` does
-import sys
 import time
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -183,68 +178,11 @@ class Drive:
         self.viewer_devices: set[str] = set()
 
 
-class _PostgresAppliance(Appliance):
-    """`Appliance` on a PostgreSQL database and a data directory, not a `.db` file (ADR #452).
-
-    `eval/simulation/appliance.py` still hands the process `NETCORENOC_DB`, which an appliance now
-    refuses to start with, by design. This rebuilds only that environment — the URL, the spool's
-    `NETCORENOC_DATA_DIR`, and no `NETCORENOC_DB` — and keeps the rest of the harness: the log
-    file, the bootstrap banner, the health wait, the sign-in and the stop.
-    """
-
-    def __init__(self, database_url: str, data_dir: Path, trap_port: int, http_port: int) -> None:
-        super().__init__(str(data_dir / "netcorenoc"), trap_port, http_port)
-        self.database_url = database_url
-        self.data_dir = data_dir
-        self.log_path = data_dir / "appliance.log"
-
-    def start(self) -> None:
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        env = {name: value for name, value in os.environ.items() if name != "NETCORENOC_DB"}
-        env.update(
-            {
-                "NETCORENOC_DATABASE_URL": self.database_url,
-                "NETCORENOC_DATA_DIR": str(self.data_dir),
-                "NETCORENOC_TRAP_HOST": "127.0.0.1",
-                "NETCORENOC_TRAP_PORT": str(self.trap_port),
-                "NETCORENOC_HTTP_HOST": "127.0.0.1",
-                "NETCORENOC_HTTP_PORT": str(self.http_port),
-                "PYTHONPATH": str(REPO_ROOT / "src"),
-                "PYTHONUNBUFFERED": "1",
-            }
-        )
-        self.log_path.unlink(missing_ok=True)
-        self._log_file = self.log_path.open("w", encoding="utf-8")
-        self.process = subprocess.Popen(  # nosec B603 - this interpreter, a fixed module
-            [sys.executable, "-m", "netcorenoc.main"],
-            env=env,
-            stdout=self._log_file,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        self._read_bootstrap_banner()
-        self._await_health()
-
-
-@contextlib.contextmanager
-def _empty_database(name: str) -> Iterator[str]:
-    """A database with nothing in it, dropped afterwards — what deleting the `.db` file was: the
-    appliance creates its schema and applies its migrations at boot (§5.3 step 1)."""
-    database = f"netcorenoc_op_{os.getpid()}_{name}"
-    pgtemp._run(
-        f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)', f'CREATE DATABASE "{database}"'
-    )
-    try:
-        yield pgtemp.url_for(database)
-    finally:
-        pgtemp._run(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
-
-
 def _drive(tmp: Path, name: str) -> Drive:
     out = Drive()
     with (
-        _empty_database(name) as database_url,
-        _PostgresAppliance(
+        pgtemp.empty_database() as database_url,
+        Appliance(
             database_url, tmp / name, _free_port(socket.SOCK_DGRAM), _free_port(socket.SOCK_STREAM)
         ) as appliance,
     ):

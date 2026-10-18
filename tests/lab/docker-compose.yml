@@ -8,10 +8,12 @@
 #   3. The HTTP port is published on 127.0.0.1 only (`127.0.0.1:8088:8080`), and on **8088** rather
 #      than 8080, so a lab brought up beside a real appliance cannot take its port or be reached
 #      from another host.
-#   4. The database is a volume named `netcorenoc-lab-data`. It is NOT `netcorenoc-data`, and
-#      that is the point: the lab cannot write the production database (prime directive 8), and
-#      `tests/lab/test_lab.py` asserts the two names are different and that neither the production
-#      volume nor port 162 nor 8080 appears anywhere in this file.
+#   4. The appliance's volume is `netcorenoc-lab-data` and the database's `netcorenoc-lab-pgdata`.
+#      Neither is `netcorenoc-data` or `netcorenoc-pgdata`, and that is the point: the lab cannot
+#      write the production database (prime directive 8), and `tests/lab/test_lab.py` asserts the
+#      names are different and that neither the production volume nor port 162 nor 8080 appears
+#      anywhere in this file. The lab's PostgreSQL has a fixed password because it is a lab: it is
+#      on the lab's network only and publishes no port (ADR #452).
 #   5. `restart: unless-stopped` is DROPPED. A lab should stop when you stop it.
 #   6. No resource limits. Production caps memory and CPU because a limit whose consequence is
 #      unstated is a limit nobody can size; a lab on a laptop wants neither the cap nor the OOM.
@@ -38,12 +40,43 @@
 name: netcorenoc-lab
 
 services:
+  postgres:
+    image: postgres:17.5-alpine
+    container_name: netcorenoc-lab-postgres
+    environment:
+      POSTGRES_USER: netcorenoc
+      POSTGRES_DB: netcorenoc
+      POSTGRES_PASSWORD: lab-only  # nosec - a lab database on the lab's network, no published port
+    volumes:
+      - netcorenoc-lab-pgdata:/var/lib/postgresql/data
+    networks:
+      lab:
+        ipv4_address: 172.31.7.5
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "netcorenoc", "-h", "127.0.0.1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   appliance:
     build:
       context: ../..
       dockerfile: Dockerfile
     image: netcorenoc:local
     container_name: netcorenoc-lab-appliance
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       lab:
         ipv4_address: 172.31.7.10
@@ -51,7 +84,8 @@ services:
       # Loopback only, and 8088 so a lab cannot collide with a real appliance on 8080.
       - "127.0.0.1:8088:8080"
     environment:
-      NETCORENOC_DB: /home/netcorenoc/netcorenoc.db
+      NETCORENOC_DATABASE_URL: postgresql://netcorenoc:lab-only@postgres:5432/netcorenoc
+      NETCORENOC_DATA_DIR: /home/netcorenoc
       NETCORENOC_TRAP_PORT: "1162"
       NETCORENOC_HTTP_PORT: "8080"
       # Empty allowlist: the lab's whole job is that an unconfigured appliance learns the estate.
@@ -133,5 +167,6 @@ networks:
         - subnet: 172.31.7.0/24
 
 volumes:
-  # Deliberately NOT `netcorenoc-data`. The lab cannot touch the production database.
+  # Deliberately NOT `netcorenoc-data` / `netcorenoc-pgdata`. The lab cannot touch production.
   netcorenoc-lab-data:
+  netcorenoc-lab-pgdata:

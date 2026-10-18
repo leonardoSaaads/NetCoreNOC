@@ -254,7 +254,8 @@ def test_a_bad_stored_document_refuses_to_start_naming_the_way_out() -> None:
 
     # ADR #452: the way out is a statement for `psql` on the appliance's database, not `sqlite3`.
     way_out = (
-        'psql "$NETCORENOC_DATABASE_URL" -c "DELETE FROM netcorenoc.meta WHERE key=\'config.snmp\'"'
+        'psql "$NETCORENOC_DATABASE_URL" -c '
+        "\"DELETE FROM ${NETCORENOC_DB_SCHEMA:-netcorenoc}.meta WHERE key='config.snmp'\""
     )
     with pytest.raises(SettingsError, match=re.escape(way_out)):
         snmpconf.stored_policy('{"version": 1, "users": [{"name": "x", "auth": "SHA"}]}')

@@ -40,6 +40,7 @@ from netcorenoc.store.codecs import setup as _setup
 log = logging.getLogger("netcorenoc")
 
 __all__ = [
+    "OPEN_ERRORS",
     "STORAGE_ERRORS",
     "Connection",
     "Cursor",
@@ -61,6 +62,10 @@ STORAGE_ERRORS: tuple[type[BaseException], ...] = (
     OSError,
     TimeoutError,
 )
+
+#: What opening a store can raise that an operator fixes by correcting the settings: everything a
+#: retry can outlive, plus a role, a password, a database or a schema the server does not know.
+OPEN_ERRORS: tuple[type[BaseException], ...] = (*STORAGE_ERRORS, asyncpg.PostgresError)
 
 # --- the statements ------------------------------------------------------------------------------
 

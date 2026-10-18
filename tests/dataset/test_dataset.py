@@ -25,6 +25,7 @@ from netcorenoc.engine.dataset.labels import (
     coverage,
     member_digest,
 )
+from netcorenoc.engine.operate import membership
 from netcorenoc.main import Engine
 from netcorenoc.store import MAX_CLIENT_MEMBERS, Store
 
@@ -1341,3 +1342,21 @@ async def test_the_whole_life_of_a_label(store: Store) -> None:
     assert int((await cur.fetchone())[0]) == 0, (  # type: ignore[index]
         "the situation shell retained for the label was never collected after the label went"
     )
+
+
+async def test_a_capture_run_lost_to_a_rollback_is_reopened(store: Store) -> None:
+    """ADR #452. A run opened in a transaction that rolls back is gone from the database; the engine
+    must not keep writing pair rows that name it (a foreign-key failure on every one of them)."""
+    engine = Engine(store, asyncio.Queue())
+    await engine.start()
+    await store.commit()
+    async with store.lock:
+        engine.capture.run_id = None
+        await engine._capture_run(time.time())  # opened, never committed
+        lost = engine.capture.run_id
+        await store.rollback()
+        await membership.reload(engine)
+        await store.commit()
+    current = await store.latest_capture_run()
+    assert current is not None and engine.capture.run_id == int(current["id"])
+    assert engine.capture.run_id != lost

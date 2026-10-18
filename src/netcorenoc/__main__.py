@@ -317,7 +317,7 @@ def main(argv: list[str] | None = None) -> int:
     reset.add_argument("username")
     args = parser.parse_args(argv)
 
-    settings = _settings()
+    settings = _settings(importing=args.command == "db" and args.db_command == "import-sqlite")
     if args.command == "audit":
         if args.audit_command == "verify":
             return asyncio.run(_verify(settings))

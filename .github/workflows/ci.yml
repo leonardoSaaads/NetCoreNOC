@@ -33,6 +33,12 @@ permissions:
 #
 # **`make dom` does not need the appliance and `lab` does not need Node**, so nothing here is ordered
 # by anything but its own dependencies.
+#
+# **PostgreSQL** (ADR #452). The suite, `make eval` and the behaviour record make throwaway databases
+# with `tools/pgtemp.py`, which starts a private cluster from the runner's own PostgreSQL binaries
+# (Ubuntu runners carry them; the step below installs them if an image ever does not). The
+# appliance job runs the runner's PostgreSQL service, as a host would; the `compose` job runs the
+# product's own `docker compose` stack, images pulled from Docker Hub.
 
 jobs:
   # 1. Everything that reads files and nothing else. Fast, and first to tell you you typed a name
@@ -72,6 +78,12 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -e .[dev]
+      - name: PostgreSQL binaries for throwaway test databases
+        run: |
+          ls /usr/lib/postgresql/*/bin/pg_ctl 2>/dev/null || {
+            sudo apt-get update && sudo apt-get install --yes --no-install-recommends postgresql
+          }
+          ls /usr/lib/postgresql/*/bin/pg_ctl
       - name: Vendor checksum (d3 supply-chain pin)
         run: make checksums PYTHON=python
       - name: Suite with coverage
@@ -173,13 +185,28 @@ jobs:
       - name: Build sdist and wheel
         run: make dist PYTHON=python
 
+      - name: PostgreSQL, as a host would run it
+        # The runner's own service, a role with a password, the password in a file only this job
+        # reads (`NETCORENOC_DATABASE_PASSWORD_FILE`), and the lab's database beside it.
+        run: |
+          sudo systemctl start postgresql.service
+          umask 077
+          python -c "import secrets; print(secrets.token_urlsafe(24))" > /tmp/db_password
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -v pw="$(cat /tmp/db_password)" <<'SQL'
+          CREATE ROLE netcorenoc LOGIN PASSWORD :'pw';
+          CREATE DATABASE netcorenoc OWNER netcorenoc;
+          CREATE DATABASE lab OWNER netcorenoc;
+          SQL
+
       - name: Install the wheel into a clean venv and boot it
         # F85's class: a wheel whose console is missing five modules passes every source-tree gate.
         # The only thing that catches it is installing the artifact and asking it for a page.
         run: |
           python -m venv /tmp/clean
           /tmp/clean/bin/pip install --quiet dist/*.whl
-          NETCORENOC_DB=/tmp/ci.db NETCORENOC_TRAP_PORT=1162 \
+          export NETCORENOC_DATABASE_URL=postgresql://netcorenoc@127.0.0.1:5432/netcorenoc
+          export NETCORENOC_DATABASE_PASSWORD_FILE=/tmp/db_password
+          NETCORENOC_DATA_DIR=/tmp/ci-data NETCORENOC_TRAP_PORT=1162 \
             /tmp/clean/bin/python -m netcorenoc.main &
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then break; fi
@@ -190,23 +217,13 @@ jobs:
           # The console, from the wheel — this is the assertion F85 needed.
           curl -fsS -o /dev/null http://127.0.0.1:8080/app.js
           curl -fsS -o /dev/null http://127.0.0.1:8080/app/views/overview.js
-          # v0.21.0: 18 -> 21 (`0019` severity provenance, `0020` organization, `0021` the
-          # maintenance-window tables); v0.22.0: 21 -> 24 (`0022` host samples, `0023` class
-          # rules, `0024` notice snooze and the outlived-window ack); v0.25.0: 24 -> 25 (`0025` people: display
-          # names, photos, token purpose); v0.26.0: 25 -> 26 (`0026` the learned decider, autonomy,
-          # search); v0.27.0: 26 -> 27 (`0027` Pending and the league's decisions); v0.29.0: 27 -> 28
-          # (`0028` the moved set of a move, two host series); v0.30.0: 28 -> 29 (`0029` recovery
-          # email, password-reset links); unreleased: 29 -> 30 (`0030` the trap pipeline's
-          # series, ADRs #450, #451). A literal, deliberately: a release that adds a migration
-          # changes this line in the same commit, which is what makes the schema a reviewable
-          # diff rather than a thing that grew. `tests/store/test_upgrade.py` and
-          # `tests/dataset/test_bag_identity.py` carry the same pin for the same reason.
-          python - <<'PY'
-          import sqlite3
-          v = sqlite3.connect("/tmp/ci.db").execute("PRAGMA user_version").fetchone()[0]
-          assert v == 30, f"the appliance booted at schema {v}, not 30"
-          print(f"schema version {v}, all migrations applied")
-          PY
+          # The schema version, as a literal (v0.21.0's rule): a release that adds a migration changes
+          # this line in the same commit, which is what makes the schema a reviewable diff rather
+          # than a thing that grew. 31 is the PostgreSQL baseline (ADR #452); SQLite's last was 30.
+          # `tests/store/test_store.py` carries the same pin for the same reason.
+          v=$(/tmp/clean/bin/python -m netcorenoc db status | awk '$1 == "version" {print $2}')
+          test "$v" = 31 || { echo "::error::the appliance booted at schema $v, not 31"; exit 1; }
+          echo "schema version $v, all migrations applied"
           # v0.27.0: the league is package data (ADR #424). A wheel that dropped a member would boot
           # on fewer models, or on the fail-safe formula, and say so in the bell — correct, and
           # exactly the silent loss F85 was. So the wheel must carry every member the tree carries,
@@ -235,14 +252,36 @@ jobs:
         # this job has already built the image it would use, so driving the lab directly tests the
         # lab instead of testing Docker networking.
         run: |
-          python tests/lab/run_local.py --demo --cycles 3 --hold-s 18 --settle-s 16
+          export LAB_URL="postgresql://netcorenoc:$(cat /tmp/db_password)@127.0.0.1:5432/lab"
+          python tests/lab/run_local.py --demo --cycles 3 --hold-s 18 --settle-s 16 \
+            --database-url "$LAB_URL"
           python - <<'PY'
-          import sqlite3
-          db = sqlite3.connect("tests/lab/state/lab.db")
-          db.row_factory = sqlite3.Row
-          sources = [r["ip"] for r in db.execute("SELECT DISTINCT ip FROM device ORDER BY ip")]
+          import asyncio
+          import os
+
+          import asyncpg
+
+
+          class DB:
+              """The few calls below, synchronous, over the lab's schema (ADR #452)."""
+
+              def __init__(self, url):
+                  self.loop = asyncio.new_event_loop()
+                  self.conn = self.loop.run_until_complete(
+                      asyncpg.connect(url, server_settings={"search_path": "netcorenoc"})
+                  )
+
+              def rows(self, sql, *args):
+                  return self.loop.run_until_complete(self.conn.fetch(sql, *args))
+
+              def one(self, sql, *args):
+                  return self.loop.run_until_complete(self.conn.fetchval(sql, *args))
+
+
+          db = DB(os.environ["LAB_URL"])
+          sources = [r["ip"] for r in db.rows("SELECT DISTINCT host(ip) AS ip FROM ne ORDER BY 1")]
           assert len(sources) == 2, f"the receiver recorded {sources}; the lab has two hosts"
-          status = dict(db.execute("SELECT status, COUNT(*) FROM alarm GROUP BY status").fetchall())
+          status = {r[0]: r[1] for r in db.rows("SELECT status, COUNT(*) FROM alarm GROUP BY status")}
           assert status.get("cleared", 0) > 0, f"the repair cleared nothing: {status}"
           # v0.17.1 (#345, F126): the cut phase raises ONE alarm that carries no severity column
           # and has no clear, so the lab deliberately settles with it still active. `active == 0`
@@ -250,8 +289,8 @@ jobs:
           # census — the half prime directive 1 is about. So name it instead of relaxing it.
           still = [
               dict(r)
-              for r in db.execute(
-                  "SELECT c.oid AS oid, a.instance, a.varbinds FROM alarm a "
+              for r in db.rows(
+                  "SELECT c.oid AS oid, a.instance, a.varbinds::text AS varbinds FROM alarm a "
                   "JOIN alarm_class c ON c.id=a.class_id WHERE a.status='active'"
               )
           ]
@@ -272,34 +311,80 @@ jobs:
           # situation >= 10` past its bar (9 fault alarms + 7 clears). The storm itself is
           # unchanged, so it is asserted directly: no clear grouped as an alarm, and each host's
           # cut alarms together in one situation (the steady phase's link 999 predates the cut).
-          grouped_clears = db.execute(
+          grouped_clears = db.one(
               "SELECT COUNT(*) FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
               "WHERE a.severity='cleared'"
-          ).fetchone()[0]
+          )
           assert grouped_clears == 0, f"{grouped_clears} clear notification(s) grouped as alarms"
           background = ("1.3.6.1.6.3.1.1.5.3", "999")
           for ip in sources:
-              faults = db.execute(
-                  "SELECT COUNT(*) FROM alarm a JOIN device d ON d.id=a.device_id "
-                  "JOIN alarm_class c ON c.id=a.class_id WHERE d.ip=? "
-                  "AND NOT (c.oid=? AND a.instance=?)",
-                  (ip, *background),
-              ).fetchone()[0]
-              together = db.execute(
+              faults = db.one(
+                  "SELECT COUNT(*) FROM alarm a JOIN ne d ON d.id=a.ne_id "
+                  "JOIN alarm_class c ON c.id=a.class_id WHERE host(d.ip)=$1 "
+                  "AND NOT (c.oid=$2 AND a.instance=$3)",
+                  ip,
+                  *background,
+              )
+              together = db.one(
                   "SELECT MAX(n) FROM (SELECT COUNT(*) n FROM situation_alarm sa "
-                  "JOIN alarm a ON a.id=sa.alarm_id JOIN device d ON d.id=a.device_id "
-                  "JOIN alarm_class c ON c.id=a.class_id WHERE d.ip=? "
-                  "AND NOT (c.oid=? AND a.instance=?) GROUP BY sa.situation_id)",
-                  (ip, *background),
-              ).fetchone()[0]
+                  "JOIN alarm a ON a.id=sa.alarm_id JOIN ne d ON d.id=a.ne_id "
+                  "JOIN alarm_class c ON c.id=a.class_id WHERE host(d.ip)=$1 "
+                  "AND NOT (c.oid=$2 AND a.instance=$3) GROUP BY sa.situation_id) s",
+                  ip,
+                  *background,
+              )
               assert faults >= 5 and together == faults, (
                   f"{ip}'s storm did not correlate: {together} of its {faults} cut alarms together"
               )
-          biggest = db.execute(
+          biggest = db.rows(
               "SELECT situation_id, COUNT(*) n FROM situation_alarm "
               "GROUP BY situation_id ORDER BY n DESC LIMIT 1"
-          ).fetchone()
-          pairs = db.execute("SELECT COUNT(*) FROM edge WHERE kind='clear_pair'").fetchone()[0]
+          )[0]
+          pairs = db.one("SELECT COUNT(*) FROM edge WHERE kind='clear_pair'")
           assert pairs >= 2, f"only {pairs} clear pair(s) learned; the vendor arc needs alternation"
           print(f"sources={sources} alarms={status} largest_situation={biggest['n']} pairs={pairs}")
           PY
+
+  # 5. The product's own `docker compose` stack: the database it brings, its generated password, its
+  #    health checks, the appliance on top. Images from Docker Hub, so this is the one job that
+  #    tests what an operator's first `docker compose up` does (ADR #452).
+  compose:
+    name: compose (PostgreSQL, generated secret, health, Supabase override)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: Up, with a high trap port so no capability is needed
+        run: |
+          export NETCORENOC_TRAP_PORT=1162
+          docker compose up --build --detach
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          echo
+          curl -fsS http://127.0.0.1:8080/readyz
+          echo
+      - name: The database is PostgreSQL, migrated, and not reachable from the host
+        run: |
+          docker compose exec -T netcorenoc python -m netcorenoc db status | tee status.txt
+          grep -q '^version *31 ' status.txt
+          docker compose ps --format '{{.Service}} {{.Ports}}' | tee ports.txt
+          ! grep -E '^postgres .*->5432' ports.txt  # exposed on the network, published nowhere
+          docker compose logs netcorenoc | grep -q 'applying migration 0031_postgresql.sql'
+      - name: The password was generated, and is in no environment
+        run: |
+          docker compose exec -T postgres sh -c 'test -s /run/netcorenoc-secrets/db_password'
+          ! docker compose exec -T netcorenoc env | grep -i -E 'password=.+'
+          ! docker compose exec -T postgres env | grep -E '^POSTGRES_PASSWORD='
+      - name: The managed-database override parses
+        run: |
+          mkdir -p secrets && printf 'x' > secrets/db_password.txt
+          NETCORENOC_DATABASE_URL='postgresql://postgres.ref@aws-0-x.pooler.supabase.com:5432/postgres?sslmode=require' \
+            docker compose -f docker-compose.yml -f docker-compose.supabase.yml config --quiet
+      - name: Logs, on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Down
+        if: always()
+        run: docker compose down --volumes

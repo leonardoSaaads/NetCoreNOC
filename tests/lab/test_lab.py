@@ -219,12 +219,26 @@ def test_the_lab_cannot_write_the_production_database() -> None:
 def test_the_lab_keeps_the_hardening_it_did_not_say_it_relaxed() -> None:
     """Relaxing is allowed; relaxing *silently* is not. What the preamble omits must still hold."""
     active = _active_lines(_lab_compose())
-    assert active.count("no-new-privileges:true") == 3, "every lab service forbids escalation"
-    assert active.count("cap_drop:") == 3 and active.count("- ALL") == 3
-    assert "cap_add:" not in active, (
-        "the lab adds no capability back — it uses port 1162, so it needs none, which is tighter "
-        "than the production recipe's single deliberate CAP_NET_BIND_SERVICE"
-    )
+    # Four services since ADR #452: the database, the appliance and the two NEs.
+    assert active.count("no-new-privileges:true") == 4, "every lab service forbids escalation"
+    assert active.count("cap_drop:") == 4 and active.count("- ALL") == 4
+    # One `cap_add`, the database's: its entrypoint owns its data directory and drops to the
+    # `postgres` user, and those five are what that takes. Nothing the lab tests adds any back —
+    # it uses port 1162, which is tighter than production's one deliberate CAP_NET_BIND_SERVICE.
+    assert active.count("cap_add:") == 1, "only the lab's database adds capabilities back"
+    added = active[
+        active.index("cap_add:") : active.index("security_opt:", active.index("cap_add:"))
+    ]
+    assert set(added.split()) == {
+        "cap_add:",
+        "-",
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+    }, added
+    assert "NET_BIND_SERVICE" not in active
     assert "read_only: true" in active, "the appliance under test keeps its immutable rootfs"
     assert "privileged" not in active and "network_mode: host" not in active
 
@@ -243,7 +257,7 @@ def test_the_ne_image_does_not_copy_the_product_in() -> None:
     assert installs, "the NE image installs nothing; this test is asserting nothing"
     joined = "\n".join(installs)
     assert "pysnmp" in joined, "the NE needs the PDU encoder's dependency"
-    for forbidden in ("fastapi", "uvicorn", "aiosqlite"):
+    for forbidden in ("fastapi", "uvicorn", "asyncpg", "aiosqlite"):
         assert forbidden not in joined, f"an NE is a sender; it does not need {forbidden}"
 
 

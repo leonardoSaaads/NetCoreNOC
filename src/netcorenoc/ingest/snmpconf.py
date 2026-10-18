@@ -34,7 +34,8 @@ from netcorenoc.crosscutting.settings import SettingsError
 META_KEY = "config.snmp"
 #: What an operator runs when a stored policy keeps the appliance from starting.
 CLEAR_COMMAND = (
-    'psql "$NETCORENOC_DATABASE_URL" -c "DELETE FROM netcorenoc.meta WHERE key=\'config.snmp\'"'
+    'psql "$NETCORENOC_DATABASE_URL" -c '
+    "\"DELETE FROM ${NETCORENOC_DB_SCHEMA:-netcorenoc}.meta WHERE key='config.snmp'\""
 )
 DOCUMENT_VERSION = 1
 

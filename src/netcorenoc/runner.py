@@ -53,7 +53,7 @@ from netcorenoc.ingest.receiver import (
     parse_allowlist,
     start_receiver,
 )
-from netcorenoc.store import STORAGE_ERRORS, Store
+from netcorenoc.store import OPEN_ERRORS, Store
 
 log = logging.getLogger("netcorenoc")
 
@@ -108,7 +108,7 @@ def _check_allowlist(spec: str, *, stored: bool) -> None:
             "the stored trap allowlist, saved from the Settings screen by an admin running a "
             "version that did not validate it. Clear it and the environment default applies "
             'again:  psql "$NETCORENOC_DATABASE_URL" -c '
-            "\"DELETE FROM netcorenoc.meta WHERE key='config.allowlist'\""
+            "\"DELETE FROM ${NETCORENOC_DB_SCHEMA:-netcorenoc}.meta WHERE key='config.allowlist'\""
             if stored
             else f"{ENV_PREFIX}ALLOWLIST"
         )
@@ -193,7 +193,7 @@ async def run(settings: Settings) -> None:
     )
     try:
         await store.open()
-    except STORAGE_ERRORS as exc:  # OSError among them: a refused or unresolvable host
+    except OPEN_ERRORS as exc:  # unreachable, refused, or absent
         # The driver's message names neither the setting nor where it looked (F69).
         await store.close()
         raise SettingsError(

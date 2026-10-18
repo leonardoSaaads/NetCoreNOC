@@ -8,8 +8,10 @@ instance lock, so it runs beside a live appliance, and **without** creating the 
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
+from collections.abc import Awaitable
 
 from netcorenoc.crosscutting.settings import (
     Settings,
@@ -19,29 +21,42 @@ from netcorenoc.crosscutting.settings import (
     redact_url,
     split_password,
 )
-from netcorenoc.store import STORAGE_ERRORS, MissingSchemaError, Store
+from netcorenoc.store import OPEN_ERRORS, MissingSchemaError, Store
 
 __all__ = ["_backup", "_db_status", "_import_sqlite", "_open", "_settings"]
 
-#: What opening the store can raise that an operator fixes by pointing at the right database.
-_OPEN_ERRORS: tuple[type[BaseException], ...] = (MissingSchemaError, *STORAGE_ERRORS)
+#: What opening the store can raise that an operator fixes by pointing at the right database: a
+#: refused or unreachable server, a role or password it does not accept, a database or schema that
+#: is not there.
+_OPEN_ERRORS: tuple[type[BaseException], ...] = (MissingSchemaError, *OPEN_ERRORS)
 
 
-def _settings() -> Settings:
+def _settings(*, importing: bool = False) -> Settings:
     """The appliance's own database settings. The OPTICORR_* aliases were removed in v0.6.0.
 
     The CLI refuses rather than silently reading the wrong database: pointing `audit verify` at
     a default while the operator believes it is checking their real one would produce a
-    confidently wrong answer about the integrity of the audit chain."""
+    confidently wrong answer about the integrity of the audit chain. So `NETCORENOC_DB` — the
+    SQLite file until v0.30.0 — is refused here as the appliance refuses it, except by the one
+    command whose job is to read that file."""
     legacy = legacy_env_names()
     if legacy:
         print(str(legacy_env_error(tuple(legacy))), file=sys.stderr)
         raise SystemExit(2)
     try:
-        return Settings.from_env()
+        settings = Settings.from_env()
     except SettingsError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(2) from exc
+    if settings.legacy_db and not importing:
+        print(
+            f"NETCORENOC_DB={settings.legacy_db!r} names a SQLite database; NetCoreNOC keeps its "
+            "data in PostgreSQL since v0.31.0 (NETCORENOC_DATABASE_URL). Import the file once with "
+            "`python -m netcorenoc db import-sqlite <file>`, then unset NETCORENOC_DB.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    return settings
 
 
 def _store(settings: Settings, *, create: bool = False) -> Store:
@@ -95,13 +110,19 @@ def _backup(settings: Settings, target: str) -> int:
             file=sys.stderr,
         )
         return 2
+    asyncio.run(_close(_open(settings)))  # the schema must be there: an empty dump is no backup
     url, password = split_password(settings.database_url)
     env = {**os.environ, **({"PGPASSWORD": password} if password else {})}
-    subprocess.run(  # nosec B603 - fixed binary, the operator's own URL and file name
+    dumped = subprocess.run(  # nosec B603 - fixed binary, the operator's own URL and file name
         [dump, "--format=custom", f"--schema={settings.db_schema}", f"--file={target}", url],
-        check=True,
+        check=False,
         env=env,
     )
+    if dumped.returncode != 0:
+        if os.path.exists(target):  # never leave a partial file that a retry would refuse
+            os.remove(target)
+        print(f"pg_dump failed (exit {dumped.returncode}); nothing was written", file=sys.stderr)
+        return 1
     listing = subprocess.run(  # nosec B603 - fixed binary, the file just written
         [restore, "--list", target], check=False, capture_output=True, text=True
     )
@@ -112,6 +133,10 @@ def _backup(settings: Settings, target: str) -> int:
         f"{verdict}"
     )
     return 0 if verdict == "ok" else 1
+
+
+async def _close(opening: Awaitable[Store]) -> None:
+    await (await opening).close()
 
 
 async def _db_status(settings: Settings) -> int:
