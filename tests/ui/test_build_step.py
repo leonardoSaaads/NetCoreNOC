@@ -380,7 +380,7 @@ UI_HASHES: dict[str, str] = {
     "app/modelcharts.js": "00a8125bf1c049daa4297d5ef5506f5855a51a43504a0f744234a738b647c559",
     "app/netgraph.js": "30c308afc4fc650550ce0751d212a54145c293629552028ecf58c2061951251a",
     "app/notices.js": "a6d15665d53bff109c8d5e5be6e1116f4d1a014b1ba10e141b80cf9de7e62261",
-    "app/parameters.js": "74431c96a3c6a9b12c29841e56eb13210df6ef78f5dfda054e05fa285eda1cae",
+    "app/parameters.js": "6c5cf807535cc2ef87d4b1d54f2ab2abb34f595f74c64cc272b26bb88113b1f4",
     "app/password.js": "6c85d8111fcaa2da415910744064c84e41adf5db57fc953cad9f1f14543ec11d",
     "app/recover.js": "c302e4f0bc0ffc416ec72b2bd266d3b716cb5f4ce687c823644c8e384bfa83f4",
     "app/registry.js": "5bbf0439ece164db52f1797c5805e827752c7eda8ee3d338408f7d17358f1eec",
@@ -436,7 +436,7 @@ UI_HASHES: dict[str, str] = {
     ),
     "app/views/parts/judge.js": "5f67fa0292e9d9909532afc7d81abcc70d592cdb127dce430eceb60e782245b0",
     "app/views/parts/keeping.js": (
-        "3a843b5ea622418dd7d1a52da3ebe4efc73e09cb1f1e002d429aa84f56b558c7"
+        "f7a668dd5c37e58dee20fa6dbd0e48dd650ffabb3cf597d9d7781f0904f1985b"
     ),
     "app/views/parts/league.js": "8bcfb48103093c85d55846e489761eec55b20e8c3bf31e24ff50eb95c7299c2c",
     "app/views/parts/leaguecharts.js": (
@@ -573,7 +573,7 @@ UI_SIZES: dict[str, int] = {
     "app/modelcharts.js": 17_342,
     "app/netgraph.js": 11_593,
     "app/notices.js": 14_771,
-    "app/parameters.js": 10_270,
+    "app/parameters.js": 10_388,
     "app/password.js": 5_442,
     "app/recover.js": 4_863,
     "app/registry.js": 8_740,
@@ -610,7 +610,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/finder.js": 6_650,
     "app/views/parts/importbox.js": 5_982,
     "app/views/parts/judge.js": 15_986,
-    "app/views/parts/keeping.js": 8_295,
+    "app/views/parts/keeping.js": 8_297,
     "app/views/parts/league.js": 11_785,
     "app/views/parts/leaguecharts.js": 10_692,
     "app/views/parts/leaguecompare.js": 5_897,

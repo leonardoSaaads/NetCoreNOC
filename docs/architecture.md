@@ -167,7 +167,7 @@ of `ne`, is folded into it; `user`, a reserved word, is `app_user`; the append-o
 trigger function; the rows rewritten constantly (`alarm`, `edge`, `session`, `meta`) get a
 fillfactor and an aggressive autovacuum. A SQLite database of the last SQLite schema is copied in
 by `python -m netcorenoc db import-sqlite` (`store/importer.py`). What the move measured, before
-and after: `docs/plans/postgresql.md`.
+and after: [`docs/plans/postgresql.md`](plans/postgresql.md).
 
 ## Explainability is contractual
 

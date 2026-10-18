@@ -35,11 +35,16 @@ imports the file. Backups are `pg_dump` archives.
   is designed rather than transcribed: `timestamptz`, `inet`, `jsonb` varbinds under a GIN index,
   `boolean`, identity columns, `CHECK`ed vocabularies, `COLLATE "C"`; `device` folded into `ne`;
   `user` is `app_user`; one append-only trigger function; fillfactor and autovacuum on the hot
-  rows. Measurements: `docs/plans/postgresql.md`.
-- **`python -m netcorenoc db import-sqlite <file>`** (#452): copies a schema-30 SQLite database
-  into an empty schema in one transaction, verifies every table's row count and the audit hash
-  chain before committing, refuses a source that fails `PRAGMA integrity_check` or a target that
-  holds history, reads the file read-only, and audits itself (`db.import`).
+  rows. Measured on a 4 vCPU host against v0.30.x, full durability, a 20 000-alarm storm with four
+  console clients: console latency during the storm 720 -> 19 ms at p50 (−97 %) and 889 -> 79 ms
+  at p95, 15× the requests answered, console reads at rest −43 % at p50; classification alone 8 %
+  slower in wall time and 12 % cheaper in CPU (one round trip per statement). Details, and what
+  stays slower: [`docs/plans/postgresql.md`](docs/plans/postgresql.md).
+- **`python -m netcorenoc db import-sqlite <file>`** (#452): copies a v0.30.x SQLite database
+  (schema 29 as released, or 30) into an empty schema in one transaction, verifies every table's
+  row count and the audit hash chain before committing, refuses a source that fails
+  `PRAGMA integrity_check` or a target that holds history, reads the file read-only, and audits
+  itself (`db.import`).
 - **`python -m netcorenoc db status`** — the server, database, role, schema, the schema's version
   against this release's, and its size — and **`db migrate`** (`make migrate`), which creates the
   schema and applies pending migrations beside a running appliance.
@@ -107,6 +112,12 @@ imports the file. Backups are `pg_dump` archives.
   back, the connection re-established and the instance lock taken again.
 - `GET /api/config`: `startup.db_path` is replaced by `startup.database` (the URL, its password as
   `***`) and `startup.db_schema`.
+- **Flags in API responses are JSON booleans** (#452): a column that held 0/1 is `true`/`false`
+  where a response returns it as stored — `disabled` and `must_change_password` in `/api/users`,
+  `is_flapping` in a situation's members, `revoked` in `/api/tokens`, and the like. The console
+  reads them by truthiness and is unaffected; a client comparing `=== 1` must compare to `true`.
+- **A session's idle expiry and a token's "last used" are written at most every 30 s** (#452),
+  instead of on every request: an idle session may expire up to half a minute early.
 - **`/readyz` is not ready only when the spool refuses writes** (#450). It used to be not ready
   for a nearly full queue and, briefly, for a late trap — and an orchestrator acting on that stops
   sending traffic, which for UDP is traps lost in front of the appliance.

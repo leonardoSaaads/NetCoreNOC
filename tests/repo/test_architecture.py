@@ -1355,8 +1355,13 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `ingest/decoder.py` and `engine/operate/intake.py` (the spool, its record, the decoder and the
 #: engine's reader, #450); `engine/operate/pipeline.py` and migration `0030` (the KPI's record,
 #: #451); `ui/app/views/parts/pipeline.js` (the Overview's trap pipeline).
-SRC_TREE_DIGEST = "d8b17df530307d08a69b58560203ae4cca6223c9bd865494a67089fae21e48bd"
-SRC_FILE_COUNT = 399
+#: **Then 399 -> 375.** PostgreSQL (ADR #452): the thirty SQLite migrations `0001`-`0030`
+#: removed and `0031_postgresql.sql`, the designed baseline, added; `store/db.py` (the writer and
+#: the reader pool), `store/codecs.py`, `store/sql.py` (the placeholder translation),
+#: `store/importer.py` (the one-way SQLite import) and `store/cli.py` (the CLI's database
+#: plumbing) added.
+SRC_TREE_DIGEST = "231aee0d72fd95be8594c162432adacc5fa95b31159c5b18285533956a69094d"
+SRC_FILE_COUNT = 375
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

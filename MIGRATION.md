@@ -93,9 +93,10 @@ python -m netcorenoc db import-sqlite <file>
 
 It refuses rather than guesses, and changes nothing when it refuses:
 
-* **The file must be at schema 30** — migration `0030`, the last SQLite one — and pass
-  `PRAGMA integrity_check`. A file at an older schema is refused: run the last SQLite build of
-  NetCoreNOC on it once, so it applies its own migrations, then import.
+* **The file must be at schema 29 or 30** — v0.30.x as released, or with the unreleased
+  migration `0030`, whose `host_sample` columns then import as "not measured" — and pass
+  `PRAGMA integrity_check`. A file at an older schema is refused: run v0.30.x on it once, so it
+  applies its own migrations, then import.
 * **The target schema must hold no history.** Import **before** the new release's first start:
   that start writes history (a bootstrap admin), and the import then refuses the schema.
 * **One transaction.** Every table is copied with `COPY`, each value converted to its column's

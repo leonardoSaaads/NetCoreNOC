@@ -10,7 +10,7 @@ end it. That is what lets 864 call sites keep their shape (``cur = await conn.ex
 **The readers** are a pool, bound per task by :meth:`Database.reading` into a context variable, so
 an API read runs in its own ``REPEATABLE READ READ ONLY`` snapshot on its own connection and never
 waits for ``store.lock``. Under SQLite every console request queued behind the engine's batch; this
-is the change that measured 715 ms -> a few ms at p50 under a storm (`docs/plans/postgresql.md`). A
+is the change that measured 720 -> 19 ms at p50 under a storm (`docs/plans/postgresql.md`). A
 write attempted inside a reader fails loudly — PostgreSQL refuses it in a read-only transaction.
 
 **Types** are `codecs.py`'s: every connection here, the writer and each reader, registers them, so
@@ -159,12 +159,6 @@ class Connection:
             except asyncpg.PostgresError:
                 self._failed = True
                 raise
-
-    async def copy(self, table: str, columns: Sequence[str], rows: Iterable[Sequence[Any]]) -> None:
-        """Bulk-insert ``rows`` with ``COPY`` — one round trip for any number of rows."""
-        async with self._busy:
-            await self._begin()
-            await self.raw.copy_records_to_table(table, columns=list(columns), records=rows)
 
     @contextlib.asynccontextmanager
     async def savepoint(self) -> AsyncIterator[None]:

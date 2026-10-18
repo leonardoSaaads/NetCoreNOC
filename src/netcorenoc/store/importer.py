@@ -194,9 +194,9 @@ def _rows(
     if table in ("alarm", "dataset_observation") and "ne_id" in columns:
         select[columns.index("ne_id")] = 'COALESCE("ne_id", "device_id")'
     convert = [_converter(kinds[column]) for column in columns]
-    cursor = source.execute(  # nosec B608 - table and column names are this module's constants
-        f'SELECT {", ".join(select)} FROM "{table}"'
-    )
+    # Table and column names are this module's constants and the target schema's own columns.
+    query = f'SELECT {", ".join(select)} FROM "{table}"'  # nosec B608
+    cursor = source.execute(query)
     for number, row in enumerate(cursor, start=1):
         try:
             yield tuple(None if v is None else f(v) for f, v in zip(convert, row, strict=True))

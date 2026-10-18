@@ -334,7 +334,7 @@ async def test_a_session_and_a_token_are_touched_at_most_every_touch_interval(st
     async def last_used() -> float | None:
         row = await store.get_token(auth.hash_token("t" * 43))
         assert row is not None
-        return row["last_used_at"]
+        return None if row["last_used_at"] is None else float(row["last_used_at"])
 
     for at, expiry, used in (
         (1000.0, 1000.0, 1000.0),  # due: written
