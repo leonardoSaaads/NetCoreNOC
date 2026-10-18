@@ -1,9 +1,10 @@
-"""Devices, network elements, their level-0 entities, and alarm classes.
+"""Network elements (a trap's device), their level-0 entities, and alarm classes.
 
 Every method here is an insert-or-get keyed by a natural identifier from the trap stream, cached
-in-memory so the hot path does not re-query. The caches (``_device_ids``, ``_ne_ids``,
-``_entity0_ids``, ``_class_ids``, ``_touched``) are declared on :class:`StoreBase`, assigned in
-``Store.__init__``, and read and written only here.
+in-memory so the hot path does not re-query. The caches (``_ne_ids``, ``_entity0_ids``,
+``_class_ids``, ``_touched``) are declared on :class:`StoreBase`, assigned in ``Store.__init__``,
+and read and written only here. The `device` table that copied `ne` row for row is gone (ADR
+#452): a device is its element, and :meth:`device_id` answers with the element's id.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from netcorenoc.store.types import TOUCH_INTERVAL_S
 
 class DeviceMixin(StoreBase):
     def _should_touch(self, kind: str, row_id: int, ts: float) -> bool:
-        """last_seen on device/class rows is cosmetic; throttle it under load."""
+        """last_seen on element/class rows is cosmetic; throttle it under load."""
         key = (kind, row_id)
         if ts - self._touched.get(key, 0.0) < TOUCH_INTERVAL_S:
             return False
@@ -22,24 +23,13 @@ class DeviceMixin(StoreBase):
         return True
 
     async def device_id(self, ip: str, ts: float) -> int:
-        cached = self._device_ids.get(ip)
-        if cached is not None:
-            if self._should_touch("d", cached, ts):
-                await self.conn.execute("UPDATE device SET last_seen=? WHERE id=?", (ts, cached))
-            return cached
-        cur = await self.conn.execute(
-            "INSERT INTO device (ip, vendor, first_seen, last_seen) VALUES (?, NULL, ?, ?) "
-            "ON CONFLICT (ip) DO UPDATE SET last_seen=excluded.last_seen RETURNING id",
-            (ip, ts, ts),
-        )
-        row = await cur.fetchone()
-        assert row is not None
-        self._device_ids[ip] = int(row[0])
-        return self._device_ids[ip]
+        """The device for a source IP, which is its element: the device is the element since ADR
+        #452, so this is :meth:`ne_id`. Kept so the callers that speak of devices keep their
+        names."""
+        return await self.ne_id(ip, ts)
 
     async def ne_id(self, ip: str, ts: float) -> int:
-        """The reporting element for a source IP. Parallel to :meth:`device_id` (one NE per
-        device, 1:1); device_id is retained and kept in sync for one version (§5.2)."""
+        """The reporting element for a source IP (also the device's id, ADR #452)."""
         cached = self._ne_ids.get(ip)
         if cached is not None:
             if self._should_touch("n", cached, ts):
@@ -56,9 +46,9 @@ class DeviceMixin(StoreBase):
         return self._ne_ids[ip]
 
     async def entity_level0(self, ne_id: int, ip: str, ts: float) -> int:
-        """The level-0 entity (the NE itself). Insert-or-get; the store lock serialises this,
-        and the UNIQUE (ne_id, parent_id, key) index does not fire on a NULL parent, so a
-        SELECT-then-INSERT under the lock is the correct idempotent path."""
+        """The level-0 entity (the NE itself). Insert-or-get; the store lock serialises this
+        SELECT-then-INSERT, and the UNIQUE NULLS NOT DISTINCT (ne_id, parent_id, key) constraint
+        refuses a second level-0 row should anything ever race it."""
         cached = self._entity0_ids.get(ne_id)
         if cached is not None:
             return cached

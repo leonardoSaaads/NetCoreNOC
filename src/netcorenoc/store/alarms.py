@@ -1,10 +1,10 @@
 """The alarm table: dedup by fingerprint, clear, flap flag, and quarantine.
 
-Inherits :class:`DeviceMixin` because :meth:`ingest` resolves the device, NE, class and level-0
-entity before it can write a row. That is one of exactly two sibling-inheritance edges in this
-package (DECISIONS #88); the alternative — restating four signatures on :class:`StoreBase` — would
-have needed stub bodies, and a stub that resolves instead of the real method is a silent no-op
-write.
+Inherits :class:`DeviceMixin` because :meth:`ingest` resolves the NE (the device, ADR #452), class
+and level-0 entity before it can write a row. That is one of exactly two sibling-inheritance edges
+in this package (DECISIONS #88); the alternative — restating four signatures on :class:`StoreBase`
+— would have needed stub bodies, and a stub that resolves instead of the real method is a silent
+no-op write.
 """
 
 from __future__ import annotations
@@ -28,14 +28,13 @@ class AlarmMixin(DeviceMixin):
     ) -> IngestResult:
         """Dedup by fingerprint: a repeat bumps count/last_seen; a re-raise re-activates.
 
-        The dedup key stays (device_id, class_id, instance) — at level 0 this is exactly
-        the entity fingerprint (one entity per NE), which is what preserves cold-start parity
-        (§5.2). ne_id and entity_id are recorded on every alarm so the entity model is
-        populated from day one; the profiler (S4/S5) only ever adds deeper entities.
+        The dedup key is (ne_id, class_id, instance) — the device is the element since ADR #452,
+        and at level 0 this is exactly the entity fingerprint (one entity per NE), which is what
+        preserves cold-start parity (§5.2). entity_id is recorded on every alarm so the entity
+        model is populated from day one; the profiler (S4/S5) only ever adds deeper entities.
         """
-        device_id = await self.device_id(event.device, event.ts)
+        ne_id = device_id = await self.ne_id(event.device, event.ts)
         class_id = await self.class_id(event.trap_oid, event.ts)
-        ne_id = await self.ne_id(event.device, event.ts)
         # The engine resolves the entity and dedup instance (promotion-aware, S5). Defaults —
         # the level-0 entity and the heuristic instance — reproduce v0.2.0 exactly (parity).
         if entity_id is None:
@@ -43,27 +42,17 @@ class AlarmMixin(DeviceMixin):
         inst = event.instance if instance is None else instance
         cur = await self.conn.execute(
             "SELECT id, status, entity_id, last_seen FROM alarm "
-            "WHERE device_id=? AND class_id=? AND instance=?",
-            (device_id, class_id, inst),
+            "WHERE ne_id=? AND class_id=? AND instance=?",
+            (ne_id, class_id, inst),
         )
         existing = await cur.fetchone()
         varbinds = json.dumps([v.model_dump() for v in event.varbinds])
-        # v0.21.0: the provenance column exists only from migration `0019`, and the schema probe
-        # answers that once at `open()` rather than per trap. On an older schema the severity is
-        # still placed and still written — only the column that would say where it came from is
-        # absent, which is the state that database was already in.
-        source_column = ", severity_source" if self._has_severity_source else ""
-        source_value = (severity_source,) if self._has_severity_source else ()
         if existing is None:
-            marks = ", ".join("?" * (11 + len(source_value)))
             cur = await self.conn.execute(
-                # nosec B608 - `source_column` and `marks` are literals chosen by a schema probe;
-                # every value is bound.
-                "INSERT INTO alarm (device_id, ne_id, entity_id, class_id, instance, first_seen, "  # nosec B608
-                f"last_seen, varbinds, community_tag, severity, severity_rank{source_column}) "
-                f"VALUES ({marks}) RETURNING id",
+                "INSERT INTO alarm (ne_id, entity_id, class_id, instance, first_seen, last_seen, "
+                "varbinds, community_tag, severity, severity_rank, severity_source) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
                 (
-                    device_id,
                     ne_id,
                     entity_id,
                     class_id,
@@ -74,7 +63,7 @@ class AlarmMixin(DeviceMixin):
                     event.community_tag or None,
                     severity,
                     severity_rank,
-                    *source_value,
+                    severity_source,
                 ),
             )
             row = await cur.fetchone()
@@ -88,19 +77,21 @@ class AlarmMixin(DeviceMixin):
         # a provenance that had been overwritten, and a row claiming `standard` for a value no trap
         # ever stated is exactly the fabrication prime directive 2 forbids. They are written from
         # the same `severity` parameter, so the pair is always one trap's statement.
-        source_set = (
-            ", severity_source=CASE WHEN ? IS NULL THEN severity_source ELSE ? END "
-            if self._has_severity_source
-            else " "
-        )
-        source_args = (severity, severity_source) if self._has_severity_source else ()
         cur = await self.conn.execute(
-            # nosec B608 - `source_set` is one of two literals chosen by a schema probe.
-            "UPDATE alarm SET count=count+1, last_seen=?, varbinds=?, status='active', "  # nosec B608
+            "UPDATE alarm SET count=count+1, last_seen=?, varbinds=?, status='active', "
             "cleared_at=NULL, severity=COALESCE(?, severity), "
-            f"severity_rank=COALESCE(?, severity_rank){source_set}"
+            "severity_rank=COALESCE(?, severity_rank), "
+            "severity_source=CASE WHEN CAST(? AS text) IS NULL THEN severity_source ELSE ? END "
             "WHERE id=? RETURNING count",
-            (event.ts, varbinds, severity, severity_rank, *source_args, int(existing["id"])),
+            (
+                event.ts,
+                varbinds,
+                severity,
+                severity_rank,
+                severity,
+                severity_source,
+                int(existing["id"]),
+            ),
         )
         row = await cur.fetchone()
         assert row is not None
@@ -118,7 +109,7 @@ class AlarmMixin(DeviceMixin):
         """Mark the matching active alarm cleared; returns its id, or None if absent."""
         cur = await self.conn.execute(
             "UPDATE alarm SET status='cleared', cleared_at=?, last_seen=? "
-            "WHERE device_id=? AND class_id=? AND instance=? AND status='active' RETURNING id",
+            "WHERE ne_id=? AND class_id=? AND instance=? AND status='active' RETURNING id",
             (ts, ts, device_id, raise_class_id, instance),
         )
         row = await cur.fetchone()

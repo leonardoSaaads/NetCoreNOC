@@ -33,7 +33,9 @@ from netcorenoc.crosscutting.settings import SettingsError
 #: The meta key the policy is stored under. One JSON document, versioned.
 META_KEY = "config.snmp"
 #: What an operator runs when a stored policy keeps the appliance from starting.
-CLEAR_COMMAND = "sqlite3 <NETCORENOC_DB> \"DELETE FROM meta WHERE key='config.snmp'\""
+CLEAR_COMMAND = (
+    'psql "$NETCORENOC_DATABASE_URL" -c "DELETE FROM netcorenoc.meta WHERE key=\'config.snmp\'"'
+)
 DOCUMENT_VERSION = 1
 
 #: RFC 3414 §11.2: a passphrase shorter than eight characters is refused.

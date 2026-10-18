@@ -20,10 +20,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
 import time
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any
 
 import uvicorn
@@ -37,6 +35,7 @@ from netcorenoc.crosscutting.settings import (
     Settings,
     SettingsError,
     legacy_env_error,
+    redact_url,
 )
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
 from netcorenoc.engine.operate import intake, pipeline
@@ -54,7 +53,7 @@ from netcorenoc.ingest.receiver import (
     parse_allowlist,
     start_receiver,
 )
-from netcorenoc.store import Store
+from netcorenoc.store import STORAGE_ERRORS, Store
 
 log = logging.getLogger("netcorenoc")
 
@@ -68,9 +67,10 @@ class HttpServerStartError(RuntimeError):
     uvicorn calls ``sys.exit(STARTUP_FAILURE)`` when it cannot bind, and ``SystemExit`` is a
     ``BaseException``: asyncio re-raises it out of ``run_until_complete`` rather than storing it on
     the task, so the ``run()`` coroutine is never resumed and **every one of its ``finally`` blocks
-    is skipped** — including the store close. The interpreter then blocks forever in
-    ``threading._shutdown`` waiting on aiosqlite's non-daemon connection thread, which is what
-    "the appliance hangs when port 8080 is already in use" actually was.
+    is skipped** — including the store close. Under SQLite the interpreter then blocked forever in
+    ``threading._shutdown`` waiting on the driver's non-daemon connection thread, which is what
+    "the appliance hangs when port 8080 is already in use" actually was; under PostgreSQL the
+    server holds the instance lock until it notices the connection is gone.
 
     Converting it here puts the failure back on the path every other startup error takes: it
     propagates through ``asyncio.gather``, the cleanup runs, the store closes, the process exits
@@ -107,7 +107,8 @@ def _check_allowlist(spec: str, *, stored: bool) -> None:
         source = (
             "the stored trap allowlist, saved from the Settings screen by an admin running a "
             "version that did not validate it. Clear it and the environment default applies "
-            "again:  sqlite3 <NETCORENOC_DB> \"DELETE FROM meta WHERE key='config.allowlist'\""
+            'again:  psql "$NETCORENOC_DATABASE_URL" -c '
+            "\"DELETE FROM netcorenoc.meta WHERE key='config.allowlist'\""
             if stored
             else f"{ENV_PREFIX}ALLOWLIST"
         )
@@ -175,28 +176,36 @@ async def run(settings: Settings) -> None:
             "Unset it and issue a named service token instead (admin -> Tokens in the UI, or "
             "POST /api/tokens); send it as 'Authorization: Bearer <value>'. See MIGRATION.md."
         )
-    store = Store(settings.db_path)
+    if settings.legacy_db:
+        # ADR #452: until v0.30.0 this named the SQLite file. Starting on an empty PostgreSQL
+        # database instead would look exactly like losing the whole history, so it is refused.
+        raise SettingsError(
+            f"{ENV_PREFIX}DB={settings.legacy_db!r} names a SQLite database, and NetCoreNOC "
+            f"stores its data in PostgreSQL since v0.31.0. Import it once with "
+            f"`python -m netcorenoc db import-sqlite {settings.legacy_db}`, then unset "
+            f"{ENV_PREFIX}DB and set {ENV_PREFIX}DATABASE_URL. See MIGRATION.md."
+        )
+    store = Store(
+        settings.database_url,
+        schema=settings.db_schema,
+        readers=settings.db_readers,
+        statement_cache_size=settings.db_statement_cache,
+    )
     try:
         await store.open()
-    except sqlite3.Error as exc:
-        # `sqlite3.OperationalError: unable to open database file` names neither the setting nor
-        # the path, and the path defaults to the **working directory** — so an operator who ran the
-        # appliance from somewhere unexpected cannot tell which file it wanted (F69).
+    except STORAGE_ERRORS as exc:  # OSError among them: a refused or unresolvable host
+        # The driver's message names neither the setting nor where it looked (F69).
         await store.close()
         raise SettingsError(
-            f"{ENV_PREFIX}DB={settings.db_path!r} could not be opened: {exc}. The path is relative "
-            f"to the working directory unless it is absolute, and its directory must exist and be "
-            f"writable by the process. See docs/configure.md."
+            f"{ENV_PREFIX}DATABASE_URL={redact_url(settings.database_url)!r} could not be opened: "
+            f"{type(exc).__name__}: {exc}. Check the host, the port, the role and its password, "
+            f"and that the database exists. See docs/configure.md."
         ) from exc
     try:
         await _serve(settings, store)
     finally:
-        # **The store is closed on every exit path** (F66, DECISIONS #225). `aiosqlite` runs its
-        # connection on a **non-daemon** thread, so a store left open holds the interpreter alive
-        # after the exception has been printed — the process does not crash, it hangs, and every
-        # restart policy written for it (`Restart=on-failure`, `restart: unless-stopped`) is keyed
-        # on an exit that never comes. Measured: five ordinary misconfigurations, including "the
-        # HTTP port is already in use", survived SIGTERM and needed SIGKILL.
+        # **The store is closed on every exit path** (F66, DECISIONS #225): a connection left open
+        # leaves the server holding the instance lock until its TCP keepalive notices.
         await store.close()
 
 
@@ -269,13 +278,11 @@ async def _serve(settings: Settings, store: Store) -> None:
 
     # The host readings the health control draws (v0.16.5). Sampled by a supervised loop rather
     # than on demand: CPU is a delta between two readings, and a series sampled only while somebody
-    # has the panel open would be a graph of when people looked at it. The database's directory is
-    # the storage that matters — the filesystem that fills up and stops this appliance, not the
-    # host's root.
-    resources = ResourceSampler(
-        path=str(Path(settings.db_path).resolve().parent),
-        db_path=str(Path(settings.db_path).resolve()),
-    )
+    # has the panel open would be a graph of when people looked at it. The spool's filesystem is
+    # the local storage that matters — the one that fills up during a storm — and the database's
+    # size is asked of the server (ADR #452).
+    resources = ResourceSampler(path=str(settings.spool_path.parent), store=store)
+    await resources.measure_database()
     resources.sample()  # one reading now, so CPU has a baseline to difference the next one against
 
     # **D2's startup self-check** (v0.21.0). Computed once, here, in the *running* appliance —
@@ -338,12 +345,17 @@ async def _serve(settings: Settings, store: Store) -> None:
     )
     url = f"{scheme}://{settings.http_host}:{settings.http_port}/"
     # **What an operator needs to know a boot did what they meant** (DECISIONS #227). The database
-    # path because it defaults to the *working directory* and is the whole of the state; the
+    # because it is the whole of the state (its password redacted); the
     # allowlist because an empty one accepts everything and a wrong one accepts nothing, and
     # neither is visible from the outside; the retention because it decides what is deleted. The
     # allowlist's entries are not printed — F9 records that the allowlist reveals security posture,
     # and a count answers "did it load what I set" without publishing the estate's addressing.
-    log.info("database %s (schema version %d)", settings.db_path, await store.schema_version())
+    log.info(
+        "database %s, schema %s (version %d)",
+        redact_url(settings.database_url),
+        settings.db_schema,
+        await store.schema_version(),
+    )
     log.info(
         "trap allowlist: %s; operational retention %g day(s)",
         f"{len(parse_allowlist(effective_allowlist) or [])} network(s)"

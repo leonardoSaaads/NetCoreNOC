@@ -17,8 +17,9 @@
   ``dead-letter.jsonl`` with the error's name, the cursor passes it, and everything else continues —
   the dead-letter queue every message broker has.
 * **Delete what is safely classified.** A segment wholly at or before the cursor is deleted only
-  after a WAL checkpoint has made that cursor durable: with ``synchronous=NORMAL`` a commit can be
-  undone by a power cut, and the segment is what it would be replayed from.
+  after the database has made that cursor durable: the batch commits without waiting for its WAL
+  to reach disk (ADR #452), so a power cut can undo it, and the segment is what it would be
+  replayed from.
 """
 
 from __future__ import annotations
@@ -116,11 +117,17 @@ class SpoolFeed:
     # -- what the engine calls, inside and after its transaction -------------------------------
 
     async def stage(self, items: Sequence[QueueItem]) -> int | None:
-        """Write the cursor for ``items`` (a committed prefix, in order) in the open transaction."""
+        """Write the cursor for ``items`` (a committed prefix, in order) in the open transaction.
+
+        And let that transaction commit without its own fsync (ADR #452): every trap in it is
+        still in the spool, which :meth:`prune` deletes only once ``store.checkpoint()`` has made
+        the commit durable — so a power cut can cost a replay, never a trap.
+        """
         if not items:
             return None
         seq = self._seq_of.get(id(items[-1]))
         if seq is not None:
+            await self.store.relax_durability()
             await self.store.set_meta(CURSOR_KEY, str(seq))
         return seq
 

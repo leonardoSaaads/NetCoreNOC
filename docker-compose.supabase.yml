@@ -1,0 +1,46 @@
+# NetCoreNOC on a managed PostgreSQL — Supabase, or any other (RDS, Cloud SQL, Azure, Neon,
+# your own cluster) — instead of the bundled `postgres` service (ADR #452):
+#
+#     mkdir -p secrets && printf '%s' '<the database password>' > secrets/db_password.txt
+#     chmod 600 secrets/db_password.txt
+#     export NETCORENOC_DATABASE_URL='postgresql://postgres.<project-ref>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require'
+#     docker compose -f docker-compose.yml -f docker-compose.supabase.yml up --build netcorenoc
+#
+# Only `netcorenoc` starts: this file removes its dependency on the local database and its secret.
+#
+# **Which Supabase connection string.** Project Settings -> Database -> Connection string:
+#
+#   * **Session pooler, port 5432** — use this one. It works over IPv4 and keeps one server
+#     connection per client connection, which the appliance needs: its instance lock is a session
+#     advisory lock and its statements are prepared once per connection.
+#   * Direct connection (`db.<ref>.supabase.co:5432`) — also correct; IPv6 unless the project has
+#     the IPv4 add-on.
+#   * Transaction pooler, port 6543 — **not supported**: a transaction pooler hands each
+#     transaction a different server connection, so session locks and prepared statements break.
+#
+# **TLS.** `sslmode=require` encrypts. To also verify the server, download the project's CA
+# certificate, mount it, and use `sslmode=verify-full&sslrootcert=/run/secrets/supabase-ca.crt`.
+#
+# **Isolation.** The tables live in their own schema, `netcorenoc` (`NETCORENOC_DB_SCHEMA`), which
+# Supabase's Data API does not expose (it serves `public` and `graphql_public`), and the schema's
+# privileges are revoked from PUBLIC when it is created: the `anon` and `authenticated` roles of
+# the project's API cannot read a row. Do not add `netcorenoc` to the exposed schemas.
+#
+# Requires Docker Compose 2.24 or newer (`!reset`).
+
+services:
+  netcorenoc:
+    depends_on: !reset {}
+    networks: !reset
+      - default
+    volumes: !override
+      - netcorenoc-data:/home/netcorenoc
+    secrets:
+      - db_password
+    environment:
+      NETCORENOC_DATABASE_URL: ${NETCORENOC_DATABASE_URL:?set NETCORENOC_DATABASE_URL to the database's connection string}
+      NETCORENOC_DATABASE_PASSWORD_FILE: /run/secrets/db_password
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt

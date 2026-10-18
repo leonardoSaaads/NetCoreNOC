@@ -299,23 +299,23 @@ class MaintenanceWindowMixin(StoreBase):
         ingest check uses, and a window that stopped being in force at a different instant from
         the one the sweep believes would leave the ledger holding raises nobody surfaces.
         """
-        if not self._has_maintenance:
-            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
-            return []
         await self.conn.execute(
             "UPDATE maintenance_window SET status='expired', updated_at=? "
-            "WHERE status='pending_confirmation' AND (starts_at - patch_s) <= ?",
+            "WHERE status='pending_confirmation' AND (starts_at - secs(patch_s)) <= ?",
             (now, now),
         )
         await self.conn.execute(
             "UPDATE maintenance_window SET status='active', updated_at=? "
-            "WHERE status='scheduled' AND (starts_at - patch_s) <= ? AND (ends_at + patch_s) > ?",
+            "WHERE status='scheduled' AND (starts_at - secs(patch_s)) <= ? "
+            "AND (ends_at + secs(patch_s)) > ?",
             (now, now, now),
         )
         cur = await self.conn.execute(
             "UPDATE maintenance_window SET status='ended', ended_at=COALESCE(ended_at, ?), "
-            "updated_at=? WHERE status IN ('active', 'scheduled') AND (ends_at + patch_s) <= ? "
-            "RETURNING id",
+            "updated_at=? WHERE status IN ('active', 'scheduled') "
+            "AND (ends_at + secs(patch_s)) <= ? RETURNING id",
             (now, now, now),
         )
-        return [int(row[0]) for row in await cur.fetchall()]
+        # RETURNING has no order in PostgreSQL; id order is the one SQLite's rowid scan gave, and
+        # the sweep surfaces each window's faults in this order.
+        return sorted(int(row[0]) for row in await cur.fetchall())

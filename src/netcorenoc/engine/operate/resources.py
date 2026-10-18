@@ -15,8 +15,10 @@ It does not. All three are **three stdlib reads**:
   not a function.
 * **Memory** — ``/sys/fs/cgroup/memory.{current,max}`` where cgroup v2 is mounted, else
   ``/proc/meminfo``'s ``MemTotal`` and ``MemAvailable``.
-* **Storage** — ``os.statvfs`` on the directory holding the database, which is the filesystem that
-  actually fills up and stops this appliance.
+* **Storage** — ``os.statvfs`` on the appliance's data directory, which holds the trap spool: the
+  filesystem a storm fills.
+* **The database** — its tables' and indexes' size, asked of the PostgreSQL server
+  (`Store.database_bytes`, ADR #452) on a reader, so the reading never waits for the engine.
 
 So the dependency count is still five and there is no ``psutil`` anywhere in ``src/``.
 
@@ -40,12 +42,13 @@ release that adds a measurement does not get to relax the standard that kept it 
 
 from __future__ import annotations
 
-import contextlib
 import os
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from netcorenoc.store import STORAGE_ERRORS, Store
 
 #: How often the supervised loop takes a reading. Two hours of these is the window the panel draws.
 SAMPLE_INTERVAL_S = 30.0
@@ -139,33 +142,6 @@ def read_storage(path: str | os.PathLike[str]) -> tuple[int, int, str] | None:
     return total - free, total, "statvfs"
 
 
-def read_database(db_path: str | os.PathLike[str]) -> tuple[int, int] | None:
-    """``(database_bytes, journal_bytes)`` for the SQLite file and its write-ahead log.
-
-    **Two `stat` calls, and deliberately not a query.** ``PRAGMA page_count`` would be the precise
-    answer and it is the wrong instrument here: this runs on a supervised loop every thirty seconds
-    and a pragma takes the same connection every write takes, so the panel that tells an operator
-    the appliance is busy would be adding to it. The file size is what fills the filesystem, which
-    is the question the chart beside it is already answering.
-
-    The WAL is reported separately rather than summed. A database of 40 MiB with a 300 MiB WAL is
-    a checkpointing problem and a database of 340 MiB is a retention one, and an operator seeing
-    one number cannot tell those apart.
-    """
-    main = Path(db_path)
-    try:
-        size = main.stat().st_size
-    except OSError:
-        return None
-    journal = 0
-    for suffix in ("-wal", "-journal"):
-        # Absent is the normal case for whichever journal mode is not in use, so a missing file
-        # contributes nothing rather than failing the reading that the main file already gave us.
-        with contextlib.suppress(OSError):
-            journal += main.with_name(main.name + suffix).stat().st_size
-    return size, journal
-
-
 def _mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
@@ -174,14 +150,15 @@ def _mean(values: list[float]) -> float:
 class ResourceSampler:
     """A two-hour ring of readings, and the current one.
 
-    ``path`` is the directory whose filesystem is reported as storage — the database's, because
-    that is the one whose filling up stops the appliance rather than merely the host.
+    ``path`` is the directory whose filesystem is reported as storage — the data directory's,
+    because the spool is what fills it during a storm.
     """
 
     path: str
-    #: The database file itself, for the size series. Empty means the deployment did not name one
-    #: and the database chart is absent rather than zero — the rule the module header states.
-    db_path: str = ""
+    #: The store whose size the database series reports. `None` means the chart is absent rather
+    #: than zero — the rule the module header states.
+    store: Store | None = None
+    _db_bytes: int | None = None
     _cpu_prev: tuple[float, float] | None = None
     _cpu: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
     _mem: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
@@ -189,6 +166,17 @@ class ResourceSampler:
     _db: deque[float | None] = field(default_factory=lambda: deque(maxlen=SAMPLES_KEPT))
     _latest: dict[str, Any] = field(default_factory=dict)
     _db_mb: float | None = None
+
+    async def measure_database(self) -> None:
+        """Ask the server how large the schema is; on a reader, so it never waits for a batch.
+        A failed read is no reading, never zero."""
+        if self.store is None:
+            return
+        try:
+            async with self.store.reading():
+                self._db_bytes = await self.store.database_bytes()
+        except STORAGE_ERRORS:
+            self._db_bytes = None
 
     def sample(self) -> None:
         """Take one reading. Safe in a supervised loop: it raises nothing an OS read can."""
@@ -208,10 +196,9 @@ class ResourceSampler:
         mem_pct = round(100.0 * memory[0] / memory[1], 1) if memory and memory[1] else None
         disk_pct = round(100.0 * storage[0] / storage[1], 1) if storage and storage[1] else None
 
-        database = read_database(self.db_path) if self.db_path else None
         # Megabytes on the wire, because that is the unit the chart's axis carries and rounding
         # here keeps the series small enough to ride on every `/api/stats` poll.
-        db_mb = round((database[0] + database[1]) / 1e6, 2) if database else None
+        db_mb = round(self._db_bytes / 1e6, 2) if self._db_bytes is not None else None
 
         self._cpu.append(cpu_pct)
         self._mem.append(mem_pct)
@@ -219,8 +206,7 @@ class ResourceSampler:
         self._db.append(db_mb)
         self._db_mb = db_mb
         self._latest = {
-            "db_bytes": database[0] if database else None,
-            "db_journal_bytes": database[1] if database else None,
+            "db_bytes": self._db_bytes,
             "cpu_pct": cpu_pct,
             "cpu_count": os.cpu_count(),
             "mem_pct": mem_pct,

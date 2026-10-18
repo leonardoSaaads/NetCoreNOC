@@ -70,11 +70,13 @@ class TimelineMixin(StoreBase):
         # column (`0016`), and the precedence had been written out twice — here and in
         # `list_state_clears` — which is one copy too many for a rule (DECISIONS #280).
         select = (
-            # nosec B608 - two fixed literals from `_label_join`, chosen by a schema probe.
-            "SELECT a.first_seen, a.cleared_at, a.ne_id, COALESCE(dl.label, d.ip) AS device, "  # nosec B608
+            # nosec B608 - two fixed literals from `_label_join`.
+            # `host()`: `ne.ip` is `inet`, and the rendered string is the bare address.
+            "SELECT a.first_seen, a.cleared_at, a.ne_id, "  # nosec B608
+            "COALESCE(dl.label, host(d.ip)) AS device, "
             "cl.label AS class_label, c.oid AS class_oid FROM alarm a "
-            "JOIN device d ON d.id=a.device_id JOIN alarm_class c ON c.id=a.class_id "
-            + self._label_join("dl", "ne", "a.ne_id", legacy_target="d.id")
+            "JOIN ne d ON d.id=a.ne_id JOIN alarm_class c ON c.id=a.class_id "
+            + self._label_join("dl", "ne", "a.ne_id")
             + self._label_join("cl", "class", "c.id")
         )
         narrow: list[str] = []
@@ -95,7 +97,7 @@ class TimelineMixin(StoreBase):
             # statement it has been since the finding that produced it.
             head = f"{select}WHERE 1=1 {extra}" if extra else select
             cur = await self.conn.execute(
-                f"{head}ORDER BY a.last_seen DESC LIMIT ?",  # nosec B608 - literal + bound values
+                f"{head}ORDER BY a.last_seen DESC, a.id DESC LIMIT ?",  # nosec B608 - bound values
                 (*narrow_args, limit),
             )
             rows = list(await cur.fetchall())
@@ -106,7 +108,7 @@ class TimelineMixin(StoreBase):
             # narrowing clauses stay in the query — only the scope set is too large to bind.
             head = f"{select}WHERE 1=1 {extra}" if extra else select
             cur = await self.conn.execute(  # nosec B608 - literal + bound values
-                f"{head}ORDER BY a.last_seen DESC",  # nosec B608
+                f"{head}ORDER BY a.last_seen DESC, a.id DESC",  # nosec B608
                 tuple(narrow_args),
             )
             rows = [r for r in await cur.fetchall() if r["ne_id"] in ne_ids][:limit]
@@ -114,7 +116,7 @@ class TimelineMixin(StoreBase):
             marks_sql = ",".join("?" * len(ne_ids))
             cur = await self.conn.execute(
                 f"{select}WHERE a.ne_id IN ({marks_sql}) {extra}"  # nosec B608 - placeholders only
-                "ORDER BY a.last_seen DESC LIMIT ?",
+                "ORDER BY a.last_seen DESC, a.id DESC LIMIT ?",
                 (*sorted(ne_ids), *narrow_args, limit),
             )
             rows = list(await cur.fetchall())
@@ -177,12 +179,12 @@ class TimelineMixin(StoreBase):
             "clears": [0] * buckets,
         }
         for column, key in (("a.first_seen", "raises"), ("a.cleared_at", "clears")):
-            # `CAST((t - since) / bucket_s AS INTEGER)` is the bucket index, computed in SQL so
-            # the rows never leave the database. `bucket_s`, `since` and the scope ids are all
-            # bound values; the only interpolation is the column name, which is one of two
-            # literals in this loop.
+            # `floor((epoch(t) - since) / bucket_s)` is the bucket index, computed in SQL so the
+            # rows never leave the database (`floor`, because PostgreSQL's integer cast rounds).
+            # `bucket_s`, `since` and the scope ids are all bound values; the only interpolation
+            # is the column name, which is one of two literals in this loop.
             cur = await self.conn.execute(  # nosec B608 - literal column + bound values
-                f"SELECT CAST(({column} - ?) / ? AS INTEGER) AS b, COUNT(*) "  # nosec B608
+                f"SELECT floor((epoch({column}) - ?) / ?)::integer AS b, COUNT(*) "  # nosec B608
                 f"FROM alarm a WHERE {where} AND {column} IS NOT NULL "
                 f"AND {column} >= ? AND {column} <= ? GROUP BY b",
                 (since, bucket_s, *args, since, now),

@@ -35,8 +35,6 @@ def notice_digest(text: str) -> str:
 class AttentionMixin(StoreBase):
     async def snoozes_for(self, user_id: int, now: float) -> dict[str, dict[str, Any]]:
         """`{digest: snooze}` for this user's snoozes that have not expired."""
-        if not self._has_notice_snooze:
-            return {}
         cur = await self.conn.execute(
             "SELECT digest, text, security, mode, until, created_at FROM notice_snooze "
             "WHERE user_id=? AND (until IS NULL OR until > ?)",
@@ -67,20 +65,18 @@ class AttentionMixin(StoreBase):
 
     async def security_snoozes(self, now: float) -> list[dict[str, Any]]:
         """Every live snooze of a security warning, by anyone: what an admin must be able to see."""
-        if not self._has_notice_snooze:
-            return []
+        # `NULLS FIRST`: SQLite's order, which put the until-the-text-changes snoozes first.
         cur = await self.conn.execute(
             "SELECT u.username, s.text, s.mode, s.until FROM notice_snooze s "
-            "JOIN user u ON u.id=s.user_id WHERE s.security=1 AND (s.until IS NULL OR s.until > ?) "
-            "ORDER BY s.until",
+            "JOIN app_user u ON u.id=s.user_id WHERE s.security "
+            "AND (s.until IS NULL OR s.until > ?) "
+            "ORDER BY s.until NULLS FIRST, s.user_id, s.digest",
             (now,),
         )
         return [dict(r) for r in await cur.fetchall()]
 
     async def acknowledge_outlived(self, alarm_id: int, actor: str | None, now: float) -> bool:
         """Stop drawing the "outlived a window" marker on one alarm. False if it had none."""
-        if not self._has_surfaced_ack:
-            return False
         cur = await self.conn.execute(
             "UPDATE alarm SET surfaced_ack_at=?, surfaced_ack_by=? WHERE id=? "
             "AND surfaced_from_window_id IS NOT NULL AND surfaced_ack_at IS NULL RETURNING id",

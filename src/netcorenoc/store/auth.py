@@ -13,7 +13,7 @@ from netcorenoc.store.base import StoreBase
 
 class AuthMixin(StoreBase):
     async def count_users(self) -> int:
-        cur = await self.conn.execute("SELECT COUNT(*) FROM user")
+        cur = await self.conn.execute("SELECT COUNT(*) FROM app_user")
         row = await cur.fetchone()
         assert row is not None
         return int(row[0])
@@ -26,7 +26,7 @@ class AuthMixin(StoreBase):
         same query with its own row taken out, so a role change, a deletion and a disable all ask
         it the same way instead of each computing the remainder differently.
         """
-        sql = "SELECT COUNT(*) FROM user WHERE role='admin' AND disabled=0"
+        sql = "SELECT COUNT(*) FROM app_user WHERE role='admin' AND NOT disabled"
         params: tuple[int, ...] = ()
         if excluding is not None:
             sql += " AND id<>?"
@@ -40,7 +40,7 @@ class AuthMixin(StoreBase):
         self, username: str, password_hash: str, role: str, must_change_password: bool, now: float
     ) -> int:
         cur = await self.conn.execute(
-            "INSERT INTO user (username, password_hash, role, must_change_password, "
+            "INSERT INTO app_user (username, password_hash, role, must_change_password, "
             "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
             (username, password_hash, role, int(must_change_password), now, now),
         )
@@ -49,12 +49,12 @@ class AuthMixin(StoreBase):
         return int(row[0])
 
     async def get_user_by_name(self, username: str) -> dict[str, Any] | None:
-        cur = await self.conn.execute("SELECT * FROM user WHERE username=?", (username,))
+        cur = await self.conn.execute("SELECT * FROM app_user WHERE username=?", (username,))
         row = await cur.fetchone()
         return dict(row) if row else None
 
     async def get_user(self, user_id: int) -> dict[str, Any] | None:
-        cur = await self.conn.execute("SELECT * FROM user WHERE id=?", (user_id,))
+        cur = await self.conn.execute("SELECT * FROM app_user WHERE id=?", (user_id,))
         row = await cur.fetchone()
         return dict(row) if row else None
 
@@ -62,30 +62,31 @@ class AuthMixin(StoreBase):
         # v0.25.0: the display name and the photo's DIGEST, never the image (ADR #401, #402).
         cur = await self.conn.execute(
             "SELECT u.id, u.username, u.display_name, u.email, u.role, u.must_change_password, "
-            "u.disabled, u.created_at, a.sha256 AS avatar FROM user u "
+            "u.disabled, u.created_at, a.sha256 AS avatar FROM app_user u "
             "LEFT JOIN user_avatar a ON a.user_id=u.id ORDER BY u.username"
         )
         return [dict(r) for r in await cur.fetchall()]
 
     async def update_user_password(self, user_id: int, password_hash: str, now: float) -> None:
         await self.conn.execute(
-            "UPDATE user SET password_hash=?, must_change_password=0, updated_at=? WHERE id=?",
+            "UPDATE app_user SET password_hash=?, must_change_password=false, updated_at=? "
+            "WHERE id=?",
             (password_hash, now, user_id),
         )
 
     async def set_user_role(self, user_id: int, role: str, now: float) -> None:
         await self.conn.execute(
-            "UPDATE user SET role=?, updated_at=? WHERE id=?", (role, now, user_id)
+            "UPDATE app_user SET role=?, updated_at=? WHERE id=?", (role, now, user_id)
         )
 
     async def set_must_change_password(self, user_id: int, flag: bool, now: float) -> None:
         await self.conn.execute(
-            "UPDATE user SET must_change_password=?, updated_at=? WHERE id=?",
+            "UPDATE app_user SET must_change_password=?, updated_at=? WHERE id=?",
             (int(flag), now, user_id),
         )
 
     async def delete_user(self, user_id: int) -> bool:
-        cur = await self.conn.execute("DELETE FROM user WHERE id=? RETURNING id", (user_id,))
+        cur = await self.conn.execute("DELETE FROM app_user WHERE id=? RETURNING id", (user_id,))
         return await cur.fetchone() is not None
 
     async def create_session(
@@ -116,7 +117,7 @@ class AuthMixin(StoreBase):
         cur = await self.conn.execute(
             "SELECT s.session_hash, s.user_id, s.created_at, s.idle_expiry, s.absolute_expiry, "
             "u.username, u.role, u.must_change_password, u.disabled "
-            "FROM session s JOIN user u ON u.id=s.user_id WHERE s.session_hash=?",
+            "FROM session s JOIN app_user u ON u.id=s.user_id WHERE s.session_hash=?",
             (session_hash,),
         )
         row = await cur.fetchone()
@@ -181,7 +182,8 @@ class AuthMixin(StoreBase):
 
     async def revoke_token(self, token_id: int, now: float) -> dict[str, Any] | None:
         cur = await self.conn.execute(
-            "UPDATE api_token SET revoked=1, revoked_at=? WHERE id=? AND revoked=0 RETURNING name",
+            "UPDATE api_token SET revoked=true, revoked_at=? WHERE id=? AND NOT revoked "
+            "RETURNING name",
             (now, token_id),
         )
         row = await cur.fetchone()

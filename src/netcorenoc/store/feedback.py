@@ -128,29 +128,16 @@ class FeedbackMixin(StoreBase):
         cur = await self.conn.execute("SELECT 1 FROM situation WHERE id=?", (situation_id,))
         if await cur.fetchone() is None:
             return FeedbackResult(exists=False, inserted=False)
-        if not self._has_bag_key:
-            # A database that has not been migrated past `0014` still carries `0007`'s two-column
-            # index, and this statement is byte-identical to what v0.16.0 issued. The probe is at
-            # `open()` rather than here for the reason `_has_lifecycle`'s is (DECISIONS #250): this
-            # runs on every verdict and every gesture, and a caught `OperationalError` per call
-            # would infer the schema from a failure instead of asking once.
-            cur = await self.conn.execute(
-                "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, role) "
-                "VALUES (?, ?, ?, ?, ?) "
-                "ON CONFLICT (situation_id, verdict) DO NOTHING RETURNING id",
-                (situation_id, verdict, ts, principal_ref, role),
-            )
-        else:
-            cur = await self.conn.execute(
-                "SELECT alarm_id FROM situation_alarm WHERE situation_id=?", (situation_id,)
-            )
-            key = bag_key([int(r[0]) for r in await cur.fetchall()])
-            cur = await self.conn.execute(
-                "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, role, "
-                "bag_key) VALUES (?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT (situation_id, verdict, bag_key) DO NOTHING RETURNING id",
-                (situation_id, verdict, ts, principal_ref, role, key),
-            )
+        cur = await self.conn.execute(
+            "SELECT alarm_id FROM situation_alarm WHERE situation_id=?", (situation_id,)
+        )
+        key = bag_key([int(r[0]) for r in await cur.fetchall()])
+        cur = await self.conn.execute(
+            "INSERT INTO feedback (situation_id, verdict, created_at, principal_ref, role, "
+            "bag_key) VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (situation_id, verdict, bag_key) DO NOTHING RETURNING id",
+            (situation_id, verdict, ts, principal_ref, role, key),
+        )
         row = await cur.fetchone()
         # v0.8.0 returns the id as well. `RETURNING id` was already there — v0.7.1 only tested it
         # for None-ness — so this reads a value the statement always produced and discarded.
@@ -241,8 +228,8 @@ class FeedbackMixin(StoreBase):
     ) -> None:
         """The ordered bag, server-side or client-reported (§5.4).
 
-        `INSERT OR REPLACE` because a *changed* verdict is a legitimate correction (F36) that
-        re-posts, and the second post's bag is the one that matches its row.
+        An upsert because a *changed* verdict is a legitimate correction (F36) that re-posts, and
+        the second post's bag is the one that matches its row.
 
         An **empty** ``alarm_ids`` writes nothing and that is correct, not a no-op to guard against:
         a verdict posted to an already-merged situation genuinely has an empty bag, and recording
@@ -251,8 +238,9 @@ class FeedbackMixin(StoreBase):
         if not alarm_ids:
             return
         await self.conn.executemany(
-            "INSERT OR REPLACE INTO feedback_member (feedback_id, source, position, alarm_id) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO feedback_member (feedback_id, source, position, alarm_id) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (feedback_id, source, position) DO UPDATE SET alarm_id=excluded.alarm_id",
             [(feedback_id, source, i, aid) for i, aid in enumerate(alarm_ids)],
         )
 
@@ -269,8 +257,8 @@ class FeedbackMixin(StoreBase):
 
         **The store layer refuses a reconciled count that is not one** (v0.9.2). Migration `0011`
         carries the same invariant as a `CHECK`, and the schema is the *last* line rather than the
-        only one: a violation that reaches SQLite is then unambiguous evidence of a bug in a layer
-        above, instead of an ambiguity about which layer was responsible
+        only one: a violation that reaches PostgreSQL is then unambiguous evidence of a bug in a
+        layer above, instead of an ambiguity about which layer was responsible
         (`EVIDENCE-BOUNDARY-0.9.2.md` §4.3).
 
         Raising is safe here and is the correct failure. Every caller is inside
@@ -323,11 +311,11 @@ class FeedbackMixin(StoreBase):
     async def add_feedback_exclusion(self, feedback_id: int, alarm_ids: list[int]) -> None:
         """The members the operator marked as **not belonging** (v0.9.1, migration `0010`).
 
-        `DELETE` then insert, rather than `INSERT OR REPLACE`, because this is a *set* and a
-        changed verdict re-posts (F36): replacing position-by-position would leave the tail of a
-        longer previous marking behind, and the row would then assert negatives the operator had
-        withdrawn. The bag next door can use `INSERT OR REPLACE` safely because the server writes
-        it and it does not shrink under a correction; this one is the client's and does.
+        `DELETE` then insert, rather than an upsert, because this is a *set* and a changed verdict
+        re-posts (F36): replacing position-by-position would leave the tail of a longer previous
+        marking behind, and the row would then assert negatives the operator had withdrawn. The
+        bag next door can upsert safely because the server writes it and it does not shrink under
+        a correction; this one is the client's and does.
 
         An **empty** ``alarm_ids`` writes nothing, and the caller records `excluded_count = NULL`
         rather than 0 — *"the operator marked nothing"* is a **plain** split, not an assertion

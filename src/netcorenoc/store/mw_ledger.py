@@ -19,7 +19,8 @@ from typing import Any
 from netcorenoc.store.devices import DeviceMixin
 
 #: One ledger row as this layer speaks it: `(window_id, ne_id, device_id, class_id, instance,
-#: raised_at, cleared_at, surfaced_at)`.
+#: raised_at, cleared_at, surfaced_at)`. `device_id` is the element's id since ADR #452; the table
+#: keys on `ne_id` and has no device column.
 #:
 #: **Scalars, not the engine's `LedgerKey`/`LedgerEntry`** — `store` is the data layer and
 #: `engine` is above it, so importing those types here would be an upward import and
@@ -46,14 +47,15 @@ class MaintenanceLedgerMixin(DeviceMixin):
         the pair, and the raise is the half that cannot be re-observed.
         """
         for row in entries:
+            window_id, ne_id, _device, class_id, instance, raised_at, cleared_at, surfaced_at = row
             await self.conn.execute(
-                "INSERT INTO maintenance_ledger (window_id, ne_id, device_id, class_id, instance, "
-                "raised_at, cleared_at, surfaced_at) VALUES (?,?,?,?,?,?,?,?) "
-                "ON CONFLICT (window_id, device_id, class_id, instance) DO UPDATE SET "
+                "INSERT INTO maintenance_ledger (window_id, ne_id, class_id, instance, "
+                "raised_at, cleared_at, surfaced_at) VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT (window_id, ne_id, class_id, instance) DO UPDATE SET "
                 "raised_at=COALESCE(excluded.raised_at, maintenance_ledger.raised_at), "
                 "cleared_at=excluded.cleared_at, "
                 "surfaced_at=COALESCE(excluded.surfaced_at, maintenance_ledger.surfaced_at)",
-                row,
+                (window_id, ne_id, class_id, instance, raised_at, cleared_at, surfaced_at),
             )
 
     async def surface_ledger_entry(self, row: LedgerRow, now: float) -> int | None:
@@ -64,7 +66,7 @@ class MaintenanceLedgerMixin(DeviceMixin):
         the real trap carries its varbinds and its severity, and this must not overwrite it with a
         row that has neither.
 
-        The alarm lands on the same `(device_id, class_id, instance)` the collected trap would have
+        The alarm lands on the same `(ne_id, class_id, instance)` the collected trap would have
         used, so a later real trap bumps this row rather than opening a second one beside it.
 
         `first_seen` is the instant the fault was **raised**, not the instant the window closed.
@@ -73,8 +75,8 @@ class MaintenanceLedgerMixin(DeviceMixin):
         """
         window_id, ne_id, device_id, class_id, instance, raised_at, _cleared, _surfaced = row
         cur = await self.conn.execute(
-            "SELECT id, status FROM alarm WHERE device_id=? AND class_id=? AND instance=?",
-            (device_id, class_id, instance),
+            "SELECT id, status FROM alarm WHERE ne_id=? AND class_id=? AND instance=?",
+            (ne_id, class_id, instance),
         )
         existing = await cur.fetchone()
         if existing is not None and str(existing["status"]) == "active":
@@ -82,32 +84,22 @@ class MaintenanceLedgerMixin(DeviceMixin):
         raised = raised_at if raised_at is not None else now
         # v0.22.0 (#388): the instant of surfacing and a fresh acknowledgement, so the marker's
         # lifetime can be read — active, not seen since, not acknowledged.
-        stamp = (
-            ", surfaced_at=?, surfaced_ack_at=NULL, surfaced_ack_by=NULL"
-            if self._has_surfaced_ack
-            else ""
-        )
-        stamp_args = (now,) if self._has_surfaced_ack else ()
         if existing is not None:
             await self.conn.execute(
-                "UPDATE alarm SET status='active', cleared_at=NULL, last_seen=?, "  # nosec B608
-                f"surfaced_from_window_id=?{stamp} WHERE id=?",
-                (now, window_id, *stamp_args, int(existing["id"])),
+                "UPDATE alarm SET status='active', cleared_at=NULL, last_seen=?, "
+                "surfaced_from_window_id=?, surfaced_at=?, surfaced_ack_at=NULL, "
+                "surfaced_ack_by=NULL WHERE id=?",
+                (now, window_id, now, int(existing["id"])),
             )
             return int(existing["id"])
         entity_id = await self.entity_level0_by_id(device_id, ne_id, raised)
         cur = await self.conn.execute(
             # `varbinds` is `'[]'` and both severity columns are NULL, deliberately — see the
             # module docstring. The appliance saw a raise and nothing else, and says so.
-            "INSERT INTO alarm (device_id, ne_id, entity_id, class_id, instance, first_seen, "
-            "last_seen, varbinds, surfaced_from_window_id"  # nosec B608 - probe-chosen literal
-            + (
-                ", surfaced_at) VALUES (?,?,?,?,?,?,?,'[]',?,?) "
-                if self._has_surfaced_ack
-                else ") VALUES (?,?,?,?,?,?,?,'[]',?) "
-            )
-            + "RETURNING id",
-            (device_id, ne_id, entity_id, class_id, instance, raised, now, window_id, *stamp_args),
+            "INSERT INTO alarm (ne_id, entity_id, class_id, instance, first_seen, last_seen, "
+            "varbinds, surfaced_from_window_id, surfaced_at) VALUES (?,?,?,?,?,?,'[]',?,?) "
+            "RETURNING id",
+            (ne_id, entity_id, class_id, instance, raised, now, window_id, now),
         )
         created = await cur.fetchone()
         return int(created[0]) if created is not None else None
@@ -117,21 +109,22 @@ class MaintenanceLedgerMixin(DeviceMixin):
 
         `entity_level0` takes the address because every other caller has a `TrapEvent` in hand.
         The ledger has neither — it holds ids, because holding the address would be holding part
-        of a trap it did not collect — so this resolves the address from `device_id` first. One
-        query per surfaced alarm, on a sweep that runs when a window ends.
+        of a trap it did not collect — so this resolves the address from `device_id`, the
+        element's id (ADR #452), first. One query per surfaced alarm, on a sweep that runs when a
+        window ends.
         """
-        cur = await self.conn.execute("SELECT ip FROM device WHERE id=?", (device_id,))
+        cur = await self.conn.execute("SELECT ip FROM ne WHERE id=?", (device_id,))
         row = await cur.fetchone()
         if row is None:
             return None
         return int(await self.entity_level0(ne_id, str(row["ip"]), ts))
 
     async def mark_ledger_surfaced(self, row: LedgerRow, now: float) -> None:
-        window_id, _ne, device_id, class_id, instance = row[0], row[1], row[2], row[3], row[4]
+        window_id, ne_id, class_id, instance = row[0], row[1], row[3], row[4]
         await self.conn.execute(
-            "UPDATE maintenance_ledger SET surfaced_at=? WHERE window_id=? AND device_id=? "
+            "UPDATE maintenance_ledger SET surfaced_at=? WHERE window_id=? AND ne_id=? "
             "AND class_id=? AND instance=?",
-            (now, window_id, device_id, class_id, instance),
+            (now, window_id, ne_id, class_id, instance),
         )
 
     async def unresolved_ledger(self, window_id: int) -> list[LedgerRow]:
@@ -142,9 +135,9 @@ class MaintenanceLedgerMixin(DeviceMixin):
         then this is read, so a raise observed in the same tick the window ended is included.
         """
         cur = await self.conn.execute(
-            "SELECT ne_id, device_id, class_id, instance, raised_at, cleared_at, surfaced_at "
-            "FROM maintenance_ledger WHERE window_id=? AND raised_at IS NOT NULL "
-            "AND cleared_at IS NULL AND surfaced_at IS NULL ORDER BY device_id, class_id, instance",
+            "SELECT ne_id, ne_id AS device_id, class_id, instance, raised_at, cleared_at, "
+            "surfaced_at FROM maintenance_ledger WHERE window_id=? AND raised_at IS NOT NULL "
+            "AND cleared_at IS NULL AND surfaced_at IS NULL ORDER BY ne_id, class_id, instance",
             (window_id,),
         )
         return [

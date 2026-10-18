@@ -1,5 +1,6 @@
 # CIS-style hardened image (§A.6). Multi-stage: no build tools in the final image; non-root;
-# the only writable path is the DB directory, so the container runs fine read-only (see below).
+# the only writable path is the data directory (the trap spool), so the container runs fine
+# read-only (see below). The database is PostgreSQL, a separate service (docker-compose.yml).
 #
 # Pin the base image by digest in production for a reproducible, tamper-evident build:
 #   docker pull python:3.12.8-slim && docker inspect --format='{{index .RepoDigests 0}}' python:3.12.8-slim
@@ -37,13 +38,17 @@ RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin netcorenoc
 COPY --from=build /install /usr/local
 USER netcorenoc
 WORKDIR /home/netcorenoc
-ENV NETCORENOC_DB=/home/netcorenoc/netcorenoc.db \
+ENV NETCORENOC_DATA_DIR=/home/netcorenoc \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 # SNMP trap listener (UDP) and web UI/API.
 EXPOSE 162/udp 8080
 # Recommended hardened run (documented in SECURITY.md): drop all capabilities, forbid privilege
-# escalation, read-only root filesystem with the DB on a writable volume:
+# escalation, read-only root filesystem with the spool on a writable volume, and the database's
+# password from a mounted file rather than the environment:
 #   docker run --read-only --cap-drop ALL --security-opt no-new-privileges \
-#     --tmpfs /tmp -v netcorenoc-data:/home/netcorenoc -p 162:162/udp -p 8080:8080 netcorenoc
+#     --tmpfs /tmp -v netcorenoc-data:/home/netcorenoc -p 162:162/udp -p 8080:8080 \
+#     -e NETCORENOC_DATABASE_URL=postgresql://netcorenoc@db.example:5432/netcorenoc \
+#     -e NETCORENOC_DATABASE_PASSWORD_FILE=/run/secrets/db_password \
+#     -v ./db_password:/run/secrets/db_password:ro netcorenoc
 CMD ["python", "-m", "netcorenoc.main"]

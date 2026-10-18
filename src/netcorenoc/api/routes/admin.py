@@ -17,7 +17,7 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ConfigIn, RetentionIn, RoleIn, TokenIn, UserIn
 from netcorenoc.crosscutting import administration, auth
-from netcorenoc.crosscutting.settings import Settings
+from netcorenoc.crosscutting.settings import Settings, redact_url
 from netcorenoc.engine.dataset import capture
 from netcorenoc.engine.operate.deadline import KPI_KEY, Kpi
 
@@ -243,7 +243,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "kpi": {"env": asdict(env_kpi), "override": saved_kpi and asdict(stored_kpi)},
             },
             "startup": {
-                "db_path": env.db_path,
+                "database": redact_url(env.database_url),
+                "db_schema": env.db_schema,
                 "trap_host": env.trap_host,
                 "trap_port": env.trap_port,
                 "http_host": env.http_host,

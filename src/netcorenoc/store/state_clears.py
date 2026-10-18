@@ -23,19 +23,20 @@ class StateClearMixin(StoreBase):
 
     async def load_state_clears(self) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
-            "SELECT class_id, varbind_oid, clear_value, raise_value FROM state_clear"
+            "SELECT class_id, varbind_oid, clear_value, raise_value FROM state_clear "
+            "ORDER BY class_id, varbind_oid"
         )
         return [dict(r) for r in await cur.fetchall()]
 
     async def list_state_clears(self) -> list[dict[str, Any]]:
         """Learned state fields joined to their class, for inspection (which OID, which values)."""
         cur = await self.conn.execute(
-            # nosec B608 - one fixed literal from `_label_join`, chosen by a schema probe.
+            # nosec B608 - one fixed literal from `_label_join`.
             "SELECT s.class_id, s.varbind_oid, s.clear_value, s.raise_value, s.learned_at, "  # nosec B608
             "cl.label AS class_label, c.oid AS class_oid FROM state_clear s "
             "JOIN alarm_class c ON c.id=s.class_id "
             + self._label_join("cl", "class", "c.id")
-            + "ORDER BY s.learned_at DESC"
+            + "ORDER BY s.learned_at DESC, s.class_id, s.varbind_oid"
         )
         # `class_display` rather than a second `COALESCE(cl.label, c.name, c.oid)`: `0016` dropped
         # the middle column, and the precedence between a declaration and a derivation now has one

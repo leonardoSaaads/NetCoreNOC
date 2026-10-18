@@ -17,6 +17,8 @@ build/
 result
 # Local environment / secrets for docker compose (only .env.example is committed).
 .env
+# The managed-database password file of docker-compose.supabase.yml (ADR #452).
+secrets/
 # Local TLS material referenced by the commented compose profile.
 /tls/
 

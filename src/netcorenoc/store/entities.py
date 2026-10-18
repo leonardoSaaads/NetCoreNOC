@@ -28,17 +28,13 @@ class EntityMixin(StoreBase):
         constraint — `0016` moves those rows across by ADDRESS (DECISIONS #281).
         """
         cur = await self.conn.execute(
-            # nosec B608 - `_label_join` returns one of two fixed literals chosen by a schema
-            # probe; every value in this statement is a bound parameter or a column name.
+            # nosec B608 - `_label_join` returns a fixed literal; every value in this statement is
+            # a bound parameter or a column name.
             # v0.16.4 (F105, DECISIONS #292): `n.vendor` is gone. 25 NE rows, 0 vendors, after
             # 2 252 alarms; the entity card rendered it beside the element's name and an operator
             # read the blank as "could not identify" rather than "nothing ever tried".
             "SELECT n.id, n.ip, n.first_seen, n.last_seen, l.label FROM ne n "  # nosec B608
-            # On a pre-`0016` schema the equipment label is keyed on `device.id`, and there is no
-            # device alias here to key it through — which is not a gap: on that schema this screen
-            # never showed a label at all, and reproducing that exactly is what the frozen-schema
-            # upgrade tests are for. `n.id` under `kind='device'` is refused rather than assumed.
-            + self._label_join("l", "ne", "n.id", legacy_target="NULL")
+            + self._label_join("l", "ne", "n.id")
             + "ORDER BY n.id"
         )
         return [dict(r) for r in await cur.fetchall()]
@@ -51,7 +47,7 @@ class EntityMixin(StoreBase):
         """
         cur = await self.conn.execute(
             "SELECT n.id, n.ip, n.first_seen, n.last_seen, l.label FROM ne n "  # nosec B608
-            + self._label_join("l", "ne", "n.id", legacy_target="NULL")
+            + self._label_join("l", "ne", "n.id")
             + "WHERE n.id=?",
             (ne_id,),
         )
@@ -112,14 +108,16 @@ class EntityMixin(StoreBase):
         the promoted entities' levels (for engine restart). One row per (ne, level)."""
         cur = await self.conn.execute(
             "SELECT ne_id, level, key_source AS varbind_oid, MAX(confidence) AS score "
-            "FROM entity WHERE level >= 1 GROUP BY ne_id, level, key_source ORDER BY ne_id, level"
+            "FROM entity WHERE level >= 1 GROUP BY ne_id, level, key_source "
+            "ORDER BY ne_id, level, key_source"
         )
         return [dict(r) for r in await cur.fetchall()]
 
     async def promoted_severities(self) -> list[dict[str, Any]]:
         """The confirmed severity varbind per NE (role='severity'), for engine restart (S8)."""
         cur = await self.conn.execute(
-            "SELECT DISTINCT ne_id, varbind_oid FROM varbind_profile WHERE role='severity'"
+            "SELECT DISTINCT ne_id, varbind_oid FROM varbind_profile WHERE role='severity' "
+            "ORDER BY ne_id, varbind_oid"
         )
         return [dict(r) for r in await cur.fetchall()]
 
@@ -132,7 +130,7 @@ class EntityMixin(StoreBase):
         cur = await self.conn.execute(
             "SELECT varbinds, first_seen, cleared_at FROM alarm "
             "WHERE ne_id=? AND status='cleared' AND cleared_at IS NOT NULL "
-            "ORDER BY cleared_at DESC LIMIT ?",
+            "ORDER BY cleared_at DESC, id DESC LIMIT ?",
             (ne_id, limit),
         )
         out: list[tuple[str, float]] = []
@@ -148,7 +146,7 @@ class EntityMixin(StoreBase):
         cur = await self.conn.execute(
             "SELECT ne_id, class_id, varbind_oid, n_obs, n_repeat, n_monotonic, n_numeric, "
             "n_distinct, score, role, updated_at FROM varbind_profile WHERE ne_id=? "
-            "ORDER BY score DESC, varbind_oid",
+            "ORDER BY score DESC, varbind_oid, class_id",
             (ne_id,),
         )
         return [dict(r) for r in await cur.fetchall()]

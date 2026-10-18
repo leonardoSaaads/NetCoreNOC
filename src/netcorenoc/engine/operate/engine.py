@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -68,7 +67,7 @@ from netcorenoc.engine.operate.scorer_lifecycle import ScorerLifecycleMixin
 from netcorenoc.ingest import known_oids
 from netcorenoc.ingest.events import Fingerprint, QuarantinedPacket, TrapEvent
 from netcorenoc.ingest.receiver import MAX_INSTANCE_CHARS, QueueItem
-from netcorenoc.store import FeedbackResult, Store
+from netcorenoc.store import STORAGE_ERRORS, FeedbackResult, Store
 
 log = logging.getLogger("netcorenoc")
 
@@ -210,7 +209,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         self, batch: list[QueueItem], budget_s: float | None
     ) -> tuple[int, bool]:
         """(taken, committed) for a prefix of ``batch`` in one transaction: all of it, or what fits
-        in ``budget_s`` (at least one item; ADR #447). A ``sqlite3`` operational error rolls it back
+        in ``budget_s`` (at least one item; ADR #447). A storage error (ADR #452) rolls it back
         — the audit chain only advances on commit — and is counted, surfaced (F11) and retried."""
         deadline = None if budget_s is None else time.monotonic() + budget_s
         taken = 0
@@ -230,7 +229,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             except Exception as exc:  # rolled back: half a batch is never committed with the next
                 await self.store.rollback()
                 await membership.reload(self)  # and memory forgets it too (ADR #450)
-                if not isinstance(exc, sqlite3.OperationalError):
+                if not isinstance(exc, STORAGE_ERRORS):
                     raise  # a defect: the supervisor restarts the task and the spool replays it
                 self.db_errors += 1
                 self.last_db_error = type(exc).__name__

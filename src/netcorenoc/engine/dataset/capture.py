@@ -239,22 +239,23 @@ class Capture:
             key = (scorer_config_id, scorer_params_hash, *retention.as_key())
             if current is not None and self.run_id is not None and _run_key(current) == key:
                 return
-            self.run_id = await store.open_capture_run(
-                started_at=now,
-                netcorenoc_version=__version__,
-                scorer_config_id=scorer_config_id,
-                scorer_params_hash=scorer_params_hash,
-                window_s=WINDOW_S,
-                max_candidates=MAX_CANDIDATES,
-                max_links_per_alarm=MAX_LINKS_PER_ALARM,
-                link_threshold=LINK_THRESHOLD,
-                retention_sink_days=retention.sink_days,
-                retention_sink_rows=retention.sink_rows,
-                retention_training_days=retention.training_days,
-                retention_audit_days=retention.audit_days,
-                a_epoch=learner.A.epoch,
-                e_epoch=learner.E.epoch,
-            )
+            async with store.savepoint():
+                self.run_id = await store.open_capture_run(
+                    started_at=now,
+                    netcorenoc_version=__version__,
+                    scorer_config_id=scorer_config_id,
+                    scorer_params_hash=scorer_params_hash,
+                    window_s=WINDOW_S,
+                    max_candidates=MAX_CANDIDATES,
+                    max_links_per_alarm=MAX_LINKS_PER_ALARM,
+                    link_threshold=LINK_THRESHOLD,
+                    retention_sink_days=retention.sink_days,
+                    retention_sink_rows=retention.sink_rows,
+                    retention_training_days=retention.training_days,
+                    retention_audit_days=retention.audit_days,
+                    a_epoch=learner.A.epoch,
+                    e_epoch=learner.E.epoch,
+                )
         except Exception as exc:
             self._degrade(exc)
 
@@ -290,65 +291,67 @@ class Capture:
         if not self.enabled or self.run_id is None:
             return
         try:
-            obs_b = await self._observation_for(
-                store,
-                entry,
-                event,
-                ne_id=ne_id,
-                severity=severity,
-                severity_rank=severity_rank,
-                instance=instance,
-                alarm_count=count,
-            )
-            kept = {link.other.alarm_id for link in outcome.links}
-            # **The per-situation cap** (F143). `room` is how many more pairs this situation may
-            # contribute; `None` means the pair has no situation yet and is not capped by one.
-            room: int | None = None
-            if situation_id is not None:
-                held = await self._held_for(store, situation_id)
-                room = max(0, MAX_SINK_PAIRS_PER_SITUATION - held)
-            rows: list[tuple[Any, ...]] = []
-            for pair in outcome.evaluated:
-                if room is not None and len(rows) >= room:
-                    # Count every pair refused, not just the first, so the figure is the size of
-                    # what the corpus does not contain.
-                    self.pairs_over_cap += len(outcome.evaluated) - len(rows)
-                    break
-                other = pair.other
-                rows.append(
-                    (
-                        self.run_id,
-                        other.alarm_id,  # KEY: the window alarm
-                        entry.alarm_id,  # KEY: the newly activated alarm
-                        self._observations.get(other.alarm_id),
-                        obs_b,
-                        situation_id,
-                        # Exactly `LinkFeatures.delta_t_s` — both timestamps are immutable, so this
-                        # is the value the scorer saw, recomputed rather than stored twice.
-                        abs(entry.ts - other.ts),
-                        # The VALUES the scorer saw: from the v2 vector when one was built,
-                        # else read back from the terms it emitted. See `_value_of` for why
-                        # neither is re-derived from the learner.
-                        *_affinities(pair),
-                        learner.A.epoch,
-                        learner.E.epoch,
-                        pair.result.score if pair.result is not None else pair.evidence,
-                        1 if pair.linked else 0,
-                        1 if outcome.storm else 0,
-                        # An ACCEPTED link the cap dropped — not a rejection. Phase 0 measured this
-                        # as 94% of what the engine discards, so the distinction is load-bearing.
-                        1 if (pair.linked and other.alarm_id not in kept) else 0,
-                        entry.ts,
-                        # v0.26.0: the whole v2 vector, as scored — what a site model trains on.
-                        None if pair.vector is None else _vector_json(pair.vector),
+            async with store.savepoint():
+                obs_b = await self._observation_for(
+                    store,
+                    entry,
+                    event,
+                    ne_id=ne_id,
+                    severity=severity,
+                    severity_rank=severity_rank,
+                    instance=instance,
+                    alarm_count=count,
+                )
+                kept = {link.other.alarm_id for link in outcome.links}
+                # **The per-situation cap** (F143). `room` is how many more pairs this situation may
+                # contribute; `None` means the pair has no situation yet and is not capped by one.
+                room: int | None = None
+                if situation_id is not None:
+                    held = await self._held_for(store, situation_id)
+                    room = max(0, MAX_SINK_PAIRS_PER_SITUATION - held)
+                rows: list[tuple[Any, ...]] = []
+                for pair in outcome.evaluated:
+                    if room is not None and len(rows) >= room:
+                        # Count every pair refused, not just the first, so the figure is the size of
+                        # what the corpus does not contain.
+                        self.pairs_over_cap += len(outcome.evaluated) - len(rows)
+                        break
+                    other = pair.other
+                    rows.append(
+                        (
+                            self.run_id,
+                            other.alarm_id,  # KEY: the window alarm
+                            entry.alarm_id,  # KEY: the newly activated alarm
+                            self._observations.get(other.alarm_id),
+                            obs_b,
+                            situation_id,
+                            # Exactly `LinkFeatures.delta_t_s` — both timestamps are immutable, so
+                            # this is the value the scorer saw, recomputed rather than stored twice.
+                            abs(entry.ts - other.ts),
+                            # The VALUES the scorer saw: from the v2 vector when one was built,
+                            # else read back from the terms it emitted. See `_value_of` for why
+                            # neither is re-derived from the learner.
+                            *_affinities(pair),
+                            learner.A.epoch,
+                            learner.E.epoch,
+                            pair.result.score if pair.result is not None else pair.evidence,
+                            1 if pair.linked else 0,
+                            1 if outcome.storm else 0,
+                            # An ACCEPTED link the cap dropped — not a rejection. Phase 0 measured
+                            # this as 94% of what the engine discards, so the distinction is
+                            # load-bearing.
+                            1 if (pair.linked and other.alarm_id not in kept) else 0,
+                            entry.ts,
+                            # v0.26.0: the whole v2 vector, as scored — what a site model trains on.
+                            None if pair.vector is None else _vector_json(pair.vector),
+                        )
                     )
-                )
-            await store.add_pairs(rows)
-            if situation_id is not None:
-                self._per_situation[situation_id] = self._per_situation.get(situation_id, 0) + len(
-                    rows
-                )
-            self._forget_outside(set(store_window_ids(outcome)) | {entry.alarm_id})
+                await store.add_pairs(rows)
+                if situation_id is not None:
+                    self._per_situation[situation_id] = self._per_situation.get(
+                        situation_id, 0
+                    ) + len(rows)
+                self._forget_outside(set(store_window_ids(outcome)) | {entry.alarm_id})
         except Exception as exc:
             self._degrade(exc)
 

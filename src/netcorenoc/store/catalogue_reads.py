@@ -36,6 +36,7 @@ class CatalogueReadMixin(ClassRuleMixin):
             "FROM alarm_class c "
             + self._label_join("l", "class", "c.id")
             + self._label_join("s", "severity", "c.id")
+            + "ORDER BY c.id"
         )
         rows = list(await cur.fetchall())
         # One GROUP BY rather than a subquery per class: `alarm` has no index on `class_id`, so a

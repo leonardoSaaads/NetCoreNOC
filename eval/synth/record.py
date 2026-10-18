@@ -36,6 +36,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parent.parent / "tools"))
 
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 from netcorenoc.engine.correlate.correlate import CorrelationResult, WindowAlarm  # noqa: E402
 from netcorenoc.engine.correlate.learn import Learner  # noqa: E402
 from netcorenoc.engine.correlate.scorer_contract import CONTRACT_VERSION  # noqa: E402
@@ -166,7 +167,8 @@ class StreamLog:
 
 
 async def _record(stream: Stream) -> StreamLog:
-    store = Store(":memory:")
+    url = pgtemp.create()  # a fresh database per stream, as `:memory:` was (ADR #452)
+    store = Store(url, readers=1)
     await store.open()
     try:
         mv = await store.insert_model_version(
@@ -259,6 +261,7 @@ async def _record(stream: Stream) -> StreamLog:
         return log
     finally:
         await store.close()
+        pgtemp.drop(url)
 
 
 def _parse(

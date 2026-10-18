@@ -28,8 +28,8 @@ class RetentionMixin(StoreBase):
 
         **Why the labelled situation ROW is retained too, rather than left dangling.**
         `feedback.situation_id` is `NOT NULL REFERENCES situation (id)` with **no `ON DELETE`
-        action** (`0001_init.sql:89`) and `lifecycle.py` sets `PRAGMA foreign_keys=ON`. Deleting the
-        situation out from under a surviving label does not produce a dangling reference — SQLite
+        action** (`0031_postgresql.sql`), and PostgreSQL always enforces it. Deleting the situation
+        out from under a surviving label does not produce a dangling reference — the database
         refuses it, and this whole sweep would raise on every pass. So a situation carrying a label
         keeps its one row, and **only that row**: its `situation_alarm` and `link` rows are
         collected here exactly as before, and the alarms behind them become collectable in the same
@@ -71,19 +71,10 @@ class RetentionMixin(StoreBase):
             # situation carrying an event keeps its one row, like a situation carrying a label, and
             # both shells are collected by the ordinary later pass once the **audit sweep**
             # (`prune_dataset_audit`) has removed what was holding them.
-            # The `situation_event` clause is emitted only where the table exists. `prune` runs on
-            # the maintenance loop, which `tests/store/test_upgrade.py` drives against a schema
-            # frozen before this release — and a sweep that raised there would take the whole loop
-            # with it, which is the one thing an operational sweep may never do.
-            events = (
-                "AND id NOT IN (SELECT situation_id FROM situation_event) "
-                if self._has_lifecycle
-                else ""
-            )
             cur = await self.conn.execute(
                 f"DELETE FROM situation WHERE id IN ({marks}) "  # nosec B608
                 "AND id NOT IN (SELECT situation_id FROM feedback) "
-                f"{events}RETURNING id",  # nosec B608 - a literal chosen by the probe above
+                "AND id NOT IN (SELECT situation_id FROM situation_event) RETURNING id",
                 gone,
             )
             # The count is what was actually collected, not what was eligible: a labelled

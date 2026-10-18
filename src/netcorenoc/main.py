@@ -87,7 +87,9 @@ USAGE = """usage: python -m netcorenoc.main [--help | --version]
 Runs the NetCoreNOC appliance: the SNMP trap receiver, the correlator and the web console.
 It takes no arguments; it is configured by environment variables. The ones set most often:
 
-  NETCORENOC_DB          database file                     (default netcorenoc.db)
+  NETCORENOC_DATABASE_URL  the PostgreSQL database   (default postgresql://netcorenoc@localhost
+                           /netcorenoc); its password may come from
+                           NETCORENOC_DATABASE_PASSWORD_FILE (a Docker secret)
   NETCORENOC_TRAP_PORT   UDP port traps arrive on          (default 162)
   NETCORENOC_HTTP_PORT   TCP port of the console and API   (default 8080)
   NETCORENOC_ALLOWLIST   CIDRs allowed to send traps       (default: any)

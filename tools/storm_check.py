@@ -22,7 +22,9 @@ The numbers are the host's: run it where the appliance runs. Kernel drops (`Rcvb
 ``/proc/net/snmp``) are counted on Linux; a burst larger than the socket buffer produces them until
 ``net.core.rmem_max`` is raised (`docs/configure.md`).
 
-It needs nothing running: a temporary database and spool, the appliance's own modules, loopback.
+It needs a PostgreSQL to make a throwaway database on (`tools/pgtemp.py`: the server
+``NETCORENOC_TEST_DATABASE_URL`` names, or a private local cluster), a temporary spool, the
+appliance's own modules, loopback.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import pgtemp
 from netcorenoc.crosscutting.supervisor import Supervisor
 from netcorenoc.engine.operate.deadline import Kpi
 from netcorenoc.engine.operate.engine import Engine
@@ -143,7 +146,8 @@ class Pipeline:
 async def check(args: argparse.Namespace) -> dict[str, Any]:
     kpi = Kpi(args.target, args.limit)
     with tempfile.TemporaryDirectory() as tmp:
-        store = Store(str(Path(tmp) / "storm.db"))
+        url = pgtemp.create()  # a throwaway database (ADR #452); the spool stays in `tmp`
+        store = Store(url)
         await store.open()
         directory = Path(tmp) / "spool" if args.ingest_processes else None
         pipelines: list[Pipeline] = []
@@ -238,6 +242,7 @@ async def check(args: argparse.Namespace) -> dict[str, Any]:
             row = await cur.fetchone()
         alarms = int(row[0]) if row else 0
         await store.close()
+        pgtemp.drop(url)
     kernel = None if drops_before is None or drops_after is None else drops_after - drops_before
     trackers = [p.engine.deadlines for p in pipelines]
     merged = trackers[0]

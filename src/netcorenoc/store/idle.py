@@ -75,7 +75,8 @@ class IdleMixin(StoreBase):
         cur = await self.conn.execute(
             # `LIVE` and `HAS_ACTIVE` are module literals; `cutoff` is a bound parameter. The
             # suppression sits on the line bandit REPORTS, not the one above it (v0.16.1, c40f0ff).
-            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ? AND NOT {HAS_ACTIVE}",  # nosec B608
+            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ? AND NOT {HAS_ACTIVE} "  # nosec B608
+            "ORDER BY id",
             (cutoff,),
         )
         return [int(r[0]) for r in await cur.fetchall()]
@@ -94,10 +95,10 @@ class IdleMixin(StoreBase):
         """
         cur = await self.conn.execute(
             # `LIVE` and `HAS_ACTIVE` are module literals; `before` is bound. Suppression on the
-            # reported line, as above.
+            # reported line, as above. A situation with no cleared member reads the epoch.
             f"SELECT id FROM situation WHERE {LIVE} AND NOT {HAS_ACTIVE} AND updated_at <= ? "  # nosec B608
             "AND COALESCE((SELECT MAX(a.cleared_at) FROM situation_alarm sa JOIN alarm a "
-            "ON a.id=sa.alarm_id WHERE sa.situation_id=situation.id), 0) <= ?",
+            "ON a.id=sa.alarm_id WHERE sa.situation_id=situation.id), 'epoch') <= ? ORDER BY id",
             (before, before),
         )
         return [int(r[0]) for r in await cur.fetchall()]
@@ -122,7 +123,8 @@ class IdleMixin(StoreBase):
         """
         cur = await self.conn.execute(
             # Same fragments, sign flipped; same suppression, on the reported line.
-            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ? AND {HAS_ACTIVE}",  # nosec B608
+            f"SELECT id FROM situation WHERE {LIVE} AND updated_at < ? AND {HAS_ACTIVE} "  # nosec B608
+            "ORDER BY id",
             (cutoff,),
         )
         return [int(r[0]) for r in await cur.fetchall()]
@@ -155,13 +157,6 @@ class IdleMixin(StoreBase):
         sweep's. A `new` situation closes exactly as an `open` one does: an operator who reads a
         card and closes it has looked at it, whether or not they touched it first.
         """
-        if not self._has_lifecycle:
-            cur = await self.conn.execute(
-                "UPDATE situation SET status='closed', closed_at=?, updated_at=? "
-                "WHERE id=? AND status='open' RETURNING id",
-                (ts, ts, situation_id),
-            )
-            return await cur.fetchone() is not None
         cur = await self.conn.execute(
             "UPDATE situation SET status='resolved', resolution='operator', closed_at=?, "
             f"updated_at=? WHERE id=? AND {LIVE} RETURNING id",  # nosec B608 - module literal

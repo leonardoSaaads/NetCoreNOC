@@ -68,10 +68,10 @@ def _window_filters(
         where.append("w.owner_ref = ?")
         args.append(owner_ref)
     if since is not None:
-        where.append("(w.ends_at + w.patch_s) >= ?")
+        where.append("(w.ends_at + secs(w.patch_s)) >= ?")
         args.append(since)
     if until is not None:
-        where.append("(w.starts_at - w.patch_s) <= ?")
+        where.append("(w.starts_at - secs(w.patch_s)) <= ?")
         args.append(until)
     if ne_id is not None:
         where.append(
@@ -182,8 +182,8 @@ class MaintenanceReadMixin(StoreBase):
     ) -> int:
         """The total for a scope too large to bind, counted in Python over id pairs.
 
-        See :data:`MAX_SCOPE_PARAMS`. An estate with more elements in one scope than SQLite will
-        bind is filtered here rather than having its id list truncated, which would answer a
+        See :data:`MAX_SCOPE_PARAMS`. An estate with more elements in one scope than a statement
+        will bind is filtered here rather than having its id list truncated, which would answer a
         different question quietly — the choice `window_markers` and `severity_census` both make.
         The projection is two columns over the window table and its target table, both of which
         hold **declared** work rather than traffic, so this reads a few hundred rows on the
@@ -263,9 +263,6 @@ class MaintenanceReadMixin(StoreBase):
         element a viewer cannot see would answer *"does this exist?"*, which is the oracle the
         scope exists to close.
         """
-        if not self._has_maintenance:
-            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
-            return {}
         args: list[Any] = [now, now]
         clause = ""
         if ne_ids is not None:
@@ -277,17 +274,17 @@ class MaintenanceReadMixin(StoreBase):
         cur = await self.conn.execute(
             "SELECT t.ne_id, w.id, w.status, w.starts_at, w.ends_at, w.patch_s "  # nosec B608
             "FROM maintenance_window_target t JOIN maintenance_window w ON w.id = t.window_id "
-            "WHERE w.status = 'active' AND (w.starts_at - w.patch_s) <= ? "
-            f"AND (w.ends_at + w.patch_s) > ? {clause}"  # nosec B608 - placeholders only
-            "ORDER BY w.ends_at",
+            "WHERE w.status = 'active' AND (w.starts_at - secs(w.patch_s)) <= ? "
+            f"AND (w.ends_at + secs(w.patch_s)) > ? {clause}"  # nosec B608 - placeholders only
+            "ORDER BY w.ends_at, w.id",
             tuple(args),
         )
         out: dict[int, dict[str, Any]] = {}
         for row in await cur.fetchall():
             ne_id = int(row["ne_id"])
-            # See MAX_SCOPE_PARAMS: an estate with more elements in one scope than SQLite will
-            # bind is filtered here rather than having its id list truncated, which would answer a
-            # different question quietly. The same choice `severity_census` makes.
+            # See MAX_SCOPE_PARAMS: an estate with more elements in one scope than a statement
+            # will bind is filtered here rather than having its id list truncated, which would
+            # answer a different question quietly. The same choice `severity_census` makes.
             if ne_ids is not None and ne_id not in ne_ids:
                 continue
             out.setdefault(

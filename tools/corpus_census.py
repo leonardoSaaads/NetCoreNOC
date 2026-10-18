@@ -51,6 +51,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pgtemp
 from netcorenoc.api import create_app
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.dataset import incidents
@@ -306,7 +307,8 @@ async def census(store: Store, tag: str) -> dict[str, int]:
 
 
 async def run(*, control: bool, tag: str, gestures: bool = False) -> dict[str, int]:
-    store = Store(":memory:")
+    url = pgtemp.create()  # a throwaway database, as `:memory:` was (ADR #452)
+    store = Store(url, readers=1)
     await store.open()
     outcomes: dict[str, int] = {}
     try:
@@ -345,6 +347,7 @@ async def run(*, control: bool, tag: str, gestures: bool = False) -> dict[str, i
         return await census(store, tag)
     finally:
         await store.close()
+        pgtemp.drop(url)
 
 
 async def main() -> int:

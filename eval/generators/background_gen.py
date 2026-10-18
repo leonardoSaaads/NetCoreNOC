@@ -34,6 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 from netcorenoc.engine.correlate.scorer_contract import (  # noqa: E402
     LinkFeatures,
     LinkScore,
@@ -100,7 +101,8 @@ async def _drive(engine: Engine, queue: asyncio.Queue[Any], events: list[TrapEve
 
 async def collect() -> list[LinkFeatures]:
     """Every `LinkFeatures` the correlator evaluated over the whole corpus, in one engine."""
-    store = Store(":memory:")
+    url = pgtemp.create()  # a throwaway database, as `:memory:` was (ADR #452)
+    store = Store(url, readers=1)
     await store.open()
     try:
         queue: asyncio.Queue[Any] = asyncio.Queue()
@@ -117,6 +119,7 @@ async def collect() -> list[LinkFeatures]:
         return recorder.seen
     finally:
         await store.close()
+        pgtemp.drop(url)
 
 
 async def regenerate() -> tuple[list[tuple[float, float, float]], int, int, int]:

@@ -60,7 +60,8 @@ class RestructureMixin(SituationMixin):
         if await cur.fetchone() is None:
             return False
         await self.conn.execute(
-            "INSERT OR IGNORE INTO situation_alarm (situation_id, alarm_id) VALUES (?, ?)",
+            "INSERT INTO situation_alarm (situation_id, alarm_id) VALUES (?, ?) "
+            "ON CONFLICT DO NOTHING",
             (to_situation, alarm_id),
         )
         await self.refresh_derived_name(from_situation)
@@ -107,7 +108,8 @@ class RestructureMixin(SituationMixin):
                 (situation_id, *departing),
             )
             await self.conn.executemany(
-                "INSERT OR IGNORE INTO situation_alarm (situation_id, alarm_id) VALUES (?, ?)",
+                "INSERT INTO situation_alarm (situation_id, alarm_id) VALUES (?, ?) "
+                "ON CONFLICT DO NOTHING",
                 [(new_id, alarm) for alarm in departing],
             )
             await self.conn.execute(
@@ -171,8 +173,6 @@ class RestructureMixin(SituationMixin):
         recorded `self_cleared` — *"the network fixed itself"* — about a situation the network did
         nothing about.
         """
-        if not self._has_lifecycle:
-            return False
         cur = await self.conn.execute(
             "UPDATE situation SET status='resolved', resolution=?, closed_at=?, updated_at=? "
             f"WHERE id=? AND {LIVE} RETURNING id",  # nosec B608 - module literal

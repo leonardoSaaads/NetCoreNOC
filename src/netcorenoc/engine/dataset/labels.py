@@ -311,47 +311,48 @@ async def record_label(
         return
     scope, client, exclusion = label.scope, label.client, label.exclusion
     try:
-        await store.add_feedback_members(recorded.id, "server", bag)
-        promoted, _observations = await store.promote_for_situation(situation_id, ts)
-        fields: dict[str, Any] = {
-            "member_digest": member_digest(bag),
-            "member_count": len(bag),
-            # v0.8.0 wrote `organic` on every row and built this column for the day a second
-            # channel existed. v0.9.1 is that day: a verdict recorded through `close` writes
-            # `close`, because closing selects for RESOLVED incidents and that is a different
-            # population from the one an operator browses and labels spontaneously
-            # (DECISIONS #126). The two are reported separately and never averaged — mixing them
-            # would destroy the bias characterisation retroactively, for rows already written.
-            "acquisition_channel": label.channel,
-            # Everything this release writes was acquired over the path v0.7.5 repaired.
-            "capture_provenance": "current",
-            "situation_opened_at": await store.situation_opened_at(situation_id),
-            # Situation identity is NOT stable under `sid = min(sids)`, so the id at label time is
-            # a fact that has to be recorded rather than read back later (§3.5c).
-            "situation_id_at_label": situation_id,
-            **coverage(bag, promoted),
-        }
-        if scope is not None:
-            fields.update(
-                scope_policy_id=scope.policy_id,
-                scope_restricted=1 if scope.restricted else 0,
-                scope_redacted_members=scope.redacted_members,
-            )
-        if client is not None:
-            fields.update(
-                client_member_digest=member_digest(client.alarm_ids),
-                client_member_count=len(client.alarm_ids),
-                client_updated_at=client.updated_at,
-                client_truncated=1 if client.truncated else 0,
-            )
-            # Recorded exactly as reported. **Never validated against anything**: an id the
-            # principal cannot see, or that does not exist, is written unchanged and changes nothing
-            # about the response, its status or its timing. That is what keeps this from being an
-            # existence oracle (§5a) — a security requirement, not a nicety.
-            await store.add_feedback_members(recorded.id, "client", client.alarm_ids)
-        if exclusion is not None:
-            fields.update(_assertion(exclusion, bag, scope))
-            await store.add_feedback_exclusion(recorded.id, exclusion.alarm_ids)
-        await store.annotate_feedback(recorded.id, **fields)
+        async with store.savepoint():
+            await store.add_feedback_members(recorded.id, "server", bag)
+            promoted, _observations = await store.promote_for_situation(situation_id, ts)
+            fields: dict[str, Any] = {
+                "member_digest": member_digest(bag),
+                "member_count": len(bag),
+                # v0.8.0 wrote `organic` on every row and built this column for the day a second
+                # channel existed. v0.9.1 is that day: a verdict recorded through `close` writes
+                # `close`, because closing selects for RESOLVED incidents and that is a different
+                # population from the one an operator browses and labels spontaneously
+                # (DECISIONS #126). The two are reported separately and never averaged — mixing them
+                # would destroy the bias characterisation retroactively, for rows already written.
+                "acquisition_channel": label.channel,
+                # Everything this release writes was acquired over the path v0.7.5 repaired.
+                "capture_provenance": "current",
+                "situation_opened_at": await store.situation_opened_at(situation_id),
+                # Situation identity is NOT stable under `sid = min(sids)`, so the id at label time
+                # is a fact that has to be recorded rather than read back later (§3.5c).
+                "situation_id_at_label": situation_id,
+                **coverage(bag, promoted),
+            }
+            if scope is not None:
+                fields.update(
+                    scope_policy_id=scope.policy_id,
+                    scope_restricted=1 if scope.restricted else 0,
+                    scope_redacted_members=scope.redacted_members,
+                )
+            if client is not None:
+                fields.update(
+                    client_member_digest=member_digest(client.alarm_ids),
+                    client_member_count=len(client.alarm_ids),
+                    client_updated_at=client.updated_at,
+                    client_truncated=1 if client.truncated else 0,
+                )
+                # Recorded exactly as reported. **Never validated against anything**: an id the
+                # principal cannot see, or that does not exist, is written unchanged and changes
+                # nothing about the response, its status or its timing. That is what keeps this from
+                # being an existence oracle (§5a) — a security requirement, not a nicety.
+                await store.add_feedback_members(recorded.id, "client", client.alarm_ids)
+            if exclusion is not None:
+                fields.update(_assertion(exclusion, bag, scope))
+                await store.add_feedback_exclusion(recorded.id, exclusion.alarm_ids)
+            await store.annotate_feedback(recorded.id, **fields)
     except Exception as exc:
         capture._degrade(exc)

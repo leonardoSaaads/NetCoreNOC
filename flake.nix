@@ -19,7 +19,7 @@
           build-system = [ python.pkgs.setuptools ];
           dependencies = with python.pkgs; [
             pysnmp
-            aiosqlite
+            asyncpg
             fastapi
             uvicorn
             pydantic

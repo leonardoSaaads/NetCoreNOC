@@ -11,9 +11,11 @@ a silently ignored setting (an allowlist, a TLS path) is a security regression, 
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 # Rebrand (v0.4.0): the canonical environment prefix is NETCORENOC_*. The legacy OPTICORR_*
 # aliases were accepted with a once-per-variable deprecation warning through v0.5.0 and are
@@ -135,11 +137,85 @@ def _tls(cert: str, key: str) -> None:
             )
 
 
+def _database_url(url: str, password_file: str) -> str:
+    """The PostgreSQL URL, with the password from ``password_file`` when one is named (ADR #452).
+
+    The file is how a Docker or Kubernetes secret reaches the process without sitting in its
+    environment, where ``docker inspect`` and ``/proc/<pid>/environ`` would show it.
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in ("postgresql", "postgres"):
+        raise SettingsError(
+            f"{ENV_PREFIX}DATABASE_URL must be a postgresql:// URL (got scheme {parts.scheme!r}). "
+            "See docs/configure.md."
+        )
+    if not password_file:
+        return url
+    try:
+        password = Path(password_file).read_text().strip()
+    except OSError as exc:
+        raise SettingsError(
+            f"{ENV_PREFIX}DATABASE_PASSWORD_FILE={password_file!r} cannot be read ({exc.strerror})."
+            " It is a path inside the container or on the host; check the mount and the "
+            "permissions. See docs/configure.md."
+        ) from exc
+    user = quote(parts.username or "", safe="")
+    host = parts.netloc.rsplit("@", 1)[-1]
+    netloc = f"{user}:{quote(password, safe='')}@{host}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+def split_password(url: str) -> tuple[str, str | None]:
+    """``(url_without_password, password)``: for a child process that takes the password in its
+    environment (``PGPASSWORD``) rather than on a command line ``ps`` can read."""
+    parts = urlsplit(url)
+    if parts.password is None:
+        return url, None
+    host = parts.netloc.rsplit("@", 1)[-1]
+    user = f"{parts.username}@" if parts.username else ""
+    bare = urlunsplit((parts.scheme, f"{user}{host}", parts.path, parts.query, parts.fragment))
+    return bare, unquote(parts.password)
+
+
+def redact_url(url: str) -> str:
+    """A database URL fit for a log line or a settings screen: the password replaced by ***."""
+    parts = urlsplit(url)
+    if parts.password is None:
+        return url
+    host = parts.netloc.rsplit("@", 1)[-1]
+    return urlunsplit(
+        (parts.scheme, f"{parts.username}:***@{host}", parts.path, parts.query, parts.fragment)
+    )
+
+
+def _count(suffix: str, default: int, low: int, high: int) -> int:
+    """A whole number in ``[low, high]``, refused by name otherwise."""
+    value = _number(suffix, str(default), int, "a whole number")
+    if not low <= value <= high:
+        raise SettingsError(
+            f"{ENV_PREFIX}{suffix}={value} is outside {low}-{high}. Unset it to use the default "
+            f"({default}). See docs/configure.md."
+        )
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     """All configuration is environment variables with sane defaults — nothing else."""
 
-    db_path: str = "netcorenoc.db"
+    # ADR #452: the PostgreSQL database and the schema in it. The password may come from a file
+    # (a Docker secret) instead of the URL; `database_url` is then the URL with it filled in, so
+    # only `redact_url(database_url)` is ever logged or shown.
+    database_url: str = "postgresql://netcorenoc@localhost:5432/netcorenoc"
+    db_schema: str = "netcorenoc"
+    # Connections API reads run on, besides the one writer; and asyncpg's prepared-statement cache,
+    # which must be 0 behind a pooler in transaction mode (PgBouncer, Supabase's port 6543).
+    db_readers: int = 4
+    db_statement_cache: int = 1024
+    # Files the appliance keeps on its own disk: the trap spool (ADR #450).
+    data_dir: str = "."
+    # `NETCORENOC_DB`, the SQLite file of v0.30.0 and earlier: set, it stops the start (ADR #452).
+    legacy_db: str = ""
     trap_host: str = "0.0.0.0"  # nosec B104 - a trap destination must listen externally
     trap_port: int = 162
     http_host: str = "0.0.0.0"  # nosec B104 - the UI/API serve the operator LAN
@@ -160,7 +236,7 @@ class Settings:
     # main process, without the spool (development, and hosts without POSIX descriptors).
     ingest_processes: int = 1
     # ADR #450: where accepted traps are spooled before they are classified ("" is a `spool`
-    # directory beside the database), and how large the spool may grow.
+    # directory in `data_dir`), and how large the spool may grow.
     spool_dir: str = ""
     spool_max_mb: float = 2048.0
     tls_cert: str = ""
@@ -186,8 +262,21 @@ class Settings:
                 "The target is where a trap should be classified by; the limit, the latest it may "
                 "be. See docs/configure.md."
             )
+        schema = s("DB_SCHEMA", cls.db_schema)
+        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", schema):
+            raise SettingsError(
+                f"{ENV_PREFIX}DB_SCHEMA={schema!r} is not a schema name: lower-case letters, "
+                "digits and _, starting with a letter or _. See docs/configure.md."
+            )
         return cls(
-            db_path=s("DB", cls.db_path),
+            database_url=_database_url(
+                s("DATABASE_URL", cls.database_url), s("DATABASE_PASSWORD_FILE", "")
+            ),
+            db_schema=schema,
+            db_readers=_count("DB_READERS", cls.db_readers, 1, 64),
+            db_statement_cache=_count("DB_STATEMENT_CACHE", cls.db_statement_cache, 0, 100_000),
+            data_dir=s("DATA_DIR", cls.data_dir),
+            legacy_db=s("DB", cls.legacy_db),
             trap_host=s("TRAP_HOST", cls.trap_host),
             trap_port=_port("TRAP_PORT", cls.trap_port, "UDP"),
             http_host=s("HTTP_HOST", cls.http_host),
@@ -216,8 +305,8 @@ class Settings:
 
     @property
     def spool_path(self) -> Path:
-        """`NETCORENOC_SPOOL_DIR`, or a ``spool`` directory beside the database (ADR #450)."""
-        return Path(self.spool_dir or Path(self.db_path).resolve().parent / "spool").resolve()
+        """`NETCORENOC_SPOOL_DIR`, or a ``spool`` directory in `NETCORENOC_DATA_DIR` (ADR #450)."""
+        return Path(self.spool_dir or Path(self.data_dir) / "spool").resolve()
 
     @property
     def tls_enabled(self) -> bool:

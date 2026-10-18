@@ -115,7 +115,8 @@ async def assertions(store: Store) -> dict[str, Any]:
     partial = await _rows(
         store,
         "SELECT id, verdict, member_count AS n, excluded_reconciled AS m, excluded_count AS said, "
-        "       COALESCE(excluded_truncated, 0) AS truncated, remainder_together, "
+        "       COALESCE(excluded_truncated::int, 0) AS truncated, "
+        "       remainder_together::int AS remainder_together, "
         "       excluded_reconciled_source AS source, scope_redacted_members AS redacted, "
         "       excluded_reconciled_out_of_scope AS blind "
         "FROM feedback WHERE excluded_reconciled IS NOT NULL AND member_count IS NOT NULL "
@@ -169,13 +170,14 @@ async def assertions(store: Store) -> dict[str, Any]:
             # A SEPARATE consumer from the corpus-wide one above, with its own copy of the defect,
             # so it needs its own guard: one test covering both would leave one path unprotected.
             "SELECT COALESCE(acquisition_channel, 'unrecorded') AS c, COUNT(*) AS n, "
-            "  SUM(verdict='confirm') AS confirms, SUM(verdict='split') AS splits, "
-            "  SUM(excluded_reconciled IS NOT NULL) AS partials, "
+            "  COUNT(*) FILTER (WHERE verdict='confirm') AS confirms, "
+            "  COUNT(*) FILTER (WHERE verdict='split') AS splits, "
+            "  COUNT(excluded_reconciled) AS partials, "
             "  SUM(COALESCE(excluded_reconciled, 0) * (COALESCE(member_count, 0) "
             "      - COALESCE(excluded_reconciled, 0))) AS negatives, "
             "  SUM(COALESCE(excluded_count, 0)) AS client_marks, "
-            "  SUM(COALESCE(scope_restricted, 0)) AS restricted, "
-            "  SUM(client_member_digest IS NOT NULL) AS client "
+            "  COUNT(*) FILTER (WHERE scope_restricted) AS restricted, "
+            "  COUNT(client_member_digest) AS client "
             "FROM feedback GROUP BY c ORDER BY c",
         )
     }

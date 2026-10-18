@@ -17,15 +17,22 @@ Subcommands:
   both label-derivation policies, partition-level over/under-merge against the human verdicts,
   bag-level calibration, the admission filter run against the champion too, and the
   training/serving skew rate. Deterministic; it re-derives offline and **fits nothing**.
-- ``backup <file>`` — a consistent copy of the live database, taken while the appliance runs
-  (SQLite's online backup), checked with ``PRAGMA integrity_check`` (v0.28.0).
+- ``backup <file>`` — a consistent copy of the live schema, taken while the appliance runs, with
+  ``pg_dump`` in its custom format and checked by reading it back with ``pg_restore --list``
+  (v0.28.0; PostgreSQL since v0.31.0).
 - ``admin reset-password <username>`` — a new one-time password for an account whose owner
-  forgot theirs (v0.28.0). Needs the database file, so it needs the host: the same trust boundary
-  the bootstrap admin already rests on (DECISIONS #234). Audited, and every session is revoked.
+  forgot theirs (v0.28.0). Needs the database's credentials, so it needs the host: the same trust
+  boundary the bootstrap admin already rests on (DECISIONS #234). Audited, and every session is
+  revoked.
+- ``db status`` — the server, the schema's version and size (v0.31.0).
+- ``db import-sqlite <file>`` — copy a v0.30.0 SQLite database into an empty PostgreSQL schema
+  once, verified row for row and link for link of the audit chain (v0.31.0, ADR #452).
 
-Every command reads ``NETCORENOC_DB`` and refuses when no database is there (v0.28.0): opening a
-missing path *creates* an empty database, and ``audit verify`` then reported a chain that was not
-the appliance's as OK.
+Every command reads the appliance's ``NETCORENOC_DATABASE_URL`` (and ``_DB_SCHEMA``,
+``_DATABASE_PASSWORD_FILE``) and refuses when the schema is not there (v0.28.0): connecting to an
+empty one would *create* it, and ``audit verify`` would then report a chain that was not the
+appliance's as OK. Only ``db import-sqlite`` creates the schema. None of them takes the instance
+lock, so each runs beside the appliance.
 
 The trap correlator itself still runs via ``python -m netcorenoc.main`` (unchanged).
 """
@@ -34,7 +41,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import secrets
 import sys
 import time
@@ -42,6 +48,8 @@ import time
 from netcorenoc.crosscutting import audit
 from netcorenoc.crosscutting.administration import BOOTSTRAP_PASSWORD_CHARS
 from netcorenoc.crosscutting.auth import hash_password
+from netcorenoc.crosscutting.settings import Settings
+from netcorenoc.dbtools import _backup, _db_status, _import_sqlite, _open, _settings
 from netcorenoc.engine.correlate import scoring
 from netcorenoc.engine.dataset import seal
 from netcorenoc.engine.evaluation import promotion
@@ -54,34 +62,10 @@ from netcorenoc.engine.report import (
     shadow_render,
     shadow_report,
 )
-from netcorenoc.main import legacy_env_error, legacy_env_names
-from netcorenoc.store import Store
 
 
-def _db_path() -> str:
-    """NETCORENOC_DB, or the default file. The OPTICORR_DB alias was removed in v0.6.0.
-
-    The CLI refuses rather than silently reading the wrong database: pointing `audit verify` at
-    the default file while the operator believes it is checking their real one would produce a
-    confidently wrong answer about the integrity of the audit chain."""
-    legacy = legacy_env_names()
-    if legacy:
-        print(str(legacy_env_error(tuple(legacy))), file=sys.stderr)
-        raise SystemExit(2)
-    path = os.environ.get("NETCORENOC_DB", "netcorenoc.db")
-    if not os.path.isfile(path):
-        print(
-            f"no NetCoreNOC database at {path!r}. Set NETCORENOC_DB to the appliance's database "
-            "file (in the container: docker compose exec netcorenoc python -m netcorenoc ...).",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-    return path
-
-
-async def _verify(db_path: str) -> int:
-    store = Store(db_path)
-    await store.open()
+async def _verify(settings: Settings) -> int:
+    store = await _open(settings)
     try:
         result = await audit.verify_chain(store)
     finally:
@@ -90,12 +74,11 @@ async def _verify(db_path: str) -> int:
     return 0 if result.ok else 1
 
 
-async def _bias(db_path: str) -> int:
+async def _bias(settings: Settings) -> int:
     """The bias report. A CLI subcommand rather than a route: it adds no HTTP surface to the
     dataset's scope bypass, and — the stronger reason — a deterministic CLI report can be a
     guard, which no UI card could ever be."""
-    store = Store(db_path)
-    await store.open()
+    store = await _open(settings)
     try:
         async with store.lock:
             measurements = await bias.collect(store)
@@ -105,14 +88,13 @@ async def _bias(db_path: str) -> int:
     return 0
 
 
-async def _agreement(db_path: str) -> int:
+async def _agreement(settings: Settings) -> int:
     """The champion-agreement report — v0.9.0's primary deliverable, and it needs no model.
 
     Same posture as `_bias`: no HTTP surface over a scope bypass, and a deterministic CLI report
     that `make qa` can compare byte-for-byte.
     """
-    store = Store(db_path)
-    await store.open()
+    store = await _open(settings)
     try:
         async with store.lock:
             measurements = await agreement.collect(store)
@@ -122,7 +104,7 @@ async def _agreement(db_path: str) -> int:
     return 0
 
 
-async def _shadow(db_path: str) -> int:
+async def _shadow(settings: Settings) -> int:
     """The shadow-mode report. Same posture as `_bias` and `_agreement`: no HTTP surface over a
     scope bypass, and a deterministic CLI report `make qa` can compare byte-for-byte.
 
@@ -130,8 +112,7 @@ async def _shadow(db_path: str) -> int:
     features and from the coefficients a training run recorded; training happens in the engine's
     slow loop, and a report that trained would be a report whose numbers changed when it was read.
     """
-    store = Store(db_path)
-    await store.open()
+    store = await _open(settings)
     try:
         async with store.lock:
             measurements = await shadow_report.collect(store)
@@ -141,11 +122,10 @@ async def _shadow(db_path: str) -> int:
     return 0
 
 
-async def _dataset_stats(db_path: str) -> int:
+async def _dataset_stats(settings: Settings) -> int:
     """What capture costs, in rows. Zero-config means the default is good, not that the operator
     is blind about what the appliance is storing."""
-    store = Store(db_path)
-    await store.open()
+    store = await _open(settings)
     try:
         async with store.lock:
             stats = await store.dataset_stats()
@@ -163,14 +143,13 @@ async def _dataset_stats(db_path: str) -> int:
     return 0
 
 
-async def _promotion_list(db_path: str) -> int:
+async def _promotion_list(settings: Settings) -> int:
     """**What has this appliance been asked to deploy, and why was it refused?**
 
     The read half of the promotion surface, as a CLI rather than a screen (DECISIONS #163). Every
     decision, refusals included — a table of successes answers the smaller question.
     """
-    store = Store(db_path)
-    await store.open()
+    store = await _open(settings)
     try:
         async with store.lock:
             rows = await store.list_promotions(50)
@@ -204,7 +183,9 @@ async def _promotion_list(db_path: str) -> int:
     return 0
 
 
-async def _promotion_register(db_path: str, kind: str, params: str, run_id: int | None) -> int:
+async def _promotion_register(
+    settings: Settings, kind: str, params: str, run_id: int | None
+) -> int:
     """Register an artefact. **Registering is not promoting**, and nothing here moves a pointer.
 
     The document is validated by the same per-kind validator the load path uses, so a payload that
@@ -216,8 +197,7 @@ async def _promotion_register(db_path: str, kind: str, params: str, run_id: int 
     except model_version.ModelPayloadError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
-    store = Store(db_path)
-    await store.open()
+    store = await _open(settings)
     try:
         async with store.lock:
             new_id = await store.insert_model_version(
@@ -239,14 +219,13 @@ async def _promotion_register(db_path: str, kind: str, params: str, run_id: int 
     return 0
 
 
-async def _reset_password(db_path: str, username: str) -> int:
+async def _reset_password(settings: Settings, username: str) -> int:
     """A fresh one-time password for `username`, printed once; every session of theirs revoked.
 
     The forgotten-password path the console cannot offer when the person who forgot is the only
     admin. `must_change_password` is set, so the printed password works for exactly one sign-in.
     """
-    store = Store(db_path)
-    await store.open()
+    store = await _open(settings)
     try:
         async with store.lock:
             user = await store.get_user_by_name(username)
@@ -281,36 +260,8 @@ async def _reset_password(db_path: str, username: str) -> int:
     return 0
 
 
-def _backup(db_path: str, target: str) -> int:
-    """Copy the live database to `target` with SQLite's online backup API, then check the copy.
-
-    Safe while the appliance is running: the backup API copies a consistent snapshot through the
-    WAL, which copying the file with `cp` does not. Refuses to overwrite, so a mistyped target
-    cannot replace an earlier backup.
-    """
-    import sqlite3
-
-    if os.path.exists(target):
-        print(f"{target!r} already exists; choose a new file name", file=sys.stderr)
-        return 2
-    source = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    try:
-        copy = sqlite3.connect(target)
-        try:
-            source.backup(copy)
-            verdict = copy.execute("PRAGMA integrity_check").fetchone()[0]
-        finally:
-            copy.close()
-    finally:
-        source.close()
-    size = os.path.getsize(target)
-    print(f"backup written to {target} ({size} bytes); integrity_check: {verdict}")
-    return 0 if verdict == "ok" else 1
-
-
-async def _export(db_path: str) -> int:
-    store = Store(db_path)
-    await store.open()
+async def _export(settings: Settings) -> int:
+    store = await _open(settings)
     try:
         lines, final_hash = await audit.export_ndjson(store)
     finally:
@@ -349,8 +300,15 @@ def main(argv: list[str] | None = None) -> int:
     register.add_argument("--kind", required=True, choices=sorted(model_version.SUPPORTED_KINDS))
     register.add_argument("--params", required=True, help="the parameter document, as JSON")
     register.add_argument("--challenger-run", type=int, default=None)
-    backup = sub.add_parser("backup", help="copy the live database safely (v0.28.0)")
+    backup = sub.add_parser("backup", help="dump the live database safely (pg_dump)")
     backup.add_argument("target", help="the new file to write; never overwritten")
+    db_parser = sub.add_parser("db", help="the PostgreSQL database (v0.31.0)")
+    db_sub = db_parser.add_subparsers(dest="db_command", required=True)
+    db_sub.add_parser("status", help="the server, and the schema's version and size")
+    imported = db_sub.add_parser(
+        "import-sqlite", help="copy a v0.30.0 SQLite database into an empty schema, verified"
+    )
+    imported.add_argument("source", help="the SQLite file (netcorenoc.db)")
     admin_parser = sub.add_parser("admin", help="account recovery (v0.28.0)")
     admin_sub = admin_parser.add_subparsers(dest="admin_command", required=True)
     reset = admin_sub.add_parser(
@@ -359,32 +317,37 @@ def main(argv: list[str] | None = None) -> int:
     reset.add_argument("username")
     args = parser.parse_args(argv)
 
-    db_path = _db_path()
+    settings = _settings()
     if args.command == "audit":
         if args.audit_command == "verify":
-            return asyncio.run(_verify(db_path))
+            return asyncio.run(_verify(settings))
         if args.audit_command == "export":
-            return asyncio.run(_export(db_path))
+            return asyncio.run(_export(settings))
     if args.command == "dataset":
         if args.dataset_command == "bias":
-            return asyncio.run(_bias(db_path))
+            return asyncio.run(_bias(settings))
         if args.dataset_command == "stats":
-            return asyncio.run(_dataset_stats(db_path))
+            return asyncio.run(_dataset_stats(settings))
         if args.dataset_command == "agreement":
-            return asyncio.run(_agreement(db_path))
+            return asyncio.run(_agreement(settings))
         if args.dataset_command == "shadow":
-            return asyncio.run(_shadow(db_path))
+            return asyncio.run(_shadow(settings))
     if args.command == "promotion":
         if args.promotion_command == "list":
-            return asyncio.run(_promotion_list(db_path))
+            return asyncio.run(_promotion_list(settings))
         if args.promotion_command == "register":
             return asyncio.run(
-                _promotion_register(db_path, args.kind, args.params, args.challenger_run)
+                _promotion_register(settings, args.kind, args.params, args.challenger_run)
             )
     if args.command == "backup":
-        return _backup(db_path, args.target)
+        return _backup(settings, args.target)
+    if args.command == "db":
+        if args.db_command == "status":
+            return asyncio.run(_db_status(settings))
+        if args.db_command == "import-sqlite":
+            return asyncio.run(_import_sqlite(settings, args.source))
     if args.command == "admin" and args.admin_command == "reset-password":
-        return asyncio.run(_reset_password(db_path, args.username))
+        return asyncio.run(_reset_password(settings, args.username))
     parser.error("unknown command")
     return 2
 

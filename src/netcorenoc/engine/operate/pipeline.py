@@ -69,6 +69,7 @@ async def sample_loop(
     started: float | None = None
     while True:
         await asyncio.sleep(SAMPLE_INTERVAL_S)
+        await sampler.measure_database()
         sampler.sample()
         now = time.time()
         rate: float | None = None

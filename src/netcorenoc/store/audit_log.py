@@ -1,8 +1,9 @@
 """The append-only, hash-chained audit log.
 
-``prune_audit`` is the one sanctioned deleter (DECISIONS v0.2 #3): it drops the append-only
-triggers, deletes only the oldest rows, and recreates them inside the caller's locked transaction,
-so the surviving suffix stays verifiable.
+``prune_audit`` is the one sanctioned deleter (DECISIONS v0.2 #3): inside the caller's locked
+transaction it sets the transaction-local `netcorenoc.prune` the schema's `forbid_change()` trigger
+honours, deletes only the oldest rows, and clears it again, so the surviving suffix stays
+verifiable and no other statement can delete a row.
 """
 
 from __future__ import annotations
@@ -68,18 +69,16 @@ class AuditLogMixin(StoreBase):
 
     async def prune_audit(self, cutoff: float) -> int:
         """Delete audit rows older than cutoff. The one sanctioned deleter (DECISIONS v0.2
-        #3): drops the append-only triggers, deletes, and recreates them in this locked
-        transaction. Pruning only the oldest rows keeps the surviving suffix verifiable."""
-        await self.conn.execute("DROP TRIGGER IF EXISTS audit_log_no_update")
-        await self.conn.execute("DROP TRIGGER IF EXISTS audit_log_no_delete")
+        #3): `forbid_change()` lets a DELETE on `audit_log` through only while the
+        transaction-local `netcorenoc.prune` is `audit_log`, so this sets it, deletes, and clears
+        it in this locked transaction. Pruning only the oldest rows keeps the surviving suffix
+        verifiable."""
+        # The shim opens the implicit transaction only for a write, and `SELECT set_config` is a
+        # read to it: open it first, or the setting would end with its own statement. If the
+        # DELETE fails, the rollback discards the setting with everything else.
+        await self.conn.begin()
+        await self.conn.execute("SELECT set_config('netcorenoc.prune', 'audit_log', true)")
         cur = await self.conn.execute("DELETE FROM audit_log WHERE ts < ? RETURNING id", (cutoff,))
         removed = len(list(await cur.fetchall()))
-        await self.conn.execute(
-            "CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log "
-            "BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END"
-        )
-        await self.conn.execute(
-            "CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log "
-            "BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END"
-        )
+        await self.conn.execute("SELECT set_config('netcorenoc.prune', '', true)")
         return removed

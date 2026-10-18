@@ -26,24 +26,14 @@ _SETTING_COLUMNS = (
 
 
 class AutonomyMixin(StoreBase):
-    async def _has(self, table: str) -> bool:
-        cur = await self.conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
-        )
-        return await cur.fetchone() is not None
-
     # -- settings --------------------------------------------------------------------------
 
     async def autonomy_setting(self) -> dict[str, Any] | None:
-        if not await self._has("autonomy_setting"):
-            return None
         cur = await self.conn.execute("SELECT * FROM autonomy_setting ORDER BY id DESC LIMIT 1")
         row = await cur.fetchone()
         return dict(row) if row else None
 
     async def autonomy_history(self, limit: int = 20) -> list[dict[str, Any]]:
-        if not await self._has("autonomy_setting"):
-            return []
         cur = await self.conn.execute(
             "SELECT * FROM autonomy_setting ORDER BY id DESC LIMIT ?", (limit,)
         )
@@ -54,9 +44,11 @@ class AutonomyMixin(StoreBase):
     ) -> int:
         cols = [c for c in _SETTING_COLUMNS if c in values]
         marks = ", ".join("?" * (len(cols) + 3))
+        # Quoted, because `window` is a reserved word in PostgreSQL.
+        names = ", ".join(f'"{c}"' for c in cols)
         cur = await self.conn.execute(
             # nosec B608 - column names come from the fixed tuple above; every value is bound.
-            f"INSERT INTO autonomy_setting ({', '.join(cols)}, set_by, set_at, reason) "  # nosec B608
+            f"INSERT INTO autonomy_setting ({names}, set_by, set_at, reason) "  # nosec B608
             f"VALUES ({marks}) RETURNING id",
             (*[values[c] for c in cols], set_by, ts, reason),
         )
@@ -97,8 +89,6 @@ class AutonomyMixin(StoreBase):
     async def autonomy_decisions(
         self, *, limit: int = 50, situation_id: int | None = None, pending: bool = False
     ) -> list[dict[str, Any]]:
-        if not await self._has("autonomy_decision"):
-            return []
         where, args = [], []
         if situation_id is not None:
             where.append("situation_id = ?")
@@ -127,8 +117,6 @@ class AutonomyMixin(StoreBase):
 
     async def recent_verdicts(self, window: int) -> list[str]:
         """The last ``window`` judged decisions' verdicts, newest first."""
-        if not await self._has("autonomy_decision"):
-            return []
         cur = await self.conn.execute(
             "SELECT verdict FROM autonomy_decision WHERE verdict IS NOT NULL "
             "ORDER BY verdict_at DESC, id DESC LIMIT ?",
@@ -145,7 +133,7 @@ class AutonomyMixin(StoreBase):
             "SELECT e.kind, e.actor, e.at, f.verdict FROM situation_event e "
             "LEFT JOIN feedback f ON f.id = e.feedback_id "
             "WHERE e.situation_id=? AND e.at>? AND e.actor IS NOT NULL "
-            "AND e.actor NOT LIKE 'model:%' ORDER BY e.at",
+            "AND e.actor NOT LIKE 'model:%' ORDER BY e.at, e.id",
             (situation_id, after),
         )
         return [dict(r) for r in await cur.fetchall()]
@@ -156,14 +144,15 @@ class AutonomyMixin(StoreBase):
             # nosec B608 - `LIVE` is the store's one module literal; every value is bound.
             "SELECT id, status, created_at, updated_at, decider, operator_name, model_name, "
             f"severity, severity_by FROM situation WHERE {LIVE} AND created_at <= ? "  # nosec B608
-            "ORDER BY updated_at DESC LIMIT ?",
+            "ORDER BY updated_at DESC, id DESC LIMIT ?",
             (settled_before, limit),
         )
         return [dict(r) for r in await cur.fetchall()]
 
     async def situation_link_scores(self, situation_id: int) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
-            "SELECT alarm_a, alarm_b, score, terms FROM link WHERE situation_id=?", (situation_id,)
+            "SELECT alarm_a, alarm_b, score, terms FROM link WHERE situation_id=? ORDER BY id",
+            (situation_id,),
         )
         rows = [dict(r) for r in await cur.fetchall()]
         for row in rows:
@@ -176,7 +165,7 @@ class AutonomyMixin(StoreBase):
             "SELECT a.id AS alarm_id, a.class_id, c.oid AS class_oid, d.ip AS device_ip, "
             "a.severity_rank, a.status, (s.root_alarm_id = a.id) AS is_root "
             "FROM situation_alarm sa JOIN alarm a ON a.id = sa.alarm_id "
-            "JOIN alarm_class c ON c.id = a.class_id JOIN device d ON d.id = a.device_id "
+            "JOIN alarm_class c ON c.id = a.class_id JOIN ne d ON d.id = a.ne_id "
             "JOIN situation s ON s.id = sa.situation_id WHERE sa.situation_id=? ORDER BY a.id",
             (situation_id,),
         )
@@ -258,9 +247,9 @@ class AutonomyMixin(StoreBase):
 
     async def add_search_trial(self, run_id: int, trial: dict[str, Any]) -> None:
         await self.conn.execute(
-            "INSERT OR IGNORE INTO search_trial (run_id, trial, rung, params, rounds, best_round, "
+            "INSERT INTO search_trial (run_id, trial, rung, params, rounds, best_round, "
             "train_loss, valid_loss, seconds, status, trace) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
             (
                 run_id,
                 trial["index"],
@@ -277,8 +266,6 @@ class AutonomyMixin(StoreBase):
         )
 
     async def search_runs(self, limit: int = 10) -> list[dict[str, Any]]:
-        if not await self._has("search_run"):
-            return []
         cur = await self.conn.execute("SELECT * FROM search_run ORDER BY id DESC LIMIT ?", (limit,))
         rows = [dict(r) for r in await cur.fetchall()]
         for row in rows:
@@ -288,7 +275,7 @@ class AutonomyMixin(StoreBase):
 
     async def pair_features(self, pair_ids: list[int]) -> dict[int, str]:
         """The captured v2 vector of each pair that has one (`0026`), by pair id."""
-        if not pair_ids or not self._has_pair_features:
+        if not pair_ids:
             return {}
         out: dict[int, str] = {}
         for start in range(0, len(pair_ids), 500):

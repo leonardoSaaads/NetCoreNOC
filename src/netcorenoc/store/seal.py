@@ -5,7 +5,7 @@ route below `admin` may reach any of them — v0.10.0 adds no route at all, whic
 form of that.
 
 **Nothing here decides anything.** Whether a read is permitted, what the seal contains and how it is
-cut are `netcorenoc.seal`. This module is SQL, plus the two refusals SQLite itself enforces.
+cut are `netcorenoc.seal`. This module is SQL, plus the two refusals PostgreSQL itself enforces.
 
 **No method here takes ``store.lock``**, which is this package's contract for callers
 (`tests/store/test_store_concurrency.py` is the control).
@@ -37,7 +37,7 @@ class SealMixin(StoreBase):
         what corpus, under which plan — and none of that discloses *which* incidents. A report that
         wanted the membership would have to call :meth:`sealed_incident_ids`, which logs.
         """
-        cur = await self.conn.execute("SELECT * FROM holdout_seal LIMIT 1")
+        cur = await self.conn.execute("SELECT * FROM holdout_seal ORDER BY id LIMIT 1")
         row = await cur.fetchone()
         return dict(row) if row is not None else None
 
@@ -53,10 +53,11 @@ class SealMixin(StoreBase):
     ) -> int:
         """Write the seal and its membership. **Raises on a second construction.**
 
-        The refusal comes from the schema — `holdout_seal.singleton` is `UNIQUE` and pinned to 1 —
-        so it holds against this method, against a later method, and against anyone with a SQLite
-        prompt. This method does not check first and then insert: it inserts, and the database says
-        no. A check-then-act would be a race and, worse, a rule a later caller could forget.
+        The refusal comes from the schema — `holdout_seal.singleton` is `UNIQUE` and pinned to
+        true — so it holds against this method, against a later method, and against anyone with a
+        `psql` prompt. This method does not check first and then insert: it inserts, and the
+        database says no. A check-then-act would be a race and, worse, a rule a later caller could
+        forget.
         """
         cur = await self.conn.execute(
             "INSERT INTO holdout_seal (release, plan_sha256, created_at, digest, "
@@ -86,9 +87,9 @@ class SealMixin(StoreBase):
     ) -> None:
         """Append one access row. **Refusals are recorded too.**
 
-        `granted = 0` is the row that makes the log answer *"how many times has somebody tried"*
-        rather than only *"how many times did it work"*, and it is the only trace a missing-plan
-        refusal leaves anywhere.
+        `granted = false` is the row that makes the log answer *"how many times has somebody
+        tried"* rather than only *"how many times did it work"*, and it is the only trace a
+        missing-plan refusal leaves anywhere.
         """
         await self.conn.execute(
             "INSERT INTO holdout_access (at, release, plan_sha256, purpose, granted, outcome) "
@@ -112,7 +113,7 @@ class SealMixin(StoreBase):
         hashes.update(str(r[0]) for r in await cur.fetchall())
         cur = await self.conn.execute(
             "SELECT plan_sha256 FROM holdout_access "
-            "WHERE purpose = 'ratify' AND granted = 1 AND plan_sha256 IS NOT NULL"
+            "WHERE purpose = 'ratify' AND granted AND plan_sha256 IS NOT NULL"
         )
         hashes.update(str(r[0]) for r in await cur.fetchall())
         return hashes
@@ -125,7 +126,7 @@ class SealMixin(StoreBase):
         §4.3(4) requires it to be printed beside every holdout number ever published.
         """
         cur = await self.conn.execute(
-            "SELECT COUNT(*) FROM holdout_access WHERE granted = 1 AND purpose <> 'ratify'"
+            "SELECT COUNT(*) FROM holdout_access WHERE granted AND purpose <> 'ratify'"
         )
         row = await cur.fetchone()
         assert row is not None

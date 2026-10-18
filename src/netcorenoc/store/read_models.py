@@ -78,23 +78,15 @@ class ReadModelsMixin(ClassRuleMixin):
         # kind of trap is critical". One row of `label` therefore moves every active alarm of that
         # class at once, and the panel's source line says so.
         select = (
-            # nosec B608 - one fixed literal from `_label_join`, chosen by a schema probe; every
-            # other token here is a column name written in this string.
+            # nosec B608 - one fixed literal from `_label_join`; every other token here is a
+            # column name written in this string.
             "SELECT s.label AS declared, a.severity AS placed, "  # nosec B608
             "a.severity_rank AS placed_rank, a.ne_id AS ne_id, "
-            # Chosen by the schema probe, exactly as `_label_join` is. A database from before
-            # migration `0019` has no provenance column; `'learned'` is what every severity on
-            # such a database can only have come from, because the learned path was the sole
-            # writer of `alarm.severity` that has ever existed before this release.
-            + (
-                "a.severity_source AS source "
-                if self._has_severity_source
-                else "CASE WHEN a.severity IS NULL THEN NULL ELSE 'learned' END AS source "
-            )
+            "a.severity_source AS source "
             # v0.22.0: the class OID, so the catalogue's rules can grade what nobody declared
             # per class (ADR #385). One join; the rules themselves are resolved once per class.
-            + ", c.oid AS class_oid "
-            + "FROM alarm a JOIN alarm_class c ON c.id=a.class_id "
+            ", c.oid AS class_oid "
+            "FROM alarm a JOIN alarm_class c ON c.id=a.class_id "
             + self._label_join("s", "severity", "a.class_id")
         )
         # **v0.17.1: no GROUP BY, one row per active alarm** (DECISIONS #340). The standard read
@@ -125,7 +117,7 @@ class ReadModelsMixin(ClassRuleMixin):
         elif not ne_ids:
             rows = []
         elif len(ne_ids) > MAX_SCOPE_PARAMS:
-            # See MAX_SCOPE_PARAMS: an estate with more NEs in one scope than SQLite will bind is
+            # See MAX_SCOPE_PARAMS: an estate with more NEs in one scope than the store will bind is
             # filtered here rather than having its id list truncated, which would answer a
             # different question quietly. The same choice `timeline_marks` makes.
             cur = await self.conn.execute(f"{select}WHERE a.status='active'{group}")  # nosec B608
@@ -213,7 +205,8 @@ class ReadModelsMixin(ClassRuleMixin):
     async def stats(self) -> dict[str, int]:
         out: dict[str, int] = {}
         for name, sql in (
-            ("devices", "SELECT COUNT(*) FROM device"),
+            # v0.31.0 (ADR #452): `device` was a 1:1 copy of `ne` and is gone; same count.
+            ("devices", "SELECT COUNT(*) FROM ne"),
             ("classes", "SELECT COUNT(*) FROM alarm_class"),
             ("active_alarms", "SELECT COUNT(*) FROM alarm WHERE status='active'"),
             # v0.16.0 (DECISIONS #254): the LIVE population, `new` and `open` alike. The
@@ -240,23 +233,21 @@ class ReadModelsMixin(ClassRuleMixin):
 
     async def graph_snapshot(self, min_edge_n: float) -> dict[str, Any]:
         cur = await self.conn.execute(
-            # nosec B608 - `_label_join` returns one of two fixed literals chosen by a schema
-            # probe; every value in this statement is a bound parameter or a column name.
+            # nosec B608 - `_label_join` returns a fixed literal; every value in this statement is
+            # a bound parameter or a column name.
             # v0.16.4 (F105, DECISIONS #292): `d.vendor` is gone from the projection. Nothing has
             # ever written it — 25 device rows and 0 vendors after 2 252 alarms — and the two
             # screens that rendered it are gone with it. The column stays in the schema, unread.
+            # v0.31.0 (ADR #452): the node is the element itself — `device` was a 1:1 copy of
+            # `ne` and is gone, so the label joins on the element's own id.
             "SELECT d.id, d.ip, l.label, "  # nosec B608
-            "(SELECT COUNT(*) FROM alarm a WHERE a.device_id=d.id AND a.status='active') "
-            "AS active_alarms FROM device d "
-            # v0.16.3: through the ADDRESS, which is what `device` and `ne` genuinely share — both
-            # tables key on a UNIQUE `ip`. Joining `l.target_id=d.id` would work only while two
-            # independent AUTOINCREMENT sequences happen to agree (DECISIONS #281).
-            "LEFT JOIN ne n ON n.ip=d.ip "
-            + self._label_join("l", "ne", "n.id", legacy_target="d.id")
+            "(SELECT COUNT(*) FROM alarm a WHERE a.ne_id=d.id AND a.status='active') "
+            "AS active_alarms FROM ne d " + self._label_join("l", "ne", "d.id") + "ORDER BY d.id"
         )
         nodes = [dict(r) for r in await cur.fetchall()]
         cur = await self.conn.execute(
-            "SELECT a_id, b_id, weight, n FROM edge WHERE kind='device' AND n>=? AND weight>0",
+            "SELECT a_id, b_id, weight, n FROM edge WHERE kind='device' AND n>=? AND weight>0 "
+            "ORDER BY a_id, b_id",
             (min_edge_n,),
         )
         edges = [dict(r) for r in await cur.fetchall()]
@@ -270,7 +261,7 @@ class ReadModelsMixin(ClassRuleMixin):
         operator's declaration for the class, the same row `situation_detail` reads.
         """
         cur = await self.conn.execute(
-            # nosec B608 - two fixed literals from `_label_join`, chosen by a schema probe.
+            # nosec B608 - two fixed literals from `_label_join`.
             "SELECT c.id, c.oid, l.label, s.label AS severity FROM alarm_class c "  # nosec B608
             + self._label_join("l", "class", "c.id")
             + self._label_join("s", "severity", "c.id")
@@ -294,7 +285,7 @@ class ReadModelsMixin(ClassRuleMixin):
         """Quarantine metadata only — never the raw payload (F4)."""
         cur = await self.conn.execute(
             "SELECT id, source, reason, sha256, length, first8, sanitized, raw, received_at "
-            "FROM quarantine ORDER BY received_at DESC LIMIT ?",
+            "FROM quarantine ORDER BY received_at DESC, id DESC LIMIT ?",
             (limit,),
         )
         out: list[dict[str, Any]] = []

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
-from pathlib import Path
+from collections.abc import AsyncIterator, Callable, Iterator
 
 import pytest
 from hypothesis import settings
@@ -10,6 +9,7 @@ from netcorenoc.crosscutting import auth
 from netcorenoc.store import Store
 
 import paths
+import pgtemp
 
 FIXTURES = paths.FIXTURES
 
@@ -77,8 +77,32 @@ def packaged_league(monkeypatch: pytest.MonkeyPatch) -> Iterator[object]:
 
 
 @pytest.fixture
-async def store(tmp_path: Path) -> AsyncIterator[Store]:
-    s = Store(str(tmp_path / "test.db"))
+def new_database() -> Iterator[Callable[[], str]]:
+    """Make fresh, migrated, empty PostgreSQL databases; each is dropped after the test.
+
+    Where a test once named a second file in ``tmp_path``, it calls this again (ADR #452). The
+    server is `tools/pgtemp.py`'s: ``NETCORENOC_TEST_DATABASE_URL`` or a private local cluster.
+    """
+    made: list[str] = []
+
+    def make() -> str:
+        made.append(pgtemp.create())
+        return made[-1]
+
+    yield make
+    for url in made:
+        pgtemp.drop(url)
+
+
+@pytest.fixture
+def db_url(new_database: Callable[[], str]) -> str:
+    """One fresh database for the test: what ``tmp_path / "test.db"`` was."""
+    return new_database()
+
+
+@pytest.fixture
+async def store(db_url: str) -> AsyncIterator[Store]:
+    s = Store(db_url)
     await s.open()
     yield s
     await s.close()

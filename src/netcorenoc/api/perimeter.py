@@ -201,7 +201,7 @@ class Perimeter:
     async def write_txn(self) -> AsyncIterator[None]:
         """**THE** write boundary: one mutation, one transaction, one audit row.
 
-        `Store` holds a single `aiosqlite` connection shared by the engine task and every API
+        `Store` has a single writer connection shared by the engine task and every API
         request, so a `commit()` from *any* caller commits everything pending on it, whoever issued
         it. v0.7.0's `main.py` rolled back on its batch path and `api.py` rolled back nowhere: a
         handler that mutated and then raised left the statement pending, and the **next commit from

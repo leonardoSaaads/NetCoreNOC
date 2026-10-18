@@ -2,7 +2,7 @@
 
 v0.11.0, migration `0013`. **Nothing here decides anything.** Whether a promotion is justified is
 `netcorenoc.promotion`; what a parameter document may contain is `netcorenoc.model_version`. This
-module is SQL, plus the refusals SQLite itself enforces.
+module is SQL, plus the refusals PostgreSQL itself enforces.
 
 **No method here takes ``store.lock``**, which is this package's contract for callers
 (`tests/store/test_store_concurrency.py` is the control).
@@ -11,7 +11,7 @@ module is SQL, plus the refusals SQLite itself enforces.
 
 **The active pointer moves through one method, and that method nulls the other side.** The schema's
 `CHECK` makes two live pointers impossible, but a caller that set one without clearing the other
-would get an `IntegrityError` at a moment when it was half-way through a promotion. So
+would get a `CHECK` violation at a moment when it was half-way through a promotion. So
 :meth:`set_active_model_version` and the pre-existing `set_active_scorer_config` each write **both**
 columns, and the `CHECK` is the second line of defence rather than the first.
 
@@ -175,7 +175,7 @@ class PromotionMixin(StoreBase):
     ) -> int:
         """Materialise one evaluation's fold assignment. `assignments` is (incident, repeat, fold).
 
-        `INSERT OR ABORT` by omission: a second write for the same `(run_id, incident_id, repeat)`
+        A plain `INSERT`, on purpose: a second write for the same `(run_id, incident_id, repeat)`
         fails on the PRIMARY KEY rather than replacing an assignment a promotion may already cite.
         `DATA-LINEAGE.md` §4 is why this table exists at all — fold assignment is a pure function of
         the incident ids, incident identity moves when situations merge, and **no snapshot of the

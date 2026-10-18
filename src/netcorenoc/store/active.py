@@ -93,7 +93,8 @@ class ActiveMixin(ActivityMixin):
         """
         buckets = buckets * SUB_STEPS
         width = max(1e-6, (until - since) / buckets)
-        ne = "a.ne_id" if per_ne else "NULL"
+        # A typed NULL: PostgreSQL refuses a bare `NULL` in GROUP BY ("non-integer constant").
+        ne = "a.ne_id" if per_ne else "NULL::integer"
         band_of = await self._band_of()
         start: dict[tuple[Any, str], int] = {}
         delta: dict[tuple[Any, str], list[int]] = {}
@@ -111,8 +112,9 @@ class ActiveMixin(ActivityMixin):
         # Raises (+1) and clears (-1) inside the window, by the bucket they fall in.
         for column, sign in (("a.first_seen", 1), ("a.cleared_at", -1)):
             cur = await self.conn.execute(
-                f"SELECT {ne}, CAST(({column} - ?) / ? AS INTEGER) AS b, c.id, c.oid, "  # nosec B608
-                f"a.severity_rank, COUNT(*) FROM alarm a JOIN alarm_class c ON c.id=a.class_id "
+                f"SELECT {ne}, floor((epoch({column}) - ?) / ?)::integer AS b, "  # nosec B608
+                f"c.id, c.oid, a.severity_rank, COUNT(*) FROM alarm a "
+                f"JOIN alarm_class c ON c.id=a.class_id "
                 f"WHERE {where} AND {column} >= ? AND {column} < ? "
                 f"GROUP BY {ne}, b, c.id, a.severity_rank",
                 (since, width, *args, since, until),

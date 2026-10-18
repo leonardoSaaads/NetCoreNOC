@@ -39,7 +39,7 @@ class ShadowMixin(StoreBase):
         source merged into `sid` and `sid` can itself later be merged.
 
         Resolving the chain is `netcorenoc.incidents.resolve_all`, and it lives there rather than
-        here for a reason that is not stylistic: SQLite could follow the chain with a recursive CTE,
+        here for a reason that is not stylistic: SQL could follow the chain with a recursive CTE,
         and then there would be **two** implementations of incident identity — one in Python for the
         seal and one in SQL for the estimator — which is exactly how the two come to disagree about
         which incidents exist with nothing going red. So the SQL returns the **edges** and the
@@ -134,7 +134,7 @@ class ShadowMixin(StoreBase):
             "       COALESCE(f.member_count, -1) AS member_count, "
             "       COALESCE(f.coverage, 'unrecorded') AS coverage, "
             "       COUNT(p.id) AS pairs, "
-            "       COALESCE(SUM(p.incumbent_linked), 0) AS accepted "
+            "       COUNT(*) FILTER (WHERE p.incumbent_linked) AS accepted "
             "FROM feedback f "
             "LEFT JOIN dataset_pair p "
             "       ON p.situation_id = f.situation_id AND p.lifecycle = 'dataset' "
@@ -153,7 +153,7 @@ class ShadowMixin(StoreBase):
     async def open_challenger_run(self, **fields: Any) -> int:
         """Record one training attempt. **Written even when nothing was fitted.**
 
-        `sufficient = 0` with NULL coefficients is a *result*, not an absence: which floors were
+        `sufficient = false` with NULL coefficients is a *result*, not an absence: which floors were
         missed, by how much, and how long until they would be met. A store that could only record a
         successful fit would make insufficiency invisible.
         """
@@ -226,19 +226,22 @@ class ShadowMixin(StoreBase):
         and another at training time, which is among the most common and most silent ways an ML
         system fails.
 
-        `LEFT JOIN`, and `GROUP BY o.id`, because a pair can legitimately have no captured row —
+        `LEFT JOIN`, and one row per opinion, because a pair can legitimately have no captured row —
         the sink's row cap may have collected it. Those are counted as **unmatched** and reported,
-        never quietly dropped: an unmatched opinion is missing evidence, not agreement.
+        never quietly dropped: an unmatched opinion is missing evidence, not agreement. A pair
+        captured more than once joins its **earliest** row (`DISTINCT ON`, `p.id` ascending),
+        which is the row SQLite's bare-column `GROUP BY o.id` returned.
         """
         cur = await self.conn.execute(
-            "SELECT o.id AS opinion_id, o.challenger_run_id, o.score AS online_score, "
+            "SELECT DISTINCT ON (o.id) "
+            "       o.id AS opinion_id, o.challenger_run_id, o.score AS online_score, "
             "       o.linked AS online_linked, o.alarm_a, o.alarm_b, "
             "       o.delta_t_s AS served_delta_t_s, o.class_affinity AS served_class_affinity, "
             "       o.entity_affinity AS served_entity_affinity, "
             "       p.delta_t_s, p.class_affinity, p.entity_affinity "
             "FROM shadow_opinion o "
             "LEFT JOIN dataset_pair p ON p.alarm_a = o.alarm_a AND p.alarm_b = o.alarm_b "
-            "GROUP BY o.id ORDER BY o.id"
+            "ORDER BY o.id, p.id"
         )
         return [dict(r) for r in await cur.fetchall()]
 
