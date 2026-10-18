@@ -1360,7 +1360,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: the reader pool), `store/codecs.py`, `store/sql.py` (the placeholder translation),
 #: `store/importer.py` (the one-way SQLite import) and `store/cli.py` (the CLI's database
 #: plumbing) added.
-SRC_TREE_DIGEST = "231aee0d72fd95be8594c162432adacc5fa95b31159c5b18285533956a69094d"
+SRC_TREE_DIGEST = "50002d59c65db5245a3229d00a24df087a4353334f3b5202db0cee7ef84d890a"
 SRC_FILE_COUNT = 375
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

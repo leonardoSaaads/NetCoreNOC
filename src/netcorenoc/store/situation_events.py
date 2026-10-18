@@ -132,10 +132,10 @@ class SituationEventMixin(StoreBase):
         cur = await self.conn.execute(
             "WITH m AS MATERIALIZED (SELECT a.ne_id FROM situation_alarm sa "
             "JOIN alarm a ON a.id = sa.alarm_id WHERE sa.situation_id = ?), "
-            "d AS (SELECT DISTINCT ne_id FROM m) "
-            "SELECT (SELECT COUNT(*) FROM m), (SELECT COUNT(*) FROM d), "
-            'ARRAY(SELECT DISTINCT host(n.ip) COLLATE "C" AS ip FROM ne n JOIN d ON d.ne_id = n.id '
-            "ORDER BY ip LIMIT 3)",
+            "nes AS (SELECT DISTINCT ne_id FROM m) "
+            "SELECT (SELECT COUNT(*) FROM m), (SELECT COUNT(*) FROM nes), "
+            'ARRAY(SELECT DISTINCT host(d.ip) COLLATE "C" AS ip FROM ne d '
+            "JOIN nes ON nes.ne_id = d.id ORDER BY ip LIMIT 3)",
             (situation_id,),
         )
         counts = await cur.fetchone()
