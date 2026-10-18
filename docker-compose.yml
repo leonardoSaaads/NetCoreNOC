@@ -274,16 +274,10 @@ services:
 
 configs:
   # The appliance's role, least privilege: it logs in and owns its database, so it may create its
-  # schema; it is not a superuser and may not create databases or roles. The password is read from
-  # the generated file by psql itself, so it is on no command line.
+  # schema; it is not a superuser and may not create databases or roles. A file, not inline
+  # `content:` — Compose cannot write a config into a read-only container, only bind-mount one.
   netcorenoc-role:
-    content: |
-      \set ON_ERROR_STOP on
-      \set app_password `cat /run/netcorenoc-secrets/db_password`
-      CREATE ROLE netcorenoc LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
-          PASSWORD :'app_password';
-      ALTER DATABASE netcorenoc OWNER TO netcorenoc;
-      REVOKE ALL ON DATABASE netcorenoc FROM PUBLIC;
+    file: ./deploy/postgres/10-netcorenoc-role.sql
 
 networks:
   # The database's network: no published port and no route out. Only the appliance joins it.
