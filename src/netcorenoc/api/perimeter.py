@@ -232,8 +232,9 @@ class Perimeter:
 
         Every request passes here, so under SQLite every request queued behind the engine's batch
         before its route ran at all. The only rows touched are the session's and the token's, which
-        nothing in the process holds in memory, so they are written in a transaction of their own
-        on a pooled connection (`store.side_write`, ADR #452) that commits when the block ends.
+        nothing in the process holds in memory, so they are written on a pooled connection
+        (`store.side_write`, ADR #452) — and at most every `auth.TOUCH_EVERY_S`, so most requests
+        read one row and write nothing.
         """
         now = time.time()
         header = request.headers.get("authorization", "")

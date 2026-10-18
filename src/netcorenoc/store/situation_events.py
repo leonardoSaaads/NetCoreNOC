@@ -118,15 +118,9 @@ class SituationEventMixin(StoreBase):
         operator's own words indistinguishable from a projection. `DISTINCT` because the name's
         four forms turn on how many *devices* are involved, not how many rows.
         """
-        cur = await self.conn.execute(
-            "SELECT COUNT(*), COUNT(DISTINCT d.ip) FROM situation_alarm sa "
-            "JOIN alarm a ON a.id = sa.alarm_id JOIN ne d ON d.id = a.ne_id "
-            "WHERE sa.situation_id = ?",
-            (situation_id,),
-        )
-        counts = await cur.fetchone()
-        assert counts is not None
-        members = int(counts[0])
+        # One pass over the membership (ADR #452): the member count, the device count — distinct
+        # `ne_id`, which is distinct addresses, `ne.ip` being unique — and three addresses.
+        #
         # Only ever three addresses are needed: the four forms turn on "one device", "exactly two
         # devices", and "more than two", and the widest form names the lowest address and counts
         # the rest. `LIMIT 3` is what keeps this bounded on a 500-device storm rather than reading
@@ -136,12 +130,18 @@ class SituationEventMixin(StoreBase):
         # order `derive_situation_name` sorts by: `ne.ip` is `inet`, and ordering by the column
         # itself would pick the three lowest numerically and name a different "lowest" address.
         cur = await self.conn.execute(
-            'SELECT DISTINCT host(d.ip) COLLATE "C" AS ip FROM situation_alarm sa '
-            "JOIN alarm a ON a.id = sa.alarm_id JOIN ne d ON d.id = a.ne_id "
-            "WHERE sa.situation_id = ? ORDER BY ip LIMIT 3",
+            "WITH m AS MATERIALIZED (SELECT a.ne_id FROM situation_alarm sa "
+            "JOIN alarm a ON a.id = sa.alarm_id WHERE sa.situation_id = ?), "
+            "d AS (SELECT DISTINCT ne_id FROM m) "
+            "SELECT (SELECT COUNT(*) FROM m), (SELECT COUNT(*) FROM d), "
+            'ARRAY(SELECT DISTINCT host(n.ip) COLLATE "C" AS ip FROM ne n JOIN d ON d.ne_id = n.id '
+            "ORDER BY ip LIMIT 3)",
             (situation_id,),
         )
-        addresses = [str(row[0]) for row in await cur.fetchall()]
+        counts = await cur.fetchone()
+        assert counts is not None
+        members = int(counts[0])
+        addresses = [str(ip) for ip in counts[2]]
         name = derive_situation_name(addresses, members, device_count=int(counts[1]))
         await self.conn.execute(
             "UPDATE situation SET derived_name = ? WHERE id = ?", (name, situation_id)

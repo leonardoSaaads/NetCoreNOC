@@ -341,3 +341,31 @@ async def test_a_reader_does_not_wait_for_the_lock(store: Store) -> None:
                 return await store.get_meta("probe")
 
         assert await asyncio.wait_for(read(), timeout=5) == "committed"
+
+
+async def test_a_side_write_cancelled_mid_transaction_leaves_no_lock_behind(store: Store) -> None:
+    """A console request cancelled while its side write holds a row lock (a client that hung up):
+    the transaction is rolled back before the connection goes back to the pool, so the writer is
+    not left waiting on a lock nobody will release."""
+    async with store.lock:
+        await store.set_meta("test.lock", "before")
+        await store.commit()
+    holding = asyncio.Event()
+
+    async def request() -> None:
+        async with store.side_write():
+            await store.conn.execute("UPDATE meta SET value='mid' WHERE key='test.lock'")
+            holding.set()
+            await asyncio.sleep(30)
+
+    task = asyncio.create_task(request())
+    await holding.wait()
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    async with store.lock:
+        await asyncio.wait_for(
+            store.conn.execute("UPDATE meta SET value=value WHERE key='test.lock'"), 5.0
+        )
+        await store.commit()
+    assert await store.get_meta("test.lock") == "before"

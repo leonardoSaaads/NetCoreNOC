@@ -162,7 +162,8 @@ class AuthMixin(StoreBase):
 
     async def get_token(self, token_hash: str) -> dict[str, Any] | None:
         cur = await self.conn.execute(
-            "SELECT id, token_hash, name, role, revoked FROM api_token WHERE token_hash=?",
+            "SELECT id, token_hash, name, role, revoked, last_used_at FROM api_token "
+            "WHERE token_hash=?",
             (token_hash,),
         )
         row = await cur.fetchone()

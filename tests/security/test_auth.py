@@ -315,3 +315,33 @@ async def test_forced_password_change_gate_locks_a_live_session(store: Store) ->
         assert unlock.status_code == 200
     finally:
         await c.aclose()
+
+
+async def test_a_session_and_a_token_are_touched_at_most_every_touch_interval(store: Store) -> None:
+    """ADR #452: one write per request was a transaction per console poll. The idle expiry and a
+    token's last use move at most every `TOUCH_EVERY_S`; a request inside it writes nothing."""
+    async with store.lock:
+        uid = await store.create_user("u", auth.hash_password(authutil.PW), "viewer", False, 0.0)
+        session = await auth.open_session(store, uid, "10.0.0.1", now=0.0)
+        await store.create_token(auth.hash_token("t" * 43), "svc", "viewer", "admin", 0.0)
+        await store.commit()
+
+    async def idle_expiry() -> float:
+        row = await store.get_session(auth.hash_token(session))
+        assert row is not None
+        return float(row["idle_expiry"])
+
+    async def last_used() -> float | None:
+        row = await store.get_token(auth.hash_token("t" * 43))
+        assert row is not None
+        return row["last_used_at"]
+
+    for at, expiry, used in (
+        (1000.0, 1000.0, 1000.0),  # due: written
+        (1000.0 + auth.TOUCH_EVERY_S - 1, 1000.0, 1000.0),  # inside the interval: unchanged
+        (1000.0 + auth.TOUCH_EVERY_S, 1000.0 + auth.TOUCH_EVERY_S, 1000.0 + auth.TOUCH_EVERY_S),
+    ):
+        assert await auth.resolve_session(store, session, now=at) is not None
+        assert await auth.resolve_bearer(store, "t" * 43, now=at) is not None
+        assert await idle_expiry() == expiry + auth.IDLE_TIMEOUT_S
+        assert await last_used() == used

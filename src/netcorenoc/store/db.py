@@ -207,6 +207,15 @@ class Connection:
                     await self.raw.execute("ROLLBACK")
 
 
+async def _release(raw: asyncpg.Connection) -> None:
+    """What the pool does to a connection coming back: undo a transaction a cancelled block left
+    open, and nothing else. asyncpg's default also sends ``RESET ALL``, ``UNLISTEN *``, ``CLOSE
+    ALL`` and an advisory unlock — a round trip on every console request for state no block here
+    ever sets (readers and side writes set no session settings, listen to nothing, lock nothing)."""
+    if raw.is_in_transaction():
+        await raw.reset()
+
+
 #: The reader bound to the current task, with the database it belongs to.
 _reader: contextvars.ContextVar[tuple[Database, Connection] | None] = contextvars.ContextVar(
     "netcorenoc_reader", default=None
@@ -274,6 +283,7 @@ class Database:
             statement_cache_size=self.statement_cache_size,
             server_settings=self._settings(reader=True),
             init=_setup,
+            reset=_release,
         )
 
     async def reconnect(self) -> None:
@@ -340,22 +350,32 @@ class Database:
             return
         assert self.pool is not None, "Store.open() not called"
         async with self.pool.acquire() as raw:
-            if readonly:
-                transaction = raw.transaction(isolation="repeatable_read", readonly=True)
-            else:
-                transaction = raw.transaction()
-            await transaction.start()
+            if not readonly:
+                # The writer's discipline on a pooled connection: the first write opens the
+                # transaction, so a block that only reads — an identity whose last use was recorded
+                # moments ago — sends no BEGIN and no COMMIT.
+                side = Connection(raw, implicit=True)
+                token = _reader.set((self, side))
+                try:
+                    yield
+                except BaseException:
+                    _reader.reset(token)
+                    with contextlib.suppress(*STORAGE_ERRORS):
+                        await side.rollback()
+                    raise
+                _reader.reset(token)
+                await side.commit()
+                return
+            transaction = raw.transaction(isolation="repeatable_read", readonly=True)
+            try:
+                await transaction.start()
+            except BaseException:
+                raw.terminate()  # never back in the pool in a state `_release` does not undo
+                raise
             token = _reader.set((self, Connection(raw, implicit=False)))
             try:
                 yield
-            except BaseException:
+            finally:
                 _reader.reset(token)
                 with contextlib.suppress(*STORAGE_ERRORS):
-                    await transaction.rollback()
-                raise
-            _reader.reset(token)
-            if readonly:
-                with contextlib.suppress(*STORAGE_ERRORS):
-                    await transaction.rollback()
-            else:
-                await transaction.commit()
+                    await transaction.rollback()  # a snapshot has nothing to commit

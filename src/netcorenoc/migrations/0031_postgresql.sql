@@ -52,10 +52,13 @@ END $$;
 -- ---------------------------------------------------------------------------------------------
 
 -- Seconds since the epoch, for arithmetic the code states in seconds (bucket indexes, latencies).
--- IMMUTABLE is true for the epoch field, which does not depend on the session's time zone.
+-- STABLE, as PostgreSQL declares `date_part` on a timestamptz: a SQL function declared stricter
+-- than its body is never inlined, and this one sits in the GROUP BY of every time-bucketed read —
+-- inlined, the Overview's 7-day host series is four times faster (docs/plans/postgresql.md).
+-- `date_part` is double precision already; `extract` is numeric, and slower, since PostgreSQL 14.
 CREATE FUNCTION epoch(at timestamptz) RETURNS double precision
-    LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
-    RETURN extract(epoch FROM at)::double precision;
+    LANGUAGE sql STABLE STRICT PARALLEL SAFE
+    RETURN date_part('epoch', at);
 
 -- A duration in seconds as an interval: `starts_at - secs(patch_s)`.
 CREATE FUNCTION secs(seconds double precision) RETURNS interval
