@@ -67,6 +67,8 @@ ACTIONS: frozenset[str] = frozenset(
         "snmp.config.change",
         "email.config.change",
         "email.test",
+        # v0.31.0 (ADR #452): a SQLite history imported into PostgreSQL by the CLI, once.
+        "db.import",
         # operation
         "feedback",
         "label.set",

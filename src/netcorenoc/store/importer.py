@@ -191,8 +191,14 @@ def _rows(
     cursor = source.execute(  # nosec B608 - table and column names are this module's constants
         f'SELECT {", ".join(select)} FROM "{table}"'
     )
-    for row in cursor:
-        yield tuple(None if v is None else f(v) for f, v in zip(convert, row, strict=True))
+    for number, row in enumerate(cursor, start=1):
+        try:
+            yield tuple(None if v is None else f(v) for f, v in zip(convert, row, strict=True))
+        except (TypeError, ValueError) as exc:
+            raise ImportRefusedError(
+                f"{table}, row {number}: a value does not convert to its PostgreSQL type ({exc}); "
+                "nothing was imported"
+            ) from exc
 
 
 async def import_sqlite(store: StoreBase, path: str) -> ImportReport:

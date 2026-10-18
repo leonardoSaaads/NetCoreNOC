@@ -8,12 +8,49 @@ from netcorenoc.store import EdgeRow, LinkRow, Store
 import util
 
 
-async def test_migrations_are_idempotent(tmp_path: Path) -> None:
-    path = str(tmp_path / "m.db")
+async def test_migrations_are_idempotent(db_url: str) -> None:
+    """Opening twice applies nothing the second time and records each script once (ADR #452)."""
     for _ in range(2):
-        s = Store(path)
+        s = Store(db_url)
         await s.open()
+        cur = await s.conn.execute("SELECT version, name, checksum FROM schema_migrations")
+        rows = await cur.fetchall()
+        assert [(r["version"], r["name"]) for r in rows] == [(31, "0031_postgresql.sql")]
+        assert len(rows[0]["checksum"]) == 64
+        assert s.integrity_warnings == []
         await s.close()
+
+
+async def test_a_migration_edited_after_it_was_applied_is_reported(db_url: str) -> None:
+    """The checksum is how an operator learns the schema may not be what the release expects."""
+    s = Store(db_url)
+    await s.open()
+    await s.conn.execute("UPDATE schema_migrations SET checksum = 'edited' WHERE version = 31")
+    await s.commit()
+    await s.close()
+    again = Store(db_url)
+    await again.open()
+    assert any("changed after it was applied" in w for w in again.integrity_warnings)
+    await again.close()
+
+
+async def test_a_second_appliance_on_the_same_schema_is_refused(db_url: str) -> None:
+    """One engine per history: the instance lock refuses the second at start (ADR #452)."""
+    first = Store(db_url)
+    await first.open()
+    try:
+        second = Store(db_url)
+        try:
+            await second.open()
+        except RuntimeError as exc:
+            assert "already using schema" in str(exc)
+        else:
+            raise AssertionError("a second Store opened the schema the first one holds")
+        side = Store(db_url, exclusive=False)  # the CLI's tools run beside the appliance
+        await side.open()
+        await side.close()
+    finally:
+        await first.close()
 
 
 async def test_ingest_dedups_by_fingerprint(store: Store) -> None:
@@ -59,8 +96,11 @@ async def test_class_vendor_and_name_are_derived_from_the_oid_not_stored_beside_
     assert by_oid["1.3.6.1.6.3.1.1.5.3"]["name"] == "linkDown"
     assert by_oid["1.3.6.1.6.3.1.1.5.3"]["vendor"] is None  # not an enterprise arc
 
-    cur = await store.conn.execute("PRAGMA table_info(alarm_class)")
-    columns = {str(r[1]) for r in await cur.fetchall()}
+    cur = await store.conn.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = 'alarm_class'"
+    )
+    columns = {str(r[0]) for r in await cur.fetchall()}
     assert not columns & {"name", "vendor"}, (
         f"alarm_class still stores {sorted(columns & {'name', 'vendor'})} — both are pure "
         "functions of the `oid` in the same row, which is what `0008`'s first rule forbids."

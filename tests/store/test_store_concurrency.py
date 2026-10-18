@@ -1,11 +1,11 @@
-"""The one-`Store` / one-connection / one-lock invariant (v0.7.3, §4.4).
+"""The one-`Store` / one-writer / one-lock invariant (v0.7.3, §4.4; PostgreSQL since ADR #452).
 
 **This is the highest-value test in v0.7.3 and the reason it is written before anything moves.**
 
 `store.py` becomes a package of sixteen domain modules in this release. The invariant that split
 may not break is not a style preference:
 
-> One `Store` class is preserved, with **one** `aiosqlite` connection and **one** `store.lock`.
+> One `Store` class is preserved, with **one** writer connection and **one** `store.lock`.
 
 The single connection and the single lock are load-bearing. F39 (`SECURITY-REVIEW-0.7.1.md` §4.2)
 exists precisely *because* one connection is shared by the engine task and every API request, and
@@ -27,6 +27,11 @@ Two properties make these assertions worth something rather than decorative:
 The end-to-end half of the `write_txn` story is already covered by
 `test_api.py::test_f39_a_failed_write_leaves_nothing_to_commit`, which drives it through a real HTTP
 request. What is added here is the store-side contract that test depends on.
+
+**ADR #452 adds readers, and the invariant is restated around them, not relaxed.** A read inside
+`store.reading()` runs on a pooled connection in a read-only snapshot. The last four tests pin what
+makes that safe: the writer is still one connection; a reader cannot write; a reader sees only
+what is committed; and a reader does not wait for `store.lock`, which is the point of having one.
 """
 
 from __future__ import annotations
@@ -35,12 +40,13 @@ import asyncio
 import contextlib
 from typing import Any
 
-import aiosqlite
+import asyncpg
 import pytest
 
 from netcorenoc.api.perimeter import Perimeter
 from netcorenoc.crosscutting import audit
 from netcorenoc.store import Store
+from netcorenoc.store.db import Connection
 
 BASE = 1_700_000_000.0
 
@@ -54,11 +60,12 @@ async def test_the_connection_property_is_stable(store: Store) -> None:
     first = store.conn
     for _ in range(5):
         assert store.conn is first
-    assert isinstance(first, aiosqlite.Connection)
+    assert isinstance(first, Connection)
+    assert first is store._db.writer
 
 
 async def test_exactly_one_connection_is_reachable_from_the_store(store: Store) -> None:
-    """Count the distinct `aiosqlite.Connection` objects the store can reach. Must be one.
+    """Count the distinct writer connections the store can reach. Must be one.
 
     This is the assertion that would actually fail if `Store` were split into several objects each
     opening its own connection — the shape the v0.7.3 split most plausibly goes wrong in. Scanning
@@ -68,19 +75,18 @@ async def test_exactly_one_connection_is_reachable_from_the_store(store: Store) 
     seen: set[int] = {id(store.conn)}
     nested: list[str] = []
     for name, value in vars(store).items():
-        if isinstance(value, aiosqlite.Connection):
+        if isinstance(value, Connection | asyncpg.Connection):
             seen.add(id(value))
-        inner = getattr(value, "_conn", None)
-        if isinstance(inner, aiosqlite.Connection):
+        inner = getattr(value, "writer", None)
+        if isinstance(inner, Connection):
             seen.add(id(inner))
-            nested.append(name)
         if isinstance(value, Store):
             nested.append(name)
     assert not nested, (
         f"the Store delegates to nested store-like object(s) {nested}; the release invariant is "
         "one Store with one connection, not a façade over several"
     )
-    assert len(seen) == 1, f"{len(seen)} distinct aiosqlite connections reachable from one Store"
+    assert len(seen) == 1, f"{len(seen)} distinct writer connections reachable from one Store"
 
 
 async def test_exactly_one_lock_is_reachable_from_the_store(store: Store) -> None:
@@ -131,7 +137,7 @@ async def test_no_store_method_acquires_the_store_lock(store: Store) -> None:
 
 
 async def _device_write(store: Store, ip: str) -> int:
-    """`store/devices.py` — a device upsert."""
+    """`store/devices.py` — an element upsert (the device is the element since ADR #452)."""
     async with store.lock:
         return await store.device_id(ip, BASE)
 
@@ -183,7 +189,7 @@ async def test_concurrent_writes_from_three_domains_serialise_and_land(store: St
         await store.commit()
 
     async with store.lock:
-        cur = await store.conn.execute("SELECT COUNT(*) FROM device")
+        cur = await store.conn.execute("SELECT COUNT(*) FROM ne")
         devices = int((await cur.fetchone())[0])  # type: ignore[index]
         cur = await store.conn.execute("SELECT COUNT(*) FROM feedback")
         feedback = int((await cur.fetchone())[0])  # type: ignore[index]
@@ -287,3 +293,51 @@ async def test_write_txn_takes_the_same_lock_the_engine_takes(store: Store) -> N
         assert not entered.is_set(), "write_txn entered while another caller held store.lock"
     await task
     assert entered.is_set()
+
+
+# --- the readers (ADR #452) -------------------------------------------------------------------
+
+
+async def test_a_reader_is_a_different_connection_and_the_writer_is_still_one(store: Store) -> None:
+    """Inside `reading()` the store's statements run on a pooled connection; outside it, on the
+    one writer. Nested `reading()` blocks share their snapshot rather than taking a second one."""
+    writer = store.conn
+    async with store.reading():
+        reader = store.conn
+        assert reader is not writer
+        async with store.reading():
+            assert store.conn is reader
+    assert store.conn is writer
+
+
+async def test_a_reader_cannot_write(store: Store) -> None:
+    """A handler classified as a read that writes fails loudly instead of committing outside the
+    write discipline: the reader's transaction is READ ONLY."""
+    with pytest.raises(asyncpg.exceptions.ReadOnlySQLTransactionError):
+        async with store.reading():
+            await store.set_meta("probe", "written by a reader")
+
+
+async def test_a_reader_sees_only_what_is_committed(store: Store) -> None:
+    """The writer's open transaction is invisible to a reader — so a console read can never show
+    half of an engine batch — and visible once committed."""
+    async with store.lock:
+        await store.set_meta("probe", "pending")
+        async with store.reading():
+            assert await store.get_meta("probe") is None
+        await store.commit()
+    async with store.reading():
+        assert await store.get_meta("probe") == "pending"
+
+
+async def test_a_reader_does_not_wait_for_the_lock(store: Store) -> None:
+    """The point of the readers: a console read completes while the engine holds `store.lock`."""
+    async with store.lock:
+        await store.set_meta("probe", "committed")
+        await store.commit()
+
+        async def read() -> str | None:
+            async with store.reading():
+                return await store.get_meta("probe")
+
+        assert await asyncio.wait_for(read(), timeout=5) == "committed"
