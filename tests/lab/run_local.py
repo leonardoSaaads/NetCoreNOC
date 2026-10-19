@@ -8,6 +8,9 @@ This is the path CI runs and the faster loop for development: the appliance is o
 console is static files served from disk, so nothing is built. `docker-compose.yml` beside this
 file is the containerised equivalent.
 
+The database is PostgreSQL (ADR #452): ``--database-url`` names one (CI passes the runner's), and
+without it the lab makes a throwaway one with `tools/pgtemp.py` and drops it when it exits.
+
 Loopback addresses are what make two hosts real without containers: on Linux every 127.0.0.0/8
 address is bindable with no setup, so `olt-a` genuinely sends from 127.0.0.2 and `olt-b` from
 127.0.0.3, and the receiver records two sources because there are two.
@@ -29,7 +32,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(REPO_ROOT / "tools"))
 
+import pgtemp  # noqa: E402
 from ne import control, scenario  # noqa: E402
 
 DEFAULT_TRAP_PORT = 1162
@@ -174,7 +179,7 @@ def up(
     scenario_name: str,
     trap_port: int,
     http_port: int,
-    db: Path,
+    database_url: str,
     state: Path,
 ) -> tuple[list[subprocess.Popen[bytes]], float]:
     """Start the appliance and one agent per host. Returns (children, seconds to /healthz)."""
@@ -182,7 +187,8 @@ def up(
     logs = HERE / "logs"
     env = {
         **os.environ,
-        "NETCORENOC_DB": str(db),
+        "NETCORENOC_DATABASE_URL": database_url,
+        "NETCORENOC_DATA_DIR": str(state),
         "NETCORENOC_TRAP_PORT": str(trap_port),
         "NETCORENOC_HTTP_PORT": str(http_port),
         "NETCORENOC_LAB_STATE": str(state),
@@ -259,7 +265,9 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"console port (default {DEFAULT_HTTP_PORT}, or a free one if that is busy)",
     )
-    parser.add_argument("--db", type=Path, default=HERE / "state" / "lab.db")
+    parser.add_argument(
+        "--database-url", help="an empty PostgreSQL database (default: a throwaway one)"
+    )
     parser.add_argument("--state", type=Path, default=HERE / "state")
     parser.add_argument("--demo", action="store_true", help="cut, wait, repair, report, exit")
     parser.add_argument("--cycles", type=int, default=1, help="--demo: cut/repair cycles")
@@ -269,7 +277,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    args.db.parent.mkdir(parents=True, exist_ok=True)
+    args.state.mkdir(parents=True, exist_ok=True)
+    database_url = args.database_url or pgtemp.create()
     os.environ["NETCORENOC_LAB_STATE"] = str(args.state)
     control.write("steady", args.state)
 
@@ -283,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"  {http_note}\n  {trap_note}")  # noqa: T201
 
-    children, elapsed = up(args.scenario, trap_port, http_port, args.db, args.state)
+    children, elapsed = up(args.scenario, trap_port, http_port, database_url, args.state)
     _install_signal_handlers(children)
     # Written only once the appliance answers /healthz, so a descriptor's existence means the
     # lab is reachable — not merely that something was spawned.
@@ -293,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
             trap_port=trap_port,
             pid=os.getpid(),
             scenario=args.scenario,
-            db=str(args.db),
+            db=pgtemp.redact(database_url),
         ),
         args.state,
     )

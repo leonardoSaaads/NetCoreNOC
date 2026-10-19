@@ -23,7 +23,7 @@ class IngestGapMixin(StoreBase):
     async def list_ingest_gaps(self, limit: int) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
             "SELECT id, started_at, ended_at, dropped, reason FROM ingest_gap "
-            "ORDER BY started_at DESC LIMIT ?",
+            "ORDER BY started_at DESC, id DESC LIMIT ?",
             (limit,),
         )
         return [dict(r) for r in await cur.fetchall()]

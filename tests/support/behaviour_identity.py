@@ -64,6 +64,7 @@ for _extra in (paths.TOOLS, paths.EVAL):
         sys.path.insert(0, str(_extra))
 
 import authutil  # noqa: E402
+import pgtemp  # noqa: E402
 import util  # noqa: E402
 
 RECORD = paths.FIXTURES / "behaviour-identity.txt"
@@ -290,8 +291,8 @@ class Recorder:
             self.dumped = body
 
     async def run(self, tmp: Path) -> list[str]:
-        db = tmp / f"{self.role}.db"
-        store = Store(str(db))
+        url = pgtemp.create()  # one fresh database per principal (ADR #452)
+        store = Store(url)
         await store.open()
         try:
             engine, queue, app = await authutil.make_env(store)
@@ -299,6 +300,7 @@ class Recorder:
             await self._drive_http(app, store)
         finally:
             await store.close()
+            pgtemp.drop(url)
         return self.lines
 
     async def _drive_http(self, app: object, store: Store) -> None:

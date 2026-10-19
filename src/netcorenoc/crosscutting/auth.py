@@ -37,6 +37,10 @@ MAX_PASSWORD = 128
 # Sessions.
 COOKIE_NAME = "netcorenoc_session"
 IDLE_TIMEOUT_S = 30 * 60
+#: A session's idle expiry and a token's last use are written at most this often (ADR #452). A
+#: write per request was a transaction per console poll; this one makes an idle session expire
+#: up to half a minute early, and "last used" read to the half minute.
+TOUCH_EVERY_S = 30.0
 ABSOLUTE_TIMEOUT_S = 12 * 60 * 60
 
 # Login throttle: after this many consecutive failures, exponential lockout to a cap.
@@ -282,7 +286,8 @@ async def resolve_session(store: Store, token: str, now: float) -> Principal | N
     if now > row["absolute_expiry"] or now > row["idle_expiry"]:
         await store.delete_session(row["session_hash"])
         return None
-    await store.touch_session(row["session_hash"], now, now + IDLE_TIMEOUT_S)
+    if now - (row["idle_expiry"] - IDLE_TIMEOUT_S) >= TOUCH_EVERY_S:
+        await store.touch_session(row["session_hash"], now, now + IDLE_TIMEOUT_S)
     return Principal(
         actor=row["username"],
         role=row["role"],
@@ -297,7 +302,9 @@ async def resolve_bearer(store: Store, token: str, now: float) -> Principal | No
     removed in v0.3.0, §5.8)."""
     row = await store.get_token(hash_token(token))
     if row is not None and not row["revoked"]:
-        await store.touch_token_used(row["token_hash"], now)
+        last = row["last_used_at"]
+        if last is None or now - last >= TOUCH_EVERY_S:
+            await store.touch_token_used(row["token_hash"], now)
         return Principal(actor=row["name"], role=row["role"], kind="token", token_id=int(row["id"]))
     return None
 

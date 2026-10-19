@@ -49,7 +49,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
 
         async def snapshot() -> str | None:
-            async with store.lock:
+            async with store.reading():
                 await governance.load()
             capabilities = rbac.resolve_capabilities(
                 principal.role, principal.ref, governance.capability
@@ -57,7 +57,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             if "events.stream" not in capabilities:
                 return None  # revoked mid-stream: stop sending, rather than serve a stale grant
             scope = await scope_for(principal)
-            async with store.lock:
+            async with store.reading():
                 # **One assembly, shared with `GET /api/stats`** (F115). These two surfaces
                 # publish the same object and built it twice until v0.16.7, when a key added to
                 # the route did not appear on the stream — and the console reads its live figures

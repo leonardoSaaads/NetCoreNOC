@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from pathlib import Path
 
 import pytest
 
@@ -30,7 +29,7 @@ def test_settings_from_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_f26_legacy_env_prefix_is_a_startup_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, db_url: str
 ) -> None:
     """F26 / DECISIONS #45: the OPTICORR_* aliases were removed in v0.6.0. Setting one is a hard
     startup error naming every offending variable and its NETCORENOC_* replacement — never a
@@ -45,7 +44,7 @@ async def test_f26_legacy_env_prefix_is_a_startup_error(
     assert settings.trap_port == 162  # the alias is NOT honoured: the coded default stands
 
     with pytest.raises(LegacyEnvRemovedError) as caught:
-        await run(Settings(db_path=str(tmp_path / "x.db"), legacy_env=settings.legacy_env))
+        await run(Settings(database_url=db_url, legacy_env=settings.legacy_env))
     message = str(caught.value)
     for name in (
         "OPTICORR_TRAP_PORT",
@@ -58,7 +57,7 @@ async def test_f26_legacy_env_prefix_is_a_startup_error(
 
 
 async def test_f26_legacy_env_error_names_no_value(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, db_url: str
 ) -> None:
     """F26: the error names variables, never their values — an allowlist or a TLS path is
     deployment detail that must not be echoed to a console or a log."""
@@ -67,9 +66,7 @@ async def test_f26_legacy_env_error_names_no_value(
     monkeypatch.setenv("OPTICORR_ALLOWLIST", "10.9.9.0/24")
     monkeypatch.setenv("OPTICORR_TLS_KEY", "/secret/path/server.key")
     with pytest.raises(LegacyEnvRemovedError) as caught:
-        await run(
-            Settings(db_path=str(tmp_path / "x.db"), legacy_env=Settings.from_env().legacy_env)
-        )
+        await run(Settings(database_url=db_url, legacy_env=Settings.from_env().legacy_env))
     message = str(caught.value)
     assert "10.9.9.0/24" not in message
     assert "/secret/path/server.key" not in message

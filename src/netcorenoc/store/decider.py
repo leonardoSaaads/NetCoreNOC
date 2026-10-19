@@ -17,10 +17,7 @@ DECIDER_MODES = ("shipped", "site", "additive")
 
 class DeciderMixin(StoreBase):
     async def decider_mode(self) -> str:
-        """The mode in force. A database without the `0026` table has only ever run the formula,
-        and reading it as anything else would change its behaviour without its migration."""
-        if not self._has_decider:
-            return "additive"
+        """The mode in force: the newest setting row, or `shipped` when there is none."""
         cur = await self.conn.execute("SELECT mode FROM decider_setting ORDER BY id DESC LIMIT 1")
         row = await cur.fetchone()
         return str(row[0]) if row else "shipped"
@@ -38,8 +35,6 @@ class DeciderMixin(StoreBase):
         return int(row[0])
 
     async def decider_history(self, limit: int = 20) -> list[dict[str, Any]]:
-        if not self._has_decider:
-            return []
         cur = await self.conn.execute(
             "SELECT id, mode, set_by, set_at, reason FROM decider_setting ORDER BY id DESC LIMIT ?",
             (limit,),

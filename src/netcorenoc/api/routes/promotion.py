@@ -159,7 +159,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def get_promotion() -> dict[str, Any]:
         """What has been proposed, and why each was refused. **Refusals included** — that is the
         audit question this table exists to answer."""
-        async with store.lock:
+        async with store.reading():
             history = await store.list_promotions(MAX_PROMOTION_HISTORY)
             versions = await store.list_model_versions(MAX_PROMOTION_HISTORY)
             summary = await seal.summary(store)

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import sqlite3
-
+import asyncpg
 import httpx
 import pytest
 
@@ -202,7 +201,7 @@ async def test_audit_chain_verifies_after_a_busy_session(store: Store) -> None:
     assert result.checked > 10
 
 
-async def test_audit_tamper_is_detected_at_the_exact_row(store: Store) -> None:
+async def test_audit_tamper_is_detected_at_the_exact_row(store: Store, db_url: str) -> None:
     async with store.lock:
         for action in ("login.ok", "feedback", "logout"):
             await audit.write_event(
@@ -216,12 +215,15 @@ async def test_audit_tamper_is_detected_at_the_exact_row(store: Store) -> None:
                 details={},
             )
         await store.commit()
-    # Tamper with row 2 the way an attacker with raw file access would: drop the guard first.
-    raw = sqlite3.connect(store._path)
-    raw.execute("DROP TRIGGER audit_log_no_update")
-    raw.execute("UPDATE audit_log SET actor='mallory' WHERE id=2")
-    raw.commit()
-    raw.close()
+    # Tamper with row 2 the way an attacker with raw database access would: a connection of their
+    # own, not the store's, that drops the guard first.
+    raw = await asyncpg.connect(db_url, server_settings={"search_path": store._db.schema})
+    try:
+        async with raw.transaction():
+            await raw.execute("DROP TRIGGER audit_log_append_only ON audit_log")
+            await raw.execute("UPDATE audit_log SET actor='mallory' WHERE id=2")
+    finally:
+        await raw.close()
     result = await audit.verify_chain(store)
     assert not result.ok
     assert result.first_broken_id == 2
@@ -240,10 +242,13 @@ async def test_audit_log_is_append_only(store: Store) -> None:
             details={},
         )
         await store.commit()
-        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        with pytest.raises(asyncpg.exceptions.RestrictViolationError, match="append-only"):
             await store.conn.execute("UPDATE audit_log SET actor='x' WHERE id=1")
-        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        await store.rollback()  # PostgreSQL aborted the transaction the refusal happened in
+        with pytest.raises(asyncpg.exceptions.RestrictViolationError, match="append-only"):
             await store.conn.execute("DELETE FROM audit_log WHERE id=1")
+        await store.rollback()
+        assert len(await store.audit_all()) == 1
 
 
 def test_redact_details_drops_secret_keys() -> None:

@@ -234,8 +234,9 @@ class Shadow:
             return
         rows, self._buffer = self._buffer, []
         try:
-            await store.add_shadow_opinions(rows)
-            await store.prune_shadow(SHADOW_MAX_ROWS)
+            async with store.savepoint():
+                await store.add_shadow_opinions(rows)
+                await store.prune_shadow(SHADOW_MAX_ROWS)
         except Exception as exc:
             self._degrade(exc)
 

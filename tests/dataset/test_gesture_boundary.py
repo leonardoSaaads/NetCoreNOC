@@ -16,6 +16,10 @@ Five prohibitions, and each is the plan's:
 
 Where a guard reads the source rather than driving behaviour, it says so and says what it cannot
 see. A guard that cannot fail is worth less than no guard, because it is counted.
+
+The schema guards read `0031_postgresql.sql`, the PostgreSQL baseline that replaced the SQLite
+migrations (ADR #452); they read `0014_situation_lifecycle.sql`, where `situation_event` was
+declared, until that file was deleted with the rest of 0001-0030.
 """
 
 from __future__ import annotations
@@ -33,6 +37,23 @@ import paths
 
 REPO_ROOT = paths.REPO_ROOT
 PKG = REPO_ROOT / "src" / "netcorenoc"
+SCHEMA = PKG / "migrations" / "0031_postgresql.sql"
+
+
+def _situation_event_columns() -> str:
+    """`situation_event`'s declaration in the schema, with its comments stripped.
+
+    Stripped because the comments beside these columns explain the prohibitions and so name the
+    very words the guards forbid; scoped to the one table because `proposal_decision` declares a
+    column of the same name with the opposite default.
+    """
+    sql = SCHEMA.read_text(encoding="utf-8")
+    table = sql[
+        sql.index("CREATE TABLE situation_event (") : sql.index(
+            "CREATE TABLE situation_event_member"
+        )
+    ]
+    return "\n".join(line.split("--")[0] for line in table.splitlines())
 
 
 def _pair(**overrides: object) -> LabelledPair:
@@ -76,15 +97,16 @@ def test_the_schema_refuses_a_training_row_for_a_kind_that_asserts_nothing() -> 
     """The prohibition again, one layer down: `produces_training_rows` is a **stored** value.
 
     Stored rather than derived from `kind` on read, so the plan's rule is a number a query can
-    count and a guard can assert. This reads the migration's own text — the `CHECK` and the column
-    — because the guard has to fail if the column is ever given a default of 1 or dropped.
+    count and a guard can assert. This reads the schema's own text — the column, its type and its
+    default — because the guard has to fail if the column is ever given a default of true or
+    dropped. SQLite needed `INTEGER ... CHECK (produces_training_rows IN (0, 1))` to say "a flag";
+    PostgreSQL's `boolean` says it natively, so the type is what is asserted in place of the CHECK.
 
     What this cannot see: whether a caller writes the right value. That is
     `test_lifecycle.py::test_a_zombie_clear_produces_no_link_training_row`, which drives the route.
     """
-    sql = (PKG / "migrations" / "0014_situation_lifecycle.sql").read_text(encoding="utf-8")
-    assert "produces_training_rows INTEGER NOT NULL DEFAULT 0" in sql
-    assert "CHECK (produces_training_rows IN (0, 1))" in sql
+    columns = " ".join(_situation_event_columns().split())
+    assert "produces_training_rows boolean NOT NULL DEFAULT false," in columns
 
 
 # --- 2 and 3. the confidence floor, and the weight it may never be folded into ----------------
@@ -161,16 +183,10 @@ def test_no_stored_row_carries_a_confidence_weighted_number() -> None:
     that wrote `m(c)` where `c` belongs, would make the three factors unrecoverable from the record
     and would turn this red.
 
-    Read from the migration's text with its comments stripped, because the comment beside the
+    Read from the schema's text with its comments stripped, because the comment beside the
     column explains the prohibition and names the very word the guard forbids.
     """
-    sql = (PKG / "migrations" / "0014_situation_lifecycle.sql").read_text(encoding="utf-8")
-    table = sql[
-        sql.index("CREATE TABLE situation_event (") : sql.index(
-            "CREATE TABLE situation_event_member"
-        )
-    ]
-    columns = "\n".join(line.split("--")[0] for line in table.splitlines())
+    columns = _situation_event_columns()
     assert "confidence" in columns, "the gesture's self-report is not stored in its own column"
     assert "weight" not in columns, (
         "`situation_event` grew a weight column. Confidence is recorded raw and composed at "
@@ -268,7 +284,7 @@ def test_the_provenance_columns_are_read_by_the_report_and_by_nothing_else() -> 
     the module that computes them, the gesture that writes them, and the census that reports them.
     """
     permitted = {
-        "migrations/0014_situation_lifecycle.sql",
+        "migrations/0031_postgresql.sql",
         "engine/dataset/provenance.py",
         "engine/dataset/gestures.py",
     }

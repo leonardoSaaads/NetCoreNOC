@@ -19,6 +19,7 @@ moves — because a drift test on a corpus that cannot drift proves nothing at a
 
 from __future__ import annotations
 
+import asyncpg
 import pytest
 
 from netcorenoc.engine.dataset import incidents
@@ -108,33 +109,31 @@ async def test_a_stored_fold_assignment_cannot_be_edited_or_deleted(store: Store
         await store.commit()
     assert await store.fold_assignment(run_id), "the control failed: nothing was written"
 
-    import sqlite3
-
     for label, sql in (
         ("UPDATE", "UPDATE evaluation_fold SET fold = 99"),
         ("DELETE", "DELETE FROM evaluation_fold"),
     ):
-        with pytest.raises(sqlite3.IntegrityError):
+        with pytest.raises(
+            asyncpg.exceptions.RestrictViolationError, match="evaluation_fold is append-only"
+        ):
             await store.conn.execute(sql)
-        await store.conn.rollback()
+        await store.rollback()
         assert label  # named so a failure says which statement was permitted
 
 
 async def test_a_second_assignment_for_the_same_triple_is_refused_by_the_key(store: Store) -> None:
     """`INSERT OR ABORT` by omission: a second write fails on the PRIMARY KEY rather than replacing
     an assignment a promotion may already cite."""
-    import sqlite3
-
     async with store.lock:
         run_id = await evaluation_folds.materialise_folds(
             store, incident_ids=[1, 2, 3], params_hash=HASH, now=BASE
         )
         await store.commit()
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(asyncpg.exceptions.UniqueViolationError):
         await store.write_fold_assignment(
             run_id=run_id, assignments=[(1, 0, 4)], created_at=BASE + 1
         )
-    await store.conn.rollback()
+    await store.rollback()
 
 
 # -- THE PROPERTY THE RELEASE EXISTS TO BUY ---------------------------------------------------

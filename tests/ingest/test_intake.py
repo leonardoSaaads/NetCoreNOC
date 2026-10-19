@@ -6,6 +6,9 @@ batch's own transaction, so a restart resumes exactly after the last classified 
 the engine replays what was in flight; a trap that crashes the engine every time is set aside —
 kept, with the error — and every other trap is still classified; a storage error is retried; and a
 segment is deleted only once the cursor that passed it is durable.
+
+ADR #452: a storage failure is one of `netcorenoc.store.STORAGE_ERRORS` (a full disk, a lost
+connection), where it was `sqlite3.OperationalError`; each interrupted run gets its own database.
 """
 
 from __future__ import annotations
@@ -14,11 +17,11 @@ import asyncio
 import base64
 import contextlib
 import json
-import sqlite3
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+import asyncpg
 import pytest
 
 from netcorenoc.crosscutting.supervisor import Supervisor
@@ -183,7 +186,7 @@ async def test_a_storage_error_is_retried_not_dropped(
     async def flaky() -> None:
         if failures["n"] < 2:
             failures["n"] += 1
-            raise sqlite3.OperationalError("database or disk is full")
+            raise asyncpg.exceptions.DiskFullError("could not extend file: No space left")
         await real_commit()
 
     monkeypatch.setattr(store, "commit", flaky)
@@ -270,8 +273,8 @@ async def test_a_full_queue_is_not_unreadiness_and_the_backlog_is_reported(
 async def _grouping(store: Store) -> tuple[set[frozenset[tuple[str, str, str]]], int, int]:
     async with store.lock:
         cur = await store.conn.execute(
-            "SELECT sm.situation_id, d.ip, c.oid, a.instance FROM situation_alarm sm "
-            "JOIN alarm a ON a.id = sm.alarm_id JOIN device d ON d.id = a.device_id "
+            "SELECT sm.situation_id, n.ip, c.oid, a.instance FROM situation_alarm sm "
+            "JOIN alarm a ON a.id = sm.alarm_id JOIN ne n ON n.id = a.ne_id "
             "JOIN alarm_class c ON c.id = a.class_id"
         )
         groups: dict[int, set[tuple[str, str, str]]] = {}
@@ -285,7 +288,10 @@ async def _grouping(store: Store) -> tuple[set[frozenset[tuple[str, str, str]]],
 
 @pytest.mark.parametrize("fault", ["storage", "defect"])
 async def test_a_replayed_batch_groups_exactly_as_an_uninterrupted_one(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+    tmp_path: Path,
+    new_database: Callable[[], str],
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
 ) -> None:
     """The retry (a storage error) and the replay (a crash) re-run traps whose first attempt was
     rolled back. Grouping, alarms and links must come out as if nothing had happened."""
@@ -296,7 +302,7 @@ async def test_a_replayed_batch_groups_exactly_as_an_uninterrupted_one(
     ]
     results = []
     for interrupted in (False, True):
-        store = Store(str(tmp_path / f"{fault}-{interrupted}.db"))
+        store = Store(new_database())
         await store.open()
         try:
             directory = tmp_path / f"spool-{fault}-{interrupted}"
@@ -326,7 +332,7 @@ def _inject(patch: pytest.MonkeyPatch, store: Store, fault: str, after: int) -> 
             seen["n"] += 1
             if seen["n"] == after and not seen["fired"]:
                 seen["fired"] = True
-                raise sqlite3.OperationalError("disk I/O error")
+                raise asyncpg.exceptions.ConnectionDoesNotExistError("connection was closed")
             await real_commit()
 
         patch.setattr(store, "commit", commit)

@@ -9,24 +9,26 @@ One Python 3.12 asyncio process, plus two for the wire: traps are received by a 
 own (`ingest/worker.py`, decision #449) that appends each datagram **raw** to a spool on disk, and
 decoded behind it by another (`ingest/decoder.py`, #450) as the engine is ready; every event crosses
 back as data the main process validates. The engine commits the spool's cursor with each batch, so
-a restart resumes after the last classified trap. One SQLite (WAL) file, with one writer. One
-static console the browser loads directly. Five runtime dependencies — `pysnmp`, `aiosqlite`, `fastapi`, `uvicorn`, `pydantic` —
-unchanged since v0.2.0, and every model kind the appliance trains and runs was added without a
-sixth. One **optional** package exists, the `snmpv3` extra (`cryptography`, decision #444): SNMPv3
-privacy needs a vetted cipher and the standard library has none. It is imported lazily, only to
-decrypt, and its absence is a quarantine reason rather than a failure.
+a restart resumes after the last classified trap. One PostgreSQL schema, with one writer
+([Storage](#storage-one-writer-a-reader-pool-decision-452)). One static console the browser loads
+directly. Five runtime dependencies — `pysnmp`, `asyncpg`, `fastapi`, `uvicorn`, `pydantic` — five
+since v0.2.0 (`asyncpg` replaced `aiosqlite`, decision #452), and every model kind the appliance
+trains and runs was added without a sixth. One **optional** package exists, the `snmpv3` extra
+(`cryptography`, decision #444): SNMPv3 privacy needs a vetted cipher and the standard library has
+none. It is imported lazily, only to decrypt, and its absence is a quarantine reason rather than a
+failure.
 
 ```
 UDP 162 ─▶ ingest/worker ─▶ spool/ (disk, raw) ─▶ engine/operate/intake ⇄ ingest/decoder
            (own process)                         │                       (own process)
                                                  ▼
-                       bounded queue ─▶ engine/operate/engine ─▶ store/ ─▶ SQLite (+ spool cursor)
-                                                     │
+                       bounded queue ─▶ engine/operate/engine ─▶ store/ ─▶ PostgreSQL + spool cursor
+                                                     │                     (the writer)
                                                      ├─ engine/correlate/  correlate, learn, scoring
                                                      ├─ engine/correlate/  rootcause, severity, profiler
                                                      └─ engine/dataset/    capture (the feedback dataset)
 
-browser ─────▶ api/ (perimeter ─▶ RBAC ─▶ handler) ─▶ store/
+browser ─────▶ api/ (perimeter ─▶ RBAC ─▶ handler) ─▶ store/ ─▶ PostgreSQL (writer, or a reader)
 ```
 
 ## The five layers, and the one rule
@@ -39,7 +41,7 @@ remember (decision #207).
 |---|---|---|
 | **http** | `api/` — app, perimeter, context, models, and `api/routes/` | HTTP semantics, the security boundary, request and response shape. **No domain rule** |
 | **engine** | `engine/` — six subpackages, below | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is |
-| **data** | `store/`, with `migrations/` beside it | One SQLite connection under one asyncio lock. **SQL lives here and nowhere else** |
+| **data** | `store/`, with `migrations/` beside it | One PostgreSQL writer connection under one asyncio lock, and a pool of readers. **SQL lives here and nowhere else** |
 | **ingest** | `ingest/` — `receiver`, `worker`, `process`, `spool`, `records`, `decoder`, `snmpconf`, `usm`, `ber`, `events`, `known_oids` | The wire: parse, allowlist, the SNMP policy and SNMPv3 security, quarantine, the trap vocabulary, the spool, and the processes they run in (#449, #450) |
 | **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `mail`, `runtime`, `logsetup`, `settings` | Identity, authorization, visibility, attribution, outgoing email, config, logging |
 
@@ -110,14 +112,62 @@ order with no cycles between them** (decision #208):
   The engine-side ingest path stays readable in one file: `engine.py` holds the batch lock and every
   decision that reasons about it, deliberately and permanently. Do not tidy it into modules — the
   invariant is only auditable if that path can be read without following imports.
-* **One `Store`, one connection, one `store.lock`.** The lock is taken by *callers*, never inside a
-  `Store` method, and a new store method must assume its caller holds it.
-  `tests/store/test_store_concurrency.py` is the control.
+* **One `Store`, one writer connection, one `store.lock`.** The lock is taken by *callers*, never
+  inside a `Store` method, and a new store method must assume its caller holds it — unless it is a
+  read run in `store.reading()`, which needs no lock. `tests/store/test_store_concurrency.py` is
+  the control.
 * **Zero new runtime dependencies in the core.** Five since v0.2.0. An optional extra needs a
   decision and a feature that degrades without it (the `snmpv3` extra, #444). New development
   tooling goes in the `dev` extra with a decision beside it.
 * **A new route declares itself or the process does not start.** See
   [`security.md`](security.md#a-new-route-declares-itself-or-the-process-does-not-start).
+
+## Storage: one writer, a reader pool (decision #452)
+
+`store/` is the only code that speaks SQL, and it speaks it to **PostgreSQL 15 or newer** through
+`asyncpg` (`store/db.py`), in one schema (`NETCORENOC_DB_SCHEMA`).
+
+* **One writer.** One connection carries every write — the engine's batch, the maintenance pass,
+  every API write — and `store.lock` serialises them, because the engine's memory and the audit
+  chain assume one writer. Its transactions are **implicit**, as Python's `sqlite3` made them: the
+  first write after a commit opens one, and `commit()` or `rollback()` ends it, so a batch is one
+  transaction whatever the number of methods it calls. Statements keep SQLite's `?` and `:name`
+  placeholders; `store/sql.py`'s `translate()` rewrites each distinct statement once.
+* **A pool of readers** (`NETCORENOC_DB_READERS`, default 4). A console read runs in
+  `store.reading()`: on a pooled connection, in one `REPEATABLE READ READ ONLY` snapshot, without
+  the lock — so it never waits for the engine's batch, and a write attempted there fails loudly.
+  `store.side_write()` uses the same pool for the only writes that need no lock: a session's or a
+  token's last use. Pooled connections commit with `synchronous_commit = off` — a crash that loses
+  such a touch shortens an idle session and never lengthens it.
+* **An error aborts the whole transaction** in PostgreSQL, where SQLite left it usable. The capture
+  paths that degrade instead of failing — the feedback dataset, a label's annotation, the shadow's
+  opinions — write inside `store.savepoint()`, so their failure undoes their own rows and never the
+  rest of the transaction: the batch's traps, the operator's verdict.
+* **Durability is the spool's.** The engine's batch commits with `synchronous_commit = off`; its
+  traps stay in the spool until `store.checkpoint()` — a synchronous commit, which flushes the WAL
+  through every earlier commit — says they are durable (#450). Every other write on the writer
+  commits synchronously.
+* **A lost connection** is replaced on the batch's rollback, the instance lock taken again, and the
+  batch retried (`STORAGE_ERRORS`); the store's id caches are cleared with it, because the rows
+  they named went with the transaction.
+* **One appliance per schema.** `open()` takes a session advisory lock on the schema and refuses to
+  start without it. Migrations are plain SQL files, each applied in its own transaction under a
+  second advisory lock and recorded with its checksum in `schema_migrations`. The CLI opens the
+  store without the lock and, except `db migrate` and `db import-sqlite`, without creating the
+  schema.
+* **Every list is ordered.** A query that returns a list or `LIMIT`s one has a complete `ORDER BY`;
+  PostgreSQL promises no order otherwise.
+
+The schema is one script, `migrations/0031_postgresql.sql`, which replaced SQLite's thirty and
+numbers on from them; its header states each choice. Types say what the data is: instants are
+`timestamptz` (except `audit_log.ts`, whose exact float digits the hash chain covers), flags
+`boolean`, addresses `inet`, varbinds `jsonb` under a GIN index, ids identity columns, closed
+vocabularies `text` with a `CHECK`, every `text` column `COLLATE "C"`. The `device` table, a copy
+of `ne`, is folded into it; `user`, a reserved word, is `app_user`; the append-only tables share one
+trigger function; the rows rewritten constantly (`alarm`, `edge`, `session`, `meta`) get a
+fillfactor and an aggressive autovacuum. A SQLite database of the last SQLite schema is copied in
+by `python -m netcorenoc db import-sqlite` (`store/importer.py`). What the move measured, before
+and after: [`docs/plans/postgresql.md`](plans/postgresql.md).
 
 ## Explainability is contractual
 
@@ -215,8 +265,9 @@ disabled menu items. The shape absorbs them; it does not announce them.
 4. **Ingestion is sacred.** The trap path never gains a lock, an I/O, or per-packet latency.
 5. **Zero new runtime dependencies in the core.** Five since v0.2.0.
 6. **One runtime identity.** One appliance — the main process, its receiving process and its
-   decoding process (#449, #450) — one SQLite with one writer, a spool directory beside it, a static
-   console with no build step and no npm.
+   decoding process (#449, #450) — one PostgreSQL schema it holds an advisory lock on, with one
+   writer (#452), a spool directory on its own disk, a static console with no build step and no
+   npm.
 7. **Security by construction** — fail-safe, least privilege, hash-chained audit, deny-by-default.
 8. **The instrument precedes the change it measures.** Build the guard before the thing it guards;
    record the next release's open questions as questions.

@@ -153,7 +153,8 @@ export const SETTINGS = [
 
 /** Settings read once at startup. `Settings` is frozen after construction (`settings.py`). */
 export const RESTART_REQUIRED = [
-  ["db_path", "NETCORENOC_DB", "Which SQLite file the appliance opens."],
+  ["database", "NETCORENOC_DATABASE_URL", "Which PostgreSQL database the appliance uses."],
+  ["db_schema", "NETCORENOC_DB_SCHEMA", "The schema inside it that holds the appliance's tables."],
   ["trap_host", "NETCORENOC_TRAP_HOST", "The address the trap receiver binds."],
   ["trap_port", "NETCORENOC_TRAP_PORT", "The UDP port the trap receiver binds."],
   ["http_host", "NETCORENOC_HTTP_HOST", "The address the API and this console bind."],

@@ -120,14 +120,14 @@ SELECT f.id                                        AS feedback_id,
        f.verdict                                   AS verdict,
        COALESCE(f.member_count, -1)                AS member_count,
        COALESCE(f.principal_ref, '(unattributed)') AS principal,
-       COALESCE(f.scope_restricted, 0)             AS scope_restricted,
+       COALESCE(f.scope_restricted::int, 0)        AS scope_restricted,
        COALESCE(f.coverage, 'unrecorded')          AS coverage,
        COALESCE(f.capture_provenance, 'unrecorded') AS provenance,
        COALESCE(f.acquisition_channel, 'unrecorded') AS channel,
        f.situation_id                              AS situation_id,
        COUNT(p.id)                                 AS pairs,
-       COALESCE(SUM(p.incumbent_linked), 0)        AS accepted,
-       COALESCE(SUM(p.storm), 0)                   AS storm_pairs
+       COUNT(*) FILTER (WHERE p.incumbent_linked)  AS accepted,
+       COUNT(*) FILTER (WHERE p.storm)             AS storm_pairs
 FROM feedback f
 LEFT JOIN dataset_pair p
        ON p.situation_id = f.situation_id AND p.lifecycle = 'dataset'

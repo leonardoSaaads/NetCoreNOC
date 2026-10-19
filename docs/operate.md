@@ -2,7 +2,8 @@
 
 From the first sign-in to closing a situation. Commands assume Docker Compose. Elsewhere, replace the
 `docker compose exec netcorenoc` prefix and point the command at the database — with the bundled
-systemd unit: `sudo NETCORENOC_DB=/var/lib/netcorenoc/netcorenoc.db /opt/netcorenoc/.venv/bin/python -m netcorenoc …`.
+systemd unit, whose database URL is the default:
+`sudo NETCORENOC_DATABASE_PASSWORD_FILE=/etc/netcorenoc/db_password /opt/netcorenoc/.venv/bin/python -m netcorenoc …`.
 
 ## 1. First sign-in
 
@@ -80,7 +81,8 @@ Times shown are when the **appliance received** each trap, in your browser's tim
 ## 3. Sending traps without equipment
 
 The repository's tools send real SNMP traps to the appliance, so it can be tried with no network
-devices. [`simulate.md`](simulate.md) has the steps for Linux and Windows. In short, from a clone:
+devices. [`simulate.md`](simulate.md) has the steps for Linux and Windows, and for the database the
+appliance needs. In short, from a clone, with `NETCORENOC_DATABASE_URL` set:
 
 ```sh
 NETCORENOC_TRAP_PORT=1162 .venv/bin/python -m netcorenoc.main &
@@ -154,18 +156,56 @@ often, and **Stop autonomy** in the top bar stops it at once.
 
 ## 8. Backups, upgrades and checks
 
-```sh
-# a consistent copy while it runs (never overwrites an existing file)
-docker compose exec netcorenoc python -m netcorenoc backup /home/netcorenoc/backup-$(date +%F).db
-docker compose cp netcorenoc:/home/netcorenoc/backup-$(date +%F).db .
+The PostgreSQL schema is the whole state. Back it up with `pg_dump`, which reads one consistent
+snapshot while the appliance runs. With Compose it runs in the database's container — the
+appliance's image carries no PostgreSQL client — with the generated password read from its file:
 
+```sh
+docker compose exec -T postgres sh -c 'PGPASSWORD="$(cat /run/netcorenoc-secrets/db_password)" \
+  exec pg_dump --format=custom --schema=netcorenoc -U netcorenoc netcorenoc' > nc-$(date +%F).dump
+```
+
+Elsewhere, with the PostgreSQL client tools (`pg_dump`, `pg_restore`) beside the CLI:
+
+```sh
+python -m netcorenoc backup nc-$(date +%F).dump    # never overwrites an existing file
+```
+
+It dumps the schema in PostgreSQL's compressed custom format, hands `pg_dump` the password in its
+environment rather than on a command line `ps` can read, and reads the file back with
+`pg_restore --list` before it says `ok`. A managed provider's own backups (Supabase, RDS and the
+rest) are theirs to restore; a dump is the copy you hold.
+
+**Restore** replaces the schema: stop the appliance, drop the schema, restore the dump, start.
+
+```sh
+docker compose stop netcorenoc
+docker compose exec -T postgres sh -c 'PGPASSWORD="$(cat /run/netcorenoc-secrets/db_password)" \
+  exec psql -U netcorenoc -d netcorenoc -c "DROP SCHEMA netcorenoc CASCADE"'
+docker compose exec -T postgres sh -c 'PGPASSWORD="$(cat /run/netcorenoc-secrets/db_password)" \
+  exec pg_restore -U netcorenoc -d netcorenoc' < nc-2026-10-18.dump
+docker compose start netcorenoc
+```
+
+Elsewhere, `pg_restore --dbname=<database URL> <file>` into a database where the schema is absent.
+
+**Checks:**
+
+```sh
+docker compose exec netcorenoc python -m netcorenoc db status       # server, schema version, size
 docker compose exec netcorenoc python -m netcorenoc audit verify    # is the audit log intact?
 docker compose exec netcorenoc python -m netcorenoc --help          # every maintenance command
 ```
 
+`db status` names the server, the database, the role and the schema it reached, then the schema's
+version beside this release's — `version 31 (this release: 31)` — and the schema's size on disk. A
+lower first number is migrations not yet applied (start the appliance, or run `db migrate`); a
+higher one is a database a newer release migrated, which the console also warns about.
+
 **Upgrade:** take a backup, then `git pull && docker compose up -d --build`. The database is
-upgraded automatically at start and cannot be downgraded — the backup is your way back.
-[`MIGRATION.md`](../MIGRATION.md) lists what each version changed.
+upgraded automatically at start and cannot be downgraded — the backup is your way back. From
+v0.30.0 or earlier, the SQLite file is imported once, before the first start: see
+[`MIGRATION.md`](../MIGRATION.md), which also lists what each version changed.
 
 The analysis reports for contributors (`make bias-report`, `make agreement-report`,
 `make shadow-report`, `make census`) are described in [`correlation.md`](correlation.md).

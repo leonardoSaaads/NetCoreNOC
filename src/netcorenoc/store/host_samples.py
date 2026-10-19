@@ -62,12 +62,14 @@ class HostSampleMixin(StoreBase):
         ]
         names += ["traps_per_s", "latency_ms"]
         values += [traps_per_s, latency_ms]
-        if self._has_pipeline_sample:
-            names += PIPELINE_COLUMNS
-            values += [(pipeline or {}).get(name) for name in PIPELINE_COLUMNS]
+        names += PIPELINE_COLUMNS
+        values += [(pipeline or {}).get(name) for name in PIPELINE_COLUMNS]
+        # A second reading at the same instant replaces the first, every column of it: `at` is
+        # the key, and `names` is every other column of the table.
+        update = ", ".join(f"{name}=EXCLUDED.{name}" for name in names[1:])
         await self.conn.execute(
-            f"INSERT OR REPLACE INTO host_sample ({', '.join(names)}) "  # nosec B608 - fixed names
-            f"VALUES ({', '.join('?' * len(names))})",
+            f"INSERT INTO host_sample ({', '.join(names)}) "  # nosec B608 - fixed names
+            f"VALUES ({', '.join('?' * len(names))}) ON CONFLICT (at) DO UPDATE SET {update}",
             values,
         )
         await self.conn.execute(
@@ -79,14 +81,15 @@ class HostSampleMixin(StoreBase):
         width = max(1e-6, (until - since) / buckets)
         keys: tuple[str, ...] = (*_MEANS, *_MAXES)
         aggregates = [f"AVG({key})" for key in _MEANS] + [f"MAX({key})" for key in _MAXES]
-        if self._has_pipeline_sample:
-            keys += PIPELINE_COLUMNS
-            aggregates += [f"AVG({key})" for key in PIPELINE_MEANS]
-            aggregates += [f"MAX({key})" for key in PIPELINE_MAXES]
-            aggregates += [f"SUM({key})" for key in PIPELINE_SUMS]
+        keys += PIPELINE_COLUMNS
+        aggregates += [f"AVG({key})" for key in PIPELINE_MEANS]
+        aggregates += [f"MAX({key})" for key in PIPELINE_MAXES]
+        aggregates += [f"SUM({key})" for key in PIPELINE_SUMS]
         series: dict[str, list[float | None]] = {key: [None] * buckets for key in keys}
+        # `floor`, not a cast: PostgreSQL's integer cast rounds, and a bucket index truncates.
         cur = await self.conn.execute(
-            f"SELECT CAST((at - ?) / ? AS INTEGER) AS b, {', '.join(aggregates)}, "  # nosec B608
+            f"SELECT floor((epoch(at) - ?) / ?)::integer AS b, "  # nosec B608
+            f"{', '.join(aggregates)}, "
             "COUNT(*) FROM host_sample WHERE at >= ? AND at < ? GROUP BY b",
             (since, width, since, until),
         )

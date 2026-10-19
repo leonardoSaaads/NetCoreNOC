@@ -1,7 +1,8 @@
 """**The operation test**: a real appliance, real UDP, real HTTP (DECISIONS #224).
 
 Everything else in this suite drives objects. This drives a *process*:
-`python -m netcorenoc.main` in a subprocess on a throwaway database, sixteen genuine SNMPv2c PDUs
+`python -m netcorenoc.main` in a subprocess on a throwaway PostgreSQL database (ADR #452; an empty
+one, so the appliance applies its own migrations at boot), sixteen genuine SNMPv2c PDUs
 over a real UDP socket arriving over five seconds of wall clock, and every observation read back
 over TCP through the routes the console calls, as a signed-in principal. Nothing here reaches into
 `netcorenoc` as a library after the process starts.
@@ -69,6 +70,7 @@ from typing import Any
 import pytest
 
 import paths
+import pgtemp
 
 REPO_ROOT = paths.REPO_ROOT
 
@@ -177,10 +179,12 @@ class Drive:
 
 def _drive(tmp: Path, name: str) -> Drive:
     out = Drive()
-    appliance = Appliance(
-        str(tmp / f"{name}.db"), _free_port(socket.SOCK_DGRAM), _free_port(socket.SOCK_STREAM)
-    )
-    with appliance:
+    with (
+        pgtemp.empty_database() as database_url,
+        Appliance(
+            database_url, tmp / name, _free_port(socket.SOCK_DGRAM), _free_port(socket.SOCK_STREAM)
+        ) as appliance,
+    ):
         admin = appliance.sign_in()
         viewer = Appliance.mint(admin, f"{name}-viewer", "viewer")
 

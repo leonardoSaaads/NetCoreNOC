@@ -1,16 +1,29 @@
-# Self-contained NetCoreNOC — one command, no external services:
+# Self-contained NetCoreNOC — one command, nothing to configure first:
 #
 #     docker compose up --build
 #
-# This wraps the SAME single process the Dockerfile builds (one asyncio process, one SQLite
-# file, one static UI). It changes nothing about the runtime; it only expresses the hardened
-# `docker run` recipe (read-only rootfs, all capabilities dropped, no privilege escalation,
-# tmpfs /tmp, DB on a named volume) declaratively.
+# Three services (ADR #452):
+#
+#   * `netcorenoc` — the appliance the Dockerfile builds: the trap receiver, the correlator and
+#     the console, hardened (read-only rootfs, every capability dropped but one, no privilege
+#     escalation, tmpfs /tmp). Its own volume holds only the trap spool;
+#   * `postgres` — the database, on an internal network with no published port, its data on a
+#     named volume, tuned for this workload (see `command:`);
+#   * `db-secret` — runs once, before both: it writes two random passwords into a volume only
+#     these containers mount, if none is there yet. `db_admin_password` is the cluster superuser's
+#     (`postgres`, for initialisation and maintenance; only the database container can read it);
+#     `db_password` is the appliance's role, `netcorenoc`, which is **not** a superuser: it owns its
+#     database and nothing else (`configs: netcorenoc-role`). The appliance reads it from the file
+#     (`NETCORENOC_DATABASE_PASSWORD_FILE`). No password is typed, stored in `.env`, in this file,
+#     in the image, or in any container's environment.
 #
 # Configuration is optional. Copy .env.example to .env and edit it to set an allowlist, TLS,
 # retention, etc. `.env` is git-ignored and is the ONLY place secrets belong — never the image
 # or this file. With no .env, NetCoreNOC starts with its zero-config defaults (and warns admins
 # in the UI about the empty allowlist / missing TLS).
+#
+# A managed PostgreSQL instead (Supabase, RDS, Cloud SQL, your own cluster): see
+# `docker-compose.supabase.yml` and docs/configure.md#database.
 #
 # ## Docker Desktop's "Enable Watch" button does nothing here, and that is deliberate
 #
@@ -30,11 +43,137 @@
 # container to rebuild.
 
 services:
+  db-secret:
+    # The database image's own shell, so nothing else is pulled or built for a one-line job.
+    image: postgres:17.5-alpine
+    user: "0"                             # root, only to chown the file it writes, then it exits
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN                             # netcorenoc (10001) and postgres (70)
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    network_mode: none
+    volumes:
+      - netcorenoc-secrets:/run/netcorenoc-secrets
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        dir=/run/netcorenoc-secrets
+        umask 377
+        for name in db_password db_admin_password; do
+          [ -s "$$dir/$$name" ] || head -c 48 /dev/urandom | base64 | tr -d '\n=+/' > "$$dir/$$name"
+        done
+        chown 10001:70 "$$dir/db_password"        # the appliance reads it; so does the init script
+        chmod 0440 "$$dir/db_password"
+        chown 70:70 "$$dir/db_admin_password"     # the database container alone
+        chmod 0400 "$$dir/db_admin_password"
+    restart: "no"
+
+  postgres:
+    # PostgreSQL 15 or newer is required; 17 is what this file is tested with. Pin by digest in
+    # production (`docker inspect --format='{{index .RepoDigests 0}}' postgres:17.5-alpine`).
+    image: postgres:17.5-alpine
+    container_name: netcorenoc-postgres
+    restart: unless-stopped
+    depends_on:
+      db-secret:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: postgres             # the superuser: initialisation and maintenance only
+      POSTGRES_DB: netcorenoc
+      POSTGRES_PASSWORD_FILE: /run/netcorenoc-secrets/db_admin_password
+      # SCRAM-SHA-256 for every connection, including the first role's.
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256 --data-checksums"
+    volumes:
+      - netcorenoc-pgdata:/var/lib/postgresql/data
+      - netcorenoc-secrets:/run/netcorenoc-secrets:ro
+    configs:
+      # Run once, when the data directory is first initialised.
+      - source: netcorenoc-role
+        target: /docker-entrypoint-initdb.d/10-netcorenoc-role.sql
+    networks:
+      - backend
+    # The entrypoint starts as root to own its data directory, then drops to `postgres`: these are
+    # the capabilities that needs, and nothing else.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    # Sized for the limits below (1 GiB). The workload is many small transactions from one writer
+    # plus a few console readers: a modest buffer cache, no JIT (it slows short queries), WAL
+    # compressed, checkpoints spread out, statistics on every statement (`pg_stat_statements`)
+    # so a slow query can be named, and any statement over a second logged.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=40
+      - -c
+      - jit=off
+      - -c
+      - wal_compression=on
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - idle_in_transaction_session_timeout=300s
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "netcorenoc", "-d", "netcorenoc", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          memory: 256M
+
   netcorenoc:
     build: .
     image: netcorenoc:local
     container_name: netcorenoc
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+      - default
 
     # UDP 162 = SNMP trap listener; 8080 = web UI + API. To avoid binding a privileged port,
     # set NETCORENOC_TRAP_PORT=1162 in .env: the mapping below and the process both follow it
@@ -49,7 +188,8 @@ services:
     tmpfs:
       - /tmp                              # ...with a writable tmpfs for scratch...
     volumes:
-      - netcorenoc-data:/home/netcorenoc  # ...and the SQLite DB (+ WAL) on a named volume.
+      - netcorenoc-data:/home/netcorenoc  # ...and the trap spool on a named volume...
+      - netcorenoc-secrets:/run/netcorenoc-secrets:ro  # ...and the database password, read-only.
     cap_drop:
       - ALL
     cap_add:
@@ -65,7 +205,7 @@ services:
     # nobody can size.**
     #
     #   * **memory** — the kernel OOM-kills a process. `restart: unless-stopped` brings it back and
-    #     the WAL keeps the database. Since #450 every accepted trap is in the **spool on disk**
+    #     PostgreSQL keeps every committed batch. Since #450 every accepted trap is in the **spool on disk**
     #     before anything else happens to it, and the engine resumes after the last trap it
     #     classified: what is lost is at most what the receiver held for the few milliseconds before
     #     its next write. Memory no longer grows with a backlog, so 512 MiB is generous.
@@ -90,7 +230,10 @@ services:
 
     environment:
       # Defaults keep `docker compose up` working with no .env. Override in .env.
-      NETCORENOC_DB: /home/netcorenoc/netcorenoc.db
+      NETCORENOC_DATABASE_URL: ${NETCORENOC_DATABASE_URL:-postgresql://netcorenoc@postgres:5432/netcorenoc}
+      NETCORENOC_DATABASE_PASSWORD_FILE: ${NETCORENOC_DATABASE_PASSWORD_FILE:-/run/netcorenoc-secrets/db_password}
+      NETCORENOC_DB_SCHEMA: ${NETCORENOC_DB_SCHEMA:-netcorenoc}
+      NETCORENOC_DATA_DIR: /home/netcorenoc
       NETCORENOC_TRAP_PORT: ${NETCORENOC_TRAP_PORT:-162}
       NETCORENOC_ALLOWLIST: ${NETCORENOC_ALLOWLIST:-}
       NETCORENOC_RETENTION_DAYS: ${NETCORENOC_RETENTION_DAYS:-7}
@@ -111,7 +254,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 30s
 
     # --- TLS + allowlist profile (commented; uncomment and set values in .env) --------------
     # NetCoreNOC can terminate TLS itself. Mount the cert/key read-only and point the env at
@@ -129,5 +272,19 @@ services:
     # (Alternatively, front NetCoreNOC with a TLS reverse proxy and keep this listener plain
     #  HTTP on an internal network — see docs/security.md.)
 
+configs:
+  # The appliance's role, least privilege: it logs in and owns its database, so it may create its
+  # schema; it is not a superuser and may not create databases or roles. A file, not inline
+  # `content:` — Compose cannot write a config into a read-only container, only bind-mount one.
+  netcorenoc-role:
+    file: ./deploy/postgres/10-netcorenoc-role.sql
+
+networks:
+  # The database's network: no published port and no route out. Only the appliance joins it.
+  backend:
+    internal: true
+
 volumes:
-  netcorenoc-data:
+  netcorenoc-data:      # the trap spool
+  netcorenoc-pgdata:    # the database
+  netcorenoc-secrets:   # the generated database passwords

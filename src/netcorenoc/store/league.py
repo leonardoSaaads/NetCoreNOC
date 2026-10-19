@@ -16,8 +16,6 @@ __all__ = ["LeagueMixin"]
 
 class LeagueMixin(StoreBase):
     async def latest_league_decision(self) -> dict[str, Any] | None:
-        if not self._has_league:
-            return None
         cur = await self.conn.execute(
             "SELECT id, at, champion, previous, actor, reason, pinned FROM league_decision "
             "ORDER BY id DESC LIMIT 1"
@@ -55,8 +53,6 @@ class LeagueMixin(StoreBase):
 
     async def league_decisions(self, limit: int = 20) -> list[dict[str, Any]]:
         """The champion's history, newest first, without the (large) evidence column."""
-        if not self._has_league:
-            return []
         cur = await self.conn.execute(
             "SELECT id, at, champion, previous, actor, reason, pinned FROM league_decision "
             "ORDER BY id DESC LIMIT ?",
@@ -76,8 +72,6 @@ class LeagueMixin(StoreBase):
 
     async def decider_pin(self) -> str | None:
         """The member an admin pinned, or ``None`` when the judge chooses."""
-        if not self._has_league:
-            return None
         cur = await self.conn.execute("SELECT pinned FROM decider_setting ORDER BY id DESC LIMIT 1")
         row = await cur.fetchone()
         return None if row is None or row[0] is None else str(row[0])

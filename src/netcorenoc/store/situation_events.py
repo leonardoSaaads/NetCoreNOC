@@ -60,7 +60,7 @@ def _gesture_branch(first: str, second: str) -> str:
         "JOIN situation_event_member pm ON pm.event_id = e.id AND pm.source = 'peer' "
         f"JOIN dataset_pair p ON p.{first} = sm.alarm_id AND p.{second} = pm.alarm_id "
         "WHERE p.lifecycle = 'dataset' "
-        "  AND e.produces_training_rows = 1 "
+        "  AND e.produces_training_rows "
         "  AND e.kind IN ('move', 'merge') "
         "  AND (e.kind = 'merge' OR sm.alarm_id = e.alarm_id"
         # v0.29.0 (`0028`): a move of several alarms is one event with `alarm_id` NULL, and its
@@ -104,7 +104,7 @@ _GESTURE_PAIRS_SQL = (
 class SituationEventMixin(StoreBase):
     # -- the derived name -----------------------------------------------------------------------
 
-    async def refresh_derived_name(self, situation_id: int) -> str | None:
+    async def refresh_derived_name(self, situation_id: int) -> str:
         """Recompute `situation.derived_name` from the current membership. Returns the new value.
 
         **Called by the statement group that changed the membership, and by nothing else**
@@ -117,33 +117,31 @@ class SituationEventMixin(StoreBase):
         device label is free text, and folding it into a name the server computed would make an
         operator's own words indistinguishable from a projection. `DISTINCT` because the name's
         four forms turn on how many *devices* are involved, not how many rows.
-
-        Returns `None` — and writes nothing — on a schema without the column, which is what lets
-        this run inside `add_alarm_to_situation` against the schema-13 database
-        `tests/store/test_upgrade.py` builds.
         """
-        if not self._has_lifecycle:
-            return None
+        # One pass over the membership (ADR #452): the member count, the device count — distinct
+        # `ne_id`, which is distinct addresses, `ne.ip` being unique — and three addresses.
+        #
+        # Only ever three addresses are needed: the four forms turn on "one device", "exactly two
+        # devices", and "more than two", and the widest form names the lowest address and counts
+        # the rest. `LIMIT 3` is what keeps this bounded on a 500-device storm rather than reading
+        # every member's address to throw all but one away.
+        #
+        # The three are the lowest **as strings**, byte order (`COLLATE "C"`), because that is the
+        # order `derive_situation_name` sorts by: `ne.ip` is `inet`, and ordering by the column
+        # itself would pick the three lowest numerically and name a different "lowest" address.
         cur = await self.conn.execute(
-            "SELECT COUNT(*), COUNT(DISTINCT d.ip) FROM situation_alarm sa "
-            "JOIN alarm a ON a.id = sa.alarm_id JOIN device d ON d.id = a.device_id "
-            "WHERE sa.situation_id = ?",
+            "WITH m AS MATERIALIZED (SELECT a.ne_id FROM situation_alarm sa "
+            "JOIN alarm a ON a.id = sa.alarm_id WHERE sa.situation_id = ?), "
+            "nes AS (SELECT DISTINCT ne_id FROM m) "
+            "SELECT (SELECT COUNT(*) FROM m), (SELECT COUNT(*) FROM nes), "
+            'ARRAY(SELECT DISTINCT host(d.ip) COLLATE "C" AS ip FROM ne d '
+            "JOIN nes ON nes.ne_id = d.id ORDER BY ip LIMIT 3)",
             (situation_id,),
         )
         counts = await cur.fetchone()
         assert counts is not None
         members = int(counts[0])
-        # Only ever three addresses are needed: the four forms turn on "one device", "exactly two
-        # devices", and "more than two", and the widest form names the lowest address and counts
-        # the rest. `LIMIT 3` is what keeps this bounded on a 500-device storm rather than reading
-        # every member's address to throw all but one away.
-        cur = await self.conn.execute(
-            "SELECT DISTINCT d.ip FROM situation_alarm sa "
-            "JOIN alarm a ON a.id = sa.alarm_id JOIN device d ON d.id = a.device_id "
-            "WHERE sa.situation_id = ? ORDER BY d.ip LIMIT 3",
-            (situation_id,),
-        )
-        addresses = [str(row[0]) for row in await cur.fetchall()]
+        addresses = [str(ip) for ip in counts[2]]
         name = derive_situation_name(addresses, members, device_count=int(counts[1]))
         await self.conn.execute(
             "UPDATE situation SET derived_name = ? WHERE id = ?", (name, situation_id)
@@ -225,8 +223,6 @@ class SituationEventMixin(StoreBase):
         row = await cur.fetchone()
         if row is not None:
             return float(row[0])
-        if not self._has_link_terms:
-            return None
         # v0.26.0: a situation a trained model formed has no scorer configuration; each of its
         # links carries its own explanation, threshold included (`correlate.explained_terms`).
         cur = await self.conn.execute(
@@ -279,7 +275,8 @@ class SituationEventMixin(StoreBase):
     async def add_event_moved(self, event_id: int, alarm_ids: list[int]) -> None:
         """The alarms one multi-alarm `move` carried (v0.29.0, `0028`). Order is not evidence."""
         await self.conn.executemany(
-            "INSERT OR IGNORE INTO situation_event_moved (event_id, alarm_id) VALUES (?, ?)",
+            "INSERT INTO situation_event_moved (event_id, alarm_id) VALUES (?, ?) "
+            "ON CONFLICT DO NOTHING",
             [(event_id, alarm) for alarm in alarm_ids],
         )
 
@@ -346,7 +343,7 @@ class SituationEventMixin(StoreBase):
             "            (SELECT COUNT(*) FROM situation_event_moved mv WHERE mv.event_id = e.id) "
             "            WHEN e.kind = 'move' THEN 1 END AS moved "
             "FROM situation_event e "
-            "LEFT JOIN user u ON 'user:' || u.id = e.actor "
+            "LEFT JOIN app_user u ON 'user:' || u.id = e.actor "
             "LEFT JOIN user_avatar a ON a.user_id = u.id "
             "WHERE e.situation_id=? OR e.peer_situation_id=? ORDER BY e.at, e.id",
             (situation_id, situation_id),
@@ -375,7 +372,7 @@ class SituationEventMixin(StoreBase):
 
         Filters, and each is the plan's rather than a convenience:
 
-        * `produces_training_rows = 1` — the stored form of §1's prohibition, so a `manual_clear`
+        * `produces_training_rows` — the stored form of §1's prohibition, so a `manual_clear`
           or a `self_clear` cannot reach a scorer even if a future kind is added carelessly;
         * `lifecycle = 'dataset'` — a pair still in the sink was never promoted, and asserting
           about features nothing promoted would be asserting about rows the corpus does not hold.

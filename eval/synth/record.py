@@ -45,6 +45,7 @@ from netcorenoc.ingest.events import TrapEvent  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
 import harness  # noqa: E402
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 from synth.compose import EPOCH, Stream  # noqa: E402
 
 __all__ = ["PROBE", "Activation", "StreamLog", "record"]
@@ -166,7 +167,8 @@ class StreamLog:
 
 
 async def _record(stream: Stream) -> StreamLog:
-    store = Store(":memory:")
+    url = pgtemp.create()  # a fresh database per stream, as `:memory:` was (ADR #452)
+    store = Store(url, readers=1)
     await store.open()
     try:
         mv = await store.insert_model_version(
@@ -259,6 +261,7 @@ async def _record(stream: Stream) -> StreamLog:
         return log
     finally:
         await store.close()
+        pgtemp.drop(url)
 
 
 def _parse(

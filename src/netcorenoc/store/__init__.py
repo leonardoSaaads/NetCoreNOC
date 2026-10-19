@@ -1,26 +1,27 @@
-"""SQLite (WAL) persistence behind one small interface.
+"""PostgreSQL persistence behind one small interface (ADR #452; SQLite until v0.30.0).
 
-**One `Store`, one connection, one `store.lock`.** That is the load-bearing invariant of this
+**One `Store`, one writer connection, one `store.lock`.** That is the load-bearing invariant of this
 package and the reason it is a package of mixins over one object rather than several objects: F39
-(`SECURITY-REVIEW-0.7.1.md` §4.2) exists precisely *because* the single `aiosqlite` connection is
-shared by the engine task and every API request, and v0.7.1's `write_txn` discipline is built on
-`store.lock` being the one mutual exclusion. Several connections, or several locks, would be a
-behaviour change whose failure mode is data corruption under concurrency.
+(`SECURITY-REVIEW-0.7.1.md` §4.2) exists precisely *because* the writer is shared by the engine
+task and every API write, and v0.7.1's `write_txn` discipline is built on `store.lock` being the
+one mutual exclusion for it.
+
+**Reads are the exception PostgreSQL made possible.** A console read runs inside
+:meth:`Store.reading` on a pooled, read-only connection in its own snapshot, and takes no lock: it
+cannot see an uncommitted batch, so it cannot observe half of one, and it no longer waits for one.
 
 `store.lock` is a contract for **callers** — `Engine._commit_batch`, `Engine.maintenance` and
 `Perimeter.write_txn` take it; no method in this package does. See
 `tests/store/test_store_concurrency.py`, which is the control.
 
-Hand-written SQL, plain-SQL migrations applied at startup via ``PRAGMA user_version``. The engine
-batches writes and calls :meth:`Store.commit` per batch; interleaved API writes simply join the
-current transaction — a throughput choice, not an atomicity contract.
+Hand-written SQL, plain-SQL migrations applied at startup (`lifecycle.py`). The engine batches
+writes and calls :meth:`Store.commit` per batch; interleaved API writes take the lock and commit
+their own transaction.
 """
 
 from __future__ import annotations
 
 import asyncio
-
-import aiosqlite
 
 from netcorenoc.store.alarms import AlarmMixin
 from netcorenoc.store.attention import AttentionMixin
@@ -35,6 +36,7 @@ from netcorenoc.store.dataset import (
     MAX_CLIENT_MEMBERS,
     DatasetMixin,
 )
+from netcorenoc.store.db import OPEN_ERRORS, STORAGE_ERRORS, Database
 from netcorenoc.store.decider import DeciderMixin
 from netcorenoc.store.devices import DeviceMixin
 from netcorenoc.store.entities import EntityMixin
@@ -46,7 +48,7 @@ from netcorenoc.store.ingest_gaps import IngestGapMixin
 from netcorenoc.store.inventory import InventoryMixin
 from netcorenoc.store.league import LeagueMixin
 from netcorenoc.store.learned import LearnedMixin
-from netcorenoc.store.lifecycle import LifecycleMixin
+from netcorenoc.store.lifecycle import LifecycleMixin, MissingSchemaError, StoreRefusedError
 from netcorenoc.store.maintenance_windows import MaintenanceWindowMixin
 from netcorenoc.store.mw_compile import MaintenanceCompileMixin
 from netcorenoc.store.mw_ledger import MaintenanceLedgerMixin
@@ -79,13 +81,17 @@ __all__ = [
     "MAX_CLIENT_MEMBERS",
     "MAX_SCOPE_PARAMS",
     "MIGRATIONS_DIR",
+    "OPEN_ERRORS",
+    "STORAGE_ERRORS",
     "TOUCH_INTERVAL_S",
     "EdgeRow",
     "FeedbackResult",
     "IngestResult",
     "LinkRow",
+    "MissingSchemaError",
     "Store",
     "StoreBase",
+    "StoreRefusedError",
 ]
 
 
@@ -157,46 +163,38 @@ class Store(
     LifecycleMixin,
     StoreBase,
 ):
-    def __init__(self, path: str) -> None:
-        self._path = path
-        self._conn: aiosqlite.Connection | None = None
-        self._device_ids: dict[str, int] = {}
+    def __init__(
+        self,
+        dsn: str,
+        *,
+        schema: str = "netcorenoc",
+        readers: int = 4,
+        statement_cache_size: int = 1024,
+        exclusive: bool = True,
+        create: bool = True,
+    ) -> None:
+        """A store for the PostgreSQL database at ``dsn``, in ``schema`` (ADR #452).
+
+        ``readers`` is the size of the pool API reads run on (`reading()`); ``statement_cache_size``
+        is asyncpg's per-connection prepared-statement cache (``0`` disables it; a pooler in
+        transaction mode is unsupported regardless — the instance lock is a session lock);
+        ``exclusive`` refuses a second appliance
+        against the same schema; ``create=False`` refuses a schema that is not there instead of
+        creating it (the CLI's tools, which must never read an empty history as the real one).
+        """
+        self._db = Database(
+            dsn, schema=schema, readers=readers, statement_cache_size=statement_cache_size
+        )
+        self._exclusive = exclusive
+        self._create = create
         self._ne_ids: dict[str, int] = {}
         self._entity0_ids: dict[int, int] = {}  # ne id -> its level-0 entity id
         self._entity_ids: dict[tuple[int, str], int] = {}  # (ne id, key) -> promoted entity id
         self._class_ids: dict[str, int] = {}
         self._touched: dict[tuple[str, int], float] = {}
-        # Non-fatal integrity findings from the startup PRAGMA checks (F11): surfaced through
-        # operator_warnings(), never a crash — a NOC trap sink must keep ingesting even with a
-        # partly-damaged history DB.
+        # Non-fatal findings from the startup checks (F11): surfaced through operator_warnings(),
+        # never a crash — a NOC trap sink must keep ingesting.
         self.integrity_warnings: list[str] = []
-        # One connection, many tasks: holders of this lock get a consistent view and,
-        # critically, commits can never interleave with another task's open cursor
-        # (sqlite refuses to commit while statements are in progress). The engine takes
-        # it per batch; API handlers take it per request.
+        # One writer, many tasks: see `StoreBase.lock`. The engine takes it per batch; API writes
+        # take it per request; API reads run on a reader without it.
         self.lock = asyncio.Lock()
-        self._has_merged_into: bool | None = None
-        # Answered by `open()` from `PRAGMA table_info(situation)`. `False` until then, which is
-        # the fail-safe direction: a store nobody opened writes no lifecycle column.
-        self._has_lifecycle: bool = False
-        # Likewise, from `PRAGMA table_info(feedback)`. `False` until then, which is the fail-safe
-        # direction: a store nobody opened writes no bag key and keeps `0007`'s two-column bound.
-        self._has_bag_key: bool = False
-        self._has_label_qualifier: bool = False
-        # Likewise, from `PRAGMA table_info(alarm)`. `False` means `0019` has not run, so the
-        # provenance column is not written and the census does not select it — a v0.20.0 database
-        # driven by this code keeps placing severities, it just does not record where they came
-        # from, which is the state it was already in.
-        self._has_severity_source: bool = False
-        self._has_surfaced_window: bool = False
-        self._has_maintenance: bool = False
-        self._has_class_rules: bool = False
-        self._has_surfaced_ack: bool = False
-        self._has_notice_snooze: bool = False
-        # v0.26.0 (`0026`): the link's whole explanation, and the captured v2 feature vector.
-        self._has_link_terms: bool = False
-        self._has_pair_features: bool = False
-        self._has_situation_decider: bool = False
-        self._has_decider: bool = False
-        self._has_proposals: bool = False  # v0.27.0, `0027`
-        self._has_league: bool = False

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -66,6 +67,8 @@ ACTIONS: frozenset[str] = frozenset(
         "snmp.config.change",
         "email.config.change",
         "email.test",
+        # v0.31.0 (ADR #452): a SQLite history imported into PostgreSQL by the CLI, once.
+        "db.import",
         # operation
         "feedback",
         "label.set",
@@ -274,7 +277,7 @@ class VerifyResult:
         )
 
 
-def _row_entry(row: dict[str, Any]) -> dict[str, Any]:
+def _row_entry(row: Mapping[str, Any]) -> dict[str, Any]:
     """Reconstruct the canonical field dict from a stored row (details as parsed JSON)."""
     return {
         "id": int(row["id"]),
@@ -332,7 +335,12 @@ async def write_event(
 
 async def verify_chain(store: Store) -> VerifyResult:
     """Walk the chain in id order; report the first row whose hash or linkage is wrong."""
-    rows = await store.audit_all()
+    return verify_rows(await store.audit_all())
+
+
+def verify_rows(rows: Sequence[Mapping[str, Any]]) -> VerifyResult:
+    """:func:`verify_chain` over rows already read — by `db import-sqlite`, inside its
+    transaction, before it commits (ADR #452)."""
     checked = 0
     prev_hash = GENESIS_HASH
     final_hash = GENESIS_HASH

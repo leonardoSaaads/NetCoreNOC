@@ -15,8 +15,8 @@ scope decision is two `situation_in_scope` calls, not one — and in **what they
 below `admin` and it names a network element. Each resolves scope through the same `ctx.scope_for`
 the reads use and denies through the not-found branch it already had, so *"out of your scope"* and
 *"no such thing"* are one code path — same status, same body, same timing (DECISIONS #60, #65).
-`scope_for` is awaited **before** `write_txn()`, because it takes `store.lock` itself and the lock
-is not reentrant.
+`scope_for` is awaited **before** `write_txn()`: it reads in a snapshot of its own
+(`store.reading()`, ADR #452), which cannot see what the write transaction has not committed.
 
 ## The order every gesture writes in, and why it is that order
 

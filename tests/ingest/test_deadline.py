@@ -258,11 +258,13 @@ def test_the_pipeline_settings_have_defaults(
 ) -> None:
     for name in ("KPI_TARGET_S", "KPI_LIMIT_S", "INGEST_PROCESSES", "SPOOL_DIR", "SPOOL_MAX_MB"):
         monkeypatch.delenv(f"NETCORENOC_{name}", raising=False)
-    monkeypatch.setenv("NETCORENOC_DB", "/var/lib/netcorenoc/netcorenoc.db")
+    # ADR #452: the spool's default is in the data directory, where it was beside the .db file.
+    monkeypatch.delenv("NETCORENOC_DB", raising=False)
+    monkeypatch.setenv("NETCORENOC_DATA_DIR", "/var/lib/netcorenoc")
     settings = Settings.from_env()
     assert (settings.kpi_target_s, settings.kpi_limit_s) == (60.0, 120.0)
     assert settings.ingest_processes == 1 and settings.spool_max_mb == 2048.0
-    assert str(settings.spool_path) == "/var/lib/netcorenoc/spool", "beside the database"
+    assert str(settings.spool_path) == "/var/lib/netcorenoc/spool", "in the data directory"
     monkeypatch.setenv("NETCORENOC_SPOOL_DIR", "/srv/spool")
     assert str(Settings.from_env().spool_path) == "/srv/spool"
     monkeypatch.setenv("NETCORENOC_INGEST_PROCESSES", "2")

@@ -44,8 +44,8 @@ class BatchWriteMixin(StoreBase):
         """Add one member; True if it was not one already. **The name is the caller's to refresh**
         before the transaction commits (see the module docstring)."""
         cur = await self.conn.execute(
-            "INSERT OR IGNORE INTO situation_alarm (situation_id, alarm_id) VALUES (?, ?) "
-            "RETURNING alarm_id",
+            "INSERT INTO situation_alarm (situation_id, alarm_id) VALUES (?, ?) "
+            "ON CONFLICT DO NOTHING RETURNING alarm_id",
             (situation_id, alarm_id),
         )
         return await cur.fetchone() is not None
@@ -54,15 +54,8 @@ class BatchWriteMixin(StoreBase):
         """Every row, in order, as one statement. Nothing to do for an empty sequence."""
         if not rows:
             return
-        if self._has_link_terms:
-            await self.conn.executemany(
-                "INSERT INTO link (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, "
-                "created_at, terms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                rows,
-            )
-            return
         await self.conn.executemany(
             "INSERT INTO link (situation_id, alarm_a, alarm_b, score, term_t, term_a, term_e, "
-            "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [row[:8] for row in rows],
+            "created_at, terms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
         )

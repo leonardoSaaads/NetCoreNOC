@@ -49,7 +49,7 @@ loop that will manufacture one.**
 
 Run it:
 
-    python eval/simulation/drive.py --db /tmp/demo.db --kinds tree,forest,gradient_boosting
+    python eval/simulation/drive.py --db postgresql://... --kinds tree,forest,gradient_boosting
 """
 
 from __future__ import annotations
@@ -79,6 +79,7 @@ from netcorenoc.ingest.receiver import parse_trap  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 import trap_replay  # noqa: E402
 from simulation import diagnose  # noqa: E402
 from simulation.generator import INCREMENT_INCIDENTS, SEED, generate  # noqa: E402
@@ -227,9 +228,9 @@ def shortfall(counted: dict[str, int]) -> dict[str, int]:
     return {name: floor - counted[name] for name, floor in FLOORS.items() if counted[name] < floor}
 
 
-async def run(db_path: str, kinds: tuple[str, ...], verbose: bool = True) -> dict[str, Any]:
+async def run(db_url: str, kinds: tuple[str, ...], verbose: bool = True) -> dict[str, Any]:
     """The loop. Returns the report; **stops at `MAX_INCREMENTS` whether or not it succeeded.**"""
-    store = Store(db_path)
+    store = Store(db_url, readers=1)
     await store.open()
     history: list[dict[str, Any]] = []
     try:
@@ -321,7 +322,7 @@ async def run(db_path: str, kinds: tuple[str, ...], verbose: bool = True) -> dic
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", default="/tmp/netcorenoc-demo.db")  # nosec B108
+    parser.add_argument("--db", help="an EMPTY PostgreSQL database (default: a throwaway one)")
     parser.add_argument(
         "--kinds",
         default=",".join(sorted(HYPERS)),
@@ -329,7 +330,8 @@ def main() -> int:
     )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
-    Path(args.db).unlink(missing_ok=True)
+    if not args.db:
+        args.db = pgtemp.create()
     print(f"===== the chain, on an EMPTY database at {args.db} =====")  # noqa: T201
     kinds = tuple(name.strip() for name in args.kinds.split(",") if name.strip())
     unknown = [name for name in kinds if name not in HYPERS]

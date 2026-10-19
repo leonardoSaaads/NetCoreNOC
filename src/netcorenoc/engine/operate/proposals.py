@@ -67,8 +67,6 @@ async def route(engine: Engine, placement: Placement, own: int | None) -> Route:
     """Turn the correlator's placement into what the engine may do. See the module docstring."""
     sid = placement.join if placement.join in engine.members else None
     merges = [m for m in placement.merge if m != sid and m in engine.members]
-    if not engine.store._has_proposals:  # pre-0027 schema: v0.26.0 behaviour, byte for byte
-        return Route(sid, tuple(merges))
     ids = ([sid] if sid is not None else []) + merges
     if not ids:
         return Route(None)

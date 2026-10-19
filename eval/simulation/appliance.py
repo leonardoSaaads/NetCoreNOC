@@ -181,7 +181,7 @@ class Http:
 
 
 class Appliance:
-    """`python -m netcorenoc.main` on a throwaway database, on loopback ports.
+    """`python -m netcorenoc.main` on an empty PostgreSQL database, on loopback ports.
 
     Nothing here reaches into `netcorenoc` as a library. The appliance is a **process**: it applies
     its own migrations, generates its own bootstrap password, binds its own sockets, and is spoken
@@ -189,14 +189,17 @@ class Appliance:
     asserting it.
     """
 
-    def __init__(self, db_path: str, trap_port: int, http_port: int) -> None:
-        self.db_path = db_path
+    def __init__(self, database_url: str, data_dir: Path, trap_port: int, http_port: int) -> None:
+        """``database_url`` names an empty database — the appliance creates its schema and applies
+        its migrations at boot (ADR #452); ``data_dir`` holds its spool and its log."""
+        self.database_url = database_url
+        self.data_dir = data_dir
         self.trap_port = trap_port
         self.http_port = http_port
         self.base = f"http://127.0.0.1:{http_port}"
         self.process: subprocess.Popen[str] | None = None
         self.bootstrap_password: str | None = None
-        self.log_path = Path(f"{db_path}.log")
+        self.log_path = data_dir / "appliance.log"
         self.log: list[str] = []
 
     def __enter__(self) -> Appliance:
@@ -207,11 +210,13 @@ class Appliance:
         self.stop()
 
     def start(self) -> None:
-        Path(self.db_path).unlink(missing_ok=True)
-        env = dict(os.environ)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        # `NETCORENOC_DB` is the SQLite setting an appliance now refuses to start with.
+        env = {name: value for name, value in os.environ.items() if name != "NETCORENOC_DB"}
         env.update(
             {
-                "NETCORENOC_DB": self.db_path,
+                "NETCORENOC_DATABASE_URL": self.database_url,
+                "NETCORENOC_DATA_DIR": str(self.data_dir),
                 "NETCORENOC_TRAP_HOST": "127.0.0.1",
                 "NETCORENOC_TRAP_PORT": str(self.trap_port),
                 "NETCORENOC_HTTP_HOST": "127.0.0.1",

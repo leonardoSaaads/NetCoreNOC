@@ -45,5 +45,5 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         # buckets: the chart does not shimmer as its edges slide by a few seconds each poll.
         width = span / wanted
         until = math.ceil(time.time() / width) * width
-        async with store.lock:
+        async with store.reading():
             return await store.host_series(since=until - span, until=until, buckets=wanted)

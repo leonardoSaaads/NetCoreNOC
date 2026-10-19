@@ -262,7 +262,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
         ready = True
         try:
-            async with store.lock:
+            async with store.reading():
                 applied = await store.schema_version() == store.latest_schema_version()
             ready = applied
         except Exception:  # DB unreachable => not ready, never a 500

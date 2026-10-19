@@ -37,15 +37,15 @@ class RecoveryMixin(StoreBase):
 
     async def set_user_email(self, user_id: int, email: str | None, now: float) -> None:
         await self.conn.execute(
-            "UPDATE user SET email=?, updated_at=? WHERE id=?", (email, now, user_id)
+            "UPDATE app_user SET email=?, updated_at=? WHERE id=?", (email, now, user_id)
         )
 
     async def recovery_accounts(self, login: str) -> list[dict[str, Any]]:
         """The enabled accounts a reset request names: by username, else by address."""
         cur = await self.conn.execute(
-            "SELECT id, username, email FROM user WHERE disabled=0 AND email IS NOT NULL "
+            "SELECT id, username, email FROM app_user WHERE NOT disabled AND email IS NOT NULL "
             "AND (username=? OR (lower(email)=lower(?) AND NOT EXISTS "
-            "(SELECT 1 FROM user WHERE username=?))) ORDER BY id LIMIT ?",
+            "(SELECT 1 FROM app_user WHERE username=?))) ORDER BY id LIMIT ?",
             (login, login, login, MAX_ACCOUNTS_PER_EMAIL),
         )
         return [dict(r) for r in await cur.fetchall()]
@@ -82,7 +82,7 @@ class RecoveryMixin(StoreBase):
         if row is None:
             return None
         cur = await self.conn.execute(
-            "SELECT id, username, disabled FROM user WHERE id=?", (int(row["user_id"]),)
+            "SELECT id, username, disabled FROM app_user WHERE id=?", (int(row["user_id"]),)
         )
         user = await cur.fetchone()
         return dict(user) if user is not None and not user["disabled"] else None

@@ -2940,9 +2940,9 @@ def test_the_resources_fixture_matches_what_the_sampler_actually_produces() -> N
         "disk_series",
         # v0.19.0: the database's own size, which "Storage" above does not answer — that is the
         # filesystem, and an operator reading 89 % there cannot tell how much of it is this
-        # appliance.
+        # appliance. v0.31.0 (ADR #452): the schema's tables and indexes on the PostgreSQL server;
+        # SQLite's separate journal size has no per-schema equivalent and is gone.
         "db_bytes",
-        "db_journal_bytes",
         "db_series",
     }
     assert produced == fixture, (

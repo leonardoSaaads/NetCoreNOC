@@ -132,7 +132,9 @@ def test_nothing_matching_resolves_to_nothing() -> None:
 async def _tables(store: Store, prefix: str) -> dict[str, int]:
     async with store.lock:
         cur = await store.conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ?", (f"{prefix}%",)
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = "
+            "current_schema() AND table_type = 'BASE TABLE' AND table_name LIKE ?",
+            (f"{prefix}%",),
         )
         names = [str(r[0]) for r in await cur.fetchall()]
         counts = {}

@@ -89,7 +89,8 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
         width = max(1e-6, (until - since) / buckets)
         where, args = narrowed(*self._timeline_scope(ne_ids, device_ne_id), narrow)
         cur = await self.conn.execute(
-            "SELECT a.ne_id, CAST((a.first_seen - ?) / ? AS INTEGER) AS b, COUNT(*) "  # nosec B608
+            "SELECT a.ne_id, floor((epoch(a.first_seen) - ?) / ?)::integer AS b, "  # nosec B608
+            "COUNT(*) "
             f"FROM alarm a WHERE {where} AND a.first_seen >= ? AND a.first_seen < ? "
             "GROUP BY a.ne_id, b",
             (since, width, *args, since, until),
@@ -141,14 +142,17 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
                 bound.append(class_id)
             bound.extend((since, until))
         # A new burst starts where the previous mark of the same (element, trap, kind) is more than
-        # `gap_s` earlier — `LAG` over the partition — and a running SUM numbers the bursts.
+        # `gap_s` earlier — `LAG` over the partition — and a running SUM numbers the bursts. The
+        # SUM's frame is the default RANGE one, so marks at the same instant (peers, in no fixed
+        # order) share one number: equal instants are 0 s apart and always one burst.
         # `cte` is built from literals in `_marks_cte`; every value below is a bound parameter.
         grouped = (
             cte  # nosec B608
-            + ", ordered AS (SELECT ne_id, class_id, kind, ts, CASE WHEN ts - LAG(ts) OVER "
-            "(PARTITION BY ne_id, class_id, kind ORDER BY ts) <= ? THEN 0 ELSE 1 END AS fresh "
-            "FROM marks), numbered AS (SELECT ne_id, class_id, kind, ts, SUM(fresh) OVER "
-            "(PARTITION BY ne_id, class_id, kind ORDER BY ts ROWS UNBOUNDED PRECEDING) AS g "
+            + ", ordered AS (SELECT ne_id, class_id, kind, ts, CASE WHEN epoch(ts) - "
+            "epoch(LAG(ts) OVER (PARTITION BY ne_id, class_id, kind ORDER BY ts)) <= ? "
+            "THEN 0 ELSE 1 END AS fresh FROM marks), "
+            "numbered AS (SELECT ne_id, class_id, kind, ts, SUM(fresh) OVER "
+            "(PARTITION BY ne_id, class_id, kind ORDER BY ts) AS g "
             "FROM ordered), bursts AS (SELECT ne_id, class_id, kind, COUNT(*) AS n, "
             "MIN(ts) AS first, MAX(ts) AS last FROM numbered GROUP BY ne_id, class_id, kind, g) "
         )
@@ -160,7 +164,7 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
         cur = await self.conn.execute(
             grouped  # nosec B608 - literals and placeholders only
             + "SELECT ne_id, class_id, kind, n, first, last FROM bursts "
-            "ORDER BY last DESC, ne_id, class_id LIMIT ? OFFSET ?",
+            "ORDER BY last DESC, ne_id, class_id, kind LIMIT ? OFFSET ?",
             (*bound, gap_s, limit, offset),
         )
         rows = [dict(r) for r in await cur.fetchall()]
@@ -206,7 +210,7 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
         width = max(1e-6, (until - since) / buckets)
         where, args = self._timeline_scope(ne_ids, None)
         cur = await self.conn.execute(
-            "SELECT CAST((a.first_seen - ?) / ? AS INTEGER) AS b, c.id, c.oid, "  # nosec B608
+            "SELECT floor((epoch(a.first_seen) - ?) / ?)::integer AS b, c.id, c.oid, "  # nosec B608
             "a.severity_rank, COUNT(*) FROM alarm a JOIN alarm_class c ON c.id=a.class_id "
             f"WHERE {where} AND a.first_seen >= ? AND a.first_seen < ? "
             "GROUP BY b, c.id, a.severity_rank",
@@ -252,7 +256,7 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
             return {}
         marks = ",".join("?" * len(set(ne_ids)))
         cur = await self.conn.execute(
-            "SELECT n.id, COALESCE(l.label, n.ip) FROM ne n "  # nosec B608
+            "SELECT n.id, COALESCE(l.label, host(n.ip)) FROM ne n "  # nosec B608
             + self._label_join("l", "ne", "n.id")
             + f"WHERE n.id IN ({marks})",
             tuple(sorted(set(ne_ids))),

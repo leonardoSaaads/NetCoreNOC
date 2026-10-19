@@ -465,7 +465,7 @@ async def _labelled_pairs(store: Store, engine: Engine) -> None:
                 "INSERT INTO dataset_pair (capture_run_id, alarm_a, alarm_b, situation_id, "
                 "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
                 "incumbent_linked, storm, truncated, evaluated_at, lifecycle, promoted_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 0.9, ?, 0, 0, ?, 'dataset', ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 0.9, ?, false, false, ?, 'dataset', ?)",
                 (
                     engine.capture.run_id,
                     1 + index * 2,

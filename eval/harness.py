@@ -57,6 +57,7 @@ from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
 import metrics  # noqa: E402
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 import trap_replay  # noqa: E402  (v2c encoder, shared with the replay tool)
 
 CORPUS_DIR = HERE / "corpus"
@@ -178,18 +179,14 @@ def _synthetic_latencies(event_ts: list[float]) -> list[float]:
 
 async def _read_alarms(store: Store) -> tuple[list[dict[str, Any]], bool]:
     """All alarms with their reporting NE ip, class oid, instance, predicted entity id and
-    predicted situation id. ``has_entity`` reports whether the entity model is present."""
-    cur = await store.conn.execute("PRAGMA table_info(alarm)")
-    cols = {str(r[1]) for r in await cur.fetchall()}
-    has_entity = "entity_id" in cols
-    entity_col = "a.entity_id" if has_entity else "a.device_id"
+    predicted situation id. ``has_entity`` is True: every schema since 0003 has the entity model."""
     cur = await store.conn.execute(
-        f"SELECT a.id, d.ip AS device_ip, c.oid AS class_oid, a.instance, "
-        f"{entity_col} AS entity, sa.situation_id "  # nosec B608 - entity_col is a fixed literal
-        "FROM alarm a JOIN device d ON d.id=a.device_id JOIN alarm_class c ON c.id=a.class_id "
+        "SELECT a.id, d.ip AS device_ip, c.oid AS class_oid, a.instance, "
+        "a.entity_id AS entity, sa.situation_id "
+        "FROM alarm a JOIN ne d ON d.id=a.ne_id JOIN alarm_class c ON c.id=a.class_id "
         "LEFT JOIN situation_alarm sa ON sa.alarm_id=a.id ORDER BY a.id, sa.situation_id"
     )
-    return [dict(r) for r in await cur.fetchall()], has_entity
+    return [dict(r) for r in await cur.fetchall()], True
 
 
 async def _situation_roots(store: Store) -> dict[int, int | None]:
@@ -228,7 +225,13 @@ async def run_scenario(path: Path, promote: bool = True) -> dict[str, Any]:
     name = scenario["name"]
     events = sorted(scenario["events"], key=lambda e: float(e["delay"]))
 
-    store = Store(":memory:")
+    with pgtemp.database() as url:  # a fresh database per scenario, as `:memory:` was (ADR #452)
+        return await _run_on(Store(url, readers=1), name, events, promote)
+
+
+async def _run_on(
+    store: Store, name: str, events: list[dict[str, Any]], promote: bool
+) -> dict[str, Any]:
     await store.open()
     engine = Engine(store, asyncio.Queue())
     await engine.start()

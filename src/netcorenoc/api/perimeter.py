@@ -201,7 +201,7 @@ class Perimeter:
     async def write_txn(self) -> AsyncIterator[None]:
         """**THE** write boundary: one mutation, one transaction, one audit row.
 
-        `Store` holds a single `aiosqlite` connection shared by the engine task and every API
+        `Store` has a single writer connection shared by the engine task and every API
         request, so a `commit()` from *any* caller commits everything pending on it, whoever issued
         it. v0.7.0's `main.py` rolled back on its batch path and `api.py` rolled back nowhere: a
         handler that mutated and then raised left the statement pending, and the **next commit from
@@ -228,20 +228,25 @@ class Perimeter:
             await self._store.commit()
 
     async def resolve_identity(self, request: Request) -> auth.Principal | None:
+        """Who is asking — and the session's or token's last use — **without `store.lock`**.
+
+        Every request passes here, so under SQLite every request queued behind the engine's batch
+        before its route ran at all. The only rows touched are the session's and the token's, which
+        nothing in the process holds in memory, so they are written on a pooled connection
+        (`store.side_write`, ADR #452) — and at most every `auth.TOUCH_EVERY_S`, so most requests
+        read one row and write nothing.
+        """
         now = time.time()
         header = request.headers.get("authorization", "")
         bearer = header.removeprefix("Bearer ").strip() if header.startswith("Bearer ") else ""
-        async with self._store.lock:
+        cookie = request.cookies.get(auth.COOKIE_NAME)
+        if not bearer and not cookie:
+            return None
+        async with self._store.side_write():
             if bearer:
-                principal = await auth.resolve_bearer(self._store, bearer, now)
-                await self._store.commit()
-                return principal
-            cookie = request.cookies.get(auth.COOKIE_NAME)
-            if cookie:
-                principal = await auth.resolve_session(self._store, cookie, now)
-                await self._store.commit()
-                return principal
-        return None
+                return await auth.resolve_bearer(self._store, bearer, now)
+            assert cookie is not None
+            return await auth.resolve_session(self._store, cookie, now)
 
     def csrf_ok(self, request: Request) -> bool:
         origin = request.headers.get("origin") or request.headers.get("referer")
@@ -292,7 +297,7 @@ class Perimeter:
         # (DECISIONS #53). This is the ONLY authorization decision in the file; `role_allows` is
         # deliberately not called here any more, because it answers the ceiling question rather
         # than the "does this principal hold it right now?" question.
-        async with self._store.lock:
+        async with self._store.reading():
             await self.governance.load()
         await self.flush_governance_fallbacks(request)
         capabilities = rbac.resolve_capabilities(
@@ -331,7 +336,7 @@ class Perimeter:
             return shaping.UNRESTRICTED
         if self.governance.scope.malformed:
             return shaping.DENY_ALL  # fail closed; the admin who must fix it is never scoped
-        async with self._store.lock:
+        async with self._store.reading():
             nes = await self._store.list_ne_for_scope()
         return shaping.visible_nes(principal.role, principal.ref, self.governance.scope, nes)
 
@@ -348,7 +353,7 @@ class Perimeter:
         """
         if scope.unrestricted:
             return True
-        async with self._store.lock:
+        async with self._store.reading():
             members = await self._store.situation_member_ne(sid)
         return any(scope.allows_ne(ne_id) for ne_id in members.values())
 
@@ -374,7 +379,7 @@ class Perimeter:
         """
         if scope.unrestricted:
             return frozenset()
-        async with self._store.lock:
+        async with self._store.reading():
             members = await self._store.situation_member_ne(sid)
         return frozenset(
             alarm_id for alarm_id, ne_id in members.items() if not scope.allows_ne(ne_id)

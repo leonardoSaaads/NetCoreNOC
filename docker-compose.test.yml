@@ -1,0 +1,39 @@
+# A PostgreSQL for the test suite, `make eval` and the benchmarks — never for production:
+#
+#     docker compose -f docker-compose.test.yml up -d
+#     export NETCORENOC_TEST_DATABASE_URL=postgresql://netcorenoc:netcorenoc@127.0.0.1:55432/postgres
+#     make qa
+#
+# Throwaway by design: its data is on a tmpfs, it listens on loopback only, and durability is off
+# (`fsync`, `synchronous_commit`, `full_page_writes`) because a test database that survives a power
+# cut is time spent for nothing. `tools/pgtemp.py` makes one database per test from a migrated
+# template on it, and drops them. Without this file, `pgtemp` starts a private cluster from the
+# local PostgreSQL binaries instead (`pg_ctl` on PATH or under /usr/lib/postgresql/*/bin).
+
+services:
+  postgres-test:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_USER: netcorenoc
+      POSTGRES_DB: postgres
+      # A fixed credential for a loopback-only, tmpfs-backed test server; nothing it holds is real.
+      POSTGRES_PASSWORD: netcorenoc  # nosec - test fixture
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - max_connections=200
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "netcorenoc"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

@@ -6206,3 +6206,49 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: the brief set one minute and recommended two; a single threshold could not say "late"
   apart from "failed". The queue chart it replaces sampled one instant every 30 s and drew a storm
   that came and went between two samples as zero.
+
+## 452. PostgreSQL is the system of record; SQLite is an import source (unreleased)
+
+- **Decision**: the store runs on **PostgreSQL 15 or newer** through `asyncpg`, which replaces
+  `aiosqlite` — the runtime dependencies stay five (**principle 5 amended**: the driver changed, the
+  count did not). One schema per appliance (`NETCORENOC_DB_SCHEMA`, default `netcorenoc`), whose
+  privileges are revoked from PUBLIC; one writer connection under `store.lock`, as before; and a
+  pool of read-only connections (`NETCORENOC_DB_READERS`, default 4) that console reads use through
+  `store.reading()` without the lock, each in its own `REPEATABLE READ READ ONLY` snapshot.
+  **Principle 6 amended**: one runtime identity is one appliance, its processes, and one database
+  schema it holds an advisory lock on — a second appliance against the same schema is refused.
+- **Schema `0031_postgresql.sql`, designed rather than transcribed**: instants are `timestamptz`
+  (the driver maps them to the epoch seconds the code computes with; `audit_log.ts` alone stays
+  `double precision`, because the hash chain covers the float's exact digits); flags `boolean`;
+  addresses `inet`; varbinds `jsonb` with a GIN index; scores `double precision`; blobs `bytea`;
+  closed vocabularies `text` with a CHECK; every `text` column `COLLATE "C"` (SQLite's byte order on
+  any server). **Redundancy removed**: `device`, a row-for-row copy of `ne`, and the three
+  `device_id` columns; two indexes that repeated a unique index's leading column; 24 trigger bodies
+  that became one function. Hot rows get a fillfactor and an aggressive autovacuum (`alarm`, `edge`,
+  `session`, `meta`).
+- **Durability is the spool's, not an fsync per batch**: an engine batch commits with
+  `synchronous_commit = off`; its traps stay in the spool until `store.checkpoint()` — a synchronous
+  commit, which flushes the WAL through every earlier commit — says they are durable (#450). What
+  SQLite's `synchronous=NORMAL` and the WAL checkpoint gave, said in PostgreSQL's terms. Every other
+  write commits synchronously.
+- **Behaviour PostgreSQL changes and the code now states**: an error aborts the whole transaction,
+  so the three capture paths that degrade instead of failing run in a `SAVEPOINT`
+  (`store.savepoint()`); a lost connection is re-established on the batch's rollback and the batch
+  retried (`STORAGE_ERRORS`); every list that is returned or `LIMIT`ed has a complete `ORDER BY`.
+- **Migrations**: forward-only SQL files, each applied in its own transaction under an advisory lock
+  and recorded with a checksum in `schema_migrations`; numbering continues from SQLite's (31). The
+  nineteen schema probes are gone: a PostgreSQL schema is at the release's version before the store
+  runs.
+- **From SQLite**: `python -m netcorenoc db import-sqlite <file>` copies a v0.30.0 database into an
+  empty schema in one transaction with `COPY`, converting each value to its column's type, verifies
+  every table's row count and the audit chain before committing, and audits itself (`db.import`).
+  `NETCORENOC_DB` set at start is refused with that instruction, never silently ignored.
+- **Deployment**: `docker compose up` brings a hardened PostgreSQL on an internal network with a
+  password generated on first start into a volume only the two containers mount — nothing to type,
+  nothing in `.env`. `docker-compose.supabase.yml` runs the appliance on Supabase (session pooler)
+  or any managed PostgreSQL; `docker-compose.test.yml` and `tools/pgtemp.py` give the suite, `make
+  eval` and the benchmarks throwaway databases.
+- **Reason**: the assessment that preceded this (`docs/plans/pipeline-and-storage-assessment.md`
+  §3.4): one connection and one lock shared by the engine and the console made every console read
+  wait for the engine's batch, and SQLite offers no replication, no second process writing, and no
+  time-series tooling. Measured before and after in `docs/plans/postgresql.md`.

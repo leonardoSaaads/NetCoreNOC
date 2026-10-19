@@ -128,6 +128,9 @@ async def test_the_sampler_differences_the_receiver_counter_and_never_invents_a_
     tracker = DeadlineTracker()
 
     class Sampler:
+        # Since v0.31.0 the database's size is asked of the server before each reading (ADR #452).
+        async def measure_database(self) -> None: ...
+
         def sample(self) -> None: ...
 
         def reading(self) -> dict[str, Any]:

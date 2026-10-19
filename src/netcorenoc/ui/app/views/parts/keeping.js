@@ -44,7 +44,7 @@ function charts(res) {
     ["CPU", "cpu_pct", "%", res && res.cpu_count ? `${res.cpu_count} cores` : "this host"],
     ["Memory", "mem_pct", "%", res && res.mem_source === "cgroup" ? "container limit" : "host"],
     ["Storage", "disk_pct", "%", "database filesystem"],
-    ["Database", "db_mb", "MB", "file and journal"],
+    ["Database", "db_mb", "MB", "tables and indexes"],
   ];
 }
 

@@ -84,9 +84,9 @@ class ScoringConfigMixin(StoreBase):
 
         **v0.11.0: it also clears `model_version_id`, in the same statement.** `0013`'s `CHECK`
         admits exactly one pointer, so an `ON CONFLICT` clause that updated `config_id` and left the
-        other column alone would raise `IntegrityError` the first time an admin retuned the additive
-        scorer while a model version was active — half-way through a write, on a path that has
-        nothing to do with promotion. The `CHECK` is the second line of defence; writing both
+        other column alone would raise a `CHECK` violation the first time an admin retuned the
+        additive scorer while a model version was active — half-way through a write, on a path that
+        has nothing to do with promotion. The `CHECK` is the second line of defence; writing both
         columns every time is the first.
         """
         cur = await self.conn.execute("SELECT 1 FROM scorer_config WHERE id=?", (config_id,))

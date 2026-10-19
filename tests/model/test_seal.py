@@ -16,8 +16,8 @@ asserted directly and separately.
 from __future__ import annotations
 
 import ast
-import sqlite3
 
+import asyncpg
 import pytest
 
 from netcorenoc.engine.dataset import seal
@@ -88,13 +88,18 @@ async def test_a_second_construction_is_refused_and_not_re_derived(store: Store)
     """**A seal that can be rebuilt is a seal that can be rebuilt AFTER seeing a result.**
 
     The refusal is the schema's, so it holds against a later method and against anyone with a
-    SQLite prompt. The second call here uses a *different, larger* corpus, so a silent re-derivation
+    `psql` prompt. The second call here uses a *different, larger* corpus, so a silent re-derivation
     would be visible as a changed membership rather than as a no-op.
+
+    The first seal is committed, as the maintenance pass commits it: in PostgreSQL the refused
+    INSERT aborts its whole transaction (ADR #452), so the refusal is followed by a rollback.
     """
     first = await _sealed(store)
+    await store.commit()
     bigger = {200 + i: TS + 100 + i for i in range(30)}
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(asyncpg.exceptions.UniqueViolationError):
         await _sealed(store, bigger)
+    await store.rollback()
 
     after = await seal.summary(store)
     assert after.digest == first.digest, "the seal's membership moved"
@@ -267,12 +272,20 @@ async def test_ratifying_is_not_spending(store: Store) -> None:
 
 
 async def test_the_access_log_is_append_only(store: Store) -> None:
-    """A release that could delete its own query count could report 0 having spent the seal."""
+    """A release that could delete its own query count could report 0 having spent the seal.
+
+    Committed first, so each statement has a row to refuse; each refusal aborts its transaction in
+    PostgreSQL, so it is rolled back before the next statement (ADR #452).
+    """
     await _sealed(store)
     await seal.spend(store, release="v0.11.0", plan_sha256=PLAN, purpose="probe", now=TS + 1)
-    for sql in ("UPDATE holdout_access SET granted = 0", "DELETE FROM holdout_access"):
-        with pytest.raises(sqlite3.IntegrityError):
+    await store.commit()
+    for sql in ("UPDATE holdout_access SET granted = false", "DELETE FROM holdout_access"):
+        with pytest.raises(
+            asyncpg.exceptions.RestrictViolationError, match="holdout_access is append-only"
+        ):
             await store.conn.execute(sql)
+        await store.rollback()
 
 
 # --- the query count ----------------------------------------------------------------------------

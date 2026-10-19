@@ -185,7 +185,8 @@ class GovernanceMixin(StoreBase):
         marks = ",".join("?" * len(situation_ids))
         cur = await self.conn.execute(
             "SELECT sa.situation_id, a.ne_id FROM situation_alarm sa "
-            f"JOIN alarm a ON a.id=sa.alarm_id WHERE sa.situation_id IN ({marks})",  # nosec B608 - placeholders only
+            f"JOIN alarm a ON a.id=sa.alarm_id WHERE sa.situation_id IN ({marks}) "  # nosec B608 - placeholders only
+            "ORDER BY sa.situation_id, sa.alarm_id",
             tuple(situation_ids),
         )
         out: dict[int, list[int | None]] = {}

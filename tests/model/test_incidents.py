@@ -348,9 +348,13 @@ async def test_a_real_merge_chain_resolves_through_the_store(store: Store) -> No
     """
     async with store.lock:
         sids = [await store.create_situation(1_000.0 + i, None) for i in range(4)]
+        # What `merge_situations` writes since v0.16.0 (DECISIONS #253). The fixtures here once
+        # wrote the retired `status = 'merged'`, which SQLite's unchecked column took and the
+        # PostgreSQL schema's `situation_status_check` refuses (ADR #452).
         for source, destination in pairwise(sids):
             await store.conn.execute(
-                "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?",
+                "UPDATE situation SET merged_into = ?, status = 'resolved', "
+                "resolution = 'merged' WHERE id = ?",
                 (destination, source),
             )
         await store.commit()
@@ -608,7 +612,8 @@ async def test_agreement_bags_follow_a_real_merge_chain(store: Store) -> None:
         c = await store.create_situation(1_002.0, None)
         for source, destination in ((a, b), (b, c)):
             await store.conn.execute(
-                "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?",
+                "UPDATE situation SET merged_into = ?, status = 'resolved', "
+                "resolution = 'merged' WHERE id = ?",
                 (destination, source),
             )
         for sid in (a, b, c):
@@ -645,7 +650,9 @@ async def test_the_seal_ordering_uses_the_earliest_label_and_not_the_latest(stor
         early = await store.create_situation(1_000.0, None)
         late = await store.create_situation(1_001.0, None)
         await store.conn.execute(
-            "UPDATE situation SET merged_into = ?, status = 'merged' WHERE id = ?", (late, early)
+            "UPDATE situation SET merged_into = ?, status = 'resolved', resolution = 'merged' "
+            "WHERE id = ?",
+            (late, early),
         )
         for sid, at in ((early, 1_100.0), (late, 5_100.0)):
             await store.conn.execute(

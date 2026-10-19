@@ -43,13 +43,12 @@ class MaintenanceCompileMixin(StoreBase):
         to reach the structure the check reads — rather than for the check to remember to exclude
         it.
         """
-        if not self._has_maintenance:
-            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
-            return []
+        # Ordered by id: when two windows cover one trap, the index reports the first one, so the
+        # order is part of the answer (`engine/mw/index.py::decide`).
         cur = await self.conn.execute(
             "SELECT id, name, organization_id, starts_at, ends_at, patch_s, ledger_enabled "
             "FROM maintenance_window WHERE status IN ('scheduled', 'active') "
-            "AND (starts_at - patch_s) <= ? AND (ends_at + patch_s) >= ?",
+            "AND (starts_at - secs(patch_s)) <= ? AND (ends_at + secs(patch_s)) >= ? ORDER BY id",
             (now + INDEX_LOOKAHEAD_S, now - INDEX_LOOKBEHIND_S),
         )
         windows = [dict(row) for row in await cur.fetchall()]
@@ -59,7 +58,7 @@ class MaintenanceCompileMixin(StoreBase):
         marks = ",".join("?" * len(ids))
         cur = await self.conn.execute(
             "SELECT window_id, ne_id FROM maintenance_window_target "  # nosec B608
-            f"WHERE window_id IN ({marks})",  # nosec B608 - placeholders only
+            f"WHERE window_id IN ({marks}) ORDER BY window_id, ne_id",  # nosec B608 - placeholders
             tuple(ids),
         )
         targets: dict[int, list[int]] = {}
@@ -68,7 +67,7 @@ class MaintenanceCompileMixin(StoreBase):
         cur = await self.conn.execute(
             "SELECT window_id, ne_id, kind, severity_rank, oid_root, match_on, "  # nosec B608
             "slot_starts_at, slot_ends_at FROM maintenance_window_rule "  # nosec B608
-            f"WHERE window_id IN ({marks})",  # nosec B608 - placeholders only
+            f"WHERE window_id IN ({marks}) ORDER BY window_id, id",  # nosec B608 - placeholders
             tuple(ids),
         )
         rules: dict[int, list[dict[str, Any]]] = {}

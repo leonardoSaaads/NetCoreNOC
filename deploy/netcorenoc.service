@@ -4,27 +4,35 @@
 # host, then install:
 #
 #   sudo cp deploy/netcorenoc.service /etc/systemd/system/netcorenoc.service
-#   sudo mkdir -p /var/lib/netcorenoc            # the DB directory (the only writable path)
+#   sudo install -d -m 0750 /etc/netcorenoc
+#   sudo sh -c 'umask 077; cat > /etc/netcorenoc/db_password'   # type it, Enter, Ctrl-D
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now netcorenoc
 #
-# It assumes NetCoreNOC is installed into a venv at /opt/netcorenoc/.venv (adjust ExecStart).
+# It assumes NetCoreNOC is installed into a venv at /opt/netcorenoc/.venv (adjust ExecStart) and a
+# PostgreSQL 15 or later with a `netcorenoc` role owning a `netcorenoc` database (docs/install.md).
+# The appliance creates and migrates its schema itself. The password is never in this file nor in
+# the environment: systemd hands it over as a credential only the service's user can read (%d).
 # Configuration is via environment; drop-in overrides go in
 # /etc/systemd/system/netcorenoc.service.d/*.conf or an EnvironmentFile (chmod 600, root-owned).
 
 [Unit]
 Description=NetCoreNOC — zero-configuration SNMP trap correlator
 Documentation=https://github.com/leonardoSaaads/NetCoreNOC
-After=network-online.target
+# A local PostgreSQL is started first when there is one; a remote one needs nothing here.
+After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=exec
 # Run as an unprivileged, system-allocated user with no home and no shell. DynamicUser gives a
-# fresh uid/gid per start and, with StateDirectory, an owned /var/lib/netcorenoc.
+# fresh uid/gid per start and, with StateDirectory, an owned /var/lib/netcorenoc (the trap spool).
 DynamicUser=true
 StateDirectory=netcorenoc
-Environment=NETCORENOC_DB=/var/lib/netcorenoc/netcorenoc.db
+Environment=NETCORENOC_DATA_DIR=/var/lib/netcorenoc
+Environment=NETCORENOC_DATABASE_URL=postgresql://netcorenoc@localhost:5432/netcorenoc?sslmode=prefer
+LoadCredential=db_password:/etc/netcorenoc/db_password
+Environment=NETCORENOC_DATABASE_PASSWORD_FILE=%d/db_password
 # Example config (uncomment/edit, or use an EnvironmentFile for anything sensitive):
 # Environment=NETCORENOC_ALLOWLIST=10.20.0.0/16
 # Environment=NETCORENOC_TLS_CERT=/etc/netcorenoc/tls.crt
@@ -44,7 +52,7 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 # --- Filesystem -----------------------------------------------------------------------------
 ProtectSystem=strict
 ProtectHome=true
-# The DB directory is the ONLY writable path (StateDirectory already grants this; be explicit):
+# The spool directory is the ONLY writable path (StateDirectory already grants this; be explicit):
 ReadWritePaths=/var/lib/netcorenoc
 PrivateTmp=true
 

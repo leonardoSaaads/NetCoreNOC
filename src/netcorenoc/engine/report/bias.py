@@ -113,12 +113,12 @@ async def collect(store: Store) -> dict[str, Any]:
     out["orphaned_pairs"] = await store.orphaned_promoted_pairs()
 
     out["truncated_pairs"] = await _scalar(
-        store, "SELECT COUNT(*) FROM dataset_pair WHERE truncated=1"
+        store, "SELECT COUNT(*) FROM dataset_pair WHERE truncated"
     )
     out["incumbent_linked"] = await _scalar(
-        store, "SELECT COUNT(*) FROM dataset_pair WHERE incumbent_linked=1"
+        store, "SELECT COUNT(*) FROM dataset_pair WHERE incumbent_linked"
     )
-    out["storm_pairs"] = await _scalar(store, "SELECT COUNT(*) FROM dataset_pair WHERE storm=1")
+    out["storm_pairs"] = await _scalar(store, "SELECT COUNT(*) FROM dataset_pair WHERE storm")
 
     # -- what the labels ASSERT (v0.9.1; reconciled in v0.9.2) ------------------------------
     # Verdicts, informativeness, the evidence boundary and the acquisition channels, all of
@@ -198,11 +198,11 @@ async def collect(store: Store) -> dict[str, Any]:
 
     # -- scope ------------------------------------------------------------------------------
     out["labels_under_restricting_scope"] = await _scalar(
-        store, "SELECT COUNT(*) FROM feedback WHERE scope_restricted = 1"
+        store, "SELECT COUNT(*) FROM feedback WHERE scope_restricted"
     )
     redacted = await _rows(
         store,
-        "SELECT scope_redacted_members FROM feedback WHERE scope_restricted = 1 "
+        "SELECT scope_redacted_members FROM feedback WHERE scope_restricted "
         "AND scope_redacted_members IS NOT NULL ORDER BY id",
     )
     out["redacted_members"] = distribution([int(r["scope_redacted_members"]) for r in redacted])
@@ -210,7 +210,8 @@ async def collect(store: Store) -> dict[str, Any]:
     # -- label latency -----------------------------------------------------------------------
     latencies = await _rows(
         store,
-        "SELECT CAST(created_at - situation_opened_at AS INTEGER) AS latency FROM feedback "
+        "SELECT trunc(epoch(created_at) - epoch(situation_opened_at))::integer AS latency "
+        "FROM feedback "
         "WHERE situation_opened_at IS NOT NULL ORDER BY id",
     )
     out["latency_s"] = distribution([int(r["latency"]) for r in latencies])
@@ -258,7 +259,7 @@ async def collect(store: Store) -> dict[str, Any]:
     # gestures never happened. These two lines are the population the census reads.
     out["gestures"] = await store.event_counts_by_channel()
     out["gestures_with_training_rows"] = await _scalar(
-        store, "SELECT COUNT(*) FROM situation_event WHERE produces_training_rows = 1"
+        store, "SELECT COUNT(*) FROM situation_event WHERE produces_training_rows"
     )
 
     # -- server/client membership divergence -------------------------------------------------
@@ -271,7 +272,7 @@ async def collect(store: Store) -> dict[str, Any]:
         "AND member_digest IS NOT NULL AND client_member_digest <> member_digest",
     )
     out["client_truncated"] = await _scalar(
-        store, "SELECT COUNT(*) FROM feedback WHERE client_truncated = 1"
+        store, "SELECT COUNT(*) FROM feedback WHERE client_truncated"
     )
 
     # -- leakage exposure ---------------------------------------------------------------------

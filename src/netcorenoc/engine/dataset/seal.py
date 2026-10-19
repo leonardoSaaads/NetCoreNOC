@@ -164,12 +164,12 @@ async def construct(
 ) -> SealSummary:
     """Cut the seal. **Once. A second call is refused, not silently re-derived.**
 
-    The refusal is the schema's, so it holds against a later method and against anyone with a SQLite
+    The refusal is the schema's, so it holds against a later method and against anyone with a `psql`
     prompt. This does not check-then-insert: it inserts, and the database says no. A check-then-act
     would be a race and, worse, a rule a later caller could forget.
 
-    Raises whatever SQLite raises on the second attempt; the caller — the maintenance pass — is
-    expected to treat that as *"already sealed"* rather than as an error, because it is.
+    Raises the database's unique violation on a second attempt; the caller — the maintenance pass —
+    rolls back and treats that as *"already sealed"* rather than as an error, because it is.
     """
     ordered = plan_ordered_incidents(first_label_at)
     sealed = sealed_third(ordered)

@@ -246,7 +246,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """One window in full, with its targets and its rules — **if the caller may see it.**"""
         window = await access.visible_or_404(wid, principal, request, "maintenance.window.read")
         now = time.time()
-        async with store.lock:
+        async with store.reading():
             await governance.load()
         may_read_ledger = "mw.ledger" in rbac.resolve_capabilities(
             principal.role, principal.ref, governance.capability
@@ -285,7 +285,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         targets = await access.permitted_targets(body.targets, principal)
         now = time.time()
         if window["status"] == "active":
-            async with store.lock:
+            async with store.reading():
                 current_targets = [t["ne_id"] for t in await store.window_targets(wid)]
                 current_rules = await store.window_rules(wid)
             frozen = frozen_while_active(

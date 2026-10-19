@@ -89,7 +89,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     @route.get("/api/snmp", dependencies=guarded)
     async def get_snmp() -> dict[str, Any]:
         """What the receiver accepts, the protocols on offer, and what it refused since start."""
-        async with store.lock:
+        async with store.reading():
             policy = await _current()
         return {
             **view(policy),
@@ -114,7 +114,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             raise HTTPException(
                 status_code=400, detail=f"a community is 1 to {limit} printable characters"
             )
-        async with store.lock:
+        async with store.reading():
             current = await _current()
 
         def hashed() -> dict[bytes, snmpconf.UsmUser]:

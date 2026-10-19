@@ -80,7 +80,11 @@ class DatasetMixin(StoreBase):
         re-fire, so it holds the latest state and cannot answer what the decision saw. Measured at
         0.7142 activations per trap; a per-trap row would add 40% write volume for rows no pair
         could ever reference.
+
+        A caller's ``device_id`` is dropped: the observation's device is its element, ``ne_id``,
+        and the column went with the `device` table (ADR #452).
         """
+        fields.pop("device_id", None)
         columns = ", ".join(fields)
         marks = ", ".join("?" * len(fields))
         cur = await self.conn.execute(
@@ -101,24 +105,14 @@ class DatasetMixin(StoreBase):
         """
         if not rows:
             return
-        if self._has_pair_features:
-            # v0.26.0 (`0026`): the seventeenth value is the v2 feature vector as captured.
-            await self.conn.executemany(
-                "INSERT INTO dataset_pair ("
-                "capture_run_id, alarm_a, alarm_b, observation_a, observation_b, situation_id, "
-                "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
-                "incumbent_linked, storm, truncated, evaluated_at, features"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [row if len(row) == 17 else (*row, None) for row in rows],
-            )
-            return
+        # v0.26.0 (`0026`): the seventeenth value is the v2 feature vector as captured.
         await self.conn.executemany(
             "INSERT INTO dataset_pair ("
             "capture_run_id, alarm_a, alarm_b, observation_a, observation_b, situation_id, "
             "delta_t_s, class_affinity, entity_affinity, a_epoch, e_epoch, score, "
-            "incumbent_linked, storm, truncated, evaluated_at"
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [row[:16] for row in rows],
+            "incumbent_linked, storm, truncated, evaluated_at, features"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [row if len(row) == 17 else (*row, None) for row in rows],
         )
 
     # -- promotion on label --------------------------------------------------------------------
@@ -263,14 +257,10 @@ class DatasetMixin(StoreBase):
         # it justifies, exactly as `feedback` does: a crash mid-sweep leaves features without their
         # gesture, which the report already counts, rather than a gesture whose evidence is gone.
         # `situation_event_member` follows by `ON DELETE CASCADE`.
-        # Guarded by the schema probe for `prune`'s reason: this runs on the maintenance loop, and
-        # `tests/store/test_upgrade.py` drives that loop against a schema frozen before this
-        # release.
-        if self._has_lifecycle:
-            cur = await self.conn.execute(
-                "DELETE FROM situation_event WHERE at < ? RETURNING id", (cutoff,)
-            )
-            counts["events"] = len(list(await cur.fetchall()))
+        cur = await self.conn.execute(
+            "DELETE FROM situation_event WHERE at < ? RETURNING id", (cutoff,)
+        )
+        counts["events"] = len(list(await cur.fetchall()))
         return counts
 
     async def orphaned_promoted_pairs(self) -> int:
@@ -303,7 +293,7 @@ class DatasetMixin(StoreBase):
         """
         cur = await self.conn.execute(
             "SELECT COUNT(*) FROM "
-            "(SELECT id FROM situation UNION SELECT situation_id FROM feedback)"
+            "(SELECT id FROM situation UNION SELECT situation_id FROM feedback) AS evidenced"
         )
         row = await cur.fetchone()
         assert row is not None
@@ -353,7 +343,8 @@ class DatasetMixin(StoreBase):
         out: dict[str, Any] = {}
         for table in ("dataset_pair", "dataset_observation"):
             cur = await self.conn.execute(
-                f"SELECT lifecycle, COUNT(*) FROM {table} GROUP BY lifecycle"  # nosec B608
+                f"SELECT lifecycle, COUNT(*) FROM {table} GROUP BY lifecycle "  # nosec B608
+                "ORDER BY lifecycle"
             )
             for r in await cur.fetchall():
                 out[f"{table}.{r[0]}"] = int(r[1])

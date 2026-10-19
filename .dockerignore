@@ -11,6 +11,7 @@
 .env.*
 !.env.example
 tls/
+secrets/
 *.pem
 *.key
 *.crt

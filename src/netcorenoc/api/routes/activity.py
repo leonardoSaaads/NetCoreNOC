@@ -88,7 +88,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         scope = await scope_for(principal)
         wanted = min(max(int(buckets), 2), MAX_BUCKETS)
         since, until = _window(range_s, wanted)
-        async with store.lock:
+        async with store.reading():
             return await store.activity_severity(
                 since=since,
                 until=until,
@@ -112,7 +112,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         scope = await scope_for(principal)
         wanted = min(max(int(buckets), 2), MAX_BUCKETS)
         since, until = _window(range_s, wanted)
-        async with store.lock:
+        async with store.reading():
             lanes = await store.activity_lanes(
                 since=since,
                 until=until,
@@ -141,7 +141,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         narrow = _narrow(organization_id, oid, sid)
         scope = await scope_for(principal)
         since, until = _window(range_s)
-        async with store.lock:
+        async with store.reading():
             groups = await store.activity_groups(
                 since=since,
                 until=until,
@@ -169,7 +169,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         scope = await scope_for(principal)
         wanted = min(max(int(buckets), 2), MAX_BUCKETS)
         since, until = _window(range_s, wanted)
-        async with store.lock:
+        async with store.reading():
             return await store.activity_active(
                 since=since,
                 until=until,
@@ -195,7 +195,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         scope = await scope_for(principal)
         wanted = min(max(int(buckets), 2), MAX_BUCKETS)
         since, until = _window(range_s, wanted)
-        async with store.lock:
+        async with store.reading():
             top = await store.activity_top(
                 since=since,
                 until=until,

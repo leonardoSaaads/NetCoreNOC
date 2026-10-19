@@ -171,7 +171,8 @@ async def _corpus(store: Any) -> CorpusStats:
     """The census, recomputed only when a judgement has changed the corpus since the last one.
 
     The three calls are `Shadow.train`'s own, in its order — this module counts nothing itself,
-    so the console and the challenger cannot apply different rules. The caller holds `store.lock`.
+    so the console and the challenger cannot apply different rules. The caller holds `store.lock`
+    or reads inside `store.reading()`.
     """
     marker = await _corpus_marker(store)
     cached = _CENSUS["stats"]
@@ -200,7 +201,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         statement about arithmetic and about counts of the operator's own judgements. Nothing here
         names a network element, so there is nothing for visibility scoping to scope.
         """
-        async with store.lock:
+        async with store.reading():
             runs = await store.challenger_runs(MAX_RUNS)
             versions = await store.list_model_versions(MAX_RUNS)
             raw_floors = await store.get_meta(FLOORS_META_KEY)

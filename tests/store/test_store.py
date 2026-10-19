@@ -2,18 +2,58 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import asyncpg
+import pytest
+
 from netcorenoc.ingest.events import QuarantinedPacket
 from netcorenoc.store import EdgeRow, LinkRow, Store
 
 import util
 
 
-async def test_migrations_are_idempotent(tmp_path: Path) -> None:
-    path = str(tmp_path / "m.db")
+async def test_migrations_are_idempotent(db_url: str) -> None:
+    """Opening twice applies nothing the second time and records each script once (ADR #452)."""
     for _ in range(2):
-        s = Store(path)
+        s = Store(db_url)
         await s.open()
+        cur = await s.conn.execute("SELECT version, name, checksum FROM schema_migrations")
+        rows = await cur.fetchall()
+        assert [(r["version"], r["name"]) for r in rows] == [(31, "0031_postgresql.sql")]
+        assert len(rows[0]["checksum"]) == 64
+        assert s.integrity_warnings == []
         await s.close()
+
+
+async def test_a_migration_edited_after_it_was_applied_is_reported(db_url: str) -> None:
+    """The checksum is how an operator learns the schema may not be what the release expects."""
+    s = Store(db_url)
+    await s.open()
+    await s.conn.execute("UPDATE schema_migrations SET checksum = 'edited' WHERE version = 31")
+    await s.commit()
+    await s.close()
+    again = Store(db_url)
+    await again.open()
+    assert any("changed after it was applied" in w for w in again.integrity_warnings)
+    await again.close()
+
+
+async def test_a_second_appliance_on_the_same_schema_is_refused(db_url: str) -> None:
+    """One engine per history: the instance lock refuses the second at start (ADR #452)."""
+    first = Store(db_url)
+    await first.open()
+    try:
+        second = Store(db_url)
+        try:
+            await second.open()
+        except RuntimeError as exc:
+            assert "already using schema" in str(exc)
+        else:
+            raise AssertionError("a second Store opened the schema the first one holds")
+        side = Store(db_url, exclusive=False)  # the CLI's tools run beside the appliance
+        await side.open()
+        await side.close()
+    finally:
+        await first.close()
 
 
 async def test_ingest_dedups_by_fingerprint(store: Store) -> None:
@@ -59,8 +99,11 @@ async def test_class_vendor_and_name_are_derived_from_the_oid_not_stored_beside_
     assert by_oid["1.3.6.1.6.3.1.1.5.3"]["name"] == "linkDown"
     assert by_oid["1.3.6.1.6.3.1.1.5.3"]["vendor"] is None  # not an enterprise arc
 
-    cur = await store.conn.execute("PRAGMA table_info(alarm_class)")
-    columns = {str(r[1]) for r in await cur.fetchall()}
+    cur = await store.conn.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = 'alarm_class'"
+    )
+    columns = {str(r[0]) for r in await cur.fetchall()}
     assert not columns & {"name", "vendor"}, (
         f"alarm_class still stores {sorted(columns & {'name', 'vendor'})} — both are pure "
         "functions of the `oid` in the same row, which is what `0008`'s first rule forbids."
@@ -349,3 +392,69 @@ async def test_the_active_member_predicate_agrees_with_all_cleared(store: Store)
         )
     # Both answers are exercised, or the agreement above is agreement about one case.
     assert by_fragment == {active, mixed}
+
+
+# --- PostgreSQL's aborted transaction, contained (ADR #452) -----------------------------------
+
+_DUPLICATE_ORG = (
+    "INSERT INTO organization (name, slug, created_at) "
+    "VALUES ('Default organization', ?, to_timestamp(0))"
+)
+
+
+async def test_a_savepoint_undoes_only_the_block_that_failed(store: Store) -> None:
+    """What SQLite did for any failed statement, PostgreSQL does inside a savepoint: the failed
+    block's writes go, the rest of the transaction commits."""
+    async with store.lock:
+        await store.set_meta("before", "1")
+        with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+            async with store.savepoint():
+                await store.set_meta("inside", "2")
+                await store.conn.execute(_DUPLICATE_ORG, ("dup",))
+        await store.set_meta("after", "3")
+        await store.commit()
+    assert [await store.get_meta(k) for k in ("before", "inside", "after")] == ["1", None, "3"]
+
+
+async def test_a_failed_transaction_left_open_is_rolled_back_for_the_next_holder(
+    store: Store, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A block that fails and does not roll back must not take every later holder of the lock with
+    it: the next statement rolls the dead transaction back, says so, and runs."""
+    async with store.lock:
+        await store.set_meta("lost", "x")
+        with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+            await store.conn.execute(_DUPLICATE_ORG, ("dup",))
+    async with store.lock:
+        await store.set_meta("kept", "y")
+        await store.commit()
+    assert await store.get_meta("kept") == "y"
+    assert await store.get_meta("lost") is None  # PostgreSQL had already discarded it
+    assert "rolled back" in caplog.text
+
+
+async def test_committing_a_failed_transaction_says_so(store: Store) -> None:
+    """A COMMIT of an aborted transaction is a silent ROLLBACK in PostgreSQL; the store raises."""
+    async with store.lock:
+        await store.set_meta("lost", "x")
+        with pytest.raises(asyncpg.exceptions.UniqueViolationError):
+            await store.conn.execute(_DUPLICATE_ORG, ("dup",))
+        with pytest.raises(asyncpg.exceptions.InFailedSQLTransactionError):
+            await store.commit()
+        await store.set_meta("next", "z")
+        await store.commit()
+    assert await store.get_meta("lost") is None and await store.get_meta("next") == "z"
+
+
+async def test_entities_by_ne_is_entities_for_ne_in_one_statement(store: Store) -> None:
+    """The inventory route reads every NE's entities; one `ANY` query, the same rows and order."""
+    async with store.lock:
+        nes = [await store.ne_id(f"10.9.0.{i}", 1.0) for i in range(1, 4)]
+        for i, ne in enumerate(nes[:2], start=1):
+            root = await store.entity_level0(ne, f"10.9.0.{i}", 1.0)
+            for slot in ("2", "1"):
+                await store.get_or_create_entity(ne, root, 1, f"slot:{slot}", "test", 0.9, 2.0)
+        await store.commit()
+    grouped = await store.entities_by_ne(nes)
+    assert grouped == {ne: await store.entities_for_ne(ne) for ne in nes}
+    assert await store.entities_by_ne([]) == {}

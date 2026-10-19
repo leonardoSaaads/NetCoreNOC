@@ -8,6 +8,9 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+import asyncpg
+import pytest
+
 from netcorenoc.engine.correlate import severity
 from netcorenoc.engine.correlate.varbind_profile import VarbindProfiler
 from netcorenoc.ingest.events import TrapEvent, Varbind
@@ -788,16 +791,22 @@ async def test_a_torn_varbinds_blob_cannot_reach_the_census_at_all(store: Store)
     What is asserted here is the property, not the implementation: torn rows, well-formed rows
     that are not varbind lists, and an intact neighbour — the census answers, and answers the same
     thing it would have with no damage at all.
+
+    **v0.31.0 (ADR #452): a torn blob cannot reach the census because it cannot reach the row.**
+    `alarm.varbinds` is `jsonb`, so PostgreSQL refuses text that does not parse — asserted below for
+    every torn blob this test used to write. The census is then asserted on the undamaged row, and
+    against every well-formed blob that is not a varbind list, which the column does accept.
     """
     engine, _queue, _app = await authutil.make_env(store)
     async with store.lock:
         await engine._process(_carrying(CLS_A, "torn", "critical", BASE))
         await engine._process(_carrying(CLS_A, "intact", "major", BASE + 1))
         await store.commit()
-        await store.conn.execute(
-            "UPDATE alarm SET varbinds='[{\"oid\": \"1.3.6.1' WHERE instance='torn'"
-        )
-        await store.commit()
+        with pytest.raises(asyncpg.exceptions.InvalidTextRepresentationError, match="json"):
+            await store.conn.execute(
+                "UPDATE alarm SET varbinds='[{\"oid\": \"1.3.6.1' WHERE instance='torn'"
+            )
+        await store.rollback()
 
     census = await _census(store)
     assert census["active"] == 2
@@ -817,10 +826,20 @@ async def test_a_torn_varbinds_blob_cannot_reach_the_census_at_all(store: Store)
     # to be paths through a parser on this route; now neither is a path at all. The assertion is
     # that the census is *indifferent* to every one of them — which is a stronger claim than the
     # old "it degrades gracefully", and the only one worth making once the parser is gone.
-    for blob in ("42", '"critical"', '{"oid": "1.3.6.1"}', "null", "", "[{"):
+    for blob in ("42", '"critical"', '{"oid": "1.3.6.1"}', "null"):
         async with store.lock:
             await store.conn.execute("UPDATE alarm SET varbinds=? WHERE instance='torn'", (blob,))
             await store.commit()
+        again = await _census(store)
+        assert again == census, f"varbinds={blob!r} changed a census that does not read it: {again}"
+    # The two blobs that are not JSON at all: refused by the column, so the census never sees them.
+    for blob in ("", "[{"):
+        async with store.lock:
+            with pytest.raises(asyncpg.exceptions.InvalidTextRepresentationError, match="json"):
+                await store.conn.execute(
+                    "UPDATE alarm SET varbinds=? WHERE instance='torn'", (blob,)
+                )
+            await store.rollback()
         again = await _census(store)
         assert again == census, f"varbinds={blob!r} changed a census that does not read it: {again}"
 

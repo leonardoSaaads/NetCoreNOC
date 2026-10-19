@@ -103,24 +103,8 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
 
     @property
     def _lifecycle_columns(self) -> str:
-        """The v0.16.0 situation columns, or nothing on a schema that predates them.
-
-        A **literal chosen by the schema probe**, never by a caller: the string is one of three
-        constants and no value from outside this class reaches it. It exists because
-        `tests/store/test_upgrade.py` drives the current store against a migration directory frozen
-        at an older version — the property that makes "the migration changes behaviour and the code
-        does not" checkable — and a listing that named `resolution` unconditionally would raise
-        there.
-
-        `situation_detail` needs no such guard: it is `SELECT *`, which is exactly the shape that
-        adapts to whichever columns the schema has.
-        """
-        if not self._has_lifecycle:
-            return ""
-        if not self._has_situation_decider:  # v0.26.0: `model_name` arrives with `0026`
-            return "s.resolution, s.derived_name, s.operator_name, "
-        if not self._has_proposals:
-            return "s.resolution, s.derived_name, s.operator_name, s.model_name, "
+        """The v0.16.0 situation columns of a listing row, with v0.26.0's `model_name`. A literal:
+        no value from outside this class reaches it."""
         # v0.27.0 (ADR #428): a pending situation names the one it proposes to join.
         return (
             "s.resolution, s.derived_name, s.operator_name, s.model_name, "
@@ -159,16 +143,17 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         addresses **or** the needle contains none — which leaves finding a situation by the name an
         operator gave it, the case the v0.16.1 search exists for, exactly as it was.
 
-        `LIKE` with an explicit `ESCAPE`, and the caller's `%` and `_` escaped rather than
+        `ILIKE` with an explicit `ESCAPE`, and the caller's `%` and `_` escaped rather than
         stripped: a search for `10.1.2_4` must look for that string and not for any character
-        there. `LOWER` is SQLite's, so folding is ASCII-only — an accented operator name matches
-        only its own case, which is stated here rather than discovered.
+        there. `ILIKE` folds case by the database's locale (`LC_CTYPE`), so whether an accented
+        operator name matches across case is PostgreSQL's answer, not Python's; under SQLite,
+        `LOWER` folded ASCII only.
         """
         if not query:
             return "", []
-        escaped = query.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         needle = f"%{escaped}%"
-        member_columns = ["LOWER(COALESCE(a3.instance, ''))", "LOWER(c3.oid)"]
+        member_columns = ["COALESCE(a3.instance, '')", "c3.oid"]
         head_columns: list[str] = []
         # **The declared columns are gated exactly as `d3.ip` is, and that is new** (v0.16.3,
         # DECISIONS #287).
@@ -182,12 +167,10 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         # which is the whole of what the v0.16.1 search exists for, is untouched: the gate is on
         # what the needle contains, not on who is asking.
         if addresses or not shaping.contains_address(query):
-            member_columns.append("LOWER(COALESCE(cl3.label, ''))")
-            member_columns.append("LOWER(COALESCE(dl3.label, ''))")
-            if self._has_lifecycle:
-                head_columns.append("LOWER(COALESCE(s.operator_name, ''))")
-                if self._has_situation_decider:
-                    head_columns.append("LOWER(COALESCE(s.model_name, ''))")
+            member_columns.append("COALESCE(cl3.label, '')")
+            member_columns.append("COALESCE(dl3.label, '')")
+            head_columns.append("COALESCE(s.operator_name, '')")
+            head_columns.append("COALESCE(s.model_name, '')")
         # **The derived class name is a call now, not a column** (`0016`, DECISIONS #280), so it
         # cannot be a `LIKE` — and dropping it would have quietly narrowed the search this
         # release's predecessor built. `trap_name` is a lookup over eight bundled OIDs, so the
@@ -197,13 +180,12 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             oid for oid, name in known_oids.STANDARD_TRAPS.items() if query.lower() in name.lower()
         ]
         if addresses:
-            member_columns.append("LOWER(d3.ip)")
-            if self._has_lifecycle:
-                head_columns.append("LOWER(COALESCE(s.derived_name, ''))")
-        like = " OR ".join(f"{column} LIKE ? ESCAPE '\\'" for column in member_columns)
+            member_columns.append("host(d3.ip)")  # `inet`: matched as its dotted text
+            head_columns.append("COALESCE(s.derived_name, '')")
+        like = " OR ".join(f"{column} ILIKE ? ESCAPE '\\'" for column in member_columns)
         if standard:
             like += f" OR c3.oid IN ({','.join('?' * len(standard))})"
-        heads = "".join(f"{column} LIKE ? ESCAPE '\\' OR " for column in head_columns)
+        heads = "".join(f"{column} ILIKE ? ESCAPE '\\' OR " for column in head_columns)
         scope = f"AND a3.ne_id IN ({','.join('?' * len(scope_ids))}) " if scope_ids else ""
         args: list[Any] = [needle] * len(head_columns)
         args.extend(scope_ids or [])
@@ -213,10 +195,10 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             f" AND ({heads}EXISTS (SELECT 1 FROM situation_alarm sa3 "  # nosec B608
             "JOIN alarm a3 ON a3.id=sa3.alarm_id "
             "JOIN alarm_class c3 ON c3.id=a3.class_id "
-            "JOIN device d3 ON d3.id=a3.device_id "
+            "JOIN ne d3 ON d3.id=a3.ne_id "
             # v0.16.3: the equipment label is `kind='ne'`, reached through the alarm's own `ne_id`
-            # rather than through `device.id` (DECISIONS #281).
-            + self._label_join("dl3", "ne", "a3.ne_id", legacy_target="d3.id")
+            # (DECISIONS #281).
+            + self._label_join("dl3", "ne", "a3.ne_id")
             + self._label_join("cl3", "class", "c3.id")
             + f"WHERE sa3.situation_id=s.id {scope}AND ({like})))",  # nosec B608 - placeholders
             args,
@@ -225,7 +207,7 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
     async def list_situations(
         self,
         status: str | None,
-        limit: int,
+        limit: int | None,
         ne_ids: frozenset[int] | None = None,
         query: str | None = None,
         *,
@@ -247,15 +229,16 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         scoped branch and :meth:`_search_clause` for what the search may match.
         """
         where, args = ("WHERE s.status=?", [status]) if status else ("", [])
-        # `_lifecycle_columns` is one of two literals chosen by the schema probe; no value from
-        # outside this class reaches it, and every user value below is a bound parameter.
+        # `_lifecycle_columns` is a literal; no value from outside this class reaches it, and every
+        # user value below is a bound parameter.
         head = (
             f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see above
             "s.created_at, s.updated_at, s.root_alarm_id, "
             "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
             "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
         )
-        tail = "GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?"
+        # `LIMIT NULL` is PostgreSQL's `LIMIT ALL`: `limit=None` is the unbounded read.
+        tail = "GROUP BY s.id ORDER BY s.updated_at DESC, s.id DESC LIMIT ?"
         if ne_ids is None:
             search, search_args = self._search_clause(
                 query, addresses=match_addresses, scope_ids=None
@@ -278,7 +261,7 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             # search travels with it**: dropping `query` here would make a very large scope the one
             # shape in which the text filter stopped being a query filter.
             rows = await self.list_situations(
-                status, -1, None, query, match_addresses=match_addresses
+                status, None, None, query, match_addresses=match_addresses
             )
             members = await self.situation_member_nes([int(r["id"]) for r in rows])
             keep = [r for r in rows if any(n in ne_ids for n in members.get(int(r["id"]), []))]
@@ -304,8 +287,8 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         if head is None:
             return None
         cur = await self.conn.execute(
-            # nosec B608 - three fixed literals from `_label_join`, chosen by a schema probe;
-            # the only bound value is the situation id.
+            # nosec B608 - three fixed literals from `_label_join`; the only bound value is the
+            # situation id.
             "SELECT a.id, a.instance, a.status, a.is_flapping, a.count, a.first_seen, "  # nosec B608
             # v0.16.4 (F105, DECISIONS #292): `device_vendor` is gone. It was served on every
             # alarm row of every situation detail and rendered by **nothing** — F84's shape with
@@ -314,42 +297,26 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             # v0.21.0 (`0021`): which window's ledger surfaced this alarm, or NULL. The console
             # draws a different badge for it, because *"raised during maintenance, still active"*
             # is a different sentence from *"unplaced"* — the appliance did not fail to place a
-            # severity, it never saw the trap. Chosen by the schema probe, like `_label_join`, so
-            # the frozen-migration upgrade tests still run this query.
-            + (
-                "a.surfaced_from_window_id AS surfaced_from_window_id, "
-                if self._has_surfaced_window
-                else "NULL AS surfaced_from_window_id, "
-            )
+            # severity, it never saw the trap.
+            "a.surfaced_from_window_id AS surfaced_from_window_id, "
             # v0.22.0 (#388): the MARKER, which is narrower than the provenance above. A fault the
             # ledger surfaced is marked only while it is still active, has not been re-reported by
             # the element since (its own trap carries what the ledger could not), and nobody has
             # acknowledged it. Clearing, a real trap and an acknowledgement each end it.
-            + (
-                "CASE WHEN a.status='active' AND a.surfaced_ack_at IS NULL "
-                "AND a.last_seen <= COALESCE(a.surfaced_at, a.last_seen) "
-                "THEN a.surfaced_from_window_id END AS outlived_window_id, "
-                if self._has_surfaced_ack
-                else (
-                    "CASE WHEN a.status='active' THEN a.surfaced_from_window_id END "
-                    "AS outlived_window_id, "
-                    if self._has_surfaced_window
-                    else "NULL AS outlived_window_id, "
-                )
-            )
-            + "dl.label AS device_label, c.oid AS class_oid, "
+            "CASE WHEN a.status='active' AND a.surfaced_ack_at IS NULL "
+            "AND a.last_seen <= COALESCE(a.surfaced_at, a.last_seen) "
+            "THEN a.surfaced_from_window_id END AS outlived_window_id, "
+            "dl.label AS device_label, c.oid AS class_oid, "
             "c.id AS class_id, cl.label AS class_label, sl.label AS class_severity_label "
             "FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
-            "JOIN device d ON d.id=a.device_id JOIN alarm_class c ON c.id=a.class_id "
-            # v0.16.3: the equipment label is keyed on `ne`, and the join reaches it through the
-            # alarm's OWN `ne_id` rather than through `device.id` — which equals it on every
-            # database anyone has, and is a coincidence of insertion order rather than a
-            # constraint (DECISIONS #281). The declared severity is per alarm class, at the
-            # qualifier that means "the whole class" (#283).
-            + self._label_join("dl", "ne", "a.ne_id", legacy_target="d.id")
+            "JOIN ne d ON d.id=a.ne_id JOIN alarm_class c ON c.id=a.class_id "
+            # v0.16.3: the equipment label is keyed on `ne`, reached through the alarm's own
+            # `ne_id` (DECISIONS #281). The declared severity is per alarm class, at the qualifier
+            # that means "the whole class" (#283).
+            + self._label_join("dl", "ne", "a.ne_id")
             + self._label_join("cl", "class", "c.id")
             + self._label_join("sl", "severity", "c.id")
-            + "WHERE sa.situation_id=? ORDER BY a.first_seen",
+            + "WHERE sa.situation_id=? ORDER BY a.first_seen, a.id",
             (situation_id,),
         )
         alarms = [self._project_class(dict(r)) for r in await cur.fetchall()]
@@ -366,10 +333,9 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             ruled = not (resolved.is_default and alarm.get("severity_rank") is not None)
             alarm["rule_severity"] = resolved.severity if ruled else None
             alarm["rule_severity_rank"] = resolved.severity_rank if ruled else None
-        # v0.27.0: a model-decided link's whole explanation, when the schema stores it (`0026`).
-        terms = ", terms" if self._has_link_terms else ""
+        # v0.27.0: a model-decided link's whole explanation (`0026`).
         cur = await self.conn.execute(
-            f"SELECT alarm_a, alarm_b, score, term_t, term_a, term_e{terms} FROM link "  # nosec B608
+            "SELECT alarm_a, alarm_b, score, term_t, term_a, term_e, terms FROM link "
             "WHERE situation_id=? ORDER BY id",
             (situation_id,),
         )

@@ -181,15 +181,20 @@ async def test_the_coverage_rate_cannot_exceed_100_percent(store: Store) -> None
     table the operational prune collects — and Phase 0 measured the printed rate at **300.0%**. A
     rate above 100% destroys a reader's trust in every other number on the page.
 
-    The `foreign_keys=OFF` window is how a *pre-v0.8.1* database gets into this state: v0.8.1's
-    `prune()` retains the labelled situation row, so a fresh database cannot reach it — but one
-    upgraded from v0.8.0 can already be here, and the report has to stay honest about it.
+    The window with the foreign key off is how a *pre-v0.8.1* database gets into this state:
+    v0.8.1's `prune()` retains the labelled situation row, so a fresh database cannot reach it — but
+    one upgraded from v0.8.0 can already be here, and the report has to stay honest about it.
+
+    ADR #452: SQLite's `PRAGMA foreign_keys=OFF ... ON` is, in PostgreSQL, dropping the key and
+    adding it back `NOT VALID` — enforced for every later write, existing rows not re-checked,
+    exactly as the PRAGMA behaved. The closed situations carry what migration 0014 rewrote a
+    pre-v0.16.0 `closed` to (`resolved` / `unattributed`), the only shape such a row has today.
     """
     async with store.lock:
         for i in range(3):
             await store.conn.execute(
-                "INSERT INTO situation (id, status, created_at, updated_at, closed_at) "
-                "VALUES (?, 'closed', ?, ?, ?)",
+                "INSERT INTO situation (id, status, resolution, created_at, updated_at, "
+                "closed_at) VALUES (?, 'resolved', 'unattributed', ?, ?, ?)",
                 (i + 1, TS, TS + 20.0, TS + 20.0),
             )
             await store.conn.execute(
@@ -198,10 +203,13 @@ async def test_the_coverage_rate_cannot_exceed_100_percent(store: Store) -> None
             )
         await store.commit()
         # Two situations collected, their labels surviving — the v0.8.0 state.
-        await store.conn.execute("PRAGMA foreign_keys=OFF")
+        await store.conn.execute("ALTER TABLE feedback DROP CONSTRAINT feedback_situation_id_fkey")
         await store.conn.execute("DELETE FROM situation WHERE id IN (1,2)")
+        await store.conn.execute(
+            "ALTER TABLE feedback ADD CONSTRAINT feedback_situation_id_fkey "
+            "FOREIGN KEY (situation_id) REFERENCES situation (id) NOT VALID"
+        )
         await store.commit()
-        await store.conn.execute("PRAGMA foreign_keys=ON")
 
     async with store.lock:
         measured = await bias.collect(store)
@@ -222,10 +230,10 @@ async def test_the_report_counts_orphaned_promoted_pairs(store: Store) -> None:
     async with store.lock:
         before = await bias.collect(store)
         assert before["orphaned_pairs"] == 0, "the clean fixture must have no orphans"
-        await store.conn.execute("PRAGMA foreign_keys=OFF")
+        # No foreign-key window is needed in PostgreSQL (ADR #452): a label's member and exclusion
+        # rows go with it (`ON DELETE CASCADE`), and nothing else references `feedback`.
         await store.conn.execute("DELETE FROM feedback")
         await store.commit()
-        await store.conn.execute("PRAGMA foreign_keys=ON")
         after = await bias.collect(store)
     assert after["orphaned_pairs"] == before["pairs_dataset"] > 0, (
         "every promoted pair is orphaned once its label is gone, and the report must say so"

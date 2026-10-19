@@ -292,7 +292,7 @@ async def test_a_disabled_admin_does_not_count_as_an_admin(store: Store) -> None
         assert await administration.bootstrap_admin(store, 0.0) is not None
         admin = await store.get_user_by_name("admin")
         assert admin is not None
-        await store.conn.execute("UPDATE user SET disabled=1 WHERE id=?", (admin["id"],))
+        await store.conn.execute("UPDATE app_user SET disabled=true WHERE id=?", (admin["id"],))
         await store.commit()
         assert await store.count_enabled_admins() == 0
         recovered = await administration.bootstrap_admin(store, 1.0)

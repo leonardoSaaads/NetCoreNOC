@@ -40,9 +40,9 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 - **Answering INFORMs** (v2c and v3). An inform is quarantined as `not-a-trap-pdu` because a
   response is I/O on the datagram path; answering one needs a design that keeps that path free.
 - **Real per-organization isolation.** v0.21.0 gives every network element an **organization**, and
-  the migration that adds it carries a banner saying in capitals that it is **not tenant
-  isolation** (#366): correlation still learns across every element, a situation may still form
-  across the boundary, and no authorization decision reads the column. Making it real is three
+  [`security.md`](security.md) says in capitals that it is **not tenant isolation** (#366):
+  correlation still learns across every element, a situation may still form across the boundary,
+  and no authorization decision reads the column. Making it real is three
   separate pieces of work, each of which changes what the product *is*: correlation that does not
   cross organizations, learned affinities held per organization, and RBAC bound to one. None is
   scheduled, and the appliance says so rather than implying otherwise — `GET /api/organizations`
@@ -50,12 +50,12 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 - **Export to ticketing systems** — phase 3 of the three-phase design ([`architecture.md`](architecture.md)).
 - **Automatic MIB enrichment** — readable names without any user obligation.
 - **A precursor/gauge layer** — performance-monitoring signals ahead of alarms.
-- **PostgreSQL / NATS if scale ever demands it** — queue and storage already sit behind interfaces.
+- **NATS if scale ever demands it** — the queue already sits behind an interface. Storage moved to
+  PostgreSQL (#452).
 - **WebSocket push** instead of 2.5 s polling.
 - **Replay from pcap**, not only from JSON fixtures.
 - **Root-cause confidence on screen** — the precedence margin is computed and not shown.
 - **Situation subsumption, impact scope, recurrence fingerprint.**
-- **A second read-only SQLite connection** for the API, if console latency under storms ever matters.
 
 ## Correlation and the entity model
 
@@ -69,7 +69,9 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 
 - **Unlearning / expiry for learned raise-clear pairs** — permanent once promoted, today.
 - **Typed relations and device-archetype clustering** (#36) — what v0.18.0 needs and does not have.
-- **Finish the `device_id` → `entity_id`/`ne_id` cutover** (#35), forward-only, with a parity re-run.
+- **Finish the `device_id` → `entity_id`/`ne_id` cutover** (#35). The schema half is done: `0031`
+  dropped the `device` table and every `device_id` column (#452). The engine's own names still say
+  `device_id` for what is now `ne_id`.
 - **`situation.merged_into` resolves one hop, not transitively.** Two consumers still use a one-hop
   `COALESCE` where the training joins use the transitive walk. On every corpus this project holds all
   four agree at 37 incidents **because every merge chain in it is exactly one hop** — which is

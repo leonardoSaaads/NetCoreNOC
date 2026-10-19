@@ -44,6 +44,7 @@ from netcorenoc.ingest.receiver import parse_trap  # noqa: E402
 from netcorenoc.main import Engine  # noqa: E402
 from netcorenoc.store import Store  # noqa: E402
 
+import pgtemp  # noqa: E402  (throwaway PostgreSQL databases, ADR #452)
 import trap_replay  # noqa: E402
 
 BASE_TS = 1_700_000_000.0
@@ -100,7 +101,8 @@ async def _drive(engine: Engine, queue: asyncio.Queue[Any], events: list[TrapEve
 
 async def collect() -> list[LinkFeatures]:
     """Every `LinkFeatures` the correlator evaluated over the whole corpus, in one engine."""
-    store = Store(":memory:")
+    url = pgtemp.create()  # a throwaway database, as `:memory:` was (ADR #452)
+    store = Store(url, readers=1)
     await store.open()
     try:
         queue: asyncio.Queue[Any] = asyncio.Queue()
@@ -117,6 +119,7 @@ async def collect() -> list[LinkFeatures]:
         return recorder.seen
     finally:
         await store.close()
+        pgtemp.drop(url)
 
 
 async def regenerate() -> tuple[list[tuple[float, float, float]], int, int, int]:

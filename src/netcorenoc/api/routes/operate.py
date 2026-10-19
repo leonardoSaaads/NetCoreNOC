@@ -70,7 +70,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     # the SAME `scope_for` the reads use, and each denies by falling into the not-found branch it
     # already had, so "out of your scope" and "no such thing" are one code path — the same status,
     # the same body, the same timing (DECISIONS #60, #65). `scope_for` is awaited *before*
-    # `write_txn()`, because it takes `store.lock` itself and the lock is not reentrant.
+    # `write_txn()`: it reads in its own snapshot, which cannot see the write's uncommitted rows.
 
     async def label_context(
         sid: int, scope: shaping.Scope, body: FeedbackIn | CloseIn, channel: str

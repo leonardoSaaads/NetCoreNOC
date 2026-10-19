@@ -11,6 +11,8 @@ Each tool runs with the project's virtual environment and needs no extra depende
 | `corpus_census.py` | Replays the whole corpus through one engine and reports what the promotion gate would decide. | `make census`. |
 | `login_art.py` | Draws the sign-in artwork, `src/netcorenoc/ui/login-bg.svg`, deterministically; a test checks the shipped file is its output. | After changing the picture: `python tools/login_art.py`. |
 | `storm_check.py` | Sends a storm of distinct alarms over UDP through the real path — receiver, raw spool, decoder, engine — and reports each trap's decision latency against the KPI; `--restart-at` restarts the engine mid-storm; exits 1 if any trap was not kept (kernel drops included), or past the limit with `--require-kpi`. `make storm`. | Sizing a host for the per-trap KPI and proving nothing is lost (#447-#451). |
+| `pgtemp.py` | Finds a PostgreSQL for the suite (`NETCORENOC_TEST_DATABASE_URL`, else a private cluster from the local binaries) and makes throwaway databases on it from a migrated template; drops them at exit. | Imported by `tests/conftest.py`, the evaluation and the benchmarks; `python tools/pgtemp.py` prints the server it uses. |
+| `db_bench.py` | The database benchmark (ADR #452): host-sample writes, a storm of distinct alarms classified by the real engine while console clients poll the API, every route again at rest, and the bytes on disk. `make db-bench`. | Comparing database changes on one host; `--json` keeps the report. |
 | `release_check.py` | Checks that the version agrees in `pyproject.toml`, the package, `CHANGELOG.md` and `flake.nix`. | `make release-check`; the release workflow. |
 
 ## Sending traps without equipment
@@ -33,4 +35,4 @@ Every tool prints its options with `--help`.
 A tool belongs here when a developer or maintainer runs it by hand or from the `Makefile`, and the
 product does not need it at runtime. Give it a module docstring that says what it does and how to
 run it, a `--help`, a row in the table above, and a test under `tests/` (most live in
-`tests/evaluation/` or `tests/ingest/`).
+`tests/evaluation/`, `tests/ingest/` or `tests/store/`).

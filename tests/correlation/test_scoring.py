@@ -12,9 +12,9 @@ exist only here, prove the `LinkScorer` Protocol accepts an implementation that 
 from __future__ import annotations
 
 import math
-import sqlite3
 import time
 
+import asyncpg
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -217,10 +217,12 @@ def test_reserved_feature_slots_are_none_and_ignored() -> None:
 
 
 def test_seed_params_hash_matches_the_coded_default() -> None:
-    """The seed in 0005_scorer_config.sql must be the coded default's own fingerprint, so a
-    future change to either the defaults or the canonicalisation cannot silently desynchronise
-    them (Gate 2)."""
-    sql = (MIGRATIONS_DIR / "0005_scorer_config.sql").read_text()
+    """The seed must be the coded default's own fingerprint, so a future change to either the
+    defaults or the canonicalisation cannot silently desynchronise them (Gate 2).
+
+    The seed was `0005_scorer_config.sql`'s until v0.31.0; it is `0031_postgresql.sql`'s now that
+    the SQLite migrations are gone (ADR #452)."""
+    sql = (MIGRATIONS_DIR / "0031_postgresql.sql").read_text()
     assert AdditiveScorer().params_fingerprint() in sql
 
 
@@ -441,12 +443,12 @@ async def test_f23_scorer_config_is_append_only(store: Store) -> None:
     """F23: the parameter history behind a historical grouping cannot be edited or deleted —
     the same storage-level guarantee `audit_log` has, and here with no sanctioned deleter."""
     async with store.lock:
-        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        with pytest.raises(asyncpg.exceptions.RestrictViolationError, match="append-only"):
             await store.conn.execute("UPDATE scorer_config SET w_t=0.9 WHERE id=1")
-        await store.conn.rollback()
-        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        await store.rollback()
+        with pytest.raises(asyncpg.exceptions.RestrictViolationError, match="append-only"):
             await store.conn.execute("DELETE FROM scorer_config WHERE id=1")
-        await store.conn.rollback()
+        await store.rollback()
 
 
 async def test_f23_prune_does_not_touch_scorer_config(store: Store) -> None:
@@ -497,7 +499,7 @@ async def test_rollback_target_must_exist(store: Store) -> None:
 
 async def test_stored_out_of_bounds_row_falls_back_to_the_coded_defaults(store: Store) -> None:
     """Belt and braces: validation runs at the write *and* at load, so a row that reached the
-    table by any other means (a direct sqlite edit, a future bug) cannot reach the engine."""
+    table by any other means (a direct `psql` edit, a future bug) cannot reach the engine."""
     async with store.lock:
         bad = await store.insert_scorer_config(
             "additive", "1.0", 0.3, 0.35, 0.35, 30.0, 0.0, "bad", "adm", BASE, "degenerate"
@@ -532,7 +534,7 @@ async def test_unreadable_store_falls_back_without_stopping_the_engine(store: St
     engine = Engine(store, __import__("asyncio").Queue())
 
     async def boom() -> dict[str, object]:
-        raise sqlite3.OperationalError("database is locked")
+        raise asyncpg.exceptions.ConnectionDoesNotExistError("connection was closed")
 
     engine.store.active_scorer_config = boom  # type: ignore[method-assign]
     await engine.load_scorer_config()

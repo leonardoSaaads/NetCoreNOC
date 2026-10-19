@@ -16,7 +16,7 @@ from netcorenoc.store.base import StoreBase
 class PeopleMixin(StoreBase):
     async def set_display_name(self, user_id: int, name: str | None, now: float) -> None:
         await self.conn.execute(
-            "UPDATE user SET display_name=?, updated_at=? WHERE id=?", (name, now, user_id)
+            "UPDATE app_user SET display_name=?, updated_at=? WHERE id=?", (name, now, user_id)
         )
 
     async def put_avatar(self, user_id: int, avatar: Avatar, now: float) -> None:
@@ -46,7 +46,7 @@ class PeopleMixin(StoreBase):
         """One account as a person: id, username, display name, address, role, photo digest."""
         cur = await self.conn.execute(
             "SELECT u.id, u.username, u.display_name, u.email, u.role, a.sha256 AS avatar "
-            "FROM user u "
+            "FROM app_user u "
             "LEFT JOIN user_avatar a ON a.user_id=u.id WHERE u.id=?",
             (user_id,),
         )

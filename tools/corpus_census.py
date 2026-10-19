@@ -60,6 +60,7 @@ from netcorenoc.ingest.receiver import parse_trap
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
 
+import pgtemp
 import trap_replay
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -306,7 +307,8 @@ async def census(store: Store, tag: str) -> dict[str, int]:
 
 
 async def run(*, control: bool, tag: str, gestures: bool = False) -> dict[str, int]:
-    store = Store(":memory:")
+    url = pgtemp.create()  # a throwaway database, as `:memory:` was (ADR #452)
+    store = Store(url, readers=1)
     await store.open()
     outcomes: dict[str, int] = {}
     try:
@@ -345,6 +347,7 @@ async def run(*, control: bool, tag: str, gestures: bool = False) -> dict[str, i
         return await census(store, tag)
     finally:
         await store.close()
+        pgtemp.drop(url)
 
 
 async def main() -> int:

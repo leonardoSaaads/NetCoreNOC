@@ -10,17 +10,10 @@
 fact, and the fact is what an ISP manager auditing two months later actually needs: *"the network
 fixed it"*, *"an operator judged it"* and *"nobody looked at it for an hour"* were one value before
 this release and no column distinguished them.
-
-**Every method here that names a v0.16.0 column consults `self._has_lifecycle` first**, so the
-identical store code runs against a schema that predates its own columns — the same discipline
-`create_situation` has followed for `scorer_config_id` since `0005` and `merge_situations` for
-`merged_into` since `0008`, and the property `tests/store/test_upgrade.py` relies on to prove that a
-migration changes behaviour and the code does not.
 """
 
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
 from netcorenoc.store.situation_events import SituationEventMixin
@@ -139,11 +132,8 @@ class SituationMixin(SituationEventMixin):
         batch lock the engine already holds — never on the datagram path.
 
         ``None`` means "no configuration is in effect" — the fail-safe state where the engine is
-        running on the coded defaults. The column is then left out of the statement entirely
-        rather than written as NULL, so this call still succeeds against a schema that predates
-        `0005_scorer_config.sql`. That is not hypothetical tidiness: it is what lets the same
-        engine code run before and after the migration, which is how the upgrade test proves the
-        migration changes no grouping.
+        running on the coded defaults. The column is then left out of the statement entirely and
+        takes its NULL default.
 
         **v0.16.0: the correlator creates `new`** (DECISIONS #254). `new` means *"nobody has
         looked at this"* and `open` means *"an operator is working it"*; the first operator gesture
@@ -151,13 +141,11 @@ class SituationMixin(SituationEventMixin):
         such criterion is a threshold nothing in this repository has measured, and a threshold
         chosen to look reasonable is the placeholder rule (#219) wearing a number.
 
-        `status` is written **explicitly** rather than by moving the column default: changing a
-        default is a table rebuild in SQLite, and rebuilding `situation` would move a table three
-        others reference by foreign key in order to state a value one INSERT already states. The
-        `_has_lifecycle` branch is what keeps this call working against a schema-13 database.
+        `status` is written **explicitly** rather than left to the column default (`open`): the act
+        decides it, through `TRANSITIONS`.
         """
-        status = TRANSITIONS[act][None] if self._has_lifecycle else "open"
-        if decider is not None and self._has_situation_decider:
+        status = TRANSITIONS[act][None]
+        if decider is not None:
             # v0.26.0: which decider formed it — the shipped model by hash, a site model by id,
             # or the formula by configuration. The attribution an autonomous decision cites.
             cur = await self.conn.execute(
@@ -193,17 +181,10 @@ class SituationMixin(SituationEventMixin):
         """
         if act not in ATTENTION:
             raise ValueError(f"{act!r} is not an act of attention; it cannot promote a situation")
-        if not self._has_lifecycle:
-            return
-        if self._has_proposals:  # a pending situation an operator works is theirs (ADR #428)
-            await self.conn.execute(
-                "UPDATE situation SET status='open', proposed_into=NULL, proposal_confidence=NULL, "
-                "updated_at=? WHERE id=? AND status IN ('new','pending')",
-                (ts, situation_id),
-            )
-            return
+        # A pending situation an operator works is theirs (ADR #428).
         await self.conn.execute(
-            "UPDATE situation SET status='open', updated_at=? WHERE id=? AND status='new'",
+            "UPDATE situation SET status='open', proposed_into=NULL, proposal_confidence=NULL, "
+            "updated_at=? WHERE id=? AND status IN ('new','pending')",
             (ts, situation_id),
         )
 
@@ -217,13 +198,13 @@ class SituationMixin(SituationEventMixin):
         path is covered without a line of it changing.
 
         The cost is two bounded reads and one UPDATE per **membership change** — not per trap, and
-        not per activation: an alarm already in its situation takes the `INSERT OR IGNORE` and never
-        reaches this. `RETURNING` is what makes that distinction, rather than refreshing
+        not per activation: an alarm already in its situation takes the `ON CONFLICT DO NOTHING` and
+        never reaches this. `RETURNING` is what makes that distinction, rather than refreshing
         unconditionally and paying for a name nothing moved.
         """
         cur = await self.conn.execute(
-            "INSERT OR IGNORE INTO situation_alarm (situation_id, alarm_id) VALUES (?, ?) "
-            "RETURNING alarm_id",
+            "INSERT INTO situation_alarm (situation_id, alarm_id) VALUES (?, ?) "
+            "ON CONFLICT DO NOTHING RETURNING alarm_id",
             (situation_id, alarm_id),
         )
         if await cur.fetchone() is not None:
@@ -231,8 +212,8 @@ class SituationMixin(SituationEventMixin):
 
     async def merge_situations(self, dst: int, src: int, ts: float) -> None:
         await self.conn.execute(
-            "INSERT OR IGNORE INTO situation_alarm (situation_id, alarm_id) "
-            "SELECT ?, alarm_id FROM situation_alarm WHERE situation_id=?",
+            "INSERT INTO situation_alarm (situation_id, alarm_id) "
+            "SELECT ?, alarm_id FROM situation_alarm WHERE situation_id=? ON CONFLICT DO NOTHING",
             (dst, src),
         )
         await self.conn.execute("DELETE FROM situation_alarm WHERE situation_id=?", (src,))
@@ -251,35 +232,13 @@ class SituationMixin(SituationEventMixin):
         # One extra column on an UPDATE that already ran: no new statement, no new index, nothing
         # added to the batch path's cost.
         #
-        # The fallback is the same discipline `create_situation` follows for `scorer_config_id`
-        # (0005): **this call must still succeed against a schema that predates its own column.**
-        # That is not defensive tidiness — it is what lets the identical engine code run before and
-        # after the migration, which is how `tests/store/test_upgrade.py` proves that `0008` changes
-        # behaviour and the code does not. Merges are rare (four across the whole eval corpus), so
-        # the cost of learning this once is a single caught error per process on an old schema.
-        #
         # v0.16.0: the *status* half of this statement moves with the state machine. `merged` was
         # a `status` value and is now a `resolution` — the one historical value that is knowable
-        # exactly, because this statement is what wrote it (DECISIONS #253). The schema probe
-        # decides which form to emit, so the pre-0014 branch stays byte-identical.
-        left = (
-            "status='resolved', resolution='merged'" if self._has_lifecycle else "status='merged'"
-        )
-        if self._has_merged_into is not False:
-            try:
-                await self.conn.execute(
-                    f"UPDATE situation SET {left}, closed_at=?, updated_at=?, "  # nosec B608
-                    "merged_into=? WHERE id=?",
-                    (ts, ts, dst, src),
-                )
-                self._has_merged_into = True
-                await self.touch_situation(dst, ts)
-                return
-            except sqlite3.OperationalError:
-                self._has_merged_into = False  # pre-0008 schema; record it and use the old form
+        # exactly, because this statement is what wrote it (DECISIONS #253).
         await self.conn.execute(
-            f"UPDATE situation SET {left}, closed_at=?, updated_at=? WHERE id=?",  # nosec B608
-            (ts, ts, src),
+            "UPDATE situation SET status='resolved', resolution='merged', closed_at=?, "
+            "updated_at=?, merged_into=? WHERE id=?",
+            (ts, ts, dst, src),
         )
         await self.touch_situation(dst, ts)
 
@@ -328,13 +287,6 @@ class SituationMixin(SituationEventMixin):
         situation is one the sweep can no longer write. `_close_reason` is unchanged, which is what
         keeps `self_cleared` meaning what v0.16.0 built it to mean.
         """
-        if not self._has_lifecycle:
-            await self.conn.execute(
-                "UPDATE situation SET status='closed', closed_at=?, updated_at=? "
-                "WHERE id=? AND status='open'",
-                (ts, ts, situation_id),
-            )
-            return
         await self.conn.execute(
             "UPDATE situation SET status='resolved', resolution=?, closed_at=?, updated_at=? "
             f"WHERE id=? AND {LIVE} AND NOT {HAS_ACTIVE}",  # nosec B608 - module literals
@@ -344,7 +296,7 @@ class SituationMixin(SituationEventMixin):
     async def _close_reason(self, situation_id: int) -> str:
         """`self_cleared` when the bag had members and none is still active, else `idle`."""
         cur = await self.conn.execute(
-            "SELECT COUNT(*), COALESCE(SUM(a.status='active'), 0) FROM situation_alarm sa "
+            "SELECT COUNT(*), COUNT(*) FILTER (WHERE a.status='active') FROM situation_alarm sa "
             "JOIN alarm a ON a.id=sa.alarm_id WHERE sa.situation_id=?",
             (situation_id,),
         )
@@ -365,9 +317,11 @@ class SituationMixin(SituationEventMixin):
         operator has not triaged yet, which is most of them.
         """
         cur = await self.conn.execute(
-            "SELECT sa.situation_id, a.id AS alarm_id, a.class_id, a.device_id, a.first_seen "
-            "FROM situation s JOIN situation_alarm sa ON sa.situation_id=s.id "
-            f"JOIN alarm a ON a.id=sa.alarm_id WHERE s.{LIVE}"  # nosec B608 - module literal
+            # An alarm's device is its element: `ne_id`, served under the name the engine reads.
+            "SELECT sa.situation_id, a.id AS alarm_id, a.class_id, a.ne_id AS device_id, "
+            "a.first_seen FROM situation s JOIN situation_alarm sa ON sa.situation_id=s.id "
+            f"JOIN alarm a ON a.id=sa.alarm_id WHERE s.{LIVE} "  # nosec B608 - module literal
+            "ORDER BY sa.situation_id, a.id"
         )
         return [dict(r) for r in await cur.fetchall()]
 
@@ -380,8 +334,8 @@ class SituationMixin(SituationEventMixin):
 
     async def situation_members(self, situation_id: int) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
-            "SELECT a.id, a.device_id, a.class_id, a.first_seen FROM situation_alarm sa "
-            "JOIN alarm a ON a.id=sa.alarm_id WHERE sa.situation_id=?",
+            "SELECT a.id, a.ne_id AS device_id, a.class_id, a.first_seen FROM situation_alarm sa "
+            "JOIN alarm a ON a.id=sa.alarm_id WHERE sa.situation_id=? ORDER BY a.id",
             (situation_id,),
         )
         return [dict(r) for r in await cur.fetchall()]

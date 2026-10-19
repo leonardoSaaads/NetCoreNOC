@@ -33,7 +33,7 @@ def _warnings() -> list[str]:
 
 async def _user_id(store: Store, username: str) -> int:
     async with store.lock:
-        cur = await store.conn.execute("SELECT id FROM user WHERE username=?", (username,))
+        cur = await store.conn.execute("SELECT id FROM app_user WHERE username=?", (username,))
         row = await cur.fetchone()
     assert row is not None
     return int(row[0])
@@ -219,7 +219,7 @@ async def test_the_marker_stops_when_the_fault_recurs_or_clears(store: Store) ->
     assert await _marker(store, sid, alarm_id) == wid
     async with store.lock:
         await store.conn.execute(
-            "UPDATE alarm SET last_seen=last_seen + 60 WHERE id=?", (alarm_id,)
+            "UPDATE alarm SET last_seen=last_seen + secs(60) WHERE id=?", (alarm_id,)
         )
         await store.commit()
     assert await _marker(store, sid, alarm_id) is None, "a recurrence kept the marker"

@@ -1,8 +1,11 @@
 # Upgrading NetCoreNOC
 
 **Every schema migration is forward-only, additive and automatic**, applied at startup and again by
-`make migrate`. No release has ever required you to export and reimport. Your alarms, learned state,
-sessions, tokens and audit chain survive every upgrade in this table.
+`make migrate` (`python -m netcorenoc db migrate`). One upgrade is more than a migration: leaving
+SQLite for PostgreSQL copies the database **once**, with a command that verifies every row and the
+audit chain before it commits — [below](#unreleased--postgresql-replaces-sqlite-import-once). Your
+alarms, learned state, sessions, tokens and audit chain survive every upgrade in this table, and
+that one.
 
 Two rules that have held since v0.1.0 and are not going to change:
 
@@ -16,8 +19,11 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 ## What you have to do
 
-1. **Back up first**: `python -m netcorenoc backup <file>` (from v0.28.0; before it, stop the
-   appliance and copy the database file and its `-wal` file).
+1. **Back up first**: on PostgreSQL, a `pg_dump` of the schema — `python -m netcorenoc backup
+   <file>`, or with Compose the command in
+   [`docs/operate.md`](docs/operate.md#8-backups-upgrades-and-checks). On SQLite (v0.30.0 and
+   earlier) the same command copied the file (from v0.28.0; before it, stop the appliance and copy
+   the database file and its `-wal` file).
 2. Read the rows of the table between your version and the new one. A row that starts with a bold
    instruction (for example **Unset …**) needs an action; the rest are "install and start".
 3. Install and start. Migrations run by themselves at start.
@@ -74,17 +80,100 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
-## Unreleased — after v0.30.0
+## Unreleased — PostgreSQL replaces SQLite: import once
 
-Nothing to run; **migration 0030** (schema 30) is additive — six `host_sample` columns. No grouping
-decision changes (`make eval` is byte-identical). What you will notice:
+**The one upgrade that is not "install and start".** The appliance keeps its data in **PostgreSQL
+15 or newer** (#452) and no longer reads a SQLite file. `NETCORENOC_DB` set at start stops the
+appliance, and every CLI command but one, with a message naming that command. The file is copied
+into PostgreSQL once:
+
+```sh
+python -m netcorenoc db import-sqlite <file>
+```
+
+It refuses rather than guesses, and changes nothing when it refuses:
+
+* **The file must be at schema 29 or 30** — v0.30.x as released, or with the unreleased
+  migration `0030`, whose `host_sample` columns then import as "not measured" — and pass
+  `PRAGMA integrity_check`. A file at an older schema is refused: run v0.30.x on it once, so it
+  applies its own migrations, then import.
+* **The target schema must hold no history.** Import **before** the new release's first start:
+  that start writes history (a bootstrap admin), and the import then refuses the schema.
+* **One transaction.** Every table is copied with `COPY`, each value converted to its column's
+  type; every table's row count and the whole audit hash chain are verified before the commit, so
+  a failure leaves the schema as it was. The import is audited (`db.import`) and prints each
+  table's count against the source's, then `OK`.
+* **The file is opened read-only** and left as it was: it is your way back (see
+  [Downgrading](#downgrading)).
+
+It is the only command that runs while `NETCORENOC_DB` is set, and it reads the file named on its
+command line, not the variable. Stop the old appliance cleanly first, so nothing is written to the
+file while it is read.
+
+**With Docker Compose.** The v0.30.0 file is `/home/netcorenoc/netcorenoc.db` on the
+`netcorenoc-data` volume, which the new `netcorenoc` service still mounts:
+
+```sh
+docker compose stop netcorenoc                # the old release, stopped cleanly
+git pull && docker compose build netcorenoc
+docker compose up -d postgres                 # generates the database password, starts PostgreSQL
+docker compose run --rm netcorenoc \
+  python -m netcorenoc db import-sqlite /home/netcorenoc/netcorenoc.db
+docker compose up -d                          # the appliance, on the imported data
+```
+
+The new compose file does not pass `NETCORENOC_DB` to the container; delete it from `.env` if it is
+there.
+
+**With systemd.** Create the role, the database and `/etc/netcorenoc/db_password` first
+([`docs/install.md`](docs/install.md#the-database-on-the-same-host)), then, from the new release's
+clone:
+
+```sh
+sudo systemctl stop netcorenoc
+sudo /opt/netcorenoc/.venv/bin/pip install ".[snmpv3]"
+sudo NETCORENOC_DATABASE_PASSWORD_FILE=/etc/netcorenoc/db_password \
+  /opt/netcorenoc/.venv/bin/python -m netcorenoc db import-sqlite /var/lib/netcorenoc/netcorenoc.db
+sudo cp deploy/netcorenoc.service /etc/systemd/system/     # LoadCredential= hands over the password
+sudo systemctl daemon-reload && sudo systemctl start netcorenoc
+```
+
+The new unit no longer sets `NETCORENOC_DB`; a drop-in that does (`systemctl cat netcorenoc` shows
+them) stops the start until it is removed.
+
+What else changes:
+
+* **New variables** ([`docs/configure.md`](docs/configure.md#database)): `NETCORENOC_DATABASE_URL`,
+  `NETCORENOC_DATABASE_PASSWORD_FILE`, `NETCORENOC_DB_SCHEMA`, `NETCORENOC_DB_READERS`,
+  `NETCORENOC_DB_STATEMENT_CACHE`, and `NETCORENOC_DATA_DIR`, the directory the spool lives in
+  (`<data dir>/spool`; it was beside the database file).
+* **Backups are `pg_dump` archives.** `python -m netcorenoc backup <file>` needs the PostgreSQL
+  client tools (`pg_dump`, `pg_restore`); with Compose, back up through the `postgres` container
+  ([`docs/operate.md`](docs/operate.md#8-backups-upgrades-and-checks)). Restore with `pg_restore`.
+  A backup taken with v0.30.0 is a SQLite file: keep it until you no longer need SQLite.
+* **New commands**: `db status`, `db migrate` (`make migrate`), `db import-sqlite`. Every CLI
+  command now **refuses a schema that is not there** instead of creating it, except `db migrate`
+  and `db import-sqlite`; run them where the appliance's variables are set.
+* **One appliance per schema**: a second appliance started against the same schema stops at start.
+* **A managed PostgreSQL** (Supabase, RDS, Cloud SQL, Azure, Neon) is a URL; with Compose,
+  `docker-compose.supabase.yml`
+  ([`docs/configure.md`](docs/configure.md#a-managed-postgresql-supabase-and-others)).
+* **If you read `GET /api/config`**: `startup.db_path` is gone; `startup.database` (the URL, its
+  password as `***`) and `startup.db_schema` replace it.
+
+## Unreleased — three processes, a spool and a KPI
+
+No grouping decision changes (`make eval` is byte-identical). Its schema change on SQLite —
+migration `0030`, six `host_sample` columns — is part of PostgreSQL's baseline. What you will
+notice:
 
 * **Three processes and a spool.** Traps are received by a child process (`python -m
   netcorenoc.ingest.worker`) that writes each datagram to a **spool on disk** before anything
   else happens to it, and decoded by another (`python -m netcorenoc.ingest.decoder`); both are
-  started by the appliance. The spool is `<database directory>/spool` (`NETCORENOC_SPOOL_DIR`,
-  `NETCORENOC_SPOOL_MAX_MB`): it must be writable by the appliance and should be on the database's
-  volume. A restart resumes after the last classified trap; a full queue no longer drops a trap.
+  started by the appliance. The spool is `<data dir>/spool` (`NETCORENOC_DATA_DIR`,
+  `NETCORENOC_SPOOL_DIR`, `NETCORENOC_SPOOL_MAX_MB`): it must be writable by the appliance and on a
+  real volume. A restart resumes after the last classified trap; a full queue no longer drops a
+  trap.
   **Docker: give the container two CPUs** — the shipped `docker-compose.yml` does.
   `NETCORENOC_INGEST_PROCESSES=0` keeps the single-process receiver, **without** the spool.
 * **The KPI** is a target and a limit per trap, 60 s and 120 s by default
@@ -367,14 +456,19 @@ anything, so no grouping changes and no verdict changes.
 
 ## Downgrading
 
-**A newer schema is not readable by an older binary.** Every migration is additive, so an older
-release will refuse a database whose `user_version` is ahead of it rather than corrupt it. The
-supported rollback is to restore the SQLite file you copied before upgrading, which is the whole
-reason to copy it:
+**A newer schema is not for an older binary.** An older release started on a database a newer one
+migrated says so — *"The database is at schema N, newer than this release's M"* — and running it
+there is not supported. The supported rollback is to restore the dump you took before upgrading,
+which is the whole reason to take it
+([`docs/operate.md`](docs/operate.md#8-backups-upgrades-and-checks) has the restore):
 
 ```sh
-systemctl stop netcorenoc && cp netcorenoc.db netcorenoc.db.bak    # before every upgrade
+python -m netcorenoc backup before-upgrade.dump    # before every upgrade
 ```
+
+**Back to SQLite** after the PostgreSQL import: the import left the SQLite file as it was, so the
+release that wrote it starts on it again — without anything recorded since the import, which
+exists only in PostgreSQL.
 
 `v0.15.0` is the one release you can downgrade from freely, because it changed no code.
 

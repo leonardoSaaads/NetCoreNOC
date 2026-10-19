@@ -49,7 +49,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def get_decider() -> dict[str, Any]:
         """Who decides links now: the league's champion, the order it was chosen from, the pin, and
         every switch. `viewer+`, unscoped: it is about models and names no network element."""
-        async with store.lock:
+        async with store.reading():
             history = await store.decider_history(20)
             pinned = await store.decider_pin()
             decisions = await store.league_decisions(10)
@@ -94,7 +94,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def get_autonomy() -> dict[str, Any]:
         """Status for every screen's top bar, and the settings. `viewer+`, unscoped: counts and
         switches, no situation named."""
-        async with store.lock:
+        async with store.reading():
             state = await autonomy.status(engine)
             settings = autonomy.Settings.from_row(await store.autonomy_setting())
             history = await store.autonomy_history(10)
@@ -104,7 +104,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def autonomy_decisions() -> dict[str, Any]:
         """Every recent autonomous act with its explanation and verdict. Admin (it names
         situations across every scope)."""
-        async with store.lock:
+        async with store.reading():
             rows = await store.autonomy_decisions(limit=100)
         return {"decisions": rows}
 
@@ -188,7 +188,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def get_search() -> dict[str, Any]:
         """Recent searches and every trial of the newest. `viewer+`, unscoped. ``blocked`` is why a
         search cannot start on this build (no shipped model to adapt, #422), else ``None``."""
-        async with store.lock:
+        async with store.reading():
             runs = await store.search_runs(10)
             trials = await store.search_trials(int(runs[0]["id"])) if runs else []
         return {
@@ -273,7 +273,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         shadow — a few KiB and no read of the site's labels, against ~240 KiB for the full body.
         """
         if brief:
-            async with store.lock:
+            async with store.reading():
                 pinned_ref = await store.decider_pin()
             league_members = engine.league_members
             return {
@@ -283,7 +283,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 else [brief_block(m) for m in league_members.members],
                 "shadow": finite(engine.league_shadow.snapshot()),
             }
-        async with store.lock:
+        async with store.reading():
             runs = await store.search_runs(10)
             trials = await store.search_trials(int(runs[0]["id"])) if runs else []
             pairs = await site_labels.label_pairs(store)

@@ -1,6 +1,6 @@
 """Organizations: which provider an element or a window belongs to (v0.21.0, D1).
 
-⚠ **Attribution, not isolation.** `migrations/0020_organization.sql` carries the banner in full and
+⚠ **Attribution, not isolation.** `migrations/0020_organization.sql` carried the banner in full and
 `crosscutting/shaping/scope.py` has carried the same warning about visibility scoping since
 v0.7.0. Restated here because this is the module somebody reads when they are about to use it for
 something it does not do: **correlation still learns across every network element, and a situation
@@ -43,13 +43,10 @@ class OrganizationMixin(StoreBase):
         is the same expression :meth:`ne_organizations` uses, so the list and the per-element
         lookup cannot disagree.
         """
-        if not self._has_maintenance:
-            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
-            return []
         cur = await self.conn.execute(
             "SELECT o.id, o.name, o.slug, o.is_default, o.created_at, "
             "(SELECT COUNT(*) FROM ne WHERE COALESCE(ne.organization_id, "
-            "(SELECT id FROM organization WHERE is_default=1 ORDER BY id LIMIT 1)) = o.id) "
+            "(SELECT id FROM organization WHERE is_default ORDER BY id LIMIT 1)) = o.id) "
             "AS ne_count "
             "FROM organization o ORDER BY o.is_default DESC, o.name"
         )
@@ -68,22 +65,14 @@ class OrganizationMixin(StoreBase):
     async def default_organization_id(self) -> int:
         """The organization a newly-discovered element belongs to.
 
-        `0020` creates exactly one row with `is_default = 1` and nothing deletes it, so the
-        fallback below is unreachable on any migrated database. It is written anyway because the
-        alternative is a `None` propagating into `create_maintenance_window`'s foreign key, and
-        returning 1 — the id `0020` created — degrades to the right answer instead.
-
-        **No `_has_maintenance` probe, unlike its neighbours, and that is the rule rather than an
-        omission.** The probe guards the methods that run *unbidden* — the sweep's
-        :meth:`attribute_unassigned_nes` and the reads the ingest path makes — because
-        `tests/store/test_upgrade.py` drives this store against migration directories frozen below
-        schema 20. This one is reached only from a route, and a route only exists on an appliance
-        whose migrations have run. (An earlier draft of this docstring called it *"the
-        element-discovery path"*, which it is not: discovery leaves `organization_id` NULL and the
-        sweep attributes it, which is the whole point of the method below.)
+        The baseline migration seeds exactly one row with `is_default` set (as `0020` did) and
+        nothing deletes it, so the fallback below is unreachable on any migrated database. It is
+        written anyway because the alternative is a `None` propagating into
+        `create_maintenance_window`'s foreign key, and returning 1 — the id the seed created —
+        degrades to the right answer instead.
         """
         cur = await self.conn.execute(
-            "SELECT id FROM organization WHERE is_default=1 ORDER BY id LIMIT 1"
+            "SELECT id FROM organization WHERE is_default ORDER BY id LIMIT 1"
         )
         row = await cur.fetchone()
         return int(row[0]) if row is not None else 1
@@ -95,8 +84,8 @@ class OrganizationMixin(StoreBase):
     async def create_organization(self, name: str, slug: str, now: float) -> int:
         """Add an organization. The caller owns the transaction, as every write path here does."""
         cur = await self.conn.execute(
-            "INSERT INTO organization (name, slug, created_at, is_default) VALUES (?, ?, ?, 0) "
-            "RETURNING id",
+            "INSERT INTO organization (name, slug, created_at, is_default) "
+            "VALUES (?, ?, ?, false) RETURNING id",
             (name[:MAX_ORGANIZATION_NAME], slug, now),
         )
         row = await cur.fetchone()
@@ -122,11 +111,8 @@ class OrganizationMixin(StoreBase):
         Every read model coalesces NULL to the default anyway, so the window between discovery and
         attribution is not a window in which an element is missing from a filtered list.
         """
-        if not self._has_maintenance:
-            # Pre-0020 schema: the feature's tables do not exist yet (`base.py::_has_maintenance`).
-            return 0
         cur = await self.conn.execute(
-            "UPDATE ne SET organization_id=(SELECT id FROM organization WHERE is_default=1 "
+            "UPDATE ne SET organization_id=(SELECT id FROM organization WHERE is_default "
             "ORDER BY id LIMIT 1) WHERE organization_id IS NULL"
         )
         return int(cur.rowcount or 0)
@@ -142,7 +128,7 @@ class OrganizationMixin(StoreBase):
         marks = ",".join("?" * len(ne_ids))
         cur = await self.conn.execute(
             "SELECT n.id, COALESCE(n.organization_id, "  # nosec B608 - placeholders only
-            "(SELECT id FROM organization WHERE is_default=1 ORDER BY id LIMIT 1)) AS org "
+            "(SELECT id FROM organization WHERE is_default ORDER BY id LIMIT 1)) AS org "
             f"FROM ne n WHERE n.id IN ({marks})",  # nosec B608 - placeholders only
             tuple(sorted(ne_ids)),
         )

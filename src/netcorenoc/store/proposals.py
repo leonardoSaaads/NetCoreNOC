@@ -24,7 +24,7 @@ _REJECT_BRANCH = (
     "JOIN proposal_decision_member pm ON pm.decision_id = d.id AND pm.side = 'pending' "
     "JOIN proposal_decision_member tm ON tm.decision_id = d.id AND tm.side = 'target' "
     "JOIN dataset_pair p ON p.{first} = pm.alarm_id AND p.{second} = tm.alarm_id "
-    "WHERE d.decision = 'reject' AND d.produces_training_rows = 1 AND p.lifecycle = 'dataset'"
+    "WHERE d.decision = 'reject' AND d.produces_training_rows AND p.lifecycle = 'dataset'"
 )
 _REJECT_SQL = (
     _REJECT_BRANCH.format(first="alarm_a", second="alarm_b")
@@ -40,9 +40,8 @@ class ProposalMixin(StoreBase):
         if not ids:
             return {}
         marks = ",".join("?" * len(ids))
-        column = "proposed_into" if self._has_proposals else "NULL"
         cur = await self.conn.execute(
-            f"SELECT id, status, {column} FROM situation WHERE id IN ({marks})",  # nosec B608
+            f"SELECT id, status, proposed_into FROM situation WHERE id IN ({marks})",  # nosec B608
             tuple(ids),
         )
         return {
@@ -52,8 +51,6 @@ class ProposalMixin(StoreBase):
 
     async def pending_for(self, target: int) -> int | None:
         """The live pending situation that proposes into ``target``, if there is one."""
-        if not self._has_proposals:
-            return None
         cur = await self.conn.execute(
             "SELECT id FROM situation WHERE proposed_into=? AND status='pending' "
             "ORDER BY id LIMIT 1",
@@ -79,8 +76,6 @@ class ProposalMixin(StoreBase):
 
     async def orphan_proposals(self) -> list[int]:
         """Pending situations whose target is no longer `open` (resolved, merged away)."""
-        if not self._has_proposals:
-            return []
         cur = await self.conn.execute(
             "SELECT p.id FROM situation p LEFT JOIN situation t ON t.id = p.proposed_into "
             "WHERE p.status='pending' AND (t.id IS NULL OR t.status <> 'open') ORDER BY p.id"
@@ -88,8 +83,6 @@ class ProposalMixin(StoreBase):
         return [int(r[0]) for r in await cur.fetchall()]
 
     async def proposal_of(self, situation_id: int) -> dict[str, Any] | None:
-        if not self._has_proposals:
-            return None
         cur = await self.conn.execute(
             "SELECT id, status, proposed_into, proposal_confidence, decider FROM situation "
             "WHERE id=?",
@@ -144,8 +137,6 @@ class ProposalMixin(StoreBase):
 
     async def rejected_proposals(self) -> list[tuple[int, int]]:
         """``(pending situation, target)`` for every rejection — the engine never re-proposes it."""
-        if not self._has_proposals:
-            return []
         cur = await self.conn.execute(
             "SELECT pending_situation_id, target_situation_id FROM proposal_decision "
             "WHERE decision='reject' ORDER BY id"
@@ -155,8 +146,6 @@ class ProposalMixin(StoreBase):
     async def proposal_negative_pairs(self) -> list[dict[str, Any]]:
         """Captured pairs across a rejected proposal's two bags: **negative** labels, one bag per
         decision. Shaped like `labelled_pairs` rows so the site rows read all sources alike."""
-        if not self._has_proposals or not self._has_pair_features:
-            return []
         cur = await self.conn.execute(_REJECT_SQL)
         return [
             {
@@ -173,8 +162,6 @@ class ProposalMixin(StoreBase):
 
     async def proposal_stats(self) -> dict[str, dict[str, int]]:
         """Accepted and rejected proposals per proposing model: the fast loop's report card."""
-        if not self._has_proposals:
-            return {}
         cur = await self.conn.execute(
             "SELECT COALESCE(decider, '') AS decider, decision, COUNT(*) FROM proposal_decision "
             "GROUP BY 1, 2 ORDER BY 1, 2"

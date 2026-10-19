@@ -193,7 +193,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         # discipline `CloseIn` follows.
         _ = body
         scope = await scope_for(principal)
-        async with store.lock:
+        async with store.reading():
             sid = await store.situation_of_alarm(aid)
             exists, ne_id = await store.alarm_ne(aid)
         # An alarm that does not exist and one whose NE is out of scope take the SAME branch: same
@@ -277,7 +277,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if not await situation_in_scope(sid, scope):
             await audit_scope_denial(request, principal, "alarm.clear_all", "situation", str(sid))
             raise HTTPException(status_code=404, detail="no such situation")
-        async with store.lock:
+        async with store.reading():
             members = await store.situation_members(sid)
         hidden = await ctx.perimeter.hidden_member_ids(sid, scope)
         # Derived, then narrowed — never the other way round. `only_ids` can subtract from what the

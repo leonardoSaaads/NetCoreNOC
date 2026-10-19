@@ -23,6 +23,7 @@ land together or not at all.
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from netcorenoc.engine.correlate.rootcause import Member
@@ -41,9 +42,10 @@ async def reload(engine: Engine) -> None:
     is in the database any more. Kept, the next attempt at the same traps found each alarm "already
     a member" and wrote no membership row: measured, one alarm of a 509-alarm storm left out of
     its situation after a single storage error. So the maps are read back, and the correlator
-    forgets every alarm the rollback removed (ids above the highest one that exists — SQLite hands
-    the next id to the next row, so those are exactly the rolled-back ones) and every situation
-    that is not live. The caller holds the store lock.
+    forgets every alarm the rollback removed (ids above the highest one that exists — a sequence
+    never hands a rolled-back id out again, so those are exactly the rolled-back ones) and every
+    situation that is not live. A capture run the rollback took with it is re-opened, or every pair
+    row after it would name a run that does not exist (ADR #452). The caller holds the store lock.
     """
     engine.sit_of.clear()
     engine.members.clear()
@@ -64,6 +66,12 @@ async def reload(engine: Engine) -> None:
     correlator.grouper.prune(set(engine.members))
     engine.upkeep.discard()
     engine.upkeep.retain(())  # every root sample is rebuilt from the members just read
+    run_id = engine.capture.run_id
+    if run_id is not None:
+        current = await engine.store.latest_capture_run()
+        if current is None or int(current["id"]) != run_id:
+            engine.capture.run_id = None  # so `open_run` cannot mistake the lost run for current
+            await engine._capture_run(time.time())
 
 
 def moved(engine: Engine, alarm_id: int, from_situation: int, to_situation: int) -> None:

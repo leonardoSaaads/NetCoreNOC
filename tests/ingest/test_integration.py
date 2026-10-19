@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from pathlib import Path
 
 from netcorenoc.ingest.receiver import QueueItem, start_receiver
 from netcorenoc.main import Engine
@@ -18,8 +17,8 @@ CIENA = "1.3.6.1.4.1.1271.2.1.1"
 HUAWEI = "1.3.6.1.4.1.2011.5.104.1"
 
 
-async def test_end_to_end_ingestion_zero_config(tmp_path: Path) -> None:
-    store = Store(str(tmp_path / "e2e.db"))
+async def test_end_to_end_ingestion_zero_config(db_url: str) -> None:
+    store = Store(db_url)
     await store.open()
     queue: asyncio.Queue[QueueItem] = asyncio.Queue()
     transport, receiver = await start_receiver(queue, "127.0.0.1", 0)
@@ -46,7 +45,7 @@ async def test_end_to_end_ingestion_zero_config(tmp_path: Path) -> None:
         with contextlib.suppress(asyncio.CancelledError):
             await engine_task
 
-    cur = await store.conn.execute("SELECT ip FROM device ORDER BY ip")
+    cur = await store.conn.execute("SELECT ip FROM ne ORDER BY ip")
     assert [r["ip"] for r in await cur.fetchall()] == ["127.0.0.2", "127.0.0.3"]
     # v0.16.3: the vendor is derived from the OID at read time rather than stored beside it
     # (`0016`, DECISIONS #280). What the end-to-end run has to show is unchanged — two classes

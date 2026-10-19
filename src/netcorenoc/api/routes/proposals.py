@@ -48,7 +48,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     ) -> dict[str, object]:
         """Accept or reject a pending proposal. See the module docstring."""
         scope = await scope_for(principal)
-        async with store.lock:
+        async with store.reading():
             head = await store.proposal_of(sid)
         target = None if head is None else head.get("proposed_into")
         for named in (sid, target):

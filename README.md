@@ -6,8 +6,8 @@ trap destination at NetCoreNOC. It discovers the devices, groups related alarms 
 inventory and no topology files are needed.
 
 One Python appliance — a process that receives traps and spools them to disk, one that decodes
-them, one that correlates — one SQLite file, one web console. No accepted trap is lost to a slow
-model or a restart, and each one is timed against a KPI an administrator sets.
+them, one that correlates — one PostgreSQL schema, one web console. No accepted trap is lost to a
+slow model or a restart, and each one is timed against a KPI an administrator sets.
 
 [![CI](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -27,7 +27,9 @@ docker compose up -d --build
 docker compose logs netcorenoc | grep -A4 "bootstrap admin"
 ```
 
-The last command prints a one-time password for the user `admin`. Then:
+Compose also starts PostgreSQL on a private network, with a database password it generates on the
+first start: there is nothing to set. The last command prints a one-time password for the user
+`admin`. Then:
 
 1. Open `http://<host>:8080/`, sign in as `admin`, and choose a new password (12+ characters).
 2. Point your equipment's **SNMPv2c or v1 trap destination** at `<host>`, UDP port **162**. For
@@ -38,18 +40,21 @@ Cannot use port 162? Set `NETCORENOC_TRAP_PORT=1162` in `.env`, run `docker comp
 and send traps to port 1162. Other ways to install (plain Docker, pip, systemd, Nix):
 [`docs/install.md`](docs/install.md).
 
-### Try it with test traffic, without equipment or Docker
+### Try it with test traffic, without equipment
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install .
+make pg-test-up                # a throwaway PostgreSQL on 127.0.0.1:55432 (Docker), or use your own
+export NETCORENOC_DATABASE_URL=postgresql://netcorenoc:netcorenoc@127.0.0.1:55432/postgres
 NETCORENOC_TRAP_PORT=1162 NETCORENOC_HTTP_PORT=8081 .venv/bin/python -m netcorenoc.main
 # in a second terminal: a fibre cut on two devices, sent as real SNMP traps
 make replay                    # `make replay-list` shows the other scenarios
 ```
 
-Open `http://localhost:8081/`. Run this without Docker: Docker's port proxy rewrites the source
-address of traps sent from the same machine, so every simulated device would appear as one. More
-scenarios, your own traps, `snmptrap`, and the steps for Windows (WSL 2):
+Open `http://localhost:8081/`. Run the appliance itself outside Docker: Docker's port proxy
+rewrites the source address of traps sent from the same machine, so every simulated device would
+appear as one. The test database keeps nothing (`make pg-test-down` removes it). More scenarios,
+your own traps, a PostgreSQL without Docker, `snmptrap`, and the steps for Windows (WSL 2):
 [`docs/simulate.md`](docs/simulate.md).
 
 ## Before a team relies on it
@@ -63,8 +68,8 @@ scenarios, your own traps, `snmptrap`, and the steps for Windows (WSL 2):
 | Password recovery by email | **Settings → Email** (Gmail, Microsoft 365 and others preset, or any SMTP server), and a recovery address per person |
 | Accept only what you expect | **Settings → SNMP**: switch off unused versions, list communities, or require SNMPv3 users |
 | Programs use service tokens | **People & access → Service tokens**; the value is shown once, and the API reference below the list shows every call a token can make |
-| Back up the database | `docker compose exec netcorenoc python -m netcorenoc backup /home/netcorenoc/backup.db` |
-| Upgrade | back up, `git pull`, `docker compose up -d --build`; read [`MIGRATION.md`](MIGRATION.md) |
+| Back up the database | a `pg_dump` of the schema, while it runs — the command is in [`docs/operate.md`](docs/operate.md#8-backups-upgrades-and-checks) |
+| Upgrade | back up, `git pull`, `docker compose up -d --build`; read [`MIGRATION.md`](MIGRATION.md). From v0.30.0 or earlier, the SQLite file is imported into PostgreSQL once, before the first start |
 
 Forgot a password? **Forgot your password?** on the sign-in screen once email is set up; otherwise
 `docker compose exec netcorenoc python -m netcorenoc admin reset-password <user>`. More in
@@ -91,7 +96,7 @@ Forgot a password? **Forgot your password?** on the sign-in screen once email is
 |---|---|
 | [`docs/install.md`](docs/install.md) | Every way to install it |
 | [`docs/operate.md`](docs/operate.md) | Signing in, sending traps, working situations, alarm rules |
-| [`docs/configure.md`](docs/configure.md) | Every setting and its default |
+| [`docs/configure.md`](docs/configure.md) | Every setting and its default, and the database (bundled, Supabase or another managed PostgreSQL) |
 | [`docs/console.md`](docs/console.md) | What each screen is for |
 | [`docs/troubleshoot.md`](docs/troubleshoot.md) | Symptoms and fixes |
 | [`docs/security.md`](docs/security.md) | Accounts, roles, TLS, the audit log |
@@ -101,7 +106,8 @@ Forgot a password? **Forgot your password?** on the sign-in screen once email is
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-make qa         # lint, type check, the test suite and the evaluation gate
+make qa         # lint, type check, the test suite and the evaluation gate; needs a PostgreSQL
+                # (local binaries, or `make pg-test-up` — see CONTRIBUTING.md)
 make dom        # the console's tests; needs Node 22+ on PATH
 make security   # bandit and pip-audit
 ```

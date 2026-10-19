@@ -74,9 +74,11 @@ class OccurrenceMixin(StoreBase):
             return {}
         marks = ", ".join("?" * len(sids))
         cur = await self.conn.execute(
-            "SELECT sa.situation_id, d.ip, c.oid, a.instance FROM situation_alarm sa "  # nosec B608
-            "JOIN alarm a ON a.id=sa.alarm_id JOIN device d ON d.id=a.device_id "
-            f"JOIN alarm_class c ON c.id=a.class_id WHERE sa.situation_id IN ({marks})",
+            # `host()`: the address as the dotted text the flap memory was keyed on.
+            "SELECT sa.situation_id, host(d.ip), c.oid, a.instance FROM situation_alarm sa "  # nosec B608
+            "JOIN alarm a ON a.id=sa.alarm_id JOIN ne d ON d.id=a.ne_id "
+            f"JOIN alarm_class c ON c.id=a.class_id WHERE sa.situation_id IN ({marks}) "
+            "ORDER BY sa.situation_id, sa.alarm_id",
             tuple(sids),
         )
         out: dict[int, list[tuple[str, str, str]]] = {}

@@ -185,8 +185,6 @@ class ClassRuleMixin(StoreBase):
 
     async def catalogue(self) -> Catalogue:
         """The current catalogue, read once and reused until a rule changes."""
-        if not self._has_class_rules:
-            return Catalogue([], trappack.pack())
         if self._catalogue_cache is None:
             cur = await self.conn.execute(
                 "SELECT id, oid, subtree, name, severity, vendor, source, origin FROM class_rule "

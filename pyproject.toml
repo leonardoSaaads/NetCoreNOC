@@ -13,7 +13,7 @@ authors = [{ name = "NetCoreNOC contributors" }]
 keywords = ["snmp", "trap", "alarm-correlation", "noc", "root-cause"]
 dependencies = [
     "pysnmp>=7.1",
-    "aiosqlite>=0.20",
+    "asyncpg>=0.30",
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "pydantic>=2.7",
@@ -110,13 +110,14 @@ known-local-folder = [
     # tests/lab/ (the simulated network element package)
     "ne",
     # tools/
-    "corpus_census", "login_art", "storm_check", "trap_replay", "trappack_build",
+    "corpus_census", "db_bench", "login_art", "pgtemp", "storm_check", "trap_replay", "trappack_build",
     # eval/
     "harness", "metrics", "simulation", "synth",
 ]
 [tool.ruff.lint.per-file-ignores]
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
 "src/netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
+"src/netcorenoc/store/cli.py" = ["T20"]  # and its database commands (ADR #452)
 "eval/synth/*" = ["T20"]  # `make train` reports each stage to the person running it (v0.26.0)
 
 [tool.mypy]
@@ -126,7 +127,9 @@ files = ["src", "tools", "tests", "eval"]
 mypy_path = ["src", "eval", "tools", "tests/support", "tests/lab"]
 
 [[tool.mypy.overrides]]
-module = ["pysnmp.*", "pyasn1.*"]
+# asyncpg (ADR #452) ships no type information either; `store/db.py` is the one module that
+# touches it, and it annotates what it hands to the rest of the store.
+module = ["pysnmp.*", "pyasn1.*", "asyncpg.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

@@ -135,7 +135,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
         Viewer+ by design: these numbers *explain* every grouping decision and are not a secret
         (SCOPE-0.6 §2). Writing them is a separate, admin-only capability."""
-        async with store.lock:
+        async with store.reading():
             history = await store.list_scorer_configs(MAX_SCORER_HISTORY)
             running = await _running_identity()
         tunable = _tunable_scorer()
@@ -185,7 +185,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
         snapshot = engine.monitor.snapshot()
         safe = engine.correlator.scorer
-        async with store.lock:
+        async with store.reading():
             running = await _running_identity()
         snapshot["running"] = running
         snapshot["degraded"] = safe.degraded
@@ -220,7 +220,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         candidate = scoring.AdditiveScorer(
             w_t=body.w_t, w_a=body.w_a, w_e=body.w_e, tau_s=body.tau_s, threshold=body.threshold
         )
-        async with store.lock:
+        async with store.reading():
             rows = await store.recent_alarms_for_preview(preview.MAX_PREVIEW_ALARMS)
         alarms = [
             preview.PreviewAlarm(

@@ -51,12 +51,7 @@ async def _install_scope(store: Store) -> None:
 
 
 async def _alarm(store: Store, sid: int, ip: str, oid: str, instance: str) -> int:
-    """One alarm on its own device, NE and class, joined to `sid`."""
-    cur = await store.conn.execute(
-        "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
-        (ip, BASE, BASE),
-    )
-    device = int((await cur.fetchone())[0])  # type: ignore[index]
+    """One alarm on its own NE and class, joined to `sid`."""
     cur = await store.conn.execute(
         "INSERT INTO ne (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id", (ip, BASE, BASE)
     )
@@ -68,9 +63,9 @@ async def _alarm(store: Store, sid: int, ip: str, oid: str, instance: str) -> in
     )
     cls = int((await cur.fetchone())[0])  # type: ignore[index]
     cur = await store.conn.execute(
-        "INSERT INTO alarm (device_id, class_id, ne_id, instance, severity, status, first_seen, "
-        "last_seen) VALUES (?, ?, ?, ?, 3, 'active', ?, ?) RETURNING id",
-        (device, cls, ne, instance, BASE, BASE),
+        "INSERT INTO alarm (class_id, ne_id, instance, severity, status, first_seen, "
+        "last_seen) VALUES (?, ?, ?, 3, 'active', ?, ?) RETURNING id",
+        (cls, ne, instance, BASE, BASE),
     )
     alarm = int((await cur.fetchone())[0])  # type: ignore[index]
     await store.conn.execute(
@@ -284,11 +279,10 @@ async def test_a_device_label_is_searchable_by_every_role_and_an_address_is_not(
     _engine, _queue, app = await authutil.make_env(store)
     ids = await _seed(store)
     async with store.lock:
-        cur = await store.conn.execute("SELECT id FROM device WHERE ip='10.1.0.1'")
-        device = int((await cur.fetchone())[0])  # type: ignore[index]
+        # The label is keyed on the NE since v0.16.3 (DECISIONS #281); the `device` copy of it is
+        # gone since v0.31.0 (ADR #452).
         cur = await store.conn.execute("SELECT id FROM ne WHERE ip='10.1.0.1'")
         ne = int((await cur.fetchone())[0])  # type: ignore[index]
-        assert device  # the label is keyed on the NE since v0.16.3 (DECISIONS #281)
         await store.set_label("ne", ne, "core-sw-1", BASE)
         await store.set_label("ne", ne, "core-sw-1 at 10.1.0.1", BASE)
         await store.set_label("ne", ne, "core-sw-1", BASE)

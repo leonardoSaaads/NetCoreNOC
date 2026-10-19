@@ -20,6 +20,7 @@ import statistics
 import time
 from typing import Any
 
+import asyncpg
 import pytest
 
 from netcorenoc.engine.correlate import learn
@@ -118,7 +119,7 @@ def test_the_sum_identity_alone_closes_on_input_it_should_reject(n: int, m: int)
 async def _situation(
     store: Store, engine: Engine | None, n: int, *, hidden_from: int | None = None
 ) -> tuple[int, list[int]]:
-    """One situation with `n` members, each its own NE and device.
+    """One situation with `n` members, each its own NE (`ne`; the `device` copy is gone, ADR #452).
 
     Members from index `hidden_from` onward are addressed in `10.9.0.0/16`; the rest in
     `10.1.0.0/16`, which is the block the scope policy in §3 grants an editor.
@@ -132,11 +133,6 @@ async def _situation(
             block = "10.9" if hidden_from is not None and idx >= hidden_from else "10.1"
             ip = f"{block}.{u // 250}.{u % 250 + 1}"
             cur = await store.conn.execute(
-                "INSERT INTO device (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
-                (ip, TS, TS),
-            )
-            dev = int((await cur.fetchone())[0])  # type: ignore[index]
-            cur = await store.conn.execute(
                 "INSERT INTO ne (ip, first_seen, last_seen) VALUES (?, ?, ?) RETURNING id",
                 (ip, TS, TS),
             )
@@ -148,9 +144,9 @@ async def _situation(
             )
             cls = int((await cur.fetchone())[0])  # type: ignore[index]
             cur = await store.conn.execute(
-                "INSERT INTO alarm (device_id, class_id, instance, status, first_seen, last_seen, "
-                "count, ne_id) VALUES (?, ?, '', 'active', ?, ?, 1, ?) RETURNING id",
-                (dev, cls, TS, TS, ne),
+                "INSERT INTO alarm (ne_id, class_id, instance, status, first_seen, last_seen, "
+                "count) VALUES (?, ?, '', 'active', ?, ?, 1) RETURNING id",
+                (ne, cls, TS, TS),
             )
             aid = int((await cur.fetchone())[0])  # type: ignore[index]
             await store.add_alarm_to_situation(sid, aid)
@@ -606,7 +602,8 @@ async def test_the_oracle_stays_closed_in_timing(store: Store) -> None:
     membership
     test per mark. Both are bounded by the bag, which is bounded by `MAX_CANDIDATES`, and neither
     depends on whether an id **exists**: a ghost and a real id both cost one hash lookup. The
-    difference must stay unmeasurable against the HTTP and SQLite work that dominates the request.
+    difference must stay unmeasurable against the HTTP and database work that dominates the
+    request.
 
     Medians over repeated posts, with a deliberately loose factor: this asserts *"no usable
     signal"*, not a benchmark, and a tight bound here would be a flaky test rather than a stronger
@@ -753,15 +750,15 @@ async def test_the_store_layer_refuses_exactly_at_the_boundary(store: Store) -> 
 
 
 async def test_the_schema_refuses_a_reconciled_count_with_no_bag_size(store: Store) -> None:
-    """**Ledger L5.** The CHECK's `member_count IS NOT NULL` clause, asserted against SQLite itself.
+    """**Ledger L5.** The CHECK's `member_count IS NOT NULL` clause, asserted against the database.
 
     The store layer refuses this first, so the constraint is unreachable through any code path —
-    which is exactly why it needs a test that goes around the store. SQLite treats a CHECK
-    evaluating to NULL as satisfied, so dropping that clause would let a reconciled count be written
-    against a bag whose size was never recorded, and nothing above would have noticed.
+    which is exactly why it needs a test that goes around the store. PostgreSQL (as SQLite did)
+    treats a CHECK evaluating to NULL as satisfied, so dropping that clause would let a reconciled
+    count be written against a bag whose size was never recorded, and nothing above would have
+    noticed. `feedback_check` is that column's CHECK (`0031_postgresql.sql`); `feedback_check1` is
+    the out-of-scope one, which the quoted name below cannot match.
     """
-    import sqlite3
-
     engine, _q, _app = await authutil.make_env(store)
     sid, _alarms = await _situation(store, engine, 4)
     async with store.lock:
@@ -769,7 +766,9 @@ async def test_the_schema_refuses_a_reconciled_count_with_no_bag_size(store: Sto
         assert recorded.id is not None
         await store.commit()
 
-    with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+    with pytest.raises(
+        asyncpg.exceptions.CheckViolationError, match='violates check constraint "feedback_check"'
+    ):
         await store.conn.execute(
             "UPDATE feedback SET member_count=NULL, excluded_reconciled=0 WHERE id=?",
             (recorded.id,),
@@ -817,7 +816,7 @@ async def test_a_disabled_capture_verifies_nothing(store: Store) -> None:
 
 
 async def test_the_store_layer_refuses_a_reconciled_count_that_is_not_one(store: Store) -> None:
-    """Enforcement above the schema, so a violation reaching SQLite is unambiguously a bug above.
+    """Enforcement above the schema, so a violation reaching the database is a bug above it.
 
     Both directions, and a control: a legal annotation must be accepted, or the refusals prove only
     that the method rejects everything.
