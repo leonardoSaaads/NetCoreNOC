@@ -250,6 +250,7 @@ set_my_profile  # netcorenoc/api/routes/people.py
 set_user_avatar  # netcorenoc/api/routes/people.py
 drop_user_avatar  # netcorenoc/api/routes/people.py
 set_user_profile  # netcorenoc/api/routes/people.py
+reset_user_password  # netcorenoc/api/routes/people.py (ADR #453)
 
 # v0.26.0: route handlers registered by decorator (ADRs #405, #412, #413).
 get_decider  # netcorenoc/api/routes/decider.py

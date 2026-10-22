@@ -54,8 +54,8 @@ class RetentionMixin(StoreBase):
             (cutoff,),
         )
         await self.conn.execute(
-            f"DELETE FROM link WHERE situation_id IN ({gone})",
-            (cutoff,),  # nosec B608
+            f"DELETE FROM link WHERE situation_id IN ({gone})",  # nosec B608
+            (cutoff,),
         )
         # No `DELETE FROM feedback` here. See the docstring: that line was F44.
         #

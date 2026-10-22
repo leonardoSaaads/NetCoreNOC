@@ -282,4 +282,5 @@ def _parse(
 
 
 def record(stream: Stream) -> StreamLog:
+    pgtemp.throwaway_vault()  # the engine seals what it audits (ADR #453)
     return asyncio.run(_record(stream))

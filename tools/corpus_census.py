@@ -416,4 +416,5 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
+    pgtemp.throwaway_vault()  # the engine seals what it audits (ADR #453)
     sys.exit(asyncio.run(main()))

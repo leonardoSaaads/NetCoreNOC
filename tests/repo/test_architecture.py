@@ -1363,8 +1363,12 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: the reader pool), `store/codecs.py`, `store/sql.py` (the placeholder translation),
 #: `store/importer.py` (the one-way SQLite import) and `store/cli.py` (the CLI's database
 #: plumbing) added.
-SRC_TREE_DIGEST = "50002d59c65db5245a3229d00a24df087a4353334f3b5202db0cee7ef84d890a"
-SRC_FILE_COUNT = 375
+#: **Then 375 -> 380.** Five added, none removed (ADR #453): `crosscutting/vault.py` (the secret
+#: key: sealing, blind indexes, the password pepper), `store/sealing.py` (what is sealed, where),
+#: `store/privileges.py` (the runtime role's grants), `api/routes/users.py` (the account routes,
+#: split from `admin.py` with the ceiling check) and migration `0032_hardening.sql`.
+SRC_TREE_DIGEST = "882b38611cd582a161b00b0d70638fcbe12c294cd383a45e1767a2ec49cc809e"
+SRC_FILE_COUNT = 380
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

@@ -338,6 +338,7 @@ def main() -> int:
     if unknown:
         print(f"unknown kind(s): {unknown}; known: {sorted(HYPERS)}", file=sys.stderr)  # noqa: T201
         return 2
+    pgtemp.throwaway_vault()  # the engine seals what it audits (ADR #453)
     report = asyncio.run(run(args.db, kinds))
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))  # noqa: T201

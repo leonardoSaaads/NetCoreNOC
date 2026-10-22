@@ -245,4 +245,4 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 object_id=str(uid),
                 details={"field": "password", "temporary": True, "sessions_revoked": revoked},
             )
-        return {"temporary_password": temporary, "must_change_password": True}
+        return {"temporary_password": temporary, "must_change_password": True}  # nosec B105
